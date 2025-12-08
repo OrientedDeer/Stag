@@ -7,7 +7,7 @@ type DashboardProps = {
 export default function Dashboard({setIsOpen}: DashboardProps ) {
   return (
     <div className="flex flex-col w-screen">
-      <TopBar setIsOpen={setIsOpen}/>
+      <TopBar setIsOpen={setIsOpen} title="Dashboard"/>
       <h1 className="text-2xl">Dashboard</h1>
     </div>
   );
