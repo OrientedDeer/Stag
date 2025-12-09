@@ -12,7 +12,7 @@ export default function TopBar({setIsOpen, title}: TopBarProps ) {
                 onClick={() => setIsOpen(prev => !prev)}
 			>
 				<span className="flex items-center">
-                    <span className="hover:bg-gray-800">
+                    <span className="hover:bg-gray-600 rounded-lg">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="white" viewBox="0 -960 960 960">
                             <path d="M120-240v-80h720v80zm0-200v-80h720v80zm0-200v-80h720v80z" />
                         </svg>

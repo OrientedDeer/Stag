@@ -6,7 +6,7 @@ type FutureProps = {
 
 export default function Future({setIsOpen}: FutureProps ) {
   return (
-    <div className="flex flex-col w-screen">
+    <div className="flex flex-col">
       <TopBar setIsOpen={setIsOpen} title="Future"/>
       <h1 className="text-2xl">Future</h1>
     </div>

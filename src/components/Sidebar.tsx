@@ -7,7 +7,7 @@ type SidebarProps = {
 export default function Sidebar({ isOpen }: SidebarProps) {
 	const { pathname } = useLocation();
 
-	const link = `flex items-center gap-3 p-3 rounded text-White ${
+	const link = `flex items-center mb-1 p-2 rounded text-White ${
 		isOpen ? "" : "hover:bg-gray-600"
 	}`;
 
@@ -45,6 +45,17 @@ export default function Sidebar({ isOpen }: SidebarProps) {
 						</svg>
 						<span className={`overflow-hidden whitespace-nowrap transition-all duration-300 ${isOpen ? "w-0 opacity-0" : "w-auto opacity-100"}`}>
 							Future
+						</span>
+					</span>
+				</Link>
+
+				<Link className={`${link} ${pathname === "/testing" && active} ${isOpen ? "pointer-events-none" : ""}`} to="/testing">
+					<span className={`flex items-center gap-2 overflow-hidden whitespace-nowrap transition-all duration-300 ${isOpen ? "w-0 opacity-0" : "w-auto opacity-100"}`}>
+						<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="white" viewBox="0 -960 960 960">
+							<path d="M200-120q-51 0-72.5-45.5T138-250l222-270v-240h-40q-17 0-28.5-11.5T280-800t11.5-28.5T320-840h320q17 0 28.5 11.5T680-800t-11.5 28.5T640-760h-40v240l222 270q32 39 10.5 84.5T760-120zm80-120h400L544-400H416zm-80 40h560L520-492v-268h-80v268zm280-280"/>
+						</svg>
+						<span className={`overflow-hidden whitespace-nowrap transition-all duration-300 ${isOpen ? "w-0 opacity-0" : "w-auto opacity-100"}`}>
+							Testing
 						</span>
 					</span>
 				</Link>

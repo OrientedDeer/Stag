@@ -3,6 +3,7 @@ import Sidebar from "./components/Sidebar";
 import Dashboard from "./pages/Dashboard";
 import Current from "./pages/Current";
 import Future from "./pages/Future";
+import Testing from "./pages/Testing";
 import { useState } from "react";
 import { AccountsProvider } from './context/AccountsContext';
 
@@ -20,6 +21,7 @@ export default function App() {
               <Route path="/dashboard" element={<Dashboard setIsOpen={setIsOpen}/>} />
               <Route path="/current" element={<Current setIsOpen={setIsOpen}/>} />
               <Route path="/future" element={<Future setIsOpen={setIsOpen}/>} />
+              <Route path="/testing" element={<Testing setIsOpen={setIsOpen}/>} />
             </Routes>
           </main>
       </div>
