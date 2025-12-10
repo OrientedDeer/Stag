@@ -1,8 +1,9 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Account, ACCOUNT_CATEGORIES } from '../types';
+import { Account, AccountHistoryEntry } from '../types';
 
 interface AccountsContextType {
   accounts: Account[];
+  history: AccountHistoryEntry[];
   addAccount: (account: Account) => void;
   removeAccount: (id: string) => void;
   updateAccount: (updatedAccount: Account) => void;
@@ -12,6 +13,10 @@ interface AccountsContextType {
 const AccountsContext = createContext<AccountsContextType | undefined>(undefined);
 
 export function AccountsProvider({ children }: { children: ReactNode }) {
+  const [history, setHistory] = useState<AccountHistoryEntry[]>(() => {
+    const saved = localStorage.getItem('user_accounts_history');
+    return saved ? JSON.parse(saved) : [];
+  });  
   const [accounts, setAccounts] = useState<Account[]>(() => {
     const saved = localStorage.getItem('user_accounts');
     return saved ? JSON.parse(saved) : [];
@@ -19,24 +24,51 @@ export function AccountsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     localStorage.setItem('user_accounts', JSON.stringify(accounts));
+    localStorage.setItem('user_accounts_history', JSON.stringify(history));
   }, [accounts]);
 
   const addAccount = (account: Account) => {
-    ACCOUNT_CATEGORIES as ReadonlyArray<string>
-    setAccounts([...accounts, account]);
-  };
+    var temp = new Date()
+    temp.setHours(0, 0, 0, 0)
+    setAccounts(prevAccounts => [...prevAccounts, account]);
 
-  const removeAccount = (id: string) => {
-    setAccounts(accounts.filter(acc => acc.id !== id));
+    const initialHistoryEntry: AccountHistoryEntry = {
+      accountId: account.id,
+      balance: account.balance,
+      timestamp: temp, 
   };
+  setHistory(prevHistory => [...prevHistory, initialHistoryEntry]);
+};
+
+const removeAccount = (id: string) => {
+  setAccounts(prevAccounts => prevAccounts.filter(acc => acc.id !== id));
+
+  setHistory(prevHistory => 
+    prevHistory.filter(entry => entry.accountId !== id)
+  );
+
+  console.log(`Account ID: ${id} and all associated history records have been removed.`);
+};
 
   const updateAccount = (updatedAccount: Account) => {
-    setAccounts(prevAccounts => 
-      prevAccounts.map(account =>
-        account.id === updatedAccount.id ? updatedAccount : account
-      )
-    );
-  };
+  setAccounts(prevAccounts => 
+    prevAccounts.map(account => {
+      if (account.id === updatedAccount.id) {
+        if (account.balance !== updatedAccount.balance) {
+          const newHistoryEntry: AccountHistoryEntry = {
+            accountId: updatedAccount.id,
+            balance: updatedAccount.balance,
+            timestamp: new Date(),
+          };
+          
+          setHistory(prevHistory => [...prevHistory, newHistoryEntry]);
+        }
+        return updatedAccount;
+      }
+      return account;
+    })
+  );
+};
 
   
   const getFilteredAccount = (category: string) =>{
@@ -56,7 +88,7 @@ export function AccountsProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AccountsContext.Provider value={{accounts, addAccount, removeAccount, updateAccount, getCatTotal, getFilteredAccount}}>
+    <AccountsContext.Provider value={{accounts, history, addAccount, removeAccount, updateAccount, getCatTotal, getFilteredAccount}}>
       {children}
     </AccountsContext.Provider>
   );

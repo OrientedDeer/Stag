@@ -13,6 +13,8 @@ export default function AddAccount({category}: AddAccountProps) {
     const [balance, setBalance] = useState('');
 
     const handleSubmit = (e: React.FormEvent) => {
+        var temp = new Date()
+        temp.setHours(0, 0, 0, 0)
         e.preventDefault();
         if (!name || !balance) return;
         const newAccount: Account = {
@@ -22,6 +24,7 @@ export default function AddAccount({category}: AddAccountProps) {
           bgcolor: ACCOUNT_COLORS_BACKGROUND[ACCOUNT_CATEGORIES.indexOf(category)],
           txcolor: ACCOUNT_COLORS_TEXT[ACCOUNT_CATEGORIES.indexOf(category)],
           category,
+          date: temp
         };
     
         addAccount(newAccount);
