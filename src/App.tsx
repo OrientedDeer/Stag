@@ -1,5 +1,6 @@
 import { Routes, Route } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
+import TopBar from "./components/TopBar";
 import Dashboard from "./pages/Dashboard";
 import Current from "./pages/Current";
 import Future from "./pages/Future";
@@ -13,9 +14,10 @@ export default function App() {
     <AccountsProvider>
       <div className="flex h-screen">
         <Sidebar isOpen={isOpen}/>
-        
-        
-          <main className="flex-1 overflow-auto">
+        <div className="flex flex-col flex-1 overflow-hidden">
+          <TopBar setIsOpen={setIsOpen} title="Menu"/>
+
+          <main className="flex-1 overflow-y-auto">
             <Routes>
               <Route index element={<Dashboard setIsOpen={setIsOpen}/>} />
               <Route path="/dashboard" element={<Dashboard setIsOpen={setIsOpen}/>} />
@@ -24,6 +26,7 @@ export default function App() {
               <Route path="/testing" element={<Testing setIsOpen={setIsOpen}/>} />
             </Routes>
           </main>
+        </div>
       </div>
     </AccountsProvider>
   );

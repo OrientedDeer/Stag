@@ -39,7 +39,7 @@ export default function AddAccount({category}: AddAccountProps) {
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full p-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full p-2 focus:ring-blue-500 focus:border-blue-500 border-2 border-gray-800 rounded-lg"
                 placeholder="e.g. Chase Checking"
                 />
             </div>
@@ -49,13 +49,13 @@ export default function AddAccount({category}: AddAccountProps) {
                 type="number"
                 value={balance}
                 onChange={(e) => setBalance(e.target.value)}
-                className="w-full p-2"
-                placeholder="0.00"
+                className="w-full p-2 border-2 border-gray-800 rounded-lg"
+                placeholder="0"
                 />
             </div>
             <button
                 type="submit"
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
             >
                 Add
             </button>

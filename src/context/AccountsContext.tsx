@@ -1,12 +1,13 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Account } from '../types';
+import { Account, ACCOUNT_CATEGORIES } from '../types';
 
 interface AccountsContextType {
   accounts: Account[];
   addAccount: (account: Account) => void;
   removeAccount: (id: string) => void;
   updateAccount: (updatedAccount: Account) => void;
-  getTotalBalance: () => number;
+  getCatTotal: (category: string) => number;
+  getFilteredAccount: (category: string) => Account[];
 }
 const AccountsContext = createContext<AccountsContextType | undefined>(undefined);
 
@@ -21,6 +22,7 @@ export function AccountsProvider({ children }: { children: ReactNode }) {
   }, [accounts]);
 
   const addAccount = (account: Account) => {
+    ACCOUNT_CATEGORIES as ReadonlyArray<string>
     setAccounts([...accounts, account]);
   };
 
@@ -29,19 +31,32 @@ export function AccountsProvider({ children }: { children: ReactNode }) {
   };
 
   const updateAccount = (updatedAccount: Account) => {
-  setAccounts(prevAccounts => 
-    prevAccounts.map(account =>
-      account.id === updatedAccount.id ? updatedAccount : account
-    )
-  );
-};
-
-  const getTotalBalance = () => {
-    return accounts.reduce((sum, acc) => acc.category == "Debt" ? sum + acc.balance * -1 : sum + acc.balance, 0);
+    setAccounts(prevAccounts => 
+      prevAccounts.map(account =>
+        account.id === updatedAccount.id ? updatedAccount : account
+      )
+    );
   };
 
+  
+  const getFilteredAccount = (category: string) =>{
+    if (category === "All"){
+      return accounts
+    }
+    return accounts.filter(acc => acc.category === category);
+  }
+
+  const getCatTotal = (category: string) => {
+    if (category === "All") {
+       return accounts.reduce((sum, acc) => acc.category == "Debt" ? sum + acc.balance * -1 : sum + acc.balance, 0);
+    }
+    else {
+       return accounts.reduce((sum, acc) => acc.category == category ? sum + acc.balance : sum, 0);
+    }
+  }
+
   return (
-    <AccountsContext.Provider value={{ accounts, addAccount, removeAccount, updateAccount, getTotalBalance }}>
+    <AccountsContext.Provider value={{accounts, addAccount, removeAccount, updateAccount, getCatTotal, getFilteredAccount}}>
       {children}
     </AccountsContext.Provider>
   );
