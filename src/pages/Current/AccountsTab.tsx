@@ -4,7 +4,7 @@ import {useState} from 'react';
 import {ACCOUNT_CATEGORIES} from '../../types';
 import Property from "./AccountsTab/Property";
 import Debt from "./AccountsTab/Debt";
-import HorizontalBarChart from "../../components/HorizontalBarChart";
+import HorizontalBarChart from "../../components/Accounts/HorizontalBarChart";
 import { useAccounts } from '../../context/AccountsContext';
 
 

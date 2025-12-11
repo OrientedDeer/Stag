@@ -1,6 +1,6 @@
 import { useIncomes } from "../../../context/IncomeTypesContext";
-import IncomeList from "../../../components/IncomeList";
-import AddIncome from "../../../components/AddIncome";
+import IncomeList from "../../../components/Income/IncomeList";
+import AddIncome from "../../../components/Income/AddIncome";
 import {INCOME_TYPES} from '../../../types';
 
 export default function Work() {
@@ -12,6 +12,7 @@ export default function Work() {
         filteredIncomes={incomes.filter((income) => {
           return income.type === "Work";
         })}
+        type = "Work"
       />
       <AddIncome type={INCOME_TYPES[0]} />
     </div>

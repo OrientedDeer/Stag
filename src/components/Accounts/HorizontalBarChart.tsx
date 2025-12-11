@@ -1,4 +1,4 @@
-import { Account, ACCOUNT_CATEGORIES, CATEGORY_PALETTES} from '../types';
+import { Account, ACCOUNT_CATEGORIES, CATEGORY_PALETTES} from '../../types';
 import { useMemo} from 'react';
 
 type HorizontalBarChartProps = {

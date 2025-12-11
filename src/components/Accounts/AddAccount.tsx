@@ -1,5 +1,5 @@
-import { Account, ACCOUNT_CATEGORIES, ACCOUNT_COLORS_BACKGROUND, ACCOUNT_COLORS_TEXT} from '../types';
-import { useAccounts } from '../context/AccountsContext';
+import { Account, ACCOUNT_CATEGORIES, ACCOUNT_COLORS_BACKGROUND, ACCOUNT_COLORS_TEXT} from '../../types';
+import { useAccounts } from '../../context/AccountsContext';
 import { useState} from 'react';
 
 type AddAccountProps = {
@@ -34,7 +34,6 @@ export default function AddAccount({category}: AddAccountProps) {
 
     return (
         <div className="rounded-lg p-6">
-            <h2 className="text-lg font-semibold mb-4">Add New Account</h2>
             <form onSubmit={handleSubmit} className="flex gap-4 items-end">
             <div className="flex-1">
                 <label className="block text-sm font-medium text-white mb-1">Name</label>

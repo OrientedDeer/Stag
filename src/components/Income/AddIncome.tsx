@@ -1,5 +1,5 @@
-import { Income, INCOME_TYPES, INCOME_COLORS_BACKGROUND, INCOME_COLORS_TEXT} from '../types';
-import { useIncomes } from '../context/IncomeTypesContext';
+import { Income, INCOME_TYPES, INCOME_COLORS_BACKGROUND, INCOME_COLORS_TEXT} from '../../types';
+import { useIncomes } from '../../context/IncomeTypesContext';
 import { useState} from 'react';
 
 type AddIncomeProps = {
@@ -47,7 +47,7 @@ export default function AddIncome({type}: AddIncomeProps) {
                 />
             </div>
             <div className="w-48">
-                <label className="block text-sm font-medium text-white mb-1">Balance</label>
+                <label className="block text-sm font-medium text-white mb-1">Income per Month</label>
                 <input
                 type="number"
                 value={amount}

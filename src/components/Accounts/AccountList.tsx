@@ -1,68 +1,68 @@
-import { Income, INCOME_TYPES, TYPE_COLOR_BACKGROUND_MAP, TYPE_COLOR_TEXT_MAP} from '../types';
-import { useIncomes } from '../context/IncomeTypesContext';
+import { Account, ACCOUNT_CATEGORIES, CATEGORY_COLOR_BACKGROUND_MAP, CATEGORY_COLOR_TEXT_MAP} from '../../types';
+import { useAccounts } from '../../context/AccountsContext';
 import { useState} from 'react';
 
-type IncomeListProps = {
-  filteredIncomes: Income[];
+type AccountListProps = {
+  filteredAccounts: Account[],
+  category: Account["category"];
 };
 
-export default function IncomeList({filteredIncomes}: IncomeListProps) {
-  const {removeIncome, updateIncome} = useIncomes();
+export default function AccountList({filteredAccounts, category}: AccountListProps) {
+  const {removeAccount, updateAccount} = useAccounts();
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
-  const [editingamountId, setEditingamountId] = useState<string | null>(null);
+  const [editingBalanceId, setEditingBalanceId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
-  const [editingAmount, setEditingAmount] = useState('');
-  const [type] = useState<Income['type']>(INCOME_TYPES[0]);
+  const [editingBalance, setEditingBalance] = useState('');
 
-  const saveName = (Income: Income) => {
-    if (editingName.trim() === '' || editingName === Income.name) {
+  const saveName = (account: Account) => {
+    if (editingName.trim() === '' || editingName === account.name) {
       setEditingNameId(null);
       return;
     }
     
-    const updatedIncome = { ...Income, name: editingName };
-    updateIncome(updatedIncome);
+    const updatedAccount = { ...account, name: editingName };
+    updateAccount(updatedAccount);
     setEditingNameId(null);
   };
 
-  const saveamount = (Income: Income) => {
-    const newamount = parseFloat(editingAmount);
-    if (isNaN(newamount) || newamount === Income.amount) {
-      setEditingamountId(null);
+  const saveBalance = (account: Account) => {
+    const newBalance = parseFloat(editingBalance);
+    if (isNaN(newBalance) || newBalance === account.balance) {
+      setEditingBalanceId(null);
       return;
     }
     
-    const updatedIncome = { ...Income, amount: newamount };
-    updateIncome(updatedIncome);
-    setEditingamountId(null);
+    const updatedAccount = { ...account, balance: newBalance };
+    updateAccount(updatedAccount);
+    setEditingBalanceId(null);
   };
 
   return (
     <div className="rounded-lg shadow-sm overflow-hidden">
             <div className="divide-y divide-gray-900">
-              {filteredIncomes.length === 0 ? (
+              {filteredAccounts.length === 0 ? (
                 <div className="p-2 text-center text-white">
-                  No {type.toLowerCase()} Incomes yet. Add one below!
+                  No {category.toLowerCase()} accounts yet. Add one below!
                 </div>
               ) : (
-                filteredIncomes.map((income) => {
-                  const bgColorClass = TYPE_COLOR_BACKGROUND_MAP[income.type];
-                  const txColorClass = TYPE_COLOR_TEXT_MAP[income.type];
+                filteredAccounts.map((account) => {
+                  const bgColorClass = CATEGORY_COLOR_BACKGROUND_MAP[account.category];
+                  const txColorClass = CATEGORY_COLOR_TEXT_MAP[account.category];
                   return(
-                  <div key={income.id} className="p-4 flex items-center justify-between hover:bg-gray-600 group">
+                  <div key={account.id} className="p-4 flex items-center justify-between hover:bg-gray-600 group">
                     <div className="flex items-center gap-4">
                       <div className={`w-2 h-12 rounded-full ${bgColorClass}`}></div>
-                      {editingNameId === income.id ? (
+                      {editingNameId === account.id ? (
                         <input
                           type="text"
                           value={editingName}
                           onChange={(e) => setEditingName(e.target.value)}
                           
                           // Save/Exit logic
-                          onBlur={() => saveName(income)}
+                          onBlur={() => saveName(account)}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
-                              saveName(income);
+                              saveName(account);
                             }
                             if (e.key === 'Escape') setEditingNameId(null);
                           }}
@@ -74,28 +74,28 @@ export default function IncomeList({filteredIncomes}: IncomeListProps) {
                           className="font-medium text-white cursor-pointer hover:underline"
                           // Start edit logic
                           onClick={() => {
-                            setEditingName(income.name);
-                            setEditingNameId(income.id);
+                            setEditingName(account.name);
+                            setEditingNameId(account.id);
                           }}
                         >
-                          {income.name}
+                          {account.name}
                         </h3>
                       )}
                     </div>
                     <div className="flex items-center gap-6">
-                      {editingamountId === income.id ? (
+                      {editingBalanceId === account.id ? (
                         <input
                           type="number"
-                          value={editingAmount}
-                          onChange={(e) => setEditingAmount(e.target.value)}
+                          value={editingBalance}
+                          onChange={(e) => setEditingBalance(e.target.value)}
                           
                           // Save/Exit logic
-                          onBlur={() => saveamount(income)}
+                          onBlur={() => saveBalance(account)}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
-                              saveamount(income);
+                              saveBalance(account);
                             }
-                            if (e.key === 'Escape') setEditingamountId(null);
+                            if (e.key === 'Escape') setEditingBalanceId(null);
                           }}
                           
                           className={`font-bold bg-transparent text-right focus:outline-none w-24 ${
@@ -110,15 +110,15 @@ export default function IncomeList({filteredIncomes}: IncomeListProps) {
                           }`}
                           // Start edit logic
                           onClick={() => {
-                            setEditingAmount(income.amount.toFixed(2));
-                            setEditingamountId(income.id);
+                            setEditingBalance(account.balance.toFixed(2));
+                            setEditingBalanceId(account.id);
                           }}
                         >
-                          ${income.amount.toLocaleString()}
+                          ${account.balance.toLocaleString()}
                         </span>
                       )}
                       <button
-                        onClick={() => removeIncome(income.id)}
+                        onClick={() => removeAccount(account.id)}
                         className="text-red-500 invisible group-hover:visible"
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">

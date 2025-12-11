@@ -1,6 +1,6 @@
 import { useAccounts } from "../../../context/AccountsContext";
-import AccountList from "../../../components/AccountList";
-import AddAccount from "../../../components/AddAccount";
+import AccountList from "../../../components/Accounts/AccountList";
+import AddAccount from "../../../components/Accounts/AddAccount";
 import {ACCOUNT_CATEGORIES} from '../../../types';
 
 export default function Saved() {
@@ -12,6 +12,7 @@ export default function Saved() {
         filteredAccounts={accounts.filter((account) => {
           return account.category === "Saved";
         })}
+        category = "Saved"
       />
       <AddAccount category={ACCOUNT_CATEGORIES[0]} />
     </div>

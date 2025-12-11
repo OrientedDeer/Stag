@@ -1,6 +1,6 @@
 import { Routes, Route } from "react-router-dom";
-import Sidebar from "./components/Sidebar";
-import TopBar from "./components/TopBar";
+import Sidebar from "./components/Layout/Sidebar";
+import TopBar from "./components/Layout/TopBar";
 import Dashboard from "./pages/Dashboard";
 import AccountsTab from "./pages/Current/AccountsTab";
 import Future from "./pages/Future";

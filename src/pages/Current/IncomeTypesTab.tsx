@@ -1,11 +1,11 @@
 import Work from "./IncomeTypesTab/Work";
 import SocialSecurity from "./IncomeTypesTab/SocialSecurity";
 import PassiveIncome from "./IncomeTypesTab/PassiveIncome";
-import Pensions from "./IncomeTypesTab/Pensions";
+import Pension from "./IncomeTypesTab/Pension";
 import Annuities from "./IncomeTypesTab/Annuities";
 import {useState} from 'react';
 import {INCOME_TYPES} from '../../types';
-import HorizontalBarChart from "../../components/HorizontalBarChart";
+import HorizontalBarChart from "../../components/Accounts/HorizontalBarChart";
 import { useIncomes } from '../../context/IncomeTypesContext';
 
 
@@ -25,7 +25,7 @@ export default function IncomeTypesTab() {
             <div><PassiveIncome /></div>
         ),
         Pensions: (
-            <div><Pensions /></div>
+            <div><Pension /></div>
         ),
         Annuities: (
             <div><Annuities /></div>

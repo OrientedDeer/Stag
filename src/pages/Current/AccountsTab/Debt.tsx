@@ -1,6 +1,6 @@
 import { useAccounts } from "../../../context/AccountsContext";
-import AccountList from "../../../components/AccountList";
-import AddAccount from "../../../components/AddAccount";
+import AccountList from "../../../components/Accounts/AccountList";
+import AddAccount from "../../../components/Accounts/AddAccount";
 import {ACCOUNT_CATEGORIES} from '../../../types';
 
 export default function Debt() {
@@ -12,6 +12,7 @@ export default function Debt() {
         filteredAccounts={accounts.filter((account) => {
           return account.category === "Debt";
         })}
+        category = "Debt"
       />
       <AddAccount category={ACCOUNT_CATEGORIES[3]} />
     </div>

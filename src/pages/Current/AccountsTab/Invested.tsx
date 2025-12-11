@@ -1,7 +1,7 @@
 
 import { useAccounts } from '../../../context/AccountsContext';
-import AccountList from '../../../components/AccountList';
-import AddAccount from '../../../components/AddAccount';
+import AccountList from '../../../components/Accounts/AccountList';
+import AddAccount from '../../../components/Accounts/AddAccount';
 import {ACCOUNT_CATEGORIES} from '../../../types';
 
 export default function Invested() {
@@ -9,7 +9,8 @@ export default function Invested() {
 
   return (
     <div className="flex flex-col rounded-b-lg">
-      <AccountList filteredAccounts={accounts.filter(account => { return account.category === "Invested"; })}/>
+      <AccountList filteredAccounts={accounts.filter(account => { return account.category === "Invested"; })}
+        category = "Invested"/>
       <AddAccount category={ACCOUNT_CATEGORIES[1]}/>
     </div>
   );
