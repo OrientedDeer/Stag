@@ -2,7 +2,7 @@ export interface Income {
   id: string;
   name: string;
   amount: number;
-  frequency: 'Weekly' | 'BiWeekly' | 'Monthly' | 'Annually';
+  frequency: 'Weekly' | 'BiWeekly' | 'Monthly' | 'Annually' | 'Once';
   endDate: Date;
 }
 
@@ -12,7 +12,7 @@ export abstract class BaseIncome implements Income {
     public id: string,
     public name: string,
     public amount: number,
-    public frequency: 'Weekly' | 'BiWeekly' | 'Monthly' | 'Annually',
+    public frequency: 'Weekly' | 'BiWeekly' | 'Monthly' | 'Annually' | 'Once',
     public endDate: Date
   ) {}
 }
@@ -24,7 +24,7 @@ export class WorkIncome extends BaseIncome {
     id: string,
     name: string,
     amount: number,
-    frequency: 'Weekly' | 'BiWeekly' | 'Monthly' | 'Annually',
+    frequency: 'Weekly' | 'BiWeekly' | 'Monthly' | 'Annually' | 'Once',
     endDate: Date,
   ) {
     super(id, name, amount, frequency, endDate);
@@ -36,7 +36,7 @@ export class SocialSecurityIncome extends BaseIncome {
     id: string,
     name: string,
     amount: number,
-    frequency: 'Weekly' | 'BiWeekly' | 'Monthly' | 'Annually',
+    frequency: 'Weekly' | 'BiWeekly' | 'Monthly' | 'Annually' | 'Once',
     endDate: Date,
     public claimingAge: number
   ) {
@@ -49,7 +49,7 @@ export class PassiveIncome extends BaseIncome {
     id: string,
     name: string,
     amount: number,
-    frequency: 'Weekly' | 'BiWeekly' | 'Monthly' | 'Annually',
+    frequency: 'Weekly' | 'BiWeekly' | 'Monthly' | 'Annually' | 'Once',
     endDate: Date,
     public sourceType: 'Dividend' | 'Rental' | 'Royalty' | 'Other'
   ) {
@@ -62,7 +62,7 @@ export class WindfallIncome extends BaseIncome {
     id: string,
     name: string,
     amount: number,
-    frequency: 'Weekly' | 'BiWeekly' | 'Monthly' | 'Annually',
+    frequency: 'Weekly' | 'BiWeekly' | 'Monthly' | 'Annually' | 'Once',
     endDate: Date,
     public receiptDate: Date
   ) {
@@ -75,7 +75,7 @@ export class RSUIncome extends BaseIncome {
     id: string,
     name: string,
     amount: number,
-    frequency: 'Weekly' | 'BiWeekly' | 'Monthly' | 'Annually',
+    frequency: 'Weekly' | 'BiWeekly' | 'Monthly' | 'Annually' | 'Once',
     endDate: Date,
     public vestingDate: Date
   ) {

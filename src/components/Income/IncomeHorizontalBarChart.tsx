@@ -12,6 +12,7 @@ const getMonthlyAmount = (income: AnyIncome) => {
         case 'BiWeekly': return income.amount * 26 / 12;
         case 'Monthly': return income.amount;
         case 'Annually': return income.amount / 12;
+        case 'Once': return income.amount * 0;
         default: return 0;
     }
 };
