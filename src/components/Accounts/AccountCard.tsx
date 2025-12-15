@@ -1,5 +1,5 @@
 import React, { useContext, useState, useEffect } from "react";
-import { AnyAccount, SavedAccount, InvestedAccount, PropertyAccount, DebtAccount} from "./models";
+import { AnyAccount, SavedAccount, InvestedAccount, PropertyAccount, DebtAccount, ACCOUNT_COLORS_BACKGROUND} from "./models";
 import { AccountContext, AllAccountKeys } from "./AccountContext";
 import { StyledInput, StyledSelect } from "./AccountUI";
 import DeleteAccountControl from '../../components/Accounts/DeleteAccountUI';
@@ -110,15 +110,6 @@ const AccountCard = ({ account }: { account: AnyAccount }) => {
 		return "ACCOUNT";
 	};
 
-	const ACCOUNT_CATEGORIES = ["Saved", "Invested", "Property", "Debt"] as const;
-	type AccountCategory = (typeof ACCOUNT_CATEGORIES)[number];
-	const ACCOUNT_COLORS_BACKGROUND: Record<AccountCategory, string> = {
-		Saved: "bg-chart-Fuchsia-50",
-		Invested: "bg-chart-Blue-50",
-		Property: "bg-chart-Yellow-50",
-		Debt: "bg-chart-Red-50",
-	};
-
 	const getIconBg = () => {
 		if (account instanceof SavedAccount)
 			return ACCOUNT_COLORS_BACKGROUND["Saved"];
@@ -156,7 +147,6 @@ const AccountCard = ({ account }: { account: AnyAccount }) => {
 						value={account.name}
 						onChange={(e) => handleUpdate("name", e.target.value)}
 						className="text-xl font-bold text-white bg-transparent focus:outline-none focus:ring-1 focus:ring-green-300 rounded p-1 -m-1 w-full" 
-						autoFocus
 					/>
 				</div>
 				<div className="text-chart-Red-75 ml-auto">

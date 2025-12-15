@@ -1,10 +1,10 @@
-import React, { useState, useContext, useEffect } from 'react';
+import React, { useState, useContext } from 'react';
 import { AccountProvider, AccountContext } from '../../components/Accounts/AccountContext';
 import { 
   SavedAccount, 
   InvestedAccount, 
   PropertyAccount, 
-  DebtAccount, 
+  DebtAccount, ACCOUNT_CATEGORIES
 } from '../../components/Accounts/models';
 import AccountCard from '../../components/Accounts/AccountCard';
 import HorizontalBarChart from '../../components/Accounts/HorizontalBarChart';
@@ -29,7 +29,7 @@ const AccountList = ({ type }: { type: any }) => {
 };
 
 const TabsContent = () => {
-    const { accounts, dispatch } = useContext(AccountContext);
+    const { accounts } = useContext(AccountContext);
     const [activeTab, setActiveTab] = useState<string>('Saved');
 
     const allAccounts = accounts; 
@@ -38,7 +38,7 @@ const TabsContent = () => {
     const propertyAccounts = accounts.filter(acc => acc instanceof PropertyAccount);
     const debtAccounts = accounts.filter(acc => acc instanceof DebtAccount);
 
-    const tabs = ['Saved', 'Invested', 'Property', 'Debt'];
+    const tabs = ACCOUNT_CATEGORIES;
 
     const tabContent: Record<string, React.ReactNode> = {
         Saved: (
