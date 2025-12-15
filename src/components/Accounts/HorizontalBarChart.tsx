@@ -1,5 +1,15 @@
+// src/components/Accounts/HorizontalBarChart.tsx
+
 import { useMemo } from "react";
-import { AnyAccount, ACCOUNT_CATEGORIES, AccountCategory, CATEGORY_PALETTES, CLASS_TO_CATEGORY } from "./models";
+import { 
+    AnyAccount, 
+    ACCOUNT_CATEGORIES, 
+    AccountCategory, 
+    CATEGORY_PALETTES, 
+    CLASS_TO_CATEGORY, 
+    PropertyAccount, 
+    DebtAccount,
+} from "./models";
 
 type HorizontalBarChartProps = {
 	type: string;
@@ -22,7 +32,23 @@ export default function HorizontalBarChart({
 		});
 	}
 
-	const { chartData, totalAssets } = useMemo(() => {
+	const { chartData, displayTotal } = useMemo(() => {
+        // --- 1. Calculate Actual Net Worth (The number to display) ---
+        let netWorth = 0;
+        for (const acc of accountList) {
+            if (acc instanceof PropertyAccount) {
+                // For Property: Add Asset Value, Subtract Loan
+                netWorth += (acc.balance - acc.loanBalance);
+            } else if (acc instanceof DebtAccount) {
+                // For Debt: Subtract Balance
+                netWorth -= acc.balance;
+            } else {
+                // For Savings/Investments: Add Balance
+                netWorth += acc.balance;
+            }
+        }
+
+        // --- 2. Calculate Chart Data (The visual bars) ---
 		const grouped: Record<AccountCategory, AnyAccount[]> =
 			ACCOUNT_CATEGORIES.reduce(
 				(acc, c) => ({ ...acc, [c]: [] }),
@@ -33,7 +59,28 @@ export default function HorizontalBarChart({
 			const categoryName = CLASS_TO_CATEGORY[acc.constructor.name];
 
 			if (categoryName) {
-				grouped[categoryName].push(acc);
+				if (acc instanceof PropertyAccount && acc.loanBalance > 0) {
+                    // Split Property into Equity and Debt for visualization
+					const equityEntry = {
+						...acc,
+                        id: `${acc.id}-equity`,
+						name: acc.name,
+						balance: acc.balance - acc.loanBalance, 
+					} as unknown as AnyAccount;
+					
+					grouped[categoryName].push(equityEntry);
+
+					const loanEntry = {
+						id: `${acc.id}-loan`,
+						name: `${acc.name} (Loan)`,
+						balance: acc.loanBalance,
+					} as unknown as AnyAccount;
+
+					grouped['Debt'].push(loanEntry);
+
+				} else {
+					grouped[categoryName].push(acc);
+				}
 			}
 		}
 
@@ -44,7 +91,9 @@ export default function HorizontalBarChart({
 			])
 		) as Record<AccountCategory, number>;
 
-		const totalAssets = Object.values(categoryTotals).reduce(
+        // This 'visualTotal' is the sum of all bars (Assets + Liabilities). 
+        // We use this for the width % so the bars stack nicely to 100% of the container.
+		const visualTotal = Object.values(categoryTotals).reduce(
 			(s, v) => s + v,
 			0
 		);
@@ -60,19 +109,22 @@ export default function HorizontalBarChart({
 				category,
 				account: acc.name,
 				balance: acc.balance,
-				percent: totalAssets === 0 ? 0 : (acc.balance / totalAssets) * 100,
+                // Use visualTotal for the percent calculation
+				percent: visualTotal === 0 ? 0 : (acc.balance / visualTotal) * 100,
 				color: colors[i],
 			}));
 		});
 
-		return { chartData, totalAssets };
+        // Return chartData and the netWorth (as displayTotal)
+		return { chartData, displayTotal: netWorth };
 	}, [accountList]);
 
 	return (
 		<div className="mb-2">
 			<div className="flex justify-center text-white">
 				{type} $
-				{totalAssets.toLocaleString(undefined, {
+                {/* Display the Net Worth, not the Visual Total */}
+				{displayTotal.toLocaleString(undefined, {
 					minimumFractionDigits: 2,
 					maximumFractionDigits: 2,
 				})}

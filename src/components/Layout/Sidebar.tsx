@@ -26,7 +26,7 @@ export default function Sidebar({ isOpen }: SidebarProps) {
     );
 
 	return (
-		<div className={`h-full text-white bg-gray-900 transition-all duration-300 flex flex-col ${isOpen ? "w-0" : "w-36"}`}>
+		<div className={`h-full text-white bg-gray-900 transition-all duration-300 flex flex-col ${isOpen ? "w-0" : "w-32"}`}>
 			<nav className="flex flex-col gap-1">
 				<Link className={`${link} ${pathname === "/dashboard" && active} ${isOpen ? "pointer-events-none" : ""}`} to="/dashboard">
 					<span className={`flex items-center gap-2 overflow-hidden whitespace-nowrap transition-all duration-300 ${isOpen ? "w-0 opacity-0" : "w-auto opacity-100"}`}>

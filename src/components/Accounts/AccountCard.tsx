@@ -1,7 +1,7 @@
 import React, { useContext, useState, useEffect } from "react";
 import { AnyAccount, SavedAccount, InvestedAccount, PropertyAccount, DebtAccount, ACCOUNT_COLORS_BACKGROUND} from "./models";
 import { AccountContext, AllAccountKeys } from "./AccountContext";
-import { StyledInput, StyledSelect } from "./AccountUI";
+import { StyledInput, StyledSelect } from "../Layout/StyleUI";
 import DeleteAccountControl from '../../components/Accounts/DeleteAccountUI';
 
 const formatCurrency = (value: number | string): string => {
