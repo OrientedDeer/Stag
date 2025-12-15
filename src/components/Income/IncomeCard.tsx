@@ -153,7 +153,7 @@ const IncomeCard = ({ income }: { income: AnyIncome }) => {
                     label="Frequency"
                     value={income.frequency}
                     onChange={(e) => handleGlobalUpdate("frequency", e.target.value)}
-                    options={["Weekly", "BiWeekly", "Monthly", "Annually", "Once"]}
+                    options={["Weekly", "BiWeekly", "Monthly", "Annually"]}
                 />
 
                 <StyledInput

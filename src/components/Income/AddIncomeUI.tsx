@@ -10,7 +10,7 @@ interface AddControlProps {
 		id: string,
 		name: string,
 		amount: number,
-        frequency: 'Weekly' | 'BiWeekly' | 'Monthly' | 'Annually' | 'Once',
+        frequency: 'Weekly' | 'BiWeekly' | 'Monthly' | 'Annually',
         endDate: Date,
 		...args: any[]
 	) => AnyIncome;
