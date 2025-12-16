@@ -25,8 +25,7 @@ export class WorkIncome extends BaseIncome {
     name: string,
     amount: number,
     frequency: 'Weekly' | 'BiWeekly' | 'Monthly' | 'Annually',
-    endDate: Date,
-    public employer: string
+    endDate: Date
   ) {
     super(id, name, amount, frequency, endDate);
   }
