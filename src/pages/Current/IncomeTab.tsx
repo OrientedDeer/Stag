@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import { useState, useContext } from 'react';
 import { IncomeContext } from '../../components/Income/IncomeContext';
 import { 
   WorkIncome, 
@@ -6,183 +6,140 @@ import {
   PassiveIncome, 
   WindfallIncome,
   RSUIncome,
-  INCOME_CATEGORIES 
 } from '../../components/Income/models';
 import IncomeCard from '../../components/Income/IncomeCard';
 import IncomeHorizontalBarChart from '../../components/Income/IncomeHorizontalBarChart';
-import AddIncomeControl from '../../components/Income/AddIncomeUI';
+import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
+import AddIncomeModal from '../../components/Income/AddIncomeModal';
 
-const IncomeList = ({ type }: { type: any }) => {
-  const { incomes } = useContext(IncomeContext);
-  const filteredIncomes = incomes.filter((inc) =>inc instanceof type);
+// Updated IncomeList to handle the base class or specific filtering
+const IncomeList = () => {
+  const { incomes, dispatch } = useContext(IncomeContext);
+  
+  // We don't filter by type anymore so it shows everything in one list
+  const listIncomes = incomes.map((inc, index) => ({ inc, originalIndex: index }));
 
-  if (filteredIncomes.length === 0) {
-    return null;
-  }
+  const onDragEnd = (result: DropResult) => {
+    if (!result.destination) return;
+
+    dispatch({
+        type: 'REORDER_INCOMES',
+        payload: { 
+          startIndex: result.source.index, 
+          endIndex: result.destination.index 
+        }
+    });
+  };
+
+  if (incomes.length === 0) return null;
 
   return (
-    <div className="space-y-6">
-      {filteredIncomes.map((income) => (
-        <IncomeCard key={`${income.id}-${income.constructor.name}`} income={income} />
-      ))}
-    </div>
+    <DragDropContext onDragEnd={onDragEnd}>
+      <Droppable droppableId="income-list">
+        {(provided) => (
+          <div 
+            {...provided.droppableProps} 
+            ref={provided.innerRef} 
+            className="flex flex-col"
+          >
+            {listIncomes.map(({ inc }, index) => (
+              <Draggable key={inc.id} draggableId={inc.id} index={index}>
+                {(provided, snapshot) => (
+                  <div
+                    ref={provided.innerRef}
+                    {...provided.draggableProps}
+                    className={`relative group pb-6 ${snapshot.isDragging ? 'z-50' : ''}`}
+                  >
+                    <div 
+                      {...provided.dragHandleProps}
+                      className="absolute -left-3 top-2 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-2 text-green-200"
+                    >
+                      ⋮⋮
+                    </div>
+                    <div className="ml-4">
+                      <IncomeCard income={inc} />
+                    </div>
+                  </div>
+                )}
+              </Draggable>
+            ))}
+            {provided.placeholder}
+          </div>
+        )}
+      </Droppable>
+    </DragDropContext>
   );
 };
 
 const TabsContent = () => {
     const { incomes } = useContext(IncomeContext);
-    const [activeTab, setActiveTab] = useState<string>('Work');
+    const [isModalOpen, setIsModalOpen] = useState(false);
 
-    const allIncomes = incomes; 
+    // Keep individual filters only for the charts
     const workIncomes = incomes.filter(inc => inc instanceof WorkIncome);
     const ssIncomes = incomes.filter(inc => inc instanceof SocialSecurityIncome);
     const passiveIncomes = incomes.filter(inc => inc instanceof PassiveIncome);
     const windfallIncomes = incomes.filter(inc => inc instanceof WindfallIncome);
     const rsuIncomes = incomes.filter(inc => inc instanceof RSUIncome);
 
-    const tabs = INCOME_CATEGORIES;
+    const visibleCharts = [
+        { type: "Work", list: workIncomes },
+        { type: "Social Security", list: ssIncomes },
+        { type: "Passive", list: passiveIncomes },
+        { type: "Windfall", list: windfallIncomes },
+        { type: "RSU", list: rsuIncomes }
+    ].filter(item => item.list.length > 0 && incomes.length > item.list.length);
 
-    const tabContent: Record<string, React.ReactNode> = {
-        Work: (
-            <div className="p-4">
-                <IncomeList type={WorkIncome} />
-                <AddIncomeControl 
-                    IncomeClass={WorkIncome} 
-                    title="Work" 
-                    defaultArgs={['']}
-                />
-            </div>
-        ),
-        SocialSecurity: (
-            <div className="p-4">
-                <IncomeList type={SocialSecurityIncome} />
-                 <AddIncomeControl 
-                    IncomeClass={SocialSecurityIncome} 
-                    title="Social Security" 
-                    defaultArgs={[62]} // claimingAge
-                />
-            </div>
-        ),
-        Passive: (
-            <div className="p-4">
-                <IncomeList type={PassiveIncome} />
-                <AddIncomeControl 
-                    IncomeClass={PassiveIncome} 
-                    title="Passive" 
-                    defaultArgs={['Dividend']} // sourceType
-                />
-            </div>
-        ),
-        Windfall: (
-            <div className="p-4">
-                <IncomeList type={WindfallIncome} />
-                <AddIncomeControl 
-                    IncomeClass={WindfallIncome} 
-                    title="Windfall" 
-                    defaultArgs={[new Date()]} // receiptDate
-                />
-            </div>
-        ),
-        RSU: (
-            <div className="p-4">
-                <IncomeList type={RSUIncome} />
-                <AddIncomeControl 
-                    IncomeClass={RSUIncome} 
-                    title="RSU" 
-                    defaultArgs={[new Date()]} // vestingDate
-                />
-            </div>
-        ),
-    };
-
-    const isWorkVisible = workIncomes.length > 0 && (ssIncomes.length > 0 || passiveIncomes.length > 0 || windfallIncomes.length > 0 || rsuIncomes.length > 0);
-    const isSSVisible = ssIncomes.length > 0 && (workIncomes.length > 0 || passiveIncomes.length > 0 || windfallIncomes.length > 0 || rsuIncomes.length > 0);
-    const isPassiveVisible = passiveIncomes.length > 0 && (workIncomes.length > 0 || ssIncomes.length > 0 || windfallIncomes.length > 0 || rsuIncomes.length > 0);
-    const isWindfallVisible = windfallIncomes.length > 0 && (workIncomes.length > 0 || ssIncomes.length > 0 || passiveIncomes.length > 0 || rsuIncomes.length > 0);
-    const isRSUVisible = rsuIncomes.length > 0 && (workIncomes.length > 0 || ssIncomes.length > 0 || passiveIncomes.length > 0 || windfallIncomes.length > 0);
-
-    const visibleChartCount = [
-        isWorkVisible,
-        isSSVisible,
-        isPassiveVisible,
-        isWindfallVisible,
-        isRSUVisible
-    ].filter(Boolean).length;
-    
-    const gridClass = visibleChartCount > 1 ? 'grid-cols-2' : 'grid-cols-1';
+    const gridClass = visibleCharts.length > 1 ? 'grid-cols-2' : 'grid-cols-1';
 
     return (
         <div className="w-full min-h-full flex bg-gray-950 justify-center pt-6">
             <div className="w-15/16 max-w-5xl">
+                {/* Chart Section */}
                 <div className="space-y-4 mb-4 p-4 bg-gray-900 rounded-xl border border-gray-800">
-                    <h2 className="text-xl font-bold text-white mb-4 border-b border-gray-700 pb-2">Income Breakdown (Monthly Normalized)</h2>
-                    {allIncomes.length > 0 && (
+                    <h2 className="text-xl font-bold text-white mb-4 border-b border-gray-700 pb-2">
+                        Income Breakdown (Monthly Normalized)
+                    </h2>
+                    {incomes.length > 0 && (
                         <IncomeHorizontalBarChart 
                             type="Total Monthly Income" 
-                            incomeList={allIncomes}
+                            incomeList={incomes}
                         />
                     )}
-                    {visibleChartCount > 0 && (
+                    {visibleCharts.length > 0 && (
                         <div className={`grid ${gridClass} gap-4 pt-2`}>
-                            {isWorkVisible && (
+                            {visibleCharts.map(chart => (
                                 <IncomeHorizontalBarChart 
-                                    type="Work" 
-                                    incomeList={workIncomes}
+                                    key={chart.type}
+                                    type={chart.type} 
+                                    incomeList={chart.list}
                                 />
-                            )}
-                            {isSSVisible && (
-                                <IncomeHorizontalBarChart 
-                                    type="Social Security" 
-                                    incomeList={ssIncomes}
-                                />
-                            )}
-                            {isPassiveVisible && (
-                                <IncomeHorizontalBarChart 
-                                    type="Passive" 
-                                    incomeList={passiveIncomes}
-                                />
-                            )}
-                            {isWindfallVisible && (
-                                <IncomeHorizontalBarChart 
-                                    type="Windfall" 
-                                    incomeList={windfallIncomes}
-                                />
-                            )}
-                            {isRSUVisible && (
-                                <IncomeHorizontalBarChart 
-                                    type="RSU" 
-                                    incomeList={rsuIncomes}
-                                />
-                            )}
+                            ))}
                         </div>
                     )}
                 </div>
-                <div className="bg-gray-900 rounded-lg overflow-hidden mb-1 flex border border-gray-800 flex-wrap">
-                    {tabs.map((tab) => (
-                        <button
-                            key={tab}
-                            className={`flex-1 min-w-[100px] font-semibold p-3 transition-colors duration-200 ${
-                                activeTab === tab
-                                    ? 'text-green-300 bg-gray-900 border-b-2 border-green-300'
-                                    : 'text-gray-400 hover:bg-gray-900 hover:text-white'
-                            }`}
-                            onClick={() => setActiveTab(tab)}
-                        >
-                            {tab === 'SocialSecurity' ? 'Soc. Sec.' : tab}
-                        </button>
-                    ))}
-                </div>
-                <div className="bg-[#09090b] border border-gray-800 rounded-xl min-h-[400px] mb-4">
-                    {tabContent[activeTab]}
-                </div>
 
+                {/* Single List Section */}
+                <div className="p-4">
+                    <IncomeList />
+                    
+                    <button 
+                        onClick={() => setIsModalOpen(true)}
+                        className="bg-green-600 p-4 rounded-xl text-white font-bold mt-4 hover:bg-green-700 transition-colors"
+                    >
+                        + Add Income
+                    </button>
+
+                    <AddIncomeModal 
+                        isOpen={isModalOpen} 
+                        onClose={() => setIsModalOpen(false)} 
+                    />
+                </div>
             </div>
         </div>
     );
 }
 
 export default function IncomeTab() {
-  return (
-    <TabsContent />
-  );
+  return <TabsContent />;
 }

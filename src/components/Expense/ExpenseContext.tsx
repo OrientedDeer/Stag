@@ -15,7 +15,8 @@ interface AppState {
 type Action =
   | { type: 'ADD_EXPENSE'; payload: AnyExpense }
   | { type: 'DELETE_EXPENSE'; payload: { id: string } }
-  | { type: 'UPDATE_EXPENSE_FIELD'; payload: { id: string; field: AllExpenseKeys; value: any } };
+  | { type: 'UPDATE_EXPENSE_FIELD'; payload: { id: string; field: AllExpenseKeys; value: any } }
+  | { type: 'REORDER_EXPENSES'; payload: { startIndex: number; endIndex: number } }
 
 const STORAGE_KEY = 'user_expenses_data';
 const initialState: AppState = {
@@ -79,6 +80,13 @@ const expenseReducer = (state: AppState, action: Action): AppState => {
           return exp;
         }),
       };
+      
+    case 'REORDER_EXPENSES': {
+      const result = Array.from(state.expenses);
+      const [removed] = result.splice(action.payload.startIndex, 1);
+      result.splice(action.payload.endIndex, 0, removed);
+      return { ...state, expenses: result };
+    }
 
     default:
       return state;

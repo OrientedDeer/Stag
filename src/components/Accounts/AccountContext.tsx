@@ -24,7 +24,8 @@ type Action =
   | { type: 'ADD_ACCOUNT'; payload: AnyAccount }
   | { type: 'DELETE_ACCOUNT'; payload: { id: string } }
   | { type: 'UPDATE_ACCOUNT_FIELD'; payload: { id: string; field: AllAccountKeys; value: any } }
-  | { type: 'ADD_BALANCE_SNAPSHOT'; payload: { id: string; balance: number } };
+  | { type: 'ADD_BALANCE_SNAPSHOT'; payload: { id: string; balance: number } }
+  | { type: 'REORDER_ACCOUNTS'; payload: { startIndex: number; endIndex: number } };
 
 const getTodayString = () => new Date().toISOString().split('T')[0];
 
@@ -161,6 +162,13 @@ const accountReducer = (state: AppState, action: Action): AppState => {
         },
       };
     }
+
+    case 'REORDER_ACCOUNTS': {
+      const result = Array.from(state.accounts);
+      const [removed] = result.splice(action.payload.startIndex, 1);
+      result.splice(action.payload.endIndex, 0, removed);
+      return { ...state, accounts: result };
+    }
 
     default:
       return state;

@@ -18,7 +18,8 @@ interface AppState {
 type Action =
   | { type: 'ADD_INCOME'; payload: AnyIncome }
   | { type: 'DELETE_INCOME'; payload: { id: string } }
-  | { type: 'UPDATE_INCOME_FIELD'; payload: { id: string; field: AllIncomeKeys; value: any } };
+  | { type: 'UPDATE_INCOME_FIELD'; payload: { id: string; field: AllIncomeKeys; value: any } }
+  | { type: 'REORDER_INCOMES'; payload: { startIndex: number; endIndex: number } };
 
 const STORAGE_KEY = 'user_incomes_data';
 const initialState: AppState = {
@@ -111,6 +112,13 @@ const incomeReducer = (state: AppState, action: Action): AppState => {
         }),
       };
 
+    case 'REORDER_INCOMES': {
+      const result = Array.from(state.incomes);
+      const [removed] = result.splice(action.payload.startIndex, 1);
+      result.splice(action.payload.endIndex, 0, removed);
+      return { ...state, incomes: result };
+    }
+    
     default:
       return state;
   }

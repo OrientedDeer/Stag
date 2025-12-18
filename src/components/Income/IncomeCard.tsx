@@ -118,7 +118,7 @@ const IncomeCard = ({ income }: { income: AnyIncome }) => {
 	};
 
 	return (
-		<div className="mb-8">
+		<div className="w-full">
 			<div className="flex gap-4 mb-4">
 				<div
 					className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg ${getIconBg()} text-sm font-bold text-white`}

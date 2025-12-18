@@ -10,24 +10,67 @@ import {
 import AccountCard from "../../components/Accounts/AccountCard";
 import HorizontalBarChart from "../../components/Accounts/HorizontalBarChart";
 import AddAccountControl from "../../components/Accounts/AddAccountUI";
+import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 
 const AccountList = ({ type }: { type: any }) => {
-	const { accounts } = useContext(AccountContext);
-	const filteredAccounts = accounts.filter((acc) => acc instanceof type);
+	const { accounts, dispatch } = useContext(AccountContext);
+	
+	// Map to track original index for the global state update
+	const filteredAccounts = accounts
+		.map((acc, index) => ({ acc, originalIndex: index }))
+		.filter(({ acc }) => acc instanceof type);
 
-	if (filteredAccounts.length === 0) {
-		return;
-	}
+	const onDragEnd = (result: DropResult) => {
+		if (!result.destination) return;
+
+		const sourceIndex = filteredAccounts[result.source.index].originalIndex;
+		const destinationIndex = filteredAccounts[result.destination.index].originalIndex;
+
+		dispatch({
+			type: 'REORDER_ACCOUNTS',
+			payload: { startIndex: sourceIndex, endIndex: destinationIndex }
+		});
+	};
+
+	if (filteredAccounts.length === 0) return null;
 
 	return (
-		<div className="space-y-6">
-			{filteredAccounts.map((account) => (
-				<AccountCard
-					key={`${account.id}-${account.constructor.name}`}
-					account={account}
-				/>
-			))}
-		</div>
+		<DragDropContext onDragEnd={onDragEnd}>
+			<Droppable droppableId="accounts-list">
+				{(provided) => (
+					<div 
+						{...provided.droppableProps} 
+						ref={provided.innerRef} 
+						className="flex flex-col" // Horizontal padding for handle gutter
+					>
+						{filteredAccounts.map(({ acc }, index) => (
+							<Draggable key={acc.id} draggableId={acc.id} index={index}>
+								{(provided, snapshot) => (
+									<div
+										ref={provided.innerRef}
+										{...provided.draggableProps}
+										// pb-6 ensures consistent spacing and correct placeholder height
+										className={`relative group pb-6 ${snapshot.isDragging ? 'z-50' : ''}`}
+									>
+										{/* Drag Handle inside the gutter */}
+										<div 
+											{...provided.dragHandleProps}
+											className="absolute -left-3 top-2 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-2 text-green-200"
+										>
+											⋮⋮
+										</div>
+										<div className="ml-4"> {/* Card offset */}
+											<AccountCard account={acc} />
+										</div>
+									</div>
+								)}
+							</Draggable>
+						))}
+						{provided.placeholder}
+					</div>
+				)}
+			</Droppable>
+		</DragDropContext>
 	);
 };
 
