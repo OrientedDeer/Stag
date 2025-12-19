@@ -28,14 +28,24 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
     const [claimingAge, setClaimingAge] = useState<number>(62);
     const [sourceType, setSourceType] = useState<string>('Dividend');
     const [receiptDate, setReceiptDate] = useState(new Date().toISOString().split('T')[0]);
-    const [vestingDate, setVestingDate] = useState(new Date().toISOString().split('T')[0]);
-
+    
     const handleClose = () => {
         setStep('select');
         setSelectedType(null);
         setName("");
         setAmount(0);
         onClose();
+    };
+
+    const handleCancelOrBack = () => {
+        if (step === 'details') {
+            // If in details, go back to selection screen
+            setStep('select');
+            setSelectedType(null);
+        } else {
+            // If already in selection screen, close the modal
+            handleClose();
+        }
     };
 
     const handleTypeSelect = (typeClass: any) => {
@@ -91,7 +101,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                             <button
                                 key={cat.label}
                                 onClick={() => handleTypeSelect(cat.class)}
-                                className="p-4 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-xl border border-gray-700 transition-all font-medium"
+                                className="flex items-center justify-center p-2 h-12 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-xl border border-gray-700 transition-all font-medium text-sm text-center"
                             >
                                 {cat.label}
                             </button>
@@ -99,7 +109,6 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                     </div>
                 ) : (
                     <div className="space-y-4">
-                        {/* Common Fields */}
                         <div>
                             <label className="block text-sm font-medium text-gray-400 mb-1">Name</label>
                             <input autoFocus className="w-full bg-gray-950 text-white border border-gray-700 rounded-lg p-3 focus:border-green-300 outline-none" value={name} onChange={(e) => setName(e.target.value)} />
@@ -156,9 +165,19 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                 )}
 
                 <div className="flex justify-end gap-3 mt-8">
-                    <button onClick={handleClose} className="px-5 py-2.5 rounded-lg font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors">Cancel</button>
+                    {/* Conditionally render "Back" vs "Cancel" based on the step */}
+                    <button 
+                        onClick={handleCancelOrBack}
+                        className="px-5 py-2.5 rounded-lg font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+                    >
+                        {step === 'details' ? 'Back' : 'Cancel'}
+                    </button>
                     {step === 'details' && (
-                        <button onClick={handleAdd} disabled={!name.trim()} className="px-5 py-2.5 rounded-lg font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                        <button 
+                            onClick={handleAdd}
+                            disabled={!name.trim()}
+                            className="px-5 py-2.5 rounded-lg font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
+                        >
                             Add Income
                         </button>
                     )}

@@ -7,6 +7,8 @@ import {
     HealthcareExpense,
     VacationExpense,
     EmergencyExpense,
+	IncomeDeductionExpense,
+	TransportExpense,
     OtherExpense,
 	EXPENSE_COLORS_BACKGROUND
 } from './models';
@@ -97,6 +99,8 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 		if (expense instanceof HealthcareExpense) return "HEALTHCARE";
 		if (expense instanceof VacationExpense) return "VACATION";
 		if (expense instanceof EmergencyExpense) return "EMERGENCY";
+		if (expense instanceof IncomeDeductionExpense) return "INCOME";
+		if (expense instanceof TransportExpense) return "TRANSPORT";
 		if (expense instanceof OtherExpense) return "OTHER";
 		return "EXPENSE";
 	};
@@ -108,6 +112,8 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 		if (expense instanceof HealthcareExpense) return EXPENSE_COLORS_BACKGROUND["Healthcare"];
 		if (expense instanceof VacationExpense) return EXPENSE_COLORS_BACKGROUND["Vacation"];
 		if (expense instanceof EmergencyExpense) return EXPENSE_COLORS_BACKGROUND["Emergency"];
+		if (expense instanceof IncomeDeductionExpense) return EXPENSE_COLORS_BACKGROUND["IncomeDeduction"];
+		if (expense instanceof TransportExpense) return EXPENSE_COLORS_BACKGROUND["Transport"];
 		if (expense instanceof OtherExpense) return EXPENSE_COLORS_BACKGROUND["Other"];
 		return "bg-gray-500";
 	};
@@ -159,8 +165,16 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
                     label="Frequency"
                     value={expense.frequency}
                     onChange={(e) => handleGlobalUpdate("frequency", e.target.value)}
-                    options={["Weekly", "BiWeekly", "Monthly", "Annually"]}
+                    options={["Weekly", "Monthly", "Annually"]}
                 />
+
+				{expense instanceof LoanExpense && (
+					<StyledInput
+					label="Receipt Date"
+					type="date"
+					value={formatDate(expense.start_date)}
+					onChange={(e) => handleDateChange("start_date", e.target.value)}
+				/>)}
 			</div>
 		</div>
 	);

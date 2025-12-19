@@ -8,8 +8,7 @@ import {
     HealthcareExpense,
     VacationExpense,
     EmergencyExpense,
-    OtherExpense,
-	EXPENSE_COLORS_BACKGROUND
+    OtherExpense
 } from '../../components/Expense/models';
 import ExpenseCard from '../../components/Expense/ExpenseCard';
 import ExpenseHorizontalBarChart from '../../components/Expense/ExpenseHorizontalBarChart';

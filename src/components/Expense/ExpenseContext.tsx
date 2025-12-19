@@ -7,6 +7,8 @@ import {
     HealthcareExpense,
     VacationExpense,
     EmergencyExpense,
+    IncomeDeductionExpense,
+    TransportExpense,
     OtherExpense
 } from './models';
 
@@ -57,8 +59,8 @@ function reconstituteExpense(expenseData: any): AnyExpense | null {
                 expenseData.interest_type,
                 start_date,
                 expenseData.payment,
-                expenseData.is_tax_deductable,
-                expenseData.tax_deducatble,
+                expenseData.is_tax_deductible,
+                expenseData.tax_deductible,
             ), expenseData);
         case 'DependentExpense':
             return Object.assign(new DependentExpense(
@@ -69,8 +71,8 @@ function reconstituteExpense(expenseData: any): AnyExpense | null {
                 expenseData.inflation,
                 start_date,
                 end_date,
-                expenseData.is_tax_deductable,
-                expenseData.tax_deducatble,
+                expenseData.is_tax_deductible,
+                expenseData.tax_deductible,
             ), expenseData);
         case 'HealthcareExpense':
             return Object.assign(new HealthcareExpense(
@@ -96,13 +98,29 @@ function reconstituteExpense(expenseData: any): AnyExpense | null {
                 expenseData.frequency,
                 expenseData.inflation,
             ), expenseData);
+        case 'IncomeDeductionExpense':
+            return Object.assign(new IncomeDeductionExpense(
+                expenseData.id, 
+                expenseData.name, 
+                expenseData.amount,
+                expenseData.frequency,
+                expenseData.income,
+                expenseData.inflation,
+            ), expenseData);
+        case 'TransportExpense':
+            return Object.assign(new TransportExpense(
+                expenseData.id, 
+                expenseData.name, 
+                expenseData.amount,
+                expenseData.frequency,
+                expenseData.inflation,
+            ), expenseData);
         case 'OtherExpense':
             return Object.assign(new OtherExpense(
                 expenseData.id, 
                 expenseData.name, 
                 expenseData.amount,
                 expenseData.frequency,
-                end_date,
                 expenseData.inflation,
             ), expenseData);
         default:

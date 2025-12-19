@@ -4,7 +4,7 @@ export interface Expense {
   id: string;
   name: string;
   amount: number;
-  frequency: 'Daily'| 'Weekly' | 'BiWeekly' | 'Monthly' | 'Annually';
+  frequency: 'Daily'| 'Weekly' | 'Monthly' | 'Annually';
   inflation: number;
 }
 
@@ -14,7 +14,7 @@ export abstract class BaseExpense implements Expense {
     public id: string,
     public name: string,
     public amount: number,
-    public frequency: 'Daily' | 'Weekly' | 'BiWeekly' | 'Monthly' | 'Annually',
+    public frequency: 'Daily' | 'Weekly' | 'Monthly' | 'Annually',
     public inflation: number 
   ) {}
 }
@@ -29,7 +29,7 @@ export class HousingExpense extends BaseExpense {
     public utilities: number,
     public property_taxes: number,
     public maintenance: number,
-    frequency: 'Weekly' | 'BiWeekly' | 'Monthly' | 'Annually',
+    frequency: 'Daily' | 'Weekly' | 'Monthly' | 'Annually',
     inflation: number,
   ) {
     super(id, name, amount, frequency, inflation);
@@ -41,13 +41,13 @@ export class LoanExpense extends BaseExpense {
     id: string,
     name: string,
     amount: number,
-    frequency: 'Daily' | 'Weekly' | 'Monthly' | 'Annually',
+    frequency: 'Weekly' | 'Monthly' | 'Annually',
     public apr: number,
     public interest_type: 'Compounding' | 'Simple',
     public start_date: Date,
     public payment: number,
-    public is_tax_deductable: Boolean,
-    public tax_deducatble: number
+    public is_tax_deductible: 'Yes' | 'No',
+    public tax_deductible: number
     
   ) {
     super(id, name, amount, frequency, 0);
@@ -59,12 +59,12 @@ export class DependentExpense extends BaseExpense {
     id: string,
     name: string,
     amount: number,
-    frequency: 'Weekly' | 'BiWeekly' | 'Monthly' | 'Annually',
+    frequency: 'Weekly' | 'Monthly' | 'Annually',
     inflation: number,
     public start_date: Date,
     public end_date: Date,
-    public is_tax_deductable: Boolean,
-    public tax_deducatble: number
+    public is_tax_deductible: 'Yes' | 'No',
+    public tax_deductible: number
   ) {
     super(id, name, amount, frequency, inflation);
   }
@@ -75,7 +75,7 @@ export class HealthcareExpense extends BaseExpense {
     id: string,
     name: string,
     amount: number,
-    frequency: 'Weekly' | 'BiWeekly' | 'Monthly' | 'Annually',
+    frequency: 'Weekly' | 'Monthly' | 'Annually',
     inflation: number,
   ) {
     super(id, name, amount, frequency, inflation);
@@ -87,7 +87,7 @@ export class VacationExpense extends BaseExpense {
     id: string,
     name: string,
     amount: number,
-    frequency: 'Monthly' | 'Annually',
+    frequency: 'Weekly' | 'Monthly' | 'Annually',
     inflation: number
   ) {
     super(id, name, amount, frequency, inflation);
@@ -99,7 +99,7 @@ export class EmergencyExpense extends BaseExpense {
     id: string,
     name: string,
     amount: number,
-    frequency: 'Weekly' | 'BiWeekly' | 'Monthly' | 'Annually',
+    frequency: 'Weekly' | 'Monthly' | 'Annually',
     inflation: number
   ) {
     super(id, name, amount, frequency, inflation);
@@ -111,7 +111,7 @@ export class IncomeDeductionExpense extends BaseExpense {
     id: string,
     name: string,
     amount: number,
-    frequency: 'Weekly' | 'BiWeekly' | 'Monthly' | 'Annually',
+    frequency: 'Weekly' | 'Monthly' | 'Annually',
     public income: AnyIncome,
     inflation: number
   ) {
@@ -124,8 +124,7 @@ export class TransportExpense extends BaseExpense {
     id: string,
     name: string,
     amount: number,
-    frequency: 'Weekly' | 'BiWeekly' | 'Monthly' | 'Annually',
-    public end_date: Date,
+    frequency: 'Weekly' | 'Monthly' | 'Annually',
     inflation: number
   ) {
     super(id, name, amount, frequency, inflation);
@@ -137,8 +136,7 @@ export class OtherExpense extends BaseExpense {
     id: string,
     name: string,
     amount: number,
-    frequency: 'Weekly' | 'BiWeekly' | 'Monthly' | 'Annually',
-    public end_date: Date,
+    frequency: 'Weekly' | 'Monthly' | 'Annually',
     inflation: number
   ) {
     super(id, name, amount, frequency, inflation);
@@ -155,6 +153,8 @@ export const EXPENSE_CATEGORIES = [
   'Healthcare',
   'Vacation',
   'Emergency',
+  'IncomeDeduction',
+  'Transport',
   'Other'
 ] as const;
 
@@ -167,6 +167,8 @@ export const EXPENSE_COLORS_BACKGROUND: Record<ExpenseCategory, string> = {
     Healthcare: "bg-chart-Blue-50",
     Vacation: "bg-chart-Blue-50",
     Emergency: "bg-chart-Blue-50",
+    IncomeDeduction: "bg-chart-Blue-50",
+    Transport: "bg-chart-Blue-50",
     Other: "bg-chart-Blue-50",
 };
 
@@ -177,6 +179,8 @@ export const CLASS_TO_CATEGORY: Record<string, ExpenseCategory> = {
     [HealthcareExpense.name]: 'Healthcare',
     [VacationExpense.name]: 'Vacation',
     [EmergencyExpense.name]: 'Emergency',
+    [IncomeDeductionExpense.name]: 'IncomeDeduction',
+    [TransportExpense.name]: 'Transport',
     [OtherExpense.name]: 'Other',
 };
 
@@ -188,5 +192,7 @@ export const CATEGORY_PALETTES: Record<ExpenseCategory, string[]> = {
 	Healthcare: Array.from({ length: 100 }, (_, i) => `bg-chart-Blue-${i + 1}`),
 	Vacation: Array.from({ length: 100 }, (_, i) => `bg-chart-Blue-${i + 1}`),
 	Emergency: Array.from({ length: 100 }, (_, i) => `bg-chart-Blue-${i + 1}`),
+	IncomeDeduction: Array.from({ length: 100 }, (_, i) => `bg-chart-Blue-${i + 1}`),
+	Transport: Array.from({ length: 100 }, (_, i) => `bg-chart-Blue-${i + 1}`),
 	Other: Array.from({ length: 100 }, (_, i) => `bg-chart-Blue-${i + 1}`),
 };

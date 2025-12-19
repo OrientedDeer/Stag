@@ -31,7 +31,6 @@ function reconstituteIncome(incomeData: any): AnyIncome | null {
     // Helper to restore Date objects which turn into strings in JSON
     const end_date = new Date(incomeData.end_date);
     const receipt_date = new Date(incomeData.receipt_date);
-    const vesting_date = new Date(incomeData.vesting_date);
 
     switch (incomeData.className) {
         case 'WorkIncome':

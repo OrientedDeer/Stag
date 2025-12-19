@@ -9,7 +9,6 @@ type ExpenseHorizontalBarChartProps = {
 const getMonthlyAmount = (Expense: AnyExpense) => {
     switch (Expense.frequency) {
         case 'Weekly': return Expense.amount * 52 / 12;
-        case 'BiWeekly': return Expense.amount * 26 / 12;
         case 'Monthly': return Expense.amount;
         case 'Annually': return Expense.amount / 12;
         default: return 0;
