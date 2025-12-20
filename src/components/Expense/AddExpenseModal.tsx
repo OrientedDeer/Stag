@@ -14,6 +14,7 @@ import {
 import { AccountContext } from "../Accounts/AccountContext";
 import { IncomeContext } from "../Income/IncomeContext";
 import { DebtAccount } from "../Accounts/models";
+import { CurrencyInput } from "../Layout/CurrencyInput";
 
 const generateUniqueId = () =>
 	`EXS-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -34,25 +35,17 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 	const [selectedType, setSelectedType] = useState<any>(null);
 	const [name, setName] = useState("");
 	const [amount, setAmount] = useState<number>(0);
-	const [frequency, setFrequency] = useState<"Weekly" | "Monthly" | "Annually">(
-		"Monthly"
-	);
+	const [frequency, setFrequency] = useState<"Weekly" | "Monthly" | "Annually">("Monthly");
 	const [inflation, setInflation] = useState<number>(2);
 
-	// --- New State for Specialized Fields ---
+	// --- Specialized Fields State ---
 	const [utilities, setUtilities] = useState<number>(0);
 	const [propertyTaxes, setPropertyTaxes] = useState<number>(0);
 	const [maintenance, setMaintenance] = useState<number>(0);
 	const [apr, setApr] = useState<number>(0);
-	const [interestType, setInterestType] = useState<"Compounding" | "Simple">(
-		"Compounding"
-	);
-	const [startDate, setStartDate] = useState(
-		new Date().toISOString().split("T")[0]
-	);
-	const [endDate, setEndDate] = useState(
-		new Date().toISOString().split("T")[0]
-	);
+	const [interestType, setInterestType] = useState<"Compounding" | "Simple">("Compounding");
+	const [startDate, setStartDate] = useState(new Date().toISOString().split("T")[0]);
+	const [endDate, setEndDate] = useState(new Date().toISOString().split("T")[0]);
     const [selectedIncomeId, setSelectedIncomeId] = useState<string>(incomes[0]?.id || "");
 	const [payment, setPayment] = useState<number>(0);
 	const [isTaxDeductible, setIsTaxDeductible] = useState<"Yes" | "No">("No");
@@ -69,11 +62,9 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 
 	const handleCancelOrBack = () => {
 		if (step === "details") {
-			// If in details, go back to selection screen
 			setStep("select");
 			setSelectedType(null);
 		} else {
-			// If already in selection screen, close the modal
 			handleClose();
 		}
 	};
@@ -92,7 +83,6 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 
 		let newExpense;
 
-		// Logic to handle specialized constructors from models.tsx
 		if (selectedType === HousingExpense) {
 			if (propertyTaxes > 0){
 				const newAccount = new DebtAccount(
@@ -101,16 +91,15 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 					amount,
 					id
 				)
-
 				accountDispatch({type: "ADD_ACCOUNT", payload: newAccount})
 			}
             newExpense = new HousingExpense(
                 id,
                 name.trim(),
-                payment,      // Component 1
-                utilities,    // Component 2
-                propertyTaxes,// Component 3
-                maintenance,  // Component 4
+                payment,      
+                utilities,    
+                propertyTaxes,
+                maintenance,  
                 frequency,
                 inflation
             );
@@ -121,7 +110,6 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				amount,
 				id
 			)
-
 			accountDispatch({type: "ADD_ACCOUNT", payload: newAccount})
 
 			newExpense = new selectedType(
@@ -161,31 +149,21 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				inflation
 			);
 		} else if (selectedType === IncomeDeductionExpense) {
-        // Find the full income object based on the ID stored in state
-        const linkedIncome = incomes.find(inc => inc.id === selectedIncomeId);
-        
-        if (!linkedIncome) {
-            alert("Please select a valid income source");
-            return;
-        }
-
-        newExpense = new IncomeDeductionExpense(
-            id,
-            name.trim(),
-            amount,
-            frequency,
-            linkedIncome, // Passing the actual income object
-            inflation
-        );
+            const linkedIncome = incomes.find(inc => inc.id === selectedIncomeId);
+            if (!linkedIncome) {
+                alert("Please select a valid income source");
+                return;
+            }
+            newExpense = new IncomeDeductionExpense(
+                id,
+                name.trim(),
+                amount,
+                frequency,
+                linkedIncome, 
+                inflation
+            );
 		} else {
-			// Healthcare, Vacation, Emergency
-			newExpense = new selectedType(
-				id,
-				name.trim(),
-				amount,
-				frequency,
-				inflation
-			);
+			newExpense = new selectedType(id, name.trim(), amount, frequency, inflation);
 		}
 
 		expenseDispatch({ type: "ADD_EXPENSE", payload: newExpense });
@@ -228,47 +206,48 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 						))}
 					</div>
 				) : (
-					<div className="space-y-0.5">
-						{/* Common Fields */}
+					<div className="space-y-4">
+						{/* Name */}
 						<div>
-							<label className="block text-sm font-medium text-gray-400 mb-1">
+                            {/* Updated Name Input to match new style */}
+							<label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
 								Expense Name
 							</label>
 							<input
 								autoFocus
-								className="w-full bg-gray-950 border border-gray-700 rounded-lg p-3 focus:border-green-300 outline-none"
+								className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500 transition-colors h-[42px]"
 								value={name}
 								onChange={(e) => setName(e.target.value)}
 							/>
 						</div>
 
-						<div className="grid grid-cols-3 gap-2">
-							<div>
-								<label className="block text-sm font-medium text-gray-400 mb-1">
-									Amount ($)
-								</label>
-								<input
-									type="number"
-									className="w-full h-8 bg-gray-950 border border-gray-700 rounded-lg p-3 focus:border-green-300 outline-none"
+						{/* Common Fields Grid */}
+						<div className="grid grid-cols-3 gap-4">
+                            {(!(selectedType === HousingExpense)) && (
+								<CurrencyInput
+									label="Amount"
 									value={amount}
-									onChange={(e) => setAmount(Number(e.target.value))}
+									onChange={setAmount}
 								/>
-							</div>
-							<div>
-								<label className="block text-sm font-medium text-gray-400 mb-1">
+							)}
+                            <div>
+								<label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
 									Frequency
 								</label>
-								<select
-									className="w-full h-8 bg-gray-950 border border-gray-700 rounded-lg pl-2 focus:border-green-300 outline-none appearance-none"
-									value={frequency}
-									onChange={(e) => setFrequency(e.target.value as any)}
-								>
-									<option value="Daily">Daily</option>
-									<option value="Weekly">Weekly</option>
-									<option value="Monthly">Monthly</option>
-									<option value="Annually">Annually</option>
-								</select>
+                                <div className="bg-gray-900 border border-gray-700 rounded-md px-3 py-2 h-[42px] flex items-center">
+                                    <select
+                                        className="bg-transparent border-none outline-none text-white text-sm font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
+                                        value={frequency}
+                                        onChange={(e) => setFrequency(e.target.value as any)}
+                                    >
+                                        <option value="Daily" className="bg-gray-950">Daily</option>
+                                        <option value="Weekly" className="bg-gray-950">Weekly</option>
+                                        <option value="Monthly" className="bg-gray-950">Monthly</option>
+                                        <option value="Annually" className="bg-gray-950">Annually</option>
+                                    </select>
+                                </div>
 							</div>
+
 							{(selectedType === HousingExpense || 
 							  selectedType === DependentExpense || 
 							  selectedType === HealthcareExpense || 
@@ -276,12 +255,12 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 							  selectedType === IncomeDeductionExpense || 
 							  selectedType === TransportExpense) && (
 								<div>
-									<label className="block text-sm font-medium text-gray-400 mb-1">
+									<label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
 										Inflation (%)
 									</label>
 									<input
 										type="number"
-										className="w-full h-8 bg-gray-950 border border-gray-700 rounded-lg p-3 focus:border-green-300 outline-none"
+										className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500 transition-colors h-[42px]"
 										value={inflation}
 										onChange={(e) => setInflation(Number(e.target.value))}
 									/>
@@ -292,165 +271,120 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 						{/* --- Specialized Fields based on models.tsx --- */}
 						{selectedType === HousingExpense && (
                             <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-400 mb-1">Rent/Mortgage Payment</label>
-                                    <input type="number" className="w-full h-8 bg-gray-950 border border-gray-700 rounded-lg p-3" 
-                                        value={payment} onChange={(e) => setPayment(Number(e.target.value))} />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-400 mb-1">Utilities</label>
-                                    <input type="number" className="w-full h-8 bg-gray-950 border border-gray-700 rounded-lg p-3" 
-                                        value={utilities} onChange={(e) => setUtilities(Number(e.target.value))} />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-400 mb-1">Property Taxes</label>
-                                    <input type="number" className="w-full h-8 bg-gray-950 border border-gray-700 rounded-lg p-3" 
-                                        value={propertyTaxes} onChange={(e) => setPropertyTaxes(Number(e.target.value))} />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-400 mb-1">Maintenance</label>
-                                    <input type="number" className="w-full h-8 bg-gray-950 border border-gray-700 rounded-lg p-3" 
-                                        value={maintenance} onChange={(e) => setMaintenance(Number(e.target.value))} />
-                                </div>
+                                <CurrencyInput label="Rent/Mortgage Payment" value={payment} onChange={setPayment} />
+                                <CurrencyInput label="Utilities" value={utilities} onChange={setUtilities} />
+                                <CurrencyInput label="Property Taxes" value={propertyTaxes} onChange={setPropertyTaxes} />
+                                <CurrencyInput label="Maintenance" value={maintenance} onChange={setMaintenance} />
                             </div>
                         )}
 
 						{selectedType === LoanExpense && (
 							<div className="space-y-4">
-								<div className="grid grid-cols-3 gap-4">
+								<div className="grid grid-cols-2 gap-4">
 									<div>
-										<label className="block text-sm font-medium text-gray-400 mb-1">
+										<label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
 											APR (%)
 										</label>
 										<input
 											type="number"
-											className="w-full bg-gray-950 border border-gray-700 rounded-lg p-3 focus:border-green-300 outline-none appearance-none"
+											className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500 transition-colors h-[42px]"
 											value={apr}
 											onChange={(e) => setApr(Number(e.target.value))}
 										/>
 									</div>
 									<div>
-										<label className="block text-sm font-medium text-gray-400 mb-1">
+										<label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
 											Interest Type
 										</label>
-										<select
-											className="w-full bg-gray-950 border border-gray-700 rounded-lg p-3 focus:border-green-300 outline-none appearance-none"
-											value={interestType}
-											onChange={(e) => setInterestType(e.target.value as any)}
-										>
-											<option value="Simple">Simple</option>
-											<option value="Compounding">Compounding</option>
-										</select>
+                                        <div className="bg-gray-900 border border-gray-700 rounded-md px-3 py-2 h-[42px] flex items-center">
+                                            <select
+                                                className="bg-transparent border-none outline-none text-white text-sm font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
+                                                value={interestType}
+                                                onChange={(e) => setInterestType(e.target.value as any)}
+                                            >
+                                                <option value="Simple" className="bg-gray-950">Simple</option>
+                                                <option value="Compounding" className="bg-gray-950">Compounding</option>
+                                            </select>
+                                        </div>
 									</div>
-									<div>
-										<label className="block text-sm font-medium text-gray-400 mb-1">
+									
+                                    <CurrencyInput label="Payment" value={payment} onChange={setPayment} />
+                                    
+                                    <div>
+										<label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
 											Start Date
 										</label>
 										<input
 											type="date"
-											className="w-full bg-gray-950 border border-gray-700 rounded-lg p-3 focus:border-green-300 outline-none appearance-none"
+											className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500 transition-colors h-[42px]"
 											value={startDate}
 											onChange={(e) => setStartDate(e.target.value)}
 										/>
 									</div>
 									<div>
-										<label className="block text-sm font-medium text-gray-400 mb-1">
-											Payment
-										</label>
-										<input
-											type="number"
-											className="w-full bg-gray-950 border border-gray-700 rounded-lg p-3 focus:border-green-300 outline-none appearance-none"
-											value={payment}
-											onChange={(e) => setPayment(Number(e.target.value))}
-										/>
-									</div>
-									<div>
-										<label className="block text-sm font-medium text-gray-400 mb-1">
+										<label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
 											Tax Deductible
 										</label>
-										<select
-											className="w-full bg-gray-950 border border-gray-700 rounded-lg p-3 focus:border-green-300 outline-none appearance-none"
-											value={isTaxDeductible}
-											onChange={(e) =>
-												setIsTaxDeductible(e.target.value as any)
-											}
-										>
-											<option value="No">No</option>
-											<option value="Yes">Yes</option>
-										</select>
+                                        <div className="bg-gray-900 border border-gray-700 rounded-md px-3 py-2 h-[42px] flex items-center">
+                                            <select
+                                                className="bg-transparent border-none outline-none text-white text-sm font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
+                                                value={isTaxDeductible}
+                                                onChange={(e) => setIsTaxDeductible(e.target.value as any)}
+                                            >
+                                                <option value="No" className="bg-gray-950">No</option>
+                                                <option value="Yes" className="bg-gray-950">Yes</option>
+                                            </select>
+                                        </div>
 									</div>
 									{isTaxDeductible === "Yes" && (
-										<div>
-											<label className="block text-sm font-medium text-gray-400 mb-1">
-												Deductible
-											</label>
-											<input
-												type="number"
-												className="w-full bg-gray-950 border border-gray-700 rounded-lg p-3 focus:border-green-300 outline-none appearance-none"
-												value={taxDeductibleAmount}
-												onChange={(e) =>
-													setTaxDeductibleAmount(Number(e.target.value))
-												}
-											/>
-										</div>
+                                        <CurrencyInput label="Deductible Amount" value={taxDeductibleAmount} onChange={setTaxDeductibleAmount} />
 									)}
 								</div>
 							</div>
 						)}
+
 						{selectedType === DependentExpense && (
 							<div className="space-y-4">
 								<div className="grid grid-cols-2 gap-4">
 									<div>
-										<label className="block text-sm font-medium text-gray-400 mb-1">
+										<label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
 											Start Date
 										</label>
 										<input
 											type="date"
-											className="w-full bg-gray-950 border border-gray-700 rounded-lg p-3 focus:border-green-300 outline-none appearance-none"
+											className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500 transition-colors h-[42px]"
 											value={startDate}
 											onChange={(e) => setStartDate(e.target.value)}
 										/>
 									</div>
 									<div>
-										<label className="block text-sm font-medium text-gray-400 mb-1">
+										<label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
 											End Date
 										</label>
 										<input
 											type="date"
-											className="w-full bg-gray-950 border border-gray-700 rounded-lg p-3 focus:border-green-300 outline-none appearance-none"
+											className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500 transition-colors h-[42px]"
 											value={endDate}
 											onChange={(e) => setEndDate(e.target.value)}
 										/>
 									</div>
 									<div>
-										<label className="block text-sm font-medium text-gray-400 mb-1">
+										<label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
 											Tax Deductible
 										</label>
-										<select
-											className="w-full bg-gray-950 border border-gray-700 rounded-lg p-3 focus:border-green-300 outline-none appearance-none"
-											value={isTaxDeductible}
-											onChange={(e) =>
-												setIsTaxDeductible(e.target.value as any)
-											}
-										>
-											<option value="Simple">Yes</option>
-											<option value="Compounding">No</option>
-										</select>
+                                        <div className="bg-gray-900 border border-gray-700 rounded-md px-3 py-2 h-[42px] flex items-center">
+                                            <select
+                                                className="bg-transparent border-none outline-none text-white text-sm font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
+                                                value={isTaxDeductible}
+                                                onChange={(e) => setIsTaxDeductible(e.target.value as any)}
+                                            >
+                                                <option value="Yes" className="bg-gray-950">Yes</option>
+                                                <option value="No" className="bg-gray-950">No</option>
+                                            </select>
+                                        </div>
 									</div>
 									{isTaxDeductible === "Yes" && (
-										<div>
-											<label className="block text-sm font-medium text-gray-400 mb-1">
-												Deductible
-											</label>
-											<input
-												type="number"
-												className="w-full bg-gray-950 border border-gray-700 rounded-lg p-3 focus:border-green-300 outline-none appearance-none"
-												value={taxDeductibleAmount}
-												onChange={(e) =>
-													setTaxDeductibleAmount(Number(e.target.value))
-												}
-											/>
-										</div>
+                                        <CurrencyInput label="Deductible Amount" value={taxDeductibleAmount} onChange={setTaxDeductibleAmount} />
 									)}
 								</div>
 							</div>
@@ -458,21 +392,23 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 
 						{selectedType === IncomeDeductionExpense && (
                             <div>
-                                <label className="block text-sm font-medium text-gray-400 mb-1">
+                                <label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
                                     Linked Income Account
                                 </label>
-                                <select
-                                    className="w-full bg-gray-950 text-white border border-gray-700 rounded-lg p-3 focus:border-green-300 outline-none appearance-none"
-                                    value={selectedIncomeId}
-                                    onChange={(e) => setSelectedIncomeId(e.target.value)}
-                                >
-                                    <option value="" disabled>Select an income source...</option>
-                                    {incomes.map((inc) => (
-                                        <option key={inc.id} value={inc.id}>
-                                            {inc.name} ({inc.amount})
-                                        </option>
-                                    ))}
-                                </select>
+                                <div className="bg-gray-900 border border-gray-700 rounded-md px-3 py-2 h-[42px] flex items-center">
+                                    <select
+                                        className="bg-transparent border-none outline-none text-white text-sm font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
+                                        value={selectedIncomeId}
+                                        onChange={(e) => setSelectedIncomeId(e.target.value)}
+                                    >
+                                        <option value="" disabled className="bg-gray-950">Select an income source...</option>
+                                        {incomes.map((inc) => (
+                                            <option key={inc.id} value={inc.id} className="bg-gray-950">
+                                                {inc.name} ({inc.amount})
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
                             </div>
                         )}
 					</div>

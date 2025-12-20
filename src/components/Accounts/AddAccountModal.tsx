@@ -8,6 +8,8 @@ import {
 } from './models';
 import { ExpenseContext } from "../Expense/ExpenseContext";
 import { LoanExpense } from "../Expense/models";
+// 1. Import the reusable component
+import { CurrencyInput } from "../Layout/CurrencyInput";
 
 const generateUniqueAccId = () =>
     `ACC-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -44,23 +46,12 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
         if (!name.trim() || !selectedType) return;
 
         const id = generateUniqueAccId();
-
         let newAccount;
 
-        // Logic to handle specialized constructors from models.tsx
         if (selectedType === SavedAccount) {
-            newAccount = new selectedType(
-                id,
-                name.trim(),
-                amount,
-            );
+            newAccount = new selectedType(id, name.trim(), amount);
         } else if (selectedType === InvestedAccount) {
-            newAccount = new selectedType(
-                id,
-                name.trim(),
-                amount,
-                vestedAmount,
-            );
+            newAccount = new selectedType(id, name.trim(), amount, vestedAmount);
         } else if (selectedType === PropertyAccount) {
             if (ownershipType == "Financed"){
                 const newExpense = new LoanExpense(
@@ -75,17 +66,10 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                     "No",
                     0,
                     id
-                    )
+                )
                 expenseDispatch({type: "ADD_EXPENSE", payload: newExpense})
             }
-
-            newAccount = new selectedType(
-                id,
-                name.trim(),
-                amount,
-                ownershipType,
-                loanAmount,
-            );
+            newAccount = new selectedType(id, name.trim(), amount, ownershipType, loanAmount);
         } else if (selectedType === DebtAccount) {
             const newExpense = new LoanExpense(
                 'EXS' + id.substring(3),
@@ -102,12 +86,7 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
             )
             expenseDispatch({type: "ADD_EXPENSE", payload: newExpense})
 
-            newAccount = new selectedType(
-                id,
-                name.trim(),
-                amount,
-                'EXS' + id.substring(3),
-            );
+            newAccount = new selectedType(id, name.trim(), amount, 'EXS' + id.substring(3));
         }
 
         accountDispatch({ type: "ADD_ACCOUNT", payload: newAccount });
@@ -119,53 +98,62 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-md overflow-y-auto text-white">
-                <div className="space-y-0.5">
+                <div className="space-y-4"> {/* Increased space-y slightly for better breathing room with the new Inputs */}
+                    
                     {/* Common Fields */}
                     <div>
-                        <label className="block text-sm font-medium text-gray-400 mb-1">
+                        <label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
                             Account Name
                         </label>
                         <input
                             autoFocus
-                            className="w-full bg-gray-950 border border-gray-700 rounded-lg p-3 focus:border-green-300 outline-none"
+                            className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500 transition-colors h-[42px]"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                         />
                     </div>
 
-                    <div className="grid grid-cols-3 gap-2">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-400 mb-1">
-                                Amount
-                            </label>
-                            <input
-                                type="number"
-                                className="w-full h-8 bg-gray-950 border border-gray-700 rounded-lg p-3 focus:border-green-300 outline-none"
-                                value={amount}
-                                onChange={(e) => setAmount(Number(e.target.value))}
-                            />
-                        </div>
-                        {/* --- Specialized Fields based on models.tsx --- */}
+                    <div className="grid grid-cols-2 gap-4"> {/* Changed to grid-cols-2 for better fit with the boxed inputs */}
+                        
+                        {/* 2. Replace raw inputs with CurrencyInput */}
+                        <CurrencyInput
+                            label="Amount"
+                            value={amount}
+                            onChange={setAmount} // Directly pass the setter!
+                        />
+
+                        {/* --- Specialized Fields --- */}
                         {selectedType === PropertyAccount && (
                             <div>
-                                <label className="block text-sm font-medium text-gray-400 mb-1">Status</label>
-                                <select className="w-full h-8 bg-gray-950 border border-gray-700 rounded-lg pl-2 focus:border-green-300 outline-none appearance-none" value={ownershipType} onChange={(e) => setOwnershipType(e.target.value as any)}>
-                                    <option value="Owned">Owned</option>
-                                    <option value="Financed">Financed</option>
-                                </select>
+                                {/* Keeping standard select for now as we don't have a CurrencySelect component */}
+                                <label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">Status</label>
+                                <div className="bg-gray-900 border border-gray-700 rounded-md px-3 py-2">
+                                    <select 
+                                        className="bg-transparent border-none outline-none text-white text-sm font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
+                                        value={ownershipType} 
+                                        onChange={(e) => setOwnershipType(e.target.value as any)}
+                                    >
+                                        <option value="Owned" className="bg-gray-950">Owned</option>
+                                        <option value="Financed" className="bg-gray-950">Financed</option>
+                                    </select>
+                                </div>
                             </div>
                         )}
+
                         {ownershipType == "Financed" && (
-                            <div>
-                                <label className="block text-sm font-medium text-gray-400 mb-1">Loan Amount</label>
-                                <input type="number" className="w-full h-8 bg-gray-950 text-white border border-gray-700 rounded-lg p-3 focus:border-green-300 outline-none" value={loanAmount} onChange={(e) => setLoanAmount(Number(e.target.value))} />
-                            </div>
+                            <CurrencyInput
+                                label="Loan Amount"
+                                value={loanAmount}
+                                onChange={setLoanAmount}
+                            />
                         )}
+
                         {selectedType === InvestedAccount && (
-                            <div>
-                                <label className="block text-sm font-medium text-gray-400 mb-1">Employer Contrib.</label>
-                                <input type="number" className="w-full h-8 bg-gray-950 text-white border border-gray-700 rounded-lg p-3 focus:border-green-300 outline-none" value={vestedAmount} onChange={(e) => setVestedAmount(Number(e.target.value))} />
-                            </div>
+                            <CurrencyInput
+                                label="Employer Contrib."
+                                value={vestedAmount}
+                                onChange={setVestedAmount}
+                            />
                         )}
                     </div>
                 </div>
@@ -175,7 +163,7 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
 						onClick={handleClose}
 						className="px-5 py-2.5 rounded-lg font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
 					>
-						{"Cancel"}
+						Cancel
 					</button>
                     <button
                         onClick={handleAdd}

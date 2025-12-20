@@ -6,6 +6,7 @@ import {
   PassiveIncome, 
   WindfallIncome
 } from '../../components/Income/models';
+import { CurrencyInput } from "../Layout/CurrencyInput";
 
 const generateUniqueId = () =>
     `INC-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -39,11 +40,9 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
 
     const handleCancelOrBack = () => {
         if (step === 'details') {
-            // If in details, go back to selection screen
             setStep('select');
             setSelectedType(null);
         } else {
-            // If already in selection screen, close the modal
             handleClose();
         }
     };
@@ -57,13 +56,10 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
         if (!name.trim() || !selectedType) return;
 
         const id = generateUniqueId();
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
         const finalEndDate = new Date(endDate);
 
         let newIncome;
 
-        // --- Logic to handle different constructors based on class ---
         if (selectedType === SocialSecurityIncome) {
             newIncome = new selectedType(id, name.trim(), amount, frequency, finalEndDate, claimingAge);
         } else if (selectedType === PassiveIncome) {
@@ -71,7 +67,6 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
         } else if (selectedType === WindfallIncome) {
             newIncome = new selectedType(id, name.trim(), amount, frequency, finalEndDate, new Date(receiptDate));
         } else {
-            // Default (WorkIncome)
             newIncome = new selectedType(id, name.trim(), amount, frequency, finalEndDate);
         }
 
@@ -109,62 +104,98 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                     </div>
                 ) : (
                     <div className="space-y-4">
+                        {/* Name Field */}
                         <div>
-                            <label className="block text-sm font-medium text-gray-400 mb-1">Name</label>
-                            <input autoFocus className="w-full bg-gray-950 text-white border border-gray-700 rounded-lg p-3 focus:border-green-300 outline-none" value={name} onChange={(e) => setName(e.target.value)} />
+                            <label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">Name</label>
+                            <input 
+                                autoFocus 
+                                className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500 transition-colors h-[42px]"
+                                value={name} 
+                                onChange={(e) => setName(e.target.value)} 
+                            />
                         </div>
 
-                        <div>
-                            <label className="block text-sm font-medium text-gray-400 mb-1">Amount ($)</label>
-                            <input type="number" className="w-full bg-gray-950 text-white border border-gray-700 rounded-lg p-3 focus:border-green-300 outline-none" value={amount} onChange={(e) => setAmount(Number(e.target.value))} />
-                        </div>
-
+                        {/* Amount & Frequency Row */}
                         <div className="grid grid-cols-2 gap-4">
+                            <CurrencyInput
+                                label="Amount"
+                                value={amount}
+                                onChange={setAmount}
+                            />
+                            
                             <div>
-                                <label className="block text-sm font-medium text-gray-400 mb-1">Frequency</label>
-                                <select className="w-full bg-gray-950 text-white border border-gray-700 rounded-lg p-3 focus:border-green-300 outline-none appearance-none" value={frequency} onChange={(e) => setFrequency(e.target.value as any)}>
-                                    <option value="Weekly">Weekly</option>
-                                    <option value="Monthly">Monthly</option>
-                                    <option value="Annually">Annually</option>
-                                </select>
+                                <label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">Frequency</label>
+                                <div className="bg-gray-900 border border-gray-700 rounded-md px-3 py-2 h-[42px] flex items-center">
+                                    <select 
+                                        className="bg-transparent border-none outline-none text-white text-sm font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
+                                        value={frequency} 
+                                        onChange={(e) => setFrequency(e.target.value as any)}
+                                    >
+                                        <option value="Weekly" className="bg-gray-950">Weekly</option>
+                                        <option value="Monthly" className="bg-gray-950">Monthly</option>
+                                        <option value="Annually" className="bg-gray-950">Annually</option>
+                                    </select>
+                                </div>
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-400 mb-1">End Date</label>
-                                <input type="date" className="w-full bg-gray-950 text-white border border-gray-700 rounded-lg p-3 focus:border-green-300 outline-none" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-                            </div>
+                        </div>
+
+                        {/* End Date Row */}
+                        <div>
+                            <label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">End Date</label>
+                            <input 
+                                type="date" 
+                                className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500 transition-colors h-[42px]"
+                                value={endDate} 
+                                onChange={(e) => setEndDate(e.target.value)} 
+                            />
                         </div>
 
                         {/* --- Specialized Fields --- */}
                         {selectedType === SocialSecurityIncome && (
                             <div>
-                                <label className="block text-sm font-medium text-gray-400 mb-1">Claiming Age</label>
-                                <input type="number" className="w-full bg-gray-950 text-white border border-gray-700 rounded-lg p-3 focus:border-green-300 outline-none" value={claimingAge} onChange={(e) => setClaimingAge(Number(e.target.value))} />
+                                <label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">Claiming Age</label>
+                                <input 
+                                    type="number" 
+                                    className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500 transition-colors h-[42px]"
+                                    value={claimingAge} 
+                                    onChange={(e) => setClaimingAge(Number(e.target.value))} 
+                                />
                             </div>
                         )}
 
                         {selectedType === PassiveIncome && (
                             <div>
-                                <label className="block text-sm font-medium text-gray-400 mb-1">Source Type</label>
-                                <select className="w-full bg-gray-950 text-white border border-gray-700 rounded-lg p-3 focus:border-green-300 outline-none" value={sourceType} onChange={(e) => setSourceType(e.target.value)}>
-                                    <option value="Dividend">Dividend</option>
-                                    <option value="Rental">Rental</option>
-                                    <option value="Royalty">Royalty</option>
-                                    <option value="Other">Other</option>
-                                </select>
+                                <label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">Source Type</label>
+                                <div className="bg-gray-900 border border-gray-700 rounded-md px-3 py-2 h-[42px] flex items-center">
+                                    <select 
+                                        className="bg-transparent border-none outline-none text-white text-sm font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
+                                        value={sourceType} 
+                                        onChange={(e) => setSourceType(e.target.value)}
+                                    >
+                                        <option value="Dividend" className="bg-gray-950">Dividend</option>
+                                        <option value="Rental" className="bg-gray-950">Rental</option>
+                                        <option value="Royalty" className="bg-gray-950">Royalty</option>
+                                        <option value="Other" className="bg-gray-950">Other</option>
+                                    </select>
+                                </div>
                             </div>
                         )}
 
                         {selectedType === WindfallIncome && (
                             <div>
-                                <label className="block text-sm font-medium text-gray-400 mb-1">Receipt Date</label>
-                                <input type="date" className="w-full bg-gray-950 text-white border border-gray-700 rounded-lg p-3 focus:border-green-300 outline-none" value={receiptDate} onChange={(e) => setReceiptDate(e.target.value)} />
+                                <label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">Receipt Date</label>
+                                <input 
+                                    type="date" 
+                                    className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500 transition-colors h-[42px]"
+                                    value={receiptDate} 
+                                    onChange={(e) => setReceiptDate(e.target.value)} 
+                                />
                             </div>
                         )}
                     </div>
                 )}
 
                 <div className="flex justify-end gap-3 mt-8">
-                    {/* Conditionally render "Back" vs "Cancel" based on the step */}
                     <button 
                         onClick={handleCancelOrBack}
                         className="px-5 py-2.5 rounded-lg font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"

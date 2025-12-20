@@ -1,5 +1,12 @@
 import { useMemo } from "react";
-import { AnyExpense, EXPENSE_CATEGORIES, ExpenseCategory, CATEGORY_PALETTES, CLASS_TO_CATEGORY } from "./models";
+import { 
+    AnyExpense, 
+    EXPENSE_CATEGORIES, 
+    ExpenseCategory, 
+    CATEGORY_PALETTES, 
+    CLASS_TO_CATEGORY,
+    LoanExpense // 1. Import LoanExpense
+} from "./models";
 
 type ExpenseHorizontalBarChartProps = {
 	type: string;
@@ -7,10 +14,22 @@ type ExpenseHorizontalBarChartProps = {
 };
 
 const getMonthlyAmount = (Expense: AnyExpense) => {
+    // 2. Determine the basis for the calculation
+    // For Loans, 'amount' is the Balance, so we use 'payment' for the cash flow.
+    // For all others, 'amount' is the periodic cost.
+    let periodicCost = Expense.amount;
+
+    if (Expense instanceof LoanExpense) {
+        periodicCost = Expense.payment;
+    }
+
+    // 3. Normalize based on frequency
     switch (Expense.frequency) {
-        case 'Weekly': return Expense.amount * 52 / 12;
-        case 'Monthly': return Expense.amount;
-        case 'Annually': return Expense.amount / 12;
+        case 'Weekly': return periodicCost * 52 / 12;
+        case 'Monthly': return periodicCost;
+        case 'Annually': return periodicCost / 12;
+        // Handle 'Daily' or 'BiWeekly' if they exist in your types, otherwise default
+        case 'Daily': return periodicCost * 30.4167; // Approx days in month
         default: return 0;
     }
 };
@@ -67,13 +86,17 @@ export default function ExpenseHorizontalBarChart({
 
 			return Expenses.map((inc, i) => {
                 const monthlyVal = getMonthlyAmount(inc);
+                
+                // For tooltip display: Use payment for loans, amount for others
+                const displayOriginalAmount = inc instanceof LoanExpense ? inc.payment : inc.amount;
+
                 return {
                     category,
                     name: inc.name,
                     monthlyAmount: monthlyVal,
                     percent: totalMonthlyExpense === 0 ? 0 : (monthlyVal / totalMonthlyExpense) * 100,
                     color: colors[i],
-                    originalAmount: inc.amount,
+                    originalAmount: displayOriginalAmount, // Updated for tooltip
                     frequency: inc.frequency
                 };
 			});
