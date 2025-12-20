@@ -38,13 +38,13 @@ export default function HorizontalBarChart({
         for (const acc of accountList) {
             if (acc instanceof PropertyAccount) {
                 // For Property: Add Asset Value, Subtract Loan
-                netWorth += (acc.balance - acc.loanBalance);
+                netWorth += (acc.amount - acc.loanAmount);
             } else if (acc instanceof DebtAccount) {
-                // For Debt: Subtract Balance
-                netWorth -= acc.balance;
+                // For Debt: Subtract Amount
+                netWorth -= acc.amount;
             } else {
-                // For Savings/Investments: Add Balance
-                netWorth += acc.balance;
+                // For Savings/Investments: Add Amount
+                netWorth += acc.amount;
             }
         }
 
@@ -59,13 +59,13 @@ export default function HorizontalBarChart({
 			const categoryName = CLASS_TO_CATEGORY[acc.constructor.name];
 
 			if (categoryName) {
-				if (acc instanceof PropertyAccount && acc.loanBalance > 0) {
+				if (acc instanceof PropertyAccount && acc.loanAmount > 0) {
                     // Split Property into Equity and Debt for visualization
 					const equityEntry = {
 						...acc,
                         id: `${acc.id}-equity`,
 						name: acc.name,
-						balance: acc.balance - acc.loanBalance, 
+						amount: acc.amount - acc.loanAmount, 
 					} as unknown as AnyAccount;
 					
 					grouped[categoryName].push(equityEntry);
@@ -73,7 +73,7 @@ export default function HorizontalBarChart({
 					const loanEntry = {
 						id: `${acc.id}-loan`,
 						name: `${acc.name} (Loan)`,
-						balance: acc.loanBalance,
+						amount: acc.loanAmount,
 					} as unknown as AnyAccount;
 
 					grouped['Debt'].push(loanEntry);
@@ -87,7 +87,7 @@ export default function HorizontalBarChart({
 		const categoryTotals = Object.fromEntries(
 			ACCOUNT_CATEGORIES.map((c) => [
 				c,
-				grouped[c].reduce((s, a) => s + a.balance, 0),
+				grouped[c].reduce((s, a) => s + a.amount, 0),
 			])
 		) as Record<AccountCategory, number>;
 
@@ -108,9 +108,9 @@ export default function HorizontalBarChart({
 			return accounts.map((acc, i) => ({
 				category,
 				account: acc.name,
-				balance: acc.balance,
+				amount: acc.amount,
                 // Use visualTotal for the percent calculation
-				percent: visualTotal === 0 ? 0 : (acc.balance / visualTotal) * 100,
+				percent: visualTotal === 0 ? 0 : (acc.amount / visualTotal) * 100,
 				color: colors[i],
 			}));
 		});
@@ -137,7 +137,7 @@ export default function HorizontalBarChart({
 						style={{ width: `${seg.percent}%` }}
 						title={`${seg.category} - ${
 							seg.account
-						}: ${seg.balance.toLocaleString()}`}
+						}: ${seg.amount.toLocaleString()}`}
 					/>
 				))}
 			</div>

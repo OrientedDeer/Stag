@@ -10,21 +10,21 @@ import {
 type AllKeys<T> = T extends any ? keyof T : never;
 export type AllAccountKeys = AllKeys<AnyAccount>;
 
-interface BalanceHistoryEntry {
+interface AmountHistoryEntry {
   date: string;
-  amount: number;
+  num: number;
 }
 
 interface AppState {
   accounts: AnyAccount[];
-  balanceHistory: Record<string, BalanceHistoryEntry[]>;
+  amountHistory: Record<string, AmountHistoryEntry[]>;
 }
 
 type Action =
   | { type: 'ADD_ACCOUNT'; payload: AnyAccount }
   | { type: 'DELETE_ACCOUNT'; payload: { id: string } }
   | { type: 'UPDATE_ACCOUNT_FIELD'; payload: { id: string; field: AllAccountKeys; value: any } }
-  | { type: 'ADD_BALANCE_SNAPSHOT'; payload: { id: string; balance: number } }
+  | { type: 'ADD_AMOUNT_SNAPSHOT'; payload: { id: string; amount: number } }
   | { type: 'REORDER_ACCOUNTS'; payload: { startIndex: number; endIndex: number } };
 
 const getTodayString = () => new Date().toISOString().split('T')[0];
@@ -32,7 +32,7 @@ const getTodayString = () => new Date().toISOString().split('T')[0];
 const STORAGE_KEY = 'user_accounts_data';
 const initialState: AppState = {
   accounts: [],
-  balanceHistory: {},
+  amountHistory: {},
 };
 
 function reconstituteAccount(accountData: any): AnyAccount | null {
@@ -42,34 +42,29 @@ function reconstituteAccount(accountData: any): AnyAccount | null {
             return Object.assign(new SavedAccount(
                 accountData.id, 
                 accountData.name, 
-                accountData.balance
+                accountData.amount
             ), accountData);
         case 'InvestedAccount':
             return Object.assign(new InvestedAccount(
                 accountData.id, 
                 accountData.name, 
-                accountData.balance, 
-                accountData.vestedBalance
+                accountData.amount, 
+                accountData.vestedAmount
             ), accountData);
         case 'PropertyAccount':
             return Object.assign(new PropertyAccount(
                 accountData.id, 
                 accountData.name, 
-                accountData.balance, 
+                accountData.amount, 
                 accountData.ownershipType, 
-                accountData.loanBalance, 
-                accountData.apr, 
-                accountData.interestType, 
-                accountData.monthlyPayment
+                accountData.loanAmount, 
             ), accountData);
         case 'DebtAccount':
             return Object.assign(new DebtAccount(
                 accountData.id, 
                 accountData.name, 
-                accountData.balance, 
-                accountData.apr, 
-                accountData.interestType, 
-                accountData.monthlyPayment
+                accountData.amount,
+                accountData.linkedAccountId
             ), accountData);
         default:
             console.warn(`Unknown account type: ${accountData.className}`);
@@ -104,18 +99,18 @@ const accountReducer = (state: AppState, action: Action): AppState => {
       return {
         ...state,
         accounts: [...state.accounts, action.payload],
-        balanceHistory: {
-          ...state.balanceHistory,
+        amountHistory: {
+          ...state.amountHistory,
           [action.payload.id]: [],
         },
       };
 
     case 'DELETE_ACCOUNT': {
-      const { [action.payload.id]: _, ...remainingHistory } = state.balanceHistory;
+      const { [action.payload.id]: _, ...remainingHistory } = state.amountHistory;
       return {
         ...state,
         accounts: state.accounts.filter((acc) => acc.id !== action.payload.id),
-        balanceHistory: remainingHistory,
+        amountHistory: remainingHistory,
       };
     }
 
@@ -133,31 +128,31 @@ const accountReducer = (state: AppState, action: Action): AppState => {
         }),
       };
 
-    case 'ADD_BALANCE_SNAPSHOT': {
-      const { id, balance } = action.payload;
+    case 'ADD_AMOUNT_SNAPSHOT': {
+      const { id, amount } = action.payload;
       const today = getTodayString();
       
-      const currentHistory = state.balanceHistory[id] || [];
+      const currentHistory = state.amountHistory[id] || [];
       const lastEntry = currentHistory[currentHistory.length - 1];
 
-      let newHistory: BalanceHistoryEntry[];
+      let newHistory: AmountHistoryEntry[];
 
       if (lastEntry && lastEntry.date === today) {
         newHistory = [
           ...currentHistory.slice(0, -1),
-          { date: today, amount: balance }
+          { date: today, num: amount }
         ];
       } else {
         newHistory = [
           ...currentHistory,
-          { date: today, amount: balance }
+          { date: today, num: amount }
         ];
       }
 
       return {
         ...state,
-        balanceHistory: {
-          ...state.balanceHistory,
+        amountHistory: {
+          ...state.amountHistory,
           [id]: newHistory,
         },
       };
@@ -181,7 +176,7 @@ interface AccountContextProps extends AppState {
 
 export const AccountContext = createContext<AccountContextProps>({
   accounts: [],
-  balanceHistory: {},
+  amountHistory: {},
   dispatch: () => null,
 });
 

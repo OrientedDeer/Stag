@@ -14,7 +14,7 @@ SVGOMG: https://jakearchibald.github.io/svgomg/
     - Suggested missing fields.
 - History
     - Networth over time chart
-    - Summed table of account balances
+    - Summed table of account amounts
 - Current
     - Chart breaking down Networth % by type
     - Accounts

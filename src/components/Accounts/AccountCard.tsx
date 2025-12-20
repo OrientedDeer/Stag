@@ -1,10 +1,9 @@
 import React, { useContext, useState, useEffect } from "react";
 import { AnyAccount, SavedAccount, InvestedAccount, PropertyAccount, DebtAccount, ACCOUNT_COLORS_BACKGROUND} from "./models";
 import { AccountContext, AllAccountKeys } from "./AccountContext";
+import { ExpenseContext } from "../Expense/ExpenseContext";
 import { StyledInput, StyledSelect } from "../Layout/StyleUI";
 import DeleteAccountControl from '../../components/Accounts/DeleteAccountUI';
-import { ExpenseContext } from "../Expense/ExpenseContext";
-import { LoanExpense } from "../Expense/models";
 
 const formatCurrency = (value: number | string): string => {
 	if (value === null || value === undefined || value === 0 || value === "")
@@ -22,7 +21,7 @@ const isFullyFormatted = (value: string) =>
 
 const AccountCard = ({ account }: { account: AnyAccount }) => {
 	const { dispatch: accountDispatch } = useContext(AccountContext);
-    const { expenses, dispatch: expenseDispatch } = useContext(ExpenseContext);
+	const { dispatch: expenseDispatch } = useContext(ExpenseContext);
 	const [focusedField, setFocusedField] = useState<string | null>(null);
 	const [localCurrencyValues, setLocalCurrencyValues] = useState<
 		Record<string, string>
@@ -30,20 +29,14 @@ const AccountCard = ({ account }: { account: AnyAccount }) => {
 	useEffect(() => {
 		if (!focusedField) {
 			setLocalCurrencyValues({
-				balance: formatCurrency(account.balance),
-				vestedBalance:
+				amount: formatCurrency(account.amount),
+				vestedAmount:
 					account instanceof InvestedAccount
-						? formatCurrency(account.vestedBalance)
+						? formatCurrency(account.vestedAmount)
 						: "0.00",
-				loanBalance:
+				loanAmount:
 					account instanceof PropertyAccount
-						? formatCurrency(account.loanBalance)
-						: "0.00",
-				monthlyPayment:
-					account instanceof DebtAccount ||
-					(account instanceof PropertyAccount &&
-						account.ownershipType === "Financed")
-						? formatCurrency(account.monthlyPayment)
+						? formatCurrency(account.loanAmount)
 						: "0.00",
 			});
 		}
@@ -60,30 +53,19 @@ const AccountCard = ({ account }: { account: AnyAccount }) => {
 			payload: { id: account.id, field, value: finalValue },
 		});
 
-		if (account instanceof DebtAccount) {
-            // Find the linked expense
-            const linkedExpense = expenses.find(
-                e => e instanceof LoanExpense && e.linkedAccountId === account.id
-            );
-
-            if (linkedExpense) {
-                if (field === 'name') {
-                    expenseDispatch({ type: 'UPDATE_EXPENSE_FIELD', payload: { id: linkedExpense.id, field: 'name', value: finalValue }});
-                }
-                if (field === 'apr') {
-                    expenseDispatch({ type: 'UPDATE_EXPENSE_FIELD', payload: { id: linkedExpense.id, field: 'apr', value: finalValue }});
-                }
-                if (field === 'monthlyPayment') {
-                    // Update both amount and payment on expense side
-                    expenseDispatch({ type: 'UPDATE_EXPENSE_FIELD', payload: { id: linkedExpense.id, field: 'amount', value: finalValue }});
-                    expenseDispatch({ type: 'UPDATE_EXPENSE_FIELD', payload: { id: linkedExpense.id, field: 'payment', value: finalValue }});
-                }
-                if (field === 'interestType') {
-                    const mappedType = finalValue === 'Compound' ? 'Compounding' : 'Simple';
-                    expenseDispatch({ type: 'UPDATE_EXPENSE_FIELD', payload: { id: linkedExpense.id, field: 'interest_type', value: mappedType }});
-                }
-            }
-        }
+		if (account instanceof DebtAccount){
+			if(field == "name"){
+				expenseDispatch({
+					type: "UPDATE_EXPENSE_FIELD",
+					payload: { id: account.linkedAccountId, field, value },
+				});
+			} else if(field == "amount"){
+				expenseDispatch({
+					type: "UPDATE_EXPENSE_FIELD",
+					payload: { id: account.linkedAccountId, field, value },
+				});
+			}
+		}
 
 		if (isNaN(numericValue)) return;
 		accountDispatch({
@@ -105,16 +87,16 @@ const AccountCard = ({ account }: { account: AnyAccount }) => {
 			[field]: rawValue,
 		}));
 	};
-	const handleBlurBalance = (field: AllAccountKeys) => {
+	const handleBlurAmount = (field: AllAccountKeys) => {
 		handleGlobalUpdate(field);
 		setFocusedField(null);
 		const numericValue =
 			parseFloat(
-				localCurrencyValues.balance.replace(/[^0-9.]/g, "").replace("$", "")
+				localCurrencyValues.amount.replace(/[^0-9.]/g, "").replace("$", "")
 			) || 0;
 		accountDispatch({
-			type: "ADD_BALANCE_SNAPSHOT",
-			payload: { id: account.id, balance: numericValue },
+			type: "ADD_AMOUNT_SNAPSHOT",
+			payload: { id: account.id, amount: numericValue },
 		});
 	};
 	const handleBlur = (field: AllAccountKeys) => {
@@ -184,52 +166,35 @@ const AccountCard = ({ account }: { account: AnyAccount }) => {
 						className="text-xl font-bold text-white bg-transparent focus:outline-none focus:ring-1 focus:ring-green-300 rounded p-1 -m-1 w-full" 
 					/>
 				</div>
-				<div className="text-chart-Red-75 ml-auto">
-					<DeleteAccountControl accountId={account.id} />
-				</div>
+				{!(account instanceof DebtAccount) && (
+					<div className="text-chart-Red-75 ml-auto">
+						<DeleteAccountControl accountId={account.id} linkedId="" />
+					</div>
+				)}
+				{(account instanceof DebtAccount) && (
+					<div className="text-chart-Red-75 ml-auto">
+						<DeleteAccountControl accountId={account.id} linkedId={account.linkedAccountId} />
+					</div>
+				)}
 			</div>
 			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 bg-[#18181b] p-6 rounded-xl border border-gray-800">
 				<StyledInput
-					label="Current Balance ($)"
+					label="Current Amount ($)"
 					type="text"
-					value={getLocalValue("balance")}
-					onChange={(e) => handleLocalChange(e, "balance")}
-					onFocus={() => handleFocus("balance")}
-					onBlur={() => handleBlurBalance("balance")}
+					value={getLocalValue("amount")}
+					onChange={(e) => handleLocalChange(e, "amount")}
+					onFocus={() => handleFocus("amount")}
+					onBlur={() => handleBlurAmount("amount")}
 				/>
 				{account instanceof InvestedAccount && (
 					<StyledInput
 						label="Employer Contrib. ($)"
 						type="text"
-						value={getLocalValue("vestedBalance")}
-						onChange={(e) => handleLocalChange(e, "vestedBalance")}
-						onFocus={() => handleFocus("vestedBalance")}
-						onBlur={() => handleBlur("vestedBalance")}
+						value={getLocalValue("vestedAmount")}
+						onChange={(e) => handleLocalChange(e, "vestedAmount")}
+						onFocus={() => handleFocus("vestedAmount")}
+						onBlur={() => handleBlur("vestedAmount")}
 					/>
-				)}
-				{account instanceof DebtAccount && (
-					<>
-						<StyledInput
-							label="APR (%)"
-							type="number"
-							value={account.apr}
-							onChange={(e) => handleUpdate("apr", parseFloat(e.target.value))}
-						/>
-						<StyledInput
-							label="Monthly Payment ($)"
-							type="text"
-							value={getLocalValue("monthlyPayment")}
-							onChange={(e) => handleLocalChange(e, "monthlyPayment")}
-							onFocus={() => handleFocus("monthlyPayment")}
-							onBlur={() => handleBlur("monthlyPayment")}
-						/>
-						<StyledSelect
-							label="Interest Type"
-							value={account.interestType}
-							onChange={(e) => handleUpdate("interestType", e.target.value)}
-							options={["Simple", "Compound"]}
-						/>
-					</>
 				)}
 				{account instanceof PropertyAccount && (
 					<>
@@ -242,28 +207,12 @@ const AccountCard = ({ account }: { account: AnyAccount }) => {
 						{account.ownershipType === "Financed" && (
 							<>
 								<StyledInput
-									label="Loan Balance ($)"
+									label="Loan Amount ($)"
 									type="text"
-									value={getLocalValue("loanBalance")}
-									onChange={(e) => handleLocalChange(e, "loanBalance")}
-									onFocus={() => handleFocus("loanBalance")}
-									onBlur={() => handleBlur("loanBalance")}
-								/>
-								<StyledInput
-									label="APR (%)"
-									type="number"
-									value={account.apr}
-									onChange={(e) =>
-										handleUpdate("apr", parseFloat(e.target.value))
-									}
-								/>
-								<StyledInput
-									label="Monthly Payment ($)"
-									type="text"
-									value={getLocalValue("monthlyPayment")}
-									onChange={(e) => handleLocalChange(e, "monthlyPayment")}
-									onFocus={() => handleFocus("monthlyPayment")}
-									onBlur={() => handleBlur("monthlyPayment")}
+									value={getLocalValue("loanAmount")}
+									onChange={(e) => handleLocalChange(e, "loanAmount")}
+									onFocus={() => handleFocus("loanAmount")}
+									onBlur={() => handleBlur("loanAmount")}
 								/>
 							</>
 						)}

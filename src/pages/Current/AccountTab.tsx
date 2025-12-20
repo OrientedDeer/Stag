@@ -9,8 +9,8 @@ import {
 } from "../../components/Accounts/models";
 import AccountCard from "../../components/Accounts/AccountCard";
 import HorizontalBarChart from "../../components/Accounts/HorizontalBarChart";
-import AddAccountControl from "../../components/Accounts/AddAccountUI";
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
+import AddAccountModal from "../../components/Accounts/AddAccountModal";
 
 const AccountList = ({ type }: { type: any }) => {
 	const { accounts, dispatch } = useContext(AccountContext);
@@ -77,6 +77,7 @@ const AccountList = ({ type }: { type: any }) => {
 const TabsContent = () => {
 	const { accounts } = useContext(AccountContext);
 	const [activeTab, setActiveTab] = useState<string>("Saved");
+    const [isModalOpen, setIsModalOpen] = useState(false);
 
 	const allAccounts = accounts;
 	const savedAccounts = accounts.filter((acc) => acc instanceof SavedAccount);
@@ -94,36 +95,64 @@ const TabsContent = () => {
 		Saved: (
 			<div className="p-4">
 				<AccountList type={SavedAccount} />
-				<AddAccountControl AccountClass={SavedAccount} title="Savings" />     
+				<button 
+					onClick={() => setIsModalOpen(true)}
+					className="bg-green-600 p-4 rounded-xl text-white font-bold mt-4 hover:bg-green-700 transition-colors"
+				>
+					+ Add Savings
+				</button>
+				<AddAccountModal
+					isOpen={isModalOpen} 
+					onClose={() => setIsModalOpen(false)} 
+					selectedType={SavedAccount}
+				/>    
 			</div>
 		),
 		Invested: (
 			<div className="p-4">
 				<AccountList type={InvestedAccount} />
-				<AddAccountControl
-					AccountClass={InvestedAccount}
-					title="Investment"
-					defaultArgs={[0]}
+				<button 
+					onClick={() => setIsModalOpen(true)}
+					className="bg-green-600 p-4 rounded-xl text-white font-bold mt-4 hover:bg-green-700 transition-colors"
+				>
+					+ Add Investment
+				</button>
+				<AddAccountModal
+					isOpen={isModalOpen} 
+					onClose={() => setIsModalOpen(false)} 
+					selectedType={InvestedAccount}
 				/>
 			</div>
 		),
 		Property: (
 			<div className="p-4">
 				<AccountList type={PropertyAccount} />
-				<AddAccountControl
-					AccountClass={PropertyAccount}
-					title="Property"
-					defaultArgs={["Owned", 0, 0, "Simple", 0]}
+				<button 
+					onClick={() => setIsModalOpen(true)}
+					className="bg-green-600 p-4 rounded-xl text-white font-bold mt-4 hover:bg-green-700 transition-colors"
+				>
+					+ Add Property
+				</button>
+				<AddAccountModal
+					isOpen={isModalOpen} 
+					onClose={() => setIsModalOpen(false)} 
+					selectedType={PropertyAccount}
 				/>
 			</div>
 		),
 		Debt: (
 			<div className="p-4">
 				<AccountList type={DebtAccount} />
-				<AddAccountControl
-					AccountClass={DebtAccount}
-					title="Debt"
-					defaultArgs={[0, "Simple", 0]}
+				<button 
+					onClick={() => setIsModalOpen(true)}
+					className="bg-green-600 p-4 rounded-xl text-white font-bold mt-4 hover:bg-green-700 transition-colors"
+				>
+					+ Add Debt
+				</button>
+				<AddAccountModal
+					isOpen={isModalOpen} 
+					onClose={() => setIsModalOpen(false)} 
+					selectedType={DebtAccount}
 				/>
 			</div>
 		),
@@ -149,7 +178,7 @@ const TabsContent = () => {
 				
 				<div className="space-y-4 mb-4 p-4 bg-gray-900 rounded-xl border border-gray-800">
 					<h2 className="text-xl font-bold text-white mb-4 border-b border-gray-700 pb-2">
-                        Account Balances
+                        Account Amounts
                     </h2>
 					{allAccounts.length > 0 && (
 						<HorizontalBarChart

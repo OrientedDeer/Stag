@@ -16,7 +16,6 @@ import { ExpenseContext, AllExpenseKeys } from "./ExpenseContext";
 import { StyledInput, StyledSelect } from "../Layout/StyleUI";
 import DeleteExpenseControl from './DeleteExpenseUI';
 import { IncomeContext } from "../Income/IncomeContext";
-import { AccountContext } from "../Accounts/AccountContext";
 
 const formatCurrency = (value: number | string): string => {
 	if (value === null || value === undefined || value === 0 || value === "")
@@ -45,7 +44,6 @@ const formatDate = (date: Date): string => {
 
 const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 	const { dispatch: expenseDispatch } = useContext(ExpenseContext);
-    const { dispatch: accountDispatch } = useContext(AccountContext); // Get account dispatch
 	const { incomes } = useContext(IncomeContext);
 	const [focusedField, setFocusedField] = useState<string | null>(null);
 	
@@ -65,25 +63,6 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 			type: "UPDATE_EXPENSE_FIELD",
 			payload: { id: expense.id, field, value },
 		});
-	
-		if (expense instanceof LoanExpense && expense.linkedAccountId) {
-            const accId = expense.linkedAccountId;
-            
-            if (field === 'name') {
-                accountDispatch({ type: 'UPDATE_ACCOUNT_FIELD', payload: { id: accId, field: 'name', value }});
-            }
-            if (field === 'apr') {
-                accountDispatch({ type: 'UPDATE_ACCOUNT_FIELD', payload: { id: accId, field: 'apr', value }});
-            }
-            if (field === 'amount' || field === 'payment') {
-                 // Sync monthly payment
-                accountDispatch({ type: 'UPDATE_ACCOUNT_FIELD', payload: { id: accId, field: 'monthlyPayment', value }});
-            }
-            if (field === 'interest_type') {
-                 const mappedType = value === 'Compounding' ? 'Compound' : 'Simple';
-                accountDispatch({ type: 'UPDATE_ACCOUNT_FIELD', payload: { id: accId, field: 'interestType', value: mappedType }});
-            }
-        }
 		
 		expenseDispatch({
 			type: "UPDATE_EXPENSE_FIELD",
@@ -173,9 +152,16 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 						className="text-xl font-bold text-white bg-transparent focus:outline-none focus:ring-1 focus:ring-green-300 rounded p-1 -m-1 w-full" 
 					/>
 				</div>
-				<div className="text-chart-Red-75 ml-auto">
-					<DeleteExpenseControl expenseId={expense.id} />
-				</div>
+				{!(expense instanceof LoanExpense) && (
+					<div className="text-chart-Red-75 ml-auto">
+						<DeleteExpenseControl expenseId={expense.id} linkedId="" />
+					</div>
+				)}
+				{(expense instanceof LoanExpense) && (
+					<div className="text-chart-Red-75 ml-auto">
+						<DeleteExpenseControl expenseId={expense.id} linkedId={expense.linkedAccountId} />
+					</div>
+				)}
 			</div>
 
 			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 bg-[#18181b] p-6 rounded-xl border border-gray-800">

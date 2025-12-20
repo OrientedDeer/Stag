@@ -11,7 +11,9 @@ import {
 	OtherExpense,
 	IncomeDeductionExpense,
 } from "./models";
+import { AccountContext } from "../Accounts/AccountContext";
 import { IncomeContext } from "../Income/IncomeContext";
+import { DebtAccount } from "../Accounts/models";
 
 const generateUniqueId = () =>
 	`EXS-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -25,7 +27,8 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 	isOpen,
 	onClose,
 }) => {
-	const { dispatch } = useContext(ExpenseContext);
+	const { dispatch: expenseDispatch } = useContext(ExpenseContext);
+	const { dispatch: accountDispatch } = useContext(AccountContext);
 	const { incomes } = useContext(IncomeContext);
 	const [step, setStep] = useState<"select" | "details">("select");
 	const [selectedType, setSelectedType] = useState<any>(null);
@@ -42,7 +45,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 	const [maintenance, setMaintenance] = useState<number>(0);
 	const [apr, setApr] = useState<number>(0);
 	const [interestType, setInterestType] = useState<"Compounding" | "Simple">(
-		"Simple"
+		"Compounding"
 	);
 	const [startDate, setStartDate] = useState(
 		new Date().toISOString().split("T")[0]
@@ -52,7 +55,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 	);
     const [selectedIncomeId, setSelectedIncomeId] = useState<string>(incomes[0]?.id || "");
 	const [payment, setPayment] = useState<number>(0);
-	const [isTaxDeductible, setIsTaxDeductible] = useState<"Yes" | "No">("Yes");
+	const [isTaxDeductible, setIsTaxDeductible] = useState<"Yes" | "No">("No");
 	const [taxDeductibleAmount, setTaxDeductibleAmount] = useState<number>(0);
 
 	const handleClose = () => {
@@ -102,6 +105,15 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
                 inflation
             );
         } else if (selectedType === LoanExpense) {
+			const newAccount = new DebtAccount(
+				'ACC' + id.substring(3),
+				name.trim(),
+				amount,
+				id
+			)
+
+			accountDispatch({type: "ADD_ACCOUNT", payload: newAccount})
+
 			newExpense = new selectedType(
 				id,
 				name.trim(),
@@ -166,7 +178,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 			);
 		}
 
-		dispatch({ type: "ADD_EXPENSE", payload: newExpense });
+		expenseDispatch({ type: "ADD_EXPENSE", payload: newExpense });
 		handleClose();
 	};
 
@@ -346,8 +358,8 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 												setIsTaxDeductible(e.target.value as any)
 											}
 										>
-											<option value="Yes">Yes</option>
 											<option value="No">No</option>
+											<option value="Yes">Yes</option>
 										</select>
 									</div>
 									{isTaxDeductible === "Yes" && (

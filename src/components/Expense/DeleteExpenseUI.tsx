@@ -1,18 +1,27 @@
 import React, { useContext } from 'react';
 import { ExpenseContext } from './ExpenseContext';
+import { AccountContext } from '../../components/Accounts/AccountContext';
 
 interface DeleteControlProps {
     expenseId: string;
+    linkedId: any;
 }
 
-const DeleteExpenseControl: React.FC<DeleteControlProps> = ({ expenseId }) => {
-    const { dispatch } = useContext(ExpenseContext);
+const DeleteExpenseControl: React.FC<DeleteControlProps> = ({ expenseId, linkedId }) => {
+    const { dispatch: expenseDispatch } = useContext(ExpenseContext);
+    const { dispatch: accountDispatch } = useContext(AccountContext);
 
     const handleDelete = () => {
-        dispatch({ 
+        expenseDispatch({ 
             type: 'DELETE_EXPENSE', 
             payload: { id: expenseId } 
         });
+        if (linkedId != ""){
+            accountDispatch({
+                type: 'DELETE_ACCOUNT',
+                payload: { id: linkedId}
+            })
+        }
     };
 
     return (

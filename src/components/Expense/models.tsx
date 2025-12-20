@@ -49,7 +49,7 @@ export class LoanExpense extends BaseExpense {
     public is_tax_deductible: 'Yes' | 'No',
     public tax_deductible: number,
     inflation: number,
-    public linkedAccountId?: string
+    public linkedAccountId: string
   ) {
     super(id, name, amount, frequency, inflation);
   }

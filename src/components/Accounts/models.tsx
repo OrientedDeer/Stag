@@ -1,7 +1,7 @@
 export interface Account {
   id: string;
   name: string;
-  balance: number;
+  amount: number;
 }
 
 // 2. Base Abstract Class
@@ -9,7 +9,7 @@ export abstract class BaseAccount implements Account {
   constructor(
     public id: string,
     public name: string,
-    public balance: number
+    public amount: number
   ) {}
 }
 
@@ -23,10 +23,10 @@ export class InvestedAccount extends BaseAccount {
   constructor(
     id: string,
     name: string,
-    balance: number,
-    public vestedBalance: number
+    amount: number,
+    public vestedAmount: number
   ) {
-    super(id, name, balance);
+    super(id, name, amount);
   }
 }
 
@@ -34,14 +34,11 @@ export class PropertyAccount extends BaseAccount {
   constructor(
     id: string,
     name: string,
-    balance: number,
+    amount: number,
     public ownershipType: 'Financed' | 'Owned',
-    public loanBalance: number,
-    public apr: number,
-    public interestType: 'Simple' | 'Compound',
-    public monthlyPayment: number
+    public loanAmount: number,
   ) {
-    super(id, name, balance);
+    super(id, name, amount);
   }
 }
 
@@ -49,12 +46,10 @@ export class DebtAccount extends BaseAccount {
   constructor(
     id: string,
     name: string,
-    balance: number,
-    public apr: number,
-    public interestType: 'Simple' | 'Compound',
-    public monthlyPayment: number
+    amount: number,
+    public linkedAccountId: string
   ) {
-    super(id, name, balance);
+    super(id, name, amount);
   }
 }
 

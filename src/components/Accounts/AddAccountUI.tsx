@@ -1,8 +1,6 @@
 import React, { useState, useContext } from "react";
 import { AccountContext } from "./AccountContext";
-import { ExpenseContext } from "../Expense/ExpenseContext"; // Import Expense Context
-import { AnyAccount, DebtAccount } from "./models";
-import { LoanExpense } from "../Expense/models"; // Import LoanExpense
+import { AnyAccount } from "./models";
 
 const generateUniqueId = (prefix: string = 'ACC') =>
 	`${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -11,7 +9,7 @@ interface AddControlProps {
 	AccountClass: new (
 		id: string,
 		name: string,
-		balance: number,
+		amount: number,
 		...args: any[]
 	) => AnyAccount;
 	title: string;
@@ -24,7 +22,6 @@ const AddAccountControl: React.FC<AddControlProps> = ({
 	defaultArgs = [],
 }) => {
 	const { dispatch: accountDispatch } = useContext(AccountContext);
-    const { dispatch: expenseDispatch } = useContext(ExpenseContext); // Use Expense Dispatch
     
 	const [name, setName] = useState("");
 	const isDisabled = name.trim() === "";
@@ -37,30 +34,6 @@ const AddAccountControl: React.FC<AddControlProps> = ({
 
 		const newAccount = new AccountClass(accountId, accountName, 0, ...defaultArgs);
 		accountDispatch({ type: "ADD_ACCOUNT", payload: newAccount });
-
-        // --- AUTOMATIC LINKING LOGIC ---
-        if (newAccount instanceof DebtAccount) {
-            const expenseId = generateUniqueId('EXS');
-            
-            // Map DebtAccount fields to LoanExpense
-            const newExpense = new LoanExpense(
-                expenseId,
-                accountName,            // Name matches
-                0,                      // Amount (starts at 0 as monthly payment starts at 0)
-                'Monthly',              // Default Frequency
-                newAccount.apr,         // Sync APR
-                newAccount.interestType === 'Compound' ? 'Compounding' : 'Simple', // Map Enum
-                new Date(),             // Start Date Today
-                0,                      // Payment matches Amount
-                'No',                   // Tax Deductible Default
-                0,                      // Deductible Amount
-                2,                      // Default Inflation
-                accountId               // <--- LINK TO ACCOUNT
-            );
-
-            expenseDispatch({ type: 'ADD_EXPENSE', payload: newExpense });
-        }
-
 		setName("");
 	};
 
