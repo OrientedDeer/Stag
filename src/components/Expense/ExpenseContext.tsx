@@ -7,12 +7,12 @@ import {
     HealthcareExpense,
     VacationExpense,
     EmergencyExpense,
-    IncomeDeductionExpense,
     TransportExpense,
+    FoodExpense,
     OtherExpense
 } from './models';
 
-export type AllExpenseKeys = keyof HousingExpense | keyof LoanExpense | keyof DependentExpense | keyof IncomeDeductionExpense | keyof TransportExpense;
+export type AllExpenseKeys = keyof HousingExpense | keyof LoanExpense | keyof DependentExpense | keyof TransportExpense;
 
 interface AppState {
   expenses: AnyExpense[];
@@ -78,6 +78,8 @@ function reconstituteExpense(expenseData: any): AnyExpense | null {
             expenseData.name, 
             expenseData.amount,
             expenseData.frequency,
+            expenseData.is_tax_deductible,
+            expenseData.tax_deductible,
           ), expenseData);
         case 'VacationExpense':
           return Object.assign(new VacationExpense(
@@ -93,18 +95,15 @@ function reconstituteExpense(expenseData: any): AnyExpense | null {
             expenseData.amount,
             expenseData.frequency,
           ), expenseData);
-        case 'IncomeDeductionExpense':
-          return Object.assign(new IncomeDeductionExpense(
+        case 'TransportExpense':
+          return Object.assign(new TransportExpense(
             expenseData.id, 
             expenseData.name, 
             expenseData.amount,
             expenseData.frequency,
-            expenseData.is_tax_deductible,
-            expenseData.tax_deductible,
-            expenseData.income,
           ), expenseData);
-        case 'TransportExpense':
-          return Object.assign(new TransportExpense(
+        case 'FoodExpense':
+          return Object.assign(new FoodExpense(
             expenseData.id, 
             expenseData.name, 
             expenseData.amount,

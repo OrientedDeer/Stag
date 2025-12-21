@@ -397,6 +397,95 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     medicareTaxRate: 0.0
                 },
             }
+        },
+        "Texas": {
+            2024: {
+                Single: {
+                    standardDeduction: 0,
+                    brackets: [
+                        { threshold: 0, rate: 0.0 }
+                    ],
+                    socialSecurityTaxRate: 0.0,
+                    socialSecurityWageBase: 0,
+                    medicareTaxRate: 0.0
+                },
+                Married: {
+                    standardDeduction: 0,
+                    brackets: [
+                        { threshold: 0, rate: 0.0 }
+                    ],
+                    socialSecurityTaxRate: 0.0,
+                    socialSecurityWageBase: 0,
+                    medicareTaxRate: 0.0
+                },
+                'Married Filing Separately': {
+                    standardDeduction: 0,
+                    brackets: [
+                        { threshold: 0, rate: 0.0 }
+                    ],
+                    socialSecurityTaxRate: 0.0,
+                    socialSecurityWageBase: 0,
+                    medicareTaxRate: 0.0
+                },
+            },
+            2025: {
+                Single: {
+                    standardDeduction: 0,
+                    brackets: [
+                        { threshold: 0, rate: 0.0 }
+                    ],
+                    socialSecurityTaxRate: 0.0,
+                    socialSecurityWageBase: 0,
+                    medicareTaxRate: 0.0
+                },
+                Married: {
+                    standardDeduction: 0,
+                    brackets: [
+                        { threshold: 0, rate: 0.0 }
+                    ],
+                    socialSecurityTaxRate: 0.0,
+                    socialSecurityWageBase: 0,
+                    medicareTaxRate: 0.0
+                },
+                'Married Filing Separately': {
+                    standardDeduction: 0,
+                    brackets: [
+                        { threshold: 0, rate: 0.0 }
+                    ],
+                    socialSecurityTaxRate: 0.0,
+                    socialSecurityWageBase: 0,
+                    medicareTaxRate: 0.0
+                },
+            },
+            2026: {
+                Single: {
+                    standardDeduction: 0,
+                    brackets: [
+                        { threshold: 0, rate: 0.0 }
+                    ],
+                    socialSecurityTaxRate: 0.0,
+                    socialSecurityWageBase: 0,
+                    medicareTaxRate: 0.0
+                },
+                Married: {
+                    standardDeduction: 0,
+                    brackets: [
+                        { threshold: 0, rate: 0.0 }
+                    ],
+                    socialSecurityTaxRate: 0.0,
+                    socialSecurityWageBase: 0,
+                    medicareTaxRate: 0.0
+                },
+                'Married Filing Separately': {
+                    standardDeduction: 0,
+                    brackets: [
+                        { threshold: 0, rate: 0.0 }
+                    ],
+                    socialSecurityTaxRate: 0.0,
+                    socialSecurityWageBase: 0,
+                    medicareTaxRate: 0.0
+                },
+            }
         }
     }
 };

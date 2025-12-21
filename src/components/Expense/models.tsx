@@ -1,5 +1,3 @@
-import { AnyIncome } from "../Income/models";
-
 export interface Expense {
   id: string;
   name: string;
@@ -72,6 +70,8 @@ export class HealthcareExpense extends BaseExpense {
     name: string,
     amount: number,
     frequency: 'Weekly' | 'Monthly' | 'Annually',
+    public is_tax_deductible: 'Yes' | 'No' | 'Itemized',
+    public tax_deductible: number
   ) {
     super(id, name, amount, frequency);
   }
@@ -99,26 +99,23 @@ export class EmergencyExpense extends BaseExpense {
   }
 }
 
-export class IncomeDeductionExpense extends BaseExpense {
-  constructor(
-    id: string,
-    name: string,
-    amount: number,
-    frequency: 'Weekly' | 'Monthly' | 'Annually',
-    public is_tax_deductible: 'Yes' | 'No' | 'Itemized',
-    public tax_deductible: number,
-    public income: AnyIncome,
-  ) {
-    super(id, name, amount, frequency);
-  }
-}
-
 export class TransportExpense extends BaseExpense {
   constructor(
     id: string,
     name: string,
     amount: number,
     frequency: 'Weekly' | 'Monthly' | 'Annually',
+  ) {
+    super(id, name, amount, frequency);
+  }
+}
+
+export class FoodExpense extends BaseExpense {
+  constructor(
+    id: string,
+    name: string,
+    amount: number,
+    frequency: 'Weekly' | 'Monthly' | 'Annually'
   ) {
     super(id, name, amount, frequency);
   }
@@ -145,8 +142,8 @@ export const EXPENSE_CATEGORIES = [
   'Healthcare',
   'Vacation',
   'Emergency',
-  'IncomeDeduction',
   'Transport',
+  'Food',
   'Other'
 ] as const;
 
@@ -159,8 +156,8 @@ export const EXPENSE_COLORS_BACKGROUND: Record<ExpenseCategory, string> = {
     Healthcare: "bg-chart-Blue-50",
     Vacation: "bg-chart-Blue-50",
     Emergency: "bg-chart-Blue-50",
-    IncomeDeduction: "bg-chart-Blue-50",
     Transport: "bg-chart-Blue-50",
+    Food: "bg-chart-Blue-50",
     Other: "bg-chart-Blue-50",
 };
 
@@ -171,8 +168,8 @@ export const CLASS_TO_CATEGORY: Record<string, ExpenseCategory> = {
     [HealthcareExpense.name]: 'Healthcare',
     [VacationExpense.name]: 'Vacation',
     [EmergencyExpense.name]: 'Emergency',
-    [IncomeDeductionExpense.name]: 'IncomeDeduction',
     [TransportExpense.name]: 'Transport',
+    [FoodExpense.name]: 'Food',
     [OtherExpense.name]: 'Other',
 };
 
@@ -184,7 +181,7 @@ export const CATEGORY_PALETTES: Record<ExpenseCategory, string[]> = {
 	Healthcare: Array.from({ length: 100 }, (_, i) => `bg-chart-Blue-${i + 1}`),
 	Vacation: Array.from({ length: 100 }, (_, i) => `bg-chart-Blue-${i + 1}`),
 	Emergency: Array.from({ length: 100 }, (_, i) => `bg-chart-Blue-${i + 1}`),
-	IncomeDeduction: Array.from({ length: 100 }, (_, i) => `bg-chart-Blue-${i + 1}`),
 	Transport: Array.from({ length: 100 }, (_, i) => `bg-chart-Blue-${i + 1}`),
+	Food: Array.from({ length: 100 }, (_, i) => `bg-chart-Blue-${i + 1}`),
 	Other: Array.from({ length: 100 }, (_, i) => `bg-chart-Blue-${i + 1}`),
 };

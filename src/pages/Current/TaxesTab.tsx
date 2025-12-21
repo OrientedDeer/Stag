@@ -1,4 +1,3 @@
-// src/pages/Current/TaxesTab.tsx
 import { useContext } from "react";
 import { IncomeContext } from "../../components/Income/IncomeContext";
 import { ExpenseContext } from "../../components/Expense/ExpenseContext";
@@ -6,10 +5,14 @@ import { TaxContext } from "../../components/Taxes/TaxContext";
 import { TAX_DATABASE, FilingStatus } from "../../components/Taxes/TaxData";
 import {
     calculateTax,
-    getTotalAnnualIncome,
-    getEarnedAnnualIncome,
     calculateFicaTax,
-    getAnnualDeductionByType,
+    getGrossIncome,
+    getPreTaxExemptions,
+    getUnearnedIncome,
+    getEarnedIncome,
+    getPostTaxExemptions,
+    getItemizedDeductions,
+    getYesDeductions
 } from "../../components/Taxes/TaxService";
 import { CurrencyInput } from "../../components/Layout/CurrencyInput";
 
@@ -23,44 +26,48 @@ export default function TaxesTab() {
     const currentYear = 2025;
 
     // 1. Calculate Base Totals
-    const annualGross = getTotalAnnualIncome(incomes);
-    const earnedIncome = getEarnedAnnualIncome(incomes);
+    const annualGross = getGrossIncome(incomes);
+    const earnedIncome = getEarnedIncome(incomes);
     const fedParams = TAX_DATABASE.federal[currentYear][state.filingStatus];
 
     // 2. Deductions Logic
-    // Above-the-line (always deducted)
-    const aboveLineDeductions = getAnnualDeductionByType(expenses, "Yes");
-    // Itemized (only used if Itemized method is selected)
-    const itemizedTotal = getAnnualDeductionByType(expenses, "Itemized");
+    const incomePreTaxDeductions = getPreTaxExemptions(incomes);
+    const incomePostTaxDeductions = getPostTaxExemptions(incomes); // Roth 401k
+    
+    const expenseAboveLineDeductions = getYesDeductions(expenses);
+    const totalPreTaxDeductions = incomePreTaxDeductions + expenseAboveLineDeductions;
+    const ficaExemptions = getUnearnedIncome(incomes);
 
-    // Adjusted Gross Income (AGI)
-    const agi = Math.max(0, annualGross - aboveLineDeductions);
-
-    // Determine Main Deduction
+    // Standard vs Itemized Logic
+    const itemizedTotal = getItemizedDeductions(expenses);
     const fedStandardDeduction = fedParams.standardDeduction;
     const fedAppliedMainDeduction =
         state.deductionMethod === "Standard" ? fedStandardDeduction : itemizedTotal;
 
-    // 3. Tax Calculations (with Overrides)
+    // 3. Tax Calculations
     const federalTax = state.fedOverride !== null 
         ? state.fedOverride 
-        : calculateTax(agi, { ...fedParams, standardDeduction: fedAppliedMainDeduction });
+        : calculateTax(annualGross, totalPreTaxDeductions, { ...fedParams, standardDeduction: fedAppliedMainDeduction });
 
     const ficaTax = state.ficaOverride !== null 
         ? state.ficaOverride 
-        : calculateFicaTax(earnedIncome, fedParams);
+        : calculateFicaTax(earnedIncome, ficaExemptions, fedParams);
 
     const stateParams = TAX_DATABASE.states[state.stateResidency]?.[currentYear]?.[state.filingStatus];
-	
-    const stateStandardDeduction = stateParams.standardDeduction;
-	const stateAppliedMainDeduction =
+    const stateStandardDeduction = stateParams?.standardDeduction || 0;
+    const stateAppliedMainDeduction =
         state.deductionMethod === "Standard" ? stateStandardDeduction : itemizedTotal;
+    
     const stateTax = state.stateOverride !== null 
         ? state.stateOverride 
-        : (stateParams ? calculateTax(agi, { ...stateParams, standardDeduction: stateAppliedMainDeduction }) : 0);
+        : (stateParams ? calculateTax(annualGross, totalPreTaxDeductions, { ...stateParams, standardDeduction: stateAppliedMainDeduction }) : 0);
 
     const totalTax = federalTax + stateTax + ficaTax;
-    const takeHome = annualGross - totalTax;
+    
+    // Net Pay = Gross - PreTax(401k/Ins) - Taxes - PostTax(Roth)
+    const netPaycheck = annualGross - incomePreTaxDeductions - totalTax - incomePostTaxDeductions;
+
+    const agi = Math.max(0, annualGross - totalPreTaxDeductions);
 
     return (
         <div className="w-full min-h-full flex bg-gray-950 justify-center pt-6">
@@ -141,7 +148,7 @@ export default function TaxesTab() {
                                     <div className="space-y-4">
                                         <div>
                                             <CurrencyInput 
-												label="Federal Tax"
+                                                label="Federal Tax"
                                                 value={state.fedOverride ?? 0}
                                                 onChange={(val) => dispatch({ type: 'SET_FED_OVERRIDE', payload: val === 0 ? null : val })}
                                             />
@@ -149,7 +156,7 @@ export default function TaxesTab() {
 
                                         <div>
                                             <CurrencyInput 
-												label="FICA Tax"
+                                                label="FICA Tax"
                                                 value={state.ficaOverride ?? 0}
                                                 onChange={(val) => dispatch({ type: 'SET_FICA_OVERRIDE', payload: val === 0 ? null : val })}
                                             />
@@ -157,7 +164,7 @@ export default function TaxesTab() {
 
                                         <div>
                                             <CurrencyInput
-												label={state.stateResidency+" Tax"} 
+                                                label={state.stateResidency+" Tax"} 
                                                 value={state.stateOverride ?? 0}
                                                 onChange={(val) => dispatch({ type: 'SET_STATE_OVERRIDE', payload: val === 0 ? null : val })}
                                             />
@@ -186,9 +193,9 @@ export default function TaxesTab() {
                         <div className="bg-gray-900 border border-gray-800 p-8 rounded-2xl shadow-2xl">
                             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mb-8">
                                 <div>
-                                    <p className="text-gray-400 text-sm mb-1 font-medium">Estimated Annual Take-Home</p>
+                                    <p className="text-gray-400 text-sm mb-1 font-medium">Estimated Net Pay (Annual)</p>
                                     <h2 className="text-6xl font-black text-green-400 tracking-tight">
-                                        ${takeHome.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                        ${netPaycheck.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                     </h2>
                                 </div>
                                 <div className="text-left sm:text-right border-l sm:border-l-0 sm:border-r border-gray-800 pl-4 sm:pl-0 sm:pr-4">
@@ -205,21 +212,19 @@ export default function TaxesTab() {
                                     <span className="font-mono text-xl">${annualGross.toLocaleString()}</span>
                                 </div>
 
-                                {aboveLineDeductions > 0 && (
+                                {incomePreTaxDeductions > 0 && (
                                     <div className="flex justify-between text-blue-400 text-sm italic items-center">
-                                        <span>Above-the-line Adjustments</span>
-                                        <span className="font-mono">-${aboveLineDeductions.toLocaleString()}</span>
+                                        <span>Pre-Tax Deductions (401k/Ins)</span>
+                                        <span className="font-mono">-${incomePreTaxDeductions.toLocaleString()}</span>
                                     </div>
                                 )}
-
-                                <div className="flex justify-between text-blue-400 font-semibold items-center">
-                                    <span className="text-lg">{state.deductionMethod} Deduction</span>
-									<div className="grid grid-cols-1">
-                                    	<span className="font-mono text-lg text-right">Federal -${fedAppliedMainDeduction.toLocaleString()}</span>
-                                    	<span className="font-mono text-lg text-right">State -${stateAppliedMainDeduction.toLocaleString()}</span>
-									</div>
+                                
+                                <div className="flex justify-between text-gray-500 text-sm font-semibold items-center border-t border-gray-800/50 pt-2 mt-2">
+                                    <span>Adjusted Gross Income (AGI)</span>
+                                    <span className="font-mono">${agi.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
                                 </div>
 
+                                {/* ... Tax Breakdown ... */}
                                 <div className="pt-2 border-b border-gray-800" />
 
                                 <div className="flex justify-between text-red-400 items-center">
@@ -241,30 +246,28 @@ export default function TaxesTab() {
                                     </span>
                                 </div>
 
+                                {/* NEW: Roth Deduction Display */}
+                                {incomePostTaxDeductions > 0 && (
+                                    <div className="flex justify-between text-green-500 text-sm italic items-center pt-2">
+                                        <span>Post-Tax Deductions (Roth)</span>
+                                        <span className="font-mono">-${incomePostTaxDeductions.toLocaleString()}</span>
+                                    </div>
+                                )}
+
                                 <div className="flex justify-between border-t border-gray-700 pt-6 mt-6 items-center">
                                     <span className="text-3xl font-bold text-white">Net Take Home</span>
                                     <span className="text-3xl font-black text-green-400 font-mono">
-                                        ${takeHome.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                        ${netPaycheck.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                     </span>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Breakdown / Warning Footer */}
+                        {/* Footer Notes */}
                         <div className="bg-blue-900/10 border border-blue-800/30 p-5 rounded-2xl text-sm leading-relaxed">
                             <p className="text-blue-200">
                                 <strong className="text-blue-100 uppercase text-[11px] tracking-widest mr-2">Tax Logic:</strong>
-                                Your total reduction in taxable income is <span className="text-white font-mono font-bold">${(aboveLineDeductions + fedAppliedMainDeduction).toLocaleString()}</span>. 
-                                {state.deductionMethod === "Itemized" && itemizedTotal < fedStandardDeduction && (
-                                    <span className="text-yellow-500 font-bold block mt-2">
-                                        ⚠️ Warning: Itemizing is currently providing less benefit than the standard deduction.
-                                    </span>
-                                )}
-                                {(state.fedOverride !== null || state.ficaOverride !== null || state.stateOverride !== null) && (
-                                    <span className="text-green-400 font-bold block mt-2">
-                                        ℹ️ One or more values are being manually overridden. Auto-calculations for those fields are suspended.
-                                    </span>
-                                )}
+                                Total reduction in taxable income is <span className="text-white font-mono font-bold">${(totalPreTaxDeductions + fedAppliedMainDeduction).toLocaleString()}</span>. 
                             </p>
                         </div>
                     </div>

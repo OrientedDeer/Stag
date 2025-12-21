@@ -4,7 +4,7 @@ export interface Income {
   amount: number;
   frequency: 'Weekly' | 'Monthly' | 'Annually';
   end_date: Date;
-  taxable: "Yes" | "No";
+  earned_income: "Yes" | "No";
 }
 
 // 2. Base Abstract Class
@@ -15,7 +15,7 @@ export abstract class BaseIncome implements Income {
     public amount: number,
     public frequency: 'Weekly' | 'Monthly' | 'Annually',
     public end_date: Date,
-    public taxable: "Yes" | "No",
+    public earned_income: "Yes" | "No",
     public annualGrowthRate: number = 0.03,
     public isInflationAdjusted: boolean = true
   ) {}
@@ -30,9 +30,12 @@ export class WorkIncome extends BaseIncome {
     amount: number,
     frequency: 'Weekly' | 'Monthly' | 'Annually',
     end_date: Date,
-    taxable: "Yes" | "No"
+    earned_income: "Yes" | "No",
+    public preTax401k: number = 0,
+    public insurance: number = 0,
+    public roth401k: number = 0,
   ) {
-    super(id, name, amount, frequency, end_date, taxable);
+    super(id, name, amount, frequency, end_date, earned_income);
   }
 }
 
@@ -43,10 +46,10 @@ export class SocialSecurityIncome extends BaseIncome {
     amount: number,
     frequency: 'Weekly' | 'Monthly' | 'Annually',
     end_date: Date,
-    taxable: "Yes" | "No",
+    earned_income: "Yes" | "No",
     public claimingAge: number
   ) {
-    super(id, name, amount, frequency, end_date, taxable);
+    super(id, name, amount, frequency, end_date, earned_income);
   }
 }
 
@@ -57,10 +60,10 @@ export class PassiveIncome extends BaseIncome {
     amount: number,
     frequency: 'Weekly' | 'Monthly' | 'Annually',
     end_date: Date,
-    taxable: "Yes" | "No",
+    earned_income: "Yes" | "No",
     public sourceType: 'Dividend' | 'Rental' | 'Royalty' | 'Other'
   ) {
-    super(id, name, amount, frequency, end_date, taxable);
+    super(id, name, amount, frequency, end_date, earned_income);
   }
 }
 
@@ -71,10 +74,10 @@ export class WindfallIncome extends BaseIncome {
     amount: number,
     frequency: 'Weekly' | 'Monthly' | 'Annually',
     end_date: Date,
-    taxable: "Yes" | "No",
+    earned_income: "Yes" | "No",
     public receipt_date: Date
   ) {
-    super(id, name, amount, frequency, end_date, taxable);
+    super(id, name, amount, frequency, end_date, earned_income);
   }
 }
 

@@ -92,12 +92,39 @@ const IncomeCard = ({ income }: { income: AnyIncome }) => {
                 />
 
 				<StyledSelect
-                    label="Taxable"
-                    value={income.taxable}
-                    onChange={(e) => handleFieldUpdate("taxable", e.target.value)}
+                    label="Earned Income"
+                    value={income.earned_income}
+                    onChange={(e) => handleFieldUpdate("earned_income", e.target.value)}
                     options={["Yes", "No"]}
                 />
 
+				{income instanceof WorkIncome && (
+					<CurrencyInput
+						label="Pre-Tax Contributions"
+						value={income.preTax401k}
+						onChange={(val) => handleFieldUpdate("preTax401k", val)}
+					/>
+					
+				)}
+
+				{income instanceof WorkIncome && (
+					<CurrencyInput
+						label="Insurance"
+						value={income.insurance}
+						onChange={(val) => handleFieldUpdate("insurance", val)}
+					/>
+					
+				)}
+
+				{income instanceof WorkIncome && (
+					<CurrencyInput
+						label="Roth Contributions"
+						value={income.preTax401k}
+						onChange={(val) => handleFieldUpdate("preTax401k", val)}
+					/>
+					
+				)}
+				
 				{income instanceof SocialSecurityIncome && (
 					<StyledInput
 						label="Claiming Age"

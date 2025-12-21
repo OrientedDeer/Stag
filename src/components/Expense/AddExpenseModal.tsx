@@ -8,11 +8,10 @@ import {
 	VacationExpense,
 	TransportExpense,
 	EmergencyExpense,
+	FoodExpense,
 	OtherExpense,
-	IncomeDeductionExpense,
 } from "./models";
 import { AccountContext } from "../Accounts/AccountContext";
-import { IncomeContext } from "../Income/IncomeContext";
 import { DebtAccount } from "../Accounts/models";
 import { CurrencyInput } from "../Layout/CurrencyInput";
 
@@ -30,7 +29,6 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 }) => {
 	const { dispatch: expenseDispatch } = useContext(ExpenseContext);
 	const { dispatch: accountDispatch } = useContext(AccountContext);
-	const { incomes } = useContext(IncomeContext);
 	const [step, setStep] = useState<"select" | "details">("select");
 	const [selectedType, setSelectedType] = useState<any>(null);
 	const [name, setName] = useState("");
@@ -45,9 +43,8 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 	const [interestType, setInterestType] = useState<"Compounding" | "Simple">("Compounding");
 	const [startDate, setStartDate] = useState(new Date().toISOString().split("T")[0]);
 	const [endDate, setEndDate] = useState(new Date().toISOString().split("T")[0]);
-    const [selectedIncomeId, setSelectedIncomeId] = useState<string>(incomes[0]?.id || "");
 	const [payment, setPayment] = useState<number>(0);
-	const [isTaxDeductible, setIsTaxDeductible] = useState<"Yes" | "No">("No");
+	const [isTaxDeductible, setIsTaxDeductible] = useState<"Yes" | "No" | 'Itemized'>("No");
 	const [taxDeductibleAmount, setTaxDeductibleAmount] = useState<number>(0);
 
 	const handleClose = () => {
@@ -119,7 +116,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				finalStartDate,
 				payment,
 				isTaxDeductible,
-				taxDeductibleAmount
+				isTaxDeductible ? taxDeductibleAmount : 0
 			);
 		} else if (selectedType === DependentExpense) {
 			newExpense = new selectedType(
@@ -130,7 +127,16 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				finalStartDate,
 				finalEndDate,
 				isTaxDeductible,
-				taxDeductibleAmount
+				isTaxDeductible ? taxDeductibleAmount : 0
+			);
+		} else if (selectedType === HealthcareExpense) {
+			newExpense = new selectedType(
+				id,
+				name.trim(),
+				amount,
+				frequency,
+				isTaxDeductible,
+				isTaxDeductible ? taxDeductibleAmount : 0
 			);
 		} else if (
 			selectedType === TransportExpense ||
@@ -142,21 +148,6 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				amount,
 				frequency
 			);
-		} else if (selectedType === IncomeDeductionExpense) {
-            const linkedIncome = incomes.find(inc => inc.id === selectedIncomeId);
-            if (!linkedIncome) {
-                alert("Please select a valid income source");
-                return;
-            }
-            newExpense = new IncomeDeductionExpense(
-                id,
-                name.trim(),
-                amount,
-                frequency,
-				isTaxDeductible,
-				taxDeductibleAmount,
-                linkedIncome,
-            );
 		} else {
 			newExpense = new selectedType(id, name.trim(), amount, frequency);
 		}
@@ -174,8 +165,8 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 		{ label: "Healthcare", class: HealthcareExpense },
 		{ label: "Vacation", class: VacationExpense },
 		{ label: "Emergency", class: EmergencyExpense },
-		{ label: "Income Deduction", class: IncomeDeductionExpense },
 		{ label: "Transport", class: TransportExpense },
+		{ label: "Food", class: FoodExpense },
 		{ label: "Other", class: OtherExpense },
 	];
 
@@ -313,7 +304,33 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
                                             </select>
                                         </div>
 									</div>
-									{isTaxDeductible === "Yes" && (
+									{(isTaxDeductible === "Yes" || isTaxDeductible === "Itemized") && (
+                                        <CurrencyInput label="Deductible Amount" value={taxDeductibleAmount} onChange={setTaxDeductibleAmount} />
+									)}
+								</div>
+							</div>
+						)}
+
+						{selectedType === HealthcareExpense && (
+							<div className="space-y-4">
+								<div className="grid grid-cols-2 gap-4">
+									<div>
+										<label className="block text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
+											Tax Deductible
+										</label>
+                                        <div className="bg-gray-900 border border-gray-700 rounded-md px-3 py-2 h-[42px] flex items-center">
+                                            <select
+                                                className="bg-transparent border-none outline-none text-white text-md font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
+                                                value={isTaxDeductible}
+                                                onChange={(e) => setIsTaxDeductible(e.target.value as any)}
+                                            >
+                                                <option value="No" className="bg-gray-950">No</option>
+                                                <option value="Yes" className="bg-gray-950">Yes</option>
+                                        		<option value="Itemized" className="bg-gray-950">Itemized</option>
+                                            </select>
+                                        </div>
+									</div>
+									{(isTaxDeductible === "Yes" || isTaxDeductible === "Itemized") && (
                                         <CurrencyInput label="Deductible Amount" value={taxDeductibleAmount} onChange={setTaxDeductibleAmount} />
 									)}
 								</div>
@@ -368,46 +385,31 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 							</div>
 						)}
 
-						{selectedType === IncomeDeductionExpense && (
-                            <div>
-                                <label className="block text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
-                                    Linked Income Account
-                                </label>
-                                <div className="bg-gray-900 border border-gray-700 rounded-md px-3 py-2 h-[42px] flex items-center">
-                                    <select
-                                        className="bg-transparent border-none outline-none text-white text-md font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
-                                        value={selectedIncomeId}
-                                        onChange={(e) => setSelectedIncomeId(e.target.value)}
-                                    >
-                                        <option value="" disabled className="bg-gray-950">Select an income source...</option>
-                                        {incomes.map((inc) => (
-                                            <option key={inc.id} value={inc.id} className="bg-gray-950">
-                                                {inc.name} ({inc.amount})
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-								<div>
-									<label className="block text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
-										Tax Deductible
-									</label>
-									<div className="bg-gray-900 border border-gray-700 rounded-md px-3 py-2 h-[42px] flex items-center">
-										<select
-											className="bg-transparent border-none outline-none text-white text-md font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
-											value={isTaxDeductible}
-											onChange={(e) => setIsTaxDeductible(e.target.value as any)}
-										>
-											<option value="Yes" className="bg-gray-950">Yes</option>
-											<option value="No" className="bg-gray-950">No</option>
-                                        	<option value="Itemized" className="bg-gray-950">Itemized</option>
-										</select>
+						{selectedType === DependentExpense && (
+							<div className="space-y-4">
+								<div className="grid grid-cols-2 gap-4">
+									<div>
+										<label className="block text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
+											Tax Deductible
+										</label>
+                                        <div className="bg-gray-900 border border-gray-700 rounded-md px-3 py-2 h-[42px] flex items-center">
+                                            <select
+                                                className="bg-transparent border-none outline-none text-white text-md font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
+                                                value={isTaxDeductible}
+                                                onChange={(e) => setIsTaxDeductible(e.target.value as any)}
+                                            >
+                                                <option value="Yes" className="bg-gray-950">Yes</option>
+                                                <option value="No" className="bg-gray-950">No</option>
+                                        		<option value="Itemized" className="bg-gray-950">Itemized</option>
+                                            </select>
+                                        </div>
 									</div>
+									{isTaxDeductible === "Yes" && (
+                                        <CurrencyInput label="Deductible Amount" value={taxDeductibleAmount} onChange={setTaxDeductibleAmount} />
+									)}
 								</div>
-								{isTaxDeductible === "Yes" && (
-									<CurrencyInput label="Deductible Amount" value={taxDeductibleAmount} onChange={setTaxDeductibleAmount} />
-								)}
-						</div>
-                        )}
+							</div>
+						)}
 					</div>
 				)}
 

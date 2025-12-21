@@ -40,7 +40,10 @@ function reconstituteIncome(incomeData: any): AnyIncome | null {
                 incomeData.amount,
                 incomeData.frequency,
                 end_date,
-                incomeData.taxable,
+                incomeData.earned_income,
+                incomeData.preTax401k,
+                incomeData.insurance,
+                incomeData.roth401k,
             ), incomeData);
         case 'SocialSecurityIncome':
             return Object.assign(new SocialSecurityIncome(
@@ -49,7 +52,7 @@ function reconstituteIncome(incomeData: any): AnyIncome | null {
                 incomeData.amount, 
                 incomeData.frequency,
                 end_date,
-                incomeData.taxable,
+                incomeData.earned_income,
                 incomeData.claimingAge
             ), incomeData);
         case 'PassiveIncome':
@@ -59,7 +62,7 @@ function reconstituteIncome(incomeData: any): AnyIncome | null {
                 incomeData.amount,
                 incomeData.frequency, 
                 end_date,
-                incomeData.taxable,
+                incomeData.earned_income,
                 incomeData.sourceType
             ), incomeData);
         case 'WindfallIncome':
@@ -69,7 +72,7 @@ function reconstituteIncome(incomeData: any): AnyIncome | null {
                 incomeData.amount, 
                 incomeData.frequency,
                 end_date,
-                incomeData.taxable,
+                incomeData.earned_income,
                 receipt_date
             ), incomeData);
         default:

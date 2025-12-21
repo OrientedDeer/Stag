@@ -28,7 +28,6 @@ const getMonthlyAmount = (Expense: AnyExpense) => {
         case 'Weekly': return periodicCost * 52 / 12;
         case 'Monthly': return periodicCost;
         case 'Annually': return periodicCost / 12;
-        // Handle 'Daily' or 'BiWeekly' if they exist in your types, otherwise default
         case 'Daily': return periodicCost * 30.4167; // Approx days in month
         default: return 0;
     }

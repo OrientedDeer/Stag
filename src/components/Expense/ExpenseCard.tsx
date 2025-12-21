@@ -7,13 +7,12 @@ import {
     HealthcareExpense,
     VacationExpense,
     EmergencyExpense,
-	IncomeDeductionExpense,
 	TransportExpense,
+	FoodExpense,
     OtherExpense,
 	EXPENSE_COLORS_BACKGROUND
 } from './models';
 import { ExpenseContext, AllExpenseKeys } from "./ExpenseContext";
-import { IncomeContext } from "../Income/IncomeContext";
 import { AccountContext } from "../Accounts/AccountContext"; // Import Account Context for syncing
 import { StyledInput, StyledSelect } from "../Layout/StyleUI";
 import { CurrencyInput } from "../Layout/CurrencyInput"; // Import new component
@@ -32,7 +31,6 @@ const formatDate = (date: Date): string => {
 const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 	const { dispatch: expenseDispatch } = useContext(ExpenseContext);
     const { dispatch: accountDispatch } = useContext(AccountContext);
-	const { incomes } = useContext(IncomeContext);
 
 	const isHousing = expense instanceof HousingExpense;
 
@@ -70,8 +68,8 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 		if (expense instanceof HealthcareExpense) return "HEALTHCARE";
 		if (expense instanceof VacationExpense) return "VACATION";
 		if (expense instanceof EmergencyExpense) return "EMERGENCY";
-		if (expense instanceof IncomeDeductionExpense) return "INCOME";
 		if (expense instanceof TransportExpense) return "TRANSPORT";
+		if (expense instanceof FoodExpense) return "FOOD";
 		if (expense instanceof OtherExpense) return "OTHER";
 		return "EXPENSE";
 	};
@@ -83,8 +81,8 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 		if (expense instanceof HealthcareExpense) return EXPENSE_COLORS_BACKGROUND["Healthcare"];
 		if (expense instanceof VacationExpense) return EXPENSE_COLORS_BACKGROUND["Vacation"];
 		if (expense instanceof EmergencyExpense) return EXPENSE_COLORS_BACKGROUND["Emergency"];
-		if (expense instanceof IncomeDeductionExpense) return EXPENSE_COLORS_BACKGROUND["IncomeDeduction"];
 		if (expense instanceof TransportExpense) return EXPENSE_COLORS_BACKGROUND["Transport"];
+		if (expense instanceof FoodExpense) return EXPENSE_COLORS_BACKGROUND["Food"];
 		if (expense instanceof OtherExpense) return EXPENSE_COLORS_BACKGROUND["Other"];
 		return "bg-gray-500";
 	};
@@ -124,7 +122,7 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
                     label="Frequency"
                     value={expense.frequency}
                     onChange={(e) => handleFieldUpdate("frequency", e.target.value)}
-                    options={["Daily", "Weekly", "BiWeekly", "Monthly", "Annually"]}
+                    options={["Daily", "Weekly", "Monthly", "Annually"]}
                 />
 
                 {/* --- Specialized Housing Fields --- */}
@@ -153,105 +151,93 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 
                 {/* --- Specialized Loan Fields --- */}
                 {expense instanceof LoanExpense && (
-    			<>
-					<StyledInput 
-						label="APR (%)" 
-						type="number" 
-						value={expense.apr} 
-						onChange={(e) => handleFieldUpdate("apr", Number(e.target.value))} 
-					/>
-					<StyledSelect 
-						label="Interest Type" 
-						value={expense.interest_type} 
-						onChange={(e) => handleFieldUpdate("interest_type", e.target.value)} 
-						options={["Simple", "Compounding"]} 
-					/>
-					<StyledInput 
-						label="Start Date" 
-						type="date" 
-						value={formatDate(expense.start_date)} 
-						onChange={(e) => handleDateChange("start_date", e.target.value)} 
-					/>
-                    <CurrencyInput
-                        label="Payment"
-                        value={expense.payment}
-                        onChange={(val) => handleFieldUpdate("payment", val)}
-                    />
-					<StyledSelect 
-						label="Tax Deductible" 
-						value={expense.is_tax_deductible} 
-						onChange={(e) => handleFieldUpdate("is_tax_deductible", e.target.value)} 
-						options={["Yes", "No", "Itemized"]} 
-					/>
-					{(expense.is_tax_deductible === 'Yes' || expense.is_tax_deductible === 'Itemized') && (
-                        <CurrencyInput
-                            label="Deductible Amount"
-                            value={expense.tax_deductible}
-                            onChange={(val) => handleFieldUpdate("tax_deductible", val)}
-                        />
-					)}
-				</>
-			)}
+					<>
+						<StyledInput 
+							label="APR (%)" 
+							type="number" 
+							value={expense.apr} 
+							onChange={(e) => handleFieldUpdate("apr", Number(e.target.value))} 
+						/>
+						<StyledSelect 
+							label="Interest Type" 
+							value={expense.interest_type} 
+							onChange={(e) => handleFieldUpdate("interest_type", e.target.value)} 
+							options={["Simple", "Compounding"]} 
+						/>
+						<StyledInput 
+							label="Start Date" 
+							type="date" 
+							value={formatDate(expense.start_date)} 
+							onChange={(e) => handleDateChange("start_date", e.target.value)} 
+						/>
+						<CurrencyInput
+							label="Payment"
+							value={expense.payment}
+							onChange={(val) => handleFieldUpdate("payment", val)}
+						/>
+						<StyledSelect 
+							label="Tax Deductible" 
+							value={expense.is_tax_deductible} 
+							onChange={(e) => handleFieldUpdate("is_tax_deductible", e.target.value)} 
+							options={["Yes", "No", "Itemized"]} 
+						/>
+						{(expense.is_tax_deductible === 'Yes' || expense.is_tax_deductible === 'Itemized') && (
+							<CurrencyInput
+								label="Deductible Amount"
+								value={expense.tax_deductible}
+								onChange={(val) => handleFieldUpdate("tax_deductible", val)}
+							/>
+						)}
+					</>
+				)}
 
-            {expense instanceof DependentExpense && (
-				<>
-					<StyledInput 
-						label="Start Date" 
-						type="date" 
-						value={formatDate(expense.start_date)} 
-						onChange={(e) => handleDateChange("start_date", e.target.value)} 
-					/>
-					<StyledInput 
-						label="End Date" 
-						type="date" 
-						value={formatDate(expense.end_date)} 
-						onChange={(e) => handleDateChange("end_date", e.target.value)} 
-					/>
-					<StyledSelect 
-						label="Tax Deductible" 
-						value={expense.is_tax_deductible} 
-						onChange={(e) => handleFieldUpdate("is_tax_deductible", e.target.value)} 
-						options={["Yes", "No", "Itemized"]} 
-					/>
-					{(expense.is_tax_deductible === 'Yes' || expense.is_tax_deductible === 'Itemized') && (
-                        <CurrencyInput
-                            label="Deductible Amount"
-                            value={expense.tax_deductible}
-                            onChange={(val) => handleFieldUpdate("tax_deductible", val)}
-                        />
-					)}
-				</>
-			)}
+				{expense instanceof DependentExpense && (
+					<>
+						<StyledInput 
+							label="Start Date" 
+							type="date" 
+							value={formatDate(expense.start_date)} 
+							onChange={(e) => handleDateChange("start_date", e.target.value)} 
+						/>
+						<StyledInput 
+							label="End Date" 
+							type="date" 
+							value={formatDate(expense.end_date)} 
+							onChange={(e) => handleDateChange("end_date", e.target.value)} 
+						/>
+						<StyledSelect 
+							label="Tax Deductible" 
+							value={expense.is_tax_deductible} 
+							onChange={(e) => handleFieldUpdate("is_tax_deductible", e.target.value)} 
+							options={["Yes", "No", "Itemized"]} 
+						/>
+						{(expense.is_tax_deductible === 'Yes' || expense.is_tax_deductible === 'Itemized') && (
+							<CurrencyInput
+								label="Deductible Amount"
+								value={expense.tax_deductible}
+								onChange={(val) => handleFieldUpdate("tax_deductible", val)}
+							/>
+						)}
+					</>
+				)}
 
-			{expense instanceof IncomeDeductionExpense && (
-				<>
-					<StyledSelect 
-						label="Tax Deductible" 
-						value={expense.is_tax_deductible} 
-						onChange={(e) => handleFieldUpdate("is_tax_deductible", e.target.value)} 
-						options={["Yes", "No", "Itemized"]} 
-					/>
-					{(expense.is_tax_deductible === 'Yes' || expense.is_tax_deductible === 'Itemized') && (
-                        <CurrencyInput
-                            label="Deductible Amount"
-                            value={expense.tax_deductible}
-                            onChange={(val) => handleFieldUpdate("tax_deductible", val)}
-                        />
-					)}
-					<StyledSelect
-						label="Linked Income Source"
-						value={expense.income.name} 
-						onChange={(e) => {
-							const selectedInc = incomes.find(inc => inc.name === e.target.value);
-							if (selectedInc) {
-								// Cast as AllExpenseKeys to satisfy Typescript union constraints
-								handleFieldUpdate("income" as AllExpenseKeys, selectedInc);
-							}
-						}}
-						options={incomes.map(inc => inc.name)}
-					/>
-				</>
-			)}
+				{expense instanceof DependentExpense && (
+					<>
+						<StyledSelect 
+							label="Tax Deductible" 
+							value={expense.is_tax_deductible} 
+							onChange={(e) => handleFieldUpdate("is_tax_deductible", e.target.value)} 
+							options={["Yes", "No", "Itemized"]} 
+						/>
+						{(expense.is_tax_deductible === 'Yes' || expense.is_tax_deductible === 'Itemized') && (
+							<CurrencyInput
+								label="Deductible Amount"
+								value={expense.tax_deductible}
+								onChange={(val) => handleFieldUpdate("tax_deductible", val)}
+							/>
+						)}
+					</>
+				)}
 			</div>
 		</div>
 	);
