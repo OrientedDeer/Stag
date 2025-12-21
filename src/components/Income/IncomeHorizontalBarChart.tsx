@@ -84,7 +84,7 @@ export default function IncomeHorizontalBarChart({
 
 	return (
 		<div className="mb-1">
-			<div className="flex justify-center text-white text-xs font-b">
+			<div className="flex justify-center text-white text-md font-b">
 				{type} (Monthly) $
 				{totalMonthlyIncome.toLocaleString(undefined, {
 					minimumFractionDigits: 2,

@@ -8,7 +8,7 @@ interface InputGroupProps {
 
 const InputGroup: React.FC<InputGroupProps> = ({ label, children, className = '' }) => (
   <div className={`bg-gray-900 border border-gray-700 rounded-md px-3 py-2 flex flex-col justify-center focus-within:ring-1 focus-within:ring-green-300 transition-all ${className}`}>
-    <label className="text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
+    <label className="text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
       {label}
     </label>
     {children}
@@ -23,7 +23,7 @@ export const StyledInput: React.FC<StyledInputProps> = ({ label, className = '',
   return (
     <InputGroup label={label} className={className}>
       <input
-        className="bg-transparent border-none outline-none text-white text-sm font-semibold placeholder-gray-600 w-full p-0 m-0"
+        className="bg-transparent border-none outline-none text-white text-md font-semibold placeholder-gray-600 w-full p-0 m-0"
         {...props}
       />
     </InputGroup>
@@ -39,7 +39,7 @@ export const StyledSelect: React.FC<StyledSelectProps> = ({ label, options, ...p
   return (
     <InputGroup label={label}>
       <select
-        className="bg-transparent border-none outline-none text-white text-sm font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
+        className="bg-transparent border-none outline-none text-white text-md font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
         {...props}
       >
         {options.map((opt) => (

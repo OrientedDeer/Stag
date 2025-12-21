@@ -54,7 +54,6 @@ SVGOMG: https://jakearchibald.github.io/svgomg/
                 - RE
             - Growth Estimates
                 - Investments
-                - Inflation
                     - Housing
                     - Income
                     - General

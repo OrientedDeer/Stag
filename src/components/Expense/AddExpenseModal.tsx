@@ -36,7 +36,6 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 	const [name, setName] = useState("");
 	const [amount, setAmount] = useState<number>(0);
 	const [frequency, setFrequency] = useState<"Weekly" | "Monthly" | "Annually">("Monthly");
-	const [inflation, setInflation] = useState<number>(2);
 
 	// --- Specialized Fields State ---
 	const [utilities, setUtilities] = useState<number>(0);
@@ -56,7 +55,6 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 		setSelectedType(null);
 		setName("");
 		setAmount(0);
-        setInflation(2);
 		onClose();
 	};
 
@@ -100,8 +98,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
                 utilities,    
                 propertyTaxes,
                 maintenance,  
-                frequency,
-                inflation
+                frequency
             );
         } else if (selectedType === LoanExpense) {
 			const newAccount = new DebtAccount(
@@ -117,7 +114,6 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				name.trim(),
 				amount,
 				frequency,
-                inflation,
 				apr,
 				interestType,
 				finalStartDate,
@@ -131,7 +127,6 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				name.trim(),
 				amount,
 				frequency,
-				inflation,
 				finalStartDate,
 				finalEndDate,
 				isTaxDeductible,
@@ -145,8 +140,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				id,
 				name.trim(),
 				amount,
-				frequency,
-				inflation
+				frequency
 			);
 		} else if (selectedType === IncomeDeductionExpense) {
             const linkedIncome = incomes.find(inc => inc.id === selectedIncomeId);
@@ -159,11 +153,12 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
                 name.trim(),
                 amount,
                 frequency,
-                linkedIncome, 
-                inflation
+				isTaxDeductible,
+				taxDeductibleAmount,
+                linkedIncome,
             );
 		} else {
-			newExpense = new selectedType(id, name.trim(), amount, frequency, inflation);
+			newExpense = new selectedType(id, name.trim(), amount, frequency);
 		}
 
 		expenseDispatch({ type: "ADD_EXPENSE", payload: newExpense });
@@ -199,7 +194,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 							<button
 								key={cat.label}
 								onClick={() => handleTypeSelect(cat.class)}
-								className="flex items-center justify-center p-2 h-12 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-xl border border-gray-700 transition-all font-medium text-sm text-center"
+								className="flex items-center justify-center p-2 h-12 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-xl border border-gray-700 transition-all font-medium text-md text-center"
 							>
 								{cat.label}
 							</button>
@@ -210,12 +205,12 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 						{/* Name */}
 						<div>
                             {/* Updated Name Input to match new style */}
-							<label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
+							<label className="block text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
 								Expense Name
 							</label>
 							<input
 								autoFocus
-								className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500 transition-colors h-[42px]"
+								className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-md focus:outline-none focus:border-green-500 transition-colors h-[42px]"
 								value={name}
 								onChange={(e) => setName(e.target.value)}
 							/>
@@ -231,12 +226,12 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 								/>
 							)}
                             <div>
-								<label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
+								<label className="block text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
 									Frequency
 								</label>
                                 <div className="bg-gray-900 border border-gray-700 rounded-md px-3 py-2 h-[42px] flex items-center">
                                     <select
-                                        className="bg-transparent border-none outline-none text-white text-sm font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
+                                        className="bg-transparent border-none outline-none text-white text-md font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
                                         value={frequency}
                                         onChange={(e) => setFrequency(e.target.value as any)}
                                     >
@@ -247,25 +242,6 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
                                     </select>
                                 </div>
 							</div>
-
-							{(selectedType === HousingExpense || 
-							  selectedType === DependentExpense || 
-							  selectedType === HealthcareExpense || 
-							  selectedType === VacationExpense || 
-							  selectedType === IncomeDeductionExpense || 
-							  selectedType === TransportExpense) && (
-								<div>
-									<label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
-										Inflation (%)
-									</label>
-									<input
-										type="number"
-										className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500 transition-colors h-[42px]"
-										value={inflation}
-										onChange={(e) => setInflation(Number(e.target.value))}
-									/>
-								</div>
-							)}
 						</div>
 
 						{/* --- Specialized Fields based on models.tsx --- */}
@@ -282,23 +258,23 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 							<div className="space-y-4">
 								<div className="grid grid-cols-2 gap-4">
 									<div>
-										<label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
+										<label className="block text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
 											APR (%)
 										</label>
 										<input
 											type="number"
-											className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500 transition-colors h-[42px]"
+											className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-md focus:outline-none focus:border-green-500 transition-colors h-[42px]"
 											value={apr}
 											onChange={(e) => setApr(Number(e.target.value))}
 										/>
 									</div>
 									<div>
-										<label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
+										<label className="block text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
 											Interest Type
 										</label>
                                         <div className="bg-gray-900 border border-gray-700 rounded-md px-3 py-2 h-[42px] flex items-center">
                                             <select
-                                                className="bg-transparent border-none outline-none text-white text-sm font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
+                                                className="bg-transparent border-none outline-none text-white text-md font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
                                                 value={interestType}
                                                 onChange={(e) => setInterestType(e.target.value as any)}
                                             >
@@ -311,28 +287,29 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
                                     <CurrencyInput label="Payment" value={payment} onChange={setPayment} />
                                     
                                     <div>
-										<label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
+										<label className="block text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
 											Start Date
 										</label>
 										<input
 											type="date"
-											className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500 transition-colors h-[42px]"
+											className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-md focus:outline-none focus:border-green-500 transition-colors h-[42px]"
 											value={startDate}
 											onChange={(e) => setStartDate(e.target.value)}
 										/>
 									</div>
 									<div>
-										<label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
+										<label className="block text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
 											Tax Deductible
 										</label>
                                         <div className="bg-gray-900 border border-gray-700 rounded-md px-3 py-2 h-[42px] flex items-center">
                                             <select
-                                                className="bg-transparent border-none outline-none text-white text-sm font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
+                                                className="bg-transparent border-none outline-none text-white text-md font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
                                                 value={isTaxDeductible}
                                                 onChange={(e) => setIsTaxDeductible(e.target.value as any)}
                                             >
                                                 <option value="No" className="bg-gray-950">No</option>
                                                 <option value="Yes" className="bg-gray-950">Yes</option>
+                                        		<option value="Itemized" className="bg-gray-950">Itemized</option>
                                             </select>
                                         </div>
 									</div>
@@ -347,39 +324,40 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 							<div className="space-y-4">
 								<div className="grid grid-cols-2 gap-4">
 									<div>
-										<label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
+										<label className="block text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
 											Start Date
 										</label>
 										<input
 											type="date"
-											className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500 transition-colors h-[42px]"
+											className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-md focus:outline-none focus:border-green-500 transition-colors h-[42px]"
 											value={startDate}
 											onChange={(e) => setStartDate(e.target.value)}
 										/>
 									</div>
 									<div>
-										<label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
+										<label className="block text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
 											End Date
 										</label>
 										<input
 											type="date"
-											className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500 transition-colors h-[42px]"
+											className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-md focus:outline-none focus:border-green-500 transition-colors h-[42px]"
 											value={endDate}
 											onChange={(e) => setEndDate(e.target.value)}
 										/>
 									</div>
 									<div>
-										<label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
+										<label className="block text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
 											Tax Deductible
 										</label>
                                         <div className="bg-gray-900 border border-gray-700 rounded-md px-3 py-2 h-[42px] flex items-center">
                                             <select
-                                                className="bg-transparent border-none outline-none text-white text-sm font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
+                                                className="bg-transparent border-none outline-none text-white text-md font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
                                                 value={isTaxDeductible}
                                                 onChange={(e) => setIsTaxDeductible(e.target.value as any)}
                                             >
                                                 <option value="Yes" className="bg-gray-950">Yes</option>
                                                 <option value="No" className="bg-gray-950">No</option>
+                                        		<option value="Itemized" className="bg-gray-950">Itemized</option>
                                             </select>
                                         </div>
 									</div>
@@ -392,12 +370,12 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 
 						{selectedType === IncomeDeductionExpense && (
                             <div>
-                                <label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
+                                <label className="block text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
                                     Linked Income Account
                                 </label>
                                 <div className="bg-gray-900 border border-gray-700 rounded-md px-3 py-2 h-[42px] flex items-center">
                                     <select
-                                        className="bg-transparent border-none outline-none text-white text-sm font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
+                                        className="bg-transparent border-none outline-none text-white text-md font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
                                         value={selectedIncomeId}
                                         onChange={(e) => setSelectedIncomeId(e.target.value)}
                                     >
@@ -409,7 +387,26 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
                                         ))}
                                     </select>
                                 </div>
-                            </div>
+								<div>
+									<label className="block text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
+										Tax Deductible
+									</label>
+									<div className="bg-gray-900 border border-gray-700 rounded-md px-3 py-2 h-[42px] flex items-center">
+										<select
+											className="bg-transparent border-none outline-none text-white text-md font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
+											value={isTaxDeductible}
+											onChange={(e) => setIsTaxDeductible(e.target.value as any)}
+										>
+											<option value="Yes" className="bg-gray-950">Yes</option>
+											<option value="No" className="bg-gray-950">No</option>
+                                        	<option value="Itemized" className="bg-gray-950">Itemized</option>
+										</select>
+									</div>
+								</div>
+								{isTaxDeductible === "Yes" && (
+									<CurrencyInput label="Deductible Amount" value={taxDeductibleAmount} onChange={setTaxDeductibleAmount} />
+								)}
+						</div>
                         )}
 					</div>
 				)}

@@ -28,7 +28,6 @@ export class HousingExpense extends BaseExpense {
     public property_taxes: number,
     public maintenance: number,
     frequency: 'Daily' | 'Weekly' | 'Monthly' | 'Annually',
-    public inflation: number,
   ) {
     super(id, name, payment + utilities + property_taxes + maintenance, frequency);
   }
@@ -44,7 +43,7 @@ export class LoanExpense extends BaseExpense {
     public interest_type: 'Compounding' | 'Simple',
     public start_date: Date,
     public payment: number,
-    public is_tax_deductible: 'Yes' | 'No',
+    public is_tax_deductible: 'Yes' | 'No' | 'Itemized',
     public tax_deductible: number,
     public linkedAccountId: string
   ) {
@@ -58,10 +57,9 @@ export class DependentExpense extends BaseExpense {
     name: string,
     amount: number,
     frequency: 'Weekly' | 'Monthly' | 'Annually',
-    public inflation: number,
     public start_date: Date,
     public end_date: Date,
-    public is_tax_deductible: 'Yes' | 'No',
+    public is_tax_deductible: 'Yes' | 'No' | 'Itemized',
     public tax_deductible: number
   ) {
     super(id, name, amount, frequency);
@@ -74,7 +72,6 @@ export class HealthcareExpense extends BaseExpense {
     name: string,
     amount: number,
     frequency: 'Weekly' | 'Monthly' | 'Annually',
-    public inflation: number,
   ) {
     super(id, name, amount, frequency);
   }
@@ -86,7 +83,6 @@ export class VacationExpense extends BaseExpense {
     name: string,
     amount: number,
     frequency: 'Weekly' | 'Monthly' | 'Annually',
-    public inflation: number
   ) {
     super(id, name, amount, frequency);
   }
@@ -109,8 +105,9 @@ export class IncomeDeductionExpense extends BaseExpense {
     name: string,
     amount: number,
     frequency: 'Weekly' | 'Monthly' | 'Annually',
+    public is_tax_deductible: 'Yes' | 'No' | 'Itemized',
+    public tax_deductible: number,
     public income: AnyIncome,
-    public inflation: number
   ) {
     super(id, name, amount, frequency);
   }
@@ -122,7 +119,6 @@ export class TransportExpense extends BaseExpense {
     name: string,
     amount: number,
     frequency: 'Weekly' | 'Monthly' | 'Annually',
-    public inflation: number
   ) {
     super(id, name, amount, frequency);
   }

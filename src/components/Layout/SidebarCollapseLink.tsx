@@ -39,7 +39,7 @@ const SidebarCollapseLink: React.FC<SidebarCollapseLinkProps> = ({
 	} ${isOpen ? "pointer-events-none" : ""}`;
 
 	// The base link class for the sub-items
-	const subLinkBaseClass = `flex items-center p-1 rounded text-White ml-4 mb-1 text-sm ${
+	const subLinkBaseClass = `flex items-center p-1 rounded text-White ml-4 mb-1 text-md ${
 		isOpen ? "" : "hover:bg-gray-700"
 	}`;
 

@@ -102,12 +102,12 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                     
                     {/* Common Fields */}
                     <div>
-                        <label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
+                        <label className="block text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
                             Account Name
                         </label>
                         <input
                             autoFocus
-                            className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500 transition-colors h-[42px]"
+                            className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-md focus:outline-none focus:border-green-500 transition-colors h-[42px]"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                         />
@@ -126,10 +126,10 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                         {selectedType === PropertyAccount && (
                             <div>
                                 {/* Keeping standard select for now as we don't have a CurrencySelect component */}
-                                <label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">Status</label>
+                                <label className="block text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">Status</label>
                                 <div className="bg-gray-900 border border-gray-700 rounded-md px-3 py-2">
                                     <select 
-                                        className="bg-transparent border-none outline-none text-white text-sm font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
+                                        className="bg-transparent border-none outline-none text-white text-md font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
                                         value={ownershipType} 
                                         onChange={(e) => setOwnershipType(e.target.value as any)}
                                     >

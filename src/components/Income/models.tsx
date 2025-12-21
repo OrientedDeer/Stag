@@ -4,6 +4,7 @@ export interface Income {
   amount: number;
   frequency: 'Weekly' | 'Monthly' | 'Annually';
   end_date: Date;
+  taxable: "Yes" | "No";
 }
 
 // 2. Base Abstract Class
@@ -13,7 +14,10 @@ export abstract class BaseIncome implements Income {
     public name: string,
     public amount: number,
     public frequency: 'Weekly' | 'Monthly' | 'Annually',
-    public end_date: Date
+    public end_date: Date,
+    public taxable: "Yes" | "No",
+    public annualGrowthRate: number = 0.03,
+    public isInflationAdjusted: boolean = true
   ) {}
 }
 
@@ -25,9 +29,10 @@ export class WorkIncome extends BaseIncome {
     name: string,
     amount: number,
     frequency: 'Weekly' | 'Monthly' | 'Annually',
-    end_date: Date
+    end_date: Date,
+    taxable: "Yes" | "No"
   ) {
-    super(id, name, amount, frequency, end_date);
+    super(id, name, amount, frequency, end_date, taxable);
   }
 }
 
@@ -38,9 +43,10 @@ export class SocialSecurityIncome extends BaseIncome {
     amount: number,
     frequency: 'Weekly' | 'Monthly' | 'Annually',
     end_date: Date,
+    taxable: "Yes" | "No",
     public claimingAge: number
   ) {
-    super(id, name, amount, frequency, end_date);
+    super(id, name, amount, frequency, end_date, taxable);
   }
 }
 
@@ -51,9 +57,10 @@ export class PassiveIncome extends BaseIncome {
     amount: number,
     frequency: 'Weekly' | 'Monthly' | 'Annually',
     end_date: Date,
+    taxable: "Yes" | "No",
     public sourceType: 'Dividend' | 'Rental' | 'Royalty' | 'Other'
   ) {
-    super(id, name, amount, frequency, end_date);
+    super(id, name, amount, frequency, end_date, taxable);
   }
 }
 
@@ -64,9 +71,10 @@ export class WindfallIncome extends BaseIncome {
     amount: number,
     frequency: 'Weekly' | 'Monthly' | 'Annually',
     end_date: Date,
+    taxable: "Yes" | "No",
     public receipt_date: Date
   ) {
-    super(id, name, amount, frequency, end_date);
+    super(id, name, amount, frequency, end_date, taxable);
   }
 }
 

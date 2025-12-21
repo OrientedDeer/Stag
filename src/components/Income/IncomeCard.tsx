@@ -59,7 +59,7 @@ const IncomeCard = ({ income }: { income: AnyIncome }) => {
 		<div className="w-full">
 			<div className="flex gap-4 mb-4">
 				<div
-					className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg ${getIconBg()} text-sm font-bold text-white`}
+					className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg ${getIconBg()} text-md font-bold text-white`}
 				>
 					{getDescriptor().slice(0, 1)}
 				</div>
@@ -89,6 +89,13 @@ const IncomeCard = ({ income }: { income: AnyIncome }) => {
                     value={income.frequency}
                     onChange={(e) => handleFieldUpdate("frequency", e.target.value)}
                     options={["Weekly", "Monthly", "Annually"]}
+                />
+
+				<StyledSelect
+                    label="Taxable"
+                    value={income.taxable}
+                    onChange={(e) => handleFieldUpdate("taxable", e.target.value)}
+                    options={["Yes", "No"]}
                 />
 
 				{income instanceof SocialSecurityIncome && (

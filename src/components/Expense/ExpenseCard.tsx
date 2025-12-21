@@ -92,7 +92,7 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 	return (
 		<div className="w-full">
 			<div className="flex gap-4 mb-4">
-				<div className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg ${getIconBg()} text-sm font-bold text-white`}>
+				<div className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg ${getIconBg()} text-md font-bold text-white`}>
 					{getDescriptor().slice(0, 1)}
 				</div>
 				<div className="grow"> 
@@ -126,21 +126,6 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
                     onChange={(e) => handleFieldUpdate("frequency", e.target.value)}
                     options={["Daily", "Weekly", "BiWeekly", "Monthly", "Annually"]}
                 />
-                
-				{(expense instanceof HousingExpense ||
-					expense instanceof DependentExpense ||
-					expense instanceof HealthcareExpense ||
-					expense instanceof VacationExpense ||
-					expense instanceof IncomeDeductionExpense ||
-					expense instanceof TransportExpense
-				) && (
-					<StyledInput
-						label="Inflation (%)"
-						type="number"
-						value={expense.inflation}
-						onChange={(e) => handleFieldUpdate("inflation", Number(e.target.value))}
-					/>
-				)}
 
                 {/* --- Specialized Housing Fields --- */}
                 {isHousing && (
@@ -160,7 +145,7 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
                             value={expense.maintenance}
                             onChange={(val) => handleFieldUpdate("maintenance", val)}
                         />
-						<div className="text-xs text-gray-500 italic mt-1">
+						<div className="text-sm text-gray-500 italic mt-1">
 							Total: ${expense.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
 						</div>
 					</>
@@ -196,9 +181,9 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 						label="Tax Deductible" 
 						value={expense.is_tax_deductible} 
 						onChange={(e) => handleFieldUpdate("is_tax_deductible", e.target.value)} 
-						options={["Yes", "No"]} 
+						options={["Yes", "No", "Itemized"]} 
 					/>
-					{(expense.is_tax_deductible === 'Yes') && (
+					{(expense.is_tax_deductible === 'Yes' || expense.is_tax_deductible === 'Itemized') && (
                         <CurrencyInput
                             label="Deductible Amount"
                             value={expense.tax_deductible}
@@ -226,9 +211,9 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 						label="Tax Deductible" 
 						value={expense.is_tax_deductible} 
 						onChange={(e) => handleFieldUpdate("is_tax_deductible", e.target.value)} 
-						options={["Yes", "No"]} 
+						options={["Yes", "No", "Itemized"]} 
 					/>
-					{(expense.is_tax_deductible === 'Yes') && (
+					{(expense.is_tax_deductible === 'Yes' || expense.is_tax_deductible === 'Itemized') && (
                         <CurrencyInput
                             label="Deductible Amount"
                             value={expense.tax_deductible}
@@ -239,18 +224,33 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 			)}
 
 			{expense instanceof IncomeDeductionExpense && (
-				<StyledSelect
-					label="Linked Income Source"
-					value={expense.income.name} 
-					onChange={(e) => {
-						const selectedInc = incomes.find(inc => inc.name === e.target.value);
-						if (selectedInc) {
-                            // Cast as AllExpenseKeys to satisfy Typescript union constraints
-							handleFieldUpdate("income" as AllExpenseKeys, selectedInc);
-						}
-					}}
-					options={incomes.map(inc => inc.name)}
-				/>
+				<>
+					<StyledSelect 
+						label="Tax Deductible" 
+						value={expense.is_tax_deductible} 
+						onChange={(e) => handleFieldUpdate("is_tax_deductible", e.target.value)} 
+						options={["Yes", "No", "Itemized"]} 
+					/>
+					{(expense.is_tax_deductible === 'Yes' || expense.is_tax_deductible === 'Itemized') && (
+                        <CurrencyInput
+                            label="Deductible Amount"
+                            value={expense.tax_deductible}
+                            onChange={(val) => handleFieldUpdate("tax_deductible", val)}
+                        />
+					)}
+					<StyledSelect
+						label="Linked Income Source"
+						value={expense.income.name} 
+						onChange={(e) => {
+							const selectedInc = incomes.find(inc => inc.name === e.target.value);
+							if (selectedInc) {
+								// Cast as AllExpenseKeys to satisfy Typescript union constraints
+								handleFieldUpdate("income" as AllExpenseKeys, selectedInc);
+							}
+						}}
+						options={incomes.map(inc => inc.name)}
+					/>
+				</>
 			)}
 			</div>
 		</div>

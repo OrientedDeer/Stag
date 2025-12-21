@@ -46,7 +46,6 @@ function reconstituteExpense(expenseData: any): AnyExpense | null {
             expenseData.property_taxes,
             expenseData.maintenance,
             expenseData.frequency,
-            expenseData.inflation,
           ), expenseData);
         case 'LoanExpense':
           return Object.assign(new LoanExpense(
@@ -68,7 +67,6 @@ function reconstituteExpense(expenseData: any): AnyExpense | null {
             expenseData.name, 
             expenseData.amount,
             expenseData.frequency,
-            expenseData.inflation,
             start_date,
             end_date,
             expenseData.is_tax_deductible,
@@ -80,7 +78,6 @@ function reconstituteExpense(expenseData: any): AnyExpense | null {
             expenseData.name, 
             expenseData.amount,
             expenseData.frequency,
-            expenseData.inflation,
           ), expenseData);
         case 'VacationExpense':
           return Object.assign(new VacationExpense(
@@ -88,7 +85,6 @@ function reconstituteExpense(expenseData: any): AnyExpense | null {
               expenseData.name, 
               expenseData.amount,
               expenseData.frequency,
-              expenseData.inflation,
           ), expenseData);
         case 'EmergencyExpense':
           return Object.assign(new EmergencyExpense(
@@ -103,8 +99,9 @@ function reconstituteExpense(expenseData: any): AnyExpense | null {
             expenseData.name, 
             expenseData.amount,
             expenseData.frequency,
+            expenseData.is_tax_deductible,
+            expenseData.tax_deductible,
             expenseData.income,
-            expenseData.inflation,
           ), expenseData);
         case 'TransportExpense':
           return Object.assign(new TransportExpense(
@@ -112,7 +109,6 @@ function reconstituteExpense(expenseData: any): AnyExpense | null {
             expenseData.name, 
             expenseData.amount,
             expenseData.frequency,
-            expenseData.inflation,
           ), expenseData);
         case 'OtherExpense':
           return Object.assign(new OtherExpense(

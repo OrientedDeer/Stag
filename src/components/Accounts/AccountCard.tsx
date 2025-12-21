@@ -62,7 +62,7 @@ const AccountCard = ({ account }: { account: AnyAccount }) => {
 	return (
 		<div className="w-full">
 			<div className="flex gap-4 mb-4">
-				<div className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg ${getIconBg()} text-sm font-bold text-white`}>
+				<div className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg ${getIconBg()} text-md font-bold text-white`}>
 					{getDescriptor().slice(0, 1)}
 				</div>
 				<div className="grow"> 

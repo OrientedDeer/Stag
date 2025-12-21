@@ -107,7 +107,7 @@ export default function ExpenseHorizontalBarChart({
 
 	return (
 		<div className="mb-1">
-			<div className="flex justify-center text-white text-xs">
+			<div className="flex justify-center text-white text-md">
 				{type} (Monthly) $
 				{totalMonthlyExpense.toLocaleString(undefined, {
 					minimumFractionDigits: 2,

@@ -22,6 +22,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
     const [selectedType, setSelectedType] = useState<any>(null);
     const [name, setName] = useState("");
     const [amount, setAmount] = useState<number>(0);
+    const [taxable, setTaxable] = useState<'Yes' | 'No'>('Yes');
     const [frequency, setFrequency] = useState<'Weekly' | 'Monthly' | 'Annually'>('Monthly');
     const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
     
@@ -61,13 +62,13 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
         let newIncome;
 
         if (selectedType === SocialSecurityIncome) {
-            newIncome = new selectedType(id, name.trim(), amount, frequency, finalEndDate, claimingAge);
+            newIncome = new selectedType(id, name.trim(), amount, frequency, finalEndDate, taxable, claimingAge);
         } else if (selectedType === PassiveIncome) {
-            newIncome = new selectedType(id, name.trim(), amount, frequency, finalEndDate, sourceType);
+            newIncome = new selectedType(id, name.trim(), amount, frequency, finalEndDate, taxable, sourceType);
         } else if (selectedType === WindfallIncome) {
-            newIncome = new selectedType(id, name.trim(), amount, frequency, finalEndDate, new Date(receiptDate));
+            newIncome = new selectedType(id, name.trim(), amount, frequency, finalEndDate, taxable, new Date(receiptDate));
         } else {
-            newIncome = new selectedType(id, name.trim(), amount, frequency, finalEndDate);
+            newIncome = new selectedType(id, name.trim(), amount, frequency, finalEndDate, taxable);
         }
 
         dispatch({ type: "ADD_INCOME", payload: newIncome });
@@ -96,7 +97,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                             <button
                                 key={cat.label}
                                 onClick={() => handleTypeSelect(cat.class)}
-                                className="flex items-center justify-center p-2 h-12 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-xl border border-gray-700 transition-all font-medium text-sm text-center"
+                                className="flex items-center justify-center p-2 h-12 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-xl border border-gray-700 transition-all font-medium text-md text-center"
                             >
                                 {cat.label}
                             </button>
@@ -106,17 +107,17 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                     <div className="space-y-4">
                         {/* Name Field */}
                         <div>
-                            <label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">Name</label>
+                            <label className="block text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">Name</label>
                             <input 
                                 autoFocus 
-                                className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500 transition-colors h-[42px]"
+                                className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-md focus:outline-none focus:border-green-500 transition-colors h-[42px]"
                                 value={name} 
                                 onChange={(e) => setName(e.target.value)} 
                             />
                         </div>
 
                         {/* Amount & Frequency Row */}
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-3 gap-4">
                             <CurrencyInput
                                 label="Amount"
                                 value={amount}
@@ -124,10 +125,10 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                             />
                             
                             <div>
-                                <label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">Frequency</label>
+                                <label className="block text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">Frequency</label>
                                 <div className="bg-gray-900 border border-gray-700 rounded-md px-3 py-2 h-[42px] flex items-center">
                                     <select 
-                                        className="bg-transparent border-none outline-none text-white text-sm font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
+                                        className="bg-transparent border-none outline-none text-white text-md font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
                                         value={frequency} 
                                         onChange={(e) => setFrequency(e.target.value as any)}
                                     >
@@ -137,14 +138,28 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                     </select>
                                 </div>
                             </div>
+
+                            <div>
+                                <label className="block text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">Taxable</label>
+                                <div className="bg-gray-900 border border-gray-700 rounded-md px-3 py-2 h-[42px] flex items-center">
+                                    <select 
+                                        className="bg-transparent border-none outline-none text-white text-md font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
+                                        value={taxable} 
+                                        onChange={(e) => setTaxable(e.target.value as any)}
+                                    >
+                                        <option value="Yes" className="bg-gray-950">Yes</option>
+                                        <option value="No" className="bg-gray-950">No</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
 
                         {/* End Date Row */}
                         <div>
-                            <label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">End Date</label>
+                            <label className="block text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">End Date</label>
                             <input 
                                 type="date" 
-                                className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500 transition-colors h-[42px]"
+                                className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-md focus:outline-none focus:border-green-500 transition-colors h-[42px]"
                                 value={endDate} 
                                 onChange={(e) => setEndDate(e.target.value)} 
                             />
@@ -153,10 +168,10 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                         {/* --- Specialized Fields --- */}
                         {selectedType === SocialSecurityIncome && (
                             <div>
-                                <label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">Claiming Age</label>
+                                <label className="block text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">Claiming Age</label>
                                 <input 
                                     type="number" 
-                                    className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500 transition-colors h-[42px]"
+                                    className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-md focus:outline-none focus:border-green-500 transition-colors h-[42px]"
                                     value={claimingAge} 
                                     onChange={(e) => setClaimingAge(Number(e.target.value))} 
                                 />
@@ -165,10 +180,10 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
 
                         {selectedType === PassiveIncome && (
                             <div>
-                                <label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">Source Type</label>
+                                <label className="block text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">Source Type</label>
                                 <div className="bg-gray-900 border border-gray-700 rounded-md px-3 py-2 h-[42px] flex items-center">
                                     <select 
-                                        className="bg-transparent border-none outline-none text-white text-sm font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
+                                        className="bg-transparent border-none outline-none text-white text-md font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
                                         value={sourceType} 
                                         onChange={(e) => setSourceType(e.target.value)}
                                     >
@@ -183,10 +198,10 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
 
                         {selectedType === WindfallIncome && (
                             <div>
-                                <label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">Receipt Date</label>
+                                <label className="block text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">Receipt Date</label>
                                 <input 
                                     type="date" 
-                                    className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500 transition-colors h-[42px]"
+                                    className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-md focus:outline-none focus:border-green-500 transition-colors h-[42px]"
                                     value={receiptDate} 
                                     onChange={(e) => setReceiptDate(e.target.value)} 
                                 />

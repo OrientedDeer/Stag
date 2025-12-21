@@ -121,7 +121,7 @@ export default function HorizontalBarChart({
 
 	return (
 		<div className="mb-1">
-			<div className="flex justify-center text-white text-xs">
+			<div className="flex justify-center text-white text-md">
 				{type} $
                 {/* Display the Net Worth, not the Visual Total */}
 				{displayTotal.toLocaleString(undefined, {
