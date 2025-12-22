@@ -25,7 +25,10 @@ type Action =
   | { type: 'DELETE_ACCOUNT'; payload: { id: string } }
   | { type: 'UPDATE_ACCOUNT_FIELD'; payload: { id: string; field: AllAccountKeys; value: any } }
   | { type: 'ADD_AMOUNT_SNAPSHOT'; payload: { id: string; amount: number } }
-  | { type: 'REORDER_ACCOUNTS'; payload: { startIndex: number; endIndex: number } };
+  | { type: 'REORDER_ACCOUNTS'; payload: { startIndex: number; endIndex: number } }
+  | { type: 'UPDATE_HISTORY_ENTRY'; payload: { id: string; index: number; date: string; num: number } }
+  | { type: 'DELETE_HISTORY_ENTRY'; payload: { id: string; index: number } }
+  | { type: 'ADD_HISTORY_ENTRY'; payload: { id: string; date: string; num: number } };
 
 const getTodayString = () => new Date().toISOString().split('T')[0];
 
@@ -163,6 +166,40 @@ const accountReducer = (state: AppState, action: Action): AppState => {
       const [removed] = result.splice(action.payload.startIndex, 1);
       result.splice(action.payload.endIndex, 0, removed);
       return { ...state, accounts: result };
+    }
+
+    case 'UPDATE_HISTORY_ENTRY': {
+      const { id, index, date, num } = action.payload;
+      const history = [...(state.amountHistory[id] || [])];
+      if (history[index]) {
+        history[index] = { date, num };
+        return {
+          ...state,
+          amountHistory: { ...state.amountHistory, [id]: history },
+        };
+      }
+      return state;
+    }
+
+    case 'DELETE_HISTORY_ENTRY': {
+      const { id, index } = action.payload;
+      const history = [...(state.amountHistory[id] || [])];
+      history.splice(index, 1);
+      return {
+        ...state,
+        amountHistory: { ...state.amountHistory, [id]: history },
+      };
+    }
+
+    case 'ADD_HISTORY_ENTRY': {
+      const { id, date, num } = action.payload;
+      // Add and then sort by date to keep the chart logical
+      const history = [...(state.amountHistory[id] || []), { date, num }];
+      history.sort((a, b) => a.date.localeCompare(b.date));
+      return {
+        ...state,
+        amountHistory: { ...state.amountHistory, [id]: history },
+      };
     }
 
     default:

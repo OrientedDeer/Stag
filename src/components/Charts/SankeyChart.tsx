@@ -170,39 +170,41 @@ export const SankeyChart = ({ incomes, expenses, taxState }: SankeyChartProps) =
     }, [incomes, expenses, taxState]);
 
     return (
-        <ResponsiveSankey
-            data={data}
-            margin={{ top: 40, right: 180, bottom: 40, left: 180 }}
-            align="justify"
-            colors={(node: any) => node.color}
-            nodeOpacity={1}
-            nodeThickness={20}
-            nodeSpacing={20}
-            enableLinkGradient={true}
-            linkBlendMode="normal"
-            linkOpacity={0.15}
-            label={(node: any) => node.label}
-            labelPosition="outside"
-            labelPadding={16}
-            sort="input"
-            nodeTooltip={({ node }) => (
-                <div className="bg-gray-900 p-2 rounded border border-gray-700 shadow-xl">
-                    <span className="font-bold text-gray-200">{node.label}</span>
-                    <div className="text-green-400 font-mono mt-1">
-                        ${node.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+        <div className='h-[300px]'>
+            <ResponsiveSankey
+                data={data}
+                margin={{ top: 5, right: 95, bottom: 10, left: 130 }}
+                align="justify"
+                colors={(node: any) => node.color}
+                nodeOpacity={1}
+                nodeThickness={20}
+                nodeSpacing={20}
+                enableLinkGradient={true}
+                linkBlendMode="normal"
+                linkOpacity={0.15}
+                label={(node: any) => node.label}
+                labelPosition="outside"
+                labelPadding={16}
+                sort="input"
+                nodeTooltip={({ node }) => (
+                    <div className="bg-gray-900 p-2 rounded border border-gray-700 shadow-xl">
+                        <span className="font-bold text-gray-200">{node.label}</span>
+                        <div className="text-green-400 font-mono mt-1">
+                            ${node.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </div>
                     </div>
-                </div>
-            )}
-            linkTooltip={({ link }) => (
-                <div className="bg-gray-900 p-2 rounded border border-gray-700 shadow-xl">
-                    <span className="font-bold text-gray-200">
-                        {(link.source as any).label} &rarr; {(link.target as any).label}
-                    </span>
-                </div>
-            )}
-            theme={{
-                labels: { text: { fill: '#e5e7eb', fontSize: 11, fontWeight: 600 } }
-            }}
-        />
+                )}
+                linkTooltip={({ link }) => (
+                    <div className="bg-gray-900 p-2 rounded border border-gray-700 shadow-xl">
+                        <span className="font-bold text-gray-200">
+                            {(link.source as any).label} &rarr; {(link.target as any).label}
+                        </span>
+                    </div>
+                )}
+                theme={{
+                    labels: { text: { fill: '#e5e7eb', fontSize: 11, fontWeight: 600 } }
+                }}
+            />
+        </div>
     );
 };
