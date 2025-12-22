@@ -111,8 +111,6 @@ export const SankeyChart = ({ incomes, expenses, taxState }: SankeyChartProps) =
         // 5. Post-Tax Layer
         if (totalRoth > 0) nodes.push({ id: 'Roth Savings', color: '#10b981', label: 'Roth Savings' });
 
-        // --- DEFINE LINKS ---
-
         // Level 0: Incomes -> Gross Pay
         incomes.forEach(inc => {
              const amount = getYearlyAmount(inc);

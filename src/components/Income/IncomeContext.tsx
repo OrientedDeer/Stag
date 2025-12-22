@@ -18,65 +18,41 @@ type Action =
   | { type: 'ADD_INCOME'; payload: AnyIncome }
   | { type: 'DELETE_INCOME'; payload: { id: string } }
   | { type: 'UPDATE_INCOME_FIELD'; payload: { id: string; field: AllIncomeKeys; value: any } }
-  | { type: 'REORDER_INCOMES'; payload: { startIndex: number; endIndex: number } };
+  | { type: 'REORDER_INCOMES'; payload: { startIndex: number; endIndex: number } }
+  | { type: 'SET_BULK_DATA'; payload: { incomes: AnyIncome[] } };
 
 const STORAGE_KEY = 'user_incomes_data';
 const initialState: AppState = {
   incomes: [],
 };
 
-function reconstituteIncome(incomeData: any): AnyIncome | null {
-    if (!incomeData || !incomeData.className) return null;
+export function reconstituteIncome(data: any): AnyIncome | null {
+    if (!data || !data.className) return null;
     
-    // Helper to restore Date objects which turn into strings in JSON
-    const end_date = new Date(incomeData.end_date);
-    const receipt_date = new Date(incomeData.receipt_date);
+    // Explicitly mapping fields ensures old saves don't break with new class structures
+    const base = {
+        id: data.id,
+        name: data.name || "Unnamed Income",
+        amount: Number(data.amount) || 0,
+        frequency: data.frequency || 'Monthly',
+        end_date: new Date(data.end_date || Date.now()),
+        earned_income: data.earned_income || "No"
+    };
 
-    switch (incomeData.className) {
+    switch (data.className) {
         case 'WorkIncome':
-            return Object.assign(new WorkIncome(
-                incomeData.id, 
-                incomeData.name, 
-                incomeData.amount,
-                incomeData.frequency,
-                end_date,
-                incomeData.earned_income,
-                incomeData.preTax401k,
-                incomeData.insurance,
-                incomeData.roth401k,
-            ), incomeData);
+            return new WorkIncome(base.id, base.name, base.amount, base.frequency, base.end_date, base.earned_income, 
+                data.preTax401k || 0, data.insurance || 0, data.roth401k || 0);
         case 'SocialSecurityIncome':
-            return Object.assign(new SocialSecurityIncome(
-                incomeData.id, 
-                incomeData.name, 
-                incomeData.amount, 
-                incomeData.frequency,
-                end_date,
-                incomeData.earned_income,
-                incomeData.claimingAge
-            ), incomeData);
+            return new SocialSecurityIncome(base.id, base.name, base.amount, base.frequency, base.end_date, base.earned_income, 
+                data.claimingAge || 67);
         case 'PassiveIncome':
-            return Object.assign(new PassiveIncome(
-                incomeData.id, 
-                incomeData.name, 
-                incomeData.amount,
-                incomeData.frequency, 
-                end_date,
-                incomeData.earned_income,
-                incomeData.sourceType
-            ), incomeData);
+            return new PassiveIncome(base.id, base.name, base.amount, base.frequency, base.end_date, base.earned_income, 
+                data.sourceType || 'Other');
         case 'WindfallIncome':
-            return Object.assign(new WindfallIncome(
-                incomeData.id, 
-                incomeData.name, 
-                incomeData.amount, 
-                incomeData.frequency,
-                end_date,
-                incomeData.earned_income,
-                receipt_date
-            ), incomeData);
+            return new WindfallIncome(base.id, base.name, base.amount, base.frequency, base.end_date, base.earned_income, 
+                new Date(data.receipt_date || Date.now()));
         default:
-            console.warn(`Unknown income type: ${incomeData.className}`);
             return null;
     }
 }
@@ -116,6 +92,9 @@ const incomeReducer = (state: AppState, action: Action): AppState => {
       result.splice(action.payload.endIndex, 0, removed);
       return { ...state, incomes: result };
     }
+
+    case 'SET_BULK_DATA':
+      return { ...state, incomes: action.payload.incomes };
     
     default:
       return state;

@@ -23,103 +23,40 @@ type Action =
   | { type: 'DELETE_EXPENSE'; payload: { id: string } }
   | { type: 'UPDATE_EXPENSE_FIELD'; payload: { id: string; field: AllExpenseKeys; value: any } }
   | { type: 'REORDER_EXPENSES'; payload: { startIndex: number; endIndex: number } }
+  | { type: 'SET_BULK_DATA'; payload: { expenses: AnyExpense[] } };
 
 const STORAGE_KEY = 'user_expenses_data';
 const initialState: AppState = {
   expenses: [],
 };
 
-function reconstituteExpense(expenseData: any): AnyExpense | null {
-    if (!expenseData || !expenseData.className) return null;
+export function reconstituteExpense(data: any): AnyExpense | null {
+    if (!data || !data.className) return null;
     
-    // Helper to restore Date objects which turn into strings in JSON
-    const end_date = new Date(expenseData.end_date);
-    const start_date = new Date(expenseData.start_date);
+    const base = {
+        id: data.id,
+        name: data.name || "Unnamed Expense",
+        amount: Number(data.amount) || 0,
+        frequency: data.frequency || 'Monthly',
+    };
 
-    switch (expenseData.className) {
+    switch (data.className) {
         case 'HousingExpense':
-          return Object.assign(new HousingExpense(
-            expenseData.id, 
-            expenseData.name, 
-            expenseData.payment, // Ensure payment is restored
-            expenseData.utilities,
-            expenseData.property_taxes,
-            expenseData.maintenance,
-            expenseData.frequency,
-          ), expenseData);
+            return new HousingExpense(base.id, base.name, data.payment || 0, data.utilities || 0, data.property_taxes || 0, data.maintenance || 0, base.frequency);
         case 'LoanExpense':
-          return Object.assign(new LoanExpense(
-            expenseData.id, 
-            expenseData.name, 
-            expenseData.amount,
-            expenseData.frequency,
-            expenseData.apr,
-            expenseData.interest_type,
-            start_date,
-            expenseData.payment,
-            expenseData.is_tax_deductible,
-            expenseData.tax_deductible,
-            expenseData.linkedAccountId
-          ), expenseData);
+            return new LoanExpense(base.id, base.name, base.amount, base.frequency, data.apr || 0, data.interest_type || 'Simple', new Date(data.start_date || Date.now()), data.payment || 0, data.is_tax_deductible || 'No', data.tax_deductible || 0, data.linkedAccountId || '');
         case 'DependentExpense':
-          return Object.assign(new DependentExpense(
-            expenseData.id, 
-            expenseData.name, 
-            expenseData.amount,
-            expenseData.frequency,
-            start_date,
-            end_date,
-            expenseData.is_tax_deductible,
-            expenseData.tax_deductible,
-          ), expenseData);
+            return new DependentExpense(base.id, base.name, base.amount, base.frequency, new Date(data.start_date || Date.now()), new Date(data.end_date || Date.now()), data.is_tax_deductible || 'No', data.tax_deductible || 0);
         case 'HealthcareExpense':
-          return Object.assign(new HealthcareExpense(
-            expenseData.id, 
-            expenseData.name, 
-            expenseData.amount,
-            expenseData.frequency,
-            expenseData.is_tax_deductible,
-            expenseData.tax_deductible,
-          ), expenseData);
-        case 'VacationExpense':
-          return Object.assign(new VacationExpense(
-              expenseData.id, 
-              expenseData.name, 
-              expenseData.amount,
-              expenseData.frequency,
-          ), expenseData);
-        case 'EmergencyExpense':
-          return Object.assign(new EmergencyExpense(
-            expenseData.id, 
-            expenseData.name, 
-            expenseData.amount,
-            expenseData.frequency,
-          ), expenseData);
-        case 'TransportExpense':
-          return Object.assign(new TransportExpense(
-            expenseData.id, 
-            expenseData.name, 
-            expenseData.amount,
-            expenseData.frequency,
-          ), expenseData);
-        case 'FoodExpense':
-          return Object.assign(new FoodExpense(
-            expenseData.id, 
-            expenseData.name, 
-            expenseData.amount,
-            expenseData.frequency,
-          ), expenseData);
-        case 'OtherExpense':
-          return Object.assign(new OtherExpense(
-            expenseData.id, 
-            expenseData.name, 
-            expenseData.amount,
-            expenseData.frequency,
-          ), expenseData);
+            return new HealthcareExpense(base.id, base.name, base.amount, base.frequency, data.is_tax_deductible || 'No', data.tax_deductible || 0);
+        case 'VacationExpense': return new VacationExpense(base.id, base.name, base.amount, base.frequency);
+        case 'EmergencyExpense': return new EmergencyExpense(base.id, base.name, base.amount, base.frequency);
+        case 'TransportExpense': return new TransportExpense(base.id, base.name, base.amount, base.frequency);
+        case 'FoodExpense': return new FoodExpense(base.id, base.name, base.amount, base.frequency);
+        case 'OtherExpense': return new OtherExpense(base.id, base.name, base.amount, base.frequency);
         default:
-          console.warn(`Unknown expense type: ${expenseData.className}`);
-          return null;
-  }
+            return null;
+    }
 }
 
 const expenseReducer = (state: AppState, action: Action): AppState => {
@@ -164,6 +101,9 @@ const expenseReducer = (state: AppState, action: Action): AppState => {
       result.splice(action.payload.endIndex, 0, removed);
       return { ...state, expenses: result };
     }
+
+    case 'SET_BULK_DATA':
+      return { ...state, expenses: action.payload.expenses };
 
     default:
       return state;

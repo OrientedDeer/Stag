@@ -19,7 +19,8 @@ type Action =
   | { type: 'SET_DEDUCTION_METHOD'; payload: DeductionMethod }
   | { type: 'SET_FED_OVERRIDE'; payload: number | null }
   | { type: 'SET_FICA_OVERRIDE'; payload: number | null }
-  | { type: 'SET_STATE_OVERRIDE'; payload: number | null };
+  | { type: 'SET_STATE_OVERRIDE'; payload: number | null }
+  | { type: 'SET_BULK_DATA'; payload: TaxState };
 
 const initialState: TaxState = {
   filingStatus: 'Single',
@@ -38,6 +39,7 @@ const taxReducer = (state: TaxState, action: Action): TaxState => {
     case 'SET_FED_OVERRIDE': return { ...state, fedOverride: action.payload };
     case 'SET_FICA_OVERRIDE': return { ...state, ficaOverride: action.payload };
     case 'SET_STATE_OVERRIDE': return { ...state, stateOverride: action.payload };
+    case 'SET_BULK_DATA': return { ...action.payload };
     default: return state;
   }
 };
