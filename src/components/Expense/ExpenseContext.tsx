@@ -42,6 +42,8 @@ export function reconstituteExpense(data: any): AnyExpense | null {
     };
 
     switch (data.className) {
+        case 'HousingExpense':
+            return new RentExpense(base.id, base.name, data.payment || 0, data.utilities || 0, base.frequency);
         case 'RentExpense':
             return new RentExpense(base.id, base.name, data.payment || 0, data.utilities || 0, base.frequency);
         case 'MortgageExpense':

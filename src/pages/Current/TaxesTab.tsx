@@ -4,11 +4,9 @@ import { ExpenseContext } from "../../components/Expense/ExpenseContext";
 import { TaxContext } from "../../components/Taxes/TaxContext";
 import { TAX_DATABASE, FilingStatus } from "../../components/Taxes/TaxData";
 import {
-    calculateTax,
     calculateFicaTax,
     getGrossIncome,
     getPreTaxExemptions,
-    getFicaExemptions,
     getEarnedIncome,
     getPostTaxExemptions,
     getItemizedDeductions,
