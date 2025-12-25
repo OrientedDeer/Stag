@@ -3,15 +3,13 @@ import { Link } from 'react-router-dom';
 import { IncomeContext } from '../components/Income/IncomeContext';
 import { ExpenseContext } from '../components/Expense/ExpenseContext';
 import { AccountContext } from '../components/Accounts/AccountContext';
-import { TaxContext } from '../components/Taxes/TaxContext';
-import { SankeyChart } from '../components/Charts/SankeyChart';
 import { NetWorthCard } from '../components/Charts/Networth';
+import { CashflowChart } from '../components/Charts/CashFlowChart';
 
 export default function Dashboard() {
   const incomeCtx = useContext(IncomeContext);
   const expenseCtx = useContext(ExpenseContext);
   const accountCtx = useContext(AccountContext);
-  const taxCtx = useContext(TaxContext);
 
   const hasIncomes = incomeCtx.incomes.length > 0;
   const hasExpenses = expenseCtx.expenses.length > 0;
@@ -71,11 +69,7 @@ export default function Dashboard() {
               <h2 className="text-xl font-bold text-gray-200 mb-6">Yearly Cash Flow</h2>
               <div className="min-h-[300px] flex flex-col justify-center">
                 {hasIncomes ? (
-                  <SankeyChart 
-                    incomes={incomeCtx.incomes} 
-                    expenses={expenseCtx.expenses}
-                    taxState={taxCtx.state}
-                  />
+                  <CashflowChart/>
                 ) : (
                   <div className='flex flex-col items-center justify-center text-center p-12 border-2 border-dashed border-gray-800 rounded-2xl'>
                     <div className="text-gray-500 text-lg mb-2">No income data available</div>

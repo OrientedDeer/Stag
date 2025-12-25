@@ -1,28 +1,17 @@
-import { useMemo } from 'react';
+import { useContext, useMemo } from 'react';
 import { ResponsiveSankey } from '@nivo/sankey';
 import { AnyIncome, WorkIncome } from '../Income/models';
 import { AnyExpense, LoanExpense, CLASS_TO_CATEGORY as EXPENSE_CLASS_TO_CAT } from '../Expense/models';
-import { TAX_DATABASE, FilingStatus } from '../Taxes/TaxData';
+import { TAX_DATABASE } from '../Taxes/TaxData';
 import { 
-    calculateTax, 
-    calculateFicaTax, 
-    getGrossIncome, 
-    getEarnedIncome,
-    getPreTaxExemptions,
-    getFicaExemptions
+    calculateFicaTax,
+    calculateFederalTax,
+    calculateStateTax,
+    getGrossIncome
 } from '../Taxes/TaxService';
-
-interface SankeyChartProps {
-    incomes: AnyIncome[];
-    expenses: AnyExpense[];
-    taxState: {
-        filingStatus: FilingStatus;
-        stateResidency: string;
-        fedOverride: number | null;
-        ficaOverride: number | null;
-        stateOverride: number | null;
-    };
-}
+import { TaxContext } from '../Taxes/TaxContext';
+import { IncomeContext } from '../Income/IncomeContext';
+import { ExpenseContext } from '../Expense/ExpenseContext';
 
 const getYearlyAmount = (item: AnyIncome | AnyExpense) => {
     let amount = item.amount;
@@ -46,34 +35,33 @@ const getYearlyDeduction = (amount: number, frequency: string) => {
     }
 }
 
-export const SankeyChart = ({ incomes, expenses, taxState }: SankeyChartProps) => {
+export const CashflowChart = () => {
+    const { incomes } = useContext(IncomeContext);
+    const { expenses } = useContext(ExpenseContext);
+    const { state: taxState } = useContext(TaxContext);
+
     const data = useMemo(() => {
         const nodes: any[] = [];
         const links: any[] = [];
 
         // 1. Core Totals
         const totalAnnualIncome = getGrossIncome(incomes);
-        const earnedGross = getEarnedIncome(incomes);
-        
-        // 2. Deduction Calculations
-        const preTaxDeductions = getPreTaxExemptions(incomes); 
-        const ficaExemptions = getFicaExemptions(incomes);    
 
-        // 3. Tax Calculations
+        // 2. Tax Calculations
         const year = 2025;
         const fedParams = TAX_DATABASE.federal[year]?.[taxState.filingStatus];
         const stateParams = TAX_DATABASE.states[taxState.stateResidency]?.[year]?.[taxState.filingStatus];
 
-        let annualFedTax = fedParams ? calculateTax(totalAnnualIncome, preTaxDeductions, fedParams) : 0;
-        let annualStateTax = stateParams ? calculateTax(totalAnnualIncome, preTaxDeductions, stateParams) : 0;
-        let annualFicaTax = fedParams ? calculateFicaTax(earnedGross, ficaExemptions, fedParams) : 0;
+        let annualFedTax = fedParams ? calculateFederalTax(taxState, incomes, expenses, year) : 0;
+        let annualStateTax = stateParams ? calculateStateTax(taxState, incomes, expenses, year): 0;
+        let annualFicaTax = fedParams ? calculateFicaTax(taxState, incomes, year): 0;
 
         // Apply Overrides
         if (taxState.fedOverride !== null) annualFedTax = taxState.fedOverride;
         if (taxState.ficaOverride !== null) annualFicaTax = taxState.ficaOverride;
         if (taxState.stateOverride !== null) annualStateTax = taxState.stateOverride;
 
-        // 4. Detailed Deduction Breakdown
+        // 3. Detailed Deduction Breakdown
         let total401k = 0;
         let totalInsurance = 0;
         let totalRoth = 0;

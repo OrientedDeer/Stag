@@ -12,7 +12,9 @@ import {
     getEarnedIncome,
     getPostTaxExemptions,
     getItemizedDeductions,
-    getYesDeductions
+    getYesDeductions,
+    calculateFederalTax,
+    calculateStateTax
 } from "../../components/Taxes/TaxService";
 import { CurrencyInput } from "../../components/Layout/CurrencyInput";
 
@@ -25,53 +27,25 @@ export default function TaxesTab() {
     const { state, dispatch } = useContext(TaxContext);
 
     const currentYear = 2025;
-
-    // 1. Calculate Base Totals
+    
+    const stateTax = calculateStateTax(state, incomes, expenses, currentYear);
+    const federalTax = calculateFederalTax(state, incomes, expenses, currentYear);
+    const ficaTax = calculateFicaTax(state, incomes, currentYear);
     const annualGross = getGrossIncome(incomes);
-    const earnedIncome = getEarnedIncome(incomes);
-    const fedParams = TAX_DATABASE.federal[currentYear][state.filingStatus];
-
-    // 2. Deductions Logic
-    const incomePreTaxDeductions = getPreTaxExemptions(incomes);
-    const incomePostTaxDeductions = getPostTaxExemptions(incomes); // Roth 401k
     
-    const expenseAboveLineDeductions = getYesDeductions(expenses);
-    const totalPreTaxDeductions = incomePreTaxDeductions + expenseAboveLineDeductions;
-    const ficaExemptions = getFicaExemptions(incomes);
-
-    // Standard vs Itemized Logic
-    var itemizedTotal = getItemizedDeductions(expenses);
-
-    // 3. Tax Calculations
+    const stateItemized = getItemizedDeductions(expenses);
+    const federalItemizedTotal = stateItemized + stateTax;
     const stateParams = TAX_DATABASE.states[state.stateResidency]?.[currentYear]?.[state.filingStatus];
-    const stateStandardDeduction = stateParams?.standardDeduction || 0;
-    const stateAppliedMainDeduction =
-        state.deductionMethod === "Standard" ? stateStandardDeduction : itemizedTotal;
-    
-    const stateTax = state.stateOverride !== null 
-        ? state.stateOverride 
-        : (stateParams ? calculateTax(annualGross, totalPreTaxDeductions, { ...stateParams, standardDeduction: stateAppliedMainDeduction }) : 0);
-    
-    itemizedTotal += stateTax
-
+    const stateStandardDeduction = stateParams.standardDeduction;
+    const fedParams = TAX_DATABASE.federal[currentYear][state.filingStatus];
     const fedStandardDeduction = fedParams.standardDeduction;
     const fedAppliedMainDeduction =
-        state.deductionMethod === "Standard" ? fedStandardDeduction : itemizedTotal;
-
-    const federalTax = state.fedOverride !== null 
-        ? state.fedOverride 
-        : calculateTax(annualGross, totalPreTaxDeductions, { ...fedParams, standardDeduction: fedAppliedMainDeduction });
-
-    const ficaTax = state.ficaOverride !== null 
-        ? state.ficaOverride 
-        : calculateFicaTax(earnedIncome, ficaExemptions, fedParams);
-
-    const totalTax = federalTax + stateTax + ficaTax;
-    
-    // Net Pay = Gross - PreTax(401k/Ins) - Taxes - PostTax(Roth)
-    const netPaycheck = annualGross - incomePreTaxDeductions - totalTax - incomePostTaxDeductions;
-
-    const agi = Math.max(0, annualGross - totalPreTaxDeductions);
+        state.deductionMethod === "Standard" ? fedStandardDeduction : federalItemizedTotal;
+    const incomePreTaxDeductions = getPreTaxExemptions(incomes);
+    const incomePostTaxDeductions = getPostTaxExemptions(incomes);
+    const expenseAboveLineDeductions = getYesDeductions(expenses);
+    const totalPreTaxDeductions = incomePreTaxDeductions + expenseAboveLineDeductions;
+    const netPaycheck = annualGross - incomePreTaxDeductions - (federalTax + stateTax + ficaTax) - incomePostTaxDeductions;
 
     return (
         <div className="w-full min-h-full flex bg-gray-950 justify-center pt-6">
@@ -138,9 +112,9 @@ export default function TaxesTab() {
                                             Itemized
                                         </button>
                                     </div>
-                                    {itemizedTotal > fedStandardDeduction && state.deductionMethod === "Standard" && (
+                                    {federalItemizedTotal > fedStandardDeduction && state.deductionMethod === "Standard" && (
                                         <p className="text-[11px] text-yellow-500 mt-2 italic leading-tight">
-                                            Tip: Your itemized deductions (${itemizedTotal.toLocaleString()}) are higher than the standard deduction.
+                                            Tip: Your itemized deductions (${federalItemizedTotal.toLocaleString()}) are higher than the standard deduction.
                                         </p>
                                     )}
                                 </div>
@@ -205,7 +179,7 @@ export default function TaxesTab() {
                                 <div className="text-left sm:text-right border-l sm:border-l-0 sm:border-r border-gray-800 pl-4 sm:pl-0 sm:pr-4">
                                     <p className="text-gray-500 text-xs font-bold uppercase mb-1">Effective Rate</p>
                                     <p className="text-2xl font-bold text-white">
-                                        {annualGross > 0 ? ((totalTax / annualGross) * 100).toFixed(1) : 0}%
+                                         {annualGross > 0 ? (((federalTax + stateTax + ficaTax) / annualGross) * 100).toFixed(1) : 0}%
                                     </p>
                                 </div>
                             </div>
@@ -215,29 +189,39 @@ export default function TaxesTab() {
                                     <span className="text-lg">Gross Annual Income</span>
                                     <span className="font-mono text-xl">${annualGross.toLocaleString()}</span>
                                 </div>
+                                
+                                <div className="flex justify-end text-gray-300 text-xs italic items-right ">
+                                    <span className="font-mono -mt-5">Earned Income (${getEarnedIncome(incomes).toLocaleString()})</span>
+                                </div>
 
                                 {incomePreTaxDeductions > 0 && (
                                     <div className="flex justify-between text-blue-400 text-sm italic items-center">
-                                        <span>Pre-Tax Deductions (401k/Ins)</span>
+                                        <span>Pre-Tax Deductions (401k)</span>
                                         <span className="font-mono">-${totalPreTaxDeductions.toLocaleString()}</span>
                                     </div>
                                 )}
-                                {(state.deductionMethod === "Itemized" && itemizedTotal > 0) && (
+                                {(state.deductionMethod === "Itemized" && federalItemizedTotal > 0) && (
                                     <div className="flex justify-between text-blue-400 text-sm italic items-center">
-                                        <span>Itemized Deductions (Exepenses)</span>
-                                        <span className="font-mono">-${itemizedTotal.toLocaleString()}</span>
+                                        <span>Itemized Deductions (Federal/State)</span>
+                                        <div>
+                                            <span className="font-mono">-${federalItemizedTotal.toLocaleString()}/</span>
+                                            <span className="font-mono">-${stateItemized.toLocaleString()}</span>
+                                        </div>
                                     </div>
                                 )}
                                 {(state.deductionMethod === "Standard") && (
                                     <div className="flex justify-between text-blue-400 text-sm italic items-center">
-                                        <span>Standard Deduction</span>
-                                        <span className="font-mono">-${fedStandardDeduction.toLocaleString()}</span>
+                                        <span>Standard Deduction (Federal/State)</span>
+                                        <div>
+                                            <span className="font-mono">-${fedStandardDeduction.toLocaleString()}/</span>
+                                            <span className="font-mono">-${stateStandardDeduction.toLocaleString()}</span>
+                                        </div>
                                     </div>
                                 )}
                                 
                                 <div className="flex justify-between text-gray-500 text-sm font-semibold items-center border-t border-gray-800/50 pt-2 mt-2">
                                     <span>Adjusted Gross Income (AGI)</span>
-                                    <span className="font-mono">${agi.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                    <span className="font-mono">${(Math.max(0, annualGross - totalPreTaxDeductions)).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
                                 </div>
 
                                 {/* ... Tax Breakdown ... */}
