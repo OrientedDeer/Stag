@@ -184,7 +184,7 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 				{ expense instanceof MortgageExpense && (
 					<StyledDisplay
 						label="Mortgage Payment"
-						value={"$"+expense.payment.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+						value={"$"+expense.payment.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2})}
 					/>
 				)}
                 

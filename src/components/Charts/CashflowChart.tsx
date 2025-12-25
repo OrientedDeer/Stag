@@ -1,7 +1,7 @@
 import { useContext, useMemo } from 'react';
 import { ResponsiveSankey } from '@nivo/sankey';
 import { AnyIncome, WorkIncome } from '../Income/models';
-import { AnyExpense, LoanExpense, CLASS_TO_CATEGORY as EXPENSE_CLASS_TO_CAT } from '../Expense/models';
+import { AnyExpense, LoanExpense, MortgageExpense, CLASS_TO_CATEGORY as EXPENSE_CLASS_TO_CAT } from '../Expense/models';
 import { TAX_DATABASE } from '../Taxes/TaxData';
 import { 
     calculateFicaTax,
@@ -15,8 +15,8 @@ import { ExpenseContext } from '../Expense/ExpenseContext';
 
 const getYearlyAmount = (item: AnyIncome | AnyExpense) => {
     let amount = item.amount;
-    if (item instanceof LoanExpense) amount = item.payment;
-
+    if (item instanceof LoanExpense || item instanceof MortgageExpense) amount = item.payment;
+ 
     switch (item.frequency) {
         case 'Weekly': return amount * 52;
         case 'Monthly': return amount * 12;
@@ -65,12 +65,19 @@ export const CashflowChart = () => {
         let total401k = 0;
         let totalInsurance = 0;
         let totalRoth = 0;
+        let totalPrincipal = 0
 
         incomes.forEach(inc => {
             if (inc instanceof WorkIncome) {
                 total401k += getYearlyDeduction(inc.preTax401k, inc.frequency);
                 totalInsurance += getYearlyDeduction(inc.insurance, inc.frequency);
                 totalRoth += getYearlyDeduction(inc.roth401k, inc.frequency);
+            }
+        });
+
+        expenses.forEach(exp => {
+            if (exp instanceof MortgageExpense) {
+                totalPrincipal += exp.getPrincipalPayment();
             }
         });
 
@@ -98,6 +105,7 @@ export const CashflowChart = () => {
 
         // 5. Post-Tax Layer
         if (totalRoth > 0) nodes.push({ id: 'Roth Savings', color: '#10b981', label: 'Roth Savings' });
+        if (totalPrincipal > 0) nodes.push({ id: 'Principal Payments', color: '#10b981', label: 'Principal Payments' });
 
         // Level 0: Incomes -> Gross Pay
         incomes.forEach(inc => {
@@ -121,6 +129,8 @@ export const CashflowChart = () => {
         // Level 2: Net Pay -> Roth, Expenses, Remaining
         if (netPayFlow > 0) {
             if (totalRoth > 0) links.push({ source: 'Net Pay', target: 'Roth Savings', value: totalRoth });
+            
+            if (totalPrincipal > 0) links.push({ source: 'Net Pay', target: 'Principal Payments', value: totalPrincipal });
 
             let totalYearlyExpenses = 0;
             const expenseCatTotals = new Map<string, number>();

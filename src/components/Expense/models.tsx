@@ -77,6 +77,13 @@ export class MortgageExpense extends BaseExpense {
     const interest_payment = this.loan_balance * (this.apr/100/12)
     return interest_payment
   }
+
+  getPrincipalPayment(): number {
+    const amoritization = this.loan_balance*(((this.apr/100/12)*((1+this.apr/100/12)**(12*this.term_length)))/(((1+this.apr/100/12)**(12*this.term_length))-1))
+    const interest_payment = this.loan_balance * (this.apr/100/12)
+    const principal_payment = amoritization - interest_payment
+    return principal_payment;
+  }
 }
 
 export class LoanExpense extends BaseExpense {
