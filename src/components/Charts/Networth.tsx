@@ -64,10 +64,9 @@ export const NetWorthCard = () => {
                     if (linkedMortgage) {
                         const calculatedDebt = linkedMortgage.getBalanceAtDate(date);
                         historicalNetWorth += (assetValue - calculatedDebt);
-                    } else {
-                        // Fallback if no linked mortgage found (or use snapshot if you prefer)
-                        const snapshotDebt = entry?.loan_balance || 0;
-                        historicalNetWorth += (assetValue - snapshotDebt);
+                    }
+                    else{
+                        throw new Error("This needs coverage.");
                     }
                 } else {
                     historicalNetWorth += assetValue;
