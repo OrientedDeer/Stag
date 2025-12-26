@@ -45,13 +45,13 @@ export const NetWorthCard = () => {
                 const history = amountHistory[acc.id] || [];
                 // Find latest snapshot on or before this date
                 const entry = [...history].reverse().find(e => e.date <= date);
-                const value = entry ? entry.num : 0;
+                const value = entry ? (entry.loan_balance !== undefined ?  entry.num-(entry.loan_balance || 0): entry.num) : 0;
 
                 if (acc instanceof DebtAccount) {
                     historicalNetWorth -= value;
                 } else if (acc instanceof PropertyAccount) {
                     // Subtract current loanAmount (assuming static loan for history simplicity)
-                    historicalNetWorth += (value - (acc.loanAmount || 0));
+                    historicalNetWorth += (value);
                 } else {
                     historicalNetWorth += value;
                 }

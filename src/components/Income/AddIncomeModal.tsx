@@ -68,7 +68,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
     const handleAdd = () => {
         if (!name.trim() || !selectedType) return;
 
-        const finalEndDate = new Date(endDate);
+        const finalEndDate = new Date(`${endDate}T00:00:00.000Z`);
         let newIncome;
 
         if (selectedType === WorkIncome) {

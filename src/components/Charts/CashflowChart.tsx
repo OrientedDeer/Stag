@@ -66,6 +66,8 @@ export const CashflowChart = () => {
         let totalInsurance = 0;
         let totalRoth = 0;
         let totalPrincipal = 0
+        let totalMortgage = 0;
+
 
         incomes.forEach(inc => {
             if (inc instanceof WorkIncome) {
@@ -77,10 +79,13 @@ export const CashflowChart = () => {
 
         expenses.forEach(exp => {
             if (exp instanceof MortgageExpense) {
-                totalPrincipal += exp.getPrincipalPayment();
+                totalPrincipal += exp.calculateAnnualAmortization(year).totalPrincipal;
+            }
+            if (exp instanceof MortgageExpense) {
+                totalMortgage += exp.calculateAnnualAmortization(year).totalPayment;
             }
         });
-
+        totalMortgage -= totalPrincipal
         const totalTaxes = annualFedTax + annualStateTax + annualFicaTax;
         
         // --- WATERFALL MATH ---
@@ -106,6 +111,7 @@ export const CashflowChart = () => {
         // 5. Post-Tax Layer
         if (totalRoth > 0) nodes.push({ id: 'Roth Savings', color: '#10b981', label: 'Roth Savings' });
         if (totalPrincipal > 0) nodes.push({ id: 'Principal Payments', color: '#10b981', label: 'Principal Payments' });
+        if (totalMortgage > 0) nodes.push({ id: 'Mortgage Payments', color: '#ef4444', label: 'Mortgage Payments' });
 
         // Level 0: Incomes -> Gross Pay
         incomes.forEach(inc => {
@@ -131,6 +137,7 @@ export const CashflowChart = () => {
             if (totalRoth > 0) links.push({ source: 'Net Pay', target: 'Roth Savings', value: totalRoth });
             
             if (totalPrincipal > 0) links.push({ source: 'Net Pay', target: 'Principal Payments', value: totalPrincipal });
+            if (totalMortgage > 0) links.push({ source: 'Net Pay', target: 'Mortgage Payments', value: totalMortgage });
 
             let totalYearlyExpenses = 0;
             const expenseCatTotals = new Map<string, number>();
@@ -138,6 +145,7 @@ export const CashflowChart = () => {
             expenses.forEach(exp => {
                 const amount = getYearlyAmount(exp);
                 if (amount <= 0) return;
+                if(exp instanceof MortgageExpense) return;
                 const category = EXPENSE_CLASS_TO_CAT[exp.constructor.name] || 'Other';
                 expenseCatTotals.set(category, (expenseCatTotals.get(category) || 0) + amount);
                 totalYearlyExpenses += amount;
@@ -148,7 +156,7 @@ export const CashflowChart = () => {
                 links.push({ source: 'Net Pay', target: cat, value: total });
             });
 
-            const remaining = netPayFlow - totalRoth - totalYearlyExpenses;
+            const remaining = netPayFlow - totalRoth - totalYearlyExpenses - totalMortgage - totalPrincipal;
             
             if (remaining > 0) {
                 nodes.push({ id: 'Remaining', color: '#10b981', label: 'Remaining' });
@@ -169,12 +177,12 @@ export const CashflowChart = () => {
         <div className='h-[300px]'>
             <ResponsiveSankey
                 data={data}
-                margin={{ top: 5, right: 95, bottom: 10, left: 130 }}
+                margin={{ top: 5, right: 120, bottom: 10, left: 130 }}
                 align="justify"
                 colors={(node: any) => node.color}
                 nodeOpacity={1}
-                nodeThickness={20}
-                nodeSpacing={20}
+                nodeThickness={15}
+                nodeSpacing={10}
                 enableLinkGradient={true}
                 linkBlendMode="normal"
                 linkOpacity={0.15}

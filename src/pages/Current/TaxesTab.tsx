@@ -31,7 +31,7 @@ export default function TaxesTab() {
     const ficaTax = calculateFicaTax(state, incomes, currentYear);
     const annualGross = getGrossIncome(incomes);
     
-    const stateItemized = getItemizedDeductions(expenses);
+    const stateItemized = getItemizedDeductions(expenses, currentYear);
     const federalItemizedTotal = stateItemized + stateTax;
     const stateParams = TAX_DATABASE.states[state.stateResidency]?.[currentYear]?.[state.filingStatus];
     const stateStandardDeduction = stateParams.standardDeduction;
@@ -41,7 +41,7 @@ export default function TaxesTab() {
         state.deductionMethod === "Standard" ? fedStandardDeduction : federalItemizedTotal;
     const incomePreTaxDeductions = getPreTaxExemptions(incomes);
     const incomePostTaxDeductions = getPostTaxExemptions(incomes);
-    const expenseAboveLineDeductions = getYesDeductions(expenses);
+    const expenseAboveLineDeductions = getYesDeductions(expenses, currentYear);
     const totalPreTaxDeductions = incomePreTaxDeductions + expenseAboveLineDeductions;
     const netPaycheck = annualGross - incomePreTaxDeductions - (federalTax + stateTax + ficaTax) - incomePostTaxDeductions;
 

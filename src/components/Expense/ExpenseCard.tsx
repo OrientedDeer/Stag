@@ -112,12 +112,18 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
                     payload: { id: expense.linkedAccountId, field: "loanAmount", value },
                 });
             }
+            if (field === "starting_loan_balance") {
+                accountDispatch({
+                    type: "UPDATE_ACCOUNT_FIELD",
+                    payload: { id: expense.linkedAccountId, field: "startingLoanBalance", value },
+                });
+            }
 		}
 	};
 
     const handleDateChange = (field: AllExpenseKeys, dateString: string) => {
         if (!dateString) return;
-        handleFieldUpdate(field, new Date(dateString));
+        handleFieldUpdate(field, new Date(`${dateString}T00:00:00.000Z`));
     };
 
 	const getDescriptor = () => {
@@ -220,9 +226,15 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 							value={expense.loan_balance}
 							onChange={(val) => handleFieldUpdate("loan_balance", val)}
 						/>
+						<CurrencyInput
+							id={`${expense.id}-starting-loan-balance`}
+							label="Starting Loan Balance"
+							value={expense.starting_loan_balance}
+							onChange={(val) => handleFieldUpdate("starting_loan_balance", val)}
+						/>
 						<PercentageInput
 							id={`${expense.id}-apr`}
-							label="APR (%)"
+							label="APR"
 							value={expense.apr}
 							onChange={(val) => handleFieldUpdate("apr", val)}
 						/>
@@ -279,6 +291,13 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 							label="Extra Payment"
 							value={expense.extra_payment}
 							onChange={(val) => handleFieldUpdate("extra_payment", val)}
+						/>
+                        <StyledInput 
+							id={`${expense.id}-purchase-date`}
+							label="Purchase Date" 
+							type="date" 
+							value={formatDate(expense.purchaseDate)} 
+							onChange={(e) => handleDateChange("purchaseDate", e.target.value)} 
 						/>
 						<StyledSelect 
 							id={`${expense.id}-tax-deductible`}

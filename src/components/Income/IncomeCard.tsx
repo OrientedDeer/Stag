@@ -36,7 +36,7 @@ const IncomeCard = ({ income }: { income: AnyIncome }) => {
 
     const handleDateChange = (field: AllIncomeKeys, dateString: string) => {
         if (!dateString) return;
-        const newDate = new Date(dateString);
+        const newDate = new Date(`${dateString}T00:00:00.000Z`);
         handleFieldUpdate(field, newDate);
     };
 

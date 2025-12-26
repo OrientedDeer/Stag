@@ -29,13 +29,16 @@ const initialState: AppState = {
 export function reconstituteIncome(data: any): AnyIncome | null {
     if (!data || !data.className) return null;
     
+    const endDateValue = data.end_date || Date.now();
+    const endDate = new Date(typeof endDateValue === 'string' && !endDateValue.includes('T') ? `${endDateValue}T00:00:00.000Z` : endDateValue);
+
     // Explicitly mapping fields ensures old saves don't break with new class structures
     const base = {
         id: data.id,
         name: data.name || "Unnamed Income",
         amount: Number(data.amount) || 0,
         frequency: data.frequency || 'Monthly',
-        end_date: new Date(data.end_date || Date.now()),
+        end_date: endDate,
         earned_income: data.earned_income || "No"
     };
 

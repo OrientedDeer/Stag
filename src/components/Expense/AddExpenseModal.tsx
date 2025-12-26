@@ -54,6 +54,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 	const [pmi, setPmi] = useState<number>(0.58);
 	const [hoaFee, setHoaFee] = useState<number>(0);
 	const [endDate, setEndDate] = useState(new Date().toISOString().split("T")[0]);
+	const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split("T")[0]);
 	const [payment, setPayment] = useState<number>(0);
 	const [extraPayment, setExtraPayment] = useState<number>(0);
 	const [isTaxDeductible, setIsTaxDeductible] = useState<"Yes" | "No" | 'Itemized'>("No");
@@ -85,7 +86,8 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 	const handleAdd = () => {
 		if (!name.trim() || !selectedType) return;
 
-		const finalEndDate = new Date(endDate);
+		const finalEndDate = new Date(`${endDate}T00:00:00.000Z`);
+		const finalPurchaseDate = new Date(`${purchaseDate}T00:00:00.000Z`);
 
 		let newExpense;
 
@@ -124,7 +126,10 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				hoaFee,
 				isTaxDeductible,
 				isTaxDeductible ? taxDeductibleAmount : 0,
-				'ACC' + id.substring(3)
+				'ACC' + id.substring(3),
+				finalPurchaseDate,
+				payment,
+				extraPayment
             );
         } else if (selectedType === LoanExpense) {
 			const newAccount = new DebtAccount(
@@ -278,6 +283,17 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 									<PercentageInput id={`${id}-pmi`} label="PMI" value={pmi} onChange={setPmi} />
 									<CurrencyInput id={`${id}-hoa-fee`} label="HOA Fee" value={hoaFee} onChange={setHoaFee} />
 									<CurrencyInput id={`${id}-extra-payment`} label="Extra Payment" value={extraPayment} onChange={setExtraPayment} />
+									<div>
+										<label className="block text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
+											Purchase Date
+										</label>
+										<input
+											type="date"
+											className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-md focus:outline-none focus:border-green-500 transition-colors h-[42px]"
+											value={purchaseDate}
+											onChange={(e) => setPurchaseDate(e.target.value)}
+										/>
+									</div>
 									<DropdownInput
 										id={`${id}-tax-deductible`}
 										label="Tax Deductible"

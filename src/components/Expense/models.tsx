@@ -36,6 +36,7 @@ export class MortgageExpense extends BaseExpense {
     frequency: 'Weekly' | 'Monthly' | 'Annually',
     public valuation: number,
     public loan_balance: number,
+    public starting_loan_balance: number,
     public apr: number,
     public term_length: number,
     public property_taxes: number,
@@ -48,6 +49,7 @@ export class MortgageExpense extends BaseExpense {
     public is_tax_deductible: 'Yes' | 'No' | 'Itemized',
     public tax_deductible: number,
     public linkedAccountId: string,
+    public purchaseDate: Date,
     public payment: number = 0,
     public extra_payment: number = 0
   ) {
@@ -61,7 +63,53 @@ export class MortgageExpense extends BaseExpense {
     payment = principal_payment + property_tax_payment + pmi_payment + hoa_fee + repair_payment + utilities + home_owners_insurance_payment + interest_payment + extra_payment
     tax_deductible = interest_payment
     super(id, name, payment, frequency);
+    this.payment = payment;
+    this.tax_deductible = tax_deductible;
   }
+
+  calculateAnnualAmortization(year: number): { totalInterest: number, totalPrincipal: number, totalPayment: number} {
+    const purchaseYear = this.purchaseDate.getUTCFullYear();
+    const purchaseMonth = this.purchaseDate.getUTCMonth();
+
+    if (year < purchaseYear) {
+        return { totalInterest: 0, totalPrincipal: 0 , totalPayment: 0};
+    }
+
+    let balance = this.starting_loan_balance;
+    let totalPayment = 0;
+    const monthlyRate = this.apr / 100 / 12;
+    const numPayments = this.term_length * 12;
+    const monthlyPayment = this.loan_balance * (monthlyRate * Math.pow(1 + monthlyRate, numPayments)) / (Math.pow(1 + monthlyRate, numPayments) - 1) + this.extra_payment;
+    
+    // Fast-forward to the beginning of the target year
+    const monthsToSkip = (year - purchaseYear) * 12 - purchaseMonth;
+    if (monthsToSkip > 0) {
+      for (let i = 0; i < monthsToSkip; i++) {
+          const interest = balance * monthlyRate;
+          const principal = monthlyPayment - interest;
+          balance -= principal;
+      }
+    }
+
+    const startMonth = (year === purchaseYear) ? purchaseMonth : 0;
+    
+    let totalInterest = 0;
+    let totalPrincipal = 0;
+
+    for (let month = startMonth; month < 12; month++) {
+        if (balance <= 0) break;
+
+        const interest = balance * monthlyRate;
+        const principal = monthlyPayment - interest;
+        
+        balance -= principal;
+        totalPayment += this.amount;
+        totalInterest += interest;
+        totalPrincipal += principal;
+    }
+
+    return { totalInterest, totalPrincipal, totalPayment };
+}
 
   calculatePayment(): number {
     const amoritization = this.loan_balance*(((this.apr/100/12)*((1+this.apr/100/12)**(12*this.term_length)))/(((1+this.apr/100/12)**(12*this.term_length))-1))
@@ -187,7 +235,7 @@ export class OtherExpense extends BaseExpense {
 }
 
 // Union type for use in State Management
-export type AnyExpense = RentExpense | MortgageExpense | LoanExpense | DependentExpense | HealthcareExpense | VacationExpense | EmergencyExpense | OtherExpense;
+export type AnyExpense = RentExpense | MortgageExpense | LoanExpense | DependentExpense | HealthcareExpense | VacationExpense | EmergencyExpense | TransportExpense | FoodExpense | OtherExpense;
 
 export const EXPENSE_CATEGORIES = [
   'Rent',

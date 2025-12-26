@@ -53,6 +53,12 @@ const AccountCard = ({ account }: { account: AnyAccount }) => {
                     payload: { id: account.linkedAccountId, field: "loan_balance", value },
                 });
             }
+            if (field === "startingLoanBalance") {
+                expenseDispatch({
+                    type: "UPDATE_EXPENSE_FIELD",
+                    payload: { id: account.linkedAccountId, field: "starting_loan_balance", value },
+                });
+            }
         }
         
         if (field === "amount" && typeof value === 'number') {
@@ -141,12 +147,20 @@ const AccountCard = ({ account }: { account: AnyAccount }) => {
 							options={["Financed", "Owned"]}
 						/>
 						{account.ownershipType === "Financed" && (
-							<CurrencyInput
-								id={`${account.id}-loan-amount`}
-								label="Loan Amount"
-								value={account.loanAmount}
-								onChange={(val) => handleFieldUpdate("loanAmount", val)}
-							/>
+							<>
+								<CurrencyInput
+									id={`${account.id}-loan-amount`}
+									label="Loan Amount"
+									value={account.loanAmount}
+									onChange={(val) => handleFieldUpdate("loanAmount", val)}
+								/>
+								<CurrencyInput
+									id={`${account.id}-starting-loan-balance`}
+									label="Starting Loan Balance"
+									value={account.startingLoanBalance}
+									onChange={(val) => handleFieldUpdate("startingLoanBalance", val)}
+								/>
+							</>
 						)}
 						<StyledDisplay
 							label="Linked to Expense"

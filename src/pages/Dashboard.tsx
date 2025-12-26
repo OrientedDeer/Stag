@@ -63,9 +63,9 @@ export default function Dashboard() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
             {/* Main Flow Chart - Spans 2 cols on large screens */}
-            <div className="lg:col-span-2 bg-[#18181b] rounded-2xl border border-gray-800 p-6 shadow-xl">
+            <div className="lg:col-span-3 bg-[#18181b] rounded-2xl border border-gray-800 p-6 shadow-xl">
               <h2 className="text-xl font-bold text-gray-200 mb-6">Yearly Cash Flow</h2>
               <div className="min-h-[300px] flex flex-col justify-center">
                 {hasIncomes ? (
@@ -84,7 +84,7 @@ export default function Dashboard() {
               </div>
             </div>
             
-            <div className="space-y-6">
+            <div className="space-y-6 lg:col-span-2">
               <NetWorthCard/>
               {/* You could add more secondary cards here */}
             </div>

@@ -37,6 +37,7 @@ export class PropertyAccount extends BaseAccount {
     amount: number,
     public ownershipType: 'Financed' | 'Owned',
     public loanAmount: number,
+    public startingLoanBalance: number,
     public linkedAccountId: string
   ) {
     super(id, name, amount);

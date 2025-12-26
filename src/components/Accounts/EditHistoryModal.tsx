@@ -2,6 +2,7 @@
 import React, { useContext, useState } from 'react';
 import { AccountContext } from './AccountContext';
 import { CurrencyInput } from '../Layout/CurrencyInput';
+import { PropertyAccount } from './models';
 
 interface EditHistoryModalProps {
     accountId: string;
@@ -10,11 +11,15 @@ interface EditHistoryModalProps {
 }
 
 export const EditHistoryModal: React.FC<EditHistoryModalProps> = ({ accountId, isOpen, onClose }) => {
-    const { amountHistory, dispatch } = useContext(AccountContext);
+    const { accounts, amountHistory, dispatch } = useContext(AccountContext);
     const history = amountHistory[accountId] || [];
+
+    const account = accounts.find(acc => acc.id === accountId);
+    const isMortgage = account instanceof PropertyAccount && account.ownershipType === 'Financed';
 
     const [newDate, setNewDate] = useState(new Date().toISOString().split('T')[0]);
     const [newAmount, setNewAmount] = useState(0);
+    const [newLoanBalance, setNewLoanBalance] = useState(0);
 
     if (!isOpen) return null;
 
@@ -36,21 +41,33 @@ export const EditHistoryModal: React.FC<EditHistoryModalProps> = ({ accountId, i
                                     value={entry.date}
                                     onChange={(e) => dispatch({
                                         type: 'UPDATE_HISTORY_ENTRY',
-                                        payload: { id: accountId, index, date: e.target.value, num: entry.num }
+                                        payload: { ...entry, id: accountId, index, date: e.target.value, num: entry.num, loan_balance: entry.loan_balance }
                                     })}
                                     className="bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-xs text-white w-full outline-none focus:border-blue-500"
                                 />
                             </div>
                             <div className="grow">
                                 <CurrencyInput 
-                                    label="Amount"
+                                    label={isMortgage ? "Valuation" : "Amount"}
                                     value={entry.num}
                                     onChange={(val) => dispatch({
                                         type: 'UPDATE_HISTORY_ENTRY',
-                                        payload: { id: accountId, index, date: entry.date, num: val }
+                                        payload: { ...entry, id: accountId, index, date: entry.date, num: val, loan_balance: entry.loan_balance }
                                     })}
                                 />
                             </div>
+                            {isMortgage && (
+                                <div className="grow">
+                                    <CurrencyInput 
+                                        label="Loan Balance"
+                                        value={entry.loan_balance ?? 0}
+                                        onChange={(val) => dispatch({
+                                            type: 'UPDATE_HISTORY_ENTRY',
+                                            payload: { ...entry, id: accountId, index, date: entry.date, num: entry.num, loan_balance: val }
+                                        })}
+                                    />
+                                </div>
+                            )}
                             <button 
                                 onClick={() => dispatch({ type: 'DELETE_HISTORY_ENTRY', payload: { id: accountId, index }})}
                                 className="text-red-500 hover:text-red-400 p-2 mt-4"
@@ -74,15 +91,33 @@ export const EditHistoryModal: React.FC<EditHistoryModalProps> = ({ accountId, i
                         </div>
                         <div className="grow">
                             <CurrencyInput 
-                                label="test"
+                                label={isMortgage ? "Valuation" : "Amount"}
                                 value={newAmount}
                                 onChange={setNewAmount}
                             />
                         </div>
+                        {isMortgage && (
+                            <div className="grow">
+                                <CurrencyInput 
+                                    label="Loan Balance"
+                                    value={newLoanBalance}
+                                    onChange={setNewLoanBalance}
+                                />
+                            </div>
+                        )}
                         <button 
                             onClick={() => {
-                                dispatch({ type: 'ADD_HISTORY_ENTRY', payload: { id: accountId, date: newDate, num: newAmount }});
+                                dispatch({ 
+                                    type: 'ADD_HISTORY_ENTRY', 
+                                    payload: { 
+                                        id: accountId, 
+                                        date: newDate, 
+                                        num: newAmount,
+                                        loan_balance: isMortgage ? newLoanBalance : undefined,
+                                    }
+                                });
                                 setNewAmount(0);
+                                setNewLoanBalance(0);
                             }}
                             className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg h-[42px] text-sm font-bold transition-colors"
                         >

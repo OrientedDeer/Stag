@@ -46,12 +46,18 @@ export function reconstituteExpense(data: any): AnyExpense | null {
             return new RentExpense(base.id, base.name, data.payment || 0, data.utilities || 0, base.frequency);
         case 'RentExpense':
             return new RentExpense(base.id, base.name, data.payment || 0, data.utilities || 0, base.frequency);
-        case 'MortgageExpense':
-            return new MortgageExpense(base.id, base.name, base.frequency, data.valuation || 0, data.loan_balance || 0, data.apr || 0, data.term_length || 0, data.property_taxes || 0, data.valuation_deduction || 0, data.maintenance || 0, data.utilities || 0, data.home_owners_insurance || 0, data.pmi || 0, data.hoa_fee || 0, data.is_tax_deductible || 'No', data.tax_deductible || 0, data.linkedAccountId || '', data.payment || 0, data.extra_payment || 0);
+        case 'MortgageExpense': {
+            const purchaseDateValue = data.purchaseDate || Date.now();
+            const purchaseDate = new Date(typeof purchaseDateValue === 'string' && !purchaseDateValue.includes('T') ? `${purchaseDateValue}T00:00:00.000Z` : purchaseDateValue);
+            return new MortgageExpense(base.id, base.name, base.frequency, data.valuation || 0, data.loan_balance || 0, data.starting_loan_balance || 0, data.apr || 0, data.term_length || 0, data.property_taxes || 0, data.valuation_deduction || 0, data.maintenance || 0, data.utilities || 0, data.home_owners_insurance || 0, data.pmi || 0, data.hoa_fee || 0, data.is_tax_deductible || 'No', data.tax_deductible || 0, data.linkedAccountId || '', purchaseDate, data.payment || 0, data.extra_payment || 0);
+        }
         case 'LoanExpense':
             return new LoanExpense(base.id, base.name, base.amount, base.frequency, data.apr || 0, data.interest_type || 'Simple', data.payment || 0, data.is_tax_deductible || 'No', data.tax_deductible || 0, data.linkedAccountId || '');
-        case 'DependentExpense':
-            return new DependentExpense(base.id, base.name, base.amount, base.frequency, new Date(data.end_date || Date.now()), data.is_tax_deductible || 'No', data.tax_deductible || 0);
+        case 'DependentExpense': {
+            const endDateValue = data.end_date || Date.now();
+            const endDate = new Date(typeof endDateValue === 'string' && !endDateValue.includes('T') ? `${endDateValue}T00:00:00.000Z` : endDateValue);
+            return new DependentExpense(base.id, base.name, base.amount, base.frequency, endDate, data.is_tax_deductible || 'No', data.tax_deductible || 0);
+        }
         case 'HealthcareExpense':
             return new HealthcareExpense(base.id, base.name, base.amount, base.frequency, data.is_tax_deductible || 'No', data.tax_deductible || 0);
         case 'VacationExpense': return new VacationExpense(base.id, base.name, base.amount, base.frequency);
