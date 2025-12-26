@@ -19,7 +19,6 @@ export const EditHistoryModal: React.FC<EditHistoryModalProps> = ({ accountId, i
 
     const [newDate, setNewDate] = useState(new Date().toISOString().split('T')[0]);
     const [newAmount, setNewAmount] = useState(0);
-    const [newLoanBalance, setNewLoanBalance] = useState(0);
 
     if (!isOpen) return null;
 
@@ -41,7 +40,7 @@ export const EditHistoryModal: React.FC<EditHistoryModalProps> = ({ accountId, i
                                     value={entry.date}
                                     onChange={(e) => dispatch({
                                         type: 'UPDATE_HISTORY_ENTRY',
-                                        payload: { ...entry, id: accountId, index, date: e.target.value, num: entry.num, loan_balance: entry.loan_balance }
+                                        payload: { ...entry, id: accountId, index, date: e.target.value, num: entry.num }
                                     })}
                                     className="bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-xs text-white w-full outline-none focus:border-blue-500"
                                 />
@@ -52,22 +51,10 @@ export const EditHistoryModal: React.FC<EditHistoryModalProps> = ({ accountId, i
                                     value={entry.num}
                                     onChange={(val) => dispatch({
                                         type: 'UPDATE_HISTORY_ENTRY',
-                                        payload: { ...entry, id: accountId, index, date: entry.date, num: val, loan_balance: entry.loan_balance }
+                                        payload: { ...entry, id: accountId, index, date: entry.date, num: val }
                                     })}
                                 />
                             </div>
-                            {isMortgage && (
-                                <div className="grow">
-                                    <CurrencyInput 
-                                        label="Loan Balance"
-                                        value={entry.loan_balance ?? 0}
-                                        onChange={(val) => dispatch({
-                                            type: 'UPDATE_HISTORY_ENTRY',
-                                            payload: { ...entry, id: accountId, index, date: entry.date, num: entry.num, loan_balance: val }
-                                        })}
-                                    />
-                                </div>
-                            )}
                             <button 
                                 onClick={() => dispatch({ type: 'DELETE_HISTORY_ENTRY', payload: { id: accountId, index }})}
                                 className="text-red-500 hover:text-red-400 p-2 mt-4"
@@ -96,15 +83,6 @@ export const EditHistoryModal: React.FC<EditHistoryModalProps> = ({ accountId, i
                                 onChange={setNewAmount}
                             />
                         </div>
-                        {isMortgage && (
-                            <div className="grow">
-                                <CurrencyInput 
-                                    label="Loan Balance"
-                                    value={newLoanBalance}
-                                    onChange={setNewLoanBalance}
-                                />
-                            </div>
-                        )}
                         <button 
                             onClick={() => {
                                 dispatch({ 
@@ -112,12 +90,10 @@ export const EditHistoryModal: React.FC<EditHistoryModalProps> = ({ accountId, i
                                     payload: { 
                                         id: accountId, 
                                         date: newDate, 
-                                        num: newAmount,
-                                        loan_balance: isMortgage ? newLoanBalance : undefined,
+                                        num: newAmount
                                     }
                                 });
                                 setNewAmount(0);
-                                setNewLoanBalance(0);
                             }}
                             className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg h-[42px] text-sm font-bold transition-colors"
                         >

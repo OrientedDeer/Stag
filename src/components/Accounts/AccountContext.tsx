@@ -16,7 +16,6 @@ const CURRENT_SCHEMA_VERSION = 1;
 export interface AmountHistoryEntry {
   date: string;
   num: number;
-  loan_balance?: number;
 }
 
 interface AppState {
@@ -30,9 +29,9 @@ type Action =
   | { type: 'UPDATE_ACCOUNT_FIELD'; payload: { id: string; field: AllAccountKeys; value: any } }
   | { type: 'ADD_AMOUNT_SNAPSHOT'; payload: { id: string; amount: number } }
   | { type: 'REORDER_ACCOUNTS'; payload: { startIndex: number; endIndex: number } }
-  | { type: 'UPDATE_HISTORY_ENTRY'; payload: { id: string; index: number; date: string; num: number, loan_balance?: number } }
+  | { type: 'UPDATE_HISTORY_ENTRY'; payload: { id: string; index: number; date: string; num: number} }
   | { type: 'DELETE_HISTORY_ENTRY'; payload: { id: string; index: number } }
-  | { type: 'ADD_HISTORY_ENTRY'; payload: { id: string; date: string; num: number, loan_balance?: number } }
+  | { type: 'ADD_HISTORY_ENTRY'; payload: { id: string; date: string; num: number } }
   | { type: 'SET_BULK_DATA'; payload: { accounts: AnyAccount[]; amountHistory: Record<string, AmountHistoryEntry[]> } };
 
 const getTodayString = () => new Date().toISOString().split('T')[0];
@@ -161,10 +160,6 @@ const accountReducer = (state: AppState, action: Action): AppState => {
       const lastEntry = currentHistory[currentHistory.length - 1];
       
       const newEntry: AmountHistoryEntry = { date: today, num: amount };
-      const account = state.accounts.find(acc => acc.id === id);
-      if (account instanceof PropertyAccount && lastEntry) {
-          newEntry.loan_balance = lastEntry.loan_balance;
-      }
       
       let newHistory: AmountHistoryEntry[];
       if (lastEntry && lastEntry.date === today) {
@@ -183,10 +178,10 @@ const accountReducer = (state: AppState, action: Action): AppState => {
     }
 
     case 'UPDATE_HISTORY_ENTRY': {
-      const { id, index, date, num, loan_balance } = action.payload;
+      const { id, index, date, num } = action.payload;
       const history = [...(state.amountHistory[id] || [])];
       if (history[index]) {
-        history[index] = { ...history[index], date, num, loan_balance };
+        history[index] = { ...history[index], date, num };
         return { ...state, amountHistory: { ...state.amountHistory, [id]: history } };
       }
       return state;
@@ -200,11 +195,8 @@ const accountReducer = (state: AppState, action: Action): AppState => {
     }
 
     case 'ADD_HISTORY_ENTRY': {
-        const { id, date, num, loan_balance } = action.payload;
+        const { id, date, num } = action.payload;
         const newEntry: AmountHistoryEntry = { date, num };
-        if (loan_balance !== undefined) {
-            newEntry.loan_balance = loan_balance;
-        }
         const history = [...(state.amountHistory[id] || []), newEntry];
         history.sort((a, b) => a.date.localeCompare(b.date));
         return { ...state, amountHistory: { ...state.amountHistory, [id]: history } };

@@ -2,9 +2,13 @@ import { useContext, useMemo } from 'react';
 import { ResponsiveLine } from '@nivo/line';
 import { AccountContext } from '../Accounts/AccountContext';
 import { DebtAccount, PropertyAccount } from '../Accounts/models';
+import { ExpenseContext } from '../Expense/ExpenseContext';
+import { MortgageExpense } from '../Expense/models';
 
 export const NetWorthCard = () => {
     const { accounts, amountHistory } = useContext(AccountContext);
+    
+    const { expenses } = useContext(ExpenseContext);
     // 1. Calculate Current Stats
     const stats = useMemo(() => {
         let totalAssets = 0;
@@ -45,15 +49,28 @@ export const NetWorthCard = () => {
                 const history = amountHistory[acc.id] || [];
                 // Find latest snapshot on or before this date
                 const entry = [...history].reverse().find(e => e.date <= date);
-                const value = entry ? (entry.loan_balance !== undefined ?  entry.num-(entry.loan_balance || 0): entry.num) : 0;
+                const assetValue = entry ? entry.num : 0;
 
                 if (acc instanceof DebtAccount) {
-                    historicalNetWorth -= value;
+                    // For simple debt, we still rely on the snapshot
+                     const debtValue = entry ? (entry.num) : 0;
+                    historicalNetWorth -= debtValue;
                 } else if (acc instanceof PropertyAccount) {
-                    // Subtract current loanAmount (assuming static loan for history simplicity)
-                    historicalNetWorth += (value);
+                    // 3. Find linked mortgage and calculate balance dynamically
+                    const linkedMortgage = expenses.find(
+                        ex => ex.id === acc.linkedAccountId && ex instanceof MortgageExpense
+                    ) as MortgageExpense | undefined;
+
+                    if (linkedMortgage) {
+                        const calculatedDebt = linkedMortgage.getBalanceAtDate(date);
+                        historicalNetWorth += (assetValue - calculatedDebt);
+                    } else {
+                        // Fallback if no linked mortgage found (or use snapshot if you prefer)
+                        const snapshotDebt = entry?.loan_balance || 0;
+                        historicalNetWorth += (assetValue - snapshotDebt);
+                    }
                 } else {
-                    historicalNetWorth += value;
+                    historicalNetWorth += assetValue;
                 }
             });
 

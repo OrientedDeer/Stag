@@ -34,6 +34,7 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
     const [NonVestedAmount, setNonVestedAmount] = useState<number>(0);
     const [ownershipType, setOwnershipType] = useState<'Financed' | 'Owned'>('Owned');
     const [loanAmount, setLoanAmount] = useState<number>(0);
+    const [startingLoanAmount, setStartingLoanAmount] = useState<number>(0);
     const id = generateUniqueAccId();
 
     const handleClose = () => {
@@ -42,6 +43,7 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
         setNonVestedAmount(0);
         setOwnershipType('Owned');
         setLoanAmount(0);
+        setStartingLoanAmount(0);
         onClose();
     };
 
@@ -62,6 +64,7 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                     'Monthly',
                     amount,
                     loanAmount,
+                    startingLoanAmount,
                     6.23,
                     30,
                     0.85,
@@ -74,12 +77,19 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                     'Itemized',
                     0,
                     id,
+                    new Date(),
                     0,
                     0
                 )
                 expenseDispatch({type: "ADD_EXPENSE", payload: newExpense})
             }
-            newAccount = new PropertyAccount(id, name.trim(), amount, ownershipType, loanAmount, 'EXS' + id.substring(3));
+            newAccount = new PropertyAccount(id, 
+                                            name.trim(),
+                                            amount, 
+                                            ownershipType, 
+                                            loanAmount, 
+                                            startingLoanAmount,
+                                            'EXS' + id.substring(3));
         } else if (selectedType === DebtAccount) {
             const newExpense = new LoanExpense(
                 'EXS' + id.substring(3),
@@ -135,12 +145,20 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                                 value={ownershipType}
                             />
                             {ownershipType == "Financed" && (
-                                <CurrencyInput
-                                    id={`${id}-loan-amount`}
-                                    label="Loan Amount"
-                                    value={loanAmount}
-                                    onChange={setLoanAmount}
-                                />
+                                <>
+                                    <CurrencyInput
+                                        id={`${id}-loan-amount`}
+                                        label="Loan Amount"
+                                        value={loanAmount}
+                                        onChange={setLoanAmount}
+                                    />
+                                    <CurrencyInput
+                                        id={`${id}-starting-loan-amount`}
+                                        label="Starting Loan Amount"
+                                        value={startingLoanAmount}
+                                        onChange={setStartingLoanAmount}
+                                    />
+                                </>
                             )}
                         </div>
                     )}

@@ -53,6 +53,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 	const [homeOwnersInsurance, setHomeOwnersInsurance] = useState<number>(0.56);
 	const [pmi, setPmi] = useState<number>(0.58);
 	const [hoaFee, setHoaFee] = useState<number>(0);
+	const [startingLoanBalance, setStartingLoanBalance] = useState<number>(0);
 	const [endDate, setEndDate] = useState(new Date().toISOString().split("T")[0]);
 	const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split("T")[0]);
 	const [payment, setPayment] = useState<number>(0);
@@ -106,6 +107,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				valuation,
 				'Financed',
 				loanBalance,
+				loanBalance,
 				id
 			)
 			accountDispatch({type: "ADD_ACCOUNT", payload: newAccount})
@@ -115,6 +117,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				frequency,
 				valuation,
 				loanBalance,
+				startingLoanBalance,
 				apr,
 				termLength,
 				propertyTaxes,
@@ -272,7 +275,8 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 							{selectedType === MortgageExpense && (
 								<>	
 									<CurrencyInput id={`${id}-valuation`} label="Valuation" value={valuation} onChange={setValuation} />
-									<CurrencyInput id={`${id}-loan-balance`} label="Loan Balance" value={loanBalance} onChange={setLoanBalance} />
+									<CurrencyInput id={`${id}-starting-loan-balance`} label="Starting Loan Balance" value={startingLoanBalance} onChange={setStartingLoanBalance} />
+									<CurrencyInput id={`${id}-loan-balance`} label="Current Loan Balance" value={loanBalance} onChange={setLoanBalance} />
 									<PercentageInput id={`${id}-apr`} label="APR" value={apr} onChange={setApr}/>
 									<NumberInput id={`${id}-term-length`} label="Term Length (years)" value={termLength} onChange={setTermLength} />
 									<PercentageInput id={`${id}-property-tax-rate`} label="Property Tax Rate" value={propertyTaxes} onChange={setPropertyTaxes}/>
