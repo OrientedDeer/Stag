@@ -15,7 +15,7 @@ import TaxesTab from "./pages/Current/TaxesTab";
 import { TaxProvider } from "./components/Taxes/TaxContext";
 import FutureTab from "./pages/Future/FutureTab";
 import AssumptionTab from "./pages/Future/AssumptionTab";
-import { AssumptionsContext, AssumptionsProvider } from "./components/Assumptions/AssumptionsContext";
+import { AssumptionsProvider } from "./components/Assumptions/AssumptionsContext";
 
 export default function App() {
   const [isOpen, setIsOpen] = useState(false); // shared variable
