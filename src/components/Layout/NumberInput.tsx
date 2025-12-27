@@ -6,9 +6,10 @@ interface NumberInputProps {
     value: number;
     onChange: (val: number) => void;
     id?: string;
+    disabled?: boolean;
 }
 
-export const NumberInput: React.FC<NumberInputProps> = ({ label, value, onChange, id }) => {
+export const NumberInput: React.FC<NumberInputProps> = ({ label, value, onChange, id, disabled }) => {
     const [localValue, setLocalValue] = useState(value.toString());
 
     useEffect(() => {
@@ -55,6 +56,7 @@ export const NumberInput: React.FC<NumberInputProps> = ({ label, value, onChange
             value={localValue}
             onChange={handleChange}
             onBlur={handleBlur}
+            disabled={disabled}
         />
     );
 };

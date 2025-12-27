@@ -4,7 +4,7 @@ export interface AssumptionsState {
   macro: {
     inflationRate: number;       // e.g., 3.0
     healthcareInflation: number; // e.g., 5.0
-    taxBracketGrowth: boolean;   // usually true (pegged to inflation)
+    inflationAdjusted: boolean;   // usually true (pegged to inflation)
   };
   income: {
     salaryGrowth: number;        // e.g., 3.0
@@ -15,15 +15,13 @@ export interface AssumptionsState {
     housingAppreciation: number; // e.g., 3.5
     rentInflation: number;       // e.g., 4.0
   };
-  investments: {
-    returnRates: {
-      ror: number;   // e.g., 10.0
-    };
-    fees: number;     // e.g., 0.15 (expense ratios)
-    withdrawalStrategy: 'Fixed Real' | 'Percentage' | 'Guyton Klinger';
-    withdrawalRate: number; // e.g., 4.0
-  };
-  demographics: {
+      investments: {
+      returnRates: {
+        ror: number;   // e.g., 10.0
+      };
+      withdrawalStrategy: 'Fixed Real' | 'Percentage' | 'Guyton Klinger';
+      withdrawalRate: number; // e.g., 4.0
+    };  demographics: {
     retirementAge: number;
     lifeExpectancy: number;
   };
@@ -33,7 +31,7 @@ export const defaultAssumptions: AssumptionsState = {
   macro: {
     inflationRate: 3.0,
     healthcareInflation: 5.0,
-    taxBracketGrowth: true,
+    inflationAdjusted: true,
   },
   income: {
     salaryGrowth: 3.0,
@@ -46,7 +44,6 @@ export const defaultAssumptions: AssumptionsState = {
   },
   investments: {
     returnRates: { ror: 7 },
-    fees: 0.1,
     withdrawalStrategy: 'Fixed Real',
     withdrawalRate: 4.0,
   },

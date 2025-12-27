@@ -10,6 +10,8 @@ import { CurrencyInput } from "../Layout/CurrencyInput";
 import { NameInput } from "../Layout/NameInput";
 import { DropdownInput } from "../Layout/DropdownInput";
 import { NumberInput } from "../Layout/NumberInput";
+import { AccountContext } from "../Accounts/AccountContext";
+import { InvestedAccount } from "../Accounts/models";
 
 const generateUniqueId = () =>
     `INC-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -21,6 +23,8 @@ interface AddIncomeModalProps {
 
 const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
     const { dispatch } = useContext(IncomeContext);
+    const { accounts } = useContext(AccountContext);
+
     const [step, setStep] = useState<'select' | 'details'>('select');
     const [selectedType, setSelectedType] = useState<any>(null);
     const [name, setName] = useState("");
@@ -33,6 +37,8 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
     const [preTax401k, setPreTax401k] = useState<number>(0);
     const [insurance, setInsurance] = useState<number>(0);
     const [roth401k, setRoth401k] = useState<number>(0);
+    const [employerMatch, setEmployerMatch] = useState<number>(0);
+    const [matchAccountId, setMatchAccountId] = useState<string>("");
     
     // --- Other Fields ---
     const [claimingAge, setClaimingAge] = useState<number>(62);
@@ -48,6 +54,8 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
         setPreTax401k(0);
         setInsurance(0);
         setRoth401k(0);
+        setEmployerMatch(0);
+        setMatchAccountId("");
         onClose();
     };
 
@@ -72,7 +80,9 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
         let newIncome;
 
         if (selectedType === WorkIncome) {
-            newIncome = new WorkIncome(id, name.trim(), amount, frequency, finalEndDate, "Yes", preTax401k, insurance, roth401k);
+            const matchedAccount = accounts.find(acc => acc.id === matchAccountId) as InvestedAccount | undefined;
+            const taxType = matchedAccount ? matchedAccount.taxType : null;
+            newIncome = new WorkIncome(id, name.trim(), amount, frequency, finalEndDate, "Yes", preTax401k, insurance, roth401k, employerMatch, matchAccountId, taxType);
         } else if (selectedType === SocialSecurityIncome) {
             newIncome = new selectedType(id, name.trim(), amount, frequency, finalEndDate, claimingAge);
         } else if (selectedType === PassiveIncome) {
@@ -96,6 +106,12 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
         { label: 'Passive Income', class: PassiveIncome },
         { label: 'Windfall', class: WindfallIncome }
     ];
+
+    const contributionAccounts = accounts.filter(
+        (acc) => acc instanceof InvestedAccount && 
+                 acc.isContributionEligible === true &&
+                 (acc.taxType === 'Roth 401k' || acc.taxType === 'Traditional 401k')
+    );
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm min-w-max">
@@ -140,6 +156,15 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                     <CurrencyInput label="Pre-Tax 401k/403b" value={preTax401k} onChange={setPreTax401k} />
                                     <CurrencyInput label="Medical/Dental/Vision" value={insurance} onChange={setInsurance} />
                                     <CurrencyInput label="Roth 401k (Post-Tax)" value={roth401k} onChange={setRoth401k} />
+                                    <CurrencyInput label="Employer Match" value={employerMatch} onChange={setEmployerMatch} />
+                                    {employerMatch > 0 && (
+                                        <DropdownInput
+                                            label="Match Account"
+                                            onChange={(val) => setMatchAccountId(val)}
+                                            options={contributionAccounts.map(acc => ({ value: acc.id, label: acc.name }))}
+                                            value={matchAccountId}
+                                        />
+                                    )}
                                 </>
                             )}
                             <div>
@@ -180,7 +205,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
 							disabled={!name.trim()}
 							className="px-5 py-2.5 rounded-lg font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
 						>
-							Add Expense
+							Add Income
 						</button>
 					)}
 				</div>

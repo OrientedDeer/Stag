@@ -12,7 +12,8 @@ import {
     getItemizedDeductions,
     getYesDeductions,
     calculateFederalTax,
-    calculateStateTax
+    calculateStateTax,
+    getPostTaxEmployerMatch
 } from "../../components/Taxes/TaxService";
 import { CurrencyInput } from "../../components/Layout/CurrencyInput";
 
@@ -42,8 +43,9 @@ export default function TaxesTab() {
     const incomePreTaxDeductions = getPreTaxExemptions(incomes);
     const incomePostTaxDeductions = getPostTaxExemptions(incomes);
     const expenseAboveLineDeductions = getYesDeductions(expenses, currentYear);
+    const postTaxEmployerMatch = getPostTaxEmployerMatch(incomes);
     const totalPreTaxDeductions = incomePreTaxDeductions + expenseAboveLineDeductions;
-    const netPaycheck = annualGross - incomePreTaxDeductions - (federalTax + stateTax + ficaTax) - incomePostTaxDeductions;
+    const netPaycheck = annualGross - incomePreTaxDeductions - (federalTax + stateTax + ficaTax) - incomePostTaxDeductions - postTaxEmployerMatch;
 
     return (
         <div className="w-full min-h-full flex bg-gray-950 justify-center pt-6">

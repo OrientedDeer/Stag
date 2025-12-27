@@ -45,7 +45,7 @@ export function reconstituteIncome(data: any): AnyIncome | null {
     switch (data.className) {
         case 'WorkIncome':
             return new WorkIncome(base.id, base.name, base.amount, base.frequency, base.end_date, base.earned_income, 
-                data.preTax401k || 0, data.insurance || 0, data.roth401k || 0);
+                data.preTax401k || 0, data.insurance || 0, data.roth401k || 0, data.employerMatch || 0, data.matchAccountId || null, data.taxType || null);
         case 'SocialSecurityIncome':
             return new SocialSecurityIncome(base.id, base.name, base.amount, base.frequency, base.end_date, 
                 data.claimingAge || 67);

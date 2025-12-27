@@ -63,7 +63,10 @@ export function reconstituteAccount(data: any): AnyAccount | null {
                 id, 
                 name, 
                 amount, 
-                data.NonVestedAmount || 0 // Default for new field
+                data.NonVestedAmount || 0,
+                data.expenseRatio || 0.1,
+                data.taxType || 'Brokerage',
+                data.isContributionEligible !== undefined ? data.isContributionEligible : true
             );
             
                 case 'PropertyAccount':

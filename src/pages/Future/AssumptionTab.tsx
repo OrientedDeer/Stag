@@ -23,30 +23,34 @@ export default function AssumptionTab() {
                     <div>
                         <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 border-b border-gray-800 pb-2">Macro</h3>
                         <div className="space-y-4">
-                            <PercentageInput
-                                label="Inflation Rate"
-                                value={state.macro.inflationRate}
-                                onChange={(val) => dispatch({ type: 'UPDATE_MACRO', payload: { inflationRate: val } })}
-                            />
+                            <div className={`transition-opacity duration-300 ${!state.macro.inflationAdjusted ? 'opacity-50' : 'opacity-100'}`}>
+                                <PercentageInput
+                                    label="Inflation Rate"
+                                    value={state.macro.inflationRate}
+                                    onChange={(val) => dispatch({ type: 'UPDATE_MACRO', payload: { inflationRate: val } })}
+                                    disabled={!state.macro.inflationAdjusted}
+                                />
+                            </div>
                             <PercentageInput
                                 label="Healthcare Inflation"
                                 value={state.macro.healthcareInflation}
                                 onChange={(val) => dispatch({ type: 'UPDATE_MACRO', payload: { healthcareInflation: val } })}
+                                isAboveInflation={state.macro.inflationAdjusted}
                             />
                             <div>
                                 <label className="block text-xs font-medium text-gray-500 uppercase mb-2">
-                                    Tax Bracket Growth
+                                    Inflation Adjusted
                                 </label>
                                 <div className="flex bg-gray-800 p-1 rounded-lg border border-gray-700">
                                     <button
-                                        onClick={() => dispatch({ type: "UPDATE_MACRO", payload: { taxBracketGrowth: true } })}
-                                        className={`flex-1 py-2 text-sm rounded-md transition-all ${state.macro.taxBracketGrowth ? "bg-green-600 text-white shadow-lg" : "text-gray-400 hover:text-white"}`}
+                                        onClick={() => dispatch({ type: "UPDATE_MACRO", payload: { inflationAdjusted: true } })}
+                                        className={`flex-1 py-2 text-sm rounded-md transition-all ${state.macro.inflationAdjusted ? "bg-green-600 text-white shadow-lg" : "text-gray-400 hover:text-white"}`}
                                     >
                                         Enabled
                                     </button>
                                     <button
-                                        onClick={() => dispatch({ type: "UPDATE_MACRO", payload: { taxBracketGrowth: false } })}
-                                        className={`flex-1 py-2 text-sm rounded-md transition-all ${!state.macro.taxBracketGrowth ? "bg-green-600 text-white shadow-lg" : "text-gray-400 hover:text-white"}`}
+                                        onClick={() => dispatch({ type: "UPDATE_MACRO", payload: { inflationAdjusted: false } })}
+                                        className={`flex-1 py-2 text-sm rounded-md transition-all ${!state.macro.inflationAdjusted ? "bg-green-600 text-white shadow-lg" : "text-gray-400 hover:text-white"}`}
                                     >
                                         Disabled
                                     </button>
@@ -63,12 +67,9 @@ export default function AssumptionTab() {
                                 label="Estimated Rate of Return"
                                 value={state.investments.returnRates.ror}
                                 onChange={(val) => dispatch({ type: 'UPDATE_INVESTMENT_RATES', payload: { ror: val } })}
+                                isAboveInflation={state.macro.inflationAdjusted}
                             />
-                            <PercentageInput
-                                label="Fees (Expense Ratios)"
-                                value={state.investments.fees}
-                                onChange={(val) => dispatch({ type: 'UPDATE_INVESTMENTS', payload: { fees: val } })}
-                            />
+
                         </div>
                         
                     </div>
@@ -84,6 +85,7 @@ export default function AssumptionTab() {
                                 label="Salary Growth"
                                 value={state.income.salaryGrowth}
                                 onChange={(val) => dispatch({ type: 'UPDATE_INCOME', payload: { salaryGrowth: val } })}
+                                isAboveInflation={state.macro.inflationAdjusted}
                             />
                             <NumberInput
                                 label="Social Security Start Age"
@@ -106,11 +108,13 @@ export default function AssumptionTab() {
                                 label="Housing Appreciation"
                                 value={state.expenses.housingAppreciation}
                                 onChange={(val) => dispatch({ type: 'UPDATE_EXPENSES', payload: { housingAppreciation: val } })}
+                                isAboveInflation={state.macro.inflationAdjusted}
                             />
                             <PercentageInput
                                 label="Rent Inflation"
                                 value={state.expenses.rentInflation}
                                 onChange={(val) => dispatch({ type: 'UPDATE_EXPENSES', payload: { rentInflation: val } })}
+                                isAboveInflation={state.macro.inflationAdjusted}
                             />
                         </div>
                     </div>

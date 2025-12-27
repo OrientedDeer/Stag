@@ -15,8 +15,18 @@ export abstract class BaseAccount implements Account {
 
 // 3. Concrete Classes
 
+export const TaxTypeEnum = ['Brokerage', 'Roth 401k', 'Traditional 401k', 'Roth IRA', 'Traditional IRA', 'HSA'] as const;
+export type TaxType = typeof TaxTypeEnum[number];
+
 export class SavedAccount extends BaseAccount {
-  // No extra properties
+  constructor(
+    id: string,
+    name: string,
+    amount: number,
+    public apr: number = 0
+  ) {
+    super(id, name, amount);
+  }
 }
 
 export class InvestedAccount extends BaseAccount {
@@ -24,7 +34,10 @@ export class InvestedAccount extends BaseAccount {
     id: string,
     name: string,
     amount: number,
-    public NonVestedAmount: number
+    public NonVestedAmount: number,
+    public expenseRatio: number = 0.1,
+    public taxType: TaxType = 'Brokerage',
+    public isContributionEligible: boolean = true
   ) {
     super(id, name, amount);
   }
@@ -49,7 +62,8 @@ export class DebtAccount extends BaseAccount {
     id: string,
     name: string,
     amount: number,
-    public linkedAccountId: string
+    public linkedAccountId: string,
+    public apr: number = 0
   ) {
     super(id, name, amount);
   }

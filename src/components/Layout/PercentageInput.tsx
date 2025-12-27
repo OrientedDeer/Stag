@@ -6,12 +6,14 @@ interface PercentageInputProps {
     value: number;
     onChange: (val: number) => void;
     id?: string;
+    isAboveInflation?: boolean;
+    disabled?: boolean;
 }
 
 const format = (val: number) => 
     val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export const PercentageInput: React.FC<PercentageInputProps> = ({ label, value, onChange, id }) => {
+export const PercentageInput: React.FC<PercentageInputProps> = ({ label, value, onChange, id, isAboveInflation, disabled }) => {
     // Local state for the string representation (e.g., "12.50")
     const [displayValue, setDisplayValue] = useState("");
     const [isFocused, setIsFocused] = useState(false);
@@ -33,8 +35,14 @@ export const PercentageInput: React.FC<PercentageInputProps> = ({ label, value, 
         setIsFocused(false);
         // Parse the current string back to a number
         const cleanVal = displayValue.replace(/[^0-9.]/g, "");
-        const numVal = parseFloat(cleanVal);
+
+        if (cleanVal === "") {
+            onChange(0);
+            setDisplayValue(format(0));
+            return;
+        }
         
+        const numVal = parseFloat(cleanVal);
         if (!isNaN(numVal)) {
             onChange(numVal); // Send the number up to the parent
             setDisplayValue(format(numVal)); // Re-format local display
@@ -54,12 +62,13 @@ export const PercentageInput: React.FC<PercentageInputProps> = ({ label, value, 
     return (
         <StyledInput
             id={id}
-            label={`${label} (%)`}
+            label={isAboveInflation ? `${label} (%) (above inflation)` : `${label} (%)`}
             type="text"
             value={isFocused ? displayValue : `${displayValue}%`}
             onChange={handleChange}
             onFocus={handleFocus}
             onBlur={handleBlur}
+            disabled={disabled}
         />
     );
 };

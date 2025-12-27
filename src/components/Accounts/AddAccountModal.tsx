@@ -4,7 +4,9 @@ import {
     SavedAccount, 
     InvestedAccount, 
     PropertyAccount, 
-    DebtAccount 
+    DebtAccount,
+    TaxType,
+    TaxTypeEnum
 } from './models';
 import { ExpenseContext } from "../Expense/ExpenseContext";
 import { LoanExpense, MortgageExpense } from "../Expense/models";
@@ -12,6 +14,8 @@ import { LoanExpense, MortgageExpense } from "../Expense/models";
 import { CurrencyInput } from "../Layout/CurrencyInput";
 import { NameInput } from "../Layout/NameInput";
 import { DropdownInput } from "../Layout/DropdownInput";
+import { PercentageInput } from "../Layout/PercentageInput";
+import { ToggleInput } from "../Layout/ToggleInput";
 
 const generateUniqueAccId = () =>
     `ACC-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -32,18 +36,26 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
     const [name, setName] = useState("");
     const [amount, setAmount] = useState<number>(0);
     const [NonVestedAmount, setNonVestedAmount] = useState<number>(0);
+    const [expenseRatio, setExpenseRatio] = useState<number>(0.1);
     const [ownershipType, setOwnershipType] = useState<'Financed' | 'Owned'>('Owned');
     const [loanAmount, setLoanAmount] = useState<number>(0);
     const [startingLoanAmount, setStartingLoanAmount] = useState<number>(0);
+    const [apr, setApr] = useState<number>(0);
+    const [taxType, setTaxType] = useState<TaxType>('Brokerage');
+    const [isContributionEligible, setIsContributionEligible] = useState<boolean>(true);
     const id = generateUniqueAccId();
 
     const handleClose = () => {
         setName("");
         setAmount(0);
         setNonVestedAmount(0);
+        setExpenseRatio(0.1);
         setOwnershipType('Owned');
         setLoanAmount(0);
         setStartingLoanAmount(0);
+        setApr(0);
+        setTaxType('Brokerage');
+        setIsContributionEligible(true);
         onClose();
     };
 
@@ -53,9 +65,9 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
         let newAccount;
 
         if (selectedType === SavedAccount) {
-            newAccount = new selectedType(id, name.trim(), amount);
+            newAccount = new selectedType(id, name.trim(), amount, apr);
         } else if (selectedType === InvestedAccount) {
-            newAccount = new selectedType(id, name.trim(), amount, NonVestedAmount);
+            newAccount = new selectedType(id, name.trim(), amount, NonVestedAmount, expenseRatio, taxType, isContributionEligible);
         } else if (selectedType === PropertyAccount) {
             if (ownershipType == "Financed"){
                 const newExpense = new MortgageExpense(
@@ -96,7 +108,7 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                 name.trim(),
                 amount,
                 "Monthly",
-                0,
+                apr,
                 "Compounding",
                 0,
                 "No",
@@ -105,7 +117,7 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
             )
             expenseDispatch({type: "ADD_EXPENSE", payload: newExpense})
 
-            newAccount = new selectedType(id, name.trim(), amount, 'EXS' + id.substring(3));
+            newAccount = new selectedType(id, name.trim(), amount, 'EXS' + id.substring(3), apr);
         }
 
         accountDispatch({ type: "ADD_ACCOUNT", payload: newAccount });
@@ -170,11 +182,30 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                                 value={amount}
                                 onChange={setAmount}
                             />
+                            <PercentageInput
+                                id={`${id}-expense-ratio`}
+                                label="Expense Ratio"
+                                value={expenseRatio}
+                                onChange={setExpenseRatio}
+                            />
+                            <DropdownInput
+                                id={`${id}-tax-type`}
+                                label="Tax Type"
+                                value={taxType}
+                                onChange={(val) => setTaxType(val as TaxType)}
+                                options={TaxTypeEnum as any}
+                            />
                             <CurrencyInput
                                 id={`${id}-non-vested-amount`}
                                 label="Non-Vested Contrib."
                                 value={NonVestedAmount}
                                 onChange={setNonVestedAmount}
+                            />
+                            <ToggleInput
+                                id={`${id}-contribution-eligible`}
+                                label="Contribution Eligible"
+                                enabled={isContributionEligible}
+                                setEnabled={setIsContributionEligible}
                             />
                         </div>
                     )}
@@ -185,6 +216,12 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                                 label="Amount"
                                 value={amount}
                                 onChange={setAmount}
+                            />
+                            <PercentageInput
+                                id={`${id}-apr`}
+                                label="APR"
+                                value={apr}
+                                onChange={setApr}
                             />
                         </div>
                     )}

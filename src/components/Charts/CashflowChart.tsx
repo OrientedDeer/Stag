@@ -44,8 +44,8 @@ export const CashflowChart = () => {
         const nodes: any[] = [];
         const links: any[] = [];
 
-        // 1. Core Totals
-        const totalAnnualIncome = getGrossIncome(incomes);
+        // 1. Core Totals (Salary Only)
+        const salaryIncome = getGrossIncome(incomes);
 
         // 2. Tax Calculations
         const year = 2025;
@@ -62,58 +62,95 @@ export const CashflowChart = () => {
         if (taxState.stateOverride !== null) annualStateTax = taxState.stateOverride;
 
         // 3. Detailed Deduction Breakdown
-        let total401k = 0;
+        let employee401k = 0;
+        let employeeRoth = 0;
         let totalInsurance = 0;
-        let totalRoth = 0;
-        let totalPrincipal = 0
-        let totalMortgage = 0;
+        
+        let totalEmployerMatch = 0;
+        let totalEmployerMatchForRoth = 0;
+        let totalEmployerMatchForTrad = 0;
 
+        let totalPrincipal = 0;
+        let totalMortgage = 0;
 
         incomes.forEach(inc => {
             if (inc instanceof WorkIncome) {
-                total401k += getYearlyDeduction(inc.preTax401k, inc.frequency);
+                employee401k += getYearlyDeduction(inc.preTax401k, inc.frequency);
                 totalInsurance += getYearlyDeduction(inc.insurance, inc.frequency);
-                totalRoth += getYearlyDeduction(inc.roth401k, inc.frequency);
+                employeeRoth += getYearlyDeduction(inc.roth401k, inc.frequency);
+                
+                // Calculate Match
+                const matchAmount = (inc as any).employerMatch || 0;
+                const yearlyMatch = getYearlyDeduction(matchAmount, inc.frequency);
+                totalEmployerMatch += yearlyMatch;
+
+                // Detect Match Type (Assuming property exists or default to Trad)
+                // @ts-ignore
+                if ((inc as any).matchIsRoth || (inc as any).taxType === 'Roth 401k') {
+                    totalEmployerMatchForRoth += yearlyMatch;
+                } else {
+                    totalEmployerMatchForTrad += yearlyMatch;
+                }
             }
         });
 
         expenses.forEach(exp => {
             if (exp instanceof MortgageExpense) {
-                totalPrincipal += exp.calculateAnnualAmortization(year).totalPrincipal;
-            }
-            if (exp instanceof MortgageExpense) {
-                totalMortgage += exp.calculateAnnualAmortization(year).totalPayment;
+                const amort = exp.calculateAnnualAmortization(year);
+                totalPrincipal += amort.totalPrincipal;
+                totalMortgage += amort.totalPayment;
             }
         });
-        totalMortgage -= totalPrincipal
+        totalMortgage -= totalPrincipal;
         const totalTaxes = annualFedTax + annualStateTax + annualFicaTax;
         
         // --- WATERFALL MATH ---
-        // netPayFlow is what remains after Deductions and Taxes
-        const netPayFlow = totalAnnualIncome - total401k - totalInsurance - totalTaxes;
+        
+        // GROSS NODE VALUE = Salary + All Matches
+        const grossPayNodeValue = salaryIncome;
+
+        // TOTAL TRAD SAVINGS = Employee PreTax + Employer Trad Match
+        const totalTradSavings = employee401k + totalEmployerMatchForTrad;
+
+        // TOTAL ROTH SAVINGS = Employee Roth + Employer Roth Match
+        const totalRothSavings = employeeRoth + totalEmployerMatchForRoth;
+
+        // NET PAY CALCULATION
+        // Gross Pay (Salary + Match)
+        // MINUS: Trad Savings (Employee + EmployerTradMatch)  <-- Leaves Gross flow
+        // MINUS: Insurance                                    <-- Leaves Gross flow
+        // MINUS: Taxes                                        <-- Leaves Gross flow
+        // EQUALS: Net Pay
+        //
+        // NOTE: We do NOT subtract EmployerRothMatch here. 
+        // It stays in the flow to reach Net Pay, then exits to Roth Savings.
+        const netPayFlow = grossPayNodeValue + totalEmployerMatchForTrad - totalTradSavings - totalInsurance - totalTaxes;
 
         // --- DEFINE NODES ---
-        // 1. Gross Aggregator
         nodes.push({ id: 'Gross Pay', color: '#3b82f6', label: 'Gross Pay' });
+        
+        if (totalEmployerMatch > 0) {
+            nodes.push({ id: 'Employer Contributions', color: '#10b981', label: 'Employer Contrib.' });
+        }
 
-        // 2. Pre-Tax Layer
-        if (total401k > 0) nodes.push({ id: '401k Savings', color: '#10b981', label: '401k Savings' });
+        if (totalTradSavings > 0) nodes.push({ id: '401k Savings', color: '#10b981', label: '401k Savings' });
         if (totalInsurance > 0) nodes.push({ id: 'Benefits', color: '#6366f1', label: 'Benefits' });
         
-        // 3. Tax Layer
         nodes.push({ id: 'Federal Tax', color: '#f59e0b', label: 'Federal Tax' });
         nodes.push({ id: 'State Tax', color: '#fbbf24', label: 'State Tax' });
         nodes.push({ id: 'FICA Tax', color: '#d97706', label: 'FICA Tax' });
 
-        // 4. Net Pay Layer
         nodes.push({ id: 'Net Pay', color: '#3b82f6', label: 'Net Pay' });
 
-        // 5. Post-Tax Layer
-        if (totalRoth > 0) nodes.push({ id: 'Roth Savings', color: '#10b981', label: 'Roth Savings' });
+        if (totalRothSavings > 0) nodes.push({ id: 'Roth Savings', color: '#10b981', label: 'Roth Savings' });
         if (totalPrincipal > 0) nodes.push({ id: 'Principal Payments', color: '#10b981', label: 'Principal Payments' });
         if (totalMortgage > 0) nodes.push({ id: 'Mortgage Payments', color: '#ef4444', label: 'Mortgage Payments' });
 
-        // Level 0: Incomes -> Gross Pay
+        // --- LINKS: LEVEL 0 (Inputs -> Gross) ---
+        
+        if (totalEmployerMatch > 0) {
+            links.push({ source: 'Employer Contributions', target: 'Gross Pay', value: totalEmployerMatch });
+        }
         incomes.forEach(inc => {
              const amount = getYearlyAmount(inc);
              if (amount > 0) {
@@ -122,20 +159,29 @@ export const CashflowChart = () => {
              }
         });
 
-        // Level 1: Gross Pay splits directly into Deductions, Taxes, and Net Pay
-        if (total401k > 0) links.push({ source: 'Gross Pay', target: '401k Savings', value: total401k });
-        if (totalInsurance > 0) links.push({ source: 'Gross Pay', target: 'Benefits', value: totalInsurance });
+        // --- LINKS: LEVEL 1 (Gross -> PreTax/Taxes/Net) ---
         
+        // 1. Traditional Savings (Leaves here)
+        if (totalTradSavings > 0) links.push({ source: 'Gross Pay', target: '401k Savings', value: totalTradSavings });
+        
+        // 2. Expenses/Taxes (Leaves here)
+        if (totalInsurance > 0) links.push({ source: 'Gross Pay', target: 'Benefits', value: totalInsurance });
         if (annualFedTax > 0) links.push({ source: 'Gross Pay', target: 'Federal Tax', value: annualFedTax });
         if (annualStateTax > 0) links.push({ source: 'Gross Pay', target: 'State Tax', value: annualStateTax });
         if (annualFicaTax > 0) links.push({ source: 'Gross Pay', target: 'FICA Tax', value: annualFicaTax });
         
+        // 3. Flow to Net Pay (Includes Cash Salary + Roth Match)
         if (netPayFlow > 0) links.push({ source: 'Gross Pay', target: 'Net Pay', value: netPayFlow });
 
-        // Level 2: Net Pay -> Roth, Expenses, Remaining
+        // --- LINKS: LEVEL 2 (Net -> Roth/Living/Remaining) ---
         if (netPayFlow > 0) {
-            if (totalRoth > 0) links.push({ source: 'Net Pay', target: 'Roth Savings', value: totalRoth });
             
+            // 1. Roth Savings (Employee + Employer Roth Match)
+            if (totalRothSavings > 0) {
+                links.push({ source: 'Net Pay', target: 'Roth Savings', value: totalRothSavings });
+            }
+            
+            // 2. Living Expenses
             if (totalPrincipal > 0) links.push({ source: 'Net Pay', target: 'Principal Payments', value: totalPrincipal });
             if (totalMortgage > 0) links.push({ source: 'Net Pay', target: 'Mortgage Payments', value: totalMortgage });
 
@@ -144,8 +190,7 @@ export const CashflowChart = () => {
 
             expenses.forEach(exp => {
                 const amount = getYearlyAmount(exp);
-                if (amount <= 0) return;
-                if(exp instanceof MortgageExpense) return;
+                if (amount <= 0 || exp instanceof MortgageExpense) return;
                 const category = EXPENSE_CLASS_TO_CAT[exp.constructor.name] || 'Other';
                 expenseCatTotals.set(category, (expenseCatTotals.get(category) || 0) + amount);
                 totalYearlyExpenses += amount;
@@ -156,7 +201,7 @@ export const CashflowChart = () => {
                 links.push({ source: 'Net Pay', target: cat, value: total });
             });
 
-            const remaining = netPayFlow - totalRoth - totalYearlyExpenses - totalMortgage - totalPrincipal;
+            const remaining = netPayFlow - totalRothSavings - totalYearlyExpenses - totalMortgage - totalPrincipal;
             
             if (remaining > 0) {
                 nodes.push({ id: 'Remaining', color: '#10b981', label: 'Remaining' });
@@ -203,6 +248,9 @@ export const CashflowChart = () => {
                         <span className="font-bold text-gray-200">
                             {(link.source as any).label} &rarr; {(link.target as any).label}
                         </span>
+                         <div className="text-green-400 font-mono mt-1">
+                            ${link.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </div>
                     </div>
                 )}
                 theme={{

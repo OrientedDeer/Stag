@@ -1,9 +1,11 @@
 import { useContext, useState } from "react";
-import { AnyAccount, SavedAccount, InvestedAccount, PropertyAccount, DebtAccount, ACCOUNT_COLORS_BACKGROUND} from "./models";
+import { AnyAccount, SavedAccount, InvestedAccount, PropertyAccount, DebtAccount, ACCOUNT_COLORS_BACKGROUND, TaxTypeEnum} from "./models";
 import { AccountContext, AllAccountKeys } from "./AccountContext";
 import { ExpenseContext } from "../Expense/ExpenseContext";
 import { StyledSelect, StyledDisplay } from "../Layout/StyleUI";
 import { CurrencyInput } from "../Layout/CurrencyInput"; // Import your new component
+import { PercentageInput } from "../Layout/PercentageInput";
+import { ToggleInput } from "../Layout/ToggleInput";
 import DeleteAccountControl from '../../components/Accounts/DeleteAccountUI';
 import { EditHistoryModal } from "./EditHistoryModal";
 import { NameInput } from "../Layout/NameInput";
@@ -30,6 +32,12 @@ const AccountCard = ({ account }: { account: AnyAccount }) => {
                 expenseDispatch({
                     type: "UPDATE_EXPENSE_FIELD",
                     payload: { id: account.linkedAccountId, field: "amount", value },
+                });
+            }
+            if (field === "apr") {
+                expenseDispatch({
+                    type: "UPDATE_EXPENSE_FIELD",
+                    payload: { id: account.linkedAccountId, field: "apr", value },
                 });
             }
         }
@@ -128,13 +136,45 @@ const AccountCard = ({ account }: { account: AnyAccount }) => {
 					onChange={(val) => handleFieldUpdate("amount", val)}
 				/>
 
-				{account instanceof InvestedAccount && (
-					<CurrencyInput
-						id={`${account.id}-non-vested-amount`}
-						label="Non-Vested Contrib."
-						value={account.NonVestedAmount}
-						onChange={(val) => handleFieldUpdate("NonVestedAmount", val)}
+				{account instanceof SavedAccount && (
+					<PercentageInput
+						id={`${account.id}-apr`}
+						label="APR"
+						value={account.apr}
+						onChange={(val) => handleFieldUpdate("apr", val)}
 					/>
+				)}
+
+				{account instanceof InvestedAccount && (
+					<>
+						<PercentageInput
+							id={`${account.id}-expense-ratio`}
+							label="Expense Ratio"
+							value={account.expenseRatio}
+							onChange={(val) => handleFieldUpdate("expenseRatio", val)}
+						/>
+						<StyledSelect
+							id={`${account.id}-tax-type`}
+							label="Tax Type"
+							value={account.taxType}
+							onChange={(e) => handleFieldUpdate("taxType", e.target.value)}
+							options={TaxTypeEnum as any}
+						/>
+						{(account.taxType === 'Roth 401k' || account.taxType === 'Traditional 401k') && (
+							<CurrencyInput
+								id={`${account.id}-non-vested-amount`}
+								label="Non-Vested Contrib."
+								value={account.NonVestedAmount}
+								onChange={(val) => handleFieldUpdate("NonVestedAmount", val)}
+							/>
+						)}
+						<ToggleInput
+							id={`${account.id}-contribution-eligible`}
+							label="Contribution Eligible"
+							enabled={account.isContributionEligible}
+							setEnabled={(val) => handleFieldUpdate("isContributionEligible", val)}
+						/>
+					</>
 				)}
 
 				{account instanceof PropertyAccount && (
@@ -170,11 +210,19 @@ const AccountCard = ({ account }: { account: AnyAccount }) => {
 					</>
 				)}
 				{account instanceof DebtAccount && (
-					<StyledDisplay
-						label="Linked to Expense"
-						blankValue="No expense found, try re-adding"
-						value={getLinkedAccount()}
-					/>
+					<>
+						<PercentageInput
+							id={`${account.id}-apr`}
+							label="APR"
+							value={account.apr}
+							onChange={(val) => handleFieldUpdate("apr", val)}
+						/>
+						<StyledDisplay
+							label="Linked to Expense"
+							blankValue="No expense found, try re-adding"
+							value={getLinkedAccount()}
+						/>
+					</>
 				)}
 			</div>
 			<EditHistoryModal 

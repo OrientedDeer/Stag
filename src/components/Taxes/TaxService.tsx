@@ -18,10 +18,16 @@ export const toAnnual = (amount: number, frequency: string) => {
 };
 
 export function getGrossIncome(incomes: AnyIncome[]): number {
-	return incomes.reduce(
-		(acc, inc) => acc + toAnnual(inc.amount, inc.frequency),
-		0
-	);
+	return incomes.reduce((acc, inc) => {
+		let currentIncome = inc.amount;
+		if (
+			inc instanceof WorkIncome &&
+			inc.taxType === "Roth 401k"
+		) {
+			currentIncome += inc.employerMatch;
+ 		}
+		return acc + toAnnual(currentIncome, inc.frequency);
+	}, 0);
 }
 
 export function getPreTaxExemptions(incomes: AnyIncome[]): number {
@@ -32,6 +38,18 @@ export function getPreTaxExemptions(incomes: AnyIncome[]): number {
 				acc + toAnnual(inc.preTax401k + inc.insurance, inc.frequency),
 			0
 		);
+}
+
+export function getPostTaxEmployerMatch(incomes: AnyIncome[]): number {
+	return incomes.reduce((acc, inc) => {
+		if (
+			inc instanceof WorkIncome &&
+			inc.taxType === "Roth 401k"
+		) {
+			return acc + toAnnual(inc.employerMatch, inc.frequency);
+ 		}
+		return acc
+	}, 0);
 }
 
 export function getPostTaxExemptions(incomes: AnyIncome[]): number {

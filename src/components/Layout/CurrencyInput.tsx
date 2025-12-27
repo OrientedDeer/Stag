@@ -33,8 +33,14 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({ label, value, onCh
         setIsFocused(false);
         // Parse the current string back to a number
         const cleanVal = displayValue.replace(/[^0-9.]/g, "");
-        const numVal = parseFloat(cleanVal);
+
+        if (cleanVal === "") {
+            onChange(0);
+            setDisplayValue(format(0));
+            return;
+        }
         
+        const numVal = parseFloat(cleanVal);
         if (!isNaN(numVal)) {
             onChange(numVal); // Send the number up to the parent
             setDisplayValue(format(numVal)); // Re-format local display

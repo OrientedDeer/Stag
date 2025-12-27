@@ -1,3 +1,5 @@
+import { TaxType } from "../Accounts/models";
+
 export interface Income {
   id: string;
   name: string;
@@ -34,6 +36,9 @@ export class WorkIncome extends BaseIncome {
     public preTax401k: number = 0,
     public insurance: number = 0,
     public roth401k: number = 0,
+    public employerMatch: number = 0,
+    public matchAccountId: string,
+    public taxType: TaxType | null = null,
   ) {
     super(id, name, amount, frequency, end_date, earned_income);
   }

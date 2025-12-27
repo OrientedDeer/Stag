@@ -42,7 +42,7 @@ export const StyledInput: React.FC<StyledInputProps> = ({ label, id: providedId,
     <InputGroup label={label} className={className} id={id}>
       <input
         id={id}
-        className="bg-transparent border-none outline-none text-white text-md font-semibold placeholder-gray-600 w-full p-0 m-0"
+        className="bg-transparent border-none outline-none text-white text-md font-semibold placeholder-gray-600 w-full p-0 m-0 disabled:opacity-50"
         {...props}
       />
     </InputGroup>

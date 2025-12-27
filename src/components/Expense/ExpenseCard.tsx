@@ -34,9 +34,16 @@ const formatDate = (date: Date): string => {
 
 const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 	const { dispatch: expenseDispatch } = useContext(ExpenseContext);
-    const { dispatch: accountDispatch } = useContext(AccountContext);
+    const { accounts, dispatch: accountDispatch } = useContext(AccountContext);
 
 	const isHousing = expense instanceof RentExpense || expense instanceof MortgageExpense;
+
+	const getLinkedAccount = () => {
+		if (expense instanceof LoanExpense || expense instanceof MortgageExpense){
+			const linkedAccount = accounts.find((acc) => acc.id === expense.linkedAccountId);
+			return linkedAccount?.name;
+		}
+	}
 
 	// --- Equity and PMI Warning Logic ---
     let showPmiWarning = false;
@@ -65,6 +72,9 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
             if (field === 'amount') {
                  // Sync monthly payment on account side
                 accountDispatch({ type: 'UPDATE_ACCOUNT_FIELD', payload: { id: accId, field: 'amount', value }});
+            }
+            if (field === 'apr') {
+                accountDispatch({ type: 'UPDATE_ACCOUNT_FIELD', payload: { id: accId, field: 'apr', value }});
             }
         }
 
@@ -312,6 +322,11 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
                         								value={"$"+expense.tax_deductible.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                         							/>
                         						)}
+												<StyledDisplay
+													label="Linked to Expense"
+													blankValue="No account found, try re-adding"
+													value={getLinkedAccount()}
+												/>
                                                                         <button
                                                                             type="button"
                                                                             onClick={() => {
@@ -334,12 +349,11 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
                 {/* --- Specialized Loan Fields --- */}
                 {expense instanceof LoanExpense && (
 					<>
-						<StyledInput 
+						<PercentageInput
 							id={`${expense.id}-apr`}
-							label="APR (%)" 
-							type="number" 
-							value={expense.apr} 
-							onChange={(e) => handleFieldUpdate("apr", Number(e.target.value))} 
+							label="apr"
+							value={expense.apr}
+							onChange={(val) => handleFieldUpdate("apr", val)}
 						/>
 						<StyledSelect 
 							id={`${expense.id}-interest-type`}
@@ -369,6 +383,11 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 								onChange={(val) => handleFieldUpdate("tax_deductible", val)}
 							/>
 						)}
+						<StyledDisplay
+							label="Linked to Expense"
+							blankValue="No account found, try re-adding"
+							value={getLinkedAccount()}
+						/>
 					</>
 				)}
 
