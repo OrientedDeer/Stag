@@ -5,7 +5,6 @@ import {
     CLASS_TO_CATEGORY, 
     CATEGORY_PALETTES,
     INCOME_CATEGORIES,
-    getIncomeActiveMultiplier,
     isIncomeActiveInCurrentMonth
 } from "./models";
 

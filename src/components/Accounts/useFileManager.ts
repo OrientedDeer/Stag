@@ -14,12 +14,12 @@ import { TaxState } from '../Taxes/TaxContext';
 
 interface FullBackup {
     version: number;
-    accounts: AnyAccount[];
+    accounts: any[];
     amountHistory: Record<string, AmountHistoryEntry[]>;
-    incomes: AnyIncome[];
-    expenses: AnyExpense[];
+    incomes: any[];
+    expenses: any[];
     taxSettings: TaxState;
-    assumptions: AssumptionsState; // Add assumptions to the FullBackup interface
+    assumptions: AssumptionsState;
 }
 
 export const useFileManager = () => {
