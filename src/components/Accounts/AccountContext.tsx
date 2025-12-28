@@ -56,7 +56,8 @@ export function reconstituteAccount(data: any): AnyAccount | null {
 
     switch (data.className) {
         case 'SavedAccount':
-            return new SavedAccount(id, name, amount);
+            // FIX: Add data.apr || 0 as the 4th argument
+            return new SavedAccount(id, name, amount, data.apr || 0);
             
         case 'InvestedAccount':
             return new InvestedAccount(
@@ -69,22 +70,24 @@ export function reconstituteAccount(data: any): AnyAccount | null {
                 data.isContributionEligible !== undefined ? data.isContributionEligible : true
             );
             
-                case 'PropertyAccount':
-                    return new PropertyAccount(
-                        id,
-                        name,
-                        amount,
-                        data.ownershipType || 'Owned',
-                        data.loanAmount || 0,
-                        data.startingLoanBalance || 0,
-                        data.linkedAccountId
-                    );            
+        case 'PropertyAccount':
+            return new PropertyAccount(
+                id,
+                name,
+                amount,
+                data.ownershipType || 'Owned',
+                data.loanAmount || 0,
+                data.startingLoanBalance || 0,
+                data.linkedAccountId
+            );            
         case 'DebtAccount':
             return new DebtAccount(
                 id, 
                 name, 
                 amount,
-                data.linkedAccountId || ''
+                data.linkedAccountId || '',
+                // FIX: Add data.apr || 0 as the 5th argument
+                data.apr || 0
             );
             
         default:

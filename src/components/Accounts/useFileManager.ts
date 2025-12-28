@@ -16,8 +16,8 @@ interface FullBackup {
     version: number;
     accounts: AnyAccount[];
     amountHistory: Record<string, AmountHistoryEntry[]>;
-    incomes: AnyIncome[];
-    expenses: AnyExpense[];
+    incomes: any[];
+    expenses: any[];
     taxSettings: TaxState;
     assumptions: AssumptionsState; // Add assumptions to the FullBackup interface
 }
@@ -32,15 +32,12 @@ export const useFileManager = () => {
     const handleGlobalExport = () => {
         const fullBackup: FullBackup = {
             version: 1,
-            // Add 'as any' to bypass the missing method check
-            accounts: accounts.map(a => ({ ...a, className: a.constructor.name })) as any,
+            accounts: accounts.map(a => ({ ...a, className: a.constructor.name })),
             amountHistory,
-            // Add 'as any' here to fix your specific error
-            incomes: incomes.map(i => ({ ...i, className: i.constructor.name })) as any,
-            // Add 'as any' here as well
-            expenses: expenses.map(e => ({ ...e, className: e.constructor.name })) as any,
+            incomes: incomes.map(i => ({ ...i, className: i.constructor.name })),
+            expenses: expenses.map(e => ({ ...e, className: e.constructor.name })),
             taxSettings: state as TaxState,
-            assumptions: assumptions as AssumptionsState,
+            assumptions: assumptions as AssumptionsState, // Include assumptions in the backup
         };
 
         const blob = new Blob([JSON.stringify(fullBackup, null, 2)], { type: 'application/json' });
