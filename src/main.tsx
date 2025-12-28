@@ -1,11 +1,13 @@
-import ReactDOM from "react-dom/client";
-import App from "./App";
-import { BrowserRouter } from "react-router-dom";
-import "./index.css";
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import { HashRouter } from 'react-router-dom' // Change this import
+import App from './App.tsx'
+import './index.css'
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  // Use import.meta.env.BASE_URL to automatically handle the "/Stag/" prefix
-  <BrowserRouter basename={import.meta.env.BASE_URL}>
-    <App />
-  </BrowserRouter>
-);
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <HashRouter>
+      <App />
+    </HashRouter>
+  </React.StrictMode>,
+)
