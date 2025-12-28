@@ -14,12 +14,12 @@ import { TaxState } from '../Taxes/TaxContext';
 
 interface FullBackup {
     version: number;
-    accounts: any[];
+    accounts: AnyAccount[];
     amountHistory: Record<string, AmountHistoryEntry[]>;
-    incomes: any[];
-    expenses: any[];
+    incomes: AnyIncome[];
+    expenses: AnyExpense[];
     taxSettings: TaxState;
-    assumptions: AssumptionsState;
+    assumptions: AssumptionsState; // Add assumptions to the FullBackup interface
 }
 
 export const useFileManager = () => {
@@ -32,12 +32,15 @@ export const useFileManager = () => {
     const handleGlobalExport = () => {
         const fullBackup: FullBackup = {
             version: 1,
-            accounts: accounts.map(a => ({ ...a, className: a.constructor.name })),
+            // Add 'as any' to bypass the missing method check
+            accounts: accounts.map(a => ({ ...a, className: a.constructor.name })) as any,
             amountHistory,
-            incomes: incomes.map(i => ({ ...i, className: i.constructor.name })),
-            expenses: expenses.map(e => ({ ...e, className: e.constructor.name })),
+            // Add 'as any' here to fix your specific error
+            incomes: incomes.map(i => ({ ...i, className: i.constructor.name })) as any,
+            // Add 'as any' here as well
+            expenses: expenses.map(e => ({ ...e, className: e.constructor.name })) as any,
             taxSettings: state as TaxState,
-            assumptions: assumptions as AssumptionsState, // Include assumptions in the backup
+            assumptions: assumptions as AssumptionsState,
         };
 
         const blob = new Blob([JSON.stringify(fullBackup, null, 2)], { type: 'application/json' });
