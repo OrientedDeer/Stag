@@ -54,21 +54,23 @@ export const CashflowChart = () => {
 
         incomes.forEach(inc => {
             if (inc instanceof WorkIncome) {
+                let empMatch = 0
                 employee401k += inc.getProratedAnnual(inc.preTax401k, year);
                 totalInsurance += inc.getProratedAnnual(inc.insurance, year);
                 employeeRoth += inc.getProratedAnnual(inc.roth401k, year);
                 
                 // Calculate Match
                 if ((inc as any).employerMatch != null){
-                    totalEmployerMatch += inc.getProratedAnnual(inc.employerMatch, year);
+                    empMatch = inc.getProratedAnnual(inc.employerMatch, year);
+                    totalEmployerMatch += empMatch;
                 }
 
                 // Detect Match Type (Assuming property exists or default to Trad)
                 // @ts-ignore
                 if ((inc as any).matchIsRoth || (inc as any).taxType === 'Roth 401k') {
-                    totalEmployerMatchForRoth += totalEmployerMatch;
+                    totalEmployerMatchForRoth += empMatch;
                 } else {
-                    totalEmployerMatchForTrad += totalEmployerMatch;
+                    totalEmployerMatchForTrad += empMatch;
                 }
             }
         });
@@ -168,7 +170,7 @@ export const CashflowChart = () => {
             const expenseCatTotals = new Map<string, number>();
 
             expenses.forEach(exp => {
-                const amount = exp.getProratedAnnual(exp.amount, year);
+                const amount = exp.getAnnualAmount(year);
                 if (amount <= 0 || exp instanceof MortgageExpense) return;
                 const category = EXPENSE_CLASS_TO_CAT[exp.constructor.name] || 'Other';
                 expenseCatTotals.set(category, (expenseCatTotals.get(category) || 0) + amount);

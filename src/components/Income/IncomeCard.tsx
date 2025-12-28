@@ -44,9 +44,12 @@ const IncomeCard = ({ income }: { income: AnyIncome }) => {
     };
 
     const handleDateChange = (field: AllIncomeKeys, dateString: string) => {
-        if (!dateString) return;
-        const newDate = new Date(`${dateString}T00:00:00.000Z`);
-        handleFieldUpdate(field, newDate);
+        if (!dateString) {
+            handleFieldUpdate(field, undefined);
+            return;
+        }
+        // Create date based on local timezone
+        handleFieldUpdate(field, new Date(dateString));
     };
 
 	const getDescriptor = () => {

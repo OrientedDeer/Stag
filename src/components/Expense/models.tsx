@@ -257,6 +257,9 @@ export class LoanExpense extends BaseExpense {
     // We just tell the generic helper to use 'this.payment' instead of 'this.amount'
     return this.getProratedAnnual(this.payment, year);
   }
+  getMonthlyAmount(year?: number): number {
+    return this.getProratedAnnual(this.payment, year) / 12;
+  }
 }
 
 export class DependentExpense extends BaseExpense {

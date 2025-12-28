@@ -1,4 +1,16 @@
 import { createContext, useReducer, ReactNode, useEffect } from 'react';
+//import { v4 as uuidv4 } from 'uuid';
+
+export type CapType = 'MAX' | 'FIXED' | 'REMAINDER' | 'MULTIPLE_OF_EXPENSES';
+
+export interface PriorityBucket {
+  id: string;
+  name: string; // e.g., "Max out 401k"
+  type: 'DEBT' | 'INVESTMENT' | 'SAVINGS';
+  accountId?: string; // Link to your actual Account IDs
+  capType: CapType;
+  capValue?: number; // e.g., 23000 for 401k, or 500 for monthly savings
+}
 
 export interface AssumptionsState {
   macro: {
@@ -25,6 +37,7 @@ export interface AssumptionsState {
     retirementAge: number;
     lifeExpectancy: number;
   };
+  priorities: PriorityBucket[];
 }
 
 export const defaultAssumptions: AssumptionsState = {
@@ -51,6 +64,7 @@ export const defaultAssumptions: AssumptionsState = {
     retirementAge: 65,
     lifeExpectancy: 90,
   },
+  priorities: [],
 };
 
 type Action =
@@ -61,7 +75,11 @@ type Action =
   | { type: 'UPDATE_INVESTMENT_RATES'; payload: Partial<AssumptionsState['investments']['returnRates']> }
   | { type: 'UPDATE_DEMOGRAPHICS'; payload: Partial<AssumptionsState['demographics']> }
   | { type: 'RESET_DEFAULTS' }
-  | { type: 'SET_BULK_DATA'; payload: AssumptionsState };
+  | { type: 'SET_BULK_DATA'; payload: AssumptionsState }
+  | { type: 'SET_PRIORITIES'; payload: PriorityBucket[] }
+  | { type: 'ADD_PRIORITY'; payload: PriorityBucket }
+  | { type: 'REMOVE_PRIORITY'; payload: string }
+  | { type: 'UPDATE_PRIORITY'; payload: PriorityBucket };
 
 const assumptionsReducer = (state: AssumptionsState, action: Action): AssumptionsState => {
   switch (action.type) {
@@ -87,6 +105,17 @@ const assumptionsReducer = (state: AssumptionsState, action: Action): Assumption
       return defaultAssumptions;
     case 'SET_BULK_DATA':
       return action.payload;
+    case 'SET_PRIORITIES':
+        return { ...state, priorities: action.payload };
+    case 'ADD_PRIORITY':
+        return { ...state, priorities: [...state.priorities, action.payload] };
+    case 'REMOVE_PRIORITY':
+        return { ...state, priorities: state.priorities.filter(p => p.id !== action.payload) };
+    case 'UPDATE_PRIORITY':
+        return { 
+            ...state, 
+            priorities: state.priorities.map(p => p.id === action.payload.id ? action.payload : p) 
+        };
     default:
       return state;
   }

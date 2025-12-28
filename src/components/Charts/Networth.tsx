@@ -166,7 +166,7 @@ export const NetWorthCard = () => {
                         <p className="text-gray-500 text-[10px] font-bold uppercase">Gross Assets</p>
                     </div>
                     <p className="text-xl font-mono font-bold text-gray-100">
-                        ${stats.totalAssets.toLocaleString()}
+                        ${stats.totalAssets.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
                 </div>
                 <div>
@@ -175,7 +175,7 @@ export const NetWorthCard = () => {
                         <p className="text-gray-500 text-[10px] font-bold uppercase">Total Debt</p>
                     </div>
                     <p className="text-xl font-mono font-bold text-gray-100">
-                        ${stats.totalDebt.toLocaleString()}
+                        ${stats.totalDebt.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
                 </div>
             </div>

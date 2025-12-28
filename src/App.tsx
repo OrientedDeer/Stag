@@ -16,6 +16,7 @@ import { TaxProvider } from "./components/Taxes/TaxContext";
 import FutureTab from "./pages/Future/FutureTab";
 import AssumptionTab from "./pages/Future/AssumptionTab";
 import { AssumptionsProvider } from "./components/Assumptions/AssumptionsContext";
+import PriorityTab from "./pages/Future/PriorityTab";
 
 export default function App() {
   const [isOpen, setIsOpen] = useState(false); // shared variable
@@ -44,6 +45,7 @@ export default function App() {
                       <Route path="/future" element={<FutureTab />} />
                       <Route path="/future/future" element={<FutureTab />} />
                       <Route path="/future/assumptions" element={<AssumptionTab />} />
+                      <Route path="/future/priorities" element={<PriorityTab />} />
                       <Route path="/testing" element={<Testing />} />
                     </Routes>
                   </main>
