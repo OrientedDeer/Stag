@@ -6,7 +6,7 @@ import {
 import ExpenseCard from '../../components/Expense/ExpenseCard';
 import AddExpenseModal from '../../components/Expense/AddExpenseModal';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
-import ExpenseIcicleChart from '../../components/Expense/ExpenseBarChart';
+import ExpenseIcicleChart from '../../components/Expense/ExpenseIcicleChart';
 
 const ExpenseList = ({ type }: { type: any }) => {
   const { expenses, dispatch } = useContext(ExpenseContext);

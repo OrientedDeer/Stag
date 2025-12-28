@@ -113,7 +113,8 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                 0,
                 "No",
                 0,
-                id
+                id,
+                new Date(),
             )
             expenseDispatch({type: "ADD_EXPENSE", payload: newExpense})
 

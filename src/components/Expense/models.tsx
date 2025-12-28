@@ -3,6 +3,8 @@ export interface Expense {
   name: string;
   amount: number;
   frequency: 'Daily'| 'Weekly' | 'Monthly' | 'Annually';
+  startDate?: Date;
+  endDate?: Date;
 }
 
 // 2. Base Abstract Class
@@ -12,7 +14,39 @@ export abstract class BaseExpense implements Expense {
     public name: string,
     public amount: number,
     public frequency: 'Daily' | 'Weekly' | 'Monthly' | 'Annually',
+    public startDate?: Date,
+    public endDate?: Date,
   ) {}
+  getProratedAnnual(value: number, year?: number): number {
+    let annual = 0;
+    switch (this.frequency) {
+        case 'Daily': annual = value * 365; break;
+        case 'Weekly': annual = value * 52; break;
+        case 'Monthly': annual = value * 12; break;
+        case 'Annually': annual = value; break;
+        default: annual = 0;
+    }
+
+    if (year !== undefined) {
+        return annual * getExpenseActiveMultiplier(this as AnyExpense, year);
+    }
+
+    return annual;
+  }
+
+  getProratedMonthly(value: number, year?: number): number {
+    return this.getProratedAnnual(value, year) / 12;
+  }
+
+  // --- REFACTORED MAIN METHODS ---
+
+  getAnnualAmount(year?: number): number {
+    return this.getProratedAnnual(this.amount, year);
+  }
+
+  getMonthlyAmount(year?: number): number {
+    return this.getProratedMonthly(this.amount, year);
+  }
 }
 
 // 3. Concrete Classes
@@ -24,8 +58,10 @@ export class RentExpense extends BaseExpense {
     public payment: number, // New field
     public utilities: number,
     frequency: 'Daily' | 'Weekly' | 'Monthly' | 'Annually',
+    startDate?: Date,
+    endDate?: Date,
   ) {
-    super(id, name, payment + utilities, frequency);
+    super(id, name, payment + utilities, frequency, startDate, endDate);
   }
 }
 
@@ -49,9 +85,10 @@ export class MortgageExpense extends BaseExpense {
     public is_tax_deductible: 'Yes' | 'No' | 'Itemized',
     public tax_deductible: number,
     public linkedAccountId: string,
-    public purchaseDate: Date,
+    startDate?: Date,
     public payment: number = 0,
-    public extra_payment: number = 0
+    public extra_payment: number = 0,
+    endDate?: Date,
   ) {
     // 1. Calculate the Fixed Monthly P&I using Starting Balance
     const r = apr / 100 / 12;
@@ -72,20 +109,20 @@ export class MortgageExpense extends BaseExpense {
     payment = principal_payment + property_tax_payment + pmi_payment + hoa_fee + repair_payment + utilities + home_owners_insurance_payment + interest_payment + extra_payment;
     tax_deductible = interest_payment;
 
-    super(id, name, payment, frequency);
+    super(id, name, payment, frequency, startDate, endDate);
     this.payment = payment;
     this.tax_deductible = tax_deductible;
   }
 
   calculateAnnualAmortization(year: number): { totalInterest: number, totalPrincipal: number, totalPayment: number } {
-    const purchaseYear = this.purchaseDate.getUTCFullYear();
-    const purchaseMonth = this.purchaseDate.getUTCMonth();
+    const purchaseYear = this.startDate != null ? this.startDate.getUTCFullYear() : new Date().getUTCFullYear();
+    const purchaseMonth = this.startDate != null ? this.startDate.getUTCMonth() : new Date().getUTCMonth();
 
     if (year < purchaseYear) {
       return { totalInterest: 0, totalPrincipal: 0, totalPayment: 0 };
     }
 
-    let balance = this.starting_loan_balance;
+    let balance = this.loan_balance;
     let totalPayment = 0;
     const monthlyRate = this.apr / 100 / 12;
     const numPayments = this.term_length * 12;
@@ -165,15 +202,15 @@ export class MortgageExpense extends BaseExpense {
 
   getBalanceAtDate(dateStr: string): number {
     const targetDate = new Date(dateStr);
-    const start = new Date(this.purchaseDate);
+    const start = new Date(this.startDate != null ? this.startDate : new Date());
 
     // If target is before purchase, the loan didn't exist yet (return 0)
-    if (targetDate < start) return 0;
+    if (targetDate.getUTCDate() < start.getUTCDate()) return 0;
 
     // Calculate months elapsed
     const monthsElapsed =
-      (targetDate.getFullYear() - start.getFullYear()) * 12 +
-      (targetDate.getMonth() - start.getMonth());
+      (targetDate.getUTCFullYear() - start.getUTCFullYear()) * 12 +
+      (targetDate.getUTCMonth() - start.getUTCMonth());
 
     if (monthsElapsed <= 0) return this.starting_loan_balance;
 
@@ -210,11 +247,16 @@ export class LoanExpense extends BaseExpense {
     public payment: number,
     public is_tax_deductible: 'Yes' | 'No' | 'Itemized',
     public tax_deductible: number,
-    public linkedAccountId: string
+    public linkedAccountId: string,
+    startDate?: Date,
+    endDate?: Date,
   ) {
-    super(id, name, amount, frequency);
+    super(id, name, amount, frequency, startDate, endDate);
   }
-
+  getAnnualAmount(year?: number): number {
+    // We just tell the generic helper to use 'this.payment' instead of 'this.amount'
+    return this.getProratedAnnual(this.payment, year);
+  }
 }
 
 export class DependentExpense extends BaseExpense {
@@ -223,11 +265,12 @@ export class DependentExpense extends BaseExpense {
     name: string,
     amount: number,
     frequency: 'Weekly' | 'Monthly' | 'Annually',
-    public end_date: Date,
     public is_tax_deductible: 'Yes' | 'No' | 'Itemized',
-    public tax_deductible: number
+    public tax_deductible: number,
+    startDate?: Date,
+    endDate?: Date,
   ) {
-    super(id, name, amount, frequency);
+    super(id, name, amount, frequency, startDate, endDate);
   }
 }
 
@@ -238,9 +281,11 @@ export class HealthcareExpense extends BaseExpense {
     amount: number,
     frequency: 'Weekly' | 'Monthly' | 'Annually',
     public is_tax_deductible: 'Yes' | 'No' | 'Itemized',
-    public tax_deductible: number
+    public tax_deductible: number,
+    startDate?: Date,
+    endDate?: Date,
   ) {
-    super(id, name, amount, frequency);
+    super(id, name, amount, frequency, startDate, endDate);
   }
 }
 
@@ -250,8 +295,10 @@ export class VacationExpense extends BaseExpense {
     name: string,
     amount: number,
     frequency: 'Weekly' | 'Monthly' | 'Annually',
+    startDate?: Date,
+    endDate?: Date,
   ) {
-    super(id, name, amount, frequency);
+    super(id, name, amount, frequency, startDate, endDate);
   }
 }
 
@@ -261,8 +308,10 @@ export class EmergencyExpense extends BaseExpense {
     name: string,
     amount: number,
     frequency: 'Weekly' | 'Monthly' | 'Annually',
+    startDate?: Date,
+    endDate?: Date,
   ) {
-    super(id, name, amount, frequency);
+    super(id, name, amount, frequency, startDate, endDate);
   }
 }
 
@@ -272,8 +321,10 @@ export class TransportExpense extends BaseExpense {
     name: string,
     amount: number,
     frequency: 'Weekly' | 'Monthly' | 'Annually',
+    startDate?: Date,
+    endDate?: Date,
   ) {
-    super(id, name, amount, frequency);
+    super(id, name, amount, frequency, startDate, endDate);
   }
 }
 
@@ -282,9 +333,11 @@ export class FoodExpense extends BaseExpense {
     id: string,
     name: string,
     amount: number,
-    frequency: 'Weekly' | 'Monthly' | 'Annually'
+    frequency: 'Weekly' | 'Monthly' | 'Annually',
+    startDate?: Date,
+    endDate?: Date,
   ) {
-    super(id, name, amount, frequency);
+    super(id, name, amount, frequency, startDate, endDate);
   }
 }
 
@@ -293,14 +346,66 @@ export class OtherExpense extends BaseExpense {
     id: string,
     name: string,
     amount: number,
-    frequency: 'Weekly' | 'Monthly' | 'Annually'
+    frequency: 'Weekly' | 'Monthly' | 'Annually',
+    startDate?: Date,
+    endDate?: Date,
   ) {
-    super(id, name, amount, frequency);
+    super(id, name, amount, frequency, startDate, endDate);
   }
 }
 
-// Union type for use in State Management
 export type AnyExpense = RentExpense | MortgageExpense | LoanExpense | DependentExpense | HealthcareExpense | VacationExpense | EmergencyExpense | TransportExpense | FoodExpense | OtherExpense;
+
+export function getExpenseActiveMultiplier(expense: AnyExpense, year: number): number {
+    const expenseStartDate = expense.startDate ? new Date(expense.startDate) : new Date();
+    const startYear = expenseStartDate.getUTCFullYear();
+
+    const safeEndDate = expense.endDate ? new Date(expense.endDate) : null;
+    const endYear = safeEndDate ? safeEndDate.getUTCFullYear() : null;
+
+    if (startYear > year) return 0;
+    if (endYear !== null && endYear < year) return 0;
+
+    const startMonthIndex = (startYear < year) ? 0 : expenseStartDate.getUTCMonth();
+
+    const endMonthIndex = (safeEndDate && endYear === year) 
+        ? safeEndDate.getUTCMonth() 
+        : 11;
+
+    const monthsActive = endMonthIndex - startMonthIndex + 1;
+
+    return Math.max(0, monthsActive) / 12;
+}
+
+export function isExpenseActiveInCurrentMonth(expense: AnyExpense): boolean {
+    const today = new Date();
+    const currentYear = today.getUTCFullYear();
+    const currentMonth = today.getUTCMonth();
+
+    const expenseStartDate = expense.startDate != null ? expense.startDate : new Date();
+    const expenseStartYear = expenseStartDate.getUTCFullYear();
+    const expenseStartMonth = expenseStartDate.getUTCMonth();
+
+    const currentMonthStart = new Date(currentYear, currentMonth, 1);
+    const expenseEffectiveStart = new Date(expenseStartYear, expenseStartMonth, 1);
+
+    if (expenseEffectiveStart > currentMonthStart) {
+        return false;
+    }
+
+    if (expense.endDate) {
+        const expenseEndDate = new Date(expense.endDate);
+        const expenseEndYear = expenseEndDate.getUTCFullYear();
+        const expenseEndMonth = expenseEndDate.getUTCMonth();
+
+        const expenseEffectiveEnd = new Date(expenseEndYear, expenseEndMonth + 1, 0);
+
+        if (expenseEffectiveEnd < currentMonthStart) {
+            return false;
+        }
+    }
+    return true;
+};
 
 export const EXPENSE_CATEGORIES = [
   'Rent',

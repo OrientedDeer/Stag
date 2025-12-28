@@ -2,22 +2,9 @@ import { AnyExpense, MortgageExpense } from "../Expense/models";
 import { AnyIncome, WorkIncome } from "../Income/models";
 import { TaxState } from "./TaxContext";
 import { TaxParameters, TAX_DATABASE } from "./TaxData";
+import { getExpenseActiveMultiplier } from '../Expense/models';
 
-// Helper to convert any frequency to Annual
-export const toAnnual = (amount: number, frequency: string) => {
-	switch (frequency) {
-		case "Weekly":
-			return amount * 52;
-		case "Monthly":
-			return amount * 12;
-		case "Daily":
-			return amount * 365;
-		default:
-			return amount;
-	}
-};
-
-export function getGrossIncome(incomes: AnyIncome[]): number {
+export function getGrossIncome(incomes: AnyIncome[], year: number): number {
 	return incomes.reduce((acc, inc) => {
 		let currentIncome = inc.amount;
 		if (
@@ -26,48 +13,55 @@ export function getGrossIncome(incomes: AnyIncome[]): number {
 		) {
 			currentIncome += inc.employerMatch;
  		}
-		return acc + toAnnual(currentIncome, inc.frequency);
+		return acc + inc.getProratedAnnual(inc.amount, year)
 	}, 0);
 }
 
-export function getPreTaxExemptions(incomes: AnyIncome[]): number {
+export function getPreTaxExemptions(incomes: AnyIncome[], year: number): number {
 	return incomes
 		.filter((inc) => inc instanceof WorkIncome)
 		.reduce(
-			(acc, inc) =>
-				acc + toAnnual(inc.preTax401k + inc.insurance, inc.frequency),
+			(acc, inc) => {
+				return acc + inc.getProratedAnnual(inc.preTax401k, year) + inc.getProratedAnnual(inc.insurance, year);
+			},
 			0
 		);
 }
 
-export function getPostTaxEmployerMatch(incomes: AnyIncome[]): number {
+export function getPostTaxEmployerMatch(incomes: AnyIncome[], year: number): number {
 	return incomes.reduce((acc, inc) => {
 		if (
 			inc instanceof WorkIncome &&
 			inc.taxType === "Roth 401k"
 		) {
-			return acc + toAnnual(inc.employerMatch, inc.frequency);
+			return acc + inc.getProratedAnnual(inc.employerMatch, year);
  		}
 		return acc
 	}, 0);
 }
 
-export function getPostTaxExemptions(incomes: AnyIncome[]): number {
+export function getPostTaxExemptions(incomes: AnyIncome[], year: number): number {
 	return incomes
 		.filter((inc) => inc instanceof WorkIncome)
-		.reduce((acc, inc) => acc + toAnnual(inc.roth401k, inc.frequency), 0);
+		.reduce((acc, inc) => {
+			return acc + inc.getProratedAnnual(inc.roth401k, year);
+		}, 0);
 }
 
-export function getFicaExemptions(incomes: AnyIncome[]): number {
+export function getFicaExemptions(incomes: AnyIncome[], year: number): number {
 	return incomes
 		.filter((inc) => inc instanceof WorkIncome)
-		.reduce((acc, inc) => acc + toAnnual(inc.insurance, inc.frequency), 0);
+		.reduce((acc, inc) => {
+			return acc + inc.getProratedAnnual(inc.insurance, year);
+		}, 0);
 }
 
-export function getEarnedIncome(incomes: AnyIncome[]): number {
+export function getEarnedIncome(incomes: AnyIncome[], year: number): number {
 	return incomes
 		.filter((inc) => inc.earned_income === "Yes")
-		.reduce((acc, inc) => acc + toAnnual(inc.amount, inc.frequency), 0);
+		.reduce((acc, inc) => {
+			return acc + inc.getProratedAnnual(inc.amount, year);
+		}, 0);
 }
 
 export function getItemizedDeductions(
@@ -75,12 +69,10 @@ export function getItemizedDeductions(
 	year: number
 ): number {
 	return expenses
-
 		.filter(
 			(exp) =>
-				"is_tax_deductible" in exp && exp.is_tax_deductible === "Itemized"
+				"is_tax_deductible" in exp && exp.is_tax_deductible === "Itemized" && getExpenseActiveMultiplier(exp, year) > 0
 		)
-
 		.reduce(
 			(val, exp) => {
 				if (exp instanceof MortgageExpense) {
@@ -88,30 +80,24 @@ export function getItemizedDeductions(
 
 					return val + temp;
 				}
-
-				return val + toAnnual((exp as any).tax_deductible || 0, exp.frequency);
+				return val + exp.getProratedAnnual((exp as any).tax_deductible || 0, year)
 			},
-
 			0
 		);
 }
 
 export function getYesDeductions(expenses: AnyExpense[], year: number): number {
 	return expenses
-
 		.filter(
-			(exp) => "is_tax_deductible" in exp && exp.is_tax_deductible === "Yes"
+			(exp) => "is_tax_deductible" in exp && exp.is_tax_deductible === "Yes" && getExpenseActiveMultiplier(exp, year) > 0
 		)
-
 		.reduce(
 			(val, exp) => {
 				if (exp instanceof MortgageExpense) {
 					return val + exp.calculateAnnualAmortization(year).totalInterest;
 				}
-
-				return val + toAnnual((exp as any).tax_deductible || 0, exp.frequency);
+				return val + exp.getProratedAnnual((exp as any).tax_deductible || 0, year)
 			},
-
 			0
 		);
 }
@@ -154,9 +140,9 @@ export function calculateFicaTax(
 		return state.ficaOverride;
 	}
 
-	const earnedGross = getEarnedIncome(incomes);
+	const earnedGross = getEarnedIncome(incomes, year);
 
-	const ficaExemptions = getFicaExemptions(incomes);
+	const ficaExemptions = getFicaExemptions(incomes, year);
 
 	const fedParams = TAX_DATABASE.federal[year][state.filingStatus];
 
@@ -181,11 +167,11 @@ export function calculateStateTax(
 		return state.stateOverride;
 	}
 
-	const annualGross = getGrossIncome(incomes);
+	const annualGross = getGrossIncome(incomes, year);
 
 	// 2. Deductions Logic
 
-	const incomePreTaxDeductions = getPreTaxExemptions(incomes);
+	const incomePreTaxDeductions = getPreTaxExemptions(incomes, year);
 
 	const expenseAboveLineDeductions = getYesDeductions(expenses, year);
 
@@ -229,11 +215,11 @@ export function calculateFederalTax(
 		return state.fedOverride;
 	}
 
-	const annualGross = getGrossIncome(incomes);
+	const annualGross = getGrossIncome(incomes, year);
 
 	// 2. Deductions Logic
 
-	const incomePreTaxDeductions = getPreTaxExemptions(incomes);
+	const incomePreTaxDeductions = getPreTaxExemptions(incomes, year);
 
 	const stateTax = calculateStateTax(state, incomes, expenses, year);
 

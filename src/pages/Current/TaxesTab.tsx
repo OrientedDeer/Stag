@@ -30,7 +30,7 @@ export default function TaxesTab() {
     const stateTax = calculateStateTax(state, incomes, expenses, currentYear);
     const federalTax = calculateFederalTax(state, incomes, expenses, currentYear);
     const ficaTax = calculateFicaTax(state, incomes, currentYear);
-    const annualGross = getGrossIncome(incomes);
+    const annualGross = getGrossIncome(incomes, currentYear);
     
     const stateItemized = getItemizedDeductions(expenses, currentYear);
     const federalItemizedTotal = stateItemized + stateTax;
@@ -40,10 +40,10 @@ export default function TaxesTab() {
     const fedStandardDeduction = fedParams.standardDeduction;
     const fedAppliedMainDeduction =
         state.deductionMethod === "Standard" ? fedStandardDeduction : federalItemizedTotal;
-    const incomePreTaxDeductions = getPreTaxExemptions(incomes);
-    const incomePostTaxDeductions = getPostTaxExemptions(incomes);
+    const incomePreTaxDeductions = getPreTaxExemptions(incomes, currentYear);
+    const incomePostTaxDeductions = getPostTaxExemptions(incomes, currentYear);
     const expenseAboveLineDeductions = getYesDeductions(expenses, currentYear);
-    const postTaxEmployerMatch = getPostTaxEmployerMatch(incomes);
+    const postTaxEmployerMatch = getPostTaxEmployerMatch(incomes, currentYear);
     const totalPreTaxDeductions = incomePreTaxDeductions + expenseAboveLineDeductions;
     const netPaycheck = annualGross - incomePreTaxDeductions - (federalTax + stateTax + ficaTax) - incomePostTaxDeductions - postTaxEmployerMatch;
 
@@ -191,7 +191,7 @@ export default function TaxesTab() {
                                 </div>
                                 
                                 <div className="flex justify-end text-gray-300 text-xs italic items-right ">
-                                    <span className="font-mono -mt-5">Earned Income (${getEarnedIncome(incomes).toLocaleString()})</span>
+                                    <span className="font-mono -mt-5">Earned Income (${getEarnedIncome(incomes, currentYear).toLocaleString()})</span>
                                 </div>
 
                                 {incomePreTaxDeductions > 0 && (

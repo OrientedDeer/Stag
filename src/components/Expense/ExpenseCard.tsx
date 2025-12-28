@@ -22,8 +22,8 @@ import { PercentageInput } from "../Layout/PercentageInput";
 import { NumberInput } from "../Layout/NumberInput";
 import { NameInput } from "../Layout/NameInput";
 
-// Helper to format Date objects to YYYY-MM-DD
-const formatDate = (date: Date): string => {
+// Helper to format Date objects to YYYY-MM-DD for input fields
+const formatDate = (date: Date | undefined): string => {
     if (!date) return "";
     try {
         return date.toISOString().split('T')[0];
@@ -132,8 +132,12 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 	};
 
     const handleDateChange = (field: AllExpenseKeys, dateString: string) => {
-        if (!dateString) return;
-        handleFieldUpdate(field, new Date(`${dateString}T00:00:00.000Z`));
+        if (!dateString) {
+            handleFieldUpdate(field, undefined);
+            return;
+        }
+        // Create date based on local timezone
+        handleFieldUpdate(field, new Date(dateString));
     };
 
 	const getDescriptor = () => {
@@ -211,6 +215,22 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
                     onChange={(e) => handleFieldUpdate("frequency", e.target.value)}
                     options={["Daily", "Weekly", "Monthly", "Annually"]}
                 />
+
+				<StyledInput
+					id={`${expense.id}-start-date`}
+					label="Start Date"
+					type="date"
+					value={formatDate(expense.startDate)}
+					onChange={(e) => handleDateChange("startDate", e.target.value)}
+				/>
+
+				<StyledInput
+					id={`${expense.id}-end-date`}
+					label="End Date"
+					type="date"
+					value={formatDate(expense.endDate)}
+					onChange={(e) => handleDateChange("endDate", e.target.value)}
+				/>
 
                 {/* --- Specialized Housing Fields --- */}
 				{expense instanceof RentExpense && (
@@ -296,54 +316,46 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 							value={expense.hoa_fee}
 							onChange={(val) => handleFieldUpdate("hoa_fee", val)}
 						/>
-						<CurrencyInput
-							id={`${expense.id}-extra-payment`}
-							label="Extra Payment"
-							value={expense.extra_payment}
-							onChange={(val) => handleFieldUpdate("extra_payment", val)}
-						/>
-                        						<StyledInput 
-                        							id={`${expense.id}-purchase-date`}
-                        							label="Purchase Date" 
-                        							type="date" 
-                        							value={formatDate(expense.purchaseDate)} 
-                        							onChange={(e) => handleDateChange("purchaseDate", e.target.value)} 
-                        						/>
-                        						<StyledSelect 
-                        							id={`${expense.id}-tax-deductible`}
-                        							label="Tax Deductible" 
-                        							value={expense.is_tax_deductible} 
-                        							onChange={(e) => handleFieldUpdate("is_tax_deductible", e.target.value)} 
-                        							options={["Yes", "No", "Itemized"]} 
-                        						/>
-                        						{(expense.is_tax_deductible === 'Yes' || expense.is_tax_deductible === 'Itemized') && (
-                        							<StyledDisplay
-                        								label="Deductible Amount"
-                        								value={"$"+expense.tax_deductible.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                        							/>
-                        						)}
-												<StyledDisplay
-													label="Linked to Expense"
-													blankValue="No account found, try re-adding"
-													value={getLinkedAccount()}
-												/>
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => {
-                                                                                const today = new Date();
-                                                                                const todayStr = today.toISOString().split('T')[0];
-                                                                                const newBalance = (expense as MortgageExpense).getBalanceAtDate(todayStr);
-                                                                                handleFieldUpdate("loan_balance", newBalance);
-                                                                            }}
-                                                                            className="bg-blue-600 p-4 rounded-xl text-white font-bold hover:bg-blue-700 transition-colors"
-                                                                        >
-                                                                            Reset Loan Balance to Today
-                                                                        </button>                        						{showPmiWarning && (
-                                                    <div className="text-yellow-500 text-sm col-span-full p-2 rounded-lg bg-yellow-900/20 border border-yellow-700/50">
-                                                        <strong>Warning:</strong> With over 20% equity, you may be eligible to have your PMI removed. Contact your lender to inquire about the process.
-                                                    </div>
-                                                )}					</>
-				)}
+													<CurrencyInput
+														id={`${expense.id}-extra-payment`}
+														label="Extra Payment"
+														value={expense.extra_payment}
+														onChange={(val) => handleFieldUpdate("extra_payment", val)}
+													/>
+						                        	<StyledSelect 
+						                        		id={`${expense.id}-tax-deductible`}
+						                        		label="Tax Deductible" 
+						                        		value={expense.is_tax_deductible} 
+						                        		onChange={(e) => handleFieldUpdate("is_tax_deductible", e.target.value)} 
+						                        		options={["Yes", "No", "Itemized"]} 
+						                        	/>
+						                        	{(expense.is_tax_deductible === 'Yes' || expense.is_tax_deductible === 'Itemized') && (
+						                        		<StyledDisplay
+						                        			label="Deductible Amount"
+						                        			value={"$"+expense.tax_deductible.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+						                        		/>
+						                        	)}
+													<StyledDisplay
+														label="Linked to Expense"
+														blankValue="No account found, try re-adding"
+														value={getLinkedAccount()}
+													/>
+						                            <button
+						                                type="button"
+						                                onClick={() => {
+						                                    const today = new Date();
+						                                    const todayStr = today.toISOString().split('T')[0];
+						                                    const newBalance = (expense as MortgageExpense).getBalanceAtDate(todayStr);
+						                                    handleFieldUpdate("loan_balance", newBalance);
+						                                }}
+						                                className="bg-blue-600 p-4 rounded-xl text-white font-bold hover:bg-blue-700 transition-colors"
+						                            >
+						                                Reset Loan Balance to Today
+						                            </button>                        						{showPmiWarning && (
+						                                <div className="text-yellow-500 text-sm col-span-full p-2 rounded-lg bg-yellow-900/20 border border-yellow-700/50">
+						                                    <strong>Warning:</strong> With over 20% equity, you may be eligible to have your PMI removed. Contact your lender to inquire about the process.
+						                                </div>
+						                            )}					</>				)}
                 
 
                 {/* --- Specialized Loan Fields --- */}
@@ -391,52 +403,7 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 					</>
 				)}
 
-				{expense instanceof DependentExpense && (
-					<>
-						<StyledInput 
-							id={`${expense.id}-end-date`}
-							label="End Date" 
-							type="date" 
-							value={formatDate(expense.end_date)} 
-							onChange={(e) => handleDateChange("end_date", e.target.value)} 
-						/>
-						<StyledSelect 
-							id={`${expense.id}-tax-deductible`}
-							label="Tax Deductible" 
-							value={expense.is_tax_deductible} 
-							onChange={(e) => handleFieldUpdate("is_tax_deductible", e.target.value)} 
-							options={["Yes", "No", "Itemized"]} 
-						/>
-						{(expense.is_tax_deductible === 'Yes' || expense.is_tax_deductible === 'Itemized') && (
-							<CurrencyInput
-								id={`${expense.id}-deductible-amount`}
-								label="Deductible Amount"
-								value={expense.tax_deductible}
-								onChange={(val) => handleFieldUpdate("tax_deductible", val)}
-							/>
-						)}
-					</>
-				)}
 
-				{expense instanceof DependentExpense && (
-					<>
-						<StyledSelect 
-							id={`${expense.id}-tax-deductible-2`}
-							label="Tax Deductible" 
-							value={expense.is_tax_deductible} 
-							onChange={(e) => handleFieldUpdate("is_tax_deductible", e.target.value)} 
-							options={["Yes", "No", "Itemized"]} 
-						/>
-						{(expense.is_tax_deductible === 'Yes' || expense.is_tax_deductible === 'Itemized') && (
-							<CurrencyInput
-								id={`${expense.id}-deductible-amount-2`}
-								label="Deductible Amount"
-								value={expense.tax_deductible}
-								onChange={(val) => handleFieldUpdate("tax_deductible", val)}
-							/>
-						)}
-					</>
-				)}
 			</div>
 		</div>
 	);

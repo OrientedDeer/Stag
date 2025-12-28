@@ -1,39 +1,18 @@
 import { useContext, useMemo } from 'react';
 import { ResponsiveSankey } from '@nivo/sankey';
-import { AnyIncome, WorkIncome } from '../Income/models';
-import { AnyExpense, LoanExpense, MortgageExpense, CLASS_TO_CATEGORY as EXPENSE_CLASS_TO_CAT } from '../Expense/models';
+import { WorkIncome } from '../Income/models';
+import { MortgageExpense, CLASS_TO_CATEGORY as EXPENSE_CLASS_TO_CAT } from '../Expense/models';
 import { TAX_DATABASE } from '../Taxes/TaxData';
 import { 
     calculateFicaTax,
     calculateFederalTax,
     calculateStateTax,
-    getGrossIncome
+    getGrossIncome,
 } from '../Taxes/TaxService';
 import { TaxContext } from '../Taxes/TaxContext';
 import { IncomeContext } from '../Income/IncomeContext';
 import { ExpenseContext } from '../Expense/ExpenseContext';
 
-const getYearlyAmount = (item: AnyIncome | AnyExpense) => {
-    let amount = item.amount;
-    if (item instanceof LoanExpense || item instanceof MortgageExpense) amount = item.payment;
- 
-    switch (item.frequency) {
-        case 'Weekly': return amount * 52;
-        case 'Monthly': return amount * 12;
-        case 'Annually': return amount;
-        case 'Daily': return amount * 365;
-        default: return 0;
-    }
-};
-
-const getYearlyDeduction = (amount: number, frequency: string) => {
-    switch (frequency) {
-        case 'Weekly': return amount * 52;
-        case 'Monthly': return amount * 12;
-        case 'Annually': return amount;
-        default: return 0;
-    }
-}
 
 export const CashflowChart = () => {
     const { incomes } = useContext(IncomeContext);
@@ -45,10 +24,10 @@ export const CashflowChart = () => {
         const links: any[] = [];
 
         // 1. Core Totals (Salary Only)
-        const salaryIncome = getGrossIncome(incomes);
+        const year = 2025;
+        //const salaryIncome = getGrossIncome(incomes, year);
 
         // 2. Tax Calculations
-        const year = 2025;
         const fedParams = TAX_DATABASE.federal[year]?.[taxState.filingStatus];
         const stateParams = TAX_DATABASE.states[taxState.stateResidency]?.[year]?.[taxState.filingStatus];
 
@@ -75,21 +54,21 @@ export const CashflowChart = () => {
 
         incomes.forEach(inc => {
             if (inc instanceof WorkIncome) {
-                employee401k += getYearlyDeduction(inc.preTax401k, inc.frequency);
-                totalInsurance += getYearlyDeduction(inc.insurance, inc.frequency);
-                employeeRoth += getYearlyDeduction(inc.roth401k, inc.frequency);
+                employee401k += inc.getProratedAnnual(inc.preTax401k, year);
+                totalInsurance += inc.getProratedAnnual(inc.insurance, year);
+                employeeRoth += inc.getProratedAnnual(inc.roth401k, year);
                 
                 // Calculate Match
-                const matchAmount = (inc as any).employerMatch || 0;
-                const yearlyMatch = getYearlyDeduction(matchAmount, inc.frequency);
-                totalEmployerMatch += yearlyMatch;
+                if ((inc as any).employerMatch != null){
+                    totalEmployerMatch += inc.getProratedAnnual(inc.employerMatch, year);
+                }
 
                 // Detect Match Type (Assuming property exists or default to Trad)
                 // @ts-ignore
                 if ((inc as any).matchIsRoth || (inc as any).taxType === 'Roth 401k') {
-                    totalEmployerMatchForRoth += yearlyMatch;
+                    totalEmployerMatchForRoth += totalEmployerMatch;
                 } else {
-                    totalEmployerMatchForTrad += yearlyMatch;
+                    totalEmployerMatchForTrad += totalEmployerMatch;
                 }
             }
         });
@@ -107,7 +86,7 @@ export const CashflowChart = () => {
         // --- WATERFALL MATH ---
         
         // GROSS NODE VALUE = Salary + All Matches
-        const grossPayNodeValue = salaryIncome;
+        const grossPayNodeValue = getGrossIncome(incomes, year);
 
         // TOTAL TRAD SAVINGS = Employee PreTax + Employer Trad Match
         const totalTradSavings = employee401k + totalEmployerMatchForTrad;
@@ -152,7 +131,7 @@ export const CashflowChart = () => {
             links.push({ source: 'Employer Contributions', target: 'Gross Pay', value: totalEmployerMatch });
         }
         incomes.forEach(inc => {
-             const amount = getYearlyAmount(inc);
+            const amount = inc.getProratedAnnual(inc.amount, year);
              if (amount > 0) {
                  nodes.push({ id: inc.name, color: '#10b981', label: inc.name });
                  links.push({ source: inc.name, target: 'Gross Pay', value: amount });
@@ -189,7 +168,7 @@ export const CashflowChart = () => {
             const expenseCatTotals = new Map<string, number>();
 
             expenses.forEach(exp => {
-                const amount = getYearlyAmount(exp);
+                const amount = exp.getProratedAnnual(exp.amount, year);
                 if (amount <= 0 || exp instanceof MortgageExpense) return;
                 const category = EXPENSE_CLASS_TO_CAT[exp.constructor.name] || 'Other';
                 expenseCatTotals.set(category, (expenseCatTotals.get(category) || 0) + amount);

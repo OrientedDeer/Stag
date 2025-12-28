@@ -4,7 +4,9 @@ import {
     AnyIncome,
     CLASS_TO_CATEGORY, 
     CATEGORY_PALETTES,
-    INCOME_CATEGORIES
+    INCOME_CATEGORIES,
+    getIncomeActiveMultiplier,
+    isIncomeActiveInCurrentMonth
 } from "./models";
 
 // Helper to convert Tailwind class "bg-chart-Name-10" -> CSS var "var(--color-chart-Name-10)"
@@ -22,27 +24,18 @@ function getDistributedColors<T extends string>(palette: T[], count: number): T[
     });
 }
 
-const getMonthlyAmount = (income: AnyIncome): number => {
-    let periodicCost = income.amount;
-    switch (income.frequency) {
-        case 'Weekly': return (periodicCost * 52) / 12;
-        case 'Monthly': return periodicCost;
-        case 'Annually': return periodicCost / 12;
-        default: return 0;
-    }
-};
-
 type IncomeIcicleChartProps = {
     incomeList: AnyIncome[]
 }
 
 export default function IncomeIcicleChart({ incomeList }: IncomeIcicleChartProps) {
-
     const hierarchicalData = useMemo(() => {
         const grouped: Record<string, AnyIncome[]> = {};
 
         // 1. Group incomes
-        incomeList.forEach((inc) => {
+        incomeList
+            .filter(isIncomeActiveInCurrentMonth)
+            .forEach((inc) => {
             const category = CLASS_TO_CATEGORY[inc.constructor.name] || 'Other';
             if (!grouped[category]) grouped[category] = [];
             grouped[category].push(inc);
@@ -64,7 +57,7 @@ export default function IncomeIcicleChart({ incomeList }: IncomeIcicleChartProps
                 color: tailwindToCssVar(categoryColor), // Parent Color
                 children: incomes.map((inc, i) => ({
                     id: inc.name,
-                    value: getMonthlyAmount(inc),
+                    value: inc.getMonthlyAmount(),
                     color: tailwindToCssVar(incomeColors[i]), // Child Gradient Color
                     // Metadata
                     originalAmount: inc.amount,

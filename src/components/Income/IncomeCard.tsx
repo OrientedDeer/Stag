@@ -17,7 +17,7 @@ import { AccountContext } from "../Accounts/AccountContext";
 import { InvestedAccount } from "../Accounts/models";
 
 // Helper to format Date objects to YYYY-MM-DD for input fields
-const formatDate = (date: Date): string => {
+const formatDate = (date: Date | undefined): string => {
     if (!date) return "";
     try {
         return date.toISOString().split('T')[0];
@@ -25,7 +25,6 @@ const formatDate = (date: Date): string => {
         return "";
     }
 };
-
 const IncomeCard = ({ income }: { income: AnyIncome }) => {
 	const { dispatch } = useContext(IncomeContext);
     const { accounts } = useContext(AccountContext);
@@ -174,13 +173,21 @@ const IncomeCard = ({ income }: { income: AnyIncome }) => {
                         options={["Dividend", "Rental", "Royalty", "Other"]}
                     />
                 )}
-				<StyledInput 
-					id={`${income.id}-end-date`}
-					label="End Date" 
-					type="date" 
-					value={formatDate(income.end_date)} 
-					onChange={(e) => handleDateChange("end_date", e.target.value)} 
-				/>
+				<StyledInput
+                    id={`${income.id}-start-date`}
+                    label="Start Date"
+                    type="date"
+                    value={formatDate(income.startDate)}
+                    onChange={(e) => handleDateChange("startDate", e.target.value)}
+                />
+
+                <StyledInput
+                    id={`${income.id}-end-date`}
+                    label="End Date"
+                    type="date"
+                    value={formatDate(income.end_date)}
+                    onChange={(e) => handleDateChange("end_date", e.target.value)}
+                />
 			</div>
 		</div>
 	);

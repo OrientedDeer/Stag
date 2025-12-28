@@ -123,15 +123,18 @@ const accountReducer = (state: AppState, action: Action): AppState => {
         };
     
     // ... (rest of your existing cases: ADD_ACCOUNT, DELETE_ACCOUNT, etc.)
-    case 'ADD_ACCOUNT':
+    case 'ADD_ACCOUNT': {
+      const today = getTodayString();
+      const newEntry: AmountHistoryEntry = { date: today, num: action.payload.amount };
       return {
         ...state,
         accounts: [...state.accounts, action.payload],
         amountHistory: {
           ...state.amountHistory,
-          [action.payload.id]: [],
+          [action.payload.id]: [newEntry], // Initialize with current day's snapshot
         },
       };
+    }
 
     case 'DELETE_ACCOUNT': {
       const { [action.payload.id]: _, ...remainingHistory } = state.amountHistory;

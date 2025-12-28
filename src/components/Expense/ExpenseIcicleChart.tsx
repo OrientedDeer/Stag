@@ -5,7 +5,8 @@ import {
     LoanExpense, 
     CLASS_TO_CATEGORY, 
     CATEGORY_PALETTES,
-    EXPENSE_CATEGORIES
+    EXPENSE_CATEGORIES,
+    isExpenseActiveInCurrentMonth
 } from "./models";
 
 // Helper to convert Tailwind class "bg-chart-Name-10" -> CSS var "var(--color-chart-Name-10)"
@@ -23,28 +24,18 @@ function getDistributedColors<T extends string>(palette: T[], count: number): T[
     });
 }
 
-const getMonthlyAmount = (expense: AnyExpense): number => {
-    let periodicCost = expense instanceof LoanExpense ? expense.payment : expense.amount;
-    switch (expense.frequency) {
-        case 'Daily': return periodicCost * 30.4167;
-        case 'Weekly': return (periodicCost * 52) / 12;
-        case 'Monthly': return periodicCost;
-        case 'Annually': return periodicCost / 12;
-        default: return 0;
-    }
-};
-
 type ExpenseIcicleChartProps = {
     expenseList: AnyExpense[]
 }
 
 export default function ExpenseIcicleChart({ expenseList }: ExpenseIcicleChartProps) {
-
     const hierarchicalData = useMemo(() => {
         const grouped: Record<string, AnyExpense[]> = {};
 
-        // 1. Group expenses
-        expenseList.forEach((exp) => {
+        // 1. Group expenses (only active ones)
+        expenseList
+            .filter(isExpenseActiveInCurrentMonth)
+            .forEach((exp) => {
             const category = CLASS_TO_CATEGORY[exp.constructor.name] || 'Other';
             if (!grouped[category]) grouped[category] = [];
             grouped[category].push(exp);
@@ -66,7 +57,7 @@ export default function ExpenseIcicleChart({ expenseList }: ExpenseIcicleChartPr
                 color: tailwindToCssVar(categoryColor), // Parent Color
                 children: expenses.map((exp, i) => ({
                     id: exp.name,
-                    value: getMonthlyAmount(exp),
+                    value: exp.getMonthlyAmount(),
                     color: tailwindToCssVar(expenseColors[i]), // Child Gradient Color
                     // Metadata
                     originalAmount: exp instanceof LoanExpense ? exp.payment : exp.amount,

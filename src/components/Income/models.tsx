@@ -5,8 +5,9 @@ export interface Income {
   name: string;
   amount: number;
   frequency: 'Weekly' | 'Monthly' | 'Annually';
-  end_date: Date;
   earned_income: "Yes" | "No";
+  startDate?: Date;
+  end_date?: Date;
 }
 
 // 2. Base Abstract Class
@@ -16,11 +17,43 @@ export abstract class BaseIncome implements Income {
     public name: string,
     public amount: number,
     public frequency: 'Weekly' | 'Monthly' | 'Annually',
-    public end_date: Date,
     public earned_income: "Yes" | "No",
+    public startDate?: Date,
+    public end_date?: Date,
     public annualGrowthRate: number = 0.03,
-    public isInflationAdjusted: boolean = true
+    public isInflationAdjusted: boolean = true,
   ) {}
+  getProratedAnnual(value: number, year?: number): number {
+    let annual = 0;
+    switch (this.frequency) {
+      case 'Weekly': annual = value * 52; break;
+      case 'Monthly': annual = value * 12; break;
+      case 'Annually': annual = value; break;
+      default: annual = 0;
+    }
+
+    // Apply the time-based multiplier if a year is requested
+    if (year !== undefined) {
+        return annual * getIncomeActiveMultiplier(this as unknown as AnyIncome, year);
+    }
+
+    return annual;
+  }
+
+  getProratedMonthly(value: number, year?: number): number {
+    return this.getProratedAnnual(value, year) / 12;
+  }
+
+  // --- REFACTORED MAIN METHODS ---
+
+  getAnnualAmount(year?: number): number {
+    // Just reuse the generic helper with the main amount
+    return this.getProratedAnnual(this.amount, year);
+  }
+
+  getMonthlyAmount(year?: number): number {
+    return this.getProratedMonthly(this.amount, year);
+  }
 }
 
 // 3. Concrete Classes
@@ -31,7 +64,6 @@ export class WorkIncome extends BaseIncome {
     name: string,
     amount: number,
     frequency: 'Weekly' | 'Monthly' | 'Annually',
-    end_date: Date,
     earned_income: "Yes" | "No",
     public preTax401k: number = 0,
     public insurance: number = 0,
@@ -39,8 +71,10 @@ export class WorkIncome extends BaseIncome {
     public employerMatch: number = 0,
     public matchAccountId: string,
     public taxType: TaxType | null = null,
+    startDate?: Date,
+    end_date?: Date,
   ) {
-    super(id, name, amount, frequency, end_date, earned_income);
+    super(id, name, amount, frequency, earned_income, startDate, end_date);
   }
 }
 
@@ -50,10 +84,11 @@ export class SocialSecurityIncome extends BaseIncome {
     name: string,
     amount: number,
     frequency: 'Weekly' | 'Monthly' | 'Annually',
-    end_date: Date,
-    public claimingAge: number
+    public claimingAge: number,
+    startDate?: Date,
+    end_date?: Date,
   ) {
-    super(id, name, amount, frequency, end_date, "No");
+    super(id, name, amount, frequency, "No", startDate, end_date);
   }
 }
 
@@ -63,11 +98,12 @@ export class PassiveIncome extends BaseIncome {
     name: string,
     amount: number,
     frequency: 'Weekly' | 'Monthly' | 'Annually',
-    end_date: Date,
     earned_income: "Yes" | "No",
-    public sourceType: 'Dividend' | 'Rental' | 'Royalty' | 'Other'
+    public sourceType: 'Dividend' | 'Rental' | 'Royalty' | 'Other',
+    startDate?: Date,
+    end_date?: Date,
   ) {
-    super(id, name, amount, frequency, end_date, earned_income);
+    super(id, name, amount, frequency, earned_income, startDate, end_date);
   }
 }
 
@@ -77,15 +113,66 @@ export class WindfallIncome extends BaseIncome {
     name: string,
     amount: number,
     frequency: 'Weekly' | 'Monthly' | 'Annually',
-    end_date: Date,
-    earned_income: "Yes" | "No"
+    earned_income: "Yes" | "No",
+    startDate?: Date,
+    end_date?: Date,
   ) {
-    super(id, name, amount, frequency, end_date, earned_income);
+    super(id, name, amount, frequency, earned_income, startDate, end_date);
   }
 }
 
-// Union type for use in State Management
 export type AnyIncome = WorkIncome | SocialSecurityIncome | PassiveIncome | WindfallIncome;
+
+export function getIncomeActiveMultiplier(income: AnyIncome, year: number): number {
+    const incomeStartDate = income.startDate ? new Date(income.startDate) : new Date(); 
+    const startYear = incomeStartDate.getUTCFullYear(); 
+
+    const safeEndDate = income.end_date ? new Date(income.end_date) : null;
+    const endYear = safeEndDate ? safeEndDate.getUTCFullYear() : null;
+
+    if (startYear > year) return 0;
+    if (endYear !== null && endYear < year) return 0;
+
+    const startMonthIndex = (startYear < year) ? 0 : incomeStartDate.getUTCMonth();
+
+    const endMonthIndex = (safeEndDate && endYear === year) 
+        ? safeEndDate.getUTCMonth() 
+        : 11;
+
+    const monthsActive = endMonthIndex - startMonthIndex + 1;
+
+    return Math.max(0, monthsActive) / 12;
+}
+
+export function isIncomeActiveInCurrentMonth(income: AnyIncome): boolean {
+    const today = new Date();
+    const currentYear = today.getUTCFullYear();
+    const currentMonth = today.getUTCMonth(); // 0-indexed
+
+    const incomeStartDate = income.startDate != null ? income.startDate : new Date();
+    const incomeStartYear = incomeStartDate.getUTCFullYear();
+    const incomeStartMonth = incomeStartDate.getUTCMonth();
+
+    const currentMonthStart = new Date(currentYear, currentMonth, 1);
+    const incomeEffectiveStart = new Date(incomeStartYear, incomeStartMonth, 1);
+
+    if (incomeEffectiveStart > currentMonthStart) {
+        return false;
+    }
+
+    if (income.end_date) {
+        const incomeEndDate = new Date(income.end_date);
+        const incomeEndYear = incomeEndDate.getUTCFullYear();
+        const incomeEndMonth = incomeEndDate.getUTCMonth();
+
+        const incomeEffectiveEnd = new Date(incomeEndYear, incomeEndMonth + 1, 0); 
+
+        if (incomeEffectiveEnd < currentMonthStart) {
+            return false;
+        }
+    }
+    return true;
+};
 
 export const INCOME_CATEGORIES = [
   'Work',

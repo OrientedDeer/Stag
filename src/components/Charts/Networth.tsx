@@ -1,7 +1,7 @@
 import { useContext, useMemo } from 'react';
 import { ResponsiveLine } from '@nivo/line';
 import { AccountContext } from '../Accounts/AccountContext';
-import { DebtAccount, PropertyAccount } from '../Accounts/models';
+import { DebtAccount, InvestedAccount, PropertyAccount } from '../Accounts/models';
 import { ExpenseContext } from '../Expense/ExpenseContext';
 import { MortgageExpense } from '../Expense/models';
 
@@ -13,6 +13,7 @@ export const NetWorthCard = () => {
     const stats = useMemo(() => {
         let totalAssets = 0;
         let totalDebt = 0;
+        let totalNonVested = 0;
 
         accounts.forEach(acc => {
             // Property logic: amount is asset, loanAmount is debt
@@ -27,9 +28,13 @@ export const NetWorthCard = () => {
                 // Everything else (Saved, Invested, Property Value) is an asset
                 totalAssets += acc.amount;
             }
+
+            if (acc instanceof InvestedAccount && acc.NonVestedAmount){
+                totalNonVested += acc.NonVestedAmount;
+            }
         });
 
-        const netWorth = totalAssets - totalDebt;
+        const netWorth = totalAssets - totalDebt- totalNonVested;
         return { totalAssets, totalDebt, netWorth };
     }, [accounts]);
 

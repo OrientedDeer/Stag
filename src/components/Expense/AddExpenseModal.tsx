@@ -19,6 +19,7 @@ import { PercentageInput } from "../Layout/PercentageInput";
 import { DropdownInput } from "../Layout/DropdownInput";
 import { NumberInput } from "../Layout/NumberInput";
 import { NameInput } from "../Layout/NameInput";
+import { StyledInput } from "../Layout/StyleUI";
 
 const generateUniqueId = () =>
 	`EXS-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -54,8 +55,8 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 	const [pmi, setPmi] = useState<number>(0.58);
 	const [hoaFee, setHoaFee] = useState<number>(0);
 	const [startingLoanBalance, setStartingLoanBalance] = useState<number>(0);
-	const [endDate, setEndDate] = useState(new Date().toISOString().split("T")[0]);
-	const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split("T")[0]);
+	const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+	const [endDate, setEndDate] = useState<string>("");
 	const [payment, setPayment] = useState<number>(0);
 	const [extraPayment, setExtraPayment] = useState<number>(0);
 	const [isTaxDeductible, setIsTaxDeductible] = useState<"Yes" | "No" | 'Itemized'>("No");
@@ -67,6 +68,8 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 		setSelectedType(null);
 		setName("");
 		setAmount(0);
+        setStartDate(new Date().toISOString().split('T')[0]);
+        setEndDate(new Date().toISOString().split('T')[0]);
 		onClose();
 	};
 
@@ -87,8 +90,8 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 	const handleAdd = () => {
 		if (!name.trim() || !selectedType) return;
 
-		const finalEndDate = new Date(`${endDate}T00:00:00.000Z`);
-		const finalPurchaseDate = new Date(`${purchaseDate}T00:00:00.000Z`);
+		const finalStartDate = startDate ? new Date(`${startDate}T00:00:00.000Z`) : undefined;
+		const finalEndDate = endDate ? new Date(`${endDate}T00:00:00.000Z`) : undefined;
 
 		let newExpense;
 
@@ -98,7 +101,9 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				name.trim(),
 				payment,
 				utilities,
-				frequency
+				frequency,
+				finalStartDate,
+				finalEndDate
 			);
 		} else if (selectedType === MortgageExpense) {
 			const newAccount = new PropertyAccount(
@@ -130,9 +135,10 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				isTaxDeductible,
 				isTaxDeductible ? taxDeductibleAmount : 0,
 				'ACC' + id.substring(3),
-				finalPurchaseDate,
+				finalStartDate,
 				payment,
-				extraPayment
+				extraPayment,
+				finalEndDate
             );
         } else if (selectedType === LoanExpense) {
 			const newAccount = new DebtAccount(
@@ -153,7 +159,9 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				payment,
 				isTaxDeductible,
 				isTaxDeductible ? taxDeductibleAmount : 0,
-				'ACC' + id.substring(3)
+				'ACC' + id.substring(3),
+				finalStartDate,
+				finalEndDate
 			);
 		} else if (selectedType === DependentExpense) {
 			newExpense = new DependentExpense(
@@ -161,9 +169,10 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				name.trim(),
 				amount,
 				frequency,
-				finalEndDate,
 				isTaxDeductible,
-				isTaxDeductible ? taxDeductibleAmount : 0
+				isTaxDeductible ? taxDeductibleAmount : 0,
+				finalStartDate,
+				finalEndDate
 			);
 		} else if (selectedType === HealthcareExpense) {
 			newExpense = new HealthcareExpense(
@@ -172,7 +181,9 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				amount,
 				frequency,
 				isTaxDeductible,
-				isTaxDeductible ? taxDeductibleAmount : 0
+				isTaxDeductible ? taxDeductibleAmount : 0,
+				finalStartDate,
+				finalEndDate
 			);
 		} else if (
 			selectedType === TransportExpense ||
@@ -182,10 +193,12 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				id,
 				name.trim(),
 				amount,
-				frequency
+				frequency,
+				finalStartDate,
+				finalEndDate
 			);
 		} else {
-			newExpense = new selectedType(id, name.trim(), amount, frequency);
+			newExpense = new selectedType(id, name.trim(), amount, frequency, finalStartDate, finalEndDate);
 		}
 
 		expenseDispatch({ type: "ADD_EXPENSE", payload: newExpense });
@@ -246,6 +259,28 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 							</div>
 						</div>
 
+						{/* Start and End Dates */}
+						<div className="grid grid-cols-2 gap-4">
+							<div>
+								<StyledInput
+									label="Start Date"
+									id={`${id}-start-date`}
+									type="date"
+									value={startDate}
+									onChange={(e) => setStartDate(e.target.value === "" ? "" : e.target.value)}
+								/>
+							</div>
+							<div>
+								<StyledInput
+									label="End Date (Optional)"
+									id={`${id}-end-date`}
+									type="date"
+									value={endDate}
+									onChange={(e) => setEndDate(e.target.value === "" ? "" : e.target.value)}
+								/>
+							</div>
+						</div>
+
 						{/* Common Fields Grid */}
 						<div className="grid grid-cols-3 gap-4">
                             {(!(selectedType === RentExpense || selectedType === MortgageExpense || selectedType === LoanExpense)) && (
@@ -287,17 +322,6 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 									<PercentageInput id={`${id}-pmi`} label="PMI" value={pmi} onChange={setPmi} />
 									<CurrencyInput id={`${id}-hoa-fee`} label="HOA Fee" value={hoaFee} onChange={setHoaFee} />
 									<CurrencyInput id={`${id}-extra-payment`} label="Extra Payment" value={extraPayment} onChange={setExtraPayment} />
-									<div>
-										<label className="block text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
-											Purchase Date
-										</label>
-										<input
-											type="date"
-											className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-md focus:outline-none focus:border-green-500 transition-colors h-[42px]"
-											value={purchaseDate}
-											onChange={(e) => setPurchaseDate(e.target.value)}
-										/>
-									</div>
 									<DropdownInput
 										id={`${id}-tax-deductible`}
 										label="Tax Deductible"
@@ -351,17 +375,6 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 
 							{selectedType === DependentExpense && (
 								<>
-									<div>
-										<label className="block text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
-											End Date
-										</label>
-										<input
-											type="date"
-											className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-md focus:outline-none focus:border-green-500 transition-colors h-[42px]"
-											value={endDate}
-											onChange={(e) => setEndDate(e.target.value)}
-										/>
-									</div>
 									<DropdownInput
 										id={`${id}-tax-deductible`}
 										label="Tax Deductible"

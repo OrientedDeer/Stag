@@ -8,7 +8,7 @@ import {
 	DropResult,
 } from "@hello-pangea/dnd";
 import AddIncomeModal from "../../components/Income/AddIncomeModal";
-import IncomeIcicleChart from "../../components/Income/IncomeBarChart";
+import IncomeIcicleChart from "../../components/Income/IncomeIcicleChart";
 
 // Updated IncomeList to handle the base class or specific filtering
 const IncomeList = () => {

@@ -12,6 +12,7 @@ import { DropdownInput } from "../Layout/DropdownInput";
 import { NumberInput } from "../Layout/NumberInput";
 import { AccountContext } from "../Accounts/AccountContext";
 import { InvestedAccount } from "../Accounts/models";
+import { StyledInput } from "../Layout/StyleUI";
 
 const generateUniqueId = () =>
     `INC-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -31,6 +32,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
     const [amount, setAmount] = useState<number>(0);
     const [frequency, setFrequency] = useState<'Weekly' | 'Monthly' | 'Annually'>('Monthly');
     const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+    const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
     
     // --- New Deductions State ---
     const [earnedIncome, setEarnedIncome] = useState<'Yes' | 'No'>('Yes');
@@ -42,7 +44,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
     
     // --- Other Fields ---
     const [claimingAge, setClaimingAge] = useState<number>(62);
-    const [sourceType, setSourceType] = useState<string>('Dividend');
+    const [sourceType, setSourceType] = useState<'Dividend' | 'Rental' | 'Royalty' | 'Other'>('Dividend');
         
     const id = generateUniqueId();
     
@@ -56,6 +58,8 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
         setRoth401k(0);
         setEmployerMatch(0);
         setMatchAccountId("");
+        setStartDate(new Date().toISOString().split('T')[0]);
+        setEndDate(new Date().toISOString().split('T')[0]);
         onClose();
     };
 
@@ -76,22 +80,23 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
     const handleAdd = () => {
         if (!name.trim() || !selectedType) return;
 
-        const finalEndDate = new Date(`${endDate}T00:00:00.000Z`);
+		const finalStartDate = startDate ? new Date(`${startDate}T00:00:00.000Z`) : undefined;
+		const finalEndDate = endDate ? new Date(`${endDate}T00:00:00.000Z`) : undefined;
         let newIncome;
 
         if (selectedType === WorkIncome) {
             const matchedAccount = accounts.find(acc => acc.id === matchAccountId) as InvestedAccount | undefined;
             const taxType = matchedAccount ? matchedAccount.taxType : null;
-            newIncome = new WorkIncome(id, name.trim(), amount, frequency, finalEndDate, "Yes", preTax401k, insurance, roth401k, employerMatch, matchAccountId, taxType);
+            newIncome = new WorkIncome(id, name.trim(), amount, frequency, "Yes", preTax401k, insurance, roth401k, employerMatch, matchAccountId, taxType, finalStartDate, finalEndDate);
         } else if (selectedType === SocialSecurityIncome) {
-            newIncome = new selectedType(id, name.trim(), amount, frequency, finalEndDate, claimingAge);
+            newIncome = new SocialSecurityIncome(id, name.trim(), amount, frequency, claimingAge, finalStartDate, finalEndDate);
         } else if (selectedType === PassiveIncome) {
-            newIncome = new selectedType(id, name.trim(), amount, frequency, finalEndDate, "Yes", sourceType);
+            newIncome = new PassiveIncome(id, name.trim(), amount, frequency, "Yes", sourceType, finalStartDate, finalEndDate);
         } else if (selectedType === WindfallIncome) {
-            newIncome = new selectedType(id, name.trim(), amount, frequency, finalEndDate, "No");
+            newIncome = new WindfallIncome(id, name.trim(), amount, frequency, "No", finalStartDate, finalEndDate);
         } else {
              // Fallback
-            newIncome = new selectedType(id, name.trim(), amount, frequency, finalEndDate, "Yes");
+            newIncome = new selectedType(id, name.trim(), amount, frequency, "Yes", finalStartDate, finalEndDate);
         }
 
         dispatch({ type: "ADD_INCOME", payload: newIncome });
@@ -168,12 +173,21 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                 </>
                             )}
                             <div>
-                                <label className="block text-xs text-gray-400 font-medium mb-0.5 uppercase tracking-wide">End Date</label>
-                                <input 
-                                    type="date" 
-                                    className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500 transition-colors h-[42px]"
-                                    value={endDate} 
-                                    onChange={(e) => setEndDate(e.target.value)} 
+                                <StyledInput
+                                    label="Start Date"
+                                    id={`${id}-start-date`}
+                                    type="date"
+                                    value={startDate}
+                                    onChange={(e) => setStartDate(e.target.value === "" ? "" : e.target.value)}
+                                />
+                            </div>
+                            <div>
+                                <StyledInput
+                                    label="End Date (Optional)"
+                                    id={`${id}-end-date`}
+                                    type="date"
+                                    value={endDate}
+                                    onChange={(e) => setEndDate(e.target.value === "" ? "" : e.target.value)}
                                 />
                             </div>
                             {selectedType === SocialSecurityIncome && (
