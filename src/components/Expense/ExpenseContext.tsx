@@ -15,22 +15,6 @@ import {
 
 export type AllExpenseKeys = keyof RentExpense | keyof MortgageExpense | keyof LoanExpense | keyof DependentExpense | keyof TransportExpense | 'startDate' | 'endDate';
 
-interface AppState {
-  expenses: AnyExpense[];
-}
-
-type Action =
-  | { type: 'ADD_EXPENSE'; payload: AnyExpense }
-  | { type: 'DELETE_EXPENSE'; payload: { id: string } }
-  | { type: 'UPDATE_EXPENSE_FIELD'; payload: { id: string; field: AllExpenseKeys; value: any } }
-  | { type: 'REORDER_EXPENSES'; payload: { startIndex: number; endIndex: number } }
-  | { type: 'SET_BULK_DATA'; payload: { expenses: AnyExpense[] } };
-
-const STORAGE_KEY = 'user_expenses_data';
-const initialState: AppState = {
-  expenses: [],
-};
-
 export function reconstituteExpense(data: any): AnyExpense | null {
     if (!data || !data.className) return null;
     
@@ -75,6 +59,23 @@ export function reconstituteExpense(data: any): AnyExpense | null {
             return null;
     }
 }
+
+interface AppState {
+  expenses: AnyExpense[];
+}
+
+type Action =
+  | { type: 'ADD_EXPENSE'; payload: AnyExpense }
+  | { type: 'DELETE_EXPENSE'; payload: { id: string } }
+  | { type: 'UPDATE_EXPENSE_FIELD'; payload: { id: string; field: AllExpenseKeys; value: any } }
+  | { type: 'REORDER_EXPENSES'; payload: { startIndex: number; endIndex: number } }
+  | { type: 'SET_BULK_DATA'; payload: { expenses: AnyExpense[] } };
+
+const STORAGE_KEY = 'user_expenses_data';
+const initialState: AppState = {
+  expenses: [],
+};
+
 
 const expenseReducer = (state: AppState, action: Action): AppState => {
   switch (action.type) {

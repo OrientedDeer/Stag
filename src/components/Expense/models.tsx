@@ -237,30 +237,81 @@ export class MortgageExpense extends BaseExpense {
 }
 
 export class LoanExpense extends BaseExpense {
-  constructor(
-    id: string,
-    name: string,
-    amount: number,
-    frequency: 'Weekly' | 'Monthly' | 'Annually',
-    public apr: number,
-    public interest_type: 'Compounding' | 'Simple',
-    public payment: number,
-    public is_tax_deductible: 'Yes' | 'No' | 'Itemized',
-    public tax_deductible: number,
-    public linkedAccountId: string,
-    startDate?: Date,
-    endDate?: Date,
-  ) {
-    super(id, name, amount, frequency, startDate, endDate);
+    constructor(
+      id: string,
+      name: string,
+      amount: number,
+      frequency: 'Weekly' | 'Monthly' | 'Annually',
+      public apr: number,
+      public interest_type: 'Compounding' | 'Simple',
+      public payment: number,
+      public is_tax_deductible: 'Yes' | 'No' | 'Itemized',
+      public tax_deductible: number,
+      public linkedAccountId: string,
+      startDate?: Date,
+      endDate?: Date,
+    ) {
+      
+      const effectiveStartDate = startDate || new Date();
+      
+      if (!endDate) {
+          endDate = new Date(effectiveStartDate);
+          endDate.setFullYear(endDate.getFullYear() + 10);
+      }
+  
+      super(id, name, amount, frequency, effectiveStartDate, endDate);
+  
+      if (!this.payment) {
+          this.payment = this.calculatePaymentFromEndDate();
+      }
+    }
+  
+    calculatePaymentFromEndDate(): number {
+      const months = this.getMonthsUntilPaidOff();
+      if (months <= 0) return this.amount;
+  
+      if (this.apr === 0) {
+        return this.amount / months;
+      }
+      const monthlyRate = this.apr / 100 / 12;
+      const payment = this.amount * (monthlyRate * Math.pow(1 + monthlyRate, months)) / (Math.pow(1 + monthlyRate, months) - 1);
+      return parseFloat(payment.toFixed(2));
+    }
+  
+    calculateEndDateFromPayment(payment: number): Date {
+      const months = this.calculateMonthsFromPayment(payment);
+      const newEndDate = new Date(this.startDate!);
+      newEndDate.setMonth(newEndDate.getMonth() + months);
+      return newEndDate;
+    }
+  
+    calculateMonthsFromPayment(payment: number): number {
+      if (this.apr === 0) {
+        return payment > 0 ? this.amount / payment : Infinity;
+      }
+      const monthlyRate = this.apr / 100 / 12;
+      if (payment <= this.amount * monthlyRate) {
+          return Infinity; 
+      }
+      const months = -Math.log(1 - (this.amount * monthlyRate) / payment) / Math.log(1 + monthlyRate);
+      return Math.ceil(months);
+    }
+  
+    getMonthsUntilPaidOff(): number {
+      if (!this.endDate || !this.startDate) return 0;
+      const start = new Date(this.startDate);
+      const end = new Date(this.endDate);
+      return (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+    }
+  
+    getAnnualAmount(year?: number): number {
+      return this.getProratedAnnual(this.payment, year);
+    }
+  
+    getMonthlyAmount(year?: number): number {
+      return this.getProratedAnnual(this.payment, year) / 12;
+    }
   }
-  getAnnualAmount(year?: number): number {
-    // We just tell the generic helper to use 'this.payment' instead of 'this.amount'
-    return this.getProratedAnnual(this.payment, year);
-  }
-  getMonthlyAmount(year?: number): number {
-    return this.getProratedAnnual(this.payment, year) / 12;
-  }
-}
 
 export class DependentExpense extends BaseExpense {
   constructor(

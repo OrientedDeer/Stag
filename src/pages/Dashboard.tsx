@@ -1,10 +1,14 @@
 import { useContext } from 'react';
 import { Link } from 'react-router-dom';
-import { IncomeContext } from '../components/Income/IncomeContext';
-import { ExpenseContext } from '../components/Expense/ExpenseContext';
-import { AccountContext } from '../components/Accounts/AccountContext';
+import { IncomeContext, reconstituteIncome } from '../components/Income/IncomeContext';
+import { ExpenseContext, reconstituteExpense } from '../components/Expense/ExpenseContext';
+import { AccountContext, reconstituteAccount } from '../components/Accounts/AccountContext';
 import { NetWorthCard } from '../components/Charts/Networth';
-import { CashflowChart } from '../components/Charts/CashflowChart'
+import { CashflowChart } from '../components/Charts/CashflowChart';
+import { defaultData } from '../data/defaultData';
+import { AnyAccount } from '../components/Accounts/models';
+import { AnyIncome } from '../components/Income/models';
+import { AnyExpense } from '../components/Expense/models';
 
 export default function Dashboard() {
   const incomeCtx = useContext(IncomeContext);
@@ -15,6 +19,36 @@ export default function Dashboard() {
   const hasExpenses = expenseCtx.expenses.length > 0;
   const hasAccounts = accountCtx.accounts.length > 0;
   const isSetupComplete = hasIncomes && hasExpenses && hasAccounts;
+  const isPristine = !hasIncomes && !hasExpenses && !hasAccounts;
+
+  const loadDefaultData = () => {
+    // Load Accounts
+    const reconstitutedAccounts = defaultData.accounts
+      .map(reconstituteAccount)
+      .filter((acc): acc is AnyAccount => acc !== null);
+    accountCtx.dispatch({ 
+      type: 'SET_BULK_DATA', 
+      payload: { accounts: reconstitutedAccounts, amountHistory: {} } 
+    });
+
+    // Load Incomes
+    const reconstitutedIncomes = defaultData.incomes
+      .map(reconstituteIncome)
+      .filter((inc): inc is AnyIncome => inc !== null);
+    incomeCtx.dispatch({
+      type: 'SET_BULK_DATA',
+      payload: { incomes: reconstitutedIncomes }
+    });
+
+    // Load Expenses
+    const reconstitutedExpenses = defaultData.expenses
+      .map(reconstituteExpense)
+      .filter((exp): exp is AnyExpense => exp !== null);
+    expenseCtx.dispatch({
+      type: 'SET_BULK_DATA',
+      payload: { expenses: reconstitutedExpenses }
+    });
+  };
 
   return (
     <div className='w-full min-h-full flex bg-gray-950 justify-center pt-6'>
@@ -58,6 +92,14 @@ export default function Dashboard() {
                   >
                     + Add Expenses
                   </Link>
+                )}
+                {isPristine && (
+                  <button
+                    onClick={loadDefaultData}
+                    className="px-4 py-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/50 rounded-xl text-blue-200 text-sm font-semibold transition-all"
+                  >
+                    + Add Default Data
+                  </button>
                 )}
               </div>
             </div>

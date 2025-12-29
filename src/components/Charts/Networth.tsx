@@ -54,6 +54,7 @@ export const NetWorthCard = () => {
                 const history = amountHistory[acc.id] || [];
                 // Find latest snapshot on or before this date
                 const entry = [...history].reverse().find(e => e.date <= date);
+                if (entry == null) return;
                 const assetValue = entry ? entry.num : 0;
 
                 if (acc instanceof DebtAccount) {
@@ -78,7 +79,9 @@ export const NetWorthCard = () => {
                 }
             });
 
-            return { x: date, y: historicalNetWorth };
+            const adjustedDate = new Date(date);
+            adjustedDate.setMinutes(adjustedDate.getMinutes() + adjustedDate.getTimezoneOffset());
+            return { x: adjustedDate, y: historicalNetWorth };
         });
 
         return [
@@ -111,7 +114,7 @@ export const NetWorthCard = () => {
                         margin={{ top: 0, right: 15, bottom: 20, left: 15 }}
                         xScale={{
                             type: 'time',
-                            format: '%Y-%m-%d',
+                            useUTC: false,
                             precision: 'day',
                         }}
                         xFormat="time:%Y-%m-%d"
@@ -120,7 +123,7 @@ export const NetWorthCard = () => {
                             tickSize: 0,
                             tickPadding: 5,
                             format: '%b %d',
-                            tickValues: 6,
+                            tickValues: 'every 3 month',
                         }}
                         enableGridX={false}
                         enableGridY={false}
