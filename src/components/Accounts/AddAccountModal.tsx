@@ -36,6 +36,7 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
     const [name, setName] = useState("");
     const [amount, setAmount] = useState<number>(0);
     const [NonVestedAmount, setNonVestedAmount] = useState<number>(0);
+    const [vestedPerYear, setVestedPerYear] = useState<number>(0.2);
     const [expenseRatio, setExpenseRatio] = useState<number>(0.1);
     const [ownershipType, setOwnershipType] = useState<'Financed' | 'Owned'>('Owned');
     const [loanAmount, setLoanAmount] = useState<number>(0);
@@ -49,6 +50,7 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
         setName("");
         setAmount(0);
         setNonVestedAmount(0);
+        setVestedPerYear(0.2);
         setExpenseRatio(0.1);
         setOwnershipType('Owned');
         setLoanAmount(0);
@@ -67,7 +69,7 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
         if (selectedType === SavedAccount) {
             newAccount = new selectedType(id, name.trim(), amount, apr);
         } else if (selectedType === InvestedAccount) {
-            newAccount = new selectedType(id, name.trim(), amount, NonVestedAmount, expenseRatio, taxType, isContributionEligible);
+            newAccount = new selectedType(id, name.trim(), amount, NonVestedAmount, vestedPerYear, expenseRatio, taxType, isContributionEligible);
         } else if (selectedType === PropertyAccount) {
             if (ownershipType == "Financed"){
                 const newExpense = new MortgageExpense(
@@ -201,6 +203,12 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                                 label="Non-Vested Contrib."
                                 value={NonVestedAmount}
                                 onChange={setNonVestedAmount}
+                            />
+                            <PercentageInput
+                                id={`${id}-vested-per-year`}
+                                label="Vested Per Year"
+                                value={vestedPerYear}
+                                onChange={setVestedPerYear}
                             />
                             <ToggleInput
                                 id={`${id}-contribution-eligible`}

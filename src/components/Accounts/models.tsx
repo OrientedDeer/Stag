@@ -1,3 +1,7 @@
+import { AssumptionsState } from "../Assumptions/AssumptionsContext";
+
+// 1. Interface}
+
 export interface Account {
   id: string;
   name: string;
@@ -27,6 +31,11 @@ export class SavedAccount extends BaseAccount {
   ) {
     super(id, name, amount);
   }
+
+  increment (assumptions: AssumptionsState, annualContribution: number = 0): SavedAccount {
+    const amount = (this.amount + (this.apr/100)) + annualContribution;
+    return new SavedAccount(this.id, this.name, amount, this.apr);
+  }
 }
 
 export class InvestedAccount extends BaseAccount {
@@ -37,9 +46,17 @@ export class InvestedAccount extends BaseAccount {
     public NonVestedAmount: number,
     public expenseRatio: number = 0.1,
     public taxType: TaxType = 'Brokerage',
-    public isContributionEligible: boolean = true
+    public isContributionEligible: boolean = true,
+    public vestedPerYear: number = 0.2,
   ) {
     super(id, name, amount);
+  }
+  increment (assumptions: AssumptionsState, annualContribution: number = 0): InvestedAccount {
+    const returnRate = 1 + (assumptions.investments.returnRates.ror - this.expenseRatio) / 100
+
+    const amount = this.amount * returnRate + annualContribution;
+    const NonVestedAmount = ((this.NonVestedAmount * (assumptions.investments.returnRates.ror / 100 - this.expenseRatio/100)) + annualContribution) * (1 - this.vestedPerYear);
+    return new InvestedAccount(this.id, this.name, amount, NonVestedAmount, this.expenseRatio, this.taxType, this.isContributionEligible, this.vestedPerYear);
   }
 }
 
@@ -51,9 +68,37 @@ export class PropertyAccount extends BaseAccount {
     public ownershipType: 'Financed' | 'Owned',
     public loanAmount: number,
     public startingLoanBalance: number,
-    public linkedAccountId: string
+    public linkedAccountId: string,
+    public apr: number = 0
   ) {
     super(id, name, amount);
+  }
+  increment(
+      assumptions: AssumptionsState, 
+      overrides?: { newLoanBalance?: number; newValue?: number }
+  ): PropertyAccount {
+    let nextValue: number;
+    if (overrides?.newValue !== undefined) {
+        nextValue = overrides.newValue;
+    } else {
+        nextValue = this.amount * (1 + assumptions.expenses.housingAppreciation / 100);
+    }
+    let nextLoan: number;
+    if (overrides?.newLoanBalance !== undefined) {
+        nextLoan = overrides.newLoanBalance;
+    } else {
+        nextLoan = this.loanAmount; 
+    }
+
+    return new PropertyAccount(
+      this.id,
+      this.name,
+      nextValue,
+      this.ownershipType,
+      nextLoan, 
+      this.startingLoanBalance,
+      this.linkedAccountId
+    );
   }
 }
 
@@ -66,6 +111,22 @@ export class DebtAccount extends BaseAccount {
     public apr: number = 0
   ) {
     super(id, name, amount);
+  }
+  increment(
+      assumptions: AssumptionsState, 
+      overrideBalance?: number
+  ): DebtAccount {
+      const nextAmount = overrideBalance !== undefined 
+          ? overrideBalance 
+          : this.amount * (1 + this.apr / 100);
+
+      return new DebtAccount(
+          this.id,
+          this.name,
+          nextAmount,
+          this.linkedAccountId,
+          this.apr
+      );
   }
 }
 

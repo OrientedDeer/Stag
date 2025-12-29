@@ -51,23 +51,23 @@ export function reconstituteAccount(data: any): AnyAccount | null {
 
     // Common base fields with defaults
     const id = data.id;
-    const name = data.name || "Unnamed Account";
-    const amount = Number(data.amount) || 0;
+    const name = data.name ?? "Unnamed Account";
+    const amount = Number(data.amount) ?? 0;
 
     switch (data.className) {
         case 'SavedAccount':
-            // FIX: Add data.apr || 0 as the 4th argument
-            return new SavedAccount(id, name, amount, data.apr || 0);
+            return new SavedAccount(id, name, amount, data.apr ?? 0);
             
         case 'InvestedAccount':
             return new InvestedAccount(
                 id, 
                 name, 
                 amount, 
-                data.NonVestedAmount || 0,
-                data.expenseRatio || 0.1,
-                data.taxType || 'Brokerage',
-                data.isContributionEligible !== undefined ? data.isContributionEligible : true
+                data.NonVestedAmount ?? 0,
+                data.expenseRatio ?? 0.1,
+                data.taxType ?? 'Brokerage',
+                data.isContributionEligible ?? true,
+                data.vestedPerYear ?? 0.2,
             );
             
         case 'PropertyAccount':
@@ -75,9 +75,9 @@ export function reconstituteAccount(data: any): AnyAccount | null {
                 id,
                 name,
                 amount,
-                data.ownershipType || 'Owned',
-                data.loanAmount || 0,
-                data.startingLoanBalance || 0,
+                data.ownershipType ?? 'Owned',
+                data.loanAmount ?? 0,
+                data.startingLoanBalance ?? 0,
                 data.linkedAccountId
             );            
         case 'DebtAccount':
@@ -85,9 +85,8 @@ export function reconstituteAccount(data: any): AnyAccount | null {
                 id, 
                 name, 
                 amount,
-                data.linkedAccountId || '',
-                // FIX: Add data.apr || 0 as the 5th argument
-                data.apr || 0
+                data.linkedAccountId ?? '',
+                data.apr ?? 0
             );
             
         default:

@@ -1,4 +1,5 @@
 import { TaxType } from "../Accounts/models";
+import { AssumptionsState } from '../Assumptions/AssumptionsContext';
 
 export interface Income {
   id: string;
@@ -76,6 +77,45 @@ export class WorkIncome extends BaseIncome {
   ) {
     super(id, name, amount, frequency, earned_income, startDate, end_date);
   }
+  increment (assumptions: AssumptionsState): WorkIncome {
+    const salaryGrowth = assumptions.income.salaryGrowth / 100;
+    const healthcareInflation = assumptions.macro.healthcareInflation / 100;
+    const generalInflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
+
+    // 1. Grow Salary
+    const newAmount = this.amount * (1 + salaryGrowth + generalInflation);
+
+    // 2. Grow Employer Match 
+    // (Assuming match is a % of salary, so it grows at the same rate as salary)
+    const newMatch = this.employerMatch * (1 + salaryGrowth + generalInflation);
+
+    // 3. Grow Contributions (401k, Roth)
+    // We assume these grow with salary (maintaining the same savings rate)
+    // OR you could use generalInflation if you think IRS limits drag it down.
+    // Salary growth is usually the safer optimistic assumption.
+    const newPreTax = this.preTax401k * (1 + salaryGrowth + generalInflation);
+    const newRoth = this.roth401k * (1 + salaryGrowth + generalInflation);
+
+    // 4. Grow Insurance Cost
+    // Health insurance usually outpaces regular inflation
+    const newInsurance = this.insurance * (1 + healthcareInflation + generalInflation);
+
+    return new WorkIncome(
+      this.id,
+      this.name,
+      newAmount,
+      this.frequency,
+      this.earned_income,
+      newPreTax,
+      newInsurance,
+      newRoth,
+      newMatch,
+      this.matchAccountId,
+      this.taxType,
+      this.startDate,
+      this.end_date
+    );
+  }
 }
 
 export class SocialSecurityIncome extends BaseIncome {
@@ -89,6 +129,19 @@ export class SocialSecurityIncome extends BaseIncome {
     end_date?: Date,
   ) {
     super(id, name, amount, frequency, "No", startDate, end_date);
+  }
+  increment (assumptions: AssumptionsState): SocialSecurityIncome {
+    const generalInflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
+
+    return new SocialSecurityIncome(
+      this.id,
+      this.name,
+      this.amount * (1 + generalInflation),
+      this.frequency,
+      this.claimingAge,
+      this.startDate,
+      this.end_date
+    );
   }
 }
 
@@ -105,6 +158,38 @@ export class PassiveIncome extends BaseIncome {
   ) {
     super(id, name, amount, frequency, earned_income, startDate, end_date);
   }
+  increment (assumptions: AssumptionsState): PassiveIncome {
+    let growthRate = 0;
+
+    // Smart defaults based on source
+    switch (this.sourceType) {
+      case 'Rental':
+        // Rents tend to grow faster than general inflation
+        growthRate = (assumptions.expenses.rentInflation + (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0)) / 100;
+        break;
+      case 'Dividend':
+      case 'Royalty':
+      case 'Other':
+      default:
+        // Default to general inflation to maintain purchasing power
+        // (Unless you explicitly turned off inflation adjustment on the object)
+        growthRate = this.isInflationAdjusted 
+          ? assumptions.macro.inflationRate / 100 
+          : 0;
+        break;
+    }
+
+    return new PassiveIncome(
+      this.id,
+      this.name,
+      this.amount * (1 + growthRate),
+      this.frequency,
+      this.earned_income,
+      this.sourceType,
+      this.startDate,
+      this.end_date
+    );
+  }
 }
 
 export class WindfallIncome extends BaseIncome {
@@ -118,6 +203,21 @@ export class WindfallIncome extends BaseIncome {
     end_date?: Date,
   ) {
     super(id, name, amount, frequency, earned_income, startDate, end_date);
+  }
+  increment (assumptions: AssumptionsState): WindfallIncome {
+    const inflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
+  
+    // Only grow if the user marked it as inflation adjusted
+
+    return new WindfallIncome(
+      this.id,
+      this.name,
+      this.amount * (1 + inflation),
+      this.frequency,
+      this.earned_income,
+      this.startDate,
+      this.end_date
+    );
   }
 }
 

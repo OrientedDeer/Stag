@@ -168,6 +168,12 @@ const AccountCard = ({ account }: { account: AnyAccount }) => {
 								onChange={(val) => handleFieldUpdate("NonVestedAmount", val)}
 							/>
 						)}
+						<PercentageInput
+							id={`${account.id}-vested-per-year`}
+							label="Vesting Schedule (per year)"
+							value={account.vestedPerYear}
+							onChange={(val) => handleFieldUpdate("vestedPerYear", val)}
+						/>
 						<ToggleInput
 							id={`${account.id}-contribution-eligible`}
 							label="Contribution Eligible"

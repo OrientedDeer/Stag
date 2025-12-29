@@ -1,8 +1,10 @@
+import { AssumptionsState } from "../Assumptions/AssumptionsContext";
+
 export interface Expense {
   id: string;
   name: string;
   amount: number;
-  frequency: 'Daily'| 'Weekly' | 'Monthly' | 'Annually';
+  frequency: 'Weekly' | 'Monthly' | 'Annually';
   startDate?: Date;
   endDate?: Date;
 }
@@ -13,14 +15,13 @@ export abstract class BaseExpense implements Expense {
     public id: string,
     public name: string,
     public amount: number,
-    public frequency: 'Daily' | 'Weekly' | 'Monthly' | 'Annually',
+    public frequency: 'Weekly' | 'Monthly' | 'Annually',
     public startDate?: Date,
     public endDate?: Date,
   ) {}
   getProratedAnnual(value: number, year?: number): number {
     let annual = 0;
     switch (this.frequency) {
-        case 'Daily': annual = value * 365; break;
         case 'Weekly': annual = value * 52; break;
         case 'Monthly': annual = value * 12; break;
         case 'Annually': annual = value; break;
@@ -28,7 +29,7 @@ export abstract class BaseExpense implements Expense {
     }
 
     if (year !== undefined) {
-        return annual * getExpenseActiveMultiplier(this as AnyExpense, year);
+        return annual * getExpenseActiveMultiplier(this, year);
     }
 
     return annual;
@@ -57,11 +58,29 @@ export class RentExpense extends BaseExpense {
     name: string,
     public payment: number, // New field
     public utilities: number,
-    frequency: 'Daily' | 'Weekly' | 'Monthly' | 'Annually',
+    frequency: 'Weekly' | 'Monthly' | 'Annually',
     startDate?: Date,
     endDate?: Date,
   ) {
     super(id, name, payment + utilities, frequency, startDate, endDate);
+  } 
+  increment (assumptions: AssumptionsState): RentExpense {
+    const rentInflation = assumptions.expenses.rentInflation / 100;
+    const generalInflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
+
+    // Inflate the components
+    const newPayment = this.payment * (1 + rentInflation + generalInflation);
+    const newUtilities = this.utilities * (1 + generalInflation);
+
+    return new RentExpense(
+      this.id,
+      this.name,
+      newPayment,
+      newUtilities,
+      this.frequency,
+      this.startDate,
+      this.endDate
+    );
   }
 }
 
@@ -90,22 +109,18 @@ export class MortgageExpense extends BaseExpense {
     public extra_payment: number = 0,
     endDate?: Date,
   ) {
-    // 1. Calculate the Fixed Monthly P&I using Starting Balance
     const r = apr / 100 / 12;
     const n = term_length * 12;
     const fixed_amortization = starting_loan_balance * ((r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1));
 
-    // 2. Initial breakdown (at start of loan)
     const interest_payment = starting_loan_balance * r;
     const principal_payment = fixed_amortization - interest_payment;
 
-    // 3. Escrow items
     const property_tax_payment = (valuation - valuation_deduction) * property_taxes / 100 / 12;
-    const pmi_payment = valuation * pmi / 100; // Note: Ensure this is monthly if pmi is annual %
+    const pmi_payment = valuation * pmi / 100; 
     const repair_payment = maintenance / 100 / 12 * valuation;
     const home_owners_insurance_payment = home_owners_insurance / 100 / 12 * valuation;
 
-    // 4. Total Payment
     payment = principal_payment + property_tax_payment + pmi_payment + hoa_fee + repair_payment + utilities + home_owners_insurance_payment + interest_payment + extra_payment;
     tax_deductible = interest_payment;
 
@@ -113,6 +128,85 @@ export class MortgageExpense extends BaseExpense {
     this.payment = payment;
     this.tax_deductible = tax_deductible;
   }
+  increment (assumptions: AssumptionsState): MortgageExpense {
+    const monthlyRate = this.apr / 100 / 12;
+    let balance = this.loan_balance;
+    let totalPrincipalPaid = 0;
+    let totalInterestPaid = 0;
+
+    // 1. Internal Loop: Simulate 12 monthly payments
+    // We need to calculate the Fixed P&I portion because 'this.payment' includes Escrow
+    const standardPI = this.calculatePrincipalAndInterest();
+
+    for (let i = 0; i < 12; i++) {
+        if (balance <= 0) break;
+
+        const interest = balance * monthlyRate;
+        const totalMonthlyPay = standardPI + this.extra_payment;
+        
+        // Principal is the remainder of the payment after interest
+        const principal = Math.min(balance, totalMonthlyPay - interest);
+
+        balance -= principal;
+        totalPrincipalPaid += principal;
+        totalInterestPaid += interest;
+    }
+
+    // 2. Inflation & Appreciation
+    const generalInflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
+    const housingAppreciation = assumptions.expenses.housingAppreciation / 100;
+
+    const newValuation = this.valuation * (1 + housingAppreciation + generalInflation);
+    
+    // Inflate escrow items (Utilities & HOA are fixed amounts, Insurance/Maintenance are rates)
+    // Note: Since Insurance/Maintenance are calculated as % of Valuation, 
+    // they essentially "inflate" automatically as the house value rises. 
+    // We keep the rates constant here to avoid double-counting inflation.
+    const newUtilities = this.utilities * (1 + generalInflation);
+    const newHoa = this.hoa_fee * (1 + generalInflation);
+    
+    // 3. Create Next Year's Object
+    const nextYearMortgage = new MortgageExpense(
+        this.id,
+        this.name,
+        this.frequency as 'Weekly' | 'Monthly' | 'Annually',
+        newValuation,        // Updated Home Value
+        balance,             // Updated Loan Balance
+        this.starting_loan_balance, // Keep constant for amortization math
+        this.apr,
+        this.term_length,
+        this.property_taxes, // Rate stays constant
+        this.valuation_deduction,
+        this.maintenance,    // Rate stays constant
+        newUtilities,        // Inflated $
+        this.home_owners_insurance, // Rate stays constant
+        this.pmi,
+        newHoa,              // Inflated $
+        this.is_tax_deductible,
+        this.tax_deductible, // Placeholder, see below
+        this.linkedAccountId,
+        this.startDate,
+        this.payment,        // Placeholder
+        this.extra_payment,
+        this.endDate
+    );
+
+    // FIX: The constructor automatically recalculates tax_deductible based on the START of the loan.
+    // We must manually overwrite it with the actual interest paid this year.
+    nextYearMortgage.tax_deductible = totalInterestPaid;
+    
+    return nextYearMortgage;
+}
+
+// Helper method required for the grow calculation
+private calculatePrincipalAndInterest(): number {
+    if (this.apr === 0) return this.starting_loan_balance / (this.term_length * 12);
+    
+    const r = this.apr / 100 / 12;
+    const n = this.term_length * 12;
+    return this.starting_loan_balance * ((r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1));
+}
+  
 
   calculateAnnualAmortization(year: number): { totalInterest: number, totalPrincipal: number, totalPayment: number } {
     const purchaseYear = this.startDate != null ? this.startDate.getUTCFullYear() : new Date().getUTCFullYear();
@@ -237,81 +331,118 @@ export class MortgageExpense extends BaseExpense {
 }
 
 export class LoanExpense extends BaseExpense {
-    constructor(
-      id: string,
-      name: string,
-      amount: number,
-      frequency: 'Weekly' | 'Monthly' | 'Annually',
-      public apr: number,
-      public interest_type: 'Compounding' | 'Simple',
-      public payment: number,
-      public is_tax_deductible: 'Yes' | 'No' | 'Itemized',
-      public tax_deductible: number,
-      public linkedAccountId: string,
-      startDate?: Date,
-      endDate?: Date,
-    ) {
-      
-      const effectiveStartDate = startDate || new Date();
-      
-      if (!endDate) {
-          endDate = new Date(effectiveStartDate);
-          endDate.setFullYear(endDate.getFullYear() + 10);
-      }
-  
-      super(id, name, amount, frequency, effectiveStartDate, endDate);
-  
-      if (!this.payment) {
-          this.payment = this.calculatePaymentFromEndDate();
-      }
+  constructor(
+    id: string,
+    name: string,
+    amount: number,
+    frequency: 'Weekly' | 'Monthly' | 'Annually',
+    public apr: number,
+    public interest_type: 'Compounding' | 'Simple',
+    public payment: number,
+    public is_tax_deductible: 'Yes' | 'No' | 'Itemized',
+    public tax_deductible: number,
+    public linkedAccountId: string,
+    startDate?: Date,
+    endDate?: Date,
+  ) {
+    
+    const effectiveStartDate = startDate || new Date();
+    
+    if (!endDate) {
+        endDate = new Date(effectiveStartDate);
+        endDate.setFullYear(endDate.getFullYear() + 10);
     }
-  
-    calculatePaymentFromEndDate(): number {
-      const months = this.getMonthsUntilPaidOff();
-      if (months <= 0) return this.amount;
-  
-      if (this.apr === 0) {
-        return this.amount / months;
-      }
-      const monthlyRate = this.apr / 100 / 12;
-      const payment = this.amount * (monthlyRate * Math.pow(1 + monthlyRate, months)) / (Math.pow(1 + monthlyRate, months) - 1);
-      return parseFloat(payment.toFixed(2));
-    }
-  
-    calculateEndDateFromPayment(payment: number): Date {
-      const months = this.calculateMonthsFromPayment(payment);
-      const newEndDate = new Date(this.startDate!);
-      newEndDate.setMonth(newEndDate.getMonth() + months);
-      return newEndDate;
-    }
-  
-    calculateMonthsFromPayment(payment: number): number {
-      if (this.apr === 0) {
-        return payment > 0 ? this.amount / payment : Infinity;
-      }
-      const monthlyRate = this.apr / 100 / 12;
-      if (payment <= this.amount * monthlyRate) {
-          return Infinity; 
-      }
-      const months = -Math.log(1 - (this.amount * monthlyRate) / payment) / Math.log(1 + monthlyRate);
-      return Math.ceil(months);
-    }
-  
-    getMonthsUntilPaidOff(): number {
-      if (!this.endDate || !this.startDate) return 0;
-      const start = new Date(this.startDate);
-      const end = new Date(this.endDate);
-      return (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
-    }
-  
-    getAnnualAmount(year?: number): number {
-      return this.getProratedAnnual(this.payment, year);
-    }
-  
-    getMonthlyAmount(year?: number): number {
-      return this.getProratedAnnual(this.payment, year) / 12;
+
+    super(id, name, amount, frequency, effectiveStartDate, endDate);
+
+    if (!this.payment) {
+        this.payment = this.calculatePaymentFromEndDate();
     }
   }
+  increment (assumptions: AssumptionsState): LoanExpense {
+    let balance = this.amount; // In LoanExpense, 'amount' tracks the current balance
+    const monthlyRate = this.apr / 100 / 12;
+
+    // 1. Internal Loop: 12 Months
+    for (let i = 0; i < 12; i++) {
+        if (balance <= 0) break;
+
+        let interest = 0;
+        if (this.interest_type === 'Compounding' && this.apr > 0) {
+            interest = balance * monthlyRate;
+        } 
+        
+        // Logic: Payment covers interest first, then principal
+        // this.payment is the total monthly payment
+        const principal = Math.min(balance, this.payment - interest);
+        
+        // If payment is too low to cover interest, balance grows (negative amortization)
+        // Otherwise balance shrinks
+        balance = balance - principal;
+    }
+
+    // 2. Return new state
+    return new LoanExpense(
+        this.id,
+        this.name,
+        balance, // New Balance
+        this.frequency,
+        this.apr,
+        this.interest_type,
+        this.payment, // Payment stays fixed
+        this.is_tax_deductible,
+        this.tax_deductible, 
+        this.linkedAccountId,
+        this.startDate,
+        this.endDate
+    );
+  }
+  calculatePaymentFromEndDate(): number {
+    const months = this.getMonthsUntilPaidOff();
+    if (months <= 0) return this.amount;
+
+    if (this.apr === 0) {
+      return this.amount / months;
+    }
+    const monthlyRate = this.apr / 100 / 12;
+    const payment = this.amount * (monthlyRate * Math.pow(1 + monthlyRate, months)) / (Math.pow(1 + monthlyRate, months) - 1);
+    return parseFloat(payment.toFixed(2));
+  }
+
+  calculateEndDateFromPayment(payment: number): Date {
+    const months = this.calculateMonthsFromPayment(payment);
+    const newEndDate = new Date(this.startDate!);
+    newEndDate.setMonth(newEndDate.getMonth() + months);
+    return newEndDate;
+  }
+
+  calculateMonthsFromPayment(payment: number): number {
+    if (this.apr === 0) {
+      return payment > 0 ? this.amount / payment : Infinity;
+    }
+    const monthlyRate = this.apr / 100 / 12;
+    if (payment <= this.amount * monthlyRate) {
+        return Infinity; 
+    }
+    const months = -Math.log(1 - (this.amount * monthlyRate) / payment) / Math.log(1 + monthlyRate);
+    return Math.ceil(months);
+  }
+
+  getMonthsUntilPaidOff(): number {
+    if (!this.endDate || !this.startDate) return 0;
+    const start = new Date(this.startDate);
+    const end = new Date(this.endDate);
+    return (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+  }
+
+  getAnnualAmount(year?: number): number {
+    return this.getProratedAnnual(this.payment, year);
+  }
+
+  getMonthlyAmount(year?: number): number {
+    return this.getProratedAnnual(this.payment, year) / 12;
+  }
+}
 
 export class DependentExpense extends BaseExpense {
   constructor(
@@ -325,6 +456,13 @@ export class DependentExpense extends BaseExpense {
     endDate?: Date,
   ) {
     super(id, name, amount, frequency, startDate, endDate);
+  }
+  increment (assumptions: AssumptionsState): DependentExpense {
+    const generalInflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
+    return new DependentExpense(
+        this.id, this.name, this.amount * (1 + generalInflation), this.frequency,
+        this.is_tax_deductible, this.tax_deductible, this.startDate, this.endDate
+    );
   }
 }
 
@@ -341,6 +479,13 @@ export class HealthcareExpense extends BaseExpense {
   ) {
     super(id, name, amount, frequency, startDate, endDate);
   }
+  increment (assumptions: AssumptionsState): HealthcareExpense {
+    const inflation = assumptions.macro.healthcareInflation / 100;
+    return new HealthcareExpense(
+        this.id, this.name, this.amount * (1 + inflation), this.frequency,
+        this.is_tax_deductible, this.tax_deductible, this.startDate, this.endDate
+    );
+  }
 }
 
 export class VacationExpense extends BaseExpense {
@@ -353,6 +498,12 @@ export class VacationExpense extends BaseExpense {
     endDate?: Date,
   ) {
     super(id, name, amount, frequency, startDate, endDate);
+  }
+  increment (assumptions: AssumptionsState): VacationExpense {
+    const generalInflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
+    return new VacationExpense(
+        this.id, this.name, this.amount * (1 + generalInflation), this.frequency, this.startDate, this.endDate
+    );
   }
 }
 
@@ -367,6 +518,12 @@ export class EmergencyExpense extends BaseExpense {
   ) {
     super(id, name, amount, frequency, startDate, endDate);
   }
+  increment (assumptions: AssumptionsState): VacationExpense {
+    const generalInflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
+    return new VacationExpense(
+        this.id, this.name, this.amount * (1 + generalInflation), this.frequency, this.startDate, this.endDate
+    );
+  }
 }
 
 export class TransportExpense extends BaseExpense {
@@ -379,6 +536,12 @@ export class TransportExpense extends BaseExpense {
     endDate?: Date,
   ) {
     super(id, name, amount, frequency, startDate, endDate);
+  }
+  increment (assumptions: AssumptionsState): VacationExpense {
+    const generalInflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
+    return new VacationExpense(
+        this.id, this.name, this.amount * (1 + generalInflation), this.frequency, this.startDate, this.endDate
+    );
   }
 }
 
@@ -393,6 +556,12 @@ export class FoodExpense extends BaseExpense {
   ) {
     super(id, name, amount, frequency, startDate, endDate);
   }
+  increment (assumptions: AssumptionsState): VacationExpense {
+    const generalInflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
+    return new VacationExpense(
+        this.id, this.name, this.amount * (1 + generalInflation), this.frequency, this.startDate, this.endDate
+    );
+  }
 }
 
 export class OtherExpense extends BaseExpense {
@@ -406,11 +575,17 @@ export class OtherExpense extends BaseExpense {
   ) {
     super(id, name, amount, frequency, startDate, endDate);
   }
+  increment (assumptions: AssumptionsState): VacationExpense {
+    const generalInflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
+    return new VacationExpense(
+        this.id, this.name, this.amount * (1 + generalInflation), this.frequency, this.startDate, this.endDate
+    );
+  }
 }
 
 export type AnyExpense = RentExpense | MortgageExpense | LoanExpense | DependentExpense | HealthcareExpense | VacationExpense | EmergencyExpense | TransportExpense | FoodExpense | OtherExpense;
 
-export function getExpenseActiveMultiplier(expense: AnyExpense, year: number): number {
+export function getExpenseActiveMultiplier(expense: BaseExpense, year: number): number {
     const expenseStartDate = expense.startDate ? new Date(expense.startDate) : new Date();
     const startYear = expenseStartDate.getUTCFullYear();
 

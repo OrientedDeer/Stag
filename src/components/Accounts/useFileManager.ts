@@ -14,7 +14,7 @@ import { TaxState } from '../Taxes/TaxContext';
 
 interface FullBackup {
     version: number;
-    accounts: AnyAccount[];
+    accounts: any[];
     amountHistory: Record<string, AmountHistoryEntry[]>;
     incomes: any[];
     expenses: any[];
