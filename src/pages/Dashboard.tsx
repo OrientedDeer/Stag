@@ -28,7 +28,7 @@ export default function Dashboard() {
       .filter((acc): acc is AnyAccount => acc !== null);
     accountCtx.dispatch({ 
       type: 'SET_BULK_DATA', 
-      payload: { accounts: reconstitutedAccounts, amountHistory: {} } 
+      payload: { accounts: reconstitutedAccounts, amountHistory: defaultData.amountHistory } 
     });
 
     // Load Incomes
