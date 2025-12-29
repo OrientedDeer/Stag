@@ -7,5 +7,8 @@ export default defineConfig({
     react(), 
     tailwindcss(),
   ],
-  base: "/Stag/"
+  base: "/Stag/",
+  esbuild: {
+    keepNames: true,
+  },
 })
