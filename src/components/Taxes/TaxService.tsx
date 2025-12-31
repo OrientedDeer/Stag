@@ -1,42 +1,102 @@
 import { AnyExpense, MortgageExpense } from "../Expense/models";
 import { AnyIncome, WorkIncome } from "../Income/models";
 import { TaxState } from "./TaxContext";
-import { TaxParameters, TAX_DATABASE } from "./TaxData";
-import { getExpenseActiveMultiplier } from '../Expense/models';
+import {
+	TaxParameters,
+	TAX_DATABASE,
+	getClosestTaxYear,
+	max_year,
+	FilingStatus,
+	AuthorityData,
+} from "./TaxData";
+import { getExpenseActiveMultiplier } from "../Expense/models";
+import {
+	AssumptionsState,
+	defaultAssumptions,
+} from "../Assumptions/AssumptionsContext";
+
+export function getTaxParameters(
+	year: number,
+	filingStatus: FilingStatus,
+	authority: "federal" | "state",
+	stateResidency?: string,
+	assumptions: AssumptionsState = {
+		...defaultAssumptions,
+		macro: { ...defaultAssumptions.macro, inflationAdjusted: false },
+	}
+): TaxParameters | undefined {
+	const inflation = assumptions.macro.inflationRate / 100;
+	const inflationAdjusted = assumptions.macro.inflationAdjusted;
+
+	let sourceData: AuthorityData;
+	if (authority === "federal") {
+		sourceData = TAX_DATABASE.federal;
+	} else if (stateResidency && TAX_DATABASE.states[stateResidency]) {
+		sourceData = TAX_DATABASE.states[stateResidency];
+	} else {
+		return undefined; // Or handle error appropriately
+	}
+
+	const closestYear = getClosestTaxYear(year);
+
+	if (inflationAdjusted && year > max_year) {
+		const baseYearParams = sourceData[max_year][filingStatus];
+		if (!baseYearParams) return undefined;
+
+		const yearsToCompound = year - max_year;
+		const inflationMultiplier = Math.pow(1 + inflation, yearsToCompound);
+
+		const inflatedBrackets = baseYearParams.brackets.map((bracket) => ({
+			...bracket,
+			threshold: Math.round(bracket.threshold * inflationMultiplier),
+		}));
+
+		return {
+			...baseYearParams,
+			standardDeduction: Math.round(
+				baseYearParams.standardDeduction * inflationMultiplier
+			),
+			socialSecurityWageBase: Math.round(
+				baseYearParams.socialSecurityWageBase * inflationMultiplier
+			),
+			brackets: inflatedBrackets,
+		};
+	}
+
+	return sourceData[closestYear]?.[filingStatus];
+}
 
 export function getGrossIncome(incomes: AnyIncome[], year: number): number {
 	return incomes.reduce((acc, inc) => {
 		let currentIncome = inc.amount;
-		if (
-			inc instanceof WorkIncome &&
-			inc.taxType === "Roth 401k"
-		) {
+		if (inc instanceof WorkIncome && inc.taxType === "Roth 401k") {
 			currentIncome += inc.employerMatch;
- 		}
-		return acc + inc.getProratedAnnual(inc.amount, year)
+		}
+		return acc + inc.getProratedAnnual(inc.amount, year);
 	}, 0);
 }
 
 export function getPreTaxExemptions(incomes: AnyIncome[], year: number): number {
 	return incomes
 		.filter((inc) => inc instanceof WorkIncome)
-		.reduce(
-			(acc, inc) => {
-				return acc + inc.getProratedAnnual(inc.preTax401k, year) + inc.getProratedAnnual(inc.insurance, year);
-			},
-			0
-		);
+		.reduce((acc, inc) => {
+			return (
+				acc +
+				inc.getProratedAnnual(inc.preTax401k, year) +
+				inc.getProratedAnnual(inc.insurance, year)
+			);
+		}, 0);
 }
 
-export function getPostTaxEmployerMatch(incomes: AnyIncome[], year: number): number {
+export function getPostTaxEmployerMatch(
+	incomes: AnyIncome[],
+	year: number
+): number {
 	return incomes.reduce((acc, inc) => {
-		if (
-			inc instanceof WorkIncome &&
-			inc.taxType === "Roth 401k"
-		) {
+		if (inc instanceof WorkIncome && inc.taxType === "Roth 401k") {
 			return acc + inc.getProratedAnnual(inc.employerMatch, year);
- 		}
-		return acc
+		}
+		return acc;
 	}, 0);
 }
 
@@ -71,35 +131,38 @@ export function getItemizedDeductions(
 	return expenses
 		.filter(
 			(exp) =>
-				"is_tax_deductible" in exp && exp.is_tax_deductible === "Itemized" && getExpenseActiveMultiplier(exp, year) > 0
+				"is_tax_deductible" in exp &&
+				exp.is_tax_deductible === "Itemized" &&
+				getExpenseActiveMultiplier(exp, year) > 0
 		)
-		.reduce(
-			(val, exp) => {
-				if (exp instanceof MortgageExpense) {
-					var temp = exp.calculateAnnualAmortization(year).totalInterest;
+		.reduce((val, exp) => {
+			if (exp instanceof MortgageExpense) {
+				var temp = exp.calculateAnnualAmortization(year).totalInterest;
 
-					return val + temp;
-				}
-				return val + exp.getProratedAnnual((exp as any).tax_deductible || 0, year)
-			},
-			0
-		);
+				return val + temp;
+			}
+			return (
+				val + exp.getProratedAnnual((exp as any).tax_deductible || 0, year)
+			);
+		}, 0);
 }
 
 export function getYesDeductions(expenses: AnyExpense[], year: number): number {
 	return expenses
 		.filter(
-			(exp) => "is_tax_deductible" in exp && exp.is_tax_deductible === "Yes" && getExpenseActiveMultiplier(exp, year) > 0
+			(exp) =>
+				"is_tax_deductible" in exp &&
+				exp.is_tax_deductible === "Yes" &&
+				getExpenseActiveMultiplier(exp, year) > 0
 		)
-		.reduce(
-			(val, exp) => {
-				if (exp instanceof MortgageExpense) {
-					return val + exp.calculateAnnualAmortization(year).totalInterest;
-				}
-				return val + exp.getProratedAnnual((exp as any).tax_deductible || 0, year)
-			},
-			0
-		);
+		.reduce((val, exp) => {
+			if (exp instanceof MortgageExpense) {
+				return val + exp.calculateAnnualAmortization(year).totalInterest;
+			}
+			return (
+				val + exp.getProratedAnnual((exp as any).tax_deductible || 0, year)
+			);
+		}, 0);
 }
 
 export function calculateTax(
@@ -134,24 +197,29 @@ export function calculateTax(
 export function calculateFicaTax(
 	state: TaxState,
 	incomes: AnyIncome[],
-	year: number
+	year: number,
+	assumptions?: AssumptionsState
 ): number {
 	if (state.ficaOverride !== null) {
 		return state.ficaOverride;
 	}
 
 	const earnedGross = getEarnedIncome(incomes, year);
-
 	const ficaExemptions = getFicaExemptions(incomes, year);
+	const fedParams = getTaxParameters(
+		year,
+		state.filingStatus,
+		"federal",
+		undefined,
+		assumptions
+	);
 
-	const fedParams = TAX_DATABASE.federal[year][state.filingStatus];
+	if (!fedParams) return 0; // Or handle error appropriately
 
 	const taxableBase = Math.max(0, earnedGross - ficaExemptions);
-
 	const ssTax =
 		Math.min(taxableBase, fedParams.socialSecurityWageBase) *
 		fedParams.socialSecurityTaxRate;
-
 	const medicareTax = taxableBase * fedParams.medicareTaxRate;
 
 	return ssTax + medicareTax;
@@ -161,91 +229,84 @@ export function calculateStateTax(
 	state: TaxState,
 	incomes: AnyIncome[],
 	expenses: AnyExpense[],
-	year: number
+	year: number,
+	assumptions?: AssumptionsState
 ) {
 	if (state.stateOverride !== null) {
 		return state.stateOverride;
 	}
 
 	const annualGross = getGrossIncome(incomes, year);
-
-	// 2. Deductions Logic
-
 	const incomePreTaxDeductions = getPreTaxExemptions(incomes, year);
-
 	const expenseAboveLineDeductions = getYesDeductions(expenses, year);
-
 	const totalPreTaxDeductions =
 		incomePreTaxDeductions + expenseAboveLineDeductions;
 
-	// Standard vs Itemized Logic
+	const itemizedTotal = getItemizedDeductions(expenses, year);
+	const stateParams = getTaxParameters(
+		year,
+		state.filingStatus,
+		"state",
+		state.stateResidency,
+		assumptions
+	);
 
-	var itemizedTotal = getItemizedDeductions(expenses, year);
+	if (!stateParams) return 0;
 
-	const stateParams =
-		TAX_DATABASE.states[state.stateResidency]?.[year]?.[state.filingStatus];
-
-	const stateStandardDeduction = stateParams?.standardDeduction || 0;
-
+	const stateStandardDeduction = stateParams.standardDeduction || 0;
 	const stateAppliedMainDeduction =
 		state.deductionMethod === "Standard"
 			? stateStandardDeduction
 			: itemizedTotal;
 
-	const stateTax =
-		state.stateOverride !== null
-			? state.stateOverride
-			: stateParams
-			? calculateTax(annualGross, totalPreTaxDeductions, {
-					...stateParams,
-					standardDeduction: stateAppliedMainDeduction,
-			  })
-			: 0;
-
-	return stateTax;
+	return calculateTax(annualGross, totalPreTaxDeductions, {
+		...stateParams,
+		standardDeduction: stateAppliedMainDeduction,
+	});
 }
 
 export function calculateFederalTax(
 	state: TaxState,
 	incomes: AnyIncome[],
 	expenses: AnyExpense[],
-	year: number
+	year: number,
+	assumptions?: AssumptionsState
 ) {
 	if (state.fedOverride !== null) {
 		return state.fedOverride;
 	}
 
 	const annualGross = getGrossIncome(incomes, year);
-
-	// 2. Deductions Logic
-
 	const incomePreTaxDeductions = getPreTaxExemptions(incomes, year);
-
-	const stateTax = calculateStateTax(state, incomes, expenses, year);
-
+	const stateTax = calculateStateTax(
+		state,
+		incomes,
+		expenses,
+		year,
+		assumptions
+	);
 	const expenseAboveLineDeductions = getYesDeductions(expenses, year);
-
 	const totalPreTaxDeductions =
 		incomePreTaxDeductions + expenseAboveLineDeductions;
 
-	// Standard vs Itemized Logic
+	const itemizedTotal = getItemizedDeductions(expenses, year) + stateTax;
+	const fedParams = getTaxParameters(
+		year,
+		state.filingStatus,
+		"federal",
+		undefined,
+		assumptions
+	);
 
-	var itemizedTotal = getItemizedDeductions(expenses, year) + stateTax;
-
-	const fedParams = TAX_DATABASE.federal[year][state.filingStatus];
+	if (!fedParams) return 0;
 
 	const fedStandardDeduction = fedParams.standardDeduction;
-
 	const fedAppliedMainDeduction =
 		state.deductionMethod === "Standard" ? fedStandardDeduction : itemizedTotal;
 
-	const federalTax =
-		state.fedOverride !== null
-			? state.fedOverride
-			: calculateTax(annualGross, totalPreTaxDeductions, {
-					...fedParams,
-					standardDeduction: fedAppliedMainDeduction,
-			  });
-
-	return federalTax;
+	return calculateTax(annualGross, totalPreTaxDeductions, {
+		...fedParams,
+		standardDeduction: fedAppliedMainDeduction,
+	});
 }
+

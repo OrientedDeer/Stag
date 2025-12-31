@@ -199,7 +199,7 @@ export default function PriorityTab() {
                     />
 
                     <div className="pt-4 border-t border-gray-800">
-                        <label className="text-xs text-gray-500 uppercase mb-2 block">Limit Rule</label>
+                        <h4 className="text-xs uppercase text-gray-500 font-semibold mb-2">Limit Rule</h4>
                         <div className="space-y-3">
                             <DropdownInput
                                 id="new-cap-type"

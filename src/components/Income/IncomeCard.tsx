@@ -1,4 +1,4 @@
-import { useContext } from "react";
+import { useContext, useEffect, useCallback } from "react";
 import { 
     AnyIncome, 
     WorkIncome, 
@@ -30,19 +30,38 @@ const IncomeCard = ({ income }: { income: AnyIncome }) => {
     const { accounts } = useContext(AccountContext);
 
     // --- UNIFIED UPDATER ---
-	const handleFieldUpdate = (field: AllIncomeKeys, value: any) => {
+	const handleFieldUpdate = useCallback((field: AllIncomeKeys, value: any) => {
 		dispatch({
 			type: "UPDATE_INCOME_FIELD",
 			payload: { id: income.id, field, value },
 		});
-	};
+	}, [dispatch, income.id]);
 
-    const handleMatchAccountChange = (newAccountId: string | null) => {
+    const handleMatchAccountChange = useCallback((newAccountId: string | null) => {
         const account = accounts.find(acc => acc.id === newAccountId) as InvestedAccount | undefined;
         handleFieldUpdate("matchAccountId", newAccountId);
         handleFieldUpdate("taxType", account ? account.taxType : null);
-    };
+    }, [accounts, handleFieldUpdate]);
 
+    const contributionAccounts = accounts.filter(
+        (acc) => acc instanceof InvestedAccount && 
+                 acc.isContributionEligible === true &&
+                 (acc.taxType === 'Roth 401k' || acc.taxType === 'Traditional 401k')
+    );
+
+    const isWorkIncome = income instanceof WorkIncome;
+    const matchAccountId = isWorkIncome ? income.matchAccountId : undefined;
+    const employerMatch = isWorkIncome ? income.employerMatch : undefined;
+
+     useEffect(() => {
+        if (isWorkIncome && typeof employerMatch === 'number' &&  employerMatch > 0 && contributionAccounts.length > 0) {
+            const accountExists = contributionAccounts.some(acc => acc.id === matchAccountId);
+             if (!accountExists) {
+                 handleMatchAccountChange(contributionAccounts[0].id);
+             }
+         }
+    }, [isWorkIncome, matchAccountId, employerMatch, contributionAccounts, handleMatchAccountChange]);
+ 
     const handleDateChange = (field: AllIncomeKeys, dateString: string) => {
         if (!dateString) {
             handleFieldUpdate(field, undefined);
@@ -67,12 +86,6 @@ const IncomeCard = ({ income }: { income: AnyIncome }) => {
 		if (income instanceof WindfallIncome) return INCOME_COLORS_BACKGROUND["Windfall"];
 		return "bg-gray-500";
 	};
-
-    const contributionAccounts = accounts.filter(
-        (acc) => acc instanceof InvestedAccount && 
-                 acc.isContributionEligible === true &&
-                 (acc.taxType === 'Roth 401k' || acc.taxType === 'Traditional 401k')
-    );
 
 	return (
 		<div className="w-full">
@@ -129,16 +142,16 @@ const IncomeCard = ({ income }: { income: AnyIncome }) => {
                             onChange={(val) => handleFieldUpdate("preTax401k", val)}
                         />
                         <CurrencyInput
-                            id={`${income.id}-insurance`}
-                            label="Insurance"
-                            value={income.insurance}
-                            onChange={(val) => handleFieldUpdate("insurance", val)}
-                        />
-                        <CurrencyInput
                             id={`${income.id}-roth-contributions`}
                             label="Roth Contributions"
                             value={income.roth401k}
                             onChange={(val) => handleFieldUpdate("roth401k", val)}
+                        />
+                        <CurrencyInput
+                            id={`${income.id}-insurance`}
+                            label="Insurance"
+                            value={income.insurance}
+                            onChange={(val) => handleFieldUpdate("insurance", val)}
                         />
                         <CurrencyInput
                             id={`${income.id}-employer-match`}
@@ -146,11 +159,22 @@ const IncomeCard = ({ income }: { income: AnyIncome }) => {
                             value={income.employerMatch}
                             onChange={(val) => handleFieldUpdate("employerMatch", val)}
                         />
+                        <DropdownInput
+                            id={`${income.id}-contribution-growth`}
+                            label="Contribution Growth"
+                            onChange={(val) => handleFieldUpdate("contributionGrowthStrategy", val)}
+                            options={[
+                                { value: 'FIXED', label: 'Remain Fixed' },
+                                { value: 'GROW_WITH_SALARY', label: 'Grow with Salary' },
+                                { value: 'TRACK_ANNUAL_MAX', label: 'Track Annual Maximum' }
+                            ]}
+                            value={income.contributionGrowthStrategy}
+                        />
                         {income.employerMatch > 0 && (
                             <DropdownInput
                                 label="Match Account"
                                 onChange={(val) => handleMatchAccountChange(val)}
-                                options={contributionAccounts.map(acc => ({ value: acc.id, label: acc.name }))}
+                                options={contributionAccounts.map(acc => ({ value: acc.id || "", label: acc.name }))}
                                 value={income.matchAccountId}
                             />
                         )}

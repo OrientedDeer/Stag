@@ -1,6 +1,8 @@
 import { TaxType } from "../Accounts/models";
 import { AssumptionsState } from '../Assumptions/AssumptionsContext';
 
+export type ContributionGrowthStrategy = 'FIXED' | 'GROW_WITH_SALARY' | 'TRACK_ANNUAL_MAX';
+
 export interface Income {
   id: string;
   name: string;
@@ -72,6 +74,7 @@ export class WorkIncome extends BaseIncome {
     public employerMatch: number = 0,
     public matchAccountId: string,
     public taxType: TaxType | null = null,
+    public contributionGrowthStrategy: ContributionGrowthStrategy = 'FIXED',
     startDate?: Date,
     end_date?: Date,
   ) {
@@ -90,11 +93,25 @@ export class WorkIncome extends BaseIncome {
     const newMatch = this.employerMatch * (1 + salaryGrowth + generalInflation);
 
     // 3. Grow Contributions (401k, Roth)
-    // We assume these grow with salary (maintaining the same savings rate)
-    // OR you could use generalInflation if you think IRS limits drag it down.
-    // Salary growth is usually the safer optimistic assumption.
-    const newPreTax = this.preTax401k * (1 + salaryGrowth + generalInflation);
-    const newRoth = this.roth401k * (1 + salaryGrowth + generalInflation);
+    let newPreTax = this.preTax401k;
+    let newRoth = this.roth401k;
+
+    switch (this.contributionGrowthStrategy) {
+      case 'GROW_WITH_SALARY':
+        newPreTax = this.preTax401k * (1 + salaryGrowth + generalInflation);
+        newRoth = this.roth401k * (1 + salaryGrowth + generalInflation);
+        break;
+      case 'TRACK_ANNUAL_MAX':
+        // TODO: Implement logic to fetch 401k max for the year.
+        // For now, treating it as 'GROW_WITH_SALARY'
+        newPreTax = this.preTax401k * (1 + salaryGrowth + generalInflation);
+        newRoth = this.roth401k * (1 + salaryGrowth + generalInflation);
+        break;
+      case 'FIXED':
+      default:
+        // Values remain the same
+        break;
+    }
 
     // 4. Grow Insurance Cost
     // Health insurance usually outpaces regular inflation
@@ -112,6 +129,7 @@ export class WorkIncome extends BaseIncome {
       newMatch,
       this.matchAccountId,
       this.taxType,
+      this.contributionGrowthStrategy,
       this.startDate,
       this.end_date
     );

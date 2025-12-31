@@ -14,6 +14,9 @@ export interface TaxParameters {
   // You can expand this later for FICA, Medicare, or specific credits
 }
 
+export const max_year = 2026;
+
+
 /** * Hierarchical Lookups:
  * AuthorityData: Year -> FilingStatus -> Parameters
  */
@@ -24,6 +27,7 @@ export interface GlobalTaxDatabase {
   federal: AuthorityData;
   states: Record<string, AuthorityData>;
 }
+
 
 export const TAX_DATABASE: GlobalTaxDatabase = {
     federal: {
@@ -489,3 +493,14 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
         }
     }
 };
+
+export const getClosestTaxYear = (year: number): number => {
+    const availableYears = Object.keys(TAX_DATABASE.federal).map(Number);
+    if (availableYears.length === 0) {
+        throw new Error("No tax data available.");
+    }
+
+    return availableYears.reduce((prev, curr) => {
+        return (Math.abs(curr - year) < Math.abs(prev - year) ? curr : prev);
+    });
+ };

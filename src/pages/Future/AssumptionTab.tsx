@@ -38,9 +38,7 @@ export default function AssumptionTab() {
                                 isAboveInflation={state.macro.inflationAdjusted}
                             />
                             <div>
-                                <label className="block text-xs font-medium text-gray-500 uppercase mb-2">
-                                    Inflation Adjusted
-                                </label>
+                                <h4 className="text-xs uppercase text-gray-500 font-semibold mb-2">Inflation Adjusted</h4>
                                 <div className="flex bg-gray-800 p-1 rounded-lg border border-gray-700">
                                     <button
                                         onClick={() => dispatch({ type: "UPDATE_MACRO", payload: { inflationAdjusted: true } })}

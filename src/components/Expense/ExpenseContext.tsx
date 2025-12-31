@@ -23,7 +23,7 @@ export function reconstituteExpense(data: any): AnyExpense | null {
     const startDate = typeof startDateValue === 'string' ? new Date(startDateValue) : new Date(startDateValue);
 
     // For endDate, if it's a string, create a local date. Otherwise, treat as already a Date object.
-    const endDateValue = data.endDate;
+    const endDateValue = data.end_date;
     const endDate = endDateValue ? (typeof endDateValue === 'string' ? new Date(endDateValue) : new Date(endDateValue)) : undefined;
 
     const base = {

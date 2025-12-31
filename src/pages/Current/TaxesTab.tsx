@@ -16,6 +16,8 @@ import {
     getPostTaxEmployerMatch
 } from "../../components/Taxes/TaxService";
 import { CurrencyInput } from "../../components/Layout/CurrencyInput";
+import { DropdownInput } from "../../components/Layout/DropdownInput";
+import { ToggleInput } from "../../components/Layout/ToggleInput";
 
 // Suggestion: Create a 'useTax' hook in TaxContext.tsx that handles the null check
 // and throws an error if the provider is missing.
@@ -63,55 +65,38 @@ export default function TaxesTab() {
                             <div className="space-y-5">
                                 {/* Filing Status */}
                                 <div>
-                                    <label className="block text-xs font-medium text-gray-500 uppercase mb-2">
-                                        Filing Status
-                                    </label>
-                                    <select
+                                    <DropdownInput
+                                        label="Filing Status"
+                                        onChange={(val) => dispatch({ type: "SET_STATUS", payload: val as FilingStatus })}
+                                        options={[
+                                            { value: 'Single', label: 'Single' },
+                                            { value: 'Married', label: 'Married Filing Jointly' },
+                                            { value: 'Married Filing Separately', label: 'Married Filing Separately' }
+                                        ]}
                                         value={state.filingStatus}
-                                        onChange={(e) => dispatch({ type: "SET_STATUS", payload: e.target.value as FilingStatus })}
-                                        className="w-full bg-gray-800 text-white border border-gray-700 rounded-lg p-2.5 focus:ring-2 focus:ring-green-500 outline-none"
-                                    >
-                                        <option value="Single">Single</option>
-                                        <option value="Married">Married Filing Jointly</option>
-                                        <option value="Married Filing Separately">Married Filing Separately</option>
-                                    </select>
+                                    />
                                 </div>
 
                                 {/* State Selection */}
                                 <div>
-                                    <label className="block text-xs font-medium text-gray-500 uppercase mb-2">
-                                        State Residency
-                                    </label>
-                                    <select
+                                    <DropdownInput
+                                        label="State Residency"
+                                        onChange={(val) => dispatch({ type: "SET_STATE", payload: val })}
+                                        options={Object.keys(TAX_DATABASE.states).map(s => ({ value: s, label: s }))}
                                         value={state.stateResidency}
-                                        onChange={(e) => dispatch({ type: "SET_STATE", payload: e.target.value })}
-                                        className="w-full bg-gray-800 text-white border border-gray-700 rounded-lg p-2.5 focus:ring-2 focus:ring-green-500 outline-none"
-                                    >
-                                        {Object.keys(TAX_DATABASE.states).sort().map((s) => (
-                                            <option key={s} value={s}>{s}</option>
-                                        ))}
-                                    </select>
+                                    />
                                 </div>
 
                                 {/* Deduction Method */}
                                 <div>
-                                    <label className="block text-xs font-medium text-gray-500 uppercase mb-2">
-                                        Deduction Method
-                                    </label>
-                                    <div className="flex bg-gray-800 p-1 rounded-lg border border-gray-700">
-                                        <button
-                                            onClick={() => dispatch({ type: "SET_DEDUCTION_METHOD", payload: "Standard" })}
-                                            className={`flex-1 py-2 text-sm rounded-md transition-all ${state.deductionMethod === "Standard" ? "bg-green-600 text-white shadow-lg" : "text-gray-400 hover:text-white"}`}
-                                        >
-                                            Standard
-                                        </button>
-                                        <button
-                                            onClick={() => dispatch({ type: "SET_DEDUCTION_METHOD", payload: "Itemized" })}
-                                            className={`flex-1 py-2 text-sm rounded-md transition-all ${state.deductionMethod === "Itemized" ? "bg-green-600 text-white shadow-lg" : "text-gray-400 hover:text-white"}`}
-                                        >
-                                            Itemized
-                                        </button>
-                                    </div>
+                                    <ToggleInput
+                                        id="deduction-method"
+                                        label="Use Itemized Deduction"
+                                        enabled={state.deductionMethod === "Itemized"}
+                                        setEnabled={(enabled) =>
+                                            dispatch({ type: "SET_DEDUCTION_METHOD", payload: enabled ? "Itemized" : "Standard" })
+                                        }
+                                    />
                                     {federalItemizedTotal > fedStandardDeduction && state.deductionMethod === "Standard" && (
                                         <p className="text-[11px] text-yellow-500 mt-2 italic leading-tight">
                                             Tip: Your itemized deductions (${federalItemizedTotal.toLocaleString()}) are higher than the standard deduction.

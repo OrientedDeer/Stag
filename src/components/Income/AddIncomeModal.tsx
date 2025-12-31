@@ -1,10 +1,11 @@
-import React, { useState, useContext } from "react";
+import React, { useState, useContext, useEffect } from "react";
 import { IncomeContext } from "./IncomeContext";
 import { 
   WorkIncome, 
   SocialSecurityIncome, 
   PassiveIncome, 
-  WindfallIncome
+  WindfallIncome,
+  ContributionGrowthStrategy
 } from './models';
 import { CurrencyInput } from "../Layout/CurrencyInput";
 import { NameInput } from "../Layout/NameInput";
@@ -41,12 +42,25 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
     const [roth401k, setRoth401k] = useState<number>(0);
     const [employerMatch, setEmployerMatch] = useState<number>(0);
     const [matchAccountId, setMatchAccountId] = useState<string>("");
+    const [contributionGrowthStrategy, setContributionGrowthStrategy] = useState<ContributionGrowthStrategy>('FIXED');
     
     // --- Other Fields ---
     const [claimingAge, setClaimingAge] = useState<number>(62);
     const [sourceType, setSourceType] = useState<'Dividend' | 'Rental' | 'Royalty' | 'Other'>('Dividend');
         
     const id = generateUniqueId();
+    
+    const contributionAccounts = accounts.filter(
+        (acc) => acc instanceof InvestedAccount && 
+                 acc.isContributionEligible === true &&
+                 (acc.taxType === 'Roth 401k' || acc.taxType === 'Traditional 401k')
+    );
+
+    useEffect(() => {
+        if (selectedType === WorkIncome && contributionAccounts.length > 0 && !matchAccountId) {
+            setMatchAccountId(contributionAccounts[0].id);
+        }
+    }, [selectedType, contributionAccounts, matchAccountId]);
     
     const handleClose = () => {
         setStep('select');
@@ -58,6 +72,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
         setRoth401k(0);
         setEmployerMatch(0);
         setMatchAccountId("");
+        setContributionGrowthStrategy('FIXED');
         setStartDate(new Date().toISOString().split('T')[0]);
         setEndDate(new Date().toISOString().split('T')[0]);
         onClose();
@@ -87,7 +102,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
         if (selectedType === WorkIncome) {
             const matchedAccount = accounts.find(acc => acc.id === matchAccountId) as InvestedAccount | undefined;
             const taxType = matchedAccount ? matchedAccount.taxType : null;
-            newIncome = new WorkIncome(id, name.trim(), amount, frequency, "Yes", preTax401k, insurance, roth401k, employerMatch, matchAccountId, taxType, finalStartDate, finalEndDate);
+            newIncome = new WorkIncome(id, name.trim(), amount, frequency, "Yes", preTax401k, insurance, roth401k, employerMatch, matchAccountId, taxType, contributionGrowthStrategy, finalStartDate, finalEndDate);
         } else if (selectedType === SocialSecurityIncome) {
             newIncome = new SocialSecurityIncome(id, name.trim(), amount, frequency, claimingAge, finalStartDate, finalEndDate);
         } else if (selectedType === PassiveIncome) {
@@ -111,12 +126,6 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
         { label: 'Passive Income', class: PassiveIncome },
         { label: 'Windfall', class: WindfallIncome }
     ];
-
-    const contributionAccounts = accounts.filter(
-        (acc) => acc instanceof InvestedAccount && 
-                 acc.isContributionEligible === true &&
-                 (acc.taxType === 'Roth 401k' || acc.taxType === 'Traditional 401k')
-    );
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm min-w-max">
@@ -159,9 +168,19 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                             {selectedType === WorkIncome && (
                                 <>
                                     <CurrencyInput label="Pre-Tax 401k/403b" value={preTax401k} onChange={setPreTax401k} />
-                                    <CurrencyInput label="Medical/Dental/Vision" value={insurance} onChange={setInsurance} />
                                     <CurrencyInput label="Roth 401k (Post-Tax)" value={roth401k} onChange={setRoth401k} />
+                                    <CurrencyInput label="Medical/Dental/Vision" value={insurance} onChange={setInsurance} />
                                     <CurrencyInput label="Employer Match" value={employerMatch} onChange={setEmployerMatch} />
+                                    <DropdownInput
+                                        label="Contribution Growth"
+                                        onChange={(val) => setContributionGrowthStrategy(val as ContributionGrowthStrategy)}
+                                        options={[
+                                            { value: 'FIXED', label: 'Remain Fixed' },
+                                            { value: 'GROW_WITH_SALARY', label: 'Grow with Salary' },
+                                            { value: 'TRACK_ANNUAL_MAX', label: 'Track Annual Maximum' }
+                                        ]}
+                                        value={contributionGrowthStrategy}
+                                    />
                                     {employerMatch > 0 && (
                                         <DropdownInput
                                             label="Match Account"

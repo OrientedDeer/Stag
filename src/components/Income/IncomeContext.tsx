@@ -29,7 +29,7 @@ const initialState: AppState = {
 export function reconstituteIncome(data: any): AnyIncome | null {
     if (!data || !data.className) return null;
     
-    const endDateValue = data.end_date || Date.now();
+    const endDateValue = data.end_date;
     const endDate = endDateValue ? (typeof endDateValue === 'string' ? new Date(endDateValue) : new Date(endDateValue)) : undefined;
     const startDateValue = data.startDate || Date.now();
     const startDate = typeof startDateValue === 'string' ? new Date(startDateValue) : new Date(startDateValue);
@@ -48,7 +48,7 @@ export function reconstituteIncome(data: any): AnyIncome | null {
     switch (data.className) {
         case 'WorkIncome':
             return new WorkIncome(base.id, base.name, base.amount, base.frequency, base.earned_income, 
-                data.preTax401k || 0, data.insurance || 0, data.roth401k || 0, data.employerMatch || 0, data.matchAccountId || null, data.taxType || null, base.startDate, base.end_date);
+                data.preTax401k || 0, data.insurance || 0, data.roth401k || 0, data.employerMatch || 0, data.matchAccountId || null, data.taxType || null, data.contributionGrowthStrategy || 'FIXED', base.startDate, base.end_date);
         case 'SocialSecurityIncome':
             return new SocialSecurityIncome(base.id, base.name, base.amount, base.frequency, 
                 data.claimingAge || 67, base.startDate, base.end_date);

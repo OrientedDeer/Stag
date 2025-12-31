@@ -37,6 +37,9 @@ export interface AssumptionsState {
     retirementAge: number;
     lifeExpectancy: number;
   };
+  personal: {
+    startAge: number;
+  };
   priorities: PriorityBucket[];
 }
 
@@ -63,6 +66,9 @@ export const defaultAssumptions: AssumptionsState = {
   demographics: {
     retirementAge: 65,
     lifeExpectancy: 90,
+  },
+  personal: {
+    startAge: 24,
   },
   priorities: [],
 };
