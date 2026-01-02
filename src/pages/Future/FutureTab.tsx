@@ -51,7 +51,7 @@ const OverviewTab = ({ simulationData }: { simulationData: SimulationYear[] }) =
     const CustomTooltip = (props: any) => {
         const { point } = props;
         const year = point.data.x;
-    
+
         const yearData: Record<string, number> = {};
         chartData.forEach(series => {
             const dataPoint = series.data.find(d => d.x === year);
@@ -59,7 +59,7 @@ const OverviewTab = ({ simulationData }: { simulationData: SimulationYear[] }) =
                 yearData[series.id] = dataPoint.y;
             }
         });
-    
+
         return (
             <div style={{ background: '#2d2d2d', color: '#fff', padding: '12px 16px', borderRadius: '3px' }}>
                 <div style={{
@@ -71,7 +71,7 @@ const OverviewTab = ({ simulationData }: { simulationData: SimulationYear[] }) =
                     Year: {year}
                 </div>
                 {Object.entries(yearData).map(([seriesId, value]) => (
-                     <div key={seriesId} style={{ display: 'flex', alignItems: 'center', padding: '3px 0' }}>
+                    <div key={seriesId} style={{ display: 'flex', alignItems: 'center', padding: '3px 0' }}>
                         <div style={{
                             width: 12,
                             height: 12,
@@ -131,7 +131,7 @@ const OverviewTab = ({ simulationData }: { simulationData: SimulationYear[] }) =
                 enableArea={true}
                 areaOpacity={0.15}
                 useMesh={true}
-                legends={[ 
+                legends={[
                     {
                         anchor: 'bottom-right',
                         direction: 'column',
@@ -158,7 +158,7 @@ const OverviewTab = ({ simulationData }: { simulationData: SimulationYear[] }) =
                     {
                         id: 'gradientA',
                         type: 'linearGradient',
-                        colors: [ { offset: 0, color: 'inherit' }, { offset: 100, color: 'inherit', opacity: 0 } ],
+                        colors: [{ offset: 0, color: 'inherit' }, { offset: 100, color: 'inherit', opacity: 0 }],
                     },
                 ]}
                 fill={[{ match: '*', id: 'gradientA' }]}
@@ -178,7 +178,7 @@ const CashflowTab = ({ simulationData }: { simulationData: SimulationYear[] }) =
             const totalTaxes = year.taxDetails.fed + year.taxDetails.state + year.taxDetails.fica;
             const totalLivingExpenses = year.expenses.reduce((sum, exp) => sum + exp.getAnnualAmount(), 0);
             const totalSavings = year.cashflow.investedUser + year.cashflow.discretionary;
-            
+
             return {
                 year: year.year,
                 'Gross Income': year.cashflow.totalIncome / divisor,
@@ -197,66 +197,66 @@ const CashflowTab = ({ simulationData }: { simulationData: SimulationYear[] }) =
                 <button onClick={() => setView('Monthly')} className={`px-3 py-1 text-xs rounded-r-md ${view === 'Monthly' ? 'bg-green-600' : 'bg-gray-700'}`}>Monthly</button>
             </div>
             <div className='grow'>
-            <ResponsiveBar
-                data={chartData}
-                keys={keys}
-                indexBy="year"
-                margin={{ top: 50, right: 60, bottom: 60, left: 80 }}
-                padding={0.3}
-                groupMode="stacked"
-                valueScale={{ type: 'linear' }}
-                indexScale={{ type: 'band', round: true }}
-                colors={{ scheme: 'nivo' }}
-                valueFormat=" >-$,.0f"
-                axisTop={null}
-                axisRight={null}
-                axisBottom={{
-                    tickSize: 5,
-                    tickPadding: 5,
-                    tickRotation: 0,
-                    legend: 'Year',
-                    legendPosition: 'middle',
-                    legendOffset: 32
-                }}
-                axisLeft={{
-                    tickSize: 5,
-                    tickPadding: 5,
-                    tickRotation: 0,
-                    legend: `Amount (${view})`,
-                    legendPosition: 'middle',
-                    legendOffset: -70,
-                    format: " >-$,.0f"
-                }}
-                labelSkipWidth={12}
-                labelSkipHeight={12}
-                labelTextColor={{
-                    from: 'color',
-                    modifiers: [ [ 'darker', 1.6 ] ]
-                }}
-                legends={[ 
-                    {
-                        dataFrom: 'keys',
-                        anchor: 'bottom',
-                        direction: 'row',
-                        justify: false,
-                        translateX: 20,
-                        translateY: 50,
-                        itemsSpacing: 2,
-                        itemWidth: 100,
-                        itemHeight: 20,
-                        itemDirection: 'left-to-right',
-                        itemOpacity: 0.85,
-                        symbolSize: 20,
-                    }
-                ]}
-                theme={{
-                    "background": "#09090b",
-                    "text": { "fontSize": 12, "fill": "#ffffff" },
-                    "axis": { "legend": { "text": { "fill": "#ffffff" } }, "ticks": { "text": { "fill": "#dddddd" } } },
-                    "grid": { "line": { "stroke": "#444444", "strokeWidth": 1 } },
-                    "tooltip": { "container": { "background": "#222222", "color": "#ffffff", "fontSize": 12 } }
-                }}
-            />
+                <ResponsiveBar
+                    data={chartData}
+                    keys={keys}
+                    indexBy="year"
+                    margin={{ top: 50, right: 60, bottom: 60, left: 80 }}
+                    padding={0.3}
+                    groupMode="stacked"
+                    valueScale={{ type: 'linear' }}
+                    indexScale={{ type: 'band', round: true }}
+                    colors={{ scheme: 'nivo' }}
+                    valueFormat=" >-$,.0f"
+                    axisTop={null}
+                    axisRight={null}
+                    axisBottom={{
+                        tickSize: 5,
+                        tickPadding: 5,
+                        tickRotation: 0,
+                        legend: 'Year',
+                        legendPosition: 'middle',
+                        legendOffset: 32
+                    }}
+                    axisLeft={{
+                        tickSize: 5,
+                        tickPadding: 5,
+                        tickRotation: 0,
+                        legend: `Amount (${view})`,
+                        legendPosition: 'middle',
+                        legendOffset: -70,
+                        format: " >-$,.0f"
+                    }}
+                    labelSkipWidth={12}
+                    labelSkipHeight={12}
+                    labelTextColor={{
+                        from: 'color',
+                        modifiers: [['darker', 1.6]]
+                    }}
+                    legends={[
+                        {
+                            dataFrom: 'keys',
+                            anchor: 'bottom',
+                            direction: 'row',
+                            justify: false,
+                            translateX: 20,
+                            translateY: 50,
+                            itemsSpacing: 2,
+                            itemWidth: 100,
+                            itemHeight: 20,
+                            itemDirection: 'left-to-right',
+                            itemOpacity: 0.85,
+                            symbolSize: 20,
+                        }
+                    ]}
+                    theme={{
+                        "background": "#09090b",
+                        "text": { "fontSize": 12, "fill": "#ffffff" },
+                        "axis": { "legend": { "text": { "fill": "#ffffff" } }, "ticks": { "text": { "fill": "#dddddd" } } },
+                        "grid": { "line": { "stroke": "#444444", "strokeWidth": 1 } },
+                        "tooltip": { "container": { "background": "#222222", "color": "#ffffff", "fontSize": 12 } }
+                    }}
+                />
             </div>
         </div>
     );
@@ -265,7 +265,7 @@ const CashflowTab = ({ simulationData }: { simulationData: SimulationYear[] }) =
 const DebtTab = ({ simulationData }: { simulationData: SimulationYear[] }) => {
     const { data, debtFreeYear } = useMemo(() => {
         let debtFreeYear: number | null = null;
-        
+
         const allDebtNames = new Set<string>();
         simulationData.forEach(year => {
             year.expenses.forEach(exp => {
@@ -346,7 +346,7 @@ const DebtTab = ({ simulationData }: { simulationData: SimulationYear[] }) => {
                     pointBorderWidth={2}
                     pointBorderColor={{ from: 'serieColor' }}
                     useMesh={true}
-                    legends={[ 
+                    legends={[
                         {
                             anchor: 'bottom-right',
                             direction: 'column',
@@ -425,7 +425,7 @@ const AssetsTab = ({ simulationData }: { simulationData: SimulationYear[] }) => 
                 }}
                 labelSkipWidth={12}
                 labelSkipHeight={12}
-                legends={[ 
+                legends={[
                     {
                         dataFrom: 'keys',
                         anchor: 'bottom',
@@ -498,7 +498,7 @@ const DataTab = ({ simulationData, startAge }: { simulationData: SimulationYear[
     return (
         <div className="p-4 text-white">
             <div className="flex justify-end mb-4">
-                <button 
+                <button
                     onClick={handleExportCSV}
                     className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg transition-colors"
                 >
@@ -539,7 +539,7 @@ const DataTab = ({ simulationData, startAge }: { simulationData: SimulationYear[
 
 const findFinancialIndependenceYear = (simulation: SimulationYear[], assumptions: AssumptionsState): number | null => {
     for (let i = 1; i < simulation.length; i++) {
-        const lastYear = simulation[i-1];
+        const lastYear = simulation[i - 1];
         const currentYear = simulation[i];
 
         const lastYearInvestments = lastYear.accounts
@@ -549,9 +549,9 @@ const findFinancialIndependenceYear = (simulation: SimulationYear[], assumptions
         const currentYearInvestments = currentYear.accounts
             .filter(acc => acc instanceof InvestedAccount)
             .reduce((sum, acc) => sum + acc.amount, 0);
-        
-        const contributions = currentYear.cashflow.investedUser + currentYear.cashflow.investedMatch;
-        const investmentReturns = currentYearInvestments - lastYearInvestments - contributions;
+
+        //const contributions = currentYear.cashflow.investedUser + currentYear.cashflow.investedMatch;
+        //const investmentReturns = currentYearInvestments - lastYearInvestments - contributions;
 
         // Financial independence is reached when the withdrawal from investments can cover all expenses.
         if (lastYearInvestments * (assumptions.investments.withdrawalRate / 100) > currentYear.cashflow.totalExpense) {
@@ -565,7 +565,7 @@ export default function FutureTab() {
     const simulation = useSimulation(30);
     const { state: assumptions } = useContext(AssumptionsContext);
     const [activeTab, setActiveTab] = useState('Overview');
-    
+
     const startYear = simulation.length > 0 ? simulation[0].year : new Date().getFullYear();
     const [selectedYear, setSelectedYear] = useState(startYear);
 
@@ -589,7 +589,7 @@ export default function FutureTab() {
     const netWorth = calculateNetWorth(selectedYearData.accounts);
     const age = assumptions.personal.startAge + selectedYearIndex;
     const endYear = simulation[simulation.length - 1].year;
-    
+
     const tabContent: Record<string, React.ReactNode> = {
         "Overview": <OverviewTab simulationData={simulation} />,
         "Cashflow": <CashflowTab simulationData={simulation} />,
@@ -613,11 +613,10 @@ export default function FutureTab() {
                     {future_tabs.map((tab) => (
                         <button
                             key={tab}
-                            className={`flex-1 font-semibold p-3 transition-colors duration-200 ${ 
-                                activeTab === tab
-                                    ? "text-green-300 bg-gray-900 border-b-2 border-green-300"
-                                    : "text-gray-400 hover:bg-gray-800 hover:text-white"
-                            }`}
+                            className={`flex-1 font-semibold p-3 transition-colors duration-200 ${activeTab === tab
+                                ? "text-green-300 bg-gray-900 border-b-2 border-green-300"
+                                : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                                }`}
                             onClick={() => setActiveTab(tab)}
                         >
                             {tab}
@@ -642,7 +641,7 @@ export default function FutureTab() {
                         />
                         <div className="flex gap-4 text-white">
                             <div>
-                                <span className="font-bold">Net Worth:</span> 
+                                <span className="font-bold">Net Worth:</span>
                                 <span className='text-green-400'> {formatCurrency(netWorth)}</span>
                             </div>
                             <div>
