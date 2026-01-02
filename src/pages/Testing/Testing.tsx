@@ -1,13 +1,13 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useContext } from 'react';
 import { MortgageExpense } from '../../components/Expense/models';
 import { CurrencyInput } from '../../components/Layout/CurrencyInput';
 import { PercentageInput } from '../../components/Layout/PercentageInput';
 import { NumberInput } from '../../components/Layout/NumberInput';
-import { defaultAssumptions } from '../../components/Assumptions/AssumptionsContext';
+import { AssumptionsContext } from '../../components/Assumptions/AssumptionsContext';
 
 // Helper to format currency
 const toCurrency = (num: number) =>
-    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(num);
+    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num);
 
 export default function Testing() {
     // --- Inputs State ---
@@ -23,6 +23,8 @@ export default function Testing() {
     const [pmi, setPmi] = useState(0);
     const [hoa, setHoa] = useState(0);
     const [utilities, setUtilities] = useState(0);
+
+    const { state: assumptions } = useContext(AssumptionsContext);
 
     // --- Simulation ---
     const simulationData = useMemo(() => {
@@ -72,7 +74,7 @@ export default function Testing() {
             const annualUtilities = currentMortgage.utilities * 12;
 
             // Advance Time
-            const nextMortgage = currentMortgage.increment(defaultAssumptions);
+            const nextMortgage = currentMortgage.increment(assumptions);
 
             // Calculate Deltas from Increment
             // MortgageExpense.increment() stores the total interest paid in 'tax_deductible' of the NEW object
@@ -107,7 +109,7 @@ export default function Testing() {
         }
 
         return rows;
-    }, [valuation, startingLoan, apr, propertyTaxRate, propertyDeduction, insuranceRate, repairsRate, pmi, hoa, utilities, term, extraPayment]);
+    }, [valuation, startingLoan, apr, propertyTaxRate, propertyDeduction, insuranceRate, repairsRate, pmi, hoa, utilities, term, extraPayment, assumptions]);
 
     return (
         <div className="w-full min-h-screen bg-gray-950 text-gray-100 p-8 overflow-y-auto">

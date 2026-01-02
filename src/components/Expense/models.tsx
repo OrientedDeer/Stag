@@ -162,8 +162,9 @@ export class MortgageExpense extends BaseExpense {
     // Note: Since Insurance/Maintenance are calculated as % of Valuation, 
     // they essentially "inflate" automatically as the house value rises. 
     // We keep the rates constant here to avoid double-counting inflation.
-    const newUtilities = this.utilities * (1 + generalInflation);
-    const newHoa = this.hoa_fee * (1 + generalInflation);
+    const newUtilities = this.utilities * (1 + housingAppreciation + generalInflation);
+    const newHoa = this.hoa_fee * (1 + housingAppreciation + generalInflation);
+    const newDeduction = this.valuation_deduction * (1 + housingAppreciation + generalInflation);
 
     // 3. Create Next Year's Object
     const nextYearMortgage = new MortgageExpense(
@@ -176,7 +177,7 @@ export class MortgageExpense extends BaseExpense {
       this.apr,
       this.term_length,
       this.property_taxes, // Rate stays constant
-      this.valuation_deduction,
+      newDeduction,
       this.maintenance,    // Rate stays constant
       newUtilities,        // Inflated $
       this.home_owners_insurance, // Rate stays constant

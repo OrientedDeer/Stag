@@ -27,13 +27,14 @@ export interface AssumptionsState {
     housingAppreciation: number; // e.g., 3.5
     rentInflation: number;       // e.g., 4.0
   };
-      investments: {
-      returnRates: {
-        ror: number;   // e.g., 10.0
-      };
-      withdrawalStrategy: 'Fixed Real' | 'Percentage' | 'Guyton Klinger';
-      withdrawalRate: number; // e.g., 4.0
-    };  demographics: {
+  investments: {
+    returnRates: {
+      ror: number;   // e.g., 10.0
+    };
+    withdrawalStrategy: 'Fixed Real' | 'Percentage' | 'Guyton Klinger';
+    withdrawalRate: number; // e.g., 4.0
+    };  
+  demographics: {
     retirementAge: number;
     lifeExpectancy: number;
   };
