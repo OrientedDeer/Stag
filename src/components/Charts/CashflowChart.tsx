@@ -1,17 +1,17 @@
 import { useContext, useMemo } from 'react';
 import { ResponsiveSankey } from '@nivo/sankey';
-import { WorkIncome } from '../Income/models';
-import { MortgageExpense, CLASS_TO_CATEGORY as EXPENSE_CLASS_TO_CAT } from '../Expense/models';
-import { TAX_DATABASE } from '../Taxes/TaxData';
+import { WorkIncome } from '../Objects/Income/models';
+import { MortgageExpense, CLASS_TO_CATEGORY as EXPENSE_CLASS_TO_CAT } from '../Objects/Expense/models';
+import { TAX_DATABASE } from '../../data/TaxData';
 import { 
     calculateFicaTax,
     calculateFederalTax,
     calculateStateTax,
     getGrossIncome,
-} from '../Taxes/TaxService';
-import { TaxContext } from '../Taxes/TaxContext';
-import { IncomeContext } from '../Income/IncomeContext';
-import { ExpenseContext } from '../Expense/ExpenseContext';
+} from '../Objects/Taxes/TaxService';
+import { TaxContext } from '../Objects/Taxes/TaxContext';
+import { IncomeContext } from '../Objects/Income/IncomeContext';
+import { ExpenseContext } from '../Objects/Expense/ExpenseContext';
 
 
 export const CashflowChart = () => {

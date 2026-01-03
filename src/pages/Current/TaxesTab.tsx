@@ -1,8 +1,8 @@
 import { useContext } from "react";
-import { IncomeContext } from "../../components/Income/IncomeContext";
-import { ExpenseContext } from "../../components/Expense/ExpenseContext";
-import { TaxContext } from "../../components/Taxes/TaxContext";
-import { TAX_DATABASE, FilingStatus } from "../../components/Taxes/TaxData";
+import { IncomeContext } from "../../components/Objects/Income/IncomeContext";
+import { ExpenseContext } from "../../components/Objects/Expense/ExpenseContext";
+import { TaxContext } from "../../components/Objects/Taxes/TaxContext";
+import { TAX_DATABASE, FilingStatus } from "../../data/TaxData";
 import {
     calculateFicaTax,
     getGrossIncome,
@@ -14,10 +14,10 @@ import {
     calculateFederalTax,
     calculateStateTax,
     getPostTaxEmployerMatch
-} from "../../components/Taxes/TaxService";
-import { CurrencyInput } from "../../components/Layout/CurrencyInput";
-import { DropdownInput } from "../../components/Layout/DropdownInput";
-import { ToggleInput } from "../../components/Layout/ToggleInput";
+} from "../../components/Objects/Taxes/TaxService";
+import { CurrencyInput } from "../../components/Layout/InputFields/CurrencyInput";
+import { DropdownInput } from "../../components/Layout/InputFields/DropdownInput";
+import { ToggleInput } from "../../components/Layout/InputFields/ToggleInput";
 
 // Suggestion: Create a 'useTax' hook in TaxContext.tsx that handles the null check
 // and throws an error if the provider is missing.

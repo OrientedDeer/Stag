@@ -1,9 +1,9 @@
 import React, { useState, useContext, useMemo } from 'react';
-import { useSimulation } from '../../components/Assumptions/useSimulation';
-import { AssumptionsContext, AssumptionsState } from '../../components/Assumptions/AssumptionsContext';
-import { SimulationYear } from '../../components/Assumptions/SimulationEngine';
-import { InvestedAccount, DebtAccount, PropertyAccount, SavedAccount, AnyAccount } from '../../components/Accounts/models';
-import { LoanExpense, MortgageExpense } from '../../components/Expense/models';
+import { useSimulation } from '../../components/Objects/Assumptions/useSimulation';
+import { AssumptionsContext, AssumptionsState } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
+import { InvestedAccount, DebtAccount, PropertyAccount, SavedAccount, AnyAccount } from '../../components/Objects/Accounts/models';
+import { LoanExpense, MortgageExpense } from '../../components/Objects/Expense/models';
 import { ResponsiveLine } from '@nivo/line';
 import { ResponsiveBar } from '@nivo/bar';
 
@@ -550,8 +550,8 @@ const findFinancialIndependenceYear = (simulation: SimulationYear[], assumptions
             .filter(acc => acc instanceof InvestedAccount)
             .reduce((sum, acc) => sum + acc.amount, 0);
 
-        //const contributions = currentYear.cashflow.investedUser + currentYear.cashflow.investedMatch;
-        //const investmentReturns = currentYearInvestments - lastYearInvestments - contributions;
+        const contributions = currentYear.cashflow.investedUser + currentYear.cashflow.investedMatch;
+        const investmentReturns = currentYearInvestments - lastYearInvestments - contributions;
 
         // Financial independence is reached when the withdrawal from investments can cover all expenses.
         if (lastYearInvestments * (assumptions.investments.withdrawalRate / 100) > currentYear.cashflow.totalExpense) {

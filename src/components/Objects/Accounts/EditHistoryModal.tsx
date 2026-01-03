@@ -1,7 +1,7 @@
 // src/components/Accounts/EditHistoryModal.tsx
 import React, { useContext, useState } from 'react';
 import { AccountContext } from './AccountContext';
-import { CurrencyInput } from '../Layout/CurrencyInput';
+import { CurrencyInput } from '../../Layout/InputFields/CurrencyInput';
 import { PropertyAccount } from './models';
 
 interface EditHistoryModalProps {

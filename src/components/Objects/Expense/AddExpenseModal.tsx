@@ -13,13 +13,13 @@ import {
 	OtherExpense,
 } from "./models";
 import { AccountContext } from "../Accounts/AccountContext";
-import { DebtAccount, PropertyAccount } from "../Accounts/models";
-import { CurrencyInput } from "../Layout/CurrencyInput";
-import { PercentageInput } from "../Layout/PercentageInput";
-import { DropdownInput } from "../Layout/DropdownInput";
-import { NumberInput } from "../Layout/NumberInput";
-import { NameInput } from "../Layout/NameInput";
-import { StyledInput } from "../Layout/StyleUI";
+import { DebtAccount, PropertyAccount } from "../../Objects/Accounts/models";
+import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput";
+import { PercentageInput } from "../../Layout/InputFields/PercentageInput";
+import { DropdownInput } from "../../Layout/InputFields/DropdownInput";
+import { NumberInput } from "../../Layout/InputFields/NumberInput";
+import { NameInput } from "../../Layout/InputFields/NameInput";
+import { StyledInput } from "../../Layout/InputFields/StyleUI";
 
 const generateUniqueId = () =>
 	`EXS-${Date.now()}-${Math.floor(Math.random() * 1000)}`;

@@ -1,21 +1,21 @@
 import { Routes, Route } from "react-router-dom";
 import "./index.css";
-import Sidebar from "./components/Layout/Sidebar";
-import TopBar from "./components/Layout/TopBar";
+import Sidebar from "./components/Layout/Overlays/Sidebar";
+import TopBar from "./components/Layout/Overlays/TopBar";
 import Dashboard from "./pages/Dashboard";
 import AccountTab from "./pages/Current/AccountTab";
 import IncomeTab from "./pages/Current/IncomeTab";
 import ExpenseTab from "./pages/Current/ExpenseTab";
 import Testing from "./pages/Testing/Testing";
 import { useState } from "react";
-import { AccountProvider } from './components/Accounts/AccountContext';
-import { IncomeProvider } from './components/Income/IncomeContext';
-import { ExpenseProvider } from './components/Expense/ExpenseContext';
+import { AccountProvider } from './components/Objects/Accounts/AccountContext';
+import { IncomeProvider } from './components/Objects/Income/IncomeContext';
+import { ExpenseProvider } from './components/Objects/Expense/ExpenseContext';
 import TaxesTab from "./pages/Current/TaxesTab";
-import { TaxProvider } from "./components/Taxes/TaxContext";
+import { TaxProvider } from "./components/Objects/Taxes/TaxContext";
 import FutureTab from "./pages/Future/FutureTab";
 import AssumptionTab from "./pages/Future/AssumptionTab";
-import { AssumptionsProvider } from "./components/Assumptions/AssumptionsContext";
+import { AssumptionsProvider } from "./components/Objects/Assumptions/AssumptionsContext";
 import PriorityTab from "./pages/Future/PriorityTab";
 
 export default function App() {

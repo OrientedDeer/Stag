@@ -1,5 +1,5 @@
-import { AnyExpense, MortgageExpense } from "../Expense/models";
-import { AnyIncome, WorkIncome } from "../Income/models";
+import { AnyExpense, MortgageExpense } from "../../Objects/Expense/models";
+import { AnyIncome, WorkIncome } from "../../Objects/Income/models";
 import { TaxState } from "./TaxContext";
 import {
 	TaxParameters,
@@ -8,12 +8,12 @@ import {
 	max_year,
 	FilingStatus,
 	AuthorityData,
-} from "./TaxData";
-import { getExpenseActiveMultiplier } from "../Expense/models";
+} from "../../../data/TaxData";
+import { getExpenseActiveMultiplier } from "../../Objects/Expense/models";
 import {
 	AssumptionsState,
 	defaultAssumptions,
-} from "../Assumptions/AssumptionsContext";
+} from "../../Objects/Assumptions/AssumptionsContext";
 
 export function getTaxParameters(
 	year: number,

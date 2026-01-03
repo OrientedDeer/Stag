@@ -1,4 +1,4 @@
-import { TaxType } from "../Accounts/models";
+import { TaxType } from "../../Objects/Accounts/models";
 import { AssumptionsState } from '../Assumptions/AssumptionsContext';
 
 export type ContributionGrowthStrategy = 'FIXED' | 'GROW_WITH_SALARY' | 'TRACK_ANNUAL_MAX';

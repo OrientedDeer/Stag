@@ -1,5 +1,5 @@
 import React, { useContext } from 'react';
-import { AccountContext } from '../../components/Accounts/AccountContext';
+import { AccountContext } from '../../../components/Objects/Accounts/AccountContext';
 
 interface DeleteControlProps {
     accountId: string;

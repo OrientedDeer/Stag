@@ -2,7 +2,7 @@ import { useContext } from 'react';
 import { AccountContext } from './AccountContext';
 import { IncomeContext } from '../Income/IncomeContext';
 import { ExpenseContext } from '../Expense/ExpenseContext';
-import { TaxContext } from '../Taxes/TaxContext';
+import { TaxContext } from '../../Objects/Taxes/TaxContext';
 import { AssumptionsContext, AssumptionsState, defaultAssumptions } from '../Assumptions/AssumptionsContext'; // Import AssumptionsContext and AssumptionsState
 import { AnyAccount } from './models';
 import { reconstituteAccount, AmountHistoryEntry } from './AccountContext';
@@ -10,7 +10,7 @@ import { AnyIncome } from '../Income/models';
 import { reconstituteIncome } from '../Income/IncomeContext';
 import { AnyExpense } from '../Expense/models';
 import { reconstituteExpense } from '../Expense/ExpenseContext';
-import { TaxState } from '../Taxes/TaxContext';
+import { TaxState } from '../../Objects/Taxes/TaxContext';
 
 interface FullBackup {
     version: number;

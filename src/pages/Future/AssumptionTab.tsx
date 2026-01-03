@@ -1,8 +1,8 @@
 import { useContext } from "react";
-import { AssumptionsContext } from "../../components/Assumptions/AssumptionsContext";
-import { NumberInput } from "../../components/Layout/NumberInput";
-import { PercentageInput } from "../../components/Layout/PercentageInput";
-import { DropdownInput } from "../../components/Layout/DropdownInput";
+import { AssumptionsContext } from "../../components/Objects/Assumptions/AssumptionsContext";
+import { NumberInput } from "../../components/Layout/InputFields/NumberInput";
+import { PercentageInput } from "../../components/Layout/InputFields/PercentageInput";
+import { DropdownInput } from "../../components/Layout/InputFields/DropdownInput";
 
 export default function AssumptionTab() {
   const { state, dispatch } = useContext(AssumptionsContext);

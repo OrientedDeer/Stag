@@ -15,12 +15,12 @@ import {
 } from './models';
 import { ExpenseContext, AllExpenseKeys } from "./ExpenseContext";
 import { AccountContext } from "../Accounts/AccountContext"; // Import Account Context for syncing
-import { StyledDisplay, StyledInput, StyledSelect } from "../Layout/StyleUI";
-import { CurrencyInput } from "../Layout/CurrencyInput"; // Import new component
+import { StyledDisplay, StyledInput, StyledSelect } from "../../Layout/InputFields/StyleUI";
+import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput"; // Import new component
 import DeleteExpenseControl from './DeleteExpenseUI';
-import { PercentageInput } from "../Layout/PercentageInput";
-import { NumberInput } from "../Layout/NumberInput";
-import { NameInput } from "../Layout/NameInput";
+import { PercentageInput } from "../../Layout/InputFields/PercentageInput";
+import { NumberInput } from "../../Layout/InputFields/NumberInput";
+import { NameInput } from "../../Layout/InputFields/NameInput";
 
 // Helper to format Date objects to YYYY-MM-DD for input fields
 const formatDate = (date: Date | undefined): string => {

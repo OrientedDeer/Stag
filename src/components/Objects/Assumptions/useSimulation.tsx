@@ -2,10 +2,10 @@ import { useContext, useMemo } from 'react';
 import { AccountContext } from '../Accounts/AccountContext';
 import { IncomeContext } from '../Income/IncomeContext';
 import { ExpenseContext } from '../Expense/ExpenseContext';
-import { AssumptionsContext } from '../Assumptions/AssumptionsContext';
-import { TaxContext } from '../Taxes/TaxContext';
+import { AssumptionsContext } from './AssumptionsContext';
+import { TaxContext } from '../../Objects/Taxes/TaxContext';
 import { simulateOneYear, SimulationYear } from './SimulationEngine';
-import * as TaxService from '../Taxes/TaxService';
+import * as TaxService from '../../Objects/Taxes/TaxService';
 import { WorkIncome } from '../Income/models';
 
 export const useSimulation = (yearsToRun: number = 30) => {

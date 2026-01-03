@@ -1,9 +1,9 @@
 import { useContext, useMemo } from 'react';
 import { ResponsiveLine } from '@nivo/line';
-import { AccountContext } from '../Accounts/AccountContext';
-import { DebtAccount, InvestedAccount, PropertyAccount } from '../Accounts/models';
-import { ExpenseContext } from '../Expense/ExpenseContext';
-import { MortgageExpense } from '../Expense/models';
+import { AccountContext } from '../Objects/Accounts/AccountContext';
+import { DebtAccount, InvestedAccount, PropertyAccount } from '../Objects/Accounts/models';
+import { ExpenseContext } from '../Objects/Expense/ExpenseContext';
+import { MortgageExpense } from '../Objects/Expense/models';
 
 export const NetWorthCard = () => {
     const { accounts, amountHistory } = useContext(AccountContext);

@@ -1,10 +1,10 @@
 // src/components/Simulation/SimulationEngine.ts
-import { AnyAccount, DebtAccount, InvestedAccount, PropertyAccount, SavedAccount } from "../Accounts/models";
+import { AnyAccount, DebtAccount, InvestedAccount, PropertyAccount, SavedAccount } from "../../Objects/Accounts/models";
 import { AnyExpense, LoanExpense, MortgageExpense } from "../Expense/models";
-import { AnyIncome, WorkIncome } from "../Income/models";
-import { AssumptionsState } from "../Assumptions/AssumptionsContext";
-import { TaxState } from "../Taxes/TaxContext";
-import * as TaxService from "../Taxes/TaxService";
+import { AnyIncome, WorkIncome } from "../../Objects/Income/models";
+import { AssumptionsState } from "./AssumptionsContext";
+import { TaxState } from "../../Objects/Taxes/TaxContext";
+import * as TaxService from "../../Objects/Taxes/TaxService";
 
 // Define the shape of a single year's result
 export interface SimulationYear {

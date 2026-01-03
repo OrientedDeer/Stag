@@ -1,17 +1,17 @@
 import React, { useState, useContext, useRef, useEffect } from "react"; // Added useRef
-import { AccountContext } from "../../components/Accounts/AccountContext";
+import { AccountContext } from "../../components/Objects/Accounts/AccountContext";
 import {
     SavedAccount,
     InvestedAccount,
     PropertyAccount,
     DebtAccount,
     ACCOUNT_CATEGORIES,
-} from "../../components/Accounts/models";
-import AccountCard from "../../components/Accounts/AccountCard";
+} from "../../components/Objects/Accounts/models";
+import AccountCard from "../../components/Objects/Accounts/AccountCard";
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
-import AddAccountModal from "../../components/Accounts/AddAccountModal";
-import AccountIcicleChart from "../../components/Accounts/AccountIcicleChart";
-import { useFileManager } from "../../components/Accounts/useFileManager";
+import AddAccountModal from "../../components/Objects/Accounts/AddAccountModal";
+import AccountIcicleChart from "../../components/Objects/Accounts/AccountIcicleChart";
+import { useFileManager } from "../../components/Objects/Accounts/useFileManager";
 
 const AccountList = ({ type }: { type: any }) => {
     const { accounts, dispatch } = useContext(AccountContext);

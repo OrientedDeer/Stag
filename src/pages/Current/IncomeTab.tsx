@@ -1,14 +1,14 @@
 import { useState, useContext } from "react";
-import { IncomeContext } from "../../components/Income/IncomeContext";
-import IncomeCard from "../../components/Income/IncomeCard";
+import { IncomeContext } from "../../components/Objects/Income/IncomeContext";
+import IncomeCard from "../../components/Objects/Income/IncomeCard";
 import {
 	DragDropContext,
 	Droppable,
 	Draggable,
 	DropResult,
 } from "@hello-pangea/dnd";
-import AddIncomeModal from "../../components/Income/AddIncomeModal";
-import IncomeIcicleChart from "../../components/Income/IncomeIcicleChart";
+import AddIncomeModal from "../../components/Objects/Income/AddIncomeModal";
+import IncomeIcicleChart from "../../components/Objects/Income/IncomeIcicleChart";
 
 // Updated IncomeList to handle the base class or specific filtering
 const IncomeList = () => {

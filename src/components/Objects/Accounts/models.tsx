@@ -32,7 +32,7 @@ export class SavedAccount extends BaseAccount {
     super(id, name, amount);
   }
 
-  increment (assumptions: AssumptionsState, annualContribution: number = 0): SavedAccount {
+  increment (_assumptions: AssumptionsState, annualContribution: number = 0): SavedAccount {
     const amount = (this.amount + (this.apr/100)) + annualContribution;
     return new SavedAccount(this.id, this.name, amount, this.apr);
   }
@@ -113,7 +113,7 @@ export class DebtAccount extends BaseAccount {
     super(id, name, amount);
   }
   increment(
-      assumptions: AssumptionsState, 
+      _assumptions: AssumptionsState, 
       overrideBalance?: number
   ): DebtAccount {
       const nextAmount = overrideBalance !== undefined 

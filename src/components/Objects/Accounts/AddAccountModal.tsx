@@ -11,11 +11,11 @@ import {
 import { ExpenseContext } from "../Expense/ExpenseContext";
 import { LoanExpense, MortgageExpense } from "../Expense/models";
 // 1. Import the reusable component
-import { CurrencyInput } from "../Layout/CurrencyInput";
-import { NameInput } from "../Layout/NameInput";
-import { DropdownInput } from "../Layout/DropdownInput";
-import { PercentageInput } from "../Layout/PercentageInput";
-import { ToggleInput } from "../Layout/ToggleInput";
+import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput";
+import { NameInput } from "../../Layout/InputFields/NameInput";
+import { DropdownInput } from "../../Layout/InputFields/DropdownInput";
+import { PercentageInput } from "../../Layout/InputFields/PercentageInput";
+import { ToggleInput } from "../../Layout/InputFields/ToggleInput";
 
 const generateUniqueAccId = () =>
     `ACC-${Date.now()}-${Math.floor(Math.random() * 1000)}`;

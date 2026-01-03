@@ -8,13 +8,13 @@ import {
     INCOME_COLORS_BACKGROUND 
 } from "./models";
 import { IncomeContext, AllIncomeKeys } from "./IncomeContext";
-import { StyledInput, StyledSelect } from "../Layout/StyleUI";
-import { CurrencyInput } from "../Layout/CurrencyInput";
+import { StyledInput, StyledSelect } from "../../Layout/InputFields/StyleUI";
+import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput";
 import DeleteIncomeControl from './DeleteIncomeUI';
-import { NameInput } from "../Layout/NameInput";
-import { DropdownInput } from "../Layout/DropdownInput";
+import { NameInput } from "../../Layout/InputFields/NameInput";
+import { DropdownInput } from "../../Layout/InputFields/DropdownInput";
 import { AccountContext } from "../Accounts/AccountContext";
-import { InvestedAccount } from "../Accounts/models";
+import { InvestedAccount } from "../../Objects/Accounts/models";
 
 // Helper to format Date objects to YYYY-MM-DD for input fields
 const formatDate = (date: Date | undefined): string => {

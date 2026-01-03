@@ -1,19 +1,19 @@
 import { useState, useContext, useMemo } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
-import { AssumptionsContext, PriorityBucket, CapType } from '../../components/Assumptions/AssumptionsContext';
-import { AccountContext } from '../../components/Accounts/AccountContext';
-import { IncomeContext } from '../../components/Income/IncomeContext';
-import { ExpenseContext } from '../../components/Expense/ExpenseContext';
-import { AnyAccount } from '../../components/Accounts/models';
-import { TaxContext } from '../../components/Taxes/TaxContext';
-import { calculateFederalTax, calculateStateTax, calculateFicaTax } from '../../components/Taxes/TaxService';
-import { WorkIncome } from '../../components/Income/models';
+import { AssumptionsContext, PriorityBucket, CapType } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { AccountContext } from '../../components/Objects/Accounts/AccountContext';
+import { IncomeContext } from '../../components/Objects/Income/IncomeContext';
+import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
+import { AnyAccount } from '../../components/Objects/Accounts/models';
+import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
+import { calculateFederalTax, calculateStateTax, calculateFicaTax } from '../../components/Objects/Taxes/TaxService';
+import { WorkIncome } from '../../components/Objects/Income/models';
 
 // UI Components
-import { CurrencyInput } from '../../components/Layout/CurrencyInput';
-import { DropdownInput } from '../../components/Layout/DropdownInput';
-import { NameInput } from '../../components/Layout/NameInput';
-import { NumberInput } from '../../components/Layout/NumberInput';
+import { CurrencyInput } from '../../components/Layout/InputFields/CurrencyInput';
+import { DropdownInput } from '../../components/Layout/InputFields/DropdownInput';
+import { NameInput } from '../../components/Layout/InputFields/NameInput';
+import { NumberInput } from '../../components/Layout/InputFields/NumberInput';
 
 // Helper to format currency
 const formatMoney = (amount: number) => 

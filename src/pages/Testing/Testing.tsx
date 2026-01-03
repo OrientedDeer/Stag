@@ -1,9 +1,9 @@
 import { useState, useMemo, useContext } from 'react';
-import { MortgageExpense } from '../../components/Expense/models';
-import { CurrencyInput } from '../../components/Layout/CurrencyInput';
-import { PercentageInput } from '../../components/Layout/PercentageInput';
-import { NumberInput } from '../../components/Layout/NumberInput';
-import { AssumptionsContext } from '../../components/Assumptions/AssumptionsContext';
+import { MortgageExpense } from '../../components/Objects/Expense/models';
+import { CurrencyInput } from '../../components/Layout/InputFields/CurrencyInput';
+import { PercentageInput } from '../../components/Layout/InputFields/PercentageInput';
+import { NumberInput } from '../../components/Layout/InputFields/NumberInput';
+import { AssumptionsContext } from '../../components/Objects/Assumptions/AssumptionsContext';
 
 // Helper to format currency
 const toCurrency = (num: number) =>

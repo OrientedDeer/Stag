@@ -2,13 +2,13 @@ import { useContext, useState } from "react";
 import { AnyAccount, SavedAccount, InvestedAccount, PropertyAccount, DebtAccount, ACCOUNT_COLORS_BACKGROUND, TaxTypeEnum} from "./models";
 import { AccountContext, AllAccountKeys } from "./AccountContext";
 import { ExpenseContext } from "../Expense/ExpenseContext";
-import { StyledSelect, StyledDisplay } from "../Layout/StyleUI";
-import { CurrencyInput } from "../Layout/CurrencyInput"; // Import your new component
-import { PercentageInput } from "../Layout/PercentageInput";
-import { ToggleInput } from "../Layout/ToggleInput";
-import DeleteAccountControl from '../../components/Accounts/DeleteAccountUI';
+import { StyledSelect, StyledDisplay } from "../../Layout/InputFields/StyleUI";
+import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput"; // Import your new component
+import { PercentageInput } from "../../Layout/InputFields/PercentageInput";
+import { ToggleInput } from "../../Layout/InputFields/ToggleInput";
+import DeleteAccountControl from './DeleteAccountUI';
 import { EditHistoryModal } from "./EditHistoryModal";
-import { NameInput } from "../Layout/NameInput";
+import { NameInput } from "../../Layout/InputFields/NameInput";
 
 const AccountCard = ({ account }: { account: AnyAccount }) => {
 	const { dispatch: accountDispatch } = useContext(AccountContext);

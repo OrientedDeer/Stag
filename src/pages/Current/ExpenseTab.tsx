@@ -1,12 +1,12 @@
 import { useState, useContext } from 'react';
-import { ExpenseContext } from '../../components/Expense/ExpenseContext';
+import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
 import { 
     BaseExpense
-} from '../../components/Expense/models';
-import ExpenseCard from '../../components/Expense/ExpenseCard';
-import AddExpenseModal from '../../components/Expense/AddExpenseModal';
+} from '../../components/Objects/Expense/models';
+import ExpenseCard from '../../components/Objects/Expense/ExpenseCard';
+import AddExpenseModal from '../../components/Objects/Expense/AddExpenseModal';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
-import ExpenseIcicleChart from '../../components/Expense/ExpenseIcicleChart';
+import ExpenseIcicleChart from '../../components/Objects/Expense/ExpenseIcicleChart';
 
 const ExpenseList = ({ type }: { type: any }) => {
   const { expenses, dispatch } = useContext(ExpenseContext);

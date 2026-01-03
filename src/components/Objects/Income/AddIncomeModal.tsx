@@ -7,13 +7,13 @@ import {
   WindfallIncome,
   ContributionGrowthStrategy
 } from './models';
-import { CurrencyInput } from "../Layout/CurrencyInput";
-import { NameInput } from "../Layout/NameInput";
-import { DropdownInput } from "../Layout/DropdownInput";
-import { NumberInput } from "../Layout/NumberInput";
+import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput";
+import { NameInput } from "../../Layout/InputFields/NameInput";
+import { DropdownInput } from "../../Layout/InputFields/DropdownInput";
+import { NumberInput } from "../../Layout/InputFields/NumberInput";
 import { AccountContext } from "../Accounts/AccountContext";
-import { InvestedAccount } from "../Accounts/models";
-import { StyledInput } from "../Layout/StyleUI";
+import { InvestedAccount } from "../../Objects/Accounts/models";
+import { StyledInput } from "../../Layout/InputFields/StyleUI";
 
 const generateUniqueId = () =>
     `INC-${Date.now()}-${Math.floor(Math.random() * 1000)}`;

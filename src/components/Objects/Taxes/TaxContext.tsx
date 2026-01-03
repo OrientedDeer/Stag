@@ -1,6 +1,6 @@
 // src/components/Taxes/TaxContext.tsx
 import { createContext, useReducer, ReactNode, useEffect } from 'react';
-import { FilingStatus } from './TaxData';
+import { FilingStatus } from '../../../data/TaxData';
 
 export type DeductionMethod = 'Standard' | 'Itemized';
 
