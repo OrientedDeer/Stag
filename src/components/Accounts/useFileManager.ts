@@ -3,7 +3,7 @@ import { AccountContext } from './AccountContext';
 import { IncomeContext } from '../Income/IncomeContext';
 import { ExpenseContext } from '../Expense/ExpenseContext';
 import { TaxContext } from '../Taxes/TaxContext';
-import { AssumptionsContext, AssumptionsState } from '../Assumptions/AssumptionsContext'; // Import AssumptionsContext and AssumptionsState
+import { AssumptionsContext, AssumptionsState, defaultAssumptions } from '../Assumptions/AssumptionsContext'; // Import AssumptionsContext and AssumptionsState
 import { AnyAccount } from './models';
 import { reconstituteAccount, AmountHistoryEntry } from './AccountContext';
 import { AnyIncome } from '../Income/models';
@@ -62,7 +62,25 @@ export const useFileManager = () => {
             expenseDispatch({ type: 'SET_BULK_DATA', payload: { expenses: newExpenses } });
             taxesDispatch({ type: 'SET_BULK_DATA', payload: data.taxSettings });
             if (data.assumptions) { // Check if assumptions exist in the backup data
-                assumptionsDispatch({ type: 'SET_BULK_DATA', payload: data.assumptions });
+                const mergedAssumptions = {
+                    ...defaultAssumptions,
+                    ...data.assumptions,
+                    macro: { ...defaultAssumptions.macro, ...(data.assumptions.macro || {}) },
+                    income: { ...defaultAssumptions.income, ...(data.assumptions.income || {}) },
+                    expenses: { ...defaultAssumptions.expenses, ...(data.assumptions.expenses || {}) },
+                    investments: {
+                        ...defaultAssumptions.investments,
+                        ...(data.assumptions.investments || {}),
+                        returnRates: {
+                            ...defaultAssumptions.investments.returnRates,
+                            ...((data.assumptions.investments && data.assumptions.investments.returnRates) || {}),
+                        },
+                    },
+                    demographics: { ...defaultAssumptions.demographics, ...(data.assumptions.demographics || {}) },
+                    personal: { ...defaultAssumptions.personal, ...(data.assumptions.personal || {}) },
+                    priorities: data.assumptions.priorities || defaultAssumptions.priorities
+                };
+                assumptionsDispatch({ type: 'SET_BULK_DATA', payload: mergedAssumptions });
             }
             else {
                 assumptionsDispatch({ type: 'RESET_DEFAULTS'});
