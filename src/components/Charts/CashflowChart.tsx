@@ -24,7 +24,7 @@ export const CashflowChart = () => {
         const links: any[] = [];
 
         // 1. Core Totals (Salary Only)
-        const year = 2025;
+        const year = 2026;
         //const salaryIncome = getGrossIncome(incomes, year);
 
         // 2. Tax Calculations

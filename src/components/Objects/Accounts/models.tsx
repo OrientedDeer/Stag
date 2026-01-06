@@ -52,10 +52,10 @@ export class InvestedAccount extends BaseAccount {
     super(id, name, amount);
   }
   increment (assumptions: AssumptionsState, annualContribution: number = 0): InvestedAccount {
-    const returnRate = 1 + (assumptions.investments.returnRates.ror - this.expenseRatio) / 100
+    const returnRate = 1 + (assumptions.investments.returnRates.ror + (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) - this.expenseRatio) / 100
 
     const amount = this.amount * returnRate + annualContribution;
-    const NonVestedAmount = ((this.NonVestedAmount * (assumptions.investments.returnRates.ror / 100 - this.expenseRatio/100)) + annualContribution) * (1 - this.vestedPerYear);
+    const NonVestedAmount = ((this.NonVestedAmount * ((assumptions.investments.returnRates.ror + (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0)) / 100 - this.expenseRatio/100)) + annualContribution) * (1 - this.vestedPerYear);
     return new InvestedAccount(this.id, this.name, amount, NonVestedAmount, this.expenseRatio, this.taxType, this.isContributionEligible, this.vestedPerYear);
   }
 }

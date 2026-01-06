@@ -19,6 +19,8 @@ export interface SimulationYear {
         investedUser: number;  // User contributions + Saved Cash
         investedMatch: number; // Employer Match
         totalInvested: number; // Sum
+        bucketAllocations: number; // Priority Bucket contributions
+        bucketDetail: Record<string, number>; // Breakdown
     };
     taxDetails: {
         fed: number;
@@ -44,7 +46,6 @@ export function simulateOneYear(
     taxState: TaxState
 ): SimulationYear {
     const logs: string[] = [];
-    // log(`--- Simulating Year ${year} ---`);
 
     // 1. GROW (The Physics of Money)
     const nextIncomes = incomes.map(inc => inc.increment(assumptions));
@@ -55,7 +56,7 @@ export function simulateOneYear(
     const preTaxDeductions = TaxService.getPreTaxExemptions(nextIncomes, year);
     const postTaxDeductions = TaxService.getPostTaxExemptions(nextIncomes, year);
     
-    // Calculate Insurance (logic extracted from Testing.tsx)
+    // Calculate Insurance
     const totalInsuranceCost = nextIncomes.reduce((sum, inc) => {
         if (inc instanceof WorkIncome) {
             return sum + inc.getProratedAnnual(inc.insurance, year);
@@ -69,15 +70,26 @@ export function simulateOneYear(
     const totalTax = fedTax + stateTax + ficaTax;
 
     // 3. LIVING EXPENSES (The Bills)
-    const totalLivingExpenses = nextExpenses.reduce((sum, exp) => sum + exp.getAnnualAmount(), 0);
+    const totalLivingExpenses = nextExpenses.reduce((sum, exp) => {
+        if (exp instanceof MortgageExpense) {
+            return sum + exp.calculateAnnualAmortization(year).totalPayment;
+        }
+        if (exp instanceof LoanExpense) {
+            return sum + exp.calculateAnnualAmortization(year).totalPayment;
+        }
+        return sum + exp.getAnnualAmount(year);
+    }, 0);
 
     // 4. CASHFLOW (The Wallet)
-    // Formula: Gross - PreTax(401k/HSA) - Insurance - PostTax(Roth) - Taxes - Bills
-    let discretionaryCash = totalGrossIncome - preTaxDeductions - totalInsuranceCost - postTaxDeductions - totalTax - totalLivingExpenses;
+    // Formula: Gross - PreTax(401k/HSA/Insurance) - PostTax(Roth) - Taxes - Bills
+    // (Note: preTaxDeductions INCLUDES insurance, so we don't subtract totalInsuranceCost separately)
+    let discretionaryCash = totalGrossIncome - preTaxDeductions - postTaxDeductions - totalTax - totalLivingExpenses;
 
     // 5. INFLOWS & BUCKETS (The Allocation)
     const accountInflows: Record<string, number> = {}; 
+    const bucketDetail: Record<string, number> = {};
     let totalEmployerMatch = 0;
+    let totalBucketAllocations = 0;
 
     // 5a. Payroll & Match
     nextIncomes.forEach(inc => {
@@ -129,6 +141,8 @@ export function simulateOneYear(
         if (amountToContribute > 0) {
             discretionaryCash -= amountToContribute;
             accountInflows[priority.accountId] = (accountInflows[priority.accountId] || 0) + amountToContribute;
+            bucketDetail[priority.accountId] = (bucketDetail[priority.accountId] || 0) + amountToContribute;
+            totalBucketAllocations += amountToContribute;
         }
     });
 
@@ -170,16 +184,6 @@ export function simulateOneYear(
     });
 
     // 8. SUMMARY STATS
-    // NOTE: userSaved definition above assumes preTaxDeductions ARE savings (like 401k).
-    // If you want to include 401k in "User Saved", we shouldn't subtract preTaxDeductions.
-    // Adjusted Formula:
-    // UserSaved = (Gross - Taxes - Insurance - Bills - UnspentCash) 
-    // This implicitly includes the 401k/HSA/Roth parts because we didn't subtract them from Gross in this specific line.
-    
-    // Let's use a cleaner calculation for User Saved to be safe:
-    // User Saved = (PreTax 401k/HSA) + (PostTax Roth) + (Priority Waterfall Contributions)
-    // But calculating Priority Contributions is hard to sum up here without re-looping.
-    // Let's stick to the "What's Missing" approach but be careful:
     const trueUserSaved = totalGrossIncome - totalTax - totalInsuranceCost - totalLivingExpenses - discretionaryCash;
 
     return {
@@ -189,17 +193,21 @@ export function simulateOneYear(
         accounts: nextAccounts,
         cashflow: {
             totalIncome: totalGrossIncome,
-            totalExpense: totalLivingExpenses + totalTax + preTaxDeductions + postTaxDeductions + totalInsuranceCost, // Total Outflows
+            totalExpense: totalLivingExpenses + totalTax + preTaxDeductions + postTaxDeductions, // Note: preTax already includes insurance
             discretionary: discretionaryCash,
             investedUser: trueUserSaved,
             investedMatch: totalEmployerMatch,
-            totalInvested: trueUserSaved + totalEmployerMatch
+            totalInvested: trueUserSaved + totalEmployerMatch,
+            bucketAllocations: totalBucketAllocations,
+            bucketDetail: bucketDetail
         },
         taxDetails: {
             fed: fedTax,
             state: stateTax,
             fica: ficaTax,
-            preTax: preTaxDeductions,
+            // FIX IS HERE: We subtract insurance because TaxService.getPreTaxExemptions includes it.
+            // This ensures 'preTax' in the object is STRICTLY the 401k/HSA portion.
+            preTax: preTaxDeductions - totalInsuranceCost, 
             insurance: totalInsuranceCost,
             postTax: postTaxDeductions
         },

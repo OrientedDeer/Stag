@@ -16,7 +16,7 @@ export const useSimulation = (yearsToRun: number = 30) => {
     const { state: taxState } = useContext(TaxContext);
 
     return useMemo(() => {
-        const startYear = new Date().getUTCFullYear();
+        const startYear = assumptions.personal.startYear;
         const timeline: SimulationYear[] = [];
 
         // --- STEP 1: CREATE YEAR 0 (Baseline) ---
@@ -24,7 +24,7 @@ export const useSimulation = (yearsToRun: number = 30) => {
         const currentGross = TaxService.getGrossIncome(incomes, startYear);
         const currentPreTax = TaxService.getPreTaxExemptions(incomes, startYear);
         const currentPostTax = TaxService.getPostTaxExemptions(incomes, startYear);
-        const currentInsurance = incomes.reduce((sum, inc) => 
+        const currentInsurance = incomes.reduce((sum, inc) =>
             inc instanceof WorkIncome ? sum + inc.getProratedAnnual(inc.insurance, startYear) : sum, 0
         );
 
@@ -48,10 +48,12 @@ export const useSimulation = (yearsToRun: number = 30) => {
                 totalExpense: currentLivingExpenses + currentTotalTax + currentPreTax + currentPostTax,
                 discretionary: currentDiscretionary,
                 // In Year 0, we treat the input as "Static", so invested is effectively 0 or the sum of payroll deductions
-                investedUser: currentPreTax + currentPostTax - currentInsurance, 
+                investedUser: currentPreTax + currentPostTax - currentInsurance,
                 investedMatch: incomes.reduce((sum, inc) => inc instanceof WorkIncome ? sum + inc.employerMatch : sum, 0),
-                totalInvested: (currentPreTax + currentPostTax - currentInsurance) + 
-                               incomes.reduce((sum, inc) => inc instanceof WorkIncome ? sum + inc.employerMatch : sum, 0)
+                totalInvested: (currentPreTax + currentPostTax - currentInsurance) +
+                               incomes.reduce((sum, inc) => inc instanceof WorkIncome ? sum + inc.employerMatch : sum, 0),
+                bucketAllocations: 0,
+                bucketDetail: {} // Initialize empty for Year 0
             },
             taxDetails: {
                 fed: currentFed,

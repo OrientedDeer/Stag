@@ -59,7 +59,7 @@ export default function Testing() {
         );
 
         // 2. Loop for 30 years (or Term)
-        for (let year = 1; year <= term; year++) {
+        for (let year = 1; year <= (term+5); year++) {
             // Capture Start-of-Year State
             const startValuation = currentMortgage.valuation;
             const startBalance = currentMortgage.loan_balance;
@@ -105,7 +105,7 @@ export default function Testing() {
             currentMortgage = nextMortgage;
 
             // Optional: optimization to stop if paid off early
-            if (currentMortgage.loan_balance <= 0 && principalPaid <= 0) break;
+            //if (currentMortgage.loan_balance <= 0 && principalPaid <= 0) break;
         }
 
         return rows;

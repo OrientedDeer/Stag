@@ -27,7 +27,7 @@ export default function TaxesTab() {
     const { expenses } = useContext(ExpenseContext);
     const { state, dispatch } = useContext(TaxContext);
 
-    const currentYear = 2025;
+    const currentYear = 2026;
     
     const stateTax = calculateStateTax(state, incomes, expenses, currentYear);
     const federalTax = calculateFederalTax(state, incomes, expenses, currentYear);

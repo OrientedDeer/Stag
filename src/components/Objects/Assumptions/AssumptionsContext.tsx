@@ -40,6 +40,7 @@ export interface AssumptionsState {
   };
   personal: {
     startAge: number;
+    startYear: number;
   };
   priorities: PriorityBucket[];
 }
@@ -70,6 +71,7 @@ export const defaultAssumptions: AssumptionsState = {
   },
   personal: {
     startAge: 24,
+    startYear: new Date().getUTCFullYear(),
   },
   priorities: [],
 };
@@ -81,6 +83,7 @@ type Action =
   | { type: 'UPDATE_INVESTMENTS'; payload: Partial<AssumptionsState['investments']> }
   | { type: 'UPDATE_INVESTMENT_RATES'; payload: Partial<AssumptionsState['investments']['returnRates']> }
   | { type: 'UPDATE_DEMOGRAPHICS'; payload: Partial<AssumptionsState['demographics']> }
+  | { type: 'UPDATE_PERSONAL'; payload: Partial<AssumptionsState['personal']> }
   | { type: 'RESET_DEFAULTS' }
   | { type: 'SET_BULK_DATA'; payload: AssumptionsState }
   | { type: 'SET_PRIORITIES'; payload: PriorityBucket[] }
@@ -108,6 +111,8 @@ const assumptionsReducer = (state: AssumptionsState, action: Action): Assumption
       };
     case 'UPDATE_DEMOGRAPHICS':
       return { ...state, demographics: { ...state.demographics, ...action.payload } };
+    case 'UPDATE_PERSONAL':
+      return { ...state, personal: { ...state.personal, ...action.payload } };
     case 'RESET_DEFAULTS':
       return defaultAssumptions;
     case 'SET_BULK_DATA':

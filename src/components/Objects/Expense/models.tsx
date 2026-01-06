@@ -113,8 +113,8 @@ export class MortgageExpense extends BaseExpense {
     const n = term_length * 12;
     const fixed_amortization = starting_loan_balance * ((r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1));
 
-    const interest_payment = starting_loan_balance * r;
-    const principal_payment = fixed_amortization - interest_payment;
+    const interest_payment = loan_balance * r;
+    const principal_payment = (loan_balance > 0 ? fixed_amortization : 0) - interest_payment;
 
     const property_tax_payment = (valuation - valuation_deduction) * property_taxes / 100 / 12;
     const pmi_payment = valuation * pmi / 100;
@@ -217,37 +217,54 @@ export class MortgageExpense extends BaseExpense {
       return { totalInterest: 0, totalPrincipal: 0, totalPayment: 0 };
     }
 
+    // FIX 1: Trust that 'this.loan_balance' is already the correct starting balance for this year.
+    // We DO NOT skip months based on (year - purchaseYear) because the simulation 
+    // has already incremented/reduced the balance for previous years.
     let balance = this.loan_balance;
-    let totalPayment = 0;
+
     const monthlyRate = this.apr / 100 / 12;
     const numPayments = this.term_length * 12;
 
-    // Fixed P&I using starting balance
-    const monthlyPayment = this.starting_loan_balance * (monthlyRate * Math.pow(1 + monthlyRate, numPayments)) / (Math.pow(1 + monthlyRate, numPayments) - 1) + this.extra_payment;
+    // Calculate the Standard P&I + Extra Payment Target (Same as before)
+    const standardMonthlyPI = this.starting_loan_balance * (monthlyRate * Math.pow(1 + monthlyRate, numPayments)) / (Math.pow(1 + monthlyRate, numPayments) - 1);
+    const targetMonthlyPayment = standardMonthlyPI + this.extra_payment;
 
-    // Fast-forward to the beginning of the target year
-    const monthsToSkip = (year - purchaseYear) * 12 - purchaseMonth;
-    if (monthsToSkip > 0) {
-      for (let i = 0; i < monthsToSkip; i++) {
-        const interest = balance * monthlyRate;
-        const principal = monthlyPayment - interest;
-        balance -= principal;
-      }
+    // Isolate the Escrow Amount (Taxes, HOA, Insurance)
+    // We assume 'this.amount' is the Total Monthly Payment (P&I + Escrow)
+    let monthlyEscrow = 0;
+    if (this.loan_balance <= 0) {
+      monthlyEscrow = this.amount; // If loan is paid off, entire payment is escrow
+    }
+    else {
+      monthlyEscrow = this.amount - targetMonthlyPayment;
     }
 
+    // Handle partial first year
     const startMonth = (year === purchaseYear) ? purchaseMonth : 0;
 
     let totalInterest = 0;
     let totalPrincipal = 0;
+    let totalPayment = 0;
 
     for (let month = startMonth; month < 12; month++) {
-      if (balance <= 0) break;
-
+      if (balance <= 0) {
+        totalPayment += monthlyEscrow * (12 - month); // Pay only escrow for remaining months
+        break;
+      }
       const interest = balance * monthlyRate;
-      const principal = monthlyPayment - interest;
+      
+      // Calculate Principal (Cap at remaining balance)
+      const expectedPrincipal = targetMonthlyPayment - interest;
+      const principal = Math.min(balance, expectedPrincipal);
+      
+      // FIX 2: Calculate the ACTUAL payment for this specific month.
+      // If it's the final month, we only pay Principal + Interest + Escrow, 
+      // NOT the full 'this.amount'.
+      const actualPayment = principal + interest + monthlyEscrow;
 
       balance -= principal;
-      totalPayment += this.amount; // Uses the BaseExpense amount
+      
+      totalPayment += actualPayment;
       totalInterest += interest;
       totalPrincipal += principal;
     }
@@ -398,6 +415,55 @@ export class LoanExpense extends BaseExpense {
       this.endDate
     );
   }
+
+  calculateAnnualAmortization(year: number): { totalInterest: number, totalPrincipal: number, totalPayment: number } {
+    const loanStartYear = this.startDate ? this.startDate.getUTCFullYear() : new Date().getUTCFullYear();
+    if (year < loanStartYear) {
+        return { totalInterest: 0, totalPrincipal: 0, totalPayment: 0 };
+    }
+
+    const loanEndYear = this.endDate ? this.endDate.getUTCFullYear() : null;
+    if (loanEndYear !== null && year > loanEndYear) {
+        return { totalInterest: 0, totalPrincipal: 0, totalPayment: 0 };
+    }
+
+    let balance = this.amount; // Balance at start of the year
+    let totalInterest = 0;
+    let totalPrincipal = 0;
+
+    const monthlyRate = this.apr / 100 / 12;
+    
+    const startMonth = (year === loanStartYear) ? (this.startDate ? this.startDate.getUTCMonth() : 0) : 0;
+    const endMonth = (loanEndYear === year) ? (this.endDate ? this.endDate.getUTCMonth() : 11) : 11;
+
+    for (let month = startMonth; month <= endMonth; month++) {
+        if (balance <= 0) {
+            break;
+        }
+
+        const interest = this.interest_type === 'Compounding' && this.apr > 0 ? balance * monthlyRate : 0;
+        
+        // Determine the payment for this month
+        // It's either the full payment, or just enough to clear the balance
+        const paymentThisMonth = Math.min(this.payment, balance + interest);
+        
+        let principalPaid = paymentThisMonth - interest;
+        
+        // Ensure we don't overpay principal
+        if (principalPaid > balance) {
+            principalPaid = balance;
+        }
+        
+        totalInterest += interest;
+        totalPrincipal += principalPaid;
+        balance -= principalPaid;
+    }
+    
+    const totalPayment = totalPrincipal + totalInterest;
+
+    return { totalInterest, totalPrincipal, totalPayment };
+  }
+  
   calculatePaymentFromEndDate(): number {
     const months = this.getMonthsUntilPaidOff();
     if (months <= 0) return this.amount;
@@ -519,9 +585,9 @@ export class EmergencyExpense extends BaseExpense {
   ) {
     super(id, name, amount, frequency, startDate, endDate);
   }
-  increment(assumptions: AssumptionsState): VacationExpense {
+  increment(assumptions: AssumptionsState): EmergencyExpense {
     const generalInflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
-    return new VacationExpense(
+    return new EmergencyExpense(
       this.id, this.name, this.amount * (1 + generalInflation), this.frequency, this.startDate, this.endDate
     );
   }
@@ -538,9 +604,9 @@ export class TransportExpense extends BaseExpense {
   ) {
     super(id, name, amount, frequency, startDate, endDate);
   }
-  increment(assumptions: AssumptionsState): VacationExpense {
+  increment(assumptions: AssumptionsState): TransportExpense {
     const generalInflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
-    return new VacationExpense(
+    return new TransportExpense(
       this.id, this.name, this.amount * (1 + generalInflation), this.frequency, this.startDate, this.endDate
     );
   }
@@ -557,9 +623,9 @@ export class FoodExpense extends BaseExpense {
   ) {
     super(id, name, amount, frequency, startDate, endDate);
   }
-  increment(assumptions: AssumptionsState): VacationExpense {
+  increment(assumptions: AssumptionsState): FoodExpense {
     const generalInflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
-    return new VacationExpense(
+    return new FoodExpense(
       this.id, this.name, this.amount * (1 + generalInflation), this.frequency, this.startDate, this.endDate
     );
   }
@@ -576,9 +642,9 @@ export class OtherExpense extends BaseExpense {
   ) {
     super(id, name, amount, frequency, startDate, endDate);
   }
-  increment(assumptions: AssumptionsState): VacationExpense {
+  increment(assumptions: AssumptionsState): OtherExpense {
     const generalInflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
-    return new VacationExpense(
+    return new OtherExpense(
       this.id, this.name, this.amount * (1 + generalInflation), this.frequency, this.startDate, this.endDate
     );
   }

@@ -155,6 +155,23 @@ export default function AssumptionTab() {
                         </div>
                     </div>
 
+                    {/* Personal Assumptions */}
+                    <div className="pt-6 border-t border-gray-800">
+                        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 border-b border-gray-800 pb-2">Personal</h3>
+                        <div className="space-y-4">
+                            <NumberInput
+                                label="Current Age"
+                                value={state.personal.startAge}
+                                onChange={(val) => dispatch({ type: 'UPDATE_PERSONAL', payload: { startAge: val } })}
+                            />
+                            <NumberInput
+                                label="Starting Year"
+                                value={state.personal.startYear}
+                                onChange={(val) => dispatch({ type: 'UPDATE_PERSONAL', payload: { startYear: val } })}
+                            />
+                        </div>
+                    </div>
+
                     {/* Reset Defaults Button */}
                     <div className="pt-6 border-t border-gray-800">
                         <button
