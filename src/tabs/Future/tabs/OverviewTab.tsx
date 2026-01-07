@@ -1,13 +1,28 @@
 import { useState, useMemo } from 'react';
-import { ResponsiveBar } from '@nivo/bar';
+import { ResponsiveLine } from '@nivo/line';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
-import { SavedAccount, InvestedAccount, PropertyAccount, DebtAccount } from '../../../components/Objects/Accounts/models';
+import { SavedAccount, InvestedAccount, PropertyAccount } from '../../../components/Objects/Accounts/models';
 import { formatCurrency } from './FutureUtils';
 import { LoanExpense, MortgageExpense } from '../../../components/Objects/Expense/models';
+import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider';
 
 export const OverviewTab = ({ simulationData }: { simulationData: SimulationYear[] }) => {
-    const chartData = useMemo(() => {
-        return simulationData.map(year => {
+    // 1. Determine Min/Max Years from Data (or defaults if empty)
+    const minYear = simulationData.length > 0 ? simulationData[0].year : new Date().getFullYear();
+    const maxYear = simulationData.length > 0 ? simulationData[simulationData.length - 1].year : minYear + 10;
+
+    // 2. State for Range Slider (Defaults to full range)
+    const [range, setRange] = useState<[number, number] | null>(null);
+    const activeRange = range ?? [minYear,  Math.min(maxYear, minYear + 32)];
+
+    // 3. Filter Data based on Slider
+    const filteredData = useMemo(() => {
+        return simulationData.filter(d => d.year >= activeRange[0] && d.year <= activeRange[1]);
+    }, [simulationData, activeRange]);
+
+    // 4. Calculate Chart Data from Filtered Data
+    const rawData = useMemo(() => {
+        return filteredData.map(year => {
             const invested = year.accounts
                 .filter(acc => acc instanceof InvestedAccount)
                 .reduce((sum, acc) => sum + (acc.amount), 0);
@@ -25,7 +40,6 @@ export const OverviewTab = ({ simulationData }: { simulationData: SimulationYear
                 if (exp instanceof LoanExpense) {
                     debt += (exp.amount);
                 } else if (exp instanceof MortgageExpense) {
-                    // Use loan_balance for mortgages in simulation snapshots
                     debt += (exp.loan_balance);
                 }
             });
@@ -35,15 +49,32 @@ export const OverviewTab = ({ simulationData }: { simulationData: SimulationYear
                 Invested: invested,
                 Saved: saved,
                 Property: property,
-                Debt: -Math.abs(debt) // Ensure debt is negative and not NaN
+                Debt: -Math.abs(debt)
             };
         });
-    }, [simulationData]);
+    }, [filteredData]);
 
-    const keys = ['Invested', 'Saved', 'Property', 'Debt'];
+    const lineData = useMemo(() => {
+        const keys = ['Invested', 'Saved', 'Property', 'Debt'];
+        return keys.map(id => ({
+            id,
+            data: rawData.map(d => ({
+                ...d, // Embed full data for robust tooltip access
+                x: d.year,
+                // @ts-ignore
+                y: d[id]
+            }))
+        }));
+    }, [rawData]);
 
-    const CustomTooltip = (props: any) => {
-        const { data } = props;
+    // 5. Custom Tooltip
+    const CustomTooltip = ({ slice }: any) => {
+        if (!slice?.points?.length) return null;
+        
+        // Access data from the first point (all points share the same embedded data)
+        const point = slice.points[0];
+        const data = point.data; 
+
         const totalNetWorth = (data.Invested || 0) + (data.Saved || 0) + (data.Property || 0) + (data.Debt || 0);
 
         return (
@@ -83,56 +114,80 @@ export const OverviewTab = ({ simulationData }: { simulationData: SimulationYear
     };
 
     return (
-        <div className="h-[400px] w-full text-white">
-            <ResponsiveBar
-                data={chartData}
-                keys={keys}
-                indexBy="year"
-                margin={{ top: 20, right: 30, bottom: 50, left: 70 }}
-                padding={0.3}
-                groupMode="stacked"
-                valueScale={{ type: 'linear' }}
-                indexScale={{ type: 'band', round: true }}
-                colors={({ id }) => {
-                    if (id === 'Debt') return '#ef4444';
-                    if (id === 'Invested') return '#10b981';
-                    if (id === 'Saved') return '#3b82f6';
-                    if (id === 'Property') return '#f59e0b';
-                    return '#888888';
-                }}
-                enableLabel={false}
-                axisTop={null}
-                axisRight={null}
-                axisBottom={{
-                    tickSize: 0,
-                    tickPadding: 12,
-                    tickRotation: 0,
-                    legend: 'Year',
-                    legendPosition: 'middle',
-                    legendOffset: 32
-                }}
-                axisLeft={{
-                    tickSize: 0,
-                    tickPadding: 12,
-                    tickRotation: 0,
-                    legendPosition: 'middle',
-                    legendOffset: -50,
-                    format: " >-$,.0f",
-                    tickValues: 4
-                }}
-                legends={[]} // Removed legend to clean up UI, tooltip handles details
-                theme={{
-                    "background": "transparent", // Matches container
-                    "text": { "fontSize": 12, "fill": "#9ca3af" },
-                    "axis": { 
-                        "legend": { "text": { "fill": "#9ca3af" } }, 
-                        "ticks": { "text": { "fill": "#9ca3af" } } 
-                    },
-                    "grid": { "line": { "stroke": "#374151", "strokeWidth": 1, "strokeDasharray": "4 4" } },
-                    "tooltip": { "container": { "background": "#1f2937", "color": "#ffffff", "fontSize": 12 } }
-                }}
-                tooltip={CustomTooltip}
-            />
+        <div className="flex flex-col w-full h-full gap-4">
+            {/* Header: Range Slider Control */}
+            <div className="px-1 pt-2 flex justify-end">
+                <div className="w-full">
+                    <RangeSlider
+                        label="Timeline"
+                        min={minYear}
+                        max={maxYear}
+                        value={activeRange}
+                        onChange={(val) => setRange(val as [number, number])}
+                    />
+                </div>
+            </div>
+            
+            {/* Chart Area */}
+            <div className="h-[400px] w-full text-white">
+                <ResponsiveLine
+                    data={lineData}
+                    margin={{ top: 20, right: 30, bottom: 50, left: 90 }}
+                    xScale={{ type: 'point' }}
+                    yScale={{
+                        type: 'linear',
+                        min: 'auto',
+                        max: 'auto',
+                        stacked: false,
+                        reverse: false
+                    }}
+                    curve="catmullRom"
+                    axisTop={null}
+                    axisRight={null}
+                    axisBottom={{
+                        tickSize: 0,
+                        tickPadding: 12,
+                        tickRotation: 0,
+                        legend: 'Year',
+                        legendOffset: 36,
+                        legendPosition: 'middle'
+                    }}
+                    axisLeft={{
+                        tickSize: 0,
+                        tickPadding: 12,
+                        tickRotation: 0,
+                        legend: undefined,
+                        legendOffset: -40,
+                        legendPosition: 'middle',
+                        format: " >-$,.0f",
+                    }}
+                    colors={({ id }) => {
+                        if (id === 'Debt') return '#ef4444';
+                        if (id === 'Invested') return '#10b981';
+                        if (id === 'Saved') return '#3b82f6';
+                        if (id === 'Property') return '#f59e0b';
+                        return '#888888';
+                    }}
+                    lineWidth={3}
+                    enablePoints={false}
+                    enableGridX={false}
+                    enableArea={true}
+                    areaOpacity={0.15}
+                    useMesh={true}
+                    enableSlices="x"
+                    sliceTooltip={CustomTooltip}
+                    theme={{
+                        "background": "transparent",
+                        "text": { "fontSize": 12, "fill": "#9ca3af" },
+                        "axis": { 
+                            "legend": { "text": { "fill": "#9ca3af" } }, 
+                            "ticks": { "text": { "fill": "#9ca3af" } } 
+                        },
+                        "grid": { "line": { "stroke": "#374151", "strokeWidth": 1, "strokeDasharray": "4 4" } },
+                        "crosshair": { "line": { "stroke": "#9ca3af", "strokeWidth": 1, "strokeOpacity": 0.35 } }
+                    }}
+                />
+            </div>
         </div>
     );
 };

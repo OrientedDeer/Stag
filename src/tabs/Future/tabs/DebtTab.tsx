@@ -1,95 +1,97 @@
-import React, { useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
+import { DebtAccount } from '../../../components/Objects/Accounts/models';
 import { LoanExpense, MortgageExpense } from '../../../components/Objects/Expense/models';
 import { DebtStreamChart } from '../../../components/Charts/DebtStreamChart';
+import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider';
 
 interface DebtTabProps {
     simulationData: SimulationYear[];
 }
 
 export const DebtTab: React.FC<DebtTabProps> = ({ simulationData }) => {
+    // --- RANGE SLIDER STATE ---
+    const minYear = simulationData.length > 0 ? simulationData[0].year : 2025;
+    const maxYear = simulationData.length > 0 ? simulationData[simulationData.length - 1].year : 2060;
+    const [range, setRange] = useState<[number, number]>([minYear, Math.min(maxYear, minYear + 32)]);
+
     const { data, keys, debtFreeYear } = useMemo(() => {
         let debtFreeYear: number | null = null;
-        const allDebtNames = new Set<string>();
-
-        // First pass: find all unique debt names
+        
+        // 1. Calculate stable keys and debtFreeYear from FULL data
+        const allKeys = new Set<string>();
         simulationData.forEach(year => {
+            let yearTotalDebt = 0;
             year.expenses.forEach(exp => {
                 if (exp instanceof LoanExpense || exp instanceof MortgageExpense) {
-                    allDebtNames.add(exp.name);
+                    const balance = exp instanceof LoanExpense ? exp.amount : exp.loan_balance;
+                    if (balance > 0) {
+                        allKeys.add(exp.name);
+                        yearTotalDebt += balance;
+                    }
                 }
             });
+            year.accounts.forEach(acc => {
+                if (acc instanceof DebtAccount && acc.amount > 0) {
+                    allKeys.add(acc.name);
+                    yearTotalDebt += acc.amount;
+                }
+            });
+
+            if (yearTotalDebt <= 1 && debtFreeYear === null) debtFreeYear = year.year;
         });
 
-        // Second pass: build the data for the stream chart
-        const mappedData = simulationData.map(year => {
+        // 2. Filter simulation data for the chart range
+        const filteredSim = simulationData.filter(d => d.year >= range[0] && d.year <= range[1]);
+
+        // 3. Map ONLY the filtered data for the chart
+        const mappedData = filteredSim.map(year => {
             const datum: any = { year: year.year };
-            let totalDebtThisYear = 0;
+            allKeys.forEach(key => datum[key] = 0);
 
-            allDebtNames.forEach(name => {
-                const expense = year.expenses.find(exp => exp.name === name);
-                let balance = 0;
-                if (expense && (expense instanceof LoanExpense || expense instanceof MortgageExpense)) {
-                    balance = expense instanceof LoanExpense ? expense.amount : expense.loan_balance;
+            year.expenses.forEach(exp => {
+                if (exp instanceof LoanExpense || exp instanceof MortgageExpense) {
+                    const balance = exp instanceof LoanExpense ? exp.amount : exp.loan_balance;
+                    if (balance > 0) datum[exp.name] = balance;
                 }
-                datum[name] = balance > 0 ? balance : 0;
-                totalDebtThisYear += datum[name];
             });
-
-            if (totalDebtThisYear <= 0 && debtFreeYear === null) {
-                debtFreeYear = year.year;
-            }
+            year.accounts.forEach(acc => {
+                if (acc instanceof DebtAccount && acc.amount > 0) datum[acc.name] = acc.amount;
+            });
 
             return datum;
         });
 
-        // If all debt is paid off from year 0
-        if (debtFreeYear === null && mappedData.length > 0) {
-            const initialTotalDebt = Object.values(mappedData[0]).reduce((sum: any, val: any) => typeof val === 'number' && val > 0 ? sum + val : sum, 0);
-            if(initialTotalDebt === 0) {
-                debtFreeYear = mappedData[0].year;
-            }
-        }
+        return { data: mappedData, keys: Array.from(allKeys), debtFreeYear };
+    }, [simulationData, range]);
 
-
-        return { data: mappedData, keys: Array.from(allDebtNames), debtFreeYear };
-    }, [simulationData]);
-
-    // Generate a consistent color map for the accounts
     const colors = useMemo(() => {
-        const palette = [
-            '#ef4444', '#f97316', '#eab308', '#84cc16', '#22c55e',
-            '#10b981', '#14b8a6', '#06b6d4', '#0ea5e9', '#3b82f6'
-        ].reverse(); // Debt colors can be "hotter"
+        const palette = ['#f87171', '#fb923c', '#facc15', '#a3a3a3', '#ef4444', '#f97316'];
         const map: Record<string, string> = {};
-        keys.forEach((key, i) => {
-            map[key] = palette[i % palette.length];
-        });
+        keys.forEach((key, i) => map[key] = palette[i % palette.length]);
         return map;
     }, [keys]);
 
-
-    if (keys.length === 0) {
-        return (
-            <div className="p-6 text-center text-gray-300">
-                <h3 className="text-2xl font-bold text-green-400">Congratulations!</h3>
-                <p className="mt-2">You are completely debt-free.</p>
-            </div>
-        );
-    }
+    if (keys.length === 0) return <div className="p-4 text-white text-center">No debt to track. You're debt free!</div>;
 
     return (
-        <div className="w-full h-full flex flex-col">
-             {/* Header */}
-             <div className="mb-4 p-4 bg-gray-900 rounded-xl border border-gray-800 text-center shadow-lg">
-                <h2 className="text-lg font-semibold text-gray-400 uppercase tracking-wider">Debt Free Year</h2>
-                <p className={`text-4xl font-bold mt-1 ${debtFreeYear ? 'text-green-400' : 'text-amber-400'}`}>
-                    {debtFreeYear ? debtFreeYear : 'Beyond Simulation'}
-                </p>
-             </div>
+        <div className="p-4 text-white h-[500px] flex flex-col gap-4">
+            <div className="flex justify-between items-center px-2 gap-8">
+                <div className="grow">
+                    <RangeSlider 
+                        label="Timeline"
+                        value={range}
+                        min={minYear}
+                        max={maxYear}
+                        onChange={setRange}
+                    />
+                </div>
+                <h3 className="text-lg font-bold whitespace-nowrap shrink-0"> {/* Added these classes */}
+                    Debt Free Year: {debtFreeYear ? <span className='text-green-400'>{debtFreeYear}</span> : 'Beyond Simulation'}
+                </h3>
+            </div>
             
-            {/* Chart */}
-            <div className="flex-1 min-h-0 h-[400px]">
+            <div className="grow w-full">
                 <DebtStreamChart data={data} keys={keys} colors={colors} />
             </div>
         </div>

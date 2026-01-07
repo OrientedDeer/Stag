@@ -140,7 +140,7 @@ export const DebtStreamChart: React.FC<DebtStreamChartProps> = ({
           borderColor={{ from: 'color', modifiers: [['darker', 0.2]] }}
           
           // Smoothness - 'catmullRom' looks organic for "Wealth"
-          curve="catmullRom" 
+          curve="step" 
           
           // Axes
           axisTop={null}

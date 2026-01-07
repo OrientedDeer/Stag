@@ -5,13 +5,13 @@ import { WorkIncome } from '../../../components/Objects/Income/models';
 import { MortgageExpense, CLASS_TO_CATEGORY as EXPENSE_CLASS_TO_CAT } from '../../../components/Objects/Expense/models';
 import { AssumptionsContext } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { DebtAccount, AnyAccount } from '../../../components/Objects/Accounts/models';
+import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider'; // Import RangeSlider
 
 const formatCurrency = (value: number) => {
     if (value === undefined || value === null) return '$0';
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
 };
 
-// Helper for Net Worth in the Details Card
 const calculateNetWorth = (accounts: AnyAccount[]) => {
     let assets = 0;
     let liabilities = 0;
@@ -43,14 +43,13 @@ export const CashflowTab = ({ simulationData }: { simulationData: SimulationYear
     const age = assumptions.personal.startAge + selectedYearIndex;
     const netWorth = yearData ? calculateNetWorth(yearData.accounts) : 0;
 
-    // --- CHART DATA CONSTRUCTION ---
+    // --- CHART DATA CONSTRUCTION (Unchanged) ---
     const chartData = useMemo(() => {
         if (!yearData) return { nodes: [], links: [] };
 
         const nodes: any[] = [];
         const links: any[] = [];
 
-        // 1. EXTRACT TOTALS
         let employee401k = 0;
         let employeeRoth = 0;
         let totalInsurance = 0;
@@ -102,16 +101,13 @@ export const CashflowTab = ({ simulationData }: { simulationData: SimulationYear
         });
 
         const totalMortgageExpense = totalMortgagePayment - totalPrincipal;
-
         const annualFedTax = yearData.taxDetails.fed;
         const annualStateTax = yearData.taxDetails.state;
         const annualFicaTax = yearData.taxDetails.fica;
         const totalTaxes = annualFedTax + annualStateTax + annualFicaTax;
 
-        // 2. WATERFALL MATH
         const grossPayNodeValue = yearData.cashflow.totalIncome + totalEmployerMatchForTrad;
-        const salaryValue = yearData.cashflow.totalIncome; // Defined early for node creation
-
+        const salaryValue = yearData.cashflow.totalIncome; 
         const totalTradSavings = employee401k + totalEmployerMatchForTrad;
         const totalRothSavings = employeeRoth + totalEmployerMatchForRoth;
         const bucketAllocations = yearData.cashflow.bucketDetail || {};
@@ -119,40 +115,27 @@ export const CashflowTab = ({ simulationData }: { simulationData: SimulationYear
 
         const netPayFlow = grossPayNodeValue - totalTradSavings - totalInsurance - totalTaxes;
 
-        // --- DEFINE NODES (Strict Order for Stability) ---
-
-        // Level 0: Inputs (Always add these first)
-        if (totalEmployerMatch > 0) {
-            nodes.push({ id: 'Employer Contributions', color: '#10b981', label: 'Employer Contrib.' });
-        }
-
-        if (salaryValue > 0) {
-            nodes.push({ id: 'Salary', color: '#10b981', label: 'Salary' });
-        }
-        // Level 1: Gross Pay
+        // --- DEFINE NODES ---
+        if (totalEmployerMatch > 0) nodes.push({ id: 'Employer Contributions', color: '#10b981', label: 'Employer Contrib.' });
+        if (salaryValue > 0) nodes.push({ id: 'Salary', color: '#10b981', label: 'Salary' });
         nodes.push({ id: 'Gross Pay', color: '#3b82f6', label: 'Gross Pay' });
         
-        // Level 1: Deductions
         if (totalTradSavings > 0) nodes.push({ id: '401k Savings', color: '#10b981', label: '401k Savings' });
         if (totalInsurance > 0) nodes.push({ id: 'Benefits', color: '#6366f1', label: 'Benefits' });
         if (annualFedTax > 0) nodes.push({ id: 'Federal Tax', color: '#f59e0b', label: 'Federal Tax' });
         if (annualStateTax > 0) nodes.push({ id: 'State Tax', color: '#fbbf24', label: 'State Tax' });
         if (annualFicaTax > 0) nodes.push({ id: 'FICA Tax', color: '#d97706', label: 'FICA Tax' });
 
-        // Level 2: Net Pay
         nodes.push({ id: 'Net Pay', color: '#3b82f6', label: 'Net Pay' });
 
-        // Level 3: Allocations
         if (totalRothSavings > 0) nodes.push({ id: 'Roth Savings', color: '#10b981', label: 'Roth Savings' });
         if (totalPrincipal > 0) nodes.push({ id: 'Principal Payments', color: '#10b981', label: 'Principal Payments' });
         if (totalMortgageExpense > 0) nodes.push({ id: 'Mortgage Payments', color: '#ef4444', label: 'Mortgage Payments' });
 
-        // Dynamic Expense Categories (These appear after core nodes)
         expenseCatTotals.forEach((_, cat) => {
             nodes.push({ id: cat, color: '#ef4444', label: cat });
         });
 
-        // Dynamic Priority Buckets
         Object.entries(bucketAllocations).forEach(([accountId, amount]) => {
             if (amount > 0) {
                 const account = yearData.accounts.find(a => a.id === accountId);
@@ -162,8 +145,6 @@ export const CashflowTab = ({ simulationData }: { simulationData: SimulationYear
             }
         });
 
-        // Final Remainders
-        // Allocations = Roth + Mortgage(All) + Expenses + Buckets
         const totalAllocated = totalRothSavings + totalMortgagePayment + 
                                Array.from(expenseCatTotals.values()).reduce((a, b) => a + b, 0) + 
                                totalBucketSavings;
@@ -177,14 +158,8 @@ export const CashflowTab = ({ simulationData }: { simulationData: SimulationYear
         }
 
         // --- DEFINE LINKS ---
-
-        if (totalEmployerMatch > 0) {
-            links.push({ source: 'Employer Contributions', target: 'Gross Pay', value: totalEmployerMatch });
-        }
-        
-        if (salaryValue > 0) {
-            links.push({ source: 'Salary', target: 'Gross Pay', value: salaryValue });
-        }
+        if (totalEmployerMatch > 0) links.push({ source: 'Employer Contributions', target: 'Gross Pay', value: totalEmployerMatch });
+        if (salaryValue > 0) links.push({ source: 'Salary', target: 'Gross Pay', value: salaryValue });
 
         if (totalTradSavings > 0) links.push({ source: 'Gross Pay', target: '401k Savings', value: totalTradSavings });
         if (totalInsurance > 0) links.push({ source: 'Gross Pay', target: 'Benefits', value: totalInsurance });
@@ -219,7 +194,6 @@ export const CashflowTab = ({ simulationData }: { simulationData: SimulationYear
             }
         }
 
-        // Clean up unlinked nodes
         const activeNodeIds = new Set();
         links.forEach(l => { 
             if (l.value > 0) { 
@@ -278,18 +252,22 @@ export const CashflowTab = ({ simulationData }: { simulationData: SimulationYear
                 />
             </div>
 
-            {/* 2. SLIDER CONTROL */}
+            {/* 2. SLIDER CONTROL (Updated to use RangeSlider) */}
             <div className="p-4 bg-gray-900 rounded-xl border border-gray-800 shadow-lg mt-auto">
                 <h3 className="text-lg font-bold text-white mb-2">Year Details: {selectedYear}</h3>
-                <div className='flex items-center gap-4'>
-                    <input
-                        type="range"
-                        min={startYear}
-                        max={endYear}
-                        value={selectedYear}
-                        onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))}
-                        className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
-                    />
+                <div className='flex items-center gap-6'>
+                    
+                    {/* Replaced invisible <input> with <RangeSlider> */}
+                    <div className="w-full">
+                        <RangeSlider
+                            value={selectedYear}
+                            min={startYear}
+                            max={endYear}
+                            onChange={(val) => setSelectedYear(val as number)}
+                            hideHeader={true} // Hides internal label to use your custom header above
+                        />
+                    </div>
+                    
                     <div className="flex gap-4 text-white min-w-fit">
                         <div>
                             <span className="font-bold">Net Worth:</span>

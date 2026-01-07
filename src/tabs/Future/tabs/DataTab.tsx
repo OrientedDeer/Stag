@@ -1,96 +1,210 @@
 import React, { useMemo } from 'react';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
+import { AnyAccount, DebtAccount } from '../../../components/Objects/Accounts/models';
 import { LoanExpense, MortgageExpense } from '../../../components/Objects/Expense/models';
-import { DebtStreamChart } from '../../../components/Charts/DebtStreamChart';
 
-interface DebtTabProps {
+interface DataTabProps {
     simulationData: SimulationYear[];
+    startAge: number;
 }
 
-export const DebtTab: React.FC<DebtTabProps> = ({ simulationData }) => {
-    const { data, keys, debtFreeYear } = useMemo(() => {
-        let debtFreeYear: number | null = null;
-        const allDebtNames = new Set<string>();
+// Helper: Format Currency
+const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
+};
 
-        // First pass: find all unique debt names
-        simulationData.forEach(year => {
-            year.expenses.forEach(exp => {
-                if (exp instanceof LoanExpense || exp instanceof MortgageExpense) {
-                    allDebtNames.add(exp.name);
-                }
-            });
-        });
-
-        // Second pass: build the data for the stream chart
-        const mappedData = simulationData.map(year => {
-            const datum: any = { year: year.year };
-            let totalDebtThisYear = 0;
-
-            allDebtNames.forEach(name => {
-                const expense = year.expenses.find(exp => exp.name === name);
-                let balance = 0;
-                if (expense && (expense instanceof LoanExpense || expense instanceof MortgageExpense)) {
-                    balance = expense instanceof LoanExpense ? expense.amount : expense.loan_balance;
-                }
-                datum[name] = balance > 0 ? balance : 0;
-                totalDebtThisYear += datum[name];
-            });
-
-            if (totalDebtThisYear <= 0 && debtFreeYear === null) {
-                debtFreeYear = year.year;
-            }
-
-            return datum;
-        });
-
-        // If all debt is paid off from year 0
-        if (debtFreeYear === null && mappedData.length > 0) {
-            const initialTotalDebt = Object.values(mappedData[0]).reduce((sum: any, val: any) => typeof val === 'number' && val > 0 ? sum + val : sum, 0);
-            if(initialTotalDebt === 0) {
-                debtFreeYear = mappedData[0].year;
-            }
+// Helper: Calculate Net Worth
+const calculateNetWorth = (accounts: AnyAccount[]) => {
+    let assets = 0;
+    let liabilities = 0;
+    accounts.forEach(acc => {
+        const val = acc.amount || 0;
+        if (acc instanceof DebtAccount) liabilities += val;
+        else {
+            assets += val;
+             // @ts-ignore
+            if (acc.loanAmount) liabilities += acc.loanAmount;
         }
+    });
+    return assets - liabilities;
+};
 
+export const DataTab: React.FC<DataTabProps> = ({ simulationData, startAge }) => {
+    
+    // 1. Prepare Table Data (Summary View)
+    const tableData = useMemo(() => {
+        return simulationData.map((year, index) => {
+            const totalTaxes = year.taxDetails.fed + year.taxDetails.state + year.taxDetails.fica;
+            const livingExpenses = year.expenses.reduce((sum, exp) => sum + exp.getAnnualAmount(), 0);
+            
+            // Calculate Total Debt for the year
+            let totalDebt = 0;
+            year.accounts.forEach(acc => {
+                if (acc instanceof DebtAccount) totalDebt += acc.amount;
+            });
+            year.expenses.forEach(exp => {
+                if (exp instanceof LoanExpense) totalDebt += exp.amount;
+                if (exp instanceof MortgageExpense) totalDebt += exp.loan_balance;
+            });
 
-        return { data: mappedData, keys: Array.from(allDebtNames), debtFreeYear };
-    }, [simulationData]);
+            const netWorth = calculateNetWorth(year.accounts);
+            const effectiveTaxRate = year.cashflow.totalIncome > 0 
+                ? (totalTaxes / year.cashflow.totalIncome) * 100 
+                : 0;
 
-    // Generate a consistent color map for the accounts
-    const colors = useMemo(() => {
-        const palette = [
-            '#ef4444', '#f97316', '#eab308', '#84cc16', '#22c55e',
-            '#10b981', '#14b8a6', '#06b6d4', '#0ea5e9', '#3b82f6'
-        ].reverse(); // Debt colors can be "hotter"
-        const map: Record<string, string> = {};
-        keys.forEach((key, i) => {
-            map[key] = palette[i % palette.length];
+            return {
+                year: year.year,
+                age: startAge + index,
+                grossIncome: year.cashflow.totalIncome,
+                effectiveTaxRate, 
+                totalTaxes,
+                livingExpenses,
+                totalDebt,
+                totalSaved: year.cashflow.totalInvested,
+                netWorth,
+            };
         });
-        return map;
-    }, [keys]);
+    }, [simulationData, startAge]);
 
+    // 2. Detailed CSV Generator
+    const handleExportCSV = () => {
+        if (simulationData.length === 0) return;
 
-    if (keys.length === 0) {
-        return (
-            <div className="p-6 text-center text-gray-300">
-                <h3 className="text-2xl font-bold text-green-400">Congratulations!</h3>
-                <p className="mt-2">You are completely debt-free.</p>
-            </div>
-        );
-    }
+        // Step A: Collect ALL unique headers across the simulation
+        const accountKeys = new Set<string>();
+        const expenseKeys = new Set<string>();
+        const incomeKeys = new Set<string>();
+
+        simulationData.forEach(year => {
+            year.accounts.forEach(acc => accountKeys.add(acc.name));
+            year.expenses.forEach(exp => expenseKeys.add(exp.name));
+            year.incomes.forEach(inc => incomeKeys.add(inc.name));
+        });
+
+        const sortedAccKeys = Array.from(accountKeys).sort();
+        const sortedExpKeys = Array.from(expenseKeys).sort();
+        const sortedIncKeys = Array.from(incomeKeys).sort();
+
+        // Step B: Build Header Row
+        const headers = [
+            "Year", "Age", 
+            "Net Worth", "Total Assets", "Total Debt",
+            "Gross Income", "Total Taxes", "Total Expenses",
+            ...sortedIncKeys.map(k => `INC: ${k}`),
+            ...sortedExpKeys.map(k => `EXP: ${k}`),
+            ...sortedAccKeys.map(k => `ACC: ${k}`)
+        ];
+
+        const csvRows = [headers.join(',')];
+
+        // Step C: Build Data Rows
+        simulationData.forEach((year, index) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const row: any[] = [];
+            
+            row.push(year.year);
+            row.push(startAge + index);
+
+            const nw = calculateNetWorth(year.accounts);
+            row.push(nw);
+            
+            let assets = 0; 
+            let debt = 0;
+            year.accounts.forEach(acc => {
+                if (acc instanceof DebtAccount) debt += acc.amount;
+                else assets += acc.amount;
+            });
+            year.expenses.forEach(exp => {
+                if (exp instanceof LoanExpense) debt += exp.amount;
+                if (exp instanceof MortgageExpense) debt += exp.loan_balance;
+            });
+            row.push(assets);
+            row.push(debt);
+
+            row.push(year.cashflow.totalIncome);
+            const tax = year.taxDetails.fed + year.taxDetails.state + year.taxDetails.fica;
+            row.push(tax);
+            row.push(year.cashflow.totalExpense); 
+
+            // Detailed Columns
+            const incMap = new Map(year.incomes.map(i => [i.name, i.amount]));
+            sortedIncKeys.forEach(key => row.push(incMap.get(key) || 0));
+
+            const expMap = new Map(year.expenses.map(e => [e.name, e.getAnnualAmount()]));
+            sortedExpKeys.forEach(key => row.push(expMap.get(key) || 0));
+
+            const accMap = new Map(year.accounts.map(a => [a.name, a.amount]));
+            sortedAccKeys.forEach(key => row.push(accMap.get(key) || 0));
+
+            csvRows.push(row.join(','));
+        });
+
+        const csvString = csvRows.join('\n');
+        const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', 'simulation_detailed.csv');
+        link.click();
+    };
+
+    const handleExportJSON = () => {
+        const jsonString = JSON.stringify(simulationData, null, 2);
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', 'simulation_full_data.json');
+        link.click();
+    };
 
     return (
-        <div className="w-full h-full flex flex-col">
-             {/* Header */}
-             <div className="mb-4 p-4 bg-gray-900 rounded-xl border border-gray-800 text-center shadow-lg">
-                <h2 className="text-lg font-semibold text-gray-400 uppercase tracking-wider">Debt Free Year</h2>
-                <p className={`text-4xl font-bold mt-1 ${debtFreeYear ? 'text-green-400' : 'text-amber-400'}`}>
-                    {debtFreeYear ? debtFreeYear : 'Beyond Simulation'}
+        <div className="p-4 text-white flex flex-col h-full">
+            <div className="flex justify-between items-center mb-4 shrink-0">
+                <p className="text-gray-400 text-sm italic">
+                    Export includes detailed breakdowns for every account and expense.
                 </p>
-             </div>
-            
-            {/* Chart */}
-            <div className="flex-1 min-h-0 h-[400px]">
-                <DebtStreamChart data={data} keys={keys} colors={colors} />
+                <div className="flex gap-3">
+                    <button onClick={handleExportJSON} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm font-bold rounded-lg border border-gray-600">
+                        JSON
+                    </button>
+                    <button onClick={handleExportCSV} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-lg shadow-lg">
+                        CSV
+                    </button>
+                </div>
+            </div>
+
+            <div className="grow overflow-auto custom-scrollbar border border-gray-800 rounded-lg">
+                <table className="w-full text-left border-collapse relative">
+                    <thead className="sticky top-0 bg-gray-900 z-10 shadow-sm">
+                        <tr>
+                            <th className="p-3 border-b border-gray-700 text-gray-400 font-semibold text-sm">Year</th>
+                            <th className="p-3 border-b border-gray-700 text-gray-400 font-semibold text-sm">Age</th>
+                            <th className="p-3 border-b border-gray-700 text-gray-400 font-semibold text-sm text-right">Gross Income</th>
+                            <th className="p-3 border-b border-gray-700 text-gray-400 font-semibold text-sm text-right">Eff. Tax %</th>
+                            <th className="p-3 border-b border-gray-700 text-gray-400 font-semibold text-sm text-right">Total Taxes</th>
+                            <th className="p-3 border-b border-gray-700 text-gray-400 font-semibold text-sm text-right">Expenses</th>
+                            <th className="p-3 border-b border-gray-700 text-gray-400 font-semibold text-sm text-right">Debt Load</th>
+                            <th className="p-3 border-b border-gray-700 text-gray-400 font-semibold text-sm text-right">Invested</th>
+                            <th className="p-3 border-b border-gray-700 text-gray-200 font-bold text-sm text-right bg-gray-800">Net Worth</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {tableData.map((row) => (
+                            <tr key={row.year} className="hover:bg-gray-800/50 transition-colors border-b border-gray-800/50">
+                                <td className="p-3 text-sm text-gray-300">{row.year}</td>
+                                <td className="p-3 text-sm text-gray-400">{row.age}</td>
+                                <td className="p-3 text-sm text-right font-mono text-emerald-400">{formatCurrency(row.grossIncome)}</td>
+                                <td className="p-3 text-sm text-right font-mono text-gray-400">{row.effectiveTaxRate.toFixed(1)}%</td>
+                                <td className="p-3 text-sm text-right font-mono text-red-400">{formatCurrency(row.totalTaxes)}</td>
+                                <td className="p-3 text-sm text-right font-mono text-orange-300">{formatCurrency(row.livingExpenses)}</td>
+                                <td className="p-3 text-sm text-right font-mono text-red-500">{row.totalDebt > 0 ? formatCurrency(row.totalDebt) : '-'}</td>
+                                <td className="p-3 text-sm text-right font-mono text-blue-400">{formatCurrency(row.totalSaved)}</td>
+                                <td className="p-3 text-sm text-right font-mono font-bold text-white bg-gray-800/30">{formatCurrency(row.netWorth)}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
             </div>
         </div>
     );
