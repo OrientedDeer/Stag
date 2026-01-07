@@ -1,0 +1,736 @@
+
+<!doctype html>
+<html lang="en">
+
+<head>
+    <title>Code coverage report for components/Objects/Accounts/models.tsx</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../../../prettify.css" />
+    <link rel="stylesheet" href="../../../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../../../favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../../../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+    
+<body>
+<div class='wrapper'>
+    <div class='pad1'>
+        <h1><a href="../../../index.html">All files</a> / <a href="index.html">components/Objects/Accounts</a> models.tsx</h1>
+        <div class='clearfix'>
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">34.61% </span>
+                <span class="quiet">Statements</span>
+                <span class='fraction'>18/52</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">12.96% </span>
+                <span class="quiet">Branches</span>
+                <span class='fraction'>7/54</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">30% </span>
+                <span class="quiet">Functions</span>
+                <span class='fraction'>3/10</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">35.29% </span>
+                <span class="quiet">Lines</span>
+                <span class='fraction'>18/51</span>
+            </div>
+        
+            
+        </div>
+        <p class="quiet">
+            Press <em>n</em> or <em>j</em> to go to the next uncovered block, <em>b</em>, <em>p</em> or <em>k</em> for the previous block.
+        </p>
+        <template id="filterTemplate">
+            <div class="quiet">
+                Filter:
+                <input type="search" id="fileSearch">
+            </div>
+        </template>
+    </div>
+    <div class='status-line low'></div>
+    <pre><table class="coverage">
+<tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
+<a name='L2'></a><a href='#L2'>2</a>
+<a name='L3'></a><a href='#L3'>3</a>
+<a name='L4'></a><a href='#L4'>4</a>
+<a name='L5'></a><a href='#L5'>5</a>
+<a name='L6'></a><a href='#L6'>6</a>
+<a name='L7'></a><a href='#L7'>7</a>
+<a name='L8'></a><a href='#L8'>8</a>
+<a name='L9'></a><a href='#L9'>9</a>
+<a name='L10'></a><a href='#L10'>10</a>
+<a name='L11'></a><a href='#L11'>11</a>
+<a name='L12'></a><a href='#L12'>12</a>
+<a name='L13'></a><a href='#L13'>13</a>
+<a name='L14'></a><a href='#L14'>14</a>
+<a name='L15'></a><a href='#L15'>15</a>
+<a name='L16'></a><a href='#L16'>16</a>
+<a name='L17'></a><a href='#L17'>17</a>
+<a name='L18'></a><a href='#L18'>18</a>
+<a name='L19'></a><a href='#L19'>19</a>
+<a name='L20'></a><a href='#L20'>20</a>
+<a name='L21'></a><a href='#L21'>21</a>
+<a name='L22'></a><a href='#L22'>22</a>
+<a name='L23'></a><a href='#L23'>23</a>
+<a name='L24'></a><a href='#L24'>24</a>
+<a name='L25'></a><a href='#L25'>25</a>
+<a name='L26'></a><a href='#L26'>26</a>
+<a name='L27'></a><a href='#L27'>27</a>
+<a name='L28'></a><a href='#L28'>28</a>
+<a name='L29'></a><a href='#L29'>29</a>
+<a name='L30'></a><a href='#L30'>30</a>
+<a name='L31'></a><a href='#L31'>31</a>
+<a name='L32'></a><a href='#L32'>32</a>
+<a name='L33'></a><a href='#L33'>33</a>
+<a name='L34'></a><a href='#L34'>34</a>
+<a name='L35'></a><a href='#L35'>35</a>
+<a name='L36'></a><a href='#L36'>36</a>
+<a name='L37'></a><a href='#L37'>37</a>
+<a name='L38'></a><a href='#L38'>38</a>
+<a name='L39'></a><a href='#L39'>39</a>
+<a name='L40'></a><a href='#L40'>40</a>
+<a name='L41'></a><a href='#L41'>41</a>
+<a name='L42'></a><a href='#L42'>42</a>
+<a name='L43'></a><a href='#L43'>43</a>
+<a name='L44'></a><a href='#L44'>44</a>
+<a name='L45'></a><a href='#L45'>45</a>
+<a name='L46'></a><a href='#L46'>46</a>
+<a name='L47'></a><a href='#L47'>47</a>
+<a name='L48'></a><a href='#L48'>48</a>
+<a name='L49'></a><a href='#L49'>49</a>
+<a name='L50'></a><a href='#L50'>50</a>
+<a name='L51'></a><a href='#L51'>51</a>
+<a name='L52'></a><a href='#L52'>52</a>
+<a name='L53'></a><a href='#L53'>53</a>
+<a name='L54'></a><a href='#L54'>54</a>
+<a name='L55'></a><a href='#L55'>55</a>
+<a name='L56'></a><a href='#L56'>56</a>
+<a name='L57'></a><a href='#L57'>57</a>
+<a name='L58'></a><a href='#L58'>58</a>
+<a name='L59'></a><a href='#L59'>59</a>
+<a name='L60'></a><a href='#L60'>60</a>
+<a name='L61'></a><a href='#L61'>61</a>
+<a name='L62'></a><a href='#L62'>62</a>
+<a name='L63'></a><a href='#L63'>63</a>
+<a name='L64'></a><a href='#L64'>64</a>
+<a name='L65'></a><a href='#L65'>65</a>
+<a name='L66'></a><a href='#L66'>66</a>
+<a name='L67'></a><a href='#L67'>67</a>
+<a name='L68'></a><a href='#L68'>68</a>
+<a name='L69'></a><a href='#L69'>69</a>
+<a name='L70'></a><a href='#L70'>70</a>
+<a name='L71'></a><a href='#L71'>71</a>
+<a name='L72'></a><a href='#L72'>72</a>
+<a name='L73'></a><a href='#L73'>73</a>
+<a name='L74'></a><a href='#L74'>74</a>
+<a name='L75'></a><a href='#L75'>75</a>
+<a name='L76'></a><a href='#L76'>76</a>
+<a name='L77'></a><a href='#L77'>77</a>
+<a name='L78'></a><a href='#L78'>78</a>
+<a name='L79'></a><a href='#L79'>79</a>
+<a name='L80'></a><a href='#L80'>80</a>
+<a name='L81'></a><a href='#L81'>81</a>
+<a name='L82'></a><a href='#L82'>82</a>
+<a name='L83'></a><a href='#L83'>83</a>
+<a name='L84'></a><a href='#L84'>84</a>
+<a name='L85'></a><a href='#L85'>85</a>
+<a name='L86'></a><a href='#L86'>86</a>
+<a name='L87'></a><a href='#L87'>87</a>
+<a name='L88'></a><a href='#L88'>88</a>
+<a name='L89'></a><a href='#L89'>89</a>
+<a name='L90'></a><a href='#L90'>90</a>
+<a name='L91'></a><a href='#L91'>91</a>
+<a name='L92'></a><a href='#L92'>92</a>
+<a name='L93'></a><a href='#L93'>93</a>
+<a name='L94'></a><a href='#L94'>94</a>
+<a name='L95'></a><a href='#L95'>95</a>
+<a name='L96'></a><a href='#L96'>96</a>
+<a name='L97'></a><a href='#L97'>97</a>
+<a name='L98'></a><a href='#L98'>98</a>
+<a name='L99'></a><a href='#L99'>99</a>
+<a name='L100'></a><a href='#L100'>100</a>
+<a name='L101'></a><a href='#L101'>101</a>
+<a name='L102'></a><a href='#L102'>102</a>
+<a name='L103'></a><a href='#L103'>103</a>
+<a name='L104'></a><a href='#L104'>104</a>
+<a name='L105'></a><a href='#L105'>105</a>
+<a name='L106'></a><a href='#L106'>106</a>
+<a name='L107'></a><a href='#L107'>107</a>
+<a name='L108'></a><a href='#L108'>108</a>
+<a name='L109'></a><a href='#L109'>109</a>
+<a name='L110'></a><a href='#L110'>110</a>
+<a name='L111'></a><a href='#L111'>111</a>
+<a name='L112'></a><a href='#L112'>112</a>
+<a name='L113'></a><a href='#L113'>113</a>
+<a name='L114'></a><a href='#L114'>114</a>
+<a name='L115'></a><a href='#L115'>115</a>
+<a name='L116'></a><a href='#L116'>116</a>
+<a name='L117'></a><a href='#L117'>117</a>
+<a name='L118'></a><a href='#L118'>118</a>
+<a name='L119'></a><a href='#L119'>119</a>
+<a name='L120'></a><a href='#L120'>120</a>
+<a name='L121'></a><a href='#L121'>121</a>
+<a name='L122'></a><a href='#L122'>122</a>
+<a name='L123'></a><a href='#L123'>123</a>
+<a name='L124'></a><a href='#L124'>124</a>
+<a name='L125'></a><a href='#L125'>125</a>
+<a name='L126'></a><a href='#L126'>126</a>
+<a name='L127'></a><a href='#L127'>127</a>
+<a name='L128'></a><a href='#L128'>128</a>
+<a name='L129'></a><a href='#L129'>129</a>
+<a name='L130'></a><a href='#L130'>130</a>
+<a name='L131'></a><a href='#L131'>131</a>
+<a name='L132'></a><a href='#L132'>132</a>
+<a name='L133'></a><a href='#L133'>133</a>
+<a name='L134'></a><a href='#L134'>134</a>
+<a name='L135'></a><a href='#L135'>135</a>
+<a name='L136'></a><a href='#L136'>136</a>
+<a name='L137'></a><a href='#L137'>137</a>
+<a name='L138'></a><a href='#L138'>138</a>
+<a name='L139'></a><a href='#L139'>139</a>
+<a name='L140'></a><a href='#L140'>140</a>
+<a name='L141'></a><a href='#L141'>141</a>
+<a name='L142'></a><a href='#L142'>142</a>
+<a name='L143'></a><a href='#L143'>143</a>
+<a name='L144'></a><a href='#L144'>144</a>
+<a name='L145'></a><a href='#L145'>145</a>
+<a name='L146'></a><a href='#L146'>146</a>
+<a name='L147'></a><a href='#L147'>147</a>
+<a name='L148'></a><a href='#L148'>148</a>
+<a name='L149'></a><a href='#L149'>149</a>
+<a name='L150'></a><a href='#L150'>150</a>
+<a name='L151'></a><a href='#L151'>151</a>
+<a name='L152'></a><a href='#L152'>152</a>
+<a name='L153'></a><a href='#L153'>153</a>
+<a name='L154'></a><a href='#L154'>154</a>
+<a name='L155'></a><a href='#L155'>155</a>
+<a name='L156'></a><a href='#L156'>156</a>
+<a name='L157'></a><a href='#L157'>157</a>
+<a name='L158'></a><a href='#L158'>158</a>
+<a name='L159'></a><a href='#L159'>159</a>
+<a name='L160'></a><a href='#L160'>160</a>
+<a name='L161'></a><a href='#L161'>161</a>
+<a name='L162'></a><a href='#L162'>162</a>
+<a name='L163'></a><a href='#L163'>163</a>
+<a name='L164'></a><a href='#L164'>164</a>
+<a name='L165'></a><a href='#L165'>165</a>
+<a name='L166'></a><a href='#L166'>166</a>
+<a name='L167'></a><a href='#L167'>167</a>
+<a name='L168'></a><a href='#L168'>168</a>
+<a name='L169'></a><a href='#L169'>169</a>
+<a name='L170'></a><a href='#L170'>170</a>
+<a name='L171'></a><a href='#L171'>171</a>
+<a name='L172'></a><a href='#L172'>172</a>
+<a name='L173'></a><a href='#L173'>173</a>
+<a name='L174'></a><a href='#L174'>174</a>
+<a name='L175'></a><a href='#L175'>175</a>
+<a name='L176'></a><a href='#L176'>176</a>
+<a name='L177'></a><a href='#L177'>177</a>
+<a name='L178'></a><a href='#L178'>178</a>
+<a name='L179'></a><a href='#L179'>179</a>
+<a name='L180'></a><a href='#L180'>180</a>
+<a name='L181'></a><a href='#L181'>181</a>
+<a name='L182'></a><a href='#L182'>182</a>
+<a name='L183'></a><a href='#L183'>183</a>
+<a name='L184'></a><a href='#L184'>184</a>
+<a name='L185'></a><a href='#L185'>185</a>
+<a name='L186'></a><a href='#L186'>186</a>
+<a name='L187'></a><a href='#L187'>187</a>
+<a name='L188'></a><a href='#L188'>188</a>
+<a name='L189'></a><a href='#L189'>189</a>
+<a name='L190'></a><a href='#L190'>190</a>
+<a name='L191'></a><a href='#L191'>191</a>
+<a name='L192'></a><a href='#L192'>192</a>
+<a name='L193'></a><a href='#L193'>193</a>
+<a name='L194'></a><a href='#L194'>194</a>
+<a name='L195'></a><a href='#L195'>195</a>
+<a name='L196'></a><a href='#L196'>196</a>
+<a name='L197'></a><a href='#L197'>197</a>
+<a name='L198'></a><a href='#L198'>198</a>
+<a name='L199'></a><a href='#L199'>199</a>
+<a name='L200'></a><a href='#L200'>200</a>
+<a name='L201'></a><a href='#L201'>201</a>
+<a name='L202'></a><a href='#L202'>202</a>
+<a name='L203'></a><a href='#L203'>203</a>
+<a name='L204'></a><a href='#L204'>204</a>
+<a name='L205'></a><a href='#L205'>205</a>
+<a name='L206'></a><a href='#L206'>206</a>
+<a name='L207'></a><a href='#L207'>207</a>
+<a name='L208'></a><a href='#L208'>208</a>
+<a name='L209'></a><a href='#L209'>209</a>
+<a name='L210'></a><a href='#L210'>210</a>
+<a name='L211'></a><a href='#L211'>211</a>
+<a name='L212'></a><a href='#L212'>212</a>
+<a name='L213'></a><a href='#L213'>213</a>
+<a name='L214'></a><a href='#L214'>214</a>
+<a name='L215'></a><a href='#L215'>215</a>
+<a name='L216'></a><a href='#L216'>216</a>
+<a name='L217'></a><a href='#L217'>217</a>
+<a name='L218'></a><a href='#L218'>218</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { AssumptionsState } from "../Assumptions/AssumptionsContext";
+&nbsp;
+// 1. Interface}
+&nbsp;
+export interface Account {
+  id: string;
+  name: string;
+  amount: number;
+}
+&nbsp;
+// 2. Base Abstract Class
+export abstract class BaseAccount implements Account {
+  constructor(
+    public id: string,
+    public name: string,
+    public amount: number
+  ) {}
+}
+&nbsp;
+// 3. Concrete Classes
+&nbsp;
+export const TaxTypeEnum = ['Brokerage', 'Roth 401k', 'Traditional 401k', 'Roth IRA', 'Traditional IRA', 'HSA'] as const;
+export type TaxType = typeof TaxTypeEnum[number];
+&nbsp;
+export class SavedAccount extends BaseAccount {
+<span class="fstat-no" title="function not covered" >  constructor(</span>
+    id: string,
+    name: string,
+    amount: number,
+    public <span class="cstat-no" title="statement not covered" >apr: number = <span class="branch-0 cbranch-no" title="branch not covered" >0</span></span>
+  ) {
+<span class="cstat-no" title="statement not covered" >    super(id, name, amount);</span>
+  }
+&nbsp;
+<span class="fstat-no" title="function not covered" >  increment (_</span>assumptions: AssumptionsState, annualContribution: number = <span class="branch-0 cbranch-no" title="branch not covered" >0): SavedAccount {</span>
+    const amount = (<span class="cstat-no" title="statement not covered" >this.amount + (this.apr/100)) + annualContribution;</span>
+<span class="cstat-no" title="statement not covered" >    return new SavedAccount(this.id, this.name, amount, this.apr);</span>
+  }
+}
+&nbsp;
+export class InvestedAccount extends BaseAccount {
+  constructor(
+    id: string,
+    name: string,
+    amount: number,
+    public NonVestedAmount: number,
+    public expenseRatio: number = 0.1,
+    public taxType: TaxType = 'Brokerage',
+    public isContributionEligible: boolean = true,
+    public vestedPerYear: number = 0.2,
+  ) {
+    super(id, name, amount);
+  }
+  increment (assumptions: AssumptionsState, annualContribution: number = 0): InvestedAccount {
+    const returnRate = 1 + (assumptions.investments.returnRates.ror + (assumptions.macro.inflationAdjusted ? <span class="branch-0 cbranch-no" title="branch not covered" >assumptions.macro.inflationRate : 0</span>) - this.expenseRatio) / 100
+&nbsp;
+    const amount = this.amount * returnRate + annualContribution;
+    const NonVestedAmount = ((this.NonVestedAmount * ((assumptions.investments.returnRates.ror + (assumptions.macro.inflationAdjusted ? <span class="branch-0 cbranch-no" title="branch not covered" >assumptions.macro.inflationRate : 0</span>)) / 100 - this.expenseRatio/100)) + annualContribution) * (1 - this.vestedPerYear);
+    return new InvestedAccount(this.id, this.name, amount, NonVestedAmount, this.expenseRatio, this.taxType, this.isContributionEligible, this.vestedPerYear);
+  }
+}
+&nbsp;
+export class PropertyAccount extends BaseAccount {
+<span class="fstat-no" title="function not covered" >  constructor(</span>
+    id: string,
+    name: string,
+    amount: number,
+    public <span class="cstat-no" title="statement not covered" >ownershipType: 'Financed' | 'Owned',</span>
+    public <span class="cstat-no" title="statement not covered" >loanAmount: number,</span>
+    public <span class="cstat-no" title="statement not covered" >startingLoanBalance: number,</span>
+    public <span class="cstat-no" title="statement not covered" >linkedAccountId: string,</span>
+    public <span class="cstat-no" title="statement not covered" >apr: number = <span class="branch-0 cbranch-no" title="branch not covered" >0</span></span>
+  ) {
+<span class="cstat-no" title="statement not covered" >    super(id, name, amount);</span>
+  }
+<span class="fstat-no" title="function not covered" >  increment(</span>
+      assumptions: AssumptionsState, 
+      overrides?: { newLoanBalance?: number; newValue?: number }
+  ): PropertyAccount {
+    let nextValue: number;
+<span class="cstat-no" title="statement not covered" >    if (overrides?.newValue !== undefined) {</span>
+<span class="cstat-no" title="statement not covered" >        nextValue = overrides.newValue;</span>
+    } else {
+<span class="cstat-no" title="statement not covered" >        nextValue = this.amount * (1 + assumptions.expenses.housingAppreciation / 100);</span>
+    }
+    let nextLoan: number;
+<span class="cstat-no" title="statement not covered" >    if (overrides?.newLoanBalance !== undefined) {</span>
+<span class="cstat-no" title="statement not covered" >        nextLoan = overrides.newLoanBalance;</span>
+    } else {
+<span class="cstat-no" title="statement not covered" >        nextLoan = this.loanAmount; </span>
+    }
+&nbsp;
+<span class="cstat-no" title="statement not covered" >    return new PropertyAccount(</span>
+      this.id,
+      this.name,
+      nextValue,
+      this.ownershipType,
+      nextLoan, 
+      this.startingLoanBalance,
+      this.linkedAccountId
+    );
+  }
+}
+&nbsp;
+export class DebtAccount extends BaseAccount {
+<span class="fstat-no" title="function not covered" >  constructor(</span>
+    id: string,
+    name: string,
+    amount: number,
+    public <span class="cstat-no" title="statement not covered" >linkedAccountId: string,</span>
+    public <span class="cstat-no" title="statement not covered" >apr: number = <span class="branch-0 cbranch-no" title="branch not covered" >0</span></span>
+  ) {
+<span class="cstat-no" title="statement not covered" >    super(id, name, amount);</span>
+  }
+<span class="fstat-no" title="function not covered" >  increment(</span>
+      _assumptions: AssumptionsState, 
+      overrideBalance?: number
+  ): DebtAccount {
+      const nextAmount = <span class="cstat-no" title="statement not covered" >overrideBalance !== undefined </span>
+          ? overrideBalance 
+          : this.amount * (1 + this.apr / 100);
+&nbsp;
+<span class="cstat-no" title="statement not covered" >      return new DebtAccount(</span>
+          this.id,
+          this.name,
+          nextAmount,
+          this.linkedAccountId,
+          this.apr
+      );
+  }
+}
+&nbsp;
+// Union type for use in State Management
+export type AnyAccount = SavedAccount | InvestedAccount | PropertyAccount | DebtAccount;
+&nbsp;
+export const ACCOUNT_CATEGORIES = [
+  'Saved',
+  'Invested',
+  'Property',
+  'Debt',
+] as const;
+&nbsp;
+export type AccountCategory = typeof ACCOUNT_CATEGORIES[number];
+&nbsp;
+export const ACCOUNT_COLORS_BACKGROUND: Record&lt;AccountCategory, string&gt; = {
+    Saved: "bg-chart-Fuchsia-50",
+    Invested: "bg-chart-Blue-50",
+    Property: "bg-chart-Yellow-50",
+    Debt: "bg-chart-Red-50",
+  };
+&nbsp;
+export const CLASS_TO_CATEGORY: Record&lt;string, AccountCategory&gt; = {
+    [SavedAccount.name]: 'Saved',
+    [InvestedAccount.name]: 'Invested',
+    [PropertyAccount.name]: 'Property',
+    [DebtAccount.name]: 'Debt',
+};
+&nbsp;
+// Map Categories to their color palettes (using Tailwind classes for simplicity)
+export const CATEGORY_PALETTES: Record&lt;AccountCategory, string[]&gt; = {
+	Saved: ["bg-chart-Fuchsia-1", "bg-chart-Fuchsia-2", "bg-chart-Fuchsia-3", "bg-chart-Fuchsia-4", "bg-chart-Fuchsia-5", "bg-chart-Fuchsia-6", "bg-chart-Fuchsia-7", "bg-chart-Fuchsia-8", "bg-chart-Fuchsia-9", "bg-chart-Fuchsia-10", "bg-chart-Fuchsia-11", "bg-chart-Fuchsia-12", "bg-chart-Fuchsia-13", "bg-chart-Fuchsia-14", "bg-chart-Fuchsia-15", "bg-chart-Fuchsia-16", "bg-chart-Fuchsia-17", "bg-chart-Fuchsia-18", "bg-chart-Fuchsia-19", "bg-chart-Fuchsia-20", "bg-chart-Fuchsia-21", "bg-chart-Fuchsia-22", "bg-chart-Fuchsia-23", "bg-chart-Fuchsia-24", "bg-chart-Fuchsia-25", "bg-chart-Fuchsia-26", "bg-chart-Fuchsia-27", "bg-chart-Fuchsia-28", "bg-chart-Fuchsia-29", "bg-chart-Fuchsia-30", "bg-chart-Fuchsia-31", "bg-chart-Fuchsia-32", "bg-chart-Fuchsia-33", "bg-chart-Fuchsia-34", "bg-chart-Fuchsia-35", "bg-chart-Fuchsia-36", "bg-chart-Fuchsia-37", "bg-chart-Fuchsia-38", "bg-chart-Fuchsia-39", "bg-chart-Fuchsia-40", "bg-chart-Fuchsia-41", "bg-chart-Fuchsia-42", "bg-chart-Fuchsia-43", "bg-chart-Fuchsia-44", "bg-chart-Fuchsia-45", "bg-chart-Fuchsia-46", "bg-chart-Fuchsia-47", "bg-chart-Fuchsia-48", "bg-chart-Fuchsia-49", "bg-chart-Fuchsia-50", "bg-chart-Fuchsia-51", "bg-chart-Fuchsia-52", "bg-chart-Fuchsia-53", "bg-chart-Fuchsia-54", "bg-chart-Fuchsia-55", "bg-chart-Fuchsia-56", "bg-chart-Fuchsia-57", "bg-chart-Fuchsia-58", "bg-chart-Fuchsia-59", "bg-chart-Fuchsia-60", "bg-chart-Fuchsia-61", "bg-chart-Fuchsia-62", "bg-chart-Fuchsia-63", "bg-chart-Fuchsia-64", "bg-chart-Fuchsia-65", "bg-chart-Fuchsia-66", "bg-chart-Fuchsia-67", "bg-chart-Fuchsia-68", "bg-chart-Fuchsia-69", "bg-chart-Fuchsia-70", "bg-chart-Fuchsia-71", "bg-chart-Fuchsia-72", "bg-chart-Fuchsia-73", "bg-chart-Fuchsia-74", "bg-chart-Fuchsia-75", "bg-chart-Fuchsia-76", "bg-chart-Fuchsia-77", "bg-chart-Fuchsia-78", "bg-chart-Fuchsia-79", "bg-chart-Fuchsia-80", "bg-chart-Fuchsia-81", "bg-chart-Fuchsia-82", "bg-chart-Fuchsia-83", "bg-chart-Fuchsia-84", "bg-chart-Fuchsia-85", "bg-chart-Fuchsia-86", "bg-chart-Fuchsia-87", "bg-chart-Fuchsia-88", "bg-chart-Fuchsia-89", "bg-chart-Fuchsia-90", "bg-chart-Fuchsia-91", "bg-chart-Fuchsia-92", "bg-chart-Fuchsia-93", "bg-chart-Fuchsia-94", "bg-chart-Fuchsia-95", "bg-chart-Fuchsia-96", "bg-chart-Fuchsia-97", "bg-chart-Fuchsia-98", "bg-chart-Fuchsia-99", "bg-chart-Fuchsia-100"],
+	Invested: ["bg-chart-Blue-1", "bg-chart-Blue-2", "bg-chart-Blue-3", "bg-chart-Blue-4", "bg-chart-Blue-5", "bg-chart-Blue-6", "bg-chart-Blue-7", "bg-chart-Blue-8", "bg-chart-Blue-9", "bg-chart-Blue-10", "bg-chart-Blue-11", "bg-chart-Blue-12", "bg-chart-Blue-13", "bg-chart-Blue-14", "bg-chart-Blue-15", "bg-chart-Blue-16", "bg-chart-Blue-17", "bg-chart-Blue-18", "bg-chart-Blue-19", "bg-chart-Blue-20", "bg-chart-Blue-21", "bg-chart-Blue-22", "bg-chart-Blue-23", "bg-chart-Blue-24", "bg-chart-Blue-25", "bg-chart-Blue-26", "bg-chart-Blue-27", "bg-chart-Blue-28", "bg-chart-Blue-29", "bg-chart-Blue-30", "bg-chart-Blue-31", "bg-chart-Blue-32", "bg-chart-Blue-33", "bg-chart-Blue-34", "bg-chart-Blue-35", "bg-chart-Blue-36", "bg-chart-Blue-37", "bg-chart-Blue-38", "bg-chart-Blue-39", "bg-chart-Blue-40", "bg-chart-Blue-41", "bg-chart-Blue-42", "bg-chart-Blue-43", "bg-chart-Blue-44", "bg-chart-Blue-45", "bg-chart-Blue-46", "bg-chart-Blue-47", "bg-chart-Blue-48", "bg-chart-Blue-49", "bg-chart-Blue-50", "bg-chart-Blue-51", "bg-chart-Blue-52", "bg-chart-Blue-53", "bg-chart-Blue-54", "bg-chart-Blue-55", "bg-chart-Blue-56", "bg-chart-Blue-57", "bg-chart-Blue-58", "bg-chart-Blue-59", "bg-chart-Blue-60", "bg-chart-Blue-61", "bg-chart-Blue-62", "bg-chart-Blue-63", "bg-chart-Blue-64", "bg-chart-Blue-65", "bg-chart-Blue-66", "bg-chart-Blue-67", "bg-chart-Blue-68", "bg-chart-Blue-69", "bg-chart-Blue-70", "bg-chart-Blue-71", "bg-chart-Blue-72", "bg-chart-Blue-73", "bg-chart-Blue-74", "bg-chart-Blue-75", "bg-chart-Blue-76", "bg-chart-Blue-77", "bg-chart-Blue-78", "bg-chart-Blue-79", "bg-chart-Blue-80", "bg-chart-Blue-81", "bg-chart-Blue-82", "bg-chart-Blue-83", "bg-chart-Blue-84", "bg-chart-Blue-85", "bg-chart-Blue-86", "bg-chart-Blue-87", "bg-chart-Blue-88", "bg-chart-Blue-89", "bg-chart-Blue-90", "bg-chart-Blue-91", "bg-chart-Blue-92", "bg-chart-Blue-93", "bg-chart-Blue-94", "bg-chart-Blue-95", "bg-chart-Blue-96", "bg-chart-Blue-97", "bg-chart-Blue-98", "bg-chart-Blue-99", "bg-chart-Blue-100"],
+	Property: ["bg-chart-Yellow-1", "bg-chart-Yellow-2", "bg-chart-Yellow-3", "bg-chart-Yellow-4", "bg-chart-Yellow-5", "bg-chart-Yellow-6", "bg-chart-Yellow-7", "bg-chart-Yellow-8", "bg-chart-Yellow-9", "bg-chart-Yellow-10", "bg-chart-Yellow-11", "bg-chart-Yellow-12", "bg-chart-Yellow-13", "bg-chart-Yellow-14", "bg-chart-Yellow-15", "bg-chart-Yellow-16", "bg-chart-Yellow-17", "bg-chart-Yellow-18", "bg-chart-Yellow-19", "bg-chart-Yellow-20", "bg-chart-Yellow-21", "bg-chart-Yellow-22", "bg-chart-Yellow-23", "bg-chart-Yellow-24", "bg-chart-Yellow-25", "bg-chart-Yellow-26", "bg-chart-Yellow-27", "bg-chart-Yellow-28", "bg-chart-Yellow-29", "bg-chart-Yellow-30", "bg-chart-Yellow-31", "bg-chart-Yellow-32", "bg-chart-Yellow-33", "bg-chart-Yellow-34", "bg-chart-Yellow-35", "bg-chart-Yellow-36", "bg-chart-Yellow-37", "bg-chart-Yellow-38", "bg-chart-Yellow-39", "bg-chart-Yellow-40", "bg-chart-Yellow-41", "bg-chart-Yellow-42", "bg-chart-Yellow-43", "bg-chart-Yellow-44", "bg-chart-Yellow-45", "bg-chart-Yellow-46", "bg-chart-Yellow-47", "bg-chart-Yellow-48", "bg-chart-Yellow-49", "bg-chart-Yellow-50", "bg-chart-Yellow-51", "bg-chart-Yellow-52", "bg-chart-Yellow-53", "bg-chart-Yellow-54", "bg-chart-Yellow-55", "bg-chart-Yellow-56", "bg-chart-Yellow-57", "bg-chart-Yellow-58", "bg-chart-Yellow-59", "bg-chart-Yellow-60", "bg-chart-Yellow-61", "bg-chart-Yellow-62", "bg-chart-Yellow-63", "bg-chart-Yellow-64", "bg-chart-Yellow-65", "bg-chart-Yellow-66", "bg-chart-Yellow-67", "bg-chart-Yellow-68", "bg-chart-Yellow-69", "bg-chart-Yellow-70", "bg-chart-Yellow-71", "bg-chart-Yellow-72", "bg-chart-Yellow-73", "bg-chart-Yellow-74", "bg-chart-Yellow-75", "bg-chart-Yellow-76", "bg-chart-Yellow-77", "bg-chart-Yellow-78", "bg-chart-Yellow-79", "bg-chart-Yellow-80", "bg-chart-Yellow-81", "bg-chart-Yellow-82", "bg-chart-Yellow-83", "bg-chart-Yellow-84", "bg-chart-Yellow-85", "bg-chart-Yellow-86", "bg-chart-Yellow-87", "bg-chart-Yellow-88", "bg-chart-Yellow-89", "bg-chart-Yellow-90", "bg-chart-Yellow-91", "bg-chart-Yellow-92", "bg-chart-Yellow-93", "bg-chart-Yellow-94", "bg-chart-Yellow-95", "bg-chart-Yellow-96", "bg-chart-Yellow-97", "bg-chart-Yellow-98", "bg-chart-Yellow-99", "bg-chart-Yellow-100"],
+	Debt: ["bg-chart-Red-1", "bg-chart-Red-2", "bg-chart-Red-3", "bg-chart-Red-4", "bg-chart-Red-5", "bg-chart-Red-6", "bg-chart-Red-7", "bg-chart-Red-8", "bg-chart-Red-9", "bg-chart-Red-10", "bg-chart-Red-11", "bg-chart-Red-12", "bg-chart-Red-13", "bg-chart-Red-14", "bg-chart-Red-15", "bg-chart-Red-16", "bg-chart-Red-17", "bg-chart-Red-18", "bg-chart-Red-19", "bg-chart-Red-20", "bg-chart-Red-21", "bg-chart-Red-22", "bg-chart-Red-23", "bg-chart-Red-24", "bg-chart-Red-25", "bg-chart-Red-26", "bg-chart-Red-27", "bg-chart-Red-28", "bg-chart-Red-29", "bg-chart-Red-30", "bg-chart-Red-31", "bg-chart-Red-32", "bg-chart-Red-33", "bg-chart-Red-34", "bg-chart-Red-35", "bg-chart-Red-36", "bg-chart-Red-37", "bg-chart-Red-38", "bg-chart-Red-39", "bg-chart-Red-40", "bg-chart-Red-41", "bg-chart-Red-42", "bg-chart-Red-43", "bg-chart-Red-44", "bg-chart-Red-45", "bg-chart-Red-46", "bg-chart-Red-47", "bg-chart-Red-48", "bg-chart-Red-49", "bg-chart-Red-50", "bg-chart-Red-51", "bg-chart-Red-52", "bg-chart-Red-53", "bg-chart-Red-54", "bg-chart-Red-55", "bg-chart-Red-56", "bg-chart-Red-57", "bg-chart-Red-58", "bg-chart-Red-59", "bg-chart-Red-60", "bg-chart-Red-61", "bg-chart-Red-62", "bg-chart-Red-63", "bg-chart-Red-64", "bg-chart-Red-65", "bg-chart-Red-66", "bg-chart-Red-67", "bg-chart-Red-68", "bg-chart-Red-69", "bg-chart-Red-70", "bg-chart-Red-71", "bg-chart-Red-72", "bg-chart-Red-73", "bg-chart-Red-74", "bg-chart-Red-75", "bg-chart-Red-76", "bg-chart-Red-77", "bg-chart-Red-78", "bg-chart-Red-79", "bg-chart-Red-80", "bg-chart-Red-81", "bg-chart-Red-82", "bg-chart-Red-83", "bg-chart-Red-84", "bg-chart-Red-85", "bg-chart-Red-86", "bg-chart-Red-87", "bg-chart-Red-88", "bg-chart-Red-89", "bg-chart-Red-90", "bg-chart-Red-91", "bg-chart-Red-92", "bg-chart-Red-93", "bg-chart-Red-94", "bg-chart-Red-95", "bg-chart-Red-96", "bg-chart-Red-97", "bg-chart-Red-98", "bg-chart-Red-99", "bg-chart-Red-100"]
+};
+&nbsp;
+/**
+ * Robustly creates class instances from raw JSON.
+ * Instead of Object.assign, we map fields explicitly and provide defaults for missing fields.
+ */
+export function <span class="fstat-no" title="function not covered" >reconstituteAccount(d</span>ata: any): AnyAccount | null {
+<span class="cstat-no" title="statement not covered" >    if (!data || !data.className) <span class="cstat-no" title="statement not covered" >return null;</span></span>
+&nbsp;
+    // Common base fields with defaults
+    const id = <span class="cstat-no" title="statement not covered" >data.id;</span>
+    const name = <span class="cstat-no" title="statement not covered" >data.name ?? "Unnamed Account";</span>
+    const amount = <span class="cstat-no" title="statement not covered" >Number(data.amount) ?? 0;</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >    switch (data.className) {</span>
+        case 'SavedAccount':
+<span class="cstat-no" title="statement not covered" >            return new SavedAccount(id, name, amount, data.apr ?? 0);</span>
+            
+        case 'InvestedAccount':
+<span class="cstat-no" title="statement not covered" >            return new InvestedAccount(</span>
+                id, 
+                name, 
+                amount, 
+                data.NonVestedAmount ?? 0,
+                data.expenseRatio ?? 0.1,
+                data.taxType ?? 'Brokerage',
+                data.isContributionEligible ?? true,
+                data.vestedPerYear ?? 0.2,
+            );
+            
+        case 'PropertyAccount':
+<span class="cstat-no" title="statement not covered" >            return new PropertyAccount(</span>
+                id,
+                name,
+                amount,
+                data.ownershipType ?? 'Owned',
+                data.loanAmount ?? 0,
+                data.startingLoanBalance ?? 0,
+                data.linkedAccountId
+            );            
+        case 'DebtAccount':
+<span class="cstat-no" title="statement not covered" >            return new DebtAccount(</span>
+                id, 
+                name, 
+                amount,
+                data.linkedAccountId ?? '',
+                data.apr ?? 0
+            );
+            
+        default:
+<span class="cstat-no" title="statement not covered" >            console.warn(`Unknown account type: ${data.className}`);</span>
+<span class="cstat-no" title="statement not covered" >            return null;</span>
+    }
+}</pre></td></tr></table></pre>
+
+                <div class='push'></div><!-- for sticky footer -->
+            </div><!-- /wrapper -->
+            <div class='footer quiet pad2 space-top1 center small'>
+                Code coverage generated by
+                <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
+                at 2026-01-07T05:55:09.510Z
+            </div>
+        <script src="../../../prettify.js"></script>
+        <script>
+            window.onload = function () {
+                prettyPrint();
+            };
+        </script>
+        <script src="../../../sorter.js"></script>
+        <script src="../../../block-navigation.js"></script>
+    </body>
+</html>
+    
