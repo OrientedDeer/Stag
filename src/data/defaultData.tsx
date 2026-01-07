@@ -155,6 +155,7 @@ export const defaultData = {
       "payment": 244.18,
       "is_tax_deductible": "No",
       "tax_deductible": 0,
+      "className": "LoanExpense"
     },
     {
       "id": "EXS-1766976696301-739",

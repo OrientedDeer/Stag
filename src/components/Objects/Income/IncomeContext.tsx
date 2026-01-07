@@ -4,7 +4,8 @@ import {
     WorkIncome, 
     SocialSecurityIncome, 
     PassiveIncome, 
-    WindfallIncome
+    WindfallIncome,
+    reconstituteIncome
 } from './models';
 
 type AllKeys<T> = T extends any ? keyof T : never;
@@ -26,41 +27,7 @@ const initialState: AppState = {
   incomes: [],
 };
 
-export function reconstituteIncome(data: any): AnyIncome | null {
-    if (!data || !data.className) return null;
-    
-    const endDateValue = data.end_date;
-    const endDate = endDateValue ? (typeof endDateValue === 'string' ? new Date(endDateValue) : new Date(endDateValue)) : undefined;
-    const startDateValue = data.startDate || Date.now();
-    const startDate = typeof startDateValue === 'string' ? new Date(startDateValue) : new Date(startDateValue);
 
-    // Explicitly mapping fields ensures old saves don't break with new class structures
-    const base = {
-        id: data.id,
-        name: data.name || "Unnamed Income",
-        amount: Number(data.amount) || 0,
-        frequency: data.frequency || 'Monthly',
-        startDate: startDate,
-        end_date: endDate,
-        earned_income: data.earned_income || "No"
-    };
-
-    switch (data.className) {
-        case 'WorkIncome':
-            return new WorkIncome(base.id, base.name, base.amount, base.frequency, base.earned_income, 
-                data.preTax401k || 0, data.insurance || 0, data.roth401k || 0, data.employerMatch || 0, data.matchAccountId || null, data.taxType || null, data.contributionGrowthStrategy || 'FIXED', base.startDate, base.end_date);
-        case 'SocialSecurityIncome':
-            return new SocialSecurityIncome(base.id, base.name, base.amount, base.frequency, 
-                data.claimingAge || 67, base.startDate, base.end_date);
-        case 'PassiveIncome':
-            return new PassiveIncome(base.id, base.name, base.amount, base.frequency, base.earned_income, 
-                data.sourceType || 'Other', base.startDate, base.end_date);
-        case 'WindfallIncome':
-            return new WindfallIncome(base.id, base.name, base.amount, base.frequency, base.earned_income, base.startDate, base.end_date);
-        default:
-            return null;
-    }
-}
 
 const incomeReducer = (state: AppState, action: Action): AppState => {
   switch (action.type) {

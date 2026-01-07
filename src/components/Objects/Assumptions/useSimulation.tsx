@@ -1,21 +1,21 @@
-import { useContext, useMemo } from 'react';
-import { AccountContext } from '../Accounts/AccountContext';
-import { IncomeContext } from '../Income/IncomeContext';
-import { ExpenseContext } from '../Expense/ExpenseContext';
-import { AssumptionsContext } from './AssumptionsContext';
-import { TaxContext } from '../../Objects/Taxes/TaxContext';
 import { simulateOneYear, SimulationYear } from './SimulationEngine';
 import * as TaxService from '../../Objects/Taxes/TaxService';
 import { WorkIncome } from '../Income/models';
+import { AnyAccount } from '../Accounts/models';
+import { AnyIncome } from '../Income/models';
+import { AnyExpense } from '../Expense/models';
+import { AssumptionsState } from './AssumptionsContext';
+import { TaxState } from '../Taxes/TaxContext';
 
-export const useSimulation = (yearsToRun: number = 30) => {
-    const { accounts } = useContext(AccountContext);
-    const { incomes } = useContext(IncomeContext);
-    const { expenses } = useContext(ExpenseContext);
-    const { state: assumptions } = useContext(AssumptionsContext);
-    const { state: taxState } = useContext(TaxContext);
-
-    return useMemo(() => {
+export const runSimulation = (
+    yearsToRun: number = 30,
+    accounts: AnyAccount[],
+    incomes: AnyIncome[],
+    expenses: AnyExpense[],
+    assumptions: AssumptionsState,
+    taxState: TaxState
+    ) => {
+        
         const startYear = assumptions.personal.startYear;
         const timeline: SimulationYear[] = [];
 
@@ -94,5 +94,4 @@ export const useSimulation = (yearsToRun: number = 30) => {
 
         return timeline;
 
-    }, [accounts, incomes, expenses, assumptions, taxState, yearsToRun]);
 };

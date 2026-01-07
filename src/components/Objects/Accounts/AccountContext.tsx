@@ -4,7 +4,8 @@ import {
     SavedAccount, 
     InvestedAccount, 
     PropertyAccount, 
-    DebtAccount 
+    DebtAccount,
+    reconstituteAccount
 } from './models';
 
 type AllKeys<T> = T extends any ? keyof T : never;
@@ -42,58 +43,7 @@ const initialState: AppState = {
   amountHistory: {},
 };
 
-/**
- * Robustly creates class instances from raw JSON.
- * Instead of Object.assign, we map fields explicitly and provide defaults for missing fields.
- */
-export function reconstituteAccount(data: any): AnyAccount | null {
-    if (!data || !data.className) return null;
 
-    // Common base fields with defaults
-    const id = data.id;
-    const name = data.name ?? "Unnamed Account";
-    const amount = Number(data.amount) ?? 0;
-
-    switch (data.className) {
-        case 'SavedAccount':
-            return new SavedAccount(id, name, amount, data.apr ?? 0);
-            
-        case 'InvestedAccount':
-            return new InvestedAccount(
-                id, 
-                name, 
-                amount, 
-                data.NonVestedAmount ?? 0,
-                data.expenseRatio ?? 0.1,
-                data.taxType ?? 'Brokerage',
-                data.isContributionEligible ?? true,
-                data.vestedPerYear ?? 0.2,
-            );
-            
-        case 'PropertyAccount':
-            return new PropertyAccount(
-                id,
-                name,
-                amount,
-                data.ownershipType ?? 'Owned',
-                data.loanAmount ?? 0,
-                data.startingLoanBalance ?? 0,
-                data.linkedAccountId
-            );            
-        case 'DebtAccount':
-            return new DebtAccount(
-                id, 
-                name, 
-                amount,
-                data.linkedAccountId ?? '',
-                data.apr ?? 0
-            );
-            
-        default:
-            console.warn(`Unknown account type: ${data.className}`);
-            return null;
-    }
-}
 
 const initializer = (initialState: AppState): AppState => {
     try {

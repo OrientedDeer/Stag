@@ -30,12 +30,6 @@ export const findFinancialIndependenceYear = (simulation: SimulationYear[], assu
         const lastYearInvestments = lastYear.accounts
             .filter(acc => acc instanceof InvestedAccount)
             .reduce((sum, acc) => sum + acc.amount, 0);
-
-        const currentYearInvestments = currentYear.accounts
-            .filter(acc => acc instanceof InvestedAccount)
-            .reduce((sum, acc) => sum + acc.amount, 0);
-
-        const contributions = currentYear.cashflow.investedUser + currentYear.cashflow.investedMatch;
         
         // Financial independence is reached when the withdrawal from investments can cover all expenses.
         if (lastYearInvestments * (assumptions.investments.withdrawalRate / 100) > currentYear.cashflow.totalExpense) {

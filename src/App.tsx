@@ -17,10 +17,12 @@ import FutureTab from "./tabs/Future/FutureTab";
 import AssumptionTab from "./tabs/Future/AssumptionTab";
 import { AssumptionsProvider } from "./components/Objects/Assumptions/AssumptionsContext";
 import PriorityTab from "./tabs/Future/PriorityTab";
+import { SimulationProvider } from "./components/Objects/Assumptions/SimulationContext";
 
 export default function App() {
   const [isOpen, setIsOpen] = useState(false); // shared variable
   return (
+    <SimulationProvider>
       <AccountProvider>
         <IncomeProvider>
           <ExpenseProvider>
@@ -56,5 +58,6 @@ export default function App() {
           </ExpenseProvider>
         </IncomeProvider>
       </AccountProvider>
+    </SimulationProvider>
   );
 }

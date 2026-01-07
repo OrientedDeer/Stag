@@ -1,86 +1,96 @@
-import { useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
-import { getAccountTotals, formatCurrency } from './FutureUtils';
+import { LoanExpense, MortgageExpense } from '../../../components/Objects/Expense/models';
+import { DebtStreamChart } from '../../../components/Charts/DebtStreamChart';
 
-export const DataTab = ({ simulationData, startAge }: { simulationData: SimulationYear[], startAge: number }) => {
-    const tableData = useMemo(() => {
-        return simulationData.map((year, index) => {
-            const totalTaxes = year.taxDetails.fed + year.taxDetails.state + year.taxDetails.fica;
-            const livingExpenses = year.expenses.reduce((sum, exp) => sum + exp.getAnnualAmount(), 0);
-            const totalSaved = year.cashflow.investedUser + year.cashflow.discretionary;
-            const netWorth = getAccountTotals(year.accounts).netWorth;
+interface DebtTabProps {
+    simulationData: SimulationYear[];
+}
 
-            return {
-                year: year.year,
-                age: startAge + index,
-                grossIncome: year.cashflow.totalIncome,
-                totalTaxes,
-                livingExpenses,
-                totalSaved,
-                netWorth,
-            };
-        });
-    }, [simulationData, startAge]);
+export const DebtTab: React.FC<DebtTabProps> = ({ simulationData }) => {
+    const { data, keys, debtFreeYear } = useMemo(() => {
+        let debtFreeYear: number | null = null;
+        const allDebtNames = new Set<string>();
 
-    const handleExportCSV = () => {
-        const headers = ["Year", "Age", "Gross Income", "Total Taxes", "Living Expenses", "Total Saved", "Net Worth"];
-        const keys: (keyof typeof tableData[0])[] = ["year", "age", "grossIncome", "totalTaxes", "livingExpenses", "totalSaved", "netWorth"];
-        const csvRows = [headers.join(',')];
-
-        tableData.forEach(row => {
-            const values = keys.map(key => row[key]);
-            csvRows.push(values.join(','));
+        // First pass: find all unique debt names
+        simulationData.forEach(year => {
+            year.expenses.forEach(exp => {
+                if (exp instanceof LoanExpense || exp instanceof MortgageExpense) {
+                    allDebtNames.add(exp.name);
+                }
+            });
         });
 
-        const csvString = csvRows.join('\n');
-        const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.setAttribute('href', url);
-        link.setAttribute('download', 'simulation_data.csv');
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
+        // Second pass: build the data for the stream chart
+        const mappedData = simulationData.map(year => {
+            const datum: any = { year: year.year };
+            let totalDebtThisYear = 0;
+
+            allDebtNames.forEach(name => {
+                const expense = year.expenses.find(exp => exp.name === name);
+                let balance = 0;
+                if (expense && (expense instanceof LoanExpense || expense instanceof MortgageExpense)) {
+                    balance = expense instanceof LoanExpense ? expense.amount : expense.loan_balance;
+                }
+                datum[name] = balance > 0 ? balance : 0;
+                totalDebtThisYear += datum[name];
+            });
+
+            if (totalDebtThisYear <= 0 && debtFreeYear === null) {
+                debtFreeYear = year.year;
+            }
+
+            return datum;
+        });
+
+        // If all debt is paid off from year 0
+        if (debtFreeYear === null && mappedData.length > 0) {
+            const initialTotalDebt = Object.values(mappedData[0]).reduce((sum: any, val: any) => typeof val === 'number' && val > 0 ? sum + val : sum, 0);
+            if(initialTotalDebt === 0) {
+                debtFreeYear = mappedData[0].year;
+            }
+        }
+
+
+        return { data: mappedData, keys: Array.from(allDebtNames), debtFreeYear };
+    }, [simulationData]);
+
+    // Generate a consistent color map for the accounts
+    const colors = useMemo(() => {
+        const palette = [
+            '#ef4444', '#f97316', '#eab308', '#84cc16', '#22c55e',
+            '#10b981', '#14b8a6', '#06b6d4', '#0ea5e9', '#3b82f6'
+        ].reverse(); // Debt colors can be "hotter"
+        const map: Record<string, string> = {};
+        keys.forEach((key, i) => {
+            map[key] = palette[i % palette.length];
+        });
+        return map;
+    }, [keys]);
+
+
+    if (keys.length === 0) {
+        return (
+            <div className="p-6 text-center text-gray-300">
+                <h3 className="text-2xl font-bold text-green-400">Congratulations!</h3>
+                <p className="mt-2">You are completely debt-free.</p>
+            </div>
+        );
+    }
 
     return (
-        <div className="p-4 text-white">
-            <div className="flex justify-end mb-4">
-                <button
-                    onClick={handleExportCSV}
-                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg transition-colors"
-                >
-                    Export to CSV
-                </button>
-            </div>
-            <div className="overflow-y-auto h-[350px]">
-                <table className="w-full text-left border-collapse">
-                    <thead className="sticky top-0 bg-gray-900">
-                        <tr>
-                            <th className="p-2 border-b border-gray-700">Year</th>
-                            <th className="p-2 border-b border-gray-700">Age</th>
-                            <th className="p-2 border-b border-gray-700">Gross Income</th>
-                            <th className="p-2 border-b border-gray-700">Total Taxes</th>
-                            <th className="p-2 border-b border-gray-700">Living Expenses</th>
-                            <th className="p-2 border-b border-gray-700">Total Saved</th>
-                            <th className="p-2 border-b border-gray-700">Net Worth</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {tableData.map((row) => (
-                            <tr key={row.year} className="hover:bg-gray-800">
-                                <td className="p-2 border-b border-gray-800">{row.year}</td>
-                                <td className="p-2 border-b border-gray-800">{row.age}</td>
-                                <td className="p-2 border-b border-gray-800">{formatCurrency(row.grossIncome)}</td>
-                                <td className="p-2 border-b border-gray-800">{formatCurrency(row.totalTaxes)}</td>
-                                <td className="p-2 border-b border-gray-800">{formatCurrency(row.livingExpenses)}</td>
-                                <td className="p-2 border-b border-gray-800">{formatCurrency(row.totalSaved)}</td>
-                                <td className="p-2 border-b border-gray-800">{formatCurrency(row.netWorth)}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+        <div className="w-full h-full flex flex-col">
+             {/* Header */}
+             <div className="mb-4 p-4 bg-gray-900 rounded-xl border border-gray-800 text-center shadow-lg">
+                <h2 className="text-lg font-semibold text-gray-400 uppercase tracking-wider">Debt Free Year</h2>
+                <p className={`text-4xl font-bold mt-1 ${debtFreeYear ? 'text-green-400' : 'text-amber-400'}`}>
+                    {debtFreeYear ? debtFreeYear : 'Beyond Simulation'}
+                </p>
+             </div>
+            
+            {/* Chart */}
+            <div className="flex-1 min-h-0 h-[400px]">
+                <DebtStreamChart data={data} keys={keys} colors={colors} />
             </div>
         </div>
     );

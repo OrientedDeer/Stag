@@ -163,3 +163,56 @@ export const CATEGORY_PALETTES: Record<AccountCategory, string[]> = {
 	Property: ["bg-chart-Yellow-1", "bg-chart-Yellow-2", "bg-chart-Yellow-3", "bg-chart-Yellow-4", "bg-chart-Yellow-5", "bg-chart-Yellow-6", "bg-chart-Yellow-7", "bg-chart-Yellow-8", "bg-chart-Yellow-9", "bg-chart-Yellow-10", "bg-chart-Yellow-11", "bg-chart-Yellow-12", "bg-chart-Yellow-13", "bg-chart-Yellow-14", "bg-chart-Yellow-15", "bg-chart-Yellow-16", "bg-chart-Yellow-17", "bg-chart-Yellow-18", "bg-chart-Yellow-19", "bg-chart-Yellow-20", "bg-chart-Yellow-21", "bg-chart-Yellow-22", "bg-chart-Yellow-23", "bg-chart-Yellow-24", "bg-chart-Yellow-25", "bg-chart-Yellow-26", "bg-chart-Yellow-27", "bg-chart-Yellow-28", "bg-chart-Yellow-29", "bg-chart-Yellow-30", "bg-chart-Yellow-31", "bg-chart-Yellow-32", "bg-chart-Yellow-33", "bg-chart-Yellow-34", "bg-chart-Yellow-35", "bg-chart-Yellow-36", "bg-chart-Yellow-37", "bg-chart-Yellow-38", "bg-chart-Yellow-39", "bg-chart-Yellow-40", "bg-chart-Yellow-41", "bg-chart-Yellow-42", "bg-chart-Yellow-43", "bg-chart-Yellow-44", "bg-chart-Yellow-45", "bg-chart-Yellow-46", "bg-chart-Yellow-47", "bg-chart-Yellow-48", "bg-chart-Yellow-49", "bg-chart-Yellow-50", "bg-chart-Yellow-51", "bg-chart-Yellow-52", "bg-chart-Yellow-53", "bg-chart-Yellow-54", "bg-chart-Yellow-55", "bg-chart-Yellow-56", "bg-chart-Yellow-57", "bg-chart-Yellow-58", "bg-chart-Yellow-59", "bg-chart-Yellow-60", "bg-chart-Yellow-61", "bg-chart-Yellow-62", "bg-chart-Yellow-63", "bg-chart-Yellow-64", "bg-chart-Yellow-65", "bg-chart-Yellow-66", "bg-chart-Yellow-67", "bg-chart-Yellow-68", "bg-chart-Yellow-69", "bg-chart-Yellow-70", "bg-chart-Yellow-71", "bg-chart-Yellow-72", "bg-chart-Yellow-73", "bg-chart-Yellow-74", "bg-chart-Yellow-75", "bg-chart-Yellow-76", "bg-chart-Yellow-77", "bg-chart-Yellow-78", "bg-chart-Yellow-79", "bg-chart-Yellow-80", "bg-chart-Yellow-81", "bg-chart-Yellow-82", "bg-chart-Yellow-83", "bg-chart-Yellow-84", "bg-chart-Yellow-85", "bg-chart-Yellow-86", "bg-chart-Yellow-87", "bg-chart-Yellow-88", "bg-chart-Yellow-89", "bg-chart-Yellow-90", "bg-chart-Yellow-91", "bg-chart-Yellow-92", "bg-chart-Yellow-93", "bg-chart-Yellow-94", "bg-chart-Yellow-95", "bg-chart-Yellow-96", "bg-chart-Yellow-97", "bg-chart-Yellow-98", "bg-chart-Yellow-99", "bg-chart-Yellow-100"],
 	Debt: ["bg-chart-Red-1", "bg-chart-Red-2", "bg-chart-Red-3", "bg-chart-Red-4", "bg-chart-Red-5", "bg-chart-Red-6", "bg-chart-Red-7", "bg-chart-Red-8", "bg-chart-Red-9", "bg-chart-Red-10", "bg-chart-Red-11", "bg-chart-Red-12", "bg-chart-Red-13", "bg-chart-Red-14", "bg-chart-Red-15", "bg-chart-Red-16", "bg-chart-Red-17", "bg-chart-Red-18", "bg-chart-Red-19", "bg-chart-Red-20", "bg-chart-Red-21", "bg-chart-Red-22", "bg-chart-Red-23", "bg-chart-Red-24", "bg-chart-Red-25", "bg-chart-Red-26", "bg-chart-Red-27", "bg-chart-Red-28", "bg-chart-Red-29", "bg-chart-Red-30", "bg-chart-Red-31", "bg-chart-Red-32", "bg-chart-Red-33", "bg-chart-Red-34", "bg-chart-Red-35", "bg-chart-Red-36", "bg-chart-Red-37", "bg-chart-Red-38", "bg-chart-Red-39", "bg-chart-Red-40", "bg-chart-Red-41", "bg-chart-Red-42", "bg-chart-Red-43", "bg-chart-Red-44", "bg-chart-Red-45", "bg-chart-Red-46", "bg-chart-Red-47", "bg-chart-Red-48", "bg-chart-Red-49", "bg-chart-Red-50", "bg-chart-Red-51", "bg-chart-Red-52", "bg-chart-Red-53", "bg-chart-Red-54", "bg-chart-Red-55", "bg-chart-Red-56", "bg-chart-Red-57", "bg-chart-Red-58", "bg-chart-Red-59", "bg-chart-Red-60", "bg-chart-Red-61", "bg-chart-Red-62", "bg-chart-Red-63", "bg-chart-Red-64", "bg-chart-Red-65", "bg-chart-Red-66", "bg-chart-Red-67", "bg-chart-Red-68", "bg-chart-Red-69", "bg-chart-Red-70", "bg-chart-Red-71", "bg-chart-Red-72", "bg-chart-Red-73", "bg-chart-Red-74", "bg-chart-Red-75", "bg-chart-Red-76", "bg-chart-Red-77", "bg-chart-Red-78", "bg-chart-Red-79", "bg-chart-Red-80", "bg-chart-Red-81", "bg-chart-Red-82", "bg-chart-Red-83", "bg-chart-Red-84", "bg-chart-Red-85", "bg-chart-Red-86", "bg-chart-Red-87", "bg-chart-Red-88", "bg-chart-Red-89", "bg-chart-Red-90", "bg-chart-Red-91", "bg-chart-Red-92", "bg-chart-Red-93", "bg-chart-Red-94", "bg-chart-Red-95", "bg-chart-Red-96", "bg-chart-Red-97", "bg-chart-Red-98", "bg-chart-Red-99", "bg-chart-Red-100"]
 };
+
+/**
+ * Robustly creates class instances from raw JSON.
+ * Instead of Object.assign, we map fields explicitly and provide defaults for missing fields.
+ */
+export function reconstituteAccount(data: any): AnyAccount | null {
+    if (!data || !data.className) return null;
+
+    // Common base fields with defaults
+    const id = data.id;
+    const name = data.name ?? "Unnamed Account";
+    const amount = Number(data.amount) ?? 0;
+
+    switch (data.className) {
+        case 'SavedAccount':
+            return new SavedAccount(id, name, amount, data.apr ?? 0);
+            
+        case 'InvestedAccount':
+            return new InvestedAccount(
+                id, 
+                name, 
+                amount, 
+                data.NonVestedAmount ?? 0,
+                data.expenseRatio ?? 0.1,
+                data.taxType ?? 'Brokerage',
+                data.isContributionEligible ?? true,
+                data.vestedPerYear ?? 0.2,
+            );
+            
+        case 'PropertyAccount':
+            return new PropertyAccount(
+                id,
+                name,
+                amount,
+                data.ownershipType ?? 'Owned',
+                data.loanAmount ?? 0,
+                data.startingLoanBalance ?? 0,
+                data.linkedAccountId
+            );            
+        case 'DebtAccount':
+            return new DebtAccount(
+                id, 
+                name, 
+                amount,
+                data.linkedAccountId ?? '',
+                data.apr ?? 0
+            );
+            
+        default:
+            console.warn(`Unknown account type: ${data.className}`);
+            return null;
+    }
+}

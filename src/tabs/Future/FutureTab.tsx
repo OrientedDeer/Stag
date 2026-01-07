@@ -1,15 +1,20 @@
 import React, { useState, useContext, useMemo } from 'react';
-import { useSimulation } from '../../components/Objects/Assumptions/useSimulation';
+import { runSimulation } from '../../components/Objects/Assumptions/useSimulation';
 import { AssumptionsContext, AssumptionsState } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 import { InvestedAccount, DebtAccount, PropertyAccount, SavedAccount, AnyAccount } from '../../components/Objects/Accounts/models';
 import { LoanExpense, MortgageExpense } from '../../components/Objects/Expense/models';
-import { ResponsiveLine } from '@nivo/line';
-import { ResponsiveBar } from '@nivo/bar';
+import { SimulationContext } from '../../components/Objects/Assumptions/SimulationContext';
+import { AccountContext } from '../../components/Objects/Accounts/AccountContext';
+import { IncomeContext } from '../../components/Objects/Income/IncomeContext';
+import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
+import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
 
 // Imports from the new sub-folders
 import { OverviewTab } from './tabs/OverviewTab';
 import { CashflowTab } from './tabs/CashflowTabs';
+import { AssetsStreamChart } from '../../components/Charts/AssetsStreamChart';
+import { DebtStreamChart } from '../../components/Charts/DebtStreamChart'; // <--- Import the new chart
 
 const future_tabs = ["Overview", "Cashflow", "Assets", "Debt", "Data"];
 
@@ -35,152 +40,115 @@ const formatCurrency = (value: number) => {
 // --- Inline Components for Assets, Debt, Data ---
 
 const DebtTab = ({ simulationData }: { simulationData: SimulationYear[] }) => {
-    const { data, debtFreeYear } = useMemo(() => {
+    const { data, keys, debtFreeYear } = useMemo(() => {
         let debtFreeYear: number | null = null;
-        const allDebtNames = new Set<string>();
-        simulationData.forEach(year => {
+        const allKeys = new Set<string>();
+
+        const mappedData = simulationData.map(year => {
+            const datum: any = { year: year.year };
+            let yearTotalDebt = 0;
+
+            // 1. Check Expenses (Mortgages & Loans)
             year.expenses.forEach(exp => {
                 if (exp instanceof LoanExpense || exp instanceof MortgageExpense) {
-                    allDebtNames.add(exp.name);
+                    const balance = exp instanceof LoanExpense ? exp.amount : exp.loan_balance;
+                    if (balance > 0) {
+                        datum[exp.name] = balance;
+                        yearTotalDebt += balance;
+                        allKeys.add(exp.name);
+                    }
                 }
             });
-        });
 
-        const debtSeries: { [key: string]: { id: string, data: { x: number, y: number }[] } } = {};
-        allDebtNames.forEach(name => {
-            debtSeries[name] = { id: name, data: [] };
-        });
-
-        simulationData.forEach(year => {
-            const debtAccounts = year.accounts.filter(acc => acc instanceof DebtAccount);
-            const totalDebt = debtAccounts.reduce((sum, acc) => sum + acc.amount, 0);
-            if (totalDebt <= 0 && debtFreeYear === null) debtFreeYear = year.year;
-
-            const yearlyExpenseMap = new Map(year.expenses.map(exp => [exp.name, exp]));
-            allDebtNames.forEach(name => {
-                const exp = yearlyExpenseMap.get(name);
-                let balance = 0;
-                if (exp && (exp instanceof LoanExpense || exp instanceof MortgageExpense)) {
-                    balance = exp instanceof LoanExpense ? exp.amount : exp.loan_balance;
+            // 2. Check Accounts (Debt Accounts / Credit Cards)
+            year.accounts.forEach(acc => {
+                if (acc instanceof DebtAccount) {
+                    if (acc.amount > 0) {
+                        datum[acc.name] = acc.amount;
+                        yearTotalDebt += acc.amount;
+                        allKeys.add(acc.name);
+                    }
                 }
-                debtSeries[name].data.push({ x: year.year, y: balance });
             });
+
+            // Track Debt Free Year
+            if (yearTotalDebt <= 1 && debtFreeYear === null) { // tolerance for float math
+                debtFreeYear = year.year;
+            }
+
+            return datum;
         });
 
-        return { data: Object.values(debtSeries), debtFreeYear };
+        return { data: mappedData, keys: Array.from(allKeys), debtFreeYear };
     }, [simulationData]);
 
-    if (data.length === 0) return <div className="p-4 text-white">No debt to track. You're debt free!</div>;
+    // Generate colors consistent with AssetsTab
+    const colors = useMemo(() => {
+        // Red/Orange/Yellow/Gray spectrum for Debts usually looks better, 
+        // but using a distinct palette from Assets helps differentiate.
+        const palette = [
+            '#f87171', '#fb923c', '#facc15', '#a3a3a3', '#ef4444', 
+            '#f97316', '#eab308', '#737373', '#b91c1c', '#c2410c'
+        ];
+        const map: Record<string, string> = {};
+        keys.forEach((key, i) => {
+            map[key] = palette[i % palette.length];
+        });
+        return map;
+    }, [keys]);
+
+    if (keys.length === 0) return <div className="p-4 text-white">No debt to track. You're debt free!</div>;
 
     return (
-        <div className="p-4 text-white h-[400px] flex flex-col">
+        <div className="p-4 text-white h-[500px] flex flex-col">
             <h3 className="text-lg font-bold text-center mb-2">
                 Debt Free Year: {debtFreeYear ? <span className='text-green-400'>{debtFreeYear}</span> : 'Beyond Simulation'}
             </h3>
-            <div className="grow">
-                <ResponsiveLine
-                    data={data}
-                    margin={{ top: 50, right: 110, bottom: 50, left: 80 }}
-                    xScale={{ type: 'point' }}
-                    yScale={{ type: 'linear', min: 0, max: 'auto' }}
-                    curve="monotoneX"
-                    axisTop={null}
-                    axisRight={null}
-                    enableGridX={false}
-                    colors={{ scheme: 'category10' }}
-                    lineWidth={2}
-                    pointSize={6}
-                    pointColor={{ theme: 'background' }}
-                    pointBorderWidth={2}
-                    pointBorderColor={{ from: 'serieColor' }}
-                    useMesh={true}
-                    legends={[
-                        {
-                            anchor: 'bottom-right',
-                            direction: 'column',
-                            translateX: 100,
-                            itemsSpacing: 0,
-                            itemDirection: 'left-to-right',
-                            itemWidth: 80,
-                            itemHeight: 20,
-                            itemOpacity: 0.75,
-                            symbolSize: 12,
-                            symbolShape: 'circle',
-                        }
-                    ]}
-                    theme={{
-                        "background": "transparent",
-                        "text": { "fontSize": 12, "fill": "#ffffff" },
-                        "axis": { "legend": { "text": { "fill": "#ffffff" } }, "ticks": { "text": { "fill": "#dddddd" } } },
-                        "grid": { "line": { "stroke": "#444444", "strokeWidth": 1 } },
-                        "tooltip": { "container": { "background": "#222222", "color": "#ffffff", "fontSize": 12 } }
-                    }}
-                />
+            <div className="grow w-full">
+                <DebtStreamChart data={data} keys={keys} colors={colors} />
             </div>
         </div>
     );
 };
 
 const AssetsTab = ({ simulationData }: { simulationData: SimulationYear[] }) => {
-    const keys = ['Property', 'Invested', 'Saved'];
-    const chartData = useMemo(() => {
-        return simulationData.map(year => {
-            const saved = year.accounts.filter(acc => acc instanceof SavedAccount).reduce((sum, acc) => sum + acc.amount, 0);
-            const invested = year.accounts.filter(acc => acc instanceof InvestedAccount).reduce((sum, acc) => sum + acc.amount, 0);
-            const property = year.accounts.filter(acc => acc instanceof PropertyAccount).reduce((sum, acc) => sum + acc.amount, 0);
-            return {
-                year: year.year,
-                Saved: saved,
-                Invested: invested,
-                Property: property,
-            };
+    const { data, keys } = useMemo(() => {
+        const allKeys = new Set<string>();
+        const mappedData = simulationData.map(year => {
+            const datum: any = { year: year.year };
+            year.accounts.forEach(acc => {
+                // Include only asset accounts (Saved, Invested, Property)
+                if (acc instanceof SavedAccount || acc instanceof InvestedAccount || acc instanceof PropertyAccount) {
+                    let val = acc.amount;
+                    if (acc instanceof PropertyAccount) {
+                        // @ts-ignore
+                        val -= (acc.loanAmount || 0);
+                    }
+                    datum[acc.name] = val;
+                    allKeys.add(acc.name);
+                }
+            });
+            return datum;
         });
+        return { data: mappedData, keys: Array.from(allKeys) };
     }, [simulationData]);
 
+    // Generate a consistent color map for the accounts
+    const colors = useMemo(() => {
+        const palette = [
+            '#60a5fa', '#34d399', '#f472b6', '#fbbf24', '#a78bfa', 
+            '#2dd4bf', '#fb7185', '#c084fc', '#a3e635', '#22d3ee'
+        ];
+        const map: Record<string, string> = {};
+        keys.forEach((key, i) => {
+            map[key] = palette[i % palette.length];
+        });
+        return map;
+    }, [keys]);
+
     return (
-        <div className="p-4 text-white h-[400px]">
-            <ResponsiveBar
-                data={chartData}
-                keys={keys}
-                indexBy="year"
-                margin={{ top: 50, right: 60, bottom: 60, left: 80 }}
-                padding={0.3}
-                groupMode="stacked"
-                colors={{ scheme: 'set2' }}
-                valueFormat=" >-$,.0f"
-                axisLeft={{
-                    tickSize: 5,
-                    tickPadding: 5,
-                    tickRotation: 0,
-                    legend: 'Asset Value',
-                    legendPosition: 'middle',
-                    legendOffset: -70,
-                    format: " >-$,.0f"
-                }}
-                legends={[
-                    {
-                        dataFrom: 'keys',
-                        anchor: 'bottom',
-                        direction: 'row',
-                        justify: false,
-                        translateX: 20,
-                        translateY: 50,
-                        itemsSpacing: 2,
-                        itemWidth: 100,
-                        itemHeight: 20,
-                        itemDirection: 'left-to-right',
-                        itemOpacity: 0.85,
-                        symbolSize: 20,
-                    }
-                ]}
-                theme={{
-                    "background": "transparent",
-                    "text": { "fontSize": 12, "fill": "#ffffff" },
-                    "axis": { "legend": { "text": { "fill": "#ffffff" } }, "ticks": { "text": { "fill": "#dddddd" } } },
-                    "grid": { "line": { "stroke": "#444444", "strokeWidth": 1 } },
-                    "tooltip": { "container": { "background": "#222222", "color": "#ffffff", "fontSize": 12 } }
-                }}
-            />
+        <div className="h-[500px] w-full">
+            <AssetsStreamChart data={data} keys={keys} colors={colors} />
         </div>
     );
 };
@@ -315,13 +283,39 @@ const findFinancialIndependenceYear = (simulation: SimulationYear[], assumptions
 
 export default function FutureTab() {
     const { state: assumptions } = useContext(AssumptionsContext);
+    const { simulation, dispatch: dispatchSimulation } = useContext(SimulationContext);
+    const { accounts } = useContext(AccountContext);
+    const { incomes } = useContext(IncomeContext);
+    const { expenses } = useContext(ExpenseContext);
+    const { state: taxState } = useContext(TaxContext);
     const [activeTab, setActiveTab] = useState('Overview');
-    const simulation = useSimulation(assumptions.demographics.lifeExpectancy-assumptions.personal.startAge-19);
+
+    const handleRecalculate = () => {
+        const newSimulation = runSimulation(
+            assumptions.demographics.lifeExpectancy - assumptions.personal.startAge - 19,
+            accounts,
+            incomes,
+            expenses,
+            assumptions,
+            taxState
+        );
+        dispatchSimulation({ type: 'SET_SIMULATION', payload: newSimulation });
+    };
 
     const fiYear = findFinancialIndependenceYear(simulation, assumptions);
 
     if (simulation.length === 0) {
-        return <div className="p-4 text-white bg-gray-950">Loading simulation...</div>;
+        return (
+            <div className="p-4 text-white bg-gray-950 text-center">
+                <p className="mb-4">No simulation data. Click the button to run a new simulation based on your current inputs.</p>
+                <button
+                    onClick={handleRecalculate}
+                    className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg transition-colors"
+                >
+                    Recalculate Simulation
+                </button>
+            </div>
+        );
     }
 
     const tabContent: Record<string, React.ReactNode> = {
@@ -337,9 +331,17 @@ export default function FutureTab() {
             <div className="w-full px-8 max-w-screen-2xl">
 
                 {/* Hero Section */}
-                <div className="mb-6 p-4 bg-gray-900 rounded-xl border border-gray-800 text-center shadow-lg">
-                    <h2 className="text-xl font-bold text-white">Financial Independence</h2>
-                    <p className="text-3xl font-bold text-green-400">{fiYear ? `Year: ${fiYear}` : 'Not Yet Reached'}</p>
+                <div className="mb-6 p-4 bg-gray-900 rounded-xl border border-gray-800 text-center shadow-lg flex justify-between items-center">
+                    <div>
+                        <h2 className="text-xl font-bold text-white">Financial Independence</h2>
+                        <p className="text-3xl font-bold text-green-400">{fiYear ? `Year: ${fiYear}` : 'Not Yet Reached'}</p>
+                    </div>
+                    <button
+                        onClick={handleRecalculate}
+                        className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors"
+                    >
+                        Recalculate Simulation
+                    </button>
                 </div>
 
                 {/* Tab System */}

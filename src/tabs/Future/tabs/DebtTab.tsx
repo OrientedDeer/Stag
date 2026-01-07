@@ -1,14 +1,18 @@
-import { useMemo } from 'react';
-import { ResponsiveLine } from '@nivo/line';
+import React, { useMemo } from 'react';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
-import { DebtAccount } from '../../../components/Objects/Accounts/models';
 import { LoanExpense, MortgageExpense } from '../../../components/Objects/Expense/models';
+import { DebtStreamChart } from '../../../components/Charts/DebtStreamChart';
 
-export const DebtTab = ({ simulationData }: { simulationData: SimulationYear[] }) => {
-    const { data, debtFreeYear } = useMemo(() => {
+interface DebtTabProps {
+    simulationData: SimulationYear[];
+}
+
+export const DebtTab: React.FC<DebtTabProps> = ({ simulationData }) => {
+    const { data, keys, debtFreeYear } = useMemo(() => {
         let debtFreeYear: number | null = null;
-
         const allDebtNames = new Set<string>();
+
+        // First pass: find all unique debt names
         simulationData.forEach(year => {
             year.expenses.forEach(exp => {
                 if (exp instanceof LoanExpense || exp instanceof MortgageExpense) {
@@ -17,101 +21,76 @@ export const DebtTab = ({ simulationData }: { simulationData: SimulationYear[] }
             });
         });
 
-        const debtSeries: { [key: string]: { id: string, data: { x: number, y: number }[] } } = {};
-        allDebtNames.forEach(name => {
-            debtSeries[name] = { id: name, data: [] };
-        });
+        // Second pass: build the data for the stream chart
+        const mappedData = simulationData.map(year => {
+            const datum: any = { year: year.year };
+            let totalDebtThisYear = 0;
 
-        simulationData.forEach(year => {
-            const debtAccounts = year.accounts.filter(acc => acc instanceof DebtAccount);
-            const totalDebt = debtAccounts.reduce((sum, acc) => sum + acc.amount, 0);
+            allDebtNames.forEach(name => {
+                const expense = year.expenses.find(exp => exp.name === name);
+                let balance = 0;
+                if (expense && (expense instanceof LoanExpense || expense instanceof MortgageExpense)) {
+                    balance = expense instanceof LoanExpense ? expense.amount : expense.loan_balance;
+                }
+                datum[name] = balance > 0 ? balance : 0;
+                totalDebtThisYear += datum[name];
+            });
 
-            if (totalDebt <= 0 && debtFreeYear === null) {
+            if (totalDebtThisYear <= 0 && debtFreeYear === null) {
                 debtFreeYear = year.year;
             }
 
-            const yearlyExpenseMap = new Map(year.expenses.map(exp => [exp.name, exp]));
-
-            allDebtNames.forEach(name => {
-                const exp = yearlyExpenseMap.get(name);
-                let balance = 0;
-                if (exp && (exp instanceof LoanExpense || exp instanceof MortgageExpense)) {
-                    balance = exp instanceof LoanExpense ? exp.amount : exp.loan_balance;
-                }
-                debtSeries[name].data.push({ x: year.year, y: balance });
-            });
+            return datum;
         });
 
-        return { data: Object.values(debtSeries), debtFreeYear };
+        // If all debt is paid off from year 0
+        if (debtFreeYear === null && mappedData.length > 0) {
+            const initialTotalDebt = Object.values(mappedData[0]).reduce((sum: any, val: any) => typeof val === 'number' && val > 0 ? sum + val : sum, 0);
+            if(initialTotalDebt === 0) {
+                debtFreeYear = mappedData[0].year;
+            }
+        }
+
+
+        return { data: mappedData, keys: Array.from(allDebtNames), debtFreeYear };
     }, [simulationData]);
 
-    if (data.length === 0) {
-        return <div className="p-4 text-white">No debt to track. You're debt free!</div>;
+    // Generate a consistent color map for the accounts
+    const colors = useMemo(() => {
+        const palette = [
+            '#ef4444', '#f97316', '#eab308', '#84cc16', '#22c55e',
+            '#10b981', '#14b8a6', '#06b6d4', '#0ea5e9', '#3b82f6'
+        ].reverse(); // Debt colors can be "hotter"
+        const map: Record<string, string> = {};
+        keys.forEach((key, i) => {
+            map[key] = palette[i % palette.length];
+        });
+        return map;
+    }, [keys]);
+
+
+    if (keys.length === 0) {
+        return (
+            <div className="p-6 text-center text-gray-300">
+                <h3 className="text-2xl font-bold text-green-400">Congratulations!</h3>
+                <p className="mt-2">You are completely debt-free.</p>
+            </div>
+        );
     }
 
     return (
-        <div className="p-4 text-white h-[400px] flex flex-col">
-            <h3 className="text-lg font-bold text-center mb-2">
-                Debt Free Year: {debtFreeYear ? <span className='text-green-400'>{debtFreeYear}</span> : 'Beyond Simulation'}
-            </h3>
-            <div className="grow">
-                <ResponsiveLine
-                    data={data}
-                    margin={{ top: 50, right: 110, bottom: 50, left: 80 }}
-                    xScale={{ type: 'point' }}
-                    yScale={{ type: 'linear', min: 0, max: 'auto' }}
-                    curve="monotoneX"
-                    axisTop={null}
-                    axisRight={null}
-                    axisBottom={{
-                        tickSize: 5,
-                        tickPadding: 5,
-                        tickRotation: 0,
-                        legend: 'Year',
-                        legendOffset: 36,
-                        legendPosition: 'middle',
-                    }}
-                    axisLeft={{
-                        tickSize: 5,
-                        tickPadding: 5,
-                        tickRotation: 0,
-                        legend: 'Balance ($)',
-                        legendOffset: -70,
-                        legendPosition: 'middle',
-                        format: " >-$,.0f"
-                    }}
-                    enableGridX={false}
-                    colors={{ scheme: 'category10' }}
-                    lineWidth={2}
-                    pointSize={6}
-                    pointColor={{ theme: 'background' }}
-                    pointBorderWidth={2}
-                    pointBorderColor={{ from: 'serieColor' }}
-                    useMesh={true}
-                    legends={[
-                        {
-                            anchor: 'bottom-right',
-                            direction: 'column',
-                            justify: false,
-                            translateX: 100,
-                            translateY: 0,
-                            itemsSpacing: 0,
-                            itemDirection: 'left-to-right',
-                            itemWidth: 80,
-                            itemHeight: 20,
-                            itemOpacity: 0.75,
-                            symbolSize: 12,
-                            symbolShape: 'circle',
-                        }
-                    ]}
-                    theme={{
-                        "background": "#09090b",
-                        "text": { "fontSize": 12, "fill": "#ffffff" },
-                        "axis": { "legend": { "text": { "fill": "#ffffff" } }, "ticks": { "text": { "fill": "#dddddd" } } },
-                        "grid": { "line": { "stroke": "#444444", "strokeWidth": 1 } },
-                        "tooltip": { "container": { "background": "#222222", "color": "#ffffff", "fontSize": 12 } }
-                    }}
-                />
+        <div className="w-full h-full flex flex-col">
+             {/* Header */}
+             <div className="mb-4 p-4 bg-gray-900 rounded-xl border border-gray-800 text-center shadow-lg">
+                <h2 className="text-lg font-semibold text-gray-400 uppercase tracking-wider">Debt Free Year</h2>
+                <p className={`text-4xl font-bold mt-1 ${debtFreeYear ? 'text-green-400' : 'text-amber-400'}`}>
+                    {debtFreeYear ? debtFreeYear : 'Beyond Simulation'}
+                </p>
+             </div>
+            
+            {/* Chart */}
+            <div className="flex-1 min-h-0 h-[400px]">
+                <DebtStreamChart data={data} keys={keys} colors={colors} />
             </div>
         </div>
     );

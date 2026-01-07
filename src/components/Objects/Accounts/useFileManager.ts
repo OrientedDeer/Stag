@@ -4,12 +4,10 @@ import { IncomeContext } from '../Income/IncomeContext';
 import { ExpenseContext } from '../Expense/ExpenseContext';
 import { TaxContext } from '../../Objects/Taxes/TaxContext';
 import { AssumptionsContext, AssumptionsState, defaultAssumptions } from '../Assumptions/AssumptionsContext'; // Import AssumptionsContext and AssumptionsState
-import { AnyAccount } from './models';
-import { reconstituteAccount, AmountHistoryEntry } from './AccountContext';
-import { AnyIncome } from '../Income/models';
-import { reconstituteIncome } from '../Income/IncomeContext';
-import { AnyExpense } from '../Expense/models';
-import { reconstituteExpense } from '../Expense/ExpenseContext';
+import { AnyAccount, reconstituteAccount } from './models';
+import { AmountHistoryEntry } from './AccountContext';
+import { AnyIncome, reconstituteIncome } from '../Income/models';
+import { AnyExpense, reconstituteExpense } from '../Expense/models';
 import { TaxState } from '../../Objects/Taxes/TaxContext';
 
 interface FullBackup {

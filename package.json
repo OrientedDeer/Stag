@@ -19,6 +19,7 @@
     "@nivo/icicle": "^0.99.0",
     "@nivo/line": "^0.99.0",
     "@nivo/sankey": "^0.99.0",
+    "@nivo/stream": "^0.99.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-router-dom": "^7.10.1"
