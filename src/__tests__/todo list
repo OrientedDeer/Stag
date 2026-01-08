@@ -1,0 +1,94 @@
+# Simulation & Logic Testing Plan
+
+## 1. Critical Logic (Must Not Fail)
+These tests cover the core mechanics that drive the simulation's integrity.
+
+### Simulation Engine Mechanics
+- [ ] **Zero-Growth Baseline:** Run a simulation with 0% inflation, 0% ROI, and 0% salary growth. Verify Net Worth changes exactly by (Income - Expenses) each year.
+- [ ] **Inflation Impact:** Run two simulations (inflationAdjusted: true vs false). Verify the "Real Dollar" simulation results in lower nominal numbers (or strictly equal purchasing power).
+- [ ] **Deficit Handling:** If Expenses > Income, verify the simulation correctly shows a negative cashflow.
+- [ ] **The "Cliff" Year:** Set lifeExpectancy to a specific age (e.g., 90). Verify the simulation array stops exactly at that age.
+
+### Investment Accounts
+- [ ] **Expense Ratio Drag:** Compare an account with 0.1% expense ratio vs 1.0%. Verify the second account ends with significantly less value.
+- [ ] **Vesting Schedules:** Create an account with NonVestedAmount > 0 and a specific vesting rate. Verify NonVestedAmount reaches 0 after the expected number of years.
+- [ ] **Contribution Eligibility:** Mark an account as isContributionEligible: false. Verify it stops receiving automatic savings contributions.
+
+### Property & Mortgage
+- [ ] **Amortization Accuracy:** Create a standard mortgage ($100k, 5%, 30 years). Verify balance hits exactly $0 in Year 30.
+- [ ] **Property Appreciation:** Verify PropertyAccount value grows independently of the mortgage balance.
+- [ ] **Paid-Off Impact:** In the year the mortgage is paid off, verify Discretionary Cashflow increases by the amount of the mortgage payment.
+
+---
+
+## 2. Unit Tests: Account Models
+Source: src/components/Objects/Accounts/models.tsx
+
+### InvestedAccount
+- [ ] **Vesting Decay:** Initialize with NonVestedAmount=$10k, vestedPerYear=0.2. Call increment() 5 times. Verify NonVestedAmount is ~0.
+- [ ] **Net Growth Calculation:** Verify returnRate calculation correctly subtracts expenseRatio from (ROR + Inflation).
+- [ ] **Inflation Toggle:** If macro.inflationAdjusted is true, verify the return rate includes the inflation rate.
+
+### PropertyAccount
+- [ ] **Manual Overrides:** Call increment() with { newValue, newLoanBalance } overrides. Verify returned object uses these values instead of calculated growth.
+- [ ] **Standard Appreciation:** Without overrides, verify value grows by assumptions.expenses.housingAppreciation.
+
+### Reconstitution (Serialization)
+- [ ] **Polymorphism:** Pass raw JSON with { className: 'InvestedAccount' } to reconstituteAccount. Verify result is an instance of InvestedAccount.
+- [ ] **Defaults:** Pass JSON missing optional fields (e.g., apr, expenseRatio). Verify the class applies correct default values.
+
+---
+
+## 3. Unit Tests: Expense Models
+Source: src/components/Objects/Expense/models.tsx
+
+### BaseExpense
+- [ ] **Frequency Prorating:** Test getProratedAnnual() for 'Weekly' (x52), 'Monthly' (x12), and 'Annually' (x1).
+- [ ] **Partial Year (Active Multiplier):** Create an expense starting July 1st. Verify getExpenseActiveMultiplier returns 0.5 for the starting year.
+
+### MortgageExpense
+- [ ] **Amortization Math:** Create a $100k, 5%, 30-year mortgage. Compare calculatePayment() result against a standard loan calculator (~$536.82 P&I).
+- [ ] **Extra Payments:** Set extra_payment > 0. Run increment() and verify loan balance decreases faster than the standard schedule.
+- [ ] **Escrow Inflation:** Run increment(). Verify utilities/HOA increase by inflation, but fixed rate items (property tax rate) remain constant as rates.
+- [ ] **Paid Off State:** Set loan_balance=0. Call calculateAnnualAmortization(). Verify Principal/Interest are 0, but totalPayment still includes Escrow items.
+
+### LoanExpense
+- [ ] **Interest Types:** Run increment() with 'Simple' vs 'Compounding' interest. Verify Compounding results in higher interest costs/slower payoff.
+- [ ] **Negative Amortization:** Set a payment lower than the interest due. Verify balance increases after increment().
+- [ ] **Reverse Calculation:** Verify calculatePaymentFromEndDate() and calculateEndDateFromPayment() are mathematically consistent (inverse operations).
+
+### RentExpense
+- [ ] **Dual Inflation:** Run increment(). Verify 'payment' grows by (rentInflation + generalInflation) while 'utilities' grows only by generalInflation.
+
+---
+
+## 4. Unit Tests: Income Models
+Source: src/components/Objects/Income/models.tsx
+
+### WorkIncome
+- [ ] **Growth Strategies:** Run increment() with 'FIXED' vs 'GROW_WITH_SALARY'. Verify preTax401k/Roth contributions remain flat or grow respectively.
+- [ ] **Employer Match:** Verify employerMatch grows at the same rate as the salary amount.
+- [ ] **Healthcare Cost:** Verify insurance deduction grows by healthcareInflation, not generalInflation.
+
+### PassiveIncome
+- [ ] **Source Logic:** Create 'Rental' income. Verify increment() uses rentInflation. Create 'Dividend' income. Verify it uses generalInflation.
+
+### Reconstitution
+- [ ] **Date Handling:** Pass string dates ("2025-01-01") to reconstituteIncome. Verify they are converted to valid Date objects.
+
+---
+
+## 5. UI & Integration Checks
+
+### Sliders & Charts
+- [ ] **Range Filtering:** Slide start year to 2040. Verify Chart X-axis updates to start at 2040.
+- [ ] **Zoom Stability:** Zoom into a 5-year window. Verify "Debt Free Year" text remains accurate (based on full simulation).
+- [ ] **Tooltip Accuracy:** Sum the values in the Overview tooltip manually. Verify they match the displayed "Net Worth".
+
+### Empty States & Edge Cases
+- [ ] **No Accounts:** Delete all accounts. Verify AssetsStreamChart renders a blank state without crashing.
+- [ ] **Debt Free:** Ensure DebtTab displays "You are debt free!" message when no liabilities exist.
+- [ ] **Zero Income:** Verify CashflowTab Sankey chart renders correctly with only expenses.
+- [ ] **100-Year Life:** Set simulation to run for 100 years. Verify performance/memory usage.
+- [ ] **Hyper-Inflation:** Set inflation to 50%. Verify charts handle the exponential scale.
+- [ ] **Negative Net Worth:** Verify Overview Area chart handles negative stacked areas correctly (Debt > Assets).

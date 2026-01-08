@@ -33,7 +33,7 @@ export class SavedAccount extends BaseAccount {
   }
 
   increment (_assumptions: AssumptionsState, annualContribution: number = 0): SavedAccount {
-    const amount = (this.amount + (this.apr/100)) + annualContribution;
+    const amount = (this.amount * (1 + this.apr/100)) + annualContribution;
     return new SavedAccount(this.id, this.name, amount, this.apr);
   }
 }
@@ -43,20 +43,60 @@ export class InvestedAccount extends BaseAccount {
     id: string,
     name: string,
     amount: number,
-    public NonVestedAmount: number,
+    // New: Track the specific portion of 'amount' that came from the employer
+    public employerBalance: number = 0, 
+    // New: How many years have we been accumulating/vesting?
+    public tenureYears: number = 0,     
     public expenseRatio: number = 0.1,
     public taxType: TaxType = 'Brokerage',
     public isContributionEligible: boolean = true,
-    public vestedPerYear: number = 0.2,
+    public vestedPerYear: number = 0.2, // 20% per year (5 year graded)
   ) {
     super(id, name, amount);
   }
-  increment (assumptions: AssumptionsState, annualContribution: number = 0): InvestedAccount {
-    const returnRate = 1 + (assumptions.investments.returnRates.ror + (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) - this.expenseRatio) / 100
 
-    const amount = this.amount * returnRate + annualContribution;
-    const NonVestedAmount = ((this.NonVestedAmount * ((assumptions.investments.returnRates.ror + (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0)) / 100 - this.expenseRatio/100)) + annualContribution) * (1 - this.vestedPerYear);
-    return new InvestedAccount(this.id, this.name, amount, NonVestedAmount, this.expenseRatio, this.taxType, this.isContributionEligible, this.vestedPerYear);
+  // Helper to calculate the current "Risk" (Unvested Amount)
+  get nonVestedAmount(): number {
+    // Cap vesting at 100% (1.0)
+    const vestedPct = Math.min(1, this.tenureYears * this.vestedPerYear);
+    return this.employerBalance * (1 - vestedPct);
+  }
+
+  get vestedAmount(): number {
+    return this.amount - this.nonVestedAmount;
+  }
+
+  increment(
+    assumptions: AssumptionsState, 
+    userContribution: number = 0, 
+    employerContribution: number = 0
+  ): InvestedAccount {
+    
+    // 1. Calculate Growth Rate
+    const returnRate = 1 + (assumptions.investments.returnRates.ror + (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) - this.expenseRatio) / 100;
+
+    // 2. Grow the TOTAL Balance
+    const newTotalAmount = (this.amount * returnRate) + userContribution + employerContribution;
+
+    // 3. Grow the EMPLOYER Balance separately
+    // (Employer money grows, and new match is added)
+    const newEmployerBalance = (this.employerBalance * returnRate) + employerContribution;
+
+    // 4. Increment Tenure (1 year passed)
+    // If fully vested, we can stop incrementing to save safety checks, but keeping it simple is fine.
+    const newTenure = this.tenureYears + 1;
+
+    return new InvestedAccount(
+      this.id, 
+      this.name, 
+      newTotalAmount, 
+      newEmployerBalance, 
+      newTenure, 
+      this.expenseRatio, 
+      this.taxType, 
+      this.isContributionEligible, 
+      this.vestedPerYear
+    );
   }
 }
 
@@ -185,11 +225,12 @@ export function reconstituteAccount(data: any): AnyAccount | null {
                 id, 
                 name, 
                 amount, 
-                data.NonVestedAmount ?? 0,
+                data.employerBalance ?? 0,
+                data.tenureYears ?? 0,
                 data.expenseRatio ?? 0.1,
                 data.taxType ?? 'Brokerage',
                 data.isContributionEligible ?? true,
-                data.vestedPerYear ?? 0.2,
+                data.vestedPerYear ?? 0.2
             );
             
         case 'PropertyAccount':

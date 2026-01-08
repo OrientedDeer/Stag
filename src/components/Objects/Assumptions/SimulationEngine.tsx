@@ -52,7 +52,7 @@ export function simulateOneYear(
     const nextExpenses = expenses.map(exp => exp.increment(assumptions));
 
     // 2. TAXES & DEDUCTIONS (The Government)
-    const totalGrossIncome = TaxService.getGrossIncome(nextIncomes, year);
+    let totalGrossIncome = TaxService.getGrossIncome(nextIncomes, year);
     const preTaxDeductions = TaxService.getPreTaxExemptions(nextIncomes, year);
     const postTaxDeductions = TaxService.getPostTaxExemptions(nextIncomes, year);
     
@@ -64,10 +64,11 @@ export function simulateOneYear(
         return sum;
     }, 0);
 
-    const fedTax = TaxService.calculateFederalTax(taxState, nextIncomes, nextExpenses, year, assumptions);
-    const stateTax = TaxService.calculateStateTax(taxState, nextIncomes, nextExpenses, year, assumptions);
+    // Initial Tax Calculation (Before any withdrawals)
+    let fedTax = TaxService.calculateFederalTax(taxState, nextIncomes, nextExpenses, year, assumptions);
+    let stateTax = TaxService.calculateStateTax(taxState, nextIncomes, nextExpenses, year, assumptions);
     const ficaTax = TaxService.calculateFicaTax(taxState, nextIncomes, year, assumptions);
-    const totalTax = fedTax + stateTax + ficaTax;
+    let totalTax = fedTax + stateTax + ficaTax;
 
     // 3. LIVING EXPENSES (The Bills)
     const totalLivingExpenses = nextExpenses.reduce((sum, exp) => {
@@ -82,11 +83,117 @@ export function simulateOneYear(
 
     // 4. CASHFLOW (The Wallet)
     // Formula: Gross - PreTax(401k/HSA/Insurance) - PostTax(Roth) - Taxes - Bills
-    // (Note: preTaxDeductions INCLUDES insurance, so we don't subtract totalInsuranceCost separately)
     let discretionaryCash = totalGrossIncome - preTaxDeductions - postTaxDeductions - totalTax - totalLivingExpenses;
 
-    // 5. INFLOWS & BUCKETS (The Allocation)
-    const accountInflows: Record<string, number> = {}; 
+    // ------------------------------------------------------------------
+    // NEW: WITHDRAWAL LOGIC (Deficit Manager)
+    // ------------------------------------------------------------------
+    
+    // CHANGED: Split inflows into User vs Employer to support vesting tracking
+    const userInflows: Record<string, number> = {}; 
+    const employerInflows: Record<string, number> = {}; 
+    let withdrawalTaxes = 0;
+
+    if (discretionaryCash < 0) {
+        let deficit = Math.abs(discretionaryCash);
+        
+        // Loop through Withdrawal Strategy
+        const strategy = assumptions.withdrawalStrategy || []; 
+
+        for (const bucket of strategy) {
+            if (deficit <= 0.01) break; 
+
+            const account = accounts.find(acc => acc.id === bucket.accountId);
+            if (!account) continue;
+
+            const availableBalance = account.amount; 
+            if (availableBalance <= 0) continue;
+
+            let withdrawAmount = 0;
+            let taxHit = 0;
+
+            // SCENARIO 1: Tax-Free
+            const isTaxFree = (account instanceof SavedAccount) || 
+                              (account instanceof InvestedAccount && (account.taxType === 'Roth 401k' || account.taxType === 'Roth IRA' || account.taxType === 'HSA'));
+
+            if (isTaxFree) {
+                withdrawAmount = Math.min(deficit, availableBalance);
+                deficit -= withdrawAmount;
+            }
+            
+            // SCENARIO 2: Pre-Tax (Traditional 401k/IRA)
+            else if (account instanceof InvestedAccount && (account.taxType === 'Traditional 401k' || account.taxType === 'Traditional IRA')) {
+                
+                // 1. Calculate Baselines
+                const fedParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'federal', undefined, assumptions);
+                const stateParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions);
+
+                const currentFedIncome = totalGrossIncome - preTaxDeductions;
+                const currentStateIncome = totalGrossIncome - preTaxDeductions; 
+
+                const stdDedFed = fedParams?.standardDeduction || 12950;
+                const stdDedState = stateParams?.standardDeduction || 0;
+                
+                const currentFedDeduction = taxState.deductionMethod === 'Standard' ? stdDedFed : 0;
+                const currentStateDeduction = taxState.deductionMethod === 'Standard' ? stdDedState : 0; 
+
+                // 2. Call Solver
+                const result = TaxService.calculateGrossWithdrawal(
+                    Math.min(deficit, availableBalance),
+                    currentFedIncome,       
+                    currentFedDeduction,    
+                    currentStateIncome,     
+                    currentStateDeduction,
+                    taxState,
+                    year,
+                    assumptions
+                );
+
+                // Overdraft Check
+                if (result.grossWithdrawn > availableBalance) {
+                     withdrawAmount = availableBalance;
+                     
+                     // Manual tax calc for the partial amount
+                     const fedApplied = { ...fedParams!, standardDeduction: currentFedDeduction };
+                     const stateApplied = { ...stateParams!, standardDeduction: currentStateDeduction };
+                     
+                     // Fed Impact
+                     const fedBase = TaxService.calculateTax(currentFedIncome, 0, fedApplied);
+                     const fedNew = TaxService.calculateTax(currentFedIncome + withdrawAmount, 0, fedApplied);
+                     
+                     // State Impact
+                     const stateBase = TaxService.calculateTax(currentStateIncome, 0, stateApplied);
+                     const stateNew = TaxService.calculateTax(currentStateIncome + withdrawAmount, 0, stateApplied);
+
+                     taxHit = (fedNew - fedBase) + (stateNew - stateBase);
+                     
+                     deficit -= (withdrawAmount - taxHit);
+                } else {
+                    withdrawAmount = result.grossWithdrawn;
+                    taxHit = result.totalTax;
+                    deficit = 0;
+                }
+
+                // 3. Update Baselines
+                totalGrossIncome += withdrawAmount; 
+                withdrawalTaxes += taxHit;
+            }
+
+            // Apply Withdrawal to USER inflows (assuming we drain user vested funds first)
+            // Negative value = Withdrawal
+            userInflows[account.id] = (userInflows[account.id] || 0) - withdrawAmount;
+        }
+
+        // Final Adjustments
+        totalTax += withdrawalTaxes;
+        discretionaryCash = -deficit;
+    }
+
+    // ------------------------------------------------------------------
+    // END WITHDRAWAL LOGIC
+    // ------------------------------------------------------------------
+
+    // 5. INFLOWS & BUCKETS (The Allocation of Surplus)
     const bucketDetail: Record<string, number> = {};
     let totalEmployerMatch = 0;
     let totalBucketAllocations = 0;
@@ -94,18 +201,24 @@ export function simulateOneYear(
     // 5a. Payroll & Match
     nextIncomes.forEach(inc => {
         if (inc instanceof WorkIncome && inc.matchAccountId) {
-            const current = accountInflows[inc.matchAccountId] || 0;
+            const currentSelf = userInflows[inc.matchAccountId] || 0;
+            const currentMatch = employerInflows[inc.matchAccountId] || 0;
+
             const selfContribution = inc.preTax401k + inc.roth401k;
             const employerMatch = inc.employerMatch;
             
             totalEmployerMatch += employerMatch;
-            accountInflows[inc.matchAccountId] = current + selfContribution + employerMatch;
+            
+            // CHANGED: Separate the streams so InvestedAccount can track vesting
+            userInflows[inc.matchAccountId] = currentSelf + selfContribution;
+            employerInflows[inc.matchAccountId] = currentMatch + employerMatch;
         }
     });
 
-    // 5b. Priority Waterfall
+    // 5b. Priority Waterfall (Surplus Only)
     assumptions.priorities.forEach((priority) => {
-        if (discretionaryCash <= 0 || !priority.accountId) return;
+        // Only allocate if we actually have cash left
+        if (discretionaryCash <= 0 || !priority.accountId) return; 
 
         let amountToContribute = 0;
 
@@ -140,7 +253,8 @@ export function simulateOneYear(
 
         if (amountToContribute > 0) {
             discretionaryCash -= amountToContribute;
-            accountInflows[priority.accountId] = (accountInflows[priority.accountId] || 0) + amountToContribute;
+            // Priorities are user-driven, so they go to userInflows
+            userInflows[priority.accountId] = (userInflows[priority.accountId] || 0) + amountToContribute;
             bucketDetail[priority.accountId] = (bucketDetail[priority.accountId] || 0) + amountToContribute;
             totalBucketAllocations += amountToContribute;
         }
@@ -158,25 +272,34 @@ export function simulateOneYear(
 
     // 7. GROW ACCOUNTS (The compounding)
     const nextAccounts = accounts.map(acc => {
-        const inflow = accountInflows[acc.id] || 0;
+        const userIn = userInflows[acc.id] || 0;
+        const employerIn = employerInflows[acc.id] || 0;
+        const totalIn = userIn + employerIn;
+
         const linkedState = linkedData.get(acc.id);
 
         if (acc instanceof PropertyAccount) {
             let finalLoanBalance = linkedState?.balance;
-            if (finalLoanBalance !== undefined && inflow > 0) {
-                finalLoanBalance = Math.max(0, finalLoanBalance - inflow);
+            if (finalLoanBalance !== undefined && totalIn > 0) {
+                finalLoanBalance = Math.max(0, finalLoanBalance - totalIn);
             }
             return acc.increment(assumptions, { newLoanBalance: finalLoanBalance, newValue: linkedState?.value });
         }
         
         if (acc instanceof DebtAccount) {
             let finalBalance = linkedState?.balance ?? (acc.amount * (1 + acc.apr / 100));
-            if (inflow > 0) finalBalance = Math.max(0, finalBalance - inflow);
+            // Inflow for debt means PAYMENT (reducing balance)
+            if (totalIn > 0) finalBalance = Math.max(0, finalBalance - totalIn);
             return acc.increment(assumptions, finalBalance);
         }
 
-        if (acc instanceof InvestedAccount || acc instanceof SavedAccount) {
-            return acc.increment(assumptions, inflow);
+        if (acc instanceof InvestedAccount) {
+            // CHANGED: Pass user/employer streams separately to handle vesting
+            return acc.increment(assumptions, userIn, employerIn);
+        }
+
+        if (acc instanceof SavedAccount) {
+            return acc.increment(assumptions, totalIn);
         }
 
         // @ts-ignore
@@ -192,9 +315,9 @@ export function simulateOneYear(
         expenses: nextExpenses,
         accounts: nextAccounts,
         cashflow: {
-            totalIncome: totalGrossIncome,
-            totalExpense: totalLivingExpenses + totalTax + preTaxDeductions + postTaxDeductions, // Note: preTax already includes insurance
-            discretionary: discretionaryCash,
+            totalIncome: totalGrossIncome, 
+            totalExpense: totalLivingExpenses + totalTax + preTaxDeductions + postTaxDeductions, 
+            discretionary: discretionaryCash, 
             investedUser: trueUserSaved,
             investedMatch: totalEmployerMatch,
             totalInvested: trueUserSaved + totalEmployerMatch,
@@ -202,11 +325,9 @@ export function simulateOneYear(
             bucketDetail: bucketDetail
         },
         taxDetails: {
-            fed: fedTax,
+            fed: fedTax + withdrawalTaxes, 
             state: stateTax,
             fica: ficaTax,
-            // FIX IS HERE: We subtract insurance because TaxService.getPreTaxExemptions includes it.
-            // This ensures 'preTax' in the object is STRICTLY the 401k/HSA portion.
             preTax: preTaxDeductions - totalInsuranceCost, 
             insurance: totalInsuranceCost,
             postTax: postTaxDeductions

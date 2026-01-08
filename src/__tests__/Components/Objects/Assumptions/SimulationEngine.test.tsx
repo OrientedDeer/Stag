@@ -8,9 +8,11 @@ import { runSimulation } from '../../../../components/Objects/Assumptions/useSim
 // We clone the default and override specific fields to ensure 10% growth is exactly 10%.
 const cleanAssumptions: AssumptionsState = {
     ...defaultAssumptions,
-    personal: {
+    demographics: {
         startAge: 30,
-        startYear: 2025
+        startYear: 2025,
+        lifeExpectancy: 90,
+        retirementAge: 67
     },
     macro: {
         ...defaultAssumptions.macro,
@@ -45,9 +47,12 @@ describe('Simulation Engine', () => {
             'acc-1',           // ID
             'Test Fund',       // Name
             startAmount,       // Amount
-            0,                 // NonVestedAmount
-            0,                 // Expense Ratio (IMPORTANT: set to 0)
-            'Brokerage'        // Tax Type
+            0,                 // Employer Balance
+            5,                 // Tenure Years
+            0.0,               // Expense Ratio
+            'Brokerage',      // Tax Type
+            true,              // Is Contribution Eligible
+            0.2                // Vested Per Year
         );
 
         // --- EXECUTE ---

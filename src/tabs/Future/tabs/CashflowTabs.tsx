@@ -40,7 +40,7 @@ export const CashflowTab = ({ simulationData }: { simulationData: SimulationYear
     const yearData = simulationData[selectedYearIndex];
     
     // Derived Stats
-    const age = assumptions.personal.startAge + selectedYearIndex;
+    const age = assumptions.demographics.startAge + selectedYearIndex;
     const netWorth = yearData ? calculateNetWorth(yearData.accounts) : 0;
 
     // --- CHART DATA CONSTRUCTION (Unchanged) ---
@@ -213,7 +213,7 @@ export const CashflowTab = ({ simulationData }: { simulationData: SimulationYear
     return (
         <div className="flex flex-col gap-4 h-full">
             {/* 1. SANKEY CHART */}
-            <div className="h-[400px]">
+            <div className="h-100">
                 <ResponsiveSankey
                     data={chartData}
                     margin={{ top: 20, right: 150, bottom: 20, left: 150 }}

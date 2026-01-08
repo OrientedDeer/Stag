@@ -16,6 +16,7 @@ import { NameInput } from "../../Layout/InputFields/NameInput";
 import { DropdownInput } from "../../Layout/InputFields/DropdownInput";
 import { PercentageInput } from "../../Layout/InputFields/PercentageInput";
 import { ToggleInput } from "../../Layout/InputFields/ToggleInput";
+import { NumberInput } from "../../Layout/InputFields/NumberInput";
 
 const generateUniqueAccId = () =>
     `ACC-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -35,7 +36,8 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
     const { dispatch: expenseDispatch } = useContext(ExpenseContext);
     const [name, setName] = useState("");
     const [amount, setAmount] = useState<number>(0);
-    const [NonVestedAmount, setNonVestedAmount] = useState<number>(0);
+    const [employerBalance, setEmployerBalance] = useState<number>(0);
+    const [tenureYears, setTenureYears] = useState<number>(0);
     const [vestedPerYear, setVestedPerYear] = useState<number>(0.2);
     const [expenseRatio, setExpenseRatio] = useState<number>(0.1);
     const [ownershipType, setOwnershipType] = useState<'Financed' | 'Owned'>('Owned');
@@ -49,7 +51,8 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
     const handleClose = () => {
         setName("");
         setAmount(0);
-        setNonVestedAmount(0);
+        setEmployerBalance(0);
+        setTenureYears(0);
         setVestedPerYear(0.2);
         setExpenseRatio(0.1);
         setOwnershipType('Owned');
@@ -69,7 +72,7 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
         if (selectedType === SavedAccount) {
             newAccount = new selectedType(id, name.trim(), amount, apr);
         } else if (selectedType === InvestedAccount) {
-            newAccount = new selectedType(id, name.trim(), amount, NonVestedAmount, vestedPerYear, expenseRatio, taxType, isContributionEligible);
+            newAccount = new selectedType(id, name.trim(), amount, employerBalance, tenureYears, expenseRatio, taxType, isContributionEligible, vestedPerYear);
         } else if (selectedType === PropertyAccount) {
             if (ownershipType == "Financed"){
                 const newExpense = new MortgageExpense(
@@ -199,10 +202,16 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                                 options={TaxTypeEnum as any}
                             />
                             <CurrencyInput
-                                id={`${id}-non-vested-amount`}
-                                label="Non-Vested Contrib."
-                                value={NonVestedAmount}
-                                onChange={setNonVestedAmount}
+                                id={`${id}-employer-balance`}
+                                label="Employer Balance"
+                                value={employerBalance}
+                                onChange={setEmployerBalance}
+                            />
+                            <NumberInput
+                                id={`${id}-tenure-years`}
+                                label="Tenure (Years)"
+                                value={tenureYears}
+                                onChange={setTenureYears}
                             />
                             <PercentageInput
                                 id={`${id}-vested-per-year`}

@@ -6,6 +6,7 @@ import { StyledSelect, StyledDisplay } from "../../Layout/InputFields/StyleUI";
 import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput"; // Import your new component
 import { PercentageInput } from "../../Layout/InputFields/PercentageInput";
 import { ToggleInput } from "../../Layout/InputFields/ToggleInput";
+import { NumberInput } from "../../Layout/InputFields/NumberInput";
 import DeleteAccountControl from './DeleteAccountUI';
 import { EditHistoryModal } from "./EditHistoryModal";
 import { NameInput } from "../../Layout/InputFields/NameInput";
@@ -161,12 +162,28 @@ const AccountCard = ({ account }: { account: AnyAccount }) => {
 							options={TaxTypeEnum as any}
 						/>
 						{(account.taxType === 'Roth 401k' || account.taxType === 'Traditional 401k') && (
-							<CurrencyInput
-								id={`${account.id}-non-vested-amount`}
-								label="Non-Vested Contrib."
-								value={account.NonVestedAmount}
-								onChange={(val) => handleFieldUpdate("NonVestedAmount", val)}
-							/>
+							<>
+								<CurrencyInput
+									id={`${account.id}-employer-balance`}
+									label="Employer Balance"
+									value={account.employerBalance}
+									onChange={(val) => handleFieldUpdate("employerBalance", val)}
+								/>
+								<NumberInput
+									id={`${account.id}-tenure-years`}
+									label="Tenure (Years)"
+									value={account.tenureYears}
+									onChange={(val) => handleFieldUpdate("tenureYears", val)}
+								/>
+								<StyledDisplay
+									label="Non-Vested Amount"
+									value={account.nonVestedAmount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+								/>
+								<StyledDisplay
+									label="Vested Amount"
+									value={account.vestedAmount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+								/>
+							</>
 						)}
 						<PercentageInput
 							id={`${account.id}-vested-per-year`}

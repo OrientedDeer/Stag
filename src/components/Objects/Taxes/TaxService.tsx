@@ -310,3 +310,85 @@ export function calculateFederalTax(
 	});
 }
 
+/**
+ * Calculates Gross Withdrawal needed to net 'netNeeded'.
+ * Now accepts INCOME (Gross - PreTax) and DEDUCTION amounts separately
+ * to correctly handle the 0% tax zone (unused standard deduction).
+ */
+export function calculateGrossWithdrawal(
+    netNeeded: number,
+    currentFedIncome: number,      // Gross - PreTax401k/Ins (AGI-ish)
+    currentFedDeduction: number,   // Standard Deduction or Itemized Total
+    currentStateIncome: number,
+    currentStateDeduction: number,
+    taxState: TaxState,
+    year: number,
+    assumptions?: AssumptionsState
+): { grossWithdrawn: number; totalTax: number } {
+
+    // 1. Get Parameters (for Brackets/Rates only)
+    const fedParams = getTaxParameters(year, taxState.filingStatus, 'federal', undefined, assumptions);
+    const stateParams = getTaxParameters(year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions);
+
+    if (!fedParams || !stateParams) {
+        return { grossWithdrawn: netNeeded / 0.7, totalTax: (netNeeded / 0.7) - netNeeded };
+    }
+
+    // 2. Forward Calculator
+    const calculateNetFromGross = (grossGuess: number): number => {
+        // We construct synthetic params using the EXACT deduction passed in.
+        // This ensures we respect the Simulation's view of "Itemized vs Standard"
+        
+        // A. State Tax
+        const stateParamsApplied = { ...stateParams, standardDeduction: currentStateDeduction };
+        // We use preTaxDeductions=0 because 'currentStateIncome' already has them subtracted
+        const stateTaxBase = calculateTax(currentStateIncome, 0, stateParamsApplied);
+        const stateTaxNew = calculateTax(currentStateIncome + grossGuess, 0, stateParamsApplied);
+        const marginalStateTax = stateTaxNew - stateTaxBase;
+
+        // B. SALT Deductibility logic
+        let deductibleStateTax = 0;
+        if (taxState.deductionMethod === 'Itemized') {
+             // If itemizing, extra state tax MIGHT be deductible if under $10k cap.
+             // For simplicity/safety in this solver, we ignore marginal deductibility 
+             // to avoid under-withholding, or you can add the logic here.
+             deductibleStateTax = 0; 
+        }
+
+        // C. Federal Tax
+        // Note: If we were deducting state tax, we'd subtract it from fedIncome here.
+        const fedParamsApplied = { ...fedParams, standardDeduction: currentFedDeduction };
+        const fedTaxBase = calculateTax(currentFedIncome, 0, fedParamsApplied);
+        const fedTaxNew = calculateTax(currentFedIncome + grossGuess, 0, fedParamsApplied);
+        const marginalFedTax = fedTaxNew - fedTaxBase;
+
+        return grossGuess - (marginalStateTax + marginalFedTax);
+    };
+
+    // 3. Binary Search
+    let low = netNeeded; 
+    let high = netNeeded * 4; // Safe upper bound
+    let grossSolution = high;
+
+    for (let i = 0; i < 50; i++) {
+        const mid = (low + high) / 2;
+        const netResult = calculateNetFromGross(mid);
+
+        if (Math.abs(netResult - netNeeded) <= 0.005) {
+            grossSolution = mid;
+            break;
+        }
+
+        if (netResult < netNeeded) {
+            low = mid;
+        } else {
+            high = mid;
+            grossSolution = mid;
+        }
+    }
+
+    return {
+        grossWithdrawn: grossSolution,
+        totalTax: grossSolution - netNeeded
+    };
+}

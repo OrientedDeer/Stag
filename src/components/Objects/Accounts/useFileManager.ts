@@ -75,7 +75,6 @@ export const useFileManager = () => {
                         },
                     },
                     demographics: { ...defaultAssumptions.demographics, ...(data.assumptions.demographics || {}) },
-                    personal: { ...defaultAssumptions.personal, ...(data.assumptions.personal || {}) },
                     priorities: data.assumptions.priorities || defaultAssumptions.priorities
                 };
                 assumptionsDispatch({ type: 'SET_BULK_DATA', payload: mergedAssumptions });

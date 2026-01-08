@@ -23,6 +23,7 @@
     "@nivo/line": "^0.99.0",
     "@nivo/sankey": "^0.99.0",
     "@nivo/stream": "^0.99.0",
+    "cloc": "^2.6.0-cloc",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-router-dom": "^7.10.1"

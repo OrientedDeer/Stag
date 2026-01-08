@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useId } from 'react';
 
 // --- Types ---
 interface RangeSliderProps {
@@ -29,6 +29,7 @@ export const RangeSlider: React.FC<RangeSliderProps> = ({
   hideHeader = false
 }) => {
   const isDual = Array.isArray(value);
+  const inputId = useId(); // Generates a unique ID for accessibility
 
   const getPercent = useCallback(
     (val: number) => Math.round(((val - min) / (max - min)) * 100),
@@ -103,21 +104,24 @@ export const RangeSlider: React.FC<RangeSliderProps> = ({
       `}</style>
 
       {/* Label Row */}
-      {!hideHeader && (
-        <div className="flex justify-between items-baseline">
-          {label && (
-            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-              {label}
-            </label>
-          )}
-          <div className="font-mono text-sm text-emerald-400">
-            {isDual 
-              ? `${formatTooltip(value[0])} - ${formatTooltip(value[1])}`
-              : formatTooltip(value as number)
-            }
-          </div>
+      {/* Instead of removing the header completely, we apply 'sr-only' if hideHeader is true. */}
+      {/* This keeps the label in the DOM for accessibility tools to find. */}
+      <div className={`flex justify-between items-baseline ${hideHeader ? 'sr-only' : ''}`}>
+        {label && (
+          <label 
+            htmlFor={inputId} 
+            className="text-xs font-semibold text-gray-400 uppercase tracking-wider"
+          >
+            {label}
+          </label>
+        )}
+        <div className="font-mono text-sm text-emerald-400">
+          {isDual 
+            ? `${formatTooltip(value[0])} - ${formatTooltip(value[1])}`
+            : formatTooltip(value as number)
+          }
         </div>
-      )}
+      </div>
 
       {/* Slider Container */}
       <div className="relative w-full h-6 flex items-center select-none group isolate">
@@ -143,6 +147,7 @@ export const RangeSlider: React.FC<RangeSliderProps> = ({
         {isDual ? (
           <>
             <input
+              id={inputId} // Associate first handle with label
               type="range"
               min={min}
               max={max}
@@ -150,6 +155,7 @@ export const RangeSlider: React.FC<RangeSliderProps> = ({
               value={value[0]}
               onChange={handleMinChange}
               className="custom-range-input absolute top-0 left-0 w-full h-full appearance-none bg-transparent pointer-events-none z-20"
+              aria-label={`${label} minimum`} // Explicit label for dual slider handles
             />
             <input
               type="range"
@@ -159,10 +165,12 @@ export const RangeSlider: React.FC<RangeSliderProps> = ({
               value={value[1]}
               onChange={handleMaxChange}
               className="custom-range-input absolute top-0 left-0 w-full h-full appearance-none bg-transparent pointer-events-none z-20"
+              aria-label={`${label} maximum`} // Explicit label for dual slider handles
             />
           </>
         ) : (
           <input
+            id={inputId} // Associate single handle with label
             type="range"
             min={min}
             max={max}

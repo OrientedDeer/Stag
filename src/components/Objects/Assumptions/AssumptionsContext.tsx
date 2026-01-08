@@ -12,6 +12,13 @@ export interface PriorityBucket {
   capValue?: number; // e.g., 23000 for 401k, or 500 for monthly savings
 }
 
+export interface WithdrawalBucket {
+  id: string;
+  name: string;      // e.g. "Emergency Fund", "Brokerage"
+  accountId: string; // The account to drain
+  // No "Cap" needed usually - we just drain until empty, then move to next.
+}
+
 export interface AssumptionsState {
   macro: {
     inflationRate: number;       // e.g., 3.0
@@ -35,14 +42,13 @@ export interface AssumptionsState {
     withdrawalRate: number; // e.g., 4.0
     };  
   demographics: {
+    startAge: number;
+    startYear: number;
     retirementAge: number;
     lifeExpectancy: number;
   };
-  personal: {
-    startAge: number;
-    startYear: number;
-  };
   priorities: PriorityBucket[];
+  withdrawalStrategy: WithdrawalBucket[]; // The "Burn Order"
 }
 
 export const defaultAssumptions: AssumptionsState = {
@@ -68,12 +74,11 @@ export const defaultAssumptions: AssumptionsState = {
   demographics: {
     retirementAge: 65,
     lifeExpectancy: 90,
-  },
-  personal: {
     startAge: 24,
     startYear: new Date().getUTCFullYear(),
   },
   priorities: [],
+  withdrawalStrategy: [],
 };
 
 type Action =
@@ -83,13 +88,16 @@ type Action =
   | { type: 'UPDATE_INVESTMENTS'; payload: Partial<AssumptionsState['investments']> }
   | { type: 'UPDATE_INVESTMENT_RATES'; payload: Partial<AssumptionsState['investments']['returnRates']> }
   | { type: 'UPDATE_DEMOGRAPHICS'; payload: Partial<AssumptionsState['demographics']> }
-  | { type: 'UPDATE_PERSONAL'; payload: Partial<AssumptionsState['personal']> }
   | { type: 'RESET_DEFAULTS' }
   | { type: 'SET_BULK_DATA'; payload: AssumptionsState }
   | { type: 'SET_PRIORITIES'; payload: PriorityBucket[] }
   | { type: 'ADD_PRIORITY'; payload: PriorityBucket }
   | { type: 'REMOVE_PRIORITY'; payload: string }
-  | { type: 'UPDATE_PRIORITY'; payload: PriorityBucket };
+  | { type: 'UPDATE_PRIORITY'; payload: PriorityBucket }
+  | { type: 'SET_WITHDRAWAL_STRATEGY'; payload: WithdrawalBucket[] }
+  | { type: 'ADD_WITHDRAWAL_STRATEGY'; payload: WithdrawalBucket }
+  | { type: 'REMOVE_WITHDRAWAL_STRATEGY'; payload: string }
+  | { type: 'UPDATE_WITHDRAWAL_STRATEGY'; payload: WithdrawalBucket };
 
 const assumptionsReducer = (state: AssumptionsState, action: Action): AssumptionsState => {
   switch (action.type) {
@@ -111,8 +119,6 @@ const assumptionsReducer = (state: AssumptionsState, action: Action): Assumption
       };
     case 'UPDATE_DEMOGRAPHICS':
       return { ...state, demographics: { ...state.demographics, ...action.payload } };
-    case 'UPDATE_PERSONAL':
-      return { ...state, personal: { ...state.personal, ...action.payload } };
     case 'RESET_DEFAULTS':
       return defaultAssumptions;
     case 'SET_BULK_DATA':
@@ -127,6 +133,17 @@ const assumptionsReducer = (state: AssumptionsState, action: Action): Assumption
         return { 
             ...state, 
             priorities: state.priorities.map(p => p.id === action.payload.id ? action.payload : p) 
+        };
+    case 'SET_WITHDRAWAL_STRATEGY':
+        return { ...state, withdrawalStrategy: action.payload };
+    case 'ADD_WITHDRAWAL_STRATEGY':
+        return { ...state, withdrawalStrategy: [...state.withdrawalStrategy, action.payload] };
+    case 'REMOVE_WITHDRAWAL_STRATEGY':
+        return { ...state, withdrawalStrategy: state.withdrawalStrategy.filter(p => p.id !== action.payload) };
+    case 'UPDATE_WITHDRAWAL_STRATEGY':
+        return { 
+            ...state, 
+            withdrawalStrategy: state.withdrawalStrategy.map(p => p.id === action.payload.id ? action.payload : p) 
         };
     default:
       return state;

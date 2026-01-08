@@ -58,7 +58,7 @@ const AssetsTab = ({ simulationData }: { simulationData: SimulationYear[] }) => 
     }, [keys]);
 
     return (
-        <div className="h-[500px] w-full">
+        <div className="h-125 w-full">
             <AssetsStreamChart data={data} keys={keys} colors={colors} />
         </div>
     );
@@ -103,9 +103,14 @@ export default function FutureTab() {
     const { state: taxState } = useContext(TaxContext);
     const [activeTab, setActiveTab] = useState('Overview');
 
+    // 1. Check for Missing Remainder Bucket
+    const hasRemainderBucket = useMemo(() => {
+        return assumptions.priorities.some(p => p.capType === 'REMAINDER');
+    }, [assumptions.priorities]);
+
     const handleRecalculate = () => {
         const newSimulation = runSimulation(
-            assumptions.demographics.lifeExpectancy - assumptions.personal.startAge - 19,
+            assumptions.demographics.lifeExpectancy - assumptions.demographics.startAge - 19,
             accounts,
             incomes,
             expenses,
@@ -136,12 +141,31 @@ export default function FutureTab() {
         "Cashflow": <CashflowTab simulationData={simulation} />,
         "Assets": <AssetsTab simulationData={simulation} />,
         "Debt": <DebtTab simulationData={simulation} />,
-        "Data": <DataTab simulationData={simulation} startAge={assumptions.personal.startAge} />,
+        "Data": <DataTab simulationData={simulation} startAge={assumptions.demographics.startAge} />,
     };
 
     return (
         <div className="w-full min-h-full flex bg-gray-950 justify-center pt-6">
             <div className="w-full px-8 max-w-screen-2xl">
+                
+                {/* 2. Warning Banner */}
+                {!hasRemainderBucket && (
+                    <div className="mb-6 p-4 bg-amber-900/40 border border-amber-600 text-amber-200 rounded-xl flex items-start gap-3 shadow-lg">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        <div>
+                            <h3 className="font-bold text-lg">Warning: Disappearing Money</h3>
+                            <p className="text-sm mt-1">
+                                You do not have a <strong>"Remainder"</strong> bucket set up in your Priorities. 
+                                Any unallocated cash (surplus income) will disappear from the simulation instead of being saved.
+                                <br/>
+                                Please go to the <strong>Priorities</strong> tab and create a bucket with Cap Type: <strong>"Remainder"</strong>.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 {/* Hero Section */}
                 <div className="mb-6 p-4 bg-gray-900 rounded-xl border border-gray-800 text-center shadow-lg flex justify-between items-center">
                     <div>
@@ -173,7 +197,7 @@ export default function FutureTab() {
                 </div>
 
                 {/* Main Content */}
-                <div className="bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl min-h-[400px] mb-4 p-6">
+                <div className="bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl min-h-100 mb-4 p-6">
                     {tabContent[activeTab]}
                 </div>
             </div>
