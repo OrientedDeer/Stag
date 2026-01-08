@@ -78,7 +78,7 @@ export const OverviewTab = ({ simulationData }: { simulationData: SimulationYear
         const totalNetWorth = (data.Invested || 0) + (data.Saved || 0) + (data.Property || 0) + (data.Debt || 0);
 
         return (
-            <div className="bg-gray-800 p-3 rounded border border-gray-700 shadow-xl text-xs min-w-[150px]">
+            <div className="bg-gray-800 p-3 rounded border border-gray-700 shadow-xl text-xs min-w-37.5">
                 <div className="font-bold text-white mb-2 pb-1 border-b border-gray-600">
                     Year: {data.year}
                 </div>
@@ -129,7 +129,7 @@ export const OverviewTab = ({ simulationData }: { simulationData: SimulationYear
             </div>
             
             {/* Chart Area */}
-            <div className="h-[400px] w-full text-white">
+            <div className="h-100 w-full text-white">
                 <ResponsiveLine
                     data={lineData}
                     margin={{ top: 20, right: 30, bottom: 50, left: 90 }}

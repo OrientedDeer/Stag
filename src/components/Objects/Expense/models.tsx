@@ -496,7 +496,7 @@ export class LoanExpense extends BaseExpense {
       return Infinity;
     }
     const months = -Math.log(1 - (this.amount * monthlyRate) / payment) / Math.log(1 + monthlyRate);
-    return Math.ceil(months);
+    return Math.round(months);
   }
 
   getMonthsUntilPaidOff(): number {
