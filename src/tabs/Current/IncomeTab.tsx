@@ -1,5 +1,12 @@
-import { useState, useContext } from "react";
+import { useState, useContext, useMemo } from "react";
 import { IncomeContext } from "../../components/Objects/Income/IncomeContext";
+import {
+	AnyIncome,
+	CLASS_TO_CATEGORY,
+	CATEGORY_PALETTES,
+	INCOME_CATEGORIES,
+	isIncomeActiveInCurrentMonth
+} from "../../components/Objects/Income/models";
 import IncomeCard from "../../components/Objects/Income/IncomeCard";
 import {
 	DragDropContext,
@@ -8,7 +15,7 @@ import {
 	DropResult,
 } from "@hello-pangea/dnd";
 import AddIncomeModal from "../../components/Objects/Income/AddIncomeModal";
-import IncomeIcicleChart from "../../components/Objects/Income/IncomeIcicleChart";
+import { ObjectsIcicleChart, tailwindToCssVar, getDistributedColors } from "../../components/Charts/ObjectsIcicleChart";
 
 // Updated IncomeList to handle the base class or specific filtering
 const IncomeList = () => {
@@ -78,6 +85,51 @@ const TabsContent = () => {
 	const { incomes } = useContext(IncomeContext);
 	const [isModalOpen, setIsModalOpen] = useState(false);
 
+	// Data wrangling for icicle chart
+	const hierarchicalData = useMemo(() => {
+		const grouped: Record<string, AnyIncome[]> = {};
+
+		// 1. Group incomes (only active ones)
+		incomes
+			.filter(isIncomeActiveInCurrentMonth)
+			.forEach((inc) => {
+				const category = CLASS_TO_CATEGORY[inc.constructor.name] || 'Other';
+				if (!grouped[category]) grouped[category] = [];
+				grouped[category].push(inc);
+			});
+
+		// 2. Build Children with Colors
+		const categoryChildren = INCOME_CATEGORIES.map((category) => {
+			const incomesInCategory = grouped[category] || [];
+			if (incomesInCategory.length === 0) return null;
+
+			// Get gradient colors for this specific group of incomes
+			const palette = CATEGORY_PALETTES[category];
+			const incomeColors = getDistributedColors(palette, incomesInCategory.length);
+			// Pick a representative color for the Category header (approx middle of palette)
+			const categoryColor = palette[50] || palette[Math.floor(palette.length/2)];
+
+			return {
+				id: category,
+				color: tailwindToCssVar(categoryColor), // Parent Color
+				children: incomesInCategory.map((inc, i) => ({
+					id: inc.name,
+					value: inc.getMonthlyAmount(),
+					color: tailwindToCssVar(incomeColors[i]), // Child Gradient Color
+					// Metadata
+					originalAmount: inc.amount,
+					frequency: inc.frequency
+				}))
+			};
+		}).filter(Boolean); // Remove empty categories
+
+		return {
+			id: "Total Incomes",
+			color: "#10b981", // Root node color
+			children: categoryChildren
+		};
+	}, [incomes]);
+
 	return (
 		<div className="w-full min-h-full flex bg-gray-950 justify-center pt-6">
 			<div className="w-full px-8 max-w-screen-2xl">
@@ -87,7 +139,9 @@ const TabsContent = () => {
 						Income Breakdown
 					</h2>
 					{incomes.length > 0 && (
-						<IncomeIcicleChart incomeList= {incomes}
+						<ObjectsIcicleChart
+							data={hierarchicalData}
+							valueFormat=">+$0,.0f"
 						/>
 					)}
 				</div>

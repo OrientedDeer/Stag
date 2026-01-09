@@ -1,4 +1,4 @@
-import React, { useState, useContext, useRef, useEffect } from "react"; // Added useRef
+import React, { useState, useContext, useRef, useEffect, useMemo } from "react"; // Added useRef, useMemo
 import { AccountContext } from "../../components/Objects/Accounts/AccountContext";
 import {
     SavedAccount,
@@ -6,11 +6,14 @@ import {
     PropertyAccount,
     DebtAccount,
     ACCOUNT_CATEGORIES,
+    AnyAccount,
+    CLASS_TO_CATEGORY,
+    CATEGORY_PALETTES,
 } from "../../components/Objects/Accounts/models";
 import AccountCard from "../../components/Objects/Accounts/AccountCard";
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import AddAccountModal from "../../components/Objects/Accounts/AddAccountModal";
-import AccountIcicleChart from "../../components/Objects/Accounts/AccountIcicleChart";
+import { ObjectsIcicleChart, tailwindToCssVar, getDistributedColors } from "../../components/Charts/ObjectsIcicleChart";
 import { useFileManager } from "../../components/Objects/Accounts/useFileManager";
 
 const AccountList = ({ type }: { type: any }) => {
@@ -72,6 +75,20 @@ const AccountList = ({ type }: { type: any }) => {
     );
 };
 
+// Helper to get account value (handles special cases for Property, Invested, Debt)
+const getAccountValue = (account: AnyAccount): number => {
+    if (account instanceof PropertyAccount) {
+        return account.amount - account.loanAmount;
+    }
+    if (account instanceof InvestedAccount) {
+        return account.amount - account.employerBalance;
+    }
+    if (account instanceof DebtAccount) {
+        return -account.amount;
+    }
+    return account.amount;
+};
+
 const TabsContent = () => {
     const { accounts } = useContext(AccountContext);
     const { handleGlobalExport, handleGlobalImport } = useFileManager();
@@ -79,9 +96,60 @@ const TabsContent = () => {
         return localStorage.getItem('account_active_tab') || 'Saved';
     });
     const [isModalOpen, setIsModalOpen] = useState(false);
-    
+
     // Ref for the hidden file input
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Data wrangling for icicle chart
+    const hierarchicalData = useMemo(() => {
+        // Calculate real Net Worth (subtracting debts)
+        const totalNetWorth = accounts.reduce((sum, acc) => sum + getAccountValue(acc), 0);
+
+        const grouped: Record<string, AnyAccount[]> = {};
+
+        // 1. Group accounts
+        accounts.forEach((acc) => {
+            const category = CLASS_TO_CATEGORY[acc.constructor.name] || 'Other';
+            if (!grouped[category]) grouped[category] = [];
+            grouped[category].push(acc);
+        });
+
+        // 2. Build Children with Colors
+        const categoryChildren = ACCOUNT_CATEGORIES.map((category) => {
+            const accountsInCategory = grouped[category] || [];
+            if (accountsInCategory.length === 0) return null;
+
+            // Get gradient colors for this specific group of accounts
+            const palette = CATEGORY_PALETTES[category];
+            const accountColors = getDistributedColors(palette, accountsInCategory.length);
+            // Pick a representative color for the Category header (approx middle of palette)
+            const categoryColor = palette[50] || palette[Math.floor(palette.length/2)];
+
+            return {
+                id: category,
+                color: tailwindToCssVar(categoryColor), // Parent Color
+                isDebt: category === 'Debt',
+                children: accountsInCategory.map((acc, i) => ({
+                    id: acc.name,
+                    value: Math.abs(getAccountValue(acc)),
+                    color: tailwindToCssVar(accountColors[i]), // Child Gradient Color
+                    // Metadata for tooltip
+                    originalAmount: acc.amount,
+                    isProperty: acc instanceof PropertyAccount,
+                    isDebt: acc instanceof DebtAccount,
+                    loanAmount: acc instanceof PropertyAccount ? acc.loanAmount : 0,
+                    employerBalance: acc instanceof InvestedAccount ? acc.employerBalance : 0,
+                }))
+            };
+        }).filter(Boolean); // Remove empty categories
+
+        return {
+            id: "Net Worth",
+            color: "#10b981", // Root node color
+            children: categoryChildren,
+            netWorth: totalNetWorth
+        };
+    }, [accounts]);
 
     useEffect(() => {
         localStorage.setItem('account_active_tab', activeTab);
@@ -211,7 +279,9 @@ const TabsContent = () => {
                     </div>
 
                     {accounts.length > 0 && (
-                        <AccountIcicleChart accountList= {accounts}
+                        <ObjectsIcicleChart
+                            data={hierarchicalData}
+                            valueFormat=">-$0,.0f"
                         />
                     )}
                 </div>
