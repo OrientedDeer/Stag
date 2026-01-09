@@ -30,7 +30,7 @@ const getAccountValue = (account: AnyAccount): number => {
         return account.amount - account.loanAmount;
     }
     if (account instanceof InvestedAccount) {
-        return account.amount - account.NonVestedAmount;
+        return account.amount - account.employerBalance;
     }
     if (account instanceof DebtAccount) {
         return -account.amount;
@@ -81,7 +81,7 @@ export default function AccountIcicleChart({ accountList }: AccountIcicleChartPr
                     isProperty: acc instanceof PropertyAccount,
                     isDebt: acc instanceof DebtAccount,
                     loanAmount: acc instanceof PropertyAccount ? acc.loanAmount : 0,
-                    NonVestedAmount: acc instanceof InvestedAccount ? acc.NonVestedAmount : 0,
+                    employerBalance: acc instanceof InvestedAccount ? acc.employerBalance : 0,
                 }))
             };
         }).filter(Boolean); // Remove empty categories

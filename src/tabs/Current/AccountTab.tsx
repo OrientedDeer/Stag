@@ -231,7 +231,7 @@ const TabsContent = () => {
                         </button>
                     ))}
                 </div>
-                <div className="bg-[#09090b] border border-gray-800 rounded-xl min-h-[400px] mb-4">
+                <div className="bg-[#09090b] border border-gray-800 rounded-xl min-h-100 mb-4">
                     {tabContent[activeTab]}
                 </div>
             </div>

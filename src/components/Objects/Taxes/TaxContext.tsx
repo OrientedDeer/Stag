@@ -1,6 +1,6 @@
 // src/components/Taxes/TaxContext.tsx
 import { createContext, useReducer, ReactNode, useEffect } from 'react';
-import { FilingStatus } from '../../../data/TaxData';
+import { FilingStatus, max_year } from '../../../data/TaxData';
 
 export type DeductionMethod = 'Standard' | 'Itemized';
 
@@ -11,6 +11,7 @@ export interface TaxState {
   fedOverride: number | null;
   ficaOverride: number | null;
   stateOverride: number | null;
+  year: number;
 }
 
 type Action = 
@@ -20,6 +21,7 @@ type Action =
   | { type: 'SET_FED_OVERRIDE'; payload: number | null }
   | { type: 'SET_FICA_OVERRIDE'; payload: number | null }
   | { type: 'SET_STATE_OVERRIDE'; payload: number | null }
+  | { type: 'SET_YEAR'; payload: number }
   | { type: 'SET_BULK_DATA'; payload: TaxState };
 
 const initialState: TaxState = {
@@ -29,6 +31,7 @@ const initialState: TaxState = {
   fedOverride: null,
   ficaOverride: null,
   stateOverride: null,
+  year: max_year,
 };
 
 const taxReducer = (state: TaxState, action: Action): TaxState => {
@@ -39,6 +42,7 @@ const taxReducer = (state: TaxState, action: Action): TaxState => {
     case 'SET_FED_OVERRIDE': return { ...state, fedOverride: action.payload };
     case 'SET_FICA_OVERRIDE': return { ...state, ficaOverride: action.payload };
     case 'SET_STATE_OVERRIDE': return { ...state, stateOverride: action.payload };
+    case 'SET_YEAR': return { ...state, year: action.payload };
     case 'SET_BULK_DATA': return { ...action.payload };
     default: return state;
   }

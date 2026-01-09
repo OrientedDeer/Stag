@@ -27,25 +27,25 @@ export default function TaxesTab() {
     const { expenses } = useContext(ExpenseContext);
     const { state, dispatch } = useContext(TaxContext);
 
-    const currentYear = 2026;
+    const taxYear = state.year;
     
-    const stateTax = calculateStateTax(state, incomes, expenses, currentYear);
-    const federalTax = calculateFederalTax(state, incomes, expenses, currentYear);
-    const ficaTax = calculateFicaTax(state, incomes, currentYear);
-    const annualGross = getGrossIncome(incomes, currentYear);
+    const stateTax = calculateStateTax(state, incomes, expenses, taxYear);
+    const federalTax = calculateFederalTax(state, incomes, expenses, taxYear);
+    const ficaTax = calculateFicaTax(state, incomes, taxYear);
+    const annualGross = getGrossIncome(incomes, taxYear);
     
-    const stateItemized = getItemizedDeductions(expenses, currentYear);
+    const stateItemized = getItemizedDeductions(expenses, taxYear);
     const federalItemizedTotal = stateItemized + stateTax;
-    const stateParams = TAX_DATABASE.states[state.stateResidency]?.[currentYear]?.[state.filingStatus];
+    const stateParams = TAX_DATABASE.states[state.stateResidency]?.[taxYear]?.[state.filingStatus];
     const stateStandardDeduction = stateParams.standardDeduction;
-    const fedParams = TAX_DATABASE.federal[currentYear][state.filingStatus];
+    const fedParams = TAX_DATABASE.federal[taxYear][state.filingStatus];
     const fedStandardDeduction = fedParams.standardDeduction;
     const fedAppliedMainDeduction =
         state.deductionMethod === "Standard" ? fedStandardDeduction : federalItemizedTotal;
-    const incomePreTaxDeductions = getPreTaxExemptions(incomes, currentYear);
-    const incomePostTaxDeductions = getPostTaxExemptions(incomes, currentYear);
-    const expenseAboveLineDeductions = getYesDeductions(expenses, currentYear);
-    const postTaxEmployerMatch = getPostTaxEmployerMatch(incomes, currentYear);
+    const incomePreTaxDeductions = getPreTaxExemptions(incomes, taxYear);
+    const incomePostTaxDeductions = getPostTaxExemptions(incomes, taxYear);
+    const expenseAboveLineDeductions = getYesDeductions(expenses, taxYear);
+    const postTaxEmployerMatch = getPostTaxEmployerMatch(incomes, taxYear);
     const totalPreTaxDeductions = incomePreTaxDeductions + expenseAboveLineDeductions;
     const netPaycheck = annualGross - incomePreTaxDeductions - (federalTax + stateTax + ficaTax) - incomePostTaxDeductions - postTaxEmployerMatch;
 
@@ -53,7 +53,7 @@ export default function TaxesTab() {
         <div className="w-full min-h-full flex bg-gray-950 justify-center pt-6">
             <div className="w-full px-8 max-w-screen-2xl">
                 <h2 className="text-2xl font-bold text-white mb-6 border-b border-gray-800 pb-2">
-                    Tax Estimate ({currentYear})
+                    Tax Estimate
                 </h2>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -63,6 +63,16 @@ export default function TaxesTab() {
                             <h2 className="text-xl font-semibold text-gray-300 mb-6">Tax Settings</h2>
 
                             <div className="space-y-5">
+                                {/* Year Selection */}
+                                <div>
+                                    <DropdownInput
+                                        label="Year"
+                                        onChange={(val) => dispatch({ type: "SET_YEAR", payload: Number(val) })}
+                                        options={Object.keys(TAX_DATABASE.federal).map(y => ({ value: y, label: y })).reverse()}
+                                        value={state.year.toString()}
+                                    />
+                                </div>
+                                
                                 {/* Filing Status */}
                                 <div>
                                     <DropdownInput
@@ -176,7 +186,7 @@ export default function TaxesTab() {
                                 </div>
                                 
                                 <div className="flex justify-end text-gray-300 text-xs italic items-right ">
-                                    <span className="font-mono -mt-5">Earned Income (${getEarnedIncome(incomes, currentYear).toLocaleString()})</span>
+                                    <span className="font-mono -mt-5">Earned Income (${getEarnedIncome(incomes, taxYear).toLocaleString()})</span>
                                 </div>
 
                                 {incomePreTaxDeductions > 0 && (

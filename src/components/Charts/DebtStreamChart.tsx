@@ -82,7 +82,7 @@ export const DebtStreamChart: React.FC<DebtStreamChartProps> = ({
         </div>
 
         {/* Scrollable Area */}
-        <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
+        <div className="max-h-75 overflow-y-auto custom-scrollbar">
           <table className="w-full border-collapse">
             <tbody>
               {sortedKeys.map((key) => {

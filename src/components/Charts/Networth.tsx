@@ -29,8 +29,8 @@ export const NetWorthCard = () => {
                 totalAssets += acc.amount;
             }
 
-            if (acc instanceof InvestedAccount && acc.NonVestedAmount){
-                totalNonVested += acc.NonVestedAmount;
+            if (acc instanceof InvestedAccount && acc.employerBalance){
+                totalNonVested += acc.employerBalance;
             }
         });
 

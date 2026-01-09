@@ -64,7 +64,7 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
           <span className="font-bold text-gray-200">{yearData.year}</span>
           <span className="font-mono font-semibold text-white">{formatCurrency(total)}</span>
         </div>
-        <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
+        <div className="max-h-75 overflow-y-auto custom-scrollbar">
           <table className="w-full border-collapse">
             <tbody>
               {sortedKeys.map((key) => {

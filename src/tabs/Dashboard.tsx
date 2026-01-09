@@ -4,22 +4,44 @@ import { IncomeContext } from '../components/Objects/Income/IncomeContext';
 import { ExpenseContext } from '../components/Objects/Expense/ExpenseContext';
 import { AccountContext } from '../components/Objects/Accounts/AccountContext';
 import { NetWorthCard } from '../components/Charts/Networth';
-import { CashflowChart } from '../components/Charts/CashflowChart';
 import { defaultData } from '../data/defaultData';
 import { AnyAccount, reconstituteAccount } from '../components/Objects/Accounts/models';
 import { AnyIncome, reconstituteIncome } from '../components/Objects/Income/models';
 import { AnyExpense, reconstituteExpense } from '../components/Objects/Expense/models';
+import { TaxContext } from '../components/Objects/Taxes/TaxContext';
+import { TAX_DATABASE } from '../data/TaxData';
+import { calculateFederalTax, calculateFicaTax, calculateStateTax } from '../components/Objects/Taxes/TaxService';
+import { CashflowSankey } from '../components/Charts/CashflowSankey';
 
 export default function Dashboard() {
   const incomeCtx = useContext(IncomeContext);
   const expenseCtx = useContext(ExpenseContext);
   const accountCtx = useContext(AccountContext);
+  const { expenses } = useContext(ExpenseContext);
+  const { state: taxState } = useContext(TaxContext);
 
   const hasIncomes = incomeCtx.incomes.length > 0;
   const hasExpenses = expenseCtx.expenses.length > 0;
   const hasAccounts = accountCtx.accounts.length > 0;
   const isSetupComplete = hasIncomes && hasExpenses && hasAccounts;
   const isPristine = !hasIncomes && !hasExpenses && !hasAccounts;
+
+  const { incomes } = useContext(IncomeContext);
+  
+      const year = 2026;
+  
+      // Calculate taxes locally to pass them in
+      const fedParams = TAX_DATABASE.federal[year]?.[taxState.filingStatus];
+      const stateParams = TAX_DATABASE.states[taxState.stateResidency]?.[year]?.[taxState.filingStatus];
+  
+      let annualFedTax = fedParams ? calculateFederalTax(taxState, incomes, expenses, year) : 0;
+      let annualStateTax = stateParams ? calculateStateTax(taxState, incomes, expenses, year) : 0;
+      let annualFicaTax = fedParams ? calculateFicaTax(taxState, incomes, year) : 0;
+  
+      if (taxState.fedOverride !== null) annualFedTax = taxState.fedOverride;
+      if (taxState.ficaOverride !== null) annualFicaTax = taxState.ficaOverride;
+      if (taxState.stateOverride !== null) annualStateTax = taxState.stateOverride;
+  
 
   const loadDefaultData = () => {
     // Load Accounts
@@ -109,9 +131,15 @@ export default function Dashboard() {
             {/* Main Flow Chart - Spans 2 cols on large screens */}
             <div className="lg:col-span-3 bg-[#18181b] rounded-2xl border border-gray-800 p-6 shadow-xl">
               <h2 className="text-xl font-bold text-gray-200 mb-6">Yearly Cash Flow</h2>
-              <div className="min-h-[300px] flex flex-col justify-center">
+              <div className="min-h-75 flex flex-col justify-center">
                 {hasIncomes ? (
-                  <CashflowChart/>
+                  <CashflowSankey
+                    incomes={incomes}
+                    expenses={expenses}
+                    year={year}
+                    taxes={{ fed: annualFedTax, state: annualStateTax, fica: annualFicaTax }}
+                    height={300}
+                  />
                 ) : (
                   <div className='flex flex-col items-center justify-center text-center p-12 border-2 border-dashed border-gray-800 rounded-2xl'>
                     <div className="text-gray-500 text-lg mb-2">No income data available</div>
