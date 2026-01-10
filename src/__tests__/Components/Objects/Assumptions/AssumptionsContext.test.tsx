@@ -280,11 +280,11 @@ describe('AssumptionsContext', () => {
     };
 
     render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
-    
+
     act(() => {
       dispatch({ type: 'UPDATE_MACRO', payload: { inflationRate: 99 } });
     });
-    
+
     expect(state.macro.inflationRate).toBe(99);
 
     act(() => {
@@ -292,5 +292,202 @@ describe('AssumptionsContext', () => {
     });
 
     expect(state).toEqual(defaultAssumptions);
+  });
+
+  describe('Income Reducer Actions', () => {
+    it('should update income settings', () => {
+      let state!: AssumptionsState;
+      let dispatch: React.Dispatch<any>;
+
+      const TestComponent = () => {
+        ({ state, dispatch } = useContext(AssumptionsContext));
+        return null;
+      };
+
+      render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
+
+      act(() => {
+        dispatch({ type: 'UPDATE_INCOME', payload: { salaryGrowth: 4.5 } });
+      });
+
+      expect(state.income.salaryGrowth).toBe(4.5);
+      expect(state.income.socialSecurityStartAge).toBe(defaultAssumptions.income.socialSecurityStartAge);
+    });
+
+    it('should update social security start age', () => {
+      let state!: AssumptionsState;
+      let dispatch: React.Dispatch<any>;
+
+      const TestComponent = () => {
+        ({ state, dispatch } = useContext(AssumptionsContext));
+        return null;
+      };
+
+      render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
+
+      act(() => {
+        dispatch({ type: 'UPDATE_INCOME', payload: { socialSecurityStartAge: 70 } });
+      });
+
+      expect(state.income.socialSecurityStartAge).toBe(70);
+    });
+  });
+
+  describe('Expenses Reducer Actions', () => {
+    it('should update expense settings', () => {
+      let state!: AssumptionsState;
+      let dispatch: React.Dispatch<any>;
+
+      const TestComponent = () => {
+        ({ state, dispatch } = useContext(AssumptionsContext));
+        return null;
+      };
+
+      render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
+
+      act(() => {
+        dispatch({ type: 'UPDATE_EXPENSES', payload: { lifestyleCreep: 30.0, housingAppreciation: 4.0 } });
+      });
+
+      expect(state.expenses.lifestyleCreep).toBe(30.0);
+      expect(state.expenses.housingAppreciation).toBe(4.0);
+      expect(state.expenses.rentInflation).toBe(defaultAssumptions.expenses.rentInflation);
+    });
+  });
+
+  describe('Investments Reducer Actions', () => {
+    it('should update investment settings', () => {
+      let state!: AssumptionsState;
+      let dispatch: React.Dispatch<any>;
+
+      const TestComponent = () => {
+        ({ state, dispatch } = useContext(AssumptionsContext));
+        return null;
+      };
+
+      render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
+
+      act(() => {
+        dispatch({ type: 'UPDATE_INVESTMENTS', payload: { withdrawalStrategy: 'Percentage' as const, withdrawalRate: 3.5 } });
+      });
+
+      expect(state.investments.withdrawalStrategy).toBe('Percentage');
+      expect(state.investments.withdrawalRate).toBe(3.5);
+    });
+
+    it('should update investment return rates', () => {
+      let state!: AssumptionsState;
+      let dispatch: React.Dispatch<any>;
+
+      const TestComponent = () => {
+        ({ state, dispatch } = useContext(AssumptionsContext));
+        return null;
+      };
+
+      render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
+
+      act(() => {
+        dispatch({ type: 'UPDATE_INVESTMENT_RATES', payload: { ror: 8.5 } });
+      });
+
+      expect(state.investments.returnRates.ror).toBe(8.5);
+    });
+  });
+
+  describe('Demographics Reducer Actions', () => {
+    it('should update demographics settings', () => {
+      let state!: AssumptionsState;
+      let dispatch: React.Dispatch<any>;
+
+      const TestComponent = () => {
+        ({ state, dispatch } = useContext(AssumptionsContext));
+        return null;
+      };
+
+      render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
+
+      act(() => {
+        dispatch({ type: 'UPDATE_DEMOGRAPHICS', payload: { retirementAge: 70, lifeExpectancy: 95 } });
+      });
+
+      expect(state.demographics.retirementAge).toBe(70);
+      expect(state.demographics.lifeExpectancy).toBe(95);
+      expect(state.demographics.startAge).toBe(defaultAssumptions.demographics.startAge);
+    });
+  });
+
+  describe('Bulk Data Actions', () => {
+    it('should set bulk data replacing entire state', () => {
+      let state!: AssumptionsState;
+      let dispatch: React.Dispatch<any>;
+
+      const TestComponent = () => {
+        ({ state, dispatch } = useContext(AssumptionsContext));
+        return null;
+      };
+
+      render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
+
+      const newState: AssumptionsState = {
+        ...defaultAssumptions,
+        macro: { ...defaultAssumptions.macro, inflationRate: 15.0 },
+        income: { ...defaultAssumptions.income, salaryGrowth: 10.0 },
+      };
+
+      act(() => {
+        dispatch({ type: 'SET_BULK_DATA', payload: newState });
+      });
+
+      expect(state.macro.inflationRate).toBe(15.0);
+      expect(state.income.salaryGrowth).toBe(10.0);
+    });
+
+    it('should set priorities in bulk', () => {
+      let state!: AssumptionsState;
+      let dispatch: React.Dispatch<any>;
+
+      const TestComponent = () => {
+        ({ state, dispatch } = useContext(AssumptionsContext));
+        return null;
+      };
+
+      render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
+
+      const priorities: PriorityBucket[] = [
+        { id: 'p1', name: 'Priority 1', type: 'INVESTMENT', capType: 'MAX', capValue: 1000 },
+        { id: 'p2', name: 'Priority 2', type: 'SAVINGS', capType: 'FIXED', capValue: 500 },
+      ];
+
+      act(() => {
+        dispatch({ type: 'SET_PRIORITIES', payload: priorities });
+      });
+
+      expect(state.priorities).toHaveLength(2);
+      expect(state.priorities).toEqual(priorities);
+    });
+
+    it('should set withdrawal strategy in bulk', () => {
+      let state!: AssumptionsState;
+      let dispatch: React.Dispatch<any>;
+
+      const TestComponent = () => {
+        ({ state, dispatch } = useContext(AssumptionsContext));
+        return null;
+      };
+
+      render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
+
+      const withdrawalStrategy: WithdrawalBucket[] = [
+        { id: 'w1', name: 'Emergency Fund', accountId: 'acc-1' },
+        { id: 'w2', name: 'Brokerage', accountId: 'acc-2' },
+      ];
+
+      act(() => {
+        dispatch({ type: 'SET_WITHDRAWAL_STRATEGY', payload: withdrawalStrategy });
+      });
+
+      expect(state.withdrawalStrategy).toHaveLength(2);
+      expect(state.withdrawalStrategy).toEqual(withdrawalStrategy);
+    });
   });
 });

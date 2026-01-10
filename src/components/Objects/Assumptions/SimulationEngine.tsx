@@ -84,29 +84,32 @@ export function simulateOneYear(
     // 4. CASHFLOW (The Wallet)
     // Formula: Gross - PreTax(401k/HSA/Insurance) - PostTax(Roth) - Taxes - Bills
     let discretionaryCash = totalGrossIncome - preTaxDeductions - postTaxDeductions - totalTax - totalLivingExpenses;
-
+    let withdrawalPenalties = 0;
     // ------------------------------------------------------------------
     // NEW: WITHDRAWAL LOGIC (Deficit Manager)
     // ------------------------------------------------------------------
-    
+
     // CHANGED: Split inflows into User vs Employer to support vesting tracking
-    const userInflows: Record<string, number> = {}; 
-    const employerInflows: Record<string, number> = {}; 
+    const userInflows: Record<string, number> = {};
+    const employerInflows: Record<string, number> = {};
     let withdrawalTaxes = 0;
 
     if (discretionaryCash < 0) {
         let deficit = Math.abs(discretionaryCash);
-        
+
         // Loop through Withdrawal Strategy
-        const strategy = assumptions.withdrawalStrategy || []; 
+        const strategy = assumptions.withdrawalStrategy || [];
 
         for (const bucket of strategy) {
-            if (deficit <= 0.01) break; 
+            if (deficit <= 0.01) break;
 
             const account = accounts.find(acc => acc.id === bucket.accountId);
             if (!account) continue;
 
-            const availableBalance = account.amount; 
+            let availableBalance = account.amount;
+            if (account instanceof InvestedAccount) {
+                availableBalance = account.vestedAmount; // Use the getter from models.tsx
+            }
             if (availableBalance <= 0) continue;
 
             let withdrawAmount = 0;
@@ -115,15 +118,23 @@ export function simulateOneYear(
             // SCENARIO 1: Tax-Free
             const isTaxFree = (account instanceof SavedAccount) || 
                               (account instanceof InvestedAccount && (account.taxType === 'Roth 401k' || account.taxType === 'Roth IRA' || account.taxType === 'HSA'));
+            const currentAge = assumptions.demographics.startAge + (year - assumptions.demographics.startYear);
+            const isEarly = currentAge < 59.5; 
+            // Note: 55 rule and SEPP are complex exceptions, stick to 59.5 for now.
 
             if (isTaxFree) {
                 withdrawAmount = Math.min(deficit, availableBalance);
                 deficit -= withdrawAmount;
             }
             
+            
             // SCENARIO 2: Pre-Tax (Traditional 401k/IRA)
             else if (account instanceof InvestedAccount && (account.taxType === 'Traditional 401k' || account.taxType === 'Traditional IRA')) {
-                
+                let targetNet = deficit;
+                if (isEarly) {
+                    // Approximate: If we lose 10% off the top, we need roughly 1/0.9 as much base.
+                    targetNet = deficit / 0.9; 
+                }
                 // 1. Calculate Baselines
                 const fedParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'federal', undefined, assumptions);
                 const stateParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions);
@@ -139,7 +150,7 @@ export function simulateOneYear(
 
                 // 2. Call Solver
                 const result = TaxService.calculateGrossWithdrawal(
-                    Math.min(deficit, availableBalance),
+                    Math.min(targetNet, availableBalance),
                     currentFedIncome,       
                     currentFedDeduction,    
                     currentStateIncome,     
@@ -148,6 +159,12 @@ export function simulateOneYear(
                     year,
                     assumptions
                 );
+
+                let actualPenalty = 0;
+                if (isEarly) {
+                    actualPenalty = result.grossWithdrawn * 0.10;
+                    withdrawalPenalties += actualPenalty; // Track it
+                }
 
                 // Overdraft Check
                 if (result.grossWithdrawn > availableBalance) {
@@ -166,12 +183,23 @@ export function simulateOneYear(
                      const stateNew = TaxService.calculateTax(currentStateIncome + withdrawAmount, 0, stateApplied);
 
                      taxHit = (fedNew - fedBase) + (stateNew - stateBase);
+
+                     if (isEarly) {
+                        actualPenalty = withdrawAmount * 0.10;
+                        withdrawalPenalties += actualPenalty; // Track it
+                     }
                      
-                     deficit -= (withdrawAmount - taxHit);
+                     deficit -= (withdrawAmount - taxHit - actualPenalty);
                 } else {
                     withdrawAmount = result.grossWithdrawn;
                     taxHit = result.totalTax;
-                    deficit = 0;
+                    
+                    // Did we cover it?
+                    // Cash Received = Gross - Tax - Penalty
+                    const cashReceived = withdrawAmount - taxHit - actualPenalty;
+                    deficit -= cashReceived; 
+                    // Note: deficit might be slightly non-zero due to the /0.9 approximation, 
+                    // but it will be very close.
                 }
 
                 // 3. Update Baselines
@@ -186,6 +214,15 @@ export function simulateOneYear(
 
         // Final Adjustments
         totalTax += withdrawalTaxes;
+
+        // FLOATING POINT CLEANUP
+        // If the remaining deficit is less than half a penny, treat it as zero.
+        // This prevents "-$0.00" errors in the UI or logic.
+        if (Math.abs(deficit) < 0.005) {
+            console.log(`Deficit of $${deficit.toFixed(4)} treated as zero due to floating point precision.`);
+            deficit = 0;
+        }
+
         discretionaryCash = -deficit;
     }
 
@@ -325,7 +362,7 @@ export function simulateOneYear(
             bucketDetail: bucketDetail
         },
         taxDetails: {
-            fed: fedTax + withdrawalTaxes, 
+            fed: fedTax + withdrawalTaxes + withdrawalPenalties, 
             state: stateTax,
             fica: ficaTax,
             preTax: preTaxDeductions - totalInsuranceCost, 

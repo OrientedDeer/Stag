@@ -1,7 +1,24 @@
 import { describe, it, expect } from 'vitest';
 import { TaxState } from '../../../../components/Objects/Taxes/TaxContext';
 import { AssumptionsState, defaultAssumptions } from '../../../../components/Objects/Assumptions/AssumptionsContext';
-import { calculateGrossWithdrawal } from '../../../../components/Objects/Taxes/TaxService';
+import {
+    calculateGrossWithdrawal,
+    getTaxParameters,
+    getGrossIncome,
+    getPreTaxExemptions,
+    getPostTaxEmployerMatch,
+    getPostTaxExemptions,
+    getFicaExemptions,
+    getEarnedIncome,
+    getItemizedDeductions,
+    getYesDeductions,
+    calculateTax,
+    calculateFicaTax,
+    calculateStateTax,
+    calculateFederalTax
+} from '../../../../components/Objects/Taxes/TaxService';
+import { WorkIncome } from '../../../../components/Objects/Income/models';
+import { MortgageExpense } from '../../../../components/Objects/Expense/models';
 
 // --- HELPERS ---
 
@@ -160,4 +177,264 @@ describe('TaxService: Gross Up Calculator', () => {
         expect(result.grossWithdrawn).toBeLessThan(2000000); 
     });
 
+});
+
+describe('TaxService: Additional Functions', () => {
+    describe('getTaxParameters', () => {
+        it('should return federal tax parameters for current year', () => {
+            const params = getTaxParameters(2024, 'Single', 'federal');
+            expect(params).toBeDefined();
+            expect(params?.standardDeduction).toBe(14600);
+            expect(params?.brackets[0].threshold).toBe(0);
+            expect(params?.brackets[0].rate).toBe(0.10);
+            expect(params?.brackets[1].threshold).toBe(11600);
+            expect(params?.brackets[1].rate).toBe(0.12);
+        });
+
+        it('should return state tax parameters for DC', () => {
+            const params = getTaxParameters(2024, 'Single', 'state', 'DC');
+            expect(params).toBeDefined();
+            expect(params?.standardDeduction).toBe(14600);
+            expect(params?.brackets[0].threshold).toBe(0);
+            expect(params?.brackets[0].rate).toBe(0.04);
+            expect(params?.brackets[1].threshold).toBe(10000);
+            expect(params?.brackets[1].rate).toBe(0.06);
+        });
+
+        it('should return undefined for invalid state', () => {
+            const params = getTaxParameters(2024, 'Single', 'state', 'InvalidState');
+            expect(params).toBeUndefined();
+        });
+
+        it('should handle inflation-adjusted future years', () => {
+            const inflationAssumptions: AssumptionsState = {
+                ...noInflationAssumptions,
+                macro: { ...noInflationAssumptions.macro, inflationAdjusted: true, inflationRate: 3 }
+            };
+            const params = getTaxParameters(2030, 'Single', 'federal', undefined, inflationAssumptions);
+            expect(params).toBeDefined();
+            if (params) {
+                expect(params.standardDeduction).toBeGreaterThan(14600); // Should be inflated
+            }
+        });
+
+        it('should handle different filing statuses', () => {
+            const single = getTaxParameters(2024, 'Single', 'federal');
+            const married = getTaxParameters(2024, 'Married Filing Jointly', 'federal');
+            expect(single?.standardDeduction).toBeLessThan(married?.standardDeduction || 0);
+        });
+    });
+
+    describe('getGrossIncome', () => {
+        it('should calculate total gross income from work income', () => {
+            const income = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 5000, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+            const total = getGrossIncome([income], 2024);
+            expect(total).toBe(100000);
+        });
+
+        it('should include employer match for Roth 401k', () => {
+            const income = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 5000, 'acc1', 'Roth 401k', 'FIXED', new Date('2020-01-01'));
+            const total = getGrossIncome([income], 2024);
+            // Employer match to a Roth 401k is taxable income to the employee
+            expect(total).toBe(105000);
+        });
+
+        it('should handle multiple incomes', () => {
+            const income1 = new WorkIncome('w1', 'Job1', 100000, 'Annually', 'Yes', 0, 0, 0, 5000, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+            const income2 = new WorkIncome('w2', 'Job2', 50000, 'Annually', 'Yes', 0, 0, 0, 2500, 'acc2', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+            const total = getGrossIncome([income1, income2], 2024);
+            expect(total).toBe(150000);
+        });
+    });
+
+    describe('getPreTaxExemptions', () => {
+        it('should calculate pre-tax 401k and insurance exemptions', () => {
+            const income = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 19500, 5000, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+            const exemptions = getPreTaxExemptions([income], 2024);
+            expect(exemptions).toBe(24500); // 19500 + 5000
+        });
+
+        it('should return 0 for no pre-tax exemptions', () => {
+            const income = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Roth 401k', 'FIXED', new Date('2020-01-01'));
+            const exemptions = getPreTaxExemptions([income], 2024);
+            expect(exemptions).toBe(0);
+        });
+    });
+
+    describe('getPostTaxEmployerMatch', () => {
+        it('should return employer match for Roth 401k', () => {
+            const income = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 5000, 'acc1', 'Roth 401k', 'FIXED', new Date('2020-01-01'));
+            const match = getPostTaxEmployerMatch([income], 2024);
+            expect(match).toBe(5000);
+        });
+
+        it('should return 0 for Traditional 401k', () => {
+            const income = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 5000, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+            const match = getPostTaxEmployerMatch([income], 2024);
+            expect(match).toBe(0);
+        });
+    });
+
+    describe('getPostTaxExemptions', () => {
+        it('should calculate Roth 401k contributions', () => {
+            const income = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 19500, 0, 'acc1', 'Roth 401k', 'FIXED', new Date('2020-01-01'));
+            const exemptions = getPostTaxExemptions([income], 2024);
+            expect(exemptions).toBe(19500);
+        });
+    });
+
+    describe('getFicaExemptions', () => {
+        it('should calculate FICA exemptions when present', () => {
+            const income = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+            const exemptions = getFicaExemptions([income], 2024);
+            expect(exemptions).toBeGreaterThanOrEqual(0);
+        });
+    });
+
+    describe('getEarnedIncome', () => {
+        it('should calculate total earned income', () => {
+            const income = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+            const earned = getEarnedIncome([income], 2024);
+            expect(earned).toBeGreaterThanOrEqual(0);
+        });
+    });
+
+    describe('getYesDeductions', () => {
+        it('should sum tax-deductible expenses', () => {
+            const mortgage = new MortgageExpense('m1', 'Home', 'Monthly', 500000, 400000, 400000, 3, 30, 1.2, 0, 1, 100, 0.3, 0, 50, 'Yes', 0.8, 'a1', new Date('2020-01-01'));
+            const deductions = getYesDeductions([mortgage], 2024);
+            expect(deductions).toBeGreaterThan(0);
+        });
+
+        it('should return 0 for non-deductible expenses', () => {
+            const mortgage = new MortgageExpense('m1', 'Home', 'Monthly', 500000, 400000, 400000, 3, 30, 1.2, 0, 1, 100, 0.3, 0, 50, 'No', 0, 'a1', new Date('2020-01-01'));
+            const deductions = getYesDeductions([mortgage], 2024);
+            expect(deductions).toBe(0);
+        });
+    });
+
+    describe('getItemizedDeductions', () => {
+        it('should calculate itemized deductions', () => {
+            const mortgage = new MortgageExpense('m1', 'Home', 'Monthly', 500000, 400000, 400000, 3, 30, 1.2, 0, 1, 100, 0.3, 0, 50, 'Itemized', 0.8, 'a1', new Date('2020-01-01'));
+            const deductions = getItemizedDeductions([mortgage], 2024);
+            expect(deductions).toBeGreaterThanOrEqual(0);
+        });
+    });
+
+    describe('calculateTax', () => {
+        it('should calculate tax with progressive brackets', () => {
+            const params = getTaxParameters(2024, 'Single', 'federal');
+            if (params) {
+                // Taxable income = 50,000
+                const tax = calculateTax(50000, 0, params);
+                // 11600 * 0.10 = 1160
+                // (47151 - 11600) * 0.12 = 4266.12
+                // (50000 - 47151) * 0.22 = 626.78
+                // Total = 6052.9
+                expect(tax).toBeCloseTo(6052.9);
+            }
+        });
+
+        it('should return 0 for income below standard deduction', () => {
+            const params = getTaxParameters(2024, 'Single', 'federal');
+            if (params) {
+                const tax = calculateTax(10000, 14600, params);
+                expect(tax).toBe(0);
+            }
+        });
+
+        it('should handle negative taxable income', () => {
+            const params = getTaxParameters(2024, 'Single', 'federal');
+            if (params) {
+                const tax = calculateTax(10000, 20000, params);
+                expect(tax).toBe(0);
+            }
+        });
+    });
+
+    describe('calculateFicaTax', () => {
+        it('should calculate FICA tax on earned income', () => {
+            const income = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+            const taxState = createTaxState();
+            const fica = calculateFicaTax(taxState, [income], 2024, noInflationAssumptions);
+            // SS (6.2%) on 100k + Medicare (1.45%) on 100k = 6200 + 1450 = 7650
+            expect(fica).toBe(7650);
+        });
+
+        it('should respect Social Security wage base cap', () => {
+            const highIncome = new WorkIncome('w1', 'Job', 500000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+            const taxState = createTaxState();
+            const fica = calculateFicaTax(taxState, [highIncome], 2024, noInflationAssumptions);
+            // SS is capped at the 2024 wage base of 176,100. Medicare is not.
+            // SS = 176100 * 0.062 = 10918.2
+            // Medicare = 500000 * 0.0145 = 7250
+            // Total = 18168.2
+            expect(fica).toBeCloseTo(18168.2);
+        });
+
+        it('should use FICA override when provided', () => {
+            const income = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+            const taxState = createTaxState({ ficaOverride: 5000 });
+            const fica = calculateFicaTax(taxState, [income], 2024, noInflationAssumptions);
+            expect(fica).toBe(5000);
+        });
+    });
+
+    describe('calculateStateTax', () => {
+        it('should calculate state tax for DC', () => {
+            const income = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+            const taxState = createTaxState({ stateResidency: 'DC' });
+            const stateTax = calculateStateTax(taxState, [income], [], 2024, noInflationAssumptions);
+            // Taxable: 100k - 14.6k (DC standard) = 85.4k
+            // 10k@4% = 400
+            // 30k@6% = 1800
+            // 20k@6.5% = 1300
+            // 25.4k@8.5% = 2159
+            // Total = 5659
+            expect(stateTax).toBeCloseTo(5659);
+        });
+
+        it('should return 0 for Texas (no state income tax)', () => {
+            const income = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+            const taxState = createTaxState({ stateResidency: 'Texas' });
+            const stateTax = calculateStateTax(taxState, [income], [], 2024, noInflationAssumptions);
+            expect(stateTax).toBe(0);
+        });
+
+        it('should use state override when provided', () => {
+            const income = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+            const taxState = createTaxState({ stateResidency: 'California', stateOverride: 3000 });
+            const stateTax = calculateStateTax(taxState, [income], [], 2024, noInflationAssumptions);
+            expect(stateTax).toBe(3000);
+        });
+    });
+
+    describe('calculateFederalTax', () => {
+        it('should calculate federal tax with standard deduction', () => {
+            const income = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+            const taxState = createTaxState({ deductionMethod: 'Standard' });
+            const fedTax = calculateFederalTax(taxState, [income], [], 2024, noInflationAssumptions);
+            // Taxable income: 100k - 14.6k (std deduction) = 85.4k
+            // 11600 * 0.10 = 1160
+            // (47151 - 11600) * 0.12 = 4266.12
+            // (85400 - 47151) * 0.22 = 8414.78
+            // Total = 13840.9
+            expect(fedTax).toBeCloseTo(13840.9);
+        });
+
+        it('should calculate federal tax with itemized deductions', () => {
+            const income = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+            const mortgage = new MortgageExpense('m1', 'Home', 'Monthly', 500000, 400000, 400000, 3, 30, 1.2, 0, 1, 100, 0.3, 0, 50, 'Yes', 0.8, 'a1', new Date('2020-01-01'));
+            const taxState = createTaxState({ deductionMethod: 'Itemized' });
+            const fedTax = calculateFederalTax(taxState, [income], [mortgage], 2024, noInflationAssumptions);
+            expect(fedTax).toBeGreaterThan(0);
+        });
+
+        it('should use federal override when provided', () => {
+            const income = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+            const taxState = createTaxState({ fedOverride: 15000 });
+            const fedTax = calculateFederalTax(taxState, [income], [], 2024, noInflationAssumptions);
+            expect(fedTax).toBe(15000);
+        });
+    });
 });

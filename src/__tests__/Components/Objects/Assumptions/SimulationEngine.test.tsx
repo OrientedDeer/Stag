@@ -89,51 +89,28 @@ describe('Simulation Engine', () => {
     });
 
     it('should handle withdrawal from Traditional 401k with tax calculation', () => {
-        // Test that the withdrawal strategy code path is executed
-        const traditionalIRA = new InvestedAccount(
-            'ira-1',
-            'Traditional IRA',
-            10000,
-            0,
-            5,
-            0.0,
-            'Traditional IRA',
-            true,
-            0.2
-        );
-
+        const traditionalIRA = new InvestedAccount('ira-1', 'Traditional IRA', 10000, 0, 5, 0.0, 'Traditional IRA', true, 0.2);
         const expense = new FoodExpense('exp-1', 'Expenses', 5000, 'Annually');
-
         const assumptionsWithWithdrawal: AssumptionsState = {
             ...cleanAssumptions,
-            withdrawalStrategy: [
-                { id: 'w1', name: 'IRA Withdrawal', accountId: 'ira-1' }
-            ]
+            withdrawalStrategy: [{ id: 'w1', name: 'IRA Withdrawal', accountId: 'ira-1' }]
         };
-
         const taxState: TaxState = {
-            filingStatus: 'Single',
-            stateResidency: 'DC',
-            deductionMethod: 'Standard',
-            fedOverride: null,
-            ficaOverride: null,
-            stateOverride: null,
-            year: 2024
+            filingStatus: 'Single', stateResidency: 'DC', deductionMethod: 'Standard',
+            fedOverride: null, ficaOverride: null, stateOverride: null, year: 2024
         };
 
-        const result = simulateOneYear(
-            2024,
-            [],
-            [expense],
-            [traditionalIRA],
-            assumptionsWithWithdrawal,
-            taxState
-        );
+        const result = simulateOneYear(2024, [], [expense], [traditionalIRA], assumptionsWithWithdrawal, taxState);
 
-        // Verify result has expected structure (code executed)
-        expect(result.accounts[0]).toBeDefined();
-        expect(result.accounts[0].amount).toBeGreaterThan(0);
-        expect(result.taxDetails).toBeDefined();
+        // Deficit of 5000 needs to be covered.
+        // Withdrawal is from a Traditional IRA, so it's taxable.
+        // However, with 0 income, the 5k withdrawal is below the standard deduction (14.6k).
+        // So, Gross withdrawal = 5000, Tax = 0.
+        // Account balance before growth: 10000 - 5000 = 5000.
+        // Account balance after 10% growth: 5000 * 1.10 = 5500.
+        expect(result.accounts[0].amount).toBeCloseTo(5500);
+        expect(result.taxDetails.fed).toBe(0);
+        expect(result.taxDetails.state).toBe(0);
     });
 
     it('should handle overdraft scenario when withdrawal exceeds available balance', () => {
@@ -150,7 +127,7 @@ describe('Simulation Engine', () => {
             0.2
         );
 
-        const massiveExpense = new FoodExpense('exp-1', 'Massive Expenses', 10000, 'Annually');
+        const massiveExpense = new FoodExpense('exp-1', 'Massive Expenses', 10000, 'Annually', new Date(2025, 0, 1));
 
         const assumptionsWithWithdrawal: AssumptionsState = {
             ...cleanAssumptions,
@@ -170,7 +147,7 @@ describe('Simulation Engine', () => {
         };
 
         const result = simulateOneYear(
-            2024,
+            2025, // Use start year from assumptions
             [],
             [massiveExpense],
             [smallAccount],
@@ -179,170 +156,73 @@ describe('Simulation Engine', () => {
         );
 
         // Verify withdrawal code executed
-        expect(result.accounts[0]).toBeDefined();
-        expect(result.cashflow).toBeDefined();
+        // Account grows from 1000 to 1100 (10% growth)
+        // Withdrawal calculated on pre-growth balance: min(10000, 1000) = 1000
+        // Final balance after growth and withdrawal: 1100 - 1000 = 100
+        expect(result.accounts[0].amount).toBeCloseTo(100);
+
+        // Gross withdrawal: 1000
+        // Early withdrawal penalty (10%): 100
+        // Taxes: ~0 (very small income)
+        // Net received: ~900
+        // Remaining deficit: 10000 - 900 = 9100
+        expect(result.cashflow.discretionary).toBeCloseTo(-9100);
     });
 
     it('should handle tax-free withdrawal from Roth IRA', () => {
-        const rothIRA = new InvestedAccount(
-            'roth-1',
-            'Roth IRA',
-            10000,
-            0,
-            5,
-            0.0,
-            'Roth IRA',
-            true,
-            0.2
-        );
-
+        const rothIRA = new InvestedAccount('roth-1', 'Roth IRA', 10000, 0, 5, 0.0, 'Roth IRA', true, 0.2);
         const expense = new FoodExpense('exp-1', 'Expenses', 5000, 'Annually');
-
         const assumptionsWithWithdrawal: AssumptionsState = {
             ...cleanAssumptions,
-            withdrawalStrategy: [
-                { id: 'w1', name: 'Roth Withdrawal', accountId: 'roth-1' }
-            ]
+            withdrawalStrategy: [{ id: 'w1', name: 'Roth Withdrawal', accountId: 'roth-1' }]
         };
-
         const taxState: TaxState = {
-            filingStatus: 'Single',
-            stateResidency: 'DC',
-            deductionMethod: 'Standard',
-            fedOverride: null,
-            ficaOverride: null,
-            stateOverride: null,
-            year: 2024
+            filingStatus: 'Single', stateResidency: 'DC', deductionMethod: 'Standard',
+            fedOverride: null, ficaOverride: null, stateOverride: null, year: 2024
         };
 
-        const result = simulateOneYear(
-            2024,
-            [],
-            [expense],
-            [rothIRA],
-            assumptionsWithWithdrawal,
-            taxState
-        );
+        const result = simulateOneYear(2024, [], [expense], [rothIRA], assumptionsWithWithdrawal, taxState);
 
-        // Verify tax-free withdrawal code path executed
-        expect(result.accounts[0]).toBeDefined();
-        expect(result.accounts[0].amount).toBeGreaterThan(0);
+        // Deficit of 5000 needs to be covered.
+        // Withdrawal is from a Roth IRA, so it's tax-free.
+        // Withdrawal amount = 5000. Tax = 0.
+        // Account balance before growth: 10000 - 5000 = 5000.
+        // Account balance after 10% growth: 5000 * 1.10 = 5500.
+        expect(result.accounts[0].amount).toBeCloseTo(5500);
+        expect(result.taxDetails.fed).toBe(0);
+        expect(result.taxDetails.state).toBe(0);
     });
 
     it('should handle DebtAccount with linked loan and payment', () => {
-        const debtAccount = new DebtAccount(
-            'debt-1',
-            'Car Loan',
-            5000,
-            'loan-1',
-            5.0
-        );
+        const debtAccount = new DebtAccount('debt-1', 'Car Loan', 5000, 'loan-1', 5.0);
+        const loanExpense = new LoanExpense('loan-1', 'Car Payment', 5000, 'Monthly', 5, "Simple", 250, "No", 0, 'debt-1');
+        const income = new WorkIncome('inc-1', 'Job', 60000, 'Annually', 'Yes', 0, 0, 0, 0, '', null, 'FIXED');
 
-        const loanExpense = new LoanExpense(
-            'loan-1',
-            'Car Payment',
-            5000,
-            'Monthly',
-            5,
-            "Simple",
-            250,
-            "No",
-            0,
-            'debt-1'
-        );
+        const result = simulateOneYear(2024, [income], [loanExpense], [debtAccount], cleanAssumptions, mockTaxState);
 
-        const income = new WorkIncome(
-            'inc-1',
-            'Job',
-            60000,
-            'Annually',
-            'Yes',
-            0,
-            0,
-            0,
-            0,
-            '',
-            null,
-            'FIXED'
-        );
-
-        const result = simulateOneYear(
-            2024,
-            [income],
-            [loanExpense],
-            [debtAccount],
-            cleanAssumptions,
-            mockTaxState
-        );
-
-        // Debt should be reduced by payments
-        expect(result.accounts[0]).toBeDefined();
+        // Annual payment = 250 * 12 = 3000.
+        // Interest for year 1 is approx 5000 * 5% = 250.
+        // Principal reduction is approx 3000 - 250 = 2750.
+        // Final balance should be around 5000 - 2750 = 2250.
+        expect(result.accounts[0].amount).toBeCloseTo(2250, -2); // Check within a hundred dollars
     });
 
     it('should handle PropertyAccount with mortgage', () => {
-        const propertyAccount = new PropertyAccount(
-            'prop-1',
-            'House',
-            300000,
-            "Financed",
-            300000,
-            250000,
-            "mort-1",
-            4.0
-        );
+        const propertyAccount = new PropertyAccount('prop-1', 'House', 300000, "Financed", 300000, 250000, "mort-1", 4.0);
+        const mortgageExpense = new MortgageExpense('mort-1', 'Mortgage Payment', 'Monthly', 300000, 250000, 250000, 4.0, 30, 1, 0, 1, 200, 1, 0, 0, "Itemized", 0, 'prop-1');
+        const income = new WorkIncome('inc-1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 0, '', null, 'FIXED');
 
-        const mortgageExpense = new MortgageExpense(
-            'mort-1',
-            'Mortgage Payment',
-            'Monthly',
-            300000,
-            250000,
-            250000,
-            4.0,
-            30,
-            1,
-            0,
-            1,
-            200,
-            1,
-            0,
-            0,
-            "Itemized",
-            0,
-            'prop-1'
-        );
+        const result = simulateOneYear(2024, [income], [mortgageExpense], [propertyAccount], cleanAssumptions, mockTaxState);
+        const resultAccount = result.accounts[0] as PropertyAccount;
 
-        const income = new WorkIncome(
-            'inc-1',
-            'Job',
-            100000,
-            'Annually',
-            'Yes',
-            0,
-            0,
-            0,
-            0,
-            '',
-            null,
-            'FIXED'
-        );
+        // Verify property appreciated by its APR (4%)
+        expect(resultAccount.amount).toBe(300000 * 1.04);
 
-        const result = simulateOneYear(
-            2024,
-            [income],
-            [mortgageExpense],
-            [propertyAccount],
-            cleanAssumptions,
-            mockTaxState
-        );
-
-        // Property account should exist
-        expect(result.accounts[0]).toBeDefined();
-        expect(result.accounts[0].constructor.name).toBe('PropertyAccount');
+        // Verify mortgage balance was reduced
+        expect(resultAccount.loanAmount).toBeLessThan(250000);
     });
 
-    it('should handle unknown account types gracefully', () => {
-        // Create a basic account that's not one of the known types
+    it('should grow a SavedAccount by its APR', () => {
         const basicAccount = new SavedAccount('sav-1', 'Savings', 1000, 2.5);
 
         const result = simulateOneYear(
@@ -354,15 +234,13 @@ describe('Simulation Engine', () => {
             mockTaxState
         );
 
-        // Should still process the account
-        expect(result.accounts[0]).toBeDefined();
-        expect(result.accounts[0].amount).toBeGreaterThan(1000);
+        // Expected: 1000 * (1 + 2.5/100) = 1025
+        expect(result.accounts[0].amount).toBe(1025);
     });
 
     it('should handle withdrawal from SavedAccount', () => {
         const savingsAccount = new SavedAccount('sav-1', 'Savings', 5000, 2.5);
         const expense = new FoodExpense('exp-1', 'Expenses', 3000, 'Annually');
-
         const assumptionsWithWithdrawal: AssumptionsState = {
             ...cleanAssumptions,
             withdrawalStrategy: [
@@ -370,61 +248,31 @@ describe('Simulation Engine', () => {
             ]
         };
 
-        const result = simulateOneYear(
-            2024,
-            [],
-            [expense],
-            [savingsAccount],
-            assumptionsWithWithdrawal,
-            mockTaxState
-        );
+        const result = simulateOneYear(2024, [], [expense], [savingsAccount], assumptionsWithWithdrawal, mockTaxState);
 
-        // Verify SavedAccount withdrawal code path executed
-        expect(result.accounts[0]).toBeDefined();
-        expect(result.accounts[0].amount).toBeGreaterThan(0);
+        // Deficit of 3000 needs to be covered.
+        // Withdrawal is from a SavedAccount, so it's tax-free.
+        // Withdrawal amount = 3000. Tax = 0.
+        // Account balance before growth: 5000 - 3000 = 2000.
+        // Account balance after 2.5% growth: 2000 * 1.025 = 2050.
+        expect(result.accounts[0].amount).toBe(2050);
     });
 
     it('should handle employer match correctly', () => {
-        const retirementAccount = new InvestedAccount(
-            'ret-1',
-            '401k',
-            10000,
-            0,
-            3,
-            0.5,
-            'Traditional 401k',
-            true,
-            0.2
-        );
+        const retirementAccount = new InvestedAccount('ret-1', '401k', 10000, 0, 3, 0.5, 'Traditional 401k', true, 0.2);
+        const income = new WorkIncome('inc-1', 'Job', 100000, 'Annually', 'Yes', 5000, 500, 0, 2500, 'ret-1', 'Traditional 401k', 'FIXED');
 
-        const income = new WorkIncome(
-            'inc-1',
-            'Job',
-            100000,
-            'Annually',
-            'Yes',
-            5000,   // preTax401k
-            500,    // insurance
-            0,      // roth401k
-            2500,   // employerMatch (50% of 5000)
-            'ret-1', // matchAccountId
-            'Traditional 401k',
-            'FIXED'
-        );
+        const result = simulateOneYear(2024, [income], [], [retirementAccount], cleanAssumptions, mockTaxState);
 
-        const result = simulateOneYear(
-            2024,
-            [income],
-            [],
-            [retirementAccount],
-            cleanAssumptions,
-            mockTaxState
-        );
+        // End amount = (start + contributions) * (1 + ror - expense_ratio)
+        // Start = 10000, Contributions = 5000 (user) + 2500 (match) = 7500
+        // Total before growth = 17500
+        // Growth = 17500 * ((10 - 0.5) / 100) = 1662.5
+        // Final amount = 17500 + 1662.5 = 19162.5
+        expect(result.accounts[0].amount).toBeCloseTo(19162.5);
 
-        // Account should grow with both contributions and match
-        expect(result.accounts[0].amount).toBeGreaterThan(10000);
-        // Match may be slightly different due to growth
-        expect(result.cashflow.investedMatch).toBeGreaterThan(2400);
+        // The cashflow investedMatch should be exactly the contribution for the year.
+        expect(result.cashflow.investedMatch).toBe(2500);
     });
 
 });

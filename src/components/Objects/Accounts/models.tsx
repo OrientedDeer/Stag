@@ -67,34 +67,71 @@ export class InvestedAccount extends BaseAccount {
   }
 
   increment(
-    assumptions: AssumptionsState, 
-    userContribution: number = 0, 
+    assumptions: AssumptionsState,
+    userContribution: number = 0,
     employerContribution: number = 0
   ): InvestedAccount {
-    
+
     // 1. Calculate Growth Rate
     const returnRate = 1 + (assumptions.investments.returnRates.ror + (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) - this.expenseRatio) / 100;
 
-    // 2. Grow the TOTAL Balance
-    const newTotalAmount = (this.amount * returnRate) + userContribution + employerContribution;
+    // 2. Grow the existing balances first (before applying contributions/withdrawals)
+    const grownTotal = this.amount * returnRate;
+    const grownEmployerBalance = this.employerBalance * returnRate;
+    const grownUserEquity = grownTotal - grownEmployerBalance;
 
-    // 3. Grow the EMPLOYER Balance separately
-    // (Employer money grows, and new match is added)
-    const newEmployerBalance = (this.employerBalance * returnRate) + employerContribution;
+    // 3. Apply employer contribution
+    let newEmployerBalance = grownEmployerBalance + employerContribution;
 
-    // 4. Increment Tenure (1 year passed)
-    // If fully vested, we can stop incrementing to save safety checks, but keeping it simple is fine.
+    // 4. Handle user contribution/withdrawal with vesting limits
+    let newTotalAmount: number;
+
+    if (userContribution < 0) {
+      // User is withdrawing
+      const withdrawalAmount = Math.abs(userContribution);
+
+      // Check if withdrawal exceeds user's equity
+      if (withdrawalAmount > grownUserEquity) {
+        // User is over-withdrawing - need to tap into employer funds
+        const shortfall = withdrawalAmount - grownUserEquity;
+
+        // Calculate vested amount using CURRENT tenure (before increment)
+        // This represents what's accessible to the user right now
+        const vestedPct = Math.min(1, this.tenureYears * this.vestedPerYear);
+        const vestedEmployerAmount = newEmployerBalance * vestedPct;
+
+        // Can only withdraw from vested employer funds
+        const allowedFromEmployer = Math.min(shortfall, vestedEmployerAmount);
+
+        // Apply the withdrawal
+        newEmployerBalance = newEmployerBalance - allowedFromEmployer;
+        newTotalAmount = grownTotal + employerContribution - grownUserEquity - allowedFromEmployer;
+      } else {
+        // Normal withdrawal - doesn't exceed user equity
+        newTotalAmount = grownTotal + employerContribution + userContribution;
+      }
+    } else {
+      // User is contributing (or no change)
+      newTotalAmount = grownTotal + userContribution + employerContribution;
+    }
+
+    // 5. Final safety check: employer balance can't exceed total
+    if (newEmployerBalance > newTotalAmount) {
+      newEmployerBalance = Math.max(0, newTotalAmount);
+    }
+
+    // 6. Increment Tenure (1 year passed)
     const newTenure = this.tenureYears + 1;
 
     return new InvestedAccount(
-      this.id, 
-      this.name, 
-      newTotalAmount, 
-      newEmployerBalance, 
-      newTenure, 
-      this.expenseRatio, 
-      this.taxType, 
-      this.isContributionEligible, 
+      this.id,
+      this.name,
+      newTotalAmount,
+      newEmployerBalance,
+      newTenure,
+      this.expenseRatio,
+      this.taxType,
+      this.isContributionEligible,
       this.vestedPerYear
     );
   }

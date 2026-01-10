@@ -120,6 +120,75 @@ describe('Account Models', () => {
             expect(year2.nonVestedAmount).toBeLessThan(year1.nonVestedAmount);
             expect(year2.nonVestedAmount).toBeCloseTo(11286.5, 0);
         });
+
+        it('should drain employer balance if user withdrawal exceeds user balance', () => {
+            const assumptions = { ...mockAssumptions };
+            // 1. Setup
+            const acc = new InvestedAccount(
+                'i1', '401k',
+                10000, // Total
+                5000,  // Employer Portion
+                2,     // Tenure (50% vested: 2 * 0.25 = 0.5)
+                0.1, 'Traditional 401k', true, 0.25
+            );
+
+            // 2. Act: Withdraw $6,000 (More than user has, but less than vested limit)
+            // We pass 0 for employer contribution to keep it simple
+            const next = acc.increment(assumptions, -6000, 0);
+
+            // 3. Assert
+            // Growth Rate: 1 + (10 - 0.1)/100 = 1.099 (9.9%)
+            // After growth: Total = 10990, Employer = 5495, User = 5495
+            // Vested employer = 5495 * 0.5 = 2747.5
+            // User withdraws 6000:
+            //   - User equity used: 5495 (all)
+            //   - Shortfall: 505
+            //   - Taken from vested employer: 505 (allowed because 505 < 2747.5)
+            // Final: Total = 4990, Employer = 4990, User = 0
+
+            const expectedTotal = 10000 * 1.099 - 6000; // 9.9% growth
+            expect(next.amount).toBeCloseTo(expectedTotal);
+
+            // Employer Balance should be 4990
+            // (User equity was wiped out, and 505 was taken from vested employer funds)
+            expect(next.employerBalance).toBeCloseTo(4990);
+        });
+
+        it('should limit withdrawal to vested amount when exceeding vesting', () => {
+            const assumptions = { ...mockAssumptions };
+            // 1. Setup - 0% vested (just started)
+            const acc = new InvestedAccount(
+                'i1', '401k',
+                10000, // Total
+                5000,  // Employer Portion
+                0,     // Tenure (0% vested: 0 * 0.25 = 0)
+                0.1, 'Traditional 401k', true, 0.25
+            );
+
+            // 2. Act: Try to withdraw $8,000 (exceeds user equity + vested funds)
+            const next = acc.increment(assumptions, -8000, 0);
+
+            // 3. Assert
+            // Growth Rate: 1.099
+            // After growth: Total = 10990, Employer = 5495, User = 5495
+            // Vested employer = 5495 * 0 = 0 (nothing vested yet!)
+            // User tries to withdraw 8000:
+            //   - User equity: 5495 (all can be withdrawn)
+            //   - Shortfall: 8000 - 5495 = 2505
+            //   - Vested employer: 0 (can't withdraw any)
+            //   - Allowed withdrawal: 5495 + 0 = 5495
+            // Final: Total = 10990 - 5495 = 5495, Employer = 5495, User = 0
+
+            const expectedTotal = 10000 * 1.099 - 5495; // Only allowed to withdraw user equity
+            expect(next.amount).toBeCloseTo(expectedTotal);
+
+            // Employer Balance should remain unchanged (all vested = 0)
+            expect(next.employerBalance).toBeCloseTo(5495);
+
+            // User equity should be 0 (wiped out their portion)
+            const userEquity = next.amount - next.employerBalance;
+            expect(userEquity).toBeCloseTo(0);
+        });
     });
 
     describe('PropertyAccount', () => {

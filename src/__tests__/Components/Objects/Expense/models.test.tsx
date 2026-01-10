@@ -11,6 +11,9 @@ import {
   DependentExpense,
   VacationExpense,
   OtherExpense,
+  EmergencyExpense,
+  TransportExpense,
+  FoodExpense,
 } from '../../../../components/Objects/Expense/models';
 import { defaultAssumptions, AssumptionsState } from '../../../../components/Objects/Assumptions/AssumptionsContext';
 
@@ -204,6 +207,34 @@ describe('Expense Models', () => {
     });
   });
 
+  // Add missing expense types that weren't covered
+  describe('EmergencyExpense', () => {
+    it('should increment based on inflation', () => {
+      const expense = new EmergencyExpense('e1', 'Emergency Fund', 1000, 'Annually');
+      const nextYear = expense.increment(inflationAssumptions);
+      const expected = 1000 * (1 + inflationAssumptions.macro.inflationRate / 100);
+      expect(nextYear.amount).toBe(expected);
+    });
+  });
+
+  describe('TransportExpense', () => {
+    it('should increment based on inflation', () => {
+      const expense = new TransportExpense('t1', 'Gas', 200, 'Monthly');
+      const nextYear = expense.increment(inflationAssumptions);
+      const expected = 200 * (1 + inflationAssumptions.macro.inflationRate / 100);
+      expect(nextYear.amount).toBe(expected);
+    });
+  });
+
+  describe('FoodExpense', () => {
+    it('should increment based on inflation', () => {
+      const expense = new FoodExpense('f1', 'Groceries', 500, 'Monthly');
+      const nextYear = expense.increment(inflationAssumptions);
+      const expected = 500 * (1 + inflationAssumptions.macro.inflationRate / 100);
+      expect(nextYear.amount).toBe(expected);
+    });
+  });
+
   describe('reconstituteExpense', () => {
     it('should create various expense types correctly', () => {
       const rentData = { className: 'RentExpense', id: 'r1', payment: 1500, utilities: 200 };
@@ -217,10 +248,66 @@ describe('Expense Models', () => {
       expect(reconstituteExpense(dependentData)).toBeInstanceOf(DependentExpense);
     });
 
+    it('should reconstitute all expense types', () => {
+      const healthcareData = { className: 'HealthcareExpense', id: 'h1', amount: 500 };
+      const vacationData = { className: 'VacationExpense', id: 'v1', amount: 1000 };
+      const emergencyData = { className: 'EmergencyExpense', id: 'e1', amount: 500 };
+      const transportData = { className: 'TransportExpense', id: 't1', amount: 200 };
+      const foodData = { className: 'FoodExpense', id: 'f1', amount: 400 };
+      const otherData = { className: 'OtherExpense', id: 'o1', amount: 100 };
+
+      expect(reconstituteExpense(healthcareData)).toBeInstanceOf(HealthcareExpense);
+      expect(reconstituteExpense(vacationData)).toBeInstanceOf(VacationExpense);
+      expect(reconstituteExpense(emergencyData)).toBeInstanceOf(EmergencyExpense);
+      expect(reconstituteExpense(transportData)).toBeInstanceOf(TransportExpense);
+      expect(reconstituteExpense(foodData)).toBeInstanceOf(FoodExpense);
+      expect(reconstituteExpense(otherData)).toBeInstanceOf(OtherExpense);
+    });
+
     it('should return null for unknown or invalid data', () => {
         expect(reconstituteExpense({ className: 'ImaginaryExpense' })).toBeNull();
         expect(reconstituteExpense(null)).toBeNull();
         expect(reconstituteExpense({})).toBeNull();
+    });
+  });
+
+  describe('Edge Cases and Additional Coverage', () => {
+    it('should handle RentExpense without inflation adjustment', () => {
+      const rent = new RentExpense('r1', 'Apt', 1000, 100, 'Monthly');
+      const nextYear = rent.increment(mockAssumptions); // inflationAdjusted = false
+
+      // Should only apply rent inflation, not general inflation
+      expect(nextYear.payment).toBeCloseTo(1000 * 1.04);
+      expect(nextYear.utilities).toBeCloseTo(100); // No inflation
+    });
+
+    it('should handle MortgageExpense with different frequencies', () => {
+      const mortgage = new MortgageExpense('m1', 'Home', 'Annually', 500000, 400000, 400000, 3, 30, 1.2, 0, 1, 100, 0.3, 0, 50, 'Yes', 0, 'a1');
+      expect(mortgage.frequency).toBe('Annually');
+      expect(mortgage.getAnnualAmount()).toBeGreaterThan(0);
+    });
+
+    it('should handle LoanExpense with simple interest type', () => {
+      const loan = new LoanExpense('l1', 'Personal', 10000, 'Monthly', 5, 'Simple', 200, 'No', 0, 'a1');
+      expect(loan.interest_type).toBe('Simple');
+      const nextYear = loan.increment(mockAssumptions);
+      expect(nextYear.amount).toBeLessThan(10000);
+    });
+
+    it('should handle LoanExpense with automatic payment calculation', () => {
+      const loan = new LoanExpense('l1', 'Car', 25000, 'Monthly', 5, 'Compounding', 0, 'No', 0, 'a2', new Date('2025-01-01'), new Date('2030-01-01'));
+      // Payment should be auto-calculated if not provided
+      expect(loan.payment).toBeGreaterThan(0);
+    });
+
+    it('should handle getExpenseActiveMultiplier edge cases', () => {
+      const noEndDate = new OtherExpense('e1', 'Test', 100, 'Annually', new Date('2020-01-01'));
+      expect(getExpenseActiveMultiplier(noEndDate, 2025)).toBe(1);
+
+      const partialYearStart = new OtherExpense('e2', 'Test', 100, 'Annually', new Date('2025-06-15'));
+      const multiplier = getExpenseActiveMultiplier(partialYearStart, 2025);
+      expect(multiplier).toBeGreaterThan(0);
+      expect(multiplier).toBeLessThan(1);
     });
   });
 });
