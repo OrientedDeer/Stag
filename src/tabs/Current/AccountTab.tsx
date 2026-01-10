@@ -15,6 +15,11 @@ import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea
 import AddAccountModal from "../../components/Objects/Accounts/AddAccountModal";
 import { ObjectsIcicleChart, tailwindToCssVar, getDistributedColors } from "../../components/Charts/ObjectsIcicleChart";
 import { useFileManager } from "../../components/Objects/Accounts/useFileManager";
+import { IncomeContext } from "../../components/Objects/Income/IncomeContext";
+import { ExpenseContext } from "../../components/Objects/Expense/ExpenseContext";
+import { TaxContext } from "../../components/Objects/Taxes/TaxContext";
+import { AssumptionsContext } from "../../components/Objects/Assumptions/AssumptionsContext";
+import { SimulationContext } from "../../components/Objects/Assumptions/SimulationContext";
 
 const AccountList = ({ type }: { type: any }) => {
     const { accounts, dispatch } = useContext(AccountContext);
@@ -90,12 +95,18 @@ const getAccountValue = (account: AnyAccount): number => {
 };
 
 const TabsContent = () => {
-    const { accounts } = useContext(AccountContext);
+    const { accounts, dispatch: accountDispatch } = useContext(AccountContext);
+    const { dispatch: incomeDispatch } = useContext(IncomeContext);
+    const { dispatch: expenseDispatch } = useContext(ExpenseContext);
+    const { dispatch: taxDispatch } = useContext(TaxContext);
+    const { dispatch: assumptionsDispatch } = useContext(AssumptionsContext);
+    const { dispatch: simulationDispatch } = useContext(SimulationContext);
     const { handleGlobalExport, handleGlobalImport } = useFileManager();
     const [activeTab, setActiveTab] = useState<string>(() => {
         return localStorage.getItem('account_active_tab') || 'Saved';
     });
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
     // Ref for the hidden file input
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -173,7 +184,20 @@ const TabsContent = () => {
         reader.readAsText(file);
 
         // Reset the input value so you can import the same file again if needed
-        e.target.value = ''; 
+        e.target.value = '';
+    };
+
+    const handleDeleteAllData = () => {
+        // Clear all contexts
+        accountDispatch({ type: 'SET_BULK_DATA', payload: { accounts: [], amountHistory: {} } });
+        incomeDispatch({ type: 'SET_BULK_DATA', payload: { incomes: [] } });
+        expenseDispatch({ type: 'SET_BULK_DATA', payload: { expenses: [] } });
+        taxDispatch({ type: 'SET_STATUS', payload: 'Single' }); // Reset to defaults
+        assumptionsDispatch({ type: 'RESET_DEFAULTS' });
+        simulationDispatch({ type: 'SET_SIMULATION', payload: [] });
+
+        // Close the modal
+        setShowDeleteConfirm(false);
     };
 
     const tabs = ACCOUNT_CATEGORIES;
@@ -256,24 +280,30 @@ const TabsContent = () => {
                             Account Amounts
                         </h2>
                         <div className="flex gap-2">
-                            <button 
+                            <button
                                 onClick={handleGlobalExport}
                                 className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-lg border border-gray-700 text-xs font-medium transition-colors"
                             >
                                 Export Backup
                             </button>
-                            <button 
+                            <button
                                 onClick={() => fileInputRef.current?.click()}
                                 className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-lg border border-gray-700 text-xs font-medium transition-colors"
                             >
                                 Import Backup
                             </button>
-                            <input 
-                                type="file" 
-                                ref={fileInputRef} 
-                                onChange={handleFileChange} 
-                                accept=".json" 
-                                className="hidden" 
+                            <button
+                                onClick={() => setShowDeleteConfirm(true)}
+                                className="px-3 py-1.5 bg-red-900/20 hover:bg-red-900/40 text-red-300 rounded-lg border border-red-700 text-xs font-medium transition-colors"
+                            >
+                                Delete All Data
+                            </button>
+                            <input
+                                type="file"
+                                ref={fileInputRef}
+                                onChange={handleFileChange}
+                                accept=".json"
+                                className="hidden"
                             />
                         </div>
                     </div>
@@ -304,6 +334,40 @@ const TabsContent = () => {
                 <div className="bg-[#09090b] border border-gray-800 rounded-xl min-h-100 mb-4">
                     {tabContent[activeTab]}
                 </div>
+
+                {/* Delete Confirmation Modal */}
+                {showDeleteConfirm && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                        <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl p-6 max-w-md w-full mx-4">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="bg-red-500/20 p-2 rounded-lg">
+                                    <svg className="w-6 h-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                    </svg>
+                                </div>
+                                <h3 className="text-xl font-bold text-white">Delete All Data?</h3>
+                            </div>
+                            <p className="text-gray-300 mb-6">
+                                This will permanently delete all your accounts, incomes, expenses, tax settings, assumptions, and simulation data.
+                                <span className="block mt-2 text-red-400 font-semibold">This action cannot be undone.</span>
+                            </p>
+                            <div className="flex gap-3 justify-end">
+                                <button
+                                    onClick={() => setShowDeleteConfirm(false)}
+                                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleDeleteAllData}
+                                    className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-medium transition-colors"
+                                >
+                                    Delete Everything
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

@@ -1,4 +1,51 @@
 export const defaultData = {
+  "version": 1,
+  "taxSettings": {
+    "filingStatus": "Single",
+    "stateResidency": "DC",
+    "deductionMethod": "Standard",
+    "fedOverride": null,
+    "ficaOverride": null,
+    "stateOverride": null,
+    "year": 2024
+  },
+  "assumptions": {
+    "demographics": {
+      "startAge": 30,
+      "startYear": 2025,
+      "lifeExpectancy": 90,
+      "retirementAge": 67
+    },
+    "macro": {
+      "inflationRate": 2.5,
+      "inflationAdjusted": true
+    },
+    "income": {
+      "salaryGrowth": 2
+    },
+    "expenses": {
+      "housingAppreciation": 1,
+      "rentInflation": 1.5
+    },
+    "investments": {
+      "returnRates": {
+        "ror": 7
+      },
+      "withdrawalRate": 4,
+      "housingAppreciation": 3
+    },
+    "priorities": [
+      {
+        "id": "bucket-1768062670920-zpwy6v0tmqg",
+        "name": "Credit Cards (REMAINDER)",
+        "type": "INVESTMENT",
+        "accountId": "ACC-1766976734506-429",
+        "capType": "REMAINDER",
+        "capValue": 0
+      }
+    ],
+    "withdrawalStrategy": []
+  },
   "accounts": [
     {
       "id": "ACC-1766974804380-931",
@@ -129,16 +176,14 @@ export const defaultData = {
       "amount": 83730,
       "frequency": "Annually",
       "earned_income": "Yes",
-      "startDate": "2025-01-01T00:00:00.000Z",
-      "end_date": "2025-12-29T02:49:19.498Z",
-      "annualGrowthRate": 0.03,
-      "isInflationAdjusted": true,
+      "startDate": "2024-01-01T00:00:00.000Z",
       "preTax401k": 2000,
       "insurance": 0,
       "roth401k": 0,
       "employerMatch": 0,
-      "matchAccountId": null,
+      "matchAccountId": "",
       "taxType": null,
+      "contributionGrowthStrategy": "FIXED",
       "className": "WorkIncome"
     }
   ],
@@ -149,12 +194,13 @@ export const defaultData = {
       "amount": 22500,
       "frequency": "Monthly",
       "startDate": "2023-01-01T00:00:00.000Z",
-      "endDate": "2034-12-01T00:00:00.000Z",
+      "endDate": "2033-01-01T00:00:00.000Z",
       "apr": 5.5,
       "interest_type": "Compounding",
       "payment": 244.18,
       "is_tax_deductible": "No",
       "tax_deductible": 0,
+      "linkedAccountId": "ACC-1766976623210-626",
       "className": "LoanExpense"
     },
     {
@@ -188,7 +234,7 @@ export const defaultData = {
       "amount": 24297,
       "frequency": "Monthly",
       "startDate": "2023-01-01T00:00:00.000Z",
-      "endDate": "2035-10-13T00:00:00.000Z",
+      "endDate": "2033-01-01T00:00:00.000Z",
       "apr": 7,
       "interest_type": "Compounding",
       "payment": 392.11,
@@ -203,7 +249,7 @@ export const defaultData = {
       "amount": 6730,
       "frequency": "Monthly",
       "startDate": "2023-01-01T00:00:00.000Z",
-      "endDate": "2035-12-29T02:52:14.998Z",
+      "endDate": "2033-01-01T00:00:00.000Z",
       "apr": 20,
       "interest_type": "Compounding",
       "payment": 130.06,
@@ -211,6 +257,22 @@ export const defaultData = {
       "tax_deductible": 0,
       "linkedAccountId": "ACC-1766976734506-429",
       "className": "LoanExpense"
+    },
+    {
+      "id": "EXS-1768062272143-614",
+      "name": "Groceries",
+      "amount": 600,
+      "frequency": "Monthly",
+      "startDate": "2024-01-10T00:00:00.000Z",
+      "className": "FoodExpense"
+    },
+    {
+      "id": "EXS-1768062286594-814",
+      "name": "Misc",
+      "amount": 500,
+      "frequency": "Monthly",
+      "startDate": "2024-01-10T00:00:00.000Z",
+      "className": "OtherExpense"
     }
   ],
 };

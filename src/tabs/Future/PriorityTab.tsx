@@ -74,6 +74,12 @@ export default function PriorityTab() {
   const [newCapType, setNewCapType] = useState<CapType>('MAX');
   const [newCapValue, setNewCapValue] = useState<number>(0);
 
+  // 3. Local State for Editing
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editCapType, setEditCapType] = useState<CapType>('MAX');
+  const [editCapValue, setEditCapValue] = useState<number>(0);
+
   const handleAdd = () => {
     if(!newAccount) return;
 
@@ -95,6 +101,34 @@ export default function PriorityTab() {
     setNewName('');
     setNewCapValue(0);
     setNewAccount(null);
+  };
+
+  const handleStartEdit = (item: PriorityBucket) => {
+    setEditingId(item.id);
+    setEditName(item.name);
+    setEditCapType(item.capType);
+    setEditCapValue(item.capValue || 0);
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingId) return;
+
+    const updatedPriority = state.priorities.find(p => p.id === editingId);
+    if (!updatedPriority) return;
+
+    const updated: PriorityBucket = {
+      ...updatedPriority,
+      name: editName,
+      capType: editCapType,
+      capValue: editCapValue
+    };
+
+    dispatch({ type: 'UPDATE_PRIORITY', payload: updated });
+    setEditingId(null);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
   };
 
   const onDragEnd = (result: DropResult) => {
@@ -312,47 +346,114 @@ export default function PriorityTab() {
                     <DragDropContext onDragEnd={onDragEnd}>
                         <Droppable droppableId="priorities-list">
                             {(provided) => (
-                                <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-3">
+                                <div {...provided.droppableProps} ref={provided.innerRef} className="flex flex-col">
                                     {waterfallItems.map((item, index) => (
                                         <Draggable key={item.id} draggableId={item.id} index={index}>
                                             {(provided, snapshot) => (
                                                 <div
                                                     ref={provided.innerRef}
                                                     {...provided.draggableProps}
-                                                    className={`rounded-xl border flex items-center px-3 py-2 transition-all ${
-                                                        snapshot.isDragging 
-                                                        ? 'bg-gray-800 border-green-500 shadow-2xl scale-105' 
-                                                        : 'bg-gray-900 border-gray-800 hover:border-gray-700'
-                                                    }`}
+                                                    style={provided.draggableProps.style}
+                                                    className={`relative group pb-4 ${snapshot.isDragging ? 'z-50' : ''}`}
                                                 >
-                                                    {/* Drag Handle */}
-                                                    <div {...provided.dragHandleProps} className="mr-4 cursor-grab text-gray-600 hover:text-white">
-                                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
-                                                    </div>
-
-                                                    {/* Info */}
-                                                    <div className="flex-1">
-                                                        <div className="font-bold text-gray-200">{item.name}</div>
-                                                        <div className="text-xs text-blue-400">
-                                                            {item.displayInfo}
+                                                    <div className={`rounded-xl border px-3 py-3 ${
+                                                        snapshot.isDragging
+                                                        ? 'bg-gray-800 border-green-500 shadow-2xl'
+                                                        : 'bg-gray-900 border-gray-800 hover:border-gray-700'
+                                                    }`}>
+                                                    {editingId === item.id ? (
+                                                        /* EDIT MODE */
+                                                        <div className="space-y-3">
+                                                            <NameInput
+                                                                id={`edit-name-${item.id}`}
+                                                                label="Name"
+                                                                value={editName}
+                                                                onChange={setEditName}
+                                                            />
+                                                            <div className="grid grid-cols-2 gap-3">
+                                                                <DropdownInput
+                                                                    id={`edit-type-${item.id}`}
+                                                                    label="Type"
+                                                                    value={editCapType}
+                                                                    onChange={(val) => setEditCapType(val as CapType)}
+                                                                    options={['MAX', 'FIXED', 'MULTIPLE_OF_EXPENSES', 'REMAINDER']}
+                                                                />
+                                                                {(editCapType === 'FIXED' || editCapType === 'MAX') && (
+                                                                    <CurrencyInput
+                                                                        id={`edit-value-${item.id}`}
+                                                                        label={editCapType === 'MAX' ? "Annual Limit" : "Monthly Amount"}
+                                                                        value={editCapValue}
+                                                                        onChange={setEditCapValue}
+                                                                    />
+                                                                )}
+                                                                {editCapType === 'MULTIPLE_OF_EXPENSES' && (
+                                                                    <NumberInput
+                                                                        id={`edit-value-${item.id}`}
+                                                                        label="Months"
+                                                                        value={editCapValue}
+                                                                        onChange={setEditCapValue}
+                                                                    />
+                                                                )}
+                                                            </div>
+                                                            <div className="flex gap-2 justify-end">
+                                                                <button
+                                                                    onClick={handleCancelEdit}
+                                                                    className="px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                                                                >
+                                                                    Cancel
+                                                                </button>
+                                                                <button
+                                                                    onClick={handleSaveEdit}
+                                                                    className="px-3 py-1 text-sm bg-green-600 hover:bg-green-500 text-white rounded-lg transition-colors"
+                                                                >
+                                                                    Save
+                                                                </button>
+                                                            </div>
                                                         </div>
-                                                    </div>
+                                                    ) : (
+                                                        /* VIEW MODE */
+                                                        <div className="flex items-center">
+                                                            {/* Drag Handle */}
+                                                            <div {...provided.dragHandleProps} className="mr-4 cursor-grab text-gray-600 hover:text-white shrink-0">
+                                                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+                                                            </div>
 
-                                                    {/* Math */}
-                                                    <div className="flex flex-col items-end">
-                                                        <span className="text-blue-300 font-mono">-{formatMoney(item.actualDed)}</span>
-                                                        <span className={`text-xs ${item.remainingAfter < 0 ? 'text-red-500' : 'text-gray-500'}`}>
-                                                            Remaining: {formatMoney(item.remainingAfter)}
-                                                        </span>
-                                                    </div>
+                                                            {/* Info */}
+                                                            <div className="flex-1 min-w-0">
+                                                                <div className="font-bold text-gray-200 truncate">{item.name}</div>
+                                                                <div className="text-xs text-blue-400 truncate">
+                                                                    {item.displayInfo}
+                                                                </div>
+                                                            </div>
 
-                                                    {/* Delete */}
-                                                    <button 
-                                                        onClick={() => dispatch({type: 'REMOVE_PRIORITY', payload: item.id})}
-                                                        className="ml-4 text-gray-600 hover:text-red-500 p-2 hover:bg-red-500/10 rounded"
-                                                    >
-                                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"></path></svg>
-                                                    </button>
+                                                            {/* Math */}
+                                                            <div className="flex flex-col items-end shrink-0 mx-3">
+                                                                <span className="text-blue-300 font-mono text-sm">-{formatMoney(item.actualDed)}</span>
+                                                                <span className={`text-xs whitespace-nowrap ${item.remainingAfter < 0 ? 'text-red-500' : 'text-gray-500'}`}>
+                                                                    Remaining: {formatMoney(item.remainingAfter)}
+                                                                </span>
+                                                            </div>
+
+                                                            {/* Actions */}
+                                                            <div className="flex gap-1 shrink-0">
+                                                                <button
+                                                                    onClick={() => handleStartEdit(item)}
+                                                                    className="text-gray-600 hover:text-blue-400 p-2 hover:bg-blue-500/10 rounded transition-colors"
+                                                                    title="Edit"
+                                                                >
+                                                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => dispatch({type: 'REMOVE_PRIORITY', payload: item.id})}
+                                                                    className="text-gray-600 hover:text-red-500 p-2 hover:bg-red-500/10 rounded transition-colors"
+                                                                    title="Delete"
+                                                                >
+                                                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    </div>
                                                 </div>
                                             )}
                                         </Draggable>

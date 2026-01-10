@@ -52,19 +52,35 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
     },
   };
 
-  const CustomTooltip = ({ index }: any) => {
-    const yearData = filteredData[index]; // Use filtered data
+  const CustomTooltip = ({ slice }: any) => {
+    const yearData = filteredData[slice.index];
     if (!yearData) return null;
+
     const total = keys.reduce((sum, key) => sum + (Number(yearData[key]) || 0), 0);
     const sortedKeys = [...keys].sort((a, b) => (Number(yearData[b]) || 0) - (Number(yearData[a]) || 0));
 
     return (
-      <div className="bg-gray-900/95 backdrop-blur-sm p-3 border border-gray-700 shadow-xl rounded-lg text-sm z-50 min-w-max">
-        <div className="mb-2 pb-2 border-b border-gray-700 flex justify-between items-baseline gap-8">
-          <span className="font-bold text-gray-200">{yearData.year}</span>
-          <span className="font-mono font-semibold text-white">{formatCurrency(total)}</span>
+      <div
+        className="bg-gray-900/95 backdrop-blur-sm p-3 border border-gray-700 shadow-xl rounded-lg text-sm z-50"
+        style={{ minWidth: '280px', maxWidth: '400px' }}
+      >
+        <div className="mb-2 pb-2 border-b border-gray-700">
+          <div className="flex justify-between items-baseline gap-8 mb-1">
+            <span className="font-bold text-gray-200">{yearData.year}</span>
+          </div>
+          <div className="flex justify-between items-baseline gap-8">
+            <span className="text-gray-400 text-xs font-medium">Total</span>
+            <span className="font-mono font-bold text-white text-base">{formatCurrency(total)}</span>
+          </div>
         </div>
-        <div className="max-h-75 overflow-y-auto custom-scrollbar">
+        <div
+          className="custom-scrollbar"
+          style={{
+            maxHeight: '300px',
+            overflowY: 'auto',
+            scrollbarGutter: 'stable'
+          }}
+        >
           <table className="w-full border-collapse">
             <tbody>
               {sortedKeys.map((key) => {
@@ -120,21 +136,23 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
           fillOpacity={0.85}
           borderWidth={1}
           borderColor={{ from: 'color', modifiers: [['darker', 0.2]] }}
-          curve="catmullRom" 
+          curve="catmullRom"
           axisBottom={{
             tickSize: 5,
             tickPadding: 5,
             format: (idx) => filteredData[idx]?.year || '',
             tickValues: 5
           }}
-          axisLeft={mode === 'percent' 
+          axisLeft={mode === 'percent'
             ? { tickValues: [0, .25, .5, .75, 1], format: '>-.0%' }
             : { tickValues: 10, format: (v) => formatCurrency(Number(v)).replace('.00', '') }
           }
           enableGridX={false}
           enableGridY={true}
           animate={true}
-          tooltip={CustomTooltip}
+          isInteractive={true}
+          enableStackTooltip={true}
+          stackTooltip={CustomTooltip}
         />
       </div>
     </div>

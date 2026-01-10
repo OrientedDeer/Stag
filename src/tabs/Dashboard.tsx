@@ -1,17 +1,15 @@
-import { useContext } from 'react';
+import { useContext, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { IncomeContext } from '../components/Objects/Income/IncomeContext';
 import { ExpenseContext } from '../components/Objects/Expense/ExpenseContext';
 import { AccountContext } from '../components/Objects/Accounts/AccountContext';
 import { NetWorthCard } from '../components/Charts/Networth';
 import { defaultData } from '../data/defaultData';
-import { AnyAccount, reconstituteAccount } from '../components/Objects/Accounts/models';
-import { AnyIncome, reconstituteIncome } from '../components/Objects/Income/models';
-import { AnyExpense, reconstituteExpense } from '../components/Objects/Expense/models';
 import { TaxContext } from '../components/Objects/Taxes/TaxContext';
 import { TAX_DATABASE } from '../data/TaxData';
 import { calculateFederalTax, calculateFicaTax, calculateStateTax } from '../components/Objects/Taxes/TaxService';
 import { CashflowSankey } from '../components/Charts/CashflowSankey';
+import { useFileManager } from '../components/Objects/Accounts/useFileManager';
 
 export default function Dashboard() {
   const incomeCtx = useContext(IncomeContext);
@@ -19,6 +17,8 @@ export default function Dashboard() {
   const accountCtx = useContext(AccountContext);
   const { expenses } = useContext(ExpenseContext);
   const { state: taxState } = useContext(TaxContext);
+  const { handleGlobalImport } = useFileManager();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const hasIncomes = incomeCtx.incomes.length > 0;
   const hasExpenses = expenseCtx.expenses.length > 0;
@@ -44,32 +44,28 @@ export default function Dashboard() {
   
 
   const loadDefaultData = () => {
-    // Load Accounts
-    const reconstitutedAccounts = defaultData.accounts
-      .map(reconstituteAccount)
-      .filter((acc): acc is AnyAccount => acc !== null);
-    accountCtx.dispatch({ 
-      type: 'SET_BULK_DATA', 
-      payload: { accounts: reconstitutedAccounts, amountHistory: defaultData.amountHistory } 
-    });
+    // Use the same import mechanism as file import for consistency and error checking
+    handleGlobalImport(JSON.stringify(defaultData));
+  };
 
-    // Load Incomes
-    const reconstitutedIncomes = defaultData.incomes
-      .map(reconstituteIncome)
-      .filter((inc): inc is AnyIncome => inc !== null);
-    incomeCtx.dispatch({
-      type: 'SET_BULK_DATA',
-      payload: { incomes: reconstitutedIncomes }
-    });
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
 
-    // Load Expenses
-    const reconstitutedExpenses = defaultData.expenses
-      .map(reconstituteExpense)
-      .filter((exp): exp is AnyExpense => exp !== null);
-    expenseCtx.dispatch({
-      type: 'SET_BULK_DATA',
-      payload: { expenses: reconstitutedExpenses }
-    });
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const content = e.target?.result as string;
+        handleGlobalImport(content);
+      };
+      reader.readAsText(file);
+    }
+    // Reset the input so the same file can be selected again
+    if (event.target) {
+      event.target.value = '';
+    }
   };
 
   return (
@@ -116,12 +112,27 @@ export default function Dashboard() {
                   </Link>
                 )}
                 {isPristine && (
-                  <button
-                    onClick={loadDefaultData}
-                    className="px-4 py-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/50 rounded-xl text-blue-200 text-sm font-semibold transition-all"
-                  >
-                    + Add Default Data
-                  </button>
+                  <>
+                    <button
+                      onClick={loadDefaultData}
+                      className="px-4 py-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/50 rounded-xl text-blue-200 text-sm font-semibold transition-all"
+                    >
+                      + Add Default Data
+                    </button>
+                    <button
+                      onClick={handleImportClick}
+                      className="px-4 py-2 bg-green-500/10 hover:bg-green-500/20 border border-green-500/50 rounded-xl text-green-200 text-sm font-semibold transition-all"
+                    >
+                      📥 Import Data
+                    </button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".json"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                  </>
                 )}
               </div>
             </div>

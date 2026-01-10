@@ -1,4 +1,4 @@
-import React, { useState, useContext, useMemo } from 'react';
+import React, { useState, useContext, useMemo, useEffect } from 'react';
 import { runSimulation } from '../../components/Objects/Assumptions/useSimulation';
 import { AssumptionsContext, AssumptionsState } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
@@ -119,6 +119,26 @@ export default function FutureTab() {
         );
         dispatchSimulation({ type: 'SET_SIMULATION', payload: newSimulation });
     };
+
+    // Auto-recalculate simulation on mount if we have data but no simulation
+    // This fixes the issue where localStorage data loads but simulation is stale/empty
+    useEffect(() => {
+        const hasData = accounts.length > 0 || incomes.length > 0 || expenses.length > 0;
+        const hasNoSimulation = simulation.length === 0;
+
+        if (hasData && hasNoSimulation) {
+            const newSimulation = runSimulation(
+                assumptions.demographics.lifeExpectancy - assumptions.demographics.startAge - 19,
+                accounts,
+                incomes,
+                expenses,
+                assumptions,
+                taxState
+            );
+            dispatchSimulation({ type: 'SET_SIMULATION', payload: newSimulation });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // Only run on mount - we want to check localStorage state once
 
     const fiYear = findFinancialIndependenceYear(simulation, assumptions);
 
