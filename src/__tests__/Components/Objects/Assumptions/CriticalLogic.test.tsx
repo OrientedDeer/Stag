@@ -81,17 +81,21 @@ describe('Critical Simulation Logic', () => {
         const result = runSimulation(5, accounts, income, expenses, zeroGrowthAssumptions, mockTaxState);
 
         // --- ASSERT ---
-        // This is an approximation because taxes are not accounted for in this simple calculation
-        //const annualChange = 100000 - 50000;
+        const year0NetWorth = calculateNetWorth(result[0].accounts);
+        expect(year0NetWorth).toBe(initialNetWorth);
 
-        // Year 0
-        expect(calculateNetWorth(result[0].accounts)).toBe(initialNetWorth);
+        // With 0% growth, the change in net worth should be exactly the total amount saved/invested.
+        const year1NetWorth = calculateNetWorth(result[1].accounts);
+        const actualChange = year1NetWorth - year0NetWorth;
+        const expectedChange = result[1].cashflow.totalInvested;
 
-        // The following tests are approximations and might fail due to taxes.
-        // The goal is to see a trend. A more precise test would mock the tax service.
-        // For now, we check that net worth increases, which is better than nothing.
-        expect(calculateNetWorth(result[1].accounts)).toBeGreaterThan(initialNetWorth);
-        expect(calculateNetWorth(result[2].accounts)).toBeGreaterThan(calculateNetWorth(result[1].accounts));
+        expect(actualChange).toBeCloseTo(expectedChange);
+
+        // Also verify the trend for the second year.
+        const year2NetWorth = calculateNetWorth(result[2].accounts);
+        const actualChange2 = year2NetWorth - year1NetWorth;
+        const expectedChange2 = result[2].cashflow.totalInvested;
+        expect(actualChange2).toBeCloseTo(expectedChange2);
     });
 
     it('Inflation Impact: "Real Dollar" simulation should result in lower nominal numbers', () => {

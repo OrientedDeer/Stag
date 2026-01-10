@@ -218,8 +218,8 @@ describe('Simulation Engine', () => {
         // Verify property appreciated by its APR (4%)
         expect(resultAccount.amount).toBe(300000 * 1.04);
 
-        // Verify mortgage balance was reduced
-        expect(resultAccount.loanAmount).toBeLessThan(250000);
+        // Verify mortgage balance was reduced. 9999 is a placeholder value.
+        expect(resultAccount.loanAmount).toBeCloseTo(9999);
     });
 
     it('should grow a SavedAccount by its APR', () => {

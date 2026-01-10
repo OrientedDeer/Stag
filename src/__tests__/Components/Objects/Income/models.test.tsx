@@ -143,15 +143,27 @@ describe('Income Models', () => {
   });
 
   describe('reconstituteIncome', () => {
-    it('should create various income types correctly', () => {
-        const workData = { className: 'WorkIncome', id: 'w1', amount: 95000 };
-        const ssiData = { className: 'SocialSecurityIncome', id: 's1', amount: 30000 };
-        const passiveData = { className: 'PassiveIncome', id: 'p1', sourceType: 'Rental' };
+    it('should create various income types correctly and preserve data', () => {
+        const workData = { className: 'WorkIncome', id: 'w1', name: 'Job', amount: 95000 };
+        const ssiData = { className: 'SocialSecurityIncome', id: 's1', name: 'SSDI', amount: 30000 };
+        const passiveData = { className: 'PassiveIncome', id: 'p1', name: 'My Rental', sourceType: 'Rental' };
         
-        expect(reconstituteIncome(workData)).toBeInstanceOf(WorkIncome);
-        expect(reconstituteIncome(ssiData)).toBeInstanceOf(SocialSecurityIncome);
+        const work = reconstituteIncome(workData);
+        expect(work).toBeInstanceOf(WorkIncome);
+        expect(work?.id).toBe('w1');
+        expect(work?.name).toBe('Job');
+        expect(work?.amount).toBe(95000);
+
+        const ssi = reconstituteIncome(ssiData);
+        expect(ssi).toBeInstanceOf(SocialSecurityIncome);
+        expect(ssi?.id).toBe('s1');
+        expect(ssi?.name).toBe('SSDI');
+        expect(ssi?.amount).toBe(30000);
+
         const passive = reconstituteIncome(passiveData);
         expect(passive).toBeInstanceOf(PassiveIncome);
+        expect(passive?.id).toBe('p1');
+        expect(passive?.name).toBe('My Rental');
         if (passive instanceof PassiveIncome) {
             expect(passive.sourceType).toBe('Rental');
         }

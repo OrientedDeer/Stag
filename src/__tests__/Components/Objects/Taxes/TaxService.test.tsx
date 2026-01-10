@@ -284,10 +284,11 @@ describe('TaxService: Additional Functions', () => {
     });
 
     describe('getFicaExemptions', () => {
-        it('should calculate FICA exemptions when present', () => {
-            const income = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+        it('should be 0 for standard work income', () => {
+            const income = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 10000, 5000, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
             const exemptions = getFicaExemptions([income], 2024);
-            expect(exemptions).toBeGreaterThanOrEqual(0);
+            // Pre-tax 401k and insurance are generally NOT exempt from FICA.
+            expect(exemptions).toBe(0);
         });
     });
 
@@ -295,7 +296,7 @@ describe('TaxService: Additional Functions', () => {
         it('should calculate total earned income', () => {
             const income = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
             const earned = getEarnedIncome([income], 2024);
-            expect(earned).toBeGreaterThanOrEqual(0);
+            expect(earned).toBe(100000);
         });
     });
 
@@ -317,7 +318,8 @@ describe('TaxService: Additional Functions', () => {
         it('should calculate itemized deductions', () => {
             const mortgage = new MortgageExpense('m1', 'Home', 'Monthly', 500000, 400000, 400000, 3, 30, 1.2, 0, 1, 100, 0.3, 0, 50, 'Itemized', 0.8, 'a1', new Date('2020-01-01'));
             const deductions = getItemizedDeductions([mortgage], 2024);
-            expect(deductions).toBeGreaterThanOrEqual(0);
+            // Placeholder value. Actual deduction depends on mortgage interest and property taxes.
+            expect(deductions).toBeCloseTo(9999);
         });
     });
 
@@ -424,10 +426,11 @@ describe('TaxService: Additional Functions', () => {
 
         it('should calculate federal tax with itemized deductions', () => {
             const income = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
-            const mortgage = new MortgageExpense('m1', 'Home', 'Monthly', 500000, 400000, 400000, 3, 30, 1.2, 0, 1, 100, 0.3, 0, 50, 'Yes', 0.8, 'a1', new Date('2020-01-01'));
+            const mortgage = new MortgageExpense('m1', 'Home', 'Monthly', 500000, 400000, 400000, 3, 30, 1.2, 0, 1, 100, 0.3, 0, 50, 'Itemized', 0.8, 'a1', new Date('2020-01-01'));
             const taxState = createTaxState({ deductionMethod: 'Itemized' });
             const fedTax = calculateFederalTax(taxState, [income], [mortgage], 2024, noInflationAssumptions);
-            expect(fedTax).toBeGreaterThan(0);
+            // Placeholder value. Actual tax depends on the calculated itemized deduction.
+            expect(fedTax).toBeCloseTo(9999);
         });
 
         it('should use federal override when provided', () => {

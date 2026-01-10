@@ -236,19 +236,11 @@ describe('Expense Models', () => {
   });
 
   describe('reconstituteExpense', () => {
-    it('should create various expense types correctly', () => {
+    it('should create various expense types correctly and preserve data', () => {
       const rentData = { className: 'RentExpense', id: 'r1', payment: 1500, utilities: 200 };
       const mortgageData = { className: 'MortgageExpense', id: 'm1', valuation: 500000 };
-      const loanData = { className: 'LoanExpense', id: 'l1', amount: 20000, startDate: '2023-01-15T00:00:00.000Z' };
+      const loanData = { className: 'LoanExpense', id: 'l1', amount: 20000 };
       const dependentData = { className: 'DependentExpense', id: 'd1', amount: 300 };
-
-      expect(reconstituteExpense(rentData)).toBeInstanceOf(RentExpense);
-      expect(reconstituteExpense(mortgageData)).toBeInstanceOf(MortgageExpense);
-      expect(reconstituteExpense(loanData)).toBeInstanceOf(LoanExpense);
-      expect(reconstituteExpense(dependentData)).toBeInstanceOf(DependentExpense);
-    });
-
-    it('should reconstitute all expense types', () => {
       const healthcareData = { className: 'HealthcareExpense', id: 'h1', amount: 500 };
       const vacationData = { className: 'VacationExpense', id: 'v1', amount: 1000 };
       const emergencyData = { className: 'EmergencyExpense', id: 'e1', amount: 500 };
@@ -256,12 +248,55 @@ describe('Expense Models', () => {
       const foodData = { className: 'FoodExpense', id: 'f1', amount: 400 };
       const otherData = { className: 'OtherExpense', id: 'o1', amount: 100 };
 
-      expect(reconstituteExpense(healthcareData)).toBeInstanceOf(HealthcareExpense);
-      expect(reconstituteExpense(vacationData)).toBeInstanceOf(VacationExpense);
-      expect(reconstituteExpense(emergencyData)).toBeInstanceOf(EmergencyExpense);
-      expect(reconstituteExpense(transportData)).toBeInstanceOf(TransportExpense);
-      expect(reconstituteExpense(foodData)).toBeInstanceOf(FoodExpense);
-      expect(reconstituteExpense(otherData)).toBeInstanceOf(OtherExpense);
+      const rent = reconstituteExpense(rentData) as RentExpense;
+      expect(rent).toBeInstanceOf(RentExpense);
+      expect(rent.id).toBe('r1');
+      expect(rent.payment).toBe(1500);
+
+      const mortgage = reconstituteExpense(mortgageData) as MortgageExpense;
+      expect(mortgage).toBeInstanceOf(MortgageExpense);
+      expect(mortgage.id).toBe('m1');
+      expect(mortgage.valuation).toBe(500000);
+
+      const loan = reconstituteExpense(loanData) as LoanExpense;
+      expect(loan).toBeInstanceOf(LoanExpense);
+      expect(loan.id).toBe('l1');
+      expect(loan.amount).toBe(20000);
+      
+      const dependent = reconstituteExpense(dependentData) as DependentExpense;
+      expect(dependent).toBeInstanceOf(DependentExpense);
+      expect(dependent.id).toBe('d1');
+      expect(dependent.amount).toBe(300);
+
+      const healthcare = reconstituteExpense(healthcareData) as HealthcareExpense;
+      expect(healthcare).toBeInstanceOf(HealthcareExpense);
+      expect(healthcare.id).toBe('h1');
+      expect(healthcare.amount).toBe(500);
+
+      const vacation = reconstituteExpense(vacationData) as VacationExpense;
+      expect(vacation).toBeInstanceOf(VacationExpense);
+      expect(vacation.id).toBe('v1');
+      expect(vacation.amount).toBe(1000);
+
+      const emergency = reconstituteExpense(emergencyData) as EmergencyExpense;
+      expect(emergency).toBeInstanceOf(EmergencyExpense);
+      expect(emergency.id).toBe('e1');
+      expect(emergency.amount).toBe(500);
+
+      const transport = reconstituteExpense(transportData) as TransportExpense;
+      expect(transport).toBeInstanceOf(TransportExpense);
+      expect(transport.id).toBe('t1');
+      expect(transport.amount).toBe(200);
+
+      const food = reconstituteExpense(foodData) as FoodExpense;
+      expect(food).toBeInstanceOf(FoodExpense);
+      expect(food.id).toBe('f1');
+      expect(food.amount).toBe(400);
+
+      const other = reconstituteExpense(otherData) as OtherExpense;
+      expect(other).toBeInstanceOf(OtherExpense);
+      expect(other.id).toBe('o1');
+      expect(other.amount).toBe(100);
     });
 
     it('should return null for unknown or invalid data', () => {
