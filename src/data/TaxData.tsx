@@ -1,4 +1,4 @@
-export type FilingStatus = 'Single' | 'Married' | 'Married Filing Separately';
+export type FilingStatus = 'Single' | 'Married Filing Jointly' | 'Married Filing Separately';
 
 export interface TaxBracket {
   threshold: number; // The income level where this rate begins
@@ -47,7 +47,7 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                 socialSecurityWageBase: 176100,
                 medicareTaxRate: 0.0145
             },
-            Married: {
+            'Married Filing Jointly': {
                 standardDeduction: 29200,
                 brackets: [
                     { threshold: 0, rate: 0.10 },
@@ -94,7 +94,7 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                 socialSecurityWageBase: 176100,
                 medicareTaxRate: 0.0145
             },
-            Married: {
+            'Married Filing Jointly': {
                 standardDeduction: 31500,
                 brackets: [
                     { threshold: 0, rate: 0.10 },
@@ -141,7 +141,7 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                 socialSecurityWageBase: 176100,
                 medicareTaxRate: 0.0145
             },
-            Married: {
+            'Married Filing Jointly': {
                 standardDeduction: 32200,
                 brackets: [
                     { threshold: 0, rate: 0.10 },
@@ -193,7 +193,7 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     socialSecurityWageBase: 0,
                     medicareTaxRate: 0.0
                 },
-                Married: {
+                'Married Filing Jointly': {
                     standardDeduction: 11080,
                     brackets: [
                         { threshold: 0, rate: 0.01 },
@@ -239,7 +239,7 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     socialSecurityWageBase: 0,
                     medicareTaxRate: 0.0
                 },
-                Married: {
+                'Married Filing Jointly': {
                     standardDeduction: 10726,
                     brackets: [
                         { threshold: 0, rate: 0.01 },
@@ -276,7 +276,7 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     socialSecurityWageBase: 0,
                     medicareTaxRate: 0.0
                 },
-                Married: {
+                'Married Filing Jointly': {
                     standardDeduction: 29200,
                     brackets: [
                         { threshold: 0, rate: 0.04 },
@@ -323,7 +323,7 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     socialSecurityWageBase: 0,
                     medicareTaxRate: 0.0
                 },
-                Married: {
+                'Married Filing Jointly': {
                     standardDeduction: 30000,
                     brackets: [
                         { threshold: 0, rate: 0.04 },
@@ -370,7 +370,7 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     socialSecurityWageBase: 0,
                     medicareTaxRate: 0.0
                 },
-                Married: {
+                'Married Filing Jointly': {
                     standardDeduction: 30000,
                     brackets: [
                         { threshold: 0, rate: 0.04 },
@@ -413,7 +413,7 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     socialSecurityWageBase: 0,
                     medicareTaxRate: 0.0
                 },
-                Married: {
+                'Married Filing Jointly': {
                     standardDeduction: 0,
                     brackets: [
                         { threshold: 0, rate: 0.0 }
@@ -442,7 +442,7 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     socialSecurityWageBase: 0,
                     medicareTaxRate: 0.0
                 },
-                Married: {
+                'Married Filing Jointly': {
                     standardDeduction: 0,
                     brackets: [
                         { threshold: 0, rate: 0.0 }
@@ -471,7 +471,7 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     socialSecurityWageBase: 0,
                     medicareTaxRate: 0.0
                 },
-                Married: {
+                'Married Filing Jointly': {
                     standardDeduction: 0,
                     brackets: [
                         { threshold: 0, rate: 0.0 }

@@ -12,6 +12,7 @@ const createTaxState = (overrides: Partial<TaxState> = {}): TaxState => ({
     fedOverride: null,
     ficaOverride: null,
     stateOverride: null,
+    year: 2024,
     ...overrides
 });
 

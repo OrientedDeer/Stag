@@ -347,13 +347,14 @@ export function calculateGrossWithdrawal(
         const marginalStateTax = stateTaxNew - stateTaxBase;
 
         // B. SALT Deductibility logic
-        let deductibleStateTax = 0;
-        if (taxState.deductionMethod === 'Itemized') {
-             // If itemizing, extra state tax MIGHT be deductible if under $10k cap.
-             // For simplicity/safety in this solver, we ignore marginal deductibility 
-             // to avoid under-withholding, or you can add the logic here.
-             deductibleStateTax = 0; 
-        }
+        // let deductibleStateTax = 0;
+        // if (taxState.deductionMethod === 'Itemized') {
+        //      // If itemizing, extra state tax MIGHT be deductible if under $10k cap.
+        //      // For simplicity/safety in this solver, we ignore marginal deductibility 
+        //      // to avoid under-withholding, or you can add the logic here.
+		// 	 // Todo
+        //      deductibleStateTax = 0; 
+        // }
 
         // C. Federal Tax
         // Note: If we were deducting state tax, we'd subtract it from fedIncome here.

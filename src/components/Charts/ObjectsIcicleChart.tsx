@@ -57,7 +57,7 @@ export const ObjectsIcicleChart = ({
                         <div className="bg-gray-900 p-2 rounded border border-gray-700 shadow-xl z-50 text-xs min-w-max">
                             <div className="font-bold text-gray-200 mb-1">{id}</div>
                             <div className="text-green-400 font-mono">
-                                ${displayValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                ${displayValue.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 })}
                             </div>
                         </div>
                     );

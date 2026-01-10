@@ -5,12 +5,7 @@ import {
     MortgageExpense,
     LoanExpense,
     DependentExpense,
-    HealthcareExpense,
-    VacationExpense,
-    EmergencyExpense,
     TransportExpense,
-    FoodExpense,
-    OtherExpense,
     reconstituteExpense
 } from './models';
 

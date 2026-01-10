@@ -2,7 +2,7 @@ import { useContext } from 'react';
 import { AccountContext } from '../../components/Objects/Accounts/AccountContext';
 import { IncomeContext } from '../../components/Objects/Income/IncomeContext';
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
-import { useSimulation } from '../../components/Objects/Assumptions/useSimulation';
+import { runSimulation } from '../../components/Objects/Assumptions/useSimulation';
 
 // Import Models for formatting/instanceof checks
 import { 
@@ -12,15 +12,27 @@ import {
     MortgageExpense, 
 } from '../../components/Objects/Expense/models';
 import { AnyAccount as AccountType } from '../../components/Objects/Accounts/models';
+import { AssumptionsContext } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
 
 export default function Testing() {
     // 1. Grab Current Data (for the "Current" column in tables)
     const { accounts } = useContext(AccountContext);
     const { incomes } = useContext(IncomeContext);
     const { expenses } = useContext(ExpenseContext);
+    const { state: assumptions } = useContext(AssumptionsContext);
+    const { state: taxState } = useContext(TaxContext);
 
     // 2. Run the Simulation (Just 1 year for debugging)
-    const timeline = useSimulation(1);
+    
+    const timeline = runSimulation(
+                assumptions.demographics.lifeExpectancy - assumptions.demographics.startAge - 19,
+                accounts,
+                incomes,
+                expenses,
+                assumptions,
+                taxState
+            );
     const nextYearData = timeline[1] || null;
 
     // Helper to format currency

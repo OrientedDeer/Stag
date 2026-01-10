@@ -12,7 +12,8 @@ const mockTaxState: TaxState = {
     deductionMethod: 'Standard',
     fedOverride: null,
     ficaOverride: null,
-    stateOverride: null
+    stateOverride: null,
+    year: 2024
 };
 
 const calculateNetWorth = (accounts: AnyAccount[]): number => {

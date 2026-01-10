@@ -1,10 +1,6 @@
 import { createContext, useReducer, ReactNode, Dispatch, useEffect } from 'react';
 import { 
     AnyIncome, 
-    WorkIncome, 
-    SocialSecurityIncome, 
-    PassiveIncome, 
-    WindfallIncome,
     reconstituteIncome
 } from './models';
 

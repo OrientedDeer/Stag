@@ -80,7 +80,7 @@ export default function TaxesTab() {
                                         onChange={(val) => dispatch({ type: "SET_STATUS", payload: val as FilingStatus })}
                                         options={[
                                             { value: 'Single', label: 'Single' },
-                                            { value: 'Married', label: 'Married Filing Jointly' },
+                                            { value: 'Married Filing Jointly', label: 'Married Filing Jointly' },
                                             { value: 'Married Filing Separately', label: 'Married Filing Separately' }
                                         ]}
                                         value={state.filingStatus}

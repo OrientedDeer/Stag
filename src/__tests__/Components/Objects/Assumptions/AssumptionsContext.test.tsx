@@ -127,7 +127,7 @@ describe('AssumptionsContext', () => {
   // Priorities Reducer Tests
   describe('Priorities Reducer Actions', () => {
     it('should add a priority', () => {
-      let state: AssumptionsState;
+      let state!: AssumptionsState;
       let dispatch: React.Dispatch<any>;
 
       const TestComponent = () => {
@@ -147,7 +147,7 @@ describe('AssumptionsContext', () => {
     });
 
     it('should remove a priority', () => {
-        let state: AssumptionsState;
+        let state!: AssumptionsState;
         let dispatch: React.Dispatch<any>;
   
         const TestComponent = () => {
@@ -171,7 +171,7 @@ describe('AssumptionsContext', () => {
     });
 
     it('should update a priority', () => {
-        let state: AssumptionsState;
+        let state!: AssumptionsState;
         let dispatch: React.Dispatch<any>;
   
         const TestComponent = () => {
@@ -200,7 +200,7 @@ describe('AssumptionsContext', () => {
   // Withdrawal Strategy Reducer Tests
   describe('Withdrawal Strategy Reducer Actions', () => {
     it('should add a withdrawal strategy item', () => {
-      let state: AssumptionsState;
+      let state!: AssumptionsState;
       let dispatch: React.Dispatch<any>;
 
       const TestComponent = () => {
@@ -220,7 +220,7 @@ describe('AssumptionsContext', () => {
     });
 
     it('should remove a withdrawal strategy item', () => {
-        let state: AssumptionsState;
+        let state!: AssumptionsState;
         let dispatch: React.Dispatch<any>;
   
         const TestComponent = () => {
@@ -244,7 +244,7 @@ describe('AssumptionsContext', () => {
     });
 
     it('should update a withdrawal strategy item', () => {
-        let state: AssumptionsState;
+        let state!: AssumptionsState;
         let dispatch: React.Dispatch<any>;
   
         const TestComponent = () => {
@@ -271,7 +271,7 @@ describe('AssumptionsContext', () => {
   });
 
   it('should reset to default settings', () => {
-    let state: AssumptionsState;
+    let state!: AssumptionsState;
     let dispatch: React.Dispatch<any>;
 
     const TestComponent = () => {
