@@ -7,11 +7,30 @@ import path from 'path';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   base: "/Stag/",
+  // --- ADD THIS SECTION ---
+  esbuild: {
+    keepNames: true, // This prevents class names from being minified (e.g. SavedAccount -> S)
+  },
+  // -----------------------
+  build: {
+    chunkSizeWarningLimit: 1000, 
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('@nivo')) {
+              return 'nivo';
+            }
+            return 'vendor';
+          }
+        },
+      },
+    },
+  },
   test: {
     globals: true,
     environment: 'jsdom',
     setupFiles: path.resolve(__dirname, './src/setupTests.ts'),
-    // --- ADD THIS SECTION ---
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
@@ -23,7 +42,7 @@ export default defineConfig({
       exclude: [
         'node_modules/',
         'src/setupTests.ts',
-        'src/__tests__/**' // Ignore your test files
+        'src/__tests__/**' 
       ],
     },
   },
