@@ -75,11 +75,16 @@ export default function PriorityTab() {
   const [newCapValue, setNewCapValue] = useState<number>(0);
 
   const handleAdd = () => {
-    if(!newName) return;
+    if(!newAccount) return;
+
+    let finalName = newName;
+    if (!finalName) {
+        finalName = `${newAccount.name} (${newCapType})`;
+    }
     
     const newBucket: PriorityBucket = {
         id: `bucket-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        name: newName,
+        name: finalName,
         type: 'INVESTMENT',
         accountId: newAccount?.id,
         capType: newCapType,
@@ -89,6 +94,7 @@ export default function PriorityTab() {
     dispatch({ type: 'ADD_PRIORITY', payload: newBucket });
     setNewName('');
     setNewCapValue(0);
+    setNewAccount(null);
   };
 
   const onDragEnd = (result: DropResult) => {
@@ -178,7 +184,7 @@ export default function PriorityTab() {
                 <div className="space-y-4">
                     <NameInput
                         id="new-bucket-name"
-                        label="Description"
+                        label="Description (Optional)"
                         value={newName}
                         onChange={setNewName}
                         placeholder="e.g. Max out Roth IRA"
@@ -186,14 +192,13 @@ export default function PriorityTab() {
                     
                     <DropdownInput
                         id="new-bucket-account"
-                        label="Link Account (Optional)"
+                        label="Link Account"
                         value={newAccount?.id ?? ''}
                         onChange={(id) => {
                             const selectedAccount = accounts.find(a => a.id === id) || null;
                             setNewAccount(selectedAccount);
                         }}
                         options={[
-                            { value: '', label: 'None' },
                             ...accounts.map(acc => ({ value: acc.id, label: acc.name }))
                         ]}
                     />
@@ -234,7 +239,7 @@ export default function PriorityTab() {
 
                     <button 
                         onClick={handleAdd}
-                        disabled={!newName}
+                        disabled={!newAccount}
                         className="w-full mt-6 bg-green-700 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition-colors shadow-lg"
                     >
                         Add Step

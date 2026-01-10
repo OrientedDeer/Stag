@@ -29,12 +29,16 @@ export const NetWorthCard = () => {
                 totalAssets += acc.amount;
             }
 
-            if (acc instanceof InvestedAccount && acc.employerBalance){
-                totalNonVested += acc.employerBalance;
+            // FIX: Subtract ONLY the unvested portion. 
+            // Previously this was subtracting 'acc.employerBalance' (All Match).
+            if (acc instanceof InvestedAccount){
+                totalNonVested += acc.nonVestedAmount;
             }
         });
 
-        const netWorth = totalAssets - totalDebt- totalNonVested;
+        // Net Worth = (User + Total Match) - Debt - Unvested Match
+        //           = User + Vested Match - Debt
+        const netWorth = totalAssets - totalDebt - totalNonVested;
         return { totalAssets, totalDebt, netWorth };
     }, [accounts]);
 
@@ -55,14 +59,13 @@ export const NetWorthCard = () => {
                 // Find latest snapshot on or before this date
                 const entry = [...history].reverse().find(e => e.date <= date);
                 if (entry == null) return;
-                const assetValue = entry ? entry.num : 0;
+                
+                const assetValue = entry.num;
 
                 if (acc instanceof DebtAccount) {
-                    // For simple debt, we still rely on the snapshot
-                     const debtValue = entry ? (entry.num) : 0;
+                     const debtValue = assetValue;
                     historicalNetWorth -= debtValue;
                 } else if (acc instanceof PropertyAccount) {
-                    // 3. Find linked mortgage and calculate balance dynamically
                     const linkedMortgage = expenses.find(
                         ex => ex.id === acc.linkedAccountId && ex instanceof MortgageExpense
                     ) as MortgageExpense | undefined;
@@ -70,10 +73,18 @@ export const NetWorthCard = () => {
                     if (linkedMortgage) {
                         const calculatedDebt = linkedMortgage.getBalanceAtDate(date);
                         historicalNetWorth += (assetValue - calculatedDebt);
+                    } else {
+                        historicalNetWorth += assetValue;
                     }
-                    else{
-                        throw new Error("This needs coverage.");
-                    }
+                } else if (acc instanceof InvestedAccount) {
+                    // FIX: Apply the current "Vested Ratio" to historical data.
+                    // This ensures the chart tracks "Vested Net Worth" roughly over time
+                    // and converges with the Big Number at the end.
+                    const currentTotal = acc.amount || 1; 
+                    const currentVested = acc.vestedAmount;
+                    const vestedRatio = Math.max(0, Math.min(1, currentVested / currentTotal));
+                    
+                    historicalNetWorth += (assetValue * vestedRatio);
                 } else {
                     historicalNetWorth += assetValue;
                 }
@@ -91,7 +102,7 @@ export const NetWorthCard = () => {
                 data: dataPoints,
             },
         ];
-    }, [accounts, amountHistory]);
+    }, [accounts, amountHistory, expenses]);
 
     return (
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-2xl">
@@ -103,6 +114,9 @@ export const NetWorthCard = () => {
                     <p className={`text-5xl font-black tracking-tight ${stats.netWorth >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                         ${stats.netWorth.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                     </p>
+                    <span className="text-xs text-gray-500 font-medium bg-gray-800 px-2 py-1 rounded-full">
+                        Vested
+                    </span>
                 </div>
             </div>
 
@@ -143,12 +157,12 @@ export const NetWorthCard = () => {
                             },
                             grid: { line: { stroke: '#374151' } },
                             crosshair: { line: { stroke: '#10b981', strokeWidth: 1 } },
-                            tooltip: { container: { color: '#000' } } // Fix tooltip text color
+                            tooltip: { container: { color: '#000' } }
                         }}
                         tooltip={({ point }: any) => (
                             <div className="bg-gray-800 border border-gray-700 p-2 rounded shadow-xl text-xs">
                                 <span className="text-gray-400">{point.data.xFormatted}: </span>
-                                <span className="text-green-400 font-bold">${point.data.y.toLocaleString()}</span>
+                                <span className="text-green-400 font-bold">${point.data.y.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                             </div>
                         )}
                     />

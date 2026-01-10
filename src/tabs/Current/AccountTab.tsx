@@ -81,7 +81,7 @@ const getAccountValue = (account: AnyAccount): number => {
         return account.amount - account.loanAmount;
     }
     if (account instanceof InvestedAccount) {
-        return account.amount - account.employerBalance;
+        return account.amount - account.nonVestedAmount;
     }
     if (account instanceof DebtAccount) {
         return -account.amount;

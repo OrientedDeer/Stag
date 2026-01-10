@@ -73,7 +73,7 @@ describe('Critical Simulation Logic', () => {
 
         const initialNetWorth = 10000;
         const accounts = [
-            new InvestedAccount('acc-1', 'Brokerage', initialNetWorth, 0, 5, 0.1, 'Brokerage', true, 0.2),
+            new InvestedAccount('acc-1', 'Brokerage', initialNetWorth, 0, 5, 0.0, 'Brokerage', true, 0.2),
             new SavedAccount('acc-2', 'Savings', 0, 0)
         ];
 
@@ -258,5 +258,56 @@ describe('Critical Simulation Logic', () => {
         const lastYearResult = result[result.length - 1];
         const lastYearAge = cliffAssumptions.demographics.startAge + (lastYearResult.year - cliffAssumptions.demographics.startYear);
         expect(lastYearAge).toBe(40);
+    });
+
+    it("Priority Buckets: 'FIXED' cap should contribute a fixed amount annually", () => {
+        // --- SETUP ---
+        const fixedCapAssumptions: AssumptionsState = {
+            ...defaultAssumptions,
+            demographics: {
+                startAge: 30,
+                startYear: 2025,
+                lifeExpectancy: 90,
+                retirementAge: 67,
+            },
+            macro: { ...defaultAssumptions.macro, inflationRate: 0, inflationAdjusted: false },
+            investments: { ...defaultAssumptions.investments, returnRates: { ror: 0 } },
+            income: { ...defaultAssumptions.income, salaryGrowth: 0 },
+            priorities: [
+                {
+                    id: 'prio-1',
+                    name: 'Fixed Contribution',
+                    type: 'SAVINGS',
+                    accountId: 'acc-2',
+                    capType: 'FIXED',
+                    capValue: 100 // $100/month
+                }
+            ]
+        };
+
+        const income = [new WorkIncome('work-1', 'Job', 100000, 'Annually', "Yes", 0, 0, 0, 0, "", null, 'FIXED', new Date('2025-01-01'))];
+        const expenses = [new OtherExpense('exp-1', 'Living', 50000, "Annually", new Date('2025-01-01'))];
+        const accounts = [
+            new InvestedAccount('acc-1', 'Brokerage', 10000, 0, 5, 0.0, 'Brokerage', true, 0.2),
+            new SavedAccount('acc-2', 'Savings', 0, 0)
+        ];
+
+        // --- EXECUTE ---
+        const result = runSimulation(2, accounts, income, expenses, fixedCapAssumptions, mockTaxState);
+        const year1 = result[1];
+
+        // --- ASSERT ---
+        // Expected annual contribution is $100/month * 12 months = $1200
+        const expectedAnnualContribution = 100 * 12;
+
+        // Check the total bucket allocation for the year
+        expect(year1.cashflow.bucketAllocations).toBeCloseTo(expectedAnnualContribution);
+
+        // Check the detail for the specific account
+        expect(year1.cashflow.bucketDetail['acc-2']).toBeCloseTo(expectedAnnualContribution);
+        
+        // Check the account balance
+        const savingsAccount = year1.accounts.find(a => a.id === 'acc-2');
+        expect(savingsAccount?.amount).toBeCloseTo(expectedAnnualContribution);
     });
 });

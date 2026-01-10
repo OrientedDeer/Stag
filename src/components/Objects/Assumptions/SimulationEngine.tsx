@@ -260,7 +260,8 @@ export function simulateOneYear(
         let amountToContribute = 0;
 
         if (priority.capType === 'FIXED') {
-            amountToContribute = Math.min(priority.capValue || 0, discretionaryCash);
+            const yearlyCap = (priority.capValue || 0) * 12;
+            amountToContribute = Math.min(yearlyCap, discretionaryCash);
         } 
         else if (priority.capType === 'REMAINDER') {
             amountToContribute = discretionaryCash;
