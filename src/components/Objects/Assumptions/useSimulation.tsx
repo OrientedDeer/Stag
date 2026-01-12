@@ -28,6 +28,9 @@ export const runSimulation = (
     const timeline: SimulationYear[] = [];
 
     // --- STEP 1: CREATE YEAR 0 (Baseline) ---
+    // Note: Interest income is NOT included in Year 0 to allow users to match
+    // their actual tax situation. Interest is generated starting in Year 1.
+
     // Calculate current baseline metrics using existing TaxService logic
     const currentGross = TaxService.getGrossIncome(incomes, startYear);
     const currentPreTax = TaxService.getPreTaxExemptions(incomes, startYear);
@@ -91,7 +94,8 @@ export const runSimulation = (
             currentExpenses,
             currentAccounts,
             assumptions,
-            taxState
+            taxState,
+            timeline  // Pass previous simulation history for SS calculation
         );
 
         timeline.push(result);

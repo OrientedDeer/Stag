@@ -5,8 +5,55 @@ import { SavedAccount, InvestedAccount, PropertyAccount } from '../../../compone
 import { formatCurrency } from './FutureUtils';
 import { LoanExpense, MortgageExpense } from '../../../components/Objects/Expense/models';
 import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider';
+import { getFRA } from '../../../data/SocialSecurityData';
+import { FutureSocialSecurityIncome } from '../../../components/Objects/Income/models';
+import { getEarnedIncome } from '../../../components/Objects/Taxes/TaxService';
+import { useAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
+
+/**
+ * Check if user is subject to Social Security earnings test
+ */
+function checkEarningsTest(
+  year: SimulationYear | undefined,
+  startAge: number,
+  startYear: number
+): { applies: boolean; claimingAge?: number; fra?: number; earnedIncome?: number } {
+  if (!year) return { applies: false };
+
+  const currentAge = startAge + (year.year - startYear);
+  const birthYear = startYear - startAge;
+  const fra = getFRA(birthYear);
+
+  // Check if user has active FutureSocialSecurityIncome before FRA
+  const futureSS = year.incomes.find(inc =>
+    inc instanceof FutureSocialSecurityIncome &&
+    inc.calculatedPIA > 0 &&
+    currentAge >= inc.claimingAge &&
+    currentAge < fra
+  ) as FutureSocialSecurityIncome | undefined;
+
+  if (!futureSS) {
+    return { applies: false };
+  }
+
+  // Check if user has earned income
+  const earnedIncome = getEarnedIncome(year.incomes, year.year);
+
+  if (earnedIncome > 0) {
+    return {
+      applies: true,
+      claimingAge: futureSS.claimingAge,
+      fra: fra,
+      earnedIncome: earnedIncome
+    };
+  }
+
+  return { applies: false };
+}
 
 export const OverviewTab = ({ simulationData }: { simulationData: SimulationYear[] }) => {
+    const { assumptions } = useAssumptions();
+
     // 1. Determine Min/Max Years from Data (or defaults if empty)
     const minYear = simulationData.length > 0 ? simulationData[0].year : new Date().getFullYear();
     const maxYear = simulationData.length > 0 ? simulationData[simulationData.length - 1].year : minYear + 10;
@@ -113,6 +160,13 @@ export const OverviewTab = ({ simulationData }: { simulationData: SimulationYear
         );
     };
 
+    // Check for earnings test scenario (use first year in filtered data)
+    const earningsTestCheck = checkEarningsTest(
+        filteredData[0],
+        assumptions.demographics.startAge,
+        assumptions.demographics.startYear
+    );
+
     return (
         <div className="flex flex-col w-full h-full gap-4">
             {/* Header: Range Slider Control */}
@@ -127,7 +181,33 @@ export const OverviewTab = ({ simulationData }: { simulationData: SimulationYear
                     />
                 </div>
             </div>
-            
+
+            {/* Earnings Test Warning */}
+            {earningsTestCheck.applies && (
+                <div className="bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                        <div className="text-yellow-400 text-xl mt-0.5">⚠️</div>
+                        <div className="flex-1">
+                            <div className="text-yellow-200 font-semibold mb-2">
+                                Social Security Benefits Reduced While Working
+                            </div>
+                            <div className="text-gray-300 text-sm space-y-1">
+                                <p>
+                                    You're claiming Social Security at age {earningsTestCheck.claimingAge} and continuing to work
+                                    (earning ${earningsTestCheck.earnedIncome?.toLocaleString()}/year).
+                                    Your benefits are being reduced until you reach Full Retirement Age ({earningsTestCheck.fra}).
+                                </p>
+                                <p className="text-gray-400 text-xs mt-2">
+                                    <strong>Note:</strong> This simulation uses a simplified earnings test calculation.
+                                    Withheld benefits are actually recalculated by SSA and added back to your monthly benefit
+                                    at Full Retirement Age, but that adjustment is not yet implemented in this tool.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Chart Area */}
             <div className="h-100 w-full text-white">
                 <ResponsiveLine

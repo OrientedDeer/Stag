@@ -1,11 +1,14 @@
 import React, { useState, useContext, useEffect } from "react";
 import { IncomeContext } from "./IncomeContext";
-import { 
-  WorkIncome, 
-  SocialSecurityIncome, 
-  PassiveIncome, 
+import {
+  WorkIncome,
+  SocialSecurityIncome,
+  CurrentSocialSecurityIncome,
+  FutureSocialSecurityIncome,
+  PassiveIncome,
   WindfallIncome,
-  ContributionGrowthStrategy
+  ContributionGrowthStrategy,
+  calculateSocialSecurityStartDate
 } from './models';
 import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput";
 import { NameInput } from "../../Layout/InputFields/NameInput";
@@ -14,6 +17,8 @@ import { NumberInput } from "../../Layout/InputFields/NumberInput";
 import { AccountContext } from "../Accounts/AccountContext";
 import { InvestedAccount } from "../../Objects/Accounts/models";
 import { StyledInput } from "../../Layout/InputFields/StyleUI";
+import { AssumptionsContext } from "../Assumptions/AssumptionsContext";
+import { getClaimingAdjustment } from "../../../data/SocialSecurityData";
 
 const generateUniqueId = () =>
     `INC-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -26,15 +31,16 @@ interface AddIncomeModalProps {
 const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
     const { dispatch } = useContext(IncomeContext);
     const { accounts } = useContext(AccountContext);
+    const { state: assumptions } = useContext(AssumptionsContext);
 
     const [step, setStep] = useState<'select' | 'details'>('select');
     const [selectedType, setSelectedType] = useState<any>(null);
     const [name, setName] = useState("");
     const [amount, setAmount] = useState<number>(0);
     const [frequency, setFrequency] = useState<'Weekly' | 'Monthly' | 'Annually'>('Monthly');
-    const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+    const [endDate, setEndDate] = useState("");
     const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
-    
+
     // --- New Deductions State ---
     const [earnedIncome, setEarnedIncome] = useState<'Yes' | 'No'>('Yes');
     const [preTax401k, setPreTax401k] = useState<number>(0);
@@ -43,9 +49,9 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
     const [employerMatch, setEmployerMatch] = useState<number>(0);
     const [matchAccountId, setMatchAccountId] = useState<string>("");
     const [contributionGrowthStrategy, setContributionGrowthStrategy] = useState<ContributionGrowthStrategy>('FIXED');
-    
+
     // --- Other Fields ---
-    const [claimingAge, setClaimingAge] = useState<number>(62);
+    const [claimingAge, setClaimingAge] = useState<number>(67); // Default to Full Retirement Age
     const [sourceType, setSourceType] = useState<'Dividend' | 'Rental' | 'Royalty' | 'Other'>('Dividend');
         
     const id = generateUniqueId();
@@ -74,7 +80,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
         setMatchAccountId("");
         setContributionGrowthStrategy('FIXED');
         setStartDate(new Date().toISOString().split('T')[0]);
-        setEndDate(new Date().toISOString().split('T')[0]);
+        setEndDate("");
         onClose();
     };
 
@@ -103,8 +109,22 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
             const matchedAccount = accounts.find(acc => acc.id === matchAccountId) as InvestedAccount | undefined;
             const taxType = matchedAccount ? matchedAccount.taxType : null;
             newIncome = new WorkIncome(id, name.trim(), amount, frequency, "Yes", preTax401k, insurance, roth401k, employerMatch, matchAccountId, taxType, contributionGrowthStrategy, finalStartDate, finalEndDate);
+        } else if (selectedType === CurrentSocialSecurityIncome) {
+            // Current benefits: User enters amount, uses start/end dates
+            newIncome = new CurrentSocialSecurityIncome(id, name.trim(), amount, frequency, finalStartDate, finalEndDate);
+        } else if (selectedType === FutureSocialSecurityIncome) {
+            // Future benefits: Auto-calculated, no amount input needed
+            // Start date will be set by SimulationEngine when reaching claiming age
+            // End date will be set to life expectancy
+            newIncome = new FutureSocialSecurityIncome(id, name.trim(), claimingAge, 0, 0, undefined, undefined);
         } else if (selectedType === SocialSecurityIncome) {
-            newIncome = new SocialSecurityIncome(id, name.trim(), amount, frequency, claimingAge, finalStartDate, finalEndDate);
+            // Legacy SocialSecurityIncome (keep for backward compatibility)
+            const ssStartDate = calculateSocialSecurityStartDate(
+                assumptions.demographics.startAge,
+                assumptions.demographics.startYear,
+                claimingAge
+            );
+            newIncome = new SocialSecurityIncome(id, name.trim(), amount, frequency, claimingAge, undefined, ssStartDate, finalEndDate);
         } else if (selectedType === PassiveIncome) {
             newIncome = new PassiveIncome(id, name.trim(), amount, frequency, "Yes", sourceType, finalStartDate, finalEndDate);
         } else if (selectedType === WindfallIncome) {
@@ -115,14 +135,15 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
         }
 
         dispatch({ type: "ADD_INCOME", payload: newIncome });
-        handleClose(); 
+        handleClose();
     };
 
     if (!isOpen) return null;
 
     const incomeCategories = [
         { label: 'Work', class: WorkIncome },
-        { label: 'Social Security', class: SocialSecurityIncome },
+        { label: 'Current Social Security', class: CurrentSocialSecurityIncome },
+        { label: 'Future Social Security', class: FutureSocialSecurityIncome },
         { label: 'Passive Income', class: PassiveIncome },
         { label: 'Windfall', class: WindfallIncome }
     ];
@@ -149,22 +170,46 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                 ) : (
                     <div className="space-y-4">
                         <div className="grid grid-cols-3 gap-4">
-                            <div className="col-span-2">
-                                <NameInput label="Income Name" id={id} value={name} onChange={setName} />
-                            </div>
-                            
-                            <div className="col-span-1">
-                                <DropdownInput
-                                    label="Frequency"
-                                    onChange={(val) => setFrequency(val as "Weekly" | "Monthly" | "Annually")}
-                                    options={["Weekly", "Monthly", "Annually"]}
-                                    value={frequency}
-                                />
-                            </div>
+                            {selectedType === FutureSocialSecurityIncome ? (
+                                <>
+                                    <div className="col-span-2">
+                                        <NameInput label="Income Name" id={id} value={name} onChange={setName} />
+                                    </div>
+                                    <div className="col-span-1">
+                                        <NumberInput
+                                            label="Claiming Age (62-70)"
+                                            value={claimingAge}
+                                            onChange={(val) => {
+                                                // Clamp to valid range
+                                                const clamped = Math.max(62, Math.min(70, val));
+                                                setClaimingAge(clamped);
+                                            }}
+                                        />
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="col-span-2">
+                                        <NameInput label="Income Name" id={id} value={name} onChange={setName} />
+                                    </div>
+
+                                    <div className="col-span-1">
+                                        <DropdownInput
+                                            label="Frequency"
+                                            onChange={(val) => setFrequency(val as "Weekly" | "Monthly" | "Annually")}
+                                            options={["Weekly", "Monthly", "Annually"]}
+                                            value={frequency}
+                                        />
+                                    </div>
+                                </>
+                            )}
                         </div>
 
                         <div className="grid grid-cols-3 gap-4">
-                            <CurrencyInput label="Gross Amount" value={amount} onChange={setAmount} />
+                            {/* Hide amount input for FutureSocialSecurityIncome - it's auto-calculated */}
+                            {selectedType !== FutureSocialSecurityIncome && (
+                                <CurrencyInput label="Gross Amount" value={amount} onChange={setAmount} />
+                            )}
                             {selectedType === WorkIncome && (
                                 <>
                                     <CurrencyInput label="Pre-Tax 401k/403b" value={preTax401k} onChange={setPreTax401k} />
@@ -191,37 +236,107 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                     )}
                                 </>
                             )}
-                            <div>
-                                <StyledInput
-                                    label="Start Date"
-                                    id={`${id}-start-date`}
-                                    type="date"
-                                    value={startDate}
-                                    onChange={(e) => setStartDate(e.target.value === "" ? "" : e.target.value)}
-                                />
-                            </div>
-                            <div>
-                                <StyledInput
-                                    label="End Date (Optional)"
-                                    id={`${id}-end-date`}
-                                    type="date"
-                                    value={endDate}
-                                    onChange={(e) => setEndDate(e.target.value === "" ? "" : e.target.value)}
-                                />
-                            </div>
+                            {/* Hide date fields for FutureSocialSecurityIncome - they're auto-calculated */}
+                            {selectedType !== FutureSocialSecurityIncome && (
+                                <>
+                                    <div>
+                                        <StyledInput
+                                            label="Start Date"
+                                            id={`${id}-start-date`}
+                                            type="date"
+                                            value={startDate}
+                                            onChange={(e) => setStartDate(e.target.value === "" ? "" : e.target.value)}
+                                        />
+                                    </div>
+                                    <div>
+                                        <StyledInput
+                                            label="End Date (Optional)"
+                                            id={`${id}-end-date`}
+                                            type="date"
+                                            value={endDate}
+                                            onChange={(e) => setEndDate(e.target.value === "" ? "" : e.target.value)}
+                                        />
+                                    </div>
+                                </>
+                            )}
+                            {selectedType === CurrentSocialSecurityIncome && (
+                                <>
+                                    <div className="col-span-3 bg-gray-800/50 border border-gray-700 rounded-lg p-4 text-sm">
+                                        <div className="font-semibold text-gray-200 mb-2">Current Social Security Benefits</div>
+                                        <div className="text-gray-400 space-y-1">
+                                            <p className="break-words">• For disability (SSDI), survivor, or retirement benefits you're already receiving</p>
+                                            <p className="break-words">• Enter your current monthly benefit amount</p>
+                                            <p className="break-words">• Amount will automatically adjust with COLA (Cost of Living Adjustment)</p>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
                             {selectedType === SocialSecurityIncome && (
-                                <NumberInput label="Claiming Age" value={claimingAge} onChange={setClaimingAge} />
+                                <>
+                                    <NumberInput
+                                        label="Claiming Age (62-70)"
+                                        value={claimingAge}
+                                        onChange={(val) => {
+                                            // Clamp to valid range
+                                            const clamped = Math.max(62, Math.min(70, val));
+                                            setClaimingAge(clamped);
+                                        }}
+                                    />
+                                    <div className="col-span-2 bg-blue-900/20 border border-blue-700/50 rounded-lg p-3 text-sm">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-gray-300">Benefit Adjustment:</span>
+                                            <span className="font-bold text-blue-300">
+                                                {(SocialSecurityIncome.calculateBenefitAdjustment(claimingAge) * 100).toFixed(1)}% of FRA
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between items-center mt-1">
+                                            <span className="text-gray-300">Benefits Start:</span>
+                                            <span className="font-medium text-blue-200">
+                                                {assumptions.demographics.startYear + (claimingAge - assumptions.demographics.startAge)}
+                                            </span>
+                                        </div>
+                                        <div className="text-xs text-gray-400 mt-2">
+                                            {claimingAge < 67
+                                                ? "Early claiming reduces benefits but you receive them longer."
+                                                : claimingAge > 67
+                                                ? "Delayed claiming increases benefits by 8% per year."
+                                                : "Full Retirement Age: 100% of benefits."}
+                                        </div>
+                                    </div>
+                                </>
                             )}
                             {selectedType === PassiveIncome && (
                                 <>
                                     <DropdownInput label="Source Type" value={sourceType} onChange={(val) => setSourceType(val as "Dividend" | "Rental" | "Royalty" | "Other")} options={["Dividend", "Rental", "Royalty", "Other"]} />
                                 </>
                             )}
-                            {selectedType !== SocialSecurityIncome && (
+                            {selectedType !== SocialSecurityIncome &&
+                             selectedType !== CurrentSocialSecurityIncome &&
+                             selectedType !== FutureSocialSecurityIncome && (
                                 <DropdownInput label="Earned Income" value={earnedIncome} onChange={(val) => setEarnedIncome(val as "Yes" | "No")} options={["Yes", "No"]} />
                             )}
 
                         </div>
+
+                        {/* Info boxes for Future Social Security - outside grid to avoid stretching */}
+                        {selectedType === FutureSocialSecurityIncome && (
+                            <div className="space-y-3 mt-4 max-w-2xl">
+                                <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-4">
+                                    <div className="text-sm font-semibold text-blue-200 mb-2">Automatic Calculation</div>
+                                    <div className="text-xs text-gray-300 space-y-1">
+                                        <p className="break-words">• Benefit calculated from your 35 highest earning years</p>
+                                        <p className="break-words">• Uses SSA wage indexing and bend points formula</p>
+                                        <p className="break-words">• Claiming at {claimingAge}: {(getClaimingAdjustment(claimingAge) * 100).toFixed(1)}% of FRA benefit</p>
+                                        <p className="break-words">• Benefits start in {assumptions.demographics.startYear + (claimingAge - assumptions.demographics.startAge)}</p>
+                                        <p className="break-words">• Benefits end at life expectancy (age {assumptions.demographics.lifeExpectancy})</p>
+                                    </div>
+                                </div>
+                                <div className="text-sm text-gray-400 break-words">
+                                    Future retirement benefits will be automatically calculated during simulation based on your work income history.
+                                    No need to enter an amount - it will be computed using the official SSA formula.
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
 

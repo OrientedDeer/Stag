@@ -69,7 +69,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 		setName("");
 		setAmount(0);
         setStartDate(new Date().toISOString().split('T')[0]);
-        setEndDate(new Date().toISOString().split('T')[0]);
+        setEndDate("");
 		onClose();
 	};
 

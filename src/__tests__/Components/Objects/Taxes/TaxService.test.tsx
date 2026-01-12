@@ -17,7 +17,7 @@ import {
     calculateStateTax,
     calculateFederalTax
 } from '../../../../components/Objects/Taxes/TaxService';
-import { WorkIncome } from '../../../../components/Objects/Income/models';
+import { WorkIncome, CurrentSocialSecurityIncome } from '../../../../components/Objects/Income/models';
 import { MortgageExpense } from '../../../../components/Objects/Expense/models';
 
 // --- HELPERS ---
@@ -438,6 +438,175 @@ describe('TaxService: Additional Functions', () => {
             const taxState = createTaxState({ fedOverride: 15000 });
             const fedTax = calculateFederalTax(taxState, [income], [], 2024, noInflationAssumptions);
             expect(fedTax).toBe(15000);
+        });
+    });
+
+    describe('Federal Tax Calculation with Social Security', () => {
+        /**
+         * CRITICAL BUG PREVENTION:
+         * These tests verify the specific line of code that was buggy (TaxService.tsx:374).
+         *
+         * Bug: adjustedGross = annualGross + taxableSSBenefits (double-counted SS)
+         * Fix: adjustedGross = annualGross - totalSSBenefits + taxableSSBenefits
+         *
+         * If the bug is reintroduced, these tests will fail with a federal tax amount
+         * that is significantly higher than expected.
+         */
+
+        it('should correctly calculate adjustedGross when SS benefits are present', () => {
+            // This test verifies the specific line of code that was buggy
+            const workIncome = new WorkIncome(
+                'w1',
+                'Job',
+                100000,
+                'Annually',
+                'Yes',
+                0,
+                0,
+                0,
+                0,
+                'acc1',
+                'Traditional 401k',
+                'FIXED',
+                new Date('2024-01-01'),
+                new Date('2024-12-31')
+            );
+
+            const ssIncome = new CurrentSocialSecurityIncome(
+                'ss1',
+                'SS',
+                2000,
+                'Monthly',
+                new Date('2024-01-01'),
+                new Date('2024-12-31')
+            );
+            // $24,000/year SS
+
+            const fedTax = calculateFederalTax(
+                createTaxState(),
+                [workIncome, ssIncome],
+                [],
+                2024,
+                noInflationAssumptions
+            );
+
+            // Manual calculation to verify adjustedGross is correct:
+            // annualGross = 100,000 + 24,000 = 124,000
+            // AGI = 124,000 (no pre-tax deductions)
+            // Combined income = AGI + (0.5 * SS) = 124,000 + 12,000 = 136,000
+            // Since > $34,000, up to 85% of SS is taxable
+            // taxableSSBenefits = 0.85 * 24,000 = 20,400
+            //
+            // CRITICAL: adjustedGross = 124,000 - 24,000 + 20,400 = 120,400
+            // (NOT 124,000 + 20,400 = 144,400 which is the bug!)
+            //
+            // Taxable income = 120,400 - 14,600 (std deduction) = 105,800
+            //
+            // Tax calculation on $105,800 (Single, 2024):
+            // 10% on first $11,600 = $1,160
+            // 12% on $11,600 to $47,150 = $4,266
+            // 22% on $47,150 to $100,525 = $11,743
+            // 24% on $100,525 to $105,800 = $1,266
+            // Total: ~$18,435
+            //
+            // If the bug is present, the tax would be calculated on $144,400 instead:
+            // Taxable: 144,400 - 14,600 = 129,800
+            // Tax: ~$24,660 (WRONG!)
+
+            expect(fedTax).toBeCloseTo(18434.38, 0); // Within $1
+            expect(fedTax).toBeLessThan(20000); // Should NOT be ~24660 (bug value)
+        });
+
+        it('should not apply FICA to Social Security benefits', () => {
+            const workIncome = new WorkIncome(
+                'w1',
+                'Job',
+                50000,
+                'Annually',
+                'Yes',
+                0,
+                0,
+                0,
+                0,
+                'acc1',
+                'Traditional 401k',
+                'FIXED',
+                new Date('2024-01-01'),
+                new Date('2024-12-31')
+            );
+
+            const ssIncome = new CurrentSocialSecurityIncome(
+                'ss1',
+                'SS',
+                2000,
+                'Monthly',
+                new Date('2024-01-01'),
+                new Date('2024-12-31')
+            );
+            // $24,000/year SS
+
+            const ficaTax = calculateFicaTax(
+                createTaxState(),
+                [workIncome, ssIncome],
+                2024,
+                noInflationAssumptions
+            );
+
+            // FICA should only be on work income ($50k), not SS benefits ($24k)
+            const expectedFica = 50000 * 0.0765; // 7.65% FICA on work income only
+            expect(ficaTax).toBeCloseTo(expectedFica, 10);
+
+            // Verify SS income did NOT increase FICA
+            const workOnlyFica = calculateFicaTax(
+                createTaxState(),
+                [workIncome],
+                2024,
+                noInflationAssumptions
+            );
+            expect(ficaTax).toBeCloseTo(workOnlyFica, 1);
+        });
+
+        it('should correctly calculate state tax when SS benefits are present', () => {
+            const workIncome = new WorkIncome(
+                'w1',
+                'Job',
+                75000,
+                'Annually',
+                'Yes',
+                0,
+                0,
+                0,
+                0,
+                'acc1',
+                'Traditional 401k',
+                'FIXED',
+                new Date('2024-01-01'),
+                new Date('2024-12-31')
+            );
+
+            const ssIncome = new CurrentSocialSecurityIncome(
+                'ss1',
+                'SS',
+                2000,
+                'Monthly',
+                new Date('2024-01-01'),
+                new Date('2024-12-31')
+            );
+            // $24,000/year SS
+
+            // Test with New York (which may exempt SS from taxation)
+            const stateTax = calculateStateTax(
+                createTaxState({ stateResidency: 'New York' }),
+                [workIncome, ssIncome],
+                [],
+                2024,
+                noInflationAssumptions
+            );
+
+            // State tax should be calculated correctly
+            // Note: New York may fully exempt SS benefits, so state tax could be $0
+            expect(stateTax).toBeGreaterThanOrEqual(0);
+            expect(stateTax).toBeLessThan(10000);
         });
     });
 });

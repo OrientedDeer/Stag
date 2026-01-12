@@ -1,10 +1,12 @@
 // src/components/Simulation/SimulationEngine.ts
 import { AnyAccount, DebtAccount, InvestedAccount, PropertyAccount, SavedAccount } from "../../Objects/Accounts/models";
 import { AnyExpense, LoanExpense, MortgageExpense } from "../Expense/models";
-import { AnyIncome, WorkIncome } from "../../Objects/Income/models";
+import { AnyIncome, WorkIncome, FutureSocialSecurityIncome, PassiveIncome } from "../../Objects/Income/models";
 import { AssumptionsState } from "./AssumptionsContext";
 import { TaxState } from "../../Objects/Taxes/TaxContext";
 import * as TaxService from "../../Objects/Taxes/TaxService";
+import { calculateAIME, extractEarningsFromSimulation, calculateEarningsTestReduction } from "../../../services/SocialSecurityCalculator";
+import { getFRA } from "../../../data/SocialSecurityData";
 
 // Define the shape of a single year's result
 export interface SimulationYear {
@@ -43,21 +45,140 @@ export function simulateOneYear(
     expenses: AnyExpense[],
     accounts: AnyAccount[],
     assumptions: AssumptionsState,
-    taxState: TaxState
+    taxState: TaxState,
+    previousSimulation: SimulationYear[] = []
 ): SimulationYear {
     const logs: string[] = [];
 
     // 1. GROW (The Physics of Money)
-    const nextIncomes = incomes.map(inc => inc.increment(assumptions));
+    // Special handling for FutureSocialSecurityIncome: Calculate PIA when reaching claiming age
+    const nextIncomes = incomes.map(inc => {
+        if (inc instanceof FutureSocialSecurityIncome) {
+            const currentAge = assumptions.demographics.startAge + (year - assumptions.demographics.startYear);
+
+            // If user has reached claiming age and PIA hasn't been calculated yet
+            if (currentAge === inc.claimingAge && inc.calculatedPIA === 0) {
+                try {
+                    // Extract earnings from all previous simulation years
+                    const earningsHistory = extractEarningsFromSimulation(previousSimulation);
+
+                    // Calculate AIME/PIA based on top 35 years
+                    // Use inflation rate as wage growth rate (wages typically track inflation)
+                    const birthYear = assumptions.demographics.startYear - assumptions.demographics.startAge;
+                    const wageGrowthRate = assumptions.macro.inflationRate / 100;
+                    const aimeCalc = calculateAIME(earningsHistory, year, inc.claimingAge, birthYear, wageGrowthRate);
+
+                    // Set end date to life expectancy
+                    const endDate = new Date(Date.UTC(
+                        assumptions.demographics.startYear + (assumptions.demographics.lifeExpectancy - assumptions.demographics.startAge),
+                        0, 1
+                    ));
+
+                    logs.push(`Social Security benefits calculated: $${aimeCalc.adjustedBenefit.toFixed(2)}/month at age ${inc.claimingAge}`);
+                    logs.push(`  AIME: $${aimeCalc.aime.toFixed(2)}, PIA: $${aimeCalc.pia.toFixed(2)}`);
+
+                    // Create new income with calculated PIA
+                    return new FutureSocialSecurityIncome(
+                        inc.id,
+                        inc.name,
+                        inc.claimingAge,
+                        aimeCalc.adjustedBenefit,
+                        year,
+                        new Date(Date.UTC(year, 0, 1)),
+                        endDate
+                    );
+                } catch (error) {
+                    console.error('Error calculating Social Security benefits:', error);
+                    logs.push(`⚠️ Error calculating Social Security benefits: ${error}`);
+                    // Return original income unchanged if calculation fails
+                    return inc.increment(assumptions);
+                }
+            }
+        }
+
+        return inc.increment(assumptions);
+    });
+
+    // Apply earnings test to FutureSocialSecurityIncome if claiming before FRA
+    const incomesWithEarningsTest = nextIncomes.map(inc => {
+        if (inc instanceof FutureSocialSecurityIncome && inc.calculatedPIA > 0) {
+            const currentAge = assumptions.demographics.startAge + (year - assumptions.demographics.startYear);
+            const birthYear = assumptions.demographics.startYear - assumptions.demographics.startAge;
+            const fra = getFRA(birthYear);
+
+            // Only apply test if before FRA
+            if (currentAge < fra) {
+                const earnedIncome = TaxService.getEarnedIncome(nextIncomes, year);
+                const annualSSBenefit = inc.getProratedAnnual(inc.amount, year);
+                const wageGrowthRate = assumptions.macro.inflationRate / 100;
+
+                const earningsTest = calculateEarningsTestReduction(
+                    annualSSBenefit,
+                    earnedIncome,
+                    currentAge,
+                    fra,
+                    year,
+                    wageGrowthRate
+                );
+
+                if (earningsTest.appliesTest && earningsTest.amountWithheld > 0) {
+                    // Calculate monthly reduced benefit
+                    const monthlyReduced = earningsTest.reducedBenefit / 12;
+
+                    logs.push(`⚠️ Earnings test applied: SS benefit reduced from $${(annualSSBenefit/12).toFixed(2)}/month to $${monthlyReduced.toFixed(2)}/month`);
+                    logs.push(`  ${earningsTest.reason}`);
+                    logs.push(`  Amount withheld: $${earningsTest.amountWithheld.toLocaleString()}/year`);
+                    logs.push(`  Note: Withheld benefits would be recalculated at FRA (not yet implemented)`);
+
+                    // Create new income with reduced amount (keep income object, just reduce amount)
+                    return new FutureSocialSecurityIncome(
+                        inc.id,
+                        inc.name,
+                        inc.claimingAge,
+                        monthlyReduced,  // Reduced monthly benefit
+                        inc.calculationYear,
+                        inc.startDate,
+                        inc.end_date
+                    );
+                }
+            }
+        }
+        return inc;
+    });
+
     const nextExpenses = expenses.map(exp => exp.increment(assumptions));
 
+    // Calculate interest income from savings accounts (before they grow)
+    // Interest is based on beginning-of-year balance
+    const interestIncomes: PassiveIncome[] = [];
+    for (const acc of accounts) {
+        if (acc instanceof SavedAccount && acc.apr > 0 && acc.amount > 0) {
+            const interestEarned = acc.amount * (acc.apr / 100);
+            if (interestEarned > 0.01) { // Skip tiny amounts
+                interestIncomes.push(new PassiveIncome(
+                    `interest-${acc.id}-${year}`,
+                    `${acc.name} Interest`,
+                    interestEarned,
+                    'Annually',
+                    'No',  // Not earned income (no FICA)
+                    'Interest',
+                    new Date(`${year}-01-01`),
+                    new Date(`${year}-12-31`)
+                ));
+            }
+        }
+    }
+
+    // Combine regular incomes with interest income for tax calculations
+    const allIncomes = [...incomesWithEarningsTest, ...interestIncomes];
+
     // 2. TAXES & DEDUCTIONS (The Government)
-    let totalGrossIncome = TaxService.getGrossIncome(nextIncomes, year);
-    const preTaxDeductions = TaxService.getPreTaxExemptions(nextIncomes, year);
-    const postTaxDeductions = TaxService.getPostTaxExemptions(nextIncomes, year);
-    
+    let totalGrossIncome = TaxService.getGrossIncome(allIncomes, year);
+    const preTaxDeductions = TaxService.getPreTaxExemptions(incomesWithEarningsTest, year);
+    const postTaxDeductions = TaxService.getPostTaxExemptions(incomesWithEarningsTest, year);
+
     // Calculate Insurance
-    const totalInsuranceCost = nextIncomes.reduce((sum, inc) => {
+    const totalInsuranceCost = incomesWithEarningsTest.reduce((sum, inc) => {
         if (inc instanceof WorkIncome) {
             return sum + inc.getProratedAnnual(inc.insurance, year);
         }
@@ -65,9 +186,10 @@ export function simulateOneYear(
     }, 0);
 
     // Initial Tax Calculation (Before any withdrawals)
-    let fedTax = TaxService.calculateFederalTax(taxState, nextIncomes, nextExpenses, year, assumptions);
-    let stateTax = TaxService.calculateStateTax(taxState, nextIncomes, nextExpenses, year, assumptions);
-    const ficaTax = TaxService.calculateFicaTax(taxState, nextIncomes, year, assumptions);
+    // Use allIncomes to include interest income in tax calculations
+    let fedTax = TaxService.calculateFederalTax(taxState, allIncomes, nextExpenses, year, assumptions);
+    let stateTax = TaxService.calculateStateTax(taxState, allIncomes, nextExpenses, year, assumptions);
+    const ficaTax = TaxService.calculateFicaTax(taxState, allIncomes, year, assumptions);
     let totalTax = fedTax + stateTax + ficaTax;
 
     // 3. LIVING EXPENSES (The Bills)
@@ -236,7 +358,7 @@ export function simulateOneYear(
     let totalBucketAllocations = 0;
 
     // 5a. Payroll & Match
-    nextIncomes.forEach(inc => {
+    incomesWithEarningsTest.forEach(inc => {
         if (inc instanceof WorkIncome && inc.matchAccountId) {
             const currentSelf = userInflows[inc.matchAccountId] || 0;
             const currentMatch = employerInflows[inc.matchAccountId] || 0;
@@ -349,7 +471,7 @@ export function simulateOneYear(
 
     return {
         year,
-        incomes: nextIncomes,
+        incomes: allIncomes, // Includes both regular incomes and interest income
         expenses: nextExpenses,
         accounts: nextAccounts,
         cashflow: {

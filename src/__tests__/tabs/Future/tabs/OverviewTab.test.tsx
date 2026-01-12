@@ -19,13 +19,13 @@ vi.mock('@nivo/line', () => ({
   ),
 }));
 
-// Mock the RangeSlider. We replace the complex slider with simple inputs 
+// Mock the RangeSlider. We replace the complex slider with simple inputs
 // so we can easily trigger 'onChange' without fighting mouse events.
 vi.mock('../../../../components/Layout/InputFields/RangeSlider', () => ({
   RangeSlider: ({ onChange, min, max }: any) => (
     <div data-testid="mock-slider">
       <span>Min: {min}, Max: {max}</span>
-      <button 
+      <button
         data-testid="trigger-range-change"
         onClick={() => onChange([2026, 2027])} // Hardcode a change for testing
       >
@@ -33,6 +33,21 @@ vi.mock('../../../../components/Layout/InputFields/RangeSlider', () => ({
       </button>
     </div>
   ),
+}));
+
+// Mock the AssumptionsContext
+vi.mock('../../../../components/Objects/Assumptions/AssumptionsContext', () => ({
+  useAssumptions: () => ({
+    assumptions: {
+      demographics: {
+        startAge: 30,
+        startYear: 2024,
+      },
+      macro: {
+        inflationRate: 3,
+      },
+    },
+  }),
 }));
 
 // -----------------------------------------------------------------------------

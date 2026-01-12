@@ -260,12 +260,13 @@ describe('Simulation Engine', () => {
 
         const result = simulateOneYear(2024, [], [expense], [savingsAccount], assumptionsWithWithdrawal, mockTaxState);
 
-        // Deficit of 3000 needs to be covered.
+        // Interest income = 5000 * 0.025 = 125
+        // Net deficit = 3000 - 125 = 2875
         // Withdrawal is from a SavedAccount, so it's tax-free.
-        // Withdrawal amount = 3000. Tax = 0.
-        // Account balance before growth: 5000 - 3000 = 2000.
-        // Account balance after 2.5% growth: 5000 * 1.025 = 5125 - 3000 = 2125.
-        expect(result.accounts[0].amount).toBe(2125);
+        // Withdrawal amount = 2875. Tax = 0.
+        // Account balance after 2.5% growth: 5000 * 1.025 = 5125
+        // Account balance after withdrawal: 5125 - 2875 = 2250
+        expect(result.accounts[0].amount).toBe(2250);
     });
 
     it('should handle employer match correctly', () => {

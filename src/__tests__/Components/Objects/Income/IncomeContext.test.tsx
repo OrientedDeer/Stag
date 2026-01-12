@@ -6,7 +6,13 @@ import {
   IncomeProvider,
   IncomeContext,
 } from '../../../../components/Objects/Income/IncomeContext';
-import { WorkIncome, PassiveIncome, WindfallIncome } from '../../../../components/Objects/Income/models';
+import {
+  WorkIncome,
+  PassiveIncome,
+  WindfallIncome,
+  CurrentSocialSecurityIncome,
+  FutureSocialSecurityIncome
+} from '../../../../components/Objects/Income/models';
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -594,6 +600,272 @@ describe('IncomeContext', () => {
       // Should only have valid income
       expect(incomes).toHaveLength(1);
       expect(incomes[0].id).toBe('1');
+    });
+
+    it('should reconstitute CurrentSocialSecurityIncome from localStorage', () => {
+      const incomeData = {
+        incomes: [
+          {
+            className: 'CurrentSocialSecurityIncome',
+            id: '1',
+            name: 'SSDI Benefits',
+            amount: 1500,
+            frequency: 'Monthly',
+            earned_income: 'No',
+            startDate: '2024-01-01',
+          },
+        ],
+      };
+
+      localStorageMock.setItem('user_incomes_data', JSON.stringify(incomeData));
+
+      let incomes!: any[];
+
+      const TestComponent = () => {
+        ({ incomes } = useContext(IncomeContext));
+        return null;
+      };
+
+      render(
+        <IncomeProvider>
+          <TestComponent />
+        </IncomeProvider>
+      );
+
+      expect(incomes).toHaveLength(1);
+      expect(incomes[0].constructor.name).toBe('CurrentSocialSecurityIncome');
+      expect(incomes[0].name).toBe('SSDI Benefits');
+      expect(incomes[0].amount).toBe(1500);
+    });
+
+    it('should reconstitute FutureSocialSecurityIncome from localStorage', () => {
+      const incomeData = {
+        incomes: [
+          {
+            className: 'FutureSocialSecurityIncome',
+            id: '1',
+            name: 'Future SS Benefits',
+            amount: 0,
+            frequency: 'Annually',
+            earned_income: 'No',
+            claimingAge: 67,
+            calculatedPIA: 2500,
+            calculationYear: 2045,
+          },
+        ],
+      };
+
+      localStorageMock.setItem('user_incomes_data', JSON.stringify(incomeData));
+
+      let incomes!: any[];
+
+      const TestComponent = () => {
+        ({ incomes } = useContext(IncomeContext));
+        return null;
+      };
+
+      render(
+        <IncomeProvider>
+          <TestComponent />
+        </IncomeProvider>
+      );
+
+      expect(incomes).toHaveLength(1);
+      expect(incomes[0].constructor.name).toBe('FutureSocialSecurityIncome');
+      expect(incomes[0].name).toBe('Future SS Benefits');
+      expect(incomes[0].claimingAge).toBe(67);
+      expect(incomes[0].calculatedPIA).toBe(2500);
+      expect(incomes[0].calculationYear).toBe(2045);
+    });
+  });
+
+  describe('Social Security Income Types', () => {
+    describe('CurrentSocialSecurityIncome', () => {
+      it('should add CurrentSocialSecurityIncome to state', () => {
+        let incomes!: any[];
+        let dispatch!: any;
+
+        const TestComponent = () => {
+          ({ incomes, dispatch } = useContext(IncomeContext));
+          return null;
+        };
+
+        render(
+          <IncomeProvider>
+            <TestComponent />
+          </IncomeProvider>
+        );
+
+        const ssIncome = new CurrentSocialSecurityIncome(
+          '1',
+          'SSDI Benefits',
+          1500,
+          'Monthly',
+          new Date('2024-01-01'),
+          undefined
+        );
+
+        act(() => {
+          dispatch({ type: 'ADD_INCOME', payload: ssIncome });
+        });
+
+        expect(incomes).toHaveLength(1);
+        expect(incomes[0]).toMatchObject({
+          id: '1',
+          name: 'SSDI Benefits',
+          amount: 1500,
+          frequency: 'Monthly',
+          earned_income: 'No',
+        });
+      });
+
+      it('should update CurrentSocialSecurityIncome fields', () => {
+        let incomes!: any[];
+        let dispatch!: any;
+
+        const TestComponent = () => {
+          ({ incomes, dispatch } = useContext(IncomeContext));
+          return null;
+        };
+
+        render(
+          <IncomeProvider>
+            <TestComponent />
+          </IncomeProvider>
+        );
+
+        const ssIncome = new CurrentSocialSecurityIncome(
+          '1',
+          'SSDI Benefits',
+          1500,
+          'Monthly'
+        );
+
+        act(() => {
+          dispatch({ type: 'ADD_INCOME', payload: ssIncome });
+        });
+
+        act(() => {
+          dispatch({
+            type: 'UPDATE_INCOME_FIELD',
+            payload: { id: '1', field: 'amount', value: 1600 },
+          });
+        });
+
+        expect(incomes[0].amount).toBe(1600);
+      });
+    });
+
+    describe('FutureSocialSecurityIncome', () => {
+      it('should add FutureSocialSecurityIncome to state', () => {
+        let incomes!: any[];
+        let dispatch!: any;
+
+        const TestComponent = () => {
+          ({ incomes, dispatch } = useContext(IncomeContext));
+          return null;
+        };
+
+        render(
+          <IncomeProvider>
+            <TestComponent />
+          </IncomeProvider>
+        );
+
+        const futureSSIncome = new FutureSocialSecurityIncome(
+          '1',
+          'Future Retirement Benefits',
+          67,
+          0,
+          0,
+          undefined,
+          undefined
+        );
+
+        act(() => {
+          dispatch({ type: 'ADD_INCOME', payload: futureSSIncome });
+        });
+
+        expect(incomes).toHaveLength(1);
+        expect(incomes[0]).toMatchObject({
+          id: '1',
+          name: 'Future Retirement Benefits',
+          claimingAge: 67,
+          calculatedPIA: 0,
+          calculationYear: 0,
+          earned_income: 'No',
+        });
+      });
+
+      it('should update FutureSocialSecurityIncome claiming age', () => {
+        let incomes!: any[];
+        let dispatch!: any;
+
+        const TestComponent = () => {
+          ({ incomes, dispatch } = useContext(IncomeContext));
+          return null;
+        };
+
+        render(
+          <IncomeProvider>
+            <TestComponent />
+          </IncomeProvider>
+        );
+
+        const futureSSIncome = new FutureSocialSecurityIncome(
+          '1',
+          'Future Benefits',
+          67,
+          0,
+          0
+        );
+
+        act(() => {
+          dispatch({ type: 'ADD_INCOME', payload: futureSSIncome });
+        });
+
+        act(() => {
+          dispatch({
+            type: 'UPDATE_INCOME_FIELD',
+            payload: { id: '1', field: 'claimingAge', value: 70 },
+          });
+        });
+
+        expect(incomes[0].claimingAge).toBe(70);
+      });
+
+      it('should preserve FutureSocialSecurityIncome calculated values', () => {
+        let incomes!: any[];
+        let dispatch!: any;
+
+        const TestComponent = () => {
+          ({ incomes, dispatch } = useContext(IncomeContext));
+          return null;
+        };
+
+        render(
+          <IncomeProvider>
+            <TestComponent />
+          </IncomeProvider>
+        );
+
+        const futureSSIncome = new FutureSocialSecurityIncome(
+          '1',
+          'Future Benefits',
+          67,
+          2500,
+          2045,
+          new Date('2045-01-01'),
+          new Date('2075-01-01')
+        );
+
+        act(() => {
+          dispatch({ type: 'ADD_INCOME', payload: futureSSIncome });
+        });
+
+        expect(incomes[0].calculatedPIA).toBe(2500);
+        expect(incomes[0].calculationYear).toBe(2045);
+      });
     });
   });
 });

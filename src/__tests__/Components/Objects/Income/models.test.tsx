@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   WorkIncome,
   SocialSecurityIncome,
+  CurrentSocialSecurityIncome,
+  FutureSocialSecurityIncome,
   PassiveIncome,
   WindfallIncome,
   reconstituteIncome,
@@ -111,6 +113,156 @@ describe('Income Models', () => {
     });
   });
 
+  describe('CurrentSocialSecurityIncome', () => {
+    it('should create CurrentSocialSecurityIncome with correct properties', () => {
+      const ssIncome = new CurrentSocialSecurityIncome(
+        'css-1',
+        'SSDI Benefits',
+        1500,
+        'Monthly',
+        new Date('2024-01-01'),
+        undefined
+      );
+
+      expect(ssIncome.id).toBe('css-1');
+      expect(ssIncome.name).toBe('SSDI Benefits');
+      expect(ssIncome.amount).toBe(1500);
+      expect(ssIncome.frequency).toBe('Monthly');
+      expect(ssIncome.earned_income).toBe('No');
+      expect(ssIncome.startDate).toEqual(new Date('2024-01-01'));
+      expect(ssIncome.end_date).toBeUndefined();
+    });
+
+    it('should increment with COLA (inflation) adjustment', () => {
+      const ssIncome = new CurrentSocialSecurityIncome(
+        'css-1',
+        'SSDI Benefits',
+        1500,
+        'Monthly'
+      );
+
+      const incremented = ssIncome.increment(mockAssumptions);
+
+      // 1500 * (1 + 0.03) = 1545
+      expect(incremented.amount).toBeCloseTo(1545, 2);
+      expect(incremented.id).toBe('css-1');
+      expect(incremented.name).toBe('SSDI Benefits');
+      expect(incremented.frequency).toBe('Monthly');
+      expect(incremented.earned_income).toBe('No');
+    });
+
+    it('should preserve dates when incrementing', () => {
+      const startDate = new Date('2024-01-01');
+      const endDate = new Date('2050-01-01');
+
+      const ssIncome = new CurrentSocialSecurityIncome(
+        'css-1',
+        'SSDI Benefits',
+        1500,
+        'Monthly',
+        startDate,
+        endDate
+      );
+
+      const incremented = ssIncome.increment(mockAssumptions);
+
+      expect(incremented.startDate).toEqual(startDate);
+      expect(incremented.end_date).toEqual(endDate);
+    });
+  });
+
+  describe('FutureSocialSecurityIncome', () => {
+    it('should create FutureSocialSecurityIncome with correct properties', () => {
+      const futureSSIncome = new FutureSocialSecurityIncome(
+        'fss-1',
+        'Future Retirement Benefits',
+        67,
+        0,
+        0,
+        undefined,
+        undefined
+      );
+
+      expect(futureSSIncome.id).toBe('fss-1');
+      expect(futureSSIncome.name).toBe('Future Retirement Benefits');
+      expect(futureSSIncome.claimingAge).toBe(67);
+      expect(futureSSIncome.calculatedPIA).toBe(0);
+      expect(futureSSIncome.calculationYear).toBe(0);
+      expect(futureSSIncome.earned_income).toBe('No');
+      expect(futureSSIncome.amount).toBe(0); // 0 * 12 = 0
+      expect(futureSSIncome.frequency).toBe('Annually');
+    });
+
+    it('should set amount to calculatedPIA * 12', () => {
+      const futureSSIncome = new FutureSocialSecurityIncome(
+        'fss-1',
+        'Future Benefits',
+        67,
+        2500, // $2,500/month
+        2045
+      );
+
+      // Amount should be monthly PIA * 12 = $30,000/year
+      expect(futureSSIncome.amount).toBe(30000);
+    });
+
+    it('should increment calculatedPIA with COLA adjustment', () => {
+      const futureSSIncome = new FutureSocialSecurityIncome(
+        'fss-1',
+        'Future Benefits',
+        67,
+        2500,
+        2045,
+        new Date('2045-01-01'),
+        new Date('2075-01-01')
+      );
+
+      const incremented = futureSSIncome.increment(mockAssumptions);
+
+      // 2500 * (1 + 0.03) = 2575
+      expect(incremented.calculatedPIA).toBeCloseTo(2575, 2);
+      expect(incremented.claimingAge).toBe(67);
+      expect(incremented.calculationYear).toBe(2045);
+      expect(incremented.earned_income).toBe('No');
+    });
+
+    it('should preserve dates and calculation year when incrementing', () => {
+      const startDate = new Date('2045-01-01');
+      const endDate = new Date('2075-01-01');
+
+      const futureSSIncome = new FutureSocialSecurityIncome(
+        'fss-1',
+        'Future Benefits',
+        67,
+        2500,
+        2045,
+        startDate,
+        endDate
+      );
+
+      const incremented = futureSSIncome.increment(mockAssumptions);
+
+      expect(incremented.startDate).toEqual(startDate);
+      expect(incremented.end_date).toEqual(endDate);
+      expect(incremented.calculationYear).toBe(2045);
+    });
+
+    it('should handle zero calculatedPIA', () => {
+      const futureSSIncome = new FutureSocialSecurityIncome(
+        'fss-1',
+        'Future Benefits',
+        67,
+        0,
+        0
+      );
+
+      const incremented = futureSSIncome.increment(mockAssumptions);
+
+      expect(incremented.calculatedPIA).toBe(0);
+      expect(incremented.amount).toBe(0);
+    });
+  });
+
   describe('PassiveIncome', () => {
     it('should grow rental income with rentInflation', () => {
         const rental = new PassiveIncome('p1', 'Rental', 20000, 'Annually', 'No', 'Rental');
@@ -176,16 +328,86 @@ describe('Income Models', () => {
     });
 
     it('should handle date strings correctly', () => {
-        const data = { 
-            className: 'WindfallIncome', 
-            id: 'w1', 
-            amount: 1, 
+        const data = {
+            className: 'WindfallIncome',
+            id: 'w1',
+            amount: 1,
             startDate: '2030-01-01T00:00:00.000Z',
             end_date: '2030-12-31T00:00:00.000Z'
         };
         const income = reconstituteIncome(data);
         expect(income?.startDate).toEqual(new Date('2030-01-01T00:00:00.000Z'));
         expect(income?.end_date).toEqual(new Date('2030-12-31T00:00:00.000Z'));
+    });
+
+    it('should reconstitute CurrentSocialSecurityIncome', () => {
+      const data = {
+        className: 'CurrentSocialSecurityIncome',
+        id: 'css-1',
+        name: 'SSDI Benefits',
+        amount: 1500,
+        frequency: 'Monthly' as const,
+        earned_income: 'No' as const,
+        startDate: '2024-01-01',
+        end_date: undefined,
+      };
+
+      const income = reconstituteIncome(data);
+
+      expect(income).not.toBeNull();
+      expect(income?.constructor.name).toBe('CurrentSocialSecurityIncome');
+      expect(income?.id).toBe('css-1');
+      expect(income?.name).toBe('SSDI Benefits');
+      expect(income?.amount).toBe(1500);
+      expect(income?.frequency).toBe('Monthly');
+    });
+
+    it('should reconstitute FutureSocialSecurityIncome with all properties', () => {
+      const data = {
+        className: 'FutureSocialSecurityIncome',
+        id: 'fss-1',
+        name: 'Future SS Benefits',
+        amount: 30000,
+        frequency: 'Annually' as const,
+        earned_income: 'No' as const,
+        claimingAge: 67,
+        calculatedPIA: 2500,
+        calculationYear: 2045,
+        startDate: '2045-01-01',
+        end_date: '2075-01-01',
+      };
+
+      const income = reconstituteIncome(data);
+
+      expect(income).not.toBeNull();
+      expect(income?.constructor.name).toBe('FutureSocialSecurityIncome');
+
+      if (income && 'calculatedPIA' in income) {
+        expect((income as FutureSocialSecurityIncome).claimingAge).toBe(67);
+        expect((income as FutureSocialSecurityIncome).calculatedPIA).toBe(2500);
+        expect((income as FutureSocialSecurityIncome).calculationYear).toBe(2045);
+      }
+    });
+
+    it('should handle FutureSocialSecurityIncome with defaults when optional fields missing', () => {
+      const data = {
+        className: 'FutureSocialSecurityIncome',
+        id: 'fss-1',
+        name: 'Future Benefits',
+        amount: 0,
+        frequency: 'Annually' as const,
+        earned_income: 'No' as const,
+      };
+
+      const income = reconstituteIncome(data);
+
+      expect(income).not.toBeNull();
+
+      if (income && 'calculatedPIA' in income) {
+        expect((income as FutureSocialSecurityIncome).claimingAge).toBe(67); // default
+        expect((income as FutureSocialSecurityIncome).calculatedPIA).toBe(0); // default
+        expect((income as FutureSocialSecurityIncome).calculationYear).toBe(0); // default
+      }
     });
   });
 });

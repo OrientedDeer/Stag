@@ -1,4 +1,4 @@
-import { createContext, useReducer, ReactNode, useEffect } from 'react';
+import { createContext, useReducer, useContext, ReactNode, useEffect } from 'react';
 //import { v4 as uuidv4 } from 'uuid';
 
 export type CapType = 'MAX' | 'FIXED' | 'REMAINDER' | 'MULTIPLE_OF_EXPENSES';
@@ -180,4 +180,13 @@ export const AssumptionsProvider = ({ children }: { children: ReactNode }) => {
   }, [state]);
 
   return <AssumptionsContext.Provider value={{ state, dispatch }}>{children}</AssumptionsContext.Provider>;
+};
+
+/**
+ * Custom hook to access assumptions state
+ * @returns Object containing assumptions state and dispatch function
+ */
+export const useAssumptions = () => {
+  const { state, dispatch } = useContext(AssumptionsContext);
+  return { assumptions: state, dispatch };
 };

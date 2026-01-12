@@ -1,5 +1,5 @@
 import { AnyExpense, MortgageExpense } from "../../Objects/Expense/models";
-import { AnyIncome, WorkIncome } from "../../Objects/Income/models";
+import { AnyIncome, WorkIncome, CurrentSocialSecurityIncome, FutureSocialSecurityIncome } from "../../Objects/Income/models";
 import { TaxState } from "./TaxContext";
 import {
 	TaxParameters,
@@ -122,6 +122,76 @@ export function getEarnedIncome(incomes: AnyIncome[], year: number): number {
 		.reduce((acc, inc) => {
 			return acc + inc.getProratedAnnual(inc.amount, year);
 		}, 0);
+}
+
+/**
+ * Get total Social Security benefits received in the year
+ */
+export function getSocialSecurityBenefits(incomes: AnyIncome[], year: number): number {
+	return incomes
+		.filter((inc) =>
+			inc instanceof CurrentSocialSecurityIncome ||
+			inc instanceof FutureSocialSecurityIncome
+		)
+		.reduce((acc, inc) => {
+			return acc + inc.getProratedAnnual(inc.amount, year);
+		}, 0);
+}
+
+/**
+ * Calculate taxable portion of Social Security benefits
+ *
+ * Combined Income = AGI + Nontaxable Interest + 50% of SS Benefits
+ *
+ * Thresholds (2024):
+ * Single:
+ *   < $25,000: 0% taxable
+ *   $25,000-$34,000: Up to 50% taxable
+ *   > $34,000: Up to 85% taxable
+ *
+ * Married Filing Jointly:
+ *   < $32,000: 0% taxable
+ *   $32,000-$44,000: Up to 50% taxable
+ *   > $44,000: Up to 85% taxable
+ */
+export function getTaxableSocialSecurityBenefits(
+	totalSSBenefits: number,
+	agi: number,
+	filingStatus: FilingStatus
+): number {
+	if (totalSSBenefits === 0) return 0;
+
+	// Combined income = AGI + Nontaxable Interest + 50% of SS Benefits
+	// For simplicity, we're not tracking nontaxable interest separately
+	const combinedIncome = agi + (totalSSBenefits * 0.5);
+
+	// Thresholds based on filing status
+	// Single and Married Filing Separately use lower thresholds
+	// Married Filing Jointly uses higher thresholds
+	const thresholds = filingStatus === 'Single' || filingStatus === 'Married Filing Separately'
+		? { first: 25000, second: 34000 }
+		: { first: 32000, second: 44000 }; // Married Filing Jointly
+
+	// No SS benefits are taxable
+	if (combinedIncome < thresholds.first) {
+		return 0;
+	}
+
+	// Up to 50% of SS benefits are taxable
+	if (combinedIncome < thresholds.second) {
+		const excessAboveFirst = combinedIncome - thresholds.first;
+		const taxable50Percent = Math.min(excessAboveFirst * 0.5, totalSSBenefits * 0.5);
+		return Math.min(taxable50Percent, totalSSBenefits);
+	}
+
+	// Up to 85% of SS benefits are taxable
+	const excessAboveSecond = combinedIncome - thresholds.second;
+	const tier1Amount = (thresholds.second - thresholds.first) * 0.5; // 50% of tier 1
+	const tier2Amount = excessAboveSecond * 0.85; // 85% of tier 2
+	const totalTaxable = tier1Amount + tier2Amount;
+
+	// Cap at 85% of total benefits
+	return Math.min(totalTaxable, totalSSBenefits * 0.85);
 }
 
 export function getItemizedDeductions(
@@ -289,6 +359,26 @@ export function calculateFederalTax(
 	const totalPreTaxDeductions =
 		incomePreTaxDeductions + expenseAboveLineDeductions;
 
+	// Get Social Security benefits first
+	const totalSSBenefits = getSocialSecurityBenefits(incomes, year);
+
+	// Calculate AGI EXCLUDING Social Security for taxability calculation
+	// The IRS formula for "Combined Income" uses AGI before adding SS benefits
+	const nonSSGross = annualGross - totalSSBenefits;
+	const agiExcludingSS = nonSSGross - totalPreTaxDeductions;
+
+	// Calculate taxable portion of SS benefits
+	const taxableSSBenefits = getTaxableSocialSecurityBenefits(
+		totalSSBenefits,
+		agiExcludingSS,  // Pass AGI WITHOUT SS benefits
+		state.filingStatus
+	);
+
+	// Adjust gross income for SS taxation
+	// annualGross includes the full SS benefits, but only the taxable portion should be included
+	// So we subtract the full amount and add back only the taxable portion
+	const adjustedGross = annualGross - totalSSBenefits + taxableSSBenefits;
+
 	const itemizedTotal = getItemizedDeductions(expenses, year) + stateTax;
 	const fedParams = getTaxParameters(
 		year,
@@ -304,7 +394,7 @@ export function calculateFederalTax(
 	const fedAppliedMainDeduction =
 		state.deductionMethod === "Standard" ? fedStandardDeduction : itemizedTotal;
 
-	return calculateTax(annualGross, totalPreTaxDeductions, {
+	return calculateTax(adjustedGross, totalPreTaxDeductions, {
 		...fedParams,
 		standardDeduction: fedAppliedMainDeduction,
 	});

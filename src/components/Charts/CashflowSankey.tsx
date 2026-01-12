@@ -191,12 +191,9 @@ export const CashflowSankey = ({
             const totalExpenses = Array.from(expenseCatTotals.values()).reduce((a, b) => a + b, 0);
             const remaining = netPayFlow - totalRothSavings - totalExpenses - mortgageInterestAndEscrow - totalPrincipal - totalBucketSavings;
 
-            if (remaining > 1) nodes.push({ id: 'Remaining', color: '#10b981', label: 'Remaining' });
-            else if (remaining < -1) nodes.push({ id: 'Deficit', color: '#ef4444', label: 'Deficit' });
-
             // --- Links ---
             if (totalEmployerMatch > 0) links.push({ source: 'Employer Contributions', target: 'Gross Pay', value: totalEmployerMatch });
-            
+
             incomes.forEach(inc => {
                 const amount = inc.getProratedAnnual ? inc.getProratedAnnual(inc.amount, year) : 0;
                 if (amount > 0) {
@@ -204,6 +201,10 @@ export const CashflowSankey = ({
                     links.push({ source: inc.name, target: 'Gross Pay', value: amount });
                 }
             });
+
+            // Add Deficit/Remaining AFTER income nodes so it appears last
+            if (remaining > 1) nodes.push({ id: 'Remaining', color: '#10b981', label: 'Remaining' });
+            else if (remaining < -1) nodes.push({ id: 'Deficit', color: '#ef4444', label: 'Deficit' });
 
             if (totalTradSavings > 0) links.push({ source: 'Gross Pay', target: '401k Savings', value: totalTradSavings });
             if (totalInsurance > 0) links.push({ source: 'Gross Pay', target: 'Benefits', value: totalInsurance });
