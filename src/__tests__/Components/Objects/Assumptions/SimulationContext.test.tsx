@@ -88,6 +88,8 @@ describe('SimulationContext', () => {
           totalInvested: 0,
           bucketAllocations: 0,
           bucketDetail: {},
+          withdrawals: 0,
+          withdrawalDetail: {},
         },
         taxDetails: {
           fed: 0,
@@ -96,6 +98,7 @@ describe('SimulationContext', () => {
           preTax: 0,
           insurance: 0,
           postTax: 0,
+          capitalGains: 0,
         },
         logs: [],
       },
@@ -152,7 +155,8 @@ describe('SimulationContext', () => {
     expect(simulation).toEqual([]);
   });
 
-  it('should save simulation to localStorage when state changes', () => {
+  it('should save simulation to localStorage when state changes (debounced)', async () => {
+    vi.useFakeTimers();
     let dispatch: any;
 
     const TestComponent = () => {
@@ -182,6 +186,8 @@ describe('SimulationContext', () => {
           totalInvested: 0,
           bucketAllocations: 0,
           bucketDetail: {},
+          withdrawals: 0,
+          withdrawalDetail: {},
         },
         taxDetails: {
           fed: 0,
@@ -190,6 +196,7 @@ describe('SimulationContext', () => {
           preTax: 0,
           insurance: 0,
           postTax: 0,
+          capitalGains: 0,
         },
         logs: [],
       },
@@ -199,10 +206,17 @@ describe('SimulationContext', () => {
       dispatch({ type: 'SET_SIMULATION', payload: mockSimulation });
     });
 
+    // Wait for debounce (500ms)
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+
     expect(localStorageMock.setItem).toHaveBeenCalledWith(
       'user_simulation_data',
       expect.stringContaining('"year":2024')
     );
+
+    vi.useRealTimers();
   });
 
   describe('Reducer Actions', () => {
@@ -240,6 +254,8 @@ describe('SimulationContext', () => {
               totalInvested: 0,
               bucketAllocations: 0,
               bucketDetail: {},
+              withdrawals: 0,
+              withdrawalDetail: {},
             },
             taxDetails: {
               fed: 0,
@@ -248,6 +264,7 @@ describe('SimulationContext', () => {
               preTax: 0,
               insurance: 0,
               postTax: 0,
+              capitalGains: 0,
             },
             logs: [],
           },
@@ -295,6 +312,8 @@ describe('SimulationContext', () => {
               totalInvested: 0,
               bucketAllocations: 0,
               bucketDetail: {},
+              withdrawals: 0,
+              withdrawalDetail: {},
             },
             taxDetails: {
               fed: 0,
@@ -303,6 +322,7 @@ describe('SimulationContext', () => {
               preTax: 0,
               insurance: 0,
               postTax: 0,
+              capitalGains: 0,
             },
             logs: [],
           },
@@ -320,6 +340,8 @@ describe('SimulationContext', () => {
               totalInvested: 0,
               bucketAllocations: 0,
               bucketDetail: {},
+              withdrawals: 0,
+              withdrawalDetail: {},
             },
             taxDetails: {
               fed: 0,
@@ -328,6 +350,7 @@ describe('SimulationContext', () => {
               preTax: 0,
               insurance: 0,
               postTax: 0,
+              capitalGains: 0,
             },
             logs: [],
           },
@@ -373,6 +396,8 @@ describe('SimulationContext', () => {
               totalInvested: 0,
               bucketAllocations: 0,
               bucketDetail: {},
+              withdrawals: 0,
+              withdrawalDetail: {},
             },
             taxDetails: {
               fed: 0,
@@ -381,6 +406,7 @@ describe('SimulationContext', () => {
               preTax: 0,
               insurance: 0,
               postTax: 0,
+              capitalGains: 0,
             },
             logs: [],
           },
@@ -444,6 +470,8 @@ describe('SimulationContext', () => {
               totalInvested: 0,
               bucketAllocations: 0,
               bucketDetail: {},
+              withdrawals: 0,
+              withdrawalDetail: {},
             },
             taxDetails: {
               fed: 0,
@@ -452,6 +480,7 @@ describe('SimulationContext', () => {
               preTax: 0,
               insurance: 0,
               postTax: 0,
+              capitalGains: 0,
             },
             logs: [],
           },
@@ -509,6 +538,8 @@ describe('SimulationContext', () => {
               totalInvested: 0,
               bucketAllocations: 0,
               bucketDetail: {},
+              withdrawals: 0,
+              withdrawalDetail: {},
             },
             taxDetails: {
               fed: 0,
@@ -517,6 +548,7 @@ describe('SimulationContext', () => {
               preTax: 0,
               insurance: 0,
               postTax: 0,
+              capitalGains: 0,
             },
             logs: [],
           },
@@ -545,7 +577,8 @@ describe('SimulationContext', () => {
   });
 
   describe('localStorage serialization', () => {
-    it('should save className metadata for all objects', () => {
+    it('should save className metadata for all objects (debounced)', async () => {
+      vi.useFakeTimers();
       let dispatch: any;
 
       const TestComponent = () => {
@@ -578,6 +611,8 @@ describe('SimulationContext', () => {
             totalInvested: 0,
             bucketAllocations: 0,
             bucketDetail: {},
+            withdrawals: 0,
+            withdrawalDetail: {},
           },
           taxDetails: {
             fed: 0,
@@ -586,6 +621,7 @@ describe('SimulationContext', () => {
             preTax: 0,
             insurance: 0,
             postTax: 0,
+            capitalGains: 0,
           },
           logs: [],
         },
@@ -593,6 +629,11 @@ describe('SimulationContext', () => {
 
       act(() => {
         dispatch({ type: 'SET_SIMULATION', payload: mockSimulation });
+      });
+
+      // Wait for debounce (500ms)
+      await act(async () => {
+        vi.advanceTimersByTime(500);
       });
 
       // Find the last call that saved to user_simulation_data
@@ -604,6 +645,8 @@ describe('SimulationContext', () => {
       expect(savedData.simulation[0].accounts[0].className).toBe('SavedAccount');
       expect(savedData.simulation[0].incomes[0].className).toBe('PassiveIncome');
       expect(savedData.simulation[0].expenses[0].className).toBe('FoodExpense');
+
+      vi.useRealTimers();
     });
   });
 });

@@ -1,4 +1,4 @@
-import { useContext } from "react";
+import { useContext, useState, useEffect, useCallback } from "react";
 import { 
     AnyExpense, 
     RentExpense,
@@ -32,9 +32,48 @@ const formatDate = (date: Date | undefined): string => {
     }
 };
 
+// Helper to abbreviate frequency
+const getFrequencyAbbrev = (freq: string) => {
+    switch (freq) {
+        case 'Daily': return 'day';
+        case 'Weekly': return 'wk';
+        case 'Monthly': return 'mo';
+        case 'Annually': return 'yr';
+        default: return '';
+    }
+};
+
+// Chevron icon component
+const ChevronIcon = ({ expanded, className = '' }: { expanded: boolean; className?: string }) => (
+    <svg
+        className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${expanded ? 'rotate-180' : ''} ${className}`}
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+    >
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+    </svg>
+);
+
 const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 	const { dispatch: expenseDispatch } = useContext(ExpenseContext);
     const { accounts, dispatch: accountDispatch } = useContext(AccountContext);
+    const [dateError, setDateError] = useState<string | undefined>();
+    const [isExpanded, setIsExpanded] = useState(false);
+
+    // Validate end date is after start date
+    const validateDates = useCallback((start: Date | undefined, end: Date | undefined) => {
+        if (start && end && end < start) {
+            setDateError("End date must be after start date");
+        } else {
+            setDateError(undefined);
+        }
+    }, []);
+
+    // Validate dates on mount and when expense dates change
+    useEffect(() => {
+        validateDates(expense.startDate, expense.endDate);
+    }, [expense.startDate, expense.endDate, validateDates]);
 
 	const isHousing = expense instanceof RentExpense || expense instanceof MortgageExpense;
 
@@ -132,12 +171,15 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 	};
 
     const handleDateChange = (field: AllExpenseKeys, dateString: string) => {
-        if (!dateString) {
-            handleFieldUpdate(field, undefined);
-            return;
+        const newDate = dateString ? new Date(dateString) : undefined;
+        handleFieldUpdate(field, newDate);
+
+        // Validate dates after update
+        if (field === "startDate") {
+            validateDates(newDate, expense.endDate);
+        } else if (field === "endDate") {
+            validateDates(expense.startDate, newDate);
         }
-        // Create date based on local timezone
-        handleFieldUpdate(field, new Date(dateString));
     };
 
 	const getDescriptor = () => {
@@ -168,26 +210,64 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 		return "bg-gray-500";
 	};
 
+    // Get display amount for collapsed view
+    const getDisplayAmount = () => {
+        if (expense instanceof RentExpense) {
+            return `$${expense.payment.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        }
+        if (expense instanceof MortgageExpense) {
+            return `$${expense.payment.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        }
+        return `$${expense.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    };
+
 	return (
 		<div className="w-full">
-			<div className="flex gap-4 mb-4">
-				<div className={`w-8 h-8 mt-1 rounded-full flex items-center justify-center shadow-lg ${getIconBg()} text-md font-bold text-white`}>
-					{getDescriptor().slice(0, 1)}
-				</div>
-				<div className="grow"> 
-					<NameInput 
-						label=""
-						id={expense.id}
-						value={expense.name}
-						onChange={(val) => handleFieldUpdate("name", val)}
-					/>
-				</div>
-				<div className="text-chart-Red-75 ml-auto">
-					<DeleteExpenseControl expenseId={expense.id}/>
-				</div>
-			</div>
+            {/* Collapsed View */}
+            {!isExpanded ? (
+                <div
+                    onClick={() => setIsExpanded(true)}
+                    className="flex items-center gap-4 p-4 bg-[#18181b] rounded-xl border border-gray-800 cursor-pointer hover:border-gray-600 transition-colors"
+                >
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg ${getIconBg()} text-md font-bold text-white flex-shrink-0`}>
+                        {getDescriptor().slice(0, 1)}
+                    </div>
+                    <div className="font-semibold text-white truncate flex-1">
+                        {expense.name}
+                    </div>
+                    <div className="text-gray-300 text-sm whitespace-nowrap">
+                        {getDisplayAmount()}/{getFrequencyAbbrev(expense.frequency)}
+                    </div>
+                    <ChevronIcon expanded={false} />
+                </div>
+            ) : (
+                <>
+                    {/* Expanded Header */}
+                    <div className="flex gap-4 mb-4">
+                        <div className={`w-8 h-8 mt-1 rounded-full flex items-center justify-center shadow-lg ${getIconBg()} text-md font-bold text-white`}>
+                            {getDescriptor().slice(0, 1)}
+                        </div>
+                        <div className="grow">
+                            <NameInput
+                                label=""
+                                id={expense.id}
+                                value={expense.name}
+                                onChange={(val) => handleFieldUpdate("name", val)}
+                            />
+                        </div>
+                        <div className="text-chart-Red-75 ml-auto flex items-center gap-2">
+                            <DeleteExpenseControl expenseId={expense.id} />
+                            <button
+                                onClick={() => setIsExpanded(false)}
+                                className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+                            >
+                                <ChevronIcon expanded={true} />
+                            </button>
+                        </div>
+                    </div>
 
-			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 bg-[#18181b] p-6 rounded-xl border border-gray-800">
+                    {/* Expanded Content */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 bg-[#18181b] p-6 rounded-xl border border-gray-800">
                 {/* Logic for Housing: 
                     Housing expenses calculate 'amount' as a sum of parts.
                     The main field edits 'payment' (Rent/Mortgage).
@@ -230,6 +310,7 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 					type="date"
 					value={formatDate(expense.endDate)}
 					onChange={(e) => handleDateChange("endDate", e.target.value)}
+					error={dateError}
 				/>
 
                 {/* --- Specialized Housing Fields --- */}
@@ -404,7 +485,9 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 				)}
 
 
-			</div>
+			            </div>
+                </>
+            )}
 		</div>
 	);
 };

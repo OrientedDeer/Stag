@@ -119,7 +119,8 @@ describe('IncomeContext', () => {
     expect(incomes).toEqual([]);
   });
 
-  it('should save state to localStorage when state changes', () => {
+  it('should save state to localStorage when state changes (debounced)', async () => {
+    vi.useFakeTimers();
     let dispatch!: any;
 
     const TestComponent = () => {
@@ -139,10 +140,17 @@ describe('IncomeContext', () => {
       dispatch({ type: 'ADD_INCOME', payload: newIncome });
     });
 
+    // Wait for debounce (500ms)
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+
     expect(localStorageMock.setItem).toHaveBeenCalledWith(
       'user_incomes_data',
       expect.stringContaining('"name":"Rental Income"')
     );
+
+    vi.useRealTimers();
   });
 
   describe('Reducer Actions', () => {

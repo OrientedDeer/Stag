@@ -25,14 +25,14 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">100% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>33/33</span>
+                <span class='fraction'>34/34</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">88.88% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>7/7</span>
+                <span class='fraction'>8/9</span>
             </div>
         
             
@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">100% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>31/31</span>
+                <span class='fraction'>32/32</span>
             </div>
         
             
@@ -171,7 +171,16 @@
 <a name='L106'></a><a href='#L106'>106</a>
 <a name='L107'></a><a href='#L107'>107</a>
 <a name='L108'></a><a href='#L108'>108</a>
-<a name='L109'></a><a href='#L109'>109</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L109'></a><a href='#L109'>109</a>
+<a name='L110'></a><a href='#L110'>110</a>
+<a name='L111'></a><a href='#L111'>111</a>
+<a name='L112'></a><a href='#L112'>112</a>
+<a name='L113'></a><a href='#L113'>113</a>
+<a name='L114'></a><a href='#L114'>114</a>
+<a name='L115'></a><a href='#L115'>115</a>
+<a name='L116'></a><a href='#L116'>116</a>
+<a name='L117'></a><a href='#L117'>117</a>
+<a name='L118'></a><a href='#L118'>118</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -189,6 +198,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">12x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -236,6 +246,9 @@
 <span class="cline-any cline-yes">14x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">14x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -261,7 +274,12 @@
 <span class="cline-any cline-yes">12x</span>
 <span class="cline-any cline-yes">86x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">86x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">86x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -294,7 +312,8 @@ export const runSimulation = (
     incomes: AnyIncome[],
     expenses: AnyExpense[],
     assumptions: AssumptionsState,
-    taxState: TaxState
+    taxState: TaxState,
+    yearlyReturns?: number[]
 ): SimulationYear[] =&gt; {
         
     const startYear = assumptions.demographics.startYear;
@@ -345,7 +364,9 @@ export const runSimulation = (
             totalInvested: (currentPreTax + currentPostTax - currentInsurance) +
                             incomes.reduce((sum, inc) =&gt; inc instanceof WorkIncome ? sum + inc.employerMatch : sum, 0),
             bucketAllocations: 0,
-            bucketDetail: {} // Initialize empty for Year 0
+            bucketDetail: {}, // Initialize empty for Year 0
+            withdrawals: 0,
+            withdrawalDetail: {}
         },
         taxDetails: {
             fed: currentFed,
@@ -353,7 +374,8 @@ export const runSimulation = (
             fica: currentFica,
             preTax: currentPreTax - currentInsurance,
             insurance: currentInsurance,
-            postTax: currentPostTax
+            postTax: currentPostTax,
+            capitalGains: 0
         },
         logs: ["Baseline Year 0 initialized from current context data."]
     };
@@ -369,6 +391,10 @@ export const runSimulation = (
     for (let i = 1; i &lt;= effectiveYearsToRun; i++) {
         const simulationYear = startYear + i;
 &nbsp;
+        // Get return override for this year (if Monte Carlo mode)
+        // yearlyReturns[0] is for year 1, yearlyReturns[1] is for year 2, etc.
+        const returnOverride = yearlyReturns ? <span class="branch-0 cbranch-no" title="branch not covered" >yearlyReturns[i - 1] : u</span>ndefined;
+&nbsp;
         const result = simulateOneYear(
             simulationYear,
             currentIncomes,
@@ -376,7 +402,8 @@ export const runSimulation = (
             currentAccounts,
             assumptions,
             taxState,
-            timeline  // Pass previous simulation history for SS calculation
+            timeline,  // Pass previous simulation history for SS calculation
+            returnOverride
         );
 &nbsp;
         timeline.push(result);
@@ -394,7 +421,7 @@ export const runSimulation = (
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-01-12T02:09:52.032Z
+                at 2026-01-12T23:57:38.272Z
             </div>
         <script src="../../../prettify.js"></script>
         <script>

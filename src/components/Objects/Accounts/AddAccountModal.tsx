@@ -46,6 +46,7 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
     const [apr, setApr] = useState<number>(0);
     const [taxType, setTaxType] = useState<TaxType>('Brokerage');
     const [isContributionEligible, setIsContributionEligible] = useState<boolean>(true);
+
     const id = generateUniqueAccId();
 
     const handleClose = () => {
@@ -65,7 +66,7 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
     };
 
     const handleAdd = () => {
-        if (!name.trim() || !selectedType) return;
+        if (!selectedType || !name.trim()) return;
 
         let newAccount;
 
@@ -133,13 +134,13 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm min-w-max">
-			<div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-2xl max-h-md overflow-y-auto text-white">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+			<div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto text-white w-full max-w-lg">
                 <div className="space-y-4">
                     
                     {/* Common Fields */}
                     <div>
-                        <NameInput 
+                        <NameInput
                             label="Account Name"
                             id={id}
                             value={name}
@@ -148,7 +149,7 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                     </div>
 
                     {selectedType === PropertyAccount && (
-                        <div className="grid grid-cols-3 gap-4">
+                        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
                             <CurrencyInput
                                 id={`${id}-amount`}
                                 label="Amount"
@@ -181,7 +182,7 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                         </div>
                     )}
                     {selectedType === InvestedAccount && (
-                        <div className="grid grid-cols-3 gap-4">
+                        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
                                 <CurrencyInput
                                 id={`${id}-amount`}
                                 label="Amount"
@@ -193,6 +194,8 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                                 label="Expense Ratio"
                                 value={expenseRatio}
                                 onChange={setExpenseRatio}
+                                max={5}
+                                tooltip="Annual fee charged by the fund. Example: 0.15% = $15 per $10,000 invested per year."
                             />
                             <DropdownInput
                                 id={`${id}-tax-type`}
@@ -200,30 +203,35 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                                 value={taxType}
                                 onChange={(val) => setTaxType(val as TaxType)}
                                 options={TaxTypeEnum as any}
+                                tooltip="Tax treatment: Brokerage (taxable), Traditional (pre-tax, taxed on withdrawal), Roth (post-tax, tax-free growth)."
                             />
                             <CurrencyInput
                                 id={`${id}-employer-balance`}
                                 label="Employer Balance"
                                 value={employerBalance}
                                 onChange={setEmployerBalance}
+                                tooltip="Amount contributed by your employer (401k match). Subject to vesting schedule."
                             />
                             <NumberInput
                                 id={`${id}-tenure-years`}
                                 label="Tenure (Years)"
                                 value={tenureYears}
                                 onChange={setTenureYears}
+                                tooltip="Years you've worked at this employer. Used to calculate vested amount."
                             />
                             <PercentageInput
                                 id={`${id}-vested-per-year`}
                                 label="Vested Per Year"
                                 value={vestedPerYear}
                                 onChange={setVestedPerYear}
+                                tooltip="Percentage of employer match that vests each year. Example: 20% means fully vested after 5 years."
                             />
                             <ToggleInput
                                 id={`${id}-contribution-eligible`}
                                 label="Contribution Eligible"
                                 enabled={isContributionEligible}
                                 setEnabled={setIsContributionEligible}
+                                tooltip="Can you still contribute to this account? Turn off for accounts from previous employers."
                             />
                         </div>
                     )}
@@ -240,6 +248,7 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                                 label="APR"
                                 value={apr}
                                 onChange={setApr}
+                                max={50}
                             />
                         </div>
                     )}
@@ -255,7 +264,8 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                     <button
                         onClick={handleAdd}
                         disabled={!name.trim()}
-                        className="px-5 py-2.5 rounded-lg font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
+                        title={!name.trim() ? "Enter a name" : undefined}
+                        className="px-5 py-2.5 rounded-lg font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                         Add Account
                     </button>

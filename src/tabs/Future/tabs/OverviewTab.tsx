@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { ResponsiveLine } from '@nivo/line';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { SavedAccount, InvestedAccount, PropertyAccount } from '../../../components/Objects/Accounts/models';
@@ -51,7 +51,7 @@ function checkEarningsTest(
   return { applies: false };
 }
 
-export const OverviewTab = ({ simulationData }: { simulationData: SimulationYear[] }) => {
+export const OverviewTab = React.memo(({ simulationData }: { simulationData: SimulationYear[] }) => {
     const { assumptions } = useAssumptions();
 
     // 1. Determine Min/Max Years from Data (or defaults if empty)
@@ -102,13 +102,12 @@ export const OverviewTab = ({ simulationData }: { simulationData: SimulationYear
     }, [filteredData]);
 
     const lineData = useMemo(() => {
-        const keys = ['Invested', 'Saved', 'Property', 'Debt'];
+        const keys = ['Invested', 'Saved', 'Property', 'Debt'] as const;
         return keys.map(id => ({
             id,
             data: rawData.map(d => ({
                 ...d, // Embed full data for robust tooltip access
                 x: d.year,
-                // @ts-ignore
                 y: d[id]
             }))
         }));
@@ -270,4 +269,4 @@ export const OverviewTab = ({ simulationData }: { simulationData: SimulationYear
             </div>
         </div>
     );
-};
+});

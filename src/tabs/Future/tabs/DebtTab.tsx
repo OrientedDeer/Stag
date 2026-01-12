@@ -9,7 +9,7 @@ interface DebtTabProps {
     simulationData: SimulationYear[];
 }
 
-export const DebtTab: React.FC<DebtTabProps> = ({ simulationData }) => {
+export const DebtTab: React.FC<DebtTabProps> = React.memo(({ simulationData }) => {
     // --- RANGE SLIDER STATE ---
     const minYear = simulationData.length > 0 ? simulationData[0].year : 2025;
     const maxYear = simulationData.length > 0 ? simulationData[simulationData.length - 1].year : 2060;
@@ -96,4 +96,4 @@ export const DebtTab: React.FC<DebtTabProps> = ({ simulationData }) => {
             </div>
         </div>
     );
-};
+});

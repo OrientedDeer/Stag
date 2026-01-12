@@ -33,7 +33,8 @@ export class SavedAccount extends BaseAccount {
   }
 
   increment (_assumptions: AssumptionsState, annualContribution: number = 0): SavedAccount {
-    const amount = (this.amount * (1 + this.apr/100)) + annualContribution;
+    // BOY timing: Apply contribution first, then growth
+    const amount = (this.amount + annualContribution) * (1 + this.apr/100);
     return new SavedAccount(this.id, this.name, amount, this.apr);
   }
 }
@@ -44,15 +45,36 @@ export class InvestedAccount extends BaseAccount {
     name: string,
     amount: number,
     // New: Track the specific portion of 'amount' that came from the employer
-    public employerBalance: number = 0, 
+    public employerBalance: number = 0,
     // New: How many years have we been accumulating/vesting?
-    public tenureYears: number = 0,     
+    public tenureYears: number = 0,
     public expenseRatio: number = 0.1,
     public taxType: TaxType = 'Brokerage',
     public isContributionEligible: boolean = true,
     public vestedPerYear: number = 0.2, // 20% per year (5 year graded)
+    // Track total contributions for capital gains calculation
+    // costBasis = amount initially put in (contributions), gains = amount - costBasis
+    public costBasis: number = amount, // Default to current amount for backwards compatibility
   ) {
     super(id, name, amount);
+  }
+
+  // Calculate unrealized gains (amount above cost basis)
+  get unrealizedGains(): number {
+    return Math.max(0, this.amount - this.costBasis);
+  }
+
+  // Calculate what portion of a withdrawal would be gains vs basis (proportional method)
+  calculateWithdrawalAllocation(withdrawAmount: number): { basis: number; gains: number } {
+    if (this.amount <= 0) return { basis: 0, gains: 0 };
+
+    const gainsPortion = this.unrealizedGains / this.amount;
+    const basisPortion = 1 - gainsPortion;
+
+    return {
+      basis: withdrawAmount * basisPortion,
+      gains: withdrawAmount * gainsPortion,
+    };
   }
 
   // Helper to calculate the current "Risk" (Unvested Amount)
@@ -69,70 +91,99 @@ export class InvestedAccount extends BaseAccount {
   increment(
     assumptions: AssumptionsState,
     userContribution: number = 0,
-    employerContribution: number = 0
+    employerContribution: number = 0,
+    overrideReturnRate?: number
   ): InvestedAccount {
 
     // 1. Calculate Growth Rate
-    const returnRate = 1 + (assumptions.investments.returnRates.ror + (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) - this.expenseRatio) / 100;
+    // If overrideReturnRate is provided (for Monte Carlo), use it directly
+    // Otherwise use the deterministic rate from assumptions
+    let returnRate: number;
+    if (overrideReturnRate !== undefined) {
+      // overrideReturnRate is a percentage (e.g., 7 for 7%), already includes inflation if applicable
+      // Still subtract expense ratio
+      returnRate = 1 + (overrideReturnRate - this.expenseRatio) / 100;
+    } else {
+      returnRate = 1 + (assumptions.investments.returnRates.ror + (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) - this.expenseRatio) / 100;
+    }
 
-    // 2. Grow the existing balances first (before applying contributions/withdrawals)
-    const grownTotal = this.amount * returnRate;
-    const grownEmployerBalance = this.employerBalance * returnRate;
-    const grownUserEquity = grownTotal - grownEmployerBalance;
+    // 2. BOY timing: Apply contributions/withdrawals BEFORE growth
+    // Calculate vesting using current year rate (tenureYears + 1)
+    const newTenure = this.tenureYears + 1;
+    const vestedPct = Math.min(1, newTenure * this.vestedPerYear);
 
-    // 3. Apply employer contribution
-    let newEmployerBalance = grownEmployerBalance + employerContribution;
+    // Start with current (pre-growth) balances
+    let preGrowthUserBalance = this.amount - this.employerBalance;
+    let preGrowthEmployerBalance = this.employerBalance;
+    let preGrowthCostBasis = this.costBasis;
 
-    // 4. Handle user contribution/withdrawal with vesting limits
-    let newTotalAmount: number;
+    // 3. Apply employer contribution (before growth)
+    preGrowthEmployerBalance += employerContribution;
 
+    // 4. Handle user contribution/withdrawal (before growth)
     if (userContribution < 0) {
       // User is withdrawing
       const withdrawalAmount = Math.abs(userContribution);
 
-      // Check if withdrawal exceeds user's equity
-      if (withdrawalAmount > grownUserEquity) {
+      // Check if withdrawal exceeds user's equity (using pre-growth balance)
+      if (withdrawalAmount > preGrowthUserBalance) {
         // User is over-withdrawing - need to tap into employer funds
-        const shortfall = withdrawalAmount - grownUserEquity;
+        const shortfall = withdrawalAmount - preGrowthUserBalance;
 
-        // Calculate vested amount using CURRENT tenure (before increment)
-        // This represents what's accessible to the user right now
-        const vestedPct = Math.min(1, this.tenureYears * this.vestedPerYear);
-        const vestedEmployerAmount = newEmployerBalance * vestedPct;
+        // Calculate vested employer amount accessible to user
+        const vestedEmployerAmount = preGrowthEmployerBalance * vestedPct;
 
         // Can only withdraw from vested employer funds
         const allowedFromEmployer = Math.min(shortfall, vestedEmployerAmount);
 
         // Apply the withdrawal
-        newEmployerBalance = newEmployerBalance - allowedFromEmployer;
-        newTotalAmount = grownTotal + employerContribution - grownUserEquity - allowedFromEmployer;
+        preGrowthEmployerBalance -= allowedFromEmployer;
+        preGrowthUserBalance = 0; // User equity depleted
       } else {
         // Normal withdrawal - doesn't exceed user equity
-        newTotalAmount = grownTotal + employerContribution + userContribution;
+        preGrowthUserBalance -= withdrawalAmount;
+      }
+
+      // Reduce cost basis proportionally on withdrawal (before growth)
+      if (this.amount > 0) {
+        const withdrawalPct = withdrawalAmount / this.amount;
+        preGrowthCostBasis = this.costBasis * (1 - withdrawalPct);
       }
     } else {
       // User is contributing (or no change)
-      newTotalAmount = grownTotal + userContribution + employerContribution;
+      preGrowthUserBalance += userContribution;
+
+      // Add contributions to cost basis (vested employer contributions count as basis)
+      const vestedEmployerContrib = employerContribution * vestedPct;
+      preGrowthCostBasis = this.costBasis + userContribution + vestedEmployerContrib;
     }
 
-    // 5. Final safety check: employer balance can't exceed total
-    if (newEmployerBalance > newTotalAmount) {
-      newEmployerBalance = Math.max(0, newTotalAmount);
+    // 5. Now apply growth to the adjusted (post-transaction) balances
+    const preGrowthTotal = preGrowthUserBalance + preGrowthEmployerBalance;
+    const grownTotal = preGrowthTotal * returnRate;
+    const grownEmployerBalance = preGrowthEmployerBalance * returnRate;
+    // Note: Cost basis does NOT grow with market returns - it only tracks contributions
+
+    // 6. Final safety checks
+    let finalEmployerBalance = grownEmployerBalance;
+    if (finalEmployerBalance > grownTotal) {
+      finalEmployerBalance = Math.max(0, grownTotal);
     }
 
-    // 6. Increment Tenure (1 year passed)
-    const newTenure = this.tenureYears + 1;
+    // Cost basis can't exceed total amount or be negative
+    const finalCostBasis = Math.max(0, Math.min(preGrowthCostBasis, grownTotal));
 
     return new InvestedAccount(
       this.id,
       this.name,
-      newTotalAmount,
-      newEmployerBalance,
+      grownTotal,
+      finalEmployerBalance,
       newTenure,
       this.expenseRatio,
       this.taxType,
       this.isContributionEligible,
-      this.vestedPerYear
+      this.vestedPerYear,
+      finalCostBasis
     );
   }
 }
@@ -259,15 +310,16 @@ export function reconstituteAccount(data: any): AnyAccount | null {
             
         case 'InvestedAccount':
             return new InvestedAccount(
-                id, 
-                name, 
-                amount, 
+                id,
+                name,
+                amount,
                 data.employerBalance ?? 0,
                 data.tenureYears ?? 0,
                 data.expenseRatio ?? 0.1,
                 data.taxType ?? 'Brokerage',
                 data.isContributionEligible ?? true,
-                data.vestedPerYear ?? 0.2
+                data.vestedPerYear ?? 0.2,
+                data.costBasis ?? amount // Default to amount for backwards compatibility
             );
             
         case 'PropertyAccount':

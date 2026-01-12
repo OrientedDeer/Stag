@@ -118,7 +118,8 @@ describe('AccountContext', () => {
     expect(accounts).toEqual([]);
   });
 
-  it('should save state to localStorage when state changes', () => {
+  it('should save state to localStorage when state changes (debounced)', async () => {
+    vi.useFakeTimers();
     let dispatch!: any;
 
     const TestComponent = () => {
@@ -138,10 +139,17 @@ describe('AccountContext', () => {
       dispatch({ type: 'ADD_ACCOUNT', payload: newAccount });
     });
 
+    // Wait for debounce (500ms)
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+
     expect(localStorageMock.setItem).toHaveBeenCalledWith(
       'user_accounts_data',
       expect.stringContaining('"name":"Checking"')
     );
+
+    vi.useRealTimers();
   });
 
   describe('Reducer Actions', () => {

@@ -1,12 +1,9 @@
-
-import { createContext, useReducer, ReactNode, Dispatch, useEffect } from 'react';
+import { createContext, useReducer, ReactNode, Dispatch, useMemo, useCallback } from 'react';
 import { SimulationYear } from './SimulationEngine';
-import { AnyAccount } from '../Accounts/models';
-import { reconstituteAccount } from '../Accounts/models';
-import { AnyIncome } from '../Income/models';
-import { reconstituteIncome } from '../Income/models';
-import { AnyExpense } from '../Expense/models';
-import { reconstituteExpense } from '../Expense/models';
+import { AnyAccount, reconstituteAccount } from '../Accounts/models';
+import { AnyIncome, reconstituteIncome } from '../Income/models';
+import { AnyExpense, reconstituteExpense } from '../Expense/models';
+import { useDebouncedLocalStorage } from '../../../hooks/useDebouncedLocalStorage';
 
 // This is a simplified reconstitution. You might need to make this more robust
 // based on the actual structure of your simulation data.
@@ -67,22 +64,30 @@ export const SimulationContext = createContext<SimulationContextProps>({
 export const SimulationProvider = ({ children }: { children: ReactNode }) => {
     const [state, dispatch] = useReducer(simulationReducer, initialState, initializer);
 
-    useEffect(() => {
-        // To save to local storage, we need to add the className to each object
+    // Debounced localStorage persistence (500ms delay to prevent main thread blocking)
+    const serializeState = useCallback((s: SimulationState) => {
         const serializable = {
-            ...state,
-            simulation: state.simulation.map(year => ({
+            ...s,
+            simulation: s.simulation.map(year => ({
                 ...year,
                 accounts: year.accounts.map(acc => ({ ...acc, className: acc.constructor.name })),
                 incomes: year.incomes.map(inc => ({ ...inc, className: inc.constructor.name })),
                 expenses: year.expenses.map(exp => ({ ...exp, className: exp.constructor.name })),
             }))
         };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(serializable));
-    }, [state]);
+        return JSON.stringify(serializable);
+    }, []);
+
+    useDebouncedLocalStorage(STORAGE_KEY, state, serializeState);
+
+    // Memoize context value to prevent unnecessary re-renders
+    const contextValue = useMemo(() => ({
+        ...state,
+        dispatch
+    }), [state, dispatch]);
 
     return (
-        <SimulationContext.Provider value={{ ...state, dispatch }}>
+        <SimulationContext.Provider value={contextValue}>
             {children}
         </SimulationContext.Provider>
     );

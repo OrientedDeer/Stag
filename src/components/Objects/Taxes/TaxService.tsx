@@ -324,6 +324,20 @@ export function calculateStateTax(
 	if (!stateParams) return 0;
 
 	const stateStandardDeduction = stateParams.standardDeduction || 0;
+
+	// Handle Auto: pick whichever results in lower tax
+	if (state.deductionMethod === "Auto") {
+		const taxWithStandard = calculateTax(annualGross, totalPreTaxDeductions, {
+			...stateParams,
+			standardDeduction: stateStandardDeduction,
+		});
+		const taxWithItemized = calculateTax(annualGross, totalPreTaxDeductions, {
+			...stateParams,
+			standardDeduction: itemizedTotal,
+		});
+		return Math.min(taxWithStandard, taxWithItemized);
+	}
+
 	const stateAppliedMainDeduction =
 		state.deductionMethod === "Standard"
 			? stateStandardDeduction
@@ -391,6 +405,20 @@ export function calculateFederalTax(
 	if (!fedParams) return 0;
 
 	const fedStandardDeduction = fedParams.standardDeduction;
+
+	// Handle Auto: pick whichever results in lower tax
+	if (state.deductionMethod === "Auto") {
+		const taxWithStandard = calculateTax(adjustedGross, totalPreTaxDeductions, {
+			...fedParams,
+			standardDeduction: fedStandardDeduction,
+		});
+		const taxWithItemized = calculateTax(adjustedGross, totalPreTaxDeductions, {
+			...fedParams,
+			standardDeduction: itemizedTotal,
+		});
+		return Math.min(taxWithStandard, taxWithItemized);
+	}
+
 	const fedAppliedMainDeduction =
 		state.deductionMethod === "Standard" ? fedStandardDeduction : itemizedTotal;
 
@@ -398,6 +426,67 @@ export function calculateFederalTax(
 		...fedParams,
 		standardDeduction: fedAppliedMainDeduction,
 	});
+}
+
+/**
+ * Calculate capital gains tax on long-term gains.
+ * Capital gains are taxed based on your total taxable income bracket.
+ * The gains "stack on top" of ordinary income to determine the applicable rate.
+ *
+ * @param gains - Amount of long-term capital gains
+ * @param ordinaryTaxableIncome - Taxable income from ordinary sources (after deductions)
+ * @param taxState - Filing status and other tax state
+ * @param year - Tax year
+ * @param assumptions - Assumptions for inflation adjustments
+ * @returns The tax owed on the capital gains
+ */
+export function calculateCapitalGainsTax(
+    gains: number,
+    ordinaryTaxableIncome: number,
+    taxState: TaxState,
+    year: number,
+    assumptions?: AssumptionsState
+): number {
+    if (gains <= 0) return 0;
+
+    const fedParams = getTaxParameters(year, taxState.filingStatus, 'federal', undefined, assumptions);
+    if (!fedParams || !fedParams.capitalGainsBrackets) {
+        // Fallback to flat 15% if no brackets available
+        return gains * 0.15;
+    }
+
+    const brackets = fedParams.capitalGainsBrackets;
+    let remainingGains = gains;
+    let totalTax = 0;
+
+    // Capital gains "stack on top" of ordinary income
+    // So if ordinary income is $40k and gains are $20k, the first portion
+    // of gains may be in a lower bracket, and the rest in a higher bracket
+    let incomeLevel = Math.max(0, ordinaryTaxableIncome);
+
+    for (let i = 0; i < brackets.length && remainingGains > 0; i++) {
+        const currentBracket = brackets[i];
+        const nextBracket = brackets[i + 1];
+        const upperLimit = nextBracket ? nextBracket.threshold : Infinity;
+
+        // Skip if we're already past this bracket
+        if (incomeLevel >= upperLimit) continue;
+
+        // How much room is left in this bracket?
+        const roomInBracket = upperLimit - incomeLevel;
+
+        // How much of the gains fall in this bracket?
+        const gainsInBracket = Math.min(remainingGains, roomInBracket);
+
+        // Calculate tax for this portion
+        totalTax += gainsInBracket * currentBracket.rate;
+
+        // Move up the income level and reduce remaining gains
+        incomeLevel += gainsInBracket;
+        remainingGains -= gainsInBracket;
+    }
+
+    return totalTax;
 }
 
 /**
@@ -413,15 +502,18 @@ export function calculateGrossWithdrawal(
     currentStateDeduction: number,
     taxState: TaxState,
     year: number,
-    assumptions?: AssumptionsState
-): { grossWithdrawn: number; totalTax: number } {
+    assumptions?: AssumptionsState,
+    penaltyRate: number = 0        // Early withdrawal penalty rate (e.g., 0.10 for 10%)
+): { grossWithdrawn: number; totalTax: number; penalty: number } {
 
     // 1. Get Parameters (for Brackets/Rates only)
     const fedParams = getTaxParameters(year, taxState.filingStatus, 'federal', undefined, assumptions);
     const stateParams = getTaxParameters(year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions);
 
     if (!fedParams || !stateParams) {
-        return { grossWithdrawn: netNeeded / 0.7, totalTax: (netNeeded / 0.7) - netNeeded };
+        const fallbackGross = netNeeded / (0.7 - penaltyRate);
+        const fallbackPenalty = fallbackGross * penaltyRate;
+        return { grossWithdrawn: fallbackGross, totalTax: fallbackGross - netNeeded - fallbackPenalty, penalty: fallbackPenalty };
     }
 
     // 2. Forward Calculator
@@ -453,7 +545,10 @@ export function calculateGrossWithdrawal(
         const fedTaxNew = calculateTax(currentFedIncome + grossGuess, 0, fedParamsApplied);
         const marginalFedTax = fedTaxNew - fedTaxBase;
 
-        return grossGuess - (marginalStateTax + marginalFedTax);
+        // D. Early withdrawal penalty (applied to gross)
+        const penaltyAmount = grossGuess * penaltyRate;
+
+        return grossGuess - marginalStateTax - marginalFedTax - penaltyAmount;
     };
 
     // 3. Binary Search
@@ -478,8 +573,10 @@ export function calculateGrossWithdrawal(
         }
     }
 
+    const finalPenalty = grossSolution * penaltyRate;
     return {
         grossWithdrawn: grossSolution,
-        totalTax: grossSolution - netNeeded
+        totalTax: grossSolution - netNeeded - finalPenalty,
+        penalty: finalPenalty
     };
 }

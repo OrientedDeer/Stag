@@ -53,7 +53,23 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
     // --- Other Fields ---
     const [claimingAge, setClaimingAge] = useState<number>(67); // Default to Full Retirement Age
     const [sourceType, setSourceType] = useState<'Dividend' | 'Rental' | 'Royalty' | 'Other'>('Dividend');
-        
+    const [dateError, setDateError] = useState<string | undefined>();
+
+    // Called on blur for claiming age - clamp to valid range
+    const handleClaimingAgeBlur = () => {
+        if (claimingAge < 62) setClaimingAge(62);
+        else if (claimingAge > 70) setClaimingAge(70);
+    };
+
+    // Validate end date is after start date
+    const validateDates = (start: string, end: string) => {
+        if (start && end && new Date(end) < new Date(start)) {
+            setDateError("End date must be after start date");
+        } else {
+            setDateError(undefined);
+        }
+    };
+
     const id = generateUniqueId();
     
     const contributionAccounts = accounts.filter(
@@ -73,14 +89,19 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
         setSelectedType(null);
         setName("");
         setAmount(0);
+        setFrequency('Monthly');
+        setEarnedIncome('Yes');
         setPreTax401k(0);
         setInsurance(0);
         setRoth401k(0);
         setEmployerMatch(0);
         setMatchAccountId("");
         setContributionGrowthStrategy('FIXED');
+        setClaimingAge(67);
+        setSourceType('Dividend');
         setStartDate(new Date().toISOString().split('T')[0]);
         setEndDate("");
+        setDateError(undefined);
         onClose();
     };
 
@@ -99,7 +120,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
     };
 
     const handleAdd = () => {
-        if (!name.trim() || !selectedType) return;
+        if (!selectedType || !name.trim() || dateError) return;
 
 		const finalStartDate = startDate ? new Date(`${startDate}T00:00:00.000Z`) : undefined;
 		const finalEndDate = endDate ? new Date(`${endDate}T00:00:00.000Z`) : undefined;
@@ -149,8 +170,8 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
     ];
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm min-w-max">
-			<div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-2xl max-h-md overflow-y-auto text-white">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+			<div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto text-white w-full max-w-lg">
 				<h2 className="text-xl font-bold mb-6 border-b border-gray-800 pb-3">
                   {step === 'select' ? 'Select Income Type' : `New ${selectedType.name.replace('Income', '')}`}
                 </h2>
@@ -169,31 +190,39 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                     </div>
                 ) : (
                     <div className="space-y-4">
-                        <div className="grid grid-cols-3 gap-4">
+                        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
                             {selectedType === FutureSocialSecurityIncome ? (
                                 <>
                                     <div className="col-span-2">
-                                        <NameInput label="Income Name" id={id} value={name} onChange={setName} />
+                                        <NameInput
+                                            label="Income Name"
+                                            id={id}
+                                            value={name}
+                                            onChange={setName}
+                                        />
                                     </div>
                                     <div className="col-span-1">
                                         <NumberInput
                                             label="Claiming Age (62-70)"
                                             value={claimingAge}
-                                            onChange={(val) => {
-                                                // Clamp to valid range
-                                                const clamped = Math.max(62, Math.min(70, val));
-                                                setClaimingAge(clamped);
-                                            }}
+                                            onChange={setClaimingAge}
+                                            onBlur={handleClaimingAgeBlur}
+                                            tooltip="Age 62: earliest, reduced benefits. Age 67: full benefits. Age 70: maximum benefits (132% of full)."
                                         />
                                     </div>
                                 </>
                             ) : (
                                 <>
-                                    <div className="col-span-2">
-                                        <NameInput label="Income Name" id={id} value={name} onChange={setName} />
+                                    <div className="col-span-2 lg:col-span-2">
+                                        <NameInput
+                                            label="Income Name"
+                                            id={id}
+                                            value={name}
+                                            onChange={setName}
+                                        />
                                     </div>
 
-                                    <div className="col-span-1">
+                                    <div className="col-span-2 lg:col-span-1">
                                         <DropdownInput
                                             label="Frequency"
                                             onChange={(val) => setFrequency(val as "Weekly" | "Monthly" | "Annually")}
@@ -205,33 +234,37 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                             )}
                         </div>
 
-                        <div className="grid grid-cols-3 gap-4">
+                        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
                             {/* Hide amount input for FutureSocialSecurityIncome - it's auto-calculated */}
                             {selectedType !== FutureSocialSecurityIncome && (
                                 <CurrencyInput label="Gross Amount" value={amount} onChange={setAmount} />
                             )}
                             {selectedType === WorkIncome && (
                                 <>
-                                    <CurrencyInput label="Pre-Tax 401k/403b" value={preTax401k} onChange={setPreTax401k} />
-                                    <CurrencyInput label="Roth 401k (Post-Tax)" value={roth401k} onChange={setRoth401k} />
-                                    <CurrencyInput label="Medical/Dental/Vision" value={insurance} onChange={setInsurance} />
-                                    <CurrencyInput label="Employer Match" value={employerMatch} onChange={setEmployerMatch} />
-                                    <DropdownInput
-                                        label="Contribution Growth"
-                                        onChange={(val) => setContributionGrowthStrategy(val as ContributionGrowthStrategy)}
-                                        options={[
-                                            { value: 'FIXED', label: 'Remain Fixed' },
-                                            { value: 'GROW_WITH_SALARY', label: 'Grow with Salary' },
-                                            { value: 'TRACK_ANNUAL_MAX', label: 'Track Annual Maximum' }
-                                        ]}
-                                        value={contributionGrowthStrategy}
-                                    />
+                                    <CurrencyInput label="Pre-Tax 401k/403b" value={preTax401k} onChange={setPreTax401k} tooltip="Monthly contribution to traditional 401k/403b. Reduces taxable income now, taxed on withdrawal." />
+                                    <CurrencyInput label="Roth 401k (Post-Tax)" value={roth401k} onChange={setRoth401k} tooltip="Monthly contribution to Roth 401k. Taxed now, but grows and withdraws tax-free." />
+                                    <CurrencyInput label="Insurance" value={insurance} onChange={setInsurance} tooltip="Monthly pre-tax deduction for health, dental, vision insurance." />
+                                    <CurrencyInput label="Employer Match" value={employerMatch} onChange={setEmployerMatch} tooltip="Monthly amount your employer contributes to your 401k. Free money!" />
+                                    {(preTax401k > 0 || roth401k > 0) && (
+                                        <DropdownInput
+                                            label="Contribution Growth"
+                                            onChange={(val) => setContributionGrowthStrategy(val as ContributionGrowthStrategy)}
+                                            options={[
+                                                { value: 'FIXED', label: 'Remain Fixed' },
+                                                { value: 'GROW_WITH_SALARY', label: 'Grow with Salary' },
+                                                { value: 'TRACK_ANNUAL_MAX', label: 'Track Annual Maximum' }
+                                            ]}
+                                            value={contributionGrowthStrategy}
+                                            tooltip="Fixed: contributions stay the same. Grow with Salary: increase with raises. Track Max: always contribute IRS maximum."
+                                        />
+                                    )}
                                     {employerMatch > 0 && (
                                         <DropdownInput
                                             label="Match Account"
                                             onChange={(val) => setMatchAccountId(val)}
                                             options={contributionAccounts.map(acc => ({ value: acc.id, label: acc.name }))}
                                             value={matchAccountId}
+                                            tooltip="Which 401k account receives your employer's matching contributions."
                                         />
                                     )}
                                 </>
@@ -245,7 +278,11 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                             id={`${id}-start-date`}
                                             type="date"
                                             value={startDate}
-                                            onChange={(e) => setStartDate(e.target.value === "" ? "" : e.target.value)}
+                                            onChange={(e) => {
+                                                const val = e.target.value === "" ? "" : e.target.value;
+                                                setStartDate(val);
+                                                validateDates(val, endDate);
+                                            }}
                                         />
                                     </div>
                                     <div>
@@ -254,7 +291,12 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                             id={`${id}-end-date`}
                                             type="date"
                                             value={endDate}
-                                            onChange={(e) => setEndDate(e.target.value === "" ? "" : e.target.value)}
+                                            onChange={(e) => {
+                                                const val = e.target.value === "" ? "" : e.target.value;
+                                                setEndDate(val);
+                                                validateDates(startDate, val);
+                                            }}
+                                            error={dateError}
                                         />
                                     </div>
                                 </>
@@ -276,11 +318,8 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                     <NumberInput
                                         label="Claiming Age (62-70)"
                                         value={claimingAge}
-                                        onChange={(val) => {
-                                            // Clamp to valid range
-                                            const clamped = Math.max(62, Math.min(70, val));
-                                            setClaimingAge(clamped);
-                                        }}
+                                        onChange={setClaimingAge}
+                                        onBlur={handleClaimingAgeBlur}
                                     />
                                     <div className="col-span-2 bg-blue-900/20 border border-blue-700/50 rounded-lg p-3 text-sm">
                                         <div className="flex justify-between items-center">
@@ -307,13 +346,13 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                             )}
                             {selectedType === PassiveIncome && (
                                 <>
-                                    <DropdownInput label="Source Type" value={sourceType} onChange={(val) => setSourceType(val as "Dividend" | "Rental" | "Royalty" | "Other")} options={["Dividend", "Rental", "Royalty", "Other"]} />
+                                    <DropdownInput label="Source Type" value={sourceType} onChange={(val) => setSourceType(val as "Dividend" | "Rental" | "Royalty" | "Other")} options={["Dividend", "Rental", "Royalty", "Other"]} tooltip="Type of passive income. May affect tax treatment." />
                                 </>
                             )}
                             {selectedType !== SocialSecurityIncome &&
                              selectedType !== CurrentSocialSecurityIncome &&
                              selectedType !== FutureSocialSecurityIncome && (
-                                <DropdownInput label="Earned Income" value={earnedIncome} onChange={(val) => setEarnedIncome(val as "Yes" | "No")} options={["Yes", "No"]} />
+                                <DropdownInput label="Earned Income" value={earnedIncome} onChange={(val) => setEarnedIncome(val as "Yes" | "No")} options={["Yes", "No"]} tooltip="Earned income (wages, self-employment) is subject to FICA taxes. Unearned income (investments, rental) is not." />
                             )}
 
                         </div>
@@ -350,8 +389,9 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
 					{step === "details" && (
 						<button
 							onClick={handleAdd}
-							disabled={!name.trim()}
-							className="px-5 py-2.5 rounded-lg font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
+							disabled={!name.trim() || !!dateError}
+							title={!name.trim() ? "Enter a name" : dateError ? "Fix date error" : undefined}
+							className="px-5 py-2.5 rounded-lg font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
 						>
 							Add Income
 						</button>

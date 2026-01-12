@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { ResponsiveStream } from '@nivo/stream';
 
 // --- Types ---
@@ -23,11 +23,27 @@ const formatCurrency = (value: number) =>
   }).format(value);
 
 // --- Component ---
-export const DebtStreamChart: React.FC<DebtStreamChartProps> = ({ 
-  data, 
+export const DebtStreamChart: React.FC<DebtStreamChartProps> = ({
+  data,
   keys,
-  colors 
+  colors
 }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(800);
+
+  // Responsive width detection
+  useEffect(() => {
+    const updateWidth = () => {
+      if (containerRef.current) {
+        setContainerWidth(containerRef.current.offsetWidth);
+      }
+    };
+    updateWidth();
+    window.addEventListener('resize', updateWidth);
+    return () => window.removeEventListener('resize', updateWidth);
+  }, []);
+
+  const isMobile = containerWidth < 640;
 
   // Dark Theme for Nivo to match Overview/Cashflow style
   const theme = {
@@ -121,14 +137,14 @@ export const DebtStreamChart: React.FC<DebtStreamChartProps> = ({
   };
 
   return (
-    <div className="w-full h-full flex flex-col">
+    <div ref={containerRef} className="w-full h-full flex flex-col">
       {/* Chart Area */}
       <div className="flex-1 min-h-0 relative text-white">
         <ResponsiveStream
           data={data}
           keys={keys}
           theme={theme}
-          margin={{ top: 20, right: 30, bottom: 50, left: 70 }}
+          margin={isMobile ? { top: 10, right: 10, bottom: 40, left: 50 } : { top: 20, right: 30, bottom: 50, left: 70 }}
           valueFormat={formatCurrency}
           
           offsetType='none'

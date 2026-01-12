@@ -116,10 +116,13 @@ describe('Simulation Engine', () => {
         // Net received = W - 0 (tax) - 0.1W (penalty) = 0.9W
         // We need 0.9W = 5000 -> W = 5000 / 0.9 = 5555.56 (approx)
         // So gross withdrawal = 5555.56, penalty = 555.56, net = 5000.
-        // Account balance after growth: 10000 * 1.10 = 11000.
-        // Account balance after withdrawal: 11000 - 5555.56 = 5444.44.
-        expect(result.accounts[0].amount).toBeCloseTo(5444.44, 2);
-        expect(result.taxDetails.fed).toBeCloseTo(555.56, 2); // Early withdrawal penalty
+        // BOY timing: withdrawal before growth
+        // Solver finds gross to net 5000 after 10% penalty (no tax - under std ded)
+        // Gross = 5000 / 0.9 = 5555.56
+        // Pre-growth balance: 10000 - 5555.56 = 4444.44
+        // Post-growth: 4444.44 * 1.10 = 4888.88
+        expect(result.accounts[0].amount).toBeCloseTo(4888.88, 1); // Slightly looser tolerance for solver precision
+        expect(result.taxDetails.fed).toBeCloseTo(555.56, 1); // Early withdrawal penalty
         expect(result.taxDetails.state).toBe(0);
     });
 
@@ -166,10 +169,11 @@ describe('Simulation Engine', () => {
         );
 
         // Verify withdrawal code executed
-        // Account grows from 1000 to 1100 (10% growth)
-        // Withdrawal calculated on pre-growth balance: min(10000, 1000) = 1000
-        // Final balance after growth and withdrawal: 1100 - 1000 = 100
-        expect(result.accounts[0].amount).toBeCloseTo(100);
+        // BOY timing: withdrawal before growth
+        // Maximum available = 1000 (entire account)
+        // Pre-growth: 1000 - 1000 = 0
+        // Post-growth: 0 * 1.10 = 0
+        expect(result.accounts[0].amount).toBeCloseTo(0);
 
         // Gross withdrawal: 1000
         // Early withdrawal penalty (10%): 100
@@ -196,9 +200,10 @@ describe('Simulation Engine', () => {
         // Deficit of 5000 needs to be covered.
         // Withdrawal is from a Roth IRA, so it's tax-free.
         // Withdrawal amount = 5000. Tax = 0.
-        // Account balance before growth: 10000 * 1.10 = 11000.
-        // Account balance after 10% growth: 11000 - 5000 = 6000.
-        expect(result.accounts[0].amount).toBeCloseTo(6000);
+        // BOY timing: withdrawal before growth
+        // Pre-growth: 10000 - 5000 = 5000
+        // Post-growth: 5000 * 1.10 = 5500
+        expect(result.accounts[0].amount).toBeCloseTo(5500);
         expect(result.taxDetails.fed).toBe(0);
         expect(result.taxDetails.state).toBe(0);
     });
@@ -225,8 +230,8 @@ describe('Simulation Engine', () => {
         const result = simulateOneYear(2024, [income], [mortgageExpense], [propertyAccount], cleanAssumptions, mockTaxState);
         const resultAccount = result.accounts[0] as PropertyAccount;
 
-        // Verify property appreciated by its the default housing appreciation rate (3%)
-        expect(resultAccount.amount).toBe(300000 * 1.03);
+        // Verify property appreciated by its the default housing appreciation rate (1.4%)
+        expect(resultAccount.amount).toBe(300000 * 1.014);
 
         // Verify mortgage balance was reduced. 9999 is a placeholder value.
         expect(resultAccount.loanAmount).toBeCloseTo(235773.51, 2);
@@ -264,9 +269,10 @@ describe('Simulation Engine', () => {
         // Net deficit = 3000 - 125 = 2875
         // Withdrawal is from a SavedAccount, so it's tax-free.
         // Withdrawal amount = 2875. Tax = 0.
-        // Account balance after 2.5% growth: 5000 * 1.025 = 5125
-        // Account balance after withdrawal: 5125 - 2875 = 2250
-        expect(result.accounts[0].amount).toBe(2250);
+        // BOY timing: withdrawal before growth
+        // Pre-growth: 5000 - 2875 = 2125
+        // Post-growth: 2125 * 1.025 = 2178.125
+        expect(result.accounts[0].amount).toBeCloseTo(2178.125);
     });
 
     it('should handle employer match correctly', () => {
@@ -275,13 +281,12 @@ describe('Simulation Engine', () => {
 
         const result = simulateOneYear(2024, [income], [], [retirementAccount], cleanAssumptions, mockTaxState);
 
-        // End amount = (start) * (1 + ror - expense_ratio) + contributions + match
+        // BOY timing: contributions before growth
         // Start = 10000, Contributions = 5000 (user) + 2500 (match) = 7500
-        // Total before growth = 10000
-        // Growth = 10000 * ((10 - 0.5) / 100) = 950
-        // Amount after growth but before contributions = 10000 + 950 = 10950
-        // Final amount = 10950 + 7500 = 18450
-        expect(result.accounts[0].amount).toBeCloseTo(18450);
+        // Pre-growth total = 10000 + 7500 = 17500
+        // Growth rate = 1 + (10 - 0.5) / 100 = 1.095
+        // Post-growth: 17500 * 1.095 = 19162.5
+        expect(result.accounts[0].amount).toBeCloseTo(19162.5);
 
         // The cashflow investedMatch should be exactly the contribution for the year.
         expect(result.cashflow.investedMatch).toBe(2500);

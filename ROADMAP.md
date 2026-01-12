@@ -26,14 +26,21 @@ This roadmap outlines a strategic plan for evolving Stag from a solid personal f
 - ✅ Basic withdrawal logic implemented in SimulationEngine (lines 109-231)
 - ✅ Early withdrawal penalties (10% + tax for pre-59.5) working
 - ✅ Three withdrawal strategies defined: 'Fixed Real', 'Percentage', 'Guyton Klinger'
-- ⚠️ `SocialSecurityIncome` class exists but not integrated with simulation
-- ⚠️ No UI for managing withdrawal strategy buckets
-- ⚠️ Withdrawal strategies defined but not implemented
-- ⚠️ No automatic Social Security activation at retirement age
+- ✅ **Social Security integration COMPLETE** (FutureSS, CurrentSS, tax treatment, earnings test)
+- ✅ **Withdrawal Strategy UI COMPLETE** (drag-and-drop reordering, tax badges)
+- ✅ **Savings account interest income** as taxable income (future years)
+- ✅ Advanced withdrawal strategies (Fixed Real, Percentage, Guyton-Klinger) implemented (not fully verified)
+- ✅ **BOY Timing COMPLETE** - Contributions/withdrawals applied before growth (more accurate)
+- ✅ **Withdrawal Gross-Up Fixed** - Solver properly handles tax + penalty for all account types:
+  - Traditional 401k/IRA: Solver with penalty rate integrated
+  - Early Roth (gains): Solver with 10% penalty for gains portion
+  - Brokerage: Iterative solver for capital gains
+- ✅ **Debug Screen Enhanced** - Shows Social Security income, interest income by account
+- ✅ **Interest Income Bug Fixed** - No longer duplicates across years
 
 ### Features to Build
 
-#### 1.1 Social Security Integration ⭐ **CRITICAL**
+#### 1.1 Social Security Integration ✅ **COMPLETE**
 **Files to modify**:
 - `src/components/Objects/Income/models.tsx` - SocialSecurityIncome class
 - `src/components/Objects/Assumptions/SimulationEngine.tsx` - Auto-activation logic
@@ -60,38 +67,39 @@ This roadmap outlines a strategic plan for evolving Stag from a solid personal f
 
 ---
 
-#### 1.2 Advanced Withdrawal Strategies ⭐ **CRITICAL**
-**Files to modify**:
-- `src/components/Objects/Assumptions/SimulationEngine.tsx` - Implement withdrawal algorithms
-- `src/components/Objects/Assumptions/AssumptionsContext.tsx` - Already has types defined
-- `src/tabs/Future/AssumptionTab.tsx` - Add UI for selecting strategy
+#### 1.2 Advanced Withdrawal Strategies ✅ **COMPLETE** (not fully verified)
+**Files created/modified**:
+- `src/services/WithdrawalStrategies.ts` - NEW: Strategy calculation functions
+- `src/__tests__/services/WithdrawalStrategies.test.ts` - NEW: 23 unit tests
+- `src/components/Objects/Assumptions/SimulationEngine.tsx` - Integrated strategies into simulation
 
-**Implementation**:
-1. **Fixed Real Withdrawal** (simplest, already partially implemented):
-   - Calculate initial withdrawal amount (e.g., 4% of portfolio)
-   - Adjust for inflation each year
-   - Maintain constant purchasing power
+**Implementation** (DONE):
+1. **Fixed Real Withdrawal**:
+   - Calculate initial withdrawal amount (portfolio × rate)
+   - Adjust for inflation each year using cumulative multiplier
+   - Tracks initial portfolio across years
 
 2. **Percentage-Based Withdrawal**:
    - Recalculate withdrawal as % of current portfolio each year
    - More conservative (portfolio lasts longer but variable income)
 
-3. **Guyton-Klinger Dynamic Withdrawal** (advanced):
-   - Start with 4% (or user-defined)
-   - Apply "guardrails": reduce withdrawals if portfolio drops significantly, increase if portfolio grows
-   - Implement upper/lower bounds (e.g., +20%/-10% from initial)
-   - Track portfolio performance and adjust annually
+3. **Guyton-Klinger Dynamic Withdrawal**:
+   - Start with target rate (e.g., 4%)
+   - Apply guardrails (±20% from target rate):
+     - If rate > target × 1.2: Skip inflation adjustment (portfolio dropped)
+     - If rate < target × 0.8: 150% inflation adjustment (portfolio grew)
+   - Track base withdrawal across years
 
-**UI Components**:
-- Add strategy selector dropdown in AssumptionTab
-- Show explanation of each strategy with example graphs
-- Display current year's withdrawal amount in FutureTab
+**Integration**:
+- Strategies trigger at retirement age
+- Deficit-driven withdrawals serve as failsafe
+- State tracked via `strategyWithdrawal` field in SimulationYear
 
-**Validation**: Compare all three strategies side-by-side, verify portfolio longevity differences
+**Validation**: Unit tests pass (23 tests). Manual verification of portfolio longevity differences pending.
 
 ---
 
-#### 1.3 Withdrawal Strategy UI ⭐ **HIGH**
+#### 1.3 Withdrawal Strategy UI ✅ **COMPLETE**
 **Files to create/modify**:
 - `src/tabs/Future/WithdrawalTab.tsx` - NEW tab for managing withdrawal order
 - `src/components/Objects/Assumptions/AssumptionsContext.tsx` - Already has WithdrawalBucket logic
@@ -111,39 +119,29 @@ This roadmap outlines a strategic plan for evolving Stag from a solid personal f
 
 ---
 
-#### 1.4 Retirement Milestone Tracker
-**Files to modify**:
-- `src/tabs/Future/FutureTab.tsx` - Already has FI detection (lines 68-94)
-- `src/tabs/Future/tabs/OverviewTab.tsx` - Add milestone visualization
+#### 1.4 Retirement Milestone Tracker ✅ **COMPLETE**
+**Files created/modified**:
+- `src/services/MilestoneCalculator.ts` - Centralized milestone calculation service
+- `src/tabs/Future/FutureTab.tsx` - Visual timeline, milestone cards, key badges
 
-**Implementation**:
-1. Enhance existing `findFinancialIndependenceYear()` function
-2. Add visual timeline showing:
-   - Current age → Retirement age → FI age → Life expectancy
-   - Major milestones: 59.5 (penalty-free withdrawals), 62 (SS eligible), 65 (Medicare), 67 (full SS), 70 (max SS), 73 (RMDs)
-3. Calculate and display:
-   - "Years until retirement"
-   - "FI Number" (portfolio size needed)
-   - "Current progress to FI" (% of FI number achieved)
-   - "Retirement readiness score"
+**Implementation** (DONE):
+1. ✅ Visual progress timeline showing Current → Retirement → FI → Life expectancy
+2. ✅ Milestone cards: Current age, Retirement, FI Target, Plan End
+3. ✅ Key milestone badges: 59.5 (penalty-free), 62 (SS eligible), 65 (Medicare), 67 (full SS), 70 (max SS), 73 (RMDs)
+4. ✅ `findFinancialIndependenceYear()` - FI detection based on withdrawal rate
+5. ✅ Years until each milestone displayed
 
-**Validation**: Verify FI year updates when assumptions change
+**Optional Future Enhancements**:
+- "FI Number" (portfolio amount needed for FI)
+- "Progress to FI %" (current portfolio / FI number)
+- "Retirement readiness score"
+
+**Validation**: Visual timeline updates when simulation recalculates ✅
 
 ---
 
-#### 1.5 Required Minimum Distributions (RMDs)
-**Files to modify**:
-- `src/components/Objects/Assumptions/SimulationEngine.tsx` - Add RMD calculation
-- `src/data/TaxData.tsx` - Add RMD age and percentage tables
-
-**Implementation**:
-1. Auto-trigger RMDs at age 73 (SECURE Act 2.0)
-2. Calculate RMD percentage based on IRS Uniform Lifetime Table
-3. Force withdrawal from Traditional 401k/IRA accounts
-4. Add to taxable income in simulation
-5. Penalty calculation if RMD not taken (50% of shortfall)
-
-**Validation**: Verify RMDs start at 73, increase with age, and are taxed correctly
+#### 1.5 Required Minimum Distributions (RMDs) ⏸️ **DEFERRED**
+*Moved to Phase 5 - Future Considerations*
 
 ---
 
@@ -153,130 +151,214 @@ This roadmap outlines a strategic plan for evolving Stag from a solid personal f
 **Impact**: High - Accessibility for all users
 
 ### Current Issues Identified
-- ❌ Modals overflow on mobile (`min-w-max` forces full width)
-- ❌ No input validation with user-friendly error messages
-- ❌ No tooltips or help text for complex fields
+- ✅ ~~Modals overflow on mobile (`min-w-max` forces full width)~~ **FIXED**
+- ✅ ~~Charts have fixed heights, not mobile-optimized~~ **FIXED**
+- ✅ ~~No input validation with user-friendly error messages~~ **FIXED** (built into input components)
+- ✅ ~~Cards show too much info by default~~ **FIXED** (collapsible cards)
+- ✅ ~~Deduction method requires manual selection~~ **FIXED** (auto-select best deduction)
+- ✅ ~~No tooltips or help text for complex fields~~ **FIXED** (tooltip system)
 - ❌ Inconsistent button styling and spacing
-- ❌ No confirmation dialogs for destructive actions (delete)
-- ❌ 9 instances of `@ts-ignore` bypassing type safety
-- ❌ Charts have fixed heights, not mobile-optimized
-- ❌ No loading states during simulation
+- ✅ ~~No confirmation dialogs for destructive actions (delete)~~ **FIXED** (ConfirmDialog)
+- ✅ ~~9 instances of `@ts-ignore` bypassing type safety~~ **FIXED** (proper type guards)
+- ✅ ~~No loading states during simulation~~ **FIXED** (LoadingSpinner, LoadingOverlay)
 
 ### Features to Build
 
-#### 2.1 Mobile-First Responsive Design
-**Files to modify**:
-- `src/components/Objects/*/Add*Modal.tsx` - All modal components
-- `src/components/Charts/*.tsx` - All chart components
-- `src/tabs/Dashboard.tsx`, `src/tabs/Future/FutureTab.tsx` - Grid layouts
+#### 2.1 Mobile-First Responsive Design ✅ **COMPLETE**
+**Files modified**:
+- ✅ `src/components/Objects/Accounts/AddAccountModal.tsx` - Fixed overlay + responsive grids
+- ✅ `src/components/Objects/Income/AddIncomeModal.tsx` - Fixed overlay + responsive grids
+- ✅ `src/components/Objects/Expense/AddExpenseModal.tsx` - Fixed overlay + responsive grids
+- ✅ `src/components/Charts/*.tsx` - Chart responsiveness (margins, controls, text)
+- ✅ All tabs (`src/tabs/**/*.tsx`) - Responsive padding (`px-4 sm:px-8`)
 
 **Implementation**:
-1. Replace `min-w-max` with responsive widths (`max-w-md`, `max-w-lg`)
-2. Add mobile breakpoints (`sm:`, `md:`, `lg:`) to all grid layouts
-3. Make charts responsive:
-   - CashflowSankey: Dynamic height based on viewport
-   - AssetsStreamChart: Collapse legend on mobile
-   - NetWorth: Stack cards vertically on mobile
-4. Test on iPhone SE (375px), iPhone Pro (390px), iPad (768px)
+1. ✅ Replace `min-w-max` with responsive widths (`max-w-lg`, `p-4` padding)
+2. ✅ Add mobile breakpoints (`sm:`, `lg:`) to modal grid layouts (2 cols on mobile)
+3. ✅ Make charts responsive:
+   - CashflowSankey: Responsive margins (80px on narrow, 150px on wide)
+   - AssetsStreamChart: Controls stack on mobile, responsive margins
+   - DebtStreamChart: Responsive margins
+   - NetWorth: Responsive text sizes (`text-3xl sm:text-5xl`)
+4. ⬜ Test on iPhone SE (375px), iPhone Pro (390px), iPad (768px)
 
 **Validation**: Open on mobile device, verify no horizontal scroll, all buttons clickable
 
 ---
 
-#### 2.2 Input Validation & Error Feedback
-**Files to modify**:
-- `src/components/Inputs/StyledInput.tsx` - Add error state support
-- All `Add*Modal.tsx` components - Add validation logic
+#### 2.2 Input Validation & Error Feedback ✅ **COMPLETE**
+**Files modified**:
+- `src/components/Layout/InputFields/PercentageInput.tsx` - Built-in range validation (0-100%)
+- `src/components/Layout/InputFields/CurrencyInput.tsx` - Built-in non-negative validation
+- `src/components/Layout/InputFields/NameInput.tsx` - Built-in non-empty, max length validation
+- `src/components/Layout/InputFields/NumberInput.tsx` - Built-in range validation with onBlur clamping
+- All `Add*Modal.tsx` components - Date validation (end date must be after start date)
+- `IncomeCard.tsx`, `ExpenseCard.tsx` - Date validation on edit
 
-**Implementation**:
-1. Create validation utility functions:
-   - `validateName(name: string)` - Non-empty, max 50 chars
-   - `validateAPR(apr: number)` - 0-100% range
-   - `validateAmount(amount: number)` - Positive numbers only
-   - `validateDateRange(start, end)` - End after start
-2. Add error message display under inputs (red text, icon)
-3. Disable "Add" button with tooltip explaining why
-4. Add field-level validation on blur
-5. Create `<ErrorMessage>` component for consistent styling
+**Implementation** (DONE):
+1. ✅ Built validation directly into input components (validates on change/blur)
+2. ✅ Error messages display under inputs (red text)
+3. ✅ Claiming age clamps to 62-70 range on blur (not during typing)
+4. ✅ Date range validation (end date must be after start date)
+5. ✅ Contribution Growth dropdown hides when no contributions exist
 
-**Validation**: Try to create account with invalid data, verify clear error messages
-
----
-
-#### 2.3 Tooltips & Help System
-**Files to modify**:
-- All tabs and modal components
-- `src/components/Inputs/StyledInput.tsx` - Add tooltip support
-
-**Implementation**:
-1. Add tooltip component using Tailwind's `group` utility
-2. Add help text to complex fields:
-   - "Expense Ratio": "Annual fee charged by fund (e.g., 0.15% = $15 per $10k)"
-   - "Vesting": "Time until employer match becomes yours"
-   - "PMI": "Required if down payment < 20%"
-   - "Standard vs Itemized": "Standard is simpler; Itemize if mortgage interest + SALT > $14,600"
-3. Add "?" icon next to field labels
-4. Use `aria-describedby` for screen readers
-
-**Validation**: Hover over all complex fields, verify helpful tooltips appear
+**Validation**: Input components enforce constraints automatically ✅
 
 ---
 
-#### 2.4 Confirmation Dialogs & Success Feedback
-**Files to modify**:
-- All delete operations in `*Tab.tsx` components
-- Create `src/components/UI/ConfirmDialog.tsx` and `src/components/UI/Toast.tsx`
+#### 2.2.1 Collapsible Cards ✅ **COMPLETE**
+**Files modified**:
+- `src/components/Objects/Income/IncomeCard.tsx` - Collapsible with name + amount/frequency
+- `src/components/Objects/Expense/ExpenseCard.tsx` - Collapsible with name + amount/frequency
+- `src/components/Objects/Accounts/AccountCard.tsx` - Collapsible with name + amount
 
-**Implementation**:
-1. Create reusable `<ConfirmDialog>` component (modal overlay)
-2. Add to all delete operations:
-   - "Delete Account" → "Are you sure? This will also delete linked expenses."
-   - "Delete Income" → "Are you sure? This will affect your cashflow."
-3. Create toast notification system:
-   - Success: "Account added successfully"
-   - Error: "Failed to import file. Invalid format."
-   - Warning: "Mortgage loan amount exceeds property value"
-4. Position toasts in top-right corner with auto-dismiss (5s)
+**Implementation** (DONE):
+1. ✅ Cards default to collapsed state (show name + amount only)
+2. ✅ Click anywhere on collapsed card to expand
+3. ✅ Chevron icon rotates on expand/collapse
+4. ✅ Frequency abbreviations (Monthly → "/mo", Weekly → "/wk", Annually → "/yr")
+5. ✅ Special handling for FutureSocialSecurityIncome (shows "Auto-calculated" when no PIA)
 
-**Validation**: Delete an account, verify confirmation dialog appears and is clear
+**Validation**: Cards collapse by default, expand on click, all fields editable when expanded ✅
 
 ---
 
-#### 2.5 Loading States & Progress Indicators
-**Files to modify**:
-- `src/tabs/Future/FutureTab.tsx` - Add loading state during simulation
-- `src/components/Charts/*.tsx` - Add loading skeletons
+#### 2.2.2 Auto Deduction Method ✅ **COMPLETE**
+**Files modified**:
+- `src/components/Objects/Taxes/TaxContext.tsx` - Added 'Auto' to DeductionMethod type
+- `src/components/Objects/Taxes/TaxService.tsx` - Auto-select logic in calculateFederalTax/calculateStateTax
+- `src/tabs/Current/TaxesTab.tsx` - Dropdown UI with Auto/Standard/Itemized options
 
-**Implementation**:
-1. Add loading spinner when running simulation (30-40 year projection)
-2. Show skeleton loaders for charts while data loads
-3. Disable "Recalculate" button while simulation running
-4. Add progress bar for long operations (0% → 100%)
+**Implementation** (DONE):
+1. ✅ Added "Auto" deduction method (default)
+2. ✅ Tax service calculates both standard and itemized, picks lower tax
+3. ✅ UI shows dropdown with "Auto (Recommended)", "Standard", "Itemized"
+4. ✅ Info text shows which method is being used when Auto is selected
+5. ✅ Results section shows " - Auto" suffix when auto-selection is active
 
-**Validation**: Click "Recalculate", verify spinner shows during processing
+**Validation**: Auto mode correctly selects whichever deduction results in lower taxes ✅
 
 ---
 
-#### 2.6 TypeScript Type Safety Improvements
-**Files to modify**:
-- `src/components/Objects/Assumptions/SimulationEngine.tsx` (line 343)
-- `src/components/Charts/CashflowSankey.tsx` (lines 119, 125)
-- `src/tabs/Future/FutureTab.tsx` (line 36)
-- All files with `@ts-ignore` (9 instances total)
+#### 2.3 Tooltips & Help System ✅ **COMPLETE**
+**Files created/modified**:
+- `src/components/Layout/InputFields/Tooltip.tsx` - NEW reusable tooltip component
+- `src/components/Layout/InputFields/StyleUI.tsx` - Added tooltip prop to InputGroup, StyledInput, StyledSelect, StyledDisplay
+- `src/components/Layout/InputFields/*.tsx` - All input components now support tooltip prop
+- `src/components/Objects/Accounts/AddAccountModal.tsx` - Tooltips for expense ratio, tax type, vesting, etc.
+- `src/components/Objects/Accounts/AccountCard.tsx` - Same tooltips in card view
+- `src/components/Objects/Expense/AddExpenseModal.tsx` - Tooltips for mortgage fields (PMI, property tax, etc.)
+- `src/components/Objects/Income/AddIncomeModal.tsx` - Tooltips for 401k contributions, employer match, etc.
 
-**Implementation**:
-1. Create union types for account-specific properties:
-   ```typescript
-   type AccountWithLoan = PropertyAccount | DebtAccount;
-   function hasLoan(acc: AnyAccount): acc is AccountWithLoan {
-     return acc instanceof PropertyAccount || acc instanceof DebtAccount;
-   }
-   ```
-2. Replace `@ts-ignore` with type guards
-3. Add proper typing to chart tooltip parameters
-4. Remove all 9 instances of `@ts-ignore`
+**Implementation** (DONE):
+1. ✅ Created Tooltip component with hover/focus states and auto-positioning (top/bottom)
+2. ✅ Added "?" icon next to field labels when tooltip prop is provided
+3. ✅ Added help text to complex fields:
+   - Expense Ratio: "Annual fee charged by fund. Example: 0.15% = $15 per $10,000 invested per year."
+   - Vesting: "Percentage of employer match that vests each year. Example: 20% means fully vested after 5 years."
+   - PMI: "Private Mortgage Insurance. Required if down payment < 20%. Usually 0.5-1% of loan annually."
+   - Tax Type: "Brokerage (taxable), Traditional (pre-tax), Roth (post-tax, tax-free growth)"
+   - Contribution Growth: "Fixed, Grow with Salary, or Track Annual Maximum"
+   - And many more mortgage, loan, and income fields
+4. ✅ Accessible via keyboard focus and hover
 
-**Validation**: Run `npm run type-check`, verify no errors
+**Validation**: Hover over complex fields to see helpful tooltips ✅
+
+---
+
+#### 2.4 Confirmation Dialogs & Success Feedback ✅ **COMPLETE**
+**Files created/modified**:
+- `src/components/Layout/ConfirmDialog.tsx` - NEW reusable confirmation dialog component
+- `src/components/Objects/Accounts/DeleteAccountUI.tsx` - Added confirmation before delete
+- `src/components/Objects/Income/DeleteIncomeUI.tsx` - Added confirmation before delete
+- `src/components/Objects/Expense/DeleteExpenseUI.tsx` - Added confirmation before delete
+
+**Implementation** (DONE):
+1. ✅ Created reusable `<ConfirmDialog>` component with:
+   - Danger/warning/info variants
+   - Escape key to cancel
+   - Click outside to cancel
+   - Focus on cancel button by default (safer)
+   - Accessible (aria-modal, aria-labelledby, alertdialog role)
+2. ✅ Added confirmation dialogs to all delete operations:
+   - Account delete: Warns about linked expenses for debt/property accounts
+   - Income delete: Warns about cashflow impact
+   - Expense delete: Warns about linked accounts for mortgage/loan expenses
+3. ⏸️ Toast notifications deferred (not needed for current use cases)
+
+**Validation**: Click delete on any item, confirmation dialog appears with appropriate warning ✅
+
+---
+
+#### 2.5 Loading States & Progress Indicators ✅ **COMPLETE**
+**Files created/modified**:
+- `src/components/Layout/LoadingSpinner.tsx` - NEW reusable loading components
+- `src/tabs/Future/FutureTab.tsx` - Added loading state during simulation
+
+**Implementation** (DONE):
+1. ✅ Created reusable loading components:
+   - `LoadingSpinner` - Animated spinner with sm/md/lg sizes
+   - `LoadingOverlay` - Full overlay with spinner and message
+   - `Skeleton` - Placeholder loading animation for content
+   - `ChartSkeleton` - Specialized skeleton for chart areas
+2. ✅ Added loading spinner to "Recalculate" button
+3. ✅ Disabled "Recalculate" button while simulation running
+4. ✅ Added loading overlay to main content area during simulation
+5. ✅ Auto-recalculate on mount shows loading state
+
+**Validation**: Click "Recalculate", verify spinner shows on button and overlay appears on content ✅
+
+---
+
+#### 2.6 TypeScript Type Safety Improvements ✅ **COMPLETE**
+**Files modified**:
+- `src/components/Objects/Assumptions/SimulationEngine.tsx` - Exhaustive type check for account handling
+- `src/components/Charts/CashflowSankey.tsx` - Added AnyIncome/AnyExpense types, removed matchIsRoth
+- `src/tabs/Future/FutureTab.tsx` - Type narrowing for PropertyAccount.loanAmount
+- `src/tabs/Future/tabs/CashflowTabs.tsx` - Added PropertyAccount instanceof check
+- `src/tabs/Future/tabs/DataTab.tsx` - Added PropertyAccount instanceof check
+- `src/tabs/Future/tabs/OverviewTab.tsx` - `as const` for dynamic property keys
+
+**Implementation** (DONE):
+1. ✅ Replaced `@ts-ignore` with proper `instanceof` type guards
+2. ✅ Added exhaustive `never` check for account type handling
+3. ✅ Used `as const` for literal type inference on dynamic keys
+4. ✅ Added proper typing (AnyIncome, AnyExpense) to component props
+5. ✅ Removed non-existent `matchIsRoth` property access
+6. ✅ All 8 `@ts-ignore` instances removed from src/
+
+**Validation**: Build passes, all 405 tests pass ✅
+
+---
+
+#### 2.7 Performance Optimization (Main Thread Blocking) ✅
+**Problem**: Chrome DevTools showing 285-577ms long tasks on UI interactions:
+- Opening Accounts/Income/Expense menus
+- Switching between Future dashboard subtabs
+- General state changes triggering cascading updates
+
+**Root Causes Identified**:
+1. **Synchronous localStorage writes** - Every context writes to localStorage on EVERY state change (6 contexts × JSON.stringify + setItem = 300-600ms blocking)
+2. **Nivo charts mount/unmount** - Tab switches fully unmount heavy chart components
+3. **No context value memoization** - Context values create new objects on every render
+4. **No React.memo on tab components** - Components re-render unnecessarily
+
+**Implementation** (COMPLETE):
+1. Created `src/hooks/useDebouncedLocalStorage.ts` - 500ms debounce hook for localStorage writes
+2. Updated all 6 contexts to use debounced localStorage:
+   - `AccountContext.tsx` - Debounced + memoized context value
+   - `IncomeContext.tsx` - Debounced + memoized context value
+   - `ExpenseContext.tsx` - Debounced + memoized context value
+   - `TaxContext.tsx` - Debounced + memoized context value
+   - `AssumptionsContext.tsx` - Debounced + memoized context value
+   - `SimulationContext.tsx` - Debounced + memoized context value
+3. Updated `FutureTab.tsx` to use CSS-based tab switching (hidden class) instead of conditional rendering
+4. Wrapped all tab components with React.memo:
+   - `OverviewTab`, `CashflowTab`, `DebtTab`, `DataTab`, `AssetsTab`
+   - `MilestoneCard`, `ProgressTimeline`, `MilestoneBadge`
+5. Updated test files to account for debounced localStorage writes
+
+**Validation**: Build passes, all 405 tests pass ✅
 
 ---
 
@@ -471,9 +553,10 @@ This roadmap outlines a strategic plan for evolving Stag from a solid personal f
 - Cap rate and cash-on-cash return calculations
 
 ### 5.2 Advanced Retirement Features
+- **Required Minimum Distributions (RMDs)**: Auto-trigger at age 73, IRS Uniform Lifetime Table, force withdrawals from Traditional accounts, 50% penalty if not taken
 - Pension integration (defined benefit plans)
 - Annuity modeling (immediate, deferred, variable)
-- Health Savings Account (HSA) optimization
+- Health Savings Account (HSA) optimization for non-qualified expenses
 - Medicare cost estimation
 - Long-term care insurance planning
 - Estate planning (inheritance, beneficiaries)
@@ -565,20 +648,25 @@ This roadmap outlines a strategic plan for evolving Stag from a solid personal f
 ## Implementation Strategy
 
 ### Recommended Order
-1. **Phase 1.1**: Social Security (highest user value)
-2. **Phase 1.2**: Advanced withdrawal strategies
-3. **Phase 1.3**: Withdrawal strategy UI
-4. **Phase 2.2**: Input validation (prevents bad data)
-5. **Phase 2.1**: Mobile responsiveness
-6. **Phase 1.4**: Retirement milestone tracker
-7. **Phase 2.3**: Tooltips & help
-8. **Phase 2.4**: Confirmation dialogs
-9. **Phase 3.1**: Monte Carlo engine (big lift)
-10. **Phase 3.2**: Historical data integration
-11. **Phase 4.1**: Tax optimization
-12. **Phase 4.2**: Scenario comparison
-13. **Phase 1.5**: RMDs (lower priority)
-14. **Phases 3.3-4.5**: As needed based on user feedback
+1. ✅ **Phase 1.1**: Social Security (highest user value) - COMPLETE
+2. ✅ **Phase 1.2**: Advanced withdrawal strategies - COMPLETE
+3. ✅ **Phase 1.3**: Withdrawal strategy UI - COMPLETE
+4. ✅ **Phase 2.2**: Input validation (prevents bad data) - COMPLETE
+5. ✅ **Phase 2.1**: Mobile responsiveness - COMPLETE
+6. ✅ **Phase 1.4**: Retirement milestone tracker - COMPLETE
+7. ✅ **Phase 2.2.1**: Collapsible cards - COMPLETE
+8. ✅ **Phase 2.2.2**: Auto deduction method - COMPLETE
+9. ✅ **Phase 2.3**: Tooltips & help - COMPLETE
+10. ✅ **Phase 2.4**: Confirmation dialogs - COMPLETE
+11. ✅ **Phase 2.5**: Loading states - COMPLETE
+12. ✅ **Phase 2.6**: TypeScript type safety (@ts-ignore cleanup) - COMPLETE
+13. **Phase 2.7**: Performance optimization (localStorage debounce, memoization) ← **NEXT**
+14. **Phase 3.1**: Monte Carlo engine (big lift)
+14. **Phase 3.2**: Historical data integration
+15. **Phase 4.1**: Tax optimization
+16. **Phase 4.2**: Scenario comparison
+17. **Phase 1.5**: RMDs (lower priority, in Phase 5)
+18. **Phases 4.3-4.5**: As needed based on user feedback
 
 ---
 

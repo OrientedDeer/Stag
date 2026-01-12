@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { ResponsiveStream } from '@nivo/stream';
 import { RangeSlider } from '../Layout/InputFields/RangeSlider'; // Adjust path if needed
 
@@ -22,12 +22,28 @@ const formatCurrency = (value: number) =>
     maximumFractionDigits: 2
   }).format(value);
 
-export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({ 
-  data, 
+export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
+  data,
   keys,
-  colors 
+  colors
 }) => {
   const [mode, setMode] = useState<'value' | 'percent'>('value');
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(800);
+
+  // Responsive width detection
+  useEffect(() => {
+    const updateWidth = () => {
+      if (containerRef.current) {
+        setContainerWidth(containerRef.current.offsetWidth);
+      }
+    };
+    updateWidth();
+    window.addEventListener('resize', updateWidth);
+    return () => window.removeEventListener('resize', updateWidth);
+  }, []);
+
+  const isMobile = containerWidth < 640;
 
   // --- RANGE SLIDER LOGIC ---
   const minYear = data.length > 0 ? data[0].year : 2025;
@@ -106,11 +122,11 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
   };
 
   return (
-    <div className="w-full h-full flex flex-col">
-      {/* Header & Controls */}
-      <div className="flex flex-row justify-between items-end mb-4 gap-8">
+    <div ref={containerRef} className="w-full h-full flex flex-col">
+      {/* Header & Controls - stack on mobile */}
+      <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-end mb-4 gap-4 sm:gap-8">
         <div className="flex-1">
-            <RangeSlider 
+            <RangeSlider
                 label="Timeline"
                 value={range}
                 min={minYear}
@@ -118,7 +134,7 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
                 onChange={setRange}
             />
         </div>
-        <div className="flex bg-gray-800 p-1 rounded-lg border border-gray-700 h-fit">
+        <div className="flex bg-gray-800 p-1 rounded-lg border border-gray-700 h-fit self-start sm:self-auto">
           <button onClick={() => setMode('value')} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${mode === 'value' ? 'bg-gray-600 text-white' : 'text-gray-400'}`}>Value ($)</button>
           <button onClick={() => setMode('percent')} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${mode === 'percent' ? 'bg-gray-600 text-white' : 'text-gray-400'}`}>Allocation (%)</button>
         </div>
@@ -129,7 +145,7 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
           data={filteredData}
           keys={keys}
           theme={theme}
-          margin={{ top: 20, right: 30, bottom: 50, left: 90 }}
+          margin={isMobile ? { top: 10, right: 10, bottom: 40, left: 60 } : { top: 20, right: 30, bottom: 50, left: 90 }}
           valueFormat={formatCurrency}
           offsetType={mode === 'value' ? 'none' : 'expand'}
           colors={({ id }) => (colors && colors[String(id)]) ? colors[String(id)] : '#cbd5e1'}

@@ -16,8 +16,10 @@ import { TaxProvider } from "./components/Objects/Taxes/TaxContext";
 import FutureTab from "./tabs/Future/FutureTab";
 import AssumptionTab from "./tabs/Future/AssumptionTab";
 import { AssumptionsProvider } from "./components/Objects/Assumptions/AssumptionsContext";
-import PriorityTab from "./tabs/Future/PriorityTab";
 import { SimulationProvider } from "./components/Objects/Assumptions/SimulationContext";
+import { MonteCarloProvider } from "./components/Objects/Assumptions/MonteCarloContext";
+import PriorityTab from "./tabs/Future/PriorityTab";
+import WithdrawalTab from "./tabs/Future/WithdrawalTab";
 
 export default function App() {
   const [isOpen, setIsOpen] = useState(false); // shared variable
@@ -28,6 +30,7 @@ export default function App() {
           <ExpenseProvider>
             <TaxProvider>
               <AssumptionsProvider>
+              <MonteCarloProvider>
               <div className="flex h-screen">
                 <Sidebar isOpen={isOpen}/>
                 <div className="flex flex-col flex-1 overflow-hidden">
@@ -47,12 +50,14 @@ export default function App() {
                       <Route path="/future" element={<FutureTab />} />
                       <Route path="/future/future" element={<FutureTab />} />
                       <Route path="/future/assumptions" element={<AssumptionTab />} />
-                      <Route path="/future/priorities" element={<PriorityTab />} />
+                      <Route path="/future/allocation" element={<PriorityTab />} />
+                      <Route path="/future/withdrawal" element={<WithdrawalTab />} />
                       <Route path="/testing" element={<Testing />} />
                     </Routes>
                   </main>
                 </div>
               </div>
+              </MonteCarloProvider>
               </AssumptionsProvider>
             </TaxProvider>
           </ExpenseProvider>

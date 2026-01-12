@@ -1,5 +1,5 @@
-import { createContext, useReducer, useContext, ReactNode, useEffect } from 'react';
-//import { v4 as uuidv4 } from 'uuid';
+import { createContext, useReducer, useContext, ReactNode, useMemo } from 'react';
+import { useDebouncedLocalStorage } from '../../../hooks/useDebouncedLocalStorage';
 
 export type CapType = 'MAX' | 'FIXED' | 'REMAINDER' | 'MULTIPLE_OF_EXPENSES';
 
@@ -53,21 +53,21 @@ export interface AssumptionsState {
 
 export const defaultAssumptions: AssumptionsState = {
   macro: {
-    inflationRate: 3.0,
-    healthcareInflation: 5.0,
+    inflationRate: 2.6,
+    healthcareInflation: 3.9,
     inflationAdjusted: true,
   },
   income: {
-    salaryGrowth: 3.0,
+    salaryGrowth: 1.0,
     socialSecurityStartAge: 67,
   },
   expenses: {
-    lifestyleCreep: 20.0,
-    housingAppreciation: 3.0,
-    rentInflation: 3.5,
+    lifestyleCreep: 75.0,
+    housingAppreciation: 1.4,
+    rentInflation: 1.2,
   },
   investments: {
-    returnRates: { ror: 7 },
+    returnRates: { ror: 5.9 },
     withdrawalStrategy: 'Fixed Real',
     withdrawalRate: 4.0,
   },
@@ -175,11 +175,16 @@ export const AssumptionsProvider = ({ children }: { children: ReactNode }) => {
     return initial;
   });
 
-  useEffect(() => {
-    localStorage.setItem('assumptions_settings', JSON.stringify(state));
-  }, [state]);
+  // Debounced localStorage persistence (500ms delay to prevent main thread blocking)
+  useDebouncedLocalStorage('assumptions_settings', state);
 
-  return <AssumptionsContext.Provider value={{ state, dispatch }}>{children}</AssumptionsContext.Provider>;
+  // Memoize context value to prevent unnecessary re-renders
+  const contextValue = useMemo(() => ({
+    state,
+    dispatch
+  }), [state, dispatch]);
+
+  return <AssumptionsContext.Provider value={contextValue}>{children}</AssumptionsContext.Provider>;
 };
 
 /**

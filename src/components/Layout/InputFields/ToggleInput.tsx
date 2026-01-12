@@ -1,19 +1,22 @@
 import React from 'react';
+import { Tooltip } from './Tooltip';
 
 interface ToggleInputProps {
   label: string;
   enabled: boolean;
   setEnabled: (enabled: boolean) => void;
   id?: string;
+  tooltip?: string;
 }
 
-export const ToggleInput: React.FC<ToggleInputProps> = ({ label, enabled, setEnabled, id }) => {
+export const ToggleInput: React.FC<ToggleInputProps> = ({ label, enabled, setEnabled, id, tooltip }) => {
   const toggle = () => setEnabled(!enabled);
 
   return (
     <div className="flex items-center justify-between">
-      <label htmlFor={id} className="text-sm text-gray-400 font-medium uppercase tracking-wide">
+      <label htmlFor={id} className="text-sm text-gray-400 font-medium uppercase tracking-wide flex items-center gap-1.5">
         {label}
+        {tooltip && <Tooltip text={tooltip} />}
       </label>
       <button
         id={id}

@@ -61,6 +61,17 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 	const [extraPayment, setExtraPayment] = useState<number>(0);
 	const [isTaxDeductible, setIsTaxDeductible] = useState<"Yes" | "No" | 'Itemized'>("No");
 	const [taxDeductibleAmount, setTaxDeductibleAmount] = useState<number>(0);
+	const [dateError, setDateError] = useState<string | undefined>();
+
+	// Validate end date is after start date
+	const validateDates = (start: string, end: string) => {
+		if (start && end && new Date(end) < new Date(start)) {
+			setDateError("End date must be after start date");
+		} else {
+			setDateError(undefined);
+		}
+	};
+
 	const id = generateUniqueId();
 
 	const handleClose = () => {
@@ -68,8 +79,12 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 		setSelectedType(null);
 		setName("");
 		setAmount(0);
+		setFrequency("Monthly");
+		setInterestType("Compounding");
+		setIsTaxDeductible("No");
         setStartDate(new Date().toISOString().split('T')[0]);
         setEndDate("");
+		setDateError(undefined);
 		onClose();
 	};
 
@@ -88,7 +103,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 	};
 
 	const handleAdd = () => {
-		if (!name.trim() || !selectedType) return;
+		if (!selectedType || !name.trim() || dateError) return;
 
 		const finalStartDate = startDate ? new Date(`${startDate}T00:00:00.000Z`) : undefined;
 		const finalEndDate = endDate ? new Date(`${endDate}T00:00:00.000Z`) : undefined;
@@ -221,8 +236,8 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 	];
 
 	return (
-		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm min-w-max">
-			<div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-2xl max-h-md overflow-y-auto text-white">
+		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+			<div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto text-white w-full max-w-lg">
 				<h2 className="text-xl font-bold mb-6 border-b border-gray-800 pb-3">
 					{step === "select"
 						? "Select Expense Type"
@@ -230,7 +245,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				</h2>
 
 				{step === "select" ? (
-					<div className="grid grid-cols-3 gap-4">
+					<div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
 						{expenseCategories.map((cat) => (
 							<button
 								key={cat.label}
@@ -244,11 +259,16 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				) : (
 					<div className="space-y-4">
 						{/* Name */}
-						<div className="grid grid-cols-3 gap-4">
+						<div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
 							<div className="col-span-2">
-								<NameInput label="Expense Name" id={id} value={name} onChange={setName} />
+								<NameInput
+									label="Expense Name"
+									id={id}
+									value={name}
+									onChange={setName}
+								/>
 							</div>
-							<div className="col-span-1">
+							<div className="col-span-2 lg:col-span-1">
                             <DropdownInput
                                 label="Frequency"
                                 id={`${id}-frequency`}
@@ -267,7 +287,11 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 									id={`${id}-start-date`}
 									type="date"
 									value={startDate}
-									onChange={(e) => setStartDate(e.target.value === "" ? "" : e.target.value)}
+									onChange={(e) => {
+										const val = e.target.value === "" ? "" : e.target.value;
+										setStartDate(val);
+										validateDates(val, endDate);
+									}}
 								/>
 							</div>
 							<div>
@@ -276,13 +300,18 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 									id={`${id}-end-date`}
 									type="date"
 									value={endDate}
-									onChange={(e) => setEndDate(e.target.value === "" ? "" : e.target.value)}
+									onChange={(e) => {
+										const val = e.target.value === "" ? "" : e.target.value;
+										setEndDate(val);
+										validateDates(startDate, val);
+									}}
+									error={dateError}
 								/>
 							</div>
 						</div>
 
 						{/* Common Fields Grid */}
-						<div className="grid grid-cols-3 gap-4">
+						<div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
                             {(!(selectedType === RentExpense || selectedType === MortgageExpense || selectedType === LoanExpense)) && (
 								<CurrencyInput
 									id={`${id}-amount`}
@@ -308,52 +337,55 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 							)}
 
 							{selectedType === MortgageExpense && (
-								<>	
-									<CurrencyInput id={`${id}-valuation`} label="Valuation" value={valuation} onChange={setValuation} />
-									<CurrencyInput id={`${id}-starting-loan-balance`} label="Starting Loan Balance" value={startingLoanBalance} onChange={setStartingLoanBalance} />
-									<CurrencyInput id={`${id}-loan-balance`} label="Current Loan Balance" value={loanBalance} onChange={setLoanBalance} />
-									<PercentageInput id={`${id}-apr`} label="APR" value={apr} onChange={setApr}/>
-									<NumberInput id={`${id}-term-length`} label="Term Length (years)" value={termLength} onChange={setTermLength} />
-									<PercentageInput id={`${id}-property-tax-rate`} label="Property Tax Rate" value={propertyTaxes} onChange={setPropertyTaxes}/>
-									<CurrencyInput id={`${id}-valuation-deduction`} label="Valuation Deduction" value={valuationDeduction} onChange={setValuationDeduction} />
-									<PercentageInput id={`${id}-maintenance`} label="Maintenance" value={maintenance} onChange={setMaintenance} />
-									<CurrencyInput id={`${id}-utilities`} label="Utilities" value={utilities} onChange={setUtilities} />
-									<PercentageInput id={`${id}-homeowners-insurance`} label="Homeowners Insurance" value={homeOwnersInsurance} onChange={setHomeOwnersInsurance} />
-									<PercentageInput id={`${id}-pmi`} label="PMI" value={pmi} onChange={setPmi} />
-									<CurrencyInput id={`${id}-hoa-fee`} label="HOA Fee" value={hoaFee} onChange={setHoaFee} />
-									<CurrencyInput id={`${id}-extra-payment`} label="Extra Payment" value={extraPayment} onChange={setExtraPayment} />
+								<>
+									<CurrencyInput id={`${id}-valuation`} label="Valuation" value={valuation} onChange={setValuation} tooltip="Current market value of the property." />
+									<CurrencyInput id={`${id}-starting-loan-balance`} label="Starting Loan Balance" value={startingLoanBalance} onChange={setStartingLoanBalance} tooltip="Original loan amount when the mortgage was taken out." />
+									<CurrencyInput id={`${id}-loan-balance`} label="Current Loan Balance" value={loanBalance} onChange={setLoanBalance} tooltip="Remaining amount owed on the mortgage today." />
+									<PercentageInput id={`${id}-apr`} label="APR" value={apr} onChange={setApr} max={50} tooltip="Annual Percentage Rate - the yearly interest rate on your loan." />
+									<NumberInput id={`${id}-term-length`} label="Term Length (years)" value={termLength} onChange={setTermLength} tooltip="Total length of the mortgage (typically 15 or 30 years)." />
+									<PercentageInput id={`${id}-property-tax-rate`} label="Property Tax Rate" value={propertyTaxes} onChange={setPropertyTaxes} max={20} tooltip="Annual property tax as a percentage of home value. Varies by location (0.5-2.5% typical)." />
+									<CurrencyInput id={`${id}-valuation-deduction`} label="Valuation Deduction" value={valuationDeduction} onChange={setValuationDeduction} tooltip="Homestead exemption or other deductions that reduce taxable property value." />
+									<PercentageInput id={`${id}-maintenance`} label="Maintenance" value={maintenance} onChange={setMaintenance} max={20} tooltip="Annual maintenance budget as % of home value. 1% is a common rule of thumb." />
+									<CurrencyInput id={`${id}-utilities`} label="Utilities" value={utilities} onChange={setUtilities} tooltip="Monthly utility costs (electric, gas, water, etc.)." />
+									<PercentageInput id={`${id}-homeowners-insurance`} label="Homeowners Insurance" value={homeOwnersInsurance} onChange={setHomeOwnersInsurance} max={20} tooltip="Annual insurance as % of home value. Typically 0.3-0.6%." />
+									<PercentageInput id={`${id}-pmi`} label="PMI" value={pmi} onChange={setPmi} max={20} tooltip="Private Mortgage Insurance. Required if down payment < 20%. Usually 0.5-1% of loan annually. Set to 0 if not applicable." />
+									<CurrencyInput id={`${id}-hoa-fee`} label="HOA Fee" value={hoaFee} onChange={setHoaFee} tooltip="Monthly Homeowners Association fee, if applicable." />
+									<CurrencyInput id={`${id}-extra-payment`} label="Extra Payment" value={extraPayment} onChange={setExtraPayment} tooltip="Additional monthly payment toward principal to pay off the mortgage faster." />
 									<DropdownInput
 										id={`${id}-tax-deductible`}
 										label="Tax Deductible"
 										value={isTaxDeductible}
 										onChange={(val) => setIsTaxDeductible(val as "Yes" | "No" | "Itemized")}
 										options={["No", "Yes", "Itemized"]}
+										tooltip="Yes: always deductible. Itemized: only if you itemize deductions instead of taking standard deduction."
 									/>
 								</>
 							)}
 
 							{selectedType === LoanExpense && (
 								<>
-									<PercentageInput id={`${id}-apr`} label="APR" value={apr} onChange={setApr}/>
+									<PercentageInput id={`${id}-apr`} label="APR" value={apr} onChange={setApr} max={50} tooltip="Annual Percentage Rate - the yearly interest rate on your loan." />
 									<DropdownInput
 										id={`${id}-interest-type`}
 										label="Interest Type"
 										value={interestType}
 										onChange={(val) => setInterestType(val as "Compounding" | "Simple")}
 										options={["Simple", "Compounding"]}
+										tooltip="Compounding: interest accrues on principal + unpaid interest. Simple: interest only on original principal."
 									/>
-									
-									<CurrencyInput id={`${id}-payment`} label="Payment" value={payment} onChange={setPayment} />
-									
+
+									<CurrencyInput id={`${id}-payment`} label="Payment" value={payment} onChange={setPayment} tooltip="Your regular payment amount (per frequency)." />
+
 									<DropdownInput
 										id={`${id}-tax-deductible`}
 										label="Tax Deductible"
 										value={isTaxDeductible}
 										onChange={(val) => setIsTaxDeductible(val as "Yes" | "No" | "Itemized")}
 										options={["No", "Yes", "Itemized"]}
+										tooltip="Yes: always deductible. Itemized: only if you itemize deductions instead of taking standard deduction."
 									/>
 									{(isTaxDeductible === "Yes" || isTaxDeductible === "Itemized") && (
-										<CurrencyInput id={`${id}-deductible-amount`} label="Deductible Amount" value={taxDeductibleAmount} onChange={setTaxDeductibleAmount} />
+										<CurrencyInput id={`${id}-deductible-amount`} label="Deductible Amount" value={taxDeductibleAmount} onChange={setTaxDeductibleAmount} tooltip="Amount of this expense that can be deducted from taxable income." />
 									)}
 								</>
 							)}
@@ -366,9 +398,10 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 										value={isTaxDeductible}
 										onChange={(val) => setIsTaxDeductible(val as "Yes" | "No" | "Itemized")}
 										options={["No", "Yes", "Itemized"]}
+										tooltip="Yes: pre-tax (like HSA contributions). Itemized: only if you itemize deductions."
 									/>
 									{(isTaxDeductible === "Yes" || isTaxDeductible === "Itemized") && (
-										<CurrencyInput id={`${id}-deductible-amount`} label="Deductible Amount" value={taxDeductibleAmount} onChange={setTaxDeductibleAmount} />
+										<CurrencyInput id={`${id}-deductible-amount`} label="Deductible Amount" value={taxDeductibleAmount} onChange={setTaxDeductibleAmount} tooltip="Amount of this expense that can be deducted from taxable income." />
 									)}
 								</>
 							)}
@@ -381,9 +414,10 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 										value={isTaxDeductible}
 										onChange={(val) => setIsTaxDeductible(val as "Yes" | "No" | "Itemized")}
 										options={["Yes", "No", "Itemized"]}
+										tooltip="Yes: qualifies for dependent care FSA or tax credit. Itemized: only if you itemize."
 									/>
 									{isTaxDeductible === "Yes" && (
-										<CurrencyInput id={`${id}-deductible-amount`} label="Deductible Amount" value={taxDeductibleAmount} onChange={setTaxDeductibleAmount} />
+										<CurrencyInput id={`${id}-deductible-amount`} label="Deductible Amount" value={taxDeductibleAmount} onChange={setTaxDeductibleAmount} tooltip="Amount eligible for dependent care tax benefits." />
 									)}
 								</>
 							)}
@@ -401,8 +435,9 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 					{step === "details" && (
 						<button
 							onClick={handleAdd}
-							disabled={!name.trim()}
-							className="px-5 py-2.5 rounded-lg font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
+							disabled={!name.trim() || !!dateError}
+							title={!name.trim() ? "Enter a name" : dateError ? "Fix date error" : undefined}
+							className="px-5 py-2.5 rounded-lg font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
 						>
 							Add Expense
 						</button>

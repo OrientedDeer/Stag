@@ -23,9 +23,9 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">93.1% </span>
+                <span class="strong">93.75% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>27/29</span>
+                <span class='fraction'>30/32</span>
             </div>
         
             
@@ -37,16 +37,16 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">90% </span>
+                <span class="strong">90.9% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>9/10</span>
+                <span class='fraction'>10/11</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">93.1% </span>
+                <span class="strong">93.54% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>27/29</span>
+                <span class='fraction'>29/31</span>
             </div>
         
             
@@ -152,10 +152,12 @@
 <a name='L87'></a><a href='#L87'>87</a>
 <a name='L88'></a><a href='#L88'>88</a>
 <a name='L89'></a><a href='#L89'>89</a>
-<a name='L90'></a><a href='#L90'>90</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L90'></a><a href='#L90'>90</a>
+<a name='L91'></a><a href='#L91'>91</a>
+<a name='L92'></a><a href='#L92'>92</a>
+<a name='L93'></a><a href='#L93'>93</a>
+<a name='L94'></a><a href='#L94'>94</a>
+<a name='L95'></a><a href='#L95'>95</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -221,15 +223,18 @@
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">16x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">16x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">16x</span>
+<span class="cline-any cline-yes">12x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">9x</span>
+<span class="cline-any cline-yes">10x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">8x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">10x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">12x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">16x</span>
@@ -240,16 +245,18 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">16x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">&nbsp;
-import { createContext, useReducer, ReactNode, Dispatch, useEffect } from 'react';
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { createContext, useReducer, ReactNode, Dispatch, useMemo, useCallback } from 'react';
 import { SimulationYear } from './SimulationEngine';
-import { AnyAccount } from '../Accounts/models';
-import { reconstituteAccount } from '../Accounts/models';
-import { AnyIncome } from '../Income/models';
-import { reconstituteIncome } from '../Income/models';
-import { AnyExpense } from '../Expense/models';
-import { reconstituteExpense } from '../Expense/models';
+import { AnyAccount, reconstituteAccount } from '../Accounts/models';
+import { AnyIncome, reconstituteIncome } from '../Income/models';
+import { AnyExpense, reconstituteExpense } from '../Expense/models';
+import { useDebouncedLocalStorage } from '../../../hooks/useDebouncedLocalStorage';
 &nbsp;
 // This is a simplified reconstitution. You might need to make this more robust
 // based on the actual structure of your simulation data.
@@ -310,22 +317,30 @@ export const SimulationContext = createContext&lt;SimulationContextProps&gt;({
 export const SimulationProvider = ({ children }: { children: ReactNode }) =&gt; {
     const [state, dispatch] = useReducer(simulationReducer, initialState, initializer);
 &nbsp;
-    useEffect(() =&gt; {
-        // To save to local storage, we need to add the className to each object
+    // Debounced localStorage persistence (500ms delay to prevent main thread blocking)
+    const serializeState = useCallback((s: SimulationState) =&gt; {
         const serializable = {
-            ...state,
-            simulation: state.simulation.map(year =&gt; ({
+            ...s,
+            simulation: s.simulation.map(year =&gt; ({
                 ...year,
                 accounts: year.accounts.map(acc =&gt; ({ ...acc, className: acc.constructor.name })),
                 incomes: year.incomes.map(inc =&gt; ({ ...inc, className: inc.constructor.name })),
                 expenses: year.expenses.map(exp =&gt; ({ ...exp, className: exp.constructor.name })),
             }))
         };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(serializable));
-    }, [state]);
+        return JSON.stringify(serializable);
+    }, []);
+&nbsp;
+    useDebouncedLocalStorage(STORAGE_KEY, state, serializeState);
+&nbsp;
+    // Memoize context value to prevent unnecessary re-renders
+    const contextValue = useMemo(() =&gt; ({
+        ...state,
+        dispatch
+    }), [state, dispatch]);
 &nbsp;
     return (
-        &lt;SimulationContext.Provider value={{ ...state, dispatch }}&gt;
+        &lt;SimulationContext.Provider value={contextValue}&gt;
             {children}
         &lt;/SimulationContext.Provider&gt;
     );
@@ -337,7 +352,7 @@ export const SimulationProvider = ({ children }: { children: ReactNode }) =&gt; 
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-01-12T02:09:52.032Z
+                at 2026-01-12T23:57:38.272Z
             </div>
         <script src="../../../prettify.js"></script>
         <script>

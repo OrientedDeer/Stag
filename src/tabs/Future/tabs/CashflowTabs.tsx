@@ -1,6 +1,6 @@
-import { useState, useContext } from 'react';
+import React, { useState, useContext } from 'react';
 import { AssumptionsContext } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { DebtAccount, AnyAccount } from '../../../components/Objects/Accounts/models';
+import { DebtAccount, PropertyAccount, AnyAccount } from '../../../components/Objects/Accounts/models';
 import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider'; // Import RangeSlider
 import { CashflowSankey } from '../../../components/Charts/CashflowSankey';
 
@@ -14,17 +14,20 @@ const calculateNetWorth = (accounts: AnyAccount[]) => {
     let liabilities = 0;
     accounts.forEach(acc => {
         const val = acc.amount || 0;
-        if (acc instanceof DebtAccount) liabilities += val;
-        else {
+        if (acc instanceof DebtAccount) {
+            liabilities += val;
+        } else {
             assets += val;
-             // @ts-ignore
-            if (acc.loanAmount) liabilities += acc.loanAmount;
+            // PropertyAccount has a loan that counts as liability
+            if (acc instanceof PropertyAccount && acc.loanAmount) {
+                liabilities += acc.loanAmount;
+            }
         }
     });
     return assets - liabilities;
 };
 
-export const CashflowTab = ({ simulationData }: { simulationData: any[] }) => {
+export const CashflowTab = React.memo(({ simulationData }: { simulationData: any[] }) => {
     const { state: assumptions } = useContext(AssumptionsContext);
     const startYear = simulationData.length > 0 ? simulationData[0].year : new Date().getFullYear();
     const endYear = simulationData.length > 0 ? simulationData[simulationData.length - 1].year : startYear;
@@ -39,9 +42,9 @@ export const CashflowTab = ({ simulationData }: { simulationData: any[] }) => {
     if (!yearData) return <div>No data</div>;
 
     return (
-         <div className="flex flex-col gap-4 h-full">
+         <div className="flex flex-col gap-4">
             {/* 1. SANKEY CHART */}
-            <div className="h-1/4">
+            <div className="overflow-hidden">
                 <CashflowSankey
                     incomes={yearData.incomes}
                     expenses={yearData.expenses}
@@ -49,13 +52,14 @@ export const CashflowTab = ({ simulationData }: { simulationData: any[] }) => {
                     taxes={yearData.taxDetails}
                     bucketAllocations={yearData.cashflow.bucketDetail || {}}
                     accounts={yearData.accounts}
-                    height={500} // You can adjust height per view
+                    withdrawals={yearData.cashflow.withdrawalDetail || {}}
+                    height={400}
                 />
             </div>
 
 
             {/* 2. SLIDER CONTROL (Updated to use RangeSlider) */}
-            <div className="p-4 bg-gray-900 rounded-xl border border-gray-800 shadow-lg mt-auto">
+            <div className="p-4 bg-gray-900 rounded-xl border border-gray-800 shadow-lg">
                 <h3 className="text-lg font-bold text-white mb-2">Year Details: {selectedYear}</h3>
                 <div className='flex items-center gap-6'>
                     
@@ -83,4 +87,4 @@ export const CashflowTab = ({ simulationData }: { simulationData: any[] }) => {
             </div>
         </div>
     );
-};
+});

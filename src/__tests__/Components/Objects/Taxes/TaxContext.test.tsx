@@ -52,7 +52,7 @@ describe('TaxContext', () => {
 
     expect(state.filingStatus).toBe('Single');
     expect(state.stateResidency).toBe('DC');
-    expect(state.deductionMethod).toBe('Standard');
+    expect(state.deductionMethod).toBe('Auto');
     expect(state.fedOverride).toBeNull();
     expect(state.ficaOverride).toBeNull();
     expect(state.stateOverride).toBeNull();
@@ -142,7 +142,8 @@ describe('TaxContext', () => {
     }).toThrow();
   });
 
-  it('should save state to localStorage when state changes', () => {
+  it('should save state to localStorage when state changes (debounced)', async () => {
+    vi.useFakeTimers();
     let dispatch: any;
 
     const TestComponent = () => {
@@ -160,10 +161,17 @@ describe('TaxContext', () => {
       dispatch({ type: 'SET_STATUS', payload: 'Married Filing Jointly' });
     });
 
+    // Wait for debounce (500ms)
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+
     expect(localStorageMock.setItem).toHaveBeenCalledWith(
       'tax_settings',
       expect.stringContaining('"filingStatus":"Married Filing Jointly"')
     );
+
+    vi.useRealTimers();
   });
 
   describe('Reducer Actions', () => {
@@ -235,7 +243,7 @@ describe('TaxContext', () => {
           </TaxProvider>
         );
 
-        expect(state.deductionMethod).toBe('Standard');
+        expect(state.deductionMethod).toBe('Auto');
 
         act(() => {
           dispatch({ type: 'SET_DEDUCTION_METHOD', payload: 'Itemized' });

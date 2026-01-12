@@ -1,8 +1,9 @@
-import { createContext, useReducer, ReactNode, Dispatch, useEffect } from 'react';
-import { 
-    AnyIncome, 
+import { createContext, useReducer, ReactNode, Dispatch, useMemo, useCallback } from 'react';
+import {
+    AnyIncome,
     reconstituteIncome
 } from './models';
+import { useDebouncedLocalStorage } from '../../../hooks/useDebouncedLocalStorage';
 
 type AllKeys<T> = T extends any ? keyof T : never;
 export type AllIncomeKeys = AllKeys<AnyIncome>;
@@ -100,24 +101,29 @@ export const IncomeProvider = ({ children }: { children: ReactNode }) => {
         return initial;
     });
 
-    useEffect(() => {
-        try {
-            const serializableState = {
-                ...state,
-                incomes: state.incomes.map(inc => ({
-                    ...inc,
-                    className: inc.constructor.name,
-                }))
-            };
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(serializableState));
-        } catch (e) {
-            console.error("Could not save state to localStorage:", e);
-        }
-    }, [state]);
+    // Debounced localStorage persistence (500ms delay to prevent main thread blocking)
+    const serializeState = useCallback((s: AppState) => {
+        const serializableState = {
+            ...s,
+            incomes: s.incomes.map(inc => ({
+                ...inc,
+                className: inc.constructor.name,
+            }))
+        };
+        return JSON.stringify(serializableState);
+    }, []);
 
-  return (
-    <IncomeContext.Provider value={{ ...state, dispatch }}>
-      {children}
-    </IncomeContext.Provider>
-  );
+    useDebouncedLocalStorage(STORAGE_KEY, state, serializeState);
+
+    // Memoize context value to prevent unnecessary re-renders
+    const contextValue = useMemo(() => ({
+        ...state,
+        dispatch
+    }), [state, dispatch]);
+
+    return (
+        <IncomeContext.Provider value={contextValue}>
+            {children}
+        </IncomeContext.Provider>
+    );
 };

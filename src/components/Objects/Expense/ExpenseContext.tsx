@@ -1,6 +1,6 @@
-import { createContext, useReducer, ReactNode, Dispatch, useEffect } from 'react';
-import { 
-    AnyExpense, 
+import { createContext, useReducer, ReactNode, Dispatch, useMemo, useCallback } from 'react';
+import {
+    AnyExpense,
     RentExpense,
     MortgageExpense,
     LoanExpense,
@@ -8,6 +8,7 @@ import {
     TransportExpense,
     reconstituteExpense
 } from './models';
+import { useDebouncedLocalStorage } from '../../../hooks/useDebouncedLocalStorage';
 
 export type AllExpenseKeys = keyof RentExpense | keyof MortgageExpense | keyof LoanExpense | keyof DependentExpense | keyof TransportExpense | 'startDate' | 'endDate';
 
@@ -114,24 +115,29 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
         return initial;
     });
 
-    useEffect(() => {
-        try {
-            const serializableState = {
-                ...state,
-                expenses: state.expenses.map(exp => ({
-                    ...exp,
-                    className: exp.constructor.name,
-                }))
-            };
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(serializableState));
-        } catch (e) {
-            console.error("Could not save state to localStorage:", e);
-        }
-    }, [state]);
+    // Debounced localStorage persistence (500ms delay to prevent main thread blocking)
+    const serializeState = useCallback((s: AppState) => {
+        const serializableState = {
+            ...s,
+            expenses: s.expenses.map(exp => ({
+                ...exp,
+                className: exp.constructor.name,
+            }))
+        };
+        return JSON.stringify(serializableState);
+    }, []);
 
-  return (
-    <ExpenseContext.Provider value={{ ...state, dispatch }}>
-      {children}
-    </ExpenseContext.Provider>
-  );
+    useDebouncedLocalStorage(STORAGE_KEY, state, serializeState);
+
+    // Memoize context value to prevent unnecessary re-renders
+    const contextValue = useMemo(() => ({
+        ...state,
+        dispatch
+    }), [state, dispatch]);
+
+    return (
+        <ExpenseContext.Provider value={contextValue}>
+            {children}
+        </ExpenseContext.Provider>
+    );
 };

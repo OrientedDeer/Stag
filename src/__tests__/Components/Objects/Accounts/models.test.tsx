@@ -37,7 +37,8 @@ describe('Account Models', () => {
         it('should increment its value based on APR and contribution', () => {
             const acc = new SavedAccount('s1', 'Emergency Fund', 1000, 5); // 5% APR
             const nextYear = acc.increment(mockAssumptions, 500);
-            expect(nextYear.amount).toBeCloseTo(1000 * 1.05 + 500);
+            // BOY timing: (1000 + 500) * 1.05 = 1575
+            expect(nextYear.amount).toBeCloseTo((1000 + 500) * 1.05);
         });
     });
 
@@ -55,9 +56,9 @@ describe('Account Models', () => {
             // 10% RoR, 0.5% Expense Ratio
             const acc = new InvestedAccount('i1', 'Brokerage', 10000, 0, 5, 0.5, 'Brokerage', true, 0.2);
             const nextYear = acc.increment(assumptions, 1000);
-            
-            // Expected: 10000 * (1 + (10 - 0.5)/100) + 1000 = 10000 * 1.095 + 1000 = 10950 + 1000 = 11950
-            expect(nextYear.amount).toBeCloseTo(11950);
+
+            // BOY timing: (10000 + 1000) * 1.095 = 11000 * 1.095 = 12045
+            expect(nextYear.amount).toBeCloseTo((10000 + 1000) * 1.095);
         });
 
         it('should include inflation in growth if inflationAdjusted is true', () => {
@@ -72,53 +73,52 @@ describe('Account Models', () => {
 
         it('should decrease the non-vested amount over time as tenure increases', () => {
             const assumptions = { ...mockAssumptions };
-            
+
             // SETUP:
             // Total: 20k
             // Employer Portion: 10k
             // Tenure: 0 years (0% vested initially)
             // Vesting Schedule: 25% per year
             const acc = new InvestedAccount(
-                'i1', 
-                '401k', 
-                20000, 
+                'i1',
+                '401k',
+                20000,
                 10000, // employerBalance
                 0,     // tenureYears
-                0.1, 
-                'Traditional 401k', 
-                true, 
+                0.1,
+                'Traditional 401k',
+                true,
                 0.25   // vestedPerYear
             );
-            
+
             // --- YEAR 1 ---
             // User contributes 0, Employer contributes 5,000
-            const year1 = acc.increment(assumptions, 0, 5000); 
-            
-            // Math Check:
-            // Growth Rate = 1 + (10 - 0.1) / 100 = 1.099
-            // New Employer Balance = (10,000 * 1.099) + 5,000 = 15,990
-            // New Tenure = 1
-            // Vested % = 1 * 0.25 = 25%
-            // Non-Vested = 15,990 * (1 - 0.25) = 11,992.5
-            
-            expect(year1.employerBalance).toBeCloseTo(15990, 0);
-            expect(year1.nonVestedAmount).toBeCloseTo(11992.5, 0);
+            const year1 = acc.increment(assumptions, 0, 5000);
+
+            // BOY timing math:
+            // Growth Rate = 1.099
+            // Pre-growth: User = 10000, Employer = 10000 + 5000 = 15000
+            // Grown Employer = 15000 * 1.099 = 16485
+            // Grown Total = 25000 * 1.099 = 27475
+            // New Tenure = 1, Vested % = 25%
+            // Non-Vested = 16485 * 0.75 = 12363.75
+
+            expect(year1.employerBalance).toBeCloseTo(16485, 0);
+            expect(year1.nonVestedAmount).toBeCloseTo(12363.75, 0);
 
             // --- YEAR 2 ---
             // Another 5k employer match
             const year2 = year1.increment(assumptions, 0, 5000);
 
-            // Math Check:
-            // Prev Employer Bal = 15,990
-            // New Employer Balance = (15,990 * 1.099) + 5,000 = 22,573.01
-            // New Tenure = 2
-            // Vested % = 2 * 0.25 = 50%
-            // Non-Vested = 22,573.01 * (1 - 0.50) = 11,286.5
-            
-            // The total employer pot grew, but the non-vested portion shrank 
-            // because we jumped from 75% unvested to 50% unvested.
+            // BOY timing math:
+            // Pre-growth: Employer = 16485 + 5000 = 21485
+            // Grown Employer = 21485 * 1.099 = 23612.015
+            // New Tenure = 2, Vested % = 50%
+            // Non-Vested = 23612.015 * 0.50 = 11806
+
+            // The non-vested portion should decrease as vesting increases
             expect(year2.nonVestedAmount).toBeLessThan(year1.nonVestedAmount);
-            expect(year2.nonVestedAmount).toBeCloseTo(11286.5, 0);
+            expect(year2.nonVestedAmount).toBeCloseTo(11806, 0);
         });
 
         it('should drain employer balance if user withdrawal exceeds user balance', () => {
@@ -128,30 +128,29 @@ describe('Account Models', () => {
                 'i1', '401k',
                 10000, // Total
                 5000,  // Employer Portion
-                2,     // Tenure (50% vested: 2 * 0.25 = 0.5)
+                2,     // Tenure (will become 3, so 75% vested: 3 * 0.25 = 0.75)
                 0.1, 'Traditional 401k', true, 0.25
             );
 
             // 2. Act: Withdraw $6,000 (More than user has, but less than vested limit)
-            // We pass 0 for employer contribution to keep it simple
             const next = acc.increment(assumptions, -6000, 0);
 
-            // 3. Assert
-            // Growth Rate: 1 + (10 - 0.1)/100 = 1.099 (9.9%)
-            // After growth: Total = 10990, Employer = 5495, User = 5495
-            // Vested employer = 5495 * 0.5 = 2747.5
-            // User withdraws 6000:
-            //   - User equity used: 5495 (all)
-            //   - Shortfall: 505
-            //   - Taken from vested employer: 505 (allowed because 505 < 2747.5)
-            // Final: Total = 4990, Employer = 4990, User = 0
+            // 3. Assert - BOY timing:
+            // Growth Rate: 1.099
+            // NewTenure = 3, vestedPct = 0.75
+            // Pre-growth: User = 5000, Employer = 5000
+            // Withdrawal = 6000:
+            //   - User equity: 5000 (all used)
+            //   - Shortfall: 1000
+            //   - Vested employer: 5000 * 0.75 = 3750
+            //   - Taken from employer: min(1000, 3750) = 1000
+            // PreGrowthEmployer = 5000 - 1000 = 4000
+            // PreGrowthUser = 0
+            // GrownTotal = 4000 * 1.099 = 4396
+            // GrownEmployer = 4000 * 1.099 = 4396
 
-            const expectedTotal = 10000 * 1.099 - 6000; // 9.9% growth
-            expect(next.amount).toBeCloseTo(expectedTotal);
-
-            // Employer Balance should be 4990
-            // (User equity was wiped out, and 505 was taken from vested employer funds)
-            expect(next.employerBalance).toBeCloseTo(4990);
+            expect(next.amount).toBeCloseTo(4396);
+            expect(next.employerBalance).toBeCloseTo(4396);
         });
 
         it('should limit withdrawal to vested amount when exceeding vesting', () => {
@@ -161,29 +160,29 @@ describe('Account Models', () => {
                 'i1', '401k',
                 10000, // Total
                 5000,  // Employer Portion
-                0,     // Tenure (0% vested: 0 * 0.25 = 0)
+                0,     // Tenure (will become 1, so 25% vested: 1 * 0.25 = 0.25)
                 0.1, 'Traditional 401k', true, 0.25
             );
 
             // 2. Act: Try to withdraw $8,000 (exceeds user equity + vested funds)
             const next = acc.increment(assumptions, -8000, 0);
 
-            // 3. Assert
+            // 3. Assert - BOY timing:
             // Growth Rate: 1.099
-            // After growth: Total = 10990, Employer = 5495, User = 5495
-            // Vested employer = 5495 * 0 = 0 (nothing vested yet!)
-            // User tries to withdraw 8000:
-            //   - User equity: 5495 (all can be withdrawn)
-            //   - Shortfall: 8000 - 5495 = 2505
-            //   - Vested employer: 0 (can't withdraw any)
-            //   - Allowed withdrawal: 5495 + 0 = 5495
-            // Final: Total = 10990 - 5495 = 5495, Employer = 5495, User = 0
+            // NewTenure = 1, vestedPct = 0.25
+            // Pre-growth: User = 5000, Employer = 5000
+            // Withdrawal = 8000:
+            //   - User equity: 5000 (all used)
+            //   - Shortfall: 3000
+            //   - Vested employer: 5000 * 0.25 = 1250
+            //   - Allowed from employer: min(3000, 1250) = 1250
+            // PreGrowthEmployer = 5000 - 1250 = 3750
+            // PreGrowthUser = 0
+            // GrownTotal = 3750 * 1.099 = 4121.25
+            // GrownEmployer = 3750 * 1.099 = 4121.25
 
-            const expectedTotal = 10000 * 1.099 - 5495; // Only allowed to withdraw user equity
-            expect(next.amount).toBeCloseTo(expectedTotal);
-
-            // Employer Balance should remain unchanged (all vested = 0)
-            expect(next.employerBalance).toBeCloseTo(5495);
+            expect(next.amount).toBeCloseTo(4121.25);
+            expect(next.employerBalance).toBeCloseTo(4121.25);
 
             // User equity should be 0 (wiped out their portion)
             const userEquity = next.amount - next.employerBalance;

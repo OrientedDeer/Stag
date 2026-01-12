@@ -95,7 +95,8 @@ describe('AssumptionsContext', () => {
     expect(getByTestId('inflation-rate').textContent).toBe('10');
   });
 
-  it('should save state to localStorage when state changes', () => {
+  it('should save state to localStorage when state changes (debounced)', async () => {
+    vi.useFakeTimers();
     const { getByText } = render(
       <AssumptionsProvider>
         <TestConsumer />
@@ -106,10 +107,17 @@ describe('AssumptionsContext', () => {
       getByText('Update').click();
     });
 
+    // Wait for debounce (500ms)
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+
     expect(localStorageMock.setItem).toHaveBeenCalledWith(
       'assumptions_settings',
       expect.stringContaining('"inflationRate":5')
     );
+
+    vi.useRealTimers();
   });
 
   it('should handle invalid JSON from localStorage gracefully', () => {

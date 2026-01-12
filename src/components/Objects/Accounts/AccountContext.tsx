@@ -1,8 +1,9 @@
-import { createContext, useReducer, ReactNode, Dispatch, useEffect } from 'react';
-import { 
-    AnyAccount, 
+import { createContext, useReducer, ReactNode, Dispatch, useMemo, useCallback } from 'react';
+import {
+    AnyAccount,
     reconstituteAccount
 } from './models';
+import { useDebouncedLocalStorage } from '../../../hooks/useDebouncedLocalStorage';
 
 type AllKeys<T> = T extends any ? keyof T : never;
 export type AllAccountKeys = AllKeys<AnyAccount>;
@@ -178,16 +179,19 @@ export const AccountContext = createContext<AccountContextProps>({
 export const AccountProvider = ({ children }: { children: ReactNode }) => {
   const [state, dispatch] = useReducer(accountReducer, initialState, initializer);
 
-  useEffect(() => {
+  // Debounced localStorage persistence (500ms delay to prevent main thread blocking)
+  const serializeState = useCallback((s: AppState) => {
     const serializable = {
-      ...state,
-      accounts: state.accounts.map(acc => ({ ...acc, className: acc.constructor.name })),
+      ...s,
+      accounts: s.accounts.map(acc => ({ ...acc, className: acc.constructor.name })),
       version: CURRENT_SCHEMA_VERSION
     };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(serializable));
-  }, [state]);
+    return JSON.stringify(serializable);
+  }, []);
 
-  const exportData = () => {
+  useDebouncedLocalStorage(STORAGE_KEY, state, serializeState);
+
+  const exportData = useCallback(() => {
     const data = {
       version: CURRENT_SCHEMA_VERSION,
       accounts: state.accounts.map(acc => ({ ...acc, className: acc.constructor.name })),
@@ -199,9 +203,9 @@ export const AccountProvider = ({ children }: { children: ReactNode }) => {
     a.href = url;
     a.download = `stag_backup_${new Date().toISOString().split('T')[0]}.json`;
     a.click();
-  };
+  }, [state.accounts, state.amountHistory]);
 
-  const importData = (json: string) => {
+  const importData = useCallback((json: string) => {
     try {
       const parsed = JSON.parse(json);
       // Migration logic could go here if parsed.version < CURRENT_SCHEMA_VERSION
@@ -209,18 +213,26 @@ export const AccountProvider = ({ children }: { children: ReactNode }) => {
         .map(reconstituteAccount)
         .filter((acc: AnyAccount | null): acc is AnyAccount => acc !== null);
 
-      dispatch({ 
-        type: 'SET_BULK_DATA', 
-        payload: { accounts, amountHistory: parsed.amountHistory || {} } 
+      dispatch({
+        type: 'SET_BULK_DATA',
+        payload: { accounts, amountHistory: parsed.amountHistory || {} }
       });
       alert("Import successful!");
     } catch (e) {
       alert("Failed to import data. Check file format.");
     }
-  };
+  }, []);
+
+  // Memoize context value to prevent unnecessary re-renders
+  const contextValue = useMemo(() => ({
+    ...state,
+    dispatch,
+    exportData,
+    importData
+  }), [state, dispatch, exportData, importData]);
 
   return (
-    <AccountContext.Provider value={{ ...state, dispatch, exportData, importData }}>
+    <AccountContext.Provider value={contextValue}>
       {children}
     </AccountContext.Provider>
   );

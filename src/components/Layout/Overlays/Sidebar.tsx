@@ -22,7 +22,8 @@ export default function Sidebar({ isOpen }: SidebarProps) {
 	const futureSubLinks = [
         { path: "/future/future", label: "Future" },
         { path: "/future/assumptions", label: "Assumptions" },
-		{ path: "/future/priorities", label: "Priorities" },
+        { path: "/future/allocation", label: "Allocation" },
+        { path: "/future/withdrawal", label: "Withdrawal" },
     ];
 
 	const currentIcon = (

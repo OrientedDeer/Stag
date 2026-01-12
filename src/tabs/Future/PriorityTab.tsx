@@ -74,6 +74,7 @@ export default function PriorityTab() {
   const [newCapType, setNewCapType] = useState<CapType>('MAX');
   const [newCapValue, setNewCapValue] = useState<number>(0);
 
+
   // 3. Local State for Editing
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -81,24 +82,25 @@ export default function PriorityTab() {
   const [editCapValue, setEditCapValue] = useState<number>(0);
 
   const handleAdd = () => {
-    if(!newAccount) return;
+    if (!newAccount) return;
 
     let finalName = newName;
     if (!finalName) {
         finalName = `${newAccount.name} (${newCapType})`;
     }
-    
+
     const newBucket: PriorityBucket = {
         id: `bucket-${Date.now()}-${Math.random().toString(36).slice(2)}`,
         name: finalName,
         type: 'INVESTMENT',
-        accountId: newAccount?.id,
+        accountId: newAccount.id,
         capType: newCapType,
         capValue: newCapValue
     };
 
     dispatch({ type: 'ADD_PRIORITY', payload: newBucket });
     setNewName('');
+    setNewCapType('MAX');
     setNewCapValue(0);
     setNewAccount(null);
   };
@@ -206,7 +208,7 @@ export default function PriorityTab() {
 
   return (
     <div className="w-full min-h-full flex bg-gray-950 justify-center pt-6 text-white">
-      <div className="w-full px-8 max-w-7xl">
+      <div className="w-full px-4 sm:px-8 max-w-7xl">
         <h2 className="text-2xl font-bold mb-6 border-b border-gray-800 pb-2">
             Cashflow Waterfall
         </h2>
@@ -271,9 +273,10 @@ export default function PriorityTab() {
                         </div>
                     </div>
 
-                    <button 
+                    <button
                         onClick={handleAdd}
                         disabled={!newAccount}
+                        title={!newAccount ? "Select an account" : undefined}
                         className="w-full mt-6 bg-green-700 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition-colors shadow-lg"
                     >
                         Add Step

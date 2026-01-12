@@ -13,7 +13,8 @@ export const runSimulation = (
     incomes: AnyIncome[],
     expenses: AnyExpense[],
     assumptions: AssumptionsState,
-    taxState: TaxState
+    taxState: TaxState,
+    yearlyReturns?: number[]
 ): SimulationYear[] => {
         
     const startYear = assumptions.demographics.startYear;
@@ -64,7 +65,9 @@ export const runSimulation = (
             totalInvested: (currentPreTax + currentPostTax - currentInsurance) +
                             incomes.reduce((sum, inc) => inc instanceof WorkIncome ? sum + inc.employerMatch : sum, 0),
             bucketAllocations: 0,
-            bucketDetail: {} // Initialize empty for Year 0
+            bucketDetail: {}, // Initialize empty for Year 0
+            withdrawals: 0,
+            withdrawalDetail: {}
         },
         taxDetails: {
             fed: currentFed,
@@ -72,7 +75,8 @@ export const runSimulation = (
             fica: currentFica,
             preTax: currentPreTax - currentInsurance,
             insurance: currentInsurance,
-            postTax: currentPostTax
+            postTax: currentPostTax,
+            capitalGains: 0
         },
         logs: ["Baseline Year 0 initialized from current context data."]
     };
@@ -88,6 +92,10 @@ export const runSimulation = (
     for (let i = 1; i <= effectiveYearsToRun; i++) {
         const simulationYear = startYear + i;
 
+        // Get return override for this year (if Monte Carlo mode)
+        // yearlyReturns[0] is for year 1, yearlyReturns[1] is for year 2, etc.
+        const returnOverride = yearlyReturns ? yearlyReturns[i - 1] : undefined;
+
         const result = simulateOneYear(
             simulationYear,
             currentIncomes,
@@ -95,7 +103,8 @@ export const runSimulation = (
             currentAccounts,
             assumptions,
             taxState,
-            timeline  // Pass previous simulation history for SS calculation
+            timeline,  // Pass previous simulation history for SS calculation
+            returnOverride
         );
 
         timeline.push(result);

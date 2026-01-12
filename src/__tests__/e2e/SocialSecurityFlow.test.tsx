@@ -115,15 +115,6 @@ describe('Social Security End-to-End Flow', () => {
     // Start and end dates should be set
     expect(ssIncome.startDate).toBeDefined();
     expect(ssIncome.end_date).toBeDefined();
-
-    console.log('Calculated Social Security Benefit:', {
-      monthlyBenefit: ssIncome.calculatedPIA,
-      annualBenefit: ssIncome.amount,
-      claimingAge: ssIncome.claimingAge,
-      calculationYear: ssIncome.calculationYear,
-      startDate: ssIncome.startDate,
-      endDate: ssIncome.end_date,
-    });
   });
 
   it('should grow CurrentSocialSecurityIncome with COLA each year', () => {
@@ -179,13 +170,6 @@ describe('Social Security End-to-End Flow', () => {
     // After 5 years with 3% COLA: 2000 * (1.03^5) = 2318.55
     const finalIncome = incomes[0] as CurrentSocialSecurityIncome;
     expect(finalIncome.amount).toBeCloseTo(2318.55, 1);
-
-    console.log('SSDI Benefit Growth:', {
-      initialBenefit: 2000,
-      finalBenefit: finalIncome.amount,
-      years: 5,
-      cola: '3%',
-    });
   });
 
   it('should persist and reconstitute Social Security incomes through localStorage', () => {

@@ -197,8 +197,8 @@ describe('Expense Models', () => {
   simpleIncrementTestCases.forEach(({ name, Class, args, inflationKey }) => {
     describe(name, () => {
       it('should increment based on the correct inflation', () => {
-        // @ts-ignore
-        const instance = new Class(...args);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- parameterized test pattern
+        const instance = new (Class as any)(...args);
         const nextYear = instance.increment(inflationAssumptions);
         const rate = inflationKey === 'healthcareInflation' ? inflationAssumptions.macro.healthcareInflation : inflationAssumptions.macro.inflationRate;
         const expected = instance.amount * (1 + rate / 100);

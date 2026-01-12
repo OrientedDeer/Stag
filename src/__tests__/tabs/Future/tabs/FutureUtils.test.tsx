@@ -103,6 +103,8 @@ describe('FutureUtils', () => {
         totalInvested: 0,
         bucketAllocations: 0,
         bucketDetail: {},
+        withdrawals: 0,
+        withdrawalDetail: {},
       },
       taxDetails: {
         fed: 0,
@@ -111,6 +113,7 @@ describe('FutureUtils', () => {
         preTax: 0,
         insurance: 0,
         postTax: 0,
+        capitalGains: 0,
       },
       logs: [],
     });

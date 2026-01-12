@@ -100,7 +100,8 @@ describe('ExpenseContext', () => {
     expect(expenses).toEqual([]);
   });
 
-  it('should save state to localStorage when state changes', () => {
+  it('should save state to localStorage when state changes (debounced)', async () => {
+    vi.useFakeTimers();
     let dispatch!: any;
 
     const TestComponent = () => {
@@ -120,10 +121,17 @@ describe('ExpenseContext', () => {
       dispatch({ type: 'ADD_EXPENSE', payload: newExpense });
     });
 
+    // Wait for debounce (500ms)
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+
     expect(localStorageMock.setItem).toHaveBeenCalledWith(
       'user_expenses_data',
       expect.stringContaining('"name":"Groceries"')
     );
+
+    vi.useRealTimers();
   });
 
   describe('Reducer Actions', () => {

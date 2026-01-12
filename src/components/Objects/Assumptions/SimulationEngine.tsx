@@ -7,6 +7,7 @@ import { TaxState } from "../../Objects/Taxes/TaxContext";
 import * as TaxService from "../../Objects/Taxes/TaxService";
 import { calculateAIME, extractEarningsFromSimulation, calculateEarningsTestReduction } from "../../../services/SocialSecurityCalculator";
 import { getFRA } from "../../../data/SocialSecurityData";
+import { calculateStrategyWithdrawal, WithdrawalResult } from "../../../services/WithdrawalStrategies";
 
 // Define the shape of a single year's result
 export interface SimulationYear {
@@ -23,6 +24,8 @@ export interface SimulationYear {
         totalInvested: number; // Sum
         bucketAllocations: number; // Priority Bucket contributions
         bucketDetail: Record<string, number>; // Breakdown
+        withdrawals: number; // Total withdrawn from accounts
+        withdrawalDetail: Record<string, number>; // Per-account breakdown
     };
     taxDetails: {
         fed: number;
@@ -31,8 +34,11 @@ export interface SimulationYear {
         preTax: number;
         insurance: number;
         postTax: number;
+        capitalGains: number; // Capital gains tax on brokerage withdrawals
     };
     logs: string[];
+    // Withdrawal strategy tracking (for multi-year calculations)
+    strategyWithdrawal?: WithdrawalResult;
 }
 
 /**
@@ -46,16 +52,57 @@ export function simulateOneYear(
     accounts: AnyAccount[],
     assumptions: AssumptionsState,
     taxState: TaxState,
-    previousSimulation: SimulationYear[] = []
+    previousSimulation: SimulationYear[] = [],
+    returnOverride?: number
 ): SimulationYear {
     const logs: string[] = [];
 
-    // 1. GROW (The Physics of Money)
-    // Special handling for FutureSocialSecurityIncome: Calculate PIA when reaching claiming age
-    const nextIncomes = incomes.map(inc => {
-        if (inc instanceof FutureSocialSecurityIncome) {
-            const currentAge = assumptions.demographics.startAge + (year - assumptions.demographics.startYear);
+    // Calculate current age for retirement checks
+    const currentAge = assumptions.demographics.startAge + (year - assumptions.demographics.startYear);
+    const isRetired = currentAge >= assumptions.demographics.retirementAge;
 
+    // 1. GROW (The Physics of Money)
+    // Special handling for:
+    // - FutureSocialSecurityIncome: Calculate PIA when reaching claiming age
+    // - WorkIncome: End at retirement if no explicit end date set
+
+    // Filter out previous year's interest income - it's regenerated fresh based on current account balances
+    const regularIncomes = incomes.filter(inc => {
+        if (inc instanceof PassiveIncome && inc.sourceType === 'Interest') {
+            return false;
+        }
+        return true;
+    });
+
+    const nextIncomes = regularIncomes.map(inc => {
+        // End work income at retirement if no end date is set
+        if (inc instanceof WorkIncome && isRetired && !inc.end_date) {
+            // Return null to filter out, or set end date to retirement year
+            // We'll set end date to the year before retirement so it stops
+            const retirementYear = assumptions.demographics.startYear +
+                (assumptions.demographics.retirementAge - assumptions.demographics.startAge);
+
+            // Create a new WorkIncome with end date set to end of pre-retirement year
+            // IMPORTANT: Also zero out 401k contributions and employer match
+            return new WorkIncome(
+                inc.id,
+                inc.name,
+                0, // Zero out the income
+                inc.frequency,
+                inc.earned_income, // Keep earned_income flag
+                0, // Zero out preTax401k
+                0, // Zero out insurance
+                0, // Zero out roth401k
+                0, // Zero out employerMatch
+                inc.matchAccountId,
+                inc.taxType,
+                inc.contributionGrowthStrategy,
+                inc.startDate,
+                new Date(Date.UTC(retirementYear - 1, 11, 31)) // End at Dec 31 of year before retirement
+            );
+        }
+
+        if (inc instanceof FutureSocialSecurityIncome) {
             // If user has reached claiming age and PIA hasn't been calculated yet
             if (currentAge === inc.claimingAge && inc.calculatedPIA === 0) {
                 try {
@@ -102,7 +149,6 @@ export function simulateOneYear(
     // Apply earnings test to FutureSocialSecurityIncome if claiming before FRA
     const incomesWithEarningsTest = nextIncomes.map(inc => {
         if (inc instanceof FutureSocialSecurityIncome && inc.calculatedPIA > 0) {
-            const currentAge = assumptions.demographics.startAge + (year - assumptions.demographics.startYear);
             const birthYear = assumptions.demographics.startYear - assumptions.demographics.startAge;
             const fra = getFRA(birthYear);
 
@@ -207,17 +253,68 @@ export function simulateOneYear(
     // Formula: Gross - PreTax(401k/HSA/Insurance) - PostTax(Roth) - Taxes - Bills
     let discretionaryCash = totalGrossIncome - preTaxDeductions - postTaxDeductions - totalTax - totalLivingExpenses;
     let withdrawalPenalties = 0;
+
     // ------------------------------------------------------------------
-    // NEW: WITHDRAWAL LOGIC (Deficit Manager)
+    // RETIREMENT WITHDRAWAL STRATEGY
+    // ------------------------------------------------------------------
+    let strategyWithdrawalResult: WithdrawalResult | undefined;
+
+    if (isRetired) {
+        // Calculate total invested assets (for withdrawal calculations)
+        const totalInvestedAssets = accounts.reduce((sum, acc) => {
+            if (acc instanceof InvestedAccount || acc instanceof SavedAccount) {
+                return sum + acc.amount;
+            }
+            return sum;
+        }, 0);
+
+        // Get previous year's withdrawal result for tracking
+        const previousStrategyResult = previousSimulation.length > 0
+            ? previousSimulation[previousSimulation.length - 1].strategyWithdrawal
+            : undefined;
+
+        // Calculate years in retirement (0 = first year)
+        const retirementStartYear = assumptions.demographics.startYear +
+            (assumptions.demographics.retirementAge - assumptions.demographics.startAge);
+        const yearsInRetirement = year - retirementStartYear;
+
+        // Calculate strategy-based withdrawal
+        strategyWithdrawalResult = calculateStrategyWithdrawal(
+            assumptions.investments.withdrawalStrategy,
+            assumptions.investments.withdrawalRate,
+            totalInvestedAssets,
+            assumptions.macro.inflationRate,
+            yearsInRetirement,
+            previousStrategyResult
+        );
+
+        logs.push(`📊 Retirement withdrawal strategy: ${assumptions.investments.withdrawalStrategy}`);
+        logs.push(`  Target withdrawal: $${strategyWithdrawalResult.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+        logs.push(`  Portfolio value: $${totalInvestedAssets.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+        logs.push(`  Effective rate: ${((strategyWithdrawalResult.amount / totalInvestedAssets) * 100).toFixed(2)}%`);
+    }
+
+    // ------------------------------------------------------------------
+    // WITHDRAWAL LOGIC (Deficit Manager)
     // ------------------------------------------------------------------
 
     // CHANGED: Split inflows into User vs Employer to support vesting tracking
     const userInflows: Record<string, number> = {};
     const employerInflows: Record<string, number> = {};
     let withdrawalTaxes = 0;
+    let capitalGainsTaxTotal = 0; // Track capital gains tax separately for display
+    let strategyWithdrawalExecuted = 0;
+    let totalWithdrawals = 0;
+    const withdrawalDetail: Record<string, number> = {}; // Track by account name for display
 
-    if (discretionaryCash < 0) {
-        let deficit = Math.abs(discretionaryCash);
+    // Calculate deficit - only withdraw what's needed to cover expenses
+    // The strategy result is tracked for informational purposes but we only
+    // withdraw to cover actual deficits, not the full strategy amount
+    const deficitAmount = discretionaryCash < 0 ? Math.abs(discretionaryCash) : 0;
+    let amountToWithdraw = deficitAmount;
+
+    if (amountToWithdraw > 0) {
+        let deficit = amountToWithdraw;
 
         // Loop through Withdrawal Strategy
         const strategy = assumptions.withdrawalStrategy || [];
@@ -237,105 +334,278 @@ export function simulateOneYear(
             let withdrawAmount = 0;
             let taxHit = 0;
 
-            // SCENARIO 1: Tax-Free
-            const isTaxFree = (account instanceof SavedAccount) || 
-                              (account instanceof InvestedAccount && (account.taxType === 'Roth 401k' || account.taxType === 'Roth IRA' || account.taxType === 'HSA'));
-            const currentAge = assumptions.demographics.startAge + (year - assumptions.demographics.startYear);
-            const isEarly = currentAge < 59.5; 
+            // SCENARIO 1: Tax-Free (or partially tax-free for Roth early withdrawal)
+            const isRoth = account instanceof InvestedAccount && (account.taxType === 'Roth 401k' || account.taxType === 'Roth IRA');
+            const isHSA = account instanceof InvestedAccount && account.taxType === 'HSA';
+            const isSaved = account instanceof SavedAccount;
+            const isTaxFree = isSaved || isRoth || isHSA;
+            const isEarly = currentAge < 59.5; // currentAge is calculated at function scope
             // Note: 55 rule and SEPP are complex exceptions, stick to 59.5 for now.
 
             if (isTaxFree) {
-                withdrawAmount = Math.min(deficit, availableBalance);
-                deficit -= withdrawAmount;
+                // For Roth accounts with early withdrawal, we need to track that the
+                // gains portion is taxable (contributions come out first tax-free)
+                if (isRoth && isEarly && account instanceof InvestedAccount) {
+                    // Roth follows "ordering rules": contributions first, then conversions, then gains
+                    // Simplified: withdraw from cost basis first (tax-free), then gains (taxable)
+                    const costBasis = account.costBasis;
+                    const accountGains = account.unrealizedGains;
+
+                    // How much can we withdraw tax-free from contributions?
+                    const taxFreeWithdrawal = Math.min(deficit, costBasis, availableBalance);
+                    let remainingDeficit = deficit - taxFreeWithdrawal;
+
+                    if (remainingDeficit > 0 && accountGains > 0) {
+                        // Need to dip into gains - these are taxed + 10% penalty
+                        // Use solver to find gross gains withdrawal needed to net remainingDeficit
+                        const fedParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'federal', undefined, assumptions);
+                        const stateParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions);
+
+                        const currentFedIncome = totalGrossIncome - preTaxDeductions;
+                        const currentStateIncome = totalGrossIncome - preTaxDeductions;
+                        const stdDedFed = fedParams?.standardDeduction || 12950;
+                        const stdDedState = stateParams?.standardDeduction || 0;
+                        const currentFedDeduction = taxState.deductionMethod === 'Standard' ? stdDedFed : 0;
+                        const currentStateDeduction = taxState.deductionMethod === 'Standard' ? stdDedState : 0;
+
+                        // Use solver with 10% penalty to find gross gains withdrawal
+                        const gainsResult = TaxService.calculateGrossWithdrawal(
+                            remainingDeficit,
+                            currentFedIncome,
+                            currentFedDeduction,
+                            currentStateIncome,
+                            currentStateDeduction,
+                            taxState,
+                            year,
+                            assumptions,
+                            0.10 // 10% early withdrawal penalty
+                        );
+
+                        // Cap gross gains at available gains
+                        const grossGainsWithdrawal = Math.min(gainsResult.grossWithdrawn, accountGains, availableBalance - taxFreeWithdrawal);
+
+                        // Recalculate actual tax/penalty for the capped amount
+                        const fedApplied = { ...fedParams!, standardDeduction: currentFedDeduction };
+                        const stateApplied = { ...stateParams!, standardDeduction: currentStateDeduction };
+
+                        const fedBase = TaxService.calculateTax(currentFedIncome, 0, fedApplied);
+                        const fedNew = TaxService.calculateTax(currentFedIncome + grossGainsWithdrawal, 0, fedApplied);
+                        const stateBase = TaxService.calculateTax(currentStateIncome, 0, stateApplied);
+                        const stateNew = TaxService.calculateTax(currentStateIncome + grossGainsWithdrawal, 0, stateApplied);
+
+                        const taxOnGains = (fedNew - fedBase) + (stateNew - stateBase);
+                        const earlyPenalty = grossGainsWithdrawal * 0.10;
+
+                        withdrawalTaxes += taxOnGains;
+                        withdrawalPenalties += earlyPenalty;
+                        totalGrossIncome += grossGainsWithdrawal;
+
+                        logs.push(`⚠️ Early Roth withdrawal: $${grossGainsWithdrawal.toLocaleString(undefined, { maximumFractionDigits: 0 })} gains taxed + 10% penalty`);
+
+                        withdrawAmount = taxFreeWithdrawal + grossGainsWithdrawal;
+                        const netFromGains = grossGainsWithdrawal - taxOnGains - earlyPenalty;
+                        deficit -= (taxFreeWithdrawal + netFromGains);
+                    } else {
+                        // All from contributions - completely tax-free
+                        withdrawAmount = taxFreeWithdrawal;
+                        deficit -= taxFreeWithdrawal;
+                    }
+                } else {
+                    // Normal tax-free withdrawal (qualified Roth, HSA, or SavedAccount)
+                    withdrawAmount = Math.min(deficit, availableBalance);
+                    deficit -= withdrawAmount;
+                }
             }
             
             
             // SCENARIO 2: Pre-Tax (Traditional 401k/IRA)
             else if (account instanceof InvestedAccount && (account.taxType === 'Traditional 401k' || account.taxType === 'Traditional IRA')) {
-                let targetNet = deficit;
-                if (isEarly) {
-                    // Approximate: If we lose 10% off the top, we need roughly 1/0.9 as much base.
-                    targetNet = deficit / 0.9; 
-                }
                 // 1. Calculate Baselines
                 const fedParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'federal', undefined, assumptions);
                 const stateParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions);
 
                 const currentFedIncome = totalGrossIncome - preTaxDeductions;
-                const currentStateIncome = totalGrossIncome - preTaxDeductions; 
+                const currentStateIncome = totalGrossIncome - preTaxDeductions;
 
                 const stdDedFed = fedParams?.standardDeduction || 12950;
                 const stdDedState = stateParams?.standardDeduction || 0;
-                
-                const currentFedDeduction = taxState.deductionMethod === 'Standard' ? stdDedFed : 0;
-                const currentStateDeduction = taxState.deductionMethod === 'Standard' ? stdDedState : 0; 
 
-                // 2. Call Solver
+                const currentFedDeduction = taxState.deductionMethod === 'Standard' ? stdDedFed : 0;
+                const currentStateDeduction = taxState.deductionMethod === 'Standard' ? stdDedState : 0;
+
+                // 2. Call Solver with penalty rate integrated
+                const penaltyRate = isEarly ? 0.10 : 0;
                 const result = TaxService.calculateGrossWithdrawal(
-                    Math.min(targetNet, availableBalance),
-                    currentFedIncome,       
-                    currentFedDeduction,    
-                    currentStateIncome,     
+                    Math.min(deficit, availableBalance),
+                    currentFedIncome,
+                    currentFedDeduction,
+                    currentStateIncome,
                     currentStateDeduction,
+                    taxState,
+                    year,
+                    assumptions,
+                    penaltyRate
+                );
+
+                // Overdraft Check
+                if (result.grossWithdrawn > availableBalance) {
+                    withdrawAmount = availableBalance;
+
+                    // Manual tax calc for the partial amount
+                    const fedApplied = { ...fedParams!, standardDeduction: currentFedDeduction };
+                    const stateApplied = { ...stateParams!, standardDeduction: currentStateDeduction };
+
+                    // Fed Impact
+                    const fedBase = TaxService.calculateTax(currentFedIncome, 0, fedApplied);
+                    const fedNew = TaxService.calculateTax(currentFedIncome + withdrawAmount, 0, fedApplied);
+
+                    // State Impact
+                    const stateBase = TaxService.calculateTax(currentStateIncome, 0, stateApplied);
+                    const stateNew = TaxService.calculateTax(currentStateIncome + withdrawAmount, 0, stateApplied);
+
+                    taxHit = (fedNew - fedBase) + (stateNew - stateBase);
+
+                    const actualPenalty = withdrawAmount * penaltyRate;
+                    withdrawalPenalties += actualPenalty;
+
+                    deficit -= (withdrawAmount - taxHit - actualPenalty);
+                } else {
+                    withdrawAmount = result.grossWithdrawn;
+                    taxHit = result.totalTax;
+                    withdrawalPenalties += result.penalty;
+
+                    // Cash Received = Gross - Tax - Penalty = deficit (solver guarantees this)
+                    deficit -= deficit; // Fully covered
+                }
+
+                // 3. Update Baselines
+                totalGrossIncome += withdrawAmount;
+                withdrawalTaxes += taxHit;
+            }
+            // SCENARIO 3: Brokerage (Capital Gains Tax)
+            else if (account instanceof InvestedAccount && account.taxType === 'Brokerage') {
+                // Brokerage withdrawals: only gains are taxed at capital gains rates
+                // We need to gross up the withdrawal to cover the tax
+
+                // Calculate the gains portion of the account (stays constant for proportional method)
+                const gainsPortion = account.unrealizedGains / account.amount;
+
+                // Get tax parameters for bracket calculation
+                const fedParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'federal', undefined, assumptions);
+                const currentFedIncome = totalGrossIncome - preTaxDeductions;
+                const stdDedFed = fedParams?.standardDeduction || 12950;
+                const currentFedDeduction = taxState.deductionMethod === 'Standard' ? stdDedFed : 0;
+                const ordinaryTaxableIncome = Math.max(0, currentFedIncome - currentFedDeduction);
+
+                // State tax parameters
+                const stateParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions);
+                const stdDedState = stateParams?.standardDeduction || 0;
+                const currentStateDeduction = taxState.deductionMethod === 'Standard' ? stdDedState : 0;
+                const stateApplied = { ...stateParams!, standardDeduction: currentStateDeduction };
+                const currentStateIncome = totalGrossIncome - preTaxDeductions;
+
+                // Use iterative approach to find gross withdrawal needed to net the deficit
+                // Start with an estimate assuming ~15% effective cap gains rate on gains portion
+                let grossWithdrawal = deficit / (1 - gainsPortion * 0.15);
+
+                // Iterate to refine (capital gains brackets make this non-linear)
+                for (let i = 0; i < 10; i++) {
+                    const testWithdrawal = Math.min(grossWithdrawal, availableBalance);
+                    const testAllocation = account.calculateWithdrawalAllocation(testWithdrawal);
+
+                    // Calculate capital gains tax
+                    const testCapGainsTax = TaxService.calculateCapitalGainsTax(
+                        testAllocation.gains,
+                        ordinaryTaxableIncome,
+                        taxState,
+                        year,
+                        assumptions
+                    );
+
+                    // State capital gains tax
+                    const stateBase = TaxService.calculateTax(currentStateIncome, 0, stateApplied);
+                    const stateNew = TaxService.calculateTax(currentStateIncome + testAllocation.gains, 0, stateApplied);
+                    const testStateCapGainsTax = stateNew - stateBase;
+
+                    const testTotalTax = testCapGainsTax + testStateCapGainsTax;
+                    const testNetReceived = testWithdrawal - testTotalTax;
+
+                    // Check if we're close enough (within $1)
+                    if (Math.abs(testNetReceived - deficit) < 1) {
+                        grossWithdrawal = testWithdrawal;
+                        break;
+                    }
+
+                    // Adjust withdrawal to converge on target
+                    // Scale up or down based on ratio of needed vs received
+                    if (testWithdrawal >= availableBalance) {
+                        // Can't withdraw more, use what we have
+                        grossWithdrawal = availableBalance;
+                        break;
+                    }
+
+                    // Scale proportionally: if we got too little, increase; if too much, decrease
+                    grossWithdrawal = testWithdrawal * (deficit / testNetReceived);
+                }
+
+                // Cap at available balance
+                grossWithdrawal = Math.min(grossWithdrawal, availableBalance);
+                const allocation = account.calculateWithdrawalAllocation(grossWithdrawal);
+
+                // Final tax calculation
+                const capitalGainsTax = TaxService.calculateCapitalGainsTax(
+                    allocation.gains,
+                    ordinaryTaxableIncome,
                     taxState,
                     year,
                     assumptions
                 );
 
-                let actualPenalty = 0;
-                if (isEarly) {
-                    actualPenalty = result.grossWithdrawn * 0.10;
-                    withdrawalPenalties += actualPenalty; // Track it
+                const stateBase = TaxService.calculateTax(currentStateIncome, 0, stateApplied);
+                const stateNew = TaxService.calculateTax(currentStateIncome + allocation.gains, 0, stateApplied);
+                const stateCapGainsTax = stateNew - stateBase;
+
+                taxHit = capitalGainsTax + stateCapGainsTax;
+                withdrawAmount = grossWithdrawal;
+
+                // Net received = withdrawal - tax on gains
+                const netReceived = grossWithdrawal - taxHit;
+                deficit -= netReceived;
+
+                // Track capital gains tax separately for display
+                capitalGainsTaxTotal += taxHit;
+
+                if (allocation.gains > 0 || taxHit > 0) {
+                    logs.push(`📈 Brokerage withdrawal: $${grossWithdrawal.toLocaleString(undefined, { maximumFractionDigits: 0 })} ` +
+                        `(Basis: $${allocation.basis.toLocaleString(undefined, { maximumFractionDigits: 0 })}, ` +
+                        `Gains: $${allocation.gains.toLocaleString(undefined, { maximumFractionDigits: 0 })}, ` +
+                        `Cap Gains Tax: $${taxHit.toLocaleString(undefined, { maximumFractionDigits: 0 })})`);
                 }
-
-                // Overdraft Check
-                if (result.grossWithdrawn > availableBalance) {
-                     withdrawAmount = availableBalance;
-                     
-                     // Manual tax calc for the partial amount
-                     const fedApplied = { ...fedParams!, standardDeduction: currentFedDeduction };
-                     const stateApplied = { ...stateParams!, standardDeduction: currentStateDeduction };
-                     
-                     // Fed Impact
-                     const fedBase = TaxService.calculateTax(currentFedIncome, 0, fedApplied);
-                     const fedNew = TaxService.calculateTax(currentFedIncome + withdrawAmount, 0, fedApplied);
-                     
-                     // State Impact
-                     const stateBase = TaxService.calculateTax(currentStateIncome, 0, stateApplied);
-                     const stateNew = TaxService.calculateTax(currentStateIncome + withdrawAmount, 0, stateApplied);
-
-                     taxHit = (fedNew - fedBase) + (stateNew - stateBase);
-
-                     if (isEarly) {
-                        actualPenalty = withdrawAmount * 0.10;
-                        withdrawalPenalties += actualPenalty; // Track it
-                     }
-                     
-                     deficit -= (withdrawAmount - taxHit - actualPenalty);
-                } else {
-                    withdrawAmount = result.grossWithdrawn;
-                    taxHit = result.totalTax;
-                    
-                    // Did we cover it?
-                    // Cash Received = Gross - Tax - Penalty
-                    const cashReceived = withdrawAmount - taxHit - actualPenalty;
-                    deficit -= cashReceived; 
-                    // Note: deficit might be slightly non-zero due to the /0.9 approximation, 
-                    // but it will be very close.
-                }
-
-                // 3. Update Baselines
-                totalGrossIncome += withdrawAmount; 
-                withdrawalTaxes += taxHit;
+            }
+            // SCENARIO 4: Fallback for any other account type
+            // Treat as simple withdrawal (no tax calculation - covers edge cases)
+            else {
+                withdrawAmount = Math.min(deficit, availableBalance);
+                deficit -= withdrawAmount;
+                logs.push(`⚠️ Fallback withdrawal from ${account.name}: ${withdrawAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
             }
 
             // Apply Withdrawal to USER inflows (assuming we drain user vested funds first)
             // Negative value = Withdrawal
             userInflows[account.id] = (userInflows[account.id] || 0) - withdrawAmount;
+
+            // Track withdrawal for cashflow chart display
+            if (withdrawAmount > 0) {
+                totalWithdrawals += withdrawAmount;
+                withdrawalDetail[account.name] = (withdrawalDetail[account.name] || 0) + withdrawAmount;
+            }
         }
 
         // Final Adjustments
-        totalTax += withdrawalTaxes;
+        totalTax += withdrawalTaxes + capitalGainsTaxTotal;
+
+        // Track how much was actually withdrawn for strategy tracking
+        strategyWithdrawalExecuted = amountToWithdraw - deficit;
 
         // FLOATING POINT CLEANUP
         // If the remaining deficit is less than half a penny, treat it as zero.
@@ -345,7 +615,14 @@ export function simulateOneYear(
             deficit = 0;
         }
 
+        // Update discretionary cash:
+        // - If we covered the deficit, discretionaryCash becomes 0
+        // - If we couldn't fully cover deficit, discretionaryCash stays negative
         discretionaryCash = -deficit;
+
+        if (isRetired && strategyWithdrawalExecuted > 0) {
+            logs.push(`💰 Strategy withdrawal executed: $${strategyWithdrawalExecuted.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+        }
     }
 
     // ------------------------------------------------------------------
@@ -374,51 +651,54 @@ export function simulateOneYear(
         }
     });
 
-    // 5b. Priority Waterfall (Surplus Only)
-    assumptions.priorities.forEach((priority) => {
-        // Only allocate if we actually have cash left
-        if (discretionaryCash <= 0 || !priority.accountId) return; 
+    // 5b. Priority Waterfall (Surplus Only) - ONLY DURING ACCUMULATION PHASE
+    // In retirement, we don't accumulate - we only withdraw enough for expenses
+    if (!isRetired) {
+        assumptions.priorities.forEach((priority) => {
+            // Only allocate if we actually have cash left
+            if (discretionaryCash <= 0 || !priority.accountId) return;
 
-        let amountToContribute = 0;
+            let amountToContribute = 0;
 
-        if (priority.capType === 'FIXED') {
-            const yearlyCap = (priority.capValue || 0) * 12;
-            amountToContribute = Math.min(yearlyCap, discretionaryCash);
-        } 
-        else if (priority.capType === 'REMAINDER') {
-            amountToContribute = discretionaryCash;
-        }
-        else if (priority.capType === 'MAX') {
-            amountToContribute = Math.min(priority.capValue || 0, discretionaryCash);
-        }
-        else if (priority.capType === 'MULTIPLE_OF_EXPENSES') {
-            const monthlyExpenses = totalLivingExpenses / 12;
-            const target = monthlyExpenses * (priority.capValue || 0);
-            
-            const targetAccount = accounts.find(acc => acc.id === priority.accountId);
-            const currentBalance = targetAccount ? targetAccount.amount : 0;
+            if (priority.capType === 'FIXED') {
+                const yearlyCap = (priority.capValue || 0) * 12;
+                amountToContribute = Math.min(yearlyCap, discretionaryCash);
+            }
+            else if (priority.capType === 'REMAINDER') {
+                amountToContribute = discretionaryCash;
+            }
+            else if (priority.capType === 'MAX') {
+                amountToContribute = Math.min(priority.capValue || 0, discretionaryCash);
+            }
+            else if (priority.capType === 'MULTIPLE_OF_EXPENSES') {
+                const monthlyExpenses = totalLivingExpenses / 12;
+                const target = monthlyExpenses * (priority.capValue || 0);
 
-            let growthRate = 0;
-            if (targetAccount instanceof SavedAccount || targetAccount instanceof DebtAccount) {
-                growthRate = targetAccount.apr;
-            } else if (targetAccount instanceof InvestedAccount) {
-                growthRate = assumptions.investments.returnRates.ror;
+                const targetAccount = accounts.find(acc => acc.id === priority.accountId);
+                const currentBalance = targetAccount ? targetAccount.amount : 0;
+
+                let growthRate = 0;
+                if (targetAccount instanceof SavedAccount || targetAccount instanceof DebtAccount) {
+                    growthRate = targetAccount.apr;
+                } else if (targetAccount instanceof InvestedAccount) {
+                    growthRate = assumptions.investments.returnRates.ror;
+                }
+
+                const expectedGrowth = currentBalance * (growthRate / 100);
+                const needed = target - (currentBalance + expectedGrowth);
+
+                amountToContribute = Math.max(0, Math.min(needed, discretionaryCash));
             }
 
-            const expectedGrowth = currentBalance * (growthRate / 100);
-            const needed = target - (currentBalance + expectedGrowth);
-            
-            amountToContribute = Math.max(0, Math.min(needed, discretionaryCash));
-        }
-
-        if (amountToContribute > 0) {
-            discretionaryCash -= amountToContribute;
-            // Priorities are user-driven, so they go to userInflows
-            userInflows[priority.accountId] = (userInflows[priority.accountId] || 0) + amountToContribute;
-            bucketDetail[priority.accountId] = (bucketDetail[priority.accountId] || 0) + amountToContribute;
-            totalBucketAllocations += amountToContribute;
-        }
-    });
+            if (amountToContribute > 0) {
+                discretionaryCash -= amountToContribute;
+                // Priorities are user-driven, so they go to userInflows
+                userInflows[priority.accountId] = (userInflows[priority.accountId] || 0) + amountToContribute;
+                bucketDetail[priority.accountId] = (bucketDetail[priority.accountId] || 0) + amountToContribute;
+                totalBucketAllocations += amountToContribute;
+            }
+        });
+    }
 
     // 6. LINKED DATA (Mortgages/Loans)
     const linkedData = new Map<string, { balance: number; value?: number }>();
@@ -455,15 +735,18 @@ export function simulateOneYear(
 
         if (acc instanceof InvestedAccount) {
             // CHANGED: Pass user/employer streams separately to handle vesting
-            return acc.increment(assumptions, userIn, employerIn);
+            // Pass returnOverride for Monte Carlo simulations
+            return acc.increment(assumptions, userIn, employerIn, returnOverride);
         }
 
         if (acc instanceof SavedAccount) {
             return acc.increment(assumptions, totalIn);
         }
 
-        // @ts-ignore
-        return acc.grow ? acc.increment(assumptions) : acc; 
+        // Exhaustive check: all AnyAccount types are handled above
+        // This ensures TypeScript will error if a new account type is added
+        const _exhaustiveCheck: never = acc;
+        return _exhaustiveCheck;
     });
 
     // 8. SUMMARY STATS
@@ -475,23 +758,27 @@ export function simulateOneYear(
         expenses: nextExpenses,
         accounts: nextAccounts,
         cashflow: {
-            totalIncome: totalGrossIncome, 
-            totalExpense: totalLivingExpenses + totalTax + preTaxDeductions + postTaxDeductions, 
-            discretionary: discretionaryCash, 
+            totalIncome: totalGrossIncome,
+            totalExpense: totalLivingExpenses + totalTax + preTaxDeductions + postTaxDeductions,
+            discretionary: discretionaryCash,
             investedUser: trueUserSaved,
             investedMatch: totalEmployerMatch,
             totalInvested: trueUserSaved + totalEmployerMatch,
             bucketAllocations: totalBucketAllocations,
-            bucketDetail: bucketDetail
+            bucketDetail: bucketDetail,
+            withdrawals: totalWithdrawals,
+            withdrawalDetail: withdrawalDetail
         },
         taxDetails: {
-            fed: fedTax + withdrawalTaxes + withdrawalPenalties, 
+            fed: fedTax + withdrawalTaxes + withdrawalPenalties,
             state: stateTax,
             fica: ficaTax,
-            preTax: preTaxDeductions - totalInsuranceCost, 
+            preTax: preTaxDeductions - totalInsuranceCost,
             insurance: totalInsuranceCost,
-            postTax: postTaxDeductions
+            postTax: postTaxDeductions,
+            capitalGains: capitalGainsTaxTotal
         },
-        logs
+        logs,
+        strategyWithdrawal: strategyWithdrawalResult
     };
 }

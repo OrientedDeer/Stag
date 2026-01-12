@@ -105,13 +105,13 @@ export const NetWorthCard = () => {
     }, [accounts, amountHistory, expenses]);
 
     return (
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-2xl">
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 sm:p-6 shadow-2xl">
             <div className="flex flex-col mb-4">
                 <h3 className="text-gray-500 text-xs font-bold uppercase tracking-widest mb-1">
                     Current Net Worth
                 </h3>
-                <div className="flex items-baseline gap-3">
-                    <p className={`text-5xl font-black tracking-tight ${stats.netWorth >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                <div className="flex items-baseline gap-2 sm:gap-3 flex-wrap">
+                    <p className={`text-3xl sm:text-5xl font-black tracking-tight ${stats.netWorth >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                         ${stats.netWorth.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                     </p>
                     <span className="text-xs text-gray-500 font-medium bg-gray-800 px-2 py-1 rounded-full">
@@ -144,6 +144,7 @@ export const NetWorthCard = () => {
                         colors={['#10b981']}
                         lineWidth={3}
                         axisLeft={null}
+                        curve={'monotoneX'}
                         
                         // --- Points Configuration ---
                         enablePoints={true}
@@ -176,14 +177,14 @@ export const NetWorthCard = () => {
                 )}
             </div>
 
-            <div className="grid grid-cols-2 gap-8 mt-6 pt-6 border-t border-gray-800">
+            <div className="grid grid-cols-2 gap-4 sm:gap-8 mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-gray-800">
                 <div>
                     <div className="flex items-center gap-2 mb-1">
                         <div className="w-2 h-2 rounded-full bg-blue-500" />
                         <p className="text-gray-500 text-[10px] font-bold uppercase">Gross Assets</p>
                     </div>
-                    <p className="text-xl font-mono font-bold text-gray-100">
-                        ${stats.totalAssets.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <p className="text-base sm:text-xl font-mono font-bold text-gray-100">
+                        ${stats.totalAssets.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                     </p>
                 </div>
                 <div>
@@ -191,8 +192,8 @@ export const NetWorthCard = () => {
                         <div className="w-2 h-2 rounded-full bg-red-500" />
                         <p className="text-gray-500 text-[10px] font-bold uppercase">Total Debt</p>
                     </div>
-                    <p className="text-xl font-mono font-bold text-gray-100">
-                        ${stats.totalDebt.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <p className="text-base sm:text-xl font-mono font-bold text-gray-100">
+                        ${stats.totalDebt.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                     </p>
                 </div>
             </div>

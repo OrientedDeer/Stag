@@ -1,8 +1,9 @@
 // src/components/Taxes/TaxContext.tsx
-import { createContext, useReducer, ReactNode, useEffect } from 'react';
+import { createContext, useReducer, ReactNode, useMemo } from 'react';
 import { FilingStatus, max_year } from '../../../data/TaxData';
+import { useDebouncedLocalStorage } from '../../../hooks/useDebouncedLocalStorage';
 
-export type DeductionMethod = 'Standard' | 'Itemized';
+export type DeductionMethod = 'Standard' | 'Itemized' | 'Auto';
 
 export interface TaxState {
   filingStatus: FilingStatus;
@@ -27,7 +28,7 @@ type Action =
 const initialState: TaxState = {
   filingStatus: 'Single',
   stateResidency: 'DC',
-  deductionMethod: 'Standard',
+  deductionMethod: 'Auto',
   fedOverride: null,
   ficaOverride: null,
   stateOverride: null,
@@ -72,9 +73,14 @@ export const TaxProvider = ({ children }: { children: ReactNode }) => {
     return initial;
   });
 
-  useEffect(() => {
-    localStorage.setItem('tax_settings', JSON.stringify(state));
-  }, [state]);
+  // Debounced localStorage persistence (500ms delay to prevent main thread blocking)
+  useDebouncedLocalStorage('tax_settings', state);
 
-  return <TaxContext.Provider value={{ state, dispatch }}>{children}</TaxContext.Provider>;
+  // Memoize context value to prevent unnecessary re-renders
+  const contextValue = useMemo(() => ({
+    state,
+    dispatch
+  }), [state, dispatch]);
+
+  return <TaxContext.Provider value={contextValue}>{children}</TaxContext.Provider>;
 };

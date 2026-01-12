@@ -17,7 +17,7 @@ import {
 } from "../../components/Objects/Taxes/TaxService";
 import { CurrencyInput } from "../../components/Layout/InputFields/CurrencyInput";
 import { DropdownInput } from "../../components/Layout/InputFields/DropdownInput";
-import { ToggleInput } from "../../components/Layout/InputFields/ToggleInput";
+import { DeductionMethod } from "../../components/Objects/Taxes/TaxContext";
 
 // Suggestion: Create a 'useTax' hook in TaxContext.tsx that handles the null check
 // and throws an error if the provider is missing.
@@ -40,8 +40,15 @@ export default function TaxesTab() {
     const stateStandardDeduction = stateParams.standardDeduction;
     const fedParams = TAX_DATABASE.federal[taxYear][state.filingStatus];
     const fedStandardDeduction = fedParams.standardDeduction;
+
+    // Determine effective deduction method when Auto is selected
+    const effectiveDeductionMethod: 'Standard' | 'Itemized' =
+        state.deductionMethod === "Auto"
+            ? (federalItemizedTotal > fedStandardDeduction ? "Itemized" : "Standard")
+            : state.deductionMethod;
+
     const fedAppliedMainDeduction =
-        state.deductionMethod === "Standard" ? fedStandardDeduction : federalItemizedTotal;
+        effectiveDeductionMethod === "Standard" ? fedStandardDeduction : federalItemizedTotal;
     const incomePreTaxDeductions = getPreTaxExemptions(incomes, taxYear);
     const incomePostTaxDeductions = getPostTaxExemptions(incomes, taxYear);
     const expenseAboveLineDeductions = getYesDeductions(expenses, taxYear);
@@ -51,7 +58,7 @@ export default function TaxesTab() {
 
     return (
         <div className="w-full min-h-full flex bg-gray-950 justify-center pt-6">
-            <div className="w-full px-8 max-w-screen-2xl">
+            <div className="w-full px-4 sm:px-8 max-w-screen-2xl">
                 <h2 className="text-2xl font-bold text-white mb-6 border-b border-gray-800 pb-2">
                     Tax Estimate
                 </h2>
@@ -99,14 +106,21 @@ export default function TaxesTab() {
 
                                 {/* Deduction Method */}
                                 <div>
-                                    <ToggleInput
-                                        id="deduction-method"
-                                        label="Use Itemized Deduction"
-                                        enabled={state.deductionMethod === "Itemized"}
-                                        setEnabled={(enabled) =>
-                                            dispatch({ type: "SET_DEDUCTION_METHOD", payload: enabled ? "Itemized" : "Standard" })
-                                        }
+                                    <DropdownInput
+                                        label="Deduction Method"
+                                        onChange={(val) => dispatch({ type: "SET_DEDUCTION_METHOD", payload: val as DeductionMethod })}
+                                        options={[
+                                            { value: 'Auto', label: 'Auto (Recommended)' },
+                                            { value: 'Standard', label: 'Standard' },
+                                            { value: 'Itemized', label: 'Itemized' }
+                                        ]}
+                                        value={state.deductionMethod}
                                     />
+                                    {state.deductionMethod === "Auto" && (
+                                        <p className="text-[11px] text-blue-400 mt-2 italic leading-tight">
+                                            Using {effectiveDeductionMethod.toLowerCase()} deduction (${effectiveDeductionMethod === "Standard" ? fedStandardDeduction.toLocaleString() : federalItemizedTotal.toLocaleString()}) for lowest tax.
+                                        </p>
+                                    )}
                                     {federalItemizedTotal > fedStandardDeduction && state.deductionMethod === "Standard" && (
                                         <p className="text-[11px] text-yellow-500 mt-2 italic leading-tight">
                                             Tip: Your itemized deductions (${federalItemizedTotal.toLocaleString()}) are higher than the standard deduction.
@@ -195,18 +209,18 @@ export default function TaxesTab() {
                                         <span className="font-mono">-${totalPreTaxDeductions.toLocaleString()}</span>
                                     </div>
                                 )}
-                                {(state.deductionMethod === "Itemized" && federalItemizedTotal > 0) && (
+                                {(effectiveDeductionMethod === "Itemized" && federalItemizedTotal > 0) && (
                                     <div className="flex justify-between text-blue-400 text-sm italic items-center">
-                                        <span>Itemized Deductions (Federal/State)</span>
+                                        <span>Itemized Deductions (Federal/State){state.deductionMethod === "Auto" && " - Auto"}</span>
                                         <div>
                                             <span className="font-mono">-${federalItemizedTotal.toLocaleString()}/</span>
                                             <span className="font-mono">-${stateItemized.toLocaleString()}</span>
                                         </div>
                                     </div>
                                 )}
-                                {(state.deductionMethod === "Standard") && (
+                                {(effectiveDeductionMethod === "Standard") && (
                                     <div className="flex justify-between text-blue-400 text-sm italic items-center">
-                                        <span>Standard Deduction (Federal/State)</span>
+                                        <span>Standard Deduction (Federal/State){state.deductionMethod === "Auto" && " - Auto"}</span>
                                         <div>
                                             <span className="font-mono">-${fedStandardDeduction.toLocaleString()}/</span>
                                             <span className="font-mono">-${stateStandardDeduction.toLocaleString()}</span>

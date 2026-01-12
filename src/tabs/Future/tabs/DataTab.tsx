@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
-import { AnyAccount, DebtAccount } from '../../../components/Objects/Accounts/models';
+import { AnyAccount, DebtAccount, PropertyAccount } from '../../../components/Objects/Accounts/models';
 import { LoanExpense, MortgageExpense } from '../../../components/Objects/Expense/models';
 
 interface DataTabProps {
@@ -19,17 +19,20 @@ const calculateNetWorth = (accounts: AnyAccount[]) => {
     let liabilities = 0;
     accounts.forEach(acc => {
         const val = acc.amount || 0;
-        if (acc instanceof DebtAccount) liabilities += val;
-        else {
+        if (acc instanceof DebtAccount) {
+            liabilities += val;
+        } else {
             assets += val;
-             // @ts-ignore
-            if (acc.loanAmount) liabilities += acc.loanAmount;
+            // PropertyAccount has a loan that counts as liability
+            if (acc instanceof PropertyAccount && acc.loanAmount) {
+                liabilities += acc.loanAmount;
+            }
         }
     });
     return assets - liabilities;
 };
 
-export const DataTab: React.FC<DataTabProps> = ({ simulationData, startAge }) => {
+export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, startAge }) => {
     
     // 1. Prepare Table Data (Summary View)
     const tableData = useMemo(() => {
@@ -208,4 +211,4 @@ export const DataTab: React.FC<DataTabProps> = ({ simulationData, startAge }) =>
             </div>
         </div>
     );
-};
+});

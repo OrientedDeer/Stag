@@ -1,7 +1,7 @@
-import { useMemo, Component, ReactNode } from 'react';
+import { useMemo, Component, ReactNode, useState, useEffect, useRef } from 'react';
 import { ResponsiveSankey } from '@nivo/sankey';
-import { WorkIncome } from '../Objects/Income/models';
-import { MortgageExpense, CLASS_TO_CATEGORY } from '../Objects/Expense/models';
+import { WorkIncome, AnyIncome } from '../Objects/Income/models';
+import { MortgageExpense, AnyExpense, CLASS_TO_CATEGORY } from '../Objects/Expense/models';
 import { AnyAccount } from '../Objects/Accounts/models';
 
 // Error Boundary to catch Nivo rendering errors
@@ -47,27 +47,37 @@ class SankeyErrorBoundary extends Component<
             );
         }
 
-        return this.props.children;
+        return (
+            <div style={{ height: `${this.props.height}px` }}>
+                {this.props.children}
+            </div>
+        );
     }
 }
 
 // --- Types ---
 interface CashflowSankeyProps {
-    incomes: any[];
-    expenses: any[];
+    incomes: AnyIncome[];
+    expenses: AnyExpense[];
     year: number;
     taxes: {
         fed: number;
         state: number;
         fica: number;
+        capitalGains?: number;
     };
     bucketAllocations?: Record<string, number>;
     accounts?: AnyAccount[];
+    withdrawals?: Record<string, number>; // Account name -> withdrawal amount
     height?: number; // Optional height prop
 }
 
 // --- Helper: Currency Formatter ---
 const formatCurrency = (value: number) => {
+    // For very small values that would round to $0, show a more informative label
+    if (value > 0.005 && value < 0.5) {
+        return '<$1';
+    }
     return new Intl.NumberFormat('en-US', {
         style: 'currency',
         currency: 'USD',
@@ -75,6 +85,9 @@ const formatCurrency = (value: number) => {
         maximumFractionDigits: 0,
     }).format(value);
 };
+
+// Minimum threshold for including a value in the chart (avoids $0 nodes)
+const MIN_DISPLAY_THRESHOLD = 0.005;
 
 // --- Component ---
 export const CashflowSankey = ({
@@ -84,6 +97,7 @@ export const CashflowSankey = ({
     taxes,
     bucketAllocations = {},
     accounts = [],
+    withdrawals = {},
     height = 300
 }: CashflowSankeyProps) => {
     // 1. Logic Block (The "Util" part)
@@ -108,22 +122,21 @@ export const CashflowSankey = ({
 
             incomes.forEach(inc => {
                 const amount = inc.getProratedAnnual ? inc.getProratedAnnual(inc.amount, year) : 0;
-                if (amount > 0) grossPayCalculated += amount;
+                if (amount >= MIN_DISPLAY_THRESHOLD) grossPayCalculated += amount;
 
                 if (inc instanceof WorkIncome) {
                     let empMatch = 0;
                     employee401k += inc.getProratedAnnual(inc.preTax401k, year);
                     totalInsurance += inc.getProratedAnnual(inc.insurance, year);
                     employeeRoth += inc.getProratedAnnual(inc.roth401k, year);
-                    
-                    // @ts-ignore
+
                     if (inc.employerMatch != null) {
                         empMatch = inc.getProratedAnnual(inc.employerMatch, year);
                         totalEmployerMatch += empMatch;
                     }
 
-                    // @ts-ignore
-                    if (inc.matchIsRoth || inc.taxType === 'Roth 401k') {
+                    // Check if employer match goes to Roth account
+                    if (inc.taxType === 'Roth 401k') {
                         totalEmployerMatchForRoth += empMatch;
                     } else {
                         totalEmployerMatchForTrad += empMatch;
@@ -140,36 +153,23 @@ export const CashflowSankey = ({
             });
 
             const mortgageInterestAndEscrow = totalMortgagePayment - totalPrincipal;
-            const totalTaxes = taxes.fed + taxes.state + taxes.fica;
+            const totalTaxes = taxes.fed + taxes.state + taxes.fica + (taxes.capitalGains || 0);
             const totalBucketSavings = Object.values(bucketAllocations).reduce((a, b) => a + b, 0);
+            const totalWithdrawals = Object.values(withdrawals).reduce((a, b) => a + b, 0);
 
             // --- Waterfall Math ---
-            const grossPayNodeValue = grossPayCalculated + totalEmployerMatch;
+            // Include withdrawals in gross pay since they're taxable income
+            const grossPayNodeValue = grossPayCalculated + totalEmployerMatch + totalWithdrawals;
             const totalTradSavings = employee401k + totalEmployerMatchForTrad;
             const totalRothSavings = employeeRoth + totalEmployerMatchForRoth;
 
-            const netPayFlow = grossPayNodeValue 
+            const netPayFlow = grossPayNodeValue
                 - totalTradSavings
                 - totalInsurance
                 - totalTaxes;
                 // Note: Roth Match flows through Net Pay
 
-            // --- Nodes ---
-            nodes.push({ id: 'Gross Pay', color: '#3b82f6', label: 'Gross Pay' });
-            if (totalEmployerMatch > 0) nodes.push({ id: 'Employer Contributions', color: '#10b981', label: 'Employer Contrib.' });
-
-            if (totalTradSavings > 0) nodes.push({ id: '401k Savings', color: '#10b981', label: '401k Savings' });
-            if (totalInsurance > 0) nodes.push({ id: 'Benefits', color: '#6366f1', label: 'Benefits' });
-            nodes.push({ id: 'Federal Tax', color: '#f59e0b', label: 'Federal Tax' });
-            nodes.push({ id: 'State Tax', color: '#fbbf24', label: 'State Tax' });
-            nodes.push({ id: 'FICA Tax', color: '#d97706', label: 'FICA Tax' });
-
-            nodes.push({ id: 'Net Pay', color: '#3b82f6', label: 'Net Pay' });
-
-            if (totalRothSavings > 0) nodes.push({ id: 'Roth Savings', color: '#10b981', label: 'Roth Savings' });
-            if (totalPrincipal > 0) nodes.push({ id: 'Principal Payments', color: '#10b981', label: 'Principal Payments' });
-            if (mortgageInterestAndEscrow > 0) nodes.push({ id: 'Mortgage Payments', color: '#ef4444', label: 'Mortgage Payments' });
-
+            // --- Calculate expense categories first (needed for node ordering) ---
             const expenseCatTotals = new Map<string, number>();
             expenses.forEach(exp => {
                 const amount = exp.getAnnualAmount(year);
@@ -178,64 +178,187 @@ export const CashflowSankey = ({
                 expenseCatTotals.set(category, (expenseCatTotals.get(category) || 0) + amount);
             });
 
-            expenseCatTotals.forEach((_, cat) => nodes.push({ id: cat, color: '#ef4444', label: cat }));
-
-            Object.entries(bucketAllocations).forEach(([accountId, amount]) => {
-                if (amount > 0) {
-                    const account = accounts.find(a => a.id === accountId);
-                    const name = account ? account.name : 'Savings';
-                    nodes.push({ id: `Save: ${name}`, color: '#10b981', label: name });
-                }
-            });
-
             const totalExpenses = Array.from(expenseCatTotals.values()).reduce((a, b) => a + b, 0);
             const remaining = netPayFlow - totalRothSavings - totalExpenses - mortgageInterestAndEscrow - totalPrincipal - totalBucketSavings;
 
-            // --- Links ---
-            if (totalEmployerMatch > 0) links.push({ source: 'Employer Contributions', target: 'Gross Pay', value: totalEmployerMatch });
+            // =================================================================
+            // NODES - Order matters for visual stability!
+            // Nodes are organized by "column" in the Sankey diagram:
+            // Col 1: Income sources (work, passive, withdrawals)
+            // Col 2: Gross Pay
+            // Col 3: Deductions (taxes, benefits, 401k)
+            // Col 4: Net Pay
+            // Col 5: Outflows (savings, expenses, remaining)
+            // =================================================================
+
+            // --- Column 1: Income Sources (add in consistent order) ---
+            // First: Work income (sorted by name for stability)
+            const workIncomeItems: Array<{name: string, amount: number}> = [];
+            const otherIncomeItems: Array<{name: string, amount: number}> = [];
 
             incomes.forEach(inc => {
                 const amount = inc.getProratedAnnual ? inc.getProratedAnnual(inc.amount, year) : 0;
-                if (amount > 0) {
-                    nodes.push({ id: inc.name, color: '#10b981', label: inc.name });
-                    links.push({ source: inc.name, target: 'Gross Pay', value: amount });
+                if (amount >= MIN_DISPLAY_THRESHOLD) {
+                    if (inc instanceof WorkIncome) {
+                        workIncomeItems.push({ name: inc.name, amount });
+                    } else {
+                        otherIncomeItems.push({ name: inc.name, amount });
+                    }
                 }
             });
 
-            // Add Deficit/Remaining AFTER income nodes so it appears last
-            if (remaining > 1) nodes.push({ id: 'Remaining', color: '#10b981', label: 'Remaining' });
-            else if (remaining < -1) nodes.push({ id: 'Deficit', color: '#ef4444', label: 'Deficit' });
+            // Sort for consistent ordering
+            workIncomeItems.sort((a, b) => a.name.localeCompare(b.name));
+            otherIncomeItems.sort((a, b) => a.name.localeCompare(b.name));
 
-            if (totalTradSavings > 0) links.push({ source: 'Gross Pay', target: '401k Savings', value: totalTradSavings });
-            if (totalInsurance > 0) links.push({ source: 'Gross Pay', target: 'Benefits', value: totalInsurance });
-            if (taxes.fed > 0) links.push({ source: 'Gross Pay', target: 'Federal Tax', value: taxes.fed });
-            if (taxes.state > 0) links.push({ source: 'Gross Pay', target: 'State Tax', value: taxes.state });
-            if (taxes.fica > 0) links.push({ source: 'Gross Pay', target: 'FICA Tax', value: taxes.fica });
-            if (netPayFlow > 0) links.push({ source: 'Gross Pay', target: 'Net Pay', value: netPayFlow });
+            // Add work income nodes first
+            workIncomeItems.forEach(item => {
+                nodes.push({ id: item.name, color: '#10b981', label: item.name });
+            });
 
-            if (netPayFlow > 0) {
-                if (totalRothSavings > 0) links.push({ source: 'Net Pay', target: 'Roth Savings', value: totalRothSavings });
-                if (totalPrincipal > 0) links.push({ source: 'Net Pay', target: 'Principal Payments', value: totalPrincipal });
-                if (mortgageInterestAndEscrow > 0) links.push({ source: 'Net Pay', target: 'Mortgage Payments', value: mortgageInterestAndEscrow });
+            // Employer contributions (if any)
+            if (totalEmployerMatch >= MIN_DISPLAY_THRESHOLD) {
+                nodes.push({ id: 'Employer Contributions', color: '#10b981', label: 'Employer Contrib.' });
+            }
 
-                expenseCatTotals.forEach((total, cat) => links.push({ source: 'Net Pay', target: cat, value: total }));
-                
-                Object.entries(bucketAllocations).forEach(([accountId, amount]) => {
-                    if (amount > 0) {
-                        const account = accounts.find(a => a.id === accountId);
-                        const name = account ? account.name : 'Savings';
-                        links.push({ source: 'Net Pay', target: `Save: ${name}`, value: amount });
+            // Other income (passive, interest, etc.)
+            otherIncomeItems.forEach(item => {
+                nodes.push({ id: item.name, color: '#10b981', label: item.name });
+            });
+
+            // Withdrawals (sorted by account name for stability)
+            const withdrawalItems = Object.entries(withdrawals)
+                .filter(([_, amount]) => amount >= MIN_DISPLAY_THRESHOLD)
+                .sort(([a], [b]) => a.localeCompare(b));
+
+            withdrawalItems.forEach(([accountName]) => {
+                nodes.push({ id: `Withdraw: ${accountName}`, color: '#8b5cf6', label: `From ${accountName}` });
+            });
+
+            // Deficit node (if needed, flows into Net Pay to cover expenses)
+            if (remaining < -1) {
+                nodes.push({ id: 'Deficit', color: '#ef4444', label: 'Deficit' });
+            }
+
+            // --- Column 2: Gross Pay ---
+            nodes.push({ id: 'Gross Pay', color: '#3b82f6', label: 'Gross Pay' });
+
+            // --- Column 3: Deductions from Gross Pay (consistent order) ---
+            if (totalTradSavings >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: '401k Savings', color: '#10b981', label: '401k Savings' });
+            if (totalInsurance >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Benefits', color: '#6366f1', label: 'Benefits' });
+            if (taxes.fed >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Federal Tax', color: '#f59e0b', label: 'Federal Tax' });
+            if (taxes.state >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'State Tax', color: '#fbbf24', label: 'State Tax' });
+            if (taxes.fica >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'FICA Tax', color: '#d97706', label: 'FICA Tax' });
+            if ((taxes.capitalGains || 0) >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Cap Gains Tax', color: '#84cc16', label: 'Cap Gains Tax' });
+
+            // --- Column 4: Net Pay ---
+            nodes.push({ id: 'Net Pay', color: '#3b82f6', label: 'Net Pay' });
+
+            // --- Column 5: Outflows from Net Pay ---
+            // Order: Savings first (stable), then expenses (may change), then remaining
+
+            // Post-tax savings (Roth)
+            if (totalRothSavings >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Roth Savings', color: '#10b981', label: 'Roth Savings' });
+
+            // Mortgage (principal is savings, interest is expense)
+            if (totalPrincipal >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Principal Payments', color: '#10b981', label: 'Principal Payments' });
+            if (mortgageInterestAndEscrow >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Mortgage Payments', color: '#ef4444', label: 'Mortgage Payments' });
+
+            // Priority bucket savings (sorted for stability)
+            const bucketItems = Object.entries(bucketAllocations)
+                .filter(([_, amount]) => amount >= MIN_DISPLAY_THRESHOLD)
+                .map(([accountId, amount]) => {
+                    const account = accounts.find(a => a.id === accountId);
+                    return { id: accountId, name: account ? account.name : 'Savings', amount };
+                })
+                .sort((a, b) => a.name.localeCompare(b.name));
+
+            bucketItems.forEach(item => {
+                nodes.push({ id: `Save: ${item.name}`, color: '#10b981', label: item.name });
+            });
+
+            // Expenses (sorted by category for stability - added AFTER savings)
+            // Filter out categories below threshold
+            const sortedExpenseCategories = Array.from(expenseCatTotals.entries())
+                .filter(([_, amount]) => amount >= MIN_DISPLAY_THRESHOLD)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([cat]) => cat);
+            sortedExpenseCategories.forEach(cat => {
+                nodes.push({ id: cat, color: '#ef4444', label: cat });
+            });
+
+            // Remaining (always last)
+            if (remaining > 1) {
+                nodes.push({ id: 'Remaining', color: '#10b981', label: 'Remaining' });
+            }
+
+            // =================================================================
+            // LINKS - Same order as nodes for visual consistency
+            // =================================================================
+
+            // --- Links TO Gross Pay (income sources) ---
+            workIncomeItems.forEach(item => {
+                links.push({ source: item.name, target: 'Gross Pay', value: item.amount });
+            });
+
+            if (totalEmployerMatch >= MIN_DISPLAY_THRESHOLD) {
+                links.push({ source: 'Employer Contributions', target: 'Gross Pay', value: totalEmployerMatch });
+            }
+
+            otherIncomeItems.forEach(item => {
+                links.push({ source: item.name, target: 'Gross Pay', value: item.amount });
+            });
+
+            withdrawalItems.forEach(([accountName, amount]) => {
+                links.push({ source: `Withdraw: ${accountName}`, target: 'Gross Pay', value: amount });
+            });
+
+            // --- Links FROM Gross Pay (deductions) ---
+            if (totalTradSavings >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Gross Pay', target: '401k Savings', value: totalTradSavings });
+            if (totalInsurance >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Gross Pay', target: 'Benefits', value: totalInsurance });
+            if (taxes.fed >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Gross Pay', target: 'Federal Tax', value: taxes.fed });
+            if (taxes.state >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Gross Pay', target: 'State Tax', value: taxes.state });
+            if (taxes.fica >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Gross Pay', target: 'FICA Tax', value: taxes.fica });
+            if ((taxes.capitalGains || 0) >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Gross Pay', target: 'Cap Gains Tax', value: taxes.capitalGains! });
+
+            // Always show Gross Pay → Net Pay if there's any positive net pay
+            if (netPayFlow >= MIN_DISPLAY_THRESHOLD) {
+                links.push({ source: 'Gross Pay', target: 'Net Pay', value: netPayFlow });
+            }
+
+            // Deficit flows into Net Pay to cover expenses that can't be paid from income
+            if (remaining < -1) {
+                links.push({ source: 'Deficit', target: 'Net Pay', value: Math.abs(remaining) });
+            }
+
+            // --- Links FROM Net Pay (outflows) ---
+            // Show outflows if there's any cash going through Net Pay (from income or deficit coverage)
+            const hasNetPayFlow = netPayFlow >= MIN_DISPLAY_THRESHOLD || remaining < -1;
+            if (hasNetPayFlow) {
+                if (totalRothSavings >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Net Pay', target: 'Roth Savings', value: totalRothSavings });
+                if (totalPrincipal >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Net Pay', target: 'Principal Payments', value: totalPrincipal });
+                if (mortgageInterestAndEscrow >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Net Pay', target: 'Mortgage Payments', value: mortgageInterestAndEscrow });
+
+                bucketItems.forEach(item => {
+                    links.push({ source: 'Net Pay', target: `Save: ${item.name}`, value: item.amount });
+                });
+
+                sortedExpenseCategories.forEach(cat => {
+                    const total = expenseCatTotals.get(cat) || 0;
+                    if (total >= MIN_DISPLAY_THRESHOLD) {
+                        links.push({ source: 'Net Pay', target: cat, value: total });
                     }
                 });
 
-                if (remaining > 1) links.push({ source: 'Net Pay', target: 'Remaining', value: remaining });
-                else if (remaining < -1) links.push({ source: 'Deficit', target: 'Net Pay', value: Math.abs(remaining) });
+                if (remaining > 1) {
+                    links.push({ source: 'Net Pay', target: 'Remaining', value: remaining });
+                }
             }
 
             const uniqueNodes = Array.from(new Map(nodes.map(node => [node.id, node])).values())
                 .filter(node => links.some(l => l.target === node.id || l.source === node.id));
 
-            const validLinks = links.filter(l => l.value > 0);
+            const validLinks = links.filter(l => l.value >= MIN_DISPLAY_THRESHOLD);
 
             // Validation: Check for issues that could cause Nivo to crash
             const nodeIds = new Set(uniqueNodes.map(n => n.id));
@@ -259,14 +382,6 @@ export const CashflowSankey = ({
 
             const result = { nodes: uniqueNodes, links: validLinks };
 
-            // Log data for debugging
-            console.log('Sankey data generated:', {
-                nodeCount: uniqueNodes.length,
-                linkCount: validLinks.length,
-                nodes: uniqueNodes.map(n => n.id),
-                links: validLinks.map(l => `${l.source} -> ${l.target} (${l.value})`)
-            });
-
             return { data: result, error: null, debugData: result };
 
         } catch (err: any) {
@@ -277,7 +392,7 @@ export const CashflowSankey = ({
                 debugData: null 
             };
         }
-    }, [incomes, expenses, year, taxes, bucketAllocations, accounts]);
+    }, [incomes, expenses, year, taxes, bucketAllocations, accounts, withdrawals]);
 
     // 2. Render Block (The "Renderer" part)
 
@@ -310,17 +425,38 @@ export const CashflowSankey = ({
         );
     }
 
+    // Responsive margin detection
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [containerWidth, setContainerWidth] = useState(800);
+
+    useEffect(() => {
+        const updateWidth = () => {
+            if (containerRef.current) {
+                setContainerWidth(containerRef.current.offsetWidth);
+            }
+        };
+        updateWidth();
+        window.addEventListener('resize', updateWidth);
+        return () => window.removeEventListener('resize', updateWidth);
+    }, []);
+
+    // Responsive margins: smaller on narrow screens
+    const isNarrow = containerWidth < 500;
+    const margins = isNarrow
+        ? { top: 10, right: 80, bottom: 10, left: 80 }
+        : { top: 20, right: 150, bottom: 20, left: 150 };
+
     return (
         <SankeyErrorBoundary height={height}>
-            <div style={{ height: `${height}px` }}>
+            <div ref={containerRef} style={{ height: `${height}px` }}>
                 <ResponsiveSankey
                     data={data}
-                    margin={{ top: 20, right: 150, bottom: 20, left: 150 }}
+                    margin={margins}
                     align="justify"
                     colors={(node: any) => node.color}
                     nodeOpacity={1}
-                    nodeThickness={15}
-                    nodeSpacing={12}
+                    nodeThickness={isNarrow ? 12 : 15}
+                    nodeSpacing={isNarrow ? 8 : 12}
                     nodeBorderRadius={3}
                     enableLinkGradient={true}
                     linkBlendMode="normal"
@@ -329,7 +465,7 @@ export const CashflowSankey = ({
                     valueFormat={formatCurrency}
                     label={(node: any) => node.label}
                     labelPosition="outside"
-                    labelPadding={16}
+                    labelPadding={isNarrow ? 8 : 16}
                     sort="input"
                     nodeTooltip={({ node }) => (
                         <div className="bg-gray-900 p-3 rounded-lg border border-gray-700 shadow-2xl min-w-37.5">

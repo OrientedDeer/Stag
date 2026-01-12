@@ -11,7 +11,8 @@ export interface TaxParameters {
   socialSecurityTaxRate: number; // FICA
   socialSecurityWageBase: number;
   medicareTaxRate: number;
-  // You can expand this later for FICA, Medicare, or specific credits
+  // Long-term capital gains brackets (based on taxable income thresholds)
+  capitalGainsBrackets?: TaxBracket[];
 }
 
 export const max_year = 2026;
@@ -43,6 +44,11 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     { threshold: 243726, rate: 0.35 },
                     { threshold: 609350, rate: 0.37 }
                 ],
+                capitalGainsBrackets: [
+                    { threshold: 0, rate: 0.00 },
+                    { threshold: 47025, rate: 0.15 },
+                    { threshold: 518900, rate: 0.20 }
+                ],
                 socialSecurityTaxRate: 0.062,
                 socialSecurityWageBase: 176100,
                 medicareTaxRate: 0.0145
@@ -58,6 +64,11 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     { threshold: 487450, rate: 0.35 },
                     { threshold: 731200, rate: 0.37 }
                 ],
+                capitalGainsBrackets: [
+                    { threshold: 0, rate: 0.00 },
+                    { threshold: 94050, rate: 0.15 },
+                    { threshold: 583750, rate: 0.20 }
+                ],
                 socialSecurityTaxRate: 0.062,
                 socialSecurityWageBase: 176100,
                 medicareTaxRate: 0.0145
@@ -72,6 +83,11 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     { threshold: 191950, rate: 0.32 },
                     { threshold: 243725, rate: 0.35 },
                     { threshold: 365600, rate: 0.37 }
+                ],
+                capitalGainsBrackets: [
+                    { threshold: 0, rate: 0.00 },
+                    { threshold: 47025, rate: 0.15 },
+                    { threshold: 291850, rate: 0.20 }
                 ],
                 socialSecurityTaxRate: 0.062,
                 socialSecurityWageBase: 176100,
@@ -90,6 +106,11 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     { threshold: 250525, rate: 0.35 },
                     { threshold: 626350, rate: 0.37 }
                 ],
+                capitalGainsBrackets: [
+                    { threshold: 0, rate: 0.00 },
+                    { threshold: 48350, rate: 0.15 },
+                    { threshold: 533400, rate: 0.20 }
+                ],
                 socialSecurityTaxRate: 0.062,
                 socialSecurityWageBase: 176100,
                 medicareTaxRate: 0.0145
@@ -105,6 +126,11 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     { threshold: 501050, rate: 0.35 },
                     { threshold: 751600, rate: 0.37 }
                 ],
+                capitalGainsBrackets: [
+                    { threshold: 0, rate: 0.00 },
+                    { threshold: 96700, rate: 0.15 },
+                    { threshold: 600050, rate: 0.20 }
+                ],
                 socialSecurityTaxRate: 0.062,
                 socialSecurityWageBase: 176100,
                 medicareTaxRate: 0.0145
@@ -119,6 +145,11 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     { threshold: 197300, rate: 0.32 },
                     { threshold: 250525, rate: 0.35 },
                     { threshold: 375800, rate: 0.37 }
+                ],
+                capitalGainsBrackets: [
+                    { threshold: 0, rate: 0.00 },
+                    { threshold: 48350, rate: 0.15 },
+                    { threshold: 300000, rate: 0.20 }
                 ],
                 socialSecurityTaxRate: 0.062,
                 socialSecurityWageBase: 176100,
@@ -137,6 +168,11 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     { threshold: 256225, rate: 0.35 },
                     { threshold: 640600, rate: 0.37 }
                 ],
+                capitalGainsBrackets: [
+                    { threshold: 0, rate: 0.00 },
+                    { threshold: 49700, rate: 0.15 },
+                    { threshold: 548200, rate: 0.20 }
+                ],
                 socialSecurityTaxRate: 0.062,
                 socialSecurityWageBase: 176100,
                 medicareTaxRate: 0.0145
@@ -152,6 +188,11 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     { threshold: 512450, rate: 0.35 },
                     { threshold: 768700, rate: 0.37 }
                 ],
+                capitalGainsBrackets: [
+                    { threshold: 0, rate: 0.00 },
+                    { threshold: 99400, rate: 0.15 },
+                    { threshold: 616400, rate: 0.20 }
+                ],
                 socialSecurityTaxRate: 0.062,
                 socialSecurityWageBase: 176100,
                 medicareTaxRate: 0.0145
@@ -166,6 +207,11 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     { threshold: 201775, rate: 0.32 },
                     { threshold: 256225, rate: 0.35 },
                     { threshold: 384350, rate: 0.37 }
+                ],
+                capitalGainsBrackets: [
+                    { threshold: 0, rate: 0.00 },
+                    { threshold: 49700, rate: 0.15 },
+                    { threshold: 308200, rate: 0.20 }
                 ],
                 socialSecurityTaxRate: 0.062,
                 socialSecurityWageBase: 176100,
