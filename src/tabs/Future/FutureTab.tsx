@@ -128,7 +128,7 @@ const ProgressTimeline = React.memo(({ milestones }: ProgressTimelineProps) => {
         <div className="relative h-8 bg-gray-800 rounded-full overflow-hidden">
             {/* Progress fill */}
             <div
-                className="absolute h-full bg-gradient-to-r from-green-600 to-green-500 rounded-l-full"
+                className="absolute h-full bg-linear-to-r from-green-600 to-green-500 rounded-l-full"
                 style={{ width: `${currentPos}%` }}
             />
 
@@ -278,13 +278,13 @@ export default function FutureTab() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); // Only run on mount - we want to check localStorage state once
 
-    // Auto-run simulation after 5 seconds of being stale (inputs changed)
+    // Auto-run simulation after 500ms of being stale (inputs changed)
     useEffect(() => {
         if (!isSimulationStale || isLoading) return;
 
         const timer = setTimeout(() => {
             handleRecalculate();
-        }, 5000);
+        }, 500);
 
         return () => clearTimeout(timer);
     }, [isSimulationStale, currentInputHash, isLoading, handleRecalculate]);
