@@ -100,6 +100,7 @@ describe('AccountContext', () => {
   });
 
   it('should handle corrupted localStorage data gracefully', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     localStorageMock.setItem('user_accounts_data', 'invalid json');
 
     let accounts!: any[];
@@ -116,6 +117,7 @@ describe('AccountContext', () => {
     );
 
     expect(accounts).toEqual([]);
+    consoleSpy.mockRestore();
   });
 
   it('should save state to localStorage when state changes (debounced)', async () => {

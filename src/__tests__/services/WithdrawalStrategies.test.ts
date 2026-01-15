@@ -143,8 +143,10 @@ describe('Withdrawal Strategies', () => {
         isFirstYear: false,
       });
 
-      // Upper guardrail: no inflation adjustment
-      expect(result.amount).toBe(40000);
+      // Capital Preservation Rule: CUT by 10% (actual GK rules)
+      // $40,000 * 0.9 = $36,000
+      expect(result.amount).toBe(36000);
+      expect(result.guardrailTriggered).toBe('capital-preservation');
     });
 
     it('should increase withdrawal when portfolio grows (lower guardrail)', () => {
@@ -158,9 +160,10 @@ describe('Withdrawal Strategies', () => {
         isFirstYear: false,
       });
 
-      // Lower guardrail: 150% of inflation adjustment
-      // $40,000 * (1 + 0.03 * 1.5) = $40,000 * 1.045 = $41,800
-      expect(result.amount).toBeCloseTo(41800, 0);
+      // Prosperity Rule: INCREASE by 10% (actual GK rules)
+      // $40,000 * 1.1 = $44,000
+      expect(result.amount).toBeCloseTo(44000, 0);
+      expect(result.guardrailTriggered).toBe('prosperity');
     });
 
     it('should use custom guardrails', () => {
@@ -175,8 +178,27 @@ describe('Withdrawal Strategies', () => {
         isFirstYear: false,
       });
 
-      // 5% > 4% * 1.1 (4.4%), so upper guardrail triggered
-      expect(result.amount).toBe(40000); // No inflation
+      // 5% > 4% * 1.1 (4.4%), so Capital Preservation triggered
+      // $40,000 * 0.9 = $36,000
+      expect(result.amount).toBe(36000);
+      expect(result.guardrailTriggered).toBe('capital-preservation');
+    });
+
+    it('should skip Capital Preservation when within 15 years of life expectancy', () => {
+      // Portfolio dropped triggering upper guardrail
+      const result = calculateGuytonKlingerWithdrawal({
+        currentPortfolio: 500000,
+        baseWithdrawal: 40000,
+        withdrawalRate: 4,
+        inflationRate: 3,
+        yearsRemaining: 10, // Within 15 years of life expectancy
+        isFirstYear: false,
+      });
+
+      // Should NOT cut - just inflation adjust
+      // $40,000 * 1.03 = $41,200
+      expect(result.amount).toBeCloseTo(41200, 0);
+      expect(result.guardrailTriggered).toBe('none');
     });
   });
 
@@ -225,6 +247,9 @@ describe('Withdrawal Strategies', () => {
         amount: 40000,
         baseAmount: 40000,
         initialPortfolio: 1000000,
+        guardrailTriggered: 'none',
+        targetWithdrawalRate: 4,
+        currentWithdrawalRate: 4,
       };
 
       const result = calculateStrategyWithdrawal(
@@ -247,6 +272,9 @@ describe('Withdrawal Strategies', () => {
         amount: 41200,
         baseAmount: 41200,
         initialPortfolio: 1000000,
+        guardrailTriggered: 'none',
+        targetWithdrawalRate: 4,
+        currentWithdrawalRate: 4.12,
       };
 
       const result = calculateStrategyWithdrawal(

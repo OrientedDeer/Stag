@@ -15,6 +15,49 @@ import {
 	defaultAssumptions,
 } from "../../Objects/Assumptions/AssumptionsContext";
 
+/**
+ * SALT (State and Local Tax) deduction cap.
+ *
+ * History:
+ * - TCJA 2017 (effective 2018-2024): $10,000 cap ($5,000 MFS)
+ * - One Big Beautiful Bill Act 2025 (effective 2025-2029): $40,000 cap ($20,000 MFS)
+ *   with 1% annual increase starting 2026
+ * - 2030+: Reverts to $10,000
+ *
+ * Note: The 2025 law includes income phase-outs starting at $500k MAGI, but we don't
+ * implement those here for simplicity. The cap still provides a minimum of $10,000.
+ */
+export function getSALTCap(year: number, filingStatus: FilingStatus): number {
+	const isMFS = filingStatus === 'Married Filing Separately';
+
+	if (year < 2018) {
+		// Pre-TCJA: No cap (return a high number)
+		return Infinity;
+	}
+
+	if (year >= 2018 && year <= 2024) {
+		// TCJA cap
+		return isMFS ? 5000 : 10000;
+	}
+
+	if (year >= 2025 && year <= 2029) {
+		// OBBBA raised cap with 1% annual increase starting 2026
+		const baseCapJoint = 40000;
+		const baseCapMFS = 20000;
+		const yearsOfIncrease = Math.max(0, year - 2025);
+		const inflationFactor = Math.pow(1.01, yearsOfIncrease);
+		const cap = isMFS ? baseCapMFS : baseCapJoint;
+		return Math.round(cap * inflationFactor);
+	}
+
+	// 2030+: Reverts to original TCJA cap
+	return isMFS ? 5000 : 10000;
+}
+
+// Legacy constants for backward compatibility
+export const SALT_CAP = 10000;
+export const SALT_CAP_MFS = 5000;
+
 export function getTaxParameters(
 	year: number,
 	filingStatus: FilingStatus,
@@ -83,7 +126,8 @@ export function getPreTaxExemptions(incomes: AnyIncome[], year: number): number 
 			return (
 				acc +
 				inc.getProratedAnnual(inc.preTax401k, year) +
-				inc.getProratedAnnual(inc.insurance, year)
+				inc.getProratedAnnual(inc.insurance, year) +
+				inc.getProratedAnnual(inc.hsaContribution, year)
 			);
 		}, 0);
 }
@@ -112,7 +156,11 @@ export function getFicaExemptions(incomes: AnyIncome[], year: number): number {
 	return incomes
 		.filter((inc) => inc instanceof WorkIncome)
 		.reduce((acc, inc) => {
-			return acc + inc.getProratedAnnual(inc.insurance, year);
+			return (
+				acc +
+				inc.getProratedAnnual(inc.insurance, year) +
+				inc.getProratedAnnual(inc.hsaContribution, year)
+			);
 		}, 0);
 }
 
@@ -393,7 +441,11 @@ export function calculateFederalTax(
 	// So we subtract the full amount and add back only the taxable portion
 	const adjustedGross = annualGross - totalSSBenefits + taxableSSBenefits;
 
-	const itemizedTotal = getItemizedDeductions(expenses, year) + stateTax;
+	// Apply SALT cap to state tax deduction
+	// Cap varies by year: $10k (2018-2024), $40k (2025-2029), $10k (2030+)
+	const saltCap = getSALTCap(year, state.filingStatus);
+	const cappedStateTax = Math.min(stateTax, saltCap);
+	const itemizedTotal = getItemizedDeductions(expenses, year) + cappedStateTax;
 	const fedParams = getTaxParameters(
 		year,
 		state.filingStatus,
@@ -528,15 +580,11 @@ export function calculateGrossWithdrawal(
         const stateTaxNew = calculateTax(currentStateIncome + grossGuess, 0, stateParamsApplied);
         const marginalStateTax = stateTaxNew - stateTaxBase;
 
-        // B. SALT Deductibility logic
-        // let deductibleStateTax = 0;
-        // if (taxState.deductionMethod === 'Itemized') {
-        //      // If itemizing, extra state tax MIGHT be deductible if under $10k cap.
-        //      // For simplicity/safety in this solver, we ignore marginal deductibility 
-        //      // to avoid under-withholding, or you can add the logic here.
-		// 	 // Todo
-        //      deductibleStateTax = 0; 
-        // }
+        // B. SALT Deductibility in gross withdrawal calculation
+        // Note: The basic $10k SALT cap is enforced in calculateFederalTax().
+        // For this gross withdrawal solver, we intentionally ignore marginal SALT deductibility
+        // because tracking remaining SALT headroom adds complexity and rarely impacts results
+        // significantly. This conservative approach avoids under-withholding scenarios.
 
         // C. Federal Tax
         // Note: If we were deducting state tax, we'd subtract it from fedIncome here.
@@ -578,5 +626,123 @@ export function calculateGrossWithdrawal(
         grossWithdrawn: grossSolution,
         totalTax: grossSolution - netNeeded - finalPenalty,
         penalty: finalPenalty
+    };
+}
+
+/**
+ * Result of marginal tax rate calculation
+ */
+export interface MarginalRateResult {
+    rate: number;           // Decimal rate (e.g., 0.22 for 22%)
+    bracketStart: number;   // Taxable income where this bracket starts
+    bracketEnd: number;     // Taxable income where this bracket ends (Infinity for top)
+    headroom: number;       // $ remaining until next bracket
+}
+
+/**
+ * Get the marginal tax rate for a given taxable income.
+ *
+ * @param taxableIncome - Income after deductions (not gross income)
+ * @param params - Tax parameters containing brackets
+ * @returns Marginal rate info including headroom to next bracket
+ */
+export function getMarginalTaxRate(
+    taxableIncome: number,
+    params: TaxParameters
+): MarginalRateResult {
+    // Handle zero or negative income
+    if (taxableIncome <= 0) {
+        const first = params.brackets[0];
+        const second = params.brackets[1];
+        return {
+            rate: first.rate,
+            bracketStart: first.threshold,
+            bracketEnd: second ? second.threshold : Infinity,
+            headroom: second ? second.threshold : Infinity
+        };
+    }
+
+    // Find the bracket containing this income
+    for (let i = 0; i < params.brackets.length; i++) {
+        const current = params.brackets[i];
+        const next = params.brackets[i + 1];
+        const upperLimit = next ? next.threshold : Infinity;
+
+        if (taxableIncome >= current.threshold && taxableIncome < upperLimit) {
+            return {
+                rate: current.rate,
+                bracketStart: current.threshold,
+                bracketEnd: upperLimit,
+                headroom: upperLimit === Infinity ? Infinity : upperLimit - taxableIncome
+            };
+        }
+    }
+
+    // Fallback to top bracket
+    const top = params.brackets[params.brackets.length - 1];
+    return {
+        rate: top.rate,
+        bracketStart: top.threshold,
+        bracketEnd: Infinity,
+        headroom: Infinity
+    };
+}
+
+/**
+ * Get combined marginal tax rate (federal + state + FICA if applicable).
+ *
+ * @param grossIncome - Gross income before deductions
+ * @param preTaxDeductions - 401k, HSA, etc.
+ * @param taxState - Tax configuration
+ * @param year - Tax year
+ * @param assumptions - Assumptions for inflation adjustment
+ * @param includesFICA - Whether to include FICA taxes (true for earned income)
+ * @returns Combined marginal rate breakdown
+ */
+export function getCombinedMarginalRate(
+    grossIncome: number,
+    preTaxDeductions: number,
+    taxState: TaxState,
+    year: number,
+    assumptions: AssumptionsState,
+    includesFICA: boolean = true
+): {
+    federal: number;
+    state: number;
+    fica: number;
+    combined: number;
+    federalHeadroom: number;
+} {
+    const fedParams = getTaxParameters(year, taxState.filingStatus, 'federal', undefined, assumptions);
+    const stateParams = getTaxParameters(year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions);
+
+    const adjustedGross = Math.max(0, grossIncome - preTaxDeductions);
+    const fedStdDed = fedParams?.standardDeduction || 14600;
+    const stateStdDed = stateParams?.standardDeduction || 0;
+
+    const fedTaxableIncome = Math.max(0, adjustedGross - fedStdDed);
+    const stateTaxableIncome = Math.max(0, adjustedGross - stateStdDed);
+
+    const fedMarginal = fedParams ? getMarginalTaxRate(fedTaxableIncome, fedParams) : { rate: 0, headroom: Infinity };
+    const stateMarginal = stateParams ? getMarginalTaxRate(stateTaxableIncome, stateParams) : { rate: 0, headroom: Infinity };
+
+    // FICA: 6.2% SS (up to wage base) + 1.45% Medicare
+    let ficaRate = 0;
+    if (includesFICA && fedParams) {
+        const ssWageBase = fedParams.socialSecurityWageBase || 168600;
+        if (grossIncome < ssWageBase) {
+            ficaRate = fedParams.socialSecurityTaxRate + fedParams.medicareTaxRate;
+        } else {
+            // Only Medicare above wage base
+            ficaRate = fedParams.medicareTaxRate;
+        }
+    }
+
+    return {
+        federal: fedMarginal.rate,
+        state: stateMarginal.rate,
+        fica: ficaRate,
+        combined: fedMarginal.rate + stateMarginal.rate + ficaRate,
+        federalHeadroom: fedMarginal.headroom
     };
 }

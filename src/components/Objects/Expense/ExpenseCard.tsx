@@ -1,6 +1,6 @@
 import { useContext, useState, useEffect, useCallback } from "react";
-import { 
-    AnyExpense, 
+import {
+    AnyExpense,
     RentExpense,
 	MortgageExpense,
     LoanExpense,
@@ -11,6 +11,7 @@ import {
 	TransportExpense,
 	FoodExpense,
     OtherExpense,
+	CharityExpense,
 	EXPENSE_COLORS_BACKGROUND
 } from './models';
 import { ExpenseContext, AllExpenseKeys } from "./ExpenseContext";
@@ -21,6 +22,10 @@ import DeleteExpenseControl from './DeleteExpenseUI';
 import { PercentageInput } from "../../Layout/InputFields/PercentageInput";
 import { NumberInput } from "../../Layout/InputFields/NumberInput";
 import { NameInput } from "../../Layout/InputFields/NameInput";
+import { ToggleInput } from "../../Layout/InputFields/ToggleInput";
+import { formatCompactCurrency } from "../../../tabs/Future/tabs/FutureUtils";
+import { AssumptionsContext } from "../Assumptions/AssumptionsContext";
+import { AlertBanner } from "../../Layout/AlertBanner";
 
 // Helper to format Date objects to YYYY-MM-DD for input fields
 const formatDate = (date: Date | undefined): string => {
@@ -58,6 +63,8 @@ const ChevronIcon = ({ expanded, className = '' }: { expanded: boolean; classNam
 const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 	const { dispatch: expenseDispatch } = useContext(ExpenseContext);
     const { accounts, dispatch: accountDispatch } = useContext(AccountContext);
+    const { state: assumptions } = useContext(AssumptionsContext);
+    const forceExact = assumptions.display?.useCompactCurrency === false;
     const [dateError, setDateError] = useState<string | undefined>();
     const [isExpanded, setIsExpanded] = useState(false);
 
@@ -193,6 +200,7 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 		if (expense instanceof TransportExpense) return "TRANSPORT";
 		if (expense instanceof FoodExpense) return "FOOD";
 		if (expense instanceof OtherExpense) return "OTHER";
+		if (expense instanceof CharityExpense) return "CHARITY";
 		return "EXPENSE";
 	};
 
@@ -207,29 +215,32 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 		if (expense instanceof TransportExpense) return EXPENSE_COLORS_BACKGROUND["Transport"];
 		if (expense instanceof FoodExpense) return EXPENSE_COLORS_BACKGROUND["Food"];
 		if (expense instanceof OtherExpense) return EXPENSE_COLORS_BACKGROUND["Other"];
+		if (expense instanceof CharityExpense) return EXPENSE_COLORS_BACKGROUND["Charity"];
 		return "bg-gray-500";
 	};
 
-    // Get display amount for collapsed view
+    // Get display amount for collapsed view (compact format for large numbers)
     const getDisplayAmount = () => {
         if (expense instanceof RentExpense) {
-            return `$${expense.payment.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            return formatCompactCurrency(expense.payment, { forceExact });
         }
         if (expense instanceof MortgageExpense) {
-            return `$${expense.payment.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            return formatCompactCurrency(expense.payment, { forceExact });
         }
-        return `$${expense.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        return formatCompactCurrency(expense.amount, { forceExact });
     };
 
 	return (
 		<div className="w-full">
             {/* Collapsed View */}
             {!isExpanded ? (
-                <div
+                <button
                     onClick={() => setIsExpanded(true)}
-                    className="flex items-center gap-4 p-4 bg-[#18181b] rounded-xl border border-gray-800 cursor-pointer hover:border-gray-600 transition-colors"
+                    aria-expanded="false"
+                    aria-label={`Expand ${expense.name} expense details`}
+                    className="flex items-center gap-4 p-4 bg-[#18181b] rounded-xl border border-gray-800 cursor-pointer hover:border-gray-600 transition-colors w-full text-left"
                 >
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg ${getIconBg()} text-md font-bold text-white flex-shrink-0`}>
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg ${getIconBg()} text-md font-bold text-white flex-shrink-0`} aria-hidden="true">
                         {getDescriptor().slice(0, 1)}
                     </div>
                     <div className="font-semibold text-white truncate flex-1">
@@ -239,7 +250,7 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
                         {getDisplayAmount()}/{getFrequencyAbbrev(expense.frequency)}
                     </div>
                     <ChevronIcon expanded={false} />
-                </div>
+                </button>
             ) : (
                 <>
                     {/* Expanded Header */}
@@ -256,9 +267,11 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
                             />
                         </div>
                         <div className="text-chart-Red-75 ml-auto flex items-center gap-2">
-                            <DeleteExpenseControl expenseId={expense.id} />
+                            <DeleteExpenseControl expenseId={expense.id} expenseName={expense.name} />
                             <button
                                 onClick={() => setIsExpanded(false)}
+                                aria-expanded="true"
+                                aria-label={`Collapse ${expense.name} expense details`}
                                 className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
                             >
                                 <ChevronIcon expanded={true} />
@@ -311,6 +324,14 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 					value={formatDate(expense.endDate)}
 					onChange={(e) => handleDateChange("endDate", e.target.value)}
 					error={dateError}
+				/>
+
+				<ToggleInput
+					id={`${expense.id}-discretionary`}
+					label="Discretionary"
+					enabled={expense.isDiscretionary}
+					setEnabled={(val) => handleFieldUpdate("isDiscretionary", val)}
+					tooltip="Discretionary expenses can be reduced during Guyton-Klinger guardrail triggers in retirement."
 				/>
 
                 {/* --- Specialized Housing Fields --- */}
@@ -429,13 +450,13 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 						                                    const newBalance = (expense as MortgageExpense).getBalanceAtDate(todayStr);
 						                                    handleFieldUpdate("loan_balance", newBalance);
 						                                }}
-						                                className="bg-blue-600 p-4 rounded-xl text-white font-bold hover:bg-blue-700 transition-colors"
+						                                className="px-5 py-2.5 rounded-lg font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
 						                            >
 						                                Reset Loan Balance to Today
 						                            </button>                        						{showPmiWarning && (
-						                                <div className="text-yellow-500 text-sm col-span-full p-2 rounded-lg bg-yellow-900/20 border border-yellow-700/50">
-						                                    <strong>Warning:</strong> With over 20% equity, you may be eligible to have your PMI removed. Contact your lender to inquire about the process.
-						                                </div>
+						                                <AlertBanner severity="warning" size="sm" className="col-span-full">
+						                                    With over 20% equity, you may be eligible to have your PMI removed. Contact your lender to inquire about the process.
+						                                </AlertBanner>
 						                            )}					</>				)}
                 
 
@@ -484,6 +505,26 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 					</>
 				)}
 
+				{/* --- Specialized Charity Fields --- */}
+				{expense instanceof CharityExpense && (
+					<>
+						<StyledSelect
+							id={`${expense.id}-tax-deductible`}
+							label="Tax Deductible"
+							value={expense.is_tax_deductible}
+							onChange={(e) => handleFieldUpdate("is_tax_deductible", e.target.value)}
+							options={["Yes", "No", "Itemized"]}
+						/>
+						{(expense.is_tax_deductible === 'Yes' || expense.is_tax_deductible === 'Itemized') && (
+							<CurrencyInput
+								id={`${expense.id}-deductible-amount`}
+								label="Deductible Amount"
+								value={expense.tax_deductible}
+								onChange={(val) => handleFieldUpdate("tax_deductible", val)}
+							/>
+						)}
+					</>
+				)}
 
 			            </div>
                 </>

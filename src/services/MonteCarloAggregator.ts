@@ -6,6 +6,7 @@ import {
 } from './MonteCarloTypes';
 import { calculateNetWorth } from '../tabs/Future/tabs/FutureUtils';
 import { SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
+import { DeficitDebtAccount } from '../components/Objects/Accounts/models';
 
 /**
  * Calculate success rate from scenario results
@@ -129,11 +130,15 @@ export function analyzeScenario(
     const finalYear = timeline[timeline.length - 1];
     const finalNetWorth = calculateNetWorth(finalYear.accounts);
 
-    // Find year of depletion (if any) - when net worth goes <= 0
+    // Find year of depletion (if any) - when deficit debt is created
+    // This means expenses couldn't be covered by income + withdrawals
+    // Note: Regular debt (mortgages, loans) doesn't count as failure
     let yearOfDepletion: number | null = null;
     for (let i = 0; i < timeline.length; i++) {
-        const netWorth = calculateNetWorth(timeline[i].accounts);
-        if (netWorth <= 0) {
+        const hasDeficitDebt = timeline[i].accounts.some(
+            acc => acc instanceof DeficitDebtAccount
+        );
+        if (hasDeficitDebt) {
             yearOfDepletion = timeline[i].year;
             break;
         }
@@ -180,9 +185,14 @@ export function summarizeScenarios(
     const medianIndex = Math.floor(sortedByNetWorth.length / 2);
     const medianCase = sortedByNetWorth[medianIndex];
 
-    // Calculate average final net worth
-    const totalNetWorth = scenarios.reduce((sum, s) => sum + s.finalNetWorth, 0);
-    const averageFinalNetWorth = totalNetWorth / scenarios.length;
+    // Calculate trimmed average final net worth (excluding top and bottom 5%)
+    const trimPercent = 0.05;
+    const trimCount = Math.floor(sortedByNetWorth.length * trimPercent);
+    const trimmedScenarios = sortedByNetWorth.slice(trimCount, sortedByNetWorth.length - trimCount);
+    const trimmedTotal = trimmedScenarios.reduce((sum, s) => sum + s.finalNetWorth, 0);
+    const averageFinalNetWorth = trimmedScenarios.length > 0
+        ? trimmedTotal / trimmedScenarios.length
+        : sortedByNetWorth[Math.floor(sortedByNetWorth.length / 2)].finalNetWorth;
 
     return {
         successRate,

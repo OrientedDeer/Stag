@@ -115,6 +115,12 @@ const TabsContent = () => {
     const hierarchicalData = useMemo(() => {
         // Calculate real Net Worth (subtracting debts)
         const totalNetWorth = accounts.reduce((sum, acc) => sum + getAccountValue(acc), 0);
+        // Calculate total assets (excluding debt) for percentage calculations
+        // Percentages should show "what % of my assets is this", not "what % of assets + debt"
+        const totalAssets = accounts.reduce((sum, acc) => {
+            const value = getAccountValue(acc);
+            return value > 0 ? sum + value : sum;  // Only include positive values (assets, not debt)
+        }, 0);
 
         const grouped: Record<string, AnyAccount[]> = {};
 
@@ -158,7 +164,8 @@ const TabsContent = () => {
             id: "Net Worth",
             color: "#10b981", // Root node color
             children: categoryChildren,
-            netWorth: totalNetWorth
+            netWorth: totalNetWorth,
+            totalAssets: totalAssets  // For percentage calculations (avoids issues when debt exists)
         };
     }, [accounts]);
 
@@ -203,14 +210,14 @@ const TabsContent = () => {
     const tabs = ACCOUNT_CATEGORIES;
 
     const tabContent: Record<string, React.ReactNode> = {
-        Saved: (
+        Cash: (
             <div className="p-4">
                 <AccountList type={SavedAccount} />
                 <button 
                     onClick={() => setIsModalOpen(true)}
                     className="bg-green-600 p-4 rounded-xl text-white font-bold mt-4 hover:bg-green-700 transition-colors"
                 >
-                    + Add Savings
+                    + Add Cash
                 </button>
                 <AddAccountModal
                     isOpen={isModalOpen} 

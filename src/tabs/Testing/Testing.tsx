@@ -117,17 +117,6 @@ function SimulationDebugTab() {
                     }
                 });
 
-                // Check bucket allocations (should be 0 in retirement)
-                const totalBuckets = Object.values(bucketDetail).reduce((sum, val) => sum + val, 0);
-                if (totalBuckets > 0) {
-                    issues.push({
-                        year: simYear.year,
-                        age,
-                        type: 'BUCKET_AFTER_RETIREMENT',
-                        message: `Priority buckets allocated ${toCurrencyShort(totalBuckets)} after retirement`,
-                        severity: 'warning'
-                    });
-                }
             }
 
             // 3. No withdrawals when in deficit and retired

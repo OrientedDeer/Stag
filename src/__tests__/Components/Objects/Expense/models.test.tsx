@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   RentExpense,
   MortgageExpense,
@@ -55,6 +55,7 @@ describe('Expense Models', () => {
   describe('BaseExpense', () => {
     class TestExpense extends BaseExpense {
       increment(_assumptions: AssumptionsState): TestExpense { return this; }
+      adjustAmount(_ratio: number): TestExpense { return this; }
     }
 
     it('should calculate prorated annual and monthly amounts correctly', () => {
@@ -142,9 +143,10 @@ describe('Expense Models', () => {
       expect(nextYear.loan_balance).toBeLessThan(400000);
       expect(nextYear.loan_balance).toBeCloseTo(391648.80, 2);
 
-      // Escrow items should inflate
-      expect(nextYear.utilities).toBe(100 * 1.05); // housingAppreciation + generalInflation (3% mock) -> NO, mock inflation is off, so only housing appreciation
-      expect(nextYear.hoa_fee).toBe(50 * 1.05);
+      // Utilities and HOA only inflate with general inflation (not housing appreciation)
+      // Since inflation is OFF in mockAssumptions, they should stay the same
+      expect(nextYear.utilities).toBe(100);
+      expect(nextYear.hoa_fee).toBe(50);
     });
 
     it('should get balance at a future date', () => {
@@ -158,6 +160,89 @@ describe('Expense Models', () => {
         const { totalInterest, totalPrincipal } = mortgage.calculateAnnualAmortization(year);
         expect(totalInterest).toBeCloseTo(11885.79, 2);
         expect(totalPrincipal).toBeCloseTo(8351.20, 2);
+    });
+
+    it('should inflate utilities and HOA only with general inflation when inflation is ON', () => {
+      const inflationOnAssumptions: AssumptionsState = {
+        ...mockAssumptions,
+        macro: {
+          ...mockAssumptions.macro,
+          inflationAdjusted: true, // Turn inflation ON
+        },
+      };
+
+      const nextYear = mortgage.increment(inflationOnAssumptions);
+
+      // With 3% inflation, utilities and HOA should increase by 3%
+      expect(nextYear.utilities).toBeCloseTo(100 * 1.03, 2);
+      expect(nextYear.hoa_fee).toBeCloseTo(50 * 1.03, 2);
+
+      // But valuation should increase by housing appreciation (5%) + inflation (3%) = 8%
+      expect(nextYear.valuation).toBeCloseTo(500000 * 1.08, 2);
+    });
+
+    it('should auto-remove PMI when equity reaches 20%', () => {
+      // Create mortgage with PMI where equity is just under 20%
+      // Valuation: 500000, Loan: 405000 = 19% equity (81% LTV)
+      const mortgageWithPmi = new MortgageExpense(
+        'm2', 'Home with PMI', 'Monthly',
+        500000, 405000, 405000, // valuation, loan_balance, starting_loan_balance
+        3, 30, // apr, term
+        1.2, 0, 1, 100, 0.3, // taxes, deduction, maintenance, utilities, insurance
+        0.58, // PMI rate (0.58%)
+        50, 'Yes', 0, 'a1', new Date('2025-01-01')
+      );
+
+      expect(mortgageWithPmi.pmi).toBe(0.58);
+
+      // After one year with 5% appreciation:
+      // New valuation: 500000 * 1.05 = 525000
+      // Loan balance decreases to ~396xxx
+      // Equity will be > 20%, so PMI should be removed
+      const nextYear = mortgageWithPmi.increment(mockAssumptions);
+
+      // Verify PMI was removed (equity should be > 20%)
+      const equity = (nextYear.valuation - nextYear.loan_balance) / nextYear.valuation;
+      expect(equity).toBeGreaterThanOrEqual(0.2);
+      expect(nextYear.pmi).toBe(0);
+    });
+
+    it('should keep PMI when equity is under 20%', () => {
+      // Create mortgage with PMI where equity is well under 20%
+      // Valuation: 500000, Loan: 450000 = 10% equity (90% LTV)
+      const mortgageWithPmi = new MortgageExpense(
+        'm3', 'Home high LTV', 'Monthly',
+        500000, 450000, 450000, // valuation, loan_balance, starting_loan_balance
+        3, 30, // apr, term
+        1.2, 0, 1, 100, 0.3, // taxes, deduction, maintenance, utilities, insurance
+        0.58, // PMI rate
+        50, 'Yes', 0, 'a1', new Date('2025-01-01')
+      );
+
+      const nextYear = mortgageWithPmi.increment(mockAssumptions);
+
+      // Verify PMI is still there (equity should still be < 20%)
+      const equity = (nextYear.valuation - nextYear.loan_balance) / nextYear.valuation;
+      expect(equity).toBeLessThan(0.2);
+      expect(nextYear.pmi).toBe(0.58);
+    });
+
+    it('should remove PMI when loan is paid off', () => {
+      // Create mortgage with small remaining balance
+      const almostPaidOff = new MortgageExpense(
+        'm4', 'Almost paid', 'Monthly',
+        500000, 1000, 400000, // valuation, tiny loan_balance, starting_loan_balance
+        3, 30,
+        1.2, 0, 1, 100, 0.3,
+        0.58, // PMI rate
+        50, 'Yes', 0, 'a1', new Date('2025-01-01')
+      );
+
+      const nextYear = almostPaidOff.increment(mockAssumptions);
+
+      // Loan should be paid off, PMI removed
+      expect(nextYear.loan_balance).toBe(0);
+      expect(nextYear.pmi).toBe(0);
     });
   });
 
@@ -184,6 +269,13 @@ describe('Expense Models', () => {
         const { totalInterest, totalPrincipal } = loan.calculateAnnualAmortization(2025);
         expect(totalInterest).toBeCloseTo(1147.49, 2);
         expect(totalPrincipal).toBeCloseTo(4513.87, 2);
+    });
+
+    it('should calculate annual and monthly amounts from payment', () => {
+      // Loan with explicit payment
+      const loanWithPayment = new LoanExpense('l1', 'Car', 25000, 'Monthly', 5, 'Compounding', 600, 'No', 0, 'a1');
+      expect(loanWithPayment.getAnnualAmount()).toBe(600 * 12);
+      expect(loanWithPayment.getMonthlyAmount()).toBe(600);
     });
   });
   
@@ -300,9 +392,186 @@ describe('Expense Models', () => {
     });
 
     it('should return null for unknown or invalid data', () => {
+        const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
         expect(reconstituteExpense({ className: 'ImaginaryExpense' })).toBeNull();
         expect(reconstituteExpense(null)).toBeNull();
         expect(reconstituteExpense({})).toBeNull();
+        consoleSpy.mockRestore();
+    });
+
+    it('should handle legacy HousingExpense className as RentExpense', () => {
+      const legacyData = { className: 'HousingExpense', id: 'h1', payment: 1500, utilities: 200 };
+      const expense = reconstituteExpense(legacyData);
+
+      expect(expense).toBeInstanceOf(RentExpense);
+      expect(expense?.id).toBe('h1');
+      expect((expense as RentExpense).payment).toBe(1500);
+      expect((expense as RentExpense).utilities).toBe(200);
+    });
+  });
+
+  describe('adjustAmount Methods', () => {
+    describe('RentExpense.adjustAmount', () => {
+      it('should scale payment and utilities by ratio', () => {
+        const rent = new RentExpense('r1', 'Apt', 1000, 200, 'Monthly', new Date('2025-01-01'));
+        const adjusted = rent.adjustAmount(0.9); // 10% reduction
+
+        expect(adjusted.payment).toBeCloseTo(900);
+        expect(adjusted.utilities).toBeCloseTo(180);
+        expect(adjusted.amount).toBeCloseTo(1080);
+        expect(adjusted).toBeInstanceOf(RentExpense);
+      });
+
+      it('should preserve other properties when adjusting', () => {
+        const rent = new RentExpense('r1', 'Apt', 1000, 200, 'Monthly', new Date('2025-01-01'), new Date('2030-12-31'));
+        const adjusted = rent.adjustAmount(1.1); // 10% increase
+
+        expect(adjusted.id).toBe('r1');
+        expect(adjusted.name).toBe('Apt');
+        expect(adjusted.frequency).toBe('Monthly');
+      });
+    });
+
+    describe('DependentExpense.adjustAmount', () => {
+      it('should scale amount by ratio and preserve isDiscretionary', () => {
+        const expense = new DependentExpense('d1', 'Child', 500, 'Monthly', 'Yes', 0, new Date('2025-01-01'));
+        expense.isDiscretionary = true;
+        const adjusted = expense.adjustAmount(0.85);
+
+        expect(adjusted.amount).toBeCloseTo(425);
+        expect(adjusted.isDiscretionary).toBe(true);
+        expect(adjusted).toBeInstanceOf(DependentExpense);
+      });
+
+      it('should handle non-discretionary expense', () => {
+        const expense = new DependentExpense('d1', 'Child', 500, 'Monthly', 'No', 0, new Date('2025-01-01'));
+        expense.isDiscretionary = false;
+        const adjusted = expense.adjustAmount(0.9);
+
+        expect(adjusted.amount).toBeCloseTo(450);
+        expect(adjusted.isDiscretionary).toBe(false);
+      });
+    });
+
+    describe('HealthcareExpense.adjustAmount', () => {
+      it('should scale amount by ratio and preserve isDiscretionary', () => {
+        const expense = new HealthcareExpense('h1', 'Premiums', 600, 'Monthly', 'Yes', 0, new Date('2025-01-01'));
+        expense.isDiscretionary = true;
+        const adjusted = expense.adjustAmount(0.8);
+
+        expect(adjusted.amount).toBeCloseTo(480);
+        expect(adjusted.isDiscretionary).toBe(true);
+        expect(adjusted).toBeInstanceOf(HealthcareExpense);
+      });
+    });
+
+    describe('VacationExpense.adjustAmount', () => {
+      it('should scale amount by ratio', () => {
+        const expense = new VacationExpense('v1', 'Trip', 5000, 'Annually', new Date('2025-01-01'));
+        const adjusted = expense.adjustAmount(0.75); // 25% reduction
+
+        expect(adjusted.amount).toBeCloseTo(3750);
+        expect(adjusted).toBeInstanceOf(VacationExpense);
+      });
+
+      it('should preserve all properties when adjusting', () => {
+        const expense = new VacationExpense('v1', 'Annual Trip', 5000, 'Annually', new Date('2025-06-01'), new Date('2030-12-31'));
+        const adjusted = expense.adjustAmount(1.2);
+
+        expect(adjusted.id).toBe('v1');
+        expect(adjusted.name).toBe('Annual Trip');
+        expect(adjusted.frequency).toBe('Annually');
+        expect(adjusted.amount).toBeCloseTo(6000);
+      });
+    });
+
+    describe('EmergencyExpense.adjustAmount', () => {
+      it('should scale amount by ratio', () => {
+        const expense = new EmergencyExpense('e1', 'Emergency Fund', 2000, 'Annually', new Date('2025-01-01'));
+        const adjusted = expense.adjustAmount(0.9);
+
+        expect(adjusted.amount).toBeCloseTo(1800);
+        expect(adjusted).toBeInstanceOf(EmergencyExpense);
+      });
+
+      it('should handle increase ratio', () => {
+        const expense = new EmergencyExpense('e1', 'Rainy Day', 1000, 'Monthly');
+        const adjusted = expense.adjustAmount(1.15);
+
+        expect(adjusted.amount).toBeCloseTo(1150);
+      });
+    });
+
+    describe('TransportExpense.adjustAmount', () => {
+      it('should scale amount by ratio', () => {
+        const expense = new TransportExpense('t1', 'Gas', 300, 'Monthly', new Date('2025-01-01'));
+        const adjusted = expense.adjustAmount(0.85);
+
+        expect(adjusted.amount).toBeCloseTo(255);
+        expect(adjusted).toBeInstanceOf(TransportExpense);
+      });
+
+      it('should preserve dates when adjusting', () => {
+        const startDate = new Date('2025-01-01');
+        const endDate = new Date('2030-12-31');
+        const expense = new TransportExpense('t1', 'Car Payment', 400, 'Monthly', startDate, endDate);
+        const adjusted = expense.adjustAmount(1.0);
+
+        expect(adjusted.startDate).toEqual(startDate);
+        expect(adjusted.endDate).toEqual(endDate);
+      });
+    });
+
+    describe('FoodExpense.adjustAmount', () => {
+      it('should scale amount by ratio', () => {
+        const expense = new FoodExpense('f1', 'Groceries', 800, 'Monthly', new Date('2025-01-01'));
+        const adjusted = expense.adjustAmount(0.9);
+
+        expect(adjusted.amount).toBeCloseTo(720);
+        expect(adjusted).toBeInstanceOf(FoodExpense);
+      });
+
+      it('should handle zero ratio edge case', () => {
+        const expense = new FoodExpense('f1', 'Dining Out', 500, 'Monthly');
+        const adjusted = expense.adjustAmount(0);
+
+        expect(adjusted.amount).toBe(0);
+      });
+    });
+
+    describe('OtherExpense.adjustAmount', () => {
+      it('should scale amount by ratio', () => {
+        const expense = new OtherExpense('o1', 'Misc', 200, 'Monthly', new Date('2025-01-01'));
+        const adjusted = expense.adjustAmount(0.7);
+
+        expect(adjusted.amount).toBeCloseTo(140);
+        expect(adjusted).toBeInstanceOf(OtherExpense);
+      });
+
+      it('should preserve all properties including dates', () => {
+        const startDate = new Date('2025-01-01');
+        const endDate = new Date('2028-06-30');
+        const expense = new OtherExpense('o1', 'Subscription', 100, 'Monthly', startDate, endDate);
+        const adjusted = expense.adjustAmount(1.5);
+
+        expect(adjusted.id).toBe('o1');
+        expect(adjusted.name).toBe('Subscription');
+        expect(adjusted.frequency).toBe('Monthly');
+        expect(adjusted.startDate).toEqual(startDate);
+        expect(adjusted.endDate).toEqual(endDate);
+        expect(adjusted.amount).toBeCloseTo(150);
+      });
+    });
+
+    describe('LoanExpense.adjustAmount', () => {
+      it('should return same loan unchanged since loans are fixed obligations', () => {
+        const loan = new LoanExpense('l1', 'Car', 25000, 'Monthly', 5, 'Compounding', 500, 'No', 0, 'a1');
+        const adjusted = loan.adjustAmount(0.8);
+
+        // Loans cannot be adjusted - should return the same instance
+        expect(adjusted).toBe(loan);
+        expect(adjusted.amount).toBe(25000);
+      });
     });
   });
 

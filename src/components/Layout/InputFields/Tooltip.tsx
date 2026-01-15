@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 interface TooltipProps {
     text: string;
@@ -8,18 +9,54 @@ interface TooltipProps {
 export const Tooltip: React.FC<TooltipProps> = ({ text, children }) => {
     const [isVisible, setIsVisible] = useState(false);
     const [position, setPosition] = useState<'top' | 'bottom'>('top');
-    const tooltipRef = useRef<HTMLDivElement>(null);
+    const [coords, setCoords] = useState({ top: 0, left: 0 });
     const triggerRef = useRef<HTMLButtonElement>(null);
 
     useEffect(() => {
         if (isVisible && triggerRef.current) {
             const rect = triggerRef.current.getBoundingClientRect();
             const spaceAbove = rect.top;
+            const tooltipHeight = 80; // Approximate tooltip height
+            const tooltipWidth = 224; // w-56 = 14rem = 224px
 
-            // Show below if not enough space above (less than 80px)
-            setPosition(spaceAbove < 80 ? 'bottom' : 'top');
+            // Show below if not enough space above
+            const showBelow = spaceAbove < tooltipHeight;
+            setPosition(showBelow ? 'bottom' : 'top');
+
+            // Calculate position for portal
+            let top = showBelow
+                ? rect.bottom + 8 // 8px gap below trigger
+                : rect.top - 8; // 8px gap above trigger (tooltip will use bottom positioning)
+
+            let left = rect.left + rect.width / 2 - tooltipWidth / 2;
+
+            // Keep tooltip within viewport horizontally
+            const padding = 8;
+            if (left < padding) {
+                left = padding;
+            } else if (left + tooltipWidth > window.innerWidth - padding) {
+                left = window.innerWidth - tooltipWidth - padding;
+            }
+
+            setCoords({ top, left });
         }
     }, [isVisible]);
+
+    const tooltipContent = isVisible && (
+        <div
+            role="tooltip"
+            style={{
+                position: 'fixed',
+                top: position === 'bottom' ? coords.top : 'auto',
+                bottom: position === 'top' ? `calc(100vh - ${coords.top}px)` : 'auto',
+                left: coords.left,
+                zIndex: 9999,
+            }}
+            className="w-56 px-3 py-2 text-xs text-gray-200 bg-gray-800 border border-gray-700 rounded-lg shadow-xl"
+        >
+            {text}
+        </div>
+    );
 
     return (
         <span className="relative inline-flex items-center">
@@ -35,26 +72,7 @@ export const Tooltip: React.FC<TooltipProps> = ({ text, children }) => {
             >
                 ?
             </button>
-            {isVisible && (
-                <div
-                    ref={tooltipRef}
-                    role="tooltip"
-                    className={`absolute z-50 w-56 px-3 py-2 text-xs text-gray-200 bg-gray-800 border border-gray-700 rounded-lg shadow-xl ${
-                        position === 'top'
-                            ? 'bottom-full mb-2'
-                            : 'top-full mt-2'
-                    } left-1/2 -translate-x-1/2`}
-                >
-                    {text}
-                    <div
-                        className={`absolute left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-800 border-gray-700 transform rotate-45 ${
-                            position === 'top'
-                                ? 'top-full -mt-1 border-r border-b'
-                                : 'bottom-full -mb-1 border-l border-t'
-                        }`}
-                    />
-                </div>
-            )}
+            {isVisible && createPortal(tooltipContent, document.body)}
             {children}
         </span>
     );

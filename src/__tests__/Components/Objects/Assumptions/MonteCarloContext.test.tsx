@@ -153,6 +153,7 @@ describe('MonteCarloContext', () => {
         });
 
         it('should handle corrupted localStorage data gracefully', () => {
+            const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
             localStorageMock.setItem('monte_carlo_config', 'invalid json');
 
             let state: typeof initialMonteCarloState;
@@ -171,6 +172,7 @@ describe('MonteCarloContext', () => {
 
             // Should fall back to default config
             expect(state!.config.numScenarios).toBe(defaultMonteCarloConfig.numScenarios);
+            consoleSpy.mockRestore();
         });
 
         it('should merge partial localStorage config with defaults', () => {
@@ -523,7 +525,7 @@ describe('MonteCarloContext', () => {
                     demographics: { startAge: 30, startYear: 2025, retirementAge: 65, lifeExpectancy: 90 },
                     investments: { returnRates: { ror: 7 }, withdrawalStrategy: 'Fixed Real', withdrawalRate: 4 },
                     macro: { inflationRate: 2.6, healthcareInflation: 3.9, inflationAdjusted: false },
-                    income: { salaryGrowth: 1.0, socialSecurityStartAge: 67 },
+                    income: { salaryGrowth: 1.0, qualifiesForSocialSecurity: true, socialSecurityFundingPercent: 100 },
                     expenses: { lifestyleCreep: 75, housingAppreciation: 1.4, rentInflation: 1.2 },
                     priorities: [],
                     withdrawalStrategy: [],
@@ -558,7 +560,7 @@ describe('MonteCarloContext', () => {
                     demographics: { startAge: 30, startYear: 2025, retirementAge: 65, lifeExpectancy: 90 },
                     investments: { returnRates: { ror: 7 }, withdrawalStrategy: 'Fixed Real', withdrawalRate: 4 },
                     macro: { inflationRate: 2.6, healthcareInflation: 3.9, inflationAdjusted: false },
-                    income: { salaryGrowth: 1.0, socialSecurityStartAge: 67 },
+                    income: { salaryGrowth: 1.0, qualifiesForSocialSecurity: true, socialSecurityFundingPercent: 100 },
                     expenses: { lifestyleCreep: 75, housingAppreciation: 1.4, rentInflation: 1.2 },
                     priorities: [],
                     withdrawalStrategy: [],
@@ -592,7 +594,7 @@ describe('MonteCarloContext', () => {
                     demographics: { startAge: 30, startYear: 2025, retirementAge: 65, lifeExpectancy: 90 },
                     investments: { returnRates: { ror: 7 }, withdrawalStrategy: 'Fixed Real', withdrawalRate: 4 },
                     macro: { inflationRate: 2.6, healthcareInflation: 3.9, inflationAdjusted: false },
-                    income: { salaryGrowth: 1.0, socialSecurityStartAge: 67 },
+                    income: { salaryGrowth: 1.0, qualifiesForSocialSecurity: true, socialSecurityFundingPercent: 100 },
                     expenses: { lifestyleCreep: 75, housingAppreciation: 1.4, rentInflation: 1.2 },
                     priorities: [],
                     withdrawalStrategy: [],
@@ -632,7 +634,7 @@ describe('MonteCarloContext', () => {
                     demographics: { startAge: 30, startYear: 2025, retirementAge: 65, lifeExpectancy: 90 },
                     investments: { returnRates: { ror: 7 }, withdrawalStrategy: 'Fixed Real', withdrawalRate: 4 },
                     macro: { inflationRate: 2.6, healthcareInflation: 3.9, inflationAdjusted: false },
-                    income: { salaryGrowth: 1.0, socialSecurityStartAge: 67 },
+                    income: { salaryGrowth: 1.0, qualifiesForSocialSecurity: true, socialSecurityFundingPercent: 100 },
                     expenses: { lifestyleCreep: 75, housingAppreciation: 1.4, rentInflation: 1.2 },
                     priorities: [],
                     withdrawalStrategy: [],
@@ -794,7 +796,7 @@ describe('MonteCarloContext', () => {
                         demographics: { startAge: 30, startYear: 2025, retirementAge: 65, lifeExpectancy: 90 },
                         investments: { returnRates: { ror: 7 }, withdrawalStrategy: 'Fixed Real', withdrawalRate: 4 },
                         macro: { inflationRate: 2.6, healthcareInflation: 3.9, inflationAdjusted: false },
-                        income: { salaryGrowth: 1.0, socialSecurityStartAge: 67 },
+                        income: { salaryGrowth: 1.0, qualifiesForSocialSecurity: true, socialSecurityFundingPercent: 100 },
                         expenses: { lifestyleCreep: 75, housingAppreciation: 1.4, rentInflation: 1.2 },
                         priorities: [],
                         withdrawalStrategy: [],

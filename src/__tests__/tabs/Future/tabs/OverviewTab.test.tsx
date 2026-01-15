@@ -109,8 +109,9 @@ describe('OverviewTab', () => {
         expect(propertySeries.data[0].y).toBe(300000);
 
         // Check Debt Series (Should be negative)
+        // Debt includes: DebtAccount (15000) + LoanExpense (15000) + MortgageExpense (250000) = 280000
         const debtSeries = chartData.find((s: any) => s.id === 'Debt');
-        expect(debtSeries.data[0].y).toBe(-265000); // -(15000 + 250000)
+        expect(debtSeries.data[0].y).toBe(-280000);
     });
 
     it('filters data based on the range slider', async () => {

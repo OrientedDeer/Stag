@@ -1,4 +1,4 @@
-import { useContext, useEffect, useCallback, useState } from "react";
+import { useContext, useEffect, useCallback, useState, useRef, useMemo } from "react";
 import {
     AnyIncome,
     WorkIncome,
@@ -7,7 +7,8 @@ import {
     FutureSocialSecurityIncome,
     PassiveIncome,
     WindfallIncome,
-    INCOME_COLORS_BACKGROUND
+    INCOME_COLORS_BACKGROUND,
+    IncomeFrequency
 } from "./models";
 import { IncomeContext, AllIncomeKeys } from "./IncomeContext";
 import { StyledInput, StyledSelect } from "../../Layout/InputFields/StyleUI";
@@ -18,6 +19,11 @@ import { DropdownInput } from "../../Layout/InputFields/DropdownInput";
 import { NumberInput } from "../../Layout/InputFields/NumberInput";
 import { AccountContext } from "../Accounts/AccountContext";
 import { InvestedAccount } from "../../Objects/Accounts/models";
+import { formatCompactCurrency } from "../../../tabs/Future/tabs/FutureUtils";
+import { AssumptionsContext } from "../Assumptions/AssumptionsContext";
+import { parseSSAXml, validateEarningsImport, formatEarningsSummary } from "../../../services/SSAImportService";
+import { get401kLimit, getHSALimit } from "../../../data/ContributionLimits";
+import { AlertBanner } from "../../Layout/AlertBanner";
 
 // Helper to format Date objects to YYYY-MM-DD for input fields
 const formatDate = (date: Date | undefined): string => {
@@ -54,8 +60,49 @@ const ChevronIcon = ({ expanded, className = '' }: { expanded: boolean; classNam
 const IncomeCard = ({ income }: { income: AnyIncome }) => {
 	const { dispatch } = useContext(IncomeContext);
     const { accounts } = useContext(AccountContext);
+    const { state: assumptions, dispatch: assumptionsDispatch } = useContext(AssumptionsContext);
+    const forceExact = assumptions.display?.useCompactCurrency === false;
     const [dateError, setDateError] = useState<string | undefined>();
     const [isExpanded, setIsExpanded] = useState(false);
+    const ssaFileInputRef = useRef<HTMLInputElement>(null);
+
+    // SSA import handler for FutureSocialSecurityIncome
+    const handleSSAFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const xmlString = event.target?.result as string;
+            try {
+                const { earnings } = parseSSAXml(xmlString);
+
+                if (earnings.length === 0) {
+                    alert('No valid earnings found in file. Make sure the file contains FicaEarnings data.');
+                    return;
+                }
+
+                // Validate against app birth year
+                const birthYear = assumptions.demographics.startYear - assumptions.demographics.startAge;
+                const validation = validateEarningsImport(earnings, birthYear);
+
+                if (validation.warnings.length > 0) {
+                    const proceed = confirm(
+                        `Warnings:\n${validation.warnings.join('\n')}\n\nImport anyway?`
+                    );
+                    if (!proceed) return;
+                }
+
+                assumptionsDispatch({ type: 'SET_PRIOR_EARNINGS', payload: earnings });
+                alert(`Successfully imported ${earnings.length} years of earnings history.\n\nYour Social Security benefit will be calculated using this data when you reach claiming age.`);
+            } catch (err) {
+                console.error('SSA import error:', err);
+                alert('Error parsing SSA file. Please ensure it\'s a valid SSA XML export from ssa.gov.');
+            }
+        };
+        reader.readAsText(file);
+        e.target.value = ''; // Reset for re-import
+    }, [assumptions.demographics.startYear, assumptions.demographics.startAge, assumptionsDispatch]);
 
     // Validate end date is after start date
     const validateDates = useCallback((start: Date | undefined, end: Date | undefined) => {
@@ -90,6 +137,54 @@ const IncomeCard = ({ income }: { income: AnyIncome }) => {
             }
         }
     }, [income, handleFieldUpdate]);
+
+    // Calculate contribution limit warnings for WorkIncome
+    const contributionWarnings = useMemo(() => {
+        if (!(income instanceof WorkIncome)) return null;
+
+        const year = new Date().getFullYear();
+        const age = assumptions.demographics.startAge;
+
+        // Calculate annual contributions based on frequency
+        const getAnnualMultiplier = (freq: IncomeFrequency) => {
+            switch (freq) {
+                case 'Weekly': return 52;
+                case 'Bi-Weekly': return 26;
+                case 'Monthly': return 12;
+                case 'Annually': return 1;
+                default: return 12;
+            }
+        };
+
+        const multiplier = getAnnualMultiplier(income.frequency);
+        const annual401k = (income.preTax401k + income.roth401k) * multiplier;
+        const annualHSA = income.hsaContribution * multiplier;
+
+        const limit401k = get401kLimit(year, age);
+        const limitHSA = getHSALimit(year, age, 'individual');
+
+        const warnings: { type: string; message: string; annual: number; limit: number }[] = [];
+
+        if (annual401k > limit401k) {
+            warnings.push({
+                type: '401k',
+                message: `401k contributions exceed ${year} limit`,
+                annual: annual401k,
+                limit: limit401k
+            });
+        }
+
+        if (annualHSA > limitHSA) {
+            warnings.push({
+                type: 'HSA',
+                message: `HSA contributions exceed ${year} limit`,
+                annual: annualHSA,
+                limit: limitHSA
+            });
+        }
+
+        return warnings.length > 0 ? warnings : null;
+    }, [income, assumptions.demographics.startAge]);
 
     const handleMatchAccountChange = useCallback((newAccountId: string | null) => {
         const account = accounts.find(acc => acc.id === newAccountId) as InvestedAccount | undefined;
@@ -148,12 +243,12 @@ const IncomeCard = ({ income }: { income: AnyIncome }) => {
 		return "bg-gray-500";
 	};
 
-    // Get display amount for collapsed view
+    // Get display amount for collapsed view (compact format for large numbers)
     const getDisplayAmount = () => {
         if (income instanceof FutureSocialSecurityIncome) {
-            return income.calculatedPIA > 0 ? `$${income.calculatedPIA.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'Auto-calculated';
+            return income.calculatedPIA > 0 ? formatCompactCurrency(income.calculatedPIA, { forceExact }) : 'Auto-calculated';
         }
-        return `$${income.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        return formatCompactCurrency(income.amount, { forceExact });
     };
 
     // Get frequency display for collapsed view
@@ -168,11 +263,13 @@ const IncomeCard = ({ income }: { income: AnyIncome }) => {
 		<div className="w-full">
             {/* Collapsed View */}
             {!isExpanded ? (
-                <div
+                <button
                     onClick={() => setIsExpanded(true)}
-                    className="flex items-center gap-4 p-4 bg-[#18181b] rounded-xl border border-gray-800 cursor-pointer hover:border-gray-600 transition-colors"
+                    aria-expanded="false"
+                    aria-label={`Expand ${income.name} income details`}
+                    className="flex items-center gap-4 p-4 bg-[#18181b] rounded-xl border border-gray-800 cursor-pointer hover:border-gray-600 transition-colors w-full text-left"
                 >
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg ${getIconBg()} text-md font-bold text-white flex-shrink-0`}>
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg ${getIconBg()} text-md font-bold text-white flex-shrink-0`} aria-hidden="true">
                         {getDescriptor().slice(0, 1)}
                     </div>
                     <div className="font-semibold text-white truncate flex-1">
@@ -182,7 +279,7 @@ const IncomeCard = ({ income }: { income: AnyIncome }) => {
                         {getDisplayAmount()}{getFrequencyDisplay()}
                     </div>
                     <ChevronIcon expanded={false} />
-                </div>
+                </button>
             ) : (
                 <>
                     {/* Expanded Header */}
@@ -199,9 +296,11 @@ const IncomeCard = ({ income }: { income: AnyIncome }) => {
                             />
                         </div>
                         <div className="text-chart-Red-75 ml-auto flex items-center gap-2">
-                            <DeleteIncomeControl incomeId={income.id} />
+                            <DeleteIncomeControl incomeId={income.id} incomeName={income.name} />
                             <button
                                 onClick={() => setIsExpanded(false)}
+                                aria-expanded="true"
+                                aria-label={`Collapse ${income.name} income details`}
                                 className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
                             >
                                 <ChevronIcon expanded={true} />
@@ -237,8 +336,9 @@ const IncomeCard = ({ income }: { income: AnyIncome }) => {
                         id={`${income.id}-frequency`}
                         label="Frequency"
                         value={income.frequency}
-                        onChange={(e) => handleFieldUpdate("frequency", e.target.value)}
-                        options={["Weekly", "Monthly", "Annually"]}
+                        onChange={(e) => handleFieldUpdate("frequency", e.target.value as IncomeFrequency)}
+                        options={["Weekly", "Bi-Weekly", "Semi-Monthly", "Monthly", "Annually"]}
+                        tooltip="This only affects how we convert to annual amounts. The exact timing of paychecks doesn't affect the simulation."
                     />
                 )}
 
@@ -273,6 +373,12 @@ const IncomeCard = ({ income }: { income: AnyIncome }) => {
                             onChange={(val) => handleFieldUpdate("insurance", val)}
                         />
                         <CurrencyInput
+                            id={`${income.id}-hsa-contribution`}
+                            label="HSA Contribution"
+                            value={income.hsaContribution}
+                            onChange={(val) => handleFieldUpdate("hsaContribution", val)}
+                        />
+                        <CurrencyInput
                             id={`${income.id}-employer-match`}
                             label="Employer Match"
                             value={income.employerMatch}
@@ -299,6 +405,19 @@ const IncomeCard = ({ income }: { income: AnyIncome }) => {
                                 value={income.matchAccountId}
                             />
                         )}
+                        {/* Contribution limit warnings */}
+                        {contributionWarnings && contributionWarnings.length > 0 && (
+                            <div className="col-span-full">
+                                {contributionWarnings.map((warning, idx) => (
+                                    <AlertBanner key={idx} severity="warning" size="sm" className="mb-2">
+                                        <span className="font-medium">{warning.message}</span>
+                                        <span className="text-gray-300 ml-2">
+                                            (Annual: {formatCompactCurrency(warning.annual, { forceExact: true })} / Limit: {formatCompactCurrency(warning.limit, { forceExact: true })})
+                                        </span>
+                                    </AlertBanner>
+                                ))}
+                            </div>
+                        )}
                     </>
 				)}
 
@@ -323,6 +442,44 @@ const IncomeCard = ({ income }: { income: AnyIncome }) => {
 								</div>
 							</div>
 						)}
+						{/* SSA Earnings Import Section */}
+						<div className="col-span-full mt-2 pt-4 border-t border-gray-700">
+							<label className="block text-sm font-medium text-gray-400 mb-2">
+								SSA Earnings History
+							</label>
+							<div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+								<button
+									onClick={() => ssaFileInputRef.current?.click()}
+									className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors"
+								>
+									Import SSA Data
+								</button>
+								<input
+									type="file"
+									ref={ssaFileInputRef}
+									onChange={handleSSAFileChange}
+									accept=".xml"
+									className="hidden"
+								/>
+								{assumptions.demographics.priorEarnings && assumptions.demographics.priorEarnings.length > 0 ? (
+									<div className="flex items-center gap-2">
+										<span className="text-green-400 text-sm">
+											✓ {formatEarningsSummary(assumptions.demographics.priorEarnings)}
+										</span>
+										<button
+											onClick={() => assumptionsDispatch({ type: 'CLEAR_PRIOR_EARNINGS' })}
+											className="text-xs text-gray-400 hover:text-red-400 transition-colors"
+										>
+											Clear
+										</button>
+									</div>
+								) : (
+									<span className="text-gray-400 text-xs">
+										Download your statement from ssa.gov/myaccount
+									</span>
+								)}
+							</div>
+						</div>
 					</>
 				)}
 

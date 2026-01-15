@@ -1,13 +1,16 @@
 import { TaxType } from "../../Objects/Accounts/models";
 import { AssumptionsState } from '../Assumptions/AssumptionsContext';
+import { get401kLimit, getHSALimit } from '../../../data/ContributionLimits';
 
 export type ContributionGrowthStrategy = 'FIXED' | 'GROW_WITH_SALARY' | 'TRACK_ANNUAL_MAX';
+
+export type IncomeFrequency = 'Weekly' | 'Bi-Weekly' | 'Semi-Monthly' | 'Monthly' | 'Annually';
 
 export interface Income {
   id: string;
   name: string;
   amount: number;
-  frequency: 'Weekly' | 'Monthly' | 'Annually';
+  frequency: IncomeFrequency;
   earned_income: "Yes" | "No";
   startDate?: Date;
   end_date?: Date;
@@ -19,7 +22,7 @@ export abstract class BaseIncome implements Income {
     public id: string,
     public name: string,
     public amount: number,
-    public frequency: 'Weekly' | 'Monthly' | 'Annually',
+    public frequency: IncomeFrequency,
     public earned_income: "Yes" | "No",
     public startDate?: Date,
     public end_date?: Date,
@@ -30,6 +33,8 @@ export abstract class BaseIncome implements Income {
     let annual = 0;
     switch (this.frequency) {
       case 'Weekly': annual = value * 52; break;
+      case 'Bi-Weekly': annual = value * 26; break;
+      case 'Semi-Monthly': annual = value * 24; break;
       case 'Monthly': annual = value * 12; break;
       case 'Annually': annual = value; break;
       default: annual = 0;
@@ -66,7 +71,7 @@ export class WorkIncome extends BaseIncome {
     id: string,
     name: string,
     amount: number,
-    frequency: 'Weekly' | 'Monthly' | 'Annually',
+    frequency: IncomeFrequency,
     earned_income: "Yes" | "No",
     public preTax401k: number = 0,
     public insurance: number = 0,
@@ -77,10 +82,11 @@ export class WorkIncome extends BaseIncome {
     public contributionGrowthStrategy: ContributionGrowthStrategy = 'FIXED',
     startDate?: Date,
     end_date?: Date,
+    public hsaContribution: number = 0,  // HSA contribution (pre-tax + FICA-exempt)
   ) {
     super(id, name, amount, frequency, earned_income, startDate, end_date);
   }
-  increment (assumptions: AssumptionsState): WorkIncome {
+  increment (assumptions: AssumptionsState, year?: number, age?: number): WorkIncome {
     const salaryGrowth = assumptions.income.salaryGrowth / 100;
     const healthcareInflation = assumptions.macro.healthcareInflation / 100;
     const generalInflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
@@ -88,24 +94,53 @@ export class WorkIncome extends BaseIncome {
     // 1. Grow Salary
     const newAmount = this.amount * (1 + salaryGrowth + generalInflation);
 
-    // 2. Grow Employer Match 
+    // 2. Grow Employer Match
     // (Assuming match is a % of salary, so it grows at the same rate as salary)
     const newMatch = this.employerMatch * (1 + salaryGrowth + generalInflation);
 
-    // 3. Grow Contributions (401k, Roth)
+    // 3. Grow Contributions (401k, Roth, HSA)
     let newPreTax = this.preTax401k;
     let newRoth = this.roth401k;
+    let newHSA = this.hsaContribution;
 
     switch (this.contributionGrowthStrategy) {
       case 'GROW_WITH_SALARY':
         newPreTax = this.preTax401k * (1 + salaryGrowth + generalInflation);
         newRoth = this.roth401k * (1 + salaryGrowth + generalInflation);
+        newHSA = this.hsaContribution * (1 + salaryGrowth + generalInflation);
         break;
       case 'TRACK_ANNUAL_MAX':
-        // TODO: Implement logic to fetch 401k max for the year.
-        // For now, treating it as 'GROW_WITH_SALARY'
-        newPreTax = this.preTax401k * (1 + salaryGrowth + generalInflation);
-        newRoth = this.roth401k * (1 + salaryGrowth + generalInflation);
+        // Cap contributions at IRS annual limits
+        if (year !== undefined && age !== undefined) {
+          // Get annual limits (includes catch-up for age 50+/55+)
+          const limit401k = get401kLimit(year, age);
+          const limitHSA = getHSALimit(year, age, 'individual'); // Default to individual coverage
+
+          // Combined 401k limit (pre-tax + Roth share same limit)
+          // Grow current values first, then cap at limit
+          const grownPreTax = this.preTax401k * (1 + salaryGrowth + generalInflation);
+          const grownRoth = this.roth401k * (1 + salaryGrowth + generalInflation);
+          const grownTotal401k = grownPreTax + grownRoth;
+
+          if (grownTotal401k > limit401k) {
+            // Cap at limit, maintaining ratio between pre-tax and Roth
+            const ratio = grownTotal401k > 0 ? grownPreTax / grownTotal401k : 0.5;
+            newPreTax = limit401k * ratio;
+            newRoth = limit401k * (1 - ratio);
+          } else {
+            newPreTax = grownPreTax;
+            newRoth = grownRoth;
+          }
+
+          // Cap HSA at limit
+          const grownHSA = this.hsaContribution * (1 + salaryGrowth + generalInflation);
+          newHSA = Math.min(grownHSA, limitHSA);
+        } else {
+          // Fallback to grow with salary if year/age not provided
+          newPreTax = this.preTax401k * (1 + salaryGrowth + generalInflation);
+          newRoth = this.roth401k * (1 + salaryGrowth + generalInflation);
+          newHSA = this.hsaContribution * (1 + salaryGrowth + generalInflation);
+        }
         break;
       case 'FIXED':
       default:
@@ -131,7 +166,8 @@ export class WorkIncome extends BaseIncome {
       this.taxType,
       this.contributionGrowthStrategy,
       this.startDate,
-      this.end_date
+      this.end_date,
+      newHSA
     );
   }
 }
@@ -141,7 +177,7 @@ export class SocialSecurityIncome extends BaseIncome {
     id: string,
     name: string,
     amount: number,
-    frequency: 'Weekly' | 'Monthly' | 'Annually',
+    frequency: IncomeFrequency,
     public claimingAge: number,
     public fullRetirementAgeBenefit?: number, // Optional: store FRA benefit for reference
     startDate?: Date,
@@ -210,7 +246,7 @@ export class PassiveIncome extends BaseIncome {
     id: string,
     name: string,
     amount: number,
-    frequency: 'Weekly' | 'Monthly' | 'Annually',
+    frequency: IncomeFrequency,
     earned_income: "Yes" | "No",
     public sourceType: 'Dividend' | 'Rental' | 'Royalty' | 'Interest' | 'Other',
     startDate?: Date,
@@ -262,7 +298,7 @@ export class WindfallIncome extends BaseIncome {
     id: string,
     name: string,
     amount: number,
-    frequency: 'Weekly' | 'Monthly' | 'Annually',
+    frequency: IncomeFrequency,
     earned_income: "Yes" | "No",
     startDate?: Date,
     end_date?: Date,
@@ -302,7 +338,7 @@ export class CurrentSocialSecurityIncome extends BaseIncome {
     id: string,
     name: string,
     amount: number,
-    frequency: 'Weekly' | 'Monthly' | 'Annually',
+    frequency: IncomeFrequency,
     startDate?: Date,
     end_date?: Date,
   ) {
@@ -513,8 +549,8 @@ export function reconstituteIncome(data: any): AnyIncome | null {
 
     switch (data.className) {
         case 'WorkIncome':
-            return new WorkIncome(base.id, base.name, base.amount, base.frequency, base.earned_income, 
-                data.preTax401k || 0, data.insurance || 0, data.roth401k || 0, data.employerMatch || 0, data.matchAccountId || null, data.taxType || null, data.contributionGrowthStrategy || 'FIXED', base.startDate, base.end_date);
+            return new WorkIncome(base.id, base.name, base.amount, base.frequency, base.earned_income,
+                data.preTax401k || 0, data.insurance || 0, data.roth401k || 0, data.employerMatch || 0, data.matchAccountId || null, data.taxType || null, data.contributionGrowthStrategy || 'FIXED', base.startDate, base.end_date, data.hsaContribution || 0);
         case 'SocialSecurityIncome':
             return new SocialSecurityIncome(base.id, base.name, base.amount, base.frequency, 
                 data.claimingAge || 67, data.fullRetirementAgeBenefit || 0, base.startDate, base.end_date);

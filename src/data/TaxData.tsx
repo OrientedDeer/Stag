@@ -536,6 +536,213 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     medicareTaxRate: 0.0
                 },
             }
+        },
+        "North Carolina": {
+            // NC has a flat tax rate - 4.5% in 2024, 4.25% in 2025, 3.99% in 2026+
+            2024: {
+                Single: {
+                    standardDeduction: 12750,
+                    brackets: [
+                        { threshold: 0, rate: 0.045 }
+                    ],
+                    socialSecurityTaxRate: 0.0,
+                    socialSecurityWageBase: 0,
+                    medicareTaxRate: 0.0
+                },
+                'Married Filing Jointly': {
+                    standardDeduction: 25500,
+                    brackets: [
+                        { threshold: 0, rate: 0.045 }
+                    ],
+                    socialSecurityTaxRate: 0.0,
+                    socialSecurityWageBase: 0,
+                    medicareTaxRate: 0.0
+                },
+                'Married Filing Separately': {
+                    standardDeduction: 12750,
+                    brackets: [
+                        { threshold: 0, rate: 0.045 }
+                    ],
+                    socialSecurityTaxRate: 0.0,
+                    socialSecurityWageBase: 0,
+                    medicareTaxRate: 0.0
+                },
+            },
+            2025: {
+                Single: {
+                    standardDeduction: 12750,
+                    brackets: [
+                        { threshold: 0, rate: 0.0425 }
+                    ],
+                    socialSecurityTaxRate: 0.0,
+                    socialSecurityWageBase: 0,
+                    medicareTaxRate: 0.0
+                },
+                'Married Filing Jointly': {
+                    standardDeduction: 25500,
+                    brackets: [
+                        { threshold: 0, rate: 0.0425 }
+                    ],
+                    socialSecurityTaxRate: 0.0,
+                    socialSecurityWageBase: 0,
+                    medicareTaxRate: 0.0
+                },
+                'Married Filing Separately': {
+                    standardDeduction: 12750,
+                    brackets: [
+                        { threshold: 0, rate: 0.0425 }
+                    ],
+                    socialSecurityTaxRate: 0.0,
+                    socialSecurityWageBase: 0,
+                    medicareTaxRate: 0.0
+                },
+            },
+            2026: {
+                Single: {
+                    standardDeduction: 12750,
+                    brackets: [
+                        { threshold: 0, rate: 0.0399 }
+                    ],
+                    socialSecurityTaxRate: 0.0,
+                    socialSecurityWageBase: 0,
+                    medicareTaxRate: 0.0
+                },
+                'Married Filing Jointly': {
+                    standardDeduction: 25500,
+                    brackets: [
+                        { threshold: 0, rate: 0.0399 }
+                    ],
+                    socialSecurityTaxRate: 0.0,
+                    socialSecurityWageBase: 0,
+                    medicareTaxRate: 0.0
+                },
+                'Married Filing Separately': {
+                    standardDeduction: 12750,
+                    brackets: [
+                        { threshold: 0, rate: 0.0399 }
+                    ],
+                    socialSecurityTaxRate: 0.0,
+                    socialSecurityWageBase: 0,
+                    medicareTaxRate: 0.0
+                },
+            }
+        },
+        "Virginia": {
+            // VA has 4 brackets: 2%, 3%, 5%, 5.75%
+            2024: {
+                Single: {
+                    standardDeduction: 8500,
+                    brackets: [
+                        { threshold: 0, rate: 0.02 },
+                        { threshold: 3000, rate: 0.03 },
+                        { threshold: 5000, rate: 0.05 },
+                        { threshold: 17000, rate: 0.0575 }
+                    ],
+                    socialSecurityTaxRate: 0.0,
+                    socialSecurityWageBase: 0,
+                    medicareTaxRate: 0.0
+                },
+                'Married Filing Jointly': {
+                    standardDeduction: 17000,
+                    brackets: [
+                        { threshold: 0, rate: 0.02 },
+                        { threshold: 3000, rate: 0.03 },
+                        { threshold: 5000, rate: 0.05 },
+                        { threshold: 17000, rate: 0.0575 }
+                    ],
+                    socialSecurityTaxRate: 0.0,
+                    socialSecurityWageBase: 0,
+                    medicareTaxRate: 0.0
+                },
+                'Married Filing Separately': {
+                    standardDeduction: 8500,
+                    brackets: [
+                        { threshold: 0, rate: 0.02 },
+                        { threshold: 3000, rate: 0.03 },
+                        { threshold: 5000, rate: 0.05 },
+                        { threshold: 17000, rate: 0.0575 }
+                    ],
+                    socialSecurityTaxRate: 0.0,
+                    socialSecurityWageBase: 0,
+                    medicareTaxRate: 0.0
+                },
+            },
+            2025: {
+                Single: {
+                    standardDeduction: 8750,
+                    brackets: [
+                        { threshold: 0, rate: 0.02 },
+                        { threshold: 3000, rate: 0.03 },
+                        { threshold: 5000, rate: 0.05 },
+                        { threshold: 17000, rate: 0.0575 }
+                    ],
+                    socialSecurityTaxRate: 0.0,
+                    socialSecurityWageBase: 0,
+                    medicareTaxRate: 0.0
+                },
+                'Married Filing Jointly': {
+                    standardDeduction: 17500,
+                    brackets: [
+                        { threshold: 0, rate: 0.02 },
+                        { threshold: 3000, rate: 0.03 },
+                        { threshold: 5000, rate: 0.05 },
+                        { threshold: 17000, rate: 0.0575 }
+                    ],
+                    socialSecurityTaxRate: 0.0,
+                    socialSecurityWageBase: 0,
+                    medicareTaxRate: 0.0
+                },
+                'Married Filing Separately': {
+                    standardDeduction: 8750,
+                    brackets: [
+                        { threshold: 0, rate: 0.02 },
+                        { threshold: 3000, rate: 0.03 },
+                        { threshold: 5000, rate: 0.05 },
+                        { threshold: 17000, rate: 0.0575 }
+                    ],
+                    socialSecurityTaxRate: 0.0,
+                    socialSecurityWageBase: 0,
+                    medicareTaxRate: 0.0
+                },
+            },
+            2026: {
+                Single: {
+                    standardDeduction: 8750,
+                    brackets: [
+                        { threshold: 0, rate: 0.02 },
+                        { threshold: 3000, rate: 0.03 },
+                        { threshold: 5000, rate: 0.05 },
+                        { threshold: 17000, rate: 0.0575 }
+                    ],
+                    socialSecurityTaxRate: 0.0,
+                    socialSecurityWageBase: 0,
+                    medicareTaxRate: 0.0
+                },
+                'Married Filing Jointly': {
+                    standardDeduction: 17500,
+                    brackets: [
+                        { threshold: 0, rate: 0.02 },
+                        { threshold: 3000, rate: 0.03 },
+                        { threshold: 5000, rate: 0.05 },
+                        { threshold: 17000, rate: 0.0575 }
+                    ],
+                    socialSecurityTaxRate: 0.0,
+                    socialSecurityWageBase: 0,
+                    medicareTaxRate: 0.0
+                },
+                'Married Filing Separately': {
+                    standardDeduction: 8750,
+                    brackets: [
+                        { threshold: 0, rate: 0.02 },
+                        { threshold: 3000, rate: 0.03 },
+                        { threshold: 5000, rate: 0.05 },
+                        { threshold: 17000, rate: 0.0575 }
+                    ],
+                    socialSecurityTaxRate: 0.0,
+                    socialSecurityWageBase: 0,
+                    medicareTaxRate: 0.0
+                },
+            }
         }
     }
 };

@@ -1,8 +1,10 @@
-import { useMemo, Component, ReactNode, useState, useEffect, useRef } from 'react';
+import { useMemo, useContext, useCallback, Component, ReactNode, useState, useEffect, useRef } from 'react';
 import { ResponsiveSankey } from '@nivo/sankey';
 import { WorkIncome, AnyIncome } from '../Objects/Income/models';
 import { MortgageExpense, AnyExpense, CLASS_TO_CATEGORY } from '../Objects/Expense/models';
 import { AnyAccount } from '../Objects/Accounts/models';
+import { AssumptionsContext } from '../Objects/Assumptions/AssumptionsContext';
+import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
 
 // Error Boundary to catch Nivo rendering errors
 class SankeyErrorBoundary extends Component<
@@ -69,22 +71,16 @@ interface CashflowSankeyProps {
     bucketAllocations?: Record<string, number>;
     accounts?: AnyAccount[];
     withdrawals?: Record<string, number>; // Account name -> withdrawal amount
+    rothConversion?: {
+        amount: number;
+        taxCost: number;
+        fromAccounts: Record<string, number>;
+        toAccounts: Record<string, number>;
+    };
     height?: number; // Optional height prop
+    extraLeftPadding?: number; // Extra left margin for longer labels
+    extraRightPadding?: number; // Extra right margin for longer labels
 }
-
-// --- Helper: Currency Formatter ---
-const formatCurrency = (value: number) => {
-    // For very small values that would round to $0, show a more informative label
-    if (value > 0.005 && value < 0.5) {
-        return '<$1';
-    }
-    return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD',
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
-    }).format(value);
-};
 
 // Minimum threshold for including a value in the chart (avoids $0 nodes)
 const MIN_DISPLAY_THRESHOLD = 0.005;
@@ -98,8 +94,23 @@ export const CashflowSankey = ({
     bucketAllocations = {},
     accounts = [],
     withdrawals = {},
-    height = 300
+    rothConversion,
+    height = 300,
+    extraLeftPadding = 0,
+    extraRightPadding = 0
 }: CashflowSankeyProps) => {
+    const { state: assumptions } = useContext(AssumptionsContext);
+    const forceExact = assumptions.display?.useCompactCurrency === false;
+
+    // Memoized currency formatter that respects user settings
+    const currencyFormatter = useCallback((value: number) => {
+        // For very small values that would round to $0, show a more informative label
+        if (value > 0.005 && value < 0.5) {
+            return '<$1';
+        }
+        return formatCompactCurrency(value, { forceExact });
+    }, [forceExact]);
+
     // 1. Logic Block (The "Util" part)
     // Refactored to return { data, error, debugData } directly to avoid infinite loops
     const { data, error, debugData } = useMemo(() => {
@@ -157,9 +168,12 @@ export const CashflowSankey = ({
             const totalBucketSavings = Object.values(bucketAllocations).reduce((a, b) => a + b, 0);
             const totalWithdrawals = Object.values(withdrawals).reduce((a, b) => a + b, 0);
 
+            // Roth conversion flows through Gross Pay (it's taxable income)
+            const rothConversionAmount = rothConversion?.amount || 0;
+
             // --- Waterfall Math ---
-            // Include withdrawals in gross pay since they're taxable income
-            const grossPayNodeValue = grossPayCalculated + totalEmployerMatch + totalWithdrawals;
+            // Include withdrawals AND Roth conversions in gross pay since they're taxable income
+            const grossPayNodeValue = grossPayCalculated + totalEmployerMatch + totalWithdrawals + rothConversionAmount;
             const totalTradSavings = employee401k + totalEmployerMatchForTrad;
             const totalRothSavings = employeeRoth + totalEmployerMatchForRoth;
 
@@ -179,7 +193,8 @@ export const CashflowSankey = ({
             });
 
             const totalExpenses = Array.from(expenseCatTotals.values()).reduce((a, b) => a + b, 0);
-            const remaining = netPayFlow - totalRothSavings - totalExpenses - mortgageInterestAndEscrow - totalPrincipal - totalBucketSavings;
+            // Roth conversion flows out to Roth accounts (shown as outflow from Net Pay)
+            const remaining = netPayFlow - totalRothSavings - totalExpenses - mortgageInterestAndEscrow - totalPrincipal - totalBucketSavings - rothConversionAmount;
 
             // =================================================================
             // NODES - Order matters for visual stability!
@@ -235,6 +250,17 @@ export const CashflowSankey = ({
                 nodes.push({ id: `Withdraw: ${accountName}`, color: '#8b5cf6', label: `From ${accountName}` });
             });
 
+            // Roth conversion sources (Traditional accounts being converted - flows into Gross Pay)
+            const conversionSourceItems = rothConversion
+                ? Object.entries(rothConversion.fromAccounts)
+                    .filter(([_, amount]) => amount >= MIN_DISPLAY_THRESHOLD)
+                    .sort(([a], [b]) => a.localeCompare(b))
+                : [];
+
+            conversionSourceItems.forEach(([accountName]) => {
+                nodes.push({ id: `Convert: ${accountName}`, color: '#ec4899', label: `Convert ${accountName}` });
+            });
+
             // Deficit node (if needed, flows into Net Pay to cover expenses)
             if (remaining < -1) {
                 nodes.push({ id: 'Deficit', color: '#ef4444', label: 'Deficit' });
@@ -287,6 +313,17 @@ export const CashflowSankey = ({
                 nodes.push({ id: cat, color: '#ef4444', label: cat });
             });
 
+            // Roth conversion destinations (flows out of Net Pay to Roth accounts)
+            const conversionDestItems = rothConversion
+                ? Object.entries(rothConversion.toAccounts)
+                    .filter(([_, amount]) => amount >= MIN_DISPLAY_THRESHOLD)
+                    .sort(([a], [b]) => a.localeCompare(b))
+                : [];
+
+            conversionDestItems.forEach(([accountName]) => {
+                nodes.push({ id: `To Roth: ${accountName}`, color: '#10b981', label: `To ${accountName}` });
+            });
+
             // Remaining (always last)
             if (remaining > 1) {
                 nodes.push({ id: 'Remaining', color: '#10b981', label: 'Remaining' });
@@ -311,6 +348,11 @@ export const CashflowSankey = ({
 
             withdrawalItems.forEach(([accountName, amount]) => {
                 links.push({ source: `Withdraw: ${accountName}`, target: 'Gross Pay', value: amount });
+            });
+
+            // Roth conversion sources flow into Gross Pay (taxable income)
+            conversionSourceItems.forEach(([accountName, amount]) => {
+                links.push({ source: `Convert: ${accountName}`, target: 'Gross Pay', value: amount });
             });
 
             // --- Links FROM Gross Pay (deductions) ---
@@ -353,6 +395,12 @@ export const CashflowSankey = ({
                 if (remaining > 1) {
                     links.push({ source: 'Net Pay', target: 'Remaining', value: remaining });
                 }
+
+                // Roth conversion destinations: Net Pay flows to Roth accounts
+                // (the conversion amount was added to Gross Pay and flows through to Net Pay)
+                conversionDestItems.forEach(([accountName, amount]) => {
+                    links.push({ source: 'Net Pay', target: `To Roth: ${accountName}`, value: amount });
+                });
             }
 
             const uniqueNodes = Array.from(new Map(nodes.map(node => [node.id, node])).values())
@@ -392,7 +440,7 @@ export const CashflowSankey = ({
                 debugData: null 
             };
         }
-    }, [incomes, expenses, year, taxes, bucketAllocations, accounts, withdrawals]);
+    }, [incomes, expenses, year, taxes, bucketAllocations, accounts, withdrawals, rothConversion]);
 
     // 2. Render Block (The "Renderer" part)
 
@@ -406,7 +454,7 @@ export const CashflowSankey = ({
                     {debugData && (
                         <details className="text-left">
                             <summary className="cursor-pointer text-gray-400 text-xs hover:text-gray-200">Debug Info</summary>
-                            <pre className="mt-2 text-xs text-gray-500 overflow-auto max-h-48 bg-gray-900 p-2 rounded">
+                            <pre className="mt-2 text-xs text-gray-400 overflow-auto max-h-48 bg-gray-900 p-2 rounded">
                                 {JSON.stringify(debugData, null, 2)}
                             </pre>
                         </details>
@@ -419,7 +467,7 @@ export const CashflowSankey = ({
     // Show empty state
     if (!data.nodes || data.nodes.length === 0) {
         return (
-            <div style={{ height: `${height}px` }} className="flex items-center justify-center text-gray-500">
+            <div style={{ height: `${height}px` }} className="flex items-center justify-center text-gray-400">
                 No data available for chart
             </div>
         );
@@ -443,8 +491,8 @@ export const CashflowSankey = ({
     // Responsive margins: smaller on narrow screens
     const isNarrow = containerWidth < 500;
     const margins = isNarrow
-        ? { top: 10, right: 80, bottom: 10, left: 80 }
-        : { top: 20, right: 150, bottom: 20, left: 150 };
+        ? { top: 10, right: 80 + extraRightPadding, bottom: 10, left: 80 + extraLeftPadding }
+        : { top: 20, right: 150 + extraRightPadding, bottom: 20, left: 150 + extraLeftPadding };
 
     return (
         <SankeyErrorBoundary height={height}>
@@ -462,16 +510,16 @@ export const CashflowSankey = ({
                     linkBlendMode="normal"
                     linkOpacity={0.15}
                     labelTextColor="#e5e7eb"
-                    valueFormat={formatCurrency}
+                    valueFormat={currencyFormatter}
                     label={(node: any) => node.label}
                     labelPosition="outside"
                     labelPadding={isNarrow ? 8 : 16}
                     sort="input"
                     nodeTooltip={({ node }) => (
-                        <div className="bg-gray-900 p-3 rounded-lg border border-gray-700 shadow-2xl min-w-37.5">
+                        <div className="bg-gray-900 p-3 rounded-lg border border-gray-700 shadow-2xl max-w-[350px]">
                             <div className="flex items-center gap-2 mb-1">
-                                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: node.color }} />
-                                <span className="font-bold text-gray-100 text-sm">{node.label}</span>
+                                <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: node.color }} />
+                                <span className="font-bold text-gray-100 text-sm truncate">{node.label}</span>
                             </div>
                             <div className="text-2xl font-mono text-green-400 font-medium">
                                 {node.formattedValue}
@@ -479,11 +527,11 @@ export const CashflowSankey = ({
                         </div>
                     )}
                     linkTooltip={({ link }) => (
-                        <div className="bg-gray-900 p-3 rounded-lg border border-gray-700 shadow-2xl">
+                        <div className="bg-gray-900 p-3 rounded-lg border border-gray-700 shadow-2xl max-w-[350px]">
                             <div className="flex items-center gap-2 mb-2 text-xs text-gray-400 uppercase tracking-wider font-semibold">
-                                <span>{link.source.label}</span>
-                                <span className="text-gray-600">&rarr;</span>
-                                <span>{link.target.label}</span>
+                                <span className="truncate">{link.source.label}</span>
+                                <span className="text-gray-400 flex-shrink-0">&rarr;</span>
+                                <span className="truncate">{link.target.label}</span>
                             </div>
                             <div className="text-xl font-mono text-green-400 font-medium">
                                 {link.formattedValue}

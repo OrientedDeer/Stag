@@ -4,11 +4,14 @@ import { AccountContext } from '../Objects/Accounts/AccountContext';
 import { DebtAccount, InvestedAccount, PropertyAccount } from '../Objects/Accounts/models';
 import { ExpenseContext } from '../Objects/Expense/ExpenseContext';
 import { MortgageExpense } from '../Objects/Expense/models';
+import { AssumptionsContext } from '../Objects/Assumptions/AssumptionsContext';
+import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
 
 export const NetWorthCard = () => {
     const { accounts, amountHistory } = useContext(AccountContext);
-    
     const { expenses } = useContext(ExpenseContext);
+    const { state: assumptions } = useContext(AssumptionsContext);
+    const forceExact = assumptions.display?.useCompactCurrency === false;
     // 1. Calculate Current Stats
     const stats = useMemo(() => {
         let totalAssets = 0;
@@ -105,23 +108,23 @@ export const NetWorthCard = () => {
     }, [accounts, amountHistory, expenses]);
 
     return (
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 sm:p-6 shadow-2xl">
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 sm:p-6 shadow-2xl h-full flex flex-col">
             <div className="flex flex-col mb-4">
-                <h3 className="text-gray-500 text-xs font-bold uppercase tracking-widest mb-1">
+                <h3 className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-1">
                     Current Net Worth
                 </h3>
                 <div className="flex items-baseline gap-2 sm:gap-3 flex-wrap">
-                    <p className={`text-3xl sm:text-5xl font-black tracking-tight ${stats.netWorth >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        ${stats.netWorth.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    <p className={`text-3xl sm:text-5xl font-black tracking-tight max-w-full overflow-hidden text-ellipsis ${stats.netWorth >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {formatCompactCurrency(stats.netWorth, { forceExact })}
                     </p>
-                    <span className="text-xs text-gray-500 font-medium bg-gray-800 px-2 py-1 rounded-full">
+                    <span className="text-xs text-gray-400 font-medium bg-gray-800 px-2 py-1 rounded-full">
                         Vested
                     </span>
                 </div>
             </div>
 
             {/* Historical Line Chart */}
-            <div className="h-48 w-full mt-2">
+            <div className="flex-1 min-h-36 w-full mt-2">
                 {chartData[0].data.length > 1 ? (
                     <ResponsiveLine
                         data={chartData}
@@ -169,8 +172,8 @@ export const NetWorthCard = () => {
                     />
                 ) : (
                     <div className='flex flex-col items-center justify-center text-center p-12 border-2 border-dashed border-gray-800 rounded-2xl'>
-                        <div className="text-gray-500 text-lg mb-2">No account history available</div>
-                        <p className="text-gray-600 text-sm max-w-xs">
+                        <div className="text-gray-400 text-lg mb-2">No account history available</div>
+                        <p className="text-gray-400 text-sm max-w-xs">
                         The Line chart requires account history to visualize your networth over time.
                         </p>
                   </div>
@@ -181,19 +184,19 @@ export const NetWorthCard = () => {
                 <div>
                     <div className="flex items-center gap-2 mb-1">
                         <div className="w-2 h-2 rounded-full bg-blue-500" />
-                        <p className="text-gray-500 text-[10px] font-bold uppercase">Gross Assets</p>
+                        <p className="text-gray-400 text-[10px] font-bold uppercase">Gross Assets</p>
                     </div>
-                    <p className="text-base sm:text-xl font-mono font-bold text-gray-100">
-                        ${stats.totalAssets.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                    <p className="text-base sm:text-xl font-mono font-bold text-gray-100 truncate">
+                        {formatCompactCurrency(stats.totalAssets, { forceExact })}
                     </p>
                 </div>
                 <div>
                     <div className="flex items-center gap-2 mb-1">
                         <div className="w-2 h-2 rounded-full bg-red-500" />
-                        <p className="text-gray-500 text-[10px] font-bold uppercase">Total Debt</p>
+                        <p className="text-gray-400 text-[10px] font-bold uppercase">Total Debt</p>
                     </div>
-                    <p className="text-base sm:text-xl font-mono font-bold text-gray-100">
-                        ${stats.totalDebt.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                    <p className="text-base sm:text-xl font-mono font-bold text-gray-100 truncate">
+                        {formatCompactCurrency(stats.totalDebt, { forceExact })}
                     </p>
                 </div>
             </div>

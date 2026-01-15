@@ -8,7 +8,8 @@ import {
   PassiveIncome,
   WindfallIncome,
   ContributionGrowthStrategy,
-  calculateSocialSecurityStartDate
+  calculateSocialSecurityStartDate,
+  IncomeFrequency
 } from './models';
 import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput";
 import { NameInput } from "../../Layout/InputFields/NameInput";
@@ -19,6 +20,7 @@ import { InvestedAccount } from "../../Objects/Accounts/models";
 import { StyledInput } from "../../Layout/InputFields/StyleUI";
 import { AssumptionsContext } from "../Assumptions/AssumptionsContext";
 import { getClaimingAdjustment } from "../../../data/SocialSecurityData";
+import { useModalAccessibility } from "../../../hooks/useModalAccessibility";
 
 const generateUniqueId = () =>
     `INC-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -32,12 +34,13 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
     const { dispatch } = useContext(IncomeContext);
     const { accounts } = useContext(AccountContext);
     const { state: assumptions } = useContext(AssumptionsContext);
+    const { modalRef, handleKeyDown } = useModalAccessibility(isOpen, onClose);
 
     const [step, setStep] = useState<'select' | 'details'>('select');
     const [selectedType, setSelectedType] = useState<any>(null);
     const [name, setName] = useState("");
     const [amount, setAmount] = useState<number>(0);
-    const [frequency, setFrequency] = useState<'Weekly' | 'Monthly' | 'Annually'>('Monthly');
+    const [frequency, setFrequency] = useState<IncomeFrequency>('Monthly');
     const [endDate, setEndDate] = useState("");
     const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
 
@@ -49,6 +52,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
     const [employerMatch, setEmployerMatch] = useState<number>(0);
     const [matchAccountId, setMatchAccountId] = useState<string>("");
     const [contributionGrowthStrategy, setContributionGrowthStrategy] = useState<ContributionGrowthStrategy>('FIXED');
+    const [hsaContribution, setHsaContribution] = useState<number>(0);
 
     // --- Other Fields ---
     const [claimingAge, setClaimingAge] = useState<number>(67); // Default to Full Retirement Age
@@ -97,6 +101,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
         setEmployerMatch(0);
         setMatchAccountId("");
         setContributionGrowthStrategy('FIXED');
+        setHsaContribution(0);
         setClaimingAge(67);
         setSourceType('Dividend');
         setStartDate(new Date().toISOString().split('T')[0]);
@@ -129,7 +134,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
         if (selectedType === WorkIncome) {
             const matchedAccount = accounts.find(acc => acc.id === matchAccountId) as InvestedAccount | undefined;
             const taxType = matchedAccount ? matchedAccount.taxType : null;
-            newIncome = new WorkIncome(id, name.trim(), amount, frequency, "Yes", preTax401k, insurance, roth401k, employerMatch, matchAccountId, taxType, contributionGrowthStrategy, finalStartDate, finalEndDate);
+            newIncome = new WorkIncome(id, name.trim(), amount, frequency, "Yes", preTax401k, insurance, roth401k, employerMatch, matchAccountId, taxType, contributionGrowthStrategy, finalStartDate, finalEndDate, hsaContribution);
         } else if (selectedType === CurrentSocialSecurityIncome) {
             // Current benefits: User enters amount, uses start/end dates
             newIncome = new CurrentSocialSecurityIncome(id, name.trim(), amount, frequency, finalStartDate, finalEndDate);
@@ -170,9 +175,20 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
     ];
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-			<div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto text-white w-full max-w-lg">
-				<h2 className="text-xl font-bold mb-6 border-b border-gray-800 pb-3">
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            onClick={onClose}
+        >
+            <div
+                ref={modalRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="add-income-modal-title"
+                className="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto text-white w-full max-w-lg"
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={handleKeyDown}
+            >
+                <h2 id="add-income-modal-title" className="text-xl font-bold mb-6 border-b border-gray-800 pb-3">
                   {step === 'select' ? 'Select Income Type' : `New ${selectedType.name.replace('Income', '')}`}
                 </h2>
 
@@ -225,9 +241,10 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                     <div className="col-span-2 lg:col-span-1">
                                         <DropdownInput
                                             label="Frequency"
-                                            onChange={(val) => setFrequency(val as "Weekly" | "Monthly" | "Annually")}
-                                            options={["Weekly", "Monthly", "Annually"]}
+                                            onChange={(val) => setFrequency(val as IncomeFrequency)}
+                                            options={["Weekly", "Bi-Weekly", "Semi-Monthly", "Monthly", "Annually"]}
                                             value={frequency}
+                                            tooltip="This only affects how we convert to annual amounts. The exact timing of paychecks doesn't affect the simulation."
                                         />
                                     </div>
                                 </>
@@ -244,6 +261,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                     <CurrencyInput label="Pre-Tax 401k/403b" value={preTax401k} onChange={setPreTax401k} tooltip="Monthly contribution to traditional 401k/403b. Reduces taxable income now, taxed on withdrawal." />
                                     <CurrencyInput label="Roth 401k (Post-Tax)" value={roth401k} onChange={setRoth401k} tooltip="Monthly contribution to Roth 401k. Taxed now, but grows and withdraws tax-free." />
                                     <CurrencyInput label="Insurance" value={insurance} onChange={setInsurance} tooltip="Monthly pre-tax deduction for health, dental, vision insurance." />
+                                    <CurrencyInput label="HSA Contribution" value={hsaContribution} onChange={setHsaContribution} tooltip="Monthly HSA contribution. Triple tax advantage: pre-tax, grows tax-free, tax-free withdrawals for medical expenses." />
                                     <CurrencyInput label="Employer Match" value={employerMatch} onChange={setEmployerMatch} tooltip="Monthly amount your employer contributes to your 401k. Free money!" />
                                     {(preTax401k > 0 || roth401k > 0) && (
                                         <DropdownInput

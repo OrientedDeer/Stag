@@ -21,12 +21,16 @@ const STORAGE_KEY = 'user_simulation_data';
 
 interface SimulationState {
     simulation: SimulationYear[];
+    inputHash: string | null;  // Hash of inputs used for current simulation (for staleness detection)
 }
 
-type Action = { type: 'SET_SIMULATION'; payload: SimulationYear[] };
+type Action =
+    | { type: 'SET_SIMULATION'; payload: SimulationYear[] }
+    | { type: 'SET_SIMULATION_WITH_HASH'; payload: { simulation: SimulationYear[]; inputHash: string } };
 
 const initialState: SimulationState = {
     simulation: [],
+    inputHash: null,
 };
 
 const initializer = (initialState: SimulationState): SimulationState => {
@@ -35,7 +39,8 @@ const initializer = (initialState: SimulationState): SimulationState => {
         if (savedState) {
             const parsed = JSON.parse(savedState);
             const simulation = (parsed.simulation || []).map(reconstituteSimulationYear);
-            return { simulation };
+            const inputHash = parsed.inputHash || null;
+            return { simulation, inputHash };
         }
     } catch (e) {
         console.error("Could not load simulation state:", e);
@@ -47,6 +52,12 @@ const simulationReducer = (state: SimulationState, action: Action): SimulationSt
     switch (action.type) {
         case 'SET_SIMULATION':
             return { ...state, simulation: action.payload };
+        case 'SET_SIMULATION_WITH_HASH':
+            return {
+                ...state,
+                simulation: action.payload.simulation,
+                inputHash: action.payload.inputHash
+            };
         default:
             return state;
     }

@@ -14,6 +14,7 @@ interface SidebarCollapseLinkProps {
 	isOpen: boolean; // From the parent Sidebar for overall collapse
 	linkBaseClass: string;
 	activeClass: string;
+	onLinkClick?: () => void; // Called when a sub-link is clicked (for mobile close)
 }
 
 const SidebarCollapseLink: React.FC<SidebarCollapseLinkProps> = ({
@@ -23,6 +24,7 @@ const SidebarCollapseLink: React.FC<SidebarCollapseLinkProps> = ({
 	isOpen,
 	linkBaseClass,
 	activeClass,
+	onLinkClick,
 }) => {
 	const { pathname } = useLocation();
 	// State to track if *this* collapsible menu is open
@@ -80,13 +82,13 @@ const SidebarCollapseLink: React.FC<SidebarCollapseLinkProps> = ({
 	return (
 		<div className="flex flex-col">
 			{/* -------------------- PARENT LINK (TOGGLE) -------------------- */}
-			<a
+			<button
+				type="button"
 				className={parentLinkClass}
 				onClick={() => setIsExpanded(!isExpanded)}
-				href="#" // Prevent hash change/scroll on click
 			>
 				{renderContent}
-			</a>
+			</button>
 
 			{/* -------------------- SUB LINKS (COLLAPSIBLE) -------------------- */}
 			{isExpanded && !isOpen && (
@@ -98,6 +100,7 @@ const SidebarCollapseLink: React.FC<SidebarCollapseLinkProps> = ({
 							className={`${subLinkBaseClass} ${
 								pathname === sub.path ? activeClass : ""
 							}`}
+							onClick={onLinkClick}
 						>
 							<span className="truncate">{sub.label}</span>
 						</Link>

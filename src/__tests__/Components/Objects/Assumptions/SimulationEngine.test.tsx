@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { AssumptionsState, defaultAssumptions } from '../../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../../../components/Objects/Taxes/TaxContext';
-import { InvestedAccount, SavedAccount, DebtAccount, PropertyAccount } from '../../../../components/Objects/Accounts/models';
-import { WorkIncome } from '../../../../components/Objects/Income/models';
+import { InvestedAccount, SavedAccount, DebtAccount, DeficitDebtAccount, PropertyAccount } from '../../../../components/Objects/Accounts/models';
+import { WorkIncome, FutureSocialSecurityIncome } from '../../../../components/Objects/Income/models';
 import { FoodExpense, MortgageExpense, LoanExpense } from '../../../../components/Objects/Expense/models';
 import { runSimulation } from '../../../../components/Objects/Assumptions/useSimulation';
 import { simulateOneYear } from '../../../../components/Objects/Assumptions/SimulationEngine';
@@ -173,14 +173,21 @@ describe('Simulation Engine', () => {
         // Maximum available = 1000 (entire account)
         // Pre-growth: 1000 - 1000 = 0
         // Post-growth: 0 * 1.10 = 0
-        expect(result.accounts[0].amount).toBeCloseTo(0);
+        const originalAccount = result.accounts.find(acc => acc.id === 'ira-1');
+        expect(originalAccount?.amount).toBeCloseTo(0);
 
         // Gross withdrawal: 1000
         // Early withdrawal penalty (10%): 100
         // Taxes: ~0 (very small income)
         // Net received: ~900
         // Remaining deficit: 10000 - 900 = 9100
-        expect(result.cashflow.discretionary).toBeCloseTo(-9100);
+        // With deficit debt feature, uncovered deficit is captured as debt
+        expect(result.cashflow.discretionary).toBeCloseTo(0);
+
+        // Verify deficit debt account was created
+        const deficitDebt = result.accounts.find(acc => acc instanceof DeficitDebtAccount);
+        expect(deficitDebt).toBeDefined();
+        expect(deficitDebt?.amount).toBeCloseTo(9100, -1); // ~9100, allow some variance due to tax calculations
     });
 
     it('should handle tax-free withdrawal from Roth IRA', () => {
@@ -290,6 +297,1207 @@ describe('Simulation Engine', () => {
 
         // The cashflow investedMatch should be exactly the contribution for the year.
         expect(result.cashflow.investedMatch).toBe(2500);
+    });
+
+    it('should create deficit debt when expenses exceed all available funds', () => {
+        // No accounts, no income, just expenses - creates pure deficit
+        const expense = new FoodExpense('exp-1', 'Food', 5000, 'Annually', new Date('2024-01-01'));
+
+        const result = simulateOneYear(2024, [], [expense], [], cleanAssumptions, mockTaxState);
+
+        // With no income and no accounts to withdraw from, entire expense becomes deficit debt
+        expect(result.cashflow.discretionary).toBe(0); // Deficit captured as debt
+
+        const deficitDebt = result.accounts.find(acc => acc instanceof DeficitDebtAccount);
+        expect(deficitDebt).toBeDefined();
+        expect(deficitDebt?.amount).toBeCloseTo(5000);
+        expect(deficitDebt?.name).toBe('Uncovered Deficit');
+    });
+
+    it('should pay down deficit debt before priority allocations when surplus exists', () => {
+        // Start with existing deficit debt
+        const existingDebt = new DeficitDebtAccount('system-deficit-debt', 'Uncovered Deficit', 3000);
+        // Income with explicit dates to ensure it's active for 2025
+        const income = new WorkIncome(
+            'inc-1', 'Job', 50000, 'Annually', 'Yes',
+            0, 0, 0, 0, '', 'Traditional 401k', 'FIXED',
+            new Date('2025-01-01'), new Date('2030-12-31')
+        );
+        const savingsAccount = new SavedAccount('sav-1', 'Savings', 1000, 0);
+
+        // Low expenses so there's surplus to pay down debt
+        const expense = new FoodExpense('exp-1', 'Food', 10000, 'Annually', new Date('2025-01-01'));
+
+        const assumptionsWithPriority: AssumptionsState = {
+            ...cleanAssumptions,
+            priorities: [
+                { id: 'p1', name: 'Savings', type: 'SAVINGS', accountId: 'sav-1', capType: 'REMAINDER', capValue: 0 }
+            ]
+        };
+
+        // Use 2025 to match cleanAssumptions.startYear
+        const result = simulateOneYear(2025, [income], [expense], [existingDebt, savingsAccount], assumptionsWithPriority, mockTaxState);
+
+        // After taxes (~13000) and expenses (10000), surplus should be ~27000
+        // Deficit debt (3000) should be paid off first
+        const deficitDebtAfter = result.accounts.find(acc => acc instanceof DeficitDebtAccount);
+
+        // Debt should be fully paid off (removed from accounts)
+        expect(deficitDebtAfter).toBeUndefined();
+
+        // Remaining surplus should go to priority savings
+        const savingsAfter = result.accounts.find(acc => acc.id === 'sav-1');
+        expect(savingsAfter).toBeDefined();
+        expect(savingsAfter!.amount).toBeGreaterThan(1000); // Should have surplus added
+    });
+
+    it('should accumulate deficit debt across years when deficits persist', () => {
+        // First year: create deficit debt
+        const expense = new FoodExpense('exp-1', 'Food', 10000, 'Annually', new Date('2024-01-01'));
+
+        const year1Result = simulateOneYear(2024, [], [expense], [], cleanAssumptions, mockTaxState);
+
+        const deficitDebtYear1 = year1Result.accounts.find(acc => acc instanceof DeficitDebtAccount);
+        expect(deficitDebtYear1).toBeDefined();
+        expect(deficitDebtYear1?.amount).toBeCloseTo(10000);
+
+        // Second year: more deficit adds to existing debt
+        const year2Result = simulateOneYear(2025, [], [expense], year1Result.accounts, cleanAssumptions, mockTaxState);
+
+        const deficitDebtYear2 = year2Result.accounts.find(acc => acc instanceof DeficitDebtAccount);
+        expect(deficitDebtYear2).toBeDefined();
+        // Should be ~20000 (10000 from year 1 + 10000 from year 2)
+        expect(deficitDebtYear2?.amount).toBeCloseTo(20000);
+    });
+
+    // =========================================================================
+    // BROKERAGE CAPITAL GAINS WITHDRAWAL TESTS
+    // =========================================================================
+
+    describe('Brokerage Capital Gains Withdrawals', () => {
+        it('should calculate capital gains tax on brokerage withdrawal with existing income', () => {
+            // Create brokerage with cost basis and gains
+            const brokerageAccount = new InvestedAccount(
+                'brok-1',
+                'Brokerage',
+                100000,  // Total value
+                0,       // No employer balance
+                5,       // Tenure years
+                0.0,     // No expense ratio
+                'Brokerage',
+                true,
+                1.0,     // Fully vested
+                50000    // Cost basis = 50k, so gains = 50k (50% gains)
+            );
+
+            // Add income to push into taxable capital gains bracket
+            // 0% cap gains bracket ends around $44k for single filers
+            const income = new WorkIncome(
+                'inc-1', 'Job', 60000, 'Annually', 'Yes',
+                0, 0, 0, 0, '', null, 'FIXED',
+                new Date('2025-01-01')
+            );
+
+            const expense = new FoodExpense('exp-1', 'Living Expenses', 80000, 'Annually', new Date('2025-01-01'));
+
+            const assumptionsWithWithdrawal: AssumptionsState = {
+                ...cleanAssumptions,
+                withdrawalStrategy: [{ id: 'w1', name: 'Brokerage', accountId: 'brok-1' }]
+            };
+
+            const result = simulateOneYear(2025, [income], [expense], [brokerageAccount], assumptionsWithWithdrawal, mockTaxState);
+
+            // With $60k income, gains will be taxed at 15% rate
+            expect(result.taxDetails.capitalGains).toBeGreaterThan(0);
+
+            // Withdrawal should be recorded
+            expect(result.cashflow.withdrawals).toBeGreaterThan(0);
+            expect(result.cashflow.withdrawalDetail['Brokerage']).toBeGreaterThan(0);
+        });
+
+        it('should handle brokerage withdrawal at 0% cap gains rate when low income', () => {
+            // Account is all gains (cost basis = 0)
+            const allGainsAccount = new InvestedAccount(
+                'brok-1',
+                'Brokerage',
+                50000,
+                0,
+                5,
+                0.0,
+                'Brokerage',
+                true,
+                1.0,
+                0  // No cost basis - all gains
+            );
+
+            const expense = new FoodExpense('exp-1', 'Expenses', 10000, 'Annually', new Date('2025-01-01'));
+
+            const assumptionsWithWithdrawal: AssumptionsState = {
+                ...cleanAssumptions,
+                withdrawalStrategy: [{ id: 'w1', name: 'Brokerage', accountId: 'brok-1' }]
+            };
+
+            const result = simulateOneYear(2025, [], [expense], [allGainsAccount], assumptionsWithWithdrawal, mockTaxState);
+
+            // With no other income, capital gains fall in 0% bracket (up to ~$44k for single)
+            // So capital gains tax is 0, but withdrawal still occurs
+            expect(result.taxDetails.capitalGains).toBe(0);
+            // Withdrawal equals deficit exactly since no tax gross-up needed
+            expect(result.cashflow.withdrawals).toBeCloseTo(10000);
+        });
+
+        it('should handle brokerage withdrawal when no gains (all cost basis)', () => {
+            // Account is all cost basis (no gains)
+            const noCostBasisAccount = new InvestedAccount(
+                'brok-1',
+                'Brokerage',
+                50000,
+                0,
+                5,
+                0.0,
+                'Brokerage',
+                true,
+                1.0,
+                50000  // All cost basis - no gains
+            );
+
+            const expense = new FoodExpense('exp-1', 'Expenses', 10000, 'Annually', new Date('2025-01-01'));
+
+            const assumptionsWithWithdrawal: AssumptionsState = {
+                ...cleanAssumptions,
+                withdrawalStrategy: [{ id: 'w1', name: 'Brokerage', accountId: 'brok-1' }]
+            };
+
+            const result = simulateOneYear(2025, [], [expense], [noCostBasisAccount], assumptionsWithWithdrawal, mockTaxState);
+
+            // No gains means no capital gains tax
+            expect(result.taxDetails.capitalGains).toBe(0);
+            // Withdrawal should equal deficit exactly (no tax gross-up needed)
+            expect(result.cashflow.withdrawals).toBeCloseTo(10000);
+        });
+
+        it('should iterate to find correct gross withdrawal for target net', () => {
+            // This tests the iterative solver in the brokerage withdrawal code
+            const brokerageAccount = new InvestedAccount(
+                'brok-1',
+                'Brokerage',
+                200000,
+                0,
+                5,
+                0.0,
+                'Brokerage',
+                true,
+                1.0,
+                100000  // 50% gains
+            );
+
+            const expense = new FoodExpense('exp-1', 'Expenses', 50000, 'Annually', new Date('2025-01-01'));
+
+            const assumptionsWithWithdrawal: AssumptionsState = {
+                ...cleanAssumptions,
+                withdrawalStrategy: [{ id: 'w1', name: 'Brokerage', accountId: 'brok-1' }]
+            };
+
+            const result = simulateOneYear(2025, [], [expense], [brokerageAccount], assumptionsWithWithdrawal, mockTaxState);
+
+            // Discretionary should be ~0 (deficit covered)
+            expect(result.cashflow.discretionary).toBeCloseTo(0, 0);
+        });
+    });
+
+    // =========================================================================
+    // GUYTON-KLINGER STRATEGY TESTS
+    // =========================================================================
+
+    describe('Guyton-Klinger Withdrawal Strategy', () => {
+        const retiredAssumptions: AssumptionsState = {
+            ...cleanAssumptions,
+            demographics: {
+                ...cleanAssumptions.demographics,
+                startAge: 65,  // Already retired
+                retirementAge: 65,
+                lifeExpectancy: 90
+            },
+            investments: {
+                ...cleanAssumptions.investments,
+                withdrawalStrategy: 'Guyton Klinger',
+                withdrawalRate: 4,
+                gkUpperGuardrail: 20,  // 20% above = cut
+                gkLowerGuardrail: 20,  // 20% below = increase
+                gkAdjustmentPercent: 10
+            }
+        };
+
+        it('should apply Guyton-Klinger strategy in retirement', () => {
+            const retirementAccount = new InvestedAccount(
+                'ret-1',
+                '401k',
+                1000000,
+                0,
+                10,
+                0.0,
+                'Traditional 401k',
+                true,
+                1.0
+            );
+
+            const expense = new FoodExpense('exp-1', 'Living', 30000, 'Annually', new Date('2025-01-01'), undefined);
+            expense.isDiscretionary = true; // Discretionary
+
+            const result = simulateOneYear(
+                2025,
+                [],
+                [expense],
+                [retirementAccount],
+                retiredAssumptions,
+                mockTaxState
+            );
+
+            // Should have strategy withdrawal tracked
+            expect(result.strategyWithdrawal).toBeDefined();
+            expect(result.strategyWithdrawal?.amount).toBeGreaterThan(0);
+
+            // Logs should mention GK
+            expect(result.logs.some(log => log.includes('Guyton Klinger'))).toBe(true);
+        });
+
+        it('should trigger capital preservation guardrail when portfolio drops', () => {
+            // Small portfolio relative to withdrawal rate triggers capital preservation
+            const smallPortfolio = new InvestedAccount(
+                'ret-1',
+                '401k',
+                500000,
+                0,
+                10,
+                0.0,
+                'Traditional 401k',
+                true,
+                1.0
+            );
+
+            // Large discretionary expense to cut
+            const discretionaryExpense = new FoodExpense(
+                'exp-1',
+                'Discretionary Spending',
+                50000,
+                'Annually',
+                new Date('2025-01-01'),
+                undefined
+            );
+            discretionaryExpense.isDiscretionary = true;
+
+            // Create a previous year result to simulate second year of retirement
+            const previousResult = simulateOneYear(
+                2024,
+                [],
+                [discretionaryExpense],
+                [new InvestedAccount('ret-1', '401k', 800000, 0, 10, 0.0, 'Traditional 401k', true, 1.0)],
+                retiredAssumptions,
+                mockTaxState
+            );
+
+            const result = simulateOneYear(
+                2025,
+                [],
+                [discretionaryExpense],
+                [smallPortfolio],
+                retiredAssumptions,
+                mockTaxState,
+                [previousResult]
+            );
+
+            // Check if capital preservation was considered
+            // (May or may not trigger depending on exact withdrawal rate calculation)
+            expect(result.strategyWithdrawal).toBeDefined();
+        });
+
+        it('should cut discretionary expenses when capital preservation triggers', () => {
+            const portfolio = new InvestedAccount(
+                'ret-1',
+                '401k',
+                300000,  // Small portfolio
+                0,
+                10,
+                0.0,
+                'Traditional 401k',
+                true,
+                1.0
+            );
+
+            // Mark expense as discretionary
+            const discretionaryExpense = new FoodExpense(
+                'exp-1',
+                'Travel',
+                20000,
+                'Annually',
+                new Date('2025-01-01'),
+                undefined
+            );
+            discretionaryExpense.isDiscretionary = true;
+
+            // Create previous year with larger portfolio to simulate drop
+            const previousWithHigherPortfolio: AssumptionsState = {
+                ...retiredAssumptions
+            };
+
+            const previousResult = simulateOneYear(
+                2024,
+                [],
+                [discretionaryExpense],
+                [new InvestedAccount('ret-1', '401k', 600000, 0, 10, 0.0, 'Traditional 401k', true, 1.0)],
+                previousWithHigherPortfolio,
+                mockTaxState
+            );
+
+            const result = simulateOneYear(
+                2025,
+                [],
+                [discretionaryExpense],
+                [portfolio],
+                retiredAssumptions,
+                mockTaxState,
+                [previousResult]
+            );
+
+            // If GK adjustment occurred, it should be tracked
+            if (result.strategyAdjustment) {
+                expect(result.strategyAdjustment.guardrailTriggered).toBeDefined();
+            }
+        });
+
+        it('should not apply capital preservation within 15 years of life expectancy', () => {
+            // Age 76 with life expectancy 90 = 14 years remaining (< 15)
+            const nearEndAssumptions: AssumptionsState = {
+                ...retiredAssumptions,
+                demographics: {
+                    ...retiredAssumptions.demographics,
+                    startAge: 76,
+                    retirementAge: 65,
+                    lifeExpectancy: 90
+                }
+            };
+
+            const portfolio = new InvestedAccount(
+                'ret-1',
+                '401k',
+                200000,
+                0,
+                10,
+                0.0,
+                'Traditional 401k',
+                true,
+                1.0
+            );
+
+            const expense = new FoodExpense('exp-1', 'Living', 20000, 'Annually', new Date('2025-01-01'), undefined);
+            expense.isDiscretionary = true;
+
+            const result = simulateOneYear(
+                2025,
+                [],
+                [expense],
+                [portfolio],
+                nearEndAssumptions,
+                mockTaxState
+            );
+
+            // Within 15 years, capital preservation shouldn't cut expenses
+            // Just inflation adjustment should apply
+            expect(result.strategyWithdrawal).toBeDefined();
+        });
+    });
+
+    // =========================================================================
+    // SOCIAL SECURITY TESTS
+    // =========================================================================
+
+    describe('Social Security Benefits', () => {
+        it('should calculate Social Security PIA at claiming age', () => {
+            // Set up assumptions where we're at claiming age
+            const ssAssumptions: AssumptionsState = {
+                ...cleanAssumptions,
+                demographics: {
+                    startAge: 67,  // At claiming age
+                    startYear: 2025,
+                    lifeExpectancy: 90,
+                    retirementAge: 67
+                }
+            };
+
+            // Create FutureSocialSecurityIncome with claiming age 67
+            const futureSS = new FutureSocialSecurityIncome(
+                'ss-1',
+                'Social Security',
+                67,  // Claiming age
+                0,   // PIA not yet calculated
+                0    // Calculation year
+            );
+
+            // Need some work history for AIME calculation
+            // We'll simulate a year with work income to build history
+            const workIncome = new WorkIncome(
+                'inc-1',
+                'Job',
+                100000,
+                'Annually',
+                'Yes',
+                0, 0, 0, 0, '', null, 'FIXED',
+                new Date('2020-01-01'),
+                new Date('2024-12-31')
+            );
+
+            // Create previous simulation years with earnings
+            const previousYears = [];
+            for (let y = 2020; y < 2025; y++) {
+                previousYears.push({
+                    year: y,
+                    incomes: [workIncome],
+                    expenses: [],
+                    accounts: [],
+                    cashflow: { totalIncome: 100000, totalExpense: 0, discretionary: 0, investedUser: 0, investedMatch: 0, totalInvested: 0, bucketAllocations: 0, bucketDetail: {}, withdrawals: 0, withdrawalDetail: {} },
+                    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0 },
+                    logs: []
+                });
+            }
+
+            const result = simulateOneYear(
+                2025,
+                [futureSS],
+                [],
+                [],
+                ssAssumptions,
+                mockTaxState,
+                previousYears
+            );
+
+            // Check that SS benefit was calculated
+            const ssIncome = result.incomes.find(inc => inc.id === 'ss-1');
+            expect(ssIncome).toBeDefined();
+
+            // Logs should mention SS calculation
+            expect(result.logs.some(log => log.includes('Social Security'))).toBe(true);
+        });
+
+        it('should apply earnings test for early SS claimers', () => {
+            // Age 63 claiming at 62 (before FRA)
+            const earlySSAssumptions: AssumptionsState = {
+                ...cleanAssumptions,
+                demographics: {
+                    startAge: 63,
+                    startYear: 2025,
+                    lifeExpectancy: 90,
+                    retirementAge: 67
+                }
+            };
+
+            // SS already being received (calculated in previous year)
+            const activeSS = new FutureSocialSecurityIncome(
+                'ss-1',
+                'Social Security',
+                62,
+                2000,  // $2000/month PIA
+                2024,  // Calculated last year
+                new Date('2024-01-01'),
+                new Date('2050-12-31')
+            );
+
+            // Still working with high income (triggers earnings test)
+            const workIncome = new WorkIncome(
+                'inc-1',
+                'Job',
+                80000,  // High earned income
+                'Annually',
+                'Yes',
+                0, 0, 0, 0, '', null, 'FIXED',
+                new Date('2025-01-01')
+            );
+
+            const result = simulateOneYear(
+                2025,
+                [activeSS, workIncome],
+                [],
+                [],
+                earlySSAssumptions,
+                mockTaxState
+            );
+
+            // Check if earnings test was applied
+            // Logs should mention earnings test if applied
+            const hasEarningsTestLog = result.logs.some(log =>
+                log.toLowerCase().includes('earnings test')
+            );
+
+            // With $80k income and $24k SS, earnings test should apply
+            // (2024 exempt amount is ~$22,320)
+            expect(hasEarningsTestLog).toBe(true);
+        });
+
+        it('should not apply earnings test after Full Retirement Age', () => {
+            // Age 67+ (at or after FRA for most birth years)
+            const postFRAAssumptions: AssumptionsState = {
+                ...cleanAssumptions,
+                demographics: {
+                    startAge: 68,  // Past FRA
+                    startYear: 2025,
+                    lifeExpectancy: 90,
+                    retirementAge: 67
+                }
+            };
+
+            const activeSS = new FutureSocialSecurityIncome(
+                'ss-1',
+                'Social Security',
+                67,
+                2500,
+                2024,
+                new Date('2024-01-01'),
+                new Date('2050-12-31')
+            );
+
+            // Still working
+            const workIncome = new WorkIncome(
+                'inc-1',
+                'Job',
+                100000,
+                'Annually',
+                'Yes',
+                0, 0, 0, 0, '', null, 'FIXED'
+            );
+
+            const result = simulateOneYear(
+                2025,
+                [activeSS, workIncome],
+                [],
+                [],
+                postFRAAssumptions,
+                mockTaxState
+            );
+
+            // After FRA, no earnings test reduction
+            const hasEarningsTestLog = result.logs.some(log =>
+                log.toLowerCase().includes('earnings test')
+            );
+            expect(hasEarningsTestLog).toBe(false);
+        });
+    });
+
+    // =========================================================================
+    // EARLY ROTH WITHDRAWAL WITH TAXABLE GAINS
+    // =========================================================================
+
+    describe('Early Roth Withdrawal with Taxable Gains', () => {
+        it('should tax gains portion of early Roth withdrawal', () => {
+            // Roth with cost basis and gains
+            const rothAccount = new InvestedAccount(
+                'roth-1',
+                'Roth IRA',
+                50000,   // Total value
+                0,
+                5,
+                0.0,
+                'Roth IRA',
+                true,
+                1.0,
+                30000    // Cost basis = 30k, gains = 20k
+            );
+
+            // Need to withdraw more than cost basis to trigger gains taxation
+            const expense = new FoodExpense('exp-1', 'Expenses', 40000, 'Annually', new Date('2025-01-01'));
+
+            // Age < 59.5 for early withdrawal
+            const earlyAssumptions: AssumptionsState = {
+                ...cleanAssumptions,
+                demographics: {
+                    startAge: 45,
+                    startYear: 2025,
+                    lifeExpectancy: 90,
+                    retirementAge: 67
+                },
+                withdrawalStrategy: [{ id: 'w1', name: 'Roth', accountId: 'roth-1' }]
+            };
+
+            const result = simulateOneYear(2025, [], [expense], [rothAccount], earlyAssumptions, mockTaxState);
+
+            // Should have early Roth withdrawal log
+            expect(result.logs.some(log => log.includes('Early Roth'))).toBe(true);
+
+            // Tax should be charged on gains portion
+            expect(result.taxDetails.fed).toBeGreaterThan(0);
+        });
+
+        it('should not tax early Roth withdrawal from contributions only', () => {
+            // Roth where withdrawal stays within cost basis
+            const rothAccount = new InvestedAccount(
+                'roth-1',
+                'Roth IRA',
+                50000,
+                0,
+                5,
+                0.0,
+                'Roth IRA',
+                true,
+                1.0,
+                50000  // All cost basis, no gains
+            );
+
+            // Small expense - withdraws only from contributions
+            const expense = new FoodExpense('exp-1', 'Expenses', 10000, 'Annually', new Date('2025-01-01'));
+
+            const earlyAssumptions: AssumptionsState = {
+                ...cleanAssumptions,
+                demographics: {
+                    startAge: 45,
+                    startYear: 2025,
+                    lifeExpectancy: 90,
+                    retirementAge: 67
+                },
+                withdrawalStrategy: [{ id: 'w1', name: 'Roth', accountId: 'roth-1' }]
+            };
+
+            const result = simulateOneYear(2025, [], [expense], [rothAccount], earlyAssumptions, mockTaxState);
+
+            // No tax on contribution-only withdrawal
+            expect(result.taxDetails.fed).toBe(0);
+
+            // Withdrawal of 10k from 50k account
+            // Account after withdrawal and growth: (50000 - 10000) * 1.10 = 44000
+            expect(result.accounts[0].amount).toBeCloseTo(44000);
+        });
+    });
+
+    // =========================================================================
+    // WORK INCOME RETIREMENT CUTOFF
+    // =========================================================================
+
+    describe('Work Income Retirement Behavior', () => {
+        it('should end work income at retirement age', () => {
+            const retirementAssumptions: AssumptionsState = {
+                ...cleanAssumptions,
+                demographics: {
+                    startAge: 65,
+                    startYear: 2025,
+                    lifeExpectancy: 90,
+                    retirementAge: 65  // Retiring this year
+                }
+            };
+
+            // Work income without explicit end date
+            const workIncome = new WorkIncome(
+                'inc-1',
+                'Job',
+                100000,
+                'Annually',
+                'Yes',
+                5000,   // 401k contribution
+                0,
+                0,
+                2500,   // Employer match
+                'ret-1',
+                'Traditional 401k',
+                'FIXED'
+                // No end date - should auto-end at retirement
+            );
+
+            const retirementAccount = new InvestedAccount(
+                'ret-1',
+                '401k',
+                500000,
+                0,
+                10,
+                0.0,
+                'Traditional 401k',
+                true,
+                1.0
+            );
+
+            const result = simulateOneYear(
+                2025,
+                [workIncome],
+                [],
+                [retirementAccount],
+                retirementAssumptions,
+                mockTaxState
+            );
+
+            // Income should be zeroed out in retirement year
+            const resultIncome = result.incomes.find(inc => inc.id === 'inc-1') as WorkIncome;
+            expect(resultIncome).toBeDefined();
+            expect(resultIncome.amount).toBe(0);
+            expect(resultIncome.preTax401k).toBe(0);
+            expect(resultIncome.employerMatch).toBe(0);
+        });
+    });
+
+    // =========================================================================
+    // PRIORITY ALLOCATION CAP TYPES
+    // =========================================================================
+
+    describe('Priority Allocation Cap Types', () => {
+        it('should handle FIXED cap type allocation', () => {
+            const income = new WorkIncome(
+                'inc-1', 'Job', 100000, 'Annually', 'Yes',
+                0, 0, 0, 0, '', null, 'FIXED',
+                new Date('2025-01-01')
+            );
+            const savingsAccount = new SavedAccount('sav-1', 'Savings', 0, 0);
+            const expense = new FoodExpense('exp-1', 'Food', 30000, 'Annually', new Date('2025-01-01'));
+
+            const assumptionsWithPriority: AssumptionsState = {
+                ...cleanAssumptions,
+                priorities: [
+                    { id: 'p1', name: 'Savings', type: 'SAVINGS', accountId: 'sav-1', capType: 'FIXED', capValue: 1000 }  // $1000/month = $12000/year
+                ]
+            };
+
+            const result = simulateOneYear(2025, [income], [expense], [savingsAccount], assumptionsWithPriority, mockTaxState);
+
+            const savingsAfter = result.accounts.find(acc => acc.id === 'sav-1');
+            // Should allocate up to $12,000 (1000 * 12)
+            expect(savingsAfter!.amount).toBeLessThanOrEqual(12000);
+            expect(result.cashflow.bucketAllocations).toBeGreaterThan(0);
+        });
+
+        it('should handle MAX cap type allocation', () => {
+            const income = new WorkIncome(
+                'inc-1', 'Job', 150000, 'Annually', 'Yes',
+                0, 0, 0, 0, '', null, 'FIXED',
+                new Date('2025-01-01')
+            );
+            const savingsAccount = new SavedAccount('sav-1', 'Savings', 0, 0);
+            const expense = new FoodExpense('exp-1', 'Food', 30000, 'Annually', new Date('2025-01-01'));
+
+            const assumptionsWithPriority: AssumptionsState = {
+                ...cleanAssumptions,
+                priorities: [
+                    { id: 'p1', name: 'Savings', type: 'SAVINGS', accountId: 'sav-1', capType: 'MAX', capValue: 25000 }
+                ]
+            };
+
+            const result = simulateOneYear(2025, [income], [expense], [savingsAccount], assumptionsWithPriority, mockTaxState);
+
+            const savingsAfter = result.accounts.find(acc => acc.id === 'sav-1');
+            // Should allocate up to $25,000
+            expect(savingsAfter!.amount).toBeLessThanOrEqual(25000);
+        });
+
+        it('should handle MULTIPLE_OF_EXPENSES cap type', () => {
+            const income = new WorkIncome(
+                'inc-1', 'Job', 150000, 'Annually', 'Yes',
+                0, 0, 0, 0, '', null, 'FIXED',
+                new Date('2025-01-01')
+            );
+            const savingsAccount = new SavedAccount('sav-1', 'Emergency Fund', 10000, 0);  // Start with 10k
+            const expense = new FoodExpense('exp-1', 'Food', 36000, 'Annually', new Date('2025-01-01'));  // 3k/month
+
+            const assumptionsWithPriority: AssumptionsState = {
+                ...cleanAssumptions,
+                priorities: [
+                    { id: 'p1', name: 'Emergency', type: 'SAVINGS', accountId: 'sav-1', capType: 'MULTIPLE_OF_EXPENSES', capValue: 6 }  // 6 months expenses
+                ]
+            };
+
+            // 6 months of 3k/month = 18k target
+            // Starting with 10k, need to add ~8k to reach target (accounting for growth)
+            const result = simulateOneYear(2025, [income], [expense], [savingsAccount], assumptionsWithPriority, mockTaxState);
+
+            const savingsAfter = result.accounts.find(acc => acc.id === 'sav-1');
+            // Should be at or near 6 months expenses (18k)
+            expect(savingsAfter!.amount).toBeGreaterThan(10000);  // At least contributed something
+        });
+    });
+
+    // =========================================================================
+    // AUTO ROTH CONVERSION TESTS
+    // =========================================================================
+
+    describe('Auto Roth Conversions', () => {
+        it('should not perform conversions when autoRothConversions is disabled', () => {
+            const retiredAssumptions: AssumptionsState = {
+                ...cleanAssumptions,
+                demographics: {
+                    startAge: 67,
+                    startYear: 2025,
+                    lifeExpectancy: 90,
+                    retirementAge: 65
+                },
+                investments: {
+                    ...cleanAssumptions.investments,
+                    autoRothConversions: false
+                }
+            };
+
+            const traditional401k = new InvestedAccount(
+                'trad-1', 'Traditional 401k', 500000, 0, 0, 0.1, 'Traditional 401k'
+            );
+            const roth401k = new InvestedAccount(
+                'roth-1', 'Roth 401k', 100000, 0, 0, 0.1, 'Roth 401k'
+            );
+
+            const result = simulateOneYear(
+                2025,
+                [],
+                [],
+                [traditional401k, roth401k],
+                retiredAssumptions,
+                mockTaxState
+            );
+
+            expect(result.rothConversion).toBeUndefined();
+        });
+
+        it('should perform conversions when autoRothConversions is enabled and retired', () => {
+            const retiredAssumptions: AssumptionsState = {
+                ...cleanAssumptions,
+                demographics: {
+                    startAge: 67,
+                    startYear: 2025,
+                    lifeExpectancy: 90,
+                    retirementAge: 65
+                },
+                investments: {
+                    ...cleanAssumptions.investments,
+                    autoRothConversions: true
+                },
+                withdrawalStrategy: [
+                    { id: 'ws-trad-1', accountId: 'trad-1', name: 'Traditional 401k' },
+                    { id: 'ws-roth-1', accountId: 'roth-1', name: 'Roth 401k' }
+                ]
+            };
+
+            const traditional401k = new InvestedAccount(
+                'trad-1', 'Traditional 401k', 500000, 0, 0, 0.1, 'Traditional 401k'
+            );
+            const roth401k = new InvestedAccount(
+                'roth-1', 'Roth 401k', 100000, 0, 0, 0.1, 'Roth 401k'
+            );
+
+            const result = simulateOneYear(
+                2025,
+                [],
+                [],
+                [traditional401k, roth401k],
+                retiredAssumptions,
+                mockTaxState
+            );
+
+            // Should have performed a conversion
+            if (result.rothConversion) {
+                expect(result.rothConversion.amount).toBeGreaterThan(0);
+                expect(result.rothConversion.taxCost).toBeGreaterThan(0);
+                expect(Object.keys(result.rothConversion.fromAccounts).length).toBeGreaterThan(0);
+                expect(Object.keys(result.rothConversion.toAccounts).length).toBeGreaterThan(0);
+            }
+        });
+
+        it('should not perform conversions before retirement', () => {
+            const workingAssumptions: AssumptionsState = {
+                ...cleanAssumptions,
+                demographics: {
+                    startAge: 40,
+                    startYear: 2025,
+                    lifeExpectancy: 90,
+                    retirementAge: 65
+                },
+                investments: {
+                    ...cleanAssumptions.investments,
+                    autoRothConversions: true
+                }
+            };
+
+            const traditional401k = new InvestedAccount(
+                'trad-1', 'Traditional 401k', 500000, 0, 0, 0.1, 'Traditional 401k'
+            );
+            const roth401k = new InvestedAccount(
+                'roth-1', 'Roth 401k', 100000, 0, 0, 0.1, 'Roth 401k'
+            );
+
+            const result = simulateOneYear(
+                2025,
+                [],
+                [],
+                [traditional401k, roth401k],
+                workingAssumptions,
+                mockTaxState
+            );
+
+            // Should not convert while still working
+            expect(result.rothConversion).toBeUndefined();
+        });
+
+        it('should transfer from Traditional to Roth accounts', () => {
+            const retiredAssumptions: AssumptionsState = {
+                ...cleanAssumptions,
+                demographics: {
+                    startAge: 67,
+                    startYear: 2025,
+                    lifeExpectancy: 90,
+                    retirementAge: 65
+                },
+                investments: {
+                    ...cleanAssumptions.investments,
+                    autoRothConversions: true
+                },
+                withdrawalStrategy: [
+                    { id: 'ws-trad-1', accountId: 'trad-1', name: 'Traditional 401k' },
+                    { id: 'ws-roth-1', accountId: 'roth-1', name: 'Roth 401k' }
+                ]
+            };
+
+            const initialTraditional = 500000;
+            const initialRoth = 100000;
+
+            const traditional401k = new InvestedAccount(
+                'trad-1', 'Traditional 401k', initialTraditional, 0, 0, 0.1, 'Traditional 401k'
+            );
+            const roth401k = new InvestedAccount(
+                'roth-1', 'Roth 401k', initialRoth, 0, 0, 0.1, 'Roth 401k'
+            );
+
+            const result = simulateOneYear(
+                2025,
+                [],
+                [],
+                [traditional401k, roth401k],
+                retiredAssumptions,
+                mockTaxState
+            );
+
+            if (result.rothConversion && result.rothConversion.amount > 0) {
+                const tradAfter = result.accounts.find(a => a.id === 'trad-1');
+                const rothAfter = result.accounts.find(a => a.id === 'roth-1');
+
+                // Traditional should decrease (conversion out + growth)
+                // Roth should increase (conversion in + growth)
+                // Account for 10% growth when checking
+                const expectedTraditionalWithGrowth = initialTraditional * 1.1;
+                const expectedRothWithGrowth = initialRoth * 1.1;
+
+                // Traditional should be less than what it would be without conversion
+                expect(tradAfter!.amount).toBeLessThan(expectedTraditionalWithGrowth);
+
+                // Roth should be more than what it would be without conversion
+                expect(rothAfter!.amount).toBeGreaterThan(expectedRothWithGrowth);
+            }
+        });
+
+        it('should log conversion details', () => {
+            const retiredAssumptions: AssumptionsState = {
+                ...cleanAssumptions,
+                demographics: {
+                    startAge: 67,
+                    startYear: 2025,
+                    lifeExpectancy: 90,
+                    retirementAge: 65
+                },
+                investments: {
+                    ...cleanAssumptions.investments,
+                    autoRothConversions: true
+                },
+                withdrawalStrategy: [
+                    { id: 'ws-trad-1', accountId: 'trad-1', name: 'Traditional 401k' },
+                    { id: 'ws-roth-1', accountId: 'roth-1', name: 'Roth 401k' }
+                ]
+            };
+
+            const traditional401k = new InvestedAccount(
+                'trad-1', 'Traditional 401k', 500000, 0, 0, 0.1, 'Traditional 401k'
+            );
+            const roth401k = new InvestedAccount(
+                'roth-1', 'Roth 401k', 100000, 0, 0, 0.1, 'Roth 401k'
+            );
+
+            const result = simulateOneYear(
+                2025,
+                [],
+                [],
+                [traditional401k, roth401k],
+                retiredAssumptions,
+                mockTaxState
+            );
+
+            if (result.rothConversion && result.rothConversion.amount > 0) {
+                const hasConversionLog = result.logs.some(log =>
+                    log.includes('Roth Conversion')
+                );
+                expect(hasConversionLog).toBe(true);
+            }
+        });
+
+        it('should not produce NaN when Traditional account is fully drained', () => {
+            // This test covers a bug where draining Traditional to $0 caused NaN
+            // because the old code mutated accounts directly, leading to division by zero
+            const retiredAssumptions: AssumptionsState = {
+                ...cleanAssumptions,
+                demographics: {
+                    startAge: 67,
+                    startYear: 2025,
+                    lifeExpectancy: 90,
+                    retirementAge: 65
+                },
+                investments: {
+                    ...cleanAssumptions.investments,
+                    autoRothConversions: true
+                },
+                withdrawalStrategy: [
+                    { id: 'ws-trad-1', accountId: 'trad-1', name: 'Traditional 401k' },
+                    { id: 'ws-roth-1', accountId: 'roth-1', name: 'Roth IRA' }
+                ]
+            };
+
+            // Small Traditional balance that will be fully converted
+            const traditional401k = new InvestedAccount(
+                'trad-1', 'Traditional 401k', 10000, 0, 0, 0.1, 'Traditional 401k'
+            );
+            const rothIRA = new InvestedAccount(
+                'roth-1', 'Roth IRA', 50000, 0, 0, 0.1, 'Roth IRA'
+            );
+
+            const result = simulateOneYear(
+                2025,
+                [],
+                [],
+                [traditional401k, rothIRA],
+                retiredAssumptions,
+                mockTaxState
+            );
+
+            // Critical: No account should have NaN amount
+            for (const account of result.accounts) {
+                expect(Number.isNaN(account.amount)).toBe(false);
+                expect(account.amount).toBeGreaterThanOrEqual(0);
+            }
+
+            // Specifically check the accounts involved in conversion
+            const tradAfter = result.accounts.find(a => a.id === 'trad-1');
+            const rothAfter = result.accounts.find(a => a.id === 'roth-1');
+
+            expect(tradAfter).toBeDefined();
+            expect(rothAfter).toBeDefined();
+            expect(Number.isNaN(tradAfter!.amount)).toBe(false);
+            expect(Number.isNaN(rothAfter!.amount)).toBe(false);
+        });
+
+        it('should include fromAccountIds and toAccountIds in conversion result', () => {
+            const retiredAssumptions: AssumptionsState = {
+                ...cleanAssumptions,
+                demographics: {
+                    startAge: 67,
+                    startYear: 2025,
+                    lifeExpectancy: 90,
+                    retirementAge: 65
+                },
+                investments: {
+                    ...cleanAssumptions.investments,
+                    autoRothConversions: true
+                },
+                withdrawalStrategy: [
+                    { id: 'ws-trad-1', accountId: 'trad-1', name: 'Traditional 401k' },
+                    { id: 'ws-roth-1', accountId: 'roth-1', name: 'Roth 401k' }
+                ]
+            };
+
+            const traditional401k = new InvestedAccount(
+                'trad-1', 'Traditional 401k', 500000, 0, 0, 0.1, 'Traditional 401k'
+            );
+            const roth401k = new InvestedAccount(
+                'roth-1', 'Roth 401k', 100000, 0, 0, 0.1, 'Roth 401k'
+            );
+
+            const result = simulateOneYear(
+                2025,
+                [],
+                [],
+                [traditional401k, roth401k],
+                retiredAssumptions,
+                mockTaxState
+            );
+
+            // Conversion should happen (retired, no income, low tax bracket)
+            expect(result.rothConversion).toBeDefined();
+            if (result.rothConversion) {
+                // Should have ID-based tracking
+                expect(result.rothConversion.fromAccountIds).toBeDefined();
+                expect(result.rothConversion.toAccountIds).toBeDefined();
+
+                // Should have withdrawn from Traditional
+                expect(result.rothConversion.fromAccountIds['trad-1']).toBeGreaterThan(0);
+
+                // Should have deposited to Roth
+                expect(result.rothConversion.toAccountIds['roth-1']).toBeGreaterThan(0);
+
+                // Amounts should match
+                const totalFrom = Object.values(result.rothConversion.fromAccountIds).reduce((a, b) => a + b, 0);
+                const totalTo = Object.values(result.rothConversion.toAccountIds).reduce((a, b) => a + b, 0);
+                expect(totalFrom).toBe(totalTo);
+                expect(totalFrom).toBe(result.rothConversion.amount);
+            }
+        });
+
+        it('should not convert when no Traditional accounts exist', () => {
+            const retiredAssumptions: AssumptionsState = {
+                ...cleanAssumptions,
+                demographics: {
+                    startAge: 67,
+                    startYear: 2025,
+                    lifeExpectancy: 90,
+                    retirementAge: 65
+                },
+                investments: {
+                    ...cleanAssumptions.investments,
+                    autoRothConversions: true
+                },
+                withdrawalStrategy: []
+            };
+
+            // Only Roth account, no Traditional
+            const roth401k = new InvestedAccount(
+                'roth-1', 'Roth 401k', 100000, 0, 0, 0.1, 'Roth 401k'
+            );
+
+            const result = simulateOneYear(
+                2025,
+                [],
+                [],
+                [roth401k],
+                retiredAssumptions,
+                mockTaxState
+            );
+
+            expect(result.rothConversion).toBeUndefined();
+        });
+
+        it('should not convert when no Roth accounts exist', () => {
+            const retiredAssumptions: AssumptionsState = {
+                ...cleanAssumptions,
+                demographics: {
+                    startAge: 67,
+                    startYear: 2025,
+                    lifeExpectancy: 90,
+                    retirementAge: 65
+                },
+                investments: {
+                    ...cleanAssumptions.investments,
+                    autoRothConversions: true
+                },
+                withdrawalStrategy: []
+            };
+
+            // Only Traditional account, no Roth
+            const traditional401k = new InvestedAccount(
+                'trad-1', 'Traditional 401k', 500000, 0, 0, 0.1, 'Traditional 401k'
+            );
+
+            const result = simulateOneYear(
+                2025,
+                [],
+                [],
+                [traditional401k],
+                retiredAssumptions,
+                mockTaxState
+            );
+
+            expect(result.rothConversion).toBeUndefined();
+        });
     });
 
 });

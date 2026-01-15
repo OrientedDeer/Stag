@@ -96,7 +96,7 @@ interface StyledDisplayProps {
 export const StyledDisplay: React.FC<StyledDisplayProps> = ({ label, value, blankValue, tooltip }) => {
   return (
     <DisplayGroup label={label} tooltip={tooltip}>
-      <div className="bg-transparent border-none outline-none text-white text-md font-semibold w-full p-0 m-0 flex items-center h-[21px]">
+      <div className="bg-transparent border-none outline-none text-white text-md font-semibold w-full p-0 m-0 flex items-center min-h-[21px] truncate">
         {value || blankValue || '...'}
       </div>
     </DisplayGroup>

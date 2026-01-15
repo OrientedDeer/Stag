@@ -3,11 +3,7 @@ import { AssumptionsContext } from '../../../components/Objects/Assumptions/Assu
 import { DebtAccount, PropertyAccount, AnyAccount } from '../../../components/Objects/Accounts/models';
 import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider'; // Import RangeSlider
 import { CashflowSankey } from '../../../components/Charts/CashflowSankey';
-
-const formatCurrency = (value: number) => {
-    if (value === undefined || value === null) return '$0';
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
-};
+import { formatCompactCurrency } from './FutureUtils';
 
 const calculateNetWorth = (accounts: AnyAccount[]) => {
     let assets = 0;
@@ -29,6 +25,8 @@ const calculateNetWorth = (accounts: AnyAccount[]) => {
 
 export const CashflowTab = React.memo(({ simulationData }: { simulationData: any[] }) => {
     const { state: assumptions } = useContext(AssumptionsContext);
+    const forceExact = assumptions.display?.useCompactCurrency === false;
+    const formatCurrency = (value: number) => formatCompactCurrency(value || 0, { forceExact });
     const startYear = simulationData.length > 0 ? simulationData[0].year : new Date().getFullYear();
     const endYear = simulationData.length > 0 ? simulationData[simulationData.length - 1].year : startYear;
     const [selectedYear, setSelectedYear] = useState(startYear);
@@ -44,15 +42,18 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
     return (
          <div className="flex flex-col gap-4">
             {/* 1. SANKEY CHART */}
-            <div className="overflow-hidden">
+            <div className="overflow-visible">
                 <CashflowSankey
                     incomes={yearData.incomes}
                     expenses={yearData.expenses}
                     year={yearData.year}
                     taxes={yearData.taxDetails}
                     bucketAllocations={yearData.cashflow.bucketDetail || {}}
+                    extraLeftPadding={50}
+                    extraRightPadding={20}
                     accounts={yearData.accounts}
                     withdrawals={yearData.cashflow.withdrawalDetail || {}}
+                    rothConversion={yearData.rothConversion}
                     height={400}
                 />
             </div>

@@ -1,5 +1,5 @@
 // src/components/Simulation/SimulationEngine.ts
-import { AnyAccount, DebtAccount, InvestedAccount, PropertyAccount, SavedAccount } from "../../Objects/Accounts/models";
+import { AnyAccount, DebtAccount, DeficitDebtAccount, InvestedAccount, PropertyAccount, SavedAccount } from "../../Objects/Accounts/models";
 import { AnyExpense, LoanExpense, MortgageExpense } from "../Expense/models";
 import { AnyIncome, WorkIncome, FutureSocialSecurityIncome, PassiveIncome } from "../../Objects/Income/models";
 import { AssumptionsState } from "./AssumptionsContext";
@@ -7,7 +7,8 @@ import { TaxState } from "../../Objects/Taxes/TaxContext";
 import * as TaxService from "../../Objects/Taxes/TaxService";
 import { calculateAIME, extractEarningsFromSimulation, calculateEarningsTestReduction } from "../../../services/SocialSecurityCalculator";
 import { getFRA } from "../../../data/SocialSecurityData";
-import { calculateStrategyWithdrawal, WithdrawalResult } from "../../../services/WithdrawalStrategies";
+import { calculateStrategyWithdrawal, WithdrawalResult, GuardrailTrigger } from "../../../services/WithdrawalStrategies";
+import { getMedianRetirementTaxRate, getIncomeThresholdForRate } from "../../../services/TaxOptimizationService";
 
 // Define the shape of a single year's result
 export interface SimulationYear {
@@ -39,6 +40,195 @@ export interface SimulationYear {
     logs: string[];
     // Withdrawal strategy tracking (for multi-year calculations)
     strategyWithdrawal?: WithdrawalResult;
+    // Guyton-Klinger strategy adjustment tracking
+    strategyAdjustment?: {
+        guardrailTriggered: GuardrailTrigger;
+        requiredAdjustment: number;      // $ amount GK wants to cut/add
+        actualAdjustment: number;        // $ amount actually cut/added
+        discretionaryAvailable: number;  // $ of discretionary expenses available
+        warning?: string;                // Warning if cut couldn't be fully applied
+    };
+    // Auto Roth conversion tracking
+    rothConversion?: {
+        amount: number;                  // Total amount converted
+        taxCost: number;                 // Tax paid on conversion
+        fromAccounts: Record<string, number>;  // Amount from each Traditional account (by name)
+        toAccounts: Record<string, number>;    // Amount to each Roth account (by name)
+        fromAccountIds: Record<string, number>;  // Amount from each Traditional account (by id)
+        toAccountIds: Record<string, number>;    // Amount to each Roth account (by id)
+    };
+}
+
+/**
+ * Perform automatic Roth conversions during retirement.
+ * Converts from Traditional accounts (in withdrawal order) to Roth accounts (reverse order).
+ */
+function performAutoRothConversion(
+    accounts: AnyAccount[],
+    incomes: AnyIncome[],
+    _expenses: AnyExpense[],
+    year: number,
+    assumptions: AssumptionsState,
+    taxState: TaxState,
+    previousSimulation: SimulationYear[],
+    logs: string[]
+): SimulationYear['rothConversion'] | undefined {
+    // Get federal tax parameters
+    const fedParams = TaxService.getTaxParameters(
+        year,
+        taxState.filingStatus,
+        'federal',
+        undefined,
+        assumptions
+    );
+
+    if (!fedParams) return undefined;
+
+    // Calculate current taxable income
+    const grossIncome = TaxService.getGrossIncome(incomes, year);
+    const preTaxDeductions = TaxService.getPreTaxExemptions(incomes, year);
+    const taxableIncome = Math.max(0, grossIncome - preTaxDeductions);
+
+    // Get retirement tax rate from previous simulation or use fallback
+    const retirementAge = assumptions.demographics.retirementAge;
+    const startAge = assumptions.demographics.startAge;
+    const startYear = assumptions.demographics.startYear;
+    const retirementYear = startYear + (retirementAge - startAge);
+
+    // Minimum target rate: always fill at least to the 22% bracket
+    // This ensures we do conversions even when calculated effective retirement rate is low
+    const MIN_CONVERSION_TARGET_RATE = 0.22;
+
+    // Use the higher of: minimum target rate OR calculated retirement effective rate
+    // This way, if someone has high retirement income (25% effective rate), we'd target 25%
+    let retirementTaxRate = MIN_CONVERSION_TARGET_RATE;
+    if (previousSimulation.length >= 5) {
+        const calculatedRate = getMedianRetirementTaxRate(previousSimulation, retirementYear);
+        retirementTaxRate = Math.max(MIN_CONVERSION_TARGET_RATE, calculatedRate);
+    }
+
+    // Get current marginal rate
+    const marginalInfo = TaxService.getMarginalTaxRate(taxableIncome, fedParams);
+
+    // Only convert if current marginal rate is below target rate
+    // This ensures we fill up lower brackets before hitting the target
+    if (marginalInfo.rate >= retirementTaxRate) {
+        return undefined;
+    }
+
+    // Calculate optimal conversion amount (fill brackets up to retirement rate)
+    const targetIncomeThreshold = getIncomeThresholdForRate(retirementTaxRate, fedParams);
+    const optimalAmount = Math.max(0, targetIncomeThreshold - taxableIncome);
+
+    if (optimalAmount <= 0) return undefined;
+
+    // Find Traditional accounts to convert FROM (in withdrawal order)
+    const withdrawalOrder = assumptions.withdrawalStrategy || [];
+    const traditionalAccounts: InvestedAccount[] = [];
+
+    for (const bucket of withdrawalOrder) {
+        const account = accounts.find(acc => acc.id === bucket.accountId);
+        if (account instanceof InvestedAccount &&
+            (account.taxType === 'Traditional 401k' || account.taxType === 'Traditional IRA')) {
+            traditionalAccounts.push(account);
+        }
+    }
+
+    // Also add any Traditional accounts not in withdrawal order
+    for (const acc of accounts) {
+        if (acc instanceof InvestedAccount &&
+            (acc.taxType === 'Traditional 401k' || acc.taxType === 'Traditional IRA') &&
+            !traditionalAccounts.includes(acc)) {
+            traditionalAccounts.push(acc);
+        }
+    }
+
+    // Find Roth accounts to convert TO (reverse order)
+    const rothAccounts: InvestedAccount[] = [];
+
+    // First add Roth accounts in reverse withdrawal order
+    for (let i = withdrawalOrder.length - 1; i >= 0; i--) {
+        const bucket = withdrawalOrder[i];
+        const account = accounts.find(acc => acc.id === bucket.accountId);
+        if (account instanceof InvestedAccount &&
+            (account.taxType === 'Roth 401k' || account.taxType === 'Roth IRA')) {
+            rothAccounts.push(account);
+        }
+    }
+
+    // Also add any Roth accounts not in withdrawal order
+    for (const acc of accounts) {
+        if (acc instanceof InvestedAccount &&
+            (acc.taxType === 'Roth 401k' || acc.taxType === 'Roth IRA') &&
+            !rothAccounts.includes(acc)) {
+            rothAccounts.push(acc);
+        }
+    }
+
+    if (traditionalAccounts.length === 0 || rothAccounts.length === 0) {
+        return undefined;
+    }
+
+    // Perform the conversion (calculate amounts but DON'T mutate accounts)
+    let remainingToConvert = optimalAmount;
+    const fromAccounts: Record<string, number> = {};
+    const toAccounts: Record<string, number> = {};
+    // Track by account ID for applying via userInflows
+    const fromAccountIds: Record<string, number> = {};
+    const toAccountIds: Record<string, number> = {};
+
+    // Convert from Traditional accounts
+    for (const tradAccount of traditionalAccounts) {
+        if (remainingToConvert <= 0) break;
+
+        const availableBalance = tradAccount.amount;
+        if (availableBalance <= 0) continue;
+
+        const convertAmount = Math.min(remainingToConvert, availableBalance);
+
+        // Track withdrawal amount (don't mutate account directly!)
+        fromAccounts[tradAccount.name] = (fromAccounts[tradAccount.name] || 0) + convertAmount;
+        fromAccountIds[tradAccount.id] = (fromAccountIds[tradAccount.id] || 0) + convertAmount;
+        remainingToConvert -= convertAmount;
+    }
+
+    const totalConverted = optimalAmount - remainingToConvert;
+
+    if (totalConverted <= 0) return undefined;
+
+    // Deposit to Roth accounts (fill first Roth in reverse order)
+    let remainingToDeposit = totalConverted;
+    for (const rothAccount of rothAccounts) {
+        if (remainingToDeposit <= 0) break;
+
+        // Track deposit amount (don't mutate account directly!)
+        toAccounts[rothAccount.name] = (toAccounts[rothAccount.name] || 0) + remainingToDeposit;
+        toAccountIds[rothAccount.id] = (toAccountIds[rothAccount.id] || 0) + remainingToDeposit;
+        remainingToDeposit = 0;
+    }
+
+    // Calculate tax cost on the conversion
+    const taxBefore = TaxService.calculateTax(taxableIncome, 0, {
+        ...fedParams,
+        standardDeduction: 0
+    });
+    const taxAfter = TaxService.calculateTax(taxableIncome + totalConverted, 0, {
+        ...fedParams,
+        standardDeduction: 0
+    });
+    const taxCost = taxAfter - taxBefore;
+
+    logs.push(`  From: ${Object.entries(fromAccounts).map(([name, amt]) => `${name}: $${amt.toLocaleString(undefined, { maximumFractionDigits: 0 })}`).join(', ')}`);
+    logs.push(`  To: ${Object.entries(toAccounts).map(([name, amt]) => `${name}: $${amt.toLocaleString(undefined, { maximumFractionDigits: 0 })}`).join(', ')}`);
+
+    return {
+        amount: totalConverted,
+        taxCost,
+        fromAccounts,
+        toAccounts,
+        fromAccountIds,
+        toAccountIds
+    };
 }
 
 /**
@@ -106,8 +296,11 @@ export function simulateOneYear(
             // If user has reached claiming age and PIA hasn't been calculated yet
             if (currentAge === inc.claimingAge && inc.calculatedPIA === 0) {
                 try {
-                    // Extract earnings from all previous simulation years
-                    const earningsHistory = extractEarningsFromSimulation(previousSimulation);
+                    // Extract earnings from simulation years + any imported SSA earnings history
+                    const earningsHistory = extractEarningsFromSimulation(
+                        previousSimulation,
+                        assumptions.demographics.priorEarnings
+                    );
 
                     // Calculate AIME/PIA based on top 35 years
                     // Use inflation rate as wage growth rate (wages typically track inflation)
@@ -115,21 +308,25 @@ export function simulateOneYear(
                     const wageGrowthRate = assumptions.macro.inflationRate / 100;
                     const aimeCalc = calculateAIME(earningsHistory, year, inc.claimingAge, birthYear, wageGrowthRate);
 
-                    // Set end date to life expectancy
+                    // Set end date to end of life expectancy year (assume death at end of year)
                     const endDate = new Date(Date.UTC(
                         assumptions.demographics.startYear + (assumptions.demographics.lifeExpectancy - assumptions.demographics.startAge),
-                        0, 1
+                        11, 31  // December 31st
                     ));
 
-                    logs.push(`Social Security benefits calculated: $${aimeCalc.adjustedBenefit.toFixed(2)}/month at age ${inc.claimingAge}`);
-                    logs.push(`  AIME: $${aimeCalc.aime.toFixed(2)}, PIA: $${aimeCalc.pia.toFixed(2)}`);
+                    // Apply SS funding percentage (allows users to model reduced benefits)
+                    const fundingPercent = (assumptions.income?.socialSecurityFundingPercent ?? 100) / 100;
+                    const adjustedMonthlyBenefit = aimeCalc.adjustedBenefit * fundingPercent;
+
+                    logs.push(`Social Security benefits calculated: $${adjustedMonthlyBenefit.toFixed(2)}/month at age ${inc.claimingAge}`);
+                    logs.push(`  AIME: $${aimeCalc.aime.toFixed(2)}, PIA: $${aimeCalc.pia.toFixed(2)}${fundingPercent < 1 ? `, Funding: ${fundingPercent * 100}%` : ''}`);
 
                     // Create new income with calculated PIA
                     return new FutureSocialSecurityIncome(
                         inc.id,
                         inc.name,
                         inc.claimingAge,
-                        aimeCalc.adjustedBenefit,
+                        adjustedMonthlyBenefit,
                         year,
                         new Date(Date.UTC(year, 0, 1)),
                         endDate
@@ -141,6 +338,11 @@ export function simulateOneYear(
                     return inc.increment(assumptions);
                 }
             }
+        }
+
+        // Pass year and age for WorkIncome to support TRACK_ANNUAL_MAX strategy
+        if (inc instanceof WorkIncome) {
+            return inc.increment(assumptions, year, currentAge);
         }
 
         return inc.increment(assumptions);
@@ -192,7 +394,129 @@ export function simulateOneYear(
         return inc;
     });
 
-    const nextExpenses = expenses.map(exp => exp.increment(assumptions));
+    let nextExpenses = expenses.map(exp => exp.increment(assumptions));
+
+    // ------------------------------------------------------------------
+    // GUYTON-KLINGER EXPENSE ADJUSTMENT (Must happen BEFORE expenses are summed)
+    // ------------------------------------------------------------------
+    let strategyWithdrawalResult: WithdrawalResult | undefined;
+    let strategyAdjustmentResult: SimulationYear['strategyAdjustment'] | undefined;
+
+    if (isRetired && assumptions.investments.withdrawalStrategy === 'Guyton Klinger') {
+        // Calculate total invested assets (for withdrawal calculations)
+        const totalInvestedAssets = accounts.reduce((sum, acc) => {
+            if (acc instanceof InvestedAccount || acc instanceof SavedAccount) {
+                return sum + acc.amount;
+            }
+            return sum;
+        }, 0);
+
+        // Get previous year's withdrawal result for tracking
+        const previousStrategyResult = previousSimulation.length > 0
+            ? previousSimulation[previousSimulation.length - 1].strategyWithdrawal
+            : undefined;
+
+        // Calculate years in retirement (0 = first year)
+        const retirementStartYear = assumptions.demographics.startYear +
+            (assumptions.demographics.retirementAge - assumptions.demographics.startAge);
+        const yearsInRetirement = year - retirementStartYear;
+
+        // Calculate years remaining for 15-year rule
+        const yearsRemaining = assumptions.demographics.lifeExpectancy - currentAge;
+
+        // Calculate strategy-based withdrawal with GK parameters
+        strategyWithdrawalResult = calculateStrategyWithdrawal({
+            strategy: 'Guyton Klinger',
+            withdrawalRate: assumptions.investments.withdrawalRate,
+            currentPortfolio: totalInvestedAssets,
+            inflationRate: assumptions.macro.inflationRate,
+            yearsInRetirement,
+            previousWithdrawal: previousStrategyResult,
+            gkUpperGuardrail: assumptions.investments.gkUpperGuardrail,
+            gkLowerGuardrail: assumptions.investments.gkLowerGuardrail,
+            gkAdjustmentPercent: assumptions.investments.gkAdjustmentPercent,
+            yearsRemaining,
+        });
+
+        logs.push(`📊 Retirement withdrawal strategy: Guyton Klinger`);
+        logs.push(`  Target withdrawal: $${strategyWithdrawalResult.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+        logs.push(`  Portfolio value: $${totalInvestedAssets.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+        logs.push(`  Effective rate: ${((strategyWithdrawalResult.amount / totalInvestedAssets) * 100).toFixed(2)}%`);
+
+        // Check if a guardrail was triggered
+        if (strategyWithdrawalResult.guardrailTriggered !== 'none') {
+            const adjustmentPercent = assumptions.investments.gkAdjustmentPercent / 100;
+            const baseWithdrawal = strategyWithdrawalResult.baseAmount;
+            const requiredAdjustment = baseWithdrawal * adjustmentPercent;
+
+            // Calculate total discretionary expenses
+            const discretionaryExpenses = nextExpenses.filter(exp => exp.isDiscretionary);
+            const totalDiscretionary = discretionaryExpenses.reduce((sum, exp) => {
+                if (exp instanceof MortgageExpense) {
+                    return sum + exp.calculateAnnualAmortization(year).totalPayment;
+                }
+                if (exp instanceof LoanExpense) {
+                    return sum + exp.calculateAnnualAmortization(year).totalPayment;
+                }
+                return sum + exp.getAnnualAmount(year);
+            }, 0);
+
+            let actualAdjustment = 0;
+            let warning: string | undefined;
+
+            if (strategyWithdrawalResult.guardrailTriggered === 'capital-preservation') {
+                // Need to CUT discretionary expenses
+                if (requiredAdjustment > totalDiscretionary) {
+                    // Can't cut enough - apply what we can and warn
+                    actualAdjustment = totalDiscretionary;
+                    warning = `Guyton-Klinger Capital Preservation requires cutting $${requiredAdjustment.toLocaleString(undefined, { maximumFractionDigits: 0 })}, but only $${totalDiscretionary.toLocaleString(undefined, { maximumFractionDigits: 0 })} in discretionary expenses available. Consider marking more expenses as discretionary or choosing a different strategy.`;
+                    logs.push(`⚠️ GK Capital Preservation: Cannot fully apply 10% cut`);
+                    logs.push(`  Required: $${requiredAdjustment.toLocaleString(undefined, { maximumFractionDigits: 0 })}, Available: $${totalDiscretionary.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+                } else {
+                    actualAdjustment = requiredAdjustment;
+                    logs.push(`📉 GK Capital Preservation triggered: Cutting discretionary expenses by $${actualAdjustment.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+                }
+
+                // Apply proportional cut to discretionary expenses
+                if (actualAdjustment > 0 && totalDiscretionary > 0) {
+                    const cutRatio = 1 - (actualAdjustment / totalDiscretionary);
+                    nextExpenses = nextExpenses.map(exp => {
+                        if (exp.isDiscretionary) {
+                            return exp.adjustAmount(cutRatio);
+                        }
+                        return exp;
+                    });
+                }
+            } else if (strategyWithdrawalResult.guardrailTriggered === 'prosperity') {
+                // INCREASE discretionary expenses
+                actualAdjustment = requiredAdjustment;
+                logs.push(`📈 GK Prosperity triggered: Increasing discretionary expenses by $${actualAdjustment.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+
+                // Apply proportional increase to discretionary expenses
+                if (totalDiscretionary > 0) {
+                    const increaseRatio = 1 + (actualAdjustment / totalDiscretionary);
+                    nextExpenses = nextExpenses.map(exp => {
+                        if (exp.isDiscretionary) {
+                            return exp.adjustAmount(increaseRatio);
+                        }
+                        return exp;
+                    });
+                } else {
+                    // No discretionary expenses to increase - just log it
+                    logs.push(`  Note: No discretionary expenses to increase`);
+                    actualAdjustment = 0;
+                }
+            }
+
+            strategyAdjustmentResult = {
+                guardrailTriggered: strategyWithdrawalResult.guardrailTriggered,
+                requiredAdjustment,
+                actualAdjustment,
+                discretionaryAvailable: totalDiscretionary,
+                warning,
+            };
+        }
+    }
 
     // Calculate interest income from savings accounts (before they grow)
     // Interest is based on beginning-of-year balance
@@ -238,6 +562,39 @@ export function simulateOneYear(
     const ficaTax = TaxService.calculateFicaTax(taxState, allIncomes, year, assumptions);
     let totalTax = fedTax + stateTax + ficaTax;
 
+    // ------------------------------------------------------------------
+    // AUTO ROTH CONVERSIONS (during retirement)
+    // ------------------------------------------------------------------
+    let rothConversionResult: SimulationYear['rothConversion'] = undefined;
+
+    if (isRetired && assumptions.investments.autoRothConversions) {
+        const conversionResult = performAutoRothConversion(
+            accounts,
+            allIncomes,
+            nextExpenses,
+            year,
+            assumptions,
+            taxState,
+            previousSimulation,
+            logs
+        );
+
+        if (conversionResult && conversionResult.amount > 0) {
+            rothConversionResult = conversionResult;
+
+            // Recalculate taxes with conversion added to income
+            // The conversion amount is treated as ordinary income
+            fedTax = fedTax + conversionResult.taxCost;
+            // State tax on conversion (simplified - use same effective rate)
+            const stateConversionTax = conversionResult.amount * (stateTax / Math.max(1, totalGrossIncome));
+            stateTax = stateTax + stateConversionTax;
+            totalTax = fedTax + stateTax + ficaTax;
+
+            logs.push(`🔄 Auto Roth Conversion: $${conversionResult.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+            logs.push(`  Tax cost: $${conversionResult.taxCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+        }
+    }
+
     // 3. LIVING EXPENSES (The Bills)
     const totalLivingExpenses = nextExpenses.reduce((sum, exp) => {
         if (exp instanceof MortgageExpense) {
@@ -255,11 +612,10 @@ export function simulateOneYear(
     let withdrawalPenalties = 0;
 
     // ------------------------------------------------------------------
-    // RETIREMENT WITHDRAWAL STRATEGY
+    // RETIREMENT WITHDRAWAL STRATEGY (for non-GK strategies)
+    // Note: Guyton-Klinger is handled earlier so it can adjust expenses
     // ------------------------------------------------------------------
-    let strategyWithdrawalResult: WithdrawalResult | undefined;
-
-    if (isRetired) {
+    if (isRetired && assumptions.investments.withdrawalStrategy !== 'Guyton Klinger') {
         // Calculate total invested assets (for withdrawal calculations)
         const totalInvestedAssets = accounts.reduce((sum, acc) => {
             if (acc instanceof InvestedAccount || acc instanceof SavedAccount) {
@@ -306,6 +662,17 @@ export function simulateOneYear(
     let strategyWithdrawalExecuted = 0;
     let totalWithdrawals = 0;
     const withdrawalDetail: Record<string, number> = {}; // Track by account name for display
+
+    // Apply Roth conversion flows (if any)
+    // Withdrawals from Traditional accounts (negative) and deposits to Roth accounts (positive)
+    if (rothConversionResult) {
+        for (const [accountId, amount] of Object.entries(rothConversionResult.fromAccountIds)) {
+            userInflows[accountId] = (userInflows[accountId] || 0) - amount; // Negative = withdrawal
+        }
+        for (const [accountId, amount] of Object.entries(rothConversionResult.toAccountIds)) {
+            userInflows[accountId] = (userInflows[accountId] || 0) + amount; // Positive = deposit
+        }
+    }
 
     // Calculate deficit - only withdraw what's needed to cover expenses
     // The strategy result is tracked for informational purposes but we only
@@ -611,7 +978,7 @@ export function simulateOneYear(
         // If the remaining deficit is less than half a penny, treat it as zero.
         // This prevents "-$0.00" errors in the UI or logic.
         if (Math.abs(deficit) < 0.005) {
-            console.log(`Deficit of $${deficit.toFixed(4)} treated as zero due to floating point precision.`);
+            //This happens all the time, I got rid of the console spam //todo look into why this happens so much?
             deficit = 0;
         }
 
@@ -620,9 +987,56 @@ export function simulateOneYear(
         // - If we couldn't fully cover deficit, discretionaryCash stays negative
         discretionaryCash = -deficit;
 
+        // Clean up small positive surplus from withdrawal solver rounding
+        // The solver has ~$1 tolerance, which can create tiny surpluses that
+        // shouldn't flow to priority allocations. Zero out amounts under $2.
+        if (discretionaryCash > 0 && discretionaryCash < 2) {
+            discretionaryCash = 0;
+        }
+
         if (isRetired && strategyWithdrawalExecuted > 0) {
             logs.push(`💰 Strategy withdrawal executed: $${strategyWithdrawalExecuted.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
         }
+    }
+
+    // ------------------------------------------------------------------
+    // DEFICIT DEBT TRACKING
+    // ------------------------------------------------------------------
+    // If there's still an uncovered deficit after all withdrawals, track it as debt
+    const DEFICIT_DEBT_ID = 'system-deficit-debt';
+    const DEFICIT_DEBT_NAME = 'Uncovered Deficit';
+    let deficitDebtPayment = 0;
+
+    // Find existing deficit debt account
+    let existingDeficitDebt = accounts.find(
+        acc => acc instanceof DeficitDebtAccount && acc.id === DEFICIT_DEBT_ID
+    ) as DeficitDebtAccount | undefined;
+
+    // If we have an uncovered deficit (negative discretionary cash), add to deficit debt
+    if (discretionaryCash < 0) {
+        const uncoveredDeficit = Math.abs(discretionaryCash);
+
+        if (existingDeficitDebt) {
+            // Add to existing debt
+            existingDeficitDebt = new DeficitDebtAccount(
+                DEFICIT_DEBT_ID,
+                DEFICIT_DEBT_NAME,
+                existingDeficitDebt.amount + uncoveredDeficit
+            );
+        } else {
+            // Create new debt account
+            existingDeficitDebt = new DeficitDebtAccount(
+                DEFICIT_DEBT_ID,
+                DEFICIT_DEBT_NAME,
+                uncoveredDeficit
+            );
+        }
+
+        logs.push(`⚠️ Uncovered deficit of $${uncoveredDeficit.toLocaleString(undefined, { maximumFractionDigits: 0 })} added to deficit debt`);
+        logs.push(`  Total deficit debt: $${existingDeficitDebt.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+
+        // Deficit is now captured as debt, so reset discretionary cash to 0
+        discretionaryCash = 0;
     }
 
     // ------------------------------------------------------------------
@@ -651,9 +1065,26 @@ export function simulateOneYear(
         }
     });
 
-    // 5b. Priority Waterfall (Surplus Only) - ONLY DURING ACCUMULATION PHASE
-    // In retirement, we don't accumulate - we only withdraw enough for expenses
-    if (!isRetired) {
+    // 5b. Pay down deficit debt FIRST (before priority allocations)
+    // This ensures deficit debt is paid off before any other surplus allocations
+    if (discretionaryCash > 0 && existingDeficitDebt && existingDeficitDebt.amount > 0) {
+        const payment = Math.min(discretionaryCash, existingDeficitDebt.amount);
+        discretionaryCash -= payment;
+        deficitDebtPayment = payment;
+
+        logs.push(`💵 Paid down $${payment.toLocaleString(undefined, { maximumFractionDigits: 0 })} of deficit debt`);
+
+        if (existingDeficitDebt.amount - payment <= 0) {
+            logs.push(`  Deficit debt fully paid off!`);
+        } else {
+            logs.push(`  Remaining deficit debt: $${(existingDeficitDebt.amount - payment).toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+        }
+    }
+
+    // 5c. Priority Waterfall (Surplus Only)
+    // Allocate any remaining surplus to priority accounts (works in both accumulation and retirement)
+    // During retirement, this allows storing excess income (e.g., SS surplus) for future expense spikes
+    if (discretionaryCash > 0) {
         assumptions.priorities.forEach((priority) => {
             // Only allocate if we actually have cash left
             if (discretionaryCash <= 0 || !priority.accountId) return;
@@ -711,7 +1142,7 @@ export function simulateOneYear(
     });
 
     // 7. GROW ACCOUNTS (The compounding)
-    const nextAccounts = accounts.map(acc => {
+    let nextAccounts: AnyAccount[] = accounts.map(acc => {
         const userIn = userInflows[acc.id] || 0;
         const employerIn = employerInflows[acc.id] || 0;
         const totalIn = userIn + employerIn;
@@ -725,7 +1156,15 @@ export function simulateOneYear(
             }
             return acc.increment(assumptions, { newLoanBalance: finalLoanBalance, newValue: linkedState?.value });
         }
-        
+
+        // Handle DeficitDebtAccount BEFORE DebtAccount (since it extends DebtAccount)
+        if (acc instanceof DeficitDebtAccount) {
+            // Apply payment from earlier in the year
+            const newBalance = Math.max(0, acc.amount - deficitDebtPayment);
+            // Return null if paid off (will be filtered out below)
+            return acc.increment(assumptions, newBalance);
+        }
+
         if (acc instanceof DebtAccount) {
             let finalBalance = linkedState?.balance ?? (acc.amount * (1 + acc.apr / 100));
             // Inflow for debt means PAYMENT (reducing balance)
@@ -748,6 +1187,29 @@ export function simulateOneYear(
         const _exhaustiveCheck: never = acc;
         return _exhaustiveCheck;
     });
+
+    // Handle deficit debt: either update existing, add new, or remove
+    if (existingDeficitDebt) {
+        const finalDeficitDebtBalance = existingDeficitDebt.amount - deficitDebtPayment;
+        const hasDeficitDebtInAccounts = nextAccounts.some(acc => acc.id === DEFICIT_DEBT_ID);
+
+        if (finalDeficitDebtBalance > 0) {
+            if (hasDeficitDebtInAccounts) {
+                // Replace with correct balance (handles case where new deficit was added)
+                nextAccounts = nextAccounts.map(acc =>
+                    acc.id === DEFICIT_DEBT_ID
+                        ? new DeficitDebtAccount(DEFICIT_DEBT_ID, DEFICIT_DEBT_NAME, finalDeficitDebtBalance)
+                        : acc
+                );
+            } else {
+                // Add new deficit debt account (wasn't in original accounts)
+                nextAccounts = [...nextAccounts, new DeficitDebtAccount(DEFICIT_DEBT_ID, DEFICIT_DEBT_NAME, finalDeficitDebtBalance)];
+            }
+        } else {
+            // Fully paid off - remove from accounts
+            nextAccounts = nextAccounts.filter(acc => acc.id !== DEFICIT_DEBT_ID);
+        }
+    }
 
     // 8. SUMMARY STATS
     const trueUserSaved = totalGrossIncome - totalTax - totalInsuranceCost - totalLivingExpenses - discretionaryCash;
@@ -779,6 +1241,8 @@ export function simulateOneYear(
             capitalGains: capitalGainsTaxTotal
         },
         logs,
-        strategyWithdrawal: strategyWithdrawalResult
+        strategyWithdrawal: strategyWithdrawalResult,
+        strategyAdjustment: strategyAdjustmentResult,
+        rothConversion: rothConversionResult
     };
 }

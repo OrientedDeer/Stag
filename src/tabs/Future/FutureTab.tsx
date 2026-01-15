@@ -1,6 +1,7 @@
 import React, { useState, useContext, useMemo, useEffect, useCallback } from 'react';
 import { runSimulation } from '../../components/Objects/Assumptions/useSimulation';
 import { AssumptionsContext } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { getSimulationInputHash } from '../../services/simulationHash';
 import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 import { InvestedAccount, PropertyAccount, SavedAccount } from '../../components/Objects/Accounts/models';
 import { SimulationContext } from '../../components/Objects/Assumptions/SimulationContext';
@@ -10,6 +11,7 @@ import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext'
 import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
 import { calculateMilestones, formatAge, MilestonesSummary } from '../../services/MilestoneCalculator';
 import { LoadingSpinner, LoadingOverlay } from '../../components/Layout/LoadingSpinner';
+import { AlertBanner } from '../../components/Layout/AlertBanner';
 
 // --- Charts ---
 import { AssetsStreamChart } from '../../components/Charts/AssetsStreamChart';
@@ -20,7 +22,14 @@ import { CashflowTab } from './tabs/CashflowTabs';
 import { DebtTab } from './tabs/DebtTab';
 import { DataTab } from './tabs/DataTab';
 import { MonteCarloTab } from './tabs/MonteCarloTab';
-const future_tabs = ["Overview", "Cashflow", "Assets", "Debt", "Monte Carlo", "Data"];
+import { TaxOptimizationTab } from './tabs/TaxOptimizationTab';
+import { ScenarioComparisonTab } from './tabs/ScenarioComparisonTab';
+import { FinancialRatiosTab } from './tabs/FinancialRatiosTab';
+
+// Base tabs always shown
+const base_tabs = ["Overview", "Cashflow", "Assets", "Debt", "Monte Carlo", "Data"];
+// Experimental tabs only shown when enabled
+const experimental_tabs = ["Tax", "Scenarios", "Ratios"];
 
 // --- Inline Assets Tab (Memoized) ---
 const AssetsTab = React.memo(({ simulationData }: { simulationData: SimulationYear[] }) => {
@@ -93,7 +102,7 @@ const MilestoneCard = React.memo(({ title, age, year, status, yearsUntil }: Mile
             <div className="text-xs text-gray-400 uppercase tracking-wide mb-1">{title}</div>
             <div className="text-2xl font-bold text-white">Age {formatAge(age)}</div>
             <div className="text-sm text-gray-400">{year}</div>
-            <div className={`text-xs mt-1 font-semibold ${status === 'now' || status === 'reached' ? 'text-green-400' : status === 'projected' ? 'text-blue-400' : 'text-gray-500'}`}>
+            <div className={`text-xs mt-1 font-semibold ${status === 'now' || status === 'reached' ? 'text-green-400' : status === 'projected' ? 'text-blue-400' : 'text-gray-400'}`}>
                 {statusLabels[status]}
             </div>
         </div>
@@ -146,7 +155,7 @@ const ProgressTimeline = React.memo(({ milestones }: ProgressTimelineProps) => {
             />
 
             {/* Labels */}
-            <div className="absolute -bottom-5 left-0 text-xs text-gray-500">0</div>
+            <div className="absolute -bottom-5 left-0 text-xs text-gray-400">0</div>
             <div
                 className="absolute -bottom-5 text-xs text-gray-400 transform -translate-x-1/2"
                 style={{ left: `${currentPos}%` }}
@@ -167,7 +176,7 @@ const ProgressTimeline = React.memo(({ milestones }: ProgressTimelineProps) => {
             >
                 {retirementAge}
             </div>
-            <div className="absolute -bottom-5 right-0 text-xs text-gray-500">{lifeExpectancy}</div>
+            <div className="absolute -bottom-5 right-0 text-xs text-gray-400">{lifeExpectancy}</div>
         </div>
     );
 });
@@ -180,7 +189,7 @@ interface MilestoneBadgeProps {
 }
 
 const MilestoneBadge = React.memo(({ age, label, reached }: MilestoneBadgeProps) => (
-    <span className={`px-2 py-1 rounded text-xs ${reached ? 'bg-green-900/50 text-green-400' : 'bg-gray-800 text-gray-500'}`}>
+    <span className={`px-2 py-1 rounded text-xs ${reached ? 'bg-green-900/50 text-green-400' : 'bg-gray-800 text-gray-400'}`}>
         {formatAge(age)} {label}
     </span>
 ));
@@ -188,13 +197,36 @@ const MilestoneBadge = React.memo(({ age, label, reached }: MilestoneBadgeProps)
 // --- Main Component ---
 export default function FutureTab() {
     const { state: assumptions } = useContext(AssumptionsContext);
-    const { simulation, dispatch: dispatchSimulation } = useContext(SimulationContext);
+    const { simulation, inputHash: storedInputHash, dispatch: dispatchSimulation } = useContext(SimulationContext);
     const { accounts } = useContext(AccountContext);
     const { incomes } = useContext(IncomeContext);
     const { expenses } = useContext(ExpenseContext);
     const { state: taxState } = useContext(TaxContext);
     const [activeTab, setActiveTab] = useState('Overview');
     const [isLoading, setIsLoading] = useState(false);
+
+    // Compute visible tabs based on experimental features setting
+    const showExperimental = assumptions.display?.showExperimentalFeatures ?? false;
+    const visible_tabs = useMemo(() => {
+        if (showExperimental) {
+            // Insert experimental tabs before "Data"
+            return [...base_tabs.slice(0, -1), ...experimental_tabs, "Data"];
+        }
+        return base_tabs;
+    }, [showExperimental]);
+
+    // Compute current input hash for staleness detection
+    const currentInputHash = useMemo(() =>
+        getSimulationInputHash(accounts, incomes, expenses, assumptions, taxState),
+        [accounts, incomes, expenses, assumptions, taxState]
+    );
+
+    // Check if simulation results are stale (inputs changed since last run)
+    const isSimulationStale = useMemo(() => {
+        if (simulation.length === 0) return false; // No simulation yet, not "stale"
+        if (!storedInputHash) return true; // Have simulation but no hash, consider stale
+        return storedInputHash !== currentInputHash;
+    }, [storedInputHash, currentInputHash, simulation.length]);
 
     // 1. Check for Missing Remainder Bucket
     const hasRemainderBucket = useMemo(() => {
@@ -203,7 +235,7 @@ export default function FutureTab() {
 
     const executeSimulation = useCallback(() => {
         return runSimulation(
-            assumptions.demographics.lifeExpectancy - assumptions.demographics.startAge - 19,
+            assumptions.demographics.lifeExpectancy - assumptions.demographics.startAge,
             accounts,
             incomes,
             expenses,
@@ -217,10 +249,14 @@ export default function FutureTab() {
         // Use setTimeout to allow the UI to update before running the simulation
         setTimeout(() => {
             const newSimulation = executeSimulation();
-            dispatchSimulation({ type: 'SET_SIMULATION', payload: newSimulation });
+            // Store simulation with input hash for staleness detection
+            dispatchSimulation({
+                type: 'SET_SIMULATION_WITH_HASH',
+                payload: { simulation: newSimulation, inputHash: currentInputHash }
+            });
             setIsLoading(false);
         }, 50);
-    }, [executeSimulation, dispatchSimulation]);
+    }, [executeSimulation, dispatchSimulation, currentInputHash]);
 
     // Auto-recalculate simulation on mount if we have data but no simulation
     // This fixes the issue where localStorage data loads but simulation is stale/empty
@@ -232,12 +268,26 @@ export default function FutureTab() {
             setIsLoading(true);
             setTimeout(() => {
                 const newSimulation = executeSimulation();
-                dispatchSimulation({ type: 'SET_SIMULATION', payload: newSimulation });
+                dispatchSimulation({
+                    type: 'SET_SIMULATION_WITH_HASH',
+                    payload: { simulation: newSimulation, inputHash: currentInputHash }
+                });
                 setIsLoading(false);
             }, 50);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); // Only run on mount - we want to check localStorage state once
+
+    // Auto-run simulation after 5 seconds of being stale (inputs changed)
+    useEffect(() => {
+        if (!isSimulationStale || isLoading) return;
+
+        const timer = setTimeout(() => {
+            handleRecalculate();
+        }, 5000);
+
+        return () => clearTimeout(timer);
+    }, [isSimulationStale, currentInputHash, isLoading, handleRecalculate]);
 
     // Calculate milestones using the centralized service
     const milestones = useMemo(() =>
@@ -284,6 +334,15 @@ export default function FutureTab() {
             <div className={activeTab === 'Monte Carlo' ? '' : 'hidden'}>
                 <MonteCarloTab simulationData={simulation} />
             </div>
+            <div className={activeTab === 'Tax' ? '' : 'hidden'}>
+                <TaxOptimizationTab simulationData={simulation} />
+            </div>
+            <div className={activeTab === 'Scenarios' ? '' : 'hidden'}>
+                <ScenarioComparisonTab simulationData={simulation} />
+            </div>
+            <div className={activeTab === 'Ratios' ? '' : 'hidden'}>
+                <FinancialRatiosTab simulationData={simulation} />
+            </div>
             <div className={activeTab === 'Data' ? '' : 'hidden'}>
                 <DataTab simulationData={simulation} startAge={assumptions.demographics.startAge} />
             </div>
@@ -296,26 +355,27 @@ export default function FutureTab() {
                 
                 {/* 2. Warning Banner */}
                 {!hasRemainderBucket && (
-                    <div className="mb-6 p-4 bg-amber-900/40 border border-amber-600 text-amber-200 rounded-xl flex items-start gap-3 shadow-lg">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                        </svg>
-                        <div>
-                            <h3 className="font-bold text-lg">Warning: Disappearing Money</h3>
-                            <p className="text-sm mt-1">
-                                You do not have a <strong>"Remainder"</strong> bucket set up in your Priorities. 
-                                Any unallocated cash (surplus income) will disappear from the simulation instead of being saved.
-                                <br/>
-                                Please go to the <strong>Allocation</strong> tab and create a bucket with Cap Type: <strong>"Remainder"</strong>.
-                            </p>
-                        </div>
-                    </div>
+                    <AlertBanner severity="warning" title="Warning: Disappearing Money" className="mb-6">
+                        <p className="text-sm">
+                            You do not have a <strong>"Remainder"</strong> bucket set up in your Priorities.
+                            Any unallocated cash (surplus income) will disappear from the simulation instead of being saved.
+                            <br/>
+                            Please go to the <strong>Allocation</strong> tab and create a bucket with Cap Type: <strong>"Remainder"</strong>.
+                        </p>
+                    </AlertBanner>
                 )}
 
                 {/* Milestone Cards */}
                 <div className="mb-6 p-4 bg-gray-900 rounded-xl border border-gray-800 shadow-lg">
                     <div className="flex justify-between items-center mb-4">
-                        <h2 className="text-xl font-bold text-white">Retirement Timeline</h2>
+                        <div className="flex items-center gap-3">
+                            <h2 className="text-xl font-bold text-white">Retirement Timeline</h2>
+                            {isSimulationStale && !isLoading && (
+                                <span className="px-2 py-1 text-xs bg-yellow-600 text-white rounded-full animate-pulse">
+                                    Outdated - updating...
+                                </span>
+                            )}
+                        </div>
                         <button
                             onClick={handleRecalculate}
                             disabled={isLoading}
@@ -384,7 +444,7 @@ export default function FutureTab() {
 
                 {/* Tab System */}
                 <div className="bg-gray-900 rounded-lg overflow-hidden mb-1 flex border border-gray-800">
-                    {future_tabs.map((tab) => (
+                    {visible_tabs.map((tab) => (
                         <button
                             key={tab}
                             className={`flex-1 font-semibold p-3 transition-colors duration-200 ${activeTab === tab
@@ -399,7 +459,7 @@ export default function FutureTab() {
                 </div>
 
                 {/* Main Content */}
-                <div className="bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl mb-4 p-6 overflow-hidden relative">
+                <div className="bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl mb-4 p-6 overflow-visible relative">
                     {isLoading && <LoadingOverlay message="Running simulation..." />}
                     {renderTabContent()}
                 </div>

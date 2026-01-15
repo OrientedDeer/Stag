@@ -252,6 +252,7 @@ describe('useFileManager', () => {
     });
 
     it('should filter out invalid objects during reconstitution', () => {
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       const { result } = renderHook(() => useFileManager(), {
         wrapper: AllProvidersWrapper,
       });
@@ -295,6 +296,7 @@ describe('useFileManager', () => {
       expect(alertMock).not.toHaveBeenCalledWith(
         'Error importing backup. Please check file format.'
       );
+      consoleSpy.mockRestore();
     });
 
     it('should merge assumptions with defaults for partial backups', () => {

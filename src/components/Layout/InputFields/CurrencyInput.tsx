@@ -9,12 +9,13 @@ interface CurrencyInputProps {
     error?: string;
     id?: string;
     tooltip?: string;
+    disabled?: boolean;
 }
 
 const format = (val: number) =>
     val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export const CurrencyInput: React.FC<CurrencyInputProps> = ({ label, value, onChange, onBlur, error, id, tooltip }) => {
+export const CurrencyInput: React.FC<CurrencyInputProps> = ({ label, value, onChange, onBlur, error, id, tooltip, disabled = false }) => {
     // Local state for the string representation (e.g., "$1,200.50")
     const [displayValue, setDisplayValue] = useState("");
     const [isFocused, setIsFocused] = useState(false);
@@ -81,6 +82,7 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({ label, value, onCh
             onBlur={handleBlur}
             error={displayError}
             tooltip={tooltip}
+            disabled={disabled}
         />
     );
 };

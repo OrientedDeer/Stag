@@ -7,10 +7,16 @@
  * - Guyton-Klinger: Dynamic with guardrails based on portfolio performance
  */
 
+export type GuardrailTrigger = 'none' | 'capital-preservation' | 'prosperity';
+
 export interface WithdrawalResult {
   amount: number;           // How much to withdraw this year
   baseAmount: number;       // Base amount for tracking across years
   initialPortfolio: number; // Portfolio value at retirement (for Fixed Real)
+  // Guyton-Klinger guardrail state
+  guardrailTriggered: GuardrailTrigger;
+  targetWithdrawalRate: number;   // The initial target rate (e.g., 4%)
+  currentWithdrawalRate: number;  // What the withdrawal actually represents as % of portfolio
 }
 
 export interface GuytonKlingerParams {
@@ -20,6 +26,8 @@ export interface GuytonKlingerParams {
   inflationRate: number;      // e.g., 3 for 3%
   upperGuardrail?: number;    // Default 1.2 (20% above target rate)
   lowerGuardrail?: number;    // Default 0.8 (20% below target rate)
+  adjustmentPercent?: number; // Default 10 (10% cut/increase when guardrails trigger)
+  yearsRemaining?: number;    // Years until life expectancy (for 15-year rule)
   isFirstYear: boolean;       // If true, calculate initial withdrawal
 }
 
@@ -35,7 +43,8 @@ export function calculateFixedRealWithdrawal(
   initialPortfolio: number,
   withdrawalRate: number,
   inflationRate: number,
-  yearsInRetirement: number
+  yearsInRetirement: number,
+  currentPortfolio?: number
 ): WithdrawalResult {
   // Year 1 withdrawal (yearsInRetirement = 0)
   const initialWithdrawal = initialPortfolio * (withdrawalRate / 100);
@@ -47,10 +56,17 @@ export function calculateFixedRealWithdrawal(
   const inflationMultiplier = Math.pow(1 + inflationRate / 100, yearsInRetirement);
   const amount = initialWithdrawal * inflationMultiplier;
 
+  // Calculate current withdrawal rate for reporting
+  const portfolioForRate = currentPortfolio ?? initialPortfolio;
+  const currentWithdrawalRate = portfolioForRate > 0 ? (amount / portfolioForRate) * 100 : 0;
+
   return {
     amount,
     baseAmount: initialWithdrawal, // Always the year-1 amount (not inflation-adjusted)
     initialPortfolio,
+    guardrailTriggered: 'none',
+    targetWithdrawalRate: withdrawalRate,
+    currentWithdrawalRate,
   };
 }
 
@@ -75,24 +91,29 @@ export function calculatePercentageWithdrawal(
     amount,
     baseAmount: amount, // For percentage, base = current (no tracking needed)
     initialPortfolio: currentPortfolio,
+    guardrailTriggered: 'none',
+    targetWithdrawalRate: withdrawalRate,
+    currentWithdrawalRate: withdrawalRate, // For percentage, always equals target
   };
 }
 
 /**
  * Guyton-Klinger Dynamic Withdrawal Strategy
  *
- * Starts with initial withdrawal like Fixed Real, then applies guardrails:
+ * Based on the actual Guyton-Klinger rules from financial research:
+ * - Capital Preservation Rule (bad markets): Cut withdrawal by 10% when rate > target * 1.2
+ * - Prosperity Rule (good markets): Increase withdrawal by 10% when rate < target * 0.8
+ * - Normal: Adjust for inflation only
  *
- * Each year, check if current withdrawal rate has drifted from target:
- * - If rate > target * upperGuardrail (portfolio dropped): REDUCE withdrawal
- * - If rate < target * lowerGuardrail (portfolio grew): INCREASE withdrawal
- * - Otherwise: adjust for inflation only
+ * Key behaviors:
+ * - Adjustments are PERMANENT (become the new baseline for next year)
+ * - Capital Preservation only applies if > 15 years until life expectancy
+ * - Default guardrails: 0.8 to 1.2 (±20% from target rate)
+ * - Default adjustment: 10% cut or increase
  *
- * This balances between:
- * - Fixed Real's stability (inflation adjustments)
- * - Percentage's responsiveness (guardrail triggers)
- *
- * Default guardrails: 0.8 to 1.2 (±20% from target rate)
+ * Sources:
+ * - White Coat Investor: https://www.whitecoatinvestor.com/guyton-klinger-guardrails-approach-for-retirement/
+ * - Retirement Researcher: https://retirementresearcher.com/original-retirement-spending-decision-rules/
  */
 export function calculateGuytonKlingerWithdrawal(
   params: GuytonKlingerParams
@@ -104,6 +125,8 @@ export function calculateGuytonKlingerWithdrawal(
     inflationRate,
     upperGuardrail = 1.2,
     lowerGuardrail = 0.8,
+    adjustmentPercent = 10,
+    yearsRemaining,
     isFirstYear,
   } = params;
 
@@ -114,74 +137,148 @@ export function calculateGuytonKlingerWithdrawal(
       amount: initialWithdrawal,
       baseAmount: initialWithdrawal,
       initialPortfolio: currentPortfolio,
+      guardrailTriggered: 'none',
+      targetWithdrawalRate: withdrawalRate,
+      currentWithdrawalRate: withdrawalRate,
     };
   }
 
   // Calculate what rate our current withdrawal represents
-  const currentWithdrawalRate = (baseWithdrawal / currentPortfolio) * 100;
+  const currentWithdrawalRate = currentPortfolio > 0
+    ? (baseWithdrawal / currentPortfolio) * 100
+    : 0;
   const targetRate = withdrawalRate;
 
-  // Default: adjust for inflation
+  // Default: adjust for inflation only
   let newWithdrawal = baseWithdrawal * (1 + inflationRate / 100);
+  let guardrailTriggered: GuardrailTrigger = 'none';
 
   // Check guardrails
   if (currentWithdrawalRate > targetRate * upperGuardrail) {
-    // Portfolio has dropped significantly - we're withdrawing too high a %
-    // Reduce withdrawal (skip inflation adjustment, or even reduce)
-    // The "prosperity rule" - cut back in bad times
-    newWithdrawal = baseWithdrawal; // No inflation adjustment this year
+    // Capital Preservation Rule: Portfolio has dropped significantly
+    // Only apply if more than 15 years until life expectancy
+    const canApplyCapitalPreservation = yearsRemaining === undefined || yearsRemaining > 15;
+
+    if (canApplyCapitalPreservation) {
+      // CUT withdrawal by adjustmentPercent (default 10%)
+      newWithdrawal = baseWithdrawal * (1 - adjustmentPercent / 100);
+      guardrailTriggered = 'capital-preservation';
+    } else {
+      // Within 15 years of life expectancy - just inflation adjust
+      newWithdrawal = baseWithdrawal * (1 + inflationRate / 100);
+    }
   } else if (currentWithdrawalRate < targetRate * lowerGuardrail) {
-    // Portfolio has grown significantly - we can withdraw more
-    // The "capital preservation rule" - increase in good times
-    newWithdrawal = baseWithdrawal * (1 + inflationRate / 100 * 1.5); // 150% of inflation
+    // Prosperity Rule: Portfolio has grown significantly
+    // INCREASE withdrawal by adjustmentPercent (default 10%)
+    newWithdrawal = baseWithdrawal * (1 + adjustmentPercent / 100);
+    guardrailTriggered = 'prosperity';
   }
   // else: normal case, just inflation adjustment (already set above)
 
+  // Calculate the new withdrawal rate after adjustment
+  const newWithdrawalRate = currentPortfolio > 0
+    ? (newWithdrawal / currentPortfolio) * 100
+    : 0;
+
   return {
     amount: newWithdrawal,
-    baseAmount: newWithdrawal, // Track this year's withdrawal for next year
+    baseAmount: newWithdrawal, // Adjustment becomes the new baseline for next year
     initialPortfolio: currentPortfolio,
+    guardrailTriggered,
+    targetWithdrawalRate: targetRate,
+    currentWithdrawalRate: newWithdrawalRate,
   };
+}
+
+/**
+ * Extended parameters for withdrawal calculation
+ */
+export interface WithdrawalParams {
+  strategy: 'Fixed Real' | 'Percentage' | 'Guyton Klinger';
+  withdrawalRate: number;
+  currentPortfolio: number;
+  inflationRate: number;
+  yearsInRetirement: number;
+  previousWithdrawal?: WithdrawalResult;
+  // Guyton-Klinger specific
+  gkUpperGuardrail?: number;
+  gkLowerGuardrail?: number;
+  gkAdjustmentPercent?: number;
+  yearsRemaining?: number;  // Years until life expectancy
 }
 
 /**
  * Main entry point for calculating withdrawal based on selected strategy
  */
 export function calculateStrategyWithdrawal(
-  strategy: 'Fixed Real' | 'Percentage' | 'Guyton Klinger',
-  withdrawalRate: number,
-  currentPortfolio: number,
-  inflationRate: number,
-  yearsInRetirement: number,
+  strategyOrParams: 'Fixed Real' | 'Percentage' | 'Guyton Klinger' | WithdrawalParams,
+  withdrawalRate?: number,
+  currentPortfolio?: number,
+  inflationRate?: number,
+  yearsInRetirement?: number,
   previousWithdrawal?: WithdrawalResult
 ): WithdrawalResult {
-  const isFirstYear = yearsInRetirement === 0;
-  const initialPortfolio = previousWithdrawal?.initialPortfolio ?? currentPortfolio;
-  const baseWithdrawal = previousWithdrawal?.baseAmount ?? (currentPortfolio * withdrawalRate / 100);
+  // Support both old signature and new params object
+  let params: WithdrawalParams;
+
+  if (typeof strategyOrParams === 'object') {
+    params = strategyOrParams;
+  } else {
+    params = {
+      strategy: strategyOrParams,
+      withdrawalRate: withdrawalRate!,
+      currentPortfolio: currentPortfolio!,
+      inflationRate: inflationRate!,
+      yearsInRetirement: yearsInRetirement!,
+      previousWithdrawal,
+    };
+  }
+
+  const {
+    strategy,
+    withdrawalRate: rate,
+    currentPortfolio: portfolio,
+    inflationRate: inflation,
+    yearsInRetirement: years,
+    previousWithdrawal: prevWithdrawal,
+    gkUpperGuardrail,
+    gkLowerGuardrail,
+    gkAdjustmentPercent,
+    yearsRemaining,
+  } = params;
+
+  const isFirstYear = years === 0;
+  const initialPortfolio = prevWithdrawal?.initialPortfolio ?? portfolio;
+  const baseWithdrawal = prevWithdrawal?.baseAmount ?? (portfolio * rate / 100);
 
   switch (strategy) {
     case 'Fixed Real':
       return calculateFixedRealWithdrawal(
         initialPortfolio,
-        withdrawalRate,
-        inflationRate,
-        yearsInRetirement
+        rate,
+        inflation,
+        years,
+        portfolio
       );
 
     case 'Percentage':
-      return calculatePercentageWithdrawal(currentPortfolio, withdrawalRate);
+      return calculatePercentageWithdrawal(portfolio, rate);
 
     case 'Guyton Klinger':
       return calculateGuytonKlingerWithdrawal({
-        currentPortfolio,
+        currentPortfolio: portfolio,
         baseWithdrawal,
-        withdrawalRate,
-        inflationRate,
+        withdrawalRate: rate,
+        inflationRate: inflation,
+        upperGuardrail: gkUpperGuardrail,
+        lowerGuardrail: gkLowerGuardrail,
+        adjustmentPercent: gkAdjustmentPercent,
+        yearsRemaining,
         isFirstYear,
       });
 
     default:
       // Fallback to percentage
-      return calculatePercentageWithdrawal(currentPortfolio, withdrawalRate);
+      return calculatePercentageWithdrawal(portfolio, rate);
   }
 }

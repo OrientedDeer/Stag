@@ -137,6 +137,7 @@ describe('SimulationContext', () => {
   });
 
   it('should handle corrupted localStorage data gracefully', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     localStorageMock.setItem('user_simulation_data', 'invalid json');
 
     let simulation!: SimulationYear[];
@@ -153,6 +154,7 @@ describe('SimulationContext', () => {
     );
 
     expect(simulation).toEqual([]);
+    consoleSpy.mockRestore();
   });
 
   it('should save simulation to localStorage when state changes (debounced)', async () => {
@@ -508,6 +510,7 @@ describe('SimulationContext', () => {
     });
 
     it('should filter out invalid objects during reconstitution', () => {
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       const savedData = {
         simulation: [
           {
@@ -573,6 +576,7 @@ describe('SimulationContext', () => {
       // Should only have the valid SavedAccount
       expect(simulation[0].accounts).toHaveLength(1);
       expect(simulation[0].accounts[0].id).toBe('1');
+      consoleSpy.mockRestore();
     });
   });
 

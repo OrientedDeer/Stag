@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   WorkIncome,
   SocialSecurityIncome,
@@ -10,6 +10,8 @@ import {
   getIncomeActiveMultiplier,
   isIncomeActiveInCurrentMonth,
   BaseIncome,
+  calculateSocialSecurityStartYear,
+  calculateSocialSecurityStartDate,
 } from '../../../../components/Objects/Income/models';
 import { defaultAssumptions, AssumptionsState } from '../../../../components/Objects/Assumptions/AssumptionsContext';
 
@@ -322,9 +324,11 @@ describe('Income Models', () => {
     });
 
     it('should return null for unknown or invalid data', () => {
+        const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
         expect(reconstituteIncome({ className: 'FakeIncome' })).toBeNull();
         expect(reconstituteIncome(null)).toBeNull();
         expect(reconstituteIncome({})).toBeNull();
+        consoleSpy.mockRestore();
     });
 
     it('should handle date strings correctly', () => {
@@ -408,6 +412,263 @@ describe('Income Models', () => {
         expect((income as FutureSocialSecurityIncome).calculatedPIA).toBe(0); // default
         expect((income as FutureSocialSecurityIncome).calculationYear).toBe(0); // default
       }
+    });
+  });
+
+  describe('BaseIncome.getProratedAnnual with year parameter', () => {
+    class TestIncome extends BaseIncome {
+      increment(_assumptions: AssumptionsState): TestIncome { return this; }
+    }
+
+    it('should apply time-based multiplier when year is provided', () => {
+      // Income active April-December 2025 (9 months)
+      const income = new TestIncome('t1', 'Test', 12000, 'Annually', 'No', new Date('2025-04-01'), new Date('2025-12-31'));
+
+      // Without year - full amount
+      expect(income.getAnnualAmount()).toBe(12000);
+
+      // With year 2025 - prorated to 9/12
+      expect(income.getAnnualAmount(2025)).toBe(12000 * (9/12));
+    });
+
+    it('should return zero when income not active in requested year', () => {
+      const income = new TestIncome('t1', 'Test', 12000, 'Annually', 'No', new Date('2025-01-01'), new Date('2025-12-31'));
+
+      expect(income.getAnnualAmount(2024)).toBe(0); // Before start
+      expect(income.getAnnualAmount(2026)).toBe(0); // After end
+    });
+
+    it('should apply multiplier to monthly amount with year', () => {
+      const income = new TestIncome('t1', 'Test', 12000, 'Annually', 'No', new Date('2025-04-01'), new Date('2025-12-31'));
+
+      // Monthly with year applies the same multiplier
+      expect(income.getMonthlyAmount(2025)).toBe((12000 * (9/12)) / 12);
+    });
+  });
+
+  describe('WorkIncome TRACK_ANNUAL_MAX strategy', () => {
+    it('should fall back to GROW_WITH_SALARY when year/age not provided', () => {
+      const salary = new WorkIncome(
+        'w1', 'Job', 100000, 'Annually', 'Yes',
+        10000, 3000, 5000, 5000, 'a1', null,
+        'TRACK_ANNUAL_MAX'
+      );
+
+      // Without year/age, falls back to GROW_WITH_SALARY behavior
+      const nextYear = salary.increment(mockAssumptions);
+
+      // 10000 * (1 + 0.04 + 0.03) = 10700
+      expect(nextYear.preTax401k).toBe(10700);
+      expect(nextYear.roth401k).toBe(5350);
+    });
+
+    it('should cap 401k contributions at IRS limit when year/age provided', () => {
+      // Start with contributions that will exceed limit after growth
+      // 2025 limit: $23,500 (no catch-up for under 50)
+      const salary = new WorkIncome(
+        'w1', 'Job', 150000, 'Annually', 'Yes',
+        20000, 0, 5000, 0, 'a1', null,  // $25k total 401k
+        'TRACK_ANNUAL_MAX'
+      );
+
+      // Growth: 25000 * 1.07 = 26750, exceeds $23,500 limit
+      const nextYear = salary.increment(mockAssumptions, 2025, 40);
+
+      // Should cap at $23,500 while preserving ratio (20k/25k = 80% pre-tax)
+      const totalCapped = nextYear.preTax401k + nextYear.roth401k;
+      expect(totalCapped).toBe(23500);
+      expect(nextYear.preTax401k).toBeCloseTo(18800, 0); // 80% of 23500
+      expect(nextYear.roth401k).toBeCloseTo(4700, 0);    // 20% of 23500
+    });
+
+    it('should include catch-up contributions for age 50+', () => {
+      // 2025 limit: $23,500 + $7,500 catch-up = $31,000
+      const salary = new WorkIncome(
+        'w1', 'Job', 200000, 'Annually', 'Yes',
+        28000, 0, 5000, 0, 'a1', null,  // $33k total 401k
+        'TRACK_ANNUAL_MAX'
+      );
+
+      // Growth: 33000 * 1.07 = 35310, exceeds $31,000 limit for 50+
+      const nextYear = salary.increment(mockAssumptions, 2025, 52);
+
+      const totalCapped = nextYear.preTax401k + nextYear.roth401k;
+      expect(totalCapped).toBe(31000); // 23500 + 7500 catch-up
+    });
+
+    it('should allow contributions below limit to grow normally', () => {
+      // Start with low contributions that won't hit limit
+      const salary = new WorkIncome(
+        'w1', 'Job', 100000, 'Annually', 'Yes',
+        10000, 0, 5000, 0, 'a1', null,  // $15k total, well under $23,500
+        'TRACK_ANNUAL_MAX'
+      );
+
+      // Growth: 15000 * 1.07 = 16050, under limit
+      const nextYear = salary.increment(mockAssumptions, 2025, 40);
+
+      expect(nextYear.preTax401k).toBe(10700);  // Normal growth
+      expect(nextYear.roth401k).toBe(5350);     // Normal growth
+    });
+
+    it('should cap HSA at IRS limit', () => {
+      // 2025 individual HSA limit: $4,300 (no catch-up for under 55)
+      const salary = new WorkIncome(
+        'w1', 'Job', 100000, 'Annually', 'Yes',
+        0, 0, 0, 0, 'a1', null,
+        'TRACK_ANNUAL_MAX',
+        new Date('2025-01-01'),
+        new Date('2030-12-31'),
+        4200 // HSA contribution near limit
+      );
+
+      // Growth: 4200 * 1.07 = 4494, exceeds $4,300 limit
+      const nextYear = salary.increment(mockAssumptions, 2025, 40);
+
+      expect(nextYear.hsaContribution).toBe(4300);
+    });
+
+    it('should include HSA catch-up for age 55+', () => {
+      // 2025 individual HSA limit: $4,300 + $1,000 catch-up = $5,300
+      const salary = new WorkIncome(
+        'w1', 'Job', 100000, 'Annually', 'Yes',
+        0, 0, 0, 0, 'a1', null,
+        'TRACK_ANNUAL_MAX',
+        new Date('2025-01-01'),
+        new Date('2030-12-31'),
+        5000 // HSA contribution
+      );
+
+      // Growth: 5000 * 1.07 = 5350, exceeds $5,300 limit for 55+
+      const nextYear = salary.increment(mockAssumptions, 2025, 56);
+
+      expect(nextYear.hsaContribution).toBe(5300);
+    });
+
+    it('should grow HSA normally when below limit', () => {
+      const salary = new WorkIncome(
+        'w1', 'Job', 100000, 'Annually', 'Yes',
+        0, 0, 0, 0, 'a1', null,
+        'TRACK_ANNUAL_MAX',
+        new Date('2025-01-01'),
+        new Date('2030-12-31'),
+        3000 // HSA contribution well under limit
+      );
+
+      // Growth: 3000 * 1.07 = 3210, under $4,300 limit
+      const nextYear = salary.increment(mockAssumptions, 2025, 40);
+
+      expect(nextYear.hsaContribution).toBe(3210);
+    });
+  });
+
+  describe('PassiveIncome Interest sourceType', () => {
+    it('should not grow Interest income independently', () => {
+      const interest = new PassiveIncome('p1', 'Savings Interest', 1000, 'Annually', 'No', 'Interest');
+      const nextYear = interest.increment(mockAssumptions);
+
+      // Interest income has growth rate of 0 - it grows through account balance, not independently
+      expect(nextYear.amount).toBe(1000);
+    });
+  });
+
+  describe('SocialSecurityIncome Static Methods', () => {
+    describe('calculateBenefitAdjustment', () => {
+      it('should return 0.70 for early claiming at 62', () => {
+        expect(SocialSecurityIncome.calculateBenefitAdjustment(62)).toBeCloseTo(0.70, 2);
+      });
+
+      it('should return 1.0 for claiming at FRA (67)', () => {
+        expect(SocialSecurityIncome.calculateBenefitAdjustment(67)).toBe(1.0);
+      });
+
+      it('should return 1.24 for delayed claiming at 70', () => {
+        expect(SocialSecurityIncome.calculateBenefitAdjustment(70)).toBe(1.24);
+      });
+
+      it('should cap at 0.70 for ages below 62', () => {
+        expect(SocialSecurityIncome.calculateBenefitAdjustment(60)).toBe(0.70);
+        expect(SocialSecurityIncome.calculateBenefitAdjustment(55)).toBe(0.70);
+      });
+
+      it('should cap at 1.24 for ages above 70', () => {
+        expect(SocialSecurityIncome.calculateBenefitAdjustment(71)).toBe(1.24);
+        expect(SocialSecurityIncome.calculateBenefitAdjustment(75)).toBe(1.24);
+      });
+
+      it('should calculate intermediate early claiming reductions', () => {
+        // Age 63: 5 years early = 1.0 - (5 * 0.0667) = ~0.67 but capped at 0.70
+        expect(SocialSecurityIncome.calculateBenefitAdjustment(63)).toBeCloseTo(0.7333, 2);
+        // Age 65: 2 years early = 1.0 - (2 * 0.0667) = ~0.867
+        expect(SocialSecurityIncome.calculateBenefitAdjustment(65)).toBeCloseTo(0.8666, 2);
+      });
+
+      it('should calculate intermediate delayed claiming increases', () => {
+        // Age 68: 1 year delayed = 1.0 + (1 * 0.08) = 1.08
+        expect(SocialSecurityIncome.calculateBenefitAdjustment(68)).toBe(1.08);
+        // Age 69: 2 years delayed = 1.0 + (2 * 0.08) = 1.16
+        expect(SocialSecurityIncome.calculateBenefitAdjustment(69)).toBe(1.16);
+      });
+    });
+
+    describe('calculateBenefitFromFRA', () => {
+      it('should calculate reduced benefit for early claiming', () => {
+        // FRA benefit of $2000, claiming at 62 = $2000 * 0.70 = $1400
+        expect(SocialSecurityIncome.calculateBenefitFromFRA(2000, 62)).toBeCloseTo(1400, 0);
+      });
+
+      it('should return full benefit at FRA', () => {
+        expect(SocialSecurityIncome.calculateBenefitFromFRA(2000, 67)).toBe(2000);
+      });
+
+      it('should calculate increased benefit for delayed claiming', () => {
+        // FRA benefit of $2000, claiming at 70 = $2000 * 1.24 = $2480
+        expect(SocialSecurityIncome.calculateBenefitFromFRA(2000, 70)).toBe(2480);
+      });
+    });
+  });
+
+  describe('calculateSocialSecurityStartYear', () => {
+    it('should calculate correct start year based on claiming age', () => {
+      // Person is 30 in 2025, claiming at 67
+      expect(calculateSocialSecurityStartYear(30, 2025, 67)).toBe(2062);
+    });
+
+    it('should handle claiming at 62', () => {
+      // Person is 55 in 2025, claiming at 62
+      expect(calculateSocialSecurityStartYear(55, 2025, 62)).toBe(2032);
+    });
+
+    it('should handle claiming at 70', () => {
+      // Person is 60 in 2025, claiming at 70
+      expect(calculateSocialSecurityStartYear(60, 2025, 70)).toBe(2035);
+    });
+
+    it('should handle same claiming age as current age', () => {
+      // Person is 67 in 2025, claiming at 67
+      expect(calculateSocialSecurityStartYear(67, 2025, 67)).toBe(2025);
+    });
+  });
+
+  describe('calculateSocialSecurityStartDate', () => {
+    it('should return correct date for claiming age', () => {
+      // Person is 30 in 2025, claiming at 67 in January
+      const result = calculateSocialSecurityStartDate(30, 2025, 67);
+      expect(result.getUTCFullYear()).toBe(2062);
+      expect(result.getUTCMonth()).toBe(0); // January
+      expect(result.getUTCDate()).toBe(1);
+    });
+
+    it('should handle custom claiming month', () => {
+      // Person is 55 in 2025, claiming at 62 in July
+      const result = calculateSocialSecurityStartDate(55, 2025, 62, 6);
+      expect(result.getUTCFullYear()).toBe(2032);
+      expect(result.getUTCMonth()).toBe(6); // July
+    });
+
+    it('should default to January when month not specified', () => {
+      const result = calculateSocialSecurityStartDate(40, 2025, 67);
+      expect(result.getUTCMonth()).toBe(0); // January
     });
   });
 });

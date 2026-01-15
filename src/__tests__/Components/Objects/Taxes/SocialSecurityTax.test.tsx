@@ -11,6 +11,8 @@ import {
 } from '../../../../components/Objects/Income/models';
 import { TaxState } from '../../../../components/Objects/Taxes/TaxContext';
 import { defaultAssumptions } from '../../../../components/Objects/Assumptions/AssumptionsContext';
+import { runSimulation } from '../../../../components/Objects/Assumptions/useSimulation';
+import { max_year } from '../../../../data/TaxData';
 
 const createTaxState = (filingStatus: 'Single' | 'Married Filing Jointly'): TaxState => ({
   filingStatus,
@@ -324,6 +326,438 @@ describe('Social Security Tax Integration', () => {
       // Federal tax should be $0
 
       expect(fedTax).toBe(0);
+    });
+
+    it('should correctly move into higher tax bracket when SS income is added', () => {
+      // Single filer near the 12%/22% bracket boundary ($47,150 in 2024)
+      // Work income: $40k puts them well within 12% bracket
+      // Adding SS should increase tax but keep marginal rate reasonable
+      const workIncome = new WorkIncome(
+        'w1',
+        'Job',
+        40000,
+        'Annually',
+        'Yes',
+        0,
+        0,
+        0,
+        0,
+        '',
+        null,
+        'FIXED',
+        new Date('2024-01-01'),
+        new Date('2024-12-31')
+      );
+
+      const ssIncome = new CurrentSocialSecurityIncome(
+        'ss1',
+        'SS',
+        1500,
+        'Monthly',
+        new Date('2024-01-01'),
+        new Date('2024-12-31')
+      );
+      // SS: $18,000/year
+
+      const taxWithoutSS = calculateFederalTax(
+        createTaxState('Single'),
+        [workIncome],
+        [],
+        2024,
+        defaultAssumptions
+      );
+
+      const taxWithSS = calculateFederalTax(
+        createTaxState('Single'),
+        [workIncome, ssIncome],
+        [],
+        2024,
+        defaultAssumptions
+      );
+
+      const taxJump = taxWithSS - taxWithoutSS;
+      const incomeJump = 18000; // SS income added
+
+      // Manual calculation:
+      // With work only:
+      //   Taxable income = 40,000 - 14,600 = 25,400
+      //   Tax: 10% on $11,600 + 12% on $13,800 = $1,160 + $1,656 = $2,816
+      //
+      // With work + SS:
+      //   annualGross = 40,000 + 18,000 = 58,000
+      //   AGI = 58,000
+      //   Combined income = 58,000 + 9,000 = 67,000 > $34,000
+      //   Taxable SS = 0.85 * 18,000 = 15,300
+      //   Adjusted gross = 58,000 - 18,000 + 15,300 = 55,300
+      //   Taxable income = 55,300 - 14,600 = 40,700
+      //   Tax: 10% on $11,600 + 12% on $29,100 = $1,160 + $3,492 = $4,652
+      //
+      // Tax jump = 4,652 - 2,816 = $1,836
+      // Marginal rate = 1,836 / 18,000 = 10.2%
+
+      const marginalRate = (taxJump / incomeJump) * 100;
+
+      expect(marginalRate).toBeCloseTo(10.2, 2); // Within 2%
+      expect(marginalRate).toBeGreaterThan(8); // Sanity check: should have some tax
+      expect(marginalRate).toBeLessThan(15); // Should not jump to 22% bracket
+    });
+
+    it('should correctly handle SS income that pushes into higher brackets', () => {
+      // Single filer with work income at $100k + $60k SS
+      // This should push into 24% and possibly 32% bracket
+      const workIncome = new WorkIncome(
+        'w1',
+        'Job',
+        100000,
+        'Annually',
+        'Yes',
+        0,
+        0,
+        0,
+        0,
+        '',
+        null,
+        'FIXED',
+        new Date('2024-01-01'),
+        new Date('2024-12-31')
+      );
+
+      const ssIncome = new CurrentSocialSecurityIncome(
+        'ss1',
+        'SS',
+        5000,
+        'Monthly',
+        new Date('2024-01-01'),
+        new Date('2024-12-31')
+      );
+
+      const fedTax = calculateFederalTax(
+        createTaxState('Single'),
+        [workIncome, ssIncome],
+        [],
+        2024,
+        defaultAssumptions
+      );
+
+      // Manual calculation:
+      // annualGross = 100,000 + 60,000 = 160,000
+      // AGI = 160,000
+      // Combined income = 160,000 + 30,000 = 190,000 (very high)
+      // Taxable SS = 0.85 * 60,000 = 51,000 (cap at 85%)
+      // Adjusted gross = 160,000 - 60,000 + 51,000 = 151,000
+      // Taxable income = 151,000 - 14,600 = 136,400
+      //
+      // Tax calculation on $136,400 (Single, 2024):
+      // 10% on $11,600 = $1,160
+      // 12% on $35,550 ($11,600 to $47,150) = $4,266
+      // 22% on $53,375 ($47,150 to $100,525) = $11,743
+      // 24% on $35,875 ($100,525 to $136,400) = $8,610
+      // Total: ~$25,779
+
+      expect(fedTax).toBeCloseTo(25778.38, 0); // Within $1
+      expect(fedTax).toBeGreaterThan(22000); // Sanity check
+      expect(fedTax).toBeLessThan(30000); // Sanity check
+    });
+  });
+
+  // =============================================================================
+  // E2E Tests: Social Security Tax Impact with runSimulation
+  // =============================================================================
+
+  describe('E2E: Social Security Tax Impact', () => {
+    /**
+     * These tests verify federal taxes are calculated correctly when someone
+     * starts receiving Social Security benefits. Checking for:
+     * 1. Reasonable tax increase when SS benefits start
+     * 2. Correct Social Security taxation (up to 85% of benefits are taxable)
+     * 3. No double-taxation or calculation errors
+     */
+
+    const createE2ETaxState = (filingStatus: 'Single' | 'Married Filing Jointly'): TaxState => ({
+      filingStatus,
+      stateResidency: 'New York',
+      deductionMethod: 'Standard',
+      fedOverride: null,
+      ficaOverride: null,
+      stateOverride: null,
+      year: max_year,
+    });
+
+    it('should have reasonable federal tax increase when starting Social Security', () => {
+      // Create a typical retiree scenario:
+      // - Age 30 in 2024, planning to claim SS at 67 (year 2061)
+      // - Working income until age 67
+      // - Then only Social Security income
+
+      const assumptions = {
+        ...defaultAssumptions,
+        demographics: {
+          ...defaultAssumptions.demographics,
+          startAge: 30,
+          startYear: 2024,
+          lifeExpectancy: 85,
+        },
+      };
+
+      // Work income: $100k/year until retirement
+      const workIncome = new WorkIncome(
+        'work1',
+        'Salary',
+        100000,
+        'Annually',
+        'Yes',
+        0,
+        0,
+        0,
+        0,
+        '',
+        null,
+        'FIXED',
+        new Date('2024-01-01'),
+        new Date('2060-12-31') // Ends before SS starts
+      );
+
+      // Future SS: Claiming at 67
+      const ssIncome = new FutureSocialSecurityIncome(
+        'ss1',
+        'Social Security',
+        67,
+        0, // Will be calculated
+        2061,
+        new Date('2061-01-01'),
+        new Date('2084-12-31')
+      );
+
+      const simulationYears = runSimulation(
+        38, // years to run (from age 30 to age 68, to see before and after)
+        [], // accounts
+        [workIncome, ssIncome],
+        [], // expenses
+        assumptions,
+        createE2ETaxState('Single')
+      );
+
+      // Find the year before SS starts (2060) and the year it starts (2061)
+      const yearBeforeSS = simulationYears.find(y => y.year === 2060);
+      const yearSSStarts = simulationYears.find(y => y.year === 2061);
+
+      expect(yearBeforeSS).toBeDefined();
+      expect(yearSSStarts).toBeDefined();
+
+      if (!yearBeforeSS || !yearSSStarts) {
+        throw new Error('Missing simulation years');
+      }
+
+      const incomeJump = yearSSStarts.cashflow.totalIncome - yearBeforeSS.cashflow.totalIncome;
+      const taxJump = yearSSStarts.taxDetails.fed - yearBeforeSS.taxDetails.fed;
+
+      // The marginal tax rate on SS income should be reasonable
+      // Even with 85% of SS being taxable, the marginal rate shouldn't exceed ~50%
+      const marginalRateOnNewIncome = (taxJump / incomeJump) * 100;
+
+      expect(marginalRateOnNewIncome).toBeLessThan(50); // Should not exceed 50%
+      expect(marginalRateOnNewIncome).toBeGreaterThan(0); // Should have some tax increase
+    });
+
+    it('should correctly tax Social Security benefits (up to 85% taxable)', () => {
+      // Simplified scenario: Only Social Security income, no other income
+      const assumptions = {
+        ...defaultAssumptions,
+        demographics: {
+          ...defaultAssumptions.demographics,
+          startAge: 67,
+          startYear: 2024,
+          lifeExpectancy: 85,
+        },
+      };
+
+      // Only SS income: $3,000/month = $36,000/year
+      const ssIncome = new FutureSocialSecurityIncome(
+        'ss1',
+        'Social Security',
+        67,
+        3000,
+        2024,
+        new Date('2024-01-01'),
+        new Date('2041-12-31')
+      );
+
+      const simulationYears = runSimulation(
+        1, // just check first year
+        [], // accounts
+        [ssIncome],
+        [], // expenses
+        assumptions,
+        createE2ETaxState('Single')
+      );
+
+      const year2024 = simulationYears.find(y => y.year === 2024);
+      expect(year2024).toBeDefined();
+
+      if (!year2024) {
+        throw new Error('Missing 2024 simulation year');
+      }
+
+      // For someone with only $36k in SS benefits (Single filer):
+      // - Combined income = AGI + 50% of SS = 0 + 18,000 = 18,000
+      // - This is below the $25k threshold for Single filers
+      // - 0% of SS should be taxable theoretically
+      // - But with standard deduction, there may be some tax
+      // - Federal tax should be relatively low
+
+      expect(year2024.taxDetails.fed).toBeLessThan(5500); // Should be reasonable federal tax
+    });
+
+    it('should handle moderate income retiree transitioning to SS-only', () => {
+      // Realistic retirement scenario:
+      // - $80k work income until retirement
+      // - Then $40k SS income only
+
+      const assumptions = {
+        ...defaultAssumptions,
+        demographics: {
+          ...defaultAssumptions.demographics,
+          startAge: 66,
+          startYear: 2024,
+          lifeExpectancy: 85,
+        },
+      };
+
+      // Work income until retirement
+      const workIncome = new WorkIncome(
+        'work1',
+        'Salary',
+        80000,
+        'Annually',
+        'Yes',
+        0,
+        0,
+        0,
+        0,
+        '',
+        null,
+        'FIXED',
+        new Date('2024-01-01'),
+        new Date('2024-12-31')
+      );
+
+      // SS income starting 2025: ~$3,333/month
+      const ssIncome = new FutureSocialSecurityIncome(
+        'ss1',
+        'Social Security',
+        67,
+        3333,
+        2025,
+        new Date('2025-01-01'),
+        new Date('2041-12-31')
+      );
+
+      const simulationYears = runSimulation(
+        2, // run 2024 and 2025
+        [], // accounts
+        [workIncome, ssIncome],
+        [], // expenses
+        assumptions,
+        createE2ETaxState('Married Filing Jointly')
+      );
+
+      const year2024 = simulationYears.find(y => y.year === 2024);
+      const year2025 = simulationYears.find(y => y.year === 2025);
+
+      expect(year2024).toBeDefined();
+      expect(year2025).toBeDefined();
+
+      if (!year2024 || !year2025) {
+        throw new Error('Missing simulation years');
+      }
+
+      // When transitioning to lower income (SS only), federal taxes should DECREASE
+      expect(year2025.taxDetails.fed).toBeLessThan(year2024.taxDetails.fed);
+
+      // The tax should be reasonable for ~$40k SS income
+      // For MFJ, combined income = 0 + 20k = 20k (below $32k threshold)
+      // So minimal SS taxation
+      expect(year2025.taxDetails.fed).toBeLessThan(3500);
+    });
+
+    it('should handle someone working WHILE receiving Social Security', () => {
+      // CRITICAL BUG PREVENTION: This test catches the double-counting bug
+      // where SS benefits were counted 1.85x (100% in annualGross + 85% taxable again)
+      //
+      // Scenario:
+      // - Working income continues: $150k/year
+      // - SS benefits start: ~$50k/year
+      // - Total income jumps by $50k, taxes should not jump by $110k!
+
+      const assumptions = {
+        ...defaultAssumptions,
+        demographics: {
+          ...defaultAssumptions.demographics,
+          startAge: 66,
+          startYear: 2024,
+          lifeExpectancy: 85,
+        },
+      };
+
+      // Work income: $150k/year, continues through retirement
+      const workIncome = new WorkIncome(
+        'work1',
+        'Salary',
+        150000,
+        'Annually',
+        'Yes',
+        0,
+        0,
+        0,
+        0,
+        '',
+        null,
+        'FIXED',
+        new Date('2024-01-01'),
+        new Date('2026-12-31') // Continues after SS starts
+      );
+
+      // Future SS: $4,200/month = ~$50k/year starting 2025
+      const ssIncome = new FutureSocialSecurityIncome(
+        'ss1',
+        'Social Security',
+        67,
+        4200,
+        2025,
+        new Date('2025-01-01'),
+        new Date('2041-12-31')
+      );
+
+      const simulationYears = runSimulation(
+        2, // run 2024 and 2025
+        [], // accounts
+        [workIncome, ssIncome],
+        [], // expenses
+        assumptions,
+        createE2ETaxState('Single')
+      );
+
+      const year2024 = simulationYears.find(y => y.year === 2024);
+      const year2025 = simulationYears.find(y => y.year === 2025);
+
+      expect(year2024).toBeDefined();
+      expect(year2025).toBeDefined();
+
+      if (!year2024 || !year2025) {
+        throw new Error('Missing simulation years');
+      }
+
+      const incomeJump = year2025.cashflow.totalIncome - year2024.cashflow.totalIncome;
+      const taxJump = year2025.taxDetails.fed - year2024.taxDetails.fed;
+
+      const expectedMarginalRate = 20.4;
+      const actualMarginalRate = (taxJump / incomeJump) * 100;
+
+      // The marginal rate should be reasonable - not 46%!
+      // CRITICAL BUG PREVENTION: This precise assertion prevents the double-counting bug
+      expect(actualMarginalRate).toBeCloseTo(expectedMarginalRate, 0); // Within 1%
+      expect(actualMarginalRate).toBeLessThan(25); // Sanity check upper bound
+      expect(actualMarginalRate).toBeGreaterThan(15); // Sanity check lower bound
     });
   });
 });

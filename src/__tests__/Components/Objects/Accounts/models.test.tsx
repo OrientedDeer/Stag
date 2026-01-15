@@ -1,10 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { 
-    SavedAccount, 
-    InvestedAccount, 
-    PropertyAccount, 
-    DebtAccount, 
-    reconstituteAccount 
+import { describe, it, expect, vi } from 'vitest';
+import {
+    SavedAccount,
+    InvestedAccount,
+    PropertyAccount,
+    DebtAccount,
+    DeficitDebtAccount,
+    reconstituteAccount
 } from '../../../../components/Objects/Accounts/models';
 import { defaultAssumptions } from '../../../../components/Objects/Assumptions/AssumptionsContext';
 
@@ -188,6 +189,98 @@ describe('Account Models', () => {
             const userEquity = next.amount - next.employerBalance;
             expect(userEquity).toBeCloseTo(0);
         });
+
+        it('should use customROR when set on the account', () => {
+            // Create account with customROR of 5% (ignores global 10%)
+            const acc = new InvestedAccount(
+                'i1', 'Custom ROR',
+                10000,
+                0, // employerBalance
+                0, // tenureYears
+                0.5, // expenseRatio
+                'Brokerage',
+                true,
+                0.2,
+                10000, // costBasis
+                5 // customROR = 5%
+            );
+
+            const nextYear = acc.increment(mockAssumptions, 0, 0);
+
+            // With inflationAdjusted=false: 5% customROR - 0.5% expense = 4.5% net
+            // 10000 * 1.045 = 10450
+            expect(nextYear.amount).toBeCloseTo(10450);
+        });
+
+        it('should use customROR with inflation when inflationAdjusted is true', () => {
+            const inflationAssumptions = {
+                ...mockAssumptions,
+                macro: { ...mockAssumptions.macro, inflationAdjusted: true }
+            };
+
+            // Create account with customROR of 5%
+            const acc = new InvestedAccount(
+                'i1', 'Custom ROR',
+                10000,
+                0, 0, 0.5, 'Brokerage', true, 0.2, 10000,
+                5 // customROR = 5%
+            );
+
+            const nextYear = acc.increment(inflationAssumptions, 0, 0);
+
+            // With inflationAdjusted=true: 5% customROR + 3% inflation - 0.5% expense = 7.5% net
+            // 10000 * 1.075 = 10750
+            expect(nextYear.amount).toBeCloseTo(10750);
+        });
+
+        it('should prioritize overrideReturnRate over customROR', () => {
+            // Account has customROR of 5%, but we override with 15%
+            const acc = new InvestedAccount(
+                'i1', 'Override Test',
+                10000,
+                0, 0, 0.5, 'Brokerage', true, 0.2, 10000,
+                5 // customROR = 5%
+            );
+
+            // Override return rate takes priority
+            const nextYear = acc.increment(mockAssumptions, 0, 0, 15);
+
+            // 15% override - 0.5% expense = 14.5% net
+            // 10000 * 1.145 = 11450
+            expect(nextYear.amount).toBeCloseTo(11450);
+        });
+
+        it('should cap employer balance at total when employer exceeds total (edge case)', () => {
+            // This tests the safety check at line 174
+            // Create an extreme scenario where we might get employer > total
+            // We need a scenario where negative growth could cause this
+            const negativeReturnAssumptions = {
+                ...mockAssumptions,
+                investments: {
+                    ...mockAssumptions.investments,
+                    returnRates: { ror: -50 } // -50% return (extreme market crash)
+                }
+            };
+
+            // Account with significant employer balance
+            const acc = new InvestedAccount(
+                'i1', 'Crash Test',
+                10000,
+                9000, // 90% employer balance
+                5, // fully vested
+                0,
+                'Traditional 401k',
+                true,
+                0.2
+            );
+
+            // User withdraws almost everything, then negative return
+            const next = acc.increment(negativeReturnAssumptions, -9500, 0);
+
+            // After withdrawal and negative return, employer balance should not exceed total
+            expect(next.employerBalance).toBeLessThanOrEqual(next.amount);
+            expect(next.employerBalance).toBeGreaterThanOrEqual(0);
+        });
     });
 
     describe('PropertyAccount', () => {
@@ -219,6 +312,40 @@ describe('Account Models', () => {
             // Simulate a payment reducing the balance
             const nextYear = acc.increment(mockAssumptions, 18000);
             expect(nextYear.amount).toBe(18000);
+        });
+    });
+
+    describe('DeficitDebtAccount', () => {
+        it('should create with 0% APR and no linked account', () => {
+            const acc = new DeficitDebtAccount('def-1', 'Budget Deficit', 5000);
+
+            expect(acc.id).toBe('def-1');
+            expect(acc.name).toBe('Budget Deficit');
+            expect(acc.amount).toBe(5000);
+            expect(acc.apr).toBe(0);
+            expect(acc.linkedAccountId).toBe('');
+        });
+
+        it('should not grow with APR on increment (0% interest)', () => {
+            const acc = new DeficitDebtAccount('def-1', 'Deficit', 5000);
+            const nextYear = acc.increment(mockAssumptions);
+
+            // DeficitDebtAccount has 0% APR, so amount stays same
+            expect(nextYear.amount).toBe(5000);
+        });
+
+        it('should use overrideBalance when provided', () => {
+            const acc = new DeficitDebtAccount('def-1', 'Deficit', 5000);
+            const nextYear = acc.increment(mockAssumptions, 3000);
+
+            expect(nextYear.amount).toBe(3000);
+        });
+
+        it('should return DeficitDebtAccount instance on increment', () => {
+            const acc = new DeficitDebtAccount('def-1', 'Deficit', 5000);
+            const nextYear = acc.increment(mockAssumptions);
+
+            expect(nextYear).toBeInstanceOf(DeficitDebtAccount);
         });
     });
 
@@ -261,10 +388,24 @@ describe('Account Models', () => {
             }
         });
 
+        it('should create a DeficitDebtAccount instance', () => {
+            const data = { className: 'DeficitDebtAccount', id: 'def-1', name: 'Budget Deficit', amount: 5000 };
+            const account = reconstituteAccount(data);
+            expect(account).toBeInstanceOf(DeficitDebtAccount);
+            if (account) {
+                expect(account.id).toBe('def-1');
+                expect(account.name).toBe('Budget Deficit');
+                expect(account.amount).toBe(5000);
+                expect((account as DeficitDebtAccount).apr).toBe(0);
+            }
+        });
+
         it('should return null for unknown className', () => {
+            const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
             const data = { className: 'ImaginaryAccount', id: 'x1', amount: 100 };
             const account = reconstituteAccount(data);
             expect(account).toBeNull();
+            consoleSpy.mockRestore();
         });
 
         it('should return null for invalid data', () => {

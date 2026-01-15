@@ -10,6 +10,7 @@ import {
 	TransportExpense,
 	EmergencyExpense,
 	FoodExpense,
+	CharityExpense,
 	OtherExpense,
 } from "./models";
 import { AccountContext } from "../Accounts/AccountContext";
@@ -20,6 +21,7 @@ import { DropdownInput } from "../../Layout/InputFields/DropdownInput";
 import { NumberInput } from "../../Layout/InputFields/NumberInput";
 import { NameInput } from "../../Layout/InputFields/NameInput";
 import { StyledInput } from "../../Layout/InputFields/StyleUI";
+import { useModalAccessibility } from "../../../hooks/useModalAccessibility";
 
 const generateUniqueId = () =>
 	`EXS-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -35,6 +37,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 }) => {
 	const { dispatch: expenseDispatch } = useContext(ExpenseContext);
 	const { dispatch: accountDispatch } = useContext(AccountContext);
+	const { modalRef, handleKeyDown } = useModalAccessibility(isOpen, onClose);
 	const [step, setStep] = useState<"select" | "details">("select");
 	const [selectedType, setSelectedType] = useState<any>(null);
 	const [name, setName] = useState("");
@@ -99,6 +102,10 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 
 	const handleTypeSelect = (typeClass: any) => {
 		setSelectedType(() => typeClass);
+		// Set sensible defaults for tax deductible based on expense type
+		if (typeClass === CharityExpense) {
+			setIsTaxDeductible("Itemized");
+		}
 		setStep("details");
 	};
 
@@ -200,6 +207,17 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				finalStartDate,
 				finalEndDate
 			);
+		} else if (selectedType === CharityExpense) {
+			newExpense = new CharityExpense(
+				id,
+				name.trim(),
+				amount,
+				frequency,
+				isTaxDeductible,
+				isTaxDeductible !== 'No' ? taxDeductibleAmount : 0,
+				finalStartDate,
+				finalEndDate
+			);
 		} else if (
 			selectedType === TransportExpense ||
 			selectedType === OtherExpense
@@ -232,13 +250,25 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 		{ label: "Emergency", class: EmergencyExpense },
 		{ label: "Transport", class: TransportExpense },
 		{ label: "Food", class: FoodExpense },
+		{ label: "Charity", class: CharityExpense },
 		{ label: "Other", class: OtherExpense },
 	];
 
 	return (
-		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-			<div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto text-white w-full max-w-lg">
-				<h2 className="text-xl font-bold mb-6 border-b border-gray-800 pb-3">
+		<div
+			className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+			onClick={onClose}
+		>
+			<div
+				ref={modalRef}
+				role="dialog"
+				aria-modal="true"
+				aria-labelledby="add-expense-modal-title"
+				className="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto text-white w-full max-w-lg"
+				onClick={(e) => e.stopPropagation()}
+				onKeyDown={handleKeyDown}
+			>
+				<h2 id="add-expense-modal-title" className="text-xl font-bold mb-6 border-b border-gray-800 pb-3">
 					{step === "select"
 						? "Select Expense Type"
 						: `New ${selectedType.name.replace("Expense", "")}`}
@@ -418,6 +448,22 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 									/>
 									{isTaxDeductible === "Yes" && (
 										<CurrencyInput id={`${id}-deductible-amount`} label="Deductible Amount" value={taxDeductibleAmount} onChange={setTaxDeductibleAmount} tooltip="Amount eligible for dependent care tax benefits." />
+									)}
+								</>
+							)}
+
+							{selectedType === CharityExpense && (
+								<>
+									<DropdownInput
+										id={`${id}-tax-deductible`}
+										label="Tax Deductible"
+										value={isTaxDeductible}
+										onChange={(val) => setIsTaxDeductible(val as "Yes" | "No" | "Itemized")}
+										options={["Itemized", "Yes", "No"]}
+										tooltip="Charitable donations are typically deductible if you itemize. Select 'Itemized' for standard charitable deductions."
+									/>
+									{(isTaxDeductible === "Yes" || isTaxDeductible === "Itemized") && (
+										<CurrencyInput id={`${id}-deductible-amount`} label="Deductible Amount" value={taxDeductibleAmount} onChange={setTaxDeductibleAmount} tooltip="Amount of charitable donation that can be deducted from taxable income." />
 									)}
 								</>
 							)}

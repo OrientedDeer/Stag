@@ -101,6 +101,7 @@ describe('IncomeContext', () => {
   });
 
   it('should handle corrupted localStorage data gracefully', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     localStorageMock.setItem('user_incomes_data', 'invalid json');
 
     let incomes!: any[];
@@ -117,6 +118,7 @@ describe('IncomeContext', () => {
     );
 
     expect(incomes).toEqual([]);
+    consoleSpy.mockRestore();
   });
 
   it('should save state to localStorage when state changes (debounced)', async () => {

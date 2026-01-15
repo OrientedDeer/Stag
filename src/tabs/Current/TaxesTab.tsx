@@ -130,7 +130,7 @@ export default function TaxesTab() {
 
                                 {/* Manual Overrides Section */}
                                 <div className="pt-6 border-t border-gray-800 space-y-4">
-                                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Manual Overrides</h3>
+                                    <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Manual Overrides</h3>
                                     
                                     <div className="space-y-4">
                                         <div>
@@ -186,7 +186,7 @@ export default function TaxesTab() {
                                     </h2>
                                 </div>
                                 <div className="text-left sm:text-right border-l sm:border-l-0 sm:border-r border-gray-800 pl-4 sm:pl-0 sm:pr-4">
-                                    <p className="text-gray-500 text-xs font-bold uppercase mb-1">Effective Rate</p>
+                                    <p className="text-gray-400 text-xs font-bold uppercase mb-1">Effective Rate</p>
                                     <p className="text-2xl font-bold text-white">
                                          {annualGross > 0 ? (((federalTax + stateTax + ficaTax) / annualGross) * 100).toFixed(1) : 0}%
                                     </p>
@@ -228,7 +228,7 @@ export default function TaxesTab() {
                                     </div>
                                 )}
                                 
-                                <div className="flex justify-between text-gray-500 text-sm font-semibold items-center border-t border-gray-800/50 pt-2 mt-2">
+                                <div className="flex justify-between text-gray-400 text-sm font-semibold items-center border-t border-gray-800/50 pt-2 mt-2">
                                     <span>Adjusted Gross Income (AGI)</span>
                                     <span className="font-mono">${(Math.max(0, annualGross - totalPreTaxDeductions)).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
                                 </div>

@@ -7,6 +7,7 @@ export interface Expense {
   frequency: 'Weekly' | 'Monthly' | 'Annually';
   startDate?: Date;
   endDate?: Date;
+  isDiscretionary?: boolean; // If true, can be cut during Guyton-Klinger guardrail triggers
 }
 
 // 2. Base Abstract Class
@@ -18,6 +19,7 @@ export abstract class BaseExpense implements Expense {
     public frequency: 'Weekly' | 'Monthly' | 'Annually',
     public startDate?: Date,
     public endDate?: Date,
+    public isDiscretionary: boolean = false, // Can be cut during Guyton-Klinger guardrail triggers
   ) { }
   getProratedAnnual(value: number, year?: number): number {
     let annual = 0;
@@ -48,6 +50,13 @@ export abstract class BaseExpense implements Expense {
   getMonthlyAmount(year?: number): number {
     return this.getProratedMonthly(this.amount, year);
   }
+
+  /**
+   * Returns a new expense with the amount adjusted by the given ratio.
+   * Used for Guyton-Klinger guardrail adjustments.
+   * @param ratio - Multiplier for the amount (e.g., 0.9 for 10% cut, 1.1 for 10% increase)
+   */
+  abstract adjustAmount(ratio: number): AnyExpense;
 }
 
 // 3. Concrete Classes
@@ -72,7 +81,7 @@ export class RentExpense extends BaseExpense {
     const newPayment = this.payment * (1 + rentInflation + generalInflation);
     const newUtilities = this.utilities * (1 + generalInflation);
 
-    return new RentExpense(
+    const result = new RentExpense(
       this.id,
       this.name,
       newPayment,
@@ -81,6 +90,22 @@ export class RentExpense extends BaseExpense {
       this.startDate,
       this.endDate
     );
+    result.isDiscretionary = this.isDiscretionary;
+    return result;
+  }
+
+  adjustAmount(ratio: number): RentExpense {
+    const result = new RentExpense(
+      this.id,
+      this.name,
+      this.payment * ratio,
+      this.utilities * ratio,
+      this.frequency,
+      this.startDate,
+      this.endDate
+    );
+    result.isDiscretionary = this.isDiscretionary;
+    return result;
   }
 }
 
@@ -159,18 +184,33 @@ export class MortgageExpense extends BaseExpense {
     const newValuation = this.valuation * (1 + housingAppreciation + generalInflation);
 
     // Inflate escrow items (Utilities & HOA are fixed amounts, Insurance/Maintenance are rates)
-    // Note: Since Insurance/Maintenance are calculated as % of Valuation, 
-    // they essentially "inflate" automatically as the house value rises. 
+    // Note: Since Insurance/Maintenance are calculated as % of Valuation,
+    // they essentially "inflate" automatically as the house value rises.
     // We keep the rates constant here to avoid double-counting inflation.
-    const newUtilities = this.utilities * (1 + housingAppreciation + generalInflation);
-    const newHoa = this.hoa_fee * (1 + housingAppreciation + generalInflation);
+    // Utilities and HOA are operating costs tied to general inflation (CPI), not housing appreciation.
+    const newUtilities = this.utilities * (1 + generalInflation);
+    const newHoa = this.hoa_fee * (1 + generalInflation);
+    // Valuation deduction follows property value
     const newDeduction = this.valuation_deduction * (1 + housingAppreciation + generalInflation);
 
     if (balance < 0.005) {
       balance = 0;
     }
-    
-    // 3. Create Next Year's Object
+
+    // 4. Auto-remove PMI when equity reaches 20% (LTV <= 80%)
+    // PMI is typically required until the homeowner has 20% equity
+    let nextPmi = this.pmi;
+    if (newValuation > 0 && balance > 0) {
+      const equity = (newValuation - balance) / newValuation;
+      if (equity >= 0.2) {
+        nextPmi = 0; // Remove PMI once 20% equity is reached
+      }
+    } else if (balance <= 0) {
+      // Loan is paid off, no PMI needed
+      nextPmi = 0;
+    }
+
+    // 5. Create Next Year's Object
     const nextYearMortgage = new MortgageExpense(
       this.id,
       this.name,
@@ -185,7 +225,7 @@ export class MortgageExpense extends BaseExpense {
       this.maintenance,    // Rate stays constant
       newUtilities,        // Inflated $
       this.home_owners_insurance, // Rate stays constant
-      this.pmi,
+      nextPmi,             // PMI removed when equity >= 20%
       newHoa,              // Inflated $
       this.is_tax_deductible,
       this.tax_deductible, // Placeholder, see below
@@ -199,6 +239,7 @@ export class MortgageExpense extends BaseExpense {
     // FIX: The constructor automatically recalculates tax_deductible based on the START of the loan.
     // We must manually overwrite it with the actual interest paid this year.
     nextYearMortgage.tax_deductible = totalInterestPaid;
+    nextYearMortgage.isDiscretionary = this.isDiscretionary;
 
     return nextYearMortgage;
   }
@@ -300,6 +341,16 @@ export class MortgageExpense extends BaseExpense {
   calculateDeductible(): number {
     const interest_payment = this.loan_balance * (this.apr / 100 / 12);
     return interest_payment;
+  }
+
+  /**
+   * Mortgages are contractual obligations and cannot be adjusted.
+   * Returns the same mortgage unchanged.
+   */
+  adjustAmount(_ratio: number): MortgageExpense {
+    // Mortgages are fixed contractual obligations - cannot scale them
+    // If someone marks a mortgage as discretionary, we just ignore the adjustment
+    return this;
   }
 
   getPrincipalPayment(): number {
@@ -404,7 +455,7 @@ export class LoanExpense extends BaseExpense {
     }
 
     // 2. Return new state
-    return new LoanExpense(
+    const result = new LoanExpense(
       this.id,
       this.name,
       balance, // New Balance
@@ -418,6 +469,8 @@ export class LoanExpense extends BaseExpense {
       this.startDate,
       this.endDate
     );
+    result.isDiscretionary = this.isDiscretionary;
+    return result;
   }
 
   calculateAnnualAmortization(year: number): { totalInterest: number, totalPrincipal: number, totalPayment: number } {
@@ -513,6 +566,15 @@ export class LoanExpense extends BaseExpense {
   getMonthlyAmount(year?: number): number {
     return this.getProratedAnnual(this.payment, year) / 12;
   }
+
+  /**
+   * Loans are contractual obligations and cannot be adjusted.
+   * Returns the same loan unchanged.
+   */
+  adjustAmount(_ratio: number): LoanExpense {
+    // Loans are fixed contractual obligations - cannot scale them
+    return this;
+  }
 }
 
 export class DependentExpense extends BaseExpense {
@@ -530,10 +592,21 @@ export class DependentExpense extends BaseExpense {
   }
   increment(assumptions: AssumptionsState): DependentExpense {
     const generalInflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
-    return new DependentExpense(
+    const result = new DependentExpense(
       this.id, this.name, this.amount * (1 + generalInflation), this.frequency,
       this.is_tax_deductible, this.tax_deductible, this.startDate, this.endDate
     );
+    result.isDiscretionary = this.isDiscretionary;
+    return result;
+  }
+
+  adjustAmount(ratio: number): DependentExpense {
+    const result = new DependentExpense(
+      this.id, this.name, this.amount * ratio, this.frequency,
+      this.is_tax_deductible, this.tax_deductible, this.startDate, this.endDate
+    );
+    result.isDiscretionary = this.isDiscretionary;
+    return result;
   }
 }
 
@@ -552,10 +625,21 @@ export class HealthcareExpense extends BaseExpense {
   }
   increment(assumptions: AssumptionsState): HealthcareExpense {
     const inflation = assumptions.macro.healthcareInflation / 100;
-    return new HealthcareExpense(
+    const result = new HealthcareExpense(
       this.id, this.name, this.amount * (1 + inflation), this.frequency,
       this.is_tax_deductible, this.tax_deductible, this.startDate, this.endDate
     );
+    result.isDiscretionary = this.isDiscretionary;
+    return result;
+  }
+
+  adjustAmount(ratio: number): HealthcareExpense {
+    const result = new HealthcareExpense(
+      this.id, this.name, this.amount * ratio, this.frequency,
+      this.is_tax_deductible, this.tax_deductible, this.startDate, this.endDate
+    );
+    result.isDiscretionary = this.isDiscretionary;
+    return result;
   }
 }
 
@@ -572,9 +656,19 @@ export class VacationExpense extends BaseExpense {
   }
   increment(assumptions: AssumptionsState): VacationExpense {
     const generalInflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
-    return new VacationExpense(
+    const result = new VacationExpense(
       this.id, this.name, this.amount * (1 + generalInflation), this.frequency, this.startDate, this.endDate
     );
+    result.isDiscretionary = this.isDiscretionary;
+    return result;
+  }
+
+  adjustAmount(ratio: number): VacationExpense {
+    const result = new VacationExpense(
+      this.id, this.name, this.amount * ratio, this.frequency, this.startDate, this.endDate
+    );
+    result.isDiscretionary = this.isDiscretionary;
+    return result;
   }
 }
 
@@ -591,9 +685,19 @@ export class EmergencyExpense extends BaseExpense {
   }
   increment(assumptions: AssumptionsState): EmergencyExpense {
     const generalInflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
-    return new EmergencyExpense(
+    const result = new EmergencyExpense(
       this.id, this.name, this.amount * (1 + generalInflation), this.frequency, this.startDate, this.endDate
     );
+    result.isDiscretionary = this.isDiscretionary;
+    return result;
+  }
+
+  adjustAmount(ratio: number): EmergencyExpense {
+    const result = new EmergencyExpense(
+      this.id, this.name, this.amount * ratio, this.frequency, this.startDate, this.endDate
+    );
+    result.isDiscretionary = this.isDiscretionary;
+    return result;
   }
 }
 
@@ -610,9 +714,19 @@ export class TransportExpense extends BaseExpense {
   }
   increment(assumptions: AssumptionsState): TransportExpense {
     const generalInflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
-    return new TransportExpense(
+    const result = new TransportExpense(
       this.id, this.name, this.amount * (1 + generalInflation), this.frequency, this.startDate, this.endDate
     );
+    result.isDiscretionary = this.isDiscretionary;
+    return result;
+  }
+
+  adjustAmount(ratio: number): TransportExpense {
+    const result = new TransportExpense(
+      this.id, this.name, this.amount * ratio, this.frequency, this.startDate, this.endDate
+    );
+    result.isDiscretionary = this.isDiscretionary;
+    return result;
   }
 }
 
@@ -629,9 +743,19 @@ export class FoodExpense extends BaseExpense {
   }
   increment(assumptions: AssumptionsState): FoodExpense {
     const generalInflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
-    return new FoodExpense(
+    const result = new FoodExpense(
       this.id, this.name, this.amount * (1 + generalInflation), this.frequency, this.startDate, this.endDate
     );
+    result.isDiscretionary = this.isDiscretionary;
+    return result;
+  }
+
+  adjustAmount(ratio: number): FoodExpense {
+    const result = new FoodExpense(
+      this.id, this.name, this.amount * ratio, this.frequency, this.startDate, this.endDate
+    );
+    result.isDiscretionary = this.isDiscretionary;
+    return result;
   }
 }
 
@@ -648,13 +772,57 @@ export class OtherExpense extends BaseExpense {
   }
   increment(assumptions: AssumptionsState): OtherExpense {
     const generalInflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
-    return new OtherExpense(
+    const result = new OtherExpense(
       this.id, this.name, this.amount * (1 + generalInflation), this.frequency, this.startDate, this.endDate
     );
+    result.isDiscretionary = this.isDiscretionary;
+    return result;
+  }
+
+  adjustAmount(ratio: number): OtherExpense {
+    const result = new OtherExpense(
+      this.id, this.name, this.amount * ratio, this.frequency, this.startDate, this.endDate
+    );
+    result.isDiscretionary = this.isDiscretionary;
+    return result;
   }
 }
 
-export type AnyExpense = RentExpense | MortgageExpense | LoanExpense | DependentExpense | HealthcareExpense | VacationExpense | EmergencyExpense | TransportExpense | FoodExpense | OtherExpense;
+export class CharityExpense extends BaseExpense {
+  constructor(
+    id: string,
+    name: string,
+    amount: number,
+    frequency: 'Weekly' | 'Monthly' | 'Annually',
+    public is_tax_deductible: 'Yes' | 'No' | 'Itemized',
+    public tax_deductible: number,
+    startDate?: Date,
+    endDate?: Date,
+  ) {
+    super(id, name, amount, frequency, startDate, endDate);
+    this.isDiscretionary = true; // Charity is typically discretionary
+  }
+  increment(assumptions: AssumptionsState): CharityExpense {
+    const generalInflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
+    const result = new CharityExpense(
+      this.id, this.name, this.amount * (1 + generalInflation), this.frequency,
+      this.is_tax_deductible, this.tax_deductible, this.startDate, this.endDate
+    );
+    result.isDiscretionary = this.isDiscretionary;
+    return result;
+  }
+
+  adjustAmount(ratio: number): CharityExpense {
+    const result = new CharityExpense(
+      this.id, this.name, this.amount * ratio, this.frequency,
+      this.is_tax_deductible, this.tax_deductible, this.startDate, this.endDate
+    );
+    result.isDiscretionary = this.isDiscretionary;
+    return result;
+  }
+}
+
+export type AnyExpense = RentExpense | MortgageExpense | LoanExpense | DependentExpense | HealthcareExpense | VacationExpense | EmergencyExpense | TransportExpense | FoodExpense | OtherExpense | CharityExpense;
 
 export function getExpenseActiveMultiplier(expense: BaseExpense, year: number): number {
   const expenseStartDate = expense.startDate ? new Date(expense.startDate) : new Date();
@@ -717,6 +885,7 @@ export const EXPENSE_CATEGORIES = [
   'Emergency',
   'Transport',
   'Food',
+  'Charity',
   'Other'
 ] as const;
 
@@ -732,6 +901,7 @@ export const EXPENSE_COLORS_BACKGROUND: Record<ExpenseCategory, string> = {
   Emergency: "bg-chart-Fuchsia-50",
   Transport: "bg-chart-Blue-50",
   Food: "bg-chart-Yellow-50",
+  Charity: "bg-chart-Green-50",
   Other: "bg-chart-Red-50",
 };
 
@@ -745,6 +915,7 @@ export const CLASS_TO_CATEGORY: Record<string, ExpenseCategory> = {
   [EmergencyExpense.name]: 'Emergency',
   [TransportExpense.name]: 'Transport',
   [FoodExpense.name]: 'Food',
+  [CharityExpense.name]: 'Charity',
   [OtherExpense.name]: 'Other',
 };
 
@@ -759,6 +930,7 @@ export const CATEGORY_PALETTES: Record<ExpenseCategory, string[]> = {
   Emergency: Array.from({ length: 100 }, (_, i) => `bg-chart-Fuchsia-${i + 1}`),
   Transport: Array.from({ length: 100 }, (_, i) => `bg-chart-Blue-${i + 1}`),
   Food: Array.from({ length: 100 }, (_, i) => `bg-chart-Yellow-${i + 1}`),
+  Charity: Array.from({ length: 100 }, (_, i) => `bg-chart-Green-${i + 1}`),
   Other: Array.from({ length: 100 }, (_, i) => `bg-chart-Red-${i + 1}`),
 };
 
@@ -779,30 +951,57 @@ export function reconstituteExpense(data: any): AnyExpense | null {
         amount: Number(data.amount) || 0,
         frequency: data.frequency || 'Monthly',
         startDate: startDate,
-        endDate: endDate
+        endDate: endDate,
+        isDiscretionary: data.isDiscretionary ?? false
     };
+
+    let expense: AnyExpense | null = null;
 
     switch (data.className) {
         case 'HousingExpense':
-            return new RentExpense(base.id, base.name, data.payment || 0, data.utilities || 0, base.frequency, base.startDate, base.endDate);
+            expense = new RentExpense(base.id, base.name, data.payment || 0, data.utilities || 0, base.frequency, base.startDate, base.endDate);
+            break;
         case 'RentExpense':
-            return new RentExpense(base.id, base.name, data.payment || 0, data.utilities || 0, base.frequency, base.startDate, base.endDate);
-        case 'MortgageExpense': {
-            return new MortgageExpense(base.id, base.name, base.frequency, data.valuation || 0, data.loan_balance || 0, data.starting_loan_balance || 0, data.apr || 0, data.term_length || 0, data.property_taxes || 0, data.valuation_deduction || 0, data.maintenance || 0, data.utilities || 0, data.home_owners_insurance || 0, data.pmi || 0, data.hoa_fee || 0, data.is_tax_deductible || 'No', data.tax_deductible || 0, data.linkedAccountId || '', base.startDate, data.payment || 0, data.extra_payment || 0, base.endDate);
-        }
+            expense = new RentExpense(base.id, base.name, data.payment || 0, data.utilities || 0, base.frequency, base.startDate, base.endDate);
+            break;
+        case 'MortgageExpense':
+            expense = new MortgageExpense(base.id, base.name, base.frequency, data.valuation || 0, data.loan_balance || 0, data.starting_loan_balance || 0, data.apr || 0, data.term_length || 0, data.property_taxes || 0, data.valuation_deduction || 0, data.maintenance || 0, data.utilities || 0, data.home_owners_insurance || 0, data.pmi || 0, data.hoa_fee || 0, data.is_tax_deductible || 'No', data.tax_deductible || 0, data.linkedAccountId || '', base.startDate, data.payment || 0, data.extra_payment || 0, base.endDate);
+            break;
         case 'LoanExpense':
-            return new LoanExpense(base.id, base.name, base.amount, base.frequency, data.apr || 0, data.interest_type || 'Simple', data.payment || 0, data.is_tax_deductible || 'No', data.tax_deductible || 0, data.linkedAccountId || '', base.startDate, base.endDate);
-        case 'DependentExpense': {
-            return new DependentExpense(base.id, base.name, base.amount, base.frequency, data.is_tax_deductible || 'No', data.tax_deductible || 0, base.startDate, base.endDate);
-        }
+            expense = new LoanExpense(base.id, base.name, base.amount, base.frequency, data.apr || 0, data.interest_type || 'Simple', data.payment || 0, data.is_tax_deductible || 'No', data.tax_deductible || 0, data.linkedAccountId || '', base.startDate, base.endDate);
+            break;
+        case 'DependentExpense':
+            expense = new DependentExpense(base.id, base.name, base.amount, base.frequency, data.is_tax_deductible || 'No', data.tax_deductible || 0, base.startDate, base.endDate);
+            break;
         case 'HealthcareExpense':
-            return new HealthcareExpense(base.id, base.name, base.amount, base.frequency, data.is_tax_deductible || 'No', data.tax_deductible || 0, base.startDate, base.endDate);
-        case 'VacationExpense': return new VacationExpense(base.id, base.name, base.amount, base.frequency, base.startDate, base.endDate);
-        case 'EmergencyExpense': return new EmergencyExpense(base.id, base.name, base.amount, base.frequency, base.startDate, base.endDate);
-        case 'TransportExpense': return new TransportExpense(base.id, base.name, base.amount, base.frequency, base.startDate, base.endDate);
-        case 'FoodExpense': return new FoodExpense(base.id, base.name, base.amount, base.frequency, base.startDate, base.endDate);
-        case 'OtherExpense': return new OtherExpense(base.id, base.name, base.amount, base.frequency, base.startDate, base.endDate);
+            expense = new HealthcareExpense(base.id, base.name, base.amount, base.frequency, data.is_tax_deductible || 'No', data.tax_deductible || 0, base.startDate, base.endDate);
+            break;
+        case 'VacationExpense':
+            expense = new VacationExpense(base.id, base.name, base.amount, base.frequency, base.startDate, base.endDate);
+            break;
+        case 'EmergencyExpense':
+            expense = new EmergencyExpense(base.id, base.name, base.amount, base.frequency, base.startDate, base.endDate);
+            break;
+        case 'TransportExpense':
+            expense = new TransportExpense(base.id, base.name, base.amount, base.frequency, base.startDate, base.endDate);
+            break;
+        case 'FoodExpense':
+            expense = new FoodExpense(base.id, base.name, base.amount, base.frequency, base.startDate, base.endDate);
+            break;
+        case 'OtherExpense':
+            expense = new OtherExpense(base.id, base.name, base.amount, base.frequency, base.startDate, base.endDate);
+            break;
+        case 'CharityExpense':
+            expense = new CharityExpense(base.id, base.name, base.amount, base.frequency, data.is_tax_deductible || 'Itemized', data.tax_deductible || 0, base.startDate, base.endDate);
+            break;
         default:
             return null;
     }
+
+    // Set discretionary flag after creation
+    if (expense) {
+        expense.isDiscretionary = base.isDiscretionary;
+    }
+
+    return expense;
 }

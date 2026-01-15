@@ -1,5 +1,9 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo, useContext } from 'react';
 import { ResponsiveStream } from '@nivo/stream';
+import { AssumptionsContext } from '../Objects/Assumptions/AssumptionsContext';
+import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
+
+const MIN_CHART_WIDTH = 300;
 
 // --- Types ---
 export interface DebtStreamData {
@@ -13,37 +17,52 @@ interface DebtStreamChartProps {
   colors?: Record<string, string>; // Optional mapping of Asset Name -> Color Code
 }
 
-// --- Helper: Format Currency ---
-const formatCurrency = (value: number) => 
-  new Intl.NumberFormat('en-US', { 
-    style: 'currency', 
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  }).format(value);
-
 // --- Component ---
 export const DebtStreamChart: React.FC<DebtStreamChartProps> = ({
   data,
   keys,
   colors
 }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [containerWidth, setContainerWidth] = useState(800);
+  const { state: assumptions } = useContext(AssumptionsContext);
+  const forceExact = assumptions.display?.useCompactCurrency === false;
+  const formatCurrency = (value: number) => formatCompactCurrency(value, { forceExact });
 
-  // Responsive width detection
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState<number | null>(null);
+
+  // Responsive width detection using ResizeObserver
   useEffect(() => {
-    const updateWidth = () => {
-      if (containerRef.current) {
-        setContainerWidth(containerRef.current.offsetWidth);
+    const container = containerRef.current;
+    if (!container) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width);
       }
-    };
-    updateWidth();
-    window.addEventListener('resize', updateWidth);
-    return () => window.removeEventListener('resize', updateWidth);
+    });
+
+    observer.observe(container);
+
+    return () => observer.disconnect();
   }, []);
 
-  const isMobile = containerWidth < 640;
+  const isMobile = (containerWidth ?? 800) < 640;
+  const isNarrow = containerWidth !== null && containerWidth < MIN_CHART_WIDTH;
+  const isMeasured = containerWidth !== null;
+
+  // Calculate x-axis tick values (indices) to prevent label overlap
+  const xTickValues = useMemo(() => {
+    if (data.length === 0) return undefined;
+
+    const range = data.length;
+    let step = 1;
+    if (range > 41) step = 2;
+
+    // Return indices at regular intervals
+    return data
+      .map((_, i) => i)
+      .filter((i) => i === 0 || i === data.length - 1 || i % step === 0);
+  }, [data]);
 
   // Dark Theme for Nivo to match Overview/Cashflow style
   const theme = {
@@ -123,7 +142,7 @@ export const DebtStreamChart: React.FC<DebtStreamChartProps> = ({
                     </td>
 
                     {/* Column 3: Percent (Aligned Right) */}
-                    <td className="py-1 pl-4 text-right text-xs text-gray-500 whitespace-nowrap">
+                    <td className="py-1 pl-4 text-right text-xs text-gray-400 whitespace-nowrap">
                       {total > 0 ? `${Math.round((value / total) * 100)}%` : '0%'}
                     </td>
                   </tr>
@@ -135,6 +154,24 @@ export const DebtStreamChart: React.FC<DebtStreamChartProps> = ({
       </div>
     );
   };
+
+  // Show loading state until measured
+  if (!isMeasured) {
+    return (
+      <div ref={containerRef} className="w-full h-full flex items-center justify-center">
+        <p className="text-gray-400 text-sm">Loading chart...</p>
+      </div>
+    );
+  }
+
+  // Show message when container is too narrow for the chart
+  if (isNarrow) {
+    return (
+      <div ref={containerRef} className="w-full h-full flex items-center justify-center border-2 border-dashed border-gray-700 rounded-xl">
+        <p className="text-gray-400 text-sm text-center px-4">Expand window to view chart</p>
+      </div>
+    );
+  }
 
   return (
     <div ref={containerRef} className="w-full h-full flex flex-col">
@@ -167,7 +204,7 @@ export const DebtStreamChart: React.FC<DebtStreamChartProps> = ({
             tickRotation: 0,
             // Map the index back to the Year from data
             format: (index) => data[index] ? data[index].year : '',
-            tickValues: 5 // Limit ticks to avoid clutter
+            tickValues: xTickValues,
           }}
           axisLeft={{
             tickSize: 5,
@@ -201,7 +238,7 @@ export const DebtStreamChart: React.FC<DebtStreamChartProps> = ({
       </div>
 
       {/* Footer / Legend Note */}
-      <div className="mt-2 text-xs text-center text-gray-500">
+      <div className="mt-2 text-xs text-center text-gray-400">
         Hover over any year to see the full breakdown of all loans.
       </div>
     </div>

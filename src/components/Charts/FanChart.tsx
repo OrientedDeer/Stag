@@ -1,10 +1,17 @@
-import { useMemo } from 'react';
+import { useMemo, useContext, useRef, useState, useEffect } from 'react';
 import { ResponsiveLine } from '@nivo/line';
-import { PercentileData, YearlyPercentile } from '../../services/MonteCarloTypes';
+import { PercentileData, YearlyPercentile, ScenarioResult } from '../../services/MonteCarloTypes';
+import { AssumptionsContext } from '../Objects/Assumptions/AssumptionsContext';
+import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
+import { calculateNetWorth } from '../../tabs/Future/tabs/FutureUtils';
+
+const MIN_CHART_WIDTH = 300;
 
 interface FanChartProps {
     percentiles: PercentileData;
     deterministicLine?: YearlyPercentile[];
+    bestCase?: ScenarioResult;
+    worstCase?: ScenarioResult;
     height?: number;
 }
 
@@ -12,7 +19,31 @@ interface FanChartProps {
  * Fan Chart for Monte Carlo simulation results
  * Shows probability bands (10th-90th, 25th-75th percentiles) with median line
  */
-export const FanChart = ({ percentiles, deterministicLine, height = 400 }: FanChartProps) => {
+export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, height = 400 }: FanChartProps) => {
+    const { state: assumptions } = useContext(AssumptionsContext);
+    const forceExact = assumptions.display?.useCompactCurrency === false;
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [containerWidth, setContainerWidth] = useState<number | null>(null);
+
+    // Track container width to prevent negative SVG dimensions
+    useEffect(() => {
+        const container = containerRef.current;
+        if (!container) return;
+
+        const observer = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                setContainerWidth(entry.contentRect.width);
+            }
+        });
+
+        observer.observe(container);
+
+        return () => observer.disconnect();
+    }, []);
+
+    const isNarrow = containerWidth !== null && containerWidth < MIN_CHART_WIDTH;
+    const isMeasured = containerWidth !== null;
+
     const chartData = useMemo(() => {
         const lines = [];
 
@@ -88,8 +119,32 @@ export const FanChart = ({ percentiles, deterministicLine, height = 400 }: FanCh
             });
         }
 
+        // Best case scenario (if provided)
+        if (bestCase && bestCase.timeline.length > 0) {
+            lines.push({
+                id: 'Best Run',
+                color: '#3b82f6',
+                data: bestCase.timeline.map(year => ({
+                    x: year.year,
+                    y: calculateNetWorth(year.accounts),
+                })),
+            });
+        }
+
+        // Worst case scenario (if provided)
+        if (worstCase && worstCase.timeline.length > 0) {
+            lines.push({
+                id: 'Worst Run',
+                color: '#ef4444',
+                data: worstCase.timeline.map(year => ({
+                    x: year.year,
+                    y: calculateNetWorth(year.accounts),
+                })),
+            });
+        }
+
         return lines;
-    }, [percentiles, deterministicLine]);
+    }, [percentiles, deterministicLine, bestCase, worstCase]);
 
     // Calculate area fill data for the bands
     const areaData = useMemo(() => {
@@ -109,6 +164,54 @@ export const FanChart = ({ percentiles, deterministicLine, height = 400 }: FanCh
             })),
         };
     }, [percentiles]);
+
+    // Calculate y-axis bounds from percentile data only (excludes best/worst outliers)
+    const yBounds = useMemo(() => {
+        const allValues: number[] = [];
+
+        // Include percentile data
+        percentiles.p10.forEach(p => allValues.push(p.netWorth));
+        percentiles.p90.forEach(p => allValues.push(p.netWorth));
+
+        // Include deterministic line if present
+        if (deterministicLine) {
+            deterministicLine.forEach(p => allValues.push(p.netWorth));
+        }
+
+        if (allValues.length === 0) {
+            return { min: 0, max: 100000 };
+        }
+
+        const min = Math.min(...allValues);
+        const max = Math.max(...allValues);
+
+        // Add minimal padding
+        const padding = (max - min) * 0.02;
+        return {
+            min: min - padding,
+            max: max + padding,
+        };
+    }, [percentiles, deterministicLine]);
+
+    // Calculate x-axis tick values to prevent label overlap
+    const xTickValues = useMemo(() => {
+        if (percentiles.p50.length === 0) return undefined;
+
+        const years = percentiles.p50.map(p => p.year);
+        const range = years.length;
+
+        // Determine step size based on range (aim for ~8-10 ticks max)
+        let step = 1;
+        if (range > 41) step = 2;
+
+        // Filter years at regular intervals
+        return years.filter((year, i) => {
+            // Always include first and last
+            if (i === 0 || i === years.length - 1) return true;
+            // Include years at step intervals
+            return (year - years[0]) % step === 0;
+        });
+    }, [percentiles.p50]);
 
     // Custom layer to render filled areas between percentile bands
     const AreaLayer = ({ xScale, yScale }: any) => {
@@ -152,19 +255,36 @@ export const FanChart = ({ percentiles, deterministicLine, height = 400 }: FanCh
 
     if (chartData.length === 0 || chartData[0].data.length === 0) {
         return (
-            <div className="flex items-center justify-center h-64 border-2 border-dashed border-gray-700 rounded-xl">
-                <p className="text-gray-500">Run simulation to see results</p>
+            <div ref={containerRef} className="flex items-center justify-center h-64 border-2 border-dashed border-gray-700 rounded-xl">
+                <p className="text-gray-400">Run simulation to see results</p>
+            </div>
+        );
+    }
+
+    // Show loading state until measured, then show message if too narrow
+    if (!isMeasured) {
+        return (
+            <div ref={containerRef} style={{ height }} className="flex items-center justify-center">
+                <p className="text-gray-400 text-sm">Loading chart...</p>
+            </div>
+        );
+    }
+
+    if (isNarrow) {
+        return (
+            <div ref={containerRef} style={{ height }} className="flex items-center justify-center border-2 border-dashed border-gray-700 rounded-xl">
+                <p className="text-gray-400 text-sm text-center px-4">Expand window to view chart</p>
             </div>
         );
     }
 
     return (
-        <div style={{ height }}>
+        <div ref={containerRef} style={{ height }}>
             <ResponsiveLine
                 data={chartData}
                 margin={{ top: 20, right: 110, bottom: 50, left: 80 }}
                 xScale={{ type: 'linear', min: 'auto', max: 'auto' }}
-                yScale={{ type: 'linear', min: 'auto', max: 'auto' }}
+                yScale={{ type: 'linear', min: yBounds.min, max: yBounds.max }}
                 axisBottom={{
                     tickSize: 5,
                     tickPadding: 5,
@@ -172,6 +292,7 @@ export const FanChart = ({ percentiles, deterministicLine, height = 400 }: FanCh
                     legend: 'Year',
                     legendOffset: 36,
                     legendPosition: 'middle',
+                    tickValues: xTickValues,
                 }}
                 axisLeft={{
                     tickSize: 5,
@@ -242,15 +363,15 @@ export const FanChart = ({ percentiles, deterministicLine, height = 400 }: FanCh
                     legends: { text: { fill: '#9ca3af', fontSize: 11 } },
                 }}
                 tooltip={({ point }) => (
-                    <div className="bg-gray-800 border border-gray-700 px-3 py-2 rounded shadow-xl text-sm">
-                        <div className="font-medium text-gray-300">{point.seriesId}</div>
+                    <div className="bg-gray-800 border border-gray-700 px-3 py-2 rounded shadow-xl text-sm max-w-[300px]">
+                        <div className="font-medium text-gray-300 truncate">{point.seriesId}</div>
                         <div className="text-gray-400">
                             Year: <span className="text-white">{point.data.x as number}</span>
                         </div>
                         <div className="text-gray-400">
                             Net Worth:{' '}
                             <span className="text-green-400 font-mono">
-                                ${(point.data.y as number).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                {formatCompactCurrency(point.data.y as number, { forceExact })}
                             </span>
                         </div>
                     </div>

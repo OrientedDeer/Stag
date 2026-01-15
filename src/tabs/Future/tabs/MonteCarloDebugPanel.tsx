@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useContext } from 'react';
 import { MonteCarloSummary, MonteCarloConfig, ScenarioResult } from '../../../services/MonteCarloTypes';
-import { calculateNetWorth, formatCurrency } from './FutureUtils';
+import { calculateNetWorth, formatCompactCurrency } from './FutureUtils';
 import { calculateMean, calculateStdDev } from '../../../services/RandomGenerator';
+import { AssumptionsContext } from '../../../components/Objects/Assumptions/AssumptionsContext';
 
 interface MonteCarloDebugPanelProps {
     summary: MonteCarloSummary;
@@ -30,7 +31,7 @@ const DebugSection = ({
                          hover:bg-gray-750 flex justify-between items-center"
             >
                 <span>{title}</span>
-                <span className="text-gray-500">{isOpen ? '▼' : '▶'}</span>
+                <span className="text-gray-400">{isOpen ? '▼' : '▶'}</span>
             </button>
             {isOpen && (
                 <div className="p-4 bg-gray-900/50 text-xs font-mono overflow-auto">
@@ -57,14 +58,14 @@ const formatNum = (n: number, decimals = 2) => {
 /**
  * Scenario timeline table
  */
-const ScenarioTimeline = ({ scenario, label }: { scenario: ScenarioResult; label: string }) => {
+const ScenarioTimeline = ({ scenario, label, formatCurrency }: { scenario: ScenarioResult; label: string; formatCurrency: (value: number) => string }) => {
     const [expanded, setExpanded] = useState(false);
     const displayYears = expanded ? scenario.timeline : scenario.timeline.slice(0, 10);
 
     return (
         <div className="mb-4">
             <div className="text-gray-400 mb-2 font-semibold">{label} (ID: {scenario.scenarioId})</div>
-            <div className="grid grid-cols-2 gap-4 mb-2 text-gray-500">
+            <div className="grid grid-cols-2 gap-4 mb-2 text-gray-400">
                 <div>Final Net Worth: <span className={scenario.finalNetWorth >= 0 ? 'text-green-400' : 'text-red-400'}>
                     {formatCurrency(scenario.finalNetWorth)}
                 </span></div>
@@ -75,7 +76,7 @@ const ScenarioTimeline = ({ scenario, label }: { scenario: ScenarioResult; label
 
             <table className="w-full text-xs">
                 <thead>
-                    <tr className="text-gray-500 border-b border-gray-700">
+                    <tr className="text-gray-400 border-b border-gray-700">
                         <th className="text-left py-1 px-2">Year</th>
                         <th className="text-right py-1 px-2">Return %</th>
                         <th className="text-right py-1 px-2">Net Worth</th>
@@ -184,6 +185,9 @@ const ReturnDistributionAnalysis = ({ scenario, label }: { scenario: ScenarioRes
  * Main debug panel component
  */
 export const MonteCarloDebugPanel = React.memo(({ summary, config }: MonteCarloDebugPanelProps) => {
+    const { state: assumptions } = useContext(AssumptionsContext);
+    const forceExact = assumptions.display?.useCompactCurrency === false;
+    const formatCurrency = (value: number) => formatCompactCurrency(value, { forceExact });
     const [isVisible, setIsVisible] = useState(false);
 
     // Calculate aggregate return statistics across all representative scenarios
@@ -206,11 +210,11 @@ export const MonteCarloDebugPanel = React.memo(({ summary, config }: MonteCarloD
         <div className="mt-4">
             <button
                 onClick={() => setIsVisible(!isVisible)}
-                className="flex items-center gap-2 text-gray-500 hover:text-gray-300 text-sm transition-colors"
+                className="flex items-center gap-2 text-gray-400 hover:text-gray-300 text-sm transition-colors"
             >
                 <span className="text-xs">{isVisible ? '▼' : '▶'}</span>
                 <span>Debug Panel</span>
-                {isVisible && <span className="text-xs text-gray-600">(for troubleshooting)</span>}
+                {isVisible && <span className="text-xs text-gray-400">(for troubleshooting)</span>}
             </button>
 
             {isVisible && (
@@ -252,17 +256,17 @@ export const MonteCarloDebugPanel = React.memo(({ summary, config }: MonteCarloD
                             <div className="text-center p-2 bg-red-900/20 rounded border border-red-800">
                                 <div className="text-red-400 text-xs uppercase">Worst Case</div>
                                 <div className="text-white font-bold">{formatCurrency(summary.worstCase.finalNetWorth)}</div>
-                                <div className="text-gray-500 text-xs">ID: {summary.worstCase.scenarioId}</div>
+                                <div className="text-gray-400 text-xs">ID: {summary.worstCase.scenarioId}</div>
                             </div>
                             <div className="text-center p-2 bg-gray-800 rounded border border-gray-700">
                                 <div className="text-gray-400 text-xs uppercase">Median Case</div>
                                 <div className="text-white font-bold">{formatCurrency(summary.medianCase.finalNetWorth)}</div>
-                                <div className="text-gray-500 text-xs">ID: {summary.medianCase.scenarioId}</div>
+                                <div className="text-gray-400 text-xs">ID: {summary.medianCase.scenarioId}</div>
                             </div>
                             <div className="text-center p-2 bg-green-900/20 rounded border border-green-800">
                                 <div className="text-green-400 text-xs uppercase">Best Case</div>
                                 <div className="text-white font-bold">{formatCurrency(summary.bestCase.finalNetWorth)}</div>
-                                <div className="text-gray-500 text-xs">ID: {summary.bestCase.scenarioId}</div>
+                                <div className="text-gray-400 text-xs">ID: {summary.bestCase.scenarioId}</div>
                             </div>
                         </div>
                     </DebugSection>
@@ -279,7 +283,7 @@ export const MonteCarloDebugPanel = React.memo(({ summary, config }: MonteCarloD
                         <div className="overflow-x-auto">
                             <table className="w-full text-xs">
                                 <thead>
-                                    <tr className="text-gray-500 border-b border-gray-700">
+                                    <tr className="text-gray-400 border-b border-gray-700">
                                         <th className="text-left py-1 px-2">Year</th>
                                         <th className="text-right py-1 px-2">P10</th>
                                         <th className="text-right py-1 px-2">P25</th>
@@ -311,7 +315,7 @@ export const MonteCarloDebugPanel = React.memo(({ summary, config }: MonteCarloD
                                     ))}
                                     {summary.percentiles.p50.length > 10 && (
                                         <tr>
-                                            <td colSpan={6} className="py-1 px-2 text-center text-gray-600">
+                                            <td colSpan={6} className="py-1 px-2 text-center text-gray-400">
                                                 ... {summary.percentiles.p50.length - 10} more years ...
                                             </td>
                                         </tr>
@@ -346,21 +350,21 @@ export const MonteCarloDebugPanel = React.memo(({ summary, config }: MonteCarloD
 
                     {/* Scenario Timelines */}
                     <DebugSection title="Worst Case Timeline">
-                        <ScenarioTimeline scenario={summary.worstCase} label="Worst Case" />
+                        <ScenarioTimeline scenario={summary.worstCase} label="Worst Case" formatCurrency={formatCurrency} />
                     </DebugSection>
 
                     <DebugSection title="Median Case Timeline">
-                        <ScenarioTimeline scenario={summary.medianCase} label="Median Case" />
+                        <ScenarioTimeline scenario={summary.medianCase} label="Median Case" formatCurrency={formatCurrency} />
                     </DebugSection>
 
                     <DebugSection title="Best Case Timeline">
-                        <ScenarioTimeline scenario={summary.bestCase} label="Best Case" />
+                        <ScenarioTimeline scenario={summary.bestCase} label="Best Case" formatCurrency={formatCurrency} />
                     </DebugSection>
 
                     {/* Raw JSON Export */}
                     <DebugSection title="Export Raw Data">
                         <div className="space-y-2">
-                            <p className="text-gray-500">Click to copy raw JSON data for analysis:</p>
+                            <p className="text-gray-400">Click to copy raw JSON data for analysis:</p>
                             <div className="flex gap-2 flex-wrap">
                                 <button
                                     onClick={() => {

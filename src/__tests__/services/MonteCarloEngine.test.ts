@@ -10,7 +10,7 @@ import {
 } from '../../services/MonteCarloAggregator';
 import { ScenarioResult } from '../../services/MonteCarloTypes';
 import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
-import { SavedAccount, InvestedAccount } from '../../components/Objects/Accounts/models';
+import { SavedAccount, InvestedAccount, DeficitDebtAccount } from '../../components/Objects/Accounts/models';
 
 // --- SeededRandom Tests ---
 describe('SeededRandom', () => {
@@ -73,6 +73,123 @@ describe('SeededRandom', () => {
 
         rng.reset(12345);
         expect(rng.next()).toBe(first);
+    });
+
+    it('should get and restore state', () => {
+        const rng = new SeededRandom(12345);
+        rng.next();
+        rng.next();
+
+        const savedState = rng.getState();
+        const nextValue = rng.next();
+
+        // Create new generator and restore state
+        const rng2 = new SeededRandom(99999); // Different seed
+        rng2.reset(savedState); // Restore to saved state
+
+        expect(rng2.next()).toBe(nextValue);
+    });
+
+    describe('lognormal distribution', () => {
+        it('should generate positive values only', () => {
+            const rng = new SeededRandom(42);
+
+            for (let i = 0; i < 1000; i++) {
+                const value = rng.lognormal(1.07, 0.15);
+                expect(value).toBeGreaterThan(0);
+            }
+        });
+
+        it('should approximate target mean for lognormal', () => {
+            const rng = new SeededRandom(12345);
+            const samples: number[] = [];
+            const targetMean = 1.07; // 7% growth factor
+
+            for (let i = 0; i < 10000; i++) {
+                samples.push(rng.lognormal(targetMean, 0.15));
+            }
+
+            const actualMean = calculateMean(samples);
+
+            // Lognormal mean should be close to target (within 5%)
+            expect(actualMean).toBeGreaterThan(targetMean * 0.95);
+            expect(actualMean).toBeLessThan(targetMean * 1.05);
+        });
+
+        it('should have right-skewed distribution (mean > median)', () => {
+            const rng = new SeededRandom(42);
+            const samples: number[] = [];
+
+            for (let i = 0; i < 10000; i++) {
+                samples.push(rng.lognormal(1.07, 0.20));
+            }
+
+            const mean = calculateMean(samples);
+            const sorted = [...samples].sort((a, b) => a - b);
+            const median = sorted[Math.floor(sorted.length / 2)];
+
+            // Lognormal is right-skewed: mean > median
+            expect(mean).toBeGreaterThan(median);
+        });
+    });
+
+    describe('generateLognormalReturns', () => {
+        it('should generate array of correct length', () => {
+            const rng = new SeededRandom(42);
+            const returns = rng.generateLognormalReturns(30, 7, 15);
+
+            expect(returns.length).toBe(30);
+        });
+
+        it('should generate returns as percentages', () => {
+            const rng = new SeededRandom(42);
+            const returns = rng.generateLognormalReturns(100, 7, 15);
+
+            // Returns should be reasonable percentages (mostly between -50% and +50%)
+            const reasonable = returns.filter(r => r > -50 && r < 50);
+            expect(reasonable.length).toBeGreaterThan(90); // At least 90% reasonable
+        });
+
+        it('should never produce returns below -100%', () => {
+            const rng = new SeededRandom(12345);
+
+            // Run many scenarios with high volatility
+            for (let i = 0; i < 100; i++) {
+                const returns = rng.generateLognormalReturns(50, 5, 25); // High volatility
+
+                for (const r of returns) {
+                    expect(r).toBeGreaterThan(-100); // Can't lose more than 100%
+                }
+            }
+        });
+
+        it('should have mean close to target return', () => {
+            const rng = new SeededRandom(12345);
+            const allReturns: number[] = [];
+            const targetReturn = 7;
+
+            // Generate many years to get good statistical sample
+            for (let i = 0; i < 100; i++) {
+                const returns = rng.generateLognormalReturns(30, targetReturn, 15);
+                allReturns.push(...returns);
+            }
+
+            const actualMean = calculateMean(allReturns);
+
+            // Mean should be close to target (within 1 percentage point)
+            expect(actualMean).toBeGreaterThan(targetReturn - 1);
+            expect(actualMean).toBeLessThan(targetReturn + 1);
+        });
+
+        it('should produce deterministic results with same seed', () => {
+            const rng1 = new SeededRandom(42);
+            const rng2 = new SeededRandom(42);
+
+            const returns1 = rng1.generateLognormalReturns(10, 7, 15);
+            const returns2 = rng2.generateLognormalReturns(10, 7, 15);
+
+            expect(returns1).toEqual(returns2);
+        });
     });
 });
 
@@ -228,17 +345,59 @@ describe('MonteCarloAggregator', () => {
             expect(result.finalNetWorth).toBe(150000);
         });
 
-        it('should mark scenario as failed when net worth hits zero', () => {
+        it('should mark scenario as failed when deficit debt is created', () => {
+            // Create a simulation year with deficit debt (meaning expenses couldn't be covered)
+            const createYearWithDeficitDebt = (year: number, deficitAmount: number): SimulationYear => ({
+                year,
+                incomes: [],
+                expenses: [],
+                accounts: [
+                    new SavedAccount('1', 'Savings', 0),
+                    new DeficitDebtAccount('system-deficit-debt', 'Uncovered Deficit', deficitAmount),
+                ],
+                cashflow: {
+                    totalIncome: 0,
+                    totalExpense: 0,
+                    discretionary: 0,
+                    investedUser: 0,
+                    investedMatch: 0,
+                    totalInvested: 0,
+                    bucketAllocations: 0,
+                    bucketDetail: {},
+                    withdrawals: 0,
+                    withdrawalDetail: {},
+                },
+                taxDetails: {
+                    fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0,
+                },
+                logs: [],
+            });
+
             const timeline = [
                 createMockSimulationYear(2025, 100000),
-                createMockSimulationYear(2026, 0),
-                createMockSimulationYear(2027, -50000),
+                createYearWithDeficitDebt(2026, 10000),  // Deficit debt created
+                createYearWithDeficitDebt(2027, 50000),  // More deficit accumulated
             ];
 
             const result = analyzeScenario(1, timeline, [7, -50, -100]);
 
             expect(result.success).toBe(false);
-            expect(result.yearOfDepletion).toBe(2026);
+            expect(result.yearOfDepletion).toBe(2026);  // First year with deficit debt
+        });
+
+        it('should NOT mark scenario as failed for regular debt (mortgages/loans)', () => {
+            // Having a mortgage that exceeds assets is normal, not a failure
+            const timeline = [
+                createMockSimulationYear(2025, 100000),
+                createMockSimulationYear(2026, -50000),  // Negative net worth from mortgage, not deficit
+                createMockSimulationYear(2027, -30000),
+            ];
+
+            const result = analyzeScenario(1, timeline, [7, 7, 7]);
+
+            // Should still be successful - no deficit debt was created
+            expect(result.success).toBe(true);
+            expect(result.yearOfDepletion).toBeNull();
         });
     });
 
@@ -316,6 +475,10 @@ describe('Return Rate Override Integration', () => {
                 returnRates: { ror: 7 },
                 withdrawalStrategy: 'Fixed Real' as const,
                 withdrawalRate: 4,
+                gkUpperGuardrail: 1.2,
+                gkLowerGuardrail: 0.8,
+                gkAdjustmentPercent: 10,
+                autoRothConversions: false,
             },
             macro: {
                 inflationRate: 2.6,
@@ -328,8 +491,9 @@ describe('Return Rate Override Integration', () => {
                 retirementAge: 65,
                 lifeExpectancy: 90,
             },
-            income: { salaryGrowth: 1.0, socialSecurityStartAge: 67 },
+            income: { salaryGrowth: 1.0, qualifiesForSocialSecurity: true, socialSecurityFundingPercent: 100 },
             expenses: { lifestyleCreep: 75, housingAppreciation: 1.4, rentInflation: 1.2 },
+            display: { useCompactCurrency: true, showExperimentalFeatures: false, hsaEligible: true },
             priorities: [],
             withdrawalStrategy: [],
         };

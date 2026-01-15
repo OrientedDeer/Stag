@@ -82,6 +82,7 @@ describe('ExpenseContext', () => {
   });
 
   it('should handle corrupted localStorage data gracefully', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     localStorageMock.setItem('user_expenses_data', 'invalid json');
 
     let expenses!: any[];
@@ -98,6 +99,7 @@ describe('ExpenseContext', () => {
     );
 
     expect(expenses).toEqual([]);
+    consoleSpy.mockRestore();
   });
 
   it('should save state to localStorage when state changes (debounced)', async () => {

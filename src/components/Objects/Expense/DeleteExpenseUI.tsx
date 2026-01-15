@@ -6,9 +6,10 @@ import { ConfirmDialog } from '../../Layout/ConfirmDialog';
 
 interface DeleteControlProps {
     expenseId: string;
+    expenseName?: string;
 }
 
-const DeleteExpenseControl: React.FC<DeleteControlProps> = ({ expenseId }) => {
+const DeleteExpenseControl: React.FC<DeleteControlProps> = ({ expenseId, expenseName }) => {
     const { expenses, dispatch: expenseDispatch } = useContext(ExpenseContext);
     const { dispatch: accountDispatch } = useContext(AccountContext);
     const [isConfirmOpen, setIsConfirmOpen] = useState(false);
@@ -51,7 +52,7 @@ const DeleteExpenseControl: React.FC<DeleteControlProps> = ({ expenseId }) => {
         <>
             <button
                 onClick={handleDeleteClick}
-                title="Delete Expense"
+                aria-label={expenseName ? `Delete ${expenseName} expense` : "Delete expense"}
                 className="p-1 rounded-full text-red-400 hover:text-red-300 transition-colors"
             >
                 <svg
@@ -61,6 +62,7 @@ const DeleteExpenseControl: React.FC<DeleteControlProps> = ({ expenseId }) => {
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
+                    aria-hidden="true"
                 >
                     <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
                 </svg>

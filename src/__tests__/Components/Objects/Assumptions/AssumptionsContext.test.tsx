@@ -121,6 +121,7 @@ describe('AssumptionsContext', () => {
   });
 
   it('should handle invalid JSON from localStorage gracefully', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     localStorageMock.setItem('assumptions_settings', 'invalid json');
 
     const { getByTestId } = render(
@@ -130,6 +131,7 @@ describe('AssumptionsContext', () => {
     );
 
     expect(getByTestId('inflation-rate').textContent).toBe(String(defaultAssumptions.macro.inflationRate));
+    consoleSpy.mockRestore();
   });
 
   // Priorities Reducer Tests
@@ -319,7 +321,7 @@ describe('AssumptionsContext', () => {
       });
 
       expect(state.income.salaryGrowth).toBe(4.5);
-      expect(state.income.socialSecurityStartAge).toBe(defaultAssumptions.income.socialSecurityStartAge);
+      expect(state.income.qualifiesForSocialSecurity).toBe(defaultAssumptions.income.qualifiesForSocialSecurity);
     });
 
     it('should update social security start age', () => {
@@ -334,10 +336,10 @@ describe('AssumptionsContext', () => {
       render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
 
       act(() => {
-        dispatch({ type: 'UPDATE_INCOME', payload: { socialSecurityStartAge: 70 } });
+        dispatch({ type: 'UPDATE_INCOME', payload: { qualifiesForSocialSecurity: false } });
       });
 
-      expect(state.income.socialSecurityStartAge).toBe(70);
+      expect(state.income.qualifiesForSocialSecurity).toBe(false);
     });
   });
 

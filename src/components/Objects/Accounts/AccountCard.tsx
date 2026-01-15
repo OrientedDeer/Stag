@@ -10,6 +10,8 @@ import { NumberInput } from "../../Layout/InputFields/NumberInput";
 import DeleteAccountControl from './DeleteAccountUI';
 import { EditHistoryModal } from "./EditHistoryModal";
 import { NameInput } from "../../Layout/InputFields/NameInput";
+import { formatCompactCurrency } from "../../../tabs/Future/tabs/FutureUtils";
+import { AssumptionsContext } from "../Assumptions/AssumptionsContext";
 
 // Chevron icon component
 const ChevronIcon = ({ expanded, className = '' }: { expanded: boolean; className?: string }) => (
@@ -26,6 +28,8 @@ const ChevronIcon = ({ expanded, className = '' }: { expanded: boolean; classNam
 const AccountCard = ({ account }: { account: AnyAccount }) => {
 	const { dispatch: accountDispatch } = useContext(AccountContext);
 	const { expenses, dispatch: expenseDispatch } = useContext(ExpenseContext);
+	const { state: assumptions } = useContext(AssumptionsContext);
+	const forceExact = assumptions.display?.useCompactCurrency === false;
 	const [isHistoryOpen, setIsHistoryOpen] = useState(false);
     const [isExpanded, setIsExpanded] = useState(false);
 
@@ -92,7 +96,7 @@ const AccountCard = ({ account }: { account: AnyAccount }) => {
     };
 
 	const getDescriptor = () => {
-		if (account instanceof SavedAccount) return "SAVINGS";
+		if (account instanceof SavedAccount) return "CASH";
 		if (account instanceof InvestedAccount) return "INVESTMENT";
 		if (account instanceof PropertyAccount) return "PROPERTY";
 		if (account instanceof DebtAccount) return "DEBT";
@@ -100,7 +104,7 @@ const AccountCard = ({ account }: { account: AnyAccount }) => {
 	};
 
 	const getIconBg = () => {
-		if (account instanceof SavedAccount) return ACCOUNT_COLORS_BACKGROUND["Saved"];
+		if (account instanceof SavedAccount) return ACCOUNT_COLORS_BACKGROUND["Cash"];
 		if (account instanceof InvestedAccount) return ACCOUNT_COLORS_BACKGROUND["Invested"];
 		if (account instanceof PropertyAccount) return ACCOUNT_COLORS_BACKGROUND["Property"];
 		if (account instanceof DebtAccount) return ACCOUNT_COLORS_BACKGROUND["Debt"];
@@ -114,20 +118,22 @@ const AccountCard = ({ account }: { account: AnyAccount }) => {
 		}
 	}
 
-    // Get display amount for collapsed view
+    // Get display amount for collapsed view (compact format for large numbers)
     const getDisplayAmount = () => {
-        return `$${account.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        return formatCompactCurrency(account.amount, { forceExact });
     };
 
 	return (
 		<div className="w-full">
             {/* Collapsed View */}
             {!isExpanded ? (
-                <div
+                <button
                     onClick={() => setIsExpanded(true)}
-                    className="flex items-center gap-4 p-4 bg-[#18181b] rounded-xl border border-gray-800 cursor-pointer hover:border-gray-600 transition-colors"
+                    aria-expanded="false"
+                    aria-label={`Expand ${account.name} account details`}
+                    className="flex items-center gap-4 p-4 bg-[#18181b] rounded-xl border border-gray-800 cursor-pointer hover:border-gray-600 transition-colors w-full text-left"
                 >
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg ${getIconBg()} text-md font-bold text-white flex-shrink-0`}>
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg ${getIconBg()} text-md font-bold text-white flex-shrink-0`} aria-hidden="true">
                         {getDescriptor().slice(0, 1)}
                     </div>
                     <div className="font-semibold text-white truncate flex-1">
@@ -137,7 +143,7 @@ const AccountCard = ({ account }: { account: AnyAccount }) => {
                         {getDisplayAmount()}
                     </div>
                     <ChevronIcon expanded={false} />
-                </div>
+                </button>
             ) : (
                 <>
                     {/* Expanded Header */}
@@ -156,16 +162,18 @@ const AccountCard = ({ account }: { account: AnyAccount }) => {
                         <div className="flex items-center gap-2 ml-auto">
                             <button
                                 onClick={() => setIsHistoryOpen(true)}
-                                className="text-gray-500 hover:text-white transition-colors p-1"
-                                title="Edit History"
+                                className="text-gray-400 hover:text-white transition-colors p-1"
+                                aria-label={`Edit ${account.name} balance history`}
                             >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
                             </button>
                             <div className="text-chart-Red-75">
-                                <DeleteAccountControl accountId={account.id} />
+                                <DeleteAccountControl accountId={account.id} accountName={account.name} />
                             </div>
                             <button
                                 onClick={() => setIsExpanded(false)}
+                                aria-expanded="true"
+                                aria-label={`Collapse ${account.name} account details`}
                                 className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
                             >
                                 <ChevronIcon expanded={true} />
@@ -200,6 +208,29 @@ const AccountCard = ({ account }: { account: AnyAccount }) => {
 							onChange={(val) => handleFieldUpdate("expenseRatio", val)}
 							tooltip="Annual fee charged by the fund. Example: 0.15% = $15 per $10,000 invested per year."
 						/>
+						<ToggleInput
+							id={`${account.id}-use-custom-ror`}
+							label="Custom Return Rate"
+							enabled={account.customROR !== undefined}
+							setEnabled={(checked) => {
+								if (checked) {
+									handleFieldUpdate("customROR", 7.0); // Default to 7%
+								} else {
+									handleFieldUpdate("customROR", undefined);
+								}
+							}}
+							tooltip="Override global return rate assumptions with a custom rate for this account."
+						/>
+						{account.customROR !== undefined && (
+							<PercentageInput
+								id={`${account.id}-custom-ror`}
+								label="Return Rate"
+								value={account.customROR}
+								onChange={(val) => handleFieldUpdate("customROR", val)}
+								max={30}
+								tooltip="Expected annual return rate for this account. Overrides the global assumption."
+							/>
+						)}
 						<StyledSelect
 							id={`${account.id}-tax-type`}
 							label="Tax Type"
@@ -217,32 +248,51 @@ const AccountCard = ({ account }: { account: AnyAccount }) => {
 									onChange={(val) => handleFieldUpdate("employerBalance", val)}
 									tooltip="Amount contributed by your employer (401k match). Subject to vesting schedule."
 								/>
-								<NumberInput
-									id={`${account.id}-tenure-years`}
-									label="Tenure (Years)"
-									value={account.tenureYears}
-									onChange={(val) => handleFieldUpdate("tenureYears", val)}
-									tooltip="Years you've worked at this employer. Used to calculate vested amount."
+								<ToggleInput
+									id={`${account.id}-fully-vested`}
+									label="100% Vested"
+									enabled={account.vestedPerYear >= 1.0}
+									setEnabled={(checked) => {
+										if (checked) {
+											handleFieldUpdate("vestedPerYear", 1.0);
+											handleFieldUpdate("tenureYears", 1);
+										} else {
+											handleFieldUpdate("vestedPerYear", 0.2);
+											handleFieldUpdate("tenureYears", 0);
+										}
+									}}
+									tooltip="Check if employer contributions are fully vested."
 								/>
-								<StyledDisplay
-									label="Non-Vested Amount"
-									value={account.nonVestedAmount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
-									tooltip="Employer contributions you'd lose if you left today."
-								/>
-								<StyledDisplay
-									label="Vested Amount"
-									value={account.vestedAmount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
-									tooltip="Employer contributions that are yours to keep."
-								/>
+								{account.vestedPerYear < 1.0 && (
+									<>
+										<NumberInput
+											id={`${account.id}-tenure-years`}
+											label="Tenure (Years)"
+											value={account.tenureYears}
+											onChange={(val) => handleFieldUpdate("tenureYears", val)}
+											tooltip="Years you've worked at this employer. Used to calculate vested amount."
+										/>
+										<StyledDisplay
+											label="Non-Vested Amount"
+											value={account.nonVestedAmount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+											tooltip="Employer contributions you'd lose if you left today."
+										/>
+										<StyledDisplay
+											label="Vested Amount"
+											value={account.vestedAmount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+											tooltip="Employer contributions that are yours to keep."
+										/>
+										<PercentageInput
+											id={`${account.id}-vested-per-year`}
+											label="Vesting Schedule (per year)"
+											value={account.vestedPerYear}
+											onChange={(val) => handleFieldUpdate("vestedPerYear", val)}
+											tooltip="Percentage of employer match that vests each year. Example: 20% means fully vested after 5 years."
+										/>
+									</>
+								)}
 							</>
 						)}
-						<PercentageInput
-							id={`${account.id}-vested-per-year`}
-							label="Vesting Schedule (per year)"
-							value={account.vestedPerYear}
-							onChange={(val) => handleFieldUpdate("vestedPerYear", val)}
-							tooltip="Percentage of employer match that vests each year. Example: 20% means fully vested after 5 years."
-						/>
 						<ToggleInput
 							id={`${account.id}-contribution-eligible`}
 							label="Contribution Eligible"
@@ -276,13 +326,14 @@ const AccountCard = ({ account }: { account: AnyAccount }) => {
 									value={account.startingLoanBalance}
 									onChange={(val) => handleFieldUpdate("startingLoanBalance", val)}
 								/>
+								{!getLinkedAccount() && (
+									<div className="col-span-full bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-3 text-xs text-yellow-300">
+										<span className="font-semibold">⚠ Missing mortgage expense</span>
+										<p className="text-yellow-400/80 mt-1">Mortgage payments won't be tracked. Try deleting and re-adding this property.</p>
+									</div>
+								)}
 							</>
 						)}
-						<StyledDisplay
-							label="Linked to Expense"
-							blankValue="No expense found, try re-adding"
-							value={getLinkedAccount()}
-						/>
 					</>
 				)}
 				{account instanceof DebtAccount && (
@@ -293,11 +344,12 @@ const AccountCard = ({ account }: { account: AnyAccount }) => {
 							value={account.apr}
 							onChange={(val) => handleFieldUpdate("apr", val)}
 						/>
-						<StyledDisplay
-							label="Linked to Expense"
-							blankValue="No expense found, try re-adding"
-							value={getLinkedAccount()}
-						/>
+						{!getLinkedAccount() && (
+							<div className="col-span-full bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-3 text-xs text-yellow-300">
+								<span className="font-semibold">⚠ Missing loan expense</span>
+								<p className="text-yellow-400/80 mt-1">Loan payments won't be tracked. Try deleting and re-adding this debt.</p>
+							</div>
+						)}
 					</>
 				)}
 			        </div>

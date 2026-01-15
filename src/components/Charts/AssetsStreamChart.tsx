@@ -1,6 +1,10 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useContext } from 'react';
 import { ResponsiveStream } from '@nivo/stream';
 import { RangeSlider } from '../Layout/InputFields/RangeSlider'; // Adjust path if needed
+import { AssumptionsContext } from '../Objects/Assumptions/AssumptionsContext';
+import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
+
+const MIN_CHART_WIDTH = 300;
 
 // --- Types ---
 export interface AssetStreamData {
@@ -10,40 +14,42 @@ export interface AssetStreamData {
 
 interface AssetsStreamChartProps {
   data: AssetStreamData[];
-  keys: string[]; 
-  colors?: Record<string, string>; 
+  keys: string[];
+  colors?: Record<string, string>;
 }
-
-const formatCurrency = (value: number) => 
-  new Intl.NumberFormat('en-US', { 
-    style: 'currency', 
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(value);
 
 export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
   data,
   keys,
   colors
 }) => {
+  const { state: assumptions } = useContext(AssumptionsContext);
+  const forceExact = assumptions.display?.useCompactCurrency === false;
+  const formatCurrency = (value: number) => formatCompactCurrency(value, { forceExact });
+
   const [mode, setMode] = useState<'value' | 'percent'>('value');
   const containerRef = useRef<HTMLDivElement>(null);
-  const [containerWidth, setContainerWidth] = useState(800);
+  const [containerWidth, setContainerWidth] = useState<number | null>(null);
 
-  // Responsive width detection
+  // Responsive width detection using ResizeObserver
   useEffect(() => {
-    const updateWidth = () => {
-      if (containerRef.current) {
-        setContainerWidth(containerRef.current.offsetWidth);
+    const container = containerRef.current;
+    if (!container) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width);
       }
-    };
-    updateWidth();
-    window.addEventListener('resize', updateWidth);
-    return () => window.removeEventListener('resize', updateWidth);
+    });
+
+    observer.observe(container);
+
+    return () => observer.disconnect();
   }, []);
 
-  const isMobile = containerWidth < 640;
+  const isMobile = (containerWidth ?? 800) < 640;
+  const isNarrow = containerWidth !== null && containerWidth < MIN_CHART_WIDTH;
+  const isMeasured = containerWidth !== null;
 
   // --- RANGE SLIDER LOGIC ---
   const minYear = data.length > 0 ? data[0].year : 2025;
@@ -53,6 +59,19 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
   const filteredData = useMemo(() => {
     return data.filter(d => d.year >= range[0] && d.year <= range[1]);
   }, [data, range]);
+
+  // Calculate x-axis tick values (indices) to prevent label overlap
+  const xTickValues = useMemo(() => {
+    if (filteredData.length === 0) return undefined;
+
+    const range = filteredData.length;
+    let step = 1;
+    if (range > 41) step = 2;
+
+    return filteredData
+      .map((_, i) => i)
+      .filter((i) => i === 0 || i === filteredData.length - 1 || i % step === 0);
+  }, [filteredData]);
 
   const theme = {
     axis: { ticks: { text: { fill: '#9ca3af', fontSize: 11 } } },
@@ -110,7 +129,7 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
                         <span className="text-gray-300 font-medium">{key}</span>
                     </td>
                     <td className="py-1 text-right font-mono text-gray-100 whitespace-nowrap">{formatCurrency(value)}</td>
-                    <td className="py-1 pl-4 text-right text-xs text-gray-500 whitespace-nowrap">{Math.round((value / total) * 100)}%</td>
+                    <td className="py-1 pl-4 text-right text-xs text-gray-400 whitespace-nowrap">{Math.round((value / total) * 100)}%</td>
                   </tr>
                 );
               })}
@@ -120,6 +139,24 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
       </div>
     );
   };
+
+  // Show loading state until measured
+  if (!isMeasured) {
+    return (
+      <div ref={containerRef} className="w-full h-full flex items-center justify-center">
+        <p className="text-gray-400 text-sm">Loading chart...</p>
+      </div>
+    );
+  }
+
+  // Show message when container is too narrow for the chart
+  if (isNarrow) {
+    return (
+      <div ref={containerRef} className="w-full h-full flex items-center justify-center border-2 border-dashed border-gray-700 rounded-xl">
+        <p className="text-gray-400 text-sm text-center px-4">Expand window to view chart</p>
+      </div>
+    );
+  }
 
   return (
     <div ref={containerRef} className="w-full h-full flex flex-col">
@@ -157,7 +194,7 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
             tickSize: 5,
             tickPadding: 5,
             format: (idx) => filteredData[idx]?.year || '',
-            tickValues: 5
+            tickValues: xTickValues,
           }}
           axisLeft={mode === 'percent'
             ? { tickValues: [0, .25, .5, .75, 1], format: '>-.0%' }

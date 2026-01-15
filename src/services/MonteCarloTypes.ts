@@ -1,4 +1,5 @@
 import { SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
+import { HISTORICAL_STATS } from '../data/HistoricalReturns';
 
 /**
  * Configuration for Monte Carlo simulation
@@ -14,17 +15,80 @@ export interface MonteCarloConfig {
     returnMean: number;
     /** Annual volatility/standard deviation (e.g., 15 for 15%) */
     returnStdDev: number;
+    /** Selected preset key (for UI tracking) */
+    preset: ReturnPresetKey;
 }
 
 /**
- * Default Monte Carlo configuration
+ * Return assumption presets based on historical data
+ */
+export type ReturnPresetKey = 'historical' | 'conservative' | 'custom';
+
+export interface ReturnPreset {
+    key: ReturnPresetKey;
+    label: string;
+    description: string;
+    /** Return mean when inflation adjustment is OFF (nominal returns) */
+    returnMeanNominal: number;
+    /** Return mean when inflation adjustment is ON (real returns) */
+    returnMeanReal: number;
+    returnStdDev: number;
+}
+
+// Calculate real return from historical nominal returns and inflation
+const historicalNominalReturn = Math.round(HISTORICAL_STATS.stocks.mean * 10) / 10;
+const historicalRealReturn = Math.round(
+    ((1 + HISTORICAL_STATS.stocks.mean / 100) / (1 + HISTORICAL_STATS.inflation.mean / 100) - 1) * 100 * 10
+) / 10;
+const historicalStdDev = Math.round(HISTORICAL_STATS.stocks.stdDev * 10) / 10;
+
+export const RETURN_PRESETS: Record<ReturnPresetKey, ReturnPreset> = {
+    historical: {
+        key: 'historical',
+        label: 'Historical S&P 500',
+        description: `Based on ${HISTORICAL_STATS.stocks.startYear}-${HISTORICAL_STATS.stocks.endYear} data.`,
+        returnMeanNominal: historicalNominalReturn,
+        returnMeanReal: historicalRealReturn,
+        returnStdDev: historicalStdDev,
+    },
+    conservative: {
+        key: 'conservative',
+        label: 'Conservative',
+        description: 'Lower expected returns for more cautious planning.',
+        returnMeanNominal: 6,
+        returnMeanReal: 4,
+        returnStdDev: 12,
+    },
+    custom: {
+        key: 'custom',
+        label: 'Custom',
+        description: 'Set your own return assumptions.',
+        returnMeanNominal: 7,
+        returnMeanReal: 7,
+        returnStdDev: 15,
+    },
+};
+
+/**
+ * Get the appropriate return mean based on inflation adjustment setting
+ * When inflation adjustment is ON, use nominal returns (simulation adjusts for inflation)
+ * When inflation adjustment is OFF, use real returns (already inflation-adjusted)
+ */
+export function getPresetReturnMean(preset: ReturnPresetKey, inflationAdjusted: boolean): number {
+    const presetData = RETURN_PRESETS[preset];
+    return inflationAdjusted ? presetData.returnMeanNominal : presetData.returnMeanReal;
+}
+
+/**
+ * Default Monte Carlo configuration using historical returns
  */
 export const defaultMonteCarloConfig: MonteCarloConfig = {
     enabled: false,
     numScenarios: 100,
     seed: Date.now(),
-    returnMean: 7,      // 7% real return (historical average)
-    returnStdDev: 15,   // 15% volatility (historical S&P 500)
+    returnMean: RETURN_PRESETS.historical.returnMeanNominal, // Default assumes inflation-adjusted=true, so use nominal
+    returnStdDev: RETURN_PRESETS.historical.returnStdDev,
+    preset: 'historical',
 };
 
 /**

@@ -18,6 +18,7 @@ import AssumptionTab from "./tabs/Future/AssumptionTab";
 import { AssumptionsProvider } from "./components/Objects/Assumptions/AssumptionsContext";
 import { SimulationProvider } from "./components/Objects/Assumptions/SimulationContext";
 import { MonteCarloProvider } from "./components/Objects/Assumptions/MonteCarloContext";
+import { ScenarioProvider } from "./components/Objects/Scenarios/ScenarioContext";
 import PriorityTab from "./tabs/Future/PriorityTab";
 import WithdrawalTab from "./tabs/Future/WithdrawalTab";
 
@@ -31,8 +32,9 @@ export default function App() {
             <TaxProvider>
               <AssumptionsProvider>
               <MonteCarloProvider>
+              <ScenarioProvider>
               <div className="flex h-screen">
-                <Sidebar isOpen={isOpen}/>
+                <Sidebar isOpen={isOpen} onClose={() => setIsOpen(true)}/>
                 <div className="flex flex-col flex-1 overflow-hidden">
                   <TopBar setIsOpen={setIsOpen} title="Menu"/>
 
@@ -48,15 +50,16 @@ export default function App() {
                       <Route path="/current/taxes" element={<TaxesTab />} />
                                   
                       <Route path="/future" element={<FutureTab />} />
-                      <Route path="/future/future" element={<FutureTab />} />
                       <Route path="/future/assumptions" element={<AssumptionTab />} />
                       <Route path="/future/allocation" element={<PriorityTab />} />
                       <Route path="/future/withdrawal" element={<WithdrawalTab />} />
+                      <Route path="/future/charts" element={<FutureTab />} />
                       <Route path="/testing" element={<Testing />} />
                     </Routes>
                   </main>
                 </div>
               </div>
+              </ScenarioProvider>
               </MonteCarloProvider>
               </AssumptionsProvider>
             </TaxProvider>

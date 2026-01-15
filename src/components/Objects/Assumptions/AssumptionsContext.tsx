@@ -1,5 +1,6 @@
 import { createContext, useReducer, useContext, ReactNode, useMemo } from 'react';
 import { useDebouncedLocalStorage } from '../../../hooks/useDebouncedLocalStorage';
+import { EarningsRecord } from '../../../services/SocialSecurityCalculator';
 
 export type CapType = 'MAX' | 'FIXED' | 'REMAINDER' | 'MULTIPLE_OF_EXPENSES';
 
@@ -27,7 +28,8 @@ export interface AssumptionsState {
   };
   income: {
     salaryGrowth: number;        // e.g., 3.0
-    socialSecurityStartAge: number;
+    qualifiesForSocialSecurity: boolean; // Whether user expects to receive SS benefits
+    socialSecurityFundingPercent: number; // Expected % of SS benefits (e.g., 75 if pessimistic about solvency)
   };
   expenses: {
     lifestyleCreep: number;      // e.g., 50.0 (% of raise spent)
@@ -40,12 +42,24 @@ export interface AssumptionsState {
     };
     withdrawalStrategy: 'Fixed Real' | 'Percentage' | 'Guyton Klinger';
     withdrawalRate: number; // e.g., 4.0
-    };  
+    // Guyton-Klinger guardrail settings
+    gkUpperGuardrail: number;     // Default 1.2 (20% above target triggers cut)
+    gkLowerGuardrail: number;     // Default 0.8 (20% below target triggers boost)
+    gkAdjustmentPercent: number;  // Default 10 (10% cut/increase per GK rules)
+    // Auto Roth conversions during retirement
+    autoRothConversions: boolean; // Automatically convert Traditional to Roth in low-tax years
+    };
   demographics: {
     startAge: number;
     startYear: number;
     retirementAge: number;
     lifeExpectancy: number;
+    priorEarnings?: EarningsRecord[];  // SSA earnings history imported from XML
+  };
+  display: {
+    useCompactCurrency: boolean; // Show $1.2M instead of $1,200,000
+    showExperimentalFeatures: boolean; // Show Tax, Scenarios, Ratios tabs
+    hsaEligible: boolean; // Whether user has HDHP and is eligible for HSA
   };
   priorities: PriorityBucket[];
   withdrawalStrategy: WithdrawalBucket[]; // The "Burn Order"
@@ -59,7 +73,8 @@ export const defaultAssumptions: AssumptionsState = {
   },
   income: {
     salaryGrowth: 1.0,
-    socialSecurityStartAge: 67,
+    qualifiesForSocialSecurity: true,
+    socialSecurityFundingPercent: 100, // 100% = full benefits, reduce if pessimistic about SS solvency
   },
   expenses: {
     lifestyleCreep: 75.0,
@@ -70,12 +85,21 @@ export const defaultAssumptions: AssumptionsState = {
     returnRates: { ror: 5.9 },
     withdrawalStrategy: 'Fixed Real',
     withdrawalRate: 4.0,
+    gkUpperGuardrail: 1.2,      // Cut when rate > target * 1.2
+    gkLowerGuardrail: 0.8,      // Boost when rate < target * 0.8
+    gkAdjustmentPercent: 10,    // 10% adjustment (per actual GK rules)
+    autoRothConversions: false, // Auto-convert Traditional to Roth in retirement
   },
   demographics: {
     retirementAge: 65,
     lifeExpectancy: 90,
     startAge: 24,
     startYear: new Date().getUTCFullYear(),
+  },
+  display: {
+    useCompactCurrency: true,
+    showExperimentalFeatures: false,
+    hsaEligible: true,
   },
   priorities: [],
   withdrawalStrategy: [],
@@ -88,6 +112,7 @@ type Action =
   | { type: 'UPDATE_INVESTMENTS'; payload: Partial<AssumptionsState['investments']> }
   | { type: 'UPDATE_INVESTMENT_RATES'; payload: Partial<AssumptionsState['investments']['returnRates']> }
   | { type: 'UPDATE_DEMOGRAPHICS'; payload: Partial<AssumptionsState['demographics']> }
+  | { type: 'UPDATE_DISPLAY'; payload: Partial<AssumptionsState['display']> }
   | { type: 'RESET_DEFAULTS' }
   | { type: 'SET_BULK_DATA'; payload: AssumptionsState }
   | { type: 'SET_PRIORITIES'; payload: PriorityBucket[] }
@@ -97,7 +122,9 @@ type Action =
   | { type: 'SET_WITHDRAWAL_STRATEGY'; payload: WithdrawalBucket[] }
   | { type: 'ADD_WITHDRAWAL_STRATEGY'; payload: WithdrawalBucket }
   | { type: 'REMOVE_WITHDRAWAL_STRATEGY'; payload: string }
-  | { type: 'UPDATE_WITHDRAWAL_STRATEGY'; payload: WithdrawalBucket };
+  | { type: 'UPDATE_WITHDRAWAL_STRATEGY'; payload: WithdrawalBucket }
+  | { type: 'SET_PRIOR_EARNINGS'; payload: EarningsRecord[] }
+  | { type: 'CLEAR_PRIOR_EARNINGS' };
 
 const assumptionsReducer = (state: AssumptionsState, action: Action): AssumptionsState => {
   switch (action.type) {
@@ -119,6 +146,8 @@ const assumptionsReducer = (state: AssumptionsState, action: Action): Assumption
       };
     case 'UPDATE_DEMOGRAPHICS':
       return { ...state, demographics: { ...state.demographics, ...action.payload } };
+    case 'UPDATE_DISPLAY':
+      return { ...state, display: { ...state.display, ...action.payload } };
     case 'RESET_DEFAULTS':
       return defaultAssumptions;
     case 'SET_BULK_DATA':
@@ -141,9 +170,19 @@ const assumptionsReducer = (state: AssumptionsState, action: Action): Assumption
     case 'REMOVE_WITHDRAWAL_STRATEGY':
         return { ...state, withdrawalStrategy: state.withdrawalStrategy.filter(p => p.id !== action.payload) };
     case 'UPDATE_WITHDRAWAL_STRATEGY':
-        return { 
-            ...state, 
-            withdrawalStrategy: state.withdrawalStrategy.map(p => p.id === action.payload.id ? action.payload : p) 
+        return {
+            ...state,
+            withdrawalStrategy: state.withdrawalStrategy.map(p => p.id === action.payload.id ? action.payload : p)
+        };
+    case 'SET_PRIOR_EARNINGS':
+        return {
+            ...state,
+            demographics: { ...state.demographics, priorEarnings: action.payload }
+        };
+    case 'CLEAR_PRIOR_EARNINGS':
+        return {
+            ...state,
+            demographics: { ...state.demographics, priorEarnings: undefined }
         };
     default:
       return state;

@@ -15,10 +15,13 @@ import {
     calculateTax,
     calculateFicaTax,
     calculateStateTax,
-    calculateFederalTax
+    calculateFederalTax,
+    getMarginalTaxRate,
+    getCombinedMarginalRate,
+    getSALTCap
 } from '../../../../components/Objects/Taxes/TaxService';
 import { WorkIncome, CurrentSocialSecurityIncome } from '../../../../components/Objects/Income/models';
-import { MortgageExpense } from '../../../../components/Objects/Expense/models';
+import { MortgageExpense, DependentExpense } from '../../../../components/Objects/Expense/models';
 
 // --- HELPERS ---
 
@@ -441,81 +444,11 @@ describe('TaxService: Additional Functions', () => {
         });
     });
 
-    describe('Federal Tax Calculation with Social Security', () => {
+    describe('FICA and State Tax with Social Security', () => {
         /**
-         * CRITICAL BUG PREVENTION:
-         * These tests verify the specific line of code that was buggy (TaxService.tsx:374).
-         *
-         * Bug: adjustedGross = annualGross + taxableSSBenefits (double-counted SS)
-         * Fix: adjustedGross = annualGross - totalSSBenefits + taxableSSBenefits
-         *
-         * If the bug is reintroduced, these tests will fail with a federal tax amount
-         * that is significantly higher than expected.
+         * Tests for FICA and state tax handling of Social Security income.
+         * NOTE: Federal tax SS integration tests are in SocialSecurityTax.test.tsx
          */
-
-        it('should correctly calculate adjustedGross when SS benefits are present', () => {
-            // This test verifies the specific line of code that was buggy
-            const workIncome = new WorkIncome(
-                'w1',
-                'Job',
-                100000,
-                'Annually',
-                'Yes',
-                0,
-                0,
-                0,
-                0,
-                'acc1',
-                'Traditional 401k',
-                'FIXED',
-                new Date('2024-01-01'),
-                new Date('2024-12-31')
-            );
-
-            const ssIncome = new CurrentSocialSecurityIncome(
-                'ss1',
-                'SS',
-                2000,
-                'Monthly',
-                new Date('2024-01-01'),
-                new Date('2024-12-31')
-            );
-            // $24,000/year SS
-
-            const fedTax = calculateFederalTax(
-                createTaxState(),
-                [workIncome, ssIncome],
-                [],
-                2024,
-                noInflationAssumptions
-            );
-
-            // Manual calculation to verify adjustedGross is correct:
-            // annualGross = 100,000 + 24,000 = 124,000
-            // AGI = 124,000 (no pre-tax deductions)
-            // Combined income = AGI + (0.5 * SS) = 124,000 + 12,000 = 136,000
-            // Since > $34,000, up to 85% of SS is taxable
-            // taxableSSBenefits = 0.85 * 24,000 = 20,400
-            //
-            // CRITICAL: adjustedGross = 124,000 - 24,000 + 20,400 = 120,400
-            // (NOT 124,000 + 20,400 = 144,400 which is the bug!)
-            //
-            // Taxable income = 120,400 - 14,600 (std deduction) = 105,800
-            //
-            // Tax calculation on $105,800 (Single, 2024):
-            // 10% on first $11,600 = $1,160
-            // 12% on $11,600 to $47,150 = $4,266
-            // 22% on $47,150 to $100,525 = $11,743
-            // 24% on $100,525 to $105,800 = $1,266
-            // Total: ~$18,435
-            //
-            // If the bug is present, the tax would be calculated on $144,400 instead:
-            // Taxable: 144,400 - 14,600 = 129,800
-            // Tax: ~$24,660 (WRONG!)
-
-            expect(fedTax).toBeCloseTo(18434.38, 0); // Within $1
-            expect(fedTax).toBeLessThan(20000); // Should NOT be ~24660 (bug value)
-        });
 
         it('should not apply FICA to Social Security benefits', () => {
             const workIncome = new WorkIncome(
@@ -607,6 +540,221 @@ describe('TaxService: Additional Functions', () => {
             // Note: New York may fully exempt SS benefits, so state tax could be $0
             expect(stateTax).toBeGreaterThanOrEqual(0);
             expect(stateTax).toBeLessThan(10000);
+        });
+    });
+
+    describe('getItemizedDeductions with non-Mortgage expenses', () => {
+        it('should calculate itemized deductions for non-mortgage expenses', () => {
+            // DependentExpense with Itemized deduction (Annually to avoid proration)
+            const expense = new DependentExpense(
+                'd1',
+                'Child Care',
+                12000,
+                'Annually',
+                'Itemized',
+                6000, // tax_deductible amount (annual)
+                new Date('2024-01-01'),
+                new Date('2024-12-31')
+            );
+
+            const deductions = getItemizedDeductions([expense], 2024);
+            // Should return the tax_deductible amount for the year
+            expect(deductions).toBe(6000);
+        });
+
+        it('should combine mortgage and non-mortgage itemized deductions', () => {
+            const mortgage = new MortgageExpense('m1', 'Home', 'Monthly', 500000, 400000, 400000, 3, 30, 1.2, 0, 1, 100, 0.3, 0, 50, 'Itemized', 0.8, 'a1', new Date('2024-01-02'));
+            const dependent = new DependentExpense(
+                'd1',
+                'Child Care',
+                12000,
+                'Annually',
+                'Itemized',
+                3000, // Annual tax deductible amount
+                new Date('2024-01-01'),
+                new Date('2024-12-31')
+            );
+
+            const deductions = getItemizedDeductions([mortgage, dependent], 2024);
+            // Should include both mortgage interest (~11885) and dependent deduction (3000)
+            expect(deductions).toBeCloseTo(11885.79 + 3000, 0);
+        });
+    });
+
+    describe('getMarginalTaxRate', () => {
+        it('should return correct marginal rate for income in 12% bracket', () => {
+            const params = getTaxParameters(2024, 'Single', 'federal');
+            if (params) {
+                // Taxable income of $30,000 is in the 12% bracket (11,600 - 47,151)
+                const result = getMarginalTaxRate(30000, params);
+                expect(result.rate).toBe(0.12);
+                expect(result.bracketStart).toBe(11600);
+                expect(result.bracketEnd).toBe(47151);
+                expect(result.headroom).toBe(47151 - 30000);
+            }
+        });
+
+        it('should return correct marginal rate for zero income', () => {
+            const params = getTaxParameters(2024, 'Single', 'federal');
+            if (params) {
+                const result = getMarginalTaxRate(0, params);
+                expect(result.rate).toBe(0.10);
+                expect(result.bracketStart).toBe(0);
+                expect(result.headroom).toBe(11600); // Room until 12% bracket
+            }
+        });
+
+        it('should return correct marginal rate for negative income', () => {
+            const params = getTaxParameters(2024, 'Single', 'federal');
+            if (params) {
+                const result = getMarginalTaxRate(-5000, params);
+                expect(result.rate).toBe(0.10);
+                expect(result.bracketStart).toBe(0);
+            }
+        });
+
+        it('should return top bracket rate for very high income', () => {
+            const params = getTaxParameters(2024, 'Single', 'federal');
+            if (params) {
+                // Income above the top bracket threshold ($609,351 for 2024 Single)
+                const result = getMarginalTaxRate(1000000, params);
+                expect(result.rate).toBe(0.37);
+                expect(result.bracketEnd).toBe(Infinity);
+                expect(result.headroom).toBe(Infinity);
+            }
+        });
+
+        it('should handle income exactly at bracket boundary', () => {
+            const params = getTaxParameters(2024, 'Single', 'federal');
+            if (params) {
+                // Exactly at the 12% bracket start
+                const result = getMarginalTaxRate(11600, params);
+                expect(result.rate).toBe(0.12);
+                expect(result.bracketStart).toBe(11600);
+            }
+        });
+    });
+
+    describe('getCombinedMarginalRate', () => {
+        it('should calculate combined rate for income below SS wage base', () => {
+            const result = getCombinedMarginalRate(
+                50000,
+                0,
+                createTaxState({ stateResidency: 'Texas' }),
+                2024,
+                noInflationAssumptions,
+                true
+            );
+
+            // Federal rate for ~35,400 taxable (50k - 14.6k std ded) = 12%
+            // State = 0% (Texas)
+            // FICA = 7.65% (6.2% SS + 1.45% Medicare)
+            expect(result.federal).toBe(0.12);
+            expect(result.state).toBe(0);
+            expect(result.fica).toBeCloseTo(0.0765);
+            expect(result.combined).toBeCloseTo(0.12 + 0.0765);
+        });
+
+        it('should only include Medicare rate above SS wage base', () => {
+            const result = getCombinedMarginalRate(
+                200000, // Above 2024 SS wage base of 168,600
+                0,
+                createTaxState({ stateResidency: 'Texas' }),
+                2024,
+                noInflationAssumptions,
+                true
+            );
+
+            // Above SS wage base, only Medicare (1.45%) applies, not SS (6.2%)
+            expect(result.fica).toBe(0.0145); // Only Medicare rate
+        });
+
+        it('should exclude FICA when includesFICA is false', () => {
+            const result = getCombinedMarginalRate(
+                50000,
+                0,
+                createTaxState({ stateResidency: 'Texas' }),
+                2024,
+                noInflationAssumptions,
+                false
+            );
+
+            expect(result.fica).toBe(0);
+            expect(result.combined).toBe(result.federal + result.state);
+        });
+
+        it('should include state tax in combined rate', () => {
+            const result = getCombinedMarginalRate(
+                100000,
+                0,
+                createTaxState({ stateResidency: 'DC' }),
+                2024,
+                noInflationAssumptions,
+                true
+            );
+
+            // Should have federal, state (DC), and FICA
+            expect(result.federal).toBeGreaterThan(0);
+            expect(result.state).toBeGreaterThan(0);
+            expect(result.combined).toBe(result.federal + result.state + result.fica);
+        });
+
+        it('should calculate federal headroom correctly', () => {
+            const result = getCombinedMarginalRate(
+                50000,
+                0,
+                createTaxState({ stateResidency: 'Texas' }),
+                2024,
+                noInflationAssumptions,
+                true
+            );
+
+            // Taxable = 50000 - 14600 = 35400, in 12% bracket (11600-47151)
+            // Headroom = 47151 - 35400 = 11751
+            expect(result.federalHeadroom).toBeCloseTo(11751);
+        });
+    });
+
+    describe('getSALTCap', () => {
+        it('should return $10,000 for single filers (2018-2024)', () => {
+            expect(getSALTCap(2018, 'Single')).toBe(10000);
+            expect(getSALTCap(2020, 'Single')).toBe(10000);
+            expect(getSALTCap(2024, 'Single')).toBe(10000);
+        });
+
+        it('should return $5,000 for married filing separately (2018-2024)', () => {
+            expect(getSALTCap(2018, 'Married Filing Separately')).toBe(5000);
+            expect(getSALTCap(2024, 'Married Filing Separately')).toBe(5000);
+        });
+
+        it('should return $40,000 for joint filers in 2025 (OBBBA)', () => {
+            expect(getSALTCap(2025, 'Single')).toBe(40000);
+            expect(getSALTCap(2025, 'Married Filing Jointly')).toBe(40000);
+        });
+
+        it('should return $20,000 for MFS in 2025 (OBBBA)', () => {
+            expect(getSALTCap(2025, 'Married Filing Separately')).toBe(20000);
+        });
+
+        it('should apply 1% annual increase for 2026-2029', () => {
+            // 2026: 40000 * 1.01 = 40400
+            expect(getSALTCap(2026, 'Single')).toBe(40400);
+            // 2027: 40000 * 1.01^2 = 40804
+            expect(getSALTCap(2027, 'Single')).toBe(40804);
+            // 2028: 40000 * 1.01^3 = 41212
+            expect(getSALTCap(2028, 'Single')).toBe(41212);
+            // 2029: 40000 * 1.01^4 = 41624
+            expect(getSALTCap(2029, 'Single')).toBe(41624);
+        });
+
+        it('should revert to $10,000 in 2030 and beyond', () => {
+            expect(getSALTCap(2030, 'Single')).toBe(10000);
+            expect(getSALTCap(2035, 'Married Filing Jointly')).toBe(10000);
+        });
+
+        it('should return Infinity for pre-TCJA years (before 2018)', () => {
+            expect(getSALTCap(2017, 'Single')).toBe(Infinity);
+            expect(getSALTCap(2010, 'Married Filing Jointly')).toBe(Infinity);
         });
     });
 });

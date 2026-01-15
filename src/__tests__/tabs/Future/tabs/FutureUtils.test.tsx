@@ -3,6 +3,7 @@ import {
   getAccountTotals,
   calculateNetWorth,
   formatCurrency,
+  formatCompactCurrency,
   findFinancialIndependenceYear,
 } from '../../../../tabs/Future/tabs/FutureUtils';
 import { SavedAccount, InvestedAccount, DebtAccount, AnyAccount } from '../../../../components/Objects/Accounts/models';
@@ -77,6 +78,51 @@ describe('FutureUtils', () => {
 
     it('should handle large numbers with commas', () => {
         expect(formatCurrency(1000000)).toBe('$1,000,000.00');
+    });
+  });
+
+  describe('formatCompactCurrency', () => {
+    it('should format small numbers with full precision', () => {
+      expect(formatCompactCurrency(1234.56)).toBe('$1,234.56');
+      expect(formatCompactCurrency(99999.99)).toBe('$99,999.99');
+    });
+
+    it('should format numbers >= 100K with K suffix', () => {
+      expect(formatCompactCurrency(100000)).toBe('$100.0K');
+      expect(formatCompactCurrency(123456)).toBe('$123.5K');
+      expect(formatCompactCurrency(999999)).toBe('$1000.0K');
+    });
+
+    it('should format numbers >= 1M with M suffix', () => {
+      expect(formatCompactCurrency(1000000)).toBe('$1.00M');
+      expect(formatCompactCurrency(1234567)).toBe('$1.23M');
+      expect(formatCompactCurrency(999999999)).toBe('$1000.00M');
+    });
+
+    it('should format numbers >= 1B with B suffix', () => {
+      expect(formatCompactCurrency(1000000000)).toBe('$1.00B');
+      expect(formatCompactCurrency(1234567890)).toBe('$1.23B');
+    });
+
+    it('should handle negative numbers', () => {
+      expect(formatCompactCurrency(-1234.56)).toBe('-$1,234.56');
+      expect(formatCompactCurrency(-1234567)).toBe('-$1.23M');
+      expect(formatCompactCurrency(-1000000000)).toBe('-$1.00B');
+    });
+
+    it('should handle zero', () => {
+      expect(formatCompactCurrency(0)).toBe('$0.00');
+    });
+
+    it('should return full format when forceExact is true', () => {
+      expect(formatCompactCurrency(1000000, { forceExact: true })).toBe('$1,000,000.00');
+      expect(formatCompactCurrency(1234567890, { forceExact: true })).toBe('$1,234,567,890.00');
+      expect(formatCompactCurrency(123456, { forceExact: true })).toBe('$123,456.00');
+    });
+
+    it('should return compact format when forceExact is false', () => {
+      expect(formatCompactCurrency(1000000, { forceExact: false })).toBe('$1.00M');
+      expect(formatCompactCurrency(1234567890, { forceExact: false })).toBe('$1.23B');
     });
   });
 

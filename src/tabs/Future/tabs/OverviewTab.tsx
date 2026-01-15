@@ -1,14 +1,17 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { ResponsiveLine } from '@nivo/line';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
-import { SavedAccount, InvestedAccount, PropertyAccount } from '../../../components/Objects/Accounts/models';
-import { formatCurrency } from './FutureUtils';
+import { SavedAccount, InvestedAccount, PropertyAccount, DebtAccount } from '../../../components/Objects/Accounts/models';
+import { formatCompactCurrency } from './FutureUtils';
 import { LoanExpense, MortgageExpense } from '../../../components/Objects/Expense/models';
 import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider';
+import { AlertBanner } from '../../../components/Layout/AlertBanner';
 import { getFRA } from '../../../data/SocialSecurityData';
 import { FutureSocialSecurityIncome } from '../../../components/Objects/Income/models';
 import { getEarnedIncome } from '../../../components/Objects/Taxes/TaxService';
 import { useAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
+
+const MIN_CHART_WIDTH = 300;
 
 /**
  * Check if user is subject to Social Security earnings test
@@ -53,6 +56,28 @@ function checkEarningsTest(
 
 export const OverviewTab = React.memo(({ simulationData }: { simulationData: SimulationYear[] }) => {
     const { assumptions } = useAssumptions();
+    const forceExact = assumptions.display?.useCompactCurrency === false;
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [containerWidth, setContainerWidth] = useState<number | null>(null);
+
+    // Track container width to prevent negative SVG dimensions
+    useEffect(() => {
+        const container = containerRef.current;
+        if (!container) return;
+
+        const observer = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                setContainerWidth(entry.contentRect.width);
+            }
+        });
+
+        observer.observe(container);
+
+        return () => observer.disconnect();
+    }, []);
+
+    const isNarrow = containerWidth !== null && containerWidth < MIN_CHART_WIDTH;
+    const isMeasured = containerWidth !== null;
 
     // 1. Determine Min/Max Years from Data (or defaults if empty)
     const minYear = simulationData.length > 0 ? simulationData[0].year : new Date().getFullYear();
@@ -83,11 +108,18 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                 .reduce((sum, acc) => sum + (acc.amount), 0);
 
             let debt = 0;
+            // Include debt from expenses (loans, mortgages)
             year.expenses.forEach(exp => {
                 if (exp instanceof LoanExpense) {
                     debt += (exp.amount);
                 } else if (exp instanceof MortgageExpense) {
                     debt += (exp.loan_balance);
+                }
+            });
+            // Include debt from accounts (DebtAccount, DeficitDebtAccount)
+            year.accounts.forEach(acc => {
+                if (acc instanceof DebtAccount) {
+                    debt += acc.amount;
                 }
             });
 
@@ -113,6 +145,27 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
         }));
     }, [rawData]);
 
+    // Calculate x-axis tick values to prevent label overlap
+    const xTickValues = useMemo(() => {
+        if (rawData.length === 0) return undefined;
+
+        const years = rawData.map(d => d.year);
+        const range = years.length;
+
+        // Determine step size based on range (aim for ~8-10 ticks max)
+        let step = 1;
+        if (range > 41) step = 2;
+        else if (range > 25) step = 1;
+
+        // Filter years at regular intervals
+        return years.filter((year, i) => {
+            // Always include first and last
+            if (i === 0 || i === years.length - 1) return true;
+            // Include years at step intervals
+            return (year - years[0]) % step === 0;
+        });
+    }, [rawData]);
+
     // 5. Custom Tooltip
     const CustomTooltip = ({ slice }: any) => {
         if (!slice?.points?.length) return null;
@@ -131,19 +184,19 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                 <div className="flex flex-col gap-1">
                     <div className="flex justify-between gap-4">
                         <span className="text-gray-400">Invested:</span>
-                        <span className="text-emerald-400 font-mono">{formatCurrency(data.Invested)}</span>
+                        <span className="text-emerald-400 font-mono">{formatCompactCurrency(data.Invested, { forceExact })}</span>
                     </div>
                     <div className="flex justify-between gap-4">
                         <span className="text-gray-400">Saved:</span>
-                        <span className="text-blue-400 font-mono">{formatCurrency(data.Saved)}</span>
+                        <span className="text-blue-400 font-mono">{formatCompactCurrency(data.Saved, { forceExact })}</span>
                     </div>
                     <div className="flex justify-between gap-4">
                         <span className="text-gray-400">Property:</span>
-                        <span className="text-amber-400 font-mono">{formatCurrency(data.Property)}</span>
+                        <span className="text-amber-400 font-mono">{formatCompactCurrency(data.Property, { forceExact })}</span>
                     </div>
                     <div className="flex justify-between gap-4">
                         <span className="text-gray-400">Debt:</span>
-                        <span className="text-red-400 font-mono">{formatCurrency(data.Debt)}</span>
+                        <span className="text-red-400 font-mono">{formatCompactCurrency(data.Debt, { forceExact })}</span>
                     </div>
                     
                     <div className="border-t border-gray-600 my-1"></div>
@@ -151,7 +204,7 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                     <div className="flex justify-between gap-4">
                         <span className="text-white font-bold">Net Worth:</span>
                         <span className={`font-mono font-bold ${totalNetWorth >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                            {formatCurrency(totalNetWorth)}
+                            {formatCompactCurrency(totalNetWorth, { forceExact })}
                         </span>
                     </div>
                 </div>
@@ -165,6 +218,46 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
         assumptions.demographics.startAge,
         assumptions.demographics.startYear
     );
+
+    // Check for Guyton-Klinger warnings in simulation data
+    const gkWarnings = useMemo(() => {
+        const warnings: Array<{ year: number; warning: string }> = [];
+        simulationData.forEach(year => {
+            if (year.strategyAdjustment?.warning) {
+                warnings.push({
+                    year: year.year,
+                    warning: year.strategyAdjustment.warning
+                });
+            }
+        });
+        return warnings;
+    }, [simulationData]);
+
+    // Count GK guardrail triggers for summary
+    const gkTriggerCount = useMemo(() => {
+        let capitalPreservation = 0;
+        let prosperity = 0;
+        simulationData.forEach(year => {
+            if (year.strategyAdjustment?.guardrailTriggered === 'capital-preservation') {
+                capitalPreservation++;
+            } else if (year.strategyAdjustment?.guardrailTriggered === 'prosperity') {
+                prosperity++;
+            }
+        });
+        return { capitalPreservation, prosperity };
+    }, [simulationData]);
+
+    // Check if user qualifies for SS but hasn't set up SS income
+    const missingSocialSecurity = useMemo(() => {
+        if (!assumptions.income?.qualifiesForSocialSecurity) return false;
+
+        // Check if any year has FutureSocialSecurityIncome
+        const hasSSIncome = simulationData.some(year =>
+            year.incomes.some(inc => inc instanceof FutureSocialSecurityIncome)
+        );
+
+        return !hasSSIncome;
+    }, [assumptions.income?.qualifiesForSocialSecurity, simulationData]);
 
     return (
         <div className="flex flex-col w-full h-full gap-4">
@@ -181,34 +274,93 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                 </div>
             </div>
 
+            {/* Missing Social Security Warning */}
+            {missingSocialSecurity && (
+                <AlertBanner severity="info" title="Social Security Not Configured">
+                    <div className="text-sm">
+                        <p>
+                            You've indicated you qualify for Social Security, but no Social Security income has been added.
+                            Add a "Future Social Security" income in the Income tab to include projected benefits in your plan.
+                        </p>
+                        <p className="text-gray-400 text-xs mt-2">
+                            If you don't expect to receive Social Security benefits, turn off "Qualifies for Social Security" in the Assumptions tab.
+                        </p>
+                    </div>
+                </AlertBanner>
+            )}
+
             {/* Earnings Test Warning */}
             {earningsTestCheck.applies && (
-                <div className="bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4">
-                    <div className="flex items-start gap-3">
-                        <div className="text-yellow-400 text-xl mt-0.5">⚠️</div>
-                        <div className="flex-1">
-                            <div className="text-yellow-200 font-semibold mb-2">
-                                Social Security Benefits Reduced While Working
-                            </div>
-                            <div className="text-gray-300 text-sm space-y-1">
-                                <p>
-                                    You're claiming Social Security at age {earningsTestCheck.claimingAge} and continuing to work
-                                    (earning ${earningsTestCheck.earnedIncome?.toLocaleString()}/year).
-                                    Your benefits are being reduced until you reach Full Retirement Age ({earningsTestCheck.fra}).
-                                </p>
-                                <p className="text-gray-400 text-xs mt-2">
-                                    <strong>Note:</strong> This simulation uses a simplified earnings test calculation.
-                                    Withheld benefits are actually recalculated by SSA and added back to your monthly benefit
-                                    at Full Retirement Age, but that adjustment is not yet implemented in this tool.
-                                </p>
-                            </div>
+                <AlertBanner severity="warning" title="Social Security Benefits Reduced While Working">
+                    <div className="text-sm space-y-1">
+                        <p>
+                            You're claiming Social Security at age {earningsTestCheck.claimingAge} and continuing to work
+                            (earning ${earningsTestCheck.earnedIncome?.toLocaleString()}/year).
+                            Your benefits are being reduced until you reach Full Retirement Age ({earningsTestCheck.fra}).
+                        </p>
+                        <p className="text-gray-400 text-xs mt-2">
+                            <strong>Note:</strong> This simulation uses a simplified earnings test calculation.
+                            Withheld benefits are actually recalculated by SSA and added back to your monthly benefit
+                            at Full Retirement Age, but that adjustment is not yet implemented in this tool.
+                        </p>
+                    </div>
+                </AlertBanner>
+            )}
+
+            {/* Guyton-Klinger Warning Banner */}
+            {gkWarnings.length > 0 && (
+                <AlertBanner severity="warning" title="Guyton-Klinger Strategy Warning">
+                    <div className="text-sm space-y-2">
+                        <p>
+                            In <span className="text-amber-300 font-semibold">{gkWarnings.length} year(s)</span> of your simulation,
+                            the Capital Preservation rule would require cutting more than your discretionary expenses allow.
+                        </p>
+                        <div className="text-gray-400 text-xs space-y-1">
+                            <p><strong>Consider:</strong></p>
+                            <ul className="list-disc list-inside pl-2">
+                                <li>Marking more expenses as discretionary</li>
+                                <li>Choosing a different withdrawal strategy</li>
+                                <li>Lowering your withdrawal rate</li>
+                            </ul>
                         </div>
                     </div>
-                </div>
+                </AlertBanner>
+            )}
+
+            {/* Guyton-Klinger Guardrail Summary (show when strategy is GK and triggers happened) */}
+            {assumptions.investments?.withdrawalStrategy === 'Guyton Klinger' &&
+             (gkTriggerCount.capitalPreservation > 0 || gkTriggerCount.prosperity > 0) && (
+                <AlertBanner severity="success" size="sm">
+                    <div className="flex items-center gap-2">
+                        <span className="font-medium">Guyton-Klinger Adjustments:</span>
+                        {gkTriggerCount.capitalPreservation > 0 && (
+                            <span className="text-red-300">
+                                {gkTriggerCount.capitalPreservation} expense cut(s)
+                            </span>
+                        )}
+                        {gkTriggerCount.capitalPreservation > 0 && gkTriggerCount.prosperity > 0 && (
+                            <span className="text-gray-400">|</span>
+                        )}
+                        {gkTriggerCount.prosperity > 0 && (
+                            <span className="text-green-300">
+                                {gkTriggerCount.prosperity} expense increase(s)
+                            </span>
+                        )}
+                    </div>
+                </AlertBanner>
             )}
 
             {/* Chart Area */}
-            <div className="h-100 w-full text-white">
+            <div ref={containerRef} className="h-100 w-full text-white">
+                {!isMeasured ? (
+                    <div className="h-full flex items-center justify-center">
+                        <p className="text-gray-400 text-sm">Loading chart...</p>
+                    </div>
+                ) : isNarrow ? (
+                    <div className="h-full flex items-center justify-center border-2 border-dashed border-gray-700 rounded-xl">
+                        <p className="text-gray-400 text-sm text-center px-4">Expand window to view chart</p>
+                    </div>
+                ) : (
                 <ResponsiveLine
                     data={lineData}
                     margin={{ top: 20, right: 30, bottom: 50, left: 90 }}
@@ -229,7 +381,8 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                         tickRotation: 0,
                         legend: 'Year',
                         legendOffset: 36,
-                        legendPosition: 'middle'
+                        legendPosition: 'middle',
+                        tickValues: xTickValues,
                     }}
                     axisLeft={{
                         tickSize: 0,
@@ -266,6 +419,7 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                         "crosshair": { "line": { "stroke": "#9ca3af", "strokeWidth": 1, "strokeOpacity": 0.35 } }
                     }}
                 />
+                )}
             </div>
         </div>
     );
