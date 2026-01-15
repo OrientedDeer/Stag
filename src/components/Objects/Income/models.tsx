@@ -1,6 +1,15 @@
 import { TaxType } from "../../Objects/Accounts/models";
 import { AssumptionsState } from '../Assumptions/AssumptionsContext';
 import { get401kLimit, getHSALimit } from '../../../data/ContributionLimits';
+import {
+  calculateFERSBasicBenefit,
+  calculateCSRSBasicBenefit,
+  getFERSCOLA,
+  getCSRSCOLA,
+  checkFERSEligibility,
+  checkCSRSEligibility,
+  calculateFERSSupplement,
+} from '../../../data/PensionData';
 
 export type ContributionGrowthStrategy = 'FIXED' | 'GROW_WITH_SALARY' | 'TRACK_ANNUAL_MAX';
 
@@ -408,7 +417,190 @@ export class FutureSocialSecurityIncome extends BaseIncome {
   }
 }
 
-export type AnyIncome = WorkIncome | SocialSecurityIncome | CurrentSocialSecurityIncome | FutureSocialSecurityIncome | PassiveIncome | WindfallIncome;
+/**
+ * FERSPensionIncome
+ *
+ * Federal Employees Retirement System pension for federal employees hired after 1983.
+ * FERS is a three-part retirement plan: Basic Benefit + Social Security + TSP.
+ *
+ * This class models the Basic Benefit component:
+ * - Formula: Years of Service × High-3 × Multiplier (1% or 1.1%)
+ * - COLA: Reduced (CPI-1% if inflation > 3%)
+ * - FERS Supplement: Bridge payment from MRA to age 62
+ *
+ * The pension is auto-calculated when the user reaches retirement age.
+ */
+export class FERSPensionIncome extends BaseIncome {
+  constructor(
+    id: string,
+    name: string,
+    public yearsOfService: number,
+    public high3Salary: number,
+    public retirementAge: number,
+    public birthYear: number,
+    public calculatedBenefit: number = 0,  // Annual benefit, calculated by simulation
+    public fersSupplement: number = 0,      // Annual FERS Supplement (ends at 62)
+    public estimatedSSAt62: number = 0,     // For calculating FERS Supplement
+    startDate?: Date,
+    end_date?: Date,
+    public autoCalculateHigh3: boolean = false,  // If true, calculate High-3 from linked income
+    public linkedIncomeId: string | null = null,  // Work income to track for High-3 calculation
+  ) {
+    // Amount is the calculated annual benefit
+    super(id, name, calculatedBenefit, 'Annually', "No", startDate, end_date);
+  }
+
+  /**
+   * Calculate the FERS pension benefit
+   * Called by SimulationEngine when retirement is reached
+   */
+  calculateBenefit(): number {
+    const baseBenefit = calculateFERSBasicBenefit(
+      this.yearsOfService,
+      this.high3Salary,
+      this.retirementAge
+    );
+
+    // Check for early retirement reduction (MRA+10)
+    const eligibility = checkFERSEligibility(
+      this.retirementAge,
+      this.yearsOfService,
+      this.birthYear
+    );
+
+    const reductionFactor = 1 - (eligibility.reductionPercent / 100);
+    return baseBenefit * reductionFactor;
+  }
+
+  /**
+   * Calculate FERS Supplement amount
+   * Only available if retiring before age 62 with immediate unreduced retirement
+   */
+  calculateSupplement(): number {
+    if (this.retirementAge >= 62) return 0;
+    if (this.estimatedSSAt62 <= 0) return 0;
+
+    // Check eligibility (MRA+10 retirees generally don't get supplement)
+    const eligibility = checkFERSEligibility(
+      this.retirementAge,
+      this.yearsOfService,
+      this.birthYear
+    );
+
+    // Only full retirees (no reduction) get the supplement
+    if (eligibility.reductionPercent > 0) return 0;
+
+    return calculateFERSSupplement(this.yearsOfService, this.estimatedSSAt62 / 12);
+  }
+
+  increment(assumptions: AssumptionsState, _year?: number, age?: number): FERSPensionIncome {
+    const inflation = assumptions.macro.inflationRate / 100;
+    const currentAge = age || this.retirementAge;
+
+    // FERS COLA is reduced compared to full CPI
+    const cola = getFERSCOLA(inflation, currentAge);
+
+    // FERS Supplement ends at age 62
+    const newSupplement = currentAge >= 62 ? 0 : this.fersSupplement * (1 + cola);
+
+    return new FERSPensionIncome(
+      this.id,
+      this.name,
+      this.yearsOfService,
+      this.high3Salary * (1 + inflation), // High-3 doesn't grow after retirement, but keep for reference
+      this.retirementAge,
+      this.birthYear,
+      this.calculatedBenefit * (1 + cola),
+      newSupplement,
+      this.estimatedSSAt62 * (1 + inflation),
+      this.startDate,
+      this.end_date,
+      this.autoCalculateHigh3,
+      this.linkedIncomeId
+    );
+  }
+
+  /**
+   * Get total annual income including FERS Supplement
+   */
+  getTotalAnnualAmount(year?: number): number {
+    return this.getAnnualAmount(year) + (this.fersSupplement || 0);
+  }
+}
+
+/**
+ * CSRSPensionIncome
+ *
+ * Civil Service Retirement System pension for federal employees hired before 1984.
+ * CSRS is a standalone pension system with no Social Security coverage.
+ *
+ * Formula:
+ * - 1.5% × High-3 × first 5 years
+ * - 1.75% × High-3 × years 6-10
+ * - 2.0% × High-3 × years 11+
+ * - Maximum: 80% of High-3
+ *
+ * COLA: Full CPI adjustment
+ */
+export class CSRSPensionIncome extends BaseIncome {
+  constructor(
+    id: string,
+    name: string,
+    public yearsOfService: number,
+    public high3Salary: number,
+    public retirementAge: number,
+    public calculatedBenefit: number = 0,  // Annual benefit, calculated by simulation
+    startDate?: Date,
+    end_date?: Date,
+    public autoCalculateHigh3: boolean = false,  // If true, calculate High-3 from linked income
+    public linkedIncomeId: string | null = null,  // Work income to track for High-3 calculation
+  ) {
+    // Amount is the calculated annual benefit
+    super(id, name, calculatedBenefit, 'Annually', "No", startDate, end_date);
+  }
+
+  /**
+   * Calculate the CSRS pension benefit
+   * Called by SimulationEngine when retirement is reached
+   */
+  calculateBenefit(): number {
+    const baseBenefit = calculateCSRSBasicBenefit(
+      this.yearsOfService,
+      this.high3Salary
+    );
+
+    // Check for early retirement reduction
+    const eligibility = checkCSRSEligibility(
+      this.retirementAge,
+      this.yearsOfService
+    );
+
+    const reductionFactor = 1 - (eligibility.reductionPercent / 100);
+    return baseBenefit * reductionFactor;
+  }
+
+  increment(assumptions: AssumptionsState): CSRSPensionIncome {
+    const inflation = assumptions.macro.inflationRate / 100;
+
+    // CSRS gets full COLA
+    const cola = getCSRSCOLA(inflation);
+
+    return new CSRSPensionIncome(
+      this.id,
+      this.name,
+      this.yearsOfService,
+      this.high3Salary, // Doesn't grow after retirement
+      this.retirementAge,
+      this.calculatedBenefit * (1 + cola),
+      this.startDate,
+      this.end_date,
+      this.autoCalculateHigh3,
+      this.linkedIncomeId
+    );
+  }
+}
+
+export type AnyIncome = WorkIncome | SocialSecurityIncome | CurrentSocialSecurityIncome | FutureSocialSecurityIncome | FERSPensionIncome | CSRSPensionIncome | PassiveIncome | WindfallIncome;
 
 /**
  * Calculate the year when Social Security benefits should start
@@ -498,6 +690,7 @@ export function isIncomeActiveInCurrentMonth(income: AnyIncome): boolean {
 export const INCOME_CATEGORIES = [
   'Work',
   'SocialSecurity',
+  'Pension',
   'Passive',
   'Windfall',
 ] as const;
@@ -507,6 +700,7 @@ export type IncomeCategory = typeof INCOME_CATEGORIES[number];
 export const INCOME_COLORS_BACKGROUND: Record<IncomeCategory, string> = {
     Work: "bg-chart-Fuchsia-50",
     SocialSecurity: "bg-chart-Blue-50",
+    Pension: "bg-chart-Green-50",
     Passive: "bg-chart-Yellow-50",
     Windfall: "bg-chart-Red-50",
 };
@@ -516,6 +710,8 @@ export const CLASS_TO_CATEGORY: Record<string, IncomeCategory> = {
     [SocialSecurityIncome.name]: 'SocialSecurity',
     [CurrentSocialSecurityIncome.name]: 'SocialSecurity',
     [FutureSocialSecurityIncome.name]: 'SocialSecurity',
+    [FERSPensionIncome.name]: 'Pension',
+    [CSRSPensionIncome.name]: 'Pension',
     [PassiveIncome.name]: 'Passive',
     [WindfallIncome.name]: 'Windfall'
 };
@@ -524,6 +720,7 @@ export const CLASS_TO_CATEGORY: Record<string, IncomeCategory> = {
 export const CATEGORY_PALETTES: Record<IncomeCategory, string[]> = {
 	Work: Array.from({ length: 100 }, (_, i) => `bg-chart-Fuchsia-${i + 1}`),
 	SocialSecurity: Array.from({ length: 100 }, (_, i) => `bg-chart-Blue-${i + 1}`),
+	Pension: Array.from({ length: 100 }, (_, i) => `bg-chart-Green-${i + 1}`),
 	Passive: Array.from({ length: 100 }, (_, i) => `bg-chart-Yellow-${i + 1}`),
 	Windfall: Array.from({ length: 100 }, (_, i) => `bg-chart-Red-${i + 1}`),
 };
@@ -570,6 +767,35 @@ export function reconstituteIncome(data: any): AnyIncome | null {
                 data.calculationYear || 0,
                 base.startDate,
                 base.end_date
+            );
+        case 'FERSPensionIncome':
+            return new FERSPensionIncome(
+                base.id,
+                base.name,
+                data.yearsOfService || 0,
+                data.high3Salary || 0,
+                data.retirementAge || 62,
+                data.birthYear || 1970,
+                data.calculatedBenefit || 0,
+                data.fersSupplement || 0,
+                data.estimatedSSAt62 || 0,
+                base.startDate,
+                base.end_date,
+                data.autoCalculateHigh3 || false,
+                data.linkedIncomeId || null
+            );
+        case 'CSRSPensionIncome':
+            return new CSRSPensionIncome(
+                base.id,
+                base.name,
+                data.yearsOfService || 0,
+                data.high3Salary || 0,
+                data.retirementAge || 55,
+                data.calculatedBenefit || 0,
+                base.startDate,
+                base.end_date,
+                data.autoCalculateHigh3 || false,
+                data.linkedIncomeId || null
             );
         default:
             return null;

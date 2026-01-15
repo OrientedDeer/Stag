@@ -35,7 +35,9 @@ export const NumberInput: React.FC<NumberInputProps> = ({ label, value, onChange
     }, [value]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const strVal = e.target.value;
+        let strVal = e.target.value;
+        // Strip leading zeros except for "0" or "0."
+        strVal = strVal.replace(/^0+(?=\d)/, '');
         setLocalValue(strVal);
 
         if (strVal === "" || strVal === "-") {
@@ -46,6 +48,12 @@ export const NumberInput: React.FC<NumberInputProps> = ({ label, value, onChange
         const numVal = parseFloat(strVal);
         if (!isNaN(numVal)) {
             onChange(numVal);
+        }
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+            e.currentTarget.blur();
         }
     };
 
@@ -80,6 +88,7 @@ export const NumberInput: React.FC<NumberInputProps> = ({ label, value, onChange
             value={localValue}
             onChange={handleChange}
             onBlur={handleBlur}
+            onKeyDown={handleKeyDown}
             disabled={disabled}
             error={displayError}
             tooltip={tooltip}

@@ -69,6 +69,25 @@ describe('ContributionLimits', () => {
             const limits2024 = getContributionLimits(2024);
             expect(limits2020).toEqual(limits2024); // Falls back to 2024 (earliest)
         });
+
+        it('should NOT project future years when inflationAdjusted is false', () => {
+            // 2026 is the latest year in data
+            const limits2026 = getContributionLimits(2026);
+            const limits2030NoInflation = getContributionLimits(2030, false);
+
+            // When inflationAdjusted=false, 2030 should return same as 2026
+            expect(limits2030NoInflation.traditional401k).toBe(limits2026.traditional401k);
+            expect(limits2030NoInflation.hsaIndividual).toBe(limits2026.hsaIndividual);
+        });
+
+        it('should project future years when inflationAdjusted is true (default)', () => {
+            const limits2026 = getContributionLimits(2026);
+            const limits2030Inflation = getContributionLimits(2030, true);
+
+            // When inflationAdjusted=true, 2030 should be higher than 2026
+            expect(limits2030Inflation.traditional401k).toBeGreaterThan(limits2026.traditional401k);
+            expect(limits2030Inflation.hsaIndividual).toBeGreaterThan(limits2026.hsaIndividual);
+        });
     });
 
     describe('get401kLimit', () => {

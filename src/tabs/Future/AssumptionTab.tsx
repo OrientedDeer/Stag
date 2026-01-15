@@ -1,5 +1,6 @@
-import { useContext, useState } from "react";
+import { useContext, useState, useMemo } from "react";
 import { AssumptionsContext } from "../../components/Objects/Assumptions/AssumptionsContext";
+import { ExpenseContext } from "../../components/Objects/Expense/ExpenseContext";
 import { NumberInput } from "../../components/Layout/InputFields/NumberInput";
 import { PercentageInput } from "../../components/Layout/InputFields/PercentageInput";
 import { DropdownInput } from "../../components/Layout/InputFields/DropdownInput";
@@ -7,11 +8,17 @@ import { ToggleInput } from "../../components/Layout/InputFields/ToggleInput";
 
 export default function AssumptionTab() {
   const { state, dispatch } = useContext(AssumptionsContext);
+  const { expenses } = useContext(ExpenseContext);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
 
+  // Check if there are any discretionary expenses
+  const hasDiscretionaryExpenses = useMemo(() => {
+    return expenses.some(exp => exp.isDiscretionary);
+  }, [expenses]);
+
   return (
-    <div className="w-full min-h-full flex bg-gray-950 justify-center pt-6 pb-12">
+    <div className="w-full min-h-full flex bg-gray-950 justify-center pt-6 pb-24">
         <div className="w-full px-4 sm:px-8 max-w-screen-xl">
             <div className="flex items-center justify-between mb-6 border-b border-gray-800 pb-2">
                 <h2 className="text-2xl font-bold text-white">Assumptions</h2>
@@ -289,9 +296,12 @@ export default function AssumptionTab() {
 
                         <PercentageInput
                             label="Lifestyle Creep"
-                            value={state.expenses.lifestyleCreep}
+                            value={hasDiscretionaryExpenses ? state.expenses.lifestyleCreep : 0}
                             onChange={(val) => dispatch({ type: 'UPDATE_EXPENSES', payload: { lifestyleCreep: val } })}
-                            tooltip="% of each raise that increases spending"
+                            tooltip={hasDiscretionaryExpenses
+                                ? "% of each raise that increases discretionary spending"
+                                : "No discretionary expenses - mark expenses as discretionary in the Expenses tab to enable this"}
+                            disabled={!hasDiscretionaryExpenses}
                         />
                         <PercentageInput
                             label="Housing Appreciation"

@@ -360,17 +360,24 @@ export function getFRA(birthYear: number): number {
  *
  * @param year The year to get wage index for
  * @param wageGrowthRate Annual wage growth rate (default: 0.025 = 2.5%)
+ * @param inflationAdjusted If false, returns latest known values without projection
  */
-export function getWageIndexFactor(year: number, wageGrowthRate: number = 0.025): number {
+export function getWageIndexFactor(year: number, wageGrowthRate: number = 0.025, inflationAdjusted: boolean = true): number {
   if (WAGE_INDEX_FACTORS[year]) {
     return WAGE_INDEX_FACTORS[year];
   }
 
   const latestYear = Math.max(...Object.keys(WAGE_INDEX_FACTORS).map(Number));
 
-  // For future years, project based on wage growth
+  // For future years, project based on wage growth (unless real dollars mode)
   if (year > latestYear) {
     const baseFactor = WAGE_INDEX_FACTORS[latestYear];
+
+    // If not inflation adjusted (real dollars mode), use latest known values
+    if (!inflationAdjusted) {
+      return baseFactor;
+    }
+
     const yearsToProject = year - latestYear;
     const growthMultiplier = Math.pow(1 + wageGrowthRate, yearsToProject);
     return Math.round(baseFactor * growthMultiplier * 100) / 100;
@@ -387,17 +394,24 @@ export function getWageIndexFactor(year: number, wageGrowthRate: number = 0.025)
  *
  * @param year The year to get bend points for
  * @param wageGrowthRate Annual wage growth rate (default: 0.025 = 2.5%)
+ * @param inflationAdjusted If false, returns latest known values without projection
  */
-export function getBendPoints(year: number, wageGrowthRate: number = 0.025): { first: number; second: number } {
+export function getBendPoints(year: number, wageGrowthRate: number = 0.025, inflationAdjusted: boolean = true): { first: number; second: number } {
   if (BEND_POINTS[year]) {
     return BEND_POINTS[year];
   }
 
   const latestYear = Math.max(...Object.keys(BEND_POINTS).map(Number));
 
-  // For future years, project based on wage growth
+  // For future years, project based on wage growth (unless real dollars mode)
   if (year > latestYear) {
     const basePoints = BEND_POINTS[latestYear];
+
+    // If not inflation adjusted (real dollars mode), use latest known values
+    if (!inflationAdjusted) {
+      return basePoints;
+    }
+
     const yearsToProject = year - latestYear;
     const growthMultiplier = Math.pow(1 + wageGrowthRate, yearsToProject);
 
@@ -418,17 +432,24 @@ export function getBendPoints(year: number, wageGrowthRate: number = 0.025): { f
  *
  * @param year The year to get wage base for
  * @param wageGrowthRate Annual wage growth rate (default: 0.025 = 2.5%)
+ * @param inflationAdjusted If false, returns latest known values without projection
  */
-export function getWageBase(year: number, wageGrowthRate: number = 0.025): number {
+export function getWageBase(year: number, wageGrowthRate: number = 0.025, inflationAdjusted: boolean = true): number {
   if (SS_WAGE_BASE[year]) {
     return SS_WAGE_BASE[year];
   }
 
   const latestYear = Math.max(...Object.keys(SS_WAGE_BASE).map(Number));
 
-  // For future years, project based on wage growth
+  // For future years, project based on wage growth (unless real dollars mode)
   if (year > latestYear) {
     const baseWage = SS_WAGE_BASE[latestYear];
+
+    // If not inflation adjusted (real dollars mode), use latest known values
+    if (!inflationAdjusted) {
+      return baseWage;
+    }
+
     const yearsToProject = year - latestYear;
     const growthMultiplier = Math.pow(1 + wageGrowthRate, yearsToProject);
     return Math.round(baseWage * growthMultiplier / 100) * 100; // Round to nearest $100
@@ -470,18 +491,25 @@ export const EARNINGS_TEST_LIMITS: Record<number, { beforeFRA: number; yearOfFRA
  *
  * @param year The year to get limits for
  * @param wageGrowthRate Annual wage growth rate for projecting future limits (default: 0.025 = 2.5%)
+ * @param inflationAdjusted If false, returns latest known values without projection
  * @returns Object with beforeFRA and yearOfFRA limits
  */
-export function getEarningsTestLimit(year: number, wageGrowthRate: number = 0.025): { beforeFRA: number; yearOfFRA: number } {
+export function getEarningsTestLimit(year: number, wageGrowthRate: number = 0.025, inflationAdjusted: boolean = true): { beforeFRA: number; yearOfFRA: number } {
   if (EARNINGS_TEST_LIMITS[year]) {
     return EARNINGS_TEST_LIMITS[year];
   }
 
   const latestYear = Math.max(...Object.keys(EARNINGS_TEST_LIMITS).map(Number));
 
-  // For future years, project based on wage growth
+  // For future years, project based on wage growth (unless real dollars mode)
   if (year > latestYear) {
     const baseLimit = EARNINGS_TEST_LIMITS[latestYear];
+
+    // If not inflation adjusted (real dollars mode), use latest known values
+    if (!inflationAdjusted) {
+      return baseLimit;
+    }
+
     const yearsToProject = year - latestYear;
     const growthMultiplier = Math.pow(1 + wageGrowthRate, yearsToProject);
 

@@ -40,7 +40,7 @@ export const CONTRIBUTION_LIMITS: Record<number, YearlyContributionLimits> = {
     catchUpHSA: 1000,
   },
   2026: {
-    traditional401k: 24000,     // Projected
+    traditional401k: 24500,     // Projected
     catchUp401k: 7500,
     traditionalIRA: 7000,
     catchUpIRA: 1000,
@@ -53,8 +53,12 @@ export const CONTRIBUTION_LIMITS: Record<number, YearlyContributionLimits> = {
 /**
  * Get contribution limits for a specific year.
  * Falls back to closest available year if exact year not found.
+ *
+ * @param year - The tax year to get limits for
+ * @param inflationAdjusted - If true (default), projects future years with ~2.5% growth.
+ *                            If false, uses latest known values without projection.
  */
-export function getContributionLimits(year: number): YearlyContributionLimits {
+export function getContributionLimits(year: number, inflationAdjusted: boolean = true): YearlyContributionLimits {
   if (CONTRIBUTION_LIMITS[year]) {
     return CONTRIBUTION_LIMITS[year];
   }
@@ -66,12 +70,17 @@ export function getContributionLimits(year: number): YearlyContributionLimits {
     return CONTRIBUTION_LIMITS[years[0]];
   }
 
-  // For future years, use the latest and assume inflation adjustment
+  // For future years beyond our data
   const latestYear = years[years.length - 1];
   const latestLimits = CONTRIBUTION_LIMITS[latestYear];
-  const yearsAhead = year - latestYear;
 
-  // Assume ~2.5% annual increase for future years
+  // If not inflation adjusted (real dollars mode), use latest known values
+  if (!inflationAdjusted) {
+    return latestLimits;
+  }
+
+  // Project forward with assumed ~2.5% annual increase
+  const yearsAhead = year - latestYear;
   const inflationFactor = Math.pow(1.025, yearsAhead);
 
   return {
@@ -88,8 +97,8 @@ export function getContributionLimits(year: number): YearlyContributionLimits {
 /**
  * Get the 401k contribution limit for a specific year and age.
  */
-export function get401kLimit(year: number, age: number): number {
-  const limits = getContributionLimits(year);
+export function get401kLimit(year: number, age: number, inflationAdjusted: boolean = true): number {
+  const limits = getContributionLimits(year, inflationAdjusted);
   const base = limits.traditional401k;
   const catchUp = age >= 50 ? limits.catchUp401k : 0;
   return base + catchUp;
@@ -98,8 +107,8 @@ export function get401kLimit(year: number, age: number): number {
 /**
  * Get the IRA contribution limit for a specific year and age.
  */
-export function getIRALimit(year: number, age: number): number {
-  const limits = getContributionLimits(year);
+export function getIRALimit(year: number, age: number, inflationAdjusted: boolean = true): number {
+  const limits = getContributionLimits(year, inflationAdjusted);
   const base = limits.traditionalIRA;
   const catchUp = age >= 50 ? limits.catchUpIRA : 0;
   return base + catchUp;
@@ -111,9 +120,10 @@ export function getIRALimit(year: number, age: number): number {
 export function getHSALimit(
   year: number,
   age: number,
-  coverage: 'individual' | 'family'
+  coverage: 'individual' | 'family',
+  inflationAdjusted: boolean = true
 ): number {
-  const limits = getContributionLimits(year);
+  const limits = getContributionLimits(year, inflationAdjusted);
   const base = coverage === 'family' ? limits.hsaFamily : limits.hsaIndividual;
   const catchUp = age >= 55 ? limits.catchUpHSA : 0;
   return base + catchUp;

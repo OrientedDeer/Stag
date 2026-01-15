@@ -1,7 +1,9 @@
 // src/components/Simulation/SimulationEngine.ts
 import { AnyAccount, DebtAccount, DeficitDebtAccount, InvestedAccount, PropertyAccount, SavedAccount } from "../../Objects/Accounts/models";
 import { AnyExpense, LoanExpense, MortgageExpense } from "../Expense/models";
-import { AnyIncome, WorkIncome, FutureSocialSecurityIncome, PassiveIncome } from "../../Objects/Income/models";
+import { AnyIncome, WorkIncome, FutureSocialSecurityIncome, FERSPensionIncome, CSRSPensionIncome, PassiveIncome } from "../../Objects/Income/models";
+import { calculateHigh3 } from "../../../data/PensionData";
+import { calculateRMD, isAccountSubjectToRMD, isRMDRequired, RMDCalculation } from "../../../data/RMDData";
 import { AssumptionsState } from "./AssumptionsContext";
 import { TaxState } from "../../Objects/Taxes/TaxContext";
 import * as TaxService from "../../Objects/Taxes/TaxService";
@@ -56,6 +58,14 @@ export interface SimulationYear {
         toAccounts: Record<string, number>;    // Amount to each Roth account (by name)
         fromAccountIds: Record<string, number>;  // Amount from each Traditional account (by id)
         toAccountIds: Record<string, number>;    // Amount to each Roth account (by id)
+    };
+    // Required Minimum Distribution tracking
+    rmdDetails?: {
+        totalRMD: number;                         // Total RMD required this year
+        totalWithdrawn: number;                   // Actual amount withdrawn for RMD
+        accountBreakdown: RMDCalculation[];       // Per-account RMD details
+        shortfall: number;                        // Amount not withdrawn (if any)
+        penalty: number;                          // 25% penalty on shortfall
     };
 }
 
@@ -292,21 +302,117 @@ export function simulateOneYear(
             );
         }
 
+        // Handle FERS Pension - calculate High-3 and benefit at retirement age
+        if (inc instanceof FERSPensionIncome) {
+            // If pension has auto-calculate High-3 enabled, track salary history
+            if (inc.autoCalculateHigh3 && inc.linkedIncomeId) {
+                // Find the linked work income to get current salary
+                const linkedIncome = incomes.find(i => i.id === inc.linkedIncomeId);
+                if (linkedIncome instanceof WorkIncome) {
+                    const currentSalary = linkedIncome.getAnnualAmount(year);
+                    // Build salary history from previous simulation
+                    const salaryHistory: number[] = previousSimulation
+                        .map(simYear => {
+                            const prevLinked = simYear.incomes.find(i => i.id === inc.linkedIncomeId);
+                            if (prevLinked instanceof WorkIncome) {
+                                return prevLinked.getAnnualAmount(simYear.year);
+                            }
+                            return 0;
+                        })
+                        .filter(s => s > 0);
+                    salaryHistory.push(currentSalary);
+
+                    // When reaching retirement age, calculate High-3 and benefit
+                    if (currentAge === inc.retirementAge && inc.calculatedBenefit === 0) {
+                        const high3 = calculateHigh3(salaryHistory);
+                        // Calculate benefit with actual High-3
+                        const actualBenefit = (inc.retirementAge >= 62 && inc.yearsOfService >= 20 ? 0.011 : 0.01)
+                            * inc.yearsOfService * high3;
+                        logs.push(`🏛️ FERS Pension started: High-3 calculated as $${high3.toLocaleString()}/yr from ${salaryHistory.length} years of salary history`);
+                        logs.push(`   Annual benefit: $${actualBenefit.toLocaleString()}/yr`);
+
+                        return new FERSPensionIncome(
+                            inc.id, inc.name, inc.yearsOfService, high3,
+                            inc.retirementAge, inc.birthYear, actualBenefit,
+                            inc.fersSupplement, inc.estimatedSSAt62,
+                            inc.startDate, inc.end_date,
+                            inc.autoCalculateHigh3, inc.linkedIncomeId
+                        );
+                    }
+                }
+            }
+            return inc.increment(assumptions, year, currentAge);
+        }
+
+        // Handle CSRS Pension - calculate High-3 and benefit at retirement age
+        if (inc instanceof CSRSPensionIncome) {
+            // If pension has auto-calculate High-3 enabled, track salary history
+            if (inc.autoCalculateHigh3 && inc.linkedIncomeId) {
+                // Find the linked work income to get current salary
+                const linkedIncome = incomes.find(i => i.id === inc.linkedIncomeId);
+                if (linkedIncome instanceof WorkIncome) {
+                    const currentSalary = linkedIncome.getAnnualAmount(year);
+                    // Build salary history from previous simulation
+                    const salaryHistory: number[] = previousSimulation
+                        .map(simYear => {
+                            const prevLinked = simYear.incomes.find(i => i.id === inc.linkedIncomeId);
+                            if (prevLinked instanceof WorkIncome) {
+                                return prevLinked.getAnnualAmount(simYear.year);
+                            }
+                            return 0;
+                        })
+                        .filter(s => s > 0);
+                    salaryHistory.push(currentSalary);
+
+                    // When reaching retirement age, calculate High-3 and benefit
+                    if (currentAge === inc.retirementAge && inc.calculatedBenefit === 0) {
+                        const high3 = calculateHigh3(salaryHistory);
+                        // Calculate CSRS benefit with actual High-3
+                        let actualBenefit = 0;
+                        const first5 = Math.min(inc.yearsOfService, 5);
+                        actualBenefit += first5 * high3 * 0.015;
+                        if (inc.yearsOfService > 5) {
+                            const next5 = Math.min(inc.yearsOfService - 5, 5);
+                            actualBenefit += next5 * high3 * 0.0175;
+                        }
+                        if (inc.yearsOfService > 10) {
+                            const remaining = inc.yearsOfService - 10;
+                            actualBenefit += remaining * high3 * 0.02;
+                        }
+                        actualBenefit = Math.min(actualBenefit, high3 * 0.80); // Cap at 80%
+
+                        logs.push(`🏛️ CSRS Pension started: High-3 calculated as $${high3.toLocaleString()}/yr from ${salaryHistory.length} years of salary history`);
+                        logs.push(`   Annual benefit: $${actualBenefit.toLocaleString()}/yr`);
+
+                        return new CSRSPensionIncome(
+                            inc.id, inc.name, inc.yearsOfService, high3,
+                            inc.retirementAge, actualBenefit,
+                            inc.startDate, inc.end_date,
+                            inc.autoCalculateHigh3, inc.linkedIncomeId
+                        );
+                    }
+                }
+            }
+            return inc.increment(assumptions);
+        }
+
         if (inc instanceof FutureSocialSecurityIncome) {
             // If user has reached claiming age and PIA hasn't been calculated yet
             if (currentAge === inc.claimingAge && inc.calculatedPIA === 0) {
                 try {
                     // Extract earnings from simulation years + any imported SSA earnings history
+                    const inflationAdjusted = assumptions.macro.inflationAdjusted;
                     const earningsHistory = extractEarningsFromSimulation(
                         previousSimulation,
-                        assumptions.demographics.priorEarnings
+                        assumptions.demographics.priorEarnings,
+                        inflationAdjusted
                     );
 
                     // Calculate AIME/PIA based on top 35 years
                     // Use inflation rate as wage growth rate (wages typically track inflation)
                     const birthYear = assumptions.demographics.startYear - assumptions.demographics.startAge;
                     const wageGrowthRate = assumptions.macro.inflationRate / 100;
-                    const aimeCalc = calculateAIME(earningsHistory, year, inc.claimingAge, birthYear, wageGrowthRate);
+                    const aimeCalc = calculateAIME(earningsHistory, year, inc.claimingAge, birthYear, wageGrowthRate, inflationAdjusted);
 
                     // Set end date to end of life expectancy year (assume death at end of year)
                     const endDate = new Date(Date.UTC(
@@ -359,6 +465,7 @@ export function simulateOneYear(
                 const earnedIncome = TaxService.getEarnedIncome(nextIncomes, year);
                 const annualSSBenefit = inc.getProratedAnnual(inc.amount, year);
                 const wageGrowthRate = assumptions.macro.inflationRate / 100;
+                const inflationAdjusted = assumptions.macro.inflationAdjusted;
 
                 const earningsTest = calculateEarningsTestReduction(
                     annualSSBenefit,
@@ -366,7 +473,8 @@ export function simulateOneYear(
                     currentAge,
                     fra,
                     year,
-                    wageGrowthRate
+                    wageGrowthRate,
+                    inflationAdjusted
                 );
 
                 if (earningsTest.appliesTest && earningsTest.amountWithheld > 0) {
@@ -395,6 +503,49 @@ export function simulateOneYear(
     });
 
     let nextExpenses = expenses.map(exp => exp.increment(assumptions));
+
+    // ------------------------------------------------------------------
+    // LIFESTYLE CREEP (Apply during working years when salary increases)
+    // ------------------------------------------------------------------
+    if (!isRetired && assumptions.expenses.lifestyleCreep > 0) {
+        // Calculate total raise from WorkIncome
+        let totalRaise = 0;
+        for (const nextInc of incomesWithEarningsTest) {
+            if (nextInc instanceof WorkIncome) {
+                // Find matching previous income
+                const prevInc = incomes.find(inc => inc.id === nextInc.id);
+                if (prevInc instanceof WorkIncome) {
+                    const raise = nextInc.amount - prevInc.amount;
+                    if (raise > 0) {
+                        totalRaise += raise;
+                    }
+                }
+            }
+        }
+
+        if (totalRaise > 0) {
+            // Calculate lifestyle creep amount (annual)
+            const lifestyleCreepAmount = totalRaise * (assumptions.expenses.lifestyleCreep / 100);
+
+            // Calculate total discretionary expenses
+            const discretionaryExpenses = nextExpenses.filter(exp => exp.isDiscretionary);
+            const totalDiscretionary = discretionaryExpenses.reduce((sum, exp) => {
+                return sum + exp.getAnnualAmount(year);
+            }, 0);
+
+            if (totalDiscretionary > 0 && lifestyleCreepAmount > 0) {
+                // Apply proportional increase to discretionary expenses
+                const increaseRatio = 1 + (lifestyleCreepAmount / totalDiscretionary);
+                nextExpenses = nextExpenses.map(exp => {
+                    if (exp.isDiscretionary) {
+                        return exp.adjustAmount(increaseRatio);
+                    }
+                    return exp;
+                });
+                logs.push(`📈 Lifestyle creep: Salary raise of $${totalRaise.toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr → Discretionary expenses increased by $${lifestyleCreepAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr (${assumptions.expenses.lifestyleCreep}%)`);
+            }
+        }
+    }
 
     // ------------------------------------------------------------------
     // GUYTON-KLINGER EXPENSE ADJUSTMENT (Must happen BEFORE expenses are summed)
@@ -673,6 +824,121 @@ export function simulateOneYear(
             userInflows[accountId] = (userInflows[accountId] || 0) + amount; // Positive = deposit
         }
     }
+
+    // ------------------------------------------------------------------
+    // REQUIRED MINIMUM DISTRIBUTIONS (RMD)
+    // ------------------------------------------------------------------
+    // RMDs must be taken from Traditional accounts starting at age 72-75 depending on birth year
+    // The RMD amount is based on the PRIOR year's ending balance divided by life expectancy factor
+    const birthYear = assumptions.demographics.startYear - assumptions.demographics.startAge;
+    const rmdRequired = isRMDRequired(currentAge, birthYear);
+    let rmdDetails: SimulationYear['rmdDetails'] = undefined;
+    let rmdTaxTotal = 0;
+    let rmdCashReceived = 0; // Net cash after tax from RMD withdrawals
+
+    if (rmdRequired) {
+        const rmdCalculations: RMDCalculation[] = [];
+        let totalRMDRequired = 0;
+        let totalRMDWithdrawn = 0;
+
+        // Find Traditional accounts and calculate RMD for each
+        for (const account of accounts) {
+            if (!(account instanceof InvestedAccount)) continue;
+            if (!isAccountSubjectToRMD(account.taxType)) continue;
+
+            // Get prior year's ending balance for RMD calculation
+            const priorYearSim = previousSimulation[previousSimulation.length - 1];
+            let priorYearBalance = account.amount; // Default to current if no history
+
+            if (priorYearSim) {
+                const priorAccount = priorYearSim.accounts.find(a => a.id === account.id);
+                if (priorAccount) {
+                    priorYearBalance = priorAccount.amount;
+                }
+            }
+
+            // Calculate RMD for this account
+            const rmdAmount = calculateRMD(priorYearBalance, currentAge);
+            if (rmdAmount <= 0) continue;
+
+            rmdCalculations.push({
+                accountName: account.name,
+                accountId: account.id,
+                priorYearBalance: priorYearBalance,
+                distributionPeriod: priorYearBalance / rmdAmount,
+                rmdAmount: rmdAmount
+            });
+
+            totalRMDRequired += rmdAmount;
+
+            // Withdraw the RMD (entire amount is taxable as ordinary income)
+            const availableBalance = account.vestedAmount;
+            const actualWithdrawal = Math.min(rmdAmount, availableBalance);
+
+            if (actualWithdrawal > 0) {
+                // Calculate tax on RMD withdrawal (treated as ordinary income)
+                const fedParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'federal', undefined, assumptions);
+                const stateParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions);
+
+                const currentFedIncome = totalGrossIncome - preTaxDeductions;
+                const currentStateIncome = totalGrossIncome - preTaxDeductions;
+                const stdDedFed = fedParams?.standardDeduction || 12950;
+                const stdDedState = stateParams?.standardDeduction || 0;
+                const currentFedDeduction = taxState.deductionMethod === 'Standard' ? stdDedFed : 0;
+                const currentStateDeduction = taxState.deductionMethod === 'Standard' ? stdDedState : 0;
+
+                // Calculate tax on the RMD amount
+                const fedApplied = { ...fedParams!, standardDeduction: currentFedDeduction };
+                const stateApplied = { ...stateParams!, standardDeduction: currentStateDeduction };
+
+                const fedBase = TaxService.calculateTax(currentFedIncome, 0, fedApplied);
+                const fedNew = TaxService.calculateTax(currentFedIncome + actualWithdrawal, 0, fedApplied);
+                const stateBase = TaxService.calculateTax(currentStateIncome, 0, stateApplied);
+                const stateNew = TaxService.calculateTax(currentStateIncome + actualWithdrawal, 0, stateApplied);
+
+                const rmdTax = (fedNew - fedBase) + (stateNew - stateBase);
+                rmdTaxTotal += rmdTax;
+                totalGrossIncome += actualWithdrawal;
+
+                // Apply withdrawal to account
+                userInflows[account.id] = (userInflows[account.id] || 0) - actualWithdrawal;
+                totalRMDWithdrawn += actualWithdrawal;
+
+                // Track net cash received from RMD
+                const netCash = actualWithdrawal - rmdTax;
+                rmdCashReceived += netCash;
+
+                // Track in withdrawal details
+                totalWithdrawals += actualWithdrawal;
+                withdrawalDetail[account.name] = (withdrawalDetail[account.name] || 0) + actualWithdrawal;
+
+                logs.push(`📋 RMD from ${account.name}: $${actualWithdrawal.toLocaleString(undefined, { maximumFractionDigits: 0 })} (Tax: $${rmdTax.toLocaleString(undefined, { maximumFractionDigits: 0 })})`);
+            }
+        }
+
+        // Calculate shortfall and penalty
+        const shortfall = Math.max(0, totalRMDRequired - totalRMDWithdrawn);
+        const penalty = shortfall * 0.25; // 25% penalty on shortfall (SECURE Act 2.0)
+
+        if (shortfall > 0) {
+            logs.push(`⚠️ RMD shortfall: $${shortfall.toLocaleString(undefined, { maximumFractionDigits: 0 })} - Penalty: $${penalty.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+        }
+
+        rmdDetails = {
+            totalRMD: totalRMDRequired,
+            totalWithdrawn: totalRMDWithdrawn,
+            accountBreakdown: rmdCalculations,
+            shortfall: shortfall,
+            penalty: penalty
+        };
+
+        // Add RMD tax and penalty to total tax
+        totalTax += rmdTaxTotal + penalty;
+    }
+
+    // RMD cash helps cover the deficit (net of tax)
+    // Increase discretionary cash by the net RMD amount received
+    discretionaryCash += rmdCashReceived;
 
     // Calculate deficit - only withdraw what's needed to cover expenses
     // The strategy result is tracked for informational purposes but we only
@@ -1243,6 +1509,7 @@ export function simulateOneYear(
         logs,
         strategyWithdrawal: strategyWithdrawalResult,
         strategyAdjustment: strategyAdjustmentResult,
-        rothConversion: rothConversionResult
+        rothConversion: rothConversionResult,
+        rmdDetails: rmdDetails
     };
 }

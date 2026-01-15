@@ -5,6 +5,8 @@ import {
   SocialSecurityIncome,
   CurrentSocialSecurityIncome,
   FutureSocialSecurityIncome,
+  FERSPensionIncome,
+  CSRSPensionIncome,
   PassiveIncome,
   WindfallIncome,
   ContributionGrowthStrategy,
@@ -15,12 +17,14 @@ import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput";
 import { NameInput } from "../../Layout/InputFields/NameInput";
 import { DropdownInput } from "../../Layout/InputFields/DropdownInput";
 import { NumberInput } from "../../Layout/InputFields/NumberInput";
+import { ToggleInput } from "../../Layout/InputFields/ToggleInput";
 import { AccountContext } from "../Accounts/AccountContext";
 import { InvestedAccount } from "../../Objects/Accounts/models";
 import { StyledInput } from "../../Layout/InputFields/StyleUI";
 import { AssumptionsContext } from "../Assumptions/AssumptionsContext";
 import { getClaimingAdjustment } from "../../../data/SocialSecurityData";
 import { useModalAccessibility } from "../../../hooks/useModalAccessibility";
+import { getFERSMRA, checkFERSEligibility, checkCSRSEligibility, calculateFERSBasicBenefit, calculateCSRSBasicBenefit } from "../../../data/PensionData";
 
 const generateUniqueId = () =>
     `INC-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -42,7 +46,8 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
     const [amount, setAmount] = useState<number>(0);
     const [frequency, setFrequency] = useState<IncomeFrequency>('Monthly');
     const [endDate, setEndDate] = useState("");
-    const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+    // Default to January 1st of current year
+    const [startDate, setStartDate] = useState(`${new Date().getFullYear()}-01-01`);
 
     // --- New Deductions State ---
     const [earnedIncome, setEarnedIncome] = useState<'Yes' | 'No'>('Yes');
@@ -58,6 +63,14 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
     const [claimingAge, setClaimingAge] = useState<number>(67); // Default to Full Retirement Age
     const [sourceType, setSourceType] = useState<'Dividend' | 'Rental' | 'Royalty' | 'Other'>('Dividend');
     const [dateError, setDateError] = useState<string | undefined>();
+
+    // --- Pension Fields ---
+    const [pensionYearsOfService, setPensionYearsOfService] = useState<number>(20);
+    const [pensionHigh3Salary, setPensionHigh3Salary] = useState<number>(0);
+    const [pensionRetirementAge, setPensionRetirementAge] = useState<number>(62);
+    const [autoCalculateHigh3, setAutoCalculateHigh3] = useState<boolean>(false);
+    const [linkedIncomeId, setLinkedIncomeId] = useState<string>("");
+    const pensionBirthYear = assumptions.demographics.startYear - assumptions.demographics.startAge;
 
     // Called on blur for claiming age - clamp to valid range
     const handleClaimingAgeBlur = () => {
@@ -77,16 +90,28 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
     const id = generateUniqueId();
     
     const contributionAccounts = accounts.filter(
-        (acc) => acc instanceof InvestedAccount && 
+        (acc) => acc instanceof InvestedAccount &&
                  acc.isContributionEligible === true &&
                  (acc.taxType === 'Roth 401k' || acc.taxType === 'Traditional 401k')
     );
+
+    // Get work incomes for linking to pension (for auto High-3 calculation)
+    const { incomes } = useContext(IncomeContext);
+    const workIncomes = incomes.filter(inc => inc instanceof WorkIncome);
 
     useEffect(() => {
         if (selectedType === WorkIncome && contributionAccounts.length > 0 && !matchAccountId) {
             setMatchAccountId(contributionAccounts[0].id);
         }
     }, [selectedType, contributionAccounts, matchAccountId]);
+
+    // Auto-select first work income for pension linking
+    useEffect(() => {
+        if ((selectedType === FERSPensionIncome || selectedType === CSRSPensionIncome) &&
+            workIncomes.length > 0 && !linkedIncomeId) {
+            setLinkedIncomeId(workIncomes[0].id);
+        }
+    }, [selectedType, workIncomes, linkedIncomeId]);
     
     const handleClose = () => {
         setStep('select');
@@ -104,9 +129,14 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
         setHsaContribution(0);
         setClaimingAge(67);
         setSourceType('Dividend');
-        setStartDate(new Date().toISOString().split('T')[0]);
+        setStartDate(`${new Date().getFullYear()}-01-01`);
         setEndDate("");
         setDateError(undefined);
+        setPensionYearsOfService(20);
+        setPensionHigh3Salary(0);
+        setPensionRetirementAge(62);
+        setAutoCalculateHigh3(false);
+        setLinkedIncomeId("");
         onClose();
     };
 
@@ -151,6 +181,54 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                 claimingAge
             );
             newIncome = new SocialSecurityIncome(id, name.trim(), amount, frequency, claimingAge, undefined, ssStartDate, finalEndDate);
+        } else if (selectedType === FERSPensionIncome) {
+            // Calculate when benefits start (retirement year)
+            const retirementYear = assumptions.demographics.startYear + (pensionRetirementAge - assumptions.demographics.startAge);
+            const pensionStartDate = new Date(Date.UTC(retirementYear, 0, 1));
+            const pensionEndDate = new Date(Date.UTC(
+                assumptions.demographics.startYear + (assumptions.demographics.lifeExpectancy - assumptions.demographics.startAge),
+                11, 31
+            ));
+            // Use linked income salary as initial High-3 estimate if auto-calculate is enabled
+            let effectiveHigh3 = pensionHigh3Salary;
+            if (autoCalculateHigh3 && linkedIncomeId) {
+                const linkedIncome = workIncomes.find(inc => inc.id === linkedIncomeId);
+                if (linkedIncome) {
+                    effectiveHigh3 = linkedIncome.getAnnualAmount();
+                }
+            }
+            // Benefit will be calculated by SimulationEngine, but provide estimate
+            const estimatedBenefit = calculateFERSBasicBenefit(pensionYearsOfService, effectiveHigh3, pensionRetirementAge);
+            newIncome = new FERSPensionIncome(
+                id, name.trim(), pensionYearsOfService, effectiveHigh3,
+                pensionRetirementAge, pensionBirthYear, estimatedBenefit, 0, 0,
+                pensionStartDate, pensionEndDate,
+                autoCalculateHigh3, autoCalculateHigh3 ? linkedIncomeId : null
+            );
+        } else if (selectedType === CSRSPensionIncome) {
+            // Calculate when benefits start (retirement year)
+            const retirementYear = assumptions.demographics.startYear + (pensionRetirementAge - assumptions.demographics.startAge);
+            const pensionStartDate = new Date(Date.UTC(retirementYear, 0, 1));
+            const pensionEndDate = new Date(Date.UTC(
+                assumptions.demographics.startYear + (assumptions.demographics.lifeExpectancy - assumptions.demographics.startAge),
+                11, 31
+            ));
+            // Use linked income salary as initial High-3 estimate if auto-calculate is enabled
+            let effectiveHigh3 = pensionHigh3Salary;
+            if (autoCalculateHigh3 && linkedIncomeId) {
+                const linkedIncome = workIncomes.find(inc => inc.id === linkedIncomeId);
+                if (linkedIncome) {
+                    effectiveHigh3 = linkedIncome.getAnnualAmount();
+                }
+            }
+            // Benefit will be calculated by SimulationEngine, but provide estimate
+            const estimatedBenefit = calculateCSRSBasicBenefit(pensionYearsOfService, effectiveHigh3);
+            newIncome = new CSRSPensionIncome(
+                id, name.trim(), pensionYearsOfService, effectiveHigh3,
+                pensionRetirementAge, estimatedBenefit,
+                pensionStartDate, pensionEndDate,
+                autoCalculateHigh3, autoCalculateHigh3 ? linkedIncomeId : null
+            );
         } else if (selectedType === PassiveIncome) {
             newIncome = new PassiveIncome(id, name.trim(), amount, frequency, "Yes", sourceType, finalStartDate, finalEndDate);
         } else if (selectedType === WindfallIncome) {
@@ -170,6 +248,8 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
         { label: 'Work', class: WorkIncome },
         { label: 'Current Social Security', class: CurrentSocialSecurityIncome },
         { label: 'Future Social Security', class: FutureSocialSecurityIncome },
+        { label: 'FERS Pension', class: FERSPensionIncome },
+        { label: 'CSRS Pension', class: CSRSPensionIncome },
         { label: 'Passive Income', class: PassiveIncome },
         { label: 'Windfall', class: WindfallIncome }
     ];
@@ -252,8 +332,10 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                         </div>
 
                         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-                            {/* Hide amount input for FutureSocialSecurityIncome - it's auto-calculated */}
-                            {selectedType !== FutureSocialSecurityIncome && (
+                            {/* Hide amount input for auto-calculated income types */}
+                            {selectedType !== FutureSocialSecurityIncome &&
+                             selectedType !== FERSPensionIncome &&
+                             selectedType !== CSRSPensionIncome && (
                                 <CurrencyInput label="Gross Amount" value={amount} onChange={setAmount} />
                             )}
                             {selectedType === WorkIncome && (
@@ -287,8 +369,10 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                     )}
                                 </>
                             )}
-                            {/* Hide date fields for FutureSocialSecurityIncome - they're auto-calculated */}
-                            {selectedType !== FutureSocialSecurityIncome && (
+                            {/* Hide date fields for auto-calculated income types */}
+                            {selectedType !== FutureSocialSecurityIncome &&
+                             selectedType !== FERSPensionIncome &&
+                             selectedType !== CSRSPensionIncome && (
                                 <>
                                     <div>
                                         <StyledInput
@@ -301,6 +385,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                                 setStartDate(val);
                                                 validateDates(val, endDate);
                                             }}
+                                            tooltip="Defaults to model full year income. Change to model partial year income."
                                         />
                                     </div>
                                     <div>
@@ -367,9 +452,197 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                     <DropdownInput label="Source Type" value={sourceType} onChange={(val) => setSourceType(val as "Dividend" | "Rental" | "Royalty" | "Other")} options={["Dividend", "Rental", "Royalty", "Other"]} tooltip="Type of passive income. May affect tax treatment." />
                                 </>
                             )}
+                            {/* FERS Pension Fields */}
+                            {selectedType === FERSPensionIncome && (
+                                <>
+                                    <NumberInput
+                                        label="Years of Service"
+                                        value={pensionYearsOfService}
+                                        onChange={setPensionYearsOfService}
+                                        tooltip="Total years of creditable federal service under FERS"
+                                    />
+                                    {/* High-3 Salary - either auto-calculate from work income or manual entry */}
+                                    {workIncomes.length > 0 ? (
+                                        <>
+                                            <div className="col-span-2 flex flex-col gap-3">
+                                                <ToggleInput
+                                                    label="Auto High-3"
+                                                    enabled={autoCalculateHigh3}
+                                                    setEnabled={setAutoCalculateHigh3}
+                                                    tooltip="Calculate High-3 from linked work income's salary history"
+                                                />
+                                                {autoCalculateHigh3 ? (
+                                                    <DropdownInput
+                                                        label="Link to Income"
+                                                        value={linkedIncomeId}
+                                                        onChange={setLinkedIncomeId}
+                                                        options={workIncomes.map(inc => ({ value: inc.id, label: inc.name }))}
+                                                        tooltip="High-3 will be calculated from this income's salary history during simulation"
+                                                    />
+                                                ) : (
+                                                    <CurrencyInput
+                                                        label="High-3 Salary"
+                                                        value={pensionHigh3Salary}
+                                                        onChange={setPensionHigh3Salary}
+                                                        tooltip="Average of your highest 3 consecutive years of basic pay"
+                                                    />
+                                                )}
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <CurrencyInput
+                                            label="High-3 Salary"
+                                            value={pensionHigh3Salary}
+                                            onChange={setPensionHigh3Salary}
+                                            tooltip="Average of your highest 3 consecutive years of basic pay"
+                                        />
+                                    )}
+                                    <NumberInput
+                                        label="Retirement Age"
+                                        value={pensionRetirementAge}
+                                        onChange={setPensionRetirementAge}
+                                        tooltip={`MRA is ${getFERSMRA(pensionBirthYear)} for your birth year. Age 62 with 5+ years or MRA with 30+ years for full benefits.`}
+                                    />
+                                    <div className="col-span-3 bg-green-900/20 border border-green-700/50 rounded-lg p-4 text-sm">
+                                        <div className="font-semibold text-green-200 mb-2">FERS Pension Estimate</div>
+                                        <div className="text-gray-300 space-y-1">
+                                            <div className="flex justify-between">
+                                                <span>Estimated Annual Benefit:</span>
+                                                <span className="font-bold text-green-300">
+                                                    {autoCalculateHigh3
+                                                        ? "Auto Calculated"
+                                                        : `$${calculateFERSBasicBenefit(pensionYearsOfService, pensionHigh3Salary, pensionRetirementAge).toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr`
+                                                    }
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span>High-3:</span>
+                                                <span className="text-green-200">
+                                                    {autoCalculateHigh3
+                                                        ? "Auto Calculated"
+                                                        : `$${pensionHigh3Salary.toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr`
+                                                    }
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span>Benefits Start:</span>
+                                                <span className="text-green-200">
+                                                    {assumptions.demographics.startYear + (pensionRetirementAge - assumptions.demographics.startAge)}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span>Eligibility:</span>
+                                                <span className={checkFERSEligibility(pensionRetirementAge, pensionYearsOfService, pensionBirthYear).eligible ? "text-green-300" : "text-yellow-300"}>
+                                                    {checkFERSEligibility(pensionRetirementAge, pensionYearsOfService, pensionBirthYear).message}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="text-xs text-gray-400 mt-2">
+                                            Formula: {pensionRetirementAge >= 62 && pensionYearsOfService >= 20 ? "1.1%" : "1%"} × Years × High-3.
+                                            {autoCalculateHigh3 && " High-3 will be calculated from salary history during simulation."}
+                                            {!autoCalculateHigh3 && " COLA is reduced (CPI-1% if inflation > 3%)."}
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                            {/* CSRS Pension Fields */}
+                            {selectedType === CSRSPensionIncome && (
+                                <>
+                                    <NumberInput
+                                        label="Years of Service"
+                                        value={pensionYearsOfService}
+                                        onChange={setPensionYearsOfService}
+                                        tooltip="Total years of creditable federal service under CSRS"
+                                    />
+                                    {/* High-3 Salary - either auto-calculate from work income or manual entry */}
+                                    {workIncomes.length > 0 ? (
+                                        <>
+                                            <div className="col-span-2 flex flex-col gap-3">
+                                                <ToggleInput
+                                                    label="Auto High-3"
+                                                    enabled={autoCalculateHigh3}
+                                                    setEnabled={setAutoCalculateHigh3}
+                                                    tooltip="Calculate High-3 from linked work income's salary history"
+                                                />
+                                                {autoCalculateHigh3 ? (
+                                                    <DropdownInput
+                                                        label="Link to Income"
+                                                        value={linkedIncomeId}
+                                                        onChange={setLinkedIncomeId}
+                                                        options={workIncomes.map(inc => ({ value: inc.id, label: inc.name }))}
+                                                        tooltip="High-3 will be calculated from this income's salary history during simulation"
+                                                    />
+                                                ) : (
+                                                    <CurrencyInput
+                                                        label="High-3 Salary"
+                                                        value={pensionHigh3Salary}
+                                                        onChange={setPensionHigh3Salary}
+                                                        tooltip="Average of your highest 3 consecutive years of basic pay"
+                                                    />
+                                                )}
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <CurrencyInput
+                                            label="High-3 Salary"
+                                            value={pensionHigh3Salary}
+                                            onChange={setPensionHigh3Salary}
+                                            tooltip="Average of your highest 3 consecutive years of basic pay"
+                                        />
+                                    )}
+                                    <NumberInput
+                                        label="Retirement Age"
+                                        value={pensionRetirementAge}
+                                        onChange={setPensionRetirementAge}
+                                        tooltip="Age 55 with 30+ years, age 60 with 20+ years, or age 62 with 5+ years for full benefits"
+                                    />
+                                    <div className="col-span-3 bg-green-900/20 border border-green-700/50 rounded-lg p-4 text-sm">
+                                        <div className="font-semibold text-green-200 mb-2">CSRS Pension Estimate</div>
+                                        <div className="text-gray-300 space-y-1">
+                                            <div className="flex justify-between">
+                                                <span>Estimated Annual Benefit:</span>
+                                                <span className="font-bold text-green-300">
+                                                    {autoCalculateHigh3
+                                                        ? "Auto Calculated"
+                                                        : `$${calculateCSRSBasicBenefit(pensionYearsOfService, pensionHigh3Salary).toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr`
+                                                    }
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span>High-3:</span>
+                                                <span className="text-green-200">
+                                                    {autoCalculateHigh3
+                                                        ? "Auto Calculated"
+                                                        : `$${pensionHigh3Salary.toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr`
+                                                    }
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span>Benefits Start:</span>
+                                                <span className="text-green-200">
+                                                    {assumptions.demographics.startYear + (pensionRetirementAge - assumptions.demographics.startAge)}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span>Eligibility:</span>
+                                                <span className={checkCSRSEligibility(pensionRetirementAge, pensionYearsOfService).eligible ? "text-green-300" : "text-yellow-300"}>
+                                                    {checkCSRSEligibility(pensionRetirementAge, pensionYearsOfService).message}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="text-xs text-gray-400 mt-2">
+                                            Formula: 1.5%×5yr + 1.75%×5yr + 2%×remaining (max 80% of High-3).
+                                            {autoCalculateHigh3 && " High-3 will be calculated from salary history during simulation."}
+                                            {!autoCalculateHigh3 && " Full COLA (CPI). No Social Security coverage."}
+                                        </div>
+                                    </div>
+                                </>
+                            )}
                             {selectedType !== SocialSecurityIncome &&
                              selectedType !== CurrentSocialSecurityIncome &&
-                             selectedType !== FutureSocialSecurityIncome && (
+                             selectedType !== FutureSocialSecurityIncome &&
+                             selectedType !== FERSPensionIncome &&
+                             selectedType !== CSRSPensionIncome && (
                                 <DropdownInput label="Earned Income" value={earnedIncome} onChange={(val) => setEarnedIncome(val as "Yes" | "No")} options={["Yes", "No"]} tooltip="Earned income (wages, self-employment) is subject to FICA taxes. Unearned income (investments, rental) is not." />
                             )}
 

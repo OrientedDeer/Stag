@@ -350,7 +350,7 @@ export default function FutureTab() {
     );
 
     return (
-        <div className="w-full flex bg-gray-950 justify-center pt-6">
+        <div className="w-full flex bg-gray-950 justify-center pt-6 pb-24">
             <div className="w-full px-4 sm:px-8 max-w-screen-2xl">
                 
                 {/* 2. Warning Banner */}

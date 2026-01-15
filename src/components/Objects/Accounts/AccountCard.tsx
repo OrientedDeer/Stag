@@ -291,15 +291,15 @@ const AccountCard = ({ account }: { account: AnyAccount }) => {
 										/>
 									</>
 								)}
+								<ToggleInput
+									id={`${account.id}-contribution-eligible`}
+									label="Contribution Eligible"
+									enabled={account.isContributionEligible}
+									setEnabled={(val) => handleFieldUpdate("isContributionEligible", val)}
+									tooltip="Can you still contribute to this account? Turn off for accounts from previous employers."
+								/>
 							</>
 						)}
-						<ToggleInput
-							id={`${account.id}-contribution-eligible`}
-							label="Contribution Eligible"
-							enabled={account.isContributionEligible}
-							setEnabled={(val) => handleFieldUpdate("isContributionEligible", val)}
-							tooltip="Can you still contribute to this account? Turn off for accounts from previous employers."
-						/>
 					</>
 				)}
 

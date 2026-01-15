@@ -500,4 +500,166 @@ describe('AssumptionsContext', () => {
       expect(state.withdrawalStrategy).toEqual(withdrawalStrategy);
     });
   });
+
+  describe('Migration and Error Handling', () => {
+    it('should fill in missing nested fields from defaults', () => {
+      // Simulate old localStorage data missing newer fields
+      const oldData = {
+        macro: { inflationRate: 4.0 }, // Missing healthcareInflation, inflationAdjusted
+        income: { salaryGrowth: 2.0 }, // Missing qualifiesForSocialSecurity, socialSecurityFundingPercent
+      };
+      localStorageMock.getItem.mockReturnValueOnce(JSON.stringify(oldData));
+
+      let state!: AssumptionsState;
+      const TestComponent = () => {
+        ({ state } = useContext(AssumptionsContext));
+        return null;
+      };
+
+      render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
+
+      // Saved values should be preserved
+      expect(state.macro.inflationRate).toBe(4.0);
+      expect(state.income.salaryGrowth).toBe(2.0);
+
+      // Missing fields should have defaults
+      expect(state.macro.healthcareInflation).toBe(defaultAssumptions.macro.healthcareInflation);
+      expect(state.macro.inflationAdjusted).toBe(defaultAssumptions.macro.inflationAdjusted);
+      expect(state.income.qualifiesForSocialSecurity).toBe(defaultAssumptions.income.qualifiesForSocialSecurity);
+      expect(state.income.socialSecurityFundingPercent).toBe(defaultAssumptions.income.socialSecurityFundingPercent);
+    });
+
+    it('should fill in missing top-level sections with defaults', () => {
+      // Simulate data missing entire sections
+      const partialData = {
+        macro: { inflationRate: 3.5, healthcareInflation: 4.0, inflationAdjusted: false },
+        // Missing: income, expenses, investments, demographics, display
+      };
+      localStorageMock.getItem.mockReturnValueOnce(JSON.stringify(partialData));
+
+      let state!: AssumptionsState;
+      const TestComponent = () => {
+        ({ state } = useContext(AssumptionsContext));
+        return null;
+      };
+
+      render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
+
+      // Saved section should be preserved
+      expect(state.macro.inflationRate).toBe(3.5);
+      expect(state.macro.inflationAdjusted).toBe(false);
+
+      // Missing sections should have all defaults
+      expect(state.income).toEqual(defaultAssumptions.income);
+      expect(state.expenses).toEqual(defaultAssumptions.expenses);
+      expect(state.demographics).toEqual(defaultAssumptions.demographics);
+    });
+
+    it('should handle invalid JSON gracefully', () => {
+      localStorageMock.getItem.mockReturnValueOnce('not valid json {{{');
+
+      let state!: AssumptionsState;
+      const TestComponent = () => {
+        ({ state } = useContext(AssumptionsContext));
+        return null;
+      };
+
+      render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
+
+      // Should fall back to defaults
+      expect(state).toEqual(defaultAssumptions);
+    });
+
+    it('should handle null/undefined localStorage gracefully', () => {
+      localStorageMock.getItem.mockReturnValueOnce(null);
+
+      let state!: AssumptionsState;
+      const TestComponent = () => {
+        ({ state } = useContext(AssumptionsContext));
+        return null;
+      };
+
+      render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
+
+      expect(state).toEqual(defaultAssumptions);
+    });
+
+    it('should preserve arrays (priorities, withdrawalStrategy) from saved data', () => {
+      const savedData = {
+        priorities: [
+          { id: 'p1', name: 'Test Priority', type: 'INVESTMENT', capType: 'MAX', capValue: 5000 }
+        ],
+        withdrawalStrategy: [
+          { id: 'w1', name: 'Test Withdrawal', accountId: 'acc-1' }
+        ],
+      };
+      localStorageMock.getItem.mockReturnValueOnce(JSON.stringify(savedData));
+
+      let state!: AssumptionsState;
+      const TestComponent = () => {
+        ({ state } = useContext(AssumptionsContext));
+        return null;
+      };
+
+      render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
+
+      expect(state.priorities).toHaveLength(1);
+      expect(state.priorities[0].name).toBe('Test Priority');
+      expect(state.withdrawalStrategy).toHaveLength(1);
+      expect(state.withdrawalStrategy[0].name).toBe('Test Withdrawal');
+    });
+
+    it('should handle wrong types by using defaults', () => {
+      const badData = {
+        macro: {
+          inflationRate: 'not a number', // Wrong type
+          healthcareInflation: 5.0,
+        },
+        demographics: {
+          startAge: '30', // String instead of number
+          retirementAge: 65,
+        },
+      };
+      localStorageMock.getItem.mockReturnValueOnce(JSON.stringify(badData));
+
+      let state!: AssumptionsState;
+      const TestComponent = () => {
+        ({ state } = useContext(AssumptionsContext));
+        return null;
+      };
+
+      render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
+
+      // Wrong type should fall back to default
+      expect(state.macro.inflationRate).toBe(defaultAssumptions.macro.inflationRate);
+      expect(state.demographics.startAge).toBe(defaultAssumptions.demographics.startAge);
+
+      // Correct types should be preserved
+      expect(state.macro.healthcareInflation).toBe(5.0);
+      expect(state.demographics.retirementAge).toBe(65);
+    });
+
+    it('should handle deeply nested fields like returnRates', () => {
+      const savedData = {
+        investments: {
+          withdrawalRate: 3.5,
+          // Missing returnRates entirely
+        },
+      };
+      localStorageMock.getItem.mockReturnValueOnce(JSON.stringify(savedData));
+
+      let state!: AssumptionsState;
+      const TestComponent = () => {
+        ({ state } = useContext(AssumptionsContext));
+        return null;
+      };
+
+      render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
+
+      // Saved value preserved
+      expect(state.investments.withdrawalRate).toBe(3.5);
+      // Missing nested object gets default
+      expect(state.investments.returnRates.ror).toBe(defaultAssumptions.investments.returnRates.ror);
+    });
+  });
 });

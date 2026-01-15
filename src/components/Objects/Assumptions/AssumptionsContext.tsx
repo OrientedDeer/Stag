@@ -105,6 +105,75 @@ export const defaultAssumptions: AssumptionsState = {
   withdrawalStrategy: [],
 };
 
+/**
+ * Deep merge saved data with defaults, ensuring all fields exist.
+ * This handles cases where old localStorage data is missing newer fields.
+ */
+function migrateAssumptions(saved: unknown, defaults: AssumptionsState): AssumptionsState {
+  // If saved is not an object, return defaults
+  if (!saved || typeof saved !== 'object' || Array.isArray(saved)) {
+    return defaults;
+  }
+
+  const data = saved as Record<string, unknown>;
+
+  // Helper to safely merge nested objects
+  const mergeSection = <T extends Record<string, unknown>>(
+    savedSection: unknown,
+    defaultSection: T
+  ): T => {
+    if (!savedSection || typeof savedSection !== 'object' || Array.isArray(savedSection)) {
+      return defaultSection;
+    }
+    const section = savedSection as Record<string, unknown>;
+    const result = { ...defaultSection };
+
+    for (const key of Object.keys(defaultSection)) {
+      const defaultValue = defaultSection[key];
+      const savedValue = section[key];
+
+      // If savedValue exists and is the right type, use it
+      if (savedValue !== undefined && savedValue !== null) {
+        // Type check: ensure saved value matches expected type
+        if (typeof savedValue === typeof defaultValue) {
+          (result as Record<string, unknown>)[key] = savedValue;
+        } else if (typeof defaultValue === 'object' && !Array.isArray(defaultValue) && defaultValue !== null) {
+          // Recursively merge nested objects
+          (result as Record<string, unknown>)[key] = mergeSection(
+            savedValue,
+            defaultValue as Record<string, unknown>
+          );
+        }
+        // If types don't match, keep the default
+      }
+      // If savedValue is undefined/null, keep the default
+    }
+    return result;
+  };
+
+  // Build migrated state by merging each section
+  const migrated: AssumptionsState = {
+    macro: mergeSection(data.macro, defaults.macro),
+    income: mergeSection(data.income, defaults.income),
+    expenses: mergeSection(data.expenses, defaults.expenses),
+    investments: {
+      ...mergeSection(data.investments, defaults.investments),
+      // Ensure nested returnRates is also merged
+      returnRates: mergeSection(
+        (data.investments as Record<string, unknown>)?.returnRates,
+        defaults.investments.returnRates
+      ),
+    },
+    demographics: mergeSection(data.demographics, defaults.demographics),
+    display: mergeSection(data.display, defaults.display),
+    // Arrays: use saved if it's a valid array, otherwise use default
+    priorities: Array.isArray(data.priorities) ? data.priorities as PriorityBucket[] : defaults.priorities,
+    withdrawalStrategy: Array.isArray(data.withdrawalStrategy) ? data.withdrawalStrategy as WithdrawalBucket[] : defaults.withdrawalStrategy,
+  };
+
+  return migrated;
+}
+
 type Action =
   | { type: 'UPDATE_MACRO'; payload: Partial<AssumptionsState['macro']> }
   | { type: 'UPDATE_INCOME'; payload: Partial<AssumptionsState['income']> }
@@ -205,10 +274,11 @@ export const AssumptionsProvider = ({ children }: { children: ReactNode }) => {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        // Merge parsed data with initial to ensure structure integrity
-        return { ...initial, ...parsed };
+        // Deep merge with defaults to handle missing fields from older versions
+        return migrateAssumptions(parsed, initial);
       } catch (e) {
-        console.error("Failed to parse assumptions settings", e);
+        // JSON parse failed - return defaults
+        return initial;
       }
     }
     return initial;

@@ -26,6 +26,19 @@ function getDistributedColors<T extends string>(palette: T[], count: number): T[
     });
 }
 
+// Truncate label based on available width
+// Assumes ~7px per character for the default font size
+const truncateLabel = (label: string, availableWidth: number, padding: number = 16): string => {
+    const charWidth = 7;
+    const maxChars = Math.floor((availableWidth - padding) / charWidth);
+
+    if (maxChars <= 0) return '';
+    if (label.length <= maxChars) return label;
+    if (maxChars <= 3) return label.substring(0, maxChars);
+
+    return label.substring(0, maxChars - 1) + '…';
+};
+
 // --- Component ---
 export const ObjectsIcicleChart = ({
     data,
@@ -85,7 +98,9 @@ export const ObjectsIcicleChart = ({
 
                 // Layout & Labels
                 enableLabels={true}
-                labelSkipWidth={30}
+                label={(node: any) => truncateLabel(node.id, node.width)}
+                labelSkipWidth={24}
+                labelSkipHeight={16}
                 labelTextColor={{ from: 'color', modifiers: [['darker', 2.5]] }} // Dark text for contrast
 
                 // Tooltip - unified and generic

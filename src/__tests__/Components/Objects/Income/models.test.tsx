@@ -4,6 +4,8 @@ import {
   SocialSecurityIncome,
   CurrentSocialSecurityIncome,
   FutureSocialSecurityIncome,
+  FERSPensionIncome,
+  CSRSPensionIncome,
   PassiveIncome,
   WindfallIncome,
   reconstituteIncome,
@@ -669,6 +671,179 @@ describe('Income Models', () => {
     it('should default to January when month not specified', () => {
       const result = calculateSocialSecurityStartDate(40, 2025, 67);
       expect(result.getUTCMonth()).toBe(0); // January
+    });
+  });
+
+  describe('FERSPensionIncome', () => {
+    const fersPension = new FERSPensionIncome(
+      'fers-1', 'FERS Pension', 25, 100000, 62, 1970, 22000, 0, 0,
+      new Date('2032-01-01'), new Date('2060-12-31')
+    );
+
+    it('should calculate basic benefit correctly', () => {
+      // 25 years * $100,000 * 1.1% (age 62+ with 20+ years) = $27,500
+      const benefit = fersPension.calculateBenefit();
+      expect(benefit).toBe(27500);
+    });
+
+    it('should apply COLA on increment for retirees 62+', () => {
+      const nextYear = fersPension.increment(mockAssumptions, 2033, 63);
+      // FERS COLA for 3% inflation at age 63: 2% (since CPI 2-3%)
+      expect(nextYear.calculatedBenefit).toBeCloseTo(22000 * 1.02, 0);
+    });
+
+    it('should preserve autoCalculateHigh3 and linkedIncomeId on increment', () => {
+      const pensionWithLink = new FERSPensionIncome(
+        'fers-2', 'FERS Pension', 20, 100000, 62, 1970, 20000, 0, 0,
+        new Date('2032-01-01'), new Date('2060-12-31'),
+        true, 'work-income-1'
+      );
+
+      const nextYear = pensionWithLink.increment(mockAssumptions, 2033, 63);
+      expect(nextYear.autoCalculateHigh3).toBe(true);
+      expect(nextYear.linkedIncomeId).toBe('work-income-1');
+    });
+
+    it('should calculate FERS supplement when eligible', () => {
+      const earlyPension = new FERSPensionIncome(
+        'fers-3', 'FERS Pension', 30, 100000, 57, 1970, 30000, 0, 24000,
+        new Date('2027-01-01'), new Date('2060-12-31')
+      );
+      // 30 years / 40 * $2000/month * 12 = $18,000
+      const supplement = earlyPension.calculateSupplement();
+      expect(supplement).toBe(18000);
+    });
+
+    it('should return 0 supplement for retirement at 62+', () => {
+      const supplement = fersPension.calculateSupplement();
+      expect(supplement).toBe(0);
+    });
+  });
+
+  describe('CSRSPensionIncome', () => {
+    const csrsPension = new CSRSPensionIncome(
+      'csrs-1', 'CSRS Pension', 30, 100000, 55, 56250,
+      new Date('2030-01-01'), new Date('2060-12-31')
+    );
+
+    it('should calculate benefit using graduated formula', () => {
+      // 5 * 1.5% + 5 * 1.75% + 20 * 2% = 7.5% + 8.75% + 40% = 56.25%
+      const benefit = csrsPension.calculateBenefit();
+      expect(benefit).toBe(56250);
+    });
+
+    it('should apply full COLA on increment', () => {
+      const nextYear = csrsPension.increment(mockAssumptions);
+      // CSRS gets full COLA (3%)
+      expect(nextYear.calculatedBenefit).toBeCloseTo(56250 * 1.03, 0);
+    });
+
+    it('should preserve autoCalculateHigh3 and linkedIncomeId on increment', () => {
+      const pensionWithLink = new CSRSPensionIncome(
+        'csrs-2', 'CSRS Pension', 30, 100000, 55, 56250,
+        new Date('2030-01-01'), new Date('2060-12-31'),
+        true, 'work-income-1'
+      );
+
+      const nextYear = pensionWithLink.increment(mockAssumptions);
+      expect(nextYear.autoCalculateHigh3).toBe(true);
+      expect(nextYear.linkedIncomeId).toBe('work-income-1');
+    });
+  });
+
+  describe('reconstituteIncome - Pension Types', () => {
+    it('should reconstitute FERSPensionIncome with all properties', () => {
+      const data = {
+        className: 'FERSPensionIncome',
+        id: 'fers-1',
+        name: 'FERS Pension',
+        amount: 22000,
+        frequency: 'Annually' as const,
+        yearsOfService: 25,
+        high3Salary: 100000,
+        retirementAge: 62,
+        birthYear: 1970,
+        calculatedBenefit: 22000,
+        fersSupplement: 0,
+        estimatedSSAt62: 24000,
+        autoCalculateHigh3: true,
+        linkedIncomeId: 'work-1',
+        startDate: '2032-01-01',
+        end_date: '2060-12-31',
+      };
+
+      const income = reconstituteIncome(data);
+
+      expect(income).not.toBeNull();
+      expect(income?.constructor.name).toBe('FERSPensionIncome');
+      expect(income?.id).toBe('fers-1');
+      expect(income?.name).toBe('FERS Pension');
+
+      if (income && 'yearsOfService' in income) {
+        const pension = income as FERSPensionIncome;
+        expect(pension.yearsOfService).toBe(25);
+        expect(pension.high3Salary).toBe(100000);
+        expect(pension.retirementAge).toBe(62);
+        expect(pension.birthYear).toBe(1970);
+        expect(pension.autoCalculateHigh3).toBe(true);
+        expect(pension.linkedIncomeId).toBe('work-1');
+      }
+    });
+
+    it('should reconstitute CSRSPensionIncome with all properties', () => {
+      const data = {
+        className: 'CSRSPensionIncome',
+        id: 'csrs-1',
+        name: 'CSRS Pension',
+        amount: 56250,
+        frequency: 'Annually' as const,
+        yearsOfService: 30,
+        high3Salary: 100000,
+        retirementAge: 55,
+        calculatedBenefit: 56250,
+        autoCalculateHigh3: false,
+        linkedIncomeId: null,
+        startDate: '2030-01-01',
+        end_date: '2060-12-31',
+      };
+
+      const income = reconstituteIncome(data);
+
+      expect(income).not.toBeNull();
+      expect(income?.constructor.name).toBe('CSRSPensionIncome');
+
+      if (income && 'yearsOfService' in income) {
+        const pension = income as CSRSPensionIncome;
+        expect(pension.yearsOfService).toBe(30);
+        expect(pension.high3Salary).toBe(100000);
+        expect(pension.retirementAge).toBe(55);
+        expect(pension.autoCalculateHigh3).toBe(false);
+        expect(pension.linkedIncomeId).toBeNull();
+      }
+    });
+
+    it('should handle FERSPensionIncome with defaults when optional fields missing', () => {
+      const data = {
+        className: 'FERSPensionIncome',
+        id: 'fers-2',
+        name: 'FERS Pension',
+        amount: 0,
+        frequency: 'Annually' as const,
+      };
+
+      const income = reconstituteIncome(data);
+
+      expect(income).not.toBeNull();
+
+      if (income && 'yearsOfService' in income) {
+        const pension = income as FERSPensionIncome;
+        expect(pension.yearsOfService).toBe(0);
+        expect(pension.high3Salary).toBe(0);
+        expect(pension.retirementAge).toBe(62); // default
+        expect(pension.birthYear).toBe(1970); // default
+        expect(pension.autoCalculateHigh3).toBe(false); // default
+        expect(pension.linkedIncomeId).toBeNull(); // default
+      }
     });
   });
 });

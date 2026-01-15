@@ -10,6 +10,12 @@ import {
   calculateEarningsTestReduction,
   EarningsRecord,
 } from '../../services/SocialSecurityCalculator';
+import {
+  getWageIndexFactor,
+  getBendPoints,
+  getWageBase,
+  getEarningsTestLimit,
+} from '../../data/SocialSecurityData';
 import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 import { WorkIncome } from '../../components/Objects/Income/models';
 
@@ -646,6 +652,95 @@ describe('SocialSecurityCalculator', () => {
         expect(result.appliesTest).toBe(false);
         expect(result.amountWithheld).toBe(0);
         expect(result.reducedBenefit).toBe(24000);
+      });
+    });
+  });
+
+  describe('InflationAdjusted Parameter', () => {
+    describe('SocialSecurityData functions', () => {
+      it('getWageIndexFactor should NOT project when inflationAdjusted is false', () => {
+        // 2030 is the latest year in data
+        const factor2030 = getWageIndexFactor(2030);
+        const factor2040NoInflation = getWageIndexFactor(2040, 0.025, false);
+
+        // When inflationAdjusted=false, should return same as latest known year
+        expect(factor2040NoInflation).toBe(factor2030);
+      });
+
+      it('getWageIndexFactor should project when inflationAdjusted is true', () => {
+        const factor2030 = getWageIndexFactor(2030);
+        const factor2040Inflation = getWageIndexFactor(2040, 0.025, true);
+
+        // When inflationAdjusted=true, should be higher
+        expect(factor2040Inflation).toBeGreaterThan(factor2030);
+      });
+
+      it('getBendPoints should NOT project when inflationAdjusted is false', () => {
+        // 2030 is the latest year in data
+        const bendPoints2030 = getBendPoints(2030);
+        const bendPoints2040NoInflation = getBendPoints(2040, 0.025, false);
+
+        // When inflationAdjusted=false, should return same as latest known year
+        expect(bendPoints2040NoInflation.first).toBe(bendPoints2030.first);
+        expect(bendPoints2040NoInflation.second).toBe(bendPoints2030.second);
+      });
+
+      it('getBendPoints should project when inflationAdjusted is true', () => {
+        const bendPoints2030 = getBendPoints(2030);
+        const bendPoints2040Inflation = getBendPoints(2040, 0.025, true);
+
+        // When inflationAdjusted=true, should be higher
+        expect(bendPoints2040Inflation.first).toBeGreaterThan(bendPoints2030.first);
+        expect(bendPoints2040Inflation.second).toBeGreaterThan(bendPoints2030.second);
+      });
+
+      it('getWageBase should NOT project when inflationAdjusted is false', () => {
+        // 2030 is the latest year in data
+        const wageBase2030 = getWageBase(2030);
+        const wageBase2040NoInflation = getWageBase(2040, 0.025, false);
+
+        // When inflationAdjusted=false, should return same as latest known year
+        expect(wageBase2040NoInflation).toBe(wageBase2030);
+      });
+
+      it('getWageBase should project when inflationAdjusted is true', () => {
+        const wageBase2030 = getWageBase(2030);
+        const wageBase2040Inflation = getWageBase(2040, 0.025, true);
+
+        // When inflationAdjusted=true, should be higher
+        expect(wageBase2040Inflation).toBeGreaterThan(wageBase2030);
+      });
+
+      it('getEarningsTestLimit should NOT project when inflationAdjusted is false', () => {
+        const limits2030 = getEarningsTestLimit(2030);
+        const limits2040NoInflation = getEarningsTestLimit(2040, 0.025, false);
+
+        // When inflationAdjusted=false, should return same as latest known year
+        expect(limits2040NoInflation.beforeFRA).toBe(limits2030.beforeFRA);
+        expect(limits2040NoInflation.yearOfFRA).toBe(limits2030.yearOfFRA);
+      });
+
+      it('getEarningsTestLimit should project when inflationAdjusted is true', () => {
+        const limits2030 = getEarningsTestLimit(2030);
+        const limits2040Inflation = getEarningsTestLimit(2040, 0.025, true);
+
+        // When inflationAdjusted=true, should be higher
+        expect(limits2040Inflation.beforeFRA).toBeGreaterThan(limits2030.beforeFRA);
+        expect(limits2040Inflation.yearOfFRA).toBeGreaterThan(limits2030.yearOfFRA);
+      });
+    });
+
+    describe('Calculator functions with inflationAdjusted', () => {
+      it('calculatePIA should use non-projected bend points when inflationAdjusted is false', () => {
+        const aime = 5000;
+
+        // Calculate PIA for far future with and without inflation adjustment
+        const piaWithInflation = calculatePIA(aime, 2040, 0.025, true);
+        const piaNoInflation = calculatePIA(aime, 2040, 0.025, false);
+
+        // Without inflation, bend points are lower, so PIA should be different
+        // (higher bend points = lower PIA for same AIME since less falls in 90% bracket)
+        expect(piaNoInflation).not.toBe(piaWithInflation);
       });
     });
   });

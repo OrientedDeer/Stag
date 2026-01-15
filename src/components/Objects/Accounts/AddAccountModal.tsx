@@ -271,15 +271,15 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                                             />
                                         </>
                                     )}
+                                    <ToggleInput
+                                        id={`${id}-contribution-eligible`}
+                                        label="Contribution Eligible"
+                                        enabled={isContributionEligible}
+                                        setEnabled={setIsContributionEligible}
+                                        tooltip="Can you still contribute to this account? Turn off for accounts from previous employers."
+                                    />
                                 </>
                             )}
-                            <ToggleInput
-                                id={`${id}-contribution-eligible`}
-                                label="Contribution Eligible"
-                                enabled={isContributionEligible}
-                                setEnabled={setIsContributionEligible}
-                                tooltip="Can you still contribute to this account? Turn off for accounts from previous employers."
-                            />
                             <ToggleInput
                                 id={`${id}-use-custom-ror`}
                                 label="Custom Return Rate"

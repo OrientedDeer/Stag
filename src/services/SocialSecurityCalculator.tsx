@@ -79,11 +79,13 @@ export interface EarningsTestResult {
  *
  * @param simulation Array of simulation years with income data
  * @param priorEarnings Optional earnings from before simulation started
+ * @param inflationAdjusted If false, uses latest known wage base without projection
  * @returns Array of earnings records sorted by year
  */
 export function extractEarningsFromSimulation(
   simulation: SimulationYear[],
-  priorEarnings?: EarningsRecord[]
+  priorEarnings?: EarningsRecord[],
+  inflationAdjusted: boolean = true
 ): EarningsRecord[] {
   const earningsMap = new Map<number, number>();
 
@@ -106,7 +108,7 @@ export function extractEarningsFromSimulation(
     });
 
     // Cap at SS wage base for the year
-    const wageBase = getWageBase(simYear.year);
+    const wageBase = getWageBase(simYear.year, 0.025, inflationAdjusted);
     const cappedEarnings = Math.min(yearlyEarnings, wageBase);
 
     if (cappedEarnings > 0) {
@@ -134,16 +136,17 @@ export function extractEarningsFromSimulation(
  * @param earnings Earnings record to index
  * @param indexYear Year to index to (typically when worker turns 60)
  * @param wageGrowthRate Annual wage growth rate for projecting future factors (default: 0.025 = 2.5%)
+ * @param inflationAdjusted If false, uses latest known values without projection
  * @returns Indexed earnings amount
  */
-export function applyWageIndexing(earnings: EarningsRecord, indexYear: number, wageGrowthRate: number = 0.025): number {
+export function applyWageIndexing(earnings: EarningsRecord, indexYear: number, wageGrowthRate: number = 0.025, inflationAdjusted: boolean = true): number {
   // No indexing for earnings at or after index year
   if (earnings.year >= indexYear) {
     return earnings.amount;
   }
 
-  const indexYearFactor = getWageIndexFactor(indexYear, wageGrowthRate);
-  const earningYearFactor = getWageIndexFactor(earnings.year, wageGrowthRate);
+  const indexYearFactor = getWageIndexFactor(indexYear, wageGrowthRate, inflationAdjusted);
+  const earningYearFactor = getWageIndexFactor(earnings.year, wageGrowthRate, inflationAdjusted);
 
   // Avoid division by zero
   if (earningYearFactor === 0) {
@@ -169,10 +172,11 @@ export function applyWageIndexing(earnings: EarningsRecord, indexYear: number, w
  * @param aime Average Indexed Monthly Earnings
  * @param year Year for bend points (typically year of eligibility, age 62)
  * @param wageGrowthRate Annual wage growth rate for projecting future bend points (default: 0.025 = 2.5%)
+ * @param inflationAdjusted If false, uses latest known values without projection
  * @returns Primary Insurance Amount (monthly benefit at FRA)
  */
-export function calculatePIA(aime: number, year: number, wageGrowthRate: number = 0.025): number {
-  const bendPoints = getBendPoints(year, wageGrowthRate);
+export function calculatePIA(aime: number, year: number, wageGrowthRate: number = 0.025, inflationAdjusted: boolean = true): number {
+  const bendPoints = getBendPoints(year, wageGrowthRate, inflationAdjusted);
 
   let pia = 0;
 
@@ -235,6 +239,7 @@ export function applyClaimingAdjustment(
  * @param claimingAge Age when claiming benefits (62-70)
  * @param birthYear Optional birth year for FRA calculation
  * @param wageGrowthRate Annual wage growth rate for projecting future values (default: 0.025 = 2.5%)
+ * @param inflationAdjusted If false, uses latest known values without projection
  * @returns Complete AIME calculation with breakdown
  */
 export function calculateAIME(
@@ -242,7 +247,8 @@ export function calculateAIME(
   calculationYear: number,
   claimingAge: number,
   birthYear?: number,
-  wageGrowthRate: number = 0.025
+  wageGrowthRate: number = 0.025,
+  inflationAdjusted: boolean = true
 ): AIMECalculation {
   // Determine index year (year when worker turns 60)
   // If birthYear provided, calculate exact year; otherwise estimate from calculationYear
@@ -258,7 +264,7 @@ export function calculateAIME(
   const indexedRecords = earningsHistory.map(record => ({
     year: record.year,
     amount: record.amount,
-    indexed: applyWageIndexing(record, indexYear, wageGrowthRate),
+    indexed: applyWageIndexing(record, indexYear, wageGrowthRate, inflationAdjusted),
   }));
 
   // Step 2: Sort by indexed amount (descending) and take top 35 years
@@ -277,13 +283,13 @@ export function calculateAIME(
   const aime = sumTop35 / 420; // 35 years × 12 months = 420
 
   // Step 5: Calculate PIA using bend points (with wage growth projection)
-  const pia = calculatePIA(aime, calculationYear, wageGrowthRate);
+  const pia = calculatePIA(aime, calculationYear, wageGrowthRate, inflationAdjusted);
 
   // Step 6: Apply claiming age adjustment
   const adjustedBenefit = applyClaimingAdjustment(pia, claimingAge, birthYear);
 
   // Get bend points used (with wage growth projection)
-  const bendPoints = getBendPoints(calculationYear, wageGrowthRate);
+  const bendPoints = getBendPoints(calculationYear, wageGrowthRate, inflationAdjusted);
 
   // Return detailed breakdown
   return {
@@ -311,13 +317,15 @@ export function calculateAIME(
  * @param retirementAge Age planning to retire/claim
  * @param annualIncome Current annual income
  * @param birthYear Birth year for FRA calculation
+ * @param inflationAdjusted If false, uses latest known values without projection
  * @returns Estimated monthly Social Security benefit
  */
 export function estimateBenefitFromCurrentIncome(
   currentAge: number,
   retirementAge: number,
   annualIncome: number,
-  birthYear: number
+  birthYear: number,
+  inflationAdjusted: boolean = true
 ): number {
   const currentYear = new Date().getFullYear();
   const yearsUntilRetirement = retirementAge - currentAge;
@@ -329,7 +337,7 @@ export function estimateBenefitFromCurrentIncome(
   const yearsWorked = Math.max(0, currentAge - 22);
   for (let i = 0; i < yearsWorked; i++) {
     const year = currentYear - (yearsWorked - i);
-    const wageBase = getWageBase(year);
+    const wageBase = getWageBase(year, 0.025, inflationAdjusted);
     earnings.push({
       year: year,
       amount: Math.min(annualIncome, wageBase),
@@ -339,7 +347,7 @@ export function estimateBenefitFromCurrentIncome(
   // Future: Project same earnings until retirement
   for (let i = 0; i < yearsUntilRetirement; i++) {
     const year = currentYear + i;
-    const wageBase = getWageBase(year);
+    const wageBase = getWageBase(year, 0.025, inflationAdjusted);
     earnings.push({
       year: year,
       amount: Math.min(annualIncome, wageBase),
@@ -348,7 +356,7 @@ export function estimateBenefitFromCurrentIncome(
 
   // Calculate AIME
   const calculationYear = birthYear + 62; // Year of eligibility
-  const result = calculateAIME(earnings, calculationYear, retirementAge, birthYear);
+  const result = calculateAIME(earnings, calculationYear, retirementAge, birthYear, 0.025, inflationAdjusted);
 
   return result.adjustedBenefit;
 }
@@ -356,9 +364,10 @@ export function estimateBenefitFromCurrentIncome(
 /**
  * Validate earnings record
  * Ensures earnings don't exceed SS wage base for the year
+ * @param inflationAdjusted If false, uses latest known values without projection
  */
-export function validateEarningsRecord(record: EarningsRecord): boolean {
-  const wageBase = getWageBase(record.year);
+export function validateEarningsRecord(record: EarningsRecord, inflationAdjusted: boolean = true): boolean {
+  const wageBase = getWageBase(record.year, 0.025, inflationAdjusted);
   return record.amount >= 0 && record.amount <= wageBase;
 }
 
@@ -403,6 +412,7 @@ export function calculateWorkCredits(earningsHistory: EarningsRecord[]): number 
  * @param fra Full Retirement Age (typically 67)
  * @param year Current simulation year
  * @param wageGrowthRate Wage growth rate for projecting future limits
+ * @param inflationAdjusted If false, uses latest known values without projection
  * @returns EarningsTestResult with reduced benefit and withholding details
  */
 export function calculateEarningsTestReduction(
@@ -411,7 +421,8 @@ export function calculateEarningsTestReduction(
   currentAge: number,
   fra: number,
   year: number,
-  wageGrowthRate: number = 0.025
+  wageGrowthRate: number = 0.025,
+  inflationAdjusted: boolean = true
 ): EarningsTestResult {
   // No test if at or after FRA
   if (currentAge >= fra) {
@@ -425,7 +436,7 @@ export function calculateEarningsTestReduction(
   }
 
   // Get earnings limits for this year
-  const limits = getEarningsTestLimit(year, wageGrowthRate);
+  const limits = getEarningsTestLimit(year, wageGrowthRate, inflationAdjusted);
 
   // Determine if this is the year user reaches FRA
   // Year of FRA is when you turn FRA during the year (age between fra-1 and fra)

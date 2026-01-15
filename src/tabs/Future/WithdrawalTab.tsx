@@ -301,7 +301,7 @@ export default function WithdrawalTab() {
     const [showHelp, setShowHelp] = useState(false);
 
     return (
-        <div className="w-full min-h-full flex bg-gray-950 justify-center pt-6 text-white">
+        <div className="w-full min-h-full flex bg-gray-950 justify-center pt-6 pb-24 text-white">
             <div className="w-full px-4 sm:px-8 max-w-4xl">
                 <div className="flex items-center justify-between mb-2 border-b border-gray-800 pb-2">
                     <h2 className="text-2xl font-bold">Withdrawal Order</h2>

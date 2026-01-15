@@ -131,7 +131,7 @@ const TabsContent = () => {
 	}, [incomes]);
 
 	return (
-		<div className="w-full min-h-full flex bg-gray-950 justify-center pt-6">
+		<div className="w-full min-h-full flex bg-gray-950 justify-center pt-6 pb-24">
 			<div className="w-full px-4 sm:px-8 max-w-screen-2xl">
 				{/* Chart Section */}
 				<div className="space-y-4 mb-4 p-4 bg-gray-900 rounded-xl border border-gray-800">

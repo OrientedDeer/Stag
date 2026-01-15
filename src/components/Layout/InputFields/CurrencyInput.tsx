@@ -68,6 +68,19 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({ label, value, onCh
         onBlur?.();
     };
 
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        let val = e.target.value;
+        // Strip leading zeros except for "0" or "0."
+        val = val.replace(/^0+(?=\d)/, '');
+        setDisplayValue(val);
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+            e.currentTarget.blur();
+        }
+    };
+
     // Use external error if provided, otherwise use internal validation error
     const displayError = error || internalError;
 
@@ -77,9 +90,10 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({ label, value, onCh
             label={`${label} ($)`}
             type="text"
             value={isFocused ? displayValue : `$${displayValue}`}
-            onChange={(e) => setDisplayValue(e.target.value)}
+            onChange={handleChange}
             onFocus={handleFocus}
             onBlur={handleBlur}
+            onKeyDown={handleKeyDown}
             error={displayError}
             tooltip={tooltip}
             disabled={disabled}

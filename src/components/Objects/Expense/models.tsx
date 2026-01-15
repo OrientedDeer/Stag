@@ -672,6 +672,35 @@ export class VacationExpense extends BaseExpense {
   }
 }
 
+export class SubscriptionExpense extends BaseExpense {
+  constructor(
+    id: string,
+    name: string,
+    amount: number,
+    frequency: 'Weekly' | 'Monthly' | 'Annually',
+    startDate?: Date,
+    endDate?: Date,
+  ) {
+    super(id, name, amount, frequency, startDate, endDate);
+  }
+  increment(assumptions: AssumptionsState): SubscriptionExpense {
+    const generalInflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
+    const result = new SubscriptionExpense(
+      this.id, this.name, this.amount * (1 + generalInflation), this.frequency, this.startDate, this.endDate
+    );
+    result.isDiscretionary = this.isDiscretionary;
+    return result;
+  }
+
+  adjustAmount(ratio: number): SubscriptionExpense {
+    const result = new SubscriptionExpense(
+      this.id, this.name, this.amount * ratio, this.frequency, this.startDate, this.endDate
+    );
+    result.isDiscretionary = this.isDiscretionary;
+    return result;
+  }
+}
+
 export class EmergencyExpense extends BaseExpense {
   constructor(
     id: string,
@@ -882,6 +911,7 @@ export const EXPENSE_CATEGORIES = [
   'Dependent',
   'Healthcare',
   'Vacation',
+  'Subscription',
   'Emergency',
   'Transport',
   'Food',
@@ -898,6 +928,7 @@ export const EXPENSE_COLORS_BACKGROUND: Record<ExpenseCategory, string> = {
   Dependent: "bg-chart-Yellow-50",
   Healthcare: "bg-chart-Red-50",
   Vacation: "bg-chart-Green-50",
+  Subscription: "bg-chart-Cyan-50",
   Emergency: "bg-chart-Fuchsia-50",
   Transport: "bg-chart-Blue-50",
   Food: "bg-chart-Yellow-50",
@@ -912,6 +943,7 @@ export const CLASS_TO_CATEGORY: Record<string, ExpenseCategory> = {
   [DependentExpense.name]: 'Dependent',
   [HealthcareExpense.name]: 'Healthcare',
   [VacationExpense.name]: 'Vacation',
+  [SubscriptionExpense.name]: 'Subscription',
   [EmergencyExpense.name]: 'Emergency',
   [TransportExpense.name]: 'Transport',
   [FoodExpense.name]: 'Food',
@@ -927,6 +959,7 @@ export const CATEGORY_PALETTES: Record<ExpenseCategory, string[]> = {
   Dependent: Array.from({ length: 100 }, (_, i) => `bg-chart-Yellow-${i + 1}`),
   Healthcare: Array.from({ length: 100 }, (_, i) => `bg-chart-Red-${i + 1}`),
   Vacation: Array.from({ length: 100 }, (_, i) => `bg-chart-Green-${i + 1}`),
+  Subscription: Array.from({ length: 100 }, (_, i) => `bg-chart-Cyan-${i + 1}`),
   Emergency: Array.from({ length: 100 }, (_, i) => `bg-chart-Fuchsia-${i + 1}`),
   Transport: Array.from({ length: 100 }, (_, i) => `bg-chart-Blue-${i + 1}`),
   Food: Array.from({ length: 100 }, (_, i) => `bg-chart-Yellow-${i + 1}`),
@@ -978,6 +1011,9 @@ export function reconstituteExpense(data: any): AnyExpense | null {
             break;
         case 'VacationExpense':
             expense = new VacationExpense(base.id, base.name, base.amount, base.frequency, base.startDate, base.endDate);
+            break;
+        case 'SubscriptionExpense':
+            expense = new SubscriptionExpense(base.id, base.name, base.amount, base.frequency, base.startDate, base.endDate);
             break;
         case 'EmergencyExpense':
             expense = new EmergencyExpense(base.id, base.name, base.amount, base.frequency, base.startDate, base.endDate);

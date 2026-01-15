@@ -276,28 +276,51 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
             },
             2026: {
                 Single: {
-                    standardDeduction: 5363,
+                    standardDeduction: 5669,
                     brackets: [
                         { threshold: 0, rate: 0.01 },
-                        { threshold: 10412, rate: 0.02 },
+                        { threshold: 11_015, rate: 0.02 },
+                        { threshold: 26_111, rate: 0.04 },
+                        { threshold: 41_212, rate: 0.06 },
+                        { threshold: 57_208, rate: 0.08 },
+                        { threshold: 72_272, rate: 0.093 },
+                        { threshold: 369_156, rate: 0.103 },
+                        { threshold: 443_175, rate: 0.113 },
+                        { threshold: 738_628, rate: 0.123 },
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
                     medicareTaxRate: 0.0
                 },
                 'Married Filing Jointly': {
-                    standardDeduction: 10726,
+                    standardDeduction: 11_338,
                     brackets: [
                         { threshold: 0, rate: 0.01 },
+                        { threshold: 22_030, rate: 0.02 },
+                        { threshold: 52_223, rate: 0.04 },
+                        { threshold: 82_423, rate: 0.06 },
+                        { threshold: 114_414, rate: 0.08 },
+                        { threshold: 144_542, rate: 0.093 },
+                        { threshold: 738_310, rate: 0.103 },
+                        { threshold: 885_974, rate: 0.113 },
+                        { threshold: 1_477_252, rate: 0.123 },
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
                     medicareTaxRate: 0.0
                 },
                 'Married Filing Separately': {
-                    standardDeduction: 5363,
+                    standardDeduction: 5669,
                     brackets: [
-                        { threshold: 0, rate: 0.01 }
+                        { threshold: 0, rate: 0.01 },
+                        { threshold: 11_015, rate: 0.02 },
+                        { threshold: 26_111, rate: 0.04 },
+                        { threshold: 41_212, rate: 0.06 },
+                        { threshold: 57_208, rate: 0.08 },
+                        { threshold: 72_272, rate: 0.093 },
+                        { threshold: 369_156, rate: 0.103 },
+                        { threshold: 443_175, rate: 0.113 },
+                        { threshold: 738_628, rate: 0.123 },
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,

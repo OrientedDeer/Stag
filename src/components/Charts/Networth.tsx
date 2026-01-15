@@ -42,7 +42,7 @@ export const NetWorthCard = () => {
         // Net Worth = (User + Total Match) - Debt - Unvested Match
         //           = User + Vested Match - Debt
         const netWorth = totalAssets - totalDebt - totalNonVested;
-        return { totalAssets, totalDebt, netWorth };
+        return { totalAssets, totalDebt, netWorth, totalNonVested };
     }, [accounts]);
 
     // 2. Generate Historical Chart Data
@@ -117,9 +117,21 @@ export const NetWorthCard = () => {
                     <p className={`text-3xl sm:text-5xl font-black tracking-tight max-w-full overflow-hidden text-ellipsis ${stats.netWorth >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                         {formatCompactCurrency(stats.netWorth, { forceExact })}
                     </p>
-                    <span className="text-xs text-gray-400 font-medium bg-gray-800 px-2 py-1 rounded-full">
-                        Vested
-                    </span>
+                    {stats.totalNonVested > 0 && (
+                        <span
+                            className="text-xs text-gray-400 font-medium bg-gray-800 px-2 py-1 rounded-full cursor-help relative group"
+                            title={`Unvested: ${formatCompactCurrency(stats.totalNonVested, { forceExact })}\nGross Net Worth: ${formatCompactCurrency(stats.netWorth + stats.totalNonVested, { forceExact })}`}
+                        >
+                            Vested
+                            <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block z-50">
+                                <div className="bg-gray-800 border border-gray-700 rounded-lg p-2 shadow-xl whitespace-nowrap text-xs">
+                                    <div className="text-gray-400">Unvested: <span className="text-yellow-400 font-semibold">{formatCompactCurrency(stats.totalNonVested, { forceExact })}</span></div>
+                                    <div className="text-gray-400">Gross Net Worth: <span className="text-green-400 font-semibold">{formatCompactCurrency(stats.netWorth + stats.totalNonVested, { forceExact })}</span></div>
+                                </div>
+                                <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-700" />
+                            </div>
+                        </span>
+                    )}
                 </div>
             </div>
 

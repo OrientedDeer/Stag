@@ -7,6 +7,7 @@ import {
 	DependentExpense,
 	HealthcareExpense,
 	VacationExpense,
+	SubscriptionExpense,
 	TransportExpense,
 	EmergencyExpense,
 	FoodExpense,
@@ -58,7 +59,8 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 	const [pmi, setPmi] = useState<number>(0.58);
 	const [hoaFee, setHoaFee] = useState<number>(0);
 	const [startingLoanBalance, setStartingLoanBalance] = useState<number>(0);
-	const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+	// Default to January 1st of current year
+	const [startDate, setStartDate] = useState(`${new Date().getFullYear()}-01-01`);
 	const [endDate, setEndDate] = useState<string>("");
 	const [payment, setPayment] = useState<number>(0);
 	const [extraPayment, setExtraPayment] = useState<number>(0);
@@ -85,7 +87,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 		setFrequency("Monthly");
 		setInterestType("Compounding");
 		setIsTaxDeductible("No");
-        setStartDate(new Date().toISOString().split('T')[0]);
+        setStartDate(`${new Date().getFullYear()}-01-01`);
         setEndDate("");
 		setDateError(undefined);
 		onClose();
@@ -247,6 +249,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 		{ label: "Dependent", class: DependentExpense },
 		{ label: "Healthcare", class: HealthcareExpense },
 		{ label: "Vacation", class: VacationExpense },
+		{ label: "Subscription", class: SubscriptionExpense },
 		{ label: "Emergency", class: EmergencyExpense },
 		{ label: "Transport", class: TransportExpense },
 		{ label: "Food", class: FoodExpense },
@@ -322,6 +325,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 										setStartDate(val);
 										validateDates(val, endDate);
 									}}
+									tooltip="Defaults to model full year expenses. Change to model partial year expenses."
 								/>
 							</div>
 							<div>

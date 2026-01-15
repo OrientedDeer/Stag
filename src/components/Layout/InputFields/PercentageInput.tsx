@@ -73,11 +73,19 @@ export const PercentageInput: React.FC<PercentageInputProps> = ({ label, value, 
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         // Allow typing numbers and a single dot
-        const val = e.target.value;
+        let val = e.target.value;
         // The value from the input might contain the '%' symbol if edited
-        const cleanVal = val.replace(/%/g, '');
-        setDisplayValue(cleanVal);
-    }
+        val = val.replace(/%/g, '');
+        // Strip leading zeros except for "0" or "0."
+        val = val.replace(/^0+(?=\d)/, '');
+        setDisplayValue(val);
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+            e.currentTarget.blur();
+        }
+    };
 
     // Use external error if provided, otherwise use internal validation error
     const displayError = error || internalError;
@@ -91,6 +99,7 @@ export const PercentageInput: React.FC<PercentageInputProps> = ({ label, value, 
             onChange={handleChange}
             onFocus={handleFocus}
             onBlur={handleBlur}
+            onKeyDown={handleKeyDown}
             disabled={disabled}
             error={displayError}
             tooltip={tooltip}

@@ -147,7 +147,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className='w-full min-h-full flex bg-gray-950 justify-center pt-6'>
+    <div className='w-full min-h-full flex bg-gray-950 justify-center pt-6 pb-24'>
       <div className="w-full px-4 sm:px-8 max-w-screen-2xl">
         <div className="flex flex-col gap-4 p-4 max-w-screen-2xl mx-auto w-full">
           <div className="flex justify-between items-end border-b border-gray-800 pb-4">
