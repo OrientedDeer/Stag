@@ -15,7 +15,7 @@ import { formatCompactCurrency, formatCurrency } from './FutureUtils';
 
 interface DataTabProps {
     simulationData: SimulationYear[];
-    startAge: number;
+    birthYear: number;
 }
 
 // Helper: Calculate Net Worth
@@ -37,7 +37,8 @@ const calculateNetWorth = (accounts: AnyAccount[]) => {
     return assets - liabilities;
 };
 
-export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, startAge }) => {
+export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, birthYear }) => {
+    const startAge = new Date().getFullYear() - birthYear;
     const { state: assumptions } = useContext(AssumptionsContext);
     const { accounts } = useContext(AccountContext);
     const { incomes } = useContext(IncomeContext);
@@ -125,15 +126,20 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, sta
             });
 
             const netWorth = calculateNetWorth(year.accounts);
-            const effectiveTaxRate = year.cashflow.totalIncome > 0 
-                ? (totalTaxes / year.cashflow.totalIncome) * 100 
+
+            // Include Roth conversion amount in taxable income for effective rate calculation
+            // Conversions are taxed but aren't included in cashflow.totalIncome (they're account transfers)
+            const conversionAmount = year.rothConversion?.amount || 0;
+            const taxableIncomeBase = year.cashflow.totalIncome + conversionAmount;
+            const effectiveTaxRate = taxableIncomeBase > 0
+                ? (totalTaxes / taxableIncomeBase) * 100
                 : 0;
 
             return {
                 year: year.year,
                 age: startAge + index,
                 grossIncome: year.cashflow.totalIncome,
-                effectiveTaxRate, 
+                effectiveTaxRate,
                 totalTaxes,
                 livingExpenses,
                 totalDebt,

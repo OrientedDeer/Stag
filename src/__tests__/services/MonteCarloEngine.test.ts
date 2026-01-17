@@ -486,8 +486,7 @@ describe('Return Rate Override Integration', () => {
                 inflationAdjusted: false, // Important: not inflation adjusted
             },
             demographics: {
-                startAge: 30,
-                startYear: 2025,
+                birthYear: 1995, // Age 30 in 2025
                 retirementAge: 65,
                 lifeExpectancy: 90,
             },

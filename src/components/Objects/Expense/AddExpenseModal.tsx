@@ -22,6 +22,7 @@ import { DropdownInput } from "../../Layout/InputFields/DropdownInput";
 import { NumberInput } from "../../Layout/InputFields/NumberInput";
 import { NameInput } from "../../Layout/InputFields/NameInput";
 import { StyledInput } from "../../Layout/InputFields/StyleUI";
+import { ToggleInput } from "../../Layout/InputFields/ToggleInput";
 import { useModalAccessibility } from "../../../hooks/useModalAccessibility";
 
 const generateUniqueId = () =>
@@ -66,6 +67,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 	const [extraPayment, setExtraPayment] = useState<number>(0);
 	const [isTaxDeductible, setIsTaxDeductible] = useState<"Yes" | "No" | 'Itemized'>("No");
 	const [taxDeductibleAmount, setTaxDeductibleAmount] = useState<number>(0);
+	const [isDiscretionary, setIsDiscretionary] = useState<boolean>(false);
 	const [dateError, setDateError] = useState<string | undefined>();
 
 	// Validate end date is after start date
@@ -87,6 +89,8 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 		setFrequency("Monthly");
 		setInterestType("Compounding");
 		setIsTaxDeductible("No");
+		setTaxDeductibleAmount(0);
+		setIsDiscretionary(false);
         setStartDate(`${new Date().getFullYear()}-01-01`);
         setEndDate("");
 		setDateError(undefined);
@@ -104,10 +108,13 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 
 	const handleTypeSelect = (typeClass: any) => {
 		setSelectedType(() => typeClass);
-		// Set sensible defaults for tax deductible based on expense type
+		// Set sensible defaults based on expense type
 		if (typeClass === CharityExpense) {
 			setIsTaxDeductible("Itemized");
 		}
+		// Default discretionary for non-essential expense types
+		const discretionaryTypes = [VacationExpense, SubscriptionExpense, CharityExpense, OtherExpense];
+		setIsDiscretionary(discretionaryTypes.includes(typeClass));
 		setStep("details");
 	};
 
@@ -236,6 +243,11 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 			newExpense = new selectedType(id, name.trim(), amount, frequency, finalStartDate, finalEndDate);
 		}
 
+		// Set discretionary flag
+		if (newExpense) {
+			newExpense.isDiscretionary = isDiscretionary;
+		}
+
 		expenseDispatch({ type: "ADD_EXPENSE", payload: newExpense });
 		handleClose();
 	};
@@ -342,6 +354,17 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 									error={dateError}
 								/>
 							</div>
+						</div>
+
+						{/* Discretionary Toggle */}
+						<div className="flex items-center">
+							<ToggleInput
+								id={`${id}-discretionary`}
+								label="Discretionary"
+								enabled={isDiscretionary}
+								setEnabled={setIsDiscretionary}
+								tooltip="Discretionary expenses can be reduced during Guyton-Klinger guardrail triggers in retirement, and are affected by lifestyle creep."
+							/>
 						</div>
 
 						{/* Common Fields Grid */}

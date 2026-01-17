@@ -132,8 +132,7 @@ const createTestAssumptions = (): AssumptionsState => ({
     ...defaultAssumptions,
     demographics: {
         ...defaultAssumptions.demographics,
-        startYear: 2024,
-        startAge: 35,
+        birthYear: 1989, // Age 35 in 2024
         retirementAge: 65,
         lifeExpectancy: 90
     },

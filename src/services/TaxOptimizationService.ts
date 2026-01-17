@@ -127,7 +127,7 @@ export function analyzeTaxSituation(
     taxState: TaxState
 ): TaxAnalysis {
     const { year, incomes } = simulationYear;
-    const age = assumptions.demographics.startAge + (year - assumptions.demographics.startYear);
+    const age = year - assumptions.demographics.birthYear;
 
     // Get gross income and deductions
     const grossIncome = TaxService.getGrossIncome(incomes, year);
@@ -211,9 +211,7 @@ export function generateRecommendations(
         const windows = findRothConversionWindows(simulation, assumptions);
         // Calculate retirement tax rate for the recommendation
         const retirementAge = assumptions.demographics.retirementAge;
-        const startAge = assumptions.demographics.startAge;
-        const startYear = assumptions.demographics.startYear;
-        const retirementYear = startYear + (retirementAge - startAge);
+        const retirementYear = assumptions.demographics.birthYear + retirementAge;
         const retirementTaxRate = getMedianRetirementTaxRate(simulation, retirementYear);
         const recRoth = generateRothConversionRecommendation(windows, retirementTaxRate);
         if (recRoth) recommendations.push(recRoth);
@@ -281,9 +279,8 @@ export function findRothConversionWindows(
 ): RothConversionOpportunity[] {
     const opportunities: RothConversionOpportunity[] = [];
     const retirementAge = assumptions.demographics.retirementAge;
-    const startAge = assumptions.demographics.startAge;
-    const startYear = assumptions.demographics.startYear;
-    const retirementYear = startYear + (retirementAge - startAge);
+    const birthYear = assumptions.demographics.birthYear;
+    const retirementYear = birthYear + retirementAge;
 
     // Minimum target rate: always fill at least to the 22% bracket
     // This ensures we show conversion opportunities even when calculated effective retirement rate is low
@@ -294,7 +291,7 @@ export function findRothConversionWindows(
     const retirementTaxRate = Math.max(MIN_CONVERSION_TARGET_RATE, calculatedRate);
 
     for (const simYear of simulation) {
-        const age = startAge + (simYear.year - startYear);
+        const age = simYear.year - birthYear;
 
         // Only consider post-retirement years (when income typically drops)
         if (age < retirementAge) continue;
@@ -381,13 +378,12 @@ export function calculateRothConversion(
     );
 
     const retirementAge = assumptions.demographics.retirementAge;
-    const startAge = assumptions.demographics.startAge;
-    const startYear = assumptions.demographics.startYear;
-    const currentAge = startAge + (year - startYear);
+    const birthYear = assumptions.demographics.birthYear;
+    const currentAge = year - birthYear;
 
     // Calculate years until retirement and years in retirement from simulation
     const yearsUntilRetirement = Math.max(0, retirementAge - currentAge);
-    const retirementYear = startYear + (retirementAge - startAge);
+    const retirementYear = birthYear + retirementAge;
     const retirementYears = simulation.filter(s => s.year >= retirementYear);
 
     // Calculate median effective tax rate during retirement from actual simulation
@@ -523,8 +519,7 @@ export function generateTaxProjections(
     const retirementAge = assumptions.demographics.retirementAge;
 
     for (const simYear of simulation) {
-        const age = assumptions.demographics.startAge +
-            (simYear.year - assumptions.demographics.startYear);
+        const age = simYear.year - assumptions.demographics.birthYear;
 
         const grossIncome = TaxService.getGrossIncome(simYear.incomes, simYear.year);
         const preTaxDeductions = TaxService.getPreTaxExemptions(simYear.incomes, simYear.year);

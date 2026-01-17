@@ -195,8 +195,8 @@ const RothConversionCalculator = ({
     forceExact: boolean;
 }) => {
     const [conversionAmount, setConversionAmount] = useState(10000);
-    const startAge = assumptions.demographics.startAge;
-    const startYear = assumptions.demographics.startYear;
+    const startYear = new Date().getFullYear();
+    const startAge = startYear - assumptions.demographics.birthYear;
     const [selectedAge, setSelectedAge] = useState(startAge);
 
     // Build age options from projections with low-tax year indicators

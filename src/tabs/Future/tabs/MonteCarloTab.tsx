@@ -1,4 +1,4 @@
-import React, { useMemo, useContext, useState } from 'react';
+import React, { useMemo, useContext, useState, useEffect, useRef } from 'react';
 import { FanChart } from '../../../components/Charts/FanChart';
 import { useMonteCarlo } from '../../../components/Objects/Assumptions/MonteCarloContext';
 import { AccountContext } from '../../../components/Objects/Accounts/AccountContext';
@@ -64,6 +64,18 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
     const normalizedPreset: ReturnPresetKey = RETURN_PRESETS[config.preset]
         ? config.preset
         : 'historical'; // Fallback for old 'historical_real' or 'historical_nominal' values
+
+    // Track previous inflation setting to detect changes
+    const prevInflationAdjusted = useRef(inflationAdjusted);
+
+    // Auto-update return mean when inflation setting changes (for non-custom presets)
+    useEffect(() => {
+        if (prevInflationAdjusted.current !== inflationAdjusted && normalizedPreset !== 'custom') {
+            const newMean = getPresetReturnMean(normalizedPreset, inflationAdjusted);
+            updateConfig({ returnMean: newMean });
+        }
+        prevInflationAdjusted.current = inflationAdjusted;
+    }, [inflationAdjusted, normalizedPreset, updateConfig]);
 
     // Extract deterministic baseline for comparison
     const deterministicLine = useMemo(() => {

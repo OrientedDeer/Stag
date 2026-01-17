@@ -19,7 +19,7 @@ export default function AssumptionTab() {
 
   return (
     <div className="w-full min-h-full flex bg-gray-950 justify-center pt-6 pb-24">
-        <div className="w-full px-4 sm:px-8 max-w-screen-xl">
+        <div className="w-full px-4 sm:px-8 max-w-7-xl">
             <div className="flex items-center justify-between mb-6 border-b border-gray-800 pb-2">
                 <h2 className="text-2xl font-bold text-white">Assumptions</h2>
                 <button
@@ -73,10 +73,10 @@ export default function AssumptionTab() {
 
                     <div className="grid grid-cols-3 gap-3">
                         <NumberInput
-                            label="Current Age"
-                            value={state.demographics.startAge}
-                            onChange={(val) => dispatch({ type: 'UPDATE_DEMOGRAPHICS', payload: { startAge: val } })}
-                            tooltip="Your age today. Used to calculate your birth year for Social Security and other age-based projections."
+                            label="Birth Year"
+                            value={state.demographics.birthYear}
+                            onChange={(val) => dispatch({ type: 'UPDATE_DEMOGRAPHICS', payload: { birthYear: val } })}
+                            tooltip="Your birth year. Used for Social Security, RMDs, and other age-based calculations."
                         />
                         <NumberInput
                             label="Retirement Age"
@@ -93,7 +93,8 @@ export default function AssumptionTab() {
                     </div>
 
                     <div className="pt-4 border-t border-gray-800">
-                        <h3 className="text-sm font-semibold text-white border-b border-gray-700 pb-2 mb-4">Growth Rates</h3>
+                        <h3 className="text-sm font-semibold text-white border-b border-gray-700 pb-2 mb-2">Growth Rates</h3>
+                        <p className="text-xs text-blue-400 mb-3">All growth rates are real (above inflation), not nominal.</p>
                         <div className="grid grid-cols-2 gap-3">
                             <div className={`transition-opacity duration-300 ${!state.macro.inflationAdjusted ? 'opacity-50' : 'opacity-100'}`}>
                                 <PercentageInput
@@ -164,6 +165,14 @@ export default function AssumptionTab() {
                             <p><span className="text-gray-300 font-medium">Guyton-Klinger:</span> Dynamic strategy that adjusts spending based on portfolio performance. Cuts discretionary expenses in bad markets, increases them in good markets.</p>
                         )}
                     </div>
+
+                    {/* Guyton-Klinger Info */}
+                    {state.investments.withdrawalStrategy === 'Guyton Klinger' && (
+                        <div className="p-3 bg-blue-900/20 rounded-lg border border-blue-700/50 text-xs text-blue-300">
+                            <p className="font-medium text-blue-200 mb-1">Note: Large Spending Swings Possible</p>
+                            <p>The Guyton-Klinger strategy adjusts spending by {state.investments.gkAdjustmentPercent}% of your withdrawal amount when guardrails trigger. This can result in significant year-over-year changes in discretionary expenses, especially when your portfolio performs very well (prosperity) or poorly (capital preservation).</p>
+                        </div>
+                    )}
 
                     {/* Guyton-Klinger Settings */}
                     {state.investments.withdrawalStrategy === 'Guyton Klinger' && (
@@ -256,10 +265,11 @@ export default function AssumptionTab() {
                             tooltip="During retirement, automatically convert Traditional to Roth to fill lower tax brackets (up to 22%). Assumes withdrawals in retirement would be taxed at 22% or higher."
                         />
 
-                        <NumberInput
-                            label="Starting Year"
-                            value={state.demographics.startYear}
-                            onChange={(val) => dispatch({ type: 'UPDATE_DEMOGRAPHICS', payload: { startYear: val } })}
+                        <ToggleInput
+                            label="Prior Year Mode"
+                            enabled={state.demographics.priorYearMode ?? false}
+                            setEnabled={(val) => dispatch({ type: 'UPDATE_DEMOGRAPHICS', payload: { priorYearMode: val } })}
+                            tooltip="Start simulation from last year using verified data. Current year will be estimated using inflation rates."
                         />
                     </div>
 
@@ -277,7 +287,7 @@ export default function AssumptionTab() {
                             label="Qualifies for Social Security"
                             enabled={state.income.qualifiesForSocialSecurity}
                             setEnabled={(val) => dispatch({ type: 'UPDATE_INCOME', payload: { qualifiesForSocialSecurity: val } })}
-                            tooltip="Turn off if you won't receive Social Security benefits (e.g., some government employees, non-US citizens)."
+                            tooltip="Turn off to hide the 'Social Security Not Configured' warning."
                         />
                         {state.income.qualifiesForSocialSecurity && (
                             <PercentageInput

@@ -101,8 +101,11 @@ function performAutoRothConversion(
 
     // Get retirement tax rate from previous simulation or use fallback
     const retirementAge = assumptions.demographics.retirementAge;
-    const startAge = assumptions.demographics.startAge;
-    const startYear = assumptions.demographics.startYear;
+    const currentYear = new Date().getFullYear();
+    const startYear = assumptions.demographics.priorYearMode
+        ? currentYear - 1
+        : currentYear;
+    const startAge = startYear - assumptions.demographics.birthYear;
     const retirementYear = startYear + (retirementAge - startAge);
 
     // Minimum target rate: always fill at least to the 22% bracket
@@ -258,7 +261,7 @@ export function simulateOneYear(
     const logs: string[] = [];
 
     // Calculate current age for retirement checks
-    const currentAge = assumptions.demographics.startAge + (year - assumptions.demographics.startYear);
+    const currentAge = year - assumptions.demographics.birthYear;
     const isRetired = currentAge >= assumptions.demographics.retirementAge;
 
     // 1. GROW (The Physics of Money)
@@ -279,8 +282,7 @@ export function simulateOneYear(
         if (inc instanceof WorkIncome && isRetired && !inc.end_date) {
             // Return null to filter out, or set end date to retirement year
             // We'll set end date to the year before retirement so it stops
-            const retirementYear = assumptions.demographics.startYear +
-                (assumptions.demographics.retirementAge - assumptions.demographics.startAge);
+            const retirementYear = assumptions.demographics.birthYear + assumptions.demographics.retirementAge;
 
             // Create a new WorkIncome with end date set to end of pre-retirement year
             // IMPORTANT: Also zero out 401k contributions and employer match
@@ -410,13 +412,13 @@ export function simulateOneYear(
 
                     // Calculate AIME/PIA based on top 35 years
                     // Use inflation rate as wage growth rate (wages typically track inflation)
-                    const birthYear = assumptions.demographics.startYear - assumptions.demographics.startAge;
+                    const birthYear = assumptions.demographics.birthYear;
                     const wageGrowthRate = assumptions.macro.inflationRate / 100;
                     const aimeCalc = calculateAIME(earningsHistory, year, inc.claimingAge, birthYear, wageGrowthRate, inflationAdjusted);
 
                     // Set end date to end of life expectancy year (assume death at end of year)
                     const endDate = new Date(Date.UTC(
-                        assumptions.demographics.startYear + (assumptions.demographics.lifeExpectancy - assumptions.demographics.startAge),
+                        birthYear + assumptions.demographics.lifeExpectancy,
                         11, 31  // December 31st
                     ));
 
@@ -457,7 +459,7 @@ export function simulateOneYear(
     // Apply earnings test to FutureSocialSecurityIncome if claiming before FRA
     const incomesWithEarningsTest = nextIncomes.map(inc => {
         if (inc instanceof FutureSocialSecurityIncome && inc.calculatedPIA > 0) {
-            const birthYear = assumptions.demographics.startYear - assumptions.demographics.startAge;
+            const birthYear = assumptions.demographics.birthYear;
             const fra = getFRA(birthYear);
 
             // Only apply test if before FRA
@@ -508,17 +510,16 @@ export function simulateOneYear(
     // LIFESTYLE CREEP (Apply during working years when salary increases)
     // ------------------------------------------------------------------
     if (!isRetired && assumptions.expenses.lifestyleCreep > 0) {
-        // Calculate total raise from WorkIncome
+        // Calculate total REAL raise from WorkIncome (excluding inflation)
+        // Lifestyle creep should only apply to real income growth, not inflation adjustments
+        const salaryGrowthRate = assumptions.income.salaryGrowth / 100;
         let totalRaise = 0;
-        for (const nextInc of incomesWithEarningsTest) {
-            if (nextInc instanceof WorkIncome) {
-                // Find matching previous income
-                const prevInc = incomes.find(inc => inc.id === nextInc.id);
-                if (prevInc instanceof WorkIncome) {
-                    const raise = nextInc.amount - prevInc.amount;
-                    if (raise > 0) {
-                        totalRaise += raise;
-                    }
+        for (const prevInc of incomes) {
+            if (prevInc instanceof WorkIncome) {
+                // Calculate real raise (just salary growth, not inflation)
+                const realRaise = prevInc.amount * salaryGrowthRate;
+                if (realRaise > 0) {
+                    totalRaise += realRaise;
                 }
             }
         }
@@ -568,8 +569,7 @@ export function simulateOneYear(
             : undefined;
 
         // Calculate years in retirement (0 = first year)
-        const retirementStartYear = assumptions.demographics.startYear +
-            (assumptions.demographics.retirementAge - assumptions.demographics.startAge);
+        const retirementStartYear = assumptions.demographics.birthYear + assumptions.demographics.retirementAge;
         const yearsInRetirement = year - retirementStartYear;
 
         // Calculate years remaining for 15-year rule
@@ -684,7 +684,8 @@ export function simulateOneYear(
                     'No',  // Not earned income (no FICA)
                     'Interest',
                     new Date(`${year}-01-01`),
-                    new Date(`${year}-12-31`)
+                    new Date(`${year}-12-31`),
+                    true  // isReinvested: interest stays in the account, not available as spendable cash
                 ));
             }
         }
@@ -734,12 +735,43 @@ export function simulateOneYear(
             rothConversionResult = conversionResult;
 
             // Recalculate taxes with conversion added to income
-            // The conversion amount is treated as ordinary income
+            // The conversion amount is treated as ordinary income for TAX purposes
+            // but is NOT added to totalGrossIncome because it's not actual cash flow
             fedTax = fedTax + conversionResult.taxCost;
-            // State tax on conversion (simplified - use same effective rate)
-            const stateConversionTax = conversionResult.amount * (stateTax / Math.max(1, totalGrossIncome));
+
+            // State tax on conversion - calculate marginal tax properly
+            // Need to account for SS exclusion in states that don't tax SS
+            const stateParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions);
+            let stateConversionTax = 0;
+            if (stateParams) {
+                // Calculate state-adjusted income (excluding SS for most states)
+                const totalSSBenefits = TaxService.getSocialSecurityBenefits(allIncomes, year);
+                let stateBaseIncome = totalGrossIncome - preTaxDeductions;
+                if (totalSSBenefits > 0) {
+                    if (TaxService.doesStateTaxSocialSecurity(taxState.stateResidency)) {
+                        // States that tax SS: use taxable portion
+                        const agiExcludingSS = totalGrossIncome - totalSSBenefits - preTaxDeductions;
+                        const taxableSSBenefits = TaxService.getTaxableSocialSecurityBenefits(totalSSBenefits, agiExcludingSS, taxState.filingStatus);
+                        stateBaseIncome = totalGrossIncome - totalSSBenefits + taxableSSBenefits - preTaxDeductions;
+                    } else {
+                        // States that don't tax SS: exclude entirely
+                        stateBaseIncome = totalGrossIncome - totalSSBenefits - preTaxDeductions;
+                    }
+                }
+                const stateStdDed = stateParams.standardDeduction || 0;
+                const stateApplied = { ...stateParams, standardDeduction: stateStdDed };
+
+                // Calculate marginal state tax on conversion
+                const stateBaseTax = TaxService.calculateTax(stateBaseIncome, 0, stateApplied);
+                const stateNewTax = TaxService.calculateTax(stateBaseIncome + conversionResult.amount, 0, stateApplied);
+                stateConversionTax = stateNewTax - stateBaseTax;
+            }
             stateTax = stateTax + stateConversionTax;
             totalTax = fedTax + stateTax + ficaTax;
+
+            // NOTE: We do NOT add conversion amount to totalGrossIncome
+            // The conversion is a transfer between accounts, not real income
+            // Effective tax rate calculations should use (totalIncome + conversionAmount) as denominator
 
             logs.push(`🔄 Auto Roth Conversion: $${conversionResult.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
             logs.push(`  Tax cost: $${conversionResult.taxCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
@@ -758,8 +790,15 @@ export function simulateOneYear(
     }, 0);
 
     // 4. CASHFLOW (The Wallet)
-    // Formula: Gross - PreTax(401k/HSA/Insurance) - PostTax(Roth) - Taxes - Bills
-    let discretionaryCash = totalGrossIncome - preTaxDeductions - postTaxDeductions - totalTax - totalLivingExpenses;
+    // Formula: Gross - PreTax(401k/HSA/Insurance) - PostTax(Roth) - Taxes - Bills - Reinvested
+
+    // Calculate reinvested income (e.g., savings account interest that stays in the account)
+    // This income is taxable but not available as spendable cash
+    const reinvestedIncome = allIncomes
+        .filter(inc => inc instanceof PassiveIncome && inc.isReinvested)
+        .reduce((sum, inc) => sum + inc.getAnnualAmount(year), 0);
+
+    let discretionaryCash = totalGrossIncome - preTaxDeductions - postTaxDeductions - totalTax - totalLivingExpenses - reinvestedIncome;
     let withdrawalPenalties = 0;
 
     // ------------------------------------------------------------------
@@ -781,8 +820,7 @@ export function simulateOneYear(
             : undefined;
 
         // Calculate years in retirement (0 = first year)
-        const retirementStartYear = assumptions.demographics.startYear +
-            (assumptions.demographics.retirementAge - assumptions.demographics.startAge);
+        const retirementStartYear = assumptions.demographics.birthYear + assumptions.demographics.retirementAge;
         const yearsInRetirement = year - retirementStartYear;
 
         // Calculate strategy-based withdrawal
@@ -830,8 +868,8 @@ export function simulateOneYear(
     // ------------------------------------------------------------------
     // RMDs must be taken from Traditional accounts starting at age 72-75 depending on birth year
     // The RMD amount is based on the PRIOR year's ending balance divided by life expectancy factor
-    const birthYear = assumptions.demographics.startYear - assumptions.demographics.startAge;
-    const rmdRequired = isRMDRequired(currentAge, birthYear);
+    const birthYearForRMD = assumptions.demographics.birthYear;
+    const rmdRequired = isRMDRequired(currentAge, birthYearForRMD);
     let rmdDetails: SimulationYear['rmdDetails'] = undefined;
     let rmdTaxTotal = 0;
     let rmdCashReceived = 0; // Net cash after tax from RMD withdrawals
@@ -881,7 +919,22 @@ export function simulateOneYear(
                 const stateParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions);
 
                 const currentFedIncome = totalGrossIncome - preTaxDeductions;
-                const currentStateIncome = totalGrossIncome - preTaxDeductions;
+
+                // State income needs to exclude SS for states that don't tax it
+                const totalSSBenefits = TaxService.getSocialSecurityBenefits(allIncomes, year);
+                let currentStateIncome = totalGrossIncome - preTaxDeductions;
+                if (totalSSBenefits > 0) {
+                    if (TaxService.doesStateTaxSocialSecurity(taxState.stateResidency)) {
+                        // States that tax SS: use taxable portion
+                        const agiExcludingSS = totalGrossIncome - totalSSBenefits - preTaxDeductions;
+                        const taxableSSBenefits = TaxService.getTaxableSocialSecurityBenefits(totalSSBenefits, agiExcludingSS, taxState.filingStatus);
+                        currentStateIncome = totalGrossIncome - totalSSBenefits + taxableSSBenefits - preTaxDeductions;
+                    } else {
+                        // States that don't tax SS: exclude entirely
+                        currentStateIncome = totalGrossIncome - totalSSBenefits - preTaxDeductions;
+                    }
+                }
+
                 const stdDedFed = fedParams?.standardDeduction || 12950;
                 const stdDedState = stateParams?.standardDeduction || 0;
                 const currentFedDeduction = taxState.deductionMethod === 'Standard' ? stdDedFed : 0;

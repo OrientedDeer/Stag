@@ -31,8 +31,9 @@ export const HistoricalBacktestPanel = React.memo(({ simulationData }: Historica
     }
 
     const currentYear = new Date().getFullYear();
-    const startYear = assumptions.demographics?.startYear || currentYear;
-    const startAge = assumptions.demographics?.startAge || 30;
+    const birthYear = assumptions.demographics?.birthYear || (currentYear - 30);
+    const startYear = assumptions.demographics?.priorYearMode ? currentYear - 1 : currentYear;
+    const startAge = startYear - birthYear;
     const retirementAge = assumptions.demographics?.retirementAge || 65;
     const lifeExpectancy = assumptions.demographics?.lifeExpectancy || 90;
 
@@ -58,7 +59,7 @@ export const HistoricalBacktestPanel = React.memo(({ simulationData }: Historica
       annualWithdrawal: Math.round(annualWithdrawal),
       retirementYears: Math.round(retirementYears / 5) * 5 // Round to nearest 5
     };
-  }, [simulationData, assumptions.demographics?.startYear, assumptions.demographics?.startAge, assumptions.demographics?.retirementAge, assumptions.demographics?.lifeExpectancy]);
+  }, [simulationData, assumptions.demographics?.birthYear, assumptions.demographics?.priorYearMode, assumptions.demographics?.retirementAge, assumptions.demographics?.lifeExpectancy]);
 
   // Get withdrawal strategy settings from assumptions
   const withdrawalStrategy = assumptions.investments?.withdrawalStrategy || 'Fixed Real';

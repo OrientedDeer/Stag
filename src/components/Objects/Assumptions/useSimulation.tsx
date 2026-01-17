@@ -17,11 +17,17 @@ export const runSimulation = (
     yearlyReturns?: number[]
 ): SimulationYear[] => {
         
-    const startYear = assumptions.demographics.startYear;
-    
+    // Calculate start year and current age from birth year
+    // If priorYearMode is enabled, start simulation from last year (for verified data entry)
+    const currentYear = new Date().getFullYear();
+    const startYear = assumptions.demographics.priorYearMode
+        ? currentYear - 1
+        : currentYear;
+    const startAge = startYear - assumptions.demographics.birthYear;
+
     // --- NEW: LIFE EXPECTANCY CAP ---
     // Calculate how many years the user actually has left
-    const yearsUntilDeath = Math.max(0, assumptions.demographics.lifeExpectancy - assumptions.demographics.startAge);
+    const yearsUntilDeath = Math.max(0, assumptions.demographics.lifeExpectancy - startAge);
 
     // Run for the requested time, OR until death—whichever comes first.
     const effectiveYearsToRun = Math.min(yearsToRun, yearsUntilDeath);
@@ -33,9 +39,10 @@ export const runSimulation = (
     // their actual tax situation. Interest is generated starting in Year 1.
 
     // Calculate current baseline metrics using existing TaxService logic
+    // Pass startAge to getPreTaxExemptions/getPostTaxExemptions for auto-max 401k feature
     const currentGross = TaxService.getGrossIncome(incomes, startYear);
-    const currentPreTax = TaxService.getPreTaxExemptions(incomes, startYear);
-    const currentPostTax = TaxService.getPostTaxExemptions(incomes, startYear);
+    const currentPreTax = TaxService.getPreTaxExemptions(incomes, startYear, startAge);
+    const currentPostTax = TaxService.getPostTaxExemptions(incomes, startYear, startAge);
     const currentInsurance = incomes.reduce((sum, inc) =>
         inc instanceof WorkIncome ? sum + inc.getProratedAnnual(inc.insurance, startYear) : sum, 0
     );

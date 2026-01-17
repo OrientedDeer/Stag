@@ -12,6 +12,7 @@ import {
 	FoodExpense,
     OtherExpense,
 	CharityExpense,
+	SubscriptionExpense,
 	EXPENSE_COLORS_BACKGROUND
 } from './models';
 import { ExpenseContext, AllExpenseKeys } from "./ExpenseContext";
@@ -201,6 +202,7 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 		if (expense instanceof FoodExpense) return "FOOD";
 		if (expense instanceof OtherExpense) return "OTHER";
 		if (expense instanceof CharityExpense) return "CHARITY";
+		if (expense instanceof SubscriptionExpense) return "SUBSCRIPTION";
 		return "EXPENSE";
 	};
 
@@ -216,6 +218,7 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
 		if (expense instanceof FoodExpense) return EXPENSE_COLORS_BACKGROUND["Food"];
 		if (expense instanceof OtherExpense) return EXPENSE_COLORS_BACKGROUND["Other"];
 		if (expense instanceof CharityExpense) return EXPENSE_COLORS_BACKGROUND["Charity"];
+		if (expense instanceof SubscriptionExpense) return EXPENSE_COLORS_BACKGROUND["Subscription"];
 		return "bg-gray-500";
 	};
 

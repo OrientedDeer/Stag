@@ -83,7 +83,7 @@ export function findFinancialIndependenceYear(
     const grossWithdrawalNeeded = annualLivingExpenses / (1 - estimatedTaxRate);
 
     if (safeWithdrawalAmount >= grossWithdrawalNeeded) {
-      const age = assumptions.demographics.startAge + (currentYear.year - assumptions.demographics.startYear);
+      const age = currentYear.year - assumptions.demographics.birthYear;
       return { year: currentYear.year, age };
     }
   }
@@ -97,7 +97,12 @@ export function calculateMilestones(
   assumptions: AssumptionsState,
   simulation: SimulationYear[]
 ): MilestonesSummary {
-  const { startAge, startYear, retirementAge, lifeExpectancy } = assumptions.demographics;
+  const { birthYear, retirementAge, lifeExpectancy, priorYearMode } = assumptions.demographics;
+
+  // Calculate start year and age from birth year
+  const calendarYear = new Date().getFullYear();
+  const startYear = priorYearMode ? calendarYear - 1 : calendarYear;
+  const startAge = startYear - birthYear;
 
   // Current year from simulation or calculated
   const currentYear = startYear;

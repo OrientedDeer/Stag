@@ -119,13 +119,17 @@ export function getGrossIncome(incomes: AnyIncome[], year: number): number {
 	}, 0);
 }
 
-export function getPreTaxExemptions(incomes: AnyIncome[], year: number): number {
+export function getPreTaxExemptions(incomes: AnyIncome[], year: number, age?: number): number {
 	return incomes
 		.filter((inc) => inc instanceof WorkIncome)
 		.reduce((acc, inc) => {
+			// Use effective 401k if age is provided (for auto-max feature)
+			const preTax401k = age !== undefined
+				? inc.getEffective401k(year, age).preTax
+				: inc.preTax401k;
 			return (
 				acc +
-				inc.getProratedAnnual(inc.preTax401k, year) +
+				inc.getProratedAnnual(preTax401k, year) +
 				inc.getProratedAnnual(inc.insurance, year) +
 				inc.getProratedAnnual(inc.hsaContribution, year)
 			);
@@ -144,11 +148,15 @@ export function getPostTaxEmployerMatch(
 	}, 0);
 }
 
-export function getPostTaxExemptions(incomes: AnyIncome[], year: number): number {
+export function getPostTaxExemptions(incomes: AnyIncome[], year: number, age?: number): number {
 	return incomes
 		.filter((inc) => inc instanceof WorkIncome)
 		.reduce((acc, inc) => {
-			return acc + inc.getProratedAnnual(inc.roth401k, year);
+			// Use effective 401k if age is provided (for auto-max feature)
+			const roth401k = age !== undefined
+				? inc.getEffective401k(year, age).roth
+				: inc.roth401k;
+			return acc + inc.getProratedAnnual(roth401k, year);
 		}, 0);
 }
 
@@ -343,6 +351,45 @@ export function calculateFicaTax(
 	return ssTax + medicareTax;
 }
 
+/**
+ * States that tax Social Security benefits (as of 2024).
+ *
+ * Most states (37 + DC) do NOT tax Social Security at all.
+ * These states DO tax SS, though many have partial exemptions:
+ * - Colorado: Large exemptions for seniors 55+/65+
+ * - Connecticut: Income-based exemption (AGI < $75k single / $100k joint exempt)
+ * - Kansas: AGI < $75k fully exempt
+ * - Minnesota: Full taxation, following federal rules
+ * - Montana: Some deductions available
+ * - New Mexico: Income-based exemptions
+ * - Rhode Island: Income-based exemption (AGI < $101,000 exempt)
+ * - Utah: Tax credit offsets for some taxpayers
+ * - Vermont: Income-based exemption
+ * - West Virginia: Phasing out (65% exempt in 2024, fully exempt by 2026)
+ *
+ * For simplicity, we use the federal taxable SS amount for these states.
+ * For all other states, SS is fully exempt from state income tax.
+ */
+export const STATES_THAT_TAX_SOCIAL_SECURITY = new Set([
+	'CO', // Colorado
+	'CT', // Connecticut
+	'KS', // Kansas
+	'MN', // Minnesota
+	'MT', // Montana
+	'NM', // New Mexico
+	'RI', // Rhode Island
+	'UT', // Utah
+	'VT', // Vermont
+	'WV', // West Virginia (phasing out)
+]);
+
+/**
+ * Check if a state taxes Social Security benefits
+ */
+export function doesStateTaxSocialSecurity(stateCode: string): boolean {
+	return STATES_THAT_TAX_SOCIAL_SECURITY.has(stateCode);
+}
+
 export function calculateStateTax(
 	state: TaxState,
 	incomes: AnyIncome[],
@@ -355,7 +402,9 @@ export function calculateStateTax(
 	}
 
 	const annualGross = getGrossIncome(incomes, year);
-	const incomePreTaxDeductions = getPreTaxExemptions(incomes, year);
+	// Calculate age from assumptions for auto-max 401k feature
+	const age = assumptions?.demographics ? year - assumptions.demographics.birthYear : undefined;
+	const incomePreTaxDeductions = getPreTaxExemptions(incomes, year, age);
 	const expenseAboveLineDeductions = getYesDeductions(expenses, year);
 	const totalPreTaxDeductions =
 		incomePreTaxDeductions + expenseAboveLineDeductions;
@@ -371,15 +420,38 @@ export function calculateStateTax(
 
 	if (!stateParams) return 0;
 
+	// Handle Social Security benefits for state tax
+	// Most states don't tax SS at all; some tax it like federal
+	const totalSSBenefits = getSocialSecurityBenefits(incomes, year);
+	let adjustedGrossForState = annualGross;
+
+	if (totalSSBenefits > 0) {
+		if (doesStateTaxSocialSecurity(state.stateResidency)) {
+			// States that tax SS: use only the taxable portion (like federal)
+			const nonSSGross = annualGross - totalSSBenefits;
+			const agiExcludingSS = nonSSGross - totalPreTaxDeductions;
+			const taxableSSBenefits = getTaxableSocialSecurityBenefits(
+				totalSSBenefits,
+				agiExcludingSS,
+				state.filingStatus
+			);
+			// Subtract full SS, add back only taxable portion
+			adjustedGrossForState = annualGross - totalSSBenefits + taxableSSBenefits;
+		} else {
+			// States that don't tax SS: exclude SS benefits entirely
+			adjustedGrossForState = annualGross - totalSSBenefits;
+		}
+	}
+
 	const stateStandardDeduction = stateParams.standardDeduction || 0;
 
 	// Handle Auto: pick whichever results in lower tax
 	if (state.deductionMethod === "Auto") {
-		const taxWithStandard = calculateTax(annualGross, totalPreTaxDeductions, {
+		const taxWithStandard = calculateTax(adjustedGrossForState, totalPreTaxDeductions, {
 			...stateParams,
 			standardDeduction: stateStandardDeduction,
 		});
-		const taxWithItemized = calculateTax(annualGross, totalPreTaxDeductions, {
+		const taxWithItemized = calculateTax(adjustedGrossForState, totalPreTaxDeductions, {
 			...stateParams,
 			standardDeduction: itemizedTotal,
 		});
@@ -391,7 +463,7 @@ export function calculateStateTax(
 			? stateStandardDeduction
 			: itemizedTotal;
 
-	return calculateTax(annualGross, totalPreTaxDeductions, {
+	return calculateTax(adjustedGrossForState, totalPreTaxDeductions, {
 		...stateParams,
 		standardDeduction: stateAppliedMainDeduction,
 	});
@@ -409,7 +481,9 @@ export function calculateFederalTax(
 	}
 
 	const annualGross = getGrossIncome(incomes, year);
-	const incomePreTaxDeductions = getPreTaxExemptions(incomes, year);
+	// Calculate age from assumptions for auto-max 401k feature
+	const age = assumptions?.demographics ? year - assumptions.demographics.birthYear : undefined;
+	const incomePreTaxDeductions = getPreTaxExemptions(incomes, year, age);
 	const stateTax = calculateStateTax(
 		state,
 		incomes,

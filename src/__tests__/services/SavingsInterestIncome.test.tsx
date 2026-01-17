@@ -389,4 +389,123 @@ describe('Savings Account Interest Income', () => {
       expect(interestIncome.amount).toBeCloseTo(initialBalance * (apr / 100), 2);
     });
   });
+
+  describe('Phantom Money Check', () => {
+    it('should NOT create phantom money - interest income should not be double-counted', () => {
+      // This test verifies that we're not both:
+      // 1. Growing the account balance by interest AND
+      // 2. Adding interest as spendable income
+      // If both happen, we've created phantom money
+
+      const year = 2024;
+      const initialBalance = 100000;
+      const apr = 5; // 5% = $5,000 interest
+      const savingsAccount = new SavedAccount('savings-1', 'HYSA', initialBalance, apr);
+
+      const assumptions = {
+        ...defaultAssumptions,
+        demographics: {
+          ...defaultAssumptions.demographics,
+          startAge: 30,
+          startYear: year,
+        },
+        macro: {
+          ...defaultAssumptions.macro,
+          inflationAdjusted: false, // Keep it simple
+        },
+      };
+
+      const result = simulateOneYear(
+        year,
+        [],
+        [],
+        [savingsAccount],
+        assumptions,
+        testTaxState,
+        []
+      );
+
+      const grownAccount = result.accounts[0] as SavedAccount;
+      const interestIncome = result.incomes.find(
+        inc => inc instanceof PassiveIncome && inc.sourceType === 'Interest'
+      ) as PassiveIncome;
+
+      const accountGrowth = grownAccount.amount - initialBalance;
+      const reportedIncome = interestIncome?.amount || 0;
+      const cashflowIncome = result.cashflow.totalIncome;
+      const discretionaryCash = result.cashflow.discretionary;
+
+      // CORRECT BEHAVIOR after fix:
+      // - Account GROWS by interest ($5k) - the money stays in the account
+      // - Interest appears in grossIncome for TAX purposes ($5k taxable)
+      // - Interest is NOT in discretionaryCash (can't spend it elsewhere)
+      //
+      // This is NOT phantom money because:
+      // - The $5k is only created once (account balance)
+      // - It shows in income for taxes but you can't spend it
+      // - There's no double value - just proper tax reporting
+
+      // Verify: Account grew by interest
+      expect(accountGrowth).toBeCloseTo(5000, 0);
+
+      // Verify: Interest is in gross income (for taxes)
+      expect(cashflowIncome).toBeCloseTo(5000, 0);
+
+      // Verify: Interest income has isReinvested flag
+      expect(interestIncome.isReinvested).toBe(true);
+
+      // Verify: Interest is NOT available as discretionary cash
+      // With $5k income, ~$0 taxes (below deduction), and no expenses,
+      // discretionary cash should be ~$0 (or slightly negative due to interest subtraction)
+      // If phantom money existed, discretionary would be ~$5k
+      expect(discretionaryCash).toBeLessThan(100); // Near zero, not $5000
+    });
+
+    it('should track where interest money actually goes', () => {
+      const year = 2024;
+      const initialBalance = 100000;
+      const apr = 5;
+      const savingsAccount = new SavedAccount('savings-1', 'HYSA', initialBalance, apr);
+
+      const assumptions = {
+        ...defaultAssumptions,
+        demographics: {
+          ...defaultAssumptions.demographics,
+          startAge: 30,
+          startYear: year,
+        },
+        macro: {
+          ...defaultAssumptions.macro,
+          inflationAdjusted: false,
+        },
+      };
+
+      const result = simulateOneYear(
+        year,
+        [],
+        [],
+        [savingsAccount],
+        assumptions,
+        testTaxState,
+        []
+      );
+
+      const grownAccount = result.accounts[0] as SavedAccount;
+
+      console.log('=== INTEREST FLOW TRACE ===');
+      console.log(`Account start: $${initialBalance}`);
+      console.log(`Account end: $${grownAccount.amount}`);
+      console.log(`Cashflow income: $${result.cashflow.totalIncome}`);
+      console.log(`Cashflow expenses: $${result.cashflow.totalExpenses}`);
+      console.log(`Taxes paid: $${result.taxDetails.fed + result.taxDetails.state + result.taxDetails.fica}`);
+      console.log(`Net pay: $${result.cashflow.netPay}`);
+      console.log(`Bucket allocations:`, result.cashflow.bucketDetail);
+
+      // After interest, where does money end up?
+      // If interest is $5,000:
+      // - Does it stay in the savings account? (account should be $105,000)
+      // - Does it flow to other buckets? (bucketDetail should show allocations)
+      // - Is it spent on expenses? (expenses > 0)
+    });
+  });
 });

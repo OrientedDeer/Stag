@@ -851,7 +851,7 @@ export class CharityExpense extends BaseExpense {
   }
 }
 
-export type AnyExpense = RentExpense | MortgageExpense | LoanExpense | DependentExpense | HealthcareExpense | VacationExpense | EmergencyExpense | TransportExpense | FoodExpense | OtherExpense | CharityExpense;
+export type AnyExpense = RentExpense | MortgageExpense | LoanExpense | DependentExpense | HealthcareExpense | VacationExpense | EmergencyExpense | TransportExpense | FoodExpense | OtherExpense | CharityExpense | SubscriptionExpense;
 
 export function getExpenseActiveMultiplier(expense: BaseExpense, year: number): number {
   const expenseStartDate = expense.startDate ? new Date(expense.startDate) : new Date();
@@ -932,7 +932,7 @@ export const EXPENSE_COLORS_BACKGROUND: Record<ExpenseCategory, string> = {
   Emergency: "bg-chart-Fuchsia-50",
   Transport: "bg-chart-Blue-50",
   Food: "bg-chart-Yellow-50",
-  Charity: "bg-chart-Green-50",
+  Charity: "bg-chart-Orange-50",
   Other: "bg-chart-Red-50",
 };
 
@@ -963,7 +963,7 @@ export const CATEGORY_PALETTES: Record<ExpenseCategory, string[]> = {
   Emergency: Array.from({ length: 100 }, (_, i) => `bg-chart-Fuchsia-${i + 1}`),
   Transport: Array.from({ length: 100 }, (_, i) => `bg-chart-Blue-${i + 1}`),
   Food: Array.from({ length: 100 }, (_, i) => `bg-chart-Yellow-${i + 1}`),
-  Charity: Array.from({ length: 100 }, (_, i) => `bg-chart-Green-${i + 1}`),
+  Charity: Array.from({ length: 100 }, (_, i) => `bg-chart-Orange-${i + 1}`),
   Other: Array.from({ length: 100 }, (_, i) => `bg-chart-Red-${i + 1}`),
 };
 

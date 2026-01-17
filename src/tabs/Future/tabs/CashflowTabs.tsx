@@ -34,13 +34,33 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
     const selectedYearIndex = simulationData.findIndex(s => s.year === selectedYear);
     const yearData = simulationData[selectedYearIndex];
 	
-    const age = assumptions.demographics.startAge + selectedYearIndex;
+    const age = selectedYear - assumptions.demographics.birthYear;
     const netWorth = yearData ? calculateNetWorth(yearData.accounts) : 0;
 
     if (!yearData) return <div>No data</div>;
 
+    // Check for Roth conversion in selected year
+    const hasRothConversion = yearData.rothConversion && yearData.rothConversion.amount > 0;
+    const conversionAmount = yearData.rothConversion?.amount || 0;
+    const conversionTax = yearData.rothConversion?.taxCost || 0;
+
     return (
          <div className="flex flex-col gap-4">
+            {/* Roth Conversion Note */}
+            {hasRothConversion && (
+                <div className="p-3 bg-blue-900/20 border border-blue-700/50 rounded-lg text-sm">
+                    <div className="flex items-start gap-2">
+                        <span className="text-blue-400 font-semibold">🔄 Roth Conversion:</span>
+                        <span className="text-gray-300">
+                            {formatCurrency(conversionAmount)} converted from Traditional → Roth.
+                            This is a <span className="text-blue-300">transfer</span>, not cash — it flows through Gross Pay to show the
+                            <span className="text-amber-400"> {formatCurrency(conversionTax)} tax</span> owed.
+                            The tax is paid from your withdrawal accounts.
+                        </span>
+                    </div>
+                </div>
+            )}
+
             {/* 1. SANKEY CHART */}
             <div className="overflow-visible">
                 <CashflowSankey

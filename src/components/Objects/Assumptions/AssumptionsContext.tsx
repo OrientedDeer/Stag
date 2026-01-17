@@ -1,3 +1,4 @@
+// @refresh reset - This file exports both components and hooks, so full remount is needed for HMR
 import { createContext, useReducer, useContext, ReactNode, useMemo } from 'react';
 import { useDebouncedLocalStorage } from '../../../hooks/useDebouncedLocalStorage';
 import { EarningsRecord } from '../../../services/SocialSecurityCalculator';
@@ -50,11 +51,11 @@ export interface AssumptionsState {
     autoRothConversions: boolean; // Automatically convert Traditional to Roth in low-tax years
     };
   demographics: {
-    startAge: number;
-    startYear: number;
+    birthYear: number;
     retirementAge: number;
     lifeExpectancy: number;
     priorEarnings?: EarningsRecord[];  // SSA earnings history imported from XML
+    priorYearMode?: boolean;  // If true, simulation starts from last year using verified data
   };
   display: {
     useCompactCurrency: boolean; // Show $1.2M instead of $1,200,000
@@ -93,8 +94,8 @@ export const defaultAssumptions: AssumptionsState = {
   demographics: {
     retirementAge: 65,
     lifeExpectancy: 90,
-    startAge: 24,
-    startYear: new Date().getUTCFullYear(),
+    birthYear: new Date().getFullYear() - 24, // Default to 24 years old
+    priorYearMode: false, // Default to current year mode
   },
   display: {
     useCompactCurrency: true,
@@ -171,6 +172,21 @@ function migrateAssumptions(saved: unknown, defaults: AssumptionsState): Assumpt
     withdrawalStrategy: Array.isArray(data.withdrawalStrategy) ? data.withdrawalStrategy as WithdrawalBucket[] : defaults.withdrawalStrategy,
   };
 
+  // Migration: Convert old startAge/startYear to birthYear
+  const savedDemographics = data.demographics as Record<string, unknown> | undefined;
+  if (savedDemographics && !savedDemographics.birthYear) {
+    // Old format had startAge and startYear
+    const startAge = savedDemographics.startAge as number | undefined;
+    const startYear = savedDemographics.startYear as number | undefined;
+    if (startAge !== undefined && startYear !== undefined) {
+      // Calculate birth year from the old format
+      migrated.demographics.birthYear = startYear - startAge;
+    } else if (startAge !== undefined) {
+      // If only startAge exists, use current year
+      migrated.demographics.birthYear = new Date().getFullYear() - startAge;
+    }
+  }
+
   return migrated;
 }
 
@@ -218,7 +234,12 @@ const assumptionsReducer = (state: AssumptionsState, action: Action): Assumption
     case 'UPDATE_DISPLAY':
       return { ...state, display: { ...state.display, ...action.payload } };
     case 'RESET_DEFAULTS':
-      return defaultAssumptions;
+      // Preserve user's allocations and withdrawal order
+      return {
+        ...defaultAssumptions,
+        priorities: state.priorities,
+        withdrawalStrategy: state.withdrawalStrategy,
+      };
     case 'SET_BULK_DATA':
       return action.payload;
     case 'SET_PRIORITIES':

@@ -41,7 +41,7 @@ function formatCurrency(value: number): number {
 }
 
 function getAge(year: number, assumptions: AssumptionsState): number {
-    return assumptions.demographics.startAge + (year - assumptions.demographics.startYear);
+    return year - assumptions.demographics.birthYear;
 }
 
 function generateFilename(): string {
@@ -515,10 +515,9 @@ function buildCurrentStateSheet(data: ExportData): XLSX.WorkSheet {
     // Demographics
     rows.push(['Demographics']);
     rows.push(['Setting', 'Value']);
-    rows.push(['Start Age', assumptions.demographics.startAge]);
+    rows.push(['Birth Year', assumptions.demographics.birthYear]);
     rows.push(['Retirement Age', assumptions.demographics.retirementAge]);
     rows.push(['Life Expectancy', assumptions.demographics.lifeExpectancy]);
-    rows.push(['Start Year', assumptions.demographics.startYear]);
     rows.push([]);
 
     // Growth Rates

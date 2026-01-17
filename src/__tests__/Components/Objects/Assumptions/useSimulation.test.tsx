@@ -7,11 +7,11 @@ import { WorkIncome } from '../../../../components/Objects/Income/models';
 import { FoodExpense } from '../../../../components/Objects/Expense/models';
 
 // Base test assumptions
+const currentYear = new Date().getFullYear();
 const baseAssumptions: AssumptionsState = {
     ...defaultAssumptions,
     demographics: {
-        startAge: 30,
-        startYear: 2025,
+        birthYear: currentYear - 30, // age 30 in current year
         lifeExpectancy: 90,
         retirementAge: 65
     },
@@ -37,7 +37,7 @@ const baseTaxState: TaxState = {
     fedOverride: null,
     ficaOverride: null,
     stateOverride: null,
-    year: 2025
+    year: currentYear
 };
 
 describe('useSimulation - runSimulation', () => {
@@ -48,17 +48,17 @@ describe('useSimulation - runSimulation', () => {
                 new WorkIncome(
                     'inc-1', 'Job', 100000, 'Annually', 'Yes',
                     0, 0, 0, 0, '', null, 'FIXED',
-                    new Date('2020-01-01'), // startDate - active before 2025
-                    new Date('2030-12-31')  // endDate - active through simulation
+                    new Date(currentYear - 5, 0, 1), // startDate - active before current year
+                    new Date(currentYear + 5, 11, 31)  // endDate - active through simulation
                 )
             ];
-            const expenses = [new FoodExpense('exp-1', 'Food', 24000, 'Annually', new Date('2025-01-01'))];
+            const expenses = [new FoodExpense('exp-1', 'Food', 24000, 'Annually', new Date(currentYear, 0, 1))];
 
             const result = runSimulation(5, accounts, incomes, expenses, baseAssumptions, baseTaxState);
 
             // Year 0 should exist
             expect(result[0]).toBeDefined();
-            expect(result[0].year).toBe(2025);
+            expect(result[0].year).toBe(currentYear);
 
             // Year 0 should have the original inputs
             expect(result[0].accounts[0].amount).toBe(10000);
@@ -150,8 +150,7 @@ describe('useSimulation - runSimulation', () => {
             const shortLifeAssumptions: AssumptionsState = {
                 ...baseAssumptions,
                 demographics: {
-                    startAge: 85,
-                    startYear: 2025,
+                    birthYear: currentYear - 85, // age 85 in current year
                     lifeExpectancy: 90, // Only 5 years left
                     retirementAge: 65
                 }
@@ -161,16 +160,15 @@ describe('useSimulation - runSimulation', () => {
             const result = runSimulation(30, [], [], [], shortLifeAssumptions, baseTaxState);
 
             expect(result.length).toBe(6); // Year 0 + 5 years
-            expect(result[0].year).toBe(2025);
-            expect(result[5].year).toBe(2030); // Last year at age 90
+            expect(result[0].year).toBe(currentYear);
+            expect(result[5].year).toBe(currentYear + 5); // Last year at age 90
         });
 
         it('should return only Year 0 when already at life expectancy', () => {
             const atEndAssumptions: AssumptionsState = {
                 ...baseAssumptions,
                 demographics: {
-                    startAge: 90,
-                    startYear: 2025,
+                    birthYear: currentYear - 90, // age 90 in current year
                     lifeExpectancy: 90, // 0 years left
                     retirementAge: 65
                 }
@@ -185,8 +183,7 @@ describe('useSimulation - runSimulation', () => {
             const longLifeAssumptions: AssumptionsState = {
                 ...baseAssumptions,
                 demographics: {
-                    startAge: 30,
-                    startYear: 2025,
+                    birthYear: currentYear - 30, // age 30 in current year
                     lifeExpectancy: 100, // 70 years left
                     retirementAge: 65
                 }
@@ -258,8 +255,7 @@ describe('useSimulation - runSimulation', () => {
             const assumptions: AssumptionsState = {
                 ...baseAssumptions,
                 demographics: {
-                    startAge: 30,
-                    startYear: 2025,
+                    birthYear: currentYear - 30, // age 30 in current year
                     lifeExpectancy: 90,
                     retirementAge: 65
                 }
@@ -269,8 +265,8 @@ describe('useSimulation - runSimulation', () => {
                 new WorkIncome(
                     'inc-1', 'Job', 100000, 'Annually', 'Yes',
                     0, 0, 0, 0, '', null, 'FIXED',
-                    new Date('2020-01-01'),
-                    new Date('2035-12-31')
+                    new Date(currentYear - 5, 0, 1),
+                    new Date(currentYear + 10, 11, 31)
                 )
             ];
 
@@ -281,7 +277,7 @@ describe('useSimulation - runSimulation', () => {
 
             // Years should be sequential
             for (let i = 0; i < result.length; i++) {
-                expect(result[i].year).toBe(2025 + i);
+                expect(result[i].year).toBe(currentYear + i);
             }
         });
 
@@ -349,7 +345,7 @@ describe('useSimulation - runSimulation', () => {
 
             // Should still return Year 0
             expect(result.length).toBe(1);
-            expect(result[0].year).toBe(2025);
+            expect(result[0].year).toBe(currentYear);
         });
 
         it('should handle negative years gracefully', () => {
@@ -357,8 +353,7 @@ describe('useSimulation - runSimulation', () => {
             const pastAssumptions: AssumptionsState = {
                 ...baseAssumptions,
                 demographics: {
-                    startAge: 95,
-                    startYear: 2025,
+                    birthYear: currentYear - 95, // age 95 in current year
                     lifeExpectancy: 90, // Already past life expectancy
                     retirementAge: 65
                 }

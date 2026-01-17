@@ -489,12 +489,12 @@ describe('Social Security Tax Integration', () => {
       // - Working income until age 67
       // - Then only Social Security income
 
+      const currentYear = new Date().getFullYear();
       const assumptions = {
         ...defaultAssumptions,
         demographics: {
           ...defaultAssumptions.demographics,
-          startAge: 30,
-          startYear: 2024,
+          birthYear: currentYear - 30, // age 30 in current year
           lifeExpectancy: 85,
         },
       };
@@ -561,12 +561,12 @@ describe('Social Security Tax Integration', () => {
 
     it('should correctly tax Social Security benefits (up to 85% taxable)', () => {
       // Simplified scenario: Only Social Security income, no other income
+      const currentYear = new Date().getFullYear();
       const assumptions = {
         ...defaultAssumptions,
         demographics: {
           ...defaultAssumptions.demographics,
-          startAge: 67,
-          startYear: 2024,
+          birthYear: currentYear - 67, // age 67 in current year
           lifeExpectancy: 85,
         },
       };
@@ -577,9 +577,9 @@ describe('Social Security Tax Integration', () => {
         'Social Security',
         67,
         3000,
-        2024,
-        new Date('2024-01-01'),
-        new Date('2041-12-31')
+        currentYear,
+        new Date(currentYear, 0, 1),
+        new Date(currentYear + 17, 11, 31)
       );
 
       const simulationYears = runSimulation(
@@ -591,11 +591,11 @@ describe('Social Security Tax Integration', () => {
         createE2ETaxState('Single')
       );
 
-      const year2024 = simulationYears.find(y => y.year === 2024);
-      expect(year2024).toBeDefined();
+      const firstYear = simulationYears.find(y => y.year === currentYear);
+      expect(firstYear).toBeDefined();
 
-      if (!year2024) {
-        throw new Error('Missing 2024 simulation year');
+      if (!firstYear) {
+        throw new Error('Missing first simulation year');
       }
 
       // For someone with only $36k in SS benefits (Single filer):
@@ -605,7 +605,7 @@ describe('Social Security Tax Integration', () => {
       // - But with standard deduction, there may be some tax
       // - Federal tax should be relatively low
 
-      expect(year2024.taxDetails.fed).toBeLessThan(5500); // Should be reasonable federal tax
+      expect(firstYear.taxDetails.fed).toBeLessThan(5500); // Should be reasonable federal tax
     });
 
     it('should handle moderate income retiree transitioning to SS-only', () => {
@@ -613,12 +613,12 @@ describe('Social Security Tax Integration', () => {
       // - $80k work income until retirement
       // - Then $40k SS income only
 
+      const currentYear = new Date().getFullYear();
       const assumptions = {
         ...defaultAssumptions,
         demographics: {
           ...defaultAssumptions.demographics,
-          startAge: 66,
-          startYear: 2024,
+          birthYear: currentYear - 66, // age 66 in current year
           lifeExpectancy: 85,
         },
       };
@@ -637,23 +637,23 @@ describe('Social Security Tax Integration', () => {
         '',
         null,
         'FIXED',
-        new Date('2024-01-01'),
-        new Date('2024-12-31')
+        new Date(currentYear, 0, 1),
+        new Date(currentYear, 11, 31)
       );
 
-      // SS income starting 2025: ~$3,333/month
+      // SS income starting next year: ~$3,333/month
       const ssIncome = new FutureSocialSecurityIncome(
         'ss1',
         'Social Security',
         67,
         3333,
-        2025,
-        new Date('2025-01-01'),
-        new Date('2041-12-31')
+        currentYear + 1,
+        new Date(currentYear + 1, 0, 1),
+        new Date(currentYear + 17, 11, 31)
       );
 
       const simulationYears = runSimulation(
-        2, // run 2024 and 2025
+        2, // run first 2 years
         [], // accounts
         [workIncome, ssIncome],
         [], // expenses
@@ -661,23 +661,23 @@ describe('Social Security Tax Integration', () => {
         createE2ETaxState('Married Filing Jointly')
       );
 
-      const year2024 = simulationYears.find(y => y.year === 2024);
-      const year2025 = simulationYears.find(y => y.year === 2025);
+      const year1 = simulationYears.find(y => y.year === currentYear);
+      const year2 = simulationYears.find(y => y.year === currentYear + 1);
 
-      expect(year2024).toBeDefined();
-      expect(year2025).toBeDefined();
+      expect(year1).toBeDefined();
+      expect(year2).toBeDefined();
 
-      if (!year2024 || !year2025) {
+      if (!year1 || !year2) {
         throw new Error('Missing simulation years');
       }
 
       // When transitioning to lower income (SS only), federal taxes should DECREASE
-      expect(year2025.taxDetails.fed).toBeLessThan(year2024.taxDetails.fed);
+      expect(year2.taxDetails.fed).toBeLessThan(year1.taxDetails.fed);
 
       // The tax should be reasonable for ~$40k SS income
       // For MFJ, combined income = 0 + 20k = 20k (below $32k threshold)
       // So minimal SS taxation
-      expect(year2025.taxDetails.fed).toBeLessThan(3500);
+      expect(year2.taxDetails.fed).toBeLessThan(3500);
     });
 
     it('should handle someone working WHILE receiving Social Security', () => {
@@ -689,12 +689,12 @@ describe('Social Security Tax Integration', () => {
       // - SS benefits start: ~$50k/year
       // - Total income jumps by $50k, taxes should not jump by $110k!
 
+      const currentYear = new Date().getFullYear();
       const assumptions = {
         ...defaultAssumptions,
         demographics: {
           ...defaultAssumptions.demographics,
-          startAge: 66,
-          startYear: 2024,
+          birthYear: currentYear - 66, // age 66 in current year
           lifeExpectancy: 85,
         },
       };
@@ -713,23 +713,23 @@ describe('Social Security Tax Integration', () => {
         '',
         null,
         'FIXED',
-        new Date('2024-01-01'),
-        new Date('2026-12-31') // Continues after SS starts
+        new Date(currentYear, 0, 1),
+        new Date(currentYear + 2, 11, 31) // Continues after SS starts
       );
 
-      // Future SS: $4,200/month = ~$50k/year starting 2025
+      // Future SS: $4,200/month = ~$50k/year starting next year
       const ssIncome = new FutureSocialSecurityIncome(
         'ss1',
         'Social Security',
         67,
         4200,
-        2025,
-        new Date('2025-01-01'),
-        new Date('2041-12-31')
+        currentYear + 1,
+        new Date(currentYear + 1, 0, 1),
+        new Date(currentYear + 17, 11, 31)
       );
 
       const simulationYears = runSimulation(
-        2, // run 2024 and 2025
+        2, // run first 2 years
         [], // accounts
         [workIncome, ssIncome],
         [], // expenses
@@ -737,18 +737,18 @@ describe('Social Security Tax Integration', () => {
         createE2ETaxState('Single')
       );
 
-      const year2024 = simulationYears.find(y => y.year === 2024);
-      const year2025 = simulationYears.find(y => y.year === 2025);
+      const year1 = simulationYears.find(y => y.year === currentYear);
+      const year2 = simulationYears.find(y => y.year === currentYear + 1);
 
-      expect(year2024).toBeDefined();
-      expect(year2025).toBeDefined();
+      expect(year1).toBeDefined();
+      expect(year2).toBeDefined();
 
-      if (!year2024 || !year2025) {
+      if (!year1 || !year2) {
         throw new Error('Missing simulation years');
       }
 
-      const incomeJump = year2025.cashflow.totalIncome - year2024.cashflow.totalIncome;
-      const taxJump = year2025.taxDetails.fed - year2024.taxDetails.fed;
+      const incomeJump = year2.cashflow.totalIncome - year1.cashflow.totalIncome;
+      const taxJump = year2.taxDetails.fed - year1.taxDetails.fed;
 
       const expectedMarginalRate = 20.4;
       const actualMarginalRate = (taxJump / incomeJump) * 100;

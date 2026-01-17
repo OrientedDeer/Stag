@@ -8,7 +8,8 @@ import {
     PassiveIncome,
     WindfallIncome,
     INCOME_COLORS_BACKGROUND,
-    IncomeFrequency
+    IncomeFrequency,
+    AutoMax401kOption
 } from "./models";
 import { IncomeContext, AllIncomeKeys } from "./IncomeContext";
 import { StyledInput, StyledSelect } from "../../Layout/InputFields/StyleUI";
@@ -83,7 +84,7 @@ const IncomeCard = ({ income }: { income: AnyIncome }) => {
                 }
 
                 // Validate against app birth year
-                const birthYear = assumptions.demographics.startYear - assumptions.demographics.startAge;
+                const birthYear = assumptions.demographics.birthYear;
                 const validation = validateEarningsImport(earnings, birthYear);
 
                 if (validation.warnings.length > 0) {
@@ -102,7 +103,7 @@ const IncomeCard = ({ income }: { income: AnyIncome }) => {
         };
         reader.readAsText(file);
         e.target.value = ''; // Reset for re-import
-    }, [assumptions.demographics.startYear, assumptions.demographics.startAge, assumptionsDispatch]);
+    }, [assumptions.demographics.birthYear, assumptionsDispatch]);
 
     // Validate end date is after start date
     const validateDates = useCallback((start: Date | undefined, end: Date | undefined) => {
@@ -143,7 +144,7 @@ const IncomeCard = ({ income }: { income: AnyIncome }) => {
         if (!(income instanceof WorkIncome)) return null;
 
         const year = new Date().getFullYear();
-        const age = assumptions.demographics.startAge;
+        const age = year - assumptions.demographics.birthYear;
 
         // Calculate annual contributions based on frequency
         const getAnnualMultiplier = (freq: IncomeFrequency) => {
@@ -184,7 +185,7 @@ const IncomeCard = ({ income }: { income: AnyIncome }) => {
         }
 
         return warnings.length > 0 ? warnings : null;
-    }, [income, assumptions.demographics.startAge]);
+    }, [income, assumptions.demographics.birthYear]);
 
     const handleMatchAccountChange = useCallback((newAccountId: string | null) => {
         const account = accounts.find(acc => acc.id === newAccountId) as InvestedAccount | undefined;
@@ -328,6 +329,7 @@ const IncomeCard = ({ income }: { income: AnyIncome }) => {
                         label="Amount"
                         value={income.amount}
                         onChange={(val) => handleFieldUpdate("amount", val)}
+                        tooltip="Gross income before deductions"
                     />
                 )}
 
@@ -354,18 +356,65 @@ const IncomeCard = ({ income }: { income: AnyIncome }) => {
 
 				{income instanceof WorkIncome && (
                     <>
-                        <CurrencyInput
-                            id={`${income.id}-pre-tax-contributions`}
-                            label="Pre-Tax Contributions"
-                            value={income.preTax401k}
-                            onChange={(val) => handleFieldUpdate("preTax401k", val)}
+                        <DropdownInput
+                            id={`${income.id}-401k-mode`}
+                            label="401k Contributions"
+                            onChange={(val) => handleFieldUpdate("autoMax401k", val as AutoMax401kOption)}
+                            options={[
+                                { value: 'disabled', label: 'None' },
+                                { value: 'custom', label: 'Custom Amount' },
+                                { value: 'traditional', label: 'Max Pre-Tax' },
+                                { value: 'roth', label: 'Max Roth' }
+                            ]}
+                            value={income.autoMax401k}
                         />
-                        <CurrencyInput
-                            id={`${income.id}-roth-contributions`}
-                            label="Roth Contributions"
-                            value={income.roth401k}
-                            onChange={(val) => handleFieldUpdate("roth401k", val)}
-                        />
+                        {income.autoMax401k === 'custom' && (
+                            <>
+                                <CurrencyInput
+                                    id={`${income.id}-pre-tax-contributions`}
+                                    label="Pre-Tax 401k"
+                                    value={income.preTax401k}
+                                    onChange={(val) => handleFieldUpdate("preTax401k", val)}
+                                />
+                                <CurrencyInput
+                                    id={`${income.id}-roth-contributions`}
+                                    label="Roth 401k"
+                                    value={income.roth401k}
+                                    onChange={(val) => handleFieldUpdate("roth401k", val)}
+                                />
+                                {(income.preTax401k > 0 || income.roth401k > 0) && (
+                                    <DropdownInput
+                                        id={`${income.id}-contribution-growth`}
+                                        label="Contribution Growth"
+                                        onChange={(val) => handleFieldUpdate("contributionGrowthStrategy", val)}
+                                        options={[
+                                            { value: 'FIXED', label: 'Remain Fixed' },
+                                            { value: 'GROW_WITH_SALARY', label: 'Grow with Salary' },
+                                            { value: 'TRACK_ANNUAL_MAX', label: 'Track Annual Maximum' }
+                                        ]}
+                                        value={income.contributionGrowthStrategy}
+                                    />
+                                )}
+                            </>
+                        )}
+                        {income.autoMax401k !== 'disabled' && (
+                            <>
+                                <CurrencyInput
+                                    id={`${income.id}-employer-match`}
+                                    label="Employer Match"
+                                    value={income.employerMatch}
+                                    onChange={(val) => handleFieldUpdate("employerMatch", val)}
+                                />
+                                {income.employerMatch > 0 && (
+                                    <DropdownInput
+                                        label="Match Account"
+                                        onChange={(val) => handleMatchAccountChange(val)}
+                                        options={contributionAccounts.map(acc => ({ value: acc.id || "", label: acc.name }))}
+                                        value={income.matchAccountId}
+                                    />
+                                )}
+                            </>
+                        )}
                         <CurrencyInput
                             id={`${income.id}-insurance`}
                             label="Insurance"
@@ -378,33 +427,6 @@ const IncomeCard = ({ income }: { income: AnyIncome }) => {
                             value={income.hsaContribution}
                             onChange={(val) => handleFieldUpdate("hsaContribution", val)}
                         />
-                        <CurrencyInput
-                            id={`${income.id}-employer-match`}
-                            label="Employer Match"
-                            value={income.employerMatch}
-                            onChange={(val) => handleFieldUpdate("employerMatch", val)}
-                        />
-                        {(income.preTax401k > 0 || income.roth401k > 0) && (
-                            <DropdownInput
-                                id={`${income.id}-contribution-growth`}
-                                label="Contribution Growth"
-                                onChange={(val) => handleFieldUpdate("contributionGrowthStrategy", val)}
-                                options={[
-                                    { value: 'FIXED', label: 'Remain Fixed' },
-                                    { value: 'GROW_WITH_SALARY', label: 'Grow with Salary' },
-                                    { value: 'TRACK_ANNUAL_MAX', label: 'Track Annual Maximum' }
-                                ]}
-                                value={income.contributionGrowthStrategy}
-                            />
-                        )}
-                        {income.employerMatch > 0 && (
-                            <DropdownInput
-                                label="Match Account"
-                                onChange={(val) => handleMatchAccountChange(val)}
-                                options={contributionAccounts.map(acc => ({ value: acc.id || "", label: acc.name }))}
-                                value={income.matchAccountId}
-                            />
-                        )}
                         {/* Contribution limit warnings */}
                         {contributionWarnings && contributionWarnings.length > 0 && (
                             <div className="col-span-full">

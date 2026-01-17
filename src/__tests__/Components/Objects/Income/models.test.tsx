@@ -282,10 +282,13 @@ describe('Income Models', () => {
         expect(nextYearDividend.amount).toBe(5150);
     });
 
-    it('should not grow if isInflationAdjusted is false', () => {
+    it('should not grow if global inflationAdjusted is false', () => {
         const royalty = new PassiveIncome('p3', 'Book', 1000, 'Annually', 'No', 'Royalty');
-        royalty.isInflationAdjusted = false; // Override default
-        const nextYearRoyalty = royalty.increment(mockAssumptions);
+        const noInflationAssumptions = {
+            ...mockAssumptions,
+            macro: { ...mockAssumptions.macro, inflationAdjusted: false }
+        };
+        const nextYearRoyalty = royalty.increment(noInflationAssumptions);
         expect(nextYearRoyalty.amount).toBe(1000);
     });
   });
@@ -632,44 +635,45 @@ describe('Income Models', () => {
 
   describe('calculateSocialSecurityStartYear', () => {
     it('should calculate correct start year based on claiming age', () => {
-      // Person is 30 in 2025, claiming at 67
-      expect(calculateSocialSecurityStartYear(30, 2025, 67)).toBe(2062);
+      // Person born 1995 (age 30 in 2025), claiming at 67
+      expect(calculateSocialSecurityStartYear(1995, 67)).toBe(2062);
     });
 
     it('should handle claiming at 62', () => {
-      // Person is 55 in 2025, claiming at 62
-      expect(calculateSocialSecurityStartYear(55, 2025, 62)).toBe(2032);
+      // Person born 1970 (age 55 in 2025), claiming at 62
+      expect(calculateSocialSecurityStartYear(1970, 62)).toBe(2032);
     });
 
     it('should handle claiming at 70', () => {
-      // Person is 60 in 2025, claiming at 70
-      expect(calculateSocialSecurityStartYear(60, 2025, 70)).toBe(2035);
+      // Person born 1965 (age 60 in 2025), claiming at 70
+      expect(calculateSocialSecurityStartYear(1965, 70)).toBe(2035);
     });
 
     it('should handle same claiming age as current age', () => {
-      // Person is 67 in 2025, claiming at 67
-      expect(calculateSocialSecurityStartYear(67, 2025, 67)).toBe(2025);
+      // Person born 1958 (age 67 in 2025), claiming at 67
+      expect(calculateSocialSecurityStartYear(1958, 67)).toBe(2025);
     });
   });
 
   describe('calculateSocialSecurityStartDate', () => {
     it('should return correct date for claiming age', () => {
-      // Person is 30 in 2025, claiming at 67 in January
-      const result = calculateSocialSecurityStartDate(30, 2025, 67);
+      // Person born 1995 (age 30 in 2025), claiming at 67 in January
+      const result = calculateSocialSecurityStartDate(1995, 67);
       expect(result.getUTCFullYear()).toBe(2062);
       expect(result.getUTCMonth()).toBe(0); // January
       expect(result.getUTCDate()).toBe(1);
     });
 
     it('should handle custom claiming month', () => {
-      // Person is 55 in 2025, claiming at 62 in July
-      const result = calculateSocialSecurityStartDate(55, 2025, 62, 6);
+      // Person born 1970 (age 55 in 2025), claiming at 62 in July
+      const result = calculateSocialSecurityStartDate(1970, 62, 6);
       expect(result.getUTCFullYear()).toBe(2032);
       expect(result.getUTCMonth()).toBe(6); // July
     });
 
     it('should default to January when month not specified', () => {
-      const result = calculateSocialSecurityStartDate(40, 2025, 67);
+      // Person born 1985 (age 40 in 2025), claiming at 67
+      const result = calculateSocialSecurityStartDate(1985, 67);
       expect(result.getUTCMonth()).toBe(0); // January
     });
   });

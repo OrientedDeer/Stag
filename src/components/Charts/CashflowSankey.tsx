@@ -1,6 +1,6 @@
 import { useMemo, useContext, useCallback, Component, ReactNode, useState, useEffect, useRef } from 'react';
 import { ResponsiveSankey } from '@nivo/sankey';
-import { WorkIncome, AnyIncome } from '../Objects/Income/models';
+import { WorkIncome, AnyIncome, PassiveIncome } from '../Objects/Income/models';
 import { MortgageExpense, AnyExpense, CLASS_TO_CATEGORY } from '../Objects/Expense/models';
 import { AnyAccount } from '../Objects/Accounts/models';
 import { AssumptionsContext } from '../Objects/Assumptions/AssumptionsContext';
@@ -122,7 +122,7 @@ export const CashflowSankey = ({
             let employee401k = 0;
             let employeeRoth = 0;
             let totalInsurance = 0;
-            
+
             let totalEmployerMatch = 0;
             let totalEmployerMatchForRoth = 0;
             let totalEmployerMatchForTrad = 0;
@@ -131,9 +131,24 @@ export const CashflowSankey = ({
             let totalMortgagePayment = 0;
             let grossPayCalculated = 0;
 
+            // Track reinvested income (e.g., savings interest that stays in the account)
+            // These show in gross income for taxes but don't flow through as spendable cash
+            const reinvestedIncomeItems: Array<{name: string, amount: number, accountName: string}> = [];
+
             incomes.forEach(inc => {
                 const amount = inc.getProratedAnnual ? inc.getProratedAnnual(inc.amount, year) : 0;
-                if (amount >= MIN_DISPLAY_THRESHOLD) grossPayCalculated += amount;
+
+                // Check if this is reinvested income (like savings interest)
+                if (inc instanceof PassiveIncome && inc.isReinvested && amount >= MIN_DISPLAY_THRESHOLD) {
+                    // Extract account name from the interest income id (format: "interest-{accountId}-{year}")
+                    // or use the income name which is "{Account Name} Interest"
+                    const accountName = inc.name.replace(' Interest', '');
+                    reinvestedIncomeItems.push({ name: inc.name, amount, accountName });
+                    // Still add to gross for tax visualization purposes
+                    grossPayCalculated += amount;
+                } else if (amount >= MIN_DISPLAY_THRESHOLD) {
+                    grossPayCalculated += amount;
+                }
 
                 if (inc instanceof WorkIncome) {
                     let empMatch = 0;
@@ -155,6 +170,9 @@ export const CashflowSankey = ({
                 }
             });
 
+            // Total reinvested (for remaining calculation)
+            const totalReinvested = reinvestedIncomeItems.reduce((sum, item) => sum + item.amount, 0);
+
             expenses.forEach(exp => {
                 if (exp instanceof MortgageExpense) {
                     const amort = exp.calculateAnnualAmortization(year);
@@ -168,7 +186,8 @@ export const CashflowSankey = ({
             const totalBucketSavings = Object.values(bucketAllocations).reduce((a, b) => a + b, 0);
             const totalWithdrawals = Object.values(withdrawals).reduce((a, b) => a + b, 0);
 
-            // Roth conversion flows through Gross Pay (it's taxable income)
+            // Roth conversion flows through Gross Pay to show tax impact
+            // The conversion is taxable income, and the tax is paid from withdrawal accounts
             const rothConversionAmount = rothConversion?.amount || 0;
 
             // --- Waterfall Math ---
@@ -194,7 +213,8 @@ export const CashflowSankey = ({
 
             const totalExpenses = Array.from(expenseCatTotals.values()).reduce((a, b) => a + b, 0);
             // Roth conversion flows out to Roth accounts (shown as outflow from Net Pay)
-            const remaining = netPayFlow - totalRothSavings - totalExpenses - mortgageInterestAndEscrow - totalPrincipal - totalBucketSavings - rothConversionAmount;
+            // Reinvested income is subtracted because it flows directly to savings accounts, not through Net Pay
+            const remaining = netPayFlow - totalRothSavings - totalExpenses - mortgageInterestAndEscrow - totalPrincipal - totalBucketSavings - rothConversionAmount - totalReinvested;
 
             // =================================================================
             // NODES - Order matters for visual stability!
@@ -214,6 +234,10 @@ export const CashflowSankey = ({
             incomes.forEach(inc => {
                 const amount = inc.getProratedAnnual ? inc.getProratedAnnual(inc.amount, year) : 0;
                 if (amount >= MIN_DISPLAY_THRESHOLD) {
+                    // Skip reinvested income here - it's handled separately
+                    if (inc instanceof PassiveIncome && inc.isReinvested) {
+                        return; // Already tracked in reinvestedIncomeItems
+                    }
                     if (inc instanceof WorkIncome) {
                         workIncomeItems.push({ name: inc.name, amount });
                     } else {
@@ -239,6 +263,12 @@ export const CashflowSankey = ({
             // Other income (passive, interest, etc.)
             otherIncomeItems.forEach(item => {
                 nodes.push({ id: item.name, color: '#10b981', label: item.name });
+            });
+
+            // Reinvested income sources (e.g., "Savings Interest")
+            // These flow through Gross Pay for tax purposes but go directly to savings
+            reinvestedIncomeItems.forEach(item => {
+                nodes.push({ id: item.name, color: '#06b6d4', label: item.name }); // Cyan color for reinvested
             });
 
             // Withdrawals (sorted by account name for stability)
@@ -275,7 +305,7 @@ export const CashflowSankey = ({
             if (taxes.fed >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Federal Tax', color: '#f59e0b', label: 'Federal Tax' });
             if (taxes.state >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'State Tax', color: '#fbbf24', label: 'State Tax' });
             if (taxes.fica >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'FICA Tax', color: '#d97706', label: 'FICA Tax' });
-            if ((taxes.capitalGains || 0) >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Cap Gains Tax', color: '#84cc16', label: 'Cap Gains Tax' });
+            if ((taxes.capitalGains || 0) >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Cap Gains Tax', color: '#ca8a04', label: 'Cap Gains Tax' });
 
             // --- Column 4: Net Pay ---
             nodes.push({ id: 'Net Pay', color: '#3b82f6', label: 'Net Pay' });
@@ -324,6 +354,12 @@ export const CashflowSankey = ({
                 nodes.push({ id: `To Roth: ${accountName}`, color: '#10b981', label: `To ${accountName}` });
             });
 
+            // Reinvested income destinations (e.g., "Reinvested: Savings")
+            // This shows interest flowing back into the savings account
+            reinvestedIncomeItems.forEach(item => {
+                nodes.push({ id: `Reinvested: ${item.accountName}`, color: '#06b6d4', label: `→ ${item.accountName}` }); // Cyan color
+            });
+
             // Remaining (always last)
             if (remaining > 1) {
                 nodes.push({ id: 'Remaining', color: '#10b981', label: 'Remaining' });
@@ -343,6 +379,11 @@ export const CashflowSankey = ({
             }
 
             otherIncomeItems.forEach(item => {
+                links.push({ source: item.name, target: 'Gross Pay', value: item.amount });
+            });
+
+            // Reinvested income flows through Gross Pay (for tax visualization)
+            reinvestedIncomeItems.forEach(item => {
                 links.push({ source: item.name, target: 'Gross Pay', value: item.amount });
             });
 
@@ -400,6 +441,12 @@ export const CashflowSankey = ({
                 // (the conversion amount was added to Gross Pay and flows through to Net Pay)
                 conversionDestItems.forEach(([accountName, amount]) => {
                     links.push({ source: 'Net Pay', target: `To Roth: ${accountName}`, value: amount });
+                });
+
+                // Reinvested income flows from Net Pay back to the savings account
+                // This shows interest being reinvested rather than appearing as "Remaining"
+                reinvestedIncomeItems.forEach(item => {
+                    links.push({ source: 'Net Pay', target: `Reinvested: ${item.accountName}`, value: item.amount });
                 });
             }
 
@@ -516,9 +563,9 @@ export const CashflowSankey = ({
                     labelPadding={isNarrow ? 8 : 16}
                     sort="input"
                     nodeTooltip={({ node }) => (
-                        <div className="bg-gray-900 p-3 rounded-lg border border-gray-700 shadow-2xl max-w-[350px]">
+                        <div className="bg-gray-900 p-3 rounded-lg border border-gray-700 shadow-2xl max-w-87.5">
                             <div className="flex items-center gap-2 mb-1">
-                                <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: node.color }} />
+                                <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: node.color }} />
                                 <span className="font-bold text-gray-100 text-sm truncate">{node.label}</span>
                             </div>
                             <div className="text-2xl font-mono text-green-400 font-medium">
@@ -527,10 +574,10 @@ export const CashflowSankey = ({
                         </div>
                     )}
                     linkTooltip={({ link }) => (
-                        <div className="bg-gray-900 p-3 rounded-lg border border-gray-700 shadow-2xl max-w-[350px]">
+                        <div className="bg-gray-900 p-3 rounded-lg border border-gray-700 shadow-2xl max-w-87.5">
                             <div className="flex items-center gap-2 mb-2 text-xs text-gray-400 uppercase tracking-wider font-semibold">
                                 <span className="truncate">{link.source.label}</span>
-                                <span className="text-gray-400 flex-shrink-0">&rarr;</span>
+                                <span className="text-gray-400 shrink-0">&rarr;</span>
                                 <span className="truncate">{link.target.label}</span>
                             </div>
                             <div className="text-xl font-mono text-green-400 font-medium">

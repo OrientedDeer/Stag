@@ -17,6 +17,12 @@ const tailwindToCssVar = (className: string) => {
     return `var(--color-${className.replace('bg-', '')})`;
 };
 
+// Truncate label if longer than maxLength
+const truncateLabel = (label: string, maxLength: number = 24): string => {
+    if (label.length <= maxLength) return label;
+    return label.substring(0, maxLength - 1) + '…';
+};
+
 // Gradient distribution logic for color palettes
 function getDistributedColors<T extends string>(palette: T[], count: number): T[] {
     if (count <= 1) return [palette[Math.floor(palette.length / 2)]]; // Use middle color for single item
@@ -26,18 +32,6 @@ function getDistributedColors<T extends string>(palette: T[], count: number): T[
     });
 }
 
-// Truncate label based on available width
-// Assumes ~7px per character for the default font size
-const truncateLabel = (label: string, availableWidth: number, padding: number = 16): string => {
-    const charWidth = 7;
-    const maxChars = Math.floor((availableWidth - padding) / charWidth);
-
-    if (maxChars <= 0) return '';
-    if (label.length <= maxChars) return label;
-    if (maxChars <= 3) return label.substring(0, maxChars);
-
-    return label.substring(0, maxChars - 1) + '…';
-};
 
 // --- Component ---
 export const ObjectsIcicleChart = ({
@@ -91,6 +85,7 @@ export const ObjectsIcicleChart = ({
                 data={data}
                 // Tell Nivo to use the 'color' key we added to the data objects
                 colors={(node: any) => node.data.color}
+                inheritColorFromParent={false}
 
                 margin={{ top: 20, right: 20, bottom: 20, left: 20 }}
                 valueFormat={valueFormat}
@@ -98,10 +93,14 @@ export const ObjectsIcicleChart = ({
 
                 // Layout & Labels
                 enableLabels={true}
-                label={(node: any) => truncateLabel(node.id, node.width)}
+                label={(node: any) => truncateLabel(node.id)}
                 labelSkipWidth={24}
-                labelSkipHeight={16}
-                labelTextColor={{ from: 'color', modifiers: [['darker', 2.5]] }} // Dark text for contrast
+                labelSkipHeight={12}
+                labelTextColor="#ffffff"
+                labelRotation={320}
+                labelBaseline='center'
+                labelPaddingY={10}
+                labelAlign='center'
 
                 // Tooltip - unified and generic
                 tooltip={(node) => {

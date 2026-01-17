@@ -34,8 +34,7 @@ describe('Critical Simulation Logic', () => {
         const zeroGrowthAssumptions: AssumptionsState = {
             ...defaultAssumptions,
             demographics: {
-                startAge: 30,
-                startYear: 2025,
+                birthYear: 1995, // startAge 30 in 2025
                 lifeExpectancy: 90,
                 retirementAge: 67,
             },
@@ -103,8 +102,7 @@ describe('Critical Simulation Logic', () => {
         const assumptionsWithInflation: AssumptionsState = {
             ...defaultAssumptions,
             demographics: {
-                startAge: 30,
-                startYear: 2025,
+                birthYear: 1995, // startAge 30 in 2025
                 lifeExpectancy: 90,
                 retirementAge: 67,
             },
@@ -163,8 +161,7 @@ describe('Critical Simulation Logic', () => {
         const zeroGrowthAssumptions: AssumptionsState = {
             ...defaultAssumptions,
             demographics: {
-                startAge: 30,
-                startYear: 2025,
+                birthYear: 1995, // startAge 30 in 2025
                 lifeExpectancy: 90,
                 retirementAge: 67,
             },
@@ -231,11 +228,11 @@ describe('Critical Simulation Logic', () => {
 
     it('The "Cliff" Year: Simulation should stop exactly at lifeExpectancy', () => {
         // --- SETUP ---
+        const currentYear = new Date().getFullYear();
         const cliffAssumptions: AssumptionsState = {
             ...defaultAssumptions,
             demographics: {
-                startAge: 30,
-                startYear: 2025,
+                birthYear: currentYear - 30, // age 30 in current year
                 lifeExpectancy: 40, // End simulation at age 40
                 retirementAge: 67,
             },
@@ -243,7 +240,7 @@ describe('Critical Simulation Logic', () => {
         };
 
         // We pass a long duration hint, but the lifeExpectancy should be derived from the difference in years
-        const longDurationHint = 50; 
+        const longDurationHint = 50;
 
         // --- EXECUTE ---
         const result = runSimulation(longDurationHint, [], [], [], cliffAssumptions, mockTaxState);
@@ -251,12 +248,13 @@ describe('Critical Simulation Logic', () => {
         // --- ASSERT ---
         // The simulation runs from age 30 up to and *including* age 40.
         // So, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 -> 11 years.
-        const expectedYears = cliffAssumptions.demographics.lifeExpectancy - cliffAssumptions.demographics.startAge + 1;
+        const startAge = currentYear - cliffAssumptions.demographics.birthYear;
+        const expectedYears = cliffAssumptions.demographics.lifeExpectancy - startAge + 1;
         expect(result).toHaveLength(expectedYears);
 
         // Verify the last entry is indeed for age 40
         const lastYearResult = result[result.length - 1];
-        const lastYearAge = cliffAssumptions.demographics.startAge + (lastYearResult.year - cliffAssumptions.demographics.startYear);
+        const lastYearAge = lastYearResult.year - cliffAssumptions.demographics.birthYear;
         expect(lastYearAge).toBe(40);
     });
 
@@ -265,8 +263,7 @@ describe('Critical Simulation Logic', () => {
         const fixedCapAssumptions: AssumptionsState = {
             ...defaultAssumptions,
             demographics: {
-                startAge: 30,
-                startYear: 2025,
+                birthYear: 1995, // startAge 30 in 2025
                 lifeExpectancy: 90,
                 retirementAge: 67,
             },

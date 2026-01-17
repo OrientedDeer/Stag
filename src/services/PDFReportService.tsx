@@ -215,7 +215,8 @@ function findFIYear(
     assumptions: AssumptionsState
 ): { year: number; age: number } | null {
     const retirementAge = assumptions.demographics.retirementAge;
-    const startAge = assumptions.demographics.startAge;
+    const startYear = simulation.length > 0 ? simulation[0].year : new Date().getFullYear();
+    const startAge = startYear - assumptions.demographics.birthYear;
 
     for (let i = 0; i < simulation.length; i++) {
         const year = simulation[i];
@@ -290,7 +291,7 @@ export function collectReportData(
     const fiInfo = findFIYear(simulation, assumptions);
 
     // Find retirement year data
-    const retirementYearIndex = assumptions.demographics.retirementAge - assumptions.demographics.startAge;
+    const retirementYearIndex = assumptions.demographics.retirementAge - (new Date().getFullYear() - assumptions.demographics.birthYear);
     const retirementYear = simulation[retirementYearIndex] || lastYear;
 
     // Calculate projected retirement income
@@ -298,12 +299,12 @@ export function collectReportData(
 
     // Years to retirement
     const yearsToRetirement = Math.max(0,
-        assumptions.demographics.retirementAge - assumptions.demographics.startAge
+        assumptions.demographics.retirementAge - (new Date().getFullYear() - assumptions.demographics.birthYear)
     );
 
     return {
         // Demographics
-        currentAge: assumptions.demographics.startAge,
+        currentAge: new Date().getFullYear() - assumptions.demographics.birthYear,
         retirementAge: assumptions.demographics.retirementAge,
         lifeExpectancy: assumptions.demographics.lifeExpectancy,
 

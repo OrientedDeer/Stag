@@ -12,6 +12,7 @@ import {
 } from '../../../data/PensionData';
 
 export type ContributionGrowthStrategy = 'FIXED' | 'GROW_WITH_SALARY' | 'TRACK_ANNUAL_MAX';
+export type AutoMax401kOption = 'disabled' | 'custom' | 'traditional' | 'roth';
 
 export type IncomeFrequency = 'Weekly' | 'Bi-Weekly' | 'Semi-Monthly' | 'Monthly' | 'Annually';
 
@@ -36,7 +37,6 @@ export abstract class BaseIncome implements Income {
     public startDate?: Date,
     public end_date?: Date,
     public annualGrowthRate: number = 0.03,
-    public isInflationAdjusted: boolean = true,
   ) {}
   getProratedAnnual(value: number, year?: number): number {
     let annual = 0;
@@ -92,6 +92,7 @@ export class WorkIncome extends BaseIncome {
     startDate?: Date,
     end_date?: Date,
     public hsaContribution: number = 0,  // HSA contribution (pre-tax + FICA-exempt)
+    public autoMax401k: AutoMax401kOption = 'custom',  // Auto-max 401k: disabled, custom, traditional, or roth
   ) {
     super(id, name, amount, frequency, earned_income, startDate, end_date);
   }
@@ -157,6 +158,22 @@ export class WorkIncome extends BaseIncome {
         break;
     }
 
+    // 3b. Apply auto-max 401k if enabled (overrides the above logic)
+    if (this.autoMax401k === 'disabled') {
+      // No 401k contributions
+      newPreTax = 0;
+      newRoth = 0;
+    } else if ((this.autoMax401k === 'traditional' || this.autoMax401k === 'roth') && year !== undefined && age !== undefined) {
+      const limit401k = get401kLimit(year, age);
+      if (this.autoMax401k === 'traditional') {
+        newPreTax = limit401k;
+        newRoth = 0;
+      } else {
+        newPreTax = 0;
+        newRoth = limit401k;
+      }
+    }
+
     // 4. Grow Insurance Cost
     // Health insurance usually outpaces regular inflation
     const newInsurance = this.insurance * (1 + healthcareInflation + generalInflation);
@@ -176,8 +193,27 @@ export class WorkIncome extends BaseIncome {
       this.contributionGrowthStrategy,
       this.startDate,
       this.end_date,
-      newHSA
+      newHSA,
+      this.autoMax401k
     );
+  }
+
+  /**
+   * Get the effective 401k contributions for a given year/age, applying autoMax401k if enabled
+   */
+  getEffective401k(year: number, age: number): { preTax: number; roth: number } {
+    if (this.autoMax401k === 'disabled') {
+      return { preTax: 0, roth: 0 };
+    }
+    if (this.autoMax401k === 'custom') {
+      return { preTax: this.preTax401k, roth: this.roth401k };
+    }
+    const limit401k = get401kLimit(year, age);
+    if (this.autoMax401k === 'traditional') {
+      return { preTax: limit401k, roth: 0 };
+    } else {
+      return { preTax: 0, roth: limit401k };
+    }
   }
 }
 
@@ -260,6 +296,7 @@ export class PassiveIncome extends BaseIncome {
     public sourceType: 'Dividend' | 'Rental' | 'Royalty' | 'Interest' | 'Other',
     startDate?: Date,
     end_date?: Date,
+    public isReinvested: boolean = false,  // If true, income is taxable but not available as spendable cash (e.g., savings interest that stays in the account)
   ) {
     super(id, name, amount, frequency, earned_income, startDate, end_date);
   }
@@ -282,10 +319,7 @@ export class PassiveIncome extends BaseIncome {
       case 'Other':
       default:
         // Default to general inflation to maintain purchasing power
-        // (Unless you explicitly turned off inflation adjustment on the object)
-        growthRate = this.isInflationAdjusted 
-          ? assumptions.macro.inflationRate / 100 
-          : 0;
+        growthRate = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
         break;
     }
 
@@ -297,7 +331,8 @@ export class PassiveIncome extends BaseIncome {
       this.earned_income,
       this.sourceType,
       this.startDate,
-      this.end_date
+      this.end_date,
+      this.isReinvested
     );
   }
 }
@@ -357,7 +392,7 @@ export class CurrentSocialSecurityIncome extends BaseIncome {
 
   increment(assumptions: AssumptionsState): CurrentSocialSecurityIncome {
     // COLA (Cost of Living Adjustment) tracks inflation
-    const cola = assumptions.macro.inflationRate / 100;
+    const cola = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
 
     return new CurrentSocialSecurityIncome(
       this.id,
@@ -403,7 +438,7 @@ export class FutureSocialSecurityIncome extends BaseIncome {
 
   increment(assumptions: AssumptionsState): FutureSocialSecurityIncome {
     // After benefits start, grow with COLA (inflation)
-    const cola = assumptions.macro.inflationRate / 100;
+    const cola = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
 
     return new FutureSocialSecurityIncome(
       this.id,
@@ -494,7 +529,7 @@ export class FERSPensionIncome extends BaseIncome {
   }
 
   increment(assumptions: AssumptionsState, _year?: number, age?: number): FERSPensionIncome {
-    const inflation = assumptions.macro.inflationRate / 100;
+    const inflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
     const currentAge = age || this.retirementAge;
 
     // FERS COLA is reduced compared to full CPI
@@ -580,7 +615,7 @@ export class CSRSPensionIncome extends BaseIncome {
   }
 
   increment(assumptions: AssumptionsState): CSRSPensionIncome {
-    const inflation = assumptions.macro.inflationRate / 100;
+    const inflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
 
     // CSRS gets full COLA
     const cola = getCSRSCOLA(inflation);
@@ -604,35 +639,30 @@ export type AnyIncome = WorkIncome | SocialSecurityIncome | CurrentSocialSecurit
 
 /**
  * Calculate the year when Social Security benefits should start
- * @param startAge User's current age (from demographics)
- * @param startYear Current year (from demographics)
+ * @param birthYear User's birth year
  * @param claimingAge Age when claiming SS (62-70)
  * @returns Year when SS benefits begin
  */
 export function calculateSocialSecurityStartYear(
-    startAge: number,
-    startYear: number,
+    birthYear: number,
     claimingAge: number
 ): number {
-    const yearsUntilClaiming = claimingAge - startAge;
-    return startYear + yearsUntilClaiming;
+    return birthYear + claimingAge;
 }
 
 /**
  * Calculate the start date for Social Security income
- * @param startAge User's current age (from demographics)
- * @param startYear Current year (from demographics)
+ * @param birthYear User's birth year
  * @param claimingAge Age when claiming SS (62-70)
  * @param claimingMonth Month when claiming (0-11, defaults to 0 for January)
  * @returns Date object for when SS benefits begin
  */
 export function calculateSocialSecurityStartDate(
-    startAge: number,
-    startYear: number,
+    birthYear: number,
     claimingAge: number,
     claimingMonth: number = 0
 ): Date {
-    const year = calculateSocialSecurityStartYear(startAge, startYear, claimingAge);
+    const year = calculateSocialSecurityStartYear(birthYear, claimingAge);
     return new Date(Date.UTC(year, claimingMonth, 1));
 }
 
@@ -746,14 +776,16 @@ export function reconstituteIncome(data: any): AnyIncome | null {
 
     switch (data.className) {
         case 'WorkIncome':
+            // Map old 'none' value to 'custom' for backwards compatibility
+            const autoMax401k = data.autoMax401k === 'none' ? 'custom' : (data.autoMax401k || 'custom');
             return new WorkIncome(base.id, base.name, base.amount, base.frequency, base.earned_income,
-                data.preTax401k || 0, data.insurance || 0, data.roth401k || 0, data.employerMatch || 0, data.matchAccountId || null, data.taxType || null, data.contributionGrowthStrategy || 'FIXED', base.startDate, base.end_date, data.hsaContribution || 0);
+                data.preTax401k || 0, data.insurance || 0, data.roth401k || 0, data.employerMatch || 0, data.matchAccountId || null, data.taxType || null, data.contributionGrowthStrategy || 'FIXED', base.startDate, base.end_date, data.hsaContribution || 0, autoMax401k);
         case 'SocialSecurityIncome':
             return new SocialSecurityIncome(base.id, base.name, base.amount, base.frequency, 
                 data.claimingAge || 67, data.fullRetirementAgeBenefit || 0, base.startDate, base.end_date);
         case 'PassiveIncome':
-            return new PassiveIncome(base.id, base.name, base.amount, base.frequency, base.earned_income, 
-                data.sourceType || 'Other', base.startDate, base.end_date);
+            return new PassiveIncome(base.id, base.name, base.amount, base.frequency, base.earned_income,
+                data.sourceType || 'Other', base.startDate, base.end_date, data.isReinvested ?? false);
         case 'WindfallIncome':
             return new WindfallIncome(base.id, base.name, base.amount, base.frequency, base.earned_income, base.startDate, base.end_date);
         case 'CurrentSocialSecurityIncome':

@@ -422,7 +422,7 @@ describe('AssumptionsContext', () => {
 
       expect(state.demographics.retirementAge).toBe(70);
       expect(state.demographics.lifeExpectancy).toBe(95);
-      expect(state.demographics.startAge).toBe(defaultAssumptions.demographics.startAge);
+      expect(state.demographics.birthYear).toBe(defaultAssumptions.demographics.birthYear);
     });
   });
 
@@ -616,7 +616,7 @@ describe('AssumptionsContext', () => {
           healthcareInflation: 5.0,
         },
         demographics: {
-          startAge: '30', // String instead of number
+          birthYear: '1995', // String instead of number
           retirementAge: 65,
         },
       };
@@ -632,7 +632,7 @@ describe('AssumptionsContext', () => {
 
       // Wrong type should fall back to default
       expect(state.macro.inflationRate).toBe(defaultAssumptions.macro.inflationRate);
-      expect(state.demographics.startAge).toBe(defaultAssumptions.demographics.startAge);
+      expect(state.demographics.birthYear).toBe(defaultAssumptions.demographics.birthYear);
 
       // Correct types should be preserved
       expect(state.macro.healthcareInflation).toBe(5.0);

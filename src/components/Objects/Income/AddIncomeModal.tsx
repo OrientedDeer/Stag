@@ -10,6 +10,7 @@ import {
   PassiveIncome,
   WindfallIncome,
   ContributionGrowthStrategy,
+  AutoMax401kOption,
   calculateSocialSecurityStartDate,
   IncomeFrequency
 } from './models';
@@ -58,6 +59,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
     const [matchAccountId, setMatchAccountId] = useState<string>("");
     const [contributionGrowthStrategy, setContributionGrowthStrategy] = useState<ContributionGrowthStrategy>('FIXED');
     const [hsaContribution, setHsaContribution] = useState<number>(0);
+    const [autoMax401k, setAutoMax401k] = useState<AutoMax401kOption>('custom');
 
     // --- Other Fields ---
     const [claimingAge, setClaimingAge] = useState<number>(67); // Default to Full Retirement Age
@@ -70,7 +72,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
     const [pensionRetirementAge, setPensionRetirementAge] = useState<number>(62);
     const [autoCalculateHigh3, setAutoCalculateHigh3] = useState<boolean>(false);
     const [linkedIncomeId, setLinkedIncomeId] = useState<string>("");
-    const pensionBirthYear = assumptions.demographics.startYear - assumptions.demographics.startAge;
+    const pensionBirthYear = assumptions.demographics.birthYear;
 
     // Called on blur for claiming age - clamp to valid range
     const handleClaimingAgeBlur = () => {
@@ -127,6 +129,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
         setMatchAccountId("");
         setContributionGrowthStrategy('FIXED');
         setHsaContribution(0);
+        setAutoMax401k('custom');
         setClaimingAge(67);
         setSourceType('Dividend');
         setStartDate(`${new Date().getFullYear()}-01-01`);
@@ -164,7 +167,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
         if (selectedType === WorkIncome) {
             const matchedAccount = accounts.find(acc => acc.id === matchAccountId) as InvestedAccount | undefined;
             const taxType = matchedAccount ? matchedAccount.taxType : null;
-            newIncome = new WorkIncome(id, name.trim(), amount, frequency, "Yes", preTax401k, insurance, roth401k, employerMatch, matchAccountId, taxType, contributionGrowthStrategy, finalStartDate, finalEndDate, hsaContribution);
+            newIncome = new WorkIncome(id, name.trim(), amount, frequency, "Yes", preTax401k, insurance, roth401k, employerMatch, matchAccountId, taxType, contributionGrowthStrategy, finalStartDate, finalEndDate, hsaContribution, autoMax401k);
         } else if (selectedType === CurrentSocialSecurityIncome) {
             // Current benefits: User enters amount, uses start/end dates
             newIncome = new CurrentSocialSecurityIncome(id, name.trim(), amount, frequency, finalStartDate, finalEndDate);
@@ -176,17 +179,16 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
         } else if (selectedType === SocialSecurityIncome) {
             // Legacy SocialSecurityIncome (keep for backward compatibility)
             const ssStartDate = calculateSocialSecurityStartDate(
-                assumptions.demographics.startAge,
-                assumptions.demographics.startYear,
+                assumptions.demographics.birthYear,
                 claimingAge
             );
             newIncome = new SocialSecurityIncome(id, name.trim(), amount, frequency, claimingAge, undefined, ssStartDate, finalEndDate);
         } else if (selectedType === FERSPensionIncome) {
             // Calculate when benefits start (retirement year)
-            const retirementYear = assumptions.demographics.startYear + (pensionRetirementAge - assumptions.demographics.startAge);
+            const retirementYear = assumptions.demographics.birthYear + pensionRetirementAge;
             const pensionStartDate = new Date(Date.UTC(retirementYear, 0, 1));
             const pensionEndDate = new Date(Date.UTC(
-                assumptions.demographics.startYear + (assumptions.demographics.lifeExpectancy - assumptions.demographics.startAge),
+                assumptions.demographics.birthYear + assumptions.demographics.lifeExpectancy,
                 11, 31
             ));
             // Use linked income salary as initial High-3 estimate if auto-calculate is enabled
@@ -207,10 +209,10 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
             );
         } else if (selectedType === CSRSPensionIncome) {
             // Calculate when benefits start (retirement year)
-            const retirementYear = assumptions.demographics.startYear + (pensionRetirementAge - assumptions.demographics.startAge);
+            const retirementYear = assumptions.demographics.birthYear + pensionRetirementAge;
             const pensionStartDate = new Date(Date.UTC(retirementYear, 0, 1));
             const pensionEndDate = new Date(Date.UTC(
-                assumptions.demographics.startYear + (assumptions.demographics.lifeExpectancy - assumptions.demographics.startAge),
+                assumptions.demographics.birthYear + assumptions.demographics.lifeExpectancy,
                 11, 31
             ));
             // Use linked income salary as initial High-3 estimate if auto-calculate is enabled
@@ -336,37 +338,57 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                             {selectedType !== FutureSocialSecurityIncome &&
                              selectedType !== FERSPensionIncome &&
                              selectedType !== CSRSPensionIncome && (
-                                <CurrencyInput label="Gross Amount" value={amount} onChange={setAmount} />
+                                <CurrencyInput label="Gross Amount" value={amount} onChange={setAmount} tooltip="Your gross income before any deductions (taxes, 401k, insurance, etc.). This is NOT your take-home pay." />
                             )}
                             {selectedType === WorkIncome && (
                                 <>
-                                    <CurrencyInput label="Pre-Tax 401k/403b" value={preTax401k} onChange={setPreTax401k} tooltip="Monthly contribution to traditional 401k/403b. Reduces taxable income now, taxed on withdrawal." />
-                                    <CurrencyInput label="Roth 401k (Post-Tax)" value={roth401k} onChange={setRoth401k} tooltip="Monthly contribution to Roth 401k. Taxed now, but grows and withdraws tax-free." />
+                                    <DropdownInput
+                                        label="401k Contributions"
+                                        onChange={(val) => setAutoMax401k(val as AutoMax401kOption)}
+                                        options={[
+                                            { value: 'disabled', label: 'None' },
+                                            { value: 'custom', label: 'Custom Amount' },
+                                            { value: 'traditional', label: 'Max Pre-Tax' },
+                                            { value: 'roth', label: 'Max Roth' }
+                                        ]}
+                                        value={autoMax401k}
+                                        tooltip="None: No 401k. Custom: Enter amounts manually. Max Pre-Tax: Auto-max traditional 401k. Max Roth: Auto-max Roth 401k."
+                                    />
+                                    {autoMax401k === 'custom' && (
+                                        <>
+                                            <CurrencyInput label="Pre-Tax 401k/403b" value={preTax401k} onChange={setPreTax401k} tooltip="Monthly contribution to traditional 401k/403b. Reduces taxable income now, taxed on withdrawal." />
+                                            <CurrencyInput label="Roth 401k" value={roth401k} onChange={setRoth401k} tooltip="Monthly contribution to Roth 401k. Taxed now, but grows and withdraws tax-free." />
+                                            {(preTax401k > 0 || roth401k > 0) && (
+                                                <DropdownInput
+                                                    label="Contribution Growth"
+                                                    onChange={(val) => setContributionGrowthStrategy(val as ContributionGrowthStrategy)}
+                                                    options={[
+                                                        { value: 'FIXED', label: 'Remain Fixed' },
+                                                        { value: 'GROW_WITH_SALARY', label: 'Grow with Salary' },
+                                                        { value: 'TRACK_ANNUAL_MAX', label: 'Track Annual Maximum' }
+                                                    ]}
+                                                    value={contributionGrowthStrategy}
+                                                    tooltip="Fixed: contributions stay the same. Grow with Salary: increase with raises. Track Max: always contribute IRS maximum."
+                                                />
+                                            )}
+                                        </>
+                                    )}
+                                    {autoMax401k !== 'disabled' && (
+                                        <>
+                                            <CurrencyInput label="Employer Match" value={employerMatch} onChange={setEmployerMatch} tooltip="Monthly amount your employer contributes to your 401k. Free money!" />
+                                            {employerMatch > 0 && (
+                                                <DropdownInput
+                                                    label="Match Account"
+                                                    onChange={(val) => setMatchAccountId(val)}
+                                                    options={contributionAccounts.map(acc => ({ value: acc.id, label: acc.name }))}
+                                                    value={matchAccountId}
+                                                    tooltip="Which 401k account receives your employer's matching contributions."
+                                                />
+                                            )}
+                                        </>
+                                    )}
                                     <CurrencyInput label="Insurance" value={insurance} onChange={setInsurance} tooltip="Monthly pre-tax deduction for health, dental, vision insurance." />
                                     <CurrencyInput label="HSA Contribution" value={hsaContribution} onChange={setHsaContribution} tooltip="Monthly HSA contribution. Triple tax advantage: pre-tax, grows tax-free, tax-free withdrawals for medical expenses." />
-                                    <CurrencyInput label="Employer Match" value={employerMatch} onChange={setEmployerMatch} tooltip="Monthly amount your employer contributes to your 401k. Free money!" />
-                                    {(preTax401k > 0 || roth401k > 0) && (
-                                        <DropdownInput
-                                            label="Contribution Growth"
-                                            onChange={(val) => setContributionGrowthStrategy(val as ContributionGrowthStrategy)}
-                                            options={[
-                                                { value: 'FIXED', label: 'Remain Fixed' },
-                                                { value: 'GROW_WITH_SALARY', label: 'Grow with Salary' },
-                                                { value: 'TRACK_ANNUAL_MAX', label: 'Track Annual Maximum' }
-                                            ]}
-                                            value={contributionGrowthStrategy}
-                                            tooltip="Fixed: contributions stay the same. Grow with Salary: increase with raises. Track Max: always contribute IRS maximum."
-                                        />
-                                    )}
-                                    {employerMatch > 0 && (
-                                        <DropdownInput
-                                            label="Match Account"
-                                            onChange={(val) => setMatchAccountId(val)}
-                                            options={contributionAccounts.map(acc => ({ value: acc.id, label: acc.name }))}
-                                            value={matchAccountId}
-                                            tooltip="Which 401k account receives your employer's matching contributions."
-                                        />
-                                    )}
                                 </>
                             )}
                             {/* Hide date fields for auto-calculated income types */}
@@ -434,7 +456,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                         <div className="flex justify-between items-center mt-1">
                                             <span className="text-gray-300">Benefits Start:</span>
                                             <span className="font-medium text-blue-200">
-                                                {assumptions.demographics.startYear + (claimingAge - assumptions.demographics.startAge)}
+                                                {assumptions.demographics.birthYear + claimingAge}
                                             </span>
                                         </div>
                                         <div className="text-xs text-gray-400 mt-2">
@@ -469,7 +491,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                                     label="Auto High-3"
                                                     enabled={autoCalculateHigh3}
                                                     setEnabled={setAutoCalculateHigh3}
-                                                    tooltip="Calculate High-3 from linked work income's salary history"
+                                                    tooltip="Calculate High-3 from projected salaries at retirement"
                                                 />
                                                 {autoCalculateHigh3 ? (
                                                     <DropdownInput
@@ -477,7 +499,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                                         value={linkedIncomeId}
                                                         onChange={setLinkedIncomeId}
                                                         options={workIncomes.map(inc => ({ value: inc.id, label: inc.name }))}
-                                                        tooltip="High-3 will be calculated from this income's salary history during simulation"
+                                                        tooltip="High-3 will be calculated from your top 3 salary years at retirement"
                                                     />
                                                 ) : (
                                                     <CurrencyInput
@@ -527,7 +549,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                             <div className="flex justify-between">
                                                 <span>Benefits Start:</span>
                                                 <span className="text-green-200">
-                                                    {assumptions.demographics.startYear + (pensionRetirementAge - assumptions.demographics.startAge)}
+                                                    {assumptions.demographics.birthYear + pensionRetirementAge}
                                                 </span>
                                             </div>
                                             <div className="flex justify-between">
@@ -539,7 +561,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                         </div>
                                         <div className="text-xs text-gray-400 mt-2">
                                             Formula: {pensionRetirementAge >= 62 && pensionYearsOfService >= 20 ? "1.1%" : "1%"} × Years × High-3.
-                                            {autoCalculateHigh3 && " High-3 will be calculated from salary history during simulation."}
+                                            {autoCalculateHigh3 && " High-3 will be calculated from your top 3 salary years at retirement."}
                                             {!autoCalculateHigh3 && " COLA is reduced (CPI-1% if inflation > 3%)."}
                                         </div>
                                     </div>
@@ -562,7 +584,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                                     label="Auto High-3"
                                                     enabled={autoCalculateHigh3}
                                                     setEnabled={setAutoCalculateHigh3}
-                                                    tooltip="Calculate High-3 from linked work income's salary history"
+                                                    tooltip="Calculate High-3 from projected salaries at retirement"
                                                 />
                                                 {autoCalculateHigh3 ? (
                                                     <DropdownInput
@@ -570,7 +592,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                                         value={linkedIncomeId}
                                                         onChange={setLinkedIncomeId}
                                                         options={workIncomes.map(inc => ({ value: inc.id, label: inc.name }))}
-                                                        tooltip="High-3 will be calculated from this income's salary history during simulation"
+                                                        tooltip="High-3 will be calculated from your top 3 salary years at retirement"
                                                     />
                                                 ) : (
                                                     <CurrencyInput
@@ -620,7 +642,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                             <div className="flex justify-between">
                                                 <span>Benefits Start:</span>
                                                 <span className="text-green-200">
-                                                    {assumptions.demographics.startYear + (pensionRetirementAge - assumptions.demographics.startAge)}
+                                                    {assumptions.demographics.birthYear + pensionRetirementAge}
                                                 </span>
                                             </div>
                                             <div className="flex justify-between">
@@ -632,7 +654,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                         </div>
                                         <div className="text-xs text-gray-400 mt-2">
                                             Formula: 1.5%×5yr + 1.75%×5yr + 2%×remaining (max 80% of High-3).
-                                            {autoCalculateHigh3 && " High-3 will be calculated from salary history during simulation."}
+                                            {autoCalculateHigh3 && " High-3 will be calculated from your top 3 salary years at retirement."}
                                             {!autoCalculateHigh3 && " Full COLA (CPI). No Social Security coverage."}
                                         </div>
                                     </div>
@@ -657,7 +679,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                         <p className="break-words">• Benefit calculated from your 35 highest earning years</p>
                                         <p className="break-words">• Uses SSA wage indexing and bend points formula</p>
                                         <p className="break-words">• Claiming at {claimingAge}: {(getClaimingAdjustment(claimingAge) * 100).toFixed(1)}% of FRA benefit</p>
-                                        <p className="break-words">• Benefits start in {assumptions.demographics.startYear + (claimingAge - assumptions.demographics.startAge)}</p>
+                                        <p className="break-words">• Benefits start in {assumptions.demographics.birthYear + claimingAge}</p>
                                         <p className="break-words">• Benefits end at life expectancy (age {assumptions.demographics.lifeExpectancy})</p>
                                     </div>
                                 </div>

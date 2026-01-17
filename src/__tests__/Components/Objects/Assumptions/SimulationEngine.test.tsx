@@ -12,8 +12,7 @@ import { simulateOneYear } from '../../../../components/Objects/Assumptions/Simu
 const cleanAssumptions: AssumptionsState = {
     ...defaultAssumptions,
     demographics: {
-        startAge: 30,
-        startYear: 2025,
+        birthYear: 1995, // Age 30 in 2025
         lifeExpectancy: 90,
         retirementAge: 67
     },
@@ -78,17 +77,17 @@ describe('Simulation Engine', () => {
         
         // Year 0 (Baseline): Should be $1,000 (Start of 2025)
         const year0 = result[0];
-        expect(year0.year).toBe(2025);
+        expect(year0.year).toBe(2026);
         expect(year0.accounts[0].amount).toBe(1000);
 
         // Year 1: Should be $1,100 ($1000 * 1.10)
         const year1 = result[1];
-        expect(year1.year).toBe(2026);
+        expect(year1.year).toBe(2027);
         expect(year1.accounts[0].amount).toBeCloseTo(1100, 2); // Checks to 2 decimal places
 
         // Year 2: Should be $1,210 ($1100 * 1.10)
         const year2 = result[2];
-        expect(year2.year).toBe(2027);
+        expect(year2.year).toBe(2028);
         expect(year2.accounts[0].amount).toBeCloseTo(1210, 2);
     });
 
@@ -272,14 +271,14 @@ describe('Simulation Engine', () => {
 
         const result = simulateOneYear(2024, [], [expense], [savingsAccount], assumptionsWithWithdrawal, mockTaxState);
 
-        // Interest income = 5000 * 0.025 = 125
-        // Net deficit = 3000 - 125 = 2875
+        // Interest income = 5000 * 0.025 = 125 (but marked as reinvested, not available as cash)
+        // Expenses = 3000, no spendable income = deficit of 3000
         // Withdrawal is from a SavedAccount, so it's tax-free.
-        // Withdrawal amount = 2875. Tax = 0.
+        // Withdrawal amount = 3000. Tax = 0.
         // BOY timing: withdrawal before growth
-        // Pre-growth: 5000 - 2875 = 2125
-        // Post-growth: 2125 * 1.025 = 2178.125
-        expect(result.accounts[0].amount).toBeCloseTo(2178.125);
+        // Pre-growth: 5000 - 3000 = 2000
+        // Post-growth: 2000 * 1.025 = 2050
+        expect(result.accounts[0].amount).toBeCloseTo(2050);
     });
 
     it('should handle employer match correctly', () => {
@@ -514,7 +513,7 @@ describe('Simulation Engine', () => {
             ...cleanAssumptions,
             demographics: {
                 ...cleanAssumptions.demographics,
-                startAge: 65,  // Already retired
+                birthYear: 1960, // Age 65 in 2025, already retired
                 retirementAge: 65,
                 lifeExpectancy: 90
             },
@@ -671,7 +670,7 @@ describe('Simulation Engine', () => {
                 ...retiredAssumptions,
                 demographics: {
                     ...retiredAssumptions.demographics,
-                    startAge: 76,
+                    birthYear: 1949, // Age 76 in 2025
                     retirementAge: 65,
                     lifeExpectancy: 90
                 }
@@ -717,8 +716,7 @@ describe('Simulation Engine', () => {
             const ssAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
                 demographics: {
-                    startAge: 67,  // At claiming age
-                    startYear: 2025,
+                    birthYear: 1958, // Age 67 in 2025, at claiming age
                     lifeExpectancy: 90,
                     retirementAge: 67
                 }
@@ -783,8 +781,7 @@ describe('Simulation Engine', () => {
             const earlySSAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
                 demographics: {
-                    startAge: 63,
-                    startYear: 2025,
+                    birthYear: 1962, // Age 63 in 2025
                     lifeExpectancy: 90,
                     retirementAge: 67
                 }
@@ -837,8 +834,7 @@ describe('Simulation Engine', () => {
             const postFRAAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
                 demographics: {
-                    startAge: 68,  // Past FRA
-                    startYear: 2025,
+                    birthYear: 1957, // Age 68 in 2025, past FRA
                     lifeExpectancy: 90,
                     retirementAge: 67
                 }
@@ -908,8 +904,7 @@ describe('Simulation Engine', () => {
             const earlyAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
                 demographics: {
-                    startAge: 45,
-                    startYear: 2025,
+                    birthYear: 1980, // Age 45 in 2025
                     lifeExpectancy: 90,
                     retirementAge: 67
                 },
@@ -946,8 +941,7 @@ describe('Simulation Engine', () => {
             const earlyAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
                 demographics: {
-                    startAge: 45,
-                    startYear: 2025,
+                    birthYear: 1980, // Age 45 in 2025
                     lifeExpectancy: 90,
                     retirementAge: 67
                 },
@@ -974,8 +968,7 @@ describe('Simulation Engine', () => {
             const retirementAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
                 demographics: {
-                    startAge: 65,
-                    startYear: 2025,
+                    birthYear: 1960, // Age 65 in 2025
                     lifeExpectancy: 90,
                     retirementAge: 65  // Retiring this year
                 }
@@ -1115,8 +1108,7 @@ describe('Simulation Engine', () => {
             const retiredAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
                 demographics: {
-                    startAge: 67,
-                    startYear: 2025,
+                    birthYear: 1958, // Age 67 in 2025
                     lifeExpectancy: 90,
                     retirementAge: 65
                 },
@@ -1149,8 +1141,7 @@ describe('Simulation Engine', () => {
             const retiredAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
                 demographics: {
-                    startAge: 67,
-                    startYear: 2025,
+                    birthYear: 1958, // Age 67 in 2025
                     lifeExpectancy: 90,
                     retirementAge: 65
                 },
@@ -1193,8 +1184,7 @@ describe('Simulation Engine', () => {
             const workingAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
                 demographics: {
-                    startAge: 40,
-                    startYear: 2025,
+                    birthYear: 1985, // Age 40 in 2025
                     lifeExpectancy: 90,
                     retirementAge: 65
                 },
@@ -1228,8 +1218,7 @@ describe('Simulation Engine', () => {
             const retiredAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
                 demographics: {
-                    startAge: 67,
-                    startYear: 2025,
+                    birthYear: 1958, // Age 67 in 2025
                     lifeExpectancy: 90,
                     retirementAge: 65
                 },
@@ -1284,8 +1273,7 @@ describe('Simulation Engine', () => {
             const retiredAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
                 demographics: {
-                    startAge: 67,
-                    startYear: 2025,
+                    birthYear: 1958, // Age 67 in 2025
                     lifeExpectancy: 90,
                     retirementAge: 65
                 },
@@ -1329,8 +1317,7 @@ describe('Simulation Engine', () => {
             const retiredAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
                 demographics: {
-                    startAge: 67,
-                    startYear: 2025,
+                    birthYear: 1958, // Age 67 in 2025
                     lifeExpectancy: 90,
                     retirementAge: 65
                 },
@@ -1381,8 +1368,7 @@ describe('Simulation Engine', () => {
             const retiredAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
                 demographics: {
-                    startAge: 67,
-                    startYear: 2025,
+                    birthYear: 1958, // Age 67 in 2025
                     lifeExpectancy: 90,
                     retirementAge: 65
                 },
@@ -1437,8 +1423,7 @@ describe('Simulation Engine', () => {
             const retiredAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
                 demographics: {
-                    startAge: 67,
-                    startYear: 2025,
+                    birthYear: 1958, // Age 67 in 2025
                     lifeExpectancy: 90,
                     retirementAge: 65
                 },
@@ -1470,8 +1455,7 @@ describe('Simulation Engine', () => {
             const retiredAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
                 demographics: {
-                    startAge: 67,
-                    startYear: 2025,
+                    birthYear: 1958, // Age 67 in 2025
                     lifeExpectancy: 90,
                     retirementAge: 65
                 },

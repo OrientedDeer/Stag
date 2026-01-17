@@ -18,13 +18,11 @@ const MIN_CHART_WIDTH = 300;
  */
 function checkEarningsTest(
   year: SimulationYear | undefined,
-  startAge: number,
-  startYear: number
+  birthYear: number
 ): { applies: boolean; claimingAge?: number; fra?: number; earnedIncome?: number } {
   if (!year) return { applies: false };
 
-  const currentAge = startAge + (year.year - startYear);
-  const birthYear = startYear - startAge;
+  const currentAge = year.year - birthYear;
   const fra = getFRA(birthYear);
 
   // Check if user has active FutureSocialSecurityIncome before FRA
@@ -215,8 +213,7 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
     // Check for earnings test scenario (use first year in filtered data)
     const earningsTestCheck = checkEarningsTest(
         filteredData[0],
-        assumptions.demographics.startAge,
-        assumptions.demographics.startYear
+        assumptions.demographics.birthYear
     );
 
     // Check for Guyton-Klinger warnings in simulation data

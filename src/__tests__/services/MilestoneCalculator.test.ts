@@ -12,12 +12,14 @@ import { OtherExpense } from '../../components/Objects/Expense/models';
 
 // Helper to create mock assumptions
 function createMockAssumptions(overrides: Partial<AssumptionsState['demographics']> = {}): AssumptionsState {
+  // birthYear = currentYear - startAge. For tests, we use a fixed year calculation.
+  const currentYear = new Date().getFullYear();
   return {
     demographics: {
-      startAge: 30,
-      startYear: 2024,
+      birthYear: currentYear - 30, // Equivalent to startAge: 30
       retirementAge: 65,
       lifeExpectancy: 90,
+      priorYearMode: false,
       ...overrides,
     },
     macro: {
@@ -113,19 +115,20 @@ describe('MilestoneCalculator', () => {
     it('should calculate basic milestone summary correctly', () => {
       const assumptions = createMockAssumptions();
       const simulation: SimulationYear[] = [];
+      const currentYear = new Date().getFullYear();
 
       const result = calculateMilestones(assumptions, simulation);
 
       expect(result.currentAge).toBe(30);
-      expect(result.currentYear).toBe(2024);
+      expect(result.currentYear).toBe(currentYear);
       expect(result.retirementAge).toBe(65);
-      expect(result.retirementYear).toBe(2059); // 2024 + (65 - 30)
+      expect(result.retirementYear).toBe(currentYear + 35); // currentYear + (65 - 30)
       expect(result.lifeExpectancy).toBe(90);
-      expect(result.lifeExpectancyYear).toBe(2084); // 2024 + (90 - 30)
+      expect(result.lifeExpectancyYear).toBe(currentYear + 60); // currentYear + (90 - 30)
     });
 
     it('should calculate progress percentage correctly', () => {
-      const assumptions = createMockAssumptions({ startAge: 45, lifeExpectancy: 90 });
+      const assumptions = createMockAssumptions({ birthYear: new Date().getFullYear() - 45, lifeExpectancy: 90 });
       const simulation: SimulationYear[] = [];
 
       const result = calculateMilestones(assumptions, simulation);
@@ -162,7 +165,7 @@ describe('MilestoneCalculator', () => {
     });
 
     it('should mark milestones as reached when past current age', () => {
-      const assumptions = createMockAssumptions({ startAge: 68 });
+      const assumptions = createMockAssumptions({ birthYear: new Date().getFullYear() - 68 });
       const simulation: SimulationYear[] = [];
 
       const result = calculateMilestones(assumptions, simulation);
@@ -176,7 +179,7 @@ describe('MilestoneCalculator', () => {
     });
 
     it('should calculate yearsUntil for each milestone', () => {
-      const assumptions = createMockAssumptions({ startAge: 60 });
+      const assumptions = createMockAssumptions({ birthYear: new Date().getFullYear() - 60 });
       const simulation: SimulationYear[] = [];
 
       const result = calculateMilestones(assumptions, simulation);
@@ -205,6 +208,7 @@ describe('MilestoneCalculator', () => {
 
     it('should detect FI when portfolio can cover expenses', () => {
       const assumptions = createMockAssumptions();
+      const currentYear = new Date().getFullYear();
 
       // FI check uses PREVIOUS year's portfolio to cover CURRENT year's expenses
       // Year 0: $2M invested (this is what gets checked for year 1)
@@ -212,27 +216,28 @@ describe('MilestoneCalculator', () => {
       // 4% of $2M = $80k, expenses + tax = $50k / 0.85 = ~$58.8k
       // $80k > $58.8k = FI reached in year 1
       const simulation: SimulationYear[] = [
-        createMockSimulationYear(2024, 2000000, 50000),
-        createMockSimulationYear(2025, 2100000, 50000),
+        createMockSimulationYear(currentYear, 2000000, 50000),
+        createMockSimulationYear(currentYear + 1, 2100000, 50000),
       ];
 
       const result = findFinancialIndependenceYear(simulation, assumptions);
 
       expect(result).not.toBeNull();
-      expect(result?.year).toBe(2025);
+      expect(result?.year).toBe(currentYear + 1);
       expect(result?.age).toBe(31); // startAge 30 + 1 year
     });
 
     it('should return null when portfolio cannot cover expenses', () => {
       const assumptions = createMockAssumptions();
+      const currentYear = new Date().getFullYear();
 
       // Year 0: $100k invested, $50k expenses
       // Year 1: $150k invested, $50k expenses
       // 4% of $150k = $6k, expenses + tax = ~$58.8k
       // $6k < $58.8k = FI not reached
       const simulation: SimulationYear[] = [
-        createMockSimulationYear(2024, 100000, 50000),
-        createMockSimulationYear(2025, 150000, 50000),
+        createMockSimulationYear(currentYear, 100000, 50000),
+        createMockSimulationYear(currentYear + 1, 150000, 50000),
       ];
 
       const result = findFinancialIndependenceYear(simulation, assumptions);
@@ -242,29 +247,31 @@ describe('MilestoneCalculator', () => {
 
     it('should find earliest FI year in multi-year simulation', () => {
       const assumptions = createMockAssumptions();
+      const currentYear = new Date().getFullYear();
 
       // FI check uses PREVIOUS year's portfolio
       // Need $50k/0.85 = $58.8k gross withdrawal needed
       // At 4% rate, need $58.8k / 0.04 = $1.47M portfolio
       const simulation: SimulationYear[] = [
-        createMockSimulationYear(2024, 500000, 50000),
-        createMockSimulationYear(2025, 800000, 50000),
-        createMockSimulationYear(2026, 1200000, 50000),
-        createMockSimulationYear(2027, 1500000, 50000), // $1.5M is enough!
-        createMockSimulationYear(2028, 2000000, 50000),
+        createMockSimulationYear(currentYear, 500000, 50000),
+        createMockSimulationYear(currentYear + 1, 800000, 50000),
+        createMockSimulationYear(currentYear + 2, 1200000, 50000),
+        createMockSimulationYear(currentYear + 3, 1500000, 50000), // $1.5M is enough!
+        createMockSimulationYear(currentYear + 4, 2000000, 50000),
       ];
 
       const result = findFinancialIndependenceYear(simulation, assumptions);
 
-      // Check year 2025: uses 2024's $500k → 4% = $20k < $58.8k, not FI
-      // Check year 2026: uses 2025's $800k → 4% = $32k < $58.8k, not FI
-      // Check year 2027: uses 2026's $1.2M → 4% = $48k < $58.8k, not FI
-      // Check year 2028: uses 2027's $1.5M → 4% = $60k > $58.8k, FI!
-      expect(result?.year).toBe(2028);
+      // Check year +1: uses year 0's $500k → 4% = $20k < $58.8k, not FI
+      // Check year +2: uses year +1's $800k → 4% = $32k < $58.8k, not FI
+      // Check year +3: uses year +2's $1.2M → 4% = $48k < $58.8k, not FI
+      // Check year +4: uses year +3's $1.5M → 4% = $60k > $58.8k, FI!
+      expect(result?.year).toBe(currentYear + 4);
     });
 
     it('should use correct withdrawal rate from assumptions', () => {
       const assumptions = createMockAssumptions();
+      const currentYear = new Date().getFullYear();
       assumptions.investments.withdrawalRate = 5; // Higher withdrawal rate
 
       // FI check uses PREVIOUS year's portfolio
@@ -273,14 +280,14 @@ describe('MilestoneCalculator', () => {
       // Expenses with tax = $40k / 0.85 = $47k
       // $50k > $47k = FI reached
       const simulation: SimulationYear[] = [
-        createMockSimulationYear(2024, 1000000, 40000), // Year 0: $1M (used for year 1 check)
-        createMockSimulationYear(2025, 1100000, 40000),
+        createMockSimulationYear(currentYear, 1000000, 40000), // Year 0: $1M (used for year 1 check)
+        createMockSimulationYear(currentYear + 1, 1100000, 40000),
       ];
 
       const result = findFinancialIndependenceYear(simulation, assumptions);
 
       expect(result).not.toBeNull();
-      expect(result?.year).toBe(2025);
+      expect(result?.year).toBe(currentYear + 1);
     });
   });
 
@@ -322,7 +329,7 @@ describe('MilestoneCalculator', () => {
 
   describe('Edge Cases', () => {
     it('should handle young age (all milestones in future)', () => {
-      const assumptions = createMockAssumptions({ startAge: 25 });
+      const assumptions = createMockAssumptions({ birthYear: new Date().getFullYear() - 25 });
       const simulation: SimulationYear[] = [];
 
       const result = calculateMilestones(assumptions, simulation);
@@ -332,7 +339,7 @@ describe('MilestoneCalculator', () => {
     });
 
     it('should handle old age (all milestones passed)', () => {
-      const assumptions = createMockAssumptions({ startAge: 75 });
+      const assumptions = createMockAssumptions({ birthYear: new Date().getFullYear() - 75 });
       const simulation: SimulationYear[] = [];
 
       const result = calculateMilestones(assumptions, simulation);
@@ -342,7 +349,7 @@ describe('MilestoneCalculator', () => {
     });
 
     it('should handle retirement age equal to current age', () => {
-      const assumptions = createMockAssumptions({ startAge: 65, retirementAge: 65 });
+      const assumptions = createMockAssumptions({ birthYear: new Date().getFullYear() - 65, retirementAge: 65 });
       const simulation: SimulationYear[] = [];
 
       const result = calculateMilestones(assumptions, simulation);
@@ -354,7 +361,7 @@ describe('MilestoneCalculator', () => {
 
     it('should cap progress at 100%', () => {
       // Edge case: current age > life expectancy (shouldn't happen but handle gracefully)
-      const assumptions = createMockAssumptions({ startAge: 95, lifeExpectancy: 90 });
+      const assumptions = createMockAssumptions({ birthYear: new Date().getFullYear() - 95, lifeExpectancy: 90 });
       const simulation: SimulationYear[] = [];
 
       const result = calculateMilestones(assumptions, simulation);

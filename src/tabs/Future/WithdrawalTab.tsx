@@ -447,17 +447,6 @@ export default function WithdrawalTab() {
                     </DragDropContext>
                 )}
 
-                {/* Explanation Footer */}
-                <div className="mt-6 p-4 bg-gray-900/50 border border-gray-800 rounded-xl">
-                    <h4 className="font-semibold text-gray-300 mb-2">How Withdrawals Work</h4>
-                    <ul className="text-sm text-gray-400 space-y-1 list-disc list-inside">
-                        <li>When expenses exceed income, accounts are drained in the order shown above.</li>
-                        <li>Each account is fully drained before moving to the next.</li>
-                        <li>Tax-free accounts (Roth, Savings) have no tax impact on withdrawal.</li>
-                        <li>Traditional accounts add to taxable income; 10% penalty if under 59.5.</li>
-                    </ul>
-                </div>
-
                 {/* Withdrawal Debug Panel */}
                 <WithdrawalDebugPanel
                     totalPortfolio={totalPortfolio}

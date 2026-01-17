@@ -202,7 +202,16 @@ export default function FutureTab() {
     const { incomes } = useContext(IncomeContext);
     const { expenses } = useContext(ExpenseContext);
     const { state: taxState } = useContext(TaxContext);
-    const [activeTab, setActiveTab] = useState('Overview');
+    const [activeTab, setActiveTab] = useState(() => {
+        const saved = localStorage.getItem('stag_future_tab');
+        return saved && base_tabs.concat(experimental_tabs).includes(saved) ? saved : 'Overview';
+    });
+
+    // Persist tab selection
+    const handleTabChange = (tab: string) => {
+        setActiveTab(tab);
+        localStorage.setItem('stag_future_tab', tab);
+    };
     const [isLoading, setIsLoading] = useState(false);
 
     // Compute visible tabs based on experimental features setting
@@ -234,8 +243,10 @@ export default function FutureTab() {
     }, [assumptions.priorities]);
 
     const executeSimulation = useCallback(() => {
+        const currentYear = new Date().getFullYear();
+        const startAge = currentYear - assumptions.demographics.birthYear;
         return runSimulation(
-            assumptions.demographics.lifeExpectancy - assumptions.demographics.startAge,
+            assumptions.demographics.lifeExpectancy - startAge,
             accounts,
             incomes,
             expenses,
@@ -298,19 +309,10 @@ export default function FutureTab() {
     if (simulation.length === 0) {
         return (
             <div className="p-4 text-white bg-gray-950 text-center">
-                <p className="mb-4">No simulation data. Click the button to run a new simulation based on your current inputs.</p>
-                <button
-                    onClick={handleRecalculate}
-                    disabled={isLoading}
-                    className={`px-6 py-2 text-white font-bold rounded-lg transition-colors flex items-center gap-2 mx-auto ${
-                        isLoading
-                            ? 'bg-green-800 cursor-not-allowed'
-                            : 'bg-green-600 hover:bg-green-700'
-                    }`}
-                >
-                    {isLoading && <LoadingSpinner size="sm" />}
-                    {isLoading ? 'Running Simulation...' : 'Recalculate Simulation'}
-                </button>
+                <div className="flex items-center justify-center gap-2">
+                    <LoadingSpinner size="md" />
+                    <p>Running simulation...</p>
+                </div>
             </div>
         );
     }
@@ -344,7 +346,7 @@ export default function FutureTab() {
                 <FinancialRatiosTab simulationData={simulation} />
             </div>
             <div className={activeTab === 'Data' ? '' : 'hidden'}>
-                <DataTab simulationData={simulation} startAge={assumptions.demographics.startAge} />
+                <DataTab simulationData={simulation} birthYear={assumptions.demographics.birthYear} />
             </div>
         </>
     );
@@ -367,27 +369,13 @@ export default function FutureTab() {
 
                 {/* Milestone Cards */}
                 <div className="mb-6 p-4 bg-gray-900 rounded-xl border border-gray-800 shadow-lg">
-                    <div className="flex justify-between items-center mb-4">
-                        <div className="flex items-center gap-3">
-                            <h2 className="text-xl font-bold text-white">Retirement Timeline</h2>
-                            {isSimulationStale && !isLoading && (
-                                <span className="px-2 py-1 text-xs bg-yellow-600 text-white rounded-full animate-pulse">
-                                    Outdated - updating...
-                                </span>
-                            )}
-                        </div>
-                        <button
-                            onClick={handleRecalculate}
-                            disabled={isLoading}
-                            className={`px-4 py-2 text-white font-semibold rounded-lg transition-colors text-sm flex items-center gap-2 ${
-                                isLoading
-                                    ? 'bg-blue-800 cursor-not-allowed'
-                                    : 'bg-blue-600 hover:bg-blue-700'
-                            }`}
-                        >
-                            {isLoading && <LoadingSpinner size="sm" />}
-                            {isLoading ? 'Calculating...' : 'Recalculate'}
-                        </button>
+                    <div className="flex items-center gap-3 mb-4">
+                        <h2 className="text-xl font-bold text-white">Retirement Timeline</h2>
+                        {isLoading && (
+                            <span className="px-2 py-1 text-xs bg-blue-600 text-white rounded-full flex items-center gap-1">
+                                <LoadingSpinner size="sm" /> Updating...
+                            </span>
+                        )}
                     </div>
 
                     {/* Milestone Cards Grid - 4 columns if FI reached, 3 columns otherwise */}
@@ -451,7 +439,7 @@ export default function FutureTab() {
                                 ? "text-green-300 bg-gray-800 border-b-2 border-green-300"
                                 : "text-gray-400 hover:bg-gray-800 hover:text-white"
                                 }`}
-                            onClick={() => setActiveTab(tab)}
+                            onClick={() => handleTabChange(tab)}
                         >
                             {tab}
                         </button>

@@ -99,7 +99,7 @@ export default function PriorityTab() {
 
     const getAccountContributionLimit = useCallback((account: AnyAccount): number | null => {
         if (!(account instanceof InvestedAccount)) return null;
-        const age = state.demographics.startAge;
+        const age = year - state.demographics.birthYear;
 
         switch (account.taxType) {
             case 'Traditional 401k':
@@ -113,7 +113,7 @@ export default function PriorityTab() {
             default:
                 return null;
         }
-    }, [year, state.demographics.startAge]);
+    }, [year, state.demographics.birthYear]);
 
     // Priority warnings for exceeding IRS limits
     const priorityWarnings = useMemo(() => {
@@ -208,7 +208,14 @@ export default function PriorityTab() {
 
         let finalName = newName;
         if (!finalName) {
-            finalName = `${newAccount.name} (${newCapType})`;
+            // Use friendly labels for cap types in default name
+            const capTypeLabels: Record<CapType, string> = {
+                'MAX': 'Max Out',
+                'FIXED': 'Fixed',
+                'REMAINDER': 'Remainder',
+                'MULTIPLE_OF_EXPENSES': 'Emergency Fund'
+            };
+            finalName = `${newAccount.name} (${capTypeLabels[newCapType]})`;
         }
 
         let finalCapValue = newCapValue;

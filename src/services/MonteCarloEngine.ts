@@ -87,7 +87,7 @@ export async function runMonteCarloSimulation(
 
     // Calculate years to run based on life expectancy
     const yearsToRun = Math.max(0,
-        assumptions.demographics.lifeExpectancy - assumptions.demographics.startAge
+        assumptions.demographics.lifeExpectancy - (new Date().getFullYear() - assumptions.demographics.birthYear)
     );
 
     // Chunk size for yielding to UI
@@ -139,7 +139,7 @@ export function runMonteCarloSimulationSync(
     const scenarios: ScenarioResult[] = [];
 
     const yearsToRun = Math.max(0,
-        assumptions.demographics.lifeExpectancy - assumptions.demographics.startAge
+        assumptions.demographics.lifeExpectancy - (new Date().getFullYear() - assumptions.demographics.birthYear)
     );
 
     for (let i = 0; i < config.numScenarios; i++) {

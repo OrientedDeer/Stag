@@ -270,7 +270,7 @@ const findFinancialIndependenceYear = (
         // FI is reached when withdrawal can cover expenses
         const withdrawalRate = assumptions.investments?.withdrawalRate || 4;
         if (lastYearInvestments * (withdrawalRate / 100) > currentYear.cashflow.totalExpense) {
-            const age = assumptions.demographics.startAge + (currentYear.year - assumptions.demographics.startYear);
+            const age = currentYear.year - assumptions.demographics.birthYear;
             return { year: currentYear.year, age };
         }
     }
@@ -302,8 +302,7 @@ export const calculateMilestones = (
     const fi = findFinancialIndependenceYear(simulation, assumptions);
 
     // Calculate retirement year from assumptions
-    const retirementYear = assumptions.demographics.startYear +
-        (assumptions.demographics.retirementAge - assumptions.demographics.startAge);
+    const retirementYear = assumptions.demographics.birthYear + assumptions.demographics.retirementAge;
 
     // Find peak net worth and year
     let peakNetWorth = -Infinity;
