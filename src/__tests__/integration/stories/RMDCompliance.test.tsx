@@ -45,8 +45,7 @@ describe('Story 4: RMD Compliance', () => {
         year: 2025,
     };
 
-    // Current age is 70 (2025 - 1955)
-    const currentAge = 2025 - birthYear;
+    // Current age is 70 (2025 - 1955 = 70)
 
     const assumptions: AssumptionsState = {
         ...defaultAssumptions,
@@ -378,23 +377,28 @@ describe('Story 4: RMD Compliance', () => {
             taxState
         );
 
-        // Track balance decrease due to RMDs
-        let prevBalance = Infinity;
-        for (const year of simulation) {
-            const age = getAge(year.year, birthYear);
-            if (age < rmdStartAge) continue;
+        // Get initial and final Traditional balance
+        const firstRMDYear = getYearByAge(simulation, rmdStartAge, birthYear);
+        const finalYear = simulation[simulation.length - 1];
 
-            const tradAccount = getAccountById(year, 'acc-trad401k');
-            if (!tradAccount) continue;
+        if (firstRMDYear && finalYear) {
+            const initialBalance = getAccountById(firstRMDYear, 'acc-trad401k')?.amount || 0;
+            const finalBalance = getAccountById(finalYear, 'acc-trad401k')?.amount || 0;
 
-            // Balance should generally decrease (unless returns exceed withdrawals)
-            // Allow for market growth to temporarily exceed RMD
-            if (tradAccount.amount > 0) {
-                // Balance should be trending down overall
-                // (Can't strictly enforce year-over-year decrease due to market returns)
-            }
+            // With market returns, account may not deplete quickly, but RMDs should
+            // cause it to grow slower than market returns would suggest.
+            // Just verify that some withdrawal activity occurred and balance is finite.
+            expect(
+                Number.isFinite(finalBalance),
+                'Final balance should be a finite number'
+            ).toBe(true);
 
-            prevBalance = tradAccount.amount;
+            // RMDs should have happened - balance change should be less than pure growth
+            // would suggest (withdrawals offset some growth)
+            expect(
+                finalBalance,
+                `Final balance ($${finalBalance.toFixed(0)}) should be reasonable`
+            ).toBeLessThan(initialBalance * 3); // Not more than 3x growth over simulation
         }
     });
 });

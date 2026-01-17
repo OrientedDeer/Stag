@@ -25,8 +25,6 @@ import {
     getAccountById,
     getWorkIncome,
     getSocialSecurityIncome,
-    isRetirementYear,
-    getTotalInvestedBalance,
 } from '../helpers/simulationTestUtils';
 import {
     assertUniversalInvariants,
@@ -38,7 +36,7 @@ describe('Story 1: Young Professional → Retirement', () => {
     const birthYear = 1995;
     const retirementAge = 65;
     const ssClaimingAge = 67;
-    const startAge = 30;
+    // startAge = 30 (2025 - 1995)
     const yearsToSimulate = 40; // Age 30 to 70
 
     const assumptions: AssumptionsState = {

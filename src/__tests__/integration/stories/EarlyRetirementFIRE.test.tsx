@@ -191,6 +191,18 @@ describe('Story 2: Early Retirement FIRE', () => {
                     brokerageWithdrawal > 0 || brokerage?.amount === 0,
                     'Brokerage should be tapped before other accounts'
                 ).toBe(true);
+
+                // If brokerage still has funds, Roth and Traditional should not be touched
+                if (brokerage && brokerage.amount > 10000) {
+                    expect(
+                        rothWithdrawal,
+                        'Roth should not be tapped while Brokerage has funds'
+                    ).toBe(0);
+                    expect(
+                        tradWithdrawal,
+                        'Traditional should not be tapped while Brokerage has funds'
+                    ).toBe(0);
+                }
             }
         }
     });
@@ -259,6 +271,12 @@ describe('Story 2: Early Retirement FIRE', () => {
 
                 // Federal tax should include penalty if there was a Traditional withdrawal
                 expect(year.taxDetails.fed, 'Fed tax should be positive when Traditional is withdrawn early').toBeGreaterThan(0);
+
+                // Should have log indicating early withdrawal or penalty
+                expect(
+                    hasEarlyWithdrawalLog,
+                    `Should log early withdrawal penalty at age ${age}`
+                ).toBe(true);
             }
         }
     });
@@ -293,12 +311,22 @@ describe('Story 2: Early Retirement FIRE', () => {
     });
 
     it('should drain accounts in order during FIRE bridge period', () => {
+        // Use 0% returns so accounts actually drain during the bridge period
+        // (With 7% returns, $500k would grow faster than $50k/year expenses)
+        const zeroReturnAssumptions: AssumptionsState = {
+            ...assumptions,
+            investments: {
+                ...assumptions.investments,
+                returnRates: { ror: 0 },
+            },
+        };
+
         const simulation = runSimulation(
             yearsToSimulate,
             [brokerageAccount, rothIRA, traditionalIRA],
             [workIncome, futureSS],
             [livingExpenses],
-            assumptions,
+            zeroReturnAssumptions,
             taxState
         );
 
@@ -327,13 +355,23 @@ describe('Story 2: Early Retirement FIRE', () => {
                     const tradWithdrawal = year.cashflow.withdrawalDetail['Traditional IRA'] || 0;
 
                     // Should not tap Roth/Traditional while Brokerage has funds
-                    // (unless Brokerage alone can't cover the deficit)
+                    expect(
+                        rothWithdrawal,
+                        `Roth should not be tapped at age ${age} while Brokerage has $${brokerage.amount.toFixed(0)}`
+                    ).toBe(0);
+                    expect(
+                        tradWithdrawal,
+                        `Traditional should not be tapped at age ${age} while Brokerage has $${brokerage.amount.toFixed(0)}`
+                    ).toBe(0);
                 }
             }
         }
 
-        // At some point during the bridge, Brokerage should be used first
-        // Note: This may not happen if returns are high enough or expenses low enough
+        // At some point during the bridge, Brokerage should be drained first
+        expect(
+            brokerageWasDrainedFirst,
+            'Brokerage should be drained before Roth and Traditional'
+        ).toBe(true);
     });
 
     it('should maintain universal invariants every year', () => {
@@ -386,8 +424,13 @@ describe('Story 2: Early Retirement FIRE', () => {
             }
         }
 
-        // Deficit debt may or may not appear depending on withdrawal efficiency and SS
-        // This test just verifies the simulation runs without errors
+        // With small accounts ($200k total) and high expenses ($80k/year),
+        // deficit debt should appear during the bridge period before SS at 62
+        expect(
+            hasDeficitDebt,
+            'Deficit debt should appear when accounts are insufficient for expenses'
+        ).toBe(true);
+
         assertAllYearsInvariants(simulation);
     });
 

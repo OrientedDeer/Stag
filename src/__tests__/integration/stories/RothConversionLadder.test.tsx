@@ -25,7 +25,6 @@ import {
     getYearByAge,
     getAccountById,
     hasLogMessage,
-    isRetirementYear,
 } from '../helpers/simulationTestUtils';
 import {
     assertAllYearsInvariants,
@@ -192,10 +191,23 @@ describe('Story 6: Roth Conversion Ladder', () => {
             const tradLater = getAccountById(laterYear, 'acc-trad')?.amount || 0;
             const rothLater = getAccountById(laterYear, 'acc-roth')?.amount || 0;
 
-            // If conversions are happening:
-            // Traditional should decrease (conversions + possible withdrawals)
-            // Roth should increase (conversions + growth)
-            // Note: Market returns may affect these relationships
+            // If conversions are happening, Roth should grow faster than Traditional
+            // due to conversions moving money from Traditional to Roth.
+            // Note: With high returns, both may grow, but Roth should grow MORE.
+            const tradGrowthRate = (tradLater - tradEarly) / tradEarly;
+            const rothGrowthRate = (rothLater - rothEarly) / rothEarly;
+
+            // Roth should outpace Traditional growth due to conversions
+            expect(
+                rothGrowthRate,
+                `Roth growth (${(rothGrowthRate * 100).toFixed(1)}%) should exceed Traditional growth (${(tradGrowthRate * 100).toFixed(1)}%)`
+            ).toBeGreaterThan(tradGrowthRate);
+
+            // Roth should have increased (conversions + growth)
+            expect(
+                rothLater,
+                `Roth should increase over time: early=$${rothEarly.toFixed(0)}, later=$${rothLater.toFixed(0)}`
+            ).toBeGreaterThan(rothEarly);
         }
     });
 
@@ -299,6 +311,7 @@ describe('Story 6: Roth Conversion Ladder', () => {
         );
 
         // Find retirement years before SS starts (low income = ideal for conversions)
+        let foundConversionInGapYears = false;
         for (const year of simulation) {
             const age = getAge(year.year, birthYear);
 
@@ -309,9 +322,17 @@ describe('Story 6: Roth Conversion Ladder', () => {
                 const hasConversionLog = hasLogMessage(year, 'roth conversion') ||
                     hasLogMessage(year, 'converted');
 
-                // May or may not convert depending on algorithm
+                if (hasConversionLog) {
+                    foundConversionInGapYears = true;
+                }
             }
         }
+
+        // Should have at least some conversions during the low-income gap years
+        expect(
+            foundConversionInGapYears,
+            'Should have Roth conversions during gap years (retired but before SS)'
+        ).toBe(true);
 
         assertAllYearsInvariants(simulation);
     });
@@ -326,31 +347,43 @@ describe('Story 6: Roth Conversion Ladder', () => {
             taxState
         );
 
-        // Track year-over-year changes
-        let prevTrad = traditionalIRA.amount;
-        let prevRoth = rothIRA.amount;
+        // Track year-over-year changes to verify conversion consistency
+        let conversionYearsFound = 0;
 
         for (let i = 1; i < simulation.length; i++) {
             const year = simulation[i];
             const prevYear = simulation[i - 1];
 
             const age = getAge(year.year, birthYear);
-            if (age < retirementAge) {
-                // Update tracking for next iteration
-                prevTrad = getAccountById(year, 'acc-trad')?.amount || 0;
-                prevRoth = getAccountById(year, 'acc-roth')?.amount || 0;
-                continue;
-            }
+            if (age < retirementAge) continue;
 
+            const prevTrad = getAccountById(prevYear, 'acc-trad')?.amount || 0;
+            const prevRoth = getAccountById(prevYear, 'acc-roth')?.amount || 0;
             const currentTrad = getAccountById(year, 'acc-trad')?.amount || 0;
             const currentRoth = getAccountById(year, 'acc-roth')?.amount || 0;
 
-            // If a conversion happened (Traditional went down, Roth went up beyond growth)
-            // The amounts should be consistent (allowing for tax payment and market returns)
+            // Check for conversion: Traditional decreased AND Roth increased
+            const tradDecrease = prevTrad - currentTrad;
+            const rothIncrease = currentRoth - prevRoth;
 
-            prevTrad = currentTrad;
-            prevRoth = currentRoth;
+            // If Traditional decreased significantly (conversion happened)
+            if (tradDecrease > 1000) {
+                conversionYearsFound++;
+
+                // Roth should have increased (by conversion amount minus taxes, plus growth)
+                // Allow for taxes (up to 37%) and market fluctuation
+                expect(
+                    rothIncrease,
+                    `Year ${year.year}: Roth should increase when Traditional decreases by $${tradDecrease.toFixed(0)}`
+                ).toBeGreaterThan(0);
+            }
         }
+
+        // Should have found at least one conversion year
+        expect(
+            conversionYearsFound,
+            'Should have at least one year with Roth conversion'
+        ).toBeGreaterThan(0);
 
         assertAllYearsInvariants(simulation);
     });
@@ -435,7 +468,7 @@ describe('Story 6: Roth Conversion Ladder', () => {
 
         const bracketTopTaxable = 48475; // Top of 12% bracket
         const standardDeduction = 14600; // 2025 Single
-        const bracketTopGross = bracketTopTaxable + standardDeduction; // $63,075
+        // Note: bracketTopGross = bracketTopTaxable + standardDeduction = $63,075
 
         const retiredBirthYear = 1960;
         const cliffAssumptions: AssumptionsState = {

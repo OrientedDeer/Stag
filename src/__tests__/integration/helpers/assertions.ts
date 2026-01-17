@@ -7,7 +7,7 @@
 
 import { expect } from 'vitest';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
-import { DeficitDebtAccount, InvestedAccount, PropertyAccount, DebtAccount, SavedAccount, AnyAccount } from '../../../components/Objects/Accounts/models';
+import { DeficitDebtAccount, InvestedAccount, PropertyAccount, DebtAccount, SavedAccount } from '../../../components/Objects/Accounts/models';
 import { MortgageExpense, LoanExpense } from '../../../components/Objects/Expense/models';
 import { PassiveIncome } from '../../../components/Objects/Income/models';
 import { getAccountById, calculateNetWorth, calculateLiquidAssets } from './simulationTestUtils';
@@ -76,7 +76,7 @@ export function assertNoNaNOrInfinity(year: SimulationYear): void {
  * Assert cashflow algebra holds (income - expenses = discretionary + invested + withdrawals)
  * Uses tolerance for floating point precision
  */
-export function assertCashflowAlgebra(year: SimulationYear, tolerance: number = 5): void {
+export function assertCashflowAlgebra(year: SimulationYear, _tolerance: number = 5): void {
     const cf = year.cashflow;
     const taxes = year.taxDetails;
 
@@ -311,8 +311,9 @@ export function assertNetWorthConservation(
     const income = currYear.cashflow.totalIncome;
     const expenses = currYear.expenses.reduce((sum, e) => sum + e.getAnnualAmount(currYear.year), 0);
     const taxes = currYear.taxDetails.fed + currYear.taxDetails.state + currYear.taxDetails.fica;
-    const contributions = currYear.cashflow.totalInvested;
-    const withdrawals = currYear.cashflow.withdrawals;
+    // Note: contributions and withdrawals are tracked but not used in this simplified check
+    // const contributions = currYear.cashflow.totalInvested;
+    // const withdrawals = currYear.cashflow.withdrawals;
 
     // Estimate investment returns on liquid assets
     const prevLiquid = calculateLiquidAssets(prevYear.accounts);
@@ -343,7 +344,8 @@ export function assertNetWorthConservation(
  */
 export function assertWithdrawalsWithinBounds(year: SimulationYear): void {
     const totalWithdrawals = year.cashflow.withdrawals;
-    const liquidAssets = calculateLiquidAssets(year.accounts);
+    // Note: liquidAssets could be used for a stricter check but timing makes it complex
+    // const liquidAssets = calculateLiquidAssets(year.accounts);
 
     // Withdrawals should not exceed what's available (plus a small buffer for timing)
     // Note: Account balances are end-of-year, withdrawals happened during the year
@@ -389,9 +391,9 @@ export function assertNoValueExplosion(
 
             // Skip Roth accounts - they can legitimately receive large transfers from
             // Traditional accounts via Roth conversions
-            const accountType = (currAccount as InvestedAccount).accountType;
+            const taxType = (currAccount as InvestedAccount).taxType;
             const accountName = currAccount.name?.toLowerCase() || '';
-            if (accountType === 'Roth IRA' || accountType === 'Roth 401k' ||
+            if (taxType === 'Roth IRA' || taxType === 'Roth 401k' ||
                 accountName.includes('roth')) {
                 continue;
             }
@@ -539,8 +541,8 @@ export function assertHigherFinalNetWorth(
 export function assertDelayedSSHigherBenefit(
     earlySim: SimulationYear[],
     lateSim: SimulationYear[],
-    earlyClaimYear: number,
-    lateClaimYear: number,
+    _earlyClaimYear: number,
+    _lateClaimYear: number,
     birthYear: number
 ): void {
     // Compare benefits at a common late year (e.g., age 75)
@@ -607,7 +609,7 @@ export function assertDirectionalChange(
  */
 export function assertLifetimeCashFlowReconciliation(
     simulation: SimulationYear[],
-    tolerancePercent: number = 10
+    _tolerancePercent: number = 10
 ): void {
     if (simulation.length < 2) return;
 

@@ -20,11 +20,8 @@ import { FutureSocialSecurityIncome } from '../../../components/Objects/Income/m
 import { FoodExpense, VacationExpense, SubscriptionExpense } from '../../../components/Objects/Expense/models';
 import { runSimulation } from '../../../components/Objects/Assumptions/useSimulation';
 import {
-    getAge,
-    getYearByAge,
     hasLogMessage,
     getTotalDiscretionary,
-    getTotalNonDiscretionary,
 } from '../helpers/simulationTestUtils';
 import {
     assertAllYearsInvariants,
@@ -278,15 +275,16 @@ describe('Story 5: Market Crash Recovery (Guyton-Klinger)', () => {
         // Verify simulation runs without errors
         assertAllYearsInvariants(simulation);
 
-        // Check for 15-year rule log
+        // Check for 15-year rule log - with <=15 years remaining, capital preservation should NOT trigger
         const postCrashYear = simulation[6];
         if (postCrashYear) {
-            // Either no capital preservation triggered, or 15-year rule mentioned
-            const hasGKLog = hasLogMessage(postCrashYear, 'guyton') ||
-                hasLogMessage(postCrashYear, '15 year') ||
-                hasLogMessage(postCrashYear, '15-year');
+            // Capital preservation should NOT be triggered due to 15-year rule
+            const hasCapitalPreservationLog = hasLogMessage(postCrashYear, 'capital preservation');
 
-            // The rule may or may not be explicitly logged
+            expect(
+                hasCapitalPreservationLog,
+                'Capital preservation should NOT trigger when years remaining <= 15'
+            ).toBe(false);
         }
     });
 
@@ -320,8 +318,13 @@ describe('Story 5: Market Crash Recovery (Guyton-Klinger)', () => {
             }
         }
 
-        // Prosperity rule may or may not trigger depending on initial withdrawal rate
-        // Just verify simulation runs without errors
+        // With 15% returns for 5 years, portfolio should grow significantly
+        // pushing withdrawal rate below the lower guardrail (3.2%), triggering prosperity
+        expect(
+            hasProsperityLog,
+            'Prosperity rule should trigger with sustained 15% returns'
+        ).toBe(true);
+
         assertAllYearsInvariants(simulation);
     });
 
@@ -417,8 +420,11 @@ describe('Story 5: Market Crash Recovery (Guyton-Klinger)', () => {
             // Post-crash should be lower than pre-crash
             expect(postCrashBalance, 'Portfolio should decline after crash').toBeLessThan(preCrashBalance);
 
-            // Recovery should show some improvement (if returns are positive)
-            // Note: May not fully recover due to withdrawals
+            // Recovery should show improvement from post-crash (positive returns in years 6-10)
+            expect(
+                recoveryBalance,
+                `Recovery balance ($${recoveryBalance.toFixed(0)}) should exceed post-crash ($${postCrashBalance.toFixed(0)})`
+            ).toBeGreaterThan(postCrashBalance);
         }
 
         assertAllYearsInvariants(simulation);
@@ -588,9 +594,9 @@ describe('Story 5: Market Crash Recovery (Guyton-Klinger)', () => {
             const year = simulation[i];
             if (hasLogMessage(year, 'capital preservation')) {
                 triggerYear = i;
-                postTriggerWithdrawal = year.cashflow.totalWithdrawals || 0;
+                postTriggerWithdrawal = year.cashflow.withdrawals || 0;
                 if (i > 0) {
-                    preTriggerWithdrawal = simulation[i - 1].cashflow.totalWithdrawals || 0;
+                    preTriggerWithdrawal = simulation[i - 1].cashflow.withdrawals || 0;
                 }
                 break;
             }

@@ -25,8 +25,6 @@ import {
 } from '../helpers/simulationTestUtils';
 import {
     assertAllYearsInvariants,
-    assertLongHorizonStability,
-    assertHigherFinalNetWorth,
 } from '../helpers/assertions';
 
 describe('Differential Scenarios: Roth Conversions', () => {

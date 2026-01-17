@@ -54,7 +54,7 @@ describe('Temporal Boundary Tests', () => {
     describe('First Year of Retirement', () => {
         const birthYear = 1965; // Age 60 in 2025
         const retirementAge = 62;
-        const retirementYear = birthYear + retirementAge; // 2027
+        // retirementYear = birthYear + retirementAge = 2027
 
         const retirementAssumptions: AssumptionsState = {
             ...defaultAssumptions,
@@ -91,7 +91,7 @@ describe('Temporal Boundary Tests', () => {
             'inc-work', 'Salary', 80000, 'Annually', 'Yes',
             0, 0, 0, 0, '', null, 'FIXED',
             new Date('2020-01-01'),
-            null // No explicit end date
+            undefined // No explicit end date
         );
 
         const futureSS = new FutureSocialSecurityIncome(
@@ -338,6 +338,12 @@ describe('Temporal Boundary Tests', () => {
                 // The SS benefit should exist (claimed) but may be reduced
                 const ss = getSocialSecurityIncome(claimingYear);
                 expect(ss, 'SS should exist at claiming age').toBeDefined();
+
+                // With $80k income and SS claimed at 62 (before FRA), earnings test should apply
+                expect(
+                    hasEarningsTestLog,
+                    'Earnings test should be logged when claiming SS before FRA while working'
+                ).toBe(true);
             }
 
             assertAllYearsInvariants(simulation);
@@ -542,15 +548,24 @@ describe('Temporal Boundary Tests', () => {
                 if (age < rmdStartAge) continue;
 
                 // If only RMD is triggering withdrawals (not expenses), Roth shouldn't be touched
-                // This is a softer check since Roth might be used for expenses
                 const rothWithdrawal = year.cashflow.withdrawalDetail['Roth 401k'] || 0;
                 const tradWithdrawal = year.cashflow.withdrawalDetail['Traditional 401k'] || 0;
 
-                // If Traditional has a balance and Roth is being withdrawn, check if it's reasonable
+                // If Traditional has a balance and Roth is being withdrawn, that's likely an error
+                // (Roth has no RMD requirement, Traditional should be used first for RMD)
                 const tradAccount = getAccountById(year, 'acc-trad');
-                if (tradAccount && tradAccount.amount > 100000 && rothWithdrawal > 0) {
-                    // Roth shouldn't be used for RMD if Traditional has plenty of balance
-                    // This is a heuristic check
+                if (tradAccount && tradAccount.amount > 100000) {
+                    // Traditional should be withdrawn from (RMD)
+                    expect(
+                        tradWithdrawal,
+                        `Year ${year.year}: Traditional should have RMD withdrawal when balance > $100k`
+                    ).toBeGreaterThan(0);
+
+                    // Roth should NOT be touched when Traditional has plenty of balance
+                    expect(
+                        rothWithdrawal,
+                        `Year ${year.year}: Roth should not be withdrawn when Traditional has $${tradAccount.amount.toFixed(0)}`
+                    ).toBe(0);
                 }
             }
 

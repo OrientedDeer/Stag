@@ -22,8 +22,6 @@ import { WorkIncome } from '../../../components/Objects/Income/models';
 import { MortgageExpense, LoanExpense, FoodExpense } from '../../../components/Objects/Expense/models';
 import { runSimulation } from '../../../components/Objects/Assumptions/useSimulation';
 import {
-    getAge,
-    getYearByAge,
     getAccountById,
     calculateNetWorth,
 } from '../helpers/simulationTestUtils';

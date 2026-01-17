@@ -431,7 +431,7 @@ describe('Savings Account Interest Income', () => {
       ) as PassiveIncome;
 
       const accountGrowth = grownAccount.amount - initialBalance;
-      const reportedIncome = interestIncome?.amount || 0;
+      // reportedIncome = interestIncome?.amount || 0 (same as cashflowIncome)
       const cashflowIncome = result.cashflow.totalIncome;
       const discretionaryCash = result.cashflow.discretionary;
 
@@ -492,20 +492,13 @@ describe('Savings Account Interest Income', () => {
 
       const grownAccount = result.accounts[0] as SavedAccount;
 
-      console.log('=== INTEREST FLOW TRACE ===');
-      console.log(`Account start: $${initialBalance}`);
-      console.log(`Account end: $${grownAccount.amount}`);
-      console.log(`Cashflow income: $${result.cashflow.totalIncome}`);
-      console.log(`Cashflow expenses: $${result.cashflow.totalExpenses}`);
-      console.log(`Taxes paid: $${result.taxDetails.fed + result.taxDetails.state + result.taxDetails.fica}`);
-      console.log(`Net pay: $${result.cashflow.netPay}`);
-      console.log(`Bucket allocations:`, result.cashflow.bucketDetail);
-
-      // After interest, where does money end up?
-      // If interest is $5,000:
-      // - Does it stay in the savings account? (account should be $105,000)
-      // - Does it flow to other buckets? (bucketDetail should show allocations)
-      // - Is it spent on expenses? (expenses > 0)
+      // Verify interest flow is correct:
+      // - Account grew by interest (stays in account)
+      expect(grownAccount.amount).toBeCloseTo(initialBalance * 1.05, 0);
+      // - Interest appears in income (for taxes)
+      expect(result.cashflow.totalIncome).toBeCloseTo(5000, 0);
+      // - Interest is NOT discretionary (it's reinvested in the account)
+      expect(result.cashflow.discretionary).toBeLessThan(100);
     });
   });
 });

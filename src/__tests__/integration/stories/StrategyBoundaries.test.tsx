@@ -31,10 +31,8 @@ import { FoodExpense, MortgageExpense } from '../../../components/Objects/Expens
 import { runSimulation } from '../../../components/Objects/Assumptions/useSimulation';
 import {
     getAge,
-    getYearByAge,
     getAccountById,
     hasLogMessage,
-    calculateNetWorth,
 } from '../helpers/simulationTestUtils';
 import {
     assertAllYearsInvariants,
@@ -352,8 +350,12 @@ describe('Strategy Boundary Tests', () => {
                 }
             }
 
-            // Note: Capital preservation may or may not trigger depending on
-            // exact simulation mechanics - this is a soft check
+            // With -20% returns, the portfolio should drop significantly
+            // pushing withdrawal rate above upper guardrail (4.8%) and triggering capital preservation
+            expect(
+                foundCapitalPreservation,
+                'Capital preservation should trigger with -20% portfolio returns'
+            ).toBe(true);
         });
     });
 
@@ -419,15 +421,6 @@ describe('Strategy Boundary Tests', () => {
             'acc-property',
             new Date('2025-01-01')
         );
-
-        const workIncome = {
-            id: 'inc-work',
-            name: 'Salary',
-            amount: 100000,
-            frequency: 'Annually' as const,
-            earned_income: 'Yes' as const,
-            getAnnualAmount: () => 100000,
-        };
 
         const livingExpenses = new FoodExpense(
             'exp-living', 'Living', 30000, 'Annually', new Date('2025-01-01')

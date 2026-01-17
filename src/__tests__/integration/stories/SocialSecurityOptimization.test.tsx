@@ -182,7 +182,9 @@ describe('Story 3: Social Security Optimization', () => {
     });
 
     it('should apply earnings test before FRA when working', () => {
-        const birthYear = 1960; // FRA = 67
+        // Use birth year that makes person younger than 62 when simulation starts (~2026)
+        // so the simulation can observe them reaching claiming age
+        const birthYear = 1966; // Person is ~60 in 2026, will reach 62 during simulation
         const claimingAge = 62;
 
         // Create a scenario where person claims SS at 62 but keeps working
@@ -242,7 +244,7 @@ describe('Story 3: Social Security Optimization', () => {
 
         // Look for earnings test being applied between age 62 and FRA (67)
         // The earnings test may be logged with various phrases
-        let earningsTestIndicator = false;
+        let earningsTestApplied = false;
         for (const year of simulation) {
             const age = getAge(year.year, birthYear);
 
@@ -255,13 +257,18 @@ describe('Story 3: Social Security Optimization', () => {
                     hasLogMessage(year, 'earnings');
 
                 if (hasEarningsTestLog) {
-                    earningsTestIndicator = true;
+                    earningsTestApplied = true;
                 }
             }
         }
 
-        // Earnings test may or may not be explicitly logged in the simulation
-        // The key invariant is that the simulation runs correctly
+        // With $80k work income and SS claimed at 62, earnings test MUST be applied
+        // The exempt amount is ~$22,320 - well below $80k income
+        expect(
+            earningsTestApplied,
+            'Earnings test should be applied when claiming SS before FRA while earning $80k'
+        ).toBe(true);
+
         assertAllYearsInvariants(simulation);
 
         // Verify SS income exists at claiming age

@@ -1,1 +1,5 @@
+# Run TypeScript type checking
+npx tsc -b
+
+# Run lint-staged for linting/formatting
 npx lint-staged
