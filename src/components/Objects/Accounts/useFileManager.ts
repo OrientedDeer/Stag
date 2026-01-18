@@ -10,14 +10,14 @@ import { AnyIncome, reconstituteIncome } from '../Income/models';
 import { AnyExpense, reconstituteExpense } from '../Expense/models';
 import { TaxState } from '../../Objects/Taxes/TaxContext';
 
-interface FullBackup {
+export interface FullBackup {
     version: number;
     accounts: any[];
     amountHistory: Record<string, AmountHistoryEntry[]>;
     incomes: any[];
     expenses: any[];
     taxSettings: TaxState;
-    assumptions: AssumptionsState; // Add assumptions to the FullBackup interface
+    assumptions: AssumptionsState;
 }
 
 export const useFileManager = () => {
@@ -88,5 +88,17 @@ export const useFileManager = () => {
         }
     };
 
-    return { handleGlobalExport, handleGlobalImport };
+    const getBackupData = (): FullBackup => {
+        return {
+            version: 1,
+            accounts: accounts.map(a => ({ ...a, className: a.constructor.name })),
+            amountHistory,
+            incomes: incomes.map(i => ({ ...i, className: i.constructor.name })),
+            expenses: expenses.map(e => ({ ...e, className: e.constructor.name })),
+            taxSettings: state as TaxState,
+            assumptions: assumptions as AssumptionsState,
+        };
+    };
+
+    return { handleGlobalExport, handleGlobalImport, getBackupData };
 };

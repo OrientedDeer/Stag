@@ -20,6 +20,7 @@ import { ExpenseContext } from "../../components/Objects/Expense/ExpenseContext"
 import { TaxContext } from "../../components/Objects/Taxes/TaxContext";
 import { AssumptionsContext } from "../../components/Objects/Assumptions/AssumptionsContext";
 import { SimulationContext } from "../../components/Objects/Assumptions/SimulationContext";
+import { QRGenerateModal, QRScanModal } from "../../components/Objects/Accounts/QRTransfer";
 
 const AccountList = ({ type }: { type: any }) => {
     const { accounts, dispatch } = useContext(AccountContext);
@@ -101,12 +102,14 @@ const TabsContent = () => {
     const { dispatch: taxDispatch } = useContext(TaxContext);
     const { dispatch: assumptionsDispatch } = useContext(AssumptionsContext);
     const { dispatch: simulationDispatch } = useContext(SimulationContext);
-    const { handleGlobalExport, handleGlobalImport } = useFileManager();
+    const { handleGlobalExport, handleGlobalImport, getBackupData } = useFileManager();
     const [activeTab, setActiveTab] = useState<string>(() => {
         return localStorage.getItem('account_active_tab') || 'Saved';
     });
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [showQRGenerate, setShowQRGenerate] = useState(false);
+    const [showQRScan, setShowQRScan] = useState(false);
 
     // Ref for the hidden file input
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -300,6 +303,18 @@ const TabsContent = () => {
                                 Import Backup
                             </button>
                             <button
+                                onClick={() => setShowQRGenerate(true)}
+                                className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-lg border border-gray-700 text-xs font-medium transition-colors"
+                            >
+                                Share QR
+                            </button>
+                            <button
+                                onClick={() => setShowQRScan(true)}
+                                className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-lg border border-gray-700 text-xs font-medium transition-colors"
+                            >
+                                Scan QR
+                            </button>
+                            <button
                                 onClick={() => setShowDeleteConfirm(true)}
                                 className="px-3 py-1.5 bg-red-900/20 hover:bg-red-900/40 text-red-300 rounded-lg border border-red-700 text-xs font-medium transition-colors"
                             >
@@ -375,6 +390,20 @@ const TabsContent = () => {
                         </div>
                     </div>
                 )}
+
+                {/* QR Generate Modal */}
+                <QRGenerateModal
+                    isOpen={showQRGenerate}
+                    onClose={() => setShowQRGenerate(false)}
+                    backupData={getBackupData()}
+                />
+
+                {/* QR Scan Modal */}
+                <QRScanModal
+                    isOpen={showQRScan}
+                    onClose={() => setShowQRScan(false)}
+                    onImport={handleGlobalImport}
+                />
             </div>
         </div>
     );
