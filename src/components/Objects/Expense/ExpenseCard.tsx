@@ -227,7 +227,7 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
         if (expense instanceof RentExpense) {
             return formatCompactCurrency(expense.payment, { forceExact });
         }
-        if (expense instanceof MortgageExpense) {
+        if (expense instanceof MortgageExpense || expense instanceof LoanExpense) {
             return formatCompactCurrency(expense.payment, { forceExact });
         }
         return formatCompactCurrency(expense.amount, { forceExact });

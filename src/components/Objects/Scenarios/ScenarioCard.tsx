@@ -298,7 +298,7 @@ export const ScenarioCard: React.FC<ScenarioCardProps> = ({
                     </div>
 
                     {/* Selection badges */}
-                    <div className="flex gap-1 ml-2 flex-shrink-0">
+                    <div className="flex gap-1 ml-2 shrink-0">
                         {isBaseline && (
                             <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded font-medium">
                                 Baseline

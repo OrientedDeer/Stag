@@ -21,7 +21,7 @@ export const ToggleInput: React.FC<ToggleInputProps> = ({ label, enabled, setEna
       <button
         id={id}
         onClick={toggle}
-        className={`relative inline-flex items-center h-6 rounded-full w-11 flex-shrink-0 transition-colors duration-300 focus:outline-none ${
+        className={`relative inline-flex items-center h-6 rounded-full w-11 shrink-0 transition-colors duration-300 focus:outline-none ${
           enabled ? 'bg-green-600' : 'bg-gray-700'
         }`}
       >
