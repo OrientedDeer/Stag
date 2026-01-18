@@ -101,8 +101,8 @@ const TabsContent = () => {
             // Get gradient colors for this specific group of expenses
             const palette = CATEGORY_PALETTES[category];
             const expenseColors = getDistributedColors(palette, expensesInCategory.length);
-            // Pick a representative color for the Category header (approx middle of palette)
-            const categoryColor = palette[50] || palette[Math.floor(palette.length/2)];
+            // Pick a representative color for the Category header (middle of palette)
+            const categoryColor = palette[Math.floor(palette.length / 2)];
 
             return {
                 id: category,

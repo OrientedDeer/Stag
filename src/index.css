@@ -15,6 +15,45 @@
     -webkit-appearance: none;
     margin: 0;
   }
+
+  /* Chart colors for Nivo SVG - must be in :root for SVG access */
+  :root {
+    --color-chart-Fuchsia-1: #f0abfc;
+    --color-chart-Fuchsia-25: #e48bf2;
+    --color-chart-Fuchsia-50: #d869e8;
+    --color-chart-Fuchsia-75: #cc48dd;
+    --color-chart-Fuchsia-100: #c026d3;
+    --color-chart-Blue-1: #93c5fd;
+    --color-chart-Blue-25: #78adf9;
+    --color-chart-Blue-50: #5d94f4;
+    --color-chart-Blue-75: #417cf0;
+    --color-chart-Blue-100: #2563eb;
+    --color-chart-Yellow-1: #fcd34d;
+    --color-chart-Yellow-25: #f8cb3c;
+    --color-chart-Yellow-50: #f3c32b;
+    --color-chart-Yellow-75: #efbb19;
+    --color-chart-Yellow-100: #eab308;
+    --color-chart-Red-1: #fca5a5;
+    --color-chart-Red-25: #f48686;
+    --color-chart-Red-50: #ec6666;
+    --color-chart-Red-75: #e44646;
+    --color-chart-Red-100: #dc2626;
+    --color-chart-Green-1: #10b981;
+    --color-chart-Green-25: #0da977;
+    --color-chart-Green-50: #0a996c;
+    --color-chart-Green-75: #078862;
+    --color-chart-Green-100: #047857;
+    --color-chart-Cyan-1: #67e8f9;
+    --color-chart-Cyan-25: #4bd0e9;
+    --color-chart-Cyan-50: #2db7d8;
+    --color-chart-Cyan-75: #0f9ec8;
+    --color-chart-Cyan-100: #0891b2;
+    --color-chart-Orange-1: #fdba74;
+    --color-chart-Orange-25: #faa24c;
+    --color-chart-Orange-50: #f68922;
+    --color-chart-Orange-75: #f17000;
+    --color-chart-Orange-100: #ea580c;
+  }
 }
 
 @theme {

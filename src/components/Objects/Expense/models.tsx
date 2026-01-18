@@ -952,19 +952,21 @@ export const CLASS_TO_CATEGORY: Record<string, ExpenseCategory> = {
 };
 
 // Map Categories to their color palettes (using Tailwind classes)
+// Uses 5-step gradients (1, 25, 50, 75, 100) defined in :root for SVG access
+const PALETTE_STEPS = [1, 25, 50, 75, 100];
 export const CATEGORY_PALETTES: Record<ExpenseCategory, string[]> = {
-  Rent: Array.from({ length: 100 }, (_, i) => `bg-chart-Fuchsia-${i + 1}`),
-  Mortgage: Array.from({ length: 100 }, (_, i) => `bg-chart-Fuchsia-${i + 1}`),
-  Loan: Array.from({ length: 100 }, (_, i) => `bg-chart-Blue-${i + 1}`),
-  Dependent: Array.from({ length: 100 }, (_, i) => `bg-chart-Yellow-${i + 1}`),
-  Healthcare: Array.from({ length: 100 }, (_, i) => `bg-chart-Red-${i + 1}`),
-  Vacation: Array.from({ length: 100 }, (_, i) => `bg-chart-Green-${i + 1}`),
-  Subscription: Array.from({ length: 100 }, (_, i) => `bg-chart-Cyan-${i + 1}`),
-  Emergency: Array.from({ length: 100 }, (_, i) => `bg-chart-Fuchsia-${i + 1}`),
-  Transport: Array.from({ length: 100 }, (_, i) => `bg-chart-Blue-${i + 1}`),
-  Food: Array.from({ length: 100 }, (_, i) => `bg-chart-Yellow-${i + 1}`),
-  Charity: Array.from({ length: 100 }, (_, i) => `bg-chart-Orange-${i + 1}`),
-  Other: Array.from({ length: 100 }, (_, i) => `bg-chart-Red-${i + 1}`),
+  Rent: PALETTE_STEPS.map(i => `bg-chart-Fuchsia-${i}`),
+  Mortgage: PALETTE_STEPS.map(i => `bg-chart-Fuchsia-${i}`),
+  Loan: PALETTE_STEPS.map(i => `bg-chart-Blue-${i}`),
+  Dependent: PALETTE_STEPS.map(i => `bg-chart-Yellow-${i}`),
+  Healthcare: PALETTE_STEPS.map(i => `bg-chart-Red-${i}`),
+  Vacation: PALETTE_STEPS.map(i => `bg-chart-Green-${i}`),
+  Subscription: PALETTE_STEPS.map(i => `bg-chart-Cyan-${i}`),
+  Emergency: PALETTE_STEPS.map(i => `bg-chart-Fuchsia-${i}`),
+  Transport: PALETTE_STEPS.map(i => `bg-chart-Blue-${i}`),
+  Food: PALETTE_STEPS.map(i => `bg-chart-Yellow-${i}`),
+  Charity: PALETTE_STEPS.map(i => `bg-chart-Orange-${i}`),
+  Other: PALETTE_STEPS.map(i => `bg-chart-Red-${i}`),
 };
 
 export function reconstituteExpense(data: any): AnyExpense | null {

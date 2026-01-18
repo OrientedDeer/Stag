@@ -106,8 +106,8 @@ const TabsContent = () => {
 			// Get gradient colors for this specific group of incomes
 			const palette = CATEGORY_PALETTES[category];
 			const incomeColors = getDistributedColors(palette, incomesInCategory.length);
-			// Pick a representative color for the Category header (approx middle of palette)
-			const categoryColor = palette[50] || palette[Math.floor(palette.length/2)];
+			// Pick a representative color for the Category header (middle of palette)
+			const categoryColor = palette[Math.floor(palette.length / 2)];
 
 			return {
 				id: category,

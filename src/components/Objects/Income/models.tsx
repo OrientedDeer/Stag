@@ -752,12 +752,14 @@ export const CLASS_TO_CATEGORY: Record<string, IncomeCategory> = {
 };
 
 // Map Categories to their color palettes (using Tailwind classes)
+// Uses 5-step gradients (1, 25, 50, 75, 100) defined in :root for SVG access
+const PALETTE_STEPS = [1, 25, 50, 75, 100];
 export const CATEGORY_PALETTES: Record<IncomeCategory, string[]> = {
-	Work: Array.from({ length: 100 }, (_, i) => `bg-chart-Fuchsia-${i + 1}`),
-	SocialSecurity: Array.from({ length: 100 }, (_, i) => `bg-chart-Blue-${i + 1}`),
-	Pension: Array.from({ length: 100 }, (_, i) => `bg-chart-Green-${i + 1}`),
-	Passive: Array.from({ length: 100 }, (_, i) => `bg-chart-Yellow-${i + 1}`),
-	Windfall: Array.from({ length: 100 }, (_, i) => `bg-chart-Red-${i + 1}`),
+	Work: PALETTE_STEPS.map(i => `bg-chart-Fuchsia-${i}`),
+	SocialSecurity: PALETTE_STEPS.map(i => `bg-chart-Blue-${i}`),
+	Pension: PALETTE_STEPS.map(i => `bg-chart-Green-${i}`),
+	Passive: PALETTE_STEPS.map(i => `bg-chart-Yellow-${i}`),
+	Windfall: PALETTE_STEPS.map(i => `bg-chart-Red-${i}`),
 };
 
 export function reconstituteIncome(data: any): AnyIncome | null {
