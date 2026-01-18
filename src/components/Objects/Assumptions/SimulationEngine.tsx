@@ -10,7 +10,7 @@ import * as TaxService from "../../Objects/Taxes/TaxService";
 import { calculateAIME, extractEarningsFromSimulation, calculateEarningsTestReduction } from "../../../services/SocialSecurityCalculator";
 import { getFRA } from "../../../data/SocialSecurityData";
 import { calculateStrategyWithdrawal, WithdrawalResult, GuardrailTrigger } from "../../../services/WithdrawalStrategies";
-import { getMedianRetirementTaxRate, getIncomeThresholdForRate } from "../../../services/TaxOptimizationService";
+import { getIncomeThresholdForRate } from "../../../services/TaxOptimizationService";
 
 // Define the shape of a single year's result
 export interface SimulationYear {
@@ -54,6 +54,7 @@ export interface SimulationYear {
     rothConversion?: {
         amount: number;                  // Total amount converted
         taxCost: number;                 // Tax paid on conversion
+        taxAfter: number;               // Total federal tax after conversion
         fromAccounts: Record<string, number>;  // Amount from each Traditional account (by name)
         toAccounts: Record<string, number>;    // Amount to each Roth account (by name)
         fromAccountIds: Record<string, number>;  // Amount from each Traditional account (by id)
@@ -80,7 +81,7 @@ function performAutoRothConversion(
     year: number,
     assumptions: AssumptionsState,
     taxState: TaxState,
-    previousSimulation: SimulationYear[],
+    _previousSimulation: SimulationYear[],
     logs: string[]
 ): SimulationYear['rothConversion'] | undefined {
     // Get federal tax parameters
@@ -97,16 +98,17 @@ function performAutoRothConversion(
     // Calculate current taxable income
     const grossIncome = TaxService.getGrossIncome(incomes, year);
     const preTaxDeductions = TaxService.getPreTaxExemptions(incomes, year);
+    const standardDeduction = fedParams.standardDeduction || 0;
     const taxableIncome = Math.max(0, grossIncome - preTaxDeductions);
 
     // Get retirement tax rate from previous simulation or use fallback
-    const retirementAge = assumptions.demographics.retirementAge;
-    const currentYear = new Date().getFullYear();
-    const startYear = assumptions.demographics.priorYearMode
-        ? currentYear - 1
-        : currentYear;
-    const startAge = startYear - assumptions.demographics.birthYear;
-    const retirementYear = startYear + (retirementAge - startAge);
+    //const retirementAge = assumptions.demographics.retirementAge;
+    //const currentYear = new Date().getFullYear();
+    // const startYear = assumptions.demographics.priorYearMode
+    //     ? currentYear - 1
+    //     : currentYear;
+    //const startAge = startYear - assumptions.demographics.birthYear;
+    //const retirementYear = startYear + (retirementAge - startAge);
 
     // Minimum target rate: always fill at least to the 22% bracket
     // This ensures we do conversions even when calculated effective retirement rate is low
@@ -115,10 +117,10 @@ function performAutoRothConversion(
     // Use the higher of: minimum target rate OR calculated retirement effective rate
     // This way, if someone has high retirement income (25% effective rate), we'd target 25%
     let retirementTaxRate = MIN_CONVERSION_TARGET_RATE;
-    if (previousSimulation.length >= 5) {
-        const calculatedRate = getMedianRetirementTaxRate(previousSimulation, retirementYear);
-        retirementTaxRate = Math.max(MIN_CONVERSION_TARGET_RATE, calculatedRate);
-    }
+    // if (previousSimulation.length >= 5) {
+    //     const calculatedRate = getMedianRetirementTaxRate(previousSimulation, retirementYear);
+    //     retirementTaxRate = Math.max(MIN_CONVERSION_TARGET_RATE, calculatedRate);
+    // }
 
     // Get current marginal rate
     const marginalInfo = TaxService.getMarginalTaxRate(taxableIncome, fedParams);
@@ -131,7 +133,7 @@ function performAutoRothConversion(
 
     // Calculate optimal conversion amount (fill brackets up to retirement rate)
     const targetIncomeThreshold = getIncomeThresholdForRate(retirementTaxRate, fedParams);
-    const optimalAmount = Math.max(0, targetIncomeThreshold - taxableIncome);
+    const optimalAmount = Math.max(0, targetIncomeThreshold + standardDeduction - taxableIncome);
 
     if (optimalAmount <= 0) return undefined;
 
@@ -222,12 +224,10 @@ function performAutoRothConversion(
 
     // Calculate tax cost on the conversion
     const taxBefore = TaxService.calculateTax(taxableIncome, 0, {
-        ...fedParams,
-        standardDeduction: 0
+        ...fedParams
     });
     const taxAfter = TaxService.calculateTax(taxableIncome + totalConverted, 0, {
-        ...fedParams,
-        standardDeduction: 0
+        ...fedParams
     });
     const taxCost = taxAfter - taxBefore;
 
@@ -237,6 +237,7 @@ function performAutoRothConversion(
     return {
         amount: totalConverted,
         taxCost,
+        taxAfter,
         fromAccounts,
         toAccounts,
         fromAccountIds,
@@ -269,9 +270,10 @@ export function simulateOneYear(
     // - FutureSocialSecurityIncome: Calculate PIA when reaching claiming age
     // - WorkIncome: End at retirement if no explicit end date set
 
-    // Filter out previous year's interest income - it's regenerated fresh based on current account balances
+    // Filter out previous year's interest and RMD income - they're regenerated fresh each year
+    // Interest is based on current account balances, RMD is based on prior year balance and current age
     const regularIncomes = incomes.filter(inc => {
-        if (inc instanceof PassiveIncome && inc.sourceType === 'Interest') {
+        if (inc instanceof PassiveIncome && (inc.sourceType === 'Interest' || inc.sourceType === 'RMD')) {
             return false;
         }
         return true;
@@ -403,11 +405,14 @@ export function simulateOneYear(
             if (currentAge === inc.claimingAge && inc.calculatedPIA === 0) {
                 try {
                     // Extract earnings from simulation years + any imported SSA earnings history
+                    // Also auto-generates prior earnings from job start dates (using current salary, flat)
+                    // Priority: auto-generated < simulation < imported SSA (source of truth)
                     const inflationAdjusted = assumptions.macro.inflationAdjusted;
                     const earningsHistory = extractEarningsFromSimulation(
                         previousSimulation,
                         assumptions.demographics.priorEarnings,
-                        inflationAdjusted
+                        inflationAdjusted,
+                        incomes  // Pass current incomes to auto-generate prior earnings from job start dates
                     );
 
                     // Calculate AIME/PIA based on top 35 years
@@ -715,6 +720,171 @@ export function simulateOneYear(
     let totalTax = fedTax + stateTax + ficaTax;
 
     // ------------------------------------------------------------------
+    // WITHDRAWAL TRACKING VARIABLES (declared early for RMD use)
+    // ------------------------------------------------------------------
+    // CHANGED: Split inflows into User vs Employer to support vesting tracking
+    const userInflows: Record<string, number> = {};
+    const employerInflows: Record<string, number> = {};
+    let withdrawalTaxes = 0;
+    let capitalGainsTaxTotal = 0; // Track capital gains tax separately for display
+    let strategyWithdrawalExecuted = 0;
+    let totalWithdrawals = 0;
+    const withdrawalDetail: Record<string, number> = {}; // Track by account name for display
+
+    // ------------------------------------------------------------------
+    // REQUIRED MINIMUM DISTRIBUTIONS (RMD) - BEFORE Roth conversions
+    // ------------------------------------------------------------------
+    // RMDs must be taken from Traditional accounts starting at age 72-75 depending on birth year
+    // The RMD amount is based on the PRIOR year's ending balance divided by life expectancy factor
+    // IMPORTANT: RMD happens BEFORE Roth conversions so that:
+    // 1. RMD income is included when calculating Roth conversion bracket headroom
+    // 2. RMD cash is available to cover living expenses
+    const birthYearForRMD = assumptions.demographics.birthYear;
+    const rmdRequired = isRMDRequired(currentAge, birthYearForRMD);
+    let rmdDetails: SimulationYear['rmdDetails'] = undefined;
+    let rmdFedTax = 0;   // Federal tax on RMD (tracked separately for proper taxDetails breakdown)
+    let rmdStateTax = 0; // State tax on RMD
+    const rmdIncomes: PassiveIncome[] = []; // RMD income objects for tracking and Roth conversion visibility
+
+    if (rmdRequired) {
+        const rmdCalculations: RMDCalculation[] = [];
+        let totalRMDRequired = 0;
+        let totalRMDWithdrawn = 0;
+
+        // Find Traditional accounts and calculate RMD for each
+        for (const account of accounts) {
+            if (!(account instanceof InvestedAccount)) continue;
+            if (!isAccountSubjectToRMD(account.taxType)) continue;
+
+            // Get prior year's ending balance for RMD calculation
+            const priorYearSim = previousSimulation[previousSimulation.length - 1];
+            let priorYearBalance = account.amount; // Default to current if no history
+
+            if (priorYearSim) {
+                const priorAccount = priorYearSim.accounts.find(a => a.id === account.id);
+                if (priorAccount) {
+                    priorYearBalance = priorAccount.amount;
+                }
+            }
+
+            // Calculate RMD for this account
+            const rmdAmount = calculateRMD(priorYearBalance, currentAge);
+            if (rmdAmount <= 0) continue;
+
+            rmdCalculations.push({
+                accountName: account.name,
+                accountId: account.id,
+                priorYearBalance: priorYearBalance,
+                distributionPeriod: priorYearBalance / rmdAmount,
+                rmdAmount: rmdAmount
+            });
+
+            totalRMDRequired += rmdAmount;
+
+            // Withdraw the RMD (entire amount is taxable as ordinary income)
+            const availableBalance = account.vestedAmount;
+            const actualWithdrawal = Math.min(rmdAmount, availableBalance);
+
+            if (actualWithdrawal > 0) {
+                // Create RMD income object - this makes RMD visible to Roth conversion
+                // when it calculates bracket headroom via getGrossIncome(incomes, year)
+                const rmdIncome = new PassiveIncome(
+                    `rmd-${account.id}-${year}`,
+                    `RMD from ${account.name}`,
+                    actualWithdrawal,
+                    'Annually',
+                    'No',  // Not earned income (no FICA)
+                    'RMD',
+                    new Date(`${year}-01-01`),
+                    new Date(`${year}-12-31`),
+                    false  // isReinvested: false - RMD is available as spendable cash
+                );
+                rmdIncomes.push(rmdIncome);
+
+                // Calculate marginal tax on RMD withdrawal for tracking purposes
+                const fedParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'federal', undefined, assumptions);
+                const stateParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions);
+
+                const currentFedIncome = totalGrossIncome - preTaxDeductions;
+
+                // State income needs to exclude SS for states that don't tax it
+                const totalSSBenefits = TaxService.getSocialSecurityBenefits(allIncomes, year);
+                let currentStateIncome = totalGrossIncome - preTaxDeductions;
+                if (totalSSBenefits > 0) {
+                    if (TaxService.doesStateTaxSocialSecurity(taxState.stateResidency)) {
+                        // States that tax SS: use taxable portion
+                        const agiExcludingSS = totalGrossIncome - totalSSBenefits - preTaxDeductions;
+                        const taxableSSBenefits = TaxService.getTaxableSocialSecurityBenefits(totalSSBenefits, agiExcludingSS, taxState.filingStatus);
+                        currentStateIncome = totalGrossIncome - totalSSBenefits + taxableSSBenefits - preTaxDeductions;
+                    } else {
+                        // States that don't tax SS: exclude entirely
+                        currentStateIncome = totalGrossIncome - totalSSBenefits - preTaxDeductions;
+                    }
+                }
+
+                const stdDedFed = fedParams?.standardDeduction || 12950;
+                const stdDedState = stateParams?.standardDeduction || 0;
+                const currentFedDeduction = taxState.deductionMethod === 'Standard' ? stdDedFed : 0;
+                const currentStateDeduction = taxState.deductionMethod === 'Standard' ? stdDedState : 0;
+
+                // Calculate marginal tax on the RMD amount
+                const fedApplied = { ...fedParams!, standardDeduction: currentFedDeduction };
+                const stateApplied = { ...stateParams!, standardDeduction: currentStateDeduction };
+
+                const fedBase = TaxService.calculateTax(currentFedIncome, 0, fedApplied);
+                const fedNew = TaxService.calculateTax(currentFedIncome + actualWithdrawal, 0, fedApplied);
+                const stateBase = TaxService.calculateTax(currentStateIncome, 0, stateApplied);
+                const stateNew = TaxService.calculateTax(currentStateIncome + actualWithdrawal, 0, stateApplied);
+
+                // Track federal and state RMD taxes separately for proper taxDetails breakdown
+                const thisRmdFedTax = fedNew - fedBase;
+                const thisRmdStateTax = stateNew - stateBase;
+                rmdFedTax += thisRmdFedTax;
+                rmdStateTax += thisRmdStateTax;
+
+                // Update totalGrossIncome so it includes RMD for cash flow calculations
+                totalGrossIncome += actualWithdrawal;
+
+                // Apply withdrawal to account
+                userInflows[account.id] = (userInflows[account.id] || 0) - actualWithdrawal;
+                totalRMDWithdrawn += actualWithdrawal;
+
+                // Track in withdrawal details
+                totalWithdrawals += actualWithdrawal;
+                withdrawalDetail[account.name] = (withdrawalDetail[account.name] || 0) + actualWithdrawal;
+
+                logs.push(`📋 RMD from ${account.name}: $${actualWithdrawal.toLocaleString(undefined, { maximumFractionDigits: 0 })} (Tax: $${(thisRmdFedTax + thisRmdStateTax).toLocaleString(undefined, { maximumFractionDigits: 0 })})`);
+            }
+        }
+
+        // Calculate shortfall and penalty
+        const shortfall = Math.max(0, totalRMDRequired - totalRMDWithdrawn);
+        const penalty = shortfall * 0.25; // 25% penalty on shortfall (SECURE Act 2.0)
+
+        if (shortfall > 0) {
+            logs.push(`⚠️ RMD shortfall: $${shortfall.toLocaleString(undefined, { maximumFractionDigits: 0 })} - Penalty: $${penalty.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+        }
+
+        rmdDetails = {
+            totalRMD: totalRMDRequired,
+            totalWithdrawn: totalRMDWithdrawn,
+            accountBreakdown: rmdCalculations,
+            shortfall: shortfall,
+            penalty: penalty
+        };
+
+        // Add RMD tax to fedTax and stateTax for proper breakdown
+        // Penalty is added to federal tax (it's an IRS penalty)
+        fedTax += rmdFedTax + penalty;
+        stateTax += rmdStateTax;
+        totalTax = fedTax + stateTax + ficaTax;
+    }
+
+    // Add RMD incomes to allIncomes so Roth conversion sees them when calculating bracket headroom
+    // This is done by pushing to the array (arrays are mutable even when const)
+    allIncomes.push(...rmdIncomes);
+
+    // ------------------------------------------------------------------
     // AUTO ROTH CONVERSIONS (during retirement)
     // ------------------------------------------------------------------
     let rothConversionResult: SimulationYear['rothConversion'] = undefined;
@@ -775,6 +945,17 @@ export function simulateOneYear(
 
             logs.push(`🔄 Auto Roth Conversion: $${conversionResult.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
             logs.push(`  Tax cost: $${conversionResult.taxCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+        }
+    }
+
+    // Apply Roth conversion flows (if any)
+    // Withdrawals from Traditional accounts (negative) and deposits to Roth accounts (positive)
+    if (rothConversionResult) {
+        for (const [accountId, amount] of Object.entries(rothConversionResult.fromAccountIds)) {
+            userInflows[accountId] = (userInflows[accountId] || 0) - amount; // Negative = withdrawal
+        }
+        for (const [accountId, amount] of Object.entries(rothConversionResult.toAccountIds)) {
+            userInflows[accountId] = (userInflows[accountId] || 0) + amount; // Positive = deposit
         }
     }
 
@@ -842,156 +1023,8 @@ export function simulateOneYear(
     // ------------------------------------------------------------------
     // WITHDRAWAL LOGIC (Deficit Manager)
     // ------------------------------------------------------------------
-
-    // CHANGED: Split inflows into User vs Employer to support vesting tracking
-    const userInflows: Record<string, number> = {};
-    const employerInflows: Record<string, number> = {};
-    let withdrawalTaxes = 0;
-    let capitalGainsTaxTotal = 0; // Track capital gains tax separately for display
-    let strategyWithdrawalExecuted = 0;
-    let totalWithdrawals = 0;
-    const withdrawalDetail: Record<string, number> = {}; // Track by account name for display
-
-    // Apply Roth conversion flows (if any)
-    // Withdrawals from Traditional accounts (negative) and deposits to Roth accounts (positive)
-    if (rothConversionResult) {
-        for (const [accountId, amount] of Object.entries(rothConversionResult.fromAccountIds)) {
-            userInflows[accountId] = (userInflows[accountId] || 0) - amount; // Negative = withdrawal
-        }
-        for (const [accountId, amount] of Object.entries(rothConversionResult.toAccountIds)) {
-            userInflows[accountId] = (userInflows[accountId] || 0) + amount; // Positive = deposit
-        }
-    }
-
-    // ------------------------------------------------------------------
-    // REQUIRED MINIMUM DISTRIBUTIONS (RMD)
-    // ------------------------------------------------------------------
-    // RMDs must be taken from Traditional accounts starting at age 72-75 depending on birth year
-    // The RMD amount is based on the PRIOR year's ending balance divided by life expectancy factor
-    const birthYearForRMD = assumptions.demographics.birthYear;
-    const rmdRequired = isRMDRequired(currentAge, birthYearForRMD);
-    let rmdDetails: SimulationYear['rmdDetails'] = undefined;
-    let rmdTaxTotal = 0;
-    let rmdCashReceived = 0; // Net cash after tax from RMD withdrawals
-
-    if (rmdRequired) {
-        const rmdCalculations: RMDCalculation[] = [];
-        let totalRMDRequired = 0;
-        let totalRMDWithdrawn = 0;
-
-        // Find Traditional accounts and calculate RMD for each
-        for (const account of accounts) {
-            if (!(account instanceof InvestedAccount)) continue;
-            if (!isAccountSubjectToRMD(account.taxType)) continue;
-
-            // Get prior year's ending balance for RMD calculation
-            const priorYearSim = previousSimulation[previousSimulation.length - 1];
-            let priorYearBalance = account.amount; // Default to current if no history
-
-            if (priorYearSim) {
-                const priorAccount = priorYearSim.accounts.find(a => a.id === account.id);
-                if (priorAccount) {
-                    priorYearBalance = priorAccount.amount;
-                }
-            }
-
-            // Calculate RMD for this account
-            const rmdAmount = calculateRMD(priorYearBalance, currentAge);
-            if (rmdAmount <= 0) continue;
-
-            rmdCalculations.push({
-                accountName: account.name,
-                accountId: account.id,
-                priorYearBalance: priorYearBalance,
-                distributionPeriod: priorYearBalance / rmdAmount,
-                rmdAmount: rmdAmount
-            });
-
-            totalRMDRequired += rmdAmount;
-
-            // Withdraw the RMD (entire amount is taxable as ordinary income)
-            const availableBalance = account.vestedAmount;
-            const actualWithdrawal = Math.min(rmdAmount, availableBalance);
-
-            if (actualWithdrawal > 0) {
-                // Calculate tax on RMD withdrawal (treated as ordinary income)
-                const fedParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'federal', undefined, assumptions);
-                const stateParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions);
-
-                const currentFedIncome = totalGrossIncome - preTaxDeductions;
-
-                // State income needs to exclude SS for states that don't tax it
-                const totalSSBenefits = TaxService.getSocialSecurityBenefits(allIncomes, year);
-                let currentStateIncome = totalGrossIncome - preTaxDeductions;
-                if (totalSSBenefits > 0) {
-                    if (TaxService.doesStateTaxSocialSecurity(taxState.stateResidency)) {
-                        // States that tax SS: use taxable portion
-                        const agiExcludingSS = totalGrossIncome - totalSSBenefits - preTaxDeductions;
-                        const taxableSSBenefits = TaxService.getTaxableSocialSecurityBenefits(totalSSBenefits, agiExcludingSS, taxState.filingStatus);
-                        currentStateIncome = totalGrossIncome - totalSSBenefits + taxableSSBenefits - preTaxDeductions;
-                    } else {
-                        // States that don't tax SS: exclude entirely
-                        currentStateIncome = totalGrossIncome - totalSSBenefits - preTaxDeductions;
-                    }
-                }
-
-                const stdDedFed = fedParams?.standardDeduction || 12950;
-                const stdDedState = stateParams?.standardDeduction || 0;
-                const currentFedDeduction = taxState.deductionMethod === 'Standard' ? stdDedFed : 0;
-                const currentStateDeduction = taxState.deductionMethod === 'Standard' ? stdDedState : 0;
-
-                // Calculate tax on the RMD amount
-                const fedApplied = { ...fedParams!, standardDeduction: currentFedDeduction };
-                const stateApplied = { ...stateParams!, standardDeduction: currentStateDeduction };
-
-                const fedBase = TaxService.calculateTax(currentFedIncome, 0, fedApplied);
-                const fedNew = TaxService.calculateTax(currentFedIncome + actualWithdrawal, 0, fedApplied);
-                const stateBase = TaxService.calculateTax(currentStateIncome, 0, stateApplied);
-                const stateNew = TaxService.calculateTax(currentStateIncome + actualWithdrawal, 0, stateApplied);
-
-                const rmdTax = (fedNew - fedBase) + (stateNew - stateBase);
-                rmdTaxTotal += rmdTax;
-                totalGrossIncome += actualWithdrawal;
-
-                // Apply withdrawal to account
-                userInflows[account.id] = (userInflows[account.id] || 0) - actualWithdrawal;
-                totalRMDWithdrawn += actualWithdrawal;
-
-                // Track net cash received from RMD
-                const netCash = actualWithdrawal - rmdTax;
-                rmdCashReceived += netCash;
-
-                // Track in withdrawal details
-                totalWithdrawals += actualWithdrawal;
-                withdrawalDetail[account.name] = (withdrawalDetail[account.name] || 0) + actualWithdrawal;
-
-                logs.push(`📋 RMD from ${account.name}: $${actualWithdrawal.toLocaleString(undefined, { maximumFractionDigits: 0 })} (Tax: $${rmdTax.toLocaleString(undefined, { maximumFractionDigits: 0 })})`);
-            }
-        }
-
-        // Calculate shortfall and penalty
-        const shortfall = Math.max(0, totalRMDRequired - totalRMDWithdrawn);
-        const penalty = shortfall * 0.25; // 25% penalty on shortfall (SECURE Act 2.0)
-
-        if (shortfall > 0) {
-            logs.push(`⚠️ RMD shortfall: $${shortfall.toLocaleString(undefined, { maximumFractionDigits: 0 })} - Penalty: $${penalty.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
-        }
-
-        rmdDetails = {
-            totalRMD: totalRMDRequired,
-            totalWithdrawn: totalRMDWithdrawn,
-            accountBreakdown: rmdCalculations,
-            shortfall: shortfall,
-            penalty: penalty
-        };
-
-        // Add RMD tax and penalty to total tax
-        totalTax += rmdTaxTotal + penalty;
-    }
-
-    // RMD cash helps cover the deficit (net of tax)
-    // Increase discretionary cash by the net RMD amount received
-    discretionaryCash += rmdCashReceived;
+    // Note: RMD cash is already included in discretionaryCash via totalGrossIncome and totalTax
+    // (totalGrossIncome includes RMD withdrawal, totalTax includes RMD tax)
 
     // Calculate deficit - only withdraw what's needed to cover expenses
     // The strategy result is tracked for informational purposes but we only
@@ -1533,9 +1566,16 @@ export function simulateOneYear(
     // 8. SUMMARY STATS
     const trueUserSaved = totalGrossIncome - totalTax - totalInsuranceCost - totalLivingExpenses - discretionaryCash;
 
+    // Filter out RMD incomes from the returned array - RMD should only appear as a withdrawal
+    // (in withdrawalDetail), not as income. The RMD income objects were only needed internally
+    // so Roth conversion could see RMD when calculating bracket headroom.
+    const returnedIncomes = allIncomes.filter(inc =>
+        !(inc instanceof PassiveIncome && inc.sourceType === 'RMD')
+    );
+
     return {
         year,
-        incomes: allIncomes, // Includes both regular incomes and interest income
+        incomes: returnedIncomes, // Includes regular incomes and interest (but not RMD - that's in withdrawalDetail)
         expenses: nextExpenses,
         accounts: nextAccounts,
         cashflow: {

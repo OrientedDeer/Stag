@@ -92,11 +92,24 @@ describe('Strategy Boundary Tests', () => {
                 returnRates: { ror: 0 }, // No returns for predictable math
                 autoRothConversions: true, // Enable Roth conversions
             },
+            priorities: [{
+                id: 'p-1',
+                name: 'p1', // e.g., "Max out 401k"
+                type: 'INVESTMENT',
+                accountId: 'acc-brokerage', // Link to your actual Account IDs
+                capType: 'REMAINDER',
+                capValue: 0 // e.g., 23000 for 401k, or 500 for monthly savings
+            }],
             withdrawalStrategy: [
+                { id: 'ws-brokerage', name: 'Brokerage', accountId: 'acc-brokerage' },
                 { id: 'ws-roth', name: 'Roth IRA', accountId: 'acc-roth' },
                 { id: 'ws-trad', name: 'Traditional IRA', accountId: 'acc-trad' },
             ],
         };
+
+        const brokerage = new InvestedAccount(
+            'acc-brokerage', 'Brokerage', 0, 0, 10, 0.05, 'Brokerage', true, 1.0, 0
+        );
 
         const largeTrad = new InvestedAccount(
             'acc-trad', 'Traditional IRA', 2000000, 0, 20, 0.05, 'Traditional IRA', true, 1.0, 2000000
@@ -121,7 +134,7 @@ describe('Strategy Boundary Tests', () => {
 
             const simulation = runSimulation(
                 10,
-                [largeTrad, rothIRA],
+                [brokerage,largeTrad, rothIRA],
                 [noSS],
                 [minimalExpenses],
                 bracketAssumptions,
@@ -164,7 +177,7 @@ describe('Strategy Boundary Tests', () => {
             // the 12% bracket top ($48,475) in retirement years with conversions
             const simulation = runSimulation(
                 10,
-                [largeTrad, rothIRA],
+                [brokerage,largeTrad, rothIRA],
                 [noSS],
                 [minimalExpenses],
                 bracketAssumptions,
@@ -192,7 +205,7 @@ describe('Strategy Boundary Tests', () => {
 
                     // Check taxable income reached at least past the 12% bracket
                     const totalIncome = year.cashflow.totalIncome;
-                    const taxableIncome = Math.max(0, totalIncome - standardDeduction);
+                    const taxableIncome = Math.max(0, totalIncome + (year.rothConversion?.amount || 0) - standardDeduction);
                     if (taxableIncome >= bracket12Top * 0.95) {
                         atLeastOneYearFilledPast12 = true;
                     }

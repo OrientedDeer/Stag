@@ -142,7 +142,7 @@ export class MortgageExpense extends BaseExpense {
     const principal_payment = (loan_balance > 0 ? fixed_amortization : 0) - interest_payment;
 
     const property_tax_payment = (valuation - valuation_deduction) * property_taxes / 100 / 12;
-    const pmi_payment = valuation * pmi / 100;
+    const pmi_payment = (loan_balance/valuation)<=.8 ? valuation * pmi / 100 / 12: 0;
     const repair_payment = maintenance / 100 / 12 * valuation;
     const home_owners_insurance_payment = home_owners_insurance / 100 / 12 * valuation;
 

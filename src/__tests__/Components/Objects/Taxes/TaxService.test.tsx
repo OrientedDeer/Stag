@@ -238,7 +238,7 @@ describe('TaxService: Additional Functions', () => {
         it('should include employer match for Roth 401k', () => {
             const income = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 20000, 5000, 'acc1', 'Roth 401k', 'FIXED', new Date('2020-01-01'));
             const total = getGrossIncome([income], 2024);
-            expect(total).toBe(100000); 
+            expect(total).toBe(105000); 
         });
 
         it('should handle multiple incomes', () => {

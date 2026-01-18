@@ -1051,7 +1051,7 @@ function TaxDebugTab() {
 
             {/* What-If Calculator Results */}
             {additionalIncome > 0 && whatIfCalc && (
-                <div className="bg-gradient-to-r from-purple-900/30 to-blue-900/30 p-4 rounded-xl border border-purple-700/50">
+                <div className="bg-linear-to-r from-purple-900/30 to-blue-900/30 p-4 rounded-xl border border-purple-700/50">
                     <h3 className="text-lg font-bold text-purple-300 mb-3">What-If Calculator ({focusYear})</h3>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                         <div>
@@ -1856,7 +1856,7 @@ function RMDDebugTab() {
 
             {/* What-If RMD Projection */}
             {whatIfProjection && whatIfProjection.length > 0 && (
-                <div className="bg-gradient-to-r from-amber-900/30 to-orange-900/30 p-4 rounded-xl border border-amber-700/50">
+                <div className="bg-linear-to-r from-amber-900/30 to-orange-900/30 p-4 rounded-xl border border-amber-700/50">
                     <h3 className="text-lg font-bold text-amber-300 mb-3">
                         What-If RMD Projection ({toCurrencyShort(additionalBalance)} starting balance, {growthRate}% growth)
                     </h3>
@@ -2186,7 +2186,7 @@ function TaxBracketVisualizationTab() {
                 </div>
 
                 {/* Year-by-year bracket visualization */}
-                <div className="space-y-2 max-h-[500px] overflow-y-auto pl-2">
+                <div className="space-y-2 max-h-125 overflow-y-auto pl-2">
                     {bracketData.map((data: any) => (
                         <div key={data.year} className="flex items-center gap-2 pr-2">
                             {/* Year/Age label */}
@@ -3008,7 +3008,7 @@ function RothConversionsDebugTab() {
             {yearsWithConversions.length > 0 && (
                 <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
                     <h3 className="text-lg font-semibold text-white mb-4">Conversion Flow by Year</h3>
-                    <div className="space-y-4 max-h-[400px] overflow-y-auto">
+                    <div className="space-y-4 max-h-100 overflow-y-auto">
                         {yearsWithConversions.map(row => (
                             <div key={row.year} className="bg-gray-800 p-3 rounded-lg">
                                 <div className="flex justify-between items-center mb-2">

@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { AssumptionsState, defaultAssumptions } from '../../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../../../components/Objects/Taxes/TaxContext';
 import { InvestedAccount, SavedAccount, DebtAccount, DeficitDebtAccount, PropertyAccount } from '../../../../components/Objects/Accounts/models';
-import { WorkIncome, FutureSocialSecurityIncome } from '../../../../components/Objects/Income/models';
-import { FoodExpense, MortgageExpense, LoanExpense } from '../../../../components/Objects/Expense/models';
+import { WorkIncome, FutureSocialSecurityIncome, PassiveIncome } from '../../../../components/Objects/Income/models';
+import { FoodExpense, MortgageExpense, LoanExpense, RentExpense } from '../../../../components/Objects/Expense/models';
 import { runSimulation } from '../../../../components/Objects/Assumptions/useSimulation';
 import { simulateOneYear } from '../../../../components/Objects/Assumptions/SimulationEngine';
 
@@ -1481,6 +1481,333 @@ describe('Simulation Engine', () => {
             );
 
             expect(result.rothConversion).toBeUndefined();
+        });
+
+        it('should fill exactly the remaining space in the 12% bracket', () => {
+            // Scenario: Retired with some income already, conversion should fill to bracket top
+            // 2025 Single: 12% bracket ends at $48,475 taxable income
+            // Standard deduction: $15,750
+            // So bracket top gross income = $48,475 + $15,750 = $64,225
+
+            const standardDeduction = 15750;
+            const bracket12Top = 48475;
+            const bracketTopGross = bracket12Top + standardDeduction; // $64,225
+
+            // Create SS income to fill part of the bracket
+            const existingIncome = 40000; // $40k SS leaves ~$23k of bracket space
+
+            const retiredAssumptions: AssumptionsState = {
+                ...cleanAssumptions,
+                demographics: {
+                    birthYear: 1958,
+                    lifeExpectancy: 90,
+                    retirementAge: 65
+                },
+                investments: {
+                    ...cleanAssumptions.investments,
+                    autoRothConversions: true,
+                    returnRates: { ror: 0 } // 0% return for simpler math
+                },
+                withdrawalStrategy: [
+                    { id: 'ws-trad-1', accountId: 'trad-1', name: 'Traditional 401k' },
+                    { id: 'ws-roth-1', accountId: 'roth-1', name: 'Roth 401k' }
+                ]
+            };
+
+            const ssIncome = new PassiveIncome(
+                'ss-1', 
+                'Pension', 
+                existingIncome / 12, // Monthly amount,
+                'Monthly',
+                'Yes',
+                'Other',
+                new Date('2024-01-01'),
+                new Date('2050-12-31'),
+                false
+            );
+
+            const traditional401k = new InvestedAccount(
+                'trad-1', 'Traditional 401k', 500000, 0, 0, 0, 'Traditional 401k'
+            );
+            const roth401k = new InvestedAccount(
+                'roth-1', 'Roth 401k', 100000, 0, 0, 0, 'Roth 401k'
+            );
+
+            const result = simulateOneYear(
+                2025,
+                [ssIncome],
+                [],
+                [traditional401k, roth401k],
+                retiredAssumptions,
+                mockTaxState
+            );
+
+            // Should have performed a conversion
+            expect(result.rothConversion).toBeDefined();
+            if (result.rothConversion) {
+                // Expected bracket space: $63,075 - $40,000 = $23,075
+                const expectedBracketSpace = bracketTopGross - existingIncome;
+
+                // Conversion should fill close to the bracket space (within $1000)
+                expect(result.rothConversion.amount).toBeGreaterThan(expectedBracketSpace - 1000);
+                expect(result.rothConversion.amount).toBeLessThanOrEqual(expectedBracketSpace + 500);
+            }
+        });
+
+        it('should return zero conversion when no bracket space remains', () => {
+            // Scenario: Retired with high income that already fills the 12% bracket
+            // No room for tax-efficient Roth conversion
+
+            const retiredAssumptions: AssumptionsState = {
+                ...cleanAssumptions,
+                demographics: {
+                    birthYear: 1958,
+                    lifeExpectancy: 90,
+                    retirementAge: 65
+                },
+                investments: {
+                    ...cleanAssumptions.investments,
+                    autoRothConversions: true,
+                    returnRates: { ror: 0 }
+                },
+                withdrawalStrategy: [
+                    { id: 'ws-trad-1', accountId: 'trad-1', name: 'Traditional 401k' },
+                    { id: 'ws-roth-1', accountId: 'roth-1', name: 'Roth 401k' }
+                ]
+            };
+
+            // High income that exceeds 12% bracket ($48,475 + $14,600 = $63,075)
+            const highIncome = new FutureSocialSecurityIncome(
+                'ss-1', 'Social Security', 67,
+                6000, // $6k/month = $72k/year - exceeds 12% bracket
+                2024,
+                new Date('2024-01-01'),
+                new Date('2050-12-31')
+            );
+
+            const traditional401k = new InvestedAccount(
+                'trad-1', 'Traditional 401k', 500000, 0, 0, 0, 'Traditional 401k'
+            );
+            const roth401k = new InvestedAccount(
+                'roth-1', 'Roth 401k', 100000, 0, 0, 0, 'Roth 401k'
+            );
+
+            const result = simulateOneYear(
+                2025,
+                [highIncome],
+                [],
+                [traditional401k, roth401k],
+                retiredAssumptions,
+                mockTaxState
+            );
+
+            // With income already above 12% bracket, conversion should be zero or undefined
+            if (result.rothConversion) {
+                expect(result.rothConversion.amount).toBe(0);
+            }
+        });
+
+        it('Specific test', () => {
+            // Scenario: Retired with some income, conversion should not exceed bracket top
+            const retiredAssumptions: AssumptionsState = {
+                ...cleanAssumptions,
+                demographics: {
+                    birthYear: 2001,
+                    lifeExpectancy: 90,
+                    retirementAge: 43
+                },
+                investments: {
+                    ...cleanAssumptions.investments,
+                    returnRates: { ror: 5.9 },
+                    autoRothConversions: true,
+                },
+                withdrawalStrategy: [
+                    { id: 'ws-brok-1', accountId: 'brok-1', name: 'Brokerage' },
+                    { id: 'ws-trad-1', accountId: 'trad-1', name: 'Traditional 401k' },
+                    { id: 'ws-roth-1', accountId: 'roth-1', name: 'Roth 401k' },
+                    { id: 'ws-sav-1', accountId: 'sav-1', name: 'Savings' }
+                ]
+            }
+            const savingsAccount = new SavedAccount('sav-1', 'Savings', 60_000, 1);
+
+            const brokerage = new InvestedAccount(
+                'brok-1', 'Brokerage', 800_000, 0, 0, 0, 'Brokerage'
+            );
+
+            const traditional401k = new InvestedAccount(
+                'trad-1', 'Traditional 401k', 1_000_000, 0, 0, 0, 'Traditional 401k'
+            );
+            const roth401k = new InvestedAccount(
+                'roth-1', 'Roth 401k', 300_000, 0, 0, 0, 'Roth 401k'
+            );
+
+            const food = new FoodExpense('exp-1', 'Food', 30_000, 'Annually', new Date('2040-01-01'));
+            const rent = new RentExpense('exp-2', 'Rent', 45_812.23, 0, 'Annually', new Date('2040-01-01'));
+
+            let result = simulateOneYear(
+                2044,
+                [],
+                [food, rent],
+                [brokerage, traditional401k, roth401k, savingsAccount],
+                retiredAssumptions,
+                mockTaxState
+            );
+            let savingsIncome = 600.00; // 60,000 * 1% = 600
+            let _12percentBracketTop = 66500 - savingsIncome; // 12% bracket top plus standard deduction minus savings income
+
+            if (result.rothConversion) {
+                expect(result.rothConversion.amount).closeTo(_12percentBracketTop, 20);
+            }
+
+            result = simulateOneYear(
+                2045,
+                [],
+                [result.expenses[0], result.expenses[1]],
+                [result.accounts[0], result.accounts[1], result.accounts[2], result.accounts[3]],
+                retiredAssumptions,
+                mockTaxState
+            );
+            savingsIncome = 606.00; // 60600 * 1% = 606
+            _12percentBracketTop = 66500 - savingsIncome; // 12% bracket top plus standard deduction minus savings income
+
+            if (result.rothConversion) {
+                expect(result.rothConversion.amount).closeTo(_12percentBracketTop, 20);
+            }
+
+            result = simulateOneYear(
+                2046,
+                [],
+                [result.expenses[0], result.expenses[1]],
+                [result.accounts[0], result.accounts[1], result.accounts[2], result.accounts[3]],
+                retiredAssumptions,
+                mockTaxState
+            );
+            savingsIncome = 612.06; // 61206 * 1% = 612
+            _12percentBracketTop = 66500 - savingsIncome; // 12% bracket top plus standard deduction minus savings income
+
+            if (result.rothConversion) {
+                expect(result.rothConversion.amount).closeTo(_12percentBracketTop, 20);
+            }
+
+            result = simulateOneYear(
+                2047,
+                [],
+                [result.expenses[0], result.expenses[1]],
+                [result.accounts[0], result.accounts[1], result.accounts[2], result.accounts[3]],
+                retiredAssumptions,
+                mockTaxState
+            );
+            savingsIncome = 618.18; // 61818.06 * 1% = 618.1806
+            _12percentBracketTop = 66500 - savingsIncome; // 12% bracket top plus standard deduction minus savings income
+
+            if (result.rothConversion) {
+                expect(result.rothConversion.amount).closeTo(_12percentBracketTop, 20);
+            }
+
+            result = simulateOneYear(
+                2048,
+                [],
+                [result.expenses[0], result.expenses[1]],
+                [result.accounts[0], result.accounts[1], result.accounts[2], result.accounts[3]],
+                retiredAssumptions,
+                mockTaxState
+            );
+            savingsIncome = 624.36; // 62436.24 * 1% = 624.36
+            _12percentBracketTop = 66500 - savingsIncome; // 12% bracket top plus standard deduction minus savings income
+
+            if (result.rothConversion) {
+                expect(result.rothConversion.amount).closeTo(_12percentBracketTop, 20);
+            }
+
+            result = simulateOneYear(
+                2049,
+                [],
+                [result.expenses[0], result.expenses[1]],
+                [result.accounts[0], result.accounts[1], result.accounts[2], result.accounts[3]],
+                retiredAssumptions,
+                mockTaxState
+            );
+            savingsIncome = 630.6; // 63060.60 * 1% = 630.606
+            _12percentBracketTop = 66500 - savingsIncome; // 12% bracket top plus standard deduction minus savings income
+
+            if (result.rothConversion) {
+                expect(result.rothConversion.amount).closeTo(_12percentBracketTop, 20);
+            }
+            
+            result = simulateOneYear(
+                2050,
+                [],
+                [result.expenses[0], result.expenses[1]],
+                [result.accounts[0], result.accounts[1], result.accounts[2], result.accounts[3]],
+                retiredAssumptions,
+                mockTaxState
+            );
+            savingsIncome = 636.91; // 63691.209 * 1% = 636.91209
+            _12percentBracketTop = 66500 - savingsIncome; // 12% bracket top plus standard deduction minus savings income
+
+            if (result.rothConversion) {
+                expect(result.rothConversion.amount).closeTo(_12percentBracketTop, 20);
+            }
+            
+            result = simulateOneYear(
+                2051,
+                [],
+                [result.expenses[0], result.expenses[1]],
+                [result.accounts[0], result.accounts[1], result.accounts[2], result.accounts[3]],
+                retiredAssumptions,
+                mockTaxState
+            );
+            savingsIncome = 643.28; // 64328.12 * 1% = 643.2812
+            _12percentBracketTop = 66500 - savingsIncome; // 12% bracket top plus standard deduction minus savings income
+
+            if (result.rothConversion) {
+                expect(result.rothConversion.amount).closeTo(_12percentBracketTop, 20);
+            }
+            
+            result = simulateOneYear(
+                2052,
+                [],
+                [result.expenses[0], result.expenses[1]],
+                [result.accounts[0], result.accounts[1], result.accounts[2], result.accounts[3]],
+                retiredAssumptions,
+                mockTaxState
+            );
+            savingsIncome = 649.71; // 64771.402 * 1% = 649.71402
+            _12percentBracketTop = 66500 - savingsIncome; // 12% bracket top plus standard deduction minus savings income
+
+            if (result.rothConversion) {
+                expect(result.rothConversion.amount).closeTo(_12percentBracketTop, 20);
+            }
+            
+            result = simulateOneYear(
+                2053,
+                [],
+                [result.expenses[0], result.expenses[1]],
+                [result.accounts[0], result.accounts[1], result.accounts[2], result.accounts[3]],
+                retiredAssumptions,
+                mockTaxState
+            );
+            savingsIncome = 656.21; // 65621.116 * 1% = 656.2116
+            _12percentBracketTop = 66500 - savingsIncome; // 12% bracket top plus standard deduction minus savings income
+
+            if (result.rothConversion) {
+                expect(result.rothConversion.amount).closeTo(_12percentBracketTop, 20);
+            }
+            
+            result = simulateOneYear(
+                2054,
+                [],
+                [result.expenses[0], result.expenses[1]],
+                [result.accounts[0], result.accounts[1], result.accounts[2], result.accounts[3]],
+                retiredAssumptions,
+                mockTaxState
+            );
+            savingsIncome = 662.77; // 66277.32 * 1% = 662.7732
+            _12percentBracketTop = 66500 - savingsIncome; // 12% bracket top plus standard deduction minus savings income
+
+            if (result.rothConversion) {
+                expect(result.rothConversion.amount).closeTo(_12percentBracketTop, 20);
+            }
         });
     });
 

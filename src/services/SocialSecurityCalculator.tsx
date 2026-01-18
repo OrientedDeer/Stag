@@ -15,7 +15,7 @@
  */
 
 import { SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
-import { WorkIncome } from '../components/Objects/Income/models';
+import { WorkIncome, AnyIncome } from '../components/Objects/Income/models';
 import {
   getWageIndexFactor,
   getBendPoints,
@@ -77,26 +77,64 @@ export interface EarningsTestResult {
  * Combines all WorkIncome amounts per year and caps at SS wage base.
  * Only includes income marked as "earned_income" = "Yes".
  *
+ * Priority order (later overwrites earlier):
+ * 1. Auto-generated from job start dates (lowest priority - estimates based on current salary)
+ * 2. Simulation-generated earnings
+ * 3. Imported SSA earnings (highest priority - source of truth)
+ *
  * @param simulation Array of simulation years with income data
- * @param priorEarnings Optional earnings from before simulation started
+ * @param importedSSAEarnings Optional earnings imported from SSA statement (source of truth - overwrites all)
  * @param inflationAdjusted If false, uses latest known wage base without projection
+ * @param currentIncomes Optional current incomes to extract job start dates for auto-generating prior earnings
  * @returns Array of earnings records sorted by year
  */
 export function extractEarningsFromSimulation(
   simulation: SimulationYear[],
-  priorEarnings?: EarningsRecord[],
-  inflationAdjusted: boolean = true
+  importedSSAEarnings?: EarningsRecord[],
+  inflationAdjusted: boolean = true,
+  currentIncomes?: AnyIncome[]
 ): EarningsRecord[] {
   const earningsMap = new Map<number, number>();
 
-  // Add prior earnings if provided
-  if (priorEarnings) {
-    priorEarnings.forEach(record => {
-      earningsMap.set(record.year, record.amount);
+  // Get the first simulation year (if any) to know where auto-generation should stop
+  const firstSimYear = simulation.length > 0 ? simulation[0].year : new Date().getFullYear();
+
+  // 1. AUTO-GENERATE earnings from job start dates (lowest priority)
+  // Assumes flat salary from job start date to simulation start
+  // IMPORTANT: Use the FIRST simulation year's incomes to get the original salary,
+  // not current incomes (which might be zeroed out after retirement)
+  // These can be overwritten by simulation or imported SSA earnings
+  const firstYearIncomes = simulation.length > 0 ? simulation[0].incomes : currentIncomes;
+  const incomesToCheck = firstYearIncomes || currentIncomes;
+
+  if (incomesToCheck) {
+    incomesToCheck.forEach(income => {
+      if (income instanceof WorkIncome && income.earned_income === 'Yes' && income.startDate) {
+        const jobStartYear = new Date(income.startDate).getUTCFullYear();
+        // Get full annual amount WITHOUT year parameter to avoid proration
+        // This gives us the salary amount before any retirement zeroing
+        const annualSalary = income.getAnnualAmount();
+
+        // Skip if salary is 0 (shouldn't happen with first year incomes, but be safe)
+        if (annualSalary <= 0) return;
+
+        // Generate earnings for each year from job start to simulation start
+        for (let year = jobStartYear; year < firstSimYear; year++) {
+          // Cap at SS wage base for the year
+          const wageBase = getWageBase(year, 0.025, inflationAdjusted);
+          const cappedEarnings = Math.min(annualSalary, wageBase);
+
+          if (cappedEarnings > 0) {
+            // Add to existing earnings for this year (multiple jobs)
+            const existing = earningsMap.get(year) || 0;
+            earningsMap.set(year, Math.min(existing + cappedEarnings, wageBase));
+          }
+        }
+      }
     });
   }
 
-  // Extract from simulation
+  // 2. Extract from simulation (overwrites auto-generated for same years)
   simulation.forEach(simYear => {
     let yearlyEarnings = 0;
 
@@ -115,6 +153,14 @@ export function extractEarningsFromSimulation(
       earningsMap.set(simYear.year, cappedEarnings);
     }
   });
+
+  // 3. Add imported SSA earnings LAST (highest priority - source of truth)
+  // These overwrite any auto-generated or simulation earnings for the same years
+  if (importedSSAEarnings) {
+    importedSSAEarnings.forEach(record => {
+      earningsMap.set(record.year, record.amount);
+    });
+  }
 
   // Convert to array and sort by year
   return Array.from(earningsMap.entries())

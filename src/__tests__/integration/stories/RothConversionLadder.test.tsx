@@ -68,6 +68,14 @@ describe('Story 6: Roth Conversion Ladder', () => {
             returnRates: { ror: 7 },
             autoRothConversions: true, // Enable auto conversions
         },
+        priorities: [{
+          id: 'p-1',
+          name: 'p1', // e.g., "Max out 401k"
+          type: 'INVESTMENT',
+          accountId: 'ws-roth', // Link to your actual Account IDs
+          capType: 'REMAINDER',
+          capValue: 0 // e.g., 23000 for 401k, or 500 for monthly savings
+        }],
         withdrawalStrategy: [
             { id: 'ws-roth', name: 'Roth IRA', accountId: 'acc-roth' },
             { id: 'ws-trad', name: 'Traditional IRA', accountId: 'acc-trad' },
@@ -470,15 +478,28 @@ describe('Story 6: Roth Conversion Ladder', () => {
         const standardDeduction = 14600; // 2025 Single
         // Note: bracketTopGross = bracketTopTaxable + standardDeduction = $63,075
 
-        const retiredBirthYear = 1960;
+        const retiredBirthYear = 1970;
         const cliffAssumptions: AssumptionsState = {
             ...conversionAssumptions,
             demographics: {
                 birthYear: retiredBirthYear,
                 lifeExpectancy: 90,
-                retirementAge: 60,
+                retirementAge: 50,
             },
+            priorities: [{
+            id: 'p-1',
+            name: 'p1', // e.g., "Max out 401k"
+            type: 'INVESTMENT',
+            accountId: 'acc-brokerage', // Link to your actual Account IDs
+            capType: 'REMAINDER',
+            capValue: 0 // e.g., 23000 for 401k, or 500 for monthly savings
+            }],
+            
         };
+
+        const brokerage = new InvestedAccount(
+            'acc-brokerage', 'Brokerage', 0, 0, 10, 0.05, 'Brokerage', true, 1.0, 0
+        );
 
         // Large Traditional IRA (plenty of room for conversion)
         const largeTrad = new InvestedAccount(
@@ -495,8 +516,8 @@ describe('Story 6: Roth Conversion Ladder', () => {
         );
 
         const simulation = runSimulation(
-            10,
-            [largeTrad, rothIRA],
+            25,
+            [brokerage, largeTrad, rothIRA],
             [noSS],
             [minimalExpenses],
             cliffAssumptions,
@@ -526,7 +547,7 @@ describe('Story 6: Roth Conversion Ladder', () => {
                 // Assert: Taxable income should NOT exceed bracket top
                 expect(
                     taxableIncome,
-                    `Taxable income ($${taxableIncome.toFixed(0)}) should not exceed 12% bracket top ($${bracketTopTaxable}) - conversion pushed $${(taxableIncome - bracketTopTaxable).toFixed(0)} over`
+                    `Taxable income ($${taxableIncome.toFixed(0)}) should not exceed 12% bracket top ($${bracketTopTaxable}) - conversion pushed $${(taxableIncome - bracketTopTaxable).toFixed(0)} over in year ${year.year}`
                 ).toBeLessThanOrEqual(bracketTopTaxable);
 
                 // Assert: Should fill close to the bracket (within $1000 of top)
@@ -541,6 +562,185 @@ describe('Story 6: Roth Conversion Ladder', () => {
         }
 
         assertAllYearsInvariants(simulation);
+    });
+
+    it('should convert every year during ladder period until SS starts', () => {
+        const workIncome = new WorkIncome(
+            'inc-work',
+            'Job',
+            250000,
+            'Annually',
+            'Yes',
+            0, 0, 0, 0, '', null, 'FIXED',
+            new Date('2000-01-01'),
+            new Date(`${birthYear + 65 - 1}-12-31`) // Works until age 54
+        );
+        const retirementAge = 65;
+
+        const conversionAssumptions: AssumptionsState = {
+        ...defaultAssumptions,
+        demographics: {
+            birthYear,
+            lifeExpectancy: 90,
+            retirementAge: retirementAge,
+        },
+        income: {
+            ...defaultAssumptions.income,
+            salaryGrowth: 0,
+        },
+        macro: {
+            ...defaultAssumptions.macro,
+            inflationRate: 0, // No inflation for clearer math
+            inflationAdjusted: false,
+        },
+        investments: {
+            ...defaultAssumptions.investments,
+            returnRates: { ror: 7 },
+            autoRothConversions: true, // Enable auto conversions
+        },
+        priorities: [{
+          id: 'p-1',
+          name: 'p1', // e.g., "Max out 401k"
+          type: 'INVESTMENT',
+          accountId: 'ws-roth', // Link to your actual Account IDs
+          capType: 'REMAINDER',
+          capValue: 0 // e.g., 23000 for 401k, or 500 for monthly savings
+        }],
+        withdrawalStrategy: [
+            { id: 'ws-roth', name: 'Roth IRA', accountId: 'acc-roth' },
+            { id: 'ws-trad', name: 'Traditional IRA', accountId: 'acc-trad' },
+        ],
+    };
+
+        const simulation = runSimulation(
+            yearsToSimulate,
+            [traditionalIRA, rothIRA],
+            [workIncome, futureSS],
+            [livingExpenses],
+            conversionAssumptions,
+            taxState
+        );
+
+        // Track which ages had conversions
+        const conversionAges: number[] = [];
+
+        for (const year of simulation) {
+            const age = getAge(year.year, birthYear);
+
+            // Only check ladder period: retired (55+) but before SS (67)
+            if (age >= retirementAge && age < ssClaimingAge) {
+                const hasConversion = hasLogMessage(year, 'roth conversion') ||
+                    hasLogMessage(year, 'converted');
+
+                if (hasConversion) {
+                    conversionAges.push(age);
+                }
+            }
+        }
+
+        // Should have conversions every year during the ladder period (ages 55-66)
+        // That's 12 years of potential conversions
+        const expectedLadderYears = ssClaimingAge - retirementAge; // 67 - 55 = 12
+
+        expect(
+            conversionAges.length,
+            `Should convert every year during ladder period. Expected ${expectedLadderYears} years, got ${conversionAges.length}. Ages with conversions: [${conversionAges.join(', ')}]`
+        ).toBe(expectedLadderYears);
+
+        // Verify conversions are consecutive (no gaps)
+        for (let i = 1; i < conversionAges.length; i++) {
+            expect(
+                conversionAges[i] - conversionAges[i - 1],
+                `Conversion ages should be consecutive: found gap between ${conversionAges[i - 1]} and ${conversionAges[i]}`
+            ).toBe(1);
+        }
+    });
+
+    it('should not alternate conversion years (no on-off pattern)', () => {
+        const simulation = runSimulation(
+            yearsToSimulate,
+            [traditionalIRA, rothIRA],
+            [workIncome, futureSS],
+            [livingExpenses],
+            conversionAssumptions,
+            taxState
+        );
+
+        // Track conversion amounts by year during ladder period
+        const conversionAmounts: number[] = [];
+
+        for (let i = 1; i < simulation.length; i++) {
+            const year = simulation[i];
+            const age = getAge(year.year, birthYear);
+
+            if (age >= retirementAge && age < ssClaimingAge) {
+                // Track the Roth conversion amount for this year
+                const rothConversion = year.rothConversion?.amount || 0;
+                conversionAmounts.push(rothConversion);
+            }
+        }
+
+        // Check for alternating pattern: [high, 0, high, 0, ...] or [0, high, 0, high, ...]
+        // This would indicate a bug where conversions skip every other year
+        let alternatingCount = 0;
+        for (let i = 2; i < conversionAmounts.length; i++) {
+            const prev2 = conversionAmounts[i - 2];
+            const prev1 = conversionAmounts[i - 1];
+            const curr = conversionAmounts[i];
+
+            // Check if pattern is: [high, low, high] or [low, high, low]
+            const isAlternating =
+                (prev2 > 1000 && prev1 < 100 && curr > 1000) ||
+                (prev2 < 100 && prev1 > 1000 && curr < 100);
+
+            if (isAlternating) {
+                alternatingCount++;
+            }
+        }
+
+        // Should not have significant alternating pattern
+        expect(
+            alternatingCount,
+            `Found ${alternatingCount} alternating patterns in conversion amounts: [${conversionAmounts.map(a => a.toFixed(0)).join(', ')}]`
+        ).toBeLessThan(3);
+    });
+
+    it('should never convert more than available bracket headroom', () => {
+        const simulation = runSimulation(
+            yearsToSimulate,
+            [traditionalIRA, rothIRA],
+            [workIncome, futureSS],
+            [livingExpenses],
+            conversionAssumptions,
+            taxState
+        );
+
+        // 2025 tax brackets for Single filer (approximate)
+        const standardDeduction = 14600;
+        const bracket12Top = 48475; // Top of 12% bracket (taxable income)
+        const epsilon = 500; // Allow small rounding errors
+
+        for (const year of simulation) {
+            const age = getAge(year.year, birthYear);
+            if (age < retirementAge) continue;
+
+            const rothConversion = year.rothConversion?.amount || 0;
+            if (rothConversion <= 0) continue;
+
+            // Calculate other income (non-conversion)
+            const totalIncome = year.cashflow.totalIncome;
+            const otherIncome = totalIncome - rothConversion;
+
+            // Calculate bracket headroom
+            // Headroom = (bracket top + deduction) - other income
+            const bracketHeadroom = Math.max(0, bracket12Top + standardDeduction - otherIncome);
+
+            // Conversion should not exceed headroom
+            expect(
+                rothConversion,
+                `Age ${age}: Conversion ($${rothConversion.toFixed(0)}) should not exceed bracket headroom ($${bracketHeadroom.toFixed(0)})`
+            ).toBeLessThanOrEqual(bracketHeadroom + epsilon);
+        }
     });
 
     it('should not convert when already in high tax bracket', () => {

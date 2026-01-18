@@ -293,7 +293,7 @@ export class PassiveIncome extends BaseIncome {
     amount: number,
     frequency: IncomeFrequency,
     earned_income: "Yes" | "No",
-    public sourceType: 'Dividend' | 'Rental' | 'Royalty' | 'Interest' | 'Other',
+    public sourceType: 'Dividend' | 'Rental' | 'Royalty' | 'Interest' | 'RMD' | 'Other',
     startDate?: Date,
     end_date?: Date,
     public isReinvested: boolean = false,  // If true, income is taxable but not available as spendable cash (e.g., savings interest that stays in the account)
@@ -312,6 +312,11 @@ export class PassiveIncome extends BaseIncome {
       case 'Interest':
         // Interest income is generated fresh each year based on account balance
         // It doesn't grow independently - the growth comes from the account balance increasing
+        growthRate = 0;
+        break;
+      case 'RMD':
+        // RMD income is regenerated each year based on account balance and age
+        // It doesn't grow independently - the amount is recalculated each year
         growthRate = 0;
         break;
       case 'Dividend':

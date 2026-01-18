@@ -102,7 +102,6 @@ export const runSimulation = (
         // Get return override for this year (if Monte Carlo mode)
         // yearlyReturns[0] is for year 1, yearlyReturns[1] is for year 2, etc.
         const returnOverride = yearlyReturns ? yearlyReturns[i - 1] : undefined;
-
         const result = simulateOneYear(
             simulationYear,
             currentIncomes,

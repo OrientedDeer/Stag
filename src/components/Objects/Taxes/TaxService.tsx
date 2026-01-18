@@ -115,7 +115,7 @@ export function getGrossIncome(incomes: AnyIncome[], year: number): number {
 		if (inc instanceof WorkIncome && inc.taxType === "Roth 401k") {
 			currentIncome += inc.employerMatch;
 		}
-		return acc + inc.getProratedAnnual(inc.amount, year);
+		return acc + inc.getProratedAnnual(currentIncome, year);
 	}, 0);
 }
 

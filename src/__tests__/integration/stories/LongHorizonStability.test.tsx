@@ -180,6 +180,14 @@ describe('Long-Horizon Stability: Complex Scenario with Debt', () => {
             withdrawalRate: 4.0,
             autoRothConversions: true,
         },
+        priorities: [{
+          id: 'p-1',
+          name: 'p1', // e.g., "Max out 401k"
+          type: 'INVESTMENT',
+          accountId: 'acc-brokerage', // Link to your actual Account IDs
+          capType: 'REMAINDER',
+          capValue: 0 // e.g., 23000 for 401k, or 500 for monthly savings
+        }],
         withdrawalStrategy: [
             { id: 'ws-1', name: 'Brokerage', accountId: 'acc-brokerage' },
             { id: 'ws-2', name: 'Traditional 401k', accountId: 'acc-401k' },
@@ -216,13 +224,13 @@ describe('Long-Horizon Stability: Complex Scenario with Debt', () => {
         'exp-mortgage', 'Mortgage', 'Monthly',
         500000, 400000, 400000,
         6.5, 30, 1.2, 0, 1.0, 250, 0.4, 0.3, 150,
-        'Itemized', 0, 'acc-property', new Date('2020-01-01')
+        'Itemized', 0, 'acc-property', new Date('2025-01-01')
     );
 
     const studentLoanExpense = new LoanExpense(
         'exp-studentloan', 'Student Loan', 30000, 'Monthly',
         5.0, 'Compounding', 320, 'No', 0, 'acc-studentloan',
-        new Date('2015-01-01'), new Date('2035-01-01')
+        new Date('2025-01-01'), new Date('2035-01-01')
     );
 
     const livingExpenses = new FoodExpense(
