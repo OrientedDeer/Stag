@@ -23,6 +23,27 @@ export const DebtStreamChart: React.FC<DebtStreamChartProps> = ({
   keys,
   colors
 }) => {
+  const trimmedData = useMemo(() => {
+    if (!data || data.length === 0) return data;
+
+    // find last index where any loan/debt > 0
+    const lastDebtIndex = data.reduce((last, yearData, idx) => {
+      const hasDebt = keys.some(key => Number(yearData[key]) > 0);
+      return hasDebt ? idx : last;
+    }, -1);
+
+    if (lastDebtIndex === -1) {
+      // no debt at all - just return original
+      return data;
+    }
+
+    const EXTRA_YEARS = 2;
+    const endIndex = Math.min(lastDebtIndex + EXTRA_YEARS, data.length - 1);
+
+    return data.slice(0, endIndex + 1);
+  }, [data, keys]);
+
+
   const { state: assumptions } = useContext(AssumptionsContext);
   const forceExact = assumptions.display?.useCompactCurrency === false;
   const formatCurrency = (value: number) => formatCompactCurrency(value, { forceExact });
@@ -52,17 +73,17 @@ export const DebtStreamChart: React.FC<DebtStreamChartProps> = ({
 
   // Calculate x-axis tick values (indices) to prevent label overlap
   const xTickValues = useMemo(() => {
-    if (data.length === 0) return undefined;
+    if (trimmedData.length === 0) return undefined;
 
-    const range = data.length;
+    const range = trimmedData.length;
     let step = 1;
     if (range > 41) step = 2;
 
     // Return indices at regular intervals
-    return data
+    return trimmedData
       .map((_, i) => i)
-      .filter((i) => i === 0 || i === data.length - 1 || i % step === 0);
-  }, [data]);
+      .filter((i) => i === 0 || i === trimmedData.length - 1 || i % step === 0);
+  }, [trimmedData]);
 
   // Dark Theme for Nivo to match Overview/Cashflow style
   const theme = {
@@ -95,7 +116,7 @@ export const DebtStreamChart: React.FC<DebtStreamChartProps> = ({
 
   // 1. Smart Tooltip Logic
   const CustomTooltip = ({ index }: any) => {
-    const yearData = data[index];
+    const yearData = trimmedData[index];
     if (!yearData) return null;
 
     const total = keys.reduce((sum, key) => sum + (Number(yearData[key]) || 0), 0);
@@ -178,7 +199,7 @@ export const DebtStreamChart: React.FC<DebtStreamChartProps> = ({
       {/* Chart Area */}
       <div className="flex-1 min-h-0 relative text-white">
         <ResponsiveStream
-          data={data}
+          data={trimmedData}
           keys={keys}
           theme={theme}
           margin={isMobile ? { top: 10, right: 10, bottom: 40, left: 50 } : { top: 20, right: 30, bottom: 50, left: 70 }}
@@ -203,7 +224,7 @@ export const DebtStreamChart: React.FC<DebtStreamChartProps> = ({
             tickPadding: 5,
             tickRotation: 0,
             // Map the index back to the Year from data
-            format: (index) => data[index] ? data[index].year : '',
+            format: (index) => trimmedData[index]?.year ?? '',
             tickValues: xTickValues,
           }}
           axisLeft={{
