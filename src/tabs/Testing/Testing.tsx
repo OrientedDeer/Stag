@@ -1,5 +1,8 @@
-import { useState, useMemo, useContext, useEffect, useCallback } from 'react';
+import { useState, useMemo, useContext, useEffect, useCallback, useRef } from 'react';
+import jsQR from 'jsqr';
 import { MortgageExpense } from '../../components/Objects/Expense/models';
+import { decompressData, isCompactFormat, expandCompactBackup, validatePayload } from '../../components/Objects/Accounts/QRTransfer/qrUtils';
+import { useFileManager } from '../../components/Objects/Accounts/useFileManager';
 import { CurrencyInput } from '../../components/Layout/InputFields/CurrencyInput';
 import { PercentageInput } from '../../components/Layout/InputFields/PercentageInput';
 import { NumberInput } from '../../components/Layout/InputFields/NumberInput';
@@ -3092,9 +3095,273 @@ function RothConversionsDebugTab() {
 }
 
 // ============================================================================
+// QR CODE DEBUG TAB
+// ============================================================================
+function QRCodeDebugTab() {
+    const { handleGlobalImport } = useFileManager();
+
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+    const [errorMessage, setErrorMessage] = useState('');
+    const [decodedData, setDecodedData] = useState<{
+        accounts: number;
+        incomes: number;
+        expenses: number;
+        rawSize: number;
+        compressedSize: number;
+    } | null>(null);
+    const [rawJson, setRawJson] = useState('');
+
+    const [debugInfo, setDebugInfo] = useState<string>('');
+    const [previewUrl, setPreviewUrl] = useState<string>('');
+
+    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setStatus('loading');
+        setErrorMessage('');
+        setDecodedData(null);
+        setRawJson('');
+        setDebugInfo('');
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+        setPreviewUrl('');
+
+        try {
+            // Load the image
+            const img = new Image();
+            const imageUrl = URL.createObjectURL(file);
+            setPreviewUrl(imageUrl);
+
+            await new Promise<void>((resolve, reject) => {
+                img.onload = () => resolve();
+                img.onerror = () => reject(new Error('Failed to load image'));
+                img.src = imageUrl;
+            });
+
+            // Draw to canvas to get image data
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) throw new Error('Failed to get canvas context');
+
+            // Fill with white background first (in case of transparency)
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+            setDebugInfo(`Image: ${img.width}x${img.height}, File: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`);
+
+            // Try decoding at original size first
+            let qrCode = jsQR(imageData.data, imageData.width, imageData.height, {
+                inversionAttempts: 'attemptBoth',
+            });
+
+            // If that fails and image is large, try downscaling for better detection
+            if (!qrCode && img.width > 500) {
+                const scaledCanvas = document.createElement('canvas');
+                const scale = 500 / img.width;
+                scaledCanvas.width = Math.floor(img.width * scale);
+                scaledCanvas.height = Math.floor(img.height * scale);
+                const scaledCtx = scaledCanvas.getContext('2d');
+                if (scaledCtx) {
+                    scaledCtx.fillStyle = 'white';
+                    scaledCtx.fillRect(0, 0, scaledCanvas.width, scaledCanvas.height);
+                    scaledCtx.drawImage(img, 0, 0, scaledCanvas.width, scaledCanvas.height);
+                    const scaledImageData = scaledCtx.getImageData(0, 0, scaledCanvas.width, scaledCanvas.height);
+                    qrCode = jsQR(scaledImageData.data, scaledImageData.width, scaledImageData.height, {
+                        inversionAttempts: 'attemptBoth',
+                    });
+                    if (qrCode) {
+                        setDebugInfo(prev => prev + ' (decoded at scaled size)');
+                    }
+                }
+            }
+
+            if (!qrCode) {
+                throw new Error(`No QR code found in image (${img.width}x${img.height})`);
+            }
+
+            const compressedData = qrCode.data;
+            const compressedSize = compressedData.length;
+
+            // Decompress
+            let data = decompressData(compressedData);
+
+            // Expand compact format if needed
+            if (isCompactFormat(data)) {
+                data = expandCompactBackup(data);
+            }
+
+            // Validate
+            if (!validatePayload(data)) {
+                throw new Error('Invalid backup format');
+            }
+
+            const json = JSON.stringify(data);
+            setRawJson(json);
+            setDecodedData({
+                accounts: (data as { accounts: unknown[] }).accounts.length,
+                incomes: (data as { incomes: unknown[] }).incomes.length,
+                expenses: (data as { expenses: unknown[] }).expenses.length,
+                rawSize: json.length,
+                compressedSize,
+            });
+            setStatus('success');
+        } catch (err) {
+            setStatus('error');
+            setErrorMessage(err instanceof Error ? err.message : 'Unknown error');
+        }
+
+        // Reset input
+        e.target.value = '';
+    };
+
+    const handleImport = () => {
+        if (rawJson) {
+            // Just call import - same as regular JSON file import
+            // Let the app handle simulation refresh automatically
+            handleGlobalImport(rawJson);
+
+            setStatus('idle');
+            setDecodedData(null);
+            setRawJson('');
+        }
+    };
+
+    const handleReset = () => {
+        setStatus('idle');
+        setErrorMessage('');
+        setDecodedData(null);
+        setRawJson('');
+    };
+
+    return (
+        <div className="space-y-6">
+            <div className="bg-gray-900 p-6 rounded-lg border border-gray-800">
+                <h3 className="text-xl font-bold text-white mb-4">QR Code Image Decoder</h3>
+                <p className="text-gray-400 mb-4">
+                    Upload a QR code image exported from the app to decode and import the data.
+                </p>
+
+                {/* File Input */}
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                />
+
+                {status === 'idle' && (
+                    <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="px-6 py-3 bg-fuchsia-600 hover:bg-fuchsia-500 text-white rounded-lg font-medium transition-colors"
+                    >
+                        Select QR Code Image
+                    </button>
+                )}
+
+                {status === 'loading' && (
+                    <div className="flex items-center gap-3 text-gray-400">
+                        <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        Decoding QR code...
+                    </div>
+                )}
+
+                {status === 'error' && (
+                    <div className="space-y-4">
+                        <div className="bg-red-900/20 border border-red-800 rounded-lg p-4">
+                            <div className="flex items-start gap-3">
+                                <svg className="w-6 h-6 text-red-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                <div>
+                                    <h4 className="text-red-400 font-semibold">Decode Failed</h4>
+                                    <p className="text-red-400/80 text-sm mt-1">{errorMessage}</p>
+                                    {debugInfo && <p className="text-gray-500 text-xs mt-2">{debugInfo}</p>}
+                                </div>
+                            </div>
+                            <button
+                                onClick={handleReset}
+                                className="mt-4 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
+                            >
+                                Try Again
+                            </button>
+                        </div>
+                        {previewUrl && (
+                            <div className="bg-gray-800 rounded-lg p-4">
+                                <p className="text-gray-400 text-sm mb-2">Uploaded image:</p>
+                                <img src={previewUrl} alt="Uploaded QR" className="max-w-[300px] mx-auto border border-gray-700 rounded" />
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {status === 'success' && decodedData && (
+                    <div className="space-y-4">
+                        <div className="bg-green-900/20 border border-green-800 rounded-lg p-4">
+                            <div className="flex items-start gap-3">
+                                <svg className="w-6 h-6 text-green-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                                <div>
+                                    <h4 className="text-green-400 font-semibold">QR Code Decoded!</h4>
+                                    <ul className="text-gray-300 text-sm mt-2 space-y-1">
+                                        <li>• {decodedData.accounts} account{decodedData.accounts !== 1 ? 's' : ''}</li>
+                                        <li>• {decodedData.incomes} income source{decodedData.incomes !== 1 ? 's' : ''}</li>
+                                        <li>• {decodedData.expenses} expense{decodedData.expenses !== 1 ? 's' : ''}</li>
+                                    </ul>
+                                    <p className="text-gray-500 text-xs mt-2">
+                                        Compressed: {(decodedData.compressedSize / 1024).toFixed(2)} KB →
+                                        Raw: {(decodedData.rawSize / 1024).toFixed(2)} KB
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button
+                                onClick={handleReset}
+                                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleImport}
+                                className="px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg font-medium transition-colors"
+                            >
+                                Import Data
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Raw JSON Preview (collapsed by default) */}
+            {rawJson && (
+                <details className="bg-gray-900 rounded-lg border border-gray-800">
+                    <summary className="p-4 cursor-pointer text-gray-400 hover:text-white">
+                        View Raw JSON ({(rawJson.length / 1024).toFixed(2)} KB)
+                    </summary>
+                    <pre className="p-4 pt-0 text-xs text-gray-500 overflow-auto max-h-96">
+                        {JSON.stringify(JSON.parse(rawJson), null, 2)}
+                    </pre>
+                </details>
+            )}
+        </div>
+    );
+}
+
+// ============================================================================
 // MAIN TESTING COMPONENT WITH TABS
 // ============================================================================
-const TESTING_TABS = ['Simulation Debug', 'Tax Debug', 'Tax Brackets', 'Social Security', 'Pensions', 'RMDs', 'Roth Conversions', 'Mortgage'];
+const TESTING_TABS = ['Simulation Debug', 'Tax Debug', 'Tax Brackets', 'Social Security', 'Pensions', 'RMDs', 'Roth Conversions', 'Mortgage', 'QR Code'];
 
 export default function Testing() {
     const [activeTab, setActiveTab] = useState(() => {
@@ -3141,6 +3408,7 @@ export default function Testing() {
                 {activeTab === 'RMDs' && <RMDDebugTab />}
                 {activeTab === 'Roth Conversions' && <RothConversionsDebugTab />}
                 {activeTab === 'Mortgage' && <MortgageTestingTab />}
+                {activeTab === 'QR Code' && <QRCodeDebugTab />}
             </div>
         </div>
     );

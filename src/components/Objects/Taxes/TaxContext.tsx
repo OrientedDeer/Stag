@@ -25,7 +25,7 @@ type Action =
   | { type: 'SET_YEAR'; payload: number }
   | { type: 'SET_BULK_DATA'; payload: TaxState };
 
-const initialState: TaxState = {
+export const defaultTaxState: TaxState = {
   filingStatus: 'Single',
   stateResidency: 'DC',
   deductionMethod: 'Auto',
@@ -56,14 +56,14 @@ interface TaxContextProps {
 
 
 export const TaxContext = createContext<TaxContextProps>({
-    state: initialState,
+    state: defaultTaxState,
     dispatch: () => null,
 });
 
 
 export const TaxProvider = ({ children }: { children: ReactNode }) => {
   // FIXED: Pass taxReducer as the first argument
-  const [state, dispatch] = useReducer(taxReducer, initialState, (initial) => {
+  const [state, dispatch] = useReducer(taxReducer, defaultTaxState, (initial) => {
     const saved = localStorage.getItem('tax_settings');
     if (saved) {
         // We merge with initial to ensure new fields (like overrides) exist 

@@ -64,7 +64,11 @@ export default function QRScanModal({ isOpen, onClose, onImport }: QRScanModalPr
 
     const handleImportClick = () => {
         if (rawJson) {
+            console.log('[QRScanModal] handleImportClick called, calling onImport with', rawJson.length, 'bytes');
+            // Just call import - same as regular JSON file import
+            // Let the app handle simulation refresh automatically
             onImport(rawJson);
+            console.log('[QRScanModal] onImport completed, calling handleClose');
             handleClose();
         }
     };
@@ -125,7 +129,7 @@ export default function QRScanModal({ isOpen, onClose, onImport }: QRScanModalPr
                 {status === 'error' && (
                     <div className="bg-red-900/20 border border-red-800 rounded-lg p-4 mb-4">
                         <div className="flex items-start gap-3">
-                            <svg className="w-6 h-6 text-red-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg className="w-6 h-6 text-red-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
                             <div>
@@ -139,7 +143,7 @@ export default function QRScanModal({ isOpen, onClose, onImport }: QRScanModalPr
                 {status === 'success' && parsedData && (
                     <div className="bg-green-900/20 border border-green-800 rounded-lg p-4 mb-4">
                         <div className="flex items-start gap-3">
-                            <svg className="w-6 h-6 text-green-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg className="w-6 h-6 text-green-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                             </svg>
                             <div>

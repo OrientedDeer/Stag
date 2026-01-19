@@ -102,7 +102,10 @@ const TabsContent = () => {
     const { dispatch: taxDispatch } = useContext(TaxContext);
     const { dispatch: assumptionsDispatch } = useContext(AssumptionsContext);
     const { dispatch: simulationDispatch } = useContext(SimulationContext);
-    const { handleGlobalExport, handleGlobalImport, getBackupData } = useFileManager();
+    const { handleGlobalExport, handleGlobalImport, getBackupData, importKey } = useFileManager();
+
+    // Debug logging for import key propagation
+    console.log('[AccountTab] render with importKey:', importKey);
     const [activeTab, setActiveTab] = useState<string>(() => {
         return localStorage.getItem('account_active_tab') || 'Saved';
     });

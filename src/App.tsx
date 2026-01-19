@@ -11,6 +11,7 @@ import { useState } from "react";
 import { AccountProvider } from './components/Objects/Accounts/AccountContext';
 import { IncomeProvider } from './components/Objects/Income/IncomeContext';
 import { ExpenseProvider } from './components/Objects/Expense/ExpenseContext';
+import { ImportKeyProvider } from './components/Objects/Accounts/ImportKeyContext';
 import TaxesTab from "./tabs/Current/TaxesTab";
 import { TaxProvider } from "./components/Objects/Taxes/TaxContext";
 import FutureTab from "./tabs/Future/FutureTab";
@@ -25,6 +26,7 @@ import WithdrawalTab from "./tabs/Future/WithdrawalTab";
 export default function App() {
   const [isOpen, setIsOpen] = useState(false); // shared variable
   return (
+    <ImportKeyProvider>
     <SimulationProvider>
       <AccountProvider>
         <IncomeProvider>
@@ -67,5 +69,6 @@ export default function App() {
         </IncomeProvider>
       </AccountProvider>
     </SimulationProvider>
+    </ImportKeyProvider>
   );
 }

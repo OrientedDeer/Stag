@@ -8,7 +8,7 @@ import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
 
 // Error Boundary to catch Nivo rendering errors
 class SankeyErrorBoundary extends Component<
-    { children: ReactNode; height: number },
+    { children: ReactNode; height: number; resetKey?: string },
     { hasError: boolean; error: any }
 > {
     constructor(props: any) {
@@ -18,6 +18,13 @@ class SankeyErrorBoundary extends Component<
 
     static getDerivedStateFromError(error: any) {
         return { hasError: true, error };
+    }
+
+    componentDidUpdate(prevProps: { resetKey?: string }) {
+        // Reset error state when resetKey changes (new data)
+        if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) {
+            this.setState({ hasError: false, error: null });
+        }
     }
 
     componentDidCatch(error: any, errorInfo: any) {
@@ -114,6 +121,27 @@ export const CashflowSankey = ({
     // 1. Logic Block (The "Util" part)
     // Refactored to return { data, error, debugData } directly to avoid infinite loops
     const { data, error, debugData } = useMemo(() => {
+        console.log('[CashflowSankey] useMemo running with:', {
+            incomes: incomes?.length,
+            expenses: expenses?.length,
+            year,
+            taxes
+        });
+        // Debug: Check if income objects have the expected methods and what they return
+        if (incomes?.length > 0) {
+            incomes.forEach((inc, idx) => {
+                const proratedAmount = inc.getProratedAnnual ? inc.getProratedAnnual(inc.amount, year) : 0;
+                console.log(`[CashflowSankey] Income[${idx}]:`, {
+                    name: inc.name,
+                    amount: inc.amount,
+                    startDate: inc.startDate,
+                    endDate: inc.end_date,
+                    year,
+                    proratedAmount,
+                    meetsThreshold: proratedAmount >= MIN_DISPLAY_THRESHOLD
+                });
+            });
+        }
         try {
             const nodes: any[] = [];
             const links: any[] = [];
@@ -541,8 +569,11 @@ export const CashflowSankey = ({
         ? { top: 10, right: 80 + extraRightPadding, bottom: 10, left: 80 + extraLeftPadding }
         : { top: 20, right: 150 + extraRightPadding, bottom: 20, left: 150 + extraLeftPadding };
 
+    // Generate a reset key from the data to force error boundary reset when data changes
+    const resetKey = `${incomes.length}-${expenses.length}-${year}-${Object.keys(withdrawals).length}`;
+
     return (
-        <SankeyErrorBoundary height={height}>
+        <SankeyErrorBoundary height={height} resetKey={resetKey}>
             <div ref={containerRef} style={{ height: `${height}px` }}>
                 <ResponsiveSankey
                     data={data}

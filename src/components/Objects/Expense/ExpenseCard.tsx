@@ -243,7 +243,7 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
                     aria-label={`Expand ${expense.name} expense details`}
                     className="flex items-center gap-4 p-4 bg-[#18181b] rounded-xl border border-gray-800 cursor-pointer hover:border-gray-600 transition-colors w-full text-left"
                 >
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg ${getIconBg()} text-md font-bold text-white flex-shrink-0`} aria-hidden="true">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg ${getIconBg()} text-md font-bold text-white shrink-0`} aria-hidden="true">
                         {getDescriptor().slice(0, 1)}
                     </div>
                     <div className="font-semibold text-white truncate flex-1">

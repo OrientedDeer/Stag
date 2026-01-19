@@ -3,12 +3,13 @@ import { AccountContext } from './AccountContext';
 import { IncomeContext } from '../Income/IncomeContext';
 import { ExpenseContext } from '../Expense/ExpenseContext';
 import { TaxContext } from '../../Objects/Taxes/TaxContext';
-import { AssumptionsContext, AssumptionsState, defaultAssumptions } from '../Assumptions/AssumptionsContext'; // Import AssumptionsContext and AssumptionsState
+import { AssumptionsContext, AssumptionsState, defaultAssumptions } from '../Assumptions/AssumptionsContext';
 import { AnyAccount, reconstituteAccount } from './models';
 import { AmountHistoryEntry } from './AccountContext';
 import { AnyIncome, reconstituteIncome } from '../Income/models';
 import { AnyExpense, reconstituteExpense } from '../Expense/models';
-import { TaxState } from '../../Objects/Taxes/TaxContext';
+import { TaxState, defaultTaxState } from '../../Objects/Taxes/TaxContext';
+import { ImportKeyContext } from './ImportKeyContext';
 
 export interface FullBackup {
     version: number;
@@ -25,7 +26,8 @@ export const useFileManager = () => {
     const { incomes, dispatch: incomeDispatch } = useContext(IncomeContext);
     const { expenses, dispatch: expenseDispatch } = useContext(ExpenseContext);
     const { state, dispatch: taxesDispatch } = useContext(TaxContext);
-    const { state: assumptions, dispatch: assumptionsDispatch } = useContext(AssumptionsContext); // Get assumptions state and dispatch
+    const { state: assumptions, dispatch: assumptionsDispatch } = useContext(AssumptionsContext);
+    const { importKey, incrementImportKey } = useContext(ImportKeyContext);
 
     const handleGlobalExport = () => {
         const fullBackup: FullBackup = {
@@ -48,8 +50,23 @@ export const useFileManager = () => {
     };
 
     const handleGlobalImport = (json: string) => {
+        console.log('[useFileManager] handleGlobalImport called with', json.length, 'bytes');
         try {
             const data = JSON.parse(json);
+            console.log('[useFileManager] parsed data:', {
+                accounts: data.accounts?.length,
+                incomes: data.incomes?.length,
+                expenses: data.expenses?.length
+            });
+
+            // Debug: Log raw income data before reconstitution
+            console.log('[useFileManager] Raw income data before reconstitution:', data.incomes.map((inc: any) => ({
+                name: inc.name,
+                startDate: inc.startDate,
+                startDateType: typeof inc.startDate,
+                end_date: inc.end_date,
+                className: inc.className
+            })));
 
             const newAccounts = data.accounts.map(reconstituteAccount).filter(Boolean as any as (value: AnyAccount | null) => value is AnyAccount);
             const newIncomes = data.incomes.map(reconstituteIncome).filter(Boolean as any as (value: AnyIncome | null) => value is AnyIncome);
@@ -58,7 +75,12 @@ export const useFileManager = () => {
             accountDispatch({ type: 'SET_BULK_DATA', payload: { accounts: newAccounts, amountHistory: data.amountHistory || {} } });
             incomeDispatch({ type: 'SET_BULK_DATA', payload: { incomes: newIncomes } });
             expenseDispatch({ type: 'SET_BULK_DATA', payload: { expenses: newExpenses } });
-            taxesDispatch({ type: 'SET_BULK_DATA', payload: data.taxSettings });
+            // Merge taxSettings with defaults to ensure all fields are present
+            const mergedTaxSettings = {
+                ...defaultTaxState,
+                ...data.taxSettings,
+            };
+            taxesDispatch({ type: 'SET_BULK_DATA', payload: mergedTaxSettings });
             if (data.assumptions) { // Check if assumptions exist in the backup data
                 const mergedAssumptions = {
                     ...defaultAssumptions,
@@ -82,6 +104,12 @@ export const useFileManager = () => {
             else {
                 assumptionsDispatch({ type: 'RESET_DEFAULTS'});
             }
+            // Increment shared importKey to force chart remounts after import
+            console.log('[useFileManager] dispatches complete, calling incrementImportKey');
+            incrementImportKey();
+            console.log('[useFileManager] import complete');
+            // Force page reload to ensure all components update
+            //window.location.reload();
         } catch (e) {
             console.error(e);
             alert("Error importing backup. Please check file format.");
@@ -100,5 +128,5 @@ export const useFileManager = () => {
         };
     };
 
-    return { handleGlobalExport, handleGlobalImport, getBackupData };
+    return { handleGlobalExport, handleGlobalImport, getBackupData, importKey };
 };

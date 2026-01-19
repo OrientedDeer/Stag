@@ -1,5 +1,5 @@
 import { useMemo, useRef } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
+import { QRCodeCanvas } from 'qrcode.react';
 import { compressData, exceedsQRLimit, createCompactBackup } from './qrUtils';
 
 interface FullBackup {
@@ -33,36 +33,24 @@ export default function QRGenerateModal({ isOpen, onClose, backupData }: QRGener
     }, [backupData]);
 
     const handleDownload = () => {
-        const svg = qrRef.current?.querySelector('svg');
-        if (!svg) return;
+        const canvas = qrRef.current?.querySelector('canvas');
+        if (!canvas) return;
 
-        const svgData = new XMLSerializer().serializeToString(svg);
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        const img = new Image();
-
-        img.onload = () => {
-            canvas.width = img.width;
-            canvas.height = img.height;
-            ctx?.drawImage(img, 0, 0);
-            const pngUrl = canvas.toDataURL('image/png');
-            const downloadLink = document.createElement('a');
-            downloadLink.href = pngUrl;
-            downloadLink.download = `stag_qr_backup_${new Date().toISOString().split('T')[0]}.png`;
-            downloadLink.click();
-        };
-
-        img.src = 'data:image/svg+xml;base64,' + btoa(svgData);
+        const pngUrl = canvas.toDataURL('image/png');
+        const downloadLink = document.createElement('a');
+        downloadLink.href = pngUrl;
+        downloadLink.download = `stag_qr_backup_${new Date().toISOString().split('T')[0]}.png`;
+        downloadLink.click();
     };
 
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-            <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl p-6 max-w-md w-full mx-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 sm:p-4">
+            <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl p-4 sm:p-8 w-full max-w-[90vw] sm:max-w-xl md:max-w-2xl">
                 {/* Header */}
                 <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-3">
-                    <h3 className="text-xl font-bold text-white">Share via QR Code</h3>
+                    <h3 className="text-lg sm:text-xl font-bold text-white">Share via QR Code</h3>
                     <button
                         onClick={onClose}
                         className="text-gray-400 hover:text-white transition-colors"
@@ -76,7 +64,7 @@ export default function QRGenerateModal({ isOpen, onClose, backupData }: QRGener
                 {exceedsLimit ? (
                     <div className="bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-4 mb-4">
                         <div className="flex items-start gap-3">
-                            <svg className="w-6 h-6 text-yellow-300 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg className="w-6 h-6 text-yellow-300 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                             </svg>
                             <div>
@@ -91,12 +79,12 @@ export default function QRGenerateModal({ isOpen, onClose, backupData }: QRGener
                 ) : (
                     <>
                         {/* QR Code */}
-                        <div ref={qrRef} className="flex justify-center p-4 bg-white rounded-lg mb-4">
-                            <QRCodeSVG
+                        <div ref={qrRef} className="flex justify-center p-3 sm:p-6 bg-white rounded-lg mb-4">
+                            <QRCodeCanvas
                                 value={compressed}
-                                size={256}
-                                level="M"
-                                includeMargin={true}
+                                size={2048}
+                                level="L"
+                                style={{ maxWidth: '100%', height: 'auto' }}
                             />
                         </div>
 

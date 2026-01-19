@@ -45,9 +45,12 @@ export default function Dashboard() {
   const { expenses } = useContext(ExpenseContext);
   const { state: taxState } = useContext(TaxContext);
   const { state: assumptions } = useContext(AssumptionsContext);
-  const { handleGlobalImport } = useFileManager();
+  const { handleGlobalImport, importKey } = useFileManager();
   const forceExact = assumptions.display?.useCompactCurrency === false;
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Debug logging for import key propagation
+  console.log('[Dashboard] render with importKey:', importKey, 'incomes:', incomeCtx.incomes.length, 'expenses:', expenseCtx.expenses.length);
 
   const hasIncomes = incomeCtx.incomes.length > 0;
   const hasExpenses = expenseCtx.expenses.length > 0;
@@ -234,7 +237,7 @@ export default function Dashboard() {
 
             Mobile: stacked (Numbers → Expense → NetWorth → Cashflow)
           */}
-          <div className={`grid grid-cols-1 gap-4 items-start ${isSetupComplete ? 'lg:grid-cols-7' : 'lg:grid-cols-2'}`}>
+          <div key={`dashboard-charts-${importKey}`} className={`grid grid-cols-1 gap-4 items-start ${isSetupComplete ? 'lg:grid-cols-7' : 'lg:grid-cols-2'}`}>
             {/* Summary Metric Cards - 2x2 grid */}
             {isSetupComplete && (
               <div className="order-1 lg:col-span-2 lg:row-span-1 grid grid-cols-2 gap-3">
@@ -282,6 +285,7 @@ export default function Dashboard() {
                 </div>
                 <div className="h-32">
                   <ResponsivePie
+                    key={`pie-${importKey}`}
                     data={expenseByCategory}
                     margin={{ top: 5, right: 5, bottom: 5, left: 5 }}
                     innerRadius={0.5}
@@ -310,7 +314,7 @@ export default function Dashboard() {
 
             {/* Net Worth - spans full height on desktop, order-3 on mobile (before cashflow) */}
             <div className={`order-3 h-full ${isSetupComplete ? 'lg:col-span-3 lg:row-span-2 lg:col-start-5 lg:row-start-1' : 'lg:col-span-1'}`}>
-              <NetWorthCard/>
+              <NetWorthCard key={`networth-${importKey}`}/>
             </div>
 
             {/* Cash Flow Chart - order-4 on mobile (last) */}
@@ -318,13 +322,24 @@ export default function Dashboard() {
               <h2 className="text-xl font-bold text-gray-200 mb-6">Yearly Cash Flow</h2>
               <div className="min-h-75 flex flex-col justify-center">
                 {hasIncomes ? (
-                  <CashflowSankey
-                    incomes={incomes}
-                    expenses={expenses}
-                    year={year}
-                    taxes={{ fed: annualFedTax, state: annualStateTax, fica: annualFicaTax }}
-                    height={300}
-                  />
+                  (() => {
+                    console.log('[Dashboard] Rendering CashflowSankey with:', {
+                      importKey,
+                      incomesCount: incomes.length,
+                      expensesCount: expenses.length,
+                      incomeIds: incomes.map(i => i.id).join(',')
+                    });
+                    return (
+                      <CashflowSankey
+                        key={`sankey-${importKey}`}
+                        incomes={incomes}
+                        expenses={expenses}
+                        year={year}
+                        taxes={{ fed: annualFedTax, state: annualStateTax, fica: annualFicaTax }}
+                        height={300}
+                      />
+                    );
+                  })()
                 ) : (
                   <div className='flex flex-col items-center justify-center text-center p-12 border-2 border-dashed border-gray-800 rounded-2xl'>
                     <div className="text-gray-400 text-lg mb-2">No income data available</div>

@@ -68,6 +68,48 @@ const DEFAULTS: Record<string, Record<string, unknown>> = {
     },
 };
 
+// Defaults for assumptions - values that can be stripped during compression
+const ASSUMPTIONS_DEFAULTS: Record<string, unknown> = {
+    // Macro
+    inflationRate: 2.6,
+    healthcareInflation: 3.9,
+    inflationAdjusted: true,
+    // Income
+    salaryGrowth: 1.0,
+    qualifiesForSocialSecurity: true,
+    socialSecurityFundingPercent: 100,
+    // Expenses
+    lifestyleCreep: 75.0,
+    housingAppreciation: 1.4,
+    rentInflation: 1.2,
+    // Investments
+    ror: 5.9,
+    withdrawalStrategy: 'Fixed Real',
+    withdrawalRate: 4.0,
+    gkUpperGuardrail: 1.2,
+    gkLowerGuardrail: 0.8,
+    gkAdjustmentPercent: 10,
+    autoRothConversions: false,
+    // Demographics
+    retirementAge: 65,
+    lifeExpectancy: 90,
+    priorYearMode: false,
+    // Display
+    useCompactCurrency: true,
+    showExperimentalFeatures: false,
+    hsaEligible: true,
+};
+
+// Defaults for tax settings
+const TAX_DEFAULTS: Record<string, unknown> = {
+    filingStatus: 'Single',
+    stateResidency: 'DC',
+    deductionMethod: 'Auto',
+    fedOverride: null,
+    ficaOverride: null,
+    stateOverride: null,
+};
+
 /**
  * Converts an ISO date string to days since epoch.
  */
@@ -86,10 +128,15 @@ function daysToDate(days: number): string {
 
 /**
  * Recursively shorten all keys in an object.
+ * Handles Date objects by converting to ISO strings.
  */
 function shortenKeys(obj: unknown): unknown {
     if (Array.isArray(obj)) {
         return obj.map(shortenKeys);
+    }
+    // Convert Date objects to ISO strings before they get corrupted
+    if (obj instanceof Date) {
+        return obj.toISOString();
     }
     if (obj !== null && typeof obj === 'object') {
         const result: Record<string, unknown> = {};
@@ -144,6 +191,144 @@ function stripDefaults(obj: Record<string, unknown>, type: string): Record<strin
 function restoreDefaults(obj: Record<string, unknown>, type: string): Record<string, unknown> {
     const typeDefaults = DEFAULTS[type] || {};
     return { ...typeDefaults, ...obj };
+}
+
+/**
+ * Flattens the nested assumptions structure into a single-level object.
+ */
+function flattenAssumptions(assumptions: Record<string, unknown>): Record<string, unknown> {
+    const flat: Record<string, unknown> = {};
+
+    for (const [category, values] of Object.entries(assumptions)) {
+        if (category === 'priorities' || category === 'withdrawalOrder') {
+            // Keep arrays as-is
+            if (Array.isArray(values) && values.length > 0) {
+                flat[category] = values;
+            }
+        } else if (typeof values === 'object' && values !== null) {
+            // Flatten nested object (macro, income, etc.)
+            for (const [key, value] of Object.entries(values as Record<string, unknown>)) {
+                // Handle nested returnRates.ror
+                if (key === 'returnRates' && typeof value === 'object' && value !== null) {
+                    flat['ror'] = (value as Record<string, unknown>).ror;
+                } else {
+                    flat[key] = value;
+                }
+            }
+        }
+    }
+
+    return flat;
+}
+
+/**
+ * Expands a flattened assumptions object back to nested structure.
+ */
+function expandAssumptions(flat: Record<string, unknown>): Record<string, unknown> {
+    return {
+        macro: {
+            inflationRate: flat.inflationRate ?? ASSUMPTIONS_DEFAULTS.inflationRate,
+            healthcareInflation: flat.healthcareInflation ?? ASSUMPTIONS_DEFAULTS.healthcareInflation,
+            inflationAdjusted: flat.inflationAdjusted ?? ASSUMPTIONS_DEFAULTS.inflationAdjusted,
+        },
+        income: {
+            salaryGrowth: flat.salaryGrowth ?? ASSUMPTIONS_DEFAULTS.salaryGrowth,
+            qualifiesForSocialSecurity: flat.qualifiesForSocialSecurity ?? ASSUMPTIONS_DEFAULTS.qualifiesForSocialSecurity,
+            socialSecurityFundingPercent: flat.socialSecurityFundingPercent ?? ASSUMPTIONS_DEFAULTS.socialSecurityFundingPercent,
+        },
+        expenses: {
+            lifestyleCreep: flat.lifestyleCreep ?? ASSUMPTIONS_DEFAULTS.lifestyleCreep,
+            housingAppreciation: flat.housingAppreciation ?? ASSUMPTIONS_DEFAULTS.housingAppreciation,
+            rentInflation: flat.rentInflation ?? ASSUMPTIONS_DEFAULTS.rentInflation,
+        },
+        investments: {
+            returnRates: { ror: flat.ror ?? ASSUMPTIONS_DEFAULTS.ror },
+            withdrawalStrategy: flat.withdrawalStrategy ?? ASSUMPTIONS_DEFAULTS.withdrawalStrategy,
+            withdrawalRate: flat.withdrawalRate ?? ASSUMPTIONS_DEFAULTS.withdrawalRate,
+            gkUpperGuardrail: flat.gkUpperGuardrail ?? ASSUMPTIONS_DEFAULTS.gkUpperGuardrail,
+            gkLowerGuardrail: flat.gkLowerGuardrail ?? ASSUMPTIONS_DEFAULTS.gkLowerGuardrail,
+            gkAdjustmentPercent: flat.gkAdjustmentPercent ?? ASSUMPTIONS_DEFAULTS.gkAdjustmentPercent,
+            autoRothConversions: flat.autoRothConversions ?? ASSUMPTIONS_DEFAULTS.autoRothConversions,
+        },
+        demographics: {
+            birthYear: flat.birthYear, // No default - must be provided
+            retirementAge: flat.retirementAge ?? ASSUMPTIONS_DEFAULTS.retirementAge,
+            lifeExpectancy: flat.lifeExpectancy ?? ASSUMPTIONS_DEFAULTS.lifeExpectancy,
+            priorYearMode: flat.priorYearMode ?? ASSUMPTIONS_DEFAULTS.priorYearMode,
+        },
+        display: {
+            useCompactCurrency: flat.useCompactCurrency ?? ASSUMPTIONS_DEFAULTS.useCompactCurrency,
+            showExperimentalFeatures: flat.showExperimentalFeatures ?? ASSUMPTIONS_DEFAULTS.showExperimentalFeatures,
+            hsaEligible: flat.hsaEligible ?? ASSUMPTIONS_DEFAULTS.hsaEligible,
+        },
+        priorities: flat.priorities ?? [],
+        withdrawalOrder: flat.withdrawalOrder ?? [],
+    };
+}
+
+/**
+ * Compresses assumptions by flattening, stripping defaults, and shortening keys.
+ */
+function compactAssumptions(assumptions: Record<string, unknown>): Record<string, unknown> {
+    const flat = flattenAssumptions(assumptions);
+    const result: Record<string, unknown> = {};
+
+    for (const [key, value] of Object.entries(flat)) {
+        // Skip default values
+        if (key in ASSUMPTIONS_DEFAULTS && ASSUMPTIONS_DEFAULTS[key] === value) continue;
+        // Skip empty arrays
+        if (Array.isArray(value) && value.length === 0) continue;
+
+        // Shorten key and add
+        const shortKey = KEY_MAP[key] || key;
+        // For arrays like priorities/withdrawalOrder, also shorten nested keys
+        if (Array.isArray(value)) {
+            result[shortKey] = value.map(item =>
+                typeof item === 'object' && item !== null ? shortenKeys(item) : item
+            );
+        } else {
+            result[shortKey] = value;
+        }
+    }
+
+    return result;
+}
+
+/**
+ * Expands compact assumptions back to full nested structure.
+ */
+function expandCompactAssumptions(compact: Record<string, unknown>): Record<string, unknown> {
+    // First expand short keys to full keys
+    const expanded = expandKeys(compact) as Record<string, unknown>;
+    // Then rebuild nested structure with defaults
+    return expandAssumptions(expanded);
+}
+
+/**
+ * Compresses tax settings by stripping defaults and shortening keys.
+ */
+function compactTax(tax: Record<string, unknown>): Record<string, unknown> {
+    const result: Record<string, unknown> = {};
+
+    for (const [key, value] of Object.entries(tax)) {
+        // Skip default/null values
+        if (key in TAX_DEFAULTS && TAX_DEFAULTS[key] === value) continue;
+        if (value === null) continue;
+
+        // Shorten key
+        const shortKey = KEY_MAP[key] || key;
+        result[shortKey] = value;
+    }
+
+    return result;
+}
+
+/**
+ * Expands compact tax settings back to full format with defaults.
+ */
+function expandCompactTax(compact: Record<string, unknown>): Record<string, unknown> {
+    const expanded = expandKeys(compact) as Record<string, unknown>;
+    return { ...TAX_DEFAULTS, ...expanded };
 }
 
 /**
@@ -240,8 +425,8 @@ export function createCompactBackup(full: FullBackup): CompactBackup {
         h: compactHistoryData,
         i: compactIncomes,
         e: compactExpenses,
-        t: shortenKeys(full.taxSettings) as Record<string, unknown>,
-        m: shortenKeys(full.assumptions) as Record<string, unknown>,
+        t: compactTax(full.taxSettings),
+        m: compactAssumptions(full.assumptions),
     };
 }
 
@@ -273,8 +458,8 @@ export function expandCompactBackup(compact: CompactBackup): FullBackup {
         amountHistory: expandedHistory,
         incomes: expandedIncomes,
         expenses: expandedExpenses,
-        taxSettings: expandKeys(compact.t) as Record<string, unknown>,
-        assumptions: expandKeys(compact.m) as Record<string, unknown>,
+        taxSettings: expandCompactTax(compact.t),
+        assumptions: expandCompactAssumptions(compact.m),
     };
 }
 
@@ -346,9 +531,10 @@ export function validatePayload(data: unknown): data is {
 
 /**
  * Maximum safe size for QR code data (in bytes).
- * QR codes can technically hold up to ~3KB, but 2.5KB is safer for reliable scanning.
+ * With error correction level "M", max capacity is ~2331 bytes.
+ * Using 2200 for safety margin.
  */
-export const MAX_QR_DATA_SIZE = 2500;
+export const MAX_QR_DATA_SIZE = 2200;
 
 /**
  * Checks if the compressed data exceeds the safe QR code size limit.

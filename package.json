@@ -34,6 +34,7 @@
     "@yudiel/react-qr-scanner": "^2.5.0",
     "cloc": "^2.6.0-cloc",
     "html2canvas": "^1.4.1",
+    "jsqr": "^1.4.0",
     "pako": "^2.1.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.3",
