@@ -114,6 +114,7 @@ export default function QRScanModal({ isOpen, onClose, onImport }: QRScanModalPr
                                 onScan={handleScan}
                                 onError={handleError}
                                 formats={['qr_code']}
+                                sound={false}
                                 styles={{
                                     container: { width: '100%', height: '100%' },
                                     video: { width: '100%', height: '100%', objectFit: 'cover' }
