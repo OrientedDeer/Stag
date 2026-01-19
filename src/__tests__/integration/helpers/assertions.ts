@@ -501,8 +501,13 @@ export function assertInterestGrowsLinearly(
 /**
  * Assert simulation stability over long horizons.
  * No NaN, Infinity, negative balances, or unreasonable values.
+ * @param simulation The simulation results to check
+ * @param maxAnnualGrowthRate Max allowed growth rate per year (default 0.5 = 50%)
  */
-export function assertLongHorizonStability(simulation: SimulationYear[]): void {
+export function assertLongHorizonStability(
+    simulation: SimulationYear[],
+    maxAnnualGrowthRate: number = 0.50
+): void {
     for (const year of simulation) {
         // Basic invariants
         assertNoNaNOrInfinity(year);
@@ -513,7 +518,7 @@ export function assertLongHorizonStability(simulation: SimulationYear[]): void {
     }
 
     // Check for value explosion
-    assertNoValueExplosion(simulation);
+    assertNoValueExplosion(simulation, maxAnnualGrowthRate);
 }
 
 // =============================================================================

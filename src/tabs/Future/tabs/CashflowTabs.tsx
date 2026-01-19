@@ -44,8 +44,36 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
     const conversionAmount = yearData.rothConversion?.amount || 0;
     const conversionTax = yearData.rothConversion?.taxCost || 0;
 
+    // Check for Guyton-Klinger guardrail trigger in selected year
+    const gkTriggered = yearData.strategyAdjustment?.guardrailTriggered;
+    const gkAdjustmentPercent = yearData.strategyAdjustment?.adjustmentPercent;
+
     return (
          <div className="flex flex-col gap-4">
+            {/* Guyton-Klinger Guardrail Note */}
+            {gkTriggered === 'capital-preservation' && (
+                <div className="p-3 bg-amber-900/20 border border-amber-700/50 rounded-lg text-sm">
+                    <div className="flex items-start gap-2">
+                        <span className="text-amber-400 font-semibold">📉 Capital Preservation Rule:</span>
+                        <span className="text-gray-300">
+                            Portfolio dropped below the guardrail threshold. Discretionary expenses were
+                            <span className="text-amber-300"> reduced by {gkAdjustmentPercent ? `${Math.abs(gkAdjustmentPercent * 100).toFixed(0)}%` : '10%'}</span> to protect your portfolio.
+                        </span>
+                    </div>
+                </div>
+            )}
+            {gkTriggered === 'prosperity' && (
+                <div className="p-3 bg-green-900/20 border border-green-700/50 rounded-lg text-sm">
+                    <div className="flex items-start gap-2">
+                        <span className="text-green-400 font-semibold">📈 Prosperity Rule:</span>
+                        <span className="text-gray-300">
+                            Portfolio exceeded the upper guardrail threshold. Discretionary expenses were
+                            <span className="text-green-300"> increased by {gkAdjustmentPercent ? `${Math.abs(gkAdjustmentPercent * 100).toFixed(0)}%` : '10%'}</span> to enjoy your gains.
+                        </span>
+                    </div>
+                </div>
+            )}
+
             {/* Roth Conversion Note */}
             {hasRothConversion && (
                 <div className="p-3 bg-blue-900/20 border border-blue-700/50 rounded-lg text-sm">

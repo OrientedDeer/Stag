@@ -1,12 +1,13 @@
 // src/components/Simulation/SimulationEngine.ts
 import { AnyAccount, DebtAccount, DeficitDebtAccount, InvestedAccount, PropertyAccount, SavedAccount } from "../../Objects/Accounts/models";
 import { AnyExpense, LoanExpense, MortgageExpense } from "../Expense/models";
-import { AnyIncome, WorkIncome, FutureSocialSecurityIncome, FERSPensionIncome, CSRSPensionIncome, PassiveIncome } from "../../Objects/Income/models";
+import { AnyIncome, WorkIncome, FutureSocialSecurityIncome, FERSPensionIncome, CSRSPensionIncome, PassiveIncome, getIncomeActiveMultiplier } from "../../Objects/Income/models";
 import { calculateHigh3 } from "../../../data/PensionData";
 import { calculateRMD, isAccountSubjectToRMD, isRMDRequired, RMDCalculation } from "../../../data/RMDData";
 import { AssumptionsState } from "./AssumptionsContext";
 import { TaxState } from "../../Objects/Taxes/TaxContext";
 import * as TaxService from "../../Objects/Taxes/TaxService";
+import { FilingStatus, TaxParameters } from "../../../data/TaxData";
 import { calculateAIME, extractEarningsFromSimulation, calculateEarningsTestReduction } from "../../../services/SocialSecurityCalculator";
 import { getFRA } from "../../../data/SocialSecurityData";
 import { calculateStrategyWithdrawal, WithdrawalResult, GuardrailTrigger } from "../../../services/WithdrawalStrategies";
@@ -71,6 +72,124 @@ export interface SimulationYear {
 }
 
 /**
+ * Calculate the effective tax cost of a Roth conversion, including the SS "tax torpedo" effect.
+ *
+ * When you do a Roth conversion, you not only pay tax on the conversion itself,
+ * but the additional income can push more of your Social Security benefits into
+ * taxable territory. This creates an effective marginal rate higher than the
+ * stated bracket rate.
+ *
+ * @param nonSSIncome - Income excluding Social Security
+ * @param totalSSBenefits - Total Social Security benefits received
+ * @param conversionAmount - Amount being converted from Traditional to Roth
+ * @param filingStatus - Tax filing status
+ * @param fedParams - Federal tax parameters
+ * @returns Object with tax details including effective rate
+ */
+function calculateEffectiveConversionTax(
+    nonSSIncome: number,
+    totalSSBenefits: number,
+    conversionAmount: number,
+    filingStatus: FilingStatus,
+    fedParams: TaxParameters
+): { taxBefore: number; taxAfter: number; taxIncrease: number; effectiveRate: number } {
+    // Calculate tax WITHOUT conversion
+    // TaxService.calculateTax expects gross income and will apply standard deduction internally
+    const taxableSSBefore = TaxService.getTaxableSocialSecurityBenefits(
+        totalSSBenefits,
+        nonSSIncome,
+        filingStatus
+    );
+    const grossIncomeBefore = nonSSIncome + taxableSSBefore;
+    const taxBefore = TaxService.calculateTax(grossIncomeBefore, 0, fedParams);
+
+    // Calculate tax WITH conversion
+    // The conversion adds to AGI, which can increase taxable SS
+    const newNonSSIncome = nonSSIncome + conversionAmount;
+    const taxableSSAfter = TaxService.getTaxableSocialSecurityBenefits(
+        totalSSBenefits,
+        newNonSSIncome,
+        filingStatus
+    );
+    const grossIncomeAfter = newNonSSIncome + taxableSSAfter;
+    const taxAfter = TaxService.calculateTax(grossIncomeAfter, 0, fedParams);
+
+    const taxIncrease = taxAfter - taxBefore;
+    const effectiveRate = conversionAmount > 0 ? taxIncrease / conversionAmount : 0;
+
+    return {
+        taxBefore,
+        taxAfter,
+        taxIncrease,
+        effectiveRate
+    };
+}
+
+/**
+ * Estimate the gross Traditional withdrawal needed to cover an expense deficit.
+ * Used to reduce Roth conversion bracket headroom to avoid over-conversion.
+ *
+ * @param preliminaryCash - Cash available before Roth conversion (negative = deficit)
+ * @param accounts - All accounts
+ * @param withdrawalStrategy - Ordered list of accounts to withdraw from
+ * @returns Estimated gross Traditional withdrawal amount
+ */
+function estimateTraditionalWithdrawalForExpenses(
+    preliminaryCash: number,
+    accounts: AnyAccount[],
+    withdrawalStrategy: { accountId: string }[]
+): number {
+    // No deficit means no Traditional withdrawal needed
+    if (preliminaryCash >= 0) return 0;
+
+    const deficit = Math.abs(preliminaryCash);
+    let estimatedTraditionalWithdrawal = 0;
+    let remainingDeficit = deficit;
+
+    // Walk through withdrawal strategy order
+    for (const bucket of withdrawalStrategy) {
+        if (remainingDeficit <= 0) break;
+
+        const account = accounts.find(acc => acc.id === bucket.accountId);
+        if (!account) continue;
+
+        // Only estimate for Traditional accounts
+        const isTraditional = account instanceof InvestedAccount &&
+            (account.taxType === 'Traditional 401k' || account.taxType === 'Traditional IRA');
+
+        if (isTraditional) {
+            const availableBalance = (account as InvestedAccount).vestedAmount;
+            if (availableBalance <= 0) continue;
+
+            // Use conservative 25% effective tax rate for estimation
+            // This means for every $1 net needed, we withdraw ~$1.33 gross
+            const ESTIMATED_TAX_RATE = 0.25;
+            const grossNeeded = remainingDeficit / (1 - ESTIMATED_TAX_RATE);
+
+            // Cap at available balance
+            const grossWithdrawal = Math.min(grossNeeded, availableBalance);
+            estimatedTraditionalWithdrawal += grossWithdrawal;
+
+            // Estimate net received from this withdrawal
+            const netReceived = grossWithdrawal * (1 - ESTIMATED_TAX_RATE);
+            remainingDeficit -= netReceived;
+        } else {
+            // Non-Traditional accounts (Roth, Saved, Brokerage) - estimate net received
+            // For simplicity, assume these cover deficit 1:1 (Roth/Saved are tax-free)
+            // Brokerage has cap gains but for estimation purposes, this is close enough
+            let availableBalance = account.amount;
+            if (account instanceof InvestedAccount) {
+                availableBalance = account.vestedAmount;
+            }
+            const withdrawal = Math.min(remainingDeficit, availableBalance);
+            remainingDeficit -= withdrawal;
+        }
+    }
+
+    return estimatedTraditionalWithdrawal;
+}
+
+/**
  * Perform automatic Roth conversions during retirement.
  * Converts from Traditional accounts (in withdrawal order) to Roth accounts (reverse order).
  */
@@ -82,7 +201,8 @@ function performAutoRothConversion(
     assumptions: AssumptionsState,
     taxState: TaxState,
     _previousSimulation: SimulationYear[],
-    logs: string[]
+    logs: string[],
+    estimatedTraditionalWithdrawal: number = 0
 ): SimulationYear['rothConversion'] | undefined {
     // Get federal tax parameters
     const fedParams = TaxService.getTaxParameters(
@@ -95,11 +215,25 @@ function performAutoRothConversion(
 
     if (!fedParams) return undefined;
 
-    // Calculate current taxable income
+    // Calculate current taxable income with proper SS handling
     const grossIncome = TaxService.getGrossIncome(incomes, year);
     const preTaxDeductions = TaxService.getPreTaxExemptions(incomes, year);
     const standardDeduction = fedParams.standardDeduction || 0;
-    const taxableIncome = Math.max(0, grossIncome - preTaxDeductions);
+
+    // Handle Social Security taxation properly
+    // SS is taxed at 0%, 50%, or 85% depending on "combined income"
+    const totalSSBenefits = TaxService.getSocialSecurityBenefits(incomes, year);
+    const nonSSGross = grossIncome - totalSSBenefits;
+    const agiExcludingSS = nonSSGross - preTaxDeductions;
+    const taxableSSBenefits = TaxService.getTaxableSocialSecurityBenefits(
+        totalSSBenefits,
+        agiExcludingSS,
+        taxState.filingStatus
+    );
+
+    // AGI with only taxable portion of SS included
+    const adjustedGross = nonSSGross + taxableSSBenefits;
+    const taxableIncome = Math.max(0, adjustedGross - preTaxDeductions);
 
     // Get retirement tax rate from previous simulation or use fallback
     //const retirementAge = assumptions.demographics.retirementAge;
@@ -122,18 +256,69 @@ function performAutoRothConversion(
     //     retirementTaxRate = Math.max(MIN_CONVERSION_TARGET_RATE, calculatedRate);
     // }
 
-    // Get current marginal rate
-    const marginalInfo = TaxService.getMarginalTaxRate(taxableIncome, fedParams);
+    // Check effective rate on a test conversion to see if we should convert at all
+    // The effective rate includes the SS "tax torpedo" effect
+    // Include estimated Traditional withdrawal in the AGI for accurate effective rate check
+    const testAgi = agiExcludingSS + estimatedTraditionalWithdrawal;
+    const testConversionAmount = 1000; // Small amount to test effective rate
+    const testEffectiveResult = calculateEffectiveConversionTax(
+        testAgi,
+        totalSSBenefits,
+        testConversionAmount,
+        taxState.filingStatus,
+        fedParams
+    );
 
-    // Only convert if current marginal rate is below target rate
-    // This ensures we fill up lower brackets before hitting the target
-    if (marginalInfo.rate >= retirementTaxRate) {
+    // Only convert if effective rate is below target rate
+    // This accounts for both the marginal bracket rate AND the SS torpedo effect
+    if (testEffectiveResult.effectiveRate >= retirementTaxRate) {
         return undefined;
     }
 
-    // Calculate optimal conversion amount (fill brackets up to retirement rate)
+    // Calculate optimal conversion amount accounting for SS torpedo
+    // Use binary search to find the amount where effective rate approaches target
     const targetIncomeThreshold = getIncomeThresholdForRate(retirementTaxRate, fedParams);
-    const optimalAmount = Math.max(0, targetIncomeThreshold + standardDeduction - taxableIncome);
+
+    // Reduce bracket headroom by estimated Traditional withdrawal for expenses
+    // This prevents over-conversion when we know Traditional withdrawals will happen later
+    const adjustedTaxableIncome = taxableIncome + estimatedTraditionalWithdrawal;
+    let maxBracketAmount = Math.max(0, targetIncomeThreshold + standardDeduction - adjustedTaxableIncome);
+
+    if (estimatedTraditionalWithdrawal > 0) {
+        logs.push(`  Bracket headroom reduced by estimated expense withdrawal: $${estimatedTraditionalWithdrawal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+    }
+
+    // If there's SS income, we need to find the point where effective rate hits target
+    // This may be less than the bracket-filling amount due to SS torpedo
+    let optimalAmount = maxBracketAmount;
+
+    if (totalSSBenefits > 0 && maxBracketAmount > 0) {
+        // Binary search for optimal amount where effective rate equals target
+        // Include estimated Traditional withdrawal in the AGI for accurate SS torpedo calculation
+        const adjustedAgiExcludingSS = agiExcludingSS + estimatedTraditionalWithdrawal;
+        let low = 0;
+        let high = maxBracketAmount;
+        const tolerance = 100; // $100 precision is good enough
+
+        while (high - low > tolerance) {
+            const mid = (low + high) / 2;
+            const midResult = calculateEffectiveConversionTax(
+                adjustedAgiExcludingSS,
+                totalSSBenefits,
+                mid,
+                taxState.filingStatus,
+                fedParams
+            );
+
+            if (midResult.effectiveRate < retirementTaxRate) {
+                low = mid;
+            } else {
+                high = mid;
+            }
+        }
+
+        optimalAmount = Math.floor(low);
+    }
 
     if (optimalAmount <= 0) return undefined;
 
@@ -222,14 +407,16 @@ function performAutoRothConversion(
         remainingToDeposit = 0;
     }
 
-    // Calculate tax cost on the conversion
-    const taxBefore = TaxService.calculateTax(taxableIncome, 0, {
-        ...fedParams
-    });
-    const taxAfter = TaxService.calculateTax(taxableIncome + totalConverted, 0, {
-        ...fedParams
-    });
-    const taxCost = taxAfter - taxBefore;
+    // Calculate tax cost on the conversion (including SS torpedo effect)
+    const conversionTaxResult = calculateEffectiveConversionTax(
+        agiExcludingSS,
+        totalSSBenefits,
+        totalConverted,
+        taxState.filingStatus,
+        fedParams
+    );
+    const taxCost = conversionTaxResult.taxIncrease;
+    const taxAfter = conversionTaxResult.taxAfter;
 
     logs.push(`  From: ${Object.entries(fromAccounts).map(([name, amt]) => `${name}: $${amt.toLocaleString(undefined, { maximumFractionDigits: 0 })}`).join(', ')}`);
     logs.push(`  To: ${Object.entries(toAccounts).map(([name, amt]) => `${name}: $${amt.toLocaleString(undefined, { maximumFractionDigits: 0 })}`).join(', ')}`);
@@ -890,6 +1077,32 @@ export function simulateOneYear(
     let rothConversionResult: SimulationYear['rothConversion'] = undefined;
 
     if (isRetired && assumptions.investments.autoRothConversions) {
+        // Calculate preliminary discretionaryCash to estimate Traditional withdrawal needed
+        // This is needed to reduce Roth conversion bracket headroom appropriately
+        const preliminaryLivingExpenses = nextExpenses.reduce((sum, exp) => {
+            if (exp instanceof MortgageExpense) {
+                return sum + exp.calculateAnnualAmortization(year).totalPayment;
+            }
+            if (exp instanceof LoanExpense) {
+                return sum + exp.calculateAnnualAmortization(year).totalPayment;
+            }
+            return sum + exp.getAnnualAmount(year);
+        }, 0);
+
+        const preliminaryReinvested = allIncomes
+            .filter(inc => inc instanceof PassiveIncome && inc.isReinvested)
+            .reduce((sum, inc) => sum + inc.getAnnualAmount(year), 0);
+
+        const preliminaryCash = totalGrossIncome - preTaxDeductions - postTaxDeductions
+            - totalTax - preliminaryLivingExpenses - preliminaryReinvested;
+
+        // Estimate Traditional withdrawal needed to cover expense deficit (if any)
+        const estimatedTraditionalWithdrawal = estimateTraditionalWithdrawalForExpenses(
+            preliminaryCash,
+            accounts,
+            assumptions.withdrawalStrategy || []
+        );
+
         const conversionResult = performAutoRothConversion(
             accounts,
             allIncomes,
@@ -898,7 +1111,8 @@ export function simulateOneYear(
             assumptions,
             taxState,
             previousSimulation,
-            logs
+            logs,
+            estimatedTraditionalWithdrawal
         );
 
         if (conversionResult && conversionResult.amount > 0) {
@@ -1403,14 +1617,19 @@ export function simulateOneYear(
     // 5a. Payroll & Match
     incomesWithEarningsTest.forEach(inc => {
         if (inc instanceof WorkIncome && inc.matchAccountId) {
+            // Prorate contributions based on how much of the year the income is active
+            // This ensures contributions stop when the income ends (e.g., at retirement)
+            const activeMultiplier = getIncomeActiveMultiplier(inc, year);
+            if (activeMultiplier === 0) return; // Skip if income not active this year
+
             const currentSelf = userInflows[inc.matchAccountId] || 0;
             const currentMatch = employerInflows[inc.matchAccountId] || 0;
 
-            const selfContribution = inc.preTax401k + inc.roth401k;
-            const employerMatch = inc.employerMatch;
-            
+            const selfContribution = (inc.preTax401k + inc.roth401k) * activeMultiplier;
+            const employerMatch = inc.employerMatch * activeMultiplier;
+
             totalEmployerMatch += employerMatch;
-            
+
             // CHANGED: Separate the streams so InvestedAccount can track vesting
             userInflows[inc.matchAccountId] = currentSelf + selfContribution;
             employerInflows[inc.matchAccountId] = currentMatch + employerMatch;

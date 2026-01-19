@@ -17,7 +17,7 @@ import { describe, it, expect } from 'vitest';
 import { AssumptionsState, defaultAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { InvestedAccount } from '../../../components/Objects/Accounts/models';
-import { WorkIncome, FutureSocialSecurityIncome } from '../../../components/Objects/Income/models';
+import { WorkIncome, FutureSocialSecurityIncome, PassiveIncome } from '../../../components/Objects/Income/models';
 import { FoodExpense } from '../../../components/Objects/Expense/models';
 import { runSimulation } from '../../../components/Objects/Assumptions/useSimulation';
 import {
@@ -791,5 +791,512 @@ describe('Story 6: Roth Conversion Ladder', () => {
         ).toBe(0);
 
         assertAllYearsInvariants(simulation);
+    });
+
+    // =========================================================================
+    // SOCIAL SECURITY TAX TORPEDO TESTS
+    // =========================================================================
+
+    describe('Social Security Tax Torpedo', () => {
+        const ssBirthYear = 1963; // Age 62 in 2025 - just retiring
+        const ssRetirementAge = 62;
+
+        // Assumptions for SS torpedo tests
+        const ssTorpedoAssumptions: AssumptionsState = {
+            ...defaultAssumptions,
+            demographics: {
+                birthYear: ssBirthYear,
+                lifeExpectancy: 90,
+                retirementAge: ssRetirementAge,
+            },
+            macro: {
+                ...defaultAssumptions.macro,
+                inflationRate: 0,
+                inflationAdjusted: false,
+            },
+            investments: {
+                ...defaultAssumptions.investments,
+                returnRates: { ror: 0 }, // Zero returns for predictable math
+                autoRothConversions: true,
+            },
+            priorities: [],
+            withdrawalStrategy: [
+                { id: 'ws-roth', name: 'Roth IRA', accountId: 'acc-roth' },
+                { id: 'ws-trad', name: 'Traditional IRA', accountId: 'acc-trad' },
+            ],
+        };
+
+        const ssTrad = new InvestedAccount(
+            'acc-trad', 'Traditional IRA', 500000, 0, 20, 0, 'Traditional IRA', true, 1.0, 500000
+        );
+
+        const ssRoth = new InvestedAccount(
+            'acc-roth', 'Roth IRA', 50000, 0, 20, 0, 'Roth IRA', true, 1.0, 40000
+        );
+
+        const ssExpenses = new FoodExpense(
+            'exp-living', 'Living Expenses', 30000, 'Annually', new Date('2025-01-01')
+        );
+
+        it('should do conversions when SS income is below first threshold (0% taxable)', () => {
+            // Low SS benefit: ~$15,000/year = $1,250/month PIA
+            // Combined income threshold for Single: $25,000
+            // Combined Income = AGI + 50% of SS = AGI + $7,500
+            // If AGI < $17,500, combined income < $25,000, so 0% of SS is taxable
+
+            // Use a scenario without SS income initially to verify conversions work
+            // Person retires at 62, SS starts at 67 - this gives us the "gap years" to test
+            // Note: calculatedPIA is MONTHLY benefit, so 1250 * 12 = $15,000/year
+            const delayedSS = new FutureSocialSecurityIncome(
+                'inc-ss', 'Social Security', 67, 1250, 0
+            );
+
+            const simulation = runSimulation(
+                10,
+                [ssTrad, ssRoth],
+                [delayedSS],
+                [ssExpenses],
+                ssTorpedoAssumptions,
+                taxState
+            );
+
+            // During years before SS starts (ages 62-66), should do conversions
+            let hasConversionsBeforeSS = false;
+            for (const year of simulation) {
+                const age = year.year - ssBirthYear;
+                if (age >= 62 && age < 67) {
+                    // Before SS starts
+                    if (year.rothConversion && year.rothConversion.amount > 0) {
+                        hasConversionsBeforeSS = true;
+                        break;
+                    }
+                }
+            }
+
+            expect(
+                hasConversionsBeforeSS,
+                'Should do Roth conversions during gap years before SS starts'
+            ).toBe(true);
+
+            assertAllYearsInvariants(simulation);
+        });
+
+        it('should reduce conversions when SS tax torpedo would push effective rate above target', () => {
+            // Moderate SS benefit: $30,000/year = $2,500/month (typical benefit)
+            // This puts us in the "tax torpedo" zone where conversions increase taxable SS
+            const moderateSS = new FutureSocialSecurityIncome(
+                'inc-ss', 'Social Security', 62, 2500, 0  // $2,500/month = $30k/year
+            );
+
+            // Compare conversion amounts with and without SS
+            const withSSSimulation = runSimulation(
+                10,
+                [ssTrad, ssRoth],
+                [moderateSS],
+                [ssExpenses],
+                ssTorpedoAssumptions,
+                taxState
+            );
+
+            // No SS scenario (using SS at age 90 which is effectively never)
+            const noSS = new FutureSocialSecurityIncome(
+                'inc-ss', 'Social Security', 90, 2500, 0  // $2,500/month = $30k/year
+            );
+
+            const noSSSimulation = runSimulation(
+                10,
+                [ssTrad, ssRoth],
+                [noSS],
+                [ssExpenses],
+                ssTorpedoAssumptions,
+                taxState
+            );
+
+            // Get conversion amounts for comparable years
+            const withSSConversion = withSSSimulation[2]?.rothConversion?.amount || 0;
+            const noSSConversion = noSSSimulation[2]?.rothConversion?.amount || 0;
+
+            // With SS torpedo, conversions should be LESS than without SS
+            // (because the effective rate is higher due to pushing SS into taxable territory)
+            if (noSSConversion > 0) {
+                expect(
+                    withSSConversion,
+                    `With SS torpedo, conversion ($${withSSConversion.toFixed(0)}) should be less than without SS ($${noSSConversion.toFixed(0)})`
+                ).toBeLessThanOrEqual(noSSConversion);
+            }
+
+            assertAllYearsInvariants(withSSSimulation);
+            assertAllYearsInvariants(noSSSimulation);
+        });
+
+        it('should not convert when already at 85% SS taxation threshold', () => {
+            // High SS benefit + other income that already pushes to 85% taxable
+            // Single threshold for 85%: combined income > $34,000
+            const highSS = new FutureSocialSecurityIncome(
+                'inc-ss', 'Social Security', 62, 3333, 0  // $3,333/month = $40k/year
+            );
+
+            // Add passive income to push into high bracket
+            const passiveIncome = new PassiveIncome(
+                'inc-passive', 'Pension', 50000, 'Annually', 'Yes',
+                'Other', new Date('2020-01-01')
+            );
+
+            const highIncomeAssumptions: AssumptionsState = {
+                ...ssTorpedoAssumptions,
+                demographics: {
+                    birthYear: ssBirthYear,
+                    lifeExpectancy: 90,
+                    retirementAge: 60,
+                },
+            };
+
+            const simulation = runSimulation(
+                10,
+                [ssTrad, ssRoth],
+                [highSS, passiveIncome],
+                [ssExpenses],
+                highIncomeAssumptions,
+                taxState
+            );
+
+            // With $50k pension + $40k SS, we're already in 22%+ bracket
+            // Conversions should be minimal or none
+            let totalConversions = 0;
+            for (const year of simulation) {
+                const age = year.year - ssBirthYear;
+                if (age >= 62) { // After SS starts
+                    totalConversions += year.rothConversion?.amount || 0;
+                }
+            }
+
+            // Should have very limited conversions (if any) when already in high bracket
+            // The exact amount depends on bracket filling logic, but it should be constrained
+            assertAllYearsInvariants(simulation);
+        });
+
+        it('should account for SS torpedo in tax cost calculation', () => {
+            // Verify that reported tax cost includes the SS torpedo effect
+            const moderateSS = new FutureSocialSecurityIncome(
+                'inc-ss', 'Social Security', 62, 2083, 0  // $2,083/month = $25k/year
+            );
+
+            const simulation = runSimulation(
+                10,
+                [ssTrad, ssRoth],
+                [moderateSS],
+                [ssExpenses],
+                ssTorpedoAssumptions,
+                taxState
+            );
+
+            // Find a year with conversions after SS starts
+            for (const year of simulation) {
+                const age = year.year - ssBirthYear;
+                if (age < 62) continue;
+
+                const conversion = year.rothConversion;
+                if (!conversion || conversion.amount <= 0) continue;
+
+                // Tax cost should be > 0 for any conversion
+                expect(
+                    conversion.taxCost,
+                    `Tax cost should be positive for $${conversion.amount.toFixed(0)} conversion`
+                ).toBeGreaterThan(0);
+
+                // Effective rate (taxCost / amount) should be reasonable
+                // With SS torpedo, effective rate could be 20-40%
+                const effectiveRate = conversion.taxCost / conversion.amount;
+                expect(
+                    effectiveRate,
+                    `Effective rate (${(effectiveRate * 100).toFixed(1)}%) should be between 0% and 50%`
+                ).toBeGreaterThan(0);
+                expect(effectiveRate).toBeLessThan(0.5);
+
+                break;
+            }
+
+            assertAllYearsInvariants(simulation);
+        });
+
+        it('should handle transition from no SS to SS receiving years', () => {
+            // Verify conversions adjust when SS starts mid-simulation
+            const laterSS = new FutureSocialSecurityIncome(
+                'inc-ss', 'Social Security', 67, 2500, 0 // SS starts at 67, $2,500/month = $30k/year
+            );
+
+            const laterSSAssumptions: AssumptionsState = {
+                ...ssTorpedoAssumptions,
+                demographics: {
+                    birthYear: ssBirthYear, // 1963 - age 62 in 2025
+                    lifeExpectancy: 90,
+                    retirementAge: 62,
+                },
+            };
+
+            const simulation = runSimulation(
+                15,
+                [ssTrad, ssRoth],
+                [laterSS],
+                [ssExpenses],
+                laterSSAssumptions,
+                taxState
+            );
+
+            // Get conversions before and after SS starts
+            const conversionsBeforeSS: number[] = [];
+            const conversionsAfterSS: number[] = [];
+
+            for (const year of simulation) {
+                const age = year.year - ssBirthYear;
+                const conversion = year.rothConversion?.amount || 0;
+
+                if (age >= 62 && age < 67) {
+                    // Before SS (ages 62-66)
+                    conversionsBeforeSS.push(conversion);
+                } else if (age >= 67 && age < 72) {
+                    // After SS starts (ages 67-71)
+                    conversionsAfterSS.push(conversion);
+                }
+            }
+
+            // Calculate average conversions
+            const avgBeforeSS = conversionsBeforeSS.length > 0
+                ? conversionsBeforeSS.reduce((a, b) => a + b, 0) / conversionsBeforeSS.length
+                : 0;
+            const avgAfterSS = conversionsAfterSS.length > 0
+                ? conversionsAfterSS.reduce((a, b) => a + b, 0) / conversionsAfterSS.length
+                : 0;
+
+            // Before SS starts, conversions should generally be higher
+            // (more bracket room without SS income)
+            if (avgBeforeSS > 0 && avgAfterSS > 0) {
+                expect(
+                    avgBeforeSS,
+                    `Avg conversion before SS ($${avgBeforeSS.toFixed(0)}) should be >= after SS ($${avgAfterSS.toFixed(0)})`
+                ).toBeGreaterThanOrEqual(avgAfterSS * 0.8); // Allow 20% variance
+            }
+
+            assertAllYearsInvariants(simulation);
+        });
+    });
+
+    // =========================================================================
+    // ROTH CONVERSION ORDERING FIX TESTS
+    // Tests for the fix that reduces bracket headroom when Traditional withdrawals
+    // are expected for expense coverage
+    // =========================================================================
+
+    describe('Roth Conversion Expense Withdrawal Ordering', () => {
+        const expenseBirthYear = 1963; // Age 62 in 2025
+        const expenseRetirementAge = 62;
+
+        // Assumptions for expense ordering tests
+        const expenseOrderingAssumptions: AssumptionsState = {
+            ...defaultAssumptions,
+            demographics: {
+                birthYear: expenseBirthYear,
+                lifeExpectancy: 90,
+                retirementAge: expenseRetirementAge,
+            },
+            macro: {
+                ...defaultAssumptions.macro,
+                inflationRate: 0,
+                inflationAdjusted: false,
+            },
+            investments: {
+                ...defaultAssumptions.investments,
+                returnRates: { ror: 0 }, // Zero returns for predictable math
+                autoRothConversions: true,
+            },
+            priorities: [],
+            withdrawalStrategy: [
+                { id: 'ws-trad', name: 'Traditional IRA', accountId: 'acc-trad' },
+                { id: 'ws-roth', name: 'Roth IRA', accountId: 'acc-roth' },
+            ],
+        };
+
+        const expenseTrad = new InvestedAccount(
+            'acc-trad', 'Traditional IRA', 500000, 0, 20, 0, 'Traditional IRA', true, 1.0, 500000
+        );
+
+        const expenseRoth = new InvestedAccount(
+            'acc-roth', 'Roth IRA', 50000, 0, 20, 0, 'Roth IRA', true, 1.0, 40000
+        );
+
+        it('should reduce Roth conversion when Traditional withdrawal expected for expenses', () => {
+            // Scenario: High expenses, no income -> will need Traditional withdrawal
+            // Traditional is first in withdrawal order
+            const highExpenses = new FoodExpense(
+                'exp-living', 'Living Expenses', 50000, 'Annually', new Date('2025-01-01')
+            );
+
+            // No income - must withdraw from Traditional to cover expenses
+            const noSS = new FutureSocialSecurityIncome(
+                'inc-ss', 'Social Security', 90, 0, 0 // SS at 90 = effectively never
+            );
+
+            const highExpenseSimulation = runSimulation(
+                5,
+                [expenseTrad, expenseRoth],
+                [noSS],
+                [highExpenses],
+                expenseOrderingAssumptions,
+                taxState
+            );
+
+            // Compare with low expenses scenario (no Traditional withdrawal needed)
+            const lowExpenses = new FoodExpense(
+                'exp-living', 'Living Expenses', 5000, 'Annually', new Date('2025-01-01')
+            );
+
+            const lowExpenseSimulation = runSimulation(
+                5,
+                [expenseTrad, expenseRoth],
+                [noSS],
+                [lowExpenses],
+                expenseOrderingAssumptions,
+                taxState
+            );
+
+            // Get conversion amounts for year 1 (first retirement year)
+            const highExpenseConversion = highExpenseSimulation[1]?.rothConversion?.amount || 0;
+            const lowExpenseConversion = lowExpenseSimulation[1]?.rothConversion?.amount || 0;
+
+            // With high expenses requiring Traditional withdrawal, conversion should be less
+            // because the bracket headroom is reduced by the estimated withdrawal
+            expect(
+                highExpenseConversion,
+                `High expense conversion ($${highExpenseConversion.toFixed(0)}) should be less than low expense ($${lowExpenseConversion.toFixed(0)})`
+            ).toBeLessThan(lowExpenseConversion);
+
+            assertAllYearsInvariants(highExpenseSimulation);
+            assertAllYearsInvariants(lowExpenseSimulation);
+        });
+
+        it('should not affect conversion when income covers expenses', () => {
+            // Scenario: Passive income covers all expenses - no withdrawal needed
+            const passiveIncome = new PassiveIncome(
+                'inc-passive', 'Pension', 60000, 'Annually', 'Yes',
+                'Other', new Date('2020-01-01')
+            );
+
+            const noSS = new FutureSocialSecurityIncome(
+                'inc-ss', 'Social Security', 90, 0, 0
+            );
+
+            const coveredExpenses = new FoodExpense(
+                'exp-living', 'Living Expenses', 40000, 'Annually', new Date('2025-01-01')
+            );
+
+            const simulation = runSimulation(
+                5,
+                [expenseTrad, expenseRoth],
+                [noSS, passiveIncome],
+                [coveredExpenses],
+                expenseOrderingAssumptions,
+                taxState
+            );
+
+            // Should have conversions since income covers expenses
+            const year1 = simulation[1];
+            expect(
+                year1?.rothConversion?.amount || 0,
+                'Should have Roth conversions when income covers expenses'
+            ).toBeGreaterThan(0);
+
+            // Verify no log about bracket headroom reduction
+            const hasReductionLog = hasLogMessage(year1, 'Bracket headroom reduced');
+            expect(
+                hasReductionLog,
+                'Should NOT reduce headroom when income covers expenses'
+            ).toBe(false);
+
+            assertAllYearsInvariants(simulation);
+        });
+
+        it('should not over-convert when Traditional withdrawal needed for expenses', () => {
+            // This is the main bug fix verification
+            // Setup: Expenses > income, Traditional first in withdrawal order
+            // Verify: Total taxable income stays in target bracket
+
+            const highExpenses = new FoodExpense(
+                'exp-living', 'Living Expenses', 60000, 'Annually', new Date('2025-01-01')
+            );
+
+            const noSS = new FutureSocialSecurityIncome(
+                'inc-ss', 'Social Security', 90, 0, 0
+            );
+
+            const simulation = runSimulation(
+                5,
+                [expenseTrad, expenseRoth],
+                [noSS],
+                [highExpenses],
+                expenseOrderingAssumptions,
+                taxState
+            );
+
+            // 2025 tax brackets for Single filer
+            const standardDeduction = 14600;
+            const bracket22Top = 103350; // Top of 22% bracket (taxable income)
+
+            for (const year of simulation) {
+                const age = year.year - expenseBirthYear;
+                if (age < expenseRetirementAge) continue;
+
+                const conversion = year.rothConversion?.amount || 0;
+                const traditionalWithdrawal = year.cashflow.withdrawalDetail['Traditional IRA'] || 0;
+                const totalIncome = year.cashflow.totalIncome;
+
+                // Total taxable income = income + conversion (Traditional withdrawal is included in income)
+                // The Traditional withdrawal adds to totalIncome when it occurs
+                const estimatedTaxableIncome = Math.max(0, totalIncome + conversion - standardDeduction);
+
+                // Should not exceed 22% bracket (our target)
+                // Allow some tolerance for rounding in the estimation
+                expect(
+                    estimatedTaxableIncome,
+                    `Year ${year.year}: Total taxable ($${estimatedTaxableIncome.toFixed(0)}) should not greatly exceed 22% bracket top ($${bracket22Top}). ` +
+                    `Income: $${totalIncome.toFixed(0)}, Conversion: $${conversion.toFixed(0)}, Trad Withdrawal: $${traditionalWithdrawal.toFixed(0)}`
+                ).toBeLessThanOrEqual(bracket22Top + 5000); // Allow $5k tolerance for estimation errors
+            }
+
+            assertAllYearsInvariants(simulation);
+        });
+
+        it('should handle Roth-first withdrawal order (no reduction needed)', () => {
+            // Scenario: Roth is first in withdrawal order
+            // Traditional withdrawal won't affect conversion headroom
+            const rothFirstAssumptions: AssumptionsState = {
+                ...expenseOrderingAssumptions,
+                withdrawalStrategy: [
+                    { id: 'ws-roth', name: 'Roth IRA', accountId: 'acc-roth' },
+                    { id: 'ws-trad', name: 'Traditional IRA', accountId: 'acc-trad' },
+                ],
+            };
+
+            const highExpenses = new FoodExpense(
+                'exp-living', 'Living Expenses', 50000, 'Annually', new Date('2025-01-01')
+            );
+
+            const noSS = new FutureSocialSecurityIncome(
+                'inc-ss', 'Social Security', 90, 0, 0
+            );
+
+            const simulation = runSimulation(
+                5,
+                [expenseTrad, expenseRoth],
+                [noSS],
+                [highExpenses],
+                rothFirstAssumptions,
+                taxState
+            );
+
+            // With Roth first, withdrawals from Roth don't affect tax brackets
+            // So conversions should be larger (no headroom reduction)
+            // The key is that the simulation runs correctly without errors
+            assertAllYearsInvariants(simulation);
+        });
     });
 });

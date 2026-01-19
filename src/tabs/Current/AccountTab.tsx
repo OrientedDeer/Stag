@@ -18,7 +18,7 @@ import { useFileManager } from "../../components/Objects/Accounts/useFileManager
 import { IncomeContext } from "../../components/Objects/Income/IncomeContext";
 import { ExpenseContext } from "../../components/Objects/Expense/ExpenseContext";
 import { TaxContext } from "../../components/Objects/Taxes/TaxContext";
-import { AssumptionsContext } from "../../components/Objects/Assumptions/AssumptionsContext";
+import { AssumptionsContext, defaultAssumptions } from "../../components/Objects/Assumptions/AssumptionsContext";
 import { SimulationContext } from "../../components/Objects/Assumptions/SimulationContext";
 import { QRGenerateModal, QRScanModal } from "../../components/Objects/Accounts/QRTransfer";
 
@@ -102,10 +102,8 @@ const TabsContent = () => {
     const { dispatch: taxDispatch } = useContext(TaxContext);
     const { dispatch: assumptionsDispatch } = useContext(AssumptionsContext);
     const { dispatch: simulationDispatch } = useContext(SimulationContext);
-    const { handleGlobalExport, handleGlobalImport, getBackupData, importKey } = useFileManager();
+    const { handleGlobalExport, handleGlobalImport, getBackupData } = useFileManager();
 
-    // Debug logging for import key propagation
-    console.log('[AccountTab] render with importKey:', importKey);
     const [activeTab, setActiveTab] = useState<string>(() => {
         return localStorage.getItem('account_active_tab') || 'Saved';
     });
@@ -206,7 +204,15 @@ const TabsContent = () => {
         incomeDispatch({ type: 'SET_BULK_DATA', payload: { incomes: [] } });
         expenseDispatch({ type: 'SET_BULK_DATA', payload: { expenses: [] } });
         taxDispatch({ type: 'SET_STATUS', payload: 'Single' }); // Reset to defaults
-        assumptionsDispatch({ type: 'RESET_DEFAULTS' });
+        // Use SET_BULK_DATA to fully reset assumptions including priorities and withdrawal strategy
+        // (RESET_DEFAULTS preserves those arrays)
+        assumptionsDispatch({ type: 'SET_BULK_DATA', payload: {
+            ...defaultAssumptions,
+            demographics: {
+                ...defaultAssumptions.demographics,
+                birthYear: new Date().getFullYear() - 24, // Reset to default age
+            }
+        }});
         simulationDispatch({ type: 'SET_SIMULATION', payload: [] });
 
         // Close the modal

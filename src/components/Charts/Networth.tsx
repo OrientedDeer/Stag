@@ -173,7 +173,7 @@ export const NetWorthCard = () => {
                             },
                             grid: { line: { stroke: '#374151' } },
                             crosshair: { line: { stroke: '#10b981', strokeWidth: 1 } },
-                            tooltip: { container: { color: '#000' } }
+                            tooltip: { container: { color: '#000', zIndex: 9999 } }
                         }}
                         tooltip={({ point }: any) => (
                             <div className="bg-gray-800 border border-gray-700 p-2 rounded shadow-xl text-xs">

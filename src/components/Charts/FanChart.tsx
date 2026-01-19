@@ -361,6 +361,7 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
                     grid: { line: { stroke: '#374151', strokeWidth: 1 } },
                     crosshair: { line: { stroke: '#10b981', strokeWidth: 1 } },
                     legends: { text: { fill: '#9ca3af', fontSize: 11 } },
+                    tooltip: { container: { zIndex: 9999 } },
                 }}
                 tooltip={({ point }) => (
                     <div className="bg-gray-800 border border-gray-700 px-3 py-2 rounded shadow-xl text-sm max-w-[300px]">

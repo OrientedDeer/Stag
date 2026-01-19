@@ -110,6 +110,7 @@ export const DebtStreamChart: React.FC<DebtStreamChartProps> = ({
         borderRadius: '6px',
         boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
         border: '1px solid #374151',
+        zIndex: 9999,
       },
     },
   };

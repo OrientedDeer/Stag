@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { ChartTooltipPortal } from '../../../components/Charts/ChartTooltipPortal';
 import { ResponsiveLine } from '@nivo/line';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { SavedAccount, InvestedAccount, PropertyAccount, DebtAccount } from '../../../components/Objects/Accounts/models';
@@ -167,14 +168,15 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
     // 5. Custom Tooltip
     const CustomTooltip = ({ slice }: any) => {
         if (!slice?.points?.length) return null;
-        
+
         // Access data from the first point (all points share the same embedded data)
         const point = slice.points[0];
-        const data = point.data; 
+        const data = point.data;
 
         const totalNetWorth = (data.Invested || 0) + (data.Saved || 0) + (data.Property || 0) + (data.Debt || 0);
 
         return (
+            <ChartTooltipPortal>
             <div className="bg-gray-800 p-3 rounded border border-gray-700 shadow-xl text-xs min-w-37.5">
                 <div className="font-bold text-white mb-2 pb-1 border-b border-gray-600">
                     Year: {data.year}
@@ -207,6 +209,7 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                     </div>
                 </div>
             </div>
+            </ChartTooltipPortal>
         );
     };
 
@@ -408,12 +411,13 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                     theme={{
                         "background": "transparent",
                         "text": { "fontSize": 12, "fill": "#9ca3af" },
-                        "axis": { 
-                            "legend": { "text": { "fill": "#9ca3af" } }, 
-                            "ticks": { "text": { "fill": "#9ca3af" } } 
+                        "axis": {
+                            "legend": { "text": { "fill": "#9ca3af" } },
+                            "ticks": { "text": { "fill": "#9ca3af" } }
                         },
                         "grid": { "line": { "stroke": "#374151", "strokeWidth": 1, "strokeDasharray": "4 4" } },
-                        "crosshair": { "line": { "stroke": "#9ca3af", "strokeWidth": 1, "strokeOpacity": 0.35 } }
+                        "crosshair": { "line": { "stroke": "#9ca3af", "strokeWidth": 1, "strokeOpacity": 0.35 } },
+                        "tooltip": { "container": { "zIndex": 9999 } }
                     }}
                 />
                 )}

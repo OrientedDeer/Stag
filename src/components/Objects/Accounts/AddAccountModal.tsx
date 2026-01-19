@@ -246,13 +246,6 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                                         onChange={setEmployerBalance}
                                         tooltip="Amount contributed by your employer (401k match). Subject to vesting schedule."
                                     />
-                                    <ToggleInput
-                                        id={`${id}-fully-vested`}
-                                        label="100% Vested"
-                                        enabled={isFullyVested}
-                                        setEnabled={setIsFullyVested}
-                                        tooltip="Check if employer contributions are fully vested. Hides vesting schedule fields."
-                                    />
                                     {!isFullyVested && (
                                         <>
                                             <NumberInput
@@ -271,22 +264,8 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                                             />
                                         </>
                                     )}
-                                    <ToggleInput
-                                        id={`${id}-contribution-eligible`}
-                                        label="Contribution Eligible"
-                                        enabled={isContributionEligible}
-                                        setEnabled={setIsContributionEligible}
-                                        tooltip="Can you still contribute to this account? Turn off for accounts from previous employers."
-                                    />
                                 </>
                             )}
-                            <ToggleInput
-                                id={`${id}-use-custom-ror`}
-                                label="Custom Return Rate"
-                                enabled={useCustomROR}
-                                setEnabled={setUseCustomROR}
-                                tooltip="Override global return rate assumptions with a custom rate for this account."
-                            />
                             {useCustomROR && (
                                 <PercentageInput
                                     id={`${id}-custom-ror`}
@@ -297,6 +276,37 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                                     tooltip="Expected annual return rate for this account. Overrides the global assumption."
                                 />
                             )}
+                            {(taxType === 'Roth 401k' || taxType === 'Traditional 401k') && (
+                                <>
+                                    <div className="col-span-full">
+                                        <ToggleInput
+                                            id={`${id}-fully-vested`}
+                                            label="100% Vested"
+                                            enabled={isFullyVested}
+                                            setEnabled={setIsFullyVested}
+                                            tooltip="Check if employer contributions are fully vested. Hides vesting schedule fields."
+                                        />
+                                    </div>
+                                    <div className="col-span-full">
+                                        <ToggleInput
+                                            id={`${id}-contribution-eligible`}
+                                            label="Contribution Eligible"
+                                            enabled={isContributionEligible}
+                                            setEnabled={setIsContributionEligible}
+                                            tooltip="Can you still contribute to this account? Turn off for accounts from previous employers."
+                                        />
+                                    </div>
+                                </>
+                            )}
+                            <div className="col-span-full">
+                                <ToggleInput
+                                    id={`${id}-use-custom-ror`}
+                                    label="Custom Return Rate"
+                                    enabled={useCustomROR}
+                                    setEnabled={setUseCustomROR}
+                                    tooltip="Override global return rate assumptions with a custom rate for this account."
+                                />
+                            </div>
                         </div>
                     )}
                     {!(selectedType === InvestedAccount || selectedType === PropertyAccount) && (

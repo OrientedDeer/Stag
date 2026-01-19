@@ -64,11 +64,7 @@ export default function QRScanModal({ isOpen, onClose, onImport }: QRScanModalPr
 
     const handleImportClick = () => {
         if (rawJson) {
-            console.log('[QRScanModal] handleImportClick called, calling onImport with', rawJson.length, 'bytes');
-            // Just call import - same as regular JSON file import
-            // Let the app handle simulation refresh automatically
             onImport(rawJson);
-            console.log('[QRScanModal] onImport completed, calling handleClose');
             handleClose();
         }
     };

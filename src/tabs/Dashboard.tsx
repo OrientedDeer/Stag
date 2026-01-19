@@ -49,9 +49,6 @@ export default function Dashboard() {
   const forceExact = assumptions.display?.useCompactCurrency === false;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Debug logging for import key propagation
-  console.log('[Dashboard] render with importKey:', importKey, 'incomes:', incomeCtx.incomes.length, 'expenses:', expenseCtx.expenses.length);
-
   const hasIncomes = incomeCtx.incomes.length > 0;
   const hasExpenses = expenseCtx.expenses.length > 0;
   const hasAccounts = accountCtx.accounts.length > 0;
@@ -86,8 +83,8 @@ export default function Dashboard() {
 
   // Calculate dashboard metrics
   const dashboardMetrics = useMemo(() => {
-    const grossIncome = incomes.reduce((sum, inc) => sum + inc.getAnnualAmount(), 0);
-    const totalExpenses = expenses.reduce((sum, exp) => sum + exp.getAnnualAmount(), 0);
+    const grossIncome = incomes.reduce((sum, inc) => sum + inc.getAnnualAmount(year), 0);
+    const totalExpenses = expenses.reduce((sum, exp) => sum + exp.getAnnualAmount(year), 0);
     const totalTaxes = annualFedTax + annualStateTax + annualFicaTax;
     const savingsRate = grossIncome > 0
       ? ((grossIncome - totalExpenses - totalTaxes) / grossIncome) * 100
@@ -95,7 +92,7 @@ export default function Dashboard() {
     const monthlyExpenses = totalExpenses / 12;
 
     return { grossIncome, totalTaxes, savingsRate, monthlyExpenses, totalExpenses };
-  }, [incomes, expenses, annualFedTax, annualStateTax, annualFicaTax]);
+  }, [incomes, expenses, annualFedTax, annualStateTax, annualFicaTax, year]);
 
   // Group expenses by category for pie chart
   const expenseByCategory = useMemo(() => {
@@ -322,24 +319,14 @@ export default function Dashboard() {
               <h2 className="text-xl font-bold text-gray-200 mb-6">Yearly Cash Flow</h2>
               <div className="min-h-75 flex flex-col justify-center">
                 {hasIncomes ? (
-                  (() => {
-                    console.log('[Dashboard] Rendering CashflowSankey with:', {
-                      importKey,
-                      incomesCount: incomes.length,
-                      expensesCount: expenses.length,
-                      incomeIds: incomes.map(i => i.id).join(',')
-                    });
-                    return (
-                      <CashflowSankey
-                        key={`sankey-${importKey}`}
-                        incomes={incomes}
-                        expenses={expenses}
-                        year={year}
-                        taxes={{ fed: annualFedTax, state: annualStateTax, fica: annualFicaTax }}
-                        height={300}
-                      />
-                    );
-                  })()
+                  <CashflowSankey
+                    key={`sankey-${importKey}`}
+                    incomes={incomes}
+                    expenses={expenses}
+                    year={year}
+                    taxes={{ fed: annualFedTax, state: annualStateTax, fica: annualFicaTax }}
+                    height={300}
+                  />
                 ) : (
                   <div className='flex flex-col items-center justify-center text-center p-12 border-2 border-dashed border-gray-800 rounded-2xl'>
                     <div className="text-gray-400 text-lg mb-2">No income data available</div>

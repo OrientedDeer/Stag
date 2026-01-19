@@ -6,61 +6,33 @@ SVG Source: https://fonts.google.com/icons?icon.query=test&icon.size=24&icon.col
 
 SVGOMG: https://jakearchibald.github.io/svgomg/
 
-# Todo List
-- Dashboard
-    - Networth over time chart.
-    - Future estimates
-    - Monthly Cashflow Compared to budgeted?
-    - Suggested missing fields.
-- History
-    - Networth over time chart
-    - Summed table of account amounts
-- Current
-    - Chart breaking down Networth % by type
-    - Accounts
-        - Savings
-        - Investments
-        - Property
-        - Debt
-    - Income
-        - Work
-        - Social Security
-        - Passive Income
-        - Pensions
-        - Annuities
-    - Expenses 
-        - Income Deductions
-        - Housing
-        - Food
-        - Debt
-        - Misc
-        - Leftover
-- Future
-    - Budget
-        - Income Deductions
-        - Housing
-        - Food
-        - Debt
-        - Other
-    - Cashflow
-        - Chart
-    - Plan (uses stuff from the other tabs in Future)
-        - Cashflow over time
-        - Taxes
-        - Settings
-            - Checkpoints
-                - Debt Free
-                - FI
-                - RE
-            - Growth Estimates
-                - Investments
-                    - Housing
-                    - Income
-                    - General
-            - Taxes
-                - Country
-                - State
-                - Capital Gains Rate
-            - Drawdown order
-                - Excess Income
-                - Accounts
+# Features
+
+## Dashboard
+- Net worth chart with historical tracking
+- Expense breakdown pie chart
+- Sankey cashflow diagram
+- Summary metric cards (income, taxes, savings rate, expenses)
+- Setup guidance for new users
+
+## Current State
+- **Accounts**: Cash, Invested (401k, IRA, Roth, HSA, Brokerage), Property, Debt
+- **Income**: Work, Social Security (current/future), Pensions (FERS/CSRS), Passive, Windfall
+- **Expenses**: Rent, Mortgage, Food, Transport, Healthcare, Vacation, Loans, Dependents, Insurance, Utilities
+- Net worth icicle chart by account type
+
+## Future Projections
+- Multi-year cashflow projections
+- Asset growth modeling with Monte Carlo simulations
+- Debt payoff tracking
+- Tax optimization (Roth conversions, withdrawal strategies)
+- Scenario management for comparing strategies
+- Configurable assumptions (inflation, returns, demographics)
+
+## Data Management
+- JSON export/import backups
+- QR code sharing between devices
+- Local browser storage (no server)
+
+# Todo
+- History tab with net worth over time chart and account amount table

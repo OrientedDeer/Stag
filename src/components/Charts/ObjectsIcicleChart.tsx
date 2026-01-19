@@ -90,6 +90,7 @@ export const ObjectsIcicleChart = ({
                 margin={{ top: 20, right: 20, bottom: 20, left: 20 }}
                 valueFormat={valueFormat}
                 borderRadius={8}
+                theme={{ tooltip: { container: { zIndex: 9999 } } }}
 
                 // Layout & Labels
                 enableLabels={true}

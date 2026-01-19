@@ -13,8 +13,8 @@ export const ToggleInput: React.FC<ToggleInputProps> = ({ label, enabled, setEna
   const toggle = () => setEnabled(!enabled);
 
   return (
-    <div className="flex items-center justify-between">
-      <label htmlFor={id} className="text-sm text-gray-400 font-medium uppercase tracking-wide flex items-center gap-1.5">
+    <div className="flex items-center justify-between gap-3">
+      <label htmlFor={id} className="text-sm text-gray-400 font-medium uppercase tracking-wide flex items-center gap-1.5 whitespace-nowrap truncate sm:whitespace-normal sm:overflow-visible">
         {label}
         {tooltip && <Tooltip text={tooltip} />}
       </label>

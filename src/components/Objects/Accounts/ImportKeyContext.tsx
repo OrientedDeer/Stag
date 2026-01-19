@@ -14,11 +14,7 @@ export const ImportKeyProvider = ({ children }: { children: ReactNode }) => {
     const [importKey, setImportKey] = useState(0);
 
     const incrementImportKey = useCallback(() => {
-        setImportKey(prev => {
-            const next = prev + 1;
-            console.log('[ImportKeyContext] incrementImportKey called:', prev, '->', next);
-            return next;
-        });
+        setImportKey(prev => prev + 1);
     }, []);
 
     const contextValue = useMemo(() => ({

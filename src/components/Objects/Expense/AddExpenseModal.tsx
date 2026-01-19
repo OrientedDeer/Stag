@@ -356,17 +356,6 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 							</div>
 						</div>
 
-						{/* Discretionary Toggle */}
-						<div className="flex items-center">
-							<ToggleInput
-								id={`${id}-discretionary`}
-								label="Discretionary"
-								enabled={isDiscretionary}
-								setEnabled={setIsDiscretionary}
-								tooltip="Discretionary expenses can be reduced during Guyton-Klinger guardrail triggers in retirement, and are affected by lifestyle creep."
-							/>
-						</div>
-
 						{/* Common Fields Grid */}
 						<div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
                             {(!(selectedType === RentExpense || selectedType === MortgageExpense || selectedType === LoanExpense)) && (
@@ -494,6 +483,17 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 									)}
 								</>
 							)}
+
+							{/* Discretionary Toggle */}
+							<div className="col-span-full">
+								<ToggleInput
+									id={`${id}-discretionary`}
+									label="Discretionary"
+									enabled={isDiscretionary}
+									setEnabled={setIsDiscretionary}
+									tooltip="Discretionary expenses can be reduced during Guyton-Klinger guardrail triggers in retirement, and are affected by lifestyle creep."
+								/>
+							</div>
 						</div>
 					</div>
 				)}

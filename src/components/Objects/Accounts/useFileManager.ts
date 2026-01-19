@@ -50,23 +50,8 @@ export const useFileManager = () => {
     };
 
     const handleGlobalImport = (json: string) => {
-        console.log('[useFileManager] handleGlobalImport called with', json.length, 'bytes');
         try {
             const data = JSON.parse(json);
-            console.log('[useFileManager] parsed data:', {
-                accounts: data.accounts?.length,
-                incomes: data.incomes?.length,
-                expenses: data.expenses?.length
-            });
-
-            // Debug: Log raw income data before reconstitution
-            console.log('[useFileManager] Raw income data before reconstitution:', data.incomes.map((inc: any) => ({
-                name: inc.name,
-                startDate: inc.startDate,
-                startDateType: typeof inc.startDate,
-                end_date: inc.end_date,
-                className: inc.className
-            })));
 
             const newAccounts = data.accounts.map(reconstituteAccount).filter(Boolean as any as (value: AnyAccount | null) => value is AnyAccount);
             const newIncomes = data.incomes.map(reconstituteIncome).filter(Boolean as any as (value: AnyIncome | null) => value is AnyIncome);
@@ -105,9 +90,7 @@ export const useFileManager = () => {
                 assumptionsDispatch({ type: 'RESET_DEFAULTS'});
             }
             // Increment shared importKey to force chart remounts after import
-            console.log('[useFileManager] dispatches complete, calling incrementImportKey');
             incrementImportKey();
-            console.log('[useFileManager] import complete');
             // Force page reload to ensure all components update
             //window.location.reload();
         } catch (e) {

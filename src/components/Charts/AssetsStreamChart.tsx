@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useRef, useEffect, useContext } from 'react';
 import { ResponsiveStream } from '@nivo/stream';
-import { RangeSlider } from '../Layout/InputFields/RangeSlider'; // Adjust path if needed
+import { RangeSlider } from '../Layout/InputFields/RangeSlider';
 import { AssumptionsContext } from '../Objects/Assumptions/AssumptionsContext';
 import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
+import { ChartTooltipPortal } from './ChartTooltipPortal';
 
 const MIN_CHART_WIDTH = 300;
 
@@ -28,6 +29,7 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
   const formatCurrency = (value: number) => formatCompactCurrency(value, { forceExact });
 
   const [mode, setMode] = useState<'value' | 'percent'>('value');
+  const [tooltipSort, setTooltipSort] = useState<'value' | 'stack'>('value');
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState<number | null>(null);
 
@@ -83,6 +85,7 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
         fontSize: '12px',
         borderRadius: '6px',
         border: '1px solid #374151',
+        zIndex: 9999,
       },
     },
   };
@@ -92,11 +95,14 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
     if (!yearData) return null;
 
     const total = keys.reduce((sum, key) => sum + (Number(yearData[key]) || 0), 0);
-    const sortedKeys = [...keys].sort((a, b) => (Number(yearData[b]) || 0) - (Number(yearData[a]) || 0));
+    const displayKeys = tooltipSort === 'value'
+      ? [...keys].sort((a, b) => (Number(yearData[b]) || 0) - (Number(yearData[a]) || 0))
+      : [...keys].reverse(); // Reverse to match visual stacking order (bottom to top)
 
     return (
+      <ChartTooltipPortal>
       <div
-        className="bg-gray-900/95 backdrop-blur-sm p-3 border border-gray-700 shadow-xl rounded-lg text-sm z-50"
+        className="bg-gray-900/95 backdrop-blur-sm p-3 border border-gray-700 shadow-xl rounded-lg text-sm"
         style={{ minWidth: '280px', maxWidth: '400px' }}
       >
         <div className="mb-2 pb-2 border-b border-gray-700">
@@ -118,7 +124,7 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
         >
           <table className="w-full border-collapse">
             <tbody>
-              {sortedKeys.map((key) => {
+              {displayKeys.map((key) => {
                 const value = Number(yearData[key]) || 0;
                 if (value === 0) return null;
                 const color = colors ? colors[key] : '#cbd5e1';
@@ -137,6 +143,7 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
           </table>
         </div>
       </div>
+      </ChartTooltipPortal>
     );
   };
 
@@ -171,9 +178,15 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
                 onChange={setRange}
             />
         </div>
-        <div className="flex bg-gray-800 p-1 rounded-lg border border-gray-700 h-fit self-start sm:self-auto">
-          <button onClick={() => setMode('value')} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${mode === 'value' ? 'bg-gray-600 text-white' : 'text-gray-400'}`}>Value ($)</button>
-          <button onClick={() => setMode('percent')} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${mode === 'percent' ? 'bg-gray-600 text-white' : 'text-gray-400'}`}>Allocation (%)</button>
+        <div className="flex gap-2 self-start sm:self-auto">
+          <div className="flex bg-gray-800 p-1 rounded-lg border border-gray-700 h-fit">
+            <button onClick={() => setMode('value')} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${mode === 'value' ? 'bg-gray-600 text-white' : 'text-gray-400'}`}>Value ($)</button>
+            <button onClick={() => setMode('percent')} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${mode === 'percent' ? 'bg-gray-600 text-white' : 'text-gray-400'}`}>Allocation (%)</button>
+          </div>
+          <div className="flex bg-gray-800 p-1 rounded-lg border border-gray-700 h-fit">
+            <button onClick={() => setTooltipSort('value')} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${tooltipSort === 'value' ? 'bg-gray-600 text-white' : 'text-gray-400'}`} title="Sort tooltip by value (highest first)">By Value</button>
+            <button onClick={() => setTooltipSort('stack')} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${tooltipSort === 'stack' ? 'bg-gray-600 text-white' : 'text-gray-400'}`} title="Sort tooltip by chart stacking order">By Chart</button>
+          </div>
         </div>
       </div>
 
@@ -206,6 +219,7 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
           isInteractive={true}
           enableStackTooltip={true}
           stackTooltip={CustomTooltip}
+          tooltip={() => null}
         />
       </div>
     </div>

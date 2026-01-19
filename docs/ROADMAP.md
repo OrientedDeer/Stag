@@ -62,50 +62,6 @@ These features are complete but need validation:
 
 ---
 
-## Completed
-
-### Recent Session
-- [x] Tax Bracket Visualization tab - Year-by-year bracket fill visualization, marginal/effective rates
-- [x] Pension Debug tab - FERS/CSRS calculation breakdown, High-3 tracking, COLA projections
-- [x] Tax Debug tab - Federal bracket breakdown, state tax, FICA, capital gains with year-by-year view
-- [x] Social Security Debug tab - AIME/PIA calculation, bend points, claiming age comparison, earnings history
-- [x] RMD Debug tab - SECURE Act 2.0 rules, distribution periods, year-by-year RMD projections
-- [x] Icicle chart color fixes - Added Cyan palette for Subscriptions, Orange for Charity
-- [x] Icicle chart `inheritColorFromParent={false}` - Distributed colors now work correctly
-- [x] Cap Gains Tax color - Changed from lime to amber in Sankey chart
-- [x] Icicle chart labels - Simplified truncation, reduced skip thresholds
-- [x] Testing debug tab - Added auto-recalculation (matches Charts tab behavior)
-- [x] Testing tab infinite refresh - Fixed hash storage check
-- [x] Income amount tooltip - Clarifies gross income before deductions
-- [x] Priority default names - Use friendly labels (e.g., "Emergency Fund" not "MULTIPLE_OF_EXPENSES")
-- [x] Expense discretionary defaults - Vacation, Subscription, Charity, Other default to discretionary
-- [x] GK expense swing warning - Suppressed when Guyton-Klinger guardrails trigger
-- [x] GK info banner - Added explanation of large spending swings on Assumptions tab
-- [x] Growth rates info - Added note that rates are real (above inflation)
-- [x] Assumptions error handling - Deep merge migration fills missing fields from defaults
-
-### Bug Fixes (from GitHub Issue #3)
-- [x] Leading zero in number inputs
-- [x] Icicle Chart text overlap on account chart
-- [x] Animation glitch when editing account/expense names
-- [x] Contribution Eligible button sizing after page resize
-- [x] Employee contributions toggle showing for non-employee accounts
-
-### UX Improvements (from GitHub Issue #3)
-- [x] Dropdown styling consistency (using @headlessui/react)
-- [x] Enter key should exit edit mode
-- [x] Hamburger menu left-side spacing
-- [x] Buffer spacing below TAX LOGIC and "How Withdrawals Work"
-- [x] Allocation page refactor - Redesigned as "Paycheck Allocator"
-
-### Features
-- [x] Streaming/subscription expense category
-- [x] Lifestyle creep
-- [x] Federal pension (FERS/CSRS)
-- [x] RMDs (Required Minimum Distributions)
-
----
-
 ## Later
 
 ### UX

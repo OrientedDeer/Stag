@@ -283,7 +283,8 @@ describe('Simulation Engine', () => {
 
     it('should handle employer match correctly', () => {
         const retirementAccount = new InvestedAccount('ret-1', '401k', 10000, 0, 3, 0.5, 'Traditional 401k', true, 0.2);
-        const income = new WorkIncome('inc-1', 'Job', 100000, 'Annually', 'Yes', 5000, 500, 0, 2500, 'ret-1', 'Traditional 401k', 'FIXED');
+        const income = new WorkIncome('inc-1', 'Job', 100000, 'Annually', 'Yes', 5000, 500, 0, 2500, 'ret-1', 'Traditional 401k', 'FIXED',
+            new Date('2020-01-01')); // Start date before the simulation year
 
         const result = simulateOneYear(2024, [income], [], [retirementAccount], cleanAssumptions, mockTaxState);
 
@@ -1555,8 +1556,14 @@ describe('Simulation Engine', () => {
         });
 
         it('should return zero conversion when no bracket space remains', () => {
-            // Scenario: Retired with high income that already fills the 12% bracket
+            // Scenario: Retired with high income that already fills the 22% bracket
             // No room for tax-efficient Roth conversion
+            //
+            // Note: SS income is only 0-85% taxable depending on combined income,
+            // so we need much higher income to truly fill the 22% bracket.
+            // 22% bracket for 2025 Single: taxable income up to ~$103,350
+            // With standard deduction ($14,600): need ~$117,950 AGI
+            // Since 85% of SS is taxable: need ~$138,765 gross SS = $11,564/month
 
             const retiredAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
@@ -1576,10 +1583,12 @@ describe('Simulation Engine', () => {
                 ]
             };
 
-            // High income that exceeds 12% bracket ($48,475 + $14,600 = $63,075)
+            // Very high income that exceeds 22% bracket even after SS taxation rules
+            // $24k/month = $288k/year, 85% taxable = $244.8k, minus $29.2k deduction = $215.6k taxable
+            // This puts us in the 24% bracket (22% ends at $201,050), so no room to convert at 22% rate
             const highIncome = new FutureSocialSecurityIncome(
                 'ss-1', 'Social Security', 67,
-                6000, // $6k/month = $72k/year - exceeds 12% bracket
+                24000, // $24k/month = $288k/year
                 2024,
                 new Date('2024-01-01'),
                 new Date('2050-12-31')
@@ -1601,7 +1610,7 @@ describe('Simulation Engine', () => {
                 mockTaxState
             );
 
-            // With income already above 12% bracket, conversion should be zero or undefined
+            // With income already above 22% bracket, conversion should be zero or undefined
             if (result.rothConversion) {
                 expect(result.rothConversion.amount).toBe(0);
             }

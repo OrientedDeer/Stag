@@ -121,27 +121,6 @@ export const CashflowSankey = ({
     // 1. Logic Block (The "Util" part)
     // Refactored to return { data, error, debugData } directly to avoid infinite loops
     const { data, error, debugData } = useMemo(() => {
-        console.log('[CashflowSankey] useMemo running with:', {
-            incomes: incomes?.length,
-            expenses: expenses?.length,
-            year,
-            taxes
-        });
-        // Debug: Check if income objects have the expected methods and what they return
-        if (incomes?.length > 0) {
-            incomes.forEach((inc, idx) => {
-                const proratedAmount = inc.getProratedAnnual ? inc.getProratedAnnual(inc.amount, year) : 0;
-                console.log(`[CashflowSankey] Income[${idx}]:`, {
-                    name: inc.name,
-                    amount: inc.amount,
-                    startDate: inc.startDate,
-                    endDate: inc.end_date,
-                    year,
-                    proratedAmount,
-                    meetsThreshold: proratedAmount >= MIN_DISPLAY_THRESHOLD
-                });
-            });
-        }
         try {
             const nodes: any[] = [];
             const links: any[] = [];
@@ -617,7 +596,7 @@ export const CashflowSankey = ({
                         </div>
                     )}
                     theme={{
-                        tooltip: { container: { background: '#111827', color: '#fff', borderRadius: '8px' } },
+                        tooltip: { container: { background: '#111827', color: '#fff', borderRadius: '8px', zIndex: 9999 } },
                         labels: { text: { fontSize: 11, fontWeight: 600, fill: '#e5e7eb' } }
                     }}
                 />
