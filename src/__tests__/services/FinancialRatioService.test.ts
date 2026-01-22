@@ -101,8 +101,9 @@ describe('FinancialRatioService', () => {
 
       const ratios = calculateFinancialRatios(year);
 
-      // Savings rate = (100000 - 70000) / 100000 = 0.30
-      expect(ratios.savingsRate.value).toBe(0.3);
+      // Savings rate = (100000 - 70000 + 10000 preTax) / 100000 = 0.40
+      // 401k/HSA contributions (preTax) count as savings, not expenses
+      expect(ratios.savingsRate.value).toBe(0.4);
       expect(ratios.savingsRate.rating).toBe('excellent'); // 20%+ is excellent
     });
 
@@ -114,8 +115,9 @@ describe('FinancialRatioService', () => {
 
       const ratios = calculateFinancialRatios(year);
 
-      // Expense ratio = 80000 / 100000 = 0.80
-      expect(ratios.expenseRatio.value).toBe(0.8);
+      // Expense ratio = (80000 - 10000 preTax) / 100000 = 0.70
+      // 401k/HSA contributions (preTax) are excluded as they're savings
+      expect(ratios.expenseRatio.value).toBe(0.7);
     });
 
     it('should calculate emergency fund months correctly', () => {
@@ -255,7 +257,8 @@ describe('FinancialRatioService', () => {
 
       expect(trends).toHaveLength(3);
       expect(trends[0].year).toBe(2025);
-      expect(trends[0].savingsRate).toBeCloseTo(0.3, 2);
+      // Savings rate includes preTax (10000) as savings: (100000 - 70000 + 10000) / 100000 = 0.40
+      expect(trends[0].savingsRate).toBeCloseTo(0.4, 2);
       expect(trends[1].year).toBe(2026);
       expect(trends[2].year).toBe(2027);
     });
@@ -297,6 +300,7 @@ describe('FinancialRatioService', () => {
       const year = createMockSimulationYear(2025, {
         totalIncome: 100000,
         totalExpense: 75000, // 25% savings
+        zeroTaxDetails: true,
       });
       expect(calculateFinancialRatios(year).savingsRate.rating).toBe('excellent');
     });
@@ -305,6 +309,7 @@ describe('FinancialRatioService', () => {
       const year = createMockSimulationYear(2025, {
         totalIncome: 100000,
         totalExpense: 83000, // 17% savings
+        zeroTaxDetails: true,
       });
       expect(calculateFinancialRatios(year).savingsRate.rating).toBe('good');
     });
@@ -313,6 +318,7 @@ describe('FinancialRatioService', () => {
       const year = createMockSimulationYear(2025, {
         totalIncome: 100000,
         totalExpense: 88000, // 12% savings
+        zeroTaxDetails: true,
       });
       expect(calculateFinancialRatios(year).savingsRate.rating).toBe('fair');
     });
@@ -321,6 +327,7 @@ describe('FinancialRatioService', () => {
       const year = createMockSimulationYear(2025, {
         totalIncome: 100000,
         totalExpense: 95000, // 5% savings
+        zeroTaxDetails: true,
       });
       expect(calculateFinancialRatios(year).savingsRate.rating).toBe('poor');
     });
@@ -329,6 +336,7 @@ describe('FinancialRatioService', () => {
       const year = createMockSimulationYear(2025, {
         totalIncome: 100000,
         totalExpense: 110000, // -10% savings
+        zeroTaxDetails: true,
       });
       expect(calculateFinancialRatios(year).savingsRate.rating).toBe('critical');
     });

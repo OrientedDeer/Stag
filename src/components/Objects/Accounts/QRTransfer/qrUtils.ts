@@ -27,6 +27,8 @@ const KEY_MAP: Record<string, string> = {
     // Work income ESPP
     esppContributionType: 'et', esppContributionAmount: 'ea', esppDiscountPercent: 'ed',
     esppHasLookback: 'el', esppOfferingPeriodMonths: 'eo', esppAccountId: 'ei', esppExpectedStockGrowth: 'eg',
+    // Work income pension eligibility
+    pensionSystem: 'ps',
     // Passive income
     sourceType: 'O', isReinvested: 'R', end_date: 'Z',
     // Social security
@@ -82,6 +84,8 @@ const DEFAULTS: Record<string, Record<string, unknown>> = {
         esppOfferingPeriodMonths: 6,
         esppAccountId: null,
         esppExpectedStockGrowth: 7,
+        // Pension eligibility defaults
+        pensionSystem: 'NONE',
     },
     expense: {
         annualGrowthRate: 0.03,

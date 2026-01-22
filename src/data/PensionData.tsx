@@ -22,29 +22,28 @@ export type PensionSystem = 'FERS' | 'CSRS';
  * For those born 1970 or later: MRA = 57
  */
 export const FERS_MRA_BY_BIRTH_YEAR: Record<number, number> = {
-  1948: 55,
-  1949: 55,
-  1950: 55,
-  1951: 55,
-  1952: 55,
-  1953: 55.167, // 55 years 2 months
-  1954: 55.333, // 55 years 4 months
-  1955: 55.5,   // 55 years 6 months
-  1956: 55.667, // 55 years 8 months
-  1957: 55.833, // 55 years 10 months
+  1948: 55.167, // 55 years 2 months
+  1949: 55.333, // 55 years 4 months
+  1950: 55.5,   // 55 years 6 months
+  1951: 55.667, // 55 years 8 months
+  1952: 55.833, // 55 years 10 months
+  1953: 56,
+  1954: 56,
+  1955: 56,
+  1956: 56,
+  1957: 56,
   1958: 56,
   1959: 56,
   1960: 56,
   1961: 56,
   1962: 56,
-  1963: 56.167, // 56 years 2 months
-  1964: 56.333, // 56 years 4 months
-  1965: 56.5,   // 56 years 6 months
-  1966: 56.667, // 56 years 8 months
-  1967: 56.833, // 56 years 10 months
-  1968: 57,
-  1969: 57,
-  1970: 57,
+  1963: 56,
+  1964: 56,
+  1965: 56.167, // 56 years 2 months
+  1966: 56.333, // 56 years 4 months
+  1967: 56.5,   // 56 years 6 months
+  1968: 56.667, // 56 years 8 months
+  1969: 56.833, // 56 years 10 months
   // All birth years 1970+ have MRA of 57
 };
 
@@ -109,7 +108,7 @@ export function checkFERSEligibility(
     const reduction = yearsUnder62 * 5;
     return {
       eligible: true,
-      reductionPercent: Math.min(reduction, 25), // Cap at 25%
+      reductionPercent: reduction,
       message: `MRA+10 retirement with ${reduction}% reduction`
     };
   }
@@ -365,7 +364,7 @@ export function getFERSEarlyReduction(retirementAge: number): number {
   if (retirementAge >= 62) return 1.0;
 
   const yearsUnder62 = 62 - retirementAge;
-  const reductionPercent = Math.min(yearsUnder62 * 5, 25); // 5% per year, max 25%
+  const reductionPercent = yearsUnder62 * 5; // 5% per year under 62
   return 1 - (reductionPercent / 100);
 }
 

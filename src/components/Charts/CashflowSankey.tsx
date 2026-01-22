@@ -108,6 +108,7 @@ export const CashflowSankey = ({
 }: CashflowSankeyProps) => {
     const { state: assumptions } = useContext(AssumptionsContext);
     const forceExact = assumptions.display?.useCompactCurrency === false;
+    const age = assumptions.demographics ? year - assumptions.demographics.birthYear : undefined;
 
     // Memoized currency formatter that respects user settings
     const currencyFormatter = useCallback((value: number) => {
@@ -159,9 +160,12 @@ export const CashflowSankey = ({
 
                 if (inc instanceof WorkIncome) {
                     let empMatch = 0;
-                    employee401k += inc.getProratedAnnual(inc.preTax401k, year);
+                    const effective401k = age !== undefined
+                        ? inc.getEffective401k(year, age)
+                        : { preTax: inc.preTax401k, roth: inc.roth401k };
+                    employee401k += inc.getProratedAnnual(effective401k.preTax, year);
                     totalInsurance += inc.getProratedAnnual(inc.insurance, year);
-                    employeeRoth += inc.getProratedAnnual(inc.roth401k, year);
+                    employeeRoth += inc.getProratedAnnual(effective401k.roth, year);
 
                     if (inc.employerMatch != null) {
                         empMatch = inc.getProratedAnnual(inc.employerMatch, year);

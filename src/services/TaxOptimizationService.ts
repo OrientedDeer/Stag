@@ -170,7 +170,7 @@ export function analyzeTaxSituation(
 
     // Get gross income and deductions
     const grossIncome = TaxService.getGrossIncome(incomes, year);
-    const preTaxDeductions = TaxService.getPreTaxExemptions(incomes, year);
+    const preTaxDeductions = TaxService.getPreTaxExemptions(incomes, year, age);
 
     // Get tax amounts from simulation (already calculated)
     const federalTax = simulationYear.taxDetails.fed;
@@ -192,7 +192,7 @@ export function analyzeTaxSituation(
     );
 
     // Get contribution info
-    const current401k = get401kContributions(incomes, year);
+    const current401k = get401kContributions(incomes, year, age);
     const currentHSA = getHSAContributions(incomes, year);
 
     return {
@@ -333,7 +333,7 @@ export function findRothConversionWindows(
 
         // Calculate taxable income
         const grossIncome = TaxService.getGrossIncome(simYear.incomes, simYear.year);
-        const preTaxDeductions = TaxService.getPreTaxExemptions(simYear.incomes, simYear.year);
+        const preTaxDeductions = TaxService.getPreTaxExemptions(simYear.incomes, simYear.year, age);
         const taxableIncome = Math.max(0, grossIncome - preTaxDeductions);
 
         // Get federal tax parameters
@@ -414,29 +414,46 @@ export function calculateRothConversion(
 
     const retirementAge = assumptions.demographics.retirementAge;
     const birthYear = assumptions.demographics.birthYear;
+    const lifeExpectancy = assumptions.demographics.lifeExpectancy;
     const currentAge = year - birthYear;
 
-    // Calculate years until retirement and years in retirement from simulation
-    const yearsUntilRetirement = Math.max(0, retirementAge - currentAge);
+    // Calculate growth horizon: years the money will compound before withdrawal
+    // Pre-retirement: grows until retirement
+    // At/post retirement: still grows - use midpoint of remaining life as withdrawal estimate
+    const yearsUntilRetirement = currentAge < retirementAge
+        ? retirementAge - currentAge
+        : Math.max(1, Math.floor((lifeExpectancy - currentAge) / 2));
+
     const retirementYear = birthYear + retirementAge;
     const retirementYears = simulation.filter(s => s.year >= retirementYear);
 
-    // Calculate median effective tax rate during retirement from actual simulation
+    // Calculate marginal tax rate on additional income during retirement
+    // Uses marginal rate (not effective) because a Traditional withdrawal ADDS to taxable income
     let retirementTaxRate = FALLBACK_RETIREMENT_TAX_RATE;
     if (retirementYears.length > 0) {
-        const effectiveRates = retirementYears.map(simYear => {
-            const totalTax = (simYear.taxDetails.fed || 0) +
-                           (simYear.taxDetails.state || 0) +
-                           (simYear.taxDetails.fica || 0);
-            const income = simYear.cashflow.totalIncome;
-            return income > 0 ? totalTax / income : 0;
+        const marginalRates = retirementYears.map(simYear => {
+            const simAge = simYear.year - birthYear;
+            const fedParams = TaxService.getTaxParameters(
+                simYear.year,
+                taxState.filingStatus,
+                'federal',
+                undefined,
+                assumptions
+            );
+            if (!fedParams) return FALLBACK_RETIREMENT_TAX_RATE;
+            const grossIncome = TaxService.getGrossIncome(simYear.incomes, simYear.year);
+            const preTaxDeductions = TaxService.getPreTaxExemptions(simYear.incomes, simYear.year, simAge);
+            // Subtract standard deduction to get actual taxable income (matches IRS calculation)
+            const taxableIncome = Math.max(0, grossIncome - preTaxDeductions - fedParams.standardDeduction);
+            const bracket = TaxService.getMarginalTaxRate(taxableIncome, fedParams);
+            return bracket.rate;
         });
-        // Use median to avoid outliers
-        effectiveRates.sort((a, b) => a - b);
-        const mid = Math.floor(effectiveRates.length / 2);
-        retirementTaxRate = effectiveRates.length % 2 === 0
-            ? (effectiveRates[mid - 1] + effectiveRates[mid]) / 2
-            : effectiveRates[mid];
+        // Use median marginal rate to avoid outliers
+        marginalRates.sort((a, b) => a - b);
+        const mid = Math.floor(marginalRates.length / 2);
+        retirementTaxRate = marginalRates.length % 2 === 0
+            ? (marginalRates[mid - 1] + marginalRates[mid]) / 2
+            : marginalRates[mid];
     }
 
     // Calculate actual growth rate from simulation data
@@ -467,23 +484,19 @@ export function calculateRothConversion(
     let headroomRemaining = 0;
 
     if (fedParams) {
-        const currentBracket = TaxService.getMarginalTaxRate(currentTaxableIncome, fedParams);
+        // Apply standard deduction to get actual taxable income (matches IRS calculation)
+        const actualTaxableIncome = Math.max(0, currentTaxableIncome - fedParams.standardDeduction);
+        const currentBracket = TaxService.getMarginalTaxRate(actualTaxableIncome, fedParams);
         currentTaxRate = currentBracket.rate;
 
-        const newTaxableIncome = currentTaxableIncome + conversionAmount;
+        const newTaxableIncome = Math.max(0, currentTaxableIncome + conversionAmount - fedParams.standardDeduction);
         const newBracket = TaxService.getMarginalTaxRate(newTaxableIncome, fedParams);
         newBracketRate = newBracket.rate * 100;
         headroomRemaining = newBracket.headroom;
 
-        // Calculate exact tax cost using bracket math
-        const taxBefore = TaxService.calculateTax(currentTaxableIncome, 0, {
-            ...fedParams,
-            standardDeduction: 0
-        });
-        const taxAfter = TaxService.calculateTax(newTaxableIncome, 0, {
-            ...fedParams,
-            standardDeduction: 0
-        });
+        // Calculate exact tax cost using bracket math (standard deduction applied via fedParams)
+        const taxBefore = TaxService.calculateTax(currentTaxableIncome, 0, fedParams);
+        const taxAfter = TaxService.calculateTax(currentTaxableIncome + conversionAmount, 0, fedParams);
         immediateTaxCost = taxAfter - taxBefore;
         // Update current tax rate to be the effective rate on the conversion
         currentTaxRate = conversionAmount > 0 ? immediateTaxCost / conversionAmount : 0;
@@ -557,7 +570,7 @@ export function generateTaxProjections(
         const age = simYear.year - assumptions.demographics.birthYear;
 
         const grossIncome = TaxService.getGrossIncome(simYear.incomes, simYear.year);
-        const preTaxDeductions = TaxService.getPreTaxExemptions(simYear.incomes, simYear.year);
+        const preTaxDeductions = TaxService.getPreTaxExemptions(simYear.incomes, simYear.year, age);
         const totalTax = simYear.taxDetails.fed + simYear.taxDetails.state + simYear.taxDetails.fica;
         const effectiveRate = grossIncome > 0 ? totalTax / grossIncome : 0;
 
@@ -593,13 +606,16 @@ export function generateTaxProjections(
 // Helper Functions
 // ============================================================================
 
-function get401kContributions(incomes: AnyIncome[], year: number): number {
+function get401kContributions(incomes: AnyIncome[], year: number, age?: number): number {
     return incomes
         .filter((inc): inc is WorkIncome => inc instanceof WorkIncome)
         .reduce((sum, inc) => {
+            const effective = age !== undefined
+                ? inc.getEffective401k(year, age)
+                : { preTax: inc.preTax401k, roth: inc.roth401k };
             return sum +
-                inc.getProratedAnnual(inc.preTax401k, year) +
-                inc.getProratedAnnual(inc.roth401k, year);
+                inc.getProratedAnnual(effective.preTax, year) +
+                inc.getProratedAnnual(effective.roth, year);
         }, 0);
 }
 

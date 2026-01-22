@@ -15,6 +15,7 @@ import { parseDate, parseDateRequired, hasClassName } from "../modelUtils";
 export type ContributionGrowthStrategy = 'FIXED' | 'GROW_WITH_SALARY' | 'TRACK_ANNUAL_MAX';
 export type AutoMax401kOption = 'disabled' | 'custom' | 'traditional' | 'roth';
 export type ESPPContributionType = 'NONE' | 'PERCENTAGE' | 'FIXED';
+export type PensionSystem = 'NONE' | 'FERS' | 'CSRS';
 
 export type IncomeFrequency = 'Weekly' | 'Bi-Weekly' | 'Semi-Monthly' | 'Monthly' | 'Annually';
 
@@ -103,6 +104,7 @@ export class WorkIncome extends BaseIncome {
     public esppOfferingPeriodMonths: number = 6,    // Typical is 6 months
     public esppAccountId: string | null = null,     // Linked ESPP account
     public esppExpectedStockGrowth: number = 7,     // Expected annual stock growth for lookback modeling
+    public pensionSystem: PensionSystem = 'NONE',   // Which pension system this job is covered by
   ) {
     super(id, name, amount, frequency, earned_income, startDate, end_date);
   }
@@ -221,7 +223,8 @@ export class WorkIncome extends BaseIncome {
       this.esppHasLookback,
       this.esppOfferingPeriodMonths,
       this.esppAccountId,
-      this.esppExpectedStockGrowth
+      this.esppExpectedStockGrowth,
+      this.pensionSystem
     );
   }
 
@@ -836,7 +839,8 @@ export function reconstituteIncome(data: unknown): AnyIncome | null {
                 (data.esppHasLookback as boolean) ?? true,
                 Number(data.esppOfferingPeriodMonths ?? 6),
                 data.esppAccountId ? String(data.esppAccountId) : null,
-                Number(data.esppExpectedStockGrowth ?? 7)
+                Number(data.esppExpectedStockGrowth ?? 7),
+                (data.pensionSystem as PensionSystem) || 'NONE'
             );
         }
         case 'SocialSecurityIncome':

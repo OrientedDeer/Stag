@@ -53,12 +53,13 @@ export default function PriorityTab() {
     [expenses, year]);
 
     // Tax calculations (monthly)
-    const federalTax = useMemo(() => calculateFederalTax(taxState, incomes, expenses, year) / 12, [taxState, incomes, expenses, year]);
-    const stateTax = useMemo(() => calculateStateTax(taxState, incomes, expenses, year) / 12, [taxState, incomes, expenses, year]);
-    const ficaTax = useMemo(() => calculateFicaTax(taxState, incomes, year) / 12, [taxState, incomes, year]);
+    const federalTax = useMemo(() => calculateFederalTax(taxState, incomes, expenses, year, state) / 12, [taxState, incomes, expenses, year, state]);
+    const stateTax = useMemo(() => calculateStateTax(taxState, incomes, expenses, year, state) / 12, [taxState, incomes, expenses, year, state]);
+    const ficaTax = useMemo(() => calculateFicaTax(taxState, incomes, year, state) / 12, [taxState, incomes, year, state]);
     const monthlyTaxes = federalTax + stateTax + ficaTax;
 
     // Paycheck deductions (401k, insurance, HSA)
+    const age = state.demographics ? year - state.demographics.birthYear : undefined;
     const deductionBreakdown = useMemo(() => {
         let pretax401k = 0;
         let roth401k = 0;
@@ -67,15 +68,18 @@ export default function PriorityTab() {
 
         incomes.forEach(inc => {
             if (inc instanceof WorkIncome) {
-                pretax401k += inc.getProratedMonthly(inc.preTax401k, year);
-                roth401k += inc.getProratedMonthly(inc.roth401k, year);
+                const effective401k = age !== undefined
+                    ? inc.getEffective401k(year, age)
+                    : { preTax: inc.preTax401k, roth: inc.roth401k };
+                pretax401k += inc.getProratedMonthly(effective401k.preTax, year);
+                roth401k += inc.getProratedMonthly(effective401k.roth, year);
                 insurance += inc.getProratedMonthly(inc.insurance, year);
                 hsa += inc.getProratedMonthly(inc.hsaContribution || 0, year);
             }
         });
 
         return { pretax401k, roth401k, insurance, hsa, total: pretax401k + roth401k + insurance + hsa };
-    }, [incomes, year]);
+    }, [incomes, year, age]);
 
     const monthlyPaycheckDeductions = deductionBreakdown.total;
 

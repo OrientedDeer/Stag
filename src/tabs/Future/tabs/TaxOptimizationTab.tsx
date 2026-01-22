@@ -240,6 +240,8 @@ const RothConversionCalculator = ({
     const benefitColor = result.benefit > 0 ? 'text-green-400' : result.benefit < 0 ? 'text-red-400' : 'text-gray-400';
     const benefitLabel = result.benefit > 0 ? 'Roth wins' : result.benefit < 0 ? 'Traditional wins' : 'Break-even';
     const selectedOption = ageOptions.find(o => o.age === selectedAge);
+    const isPostRetirement = selectedAge >= assumptions.demographics.retirementAge;
+    const valueLabel = isPostRetirement ? 'Value at Withdrawal' : 'Value at Retirement';
 
     return (
         <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
@@ -295,7 +297,7 @@ const RothConversionCalculator = ({
                             <span className="text-gray-400">↓</span>
                         </div>
                         <div className="flex justify-between">
-                            <span className="text-gray-400">Value at Retirement:</span>
+                            <span className="text-gray-400">{valueLabel}:</span>
                             <span className="text-white">{formatCompactCurrency(result.traditional.valueAtRetirement, { forceExact })}</span>
                         </div>
                         <div className="flex justify-between">
@@ -330,7 +332,7 @@ const RothConversionCalculator = ({
                             <span className="text-gray-400">↓</span>
                         </div>
                         <div className="flex justify-between border-t border-gray-700 pt-2 mt-2">
-                            <span className="text-gray-300 font-medium">Value at Retirement:</span>
+                            <span className="text-gray-300 font-medium">{valueLabel}:</span>
                             <span className="text-blue-400 font-bold">{formatCompactCurrency(result.roth.valueAtRetirement, { forceExact })}</span>
                         </div>
                         <div className="text-xs text-gray-400 text-right">(Tax-free withdrawals)</div>
@@ -353,10 +355,10 @@ const RothConversionCalculator = ({
                 </div>
                 <p className="text-xs text-gray-400 mt-2">
                     {result.benefit > 0
-                        ? `Converting to Roth at age ${selectedAge} gives you ${formatCompactCurrency(result.benefit, { forceExact })} more at retirement because the tax rate at conversion (${(result.dataUsed.currentTaxRate * 100).toFixed(1)}%) is lower than your projected retirement rate (${(result.dataUsed.retirementTaxRate * 100).toFixed(1)}%).`
+                        ? `Converting to Roth at age ${selectedAge} gives you ${formatCompactCurrency(result.benefit, { forceExact })} more at withdrawal because the tax rate at conversion (${(result.dataUsed.currentTaxRate * 100).toFixed(1)}%) is lower than your projected withdrawal rate (${(result.dataUsed.retirementTaxRate * 100).toFixed(1)}%).`
                         : result.benefit < 0
-                        ? `Keeping in traditional gives you ${formatCompactCurrency(Math.abs(result.benefit), { forceExact })} more at retirement because the tax rate at age ${selectedAge} (${(result.dataUsed.currentTaxRate * 100).toFixed(1)}%) is higher than your projected retirement rate (${(result.dataUsed.retirementTaxRate * 100).toFixed(1)}%).`
-                        : 'Both options result in the same after-tax value at retirement.'}
+                        ? `Keeping in traditional gives you ${formatCompactCurrency(Math.abs(result.benefit), { forceExact })} more at withdrawal because the tax rate at age ${selectedAge} (${(result.dataUsed.currentTaxRate * 100).toFixed(1)}%) is higher than your projected withdrawal rate (${(result.dataUsed.retirementTaxRate * 100).toFixed(1)}%).`
+                        : 'Both options result in the same after-tax value.'}
                 </p>
             </div>
         </div>
@@ -386,8 +388,12 @@ export const TaxOptimizationTab = React.memo(({ simulationData }: TaxOptimizatio
     // Generate recommendations
     const recommendations: TaxRecommendation[] = useMemo(() => {
         if (!analysis) return [];
-        return generateRecommendations(analysis, simulationData, assumptions, hasTraditional);
-    }, [analysis, simulationData, assumptions, hasTraditional]);
+        const recs = generateRecommendations(analysis, simulationData, assumptions, hasTraditional);
+        if (!hsaEligible) {
+            return recs.filter(rec => rec.id !== 'hsa-increase');
+        }
+        return recs;
+    }, [analysis, simulationData, assumptions, hasTraditional, hsaEligible]);
 
     // Generate projections
     const projections: TaxProjection[] = useMemo(() => {
@@ -478,9 +484,9 @@ export const TaxOptimizationTab = React.memo(({ simulationData }: TaxOptimizatio
                             </div>
                             <button
                                 onClick={() => dispatch({ type: 'UPDATE_DISPLAY', payload: { hsaEligible: false } })}
-                                className="text-xs text-gray-400 hover:text-gray-400 mt-1"
+                                className="text-xs text-gray-400 hover:text-white mt-2 px-2 py-1 border border-gray-600 hover:border-gray-400 rounded transition-colors"
                             >
-                                Not eligible for HSA?
+                                Not eligible for HSA
                             </button>
                         </div>
                     ) : (
@@ -488,7 +494,7 @@ export const TaxOptimizationTab = React.memo(({ simulationData }: TaxOptimizatio
                             <span className="text-gray-400 text-sm">HSA: Not eligible</span>
                             <button
                                 onClick={() => dispatch({ type: 'UPDATE_DISPLAY', payload: { hsaEligible: true } })}
-                                className="text-xs text-emerald-500 hover:text-emerald-400"
+                                className="text-xs text-emerald-500 hover:text-emerald-300 px-2 py-1 border border-emerald-700 hover:border-emerald-500 rounded transition-colors"
                             >
                                 I have an HDHP
                             </button>

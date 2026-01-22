@@ -1,5 +1,5 @@
 import { AnyAccount } from '../components/Objects/Accounts/models';
-import { AnyIncome } from '../components/Objects/Income/models';
+import { AnyIncome, WorkIncome, FERSPensionIncome, CSRSPensionIncome, FutureSocialSecurityIncome } from '../components/Objects/Income/models';
 import { AnyExpense } from '../components/Objects/Expense/models';
 import { AssumptionsState } from '../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../components/Objects/Taxes/TaxContext';
@@ -16,6 +16,67 @@ export function hashString(str: string): string {
         hash = hash & hash; // Convert to 32-bit integer
     }
     return hash.toString(36);
+}
+
+/**
+ * Serialize income-specific fields that affect simulation.
+ * Different income types have different fields that matter for calculation.
+ */
+function serializeIncomeFields(income: AnyIncome): Record<string, unknown> {
+    const base = {
+        id: income.id,
+        amount: income.getAnnualAmount(),
+        name: income.name,
+        className: income.constructor.name,
+        startDate: income.startDate?.toISOString(),
+        endDate: income.end_date?.toISOString(),
+    };
+
+    if (income instanceof WorkIncome) {
+        return {
+            ...base,
+            pensionSystem: income.pensionSystem,
+            preTax401k: income.preTax401k,
+            roth401k: income.roth401k,
+            employerMatch: income.employerMatch,
+            autoMax401k: income.autoMax401k,
+            hsaContribution: income.hsaContribution,
+            esppContributionType: income.esppContributionType,
+            esppContributionAmount: income.esppContributionAmount,
+        };
+    }
+
+    if (income instanceof FERSPensionIncome) {
+        return {
+            ...base,
+            yearsOfService: income.yearsOfService,
+            high3Salary: income.high3Salary,
+            retirementAge: income.retirementAge,
+            birthYear: income.birthYear,
+            autoCalculateHigh3: income.autoCalculateHigh3,
+            linkedIncomeId: income.linkedIncomeId,
+        };
+    }
+
+    if (income instanceof CSRSPensionIncome) {
+        return {
+            ...base,
+            yearsOfService: income.yearsOfService,
+            high3Salary: income.high3Salary,
+            retirementAge: income.retirementAge,
+            autoCalculateHigh3: income.autoCalculateHigh3,
+            linkedIncomeId: income.linkedIncomeId,
+        };
+    }
+
+    if (income instanceof FutureSocialSecurityIncome) {
+        return {
+            ...base,
+            claimingAge: income.claimingAge,
+        };
+    }
+
+    return base;
 }
 
 /**
@@ -38,12 +99,7 @@ export function getSimulationInputHash(
             name: a.name,
             className: a.constructor.name,
         })),
-        incomes: incomes.map(i => ({
-            id: i.id,
-            amount: i.getAnnualAmount(),
-            name: i.name,
-            className: i.constructor.name,
-        })),
+        incomes: incomes.map(serializeIncomeFields),
         expenses: expenses.map(e => ({
             id: e.id,
             amount: e.getAnnualAmount(),

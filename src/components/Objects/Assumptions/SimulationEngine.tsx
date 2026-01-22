@@ -3,7 +3,7 @@ import { AnyAccount, DebtAccount, DeficitDebtAccount, InvestedAccount, ESPPAccou
 import { getESPPLimit } from "../../../data/ContributionLimits";
 import { AnyExpense, LoanExpense, MortgageExpense } from "../Expense/models";
 import { AnyIncome, WorkIncome, FutureSocialSecurityIncome, FERSPensionIncome, CSRSPensionIncome, PassiveIncome, getIncomeActiveMultiplier } from "../../Objects/Income/models";
-import { calculateHigh3 } from "../../../data/PensionData";
+import { calculateHigh3, checkFERSEligibility, checkCSRSEligibility } from "../../../data/PensionData";
 import { calculateRMD, isAccountSubjectToRMD, isRMDRequired, RMDCalculation } from "../../../data/RMDData";
 import { AssumptionsState } from "./AssumptionsContext";
 import { TaxState } from "../../Objects/Taxes/TaxContext";
@@ -517,10 +517,20 @@ export function simulateOneYear(
                     // When reaching retirement age, calculate High-3 and benefit
                     if (currentAge === inc.retirementAge && inc.calculatedBenefit === 0) {
                         const high3 = calculateHigh3(salaryHistory);
-                        // Calculate benefit with actual High-3
-                        const actualBenefit = (inc.retirementAge >= 62 && inc.yearsOfService >= 20 ? 0.011 : 0.01)
+
+                        // Calculate base benefit with actual High-3
+                        const baseBenefit = (inc.retirementAge >= 62 && inc.yearsOfService >= 20 ? 0.011 : 0.01)
                             * inc.yearsOfService * high3;
+
+                        // Check for early retirement reductions
+                        const eligibility = checkFERSEligibility(inc.retirementAge, inc.yearsOfService, inc.birthYear);
+                        const reductionFactor = 1 - (eligibility.reductionPercent / 100);
+                        const actualBenefit = baseBenefit * reductionFactor;
+
                         logs.push(`🏛️ FERS Pension started: High-3 calculated as $${high3.toLocaleString()}/yr from ${salaryHistory.length} years of salary history`);
+                        if (eligibility.reductionPercent > 0) {
+                            logs.push(`   Base benefit: $${baseBenefit.toLocaleString()}/yr, reduced by ${eligibility.reductionPercent}% (${eligibility.message})`);
+                        }
                         logs.push(`   Annual benefit: $${actualBenefit.toLocaleString()}/yr`);
 
                         return new FERSPensionIncome(
@@ -559,21 +569,30 @@ export function simulateOneYear(
                     // When reaching retirement age, calculate High-3 and benefit
                     if (currentAge === inc.retirementAge && inc.calculatedBenefit === 0) {
                         const high3 = calculateHigh3(salaryHistory);
-                        // Calculate CSRS benefit with actual High-3
-                        let actualBenefit = 0;
+
+                        // Calculate CSRS base benefit with actual High-3
+                        let baseBenefit = 0;
                         const first5 = Math.min(inc.yearsOfService, 5);
-                        actualBenefit += first5 * high3 * 0.015;
+                        baseBenefit += first5 * high3 * 0.015;
                         if (inc.yearsOfService > 5) {
                             const next5 = Math.min(inc.yearsOfService - 5, 5);
-                            actualBenefit += next5 * high3 * 0.0175;
+                            baseBenefit += next5 * high3 * 0.0175;
                         }
                         if (inc.yearsOfService > 10) {
                             const remaining = inc.yearsOfService - 10;
-                            actualBenefit += remaining * high3 * 0.02;
+                            baseBenefit += remaining * high3 * 0.02;
                         }
-                        actualBenefit = Math.min(actualBenefit, high3 * 0.80); // Cap at 80%
+                        baseBenefit = Math.min(baseBenefit, high3 * 0.80); // Cap at 80%
+
+                        // Check for early retirement reductions
+                        const eligibility = checkCSRSEligibility(inc.retirementAge, inc.yearsOfService);
+                        const reductionFactor = 1 - (eligibility.reductionPercent / 100);
+                        const actualBenefit = baseBenefit * reductionFactor;
 
                         logs.push(`🏛️ CSRS Pension started: High-3 calculated as $${high3.toLocaleString()}/yr from ${salaryHistory.length} years of salary history`);
+                        if (eligibility.reductionPercent > 0) {
+                            logs.push(`   Base benefit: $${baseBenefit.toLocaleString()}/yr, reduced by ${eligibility.reductionPercent}% (${eligibility.message})`);
+                        }
                         logs.push(`   Annual benefit: $${actualBenefit.toLocaleString()}/yr`);
 
                         return new CSRSPensionIncome(

@@ -58,7 +58,6 @@ import {
     checkCSRSEligibility,
     calculateCSRSBasicBenefit,
     getCSRSCOLA,
-    getFERSEarlyReduction,
     PENSION_SYSTEM_COMPARISON
 } from '../../data/PensionData';
 
@@ -1388,14 +1387,14 @@ function SocialSecurityDebugTab() {
         const startYear = currentYear - priorYearsWorked;
         for (let i = 0; i < priorYearsWorked; i++) {
             const year = startYear + i;
-            const wageBase = getWageBase(year, wageGrowthRate / 100, true);
+            const wageBase = getWageBase(year, wageGrowthRate / 100, assumptions.macro.inflationAdjusted);
             earnings.push({
                 year,
                 amount: Math.min(priorAvgSalary, wageBase)
             });
         }
         return earnings;
-    }, [priorYearsWorked, priorAvgSalary, currentYear, wageGrowthRate]);
+    }, [priorYearsWorked, priorAvgSalary, currentYear, wageGrowthRate, assumptions.macro.inflationAdjusted]);
 
     // Extract earnings from simulation + prior earnings
     const earningsHistory = useMemo(() => {
@@ -1628,7 +1627,7 @@ function SocialSecurityDebugTab() {
                             </thead>
                             <tbody>
                                 {earningsHistory.map(record => {
-                                    const wageBase = getWageBase(record.year, 0.025, true);
+                                    const wageBase = getWageBase(record.year, 0.025, assumptions.macro.inflationAdjusted);
                                     const atMax = record.amount >= wageBase * 0.99;
                                     return (
                                         <tr key={record.year} className="border-t border-gray-800">
@@ -2344,6 +2343,8 @@ function PensionDebugTab() {
     const { incomes } = useContext(IncomeContext);
 
     const birthYear = assumptions.demographics.birthYear;
+    const currentYear = new Date().getFullYear();
+    const currentAge = currentYear - birthYear;
 
     // Find pension incomes
     const fersPensions = incomes.filter(inc => inc instanceof FERSPensionIncome) as FERSPensionIncome[];
@@ -2353,29 +2354,47 @@ function PensionDebugTab() {
     // Get work incomes for potential High-3 calculation
     const workIncomes = incomes.filter(inc => inc instanceof WorkIncome) as WorkIncome[];
 
+    // Get pension-eligible work incomes for the explorer
+    const pensionEligibleWorkIncomes = workIncomes.filter(inc => inc.pensionSystem !== 'NONE');
+
+    // State for retirement age explorer
+    const [explorerRetirementAge, setExplorerRetirementAge] = useState<number>(() => {
+        // Default to first pension's retirement age, or 62 if no pensions
+        if (fersPensions.length > 0) return fersPensions[0].retirementAge;
+        if (csrsPensions.length > 0) return csrsPensions[0].retirementAge;
+        return 62;
+    });
+    const [explorerYearsOfService, setExplorerYearsOfService] = useState<number>(() => {
+        if (fersPensions.length > 0) return fersPensions[0].yearsOfService;
+        if (csrsPensions.length > 0) return csrsPensions[0].yearsOfService;
+        return 0;
+    });
+    const [explorerPensionType, setExplorerPensionType] = useState<'FERS' | 'CSRS'>('FERS');
+
     // FERS calculations
     const fersDetails = useMemo(() => {
+        const inflationAdjusted = assumptions.macro.inflationAdjusted;
         return fersPensions.map(pension => {
             const mra = getFERSMRA(birthYear);
             const eligibility = checkFERSEligibility(pension.retirementAge, pension.yearsOfService, birthYear);
             const baseBenefit = calculateFERSBasicBenefit(pension.yearsOfService, pension.high3Salary, pension.retirementAge);
-            const earlyReduction = getFERSEarlyReduction(pension.retirementAge);
-            const reducedBenefit = baseBenefit * earlyReduction * (1 - eligibility.reductionPercent / 100);
+            const reducedBenefit = baseBenefit * (1 - eligibility.reductionPercent / 100);
 
-            // Simulate COLA growth
+            // Simulate COLA growth (only if showing nominal dollars)
             const colaProjection: Array<{ age: number; year: number; cola: number; benefit: number }> = [];
             let projectedBenefit = reducedBenefit;
             const inflationRate = assumptions.macro.inflationRate / 100;
 
             for (let age = pension.retirementAge; age <= assumptions.demographics.lifeExpectancy; age++) {
                 const cola = getFERSCOLA(inflationRate, age);
-                if (age > pension.retirementAge) {
+                // Only apply COLA growth if showing nominal (future) dollars
+                if (!inflationAdjusted && age > pension.retirementAge) {
                     projectedBenefit *= (1 + cola);
                 }
                 colaProjection.push({
                     age,
                     year: birthYear + age,
-                    cola: cola * 100,
+                    cola: inflationAdjusted ? 0 : cola * 100, // Show 0 COLA in real dollars mode
                     benefit: projectedBenefit
                 });
             }
@@ -2385,7 +2404,6 @@ function PensionDebugTab() {
                 mra,
                 eligibility,
                 baseBenefit,
-                earlyReduction,
                 reducedBenefit,
                 colaProjection
             };
@@ -2394,25 +2412,27 @@ function PensionDebugTab() {
 
     // CSRS calculations
     const csrsDetails = useMemo(() => {
+        const inflationAdjusted = assumptions.macro.inflationAdjusted;
         return csrsPensions.map(pension => {
             const eligibility = checkCSRSEligibility(pension.retirementAge, pension.yearsOfService);
             const baseBenefit = calculateCSRSBasicBenefit(pension.yearsOfService, pension.high3Salary);
             const reducedBenefit = baseBenefit * (1 - eligibility.reductionPercent / 100);
 
-            // Simulate COLA growth
+            // Simulate COLA growth (only if showing nominal dollars)
             const colaProjection: Array<{ age: number; year: number; cola: number; benefit: number }> = [];
             let projectedBenefit = reducedBenefit;
             const inflationRate = assumptions.macro.inflationRate / 100;
 
             for (let age = pension.retirementAge; age <= assumptions.demographics.lifeExpectancy; age++) {
                 const cola = getCSRSCOLA(inflationRate);
-                if (age > pension.retirementAge) {
+                // Only apply COLA growth if showing nominal (future) dollars
+                if (!inflationAdjusted && age > pension.retirementAge) {
                     projectedBenefit *= (1 + cola);
                 }
                 colaProjection.push({
                     age,
                     year: birthYear + age,
-                    cola: cola * 100,
+                    cola: inflationAdjusted ? 0 : cola * 100, // Show 0 COLA in real dollars mode
                     benefit: projectedBenefit
                 });
             }
@@ -2427,7 +2447,7 @@ function PensionDebugTab() {
         });
     }, [csrsPensions, birthYear, assumptions]);
 
-    // High-3 tracking from simulation
+    // High-3 tracking from simulation (only pension-eligible work incomes)
     const high3Tracking = useMemo(() => {
         if (simulation.length === 0 || workIncomes.length === 0) return null;
 
@@ -2437,18 +2457,21 @@ function PensionDebugTab() {
             const year = simYear.year;
             const age = year - birthYear;
 
-            simYear.incomes.forEach(inc => {
-                if (inc instanceof WorkIncome) {
-                    salaryHistory.push({
-                        year,
-                        age,
-                        salary: inc.amount
-                    });
-                }
-            });
+            // Sum only work incomes that are pension-eligible (FERS or CSRS)
+            const totalSalary = simYear.incomes
+                .filter(inc => inc instanceof WorkIncome && inc.pensionSystem !== 'NONE')
+                .reduce((sum, inc) => sum + inc.amount, 0);
+
+            if (totalSalary > 0) {
+                salaryHistory.push({
+                    year,
+                    age,
+                    salary: totalSalary
+                });
+            }
         });
 
-        // Calculate running High-3
+        // Calculate running High-3 (average of highest 3 consecutive years)
         const high3History: Array<{ year: number; age: number; high3: number; salaries: number[] }> = [];
         for (let i = 2; i < salaryHistory.length; i++) {
             const lastThree = [salaryHistory[i - 2].salary, salaryHistory[i - 1].salary, salaryHistory[i].salary];
@@ -2463,6 +2486,120 @@ function PensionDebugTab() {
 
         return { salaryHistory, high3History };
     }, [simulation, workIncomes, birthYear]);
+
+    // Get High-3 estimate from simulation at a given retirement age
+    const getHigh3AtAge = useCallback((retireAge: number): number => {
+        if (!high3Tracking || high3Tracking.high3History.length === 0) {
+            // Fall back to first pension's High-3 or a default
+            if (fersPensions.length > 0) return fersPensions[0].high3Salary;
+            if (csrsPensions.length > 0) return csrsPensions[0].high3Salary;
+            // Estimate from current pension-eligible work income
+            const totalPensionSalary = pensionEligibleWorkIncomes.reduce((sum, inc) => sum + inc.getAnnualAmount(), 0);
+            return totalPensionSalary || 100000;
+        }
+        // Find the High-3 at retirement age (or closest before it)
+        const high3AtAge = high3Tracking.high3History.filter(h => h.age <= retireAge);
+        if (high3AtAge.length === 0) return high3Tracking.high3History[0]?.high3 || 100000;
+        return high3AtAge[high3AtAge.length - 1].high3;
+    }, [high3Tracking, fersPensions, csrsPensions, pensionEligibleWorkIncomes]);
+
+    // Explorer: Calculate benefits at different retirement ages
+    const explorerData = useMemo(() => {
+        const mra = getFERSMRA(birthYear);
+        const inflationRate = assumptions.macro.inflationRate / 100;
+        const lifeExpectancy = assumptions.demographics.lifeExpectancy;
+        const inflationAdjusted = assumptions.macro.inflationAdjusted;
+
+        // Generate data for ages from MRA (or 50) to 70
+        const minAge = Math.max(50, Math.min(mra, currentAge));
+        const maxAge = 70;
+        const ages: number[] = [];
+        for (let age = minAge; age <= maxAge; age++) {
+            ages.push(age);
+        }
+
+        return ages.map(retireAge => {
+            // Calculate years of service at this retirement age
+            // Assume they started service at (currentAge - explorerYearsOfService) years ago
+            const serviceStartAge = currentAge - explorerYearsOfService;
+            const yearsAtRetirement = Math.max(0, retireAge - serviceStartAge);
+
+            // Get projected High-3 at this retirement age
+            const high3 = getHigh3AtAge(retireAge);
+
+            if (explorerPensionType === 'FERS') {
+                const eligibility = checkFERSEligibility(retireAge, yearsAtRetirement, birthYear);
+                const baseBenefit = calculateFERSBasicBenefit(yearsAtRetirement, high3, retireAge);
+                const reductionFactor = (1 - eligibility.reductionPercent / 100);
+                const annualBenefit = baseBenefit * reductionFactor;
+
+                // Calculate lifetime benefit
+                // If inflationAdjusted (real dollars): don't apply COLA growth (COLA ~ inflation, so real value stays flat)
+                // If not inflationAdjusted (nominal): apply COLA to show future nominal values
+                const yearsReceiving = lifeExpectancy - retireAge;
+                let lifetimeBenefit = 0;
+                let projectedBenefit = annualBenefit;
+                for (let y = 0; y < yearsReceiving; y++) {
+                    if (!inflationAdjusted && y > 0) {
+                        const age = retireAge + y;
+                        const cola = age >= 62 ? getFERSCOLA(inflationRate, age) : 0;
+                        projectedBenefit *= (1 + cola);
+                    }
+                    lifetimeBenefit += projectedBenefit;
+                }
+
+                return {
+                    age: retireAge,
+                    yearsOfService: yearsAtRetirement,
+                    high3,
+                    baseBenefit,
+                    reductionPercent: (1 - reductionFactor) * 100,
+                    annualBenefit,
+                    monthlyBenefit: annualBenefit / 12,
+                    lifetimeBenefit,
+                    eligible: eligibility.eligible,
+                    message: eligibility.message,
+                    isSelected: retireAge === explorerRetirementAge
+                };
+            } else {
+                // CSRS
+                const eligibility = checkCSRSEligibility(retireAge, yearsAtRetirement);
+                const baseBenefit = calculateCSRSBasicBenefit(yearsAtRetirement, high3);
+                const reductionFactor = 1 - eligibility.reductionPercent / 100;
+                const annualBenefit = baseBenefit * reductionFactor;
+
+                // Calculate lifetime benefit
+                const yearsReceiving = lifeExpectancy - retireAge;
+                let lifetimeBenefit = 0;
+                let projectedBenefit = annualBenefit;
+                const cola = getCSRSCOLA(inflationRate);
+                for (let y = 0; y < yearsReceiving; y++) {
+                    if (!inflationAdjusted && y > 0) {
+                        projectedBenefit *= (1 + cola);
+                    }
+                    lifetimeBenefit += projectedBenefit;
+                }
+
+                return {
+                    age: retireAge,
+                    yearsOfService: yearsAtRetirement,
+                    high3,
+                    baseBenefit,
+                    reductionPercent: eligibility.reductionPercent,
+                    annualBenefit,
+                    monthlyBenefit: annualBenefit / 12,
+                    lifetimeBenefit,
+                    eligible: eligibility.eligible,
+                    message: eligibility.message,
+                    isSelected: retireAge === explorerRetirementAge
+                };
+            }
+        });
+    }, [explorerRetirementAge, explorerYearsOfService, explorerPensionType, birthYear, currentAge, assumptions, getHigh3AtAge]);
+
+    // Find the selected age data
+    const selectedAgeData = explorerData.find(d => d.age === explorerRetirementAge);
+    const mra = getFERSMRA(birthYear);
 
     if (!hasPensions && workIncomes.length === 0) {
         return (
@@ -2498,6 +2635,136 @@ function PensionDebugTab() {
                         </ul>
                     </div>
                 </div>
+            </div>
+
+            {/* Retirement Age Explorer */}
+            <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
+                <h3 className="text-lg font-semibold text-white mb-4">Retirement Age Explorer</h3>
+                <p className="text-sm text-gray-400 mb-4">
+                    Explore how different retirement ages affect your pension benefit. Adjust the sliders to see the impact.
+                </p>
+
+                {/* Controls */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <DropdownInput
+                        label="Pension System"
+                        value={explorerPensionType}
+                        onChange={(val) => setExplorerPensionType(val as 'FERS' | 'CSRS')}
+                        options={[
+                            { value: 'FERS', label: 'FERS' },
+                            { value: 'CSRS', label: 'CSRS' }
+                        ]}
+                    />
+                    <NumberInput
+                        label="Retirement Age"
+                        value={explorerRetirementAge}
+                        onChange={(val) => setExplorerRetirementAge(val)}
+                        min={50}
+                        max={70}
+                        tooltip="Age at which you plan to retire"
+                    />
+                    <NumberInput
+                        label="Current Years of Service"
+                        value={explorerYearsOfService}
+                        onChange={(val) => setExplorerYearsOfService(val)}
+                        min={0}
+                        max={50}
+                        tooltip="Your current years of creditable federal service"
+                    />
+                </div>
+
+                {/* Selected Age Summary */}
+                {selectedAgeData && (
+                    <div className={`p-4 rounded-lg mb-6 ${selectedAgeData.eligible ? 'bg-green-900/20 border border-green-700/50' : 'bg-yellow-900/20 border border-yellow-700/50'}`}>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div>
+                                <div className="text-gray-400 text-xs">Retire at Age</div>
+                                <div className="text-2xl font-bold text-white">{selectedAgeData.age}</div>
+                                <div className="text-xs text-gray-500">Year {birthYear + selectedAgeData.age}</div>
+                            </div>
+                            <div>
+                                <div className="text-gray-400 text-xs">Years of Service</div>
+                                <div className="text-2xl font-bold text-white">{selectedAgeData.yearsOfService}</div>
+                            </div>
+                            <div>
+                                <div className="text-gray-400 text-xs">Annual Benefit</div>
+                                <div className="text-2xl font-bold text-green-400">{toCurrencyShort(selectedAgeData.annualBenefit)}</div>
+                                <div className="text-xs text-gray-400">{toCurrencyShort(selectedAgeData.monthlyBenefit)}/mo</div>
+                            </div>
+                            <div>
+                                <div className="text-gray-400 text-xs">Reduction</div>
+                                <div className={`text-2xl font-bold ${selectedAgeData.reductionPercent > 0 ? 'text-red-400' : 'text-green-400'}`}>
+                                    {selectedAgeData.reductionPercent > 0 ? `-${selectedAgeData.reductionPercent.toFixed(1)}%` : 'None'}
+                                </div>
+                            </div>
+                        </div>
+                        <div className={`mt-3 text-sm ${selectedAgeData.eligible ? 'text-green-400' : 'text-yellow-400'}`}>
+                            {selectedAgeData.message}
+                        </div>
+                    </div>
+                )}
+
+                {/* Comparison Table */}
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                        <thead>
+                            <tr className="border-b border-gray-700">
+                                <th className="text-left p-2 text-gray-400">Age</th>
+                                <th className="text-center p-2 text-gray-400">YOS</th>
+                                <th className="text-right p-2 text-gray-400">High-3</th>
+                                <th className="text-right p-2 text-gray-400">Reduction</th>
+                                <th className="text-right p-2 text-gray-400">Annual</th>
+                                <th className="text-right p-2 text-gray-400">Monthly</th>
+                                <th className="text-right p-2 text-gray-400">Lifetime*</th>
+                                <th className="text-left p-2 text-gray-400">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {explorerData.map((row) => (
+                                <tr
+                                    key={row.age}
+                                    className={`border-b border-gray-800 cursor-pointer transition-colors ${
+                                        row.isSelected
+                                            ? 'bg-blue-900/30 border-blue-700'
+                                            : row.age === mra
+                                            ? 'bg-cyan-900/10'
+                                            : 'hover:bg-gray-800/50'
+                                    }`}
+                                    onClick={() => setExplorerRetirementAge(row.age)}
+                                >
+                                    <td className="p-2 text-white font-medium">
+                                        {row.age}
+                                        {row.age === mra && <span className="ml-1 text-xs text-cyan-400">(MRA)</span>}
+                                        {row.age === 62 && <span className="ml-1 text-xs text-green-400">(62)</span>}
+                                    </td>
+                                    <td className="p-2 text-center text-gray-300">{row.yearsOfService}</td>
+                                    <td className="p-2 text-right text-gray-300">{toCurrencyShort(row.high3)}</td>
+                                    <td className={`p-2 text-right ${row.reductionPercent > 0 ? 'text-red-400' : 'text-green-400'}`}>
+                                        {row.reductionPercent > 0 ? `-${row.reductionPercent.toFixed(1)}%` : '0%'}
+                                    </td>
+                                    <td className="p-2 text-right text-white font-semibold">{toCurrencyShort(row.annualBenefit)}</td>
+                                    <td className="p-2 text-right text-gray-300">{toCurrencyShort(row.monthlyBenefit)}</td>
+                                    <td className="p-2 text-right text-gray-400">{toCurrencyShort(row.lifetimeBenefit)}</td>
+                                    <td className="p-2">
+                                        <span className={`px-2 py-0.5 rounded text-xs ${
+                                            row.eligible ? 'bg-green-900/50 text-green-400' : 'bg-yellow-900/50 text-yellow-400'
+                                        }`}>
+                                            {row.eligible ? 'Eligible' : 'Reduced'}
+                                        </span>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                    * Lifetime benefit assumes life expectancy of {assumptions.demographics.lifeExpectancy}.
+                    {assumptions.macro.inflationAdjusted
+                        ? ' Values shown in today\'s dollars (real). COLA growth excluded as it roughly offsets inflation.'
+                        : ` Values shown in future dollars (nominal) with ${assumptions.macro.inflationRate}% annual COLA applied.`
+                    }
+                    {' '}Click a row to select that retirement age.
+                </p>
             </div>
 
             {/* FERS Pensions */}
@@ -2538,15 +2805,9 @@ function PensionDebugTab() {
                                 <span className="text-gray-400">Base Benefit ({detail.pension.yearsOfService} years × High-3)</span>
                                 <span className="text-white font-semibold">{toCurrency(detail.baseBenefit)}/year</span>
                             </div>
-                            {detail.earlyReduction < 1 && (
-                                <div className="flex justify-between text-red-400">
-                                    <span>Early Retirement Reduction</span>
-                                    <span>-{((1 - detail.earlyReduction) * 100).toFixed(0)}%</span>
-                                </div>
-                            )}
                             {detail.eligibility.reductionPercent > 0 && (
                                 <div className="flex justify-between text-red-400">
-                                    <span>MRA+10 Reduction</span>
+                                    <span>MRA+10 Early Reduction</span>
                                     <span>-{detail.eligibility.reductionPercent}%</span>
                                 </div>
                             )}
@@ -2570,9 +2831,14 @@ function PensionDebugTab() {
 
                     {/* COLA Projection */}
                     <div className="bg-gray-800 p-4 rounded">
-                        <h4 className="font-semibold text-white mb-3">COLA Projection (Inflation: {assumptions.macro.inflationRate}%)</h4>
+                        <h4 className="font-semibold text-white mb-3">
+                            Benefit Projection {assumptions.macro.inflationAdjusted ? '(Today\'s Dollars)' : `(Nominal with ${assumptions.macro.inflationRate}% COLA)`}
+                        </h4>
                         <div className="text-xs text-gray-400 mb-2">
-                            {"FERS COLA: None before age 62. After 62: Full if CPI ≤ 2%, 2% if 2-3%, CPI-1% if > 3%"}
+                            {assumptions.macro.inflationAdjusted
+                                ? "Values shown in today's dollars. COLA growth excluded as it roughly offsets inflation."
+                                : "FERS COLA: None before age 62. After 62: Full if CPI ≤ 2%, 2% if 2-3%, CPI-1% if > 3%"
+                            }
                         </div>
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm">
@@ -2674,9 +2940,14 @@ function PensionDebugTab() {
 
                     {/* COLA Projection */}
                     <div className="bg-gray-800 p-4 rounded">
-                        <h4 className="font-semibold text-white mb-3">COLA Projection (Inflation: {assumptions.macro.inflationRate}%)</h4>
+                        <h4 className="font-semibold text-white mb-3">
+                            Benefit Projection {assumptions.macro.inflationAdjusted ? '(Today\'s Dollars)' : `(Nominal with ${assumptions.macro.inflationRate}% COLA)`}
+                        </h4>
                         <div className="text-xs text-gray-400 mb-2">
-                            CSRS receives full CPI COLA regardless of age.
+                            {assumptions.macro.inflationAdjusted
+                                ? "Values shown in today's dollars. COLA growth excluded as it roughly offsets inflation."
+                                : "CSRS receives full CPI COLA regardless of age."
+                            }
                         </div>
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm">
@@ -3297,7 +3568,7 @@ function QRCodeDebugTab() {
                         {previewUrl && (
                             <div className="bg-gray-800 rounded-lg p-4">
                                 <p className="text-gray-400 text-sm mb-2">Uploaded image:</p>
-                                <img src={previewUrl} alt="Uploaded QR" className="max-w-[300px] mx-auto border border-gray-700 rounded" />
+                                <img src={previewUrl} alt="Uploaded QR" className="max-w-75 mx-auto border border-gray-700 rounded" />
                             </div>
                         )}
                     </div>

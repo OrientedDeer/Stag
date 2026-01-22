@@ -4,6 +4,8 @@
 
 These features are complete but need validation:
 
+- **Budget Tracking Tab** - CSV import, category mappings, spending analysis
+- **ESPP Accounts** - Lot tracking, tax calculations, withdrawal preferences
 - **Tax Optimization Tab** - Recommendations need accuracy review
 - **Scenario Comparison Tool** - Compare saved scenarios
 - **Financial Ratios Tab** - Benchmarks need validation
@@ -61,12 +63,17 @@ These features are complete but need validation:
 
 ---
 
+## Recently Completed
+
+- **ESPP Support** - Full Employee Stock Purchase Plan account tracking with lot-level detail, qualifying/disqualifying disposition tax handling, configurable withdrawal preferences
+- **Budget Tracking** - Track actual spending vs projections with CSV import, auto-categorization rules, monthly snapshots, spending trends analysis
+
+---
+
 ## Later
 
 ### Features
-- ESPP support
 - Real estate enhancements (property sale, depreciation, capital gains)
-- Budget tracking (actual vs projected)
 - Optional localStorage encryption
 - Zero bracket harvesting (withdraw from Traditional tax-free when below standard deduction)
   - Needs design work on interaction with Auto Roth Conversions

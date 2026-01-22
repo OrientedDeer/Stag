@@ -253,12 +253,16 @@ export function calculateFinancialRatios(
   const livingExpenses = Math.max(0, totalExpense - taxesAndDeductions);
   const monthlyLivingExpenses = livingExpenses / MONTHS_PER_YEAR;
 
-  // 1. Savings Rate = (Income - Expenses) / Income
-  const savingsAmount = totalIncome - totalExpense;
+  // 1. Savings Rate = (Income - Expenses + Retirement Savings) / Income
+  // 401k, HSA, and Roth 401k contributions are savings, not expenses
+  const retirementSavings = (taxDetails.preTax || 0) + (taxDetails.postTax || 0);
+  const savingsAmount = totalIncome - totalExpense + retirementSavings;
   const savingsRateValue = totalIncome > 0 ? savingsAmount / totalIncome : 0;
 
-  // 2. Expense Ratio = Expenses / Income
-  const expenseRatioValue = totalIncome > 0 ? totalExpense / totalIncome : 1;
+  // 2. Expense Ratio = (Expenses - Retirement Savings) / Income
+  // Exclude 401k/HSA/Roth since those are savings, not spending
+  const actualExpenses = totalExpense - retirementSavings;
+  const expenseRatioValue = totalIncome > 0 ? actualExpenses / totalIncome : 1;
 
   // 3. Emergency Fund Months = Liquid Assets / Monthly Living Expenses
   const emergencyMonths = monthlyLivingExpenses > 0 ? liquidAssets / monthlyLivingExpenses : 0;
@@ -382,10 +386,12 @@ export function calculateRatioTrends(simulation: SimulationYear[]): RatioTrend[]
     const livingExpenses = Math.max(0, cashflow.totalExpense - taxesAndDeductions);
     const monthlyLivingExpenses = livingExpenses / MONTHS_PER_YEAR;
 
+    const retirementSavings = (taxDetails.preTax || 0) + (taxDetails.postTax || 0);
+
     return {
       year: year.year,
       savingsRate: cashflow.totalIncome > 0
-        ? (cashflow.totalIncome - cashflow.totalExpense) / cashflow.totalIncome
+        ? (cashflow.totalIncome - cashflow.totalExpense + retirementSavings) / cashflow.totalIncome
         : 0,
       debtToIncome: cashflow.totalIncome > 0
         ? getTotalDebt(accounts) / cashflow.totalIncome

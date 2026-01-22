@@ -12,6 +12,7 @@ import {
   ContributionGrowthStrategy,
   AutoMax401kOption,
   ESPPContributionType,
+  PensionSystem,
   calculateSocialSecurityStartDate,
   IncomeFrequency
 } from './models';
@@ -56,6 +57,7 @@ interface IncomeFormState {
     contributionGrowthStrategy: ContributionGrowthStrategy;
     hsaContribution: number;
     autoMax401k: AutoMax401kOption;
+    pensionSystem: PensionSystem;
     // ESPP fields
     esppContributionType: ESPPContributionType;
     esppContributionAmount: number;
@@ -90,6 +92,7 @@ function getInitialFormState(): IncomeFormState {
         contributionGrowthStrategy: 'FIXED',
         hsaContribution: 0,
         autoMax401k: 'custom',
+        pensionSystem: 'NONE',
         esppContributionType: 'NONE',
         esppContributionAmount: 0,
         esppDiscountPercent: 15,
@@ -205,7 +208,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                 form.matchAccountId, taxType, form.contributionGrowthStrategy,
                 finalStartDate, finalEndDate, form.hsaContribution, form.autoMax401k,
                 form.esppContributionType, form.esppContributionAmount, form.esppDiscountPercent,
-                form.esppHasLookback, 6, finalEsppAccountId, 7
+                form.esppHasLookback, 6, finalEsppAccountId, 7, form.pensionSystem
             );
         } else if (selectedType === CurrentSocialSecurityIncome) {
             newIncome = new CurrentSocialSecurityIncome(
@@ -485,6 +488,18 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                             )}
                                         </>
                                     )}
+                                    {/* Pension System Selection */}
+                                    <DropdownInput
+                                        label="Pension System"
+                                        onChange={(val) => updateForm('pensionSystem', val as PensionSystem)}
+                                        options={[
+                                            { value: 'NONE', label: 'None' },
+                                            { value: 'FERS', label: 'FERS (Federal)' },
+                                            { value: 'CSRS', label: 'CSRS (Federal)' }
+                                        ]}
+                                        value={form.pensionSystem}
+                                        tooltip="If this job is covered by a federal pension system, select it here. This helps track your High-3 salary for pension calculations."
+                                    />
                                 </>
                             )}
                             {/* Hide date fields for auto-calculated income types */}

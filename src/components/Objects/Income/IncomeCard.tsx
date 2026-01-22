@@ -10,7 +10,8 @@ import {
     INCOME_COLORS_BACKGROUND,
     IncomeFrequency,
     AutoMax401kOption,
-    ESPPContributionType
+    ESPPContributionType,
+    PensionSystem
 } from "./models.js";
 import { IncomeContext, AllIncomeKeys } from "./IncomeContext.js";
 import { StyledInput, StyledSelect } from "../../Layout/InputFields/StyleUI.js";
@@ -501,6 +502,20 @@ function WorkIncomeFields({
             />
 
             <ESPPFields income={income} onFieldUpdate={onFieldUpdate} esppAccounts={esppAccounts} />
+
+            {/* Pension System Selection */}
+            <DropdownInput
+                id={`${income.id}-pension-system`}
+                label="Pension System"
+                onChange={(val) => onFieldUpdate("pensionSystem", val as PensionSystem)}
+                options={[
+                    { value: 'NONE', label: 'None' },
+                    { value: 'FERS', label: 'FERS (Federal)' },
+                    { value: 'CSRS', label: 'CSRS (Federal)' }
+                ]}
+                value={income.pensionSystem}
+                tooltip="If this job is covered by a federal pension system, select it here. This helps track your High-3 salary for pension calculations."
+            />
 
             {contributionWarnings && contributionWarnings.length > 0 && (
                 <div className="col-span-full">

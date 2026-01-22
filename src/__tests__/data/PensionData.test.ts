@@ -16,12 +16,16 @@ import {
 describe('PensionData', () => {
   describe('getFERSMRA', () => {
     it('should return correct MRA for various birth years', () => {
-      expect(getFERSMRA(1950)).toBe(55);
+      expect(getFERSMRA(1940)).toBe(55); // Before 1948
+      expect(getFERSMRA(1948)).toBeCloseTo(55.167, 2); // 55 years 2 months
+      expect(getFERSMRA(1950)).toBe(55.5); // 55 years 6 months
+      expect(getFERSMRA(1953)).toBe(56); // 1953-1964 all 56
       expect(getFERSMRA(1958)).toBe(56);
-      expect(getFERSMRA(1965)).toBe(56.5);
+      expect(getFERSMRA(1964)).toBe(56);
+      expect(getFERSMRA(1965)).toBeCloseTo(56.167, 2); // 56 years 2 months
+      expect(getFERSMRA(1966)).toBeCloseTo(56.333, 2); // 56 years 4 months
       expect(getFERSMRA(1970)).toBe(57);
       expect(getFERSMRA(1980)).toBe(57); // All years 1970+ are 57
-      expect(getFERSMRA(1940)).toBe(55); // Before 1948
     });
   });
 
@@ -47,7 +51,14 @@ describe('PensionData', () => {
     it('should return reduced retirement at MRA with 10-29 years', () => {
       const result = checkFERSEligibility(57, 15, 1970);
       expect(result.eligible).toBe(true);
-      expect(result.reductionPercent).toBe(25); // 5% per year under 62, capped at 25%
+      expect(result.reductionPercent).toBe(25); // 5% per year under 62: (62-57)*5 = 25%
+    });
+
+    it('should not cap MRA+10 reduction at 25%', () => {
+      // MRA=55 for birth year 1940, retiring at 55 with 10 years: (62-55)*5 = 35%
+      const result = checkFERSEligibility(55, 10, 1940);
+      expect(result.eligible).toBe(true);
+      expect(result.reductionPercent).toBe(35);
     });
 
     it('should return not eligible if under MRA with < 10 years', () => {
@@ -225,12 +236,12 @@ describe('PensionData', () => {
     it('should reduce by 5% per year under 62', () => {
       expect(getFERSEarlyReduction(61)).toBe(0.95); // 5% reduction
       expect(getFERSEarlyReduction(60)).toBe(0.90); // 10% reduction
-      expect(getFERSEarlyReduction(57)).toBe(0.75); // 25% reduction (max)
+      expect(getFERSEarlyReduction(57)).toBe(0.75); // 25% reduction
     });
 
-    it('should cap reduction at 25%', () => {
-      expect(getFERSEarlyReduction(55)).toBe(0.75); // Capped at 25%
-      expect(getFERSEarlyReduction(50)).toBe(0.75); // Capped at 25%
+    it('should not cap reduction at 25%', () => {
+      expect(getFERSEarlyReduction(55)).toBe(0.65); // 35% reduction
+      expect(getFERSEarlyReduction(50)).toBe(0.40); // 60% reduction
     });
   });
 });
