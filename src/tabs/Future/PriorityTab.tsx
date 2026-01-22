@@ -16,18 +16,7 @@ import { CurrencyInput } from '../../components/Layout/InputFields/CurrencyInput
 import { DropdownInput } from '../../components/Layout/InputFields/DropdownInput';
 import { NameInput } from '../../components/Layout/InputFields/NameInput';
 import { NumberInput } from '../../components/Layout/InputFields/NumberInput';
-
-// Chevron icon for expand/collapse
-const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
-    <svg
-        className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="currentColor"
-    >
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-    </svg>
-);
+import { ChevronIcon } from '../../components/Layout/Icons/ChevronIcon';
 
 export default function PriorityTab() {
     const { state, dispatch } = useContext(AssumptionsContext);
@@ -435,7 +424,7 @@ export default function PriorityTab() {
                                 <span className="text-gray-600">→</span>
                                 <span className="text-white font-bold font-mono">{formatMoney(takeHome)}</span>
                             </div>
-                            <ChevronIcon expanded={showPaycheckDetails} />
+                            <ChevronIcon expanded={showPaycheckDetails} className="w-5 h-5" />
                         </div>
                     </button>
 
@@ -505,7 +494,7 @@ export default function PriorityTab() {
                                 <span className="text-gray-300 font-medium">Committed Expenses</span>
                                 <div className="flex items-center gap-3">
                                     <span className="text-red-300 font-mono">-{formatMoney(totalMonthlyFixedExpenses)}</span>
-                                    <ChevronIcon expanded={showExpenseDetails} />
+                                    <ChevronIcon expanded={showExpenseDetails} className="w-5 h-5" />
                                 </div>
                             </button>
 

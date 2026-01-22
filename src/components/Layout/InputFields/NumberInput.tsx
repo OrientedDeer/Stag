@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { StyledInput } from "./StyleUI";
+import { stripLeadingZeros, handleEnterKeyBlur } from "./inputUtils";
 
 interface NumberInputProps {
     label: string;
@@ -14,30 +15,24 @@ interface NumberInputProps {
     tooltip?: string;
 }
 
+function validateRange(val: number, min?: number, max?: number): string | undefined {
+    if (min !== undefined && val < min) return `Min ${min}`;
+    if (max !== undefined && val > max) return `Max ${max}`;
+    return undefined;
+}
+
 export const NumberInput: React.FC<NumberInputProps> = ({ label, value, onChange, onBlur, error, id, disabled, min, max, tooltip }) => {
     const [localValue, setLocalValue] = useState(value.toString());
     const [internalError, setInternalError] = useState<string | undefined>();
 
-    // Built-in validation
-    const validateValue = (val: number): string | undefined => {
-        if (min !== undefined && val < min) return `Min ${min}`;
-        if (max !== undefined && val > max) return `Max ${max}`;
-        return undefined;
-    };
-
     useEffect(() => {
-        // If prop from parent changes, update local state.
-        // This handles cases where the value is changed externally.
-        // We check against parseFloat to allow for partial inputs like "5."
         if (parseFloat(localValue) !== value) {
             setLocalValue(value.toString());
         }
     }, [value]);
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        let strVal = e.target.value;
-        // Strip leading zeros except for "0" or "0."
-        strVal = strVal.replace(/^0+(?=\d)/, '');
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
+        const strVal = stripLeadingZeros(e.target.value);
         setLocalValue(strVal);
 
         if (strVal === "" || strVal === "-") {
@@ -51,15 +46,7 @@ export const NumberInput: React.FC<NumberInputProps> = ({ label, value, onChange
         }
     };
 
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'Enter') {
-            e.currentTarget.blur();
-        }
-    };
-
-    const handleBlur = () => {
-        // On blur, if the input is not a valid number, or it's something like "5.",
-        // format it to a clean number string. Revert to last good `value` if invalid.
+    const handleBlur = (): void => {
         const numVal = parseFloat(localValue);
         let finalVal = value;
         if (!isNaN(numVal)) {
@@ -70,14 +57,10 @@ export const NumberInput: React.FC<NumberInputProps> = ({ label, value, onChange
             setLocalValue(value.toString());
         }
 
-        // Validate and set internal error
-        setInternalError(validateValue(finalVal));
-
-        // Call parent's onBlur callback if provided
+        setInternalError(validateRange(finalVal, min, max));
         onBlur?.();
     };
 
-    // Use external error if provided, otherwise use internal validation error
     const displayError = error || internalError;
 
     return (
@@ -88,7 +71,7 @@ export const NumberInput: React.FC<NumberInputProps> = ({ label, value, onChange
             value={localValue}
             onChange={handleChange}
             onBlur={handleBlur}
-            onKeyDown={handleKeyDown}
+            onKeyDown={handleEnterKeyBlur}
             disabled={disabled}
             error={displayError}
             tooltip={tooltip}

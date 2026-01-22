@@ -355,108 +355,92 @@ export function getFRA(birthYear: number): number {
 }
 
 /**
- * Helper function to get wage index factor for a given year
- * For future years beyond available data, projects based on wage growth
- *
- * @param year The year to get wage index for
- * @param wageGrowthRate Annual wage growth rate (default: 0.025 = 2.5%)
- * @param inflationAdjusted If false, returns latest known values without projection
+ * Generic helper to look up yearly data with future projection support.
+ * Reduces code duplication across getWageIndexFactor, getBendPoints, getWageBase, etc.
  */
-export function getWageIndexFactor(year: number, wageGrowthRate: number = 0.025, inflationAdjusted: boolean = true): number {
-  if (WAGE_INDEX_FACTORS[year]) {
-    return WAGE_INDEX_FACTORS[year];
+function lookupYearlyData<T>(
+  data: Record<number, T>,
+  year: number,
+  projectFuture: (baseValue: T, growthMultiplier: number) => T,
+  wageGrowthRate: number,
+  inflationAdjusted: boolean
+): T {
+  if (data[year]) {
+    return data[year];
   }
 
-  const latestYear = Math.max(...Object.keys(WAGE_INDEX_FACTORS).map(Number));
+  const years = Object.keys(data).map(Number);
+  const latestYear = Math.max(...years);
+  const earliestYear = Math.min(...years);
 
-  // For future years, project based on wage growth (unless real dollars mode)
   if (year > latestYear) {
-    const baseFactor = WAGE_INDEX_FACTORS[latestYear];
-
-    // If not inflation adjusted (real dollars mode), use latest known values
+    const baseValue = data[latestYear];
     if (!inflationAdjusted) {
-      return baseFactor;
+      return baseValue;
     }
-
     const yearsToProject = year - latestYear;
     const growthMultiplier = Math.pow(1 + wageGrowthRate, yearsToProject);
-    return Math.round(baseFactor * growthMultiplier * 100) / 100;
+    return projectFuture(baseValue, growthMultiplier);
   }
 
-  // For years before data, return earliest available
-  const earliestYear = Math.min(...Object.keys(WAGE_INDEX_FACTORS).map(Number));
-  return WAGE_INDEX_FACTORS[earliestYear];
+  return data[earliestYear];
 }
 
 /**
- * Helper function to get bend points for a given year
- * For future years, uses projection based on wage growth
- *
- * @param year The year to get bend points for
- * @param wageGrowthRate Annual wage growth rate (default: 0.025 = 2.5%)
- * @param inflationAdjusted If false, returns latest known values without projection
+ * Helper function to get wage index factor for a given year.
+ * For future years beyond available data, projects based on wage growth.
  */
-export function getBendPoints(year: number, wageGrowthRate: number = 0.025, inflationAdjusted: boolean = true): { first: number; second: number } {
-  if (BEND_POINTS[year]) {
-    return BEND_POINTS[year];
-  }
-
-  const latestYear = Math.max(...Object.keys(BEND_POINTS).map(Number));
-
-  // For future years, project based on wage growth (unless real dollars mode)
-  if (year > latestYear) {
-    const basePoints = BEND_POINTS[latestYear];
-
-    // If not inflation adjusted (real dollars mode), use latest known values
-    if (!inflationAdjusted) {
-      return basePoints;
-    }
-
-    const yearsToProject = year - latestYear;
-    const growthMultiplier = Math.pow(1 + wageGrowthRate, yearsToProject);
-
-    return {
-      first: Math.round(basePoints.first * growthMultiplier),
-      second: Math.round(basePoints.second * growthMultiplier)
-    };
-  }
-
-  // For years before data, return earliest available
-  const earliestYear = Math.min(...Object.keys(BEND_POINTS).map(Number));
-  return BEND_POINTS[earliestYear];
+export function getWageIndexFactor(
+  year: number,
+  wageGrowthRate: number = 0.025,
+  inflationAdjusted: boolean = true
+): number {
+  return lookupYearlyData(
+    WAGE_INDEX_FACTORS,
+    year,
+    (base, multiplier) => Math.round(base * multiplier * 100) / 100,
+    wageGrowthRate,
+    inflationAdjusted
+  );
 }
 
 /**
- * Helper function to get wage base for a given year
- * For future years, projects based on wage growth
- *
- * @param year The year to get wage base for
- * @param wageGrowthRate Annual wage growth rate (default: 0.025 = 2.5%)
- * @param inflationAdjusted If false, returns latest known values without projection
+ * Helper function to get bend points for a given year.
+ * For future years, uses projection based on wage growth.
  */
-export function getWageBase(year: number, wageGrowthRate: number = 0.025, inflationAdjusted: boolean = true): number {
-  if (SS_WAGE_BASE[year]) {
-    return SS_WAGE_BASE[year];
-  }
+export function getBendPoints(
+  year: number,
+  wageGrowthRate: number = 0.025,
+  inflationAdjusted: boolean = true
+): { first: number; second: number } {
+  return lookupYearlyData(
+    BEND_POINTS,
+    year,
+    (base, multiplier) => ({
+      first: Math.round(base.first * multiplier),
+      second: Math.round(base.second * multiplier)
+    }),
+    wageGrowthRate,
+    inflationAdjusted
+  );
+}
 
-  const latestYear = Math.max(...Object.keys(SS_WAGE_BASE).map(Number));
-
-  // For future years, project based on wage growth (unless real dollars mode)
-  if (year > latestYear) {
-    const baseWage = SS_WAGE_BASE[latestYear];
-
-    // If not inflation adjusted (real dollars mode), use latest known values
-    if (!inflationAdjusted) {
-      return baseWage;
-    }
-
-    const yearsToProject = year - latestYear;
-    const growthMultiplier = Math.pow(1 + wageGrowthRate, yearsToProject);
-    return Math.round(baseWage * growthMultiplier / 100) * 100; // Round to nearest $100
-  }
-
-  const earliestYear = Math.min(...Object.keys(SS_WAGE_BASE).map(Number));
-  return SS_WAGE_BASE[earliestYear];
+/**
+ * Helper function to get wage base for a given year.
+ * For future years, projects based on wage growth.
+ */
+export function getWageBase(
+  year: number,
+  wageGrowthRate: number = 0.025,
+  inflationAdjusted: boolean = true
+): number {
+  return lookupYearlyData(
+    SS_WAGE_BASE,
+    year,
+    (base, multiplier) => Math.round(base * multiplier / 100) * 100,
+    wageGrowthRate,
+    inflationAdjusted
+  );
 }
 
 /**
@@ -486,40 +470,22 @@ export const EARNINGS_TEST_LIMITS: Record<number, { beforeFRA: number; yearOfFRA
 };
 
 /**
- * Helper function to get earnings test limit for a given year
- * For future years, projects based on wage growth
- *
- * @param year The year to get limits for
- * @param wageGrowthRate Annual wage growth rate for projecting future limits (default: 0.025 = 2.5%)
- * @param inflationAdjusted If false, returns latest known values without projection
- * @returns Object with beforeFRA and yearOfFRA limits
+ * Helper function to get earnings test limit for a given year.
+ * For future years, projects based on wage growth.
  */
-export function getEarningsTestLimit(year: number, wageGrowthRate: number = 0.025, inflationAdjusted: boolean = true): { beforeFRA: number; yearOfFRA: number } {
-  if (EARNINGS_TEST_LIMITS[year]) {
-    return EARNINGS_TEST_LIMITS[year];
-  }
-
-  const latestYear = Math.max(...Object.keys(EARNINGS_TEST_LIMITS).map(Number));
-
-  // For future years, project based on wage growth (unless real dollars mode)
-  if (year > latestYear) {
-    const baseLimit = EARNINGS_TEST_LIMITS[latestYear];
-
-    // If not inflation adjusted (real dollars mode), use latest known values
-    if (!inflationAdjusted) {
-      return baseLimit;
-    }
-
-    const yearsToProject = year - latestYear;
-    const growthMultiplier = Math.pow(1 + wageGrowthRate, yearsToProject);
-
-    return {
-      beforeFRA: Math.round(baseLimit.beforeFRA * growthMultiplier / 100) * 100,
-      yearOfFRA: Math.round(baseLimit.yearOfFRA * growthMultiplier / 100) * 100
-    };
-  }
-
-  // For years before data, return earliest available
-  const earliestYear = Math.min(...Object.keys(EARNINGS_TEST_LIMITS).map(Number));
-  return EARNINGS_TEST_LIMITS[earliestYear];
+export function getEarningsTestLimit(
+  year: number,
+  wageGrowthRate: number = 0.025,
+  inflationAdjusted: boolean = true
+): { beforeFRA: number; yearOfFRA: number } {
+  return lookupYearlyData(
+    EARNINGS_TEST_LIMITS,
+    year,
+    (base, multiplier) => ({
+      beforeFRA: Math.round(base.beforeFRA * multiplier / 100) * 100,
+      yearOfFRA: Math.round(base.yearOfFRA * multiplier / 100) * 100
+    }),
+    wageGrowthRate,
+    inflationAdjusted
+  );
 }

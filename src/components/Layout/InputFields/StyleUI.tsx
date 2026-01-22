@@ -31,13 +31,9 @@ interface DisplayGroupProps {
 }
 
 export const DisplayGroup: React.FC<DisplayGroupProps> = ({ label, children, className = '', tooltip }) => (
-  <div className={`bg-gray-900 border border-gray-700 rounded-md px-3 py-2 flex flex-col justify-center focus-within:ring-1 focus-within:ring-green-300 transition-all ${className}`}>
-    <div className="text-xs sm:text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide leading-tight flex items-center gap-1.5">
-      {label}
-      {tooltip && <Tooltip text={tooltip} />}
-    </div>
+  <InputGroup label={label} className={className} tooltip={tooltip}>
     {children}
-  </div>
+  </InputGroup>
 );
 
 interface StyledInputProps extends React.InputHTMLAttributes<HTMLInputElement> {

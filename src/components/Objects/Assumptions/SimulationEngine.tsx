@@ -1,5 +1,6 @@
 // src/components/Simulation/SimulationEngine.ts
-import { AnyAccount, DebtAccount, DeficitDebtAccount, InvestedAccount, PropertyAccount, SavedAccount } from "../../Objects/Accounts/models";
+import { AnyAccount, DebtAccount, DeficitDebtAccount, InvestedAccount, ESPPAccount, ESPPLot, PropertyAccount, SavedAccount, getESPPLotOrder } from "../../Objects/Accounts/models";
+import { getESPPLimit } from "../../../data/ContributionLimits";
 import { AnyExpense, LoanExpense, MortgageExpense } from "../Expense/models";
 import { AnyIncome, WorkIncome, FutureSocialSecurityIncome, FERSPensionIncome, CSRSPensionIncome, PassiveIncome, getIncomeActiveMultiplier } from "../../Objects/Income/models";
 import { calculateHigh3 } from "../../../data/PensionData";
@@ -749,7 +750,7 @@ export function simulateOneYear(
     if (isRetired && assumptions.investments.withdrawalStrategy === 'Guyton Klinger') {
         // Calculate total invested assets (for withdrawal calculations)
         const totalInvestedAssets = accounts.reduce((sum, acc) => {
-            if (acc instanceof InvestedAccount || acc instanceof SavedAccount) {
+            if (acc instanceof InvestedAccount || acc instanceof SavedAccount || acc instanceof ESPPAccount) {
                 return sum + acc.amount;
             }
             return sum;
@@ -912,6 +913,7 @@ export function simulateOneYear(
     // CHANGED: Split inflows into User vs Employer to support vesting tracking
     const userInflows: Record<string, number> = {};
     const employerInflows: Record<string, number> = {};
+    const esppLots: Record<string, ESPPLot[]> = {}; // ESPP lots to add to accounts
     let withdrawalTaxes = 0;
     let capitalGainsTaxTotal = 0; // Track capital gains tax separately for display
     let strategyWithdrawalExecuted = 0;
@@ -1203,7 +1205,7 @@ export function simulateOneYear(
     if (isRetired && assumptions.investments.withdrawalStrategy !== 'Guyton Klinger') {
         // Calculate total invested assets (for withdrawal calculations)
         const totalInvestedAssets = accounts.reduce((sum, acc) => {
-            if (acc instanceof InvestedAccount || acc instanceof SavedAccount) {
+            if (acc instanceof InvestedAccount || acc instanceof SavedAccount || acc instanceof ESPPAccount) {
                 return sum + acc.amount;
             }
             return sum;
@@ -1515,7 +1517,166 @@ export function simulateOneYear(
                         `Cap Gains Tax: $${taxHit.toLocaleString(undefined, { maximumFractionDigits: 0 })})`);
                 }
             }
-            // SCENARIO 4: Fallback for any other account type
+            // SCENARIO 4: ESPP Account (Mixed tax treatment: ordinary income + capital gains)
+            else if (account instanceof ESPPAccount) {
+                const saleDate = new Date(year, 6, 1); // Mid-year sale date for calculations
+
+                // Check withdrawal preference - skip if set to "dont_sell_until_qualifying" and no qualifying lots
+                if (account.withdrawalPreference === 'dont_sell_until_qualifying') {
+                    const eligibleLots = account.getEligibleLots(saleDate);
+                    const hasQualifying = eligibleLots.some(lot => account.calculateDispositionType(lot, saleDate) === 'qualifying');
+                    if (!hasQualifying) {
+                        logs.push(`⏭️ ESPP ${account.name}: Skipping (no qualifying lots, preference set to wait)`);
+                        continue; // Move to next account in withdrawal order
+                    }
+                }
+
+                // Get lots eligible for sale based on minimum holding period
+                const eligibleLots = account.getEligibleLots(saleDate);
+                const eligibleShares = eligibleLots.reduce((sum, lot) => sum + lot.shares, 0);
+
+                // If no eligible lots due to holding period restriction
+                if (eligibleShares === 0 && account.minimumHoldingDays > 0) {
+                    logs.push(`⏭️ ESPP ${account.name}: Skipping (no lots meet ${account.minimumHoldingDays}-day holding requirement)`);
+                    continue;
+                }
+
+                // If ESPP account has no lots yet, treat as simple withdrawal
+                if (account.totalShares === 0) {
+                    withdrawAmount = Math.min(deficit, availableBalance);
+                    deficit -= withdrawAmount;
+                    logs.push(`📈 ESPP withdrawal (no lots): $${withdrawAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+                } else {
+                    // ESPP sales have mixed tax treatment:
+                    // - Discount portion: ordinary income (qualifying) or full discount as ordinary (disqualifying)
+                    // - Remaining gain: capital gains (short-term or long-term)
+                    const fedParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'federal', undefined, assumptions);
+                    const stateParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions);
+
+                    const currentFedIncome = totalGrossIncome - preTaxDeductions;
+                    const stdDedFed = fedParams?.standardDeduction || 12950;
+                    const currentFedDeduction = taxState.deductionMethod === 'Standard' ? stdDedFed : 0;
+                    const ordinaryTaxableIncome = Math.max(0, currentFedIncome - currentFedDeduction);
+
+                    const currentStateIncome = totalGrossIncome - preTaxDeductions;
+                    const stdDedState = stateParams?.standardDeduction || 0;
+                    const currentStateDeduction = taxState.deductionMethod === 'Standard' ? stdDedState : 0;
+                    const stateApplied = { ...stateParams!, standardDeduction: currentStateDeduction };
+
+                    const lotOrder = getESPPLotOrder(account.withdrawalPreference);
+
+                    // Calculate available balance from eligible shares only
+                    const currentPrice = account.amount / account.totalShares;
+                    const eligibleBalance = eligibleShares > 0 ? eligibleShares * currentPrice : availableBalance;
+                    const effectiveAvailableBalance = account.minimumHoldingDays > 0 ? Math.min(availableBalance, eligibleBalance) : availableBalance;
+
+                    // Use iterative approach to find gross withdrawal needed to net the deficit
+                    // Assume ~20% effective total tax rate as starting estimate
+                    let grossWithdrawal = deficit / 0.8;
+
+                    // Iterate to refine
+                    for (let i = 0; i < 10; i++) {
+                        const testWithdrawal = Math.min(grossWithdrawal, effectiveAvailableBalance);
+                        const sharesToSell = testWithdrawal / currentPrice;
+
+                        // Calculate tax using ESPP's built-in method with lot order preference and eligible lots
+                        const taxResult = account.calculateSaleTax(sharesToSell, currentPrice, saleDate, lotOrder, account.minimumHoldingDays > 0 ? eligibleLots : undefined);
+                        const totalCapGains = taxResult.shortTermGains + taxResult.longTermGains;
+
+                        // Federal tax on ordinary income portion
+                        const fedBase = TaxService.calculateTax(currentFedIncome, 0, { ...fedParams!, standardDeduction: currentFedDeduction });
+                        const fedNew = TaxService.calculateTax(currentFedIncome + taxResult.ordinaryIncome, 0, { ...fedParams!, standardDeduction: currentFedDeduction });
+                        const ordinaryTax = fedNew - fedBase;
+
+                        // State tax on ordinary income
+                        const stateOrdBase = TaxService.calculateTax(currentStateIncome, 0, stateApplied);
+                        const stateOrdNew = TaxService.calculateTax(currentStateIncome + taxResult.ordinaryIncome, 0, stateApplied);
+                        const stateOrdinaryTax = stateOrdNew - stateOrdBase;
+
+                        // Federal capital gains tax (long-term only; short-term taxed as ordinary)
+                        const capGainsTax = TaxService.calculateCapitalGainsTax(
+                            taxResult.longTermGains,
+                            ordinaryTaxableIncome + taxResult.ordinaryIncome + taxResult.shortTermGains,
+                            taxState,
+                            year,
+                            assumptions
+                        );
+
+                        // Short-term gains taxed as ordinary income
+                        const fedShortBase = TaxService.calculateTax(currentFedIncome + taxResult.ordinaryIncome, 0, { ...fedParams!, standardDeduction: currentFedDeduction });
+                        const fedShortNew = TaxService.calculateTax(currentFedIncome + taxResult.ordinaryIncome + taxResult.shortTermGains, 0, { ...fedParams!, standardDeduction: currentFedDeduction });
+                        const shortTermTax = fedShortNew - fedShortBase;
+
+                        // State capital gains tax (states typically tax all gains as ordinary)
+                        const stateCapBase = TaxService.calculateTax(currentStateIncome + taxResult.ordinaryIncome, 0, stateApplied);
+                        const stateCapNew = TaxService.calculateTax(currentStateIncome + taxResult.ordinaryIncome + totalCapGains, 0, stateApplied);
+                        const stateCapGainsTax = stateCapNew - stateCapBase;
+
+                        const testTotalTax = ordinaryTax + stateOrdinaryTax + capGainsTax + shortTermTax + stateCapGainsTax;
+                        const testNetReceived = testWithdrawal - testTotalTax;
+
+                        if (Math.abs(testNetReceived - deficit) < 1) {
+                            grossWithdrawal = testWithdrawal;
+                            break;
+                        }
+
+                        // Adjust estimate
+                        if (testNetReceived > deficit) {
+                            grossWithdrawal = testWithdrawal - (testNetReceived - deficit) * 0.8;
+                        } else {
+                            grossWithdrawal = testWithdrawal + (deficit - testNetReceived) * 1.2;
+                        }
+                    }
+
+                    grossWithdrawal = Math.min(grossWithdrawal, effectiveAvailableBalance);
+                    const sharesToSell = grossWithdrawal / currentPrice;
+                    const taxResult = account.calculateSaleTax(sharesToSell, currentPrice, saleDate, lotOrder, account.minimumHoldingDays > 0 ? eligibleLots : undefined);
+                    const totalCapGains = taxResult.shortTermGains + taxResult.longTermGains;
+
+                    // Recalculate final taxes
+                    const fedBase = TaxService.calculateTax(currentFedIncome, 0, { ...fedParams!, standardDeduction: currentFedDeduction });
+                    const fedNew = TaxService.calculateTax(currentFedIncome + taxResult.ordinaryIncome, 0, { ...fedParams!, standardDeduction: currentFedDeduction });
+                    const ordinaryTax = fedNew - fedBase;
+
+                    const stateOrdBase = TaxService.calculateTax(currentStateIncome, 0, stateApplied);
+                    const stateOrdNew = TaxService.calculateTax(currentStateIncome + taxResult.ordinaryIncome, 0, stateApplied);
+                    const stateOrdinaryTax = stateOrdNew - stateOrdBase;
+
+                    const capGainsTax = TaxService.calculateCapitalGainsTax(
+                        taxResult.longTermGains,
+                        ordinaryTaxableIncome + taxResult.ordinaryIncome + taxResult.shortTermGains,
+                        taxState,
+                        year,
+                        assumptions
+                    );
+
+                    const fedShortBase = TaxService.calculateTax(currentFedIncome + taxResult.ordinaryIncome, 0, { ...fedParams!, standardDeduction: currentFedDeduction });
+                    const fedShortNew = TaxService.calculateTax(currentFedIncome + taxResult.ordinaryIncome + taxResult.shortTermGains, 0, { ...fedParams!, standardDeduction: currentFedDeduction });
+                    const shortTermTax = fedShortNew - fedShortBase;
+
+                    const stateCapBase = TaxService.calculateTax(currentStateIncome + taxResult.ordinaryIncome, 0, stateApplied);
+                    const stateCapNew = TaxService.calculateTax(currentStateIncome + taxResult.ordinaryIncome + totalCapGains, 0, stateApplied);
+                    const stateCapGainsTax = stateCapNew - stateCapBase;
+
+                    taxHit = ordinaryTax + stateOrdinaryTax + capGainsTax + shortTermTax + stateCapGainsTax;
+                    withdrawAmount = grossWithdrawal;
+
+                    const netReceived = grossWithdrawal - taxHit;
+                    deficit -= netReceived;
+
+                    // Track taxes - ordinary income and short-term gains go to withdrawal taxes, long-term cap gains tracked separately
+                    withdrawalTaxes += ordinaryTax + stateOrdinaryTax + shortTermTax;
+                    capitalGainsTaxTotal += capGainsTax + stateCapGainsTax;
+                    totalGrossIncome += taxResult.ordinaryIncome + taxResult.shortTermGains;
+
+                    logs.push(`📈 ESPP withdrawal: $${grossWithdrawal.toLocaleString(undefined, { maximumFractionDigits: 0 })} ` +
+                        `(Ordinary: $${taxResult.ordinaryIncome.toLocaleString(undefined, { maximumFractionDigits: 0 })}, ` +
+                        `ST Gains: $${taxResult.shortTermGains.toLocaleString(undefined, { maximumFractionDigits: 0 })}, ` +
+                        `LT Gains: $${taxResult.longTermGains.toLocaleString(undefined, { maximumFractionDigits: 0 })}, ` +
+                        `Tax: $${taxHit.toLocaleString(undefined, { maximumFractionDigits: 0 })})`);
+                }
+            }
+            // SCENARIO 5: Fallback for any other account type
             // Treat as simple withdrawal (no tax calculation - covers edge cases)
             else {
                 withdrawAmount = Math.min(deficit, availableBalance);
@@ -1636,6 +1797,127 @@ export function simulateOneYear(
         }
     });
 
+    // 5a-2. ESPP Purchase Processing
+    // Track total ESPP purchases to enforce $25k FMV annual limit
+    let totalESPPFMVThisYear = 0;
+    const esppLimit = getESPPLimit();
+
+    incomesWithEarningsTest.forEach(inc => {
+        if (!(inc instanceof WorkIncome)) return;
+        if (inc.esppContributionType === 'NONE') return;
+        if (!inc.esppAccountId) return;
+
+        const activeMultiplier = getIncomeActiveMultiplier(inc, year);
+        if (activeMultiplier === 0) return;
+
+        // Calculate annual ESPP contribution
+        const annualContribution = inc.getAnnualESPPContribution() * activeMultiplier;
+        if (annualContribution <= 0) return;
+
+        // Find the linked ESPP account
+        const esppAccount = accounts.find(acc => acc.id === inc.esppAccountId && acc instanceof ESPPAccount) as ESPPAccount | undefined;
+        if (!esppAccount) {
+            logs.push(`⚠️ ESPP account ${inc.esppAccountId} not found for ${inc.name}`);
+            return;
+        }
+
+        // Model ESPP as 2 purchases per year (typical 6-month offering periods)
+        // Each purchase uses half the annual contribution
+        const purchaseContribution = annualContribution / 2;
+        const stockGrowthRate = inc.esppExpectedStockGrowth / 100;
+
+        for (let purchaseNum = 0; purchaseNum < 2; purchaseNum++) {
+            // Calculate dates for this purchase
+            const grantMonth = purchaseNum * 6; // Jan or Jul
+            const purchaseMonth = grantMonth + 5; // Jun or Dec
+            const grantDate = new Date(Date.UTC(year, grantMonth, 1));
+            const purchaseDate = new Date(Date.UTC(year, purchaseMonth, 28));
+
+            // Assume FMV at grant equals current stock price (normalized to $100 for simplicity)
+            // The simulation grows the account value, so lots track relative purchase details
+            const fmvAtGrant = 100;
+
+            // Model stock growth over offering period (6 months)
+            const growthOverPeriod = Math.pow(1 + stockGrowthRate, 0.5);  // 6 months = 0.5 years
+            const fmvAtPurchase = fmvAtGrant * growthOverPeriod;
+
+            // Calculate purchase price with lookback
+            let basePriceForDiscount: number;
+            if (inc.esppHasLookback) {
+                // With lookback: discount applied to lower of grant or purchase price
+                basePriceForDiscount = Math.min(fmvAtGrant, fmvAtPurchase);
+            } else {
+                // No lookback: discount applied to purchase price only
+                basePriceForDiscount = fmvAtPurchase;
+            }
+
+            const discountPercent = inc.esppDiscountPercent / 100;
+            const purchasePrice = basePriceForDiscount * (1 - discountPercent);
+            const discountAmount = basePriceForDiscount - purchasePrice;
+
+            // Calculate shares purchased
+            const shares = purchaseContribution / purchasePrice;
+            const fmvOfShares = shares * fmvAtPurchase;
+
+            // Check against $25k FMV annual limit
+            if (totalESPPFMVThisYear + fmvOfShares > esppLimit) {
+                const remainingFMV = Math.max(0, esppLimit - totalESPPFMVThisYear);
+                if (remainingFMV <= 0) {
+                    logs.push(`⚠️ ESPP: ${inc.name} hit $25k annual limit - purchase skipped`);
+                    continue;
+                }
+                // Reduce shares to stay within limit
+                const reducedShares = remainingFMV / fmvAtPurchase;
+                const reducedContribution = reducedShares * purchasePrice;
+                logs.push(`⚠️ ESPP: ${inc.name} purchase reduced to stay within $25k limit`);
+
+                // Create the lot with reduced shares
+                const lot: ESPPLot = {
+                    id: `LOT-${year}-${purchaseNum}-${inc.id}`,
+                    grantDate,
+                    purchaseDate,
+                    fmvAtGrant,
+                    fmvAtPurchase,
+                    purchasePrice,
+                    shares: reducedShares,
+                    totalCost: reducedContribution,
+                    discountAmount
+                };
+
+                // Track the inflow (using purchase price as the cost basis)
+                userInflows[esppAccount.id] = (userInflows[esppAccount.id] || 0) + (reducedShares * fmvAtPurchase);
+                totalESPPFMVThisYear += remainingFMV;
+
+                // Store lot to be added later when accounts are updated
+                if (!esppLots[esppAccount.id]) esppLots[esppAccount.id] = [];
+                esppLots[esppAccount.id].push(lot);
+            } else {
+                // Create the lot
+                const lot: ESPPLot = {
+                    id: `LOT-${year}-${purchaseNum}-${inc.id}`,
+                    grantDate,
+                    purchaseDate,
+                    fmvAtGrant,
+                    fmvAtPurchase,
+                    purchasePrice,
+                    shares,
+                    totalCost: purchaseContribution,
+                    discountAmount
+                };
+
+                // Track the inflow at FMV (actual value added to account)
+                userInflows[esppAccount.id] = (userInflows[esppAccount.id] || 0) + fmvOfShares;
+                totalESPPFMVThisYear += fmvOfShares;
+
+                // Store lot to be added later when accounts are updated
+                if (!esppLots[esppAccount.id]) esppLots[esppAccount.id] = [];
+                esppLots[esppAccount.id].push(lot);
+
+                logs.push(`📈 ESPP: ${inc.name} purchased ${shares.toFixed(2)} shares @ $${purchasePrice.toFixed(2)} (${(discountPercent * 100).toFixed(0)}% discount${inc.esppHasLookback ? ' + lookback' : ''})`);
+            }
+        }
+    });
+
     // 5b. Pay down deficit debt FIRST (before priority allocations)
     // This ensures deficit debt is paid off before any other surplus allocations
     if (discretionaryCash > 0 && existingDeficitDebt && existingDeficitDebt.amount > 0) {
@@ -1751,6 +2033,23 @@ export function simulateOneYear(
 
         if (acc instanceof SavedAccount) {
             return acc.increment(assumptions, totalIn);
+        }
+
+        if (acc instanceof ESPPAccount) {
+            // Grow the account (stock appreciation), passing return override for Monte Carlo
+            let grownAccount = acc.increment(assumptions, returnOverride);
+
+            // Add any new lots from this year's ESPP purchases
+            // Note: addLot handles adding the FMV to the account amount, so we don't
+            // separately add totalIn (which would double-count the purchase value)
+            const newLots = esppLots[acc.id] || [];
+            if (newLots.length > 0) {
+                for (const lot of newLots) {
+                    grownAccount = grownAccount.addLot(lot);
+                }
+            }
+
+            return grownAccount;
         }
 
         // Exhaustive check: all AnyAccount types are handled above

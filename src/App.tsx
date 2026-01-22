@@ -22,6 +22,8 @@ import { MonteCarloProvider } from "./components/Objects/Assumptions/MonteCarloC
 import { ScenarioProvider } from "./components/Objects/Scenarios/ScenarioContext";
 import PriorityTab from "./tabs/Future/PriorityTab";
 import WithdrawalTab from "./tabs/Future/WithdrawalTab";
+import BudgetTab from "./tabs/Budget/BudgetTab";
+import { BudgetProvider } from "./components/Objects/Budget/BudgetContext";
 
 export default function App() {
   const [isOpen, setIsOpen] = useState(false); // shared variable
@@ -35,6 +37,7 @@ export default function App() {
               <AssumptionsProvider>
               <MonteCarloProvider>
               <ScenarioProvider>
+              <BudgetProvider>
               <div className="flex h-screen">
                 <Sidebar isOpen={isOpen} onClose={() => setIsOpen(true)}/>
                 <div className="flex flex-col flex-1 overflow-hidden">
@@ -50,7 +53,10 @@ export default function App() {
                       <Route path="/current/income" element={<IncomeTab />} />
                       <Route path="/current/expense" element={<ExpenseTab />} />
                       <Route path="/current/taxes" element={<TaxesTab />} />
-                                  
+
+                      <Route path="/budget" element={<BudgetTab />} />
+                      <Route path="/budget/*" element={<BudgetTab />} />
+
                       <Route path="/future" element={<FutureTab />} />
                       <Route path="/future/assumptions" element={<AssumptionTab />} />
                       <Route path="/future/allocation" element={<PriorityTab />} />
@@ -61,6 +67,7 @@ export default function App() {
                   </main>
                 </div>
               </div>
+              </BudgetProvider>
               </ScenarioProvider>
               </MonteCarloProvider>
               </AssumptionsProvider>

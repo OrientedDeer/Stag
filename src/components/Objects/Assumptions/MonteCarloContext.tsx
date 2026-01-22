@@ -16,56 +16,38 @@ import { AnyExpense } from '../Expense/models';
 import { AssumptionsState } from './AssumptionsContext';
 import { TaxState } from '../Taxes/TaxContext';
 
-/**
- * Reducer for Monte Carlo state management
- */
-const monteCarloReducer = (state: MonteCarloState, action: MonteCarloAction): MonteCarloState => {
+function monteCarloReducer(state: MonteCarloState, action: MonteCarloAction): MonteCarloState {
     switch (action.type) {
         case 'UPDATE_CONFIG':
-            return {
-                ...state,
-                config: { ...state.config, ...action.payload },
-            };
+            return { ...state, config: { ...state.config, ...action.payload } };
         case 'START_SIMULATION':
-            return {
-                ...state,
-                isRunning: true,
-                progress: 0,
-                error: null,
-            };
+            return { ...state, isRunning: true, progress: 0, error: null };
         case 'UPDATE_PROGRESS':
-            return {
-                ...state,
-                progress: action.payload,
-            };
+            return { ...state, progress: action.payload };
         case 'COMPLETE_SIMULATION':
-            return {
-                ...state,
-                isRunning: false,
-                progress: 100,
-                summary: action.payload,
-                error: null,
-            };
+            return { ...state, isRunning: false, progress: 100, summary: action.payload, error: null };
         case 'SIMULATION_ERROR':
-            return {
-                ...state,
-                isRunning: false,
-                progress: 0,
-                error: action.payload,
-            };
+            return { ...state, isRunning: false, progress: 0, error: action.payload };
         case 'RESET':
-            return {
-                ...initialMonteCarloState,
-                config: state.config, // Keep the config
-            };
+            return { ...initialMonteCarloState, config: state.config };
         default:
             return state;
     }
-};
+}
 
-/**
- * Context value interface
- */
+function loadMonteCarloConfig(initial: MonteCarloState): MonteCarloState {
+    try {
+        const saved = localStorage.getItem('monte_carlo_config');
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            return { ...initial, config: { ...defaultMonteCarloConfig, ...parsed } };
+        }
+    } catch {
+        // Fall through to return initial
+    }
+    return initial;
+}
+
 interface MonteCarloContextProps {
     state: MonteCarloState;
     dispatch: React.Dispatch<MonteCarloAction>;
@@ -81,9 +63,6 @@ interface MonteCarloContextProps {
     generateNewSeed: () => void;
 }
 
-/**
- * Create context with default values
- */
 export const MonteCarloContext = createContext<MonteCarloContextProps>({
     state: initialMonteCarloState,
     dispatch: () => null,
@@ -93,33 +72,12 @@ export const MonteCarloContext = createContext<MonteCarloContextProps>({
     generateNewSeed: () => {},
 });
 
-/**
- * Provider component for Monte Carlo state
- */
-export const MonteCarloProvider = ({ children }: { children: ReactNode }) => {
-    // Initialize state from localStorage if available
-    const [state, dispatch] = useReducer(monteCarloReducer, initialMonteCarloState, (initial) => {
-        const saved = localStorage.getItem('monte_carlo_config');
-        if (saved) {
-            try {
-                const parsed = JSON.parse(saved);
-                return {
-                    ...initial,
-                    config: { ...defaultMonteCarloConfig, ...parsed },
-                };
-            } catch (e) {
-                console.error('Failed to parse Monte Carlo config', e);
-            }
-        }
-        return initial;
-    });
+export function MonteCarloProvider({ children }: { children: ReactNode }): React.ReactElement {
+    const [state, dispatch] = useReducer(monteCarloReducer, initialMonteCarloState, loadMonteCarloConfig);
 
-    // Debounced localStorage persistence for config only
+    // Persist config only (not transient simulation state)
     useDebouncedLocalStorage('monte_carlo_config', state.config);
 
-    /**
-     * Run the Monte Carlo simulation
-     */
     const runSimulation = useCallback(async (
         accounts: AnyAccount[],
         incomes: AnyIncome[],
@@ -128,7 +86,6 @@ export const MonteCarloProvider = ({ children }: { children: ReactNode }) => {
         taxState: TaxState
     ) => {
         dispatch({ type: 'START_SIMULATION' });
-
         try {
             const summary = await runMonteCarloSimulation(
                 state.config,
@@ -139,7 +96,6 @@ export const MonteCarloProvider = ({ children }: { children: ReactNode }) => {
                 taxState,
                 (progress) => dispatch({ type: 'UPDATE_PROGRESS', payload: progress })
             );
-
             dispatch({ type: 'COMPLETE_SIMULATION', payload: summary });
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Simulation failed';
@@ -147,28 +103,18 @@ export const MonteCarloProvider = ({ children }: { children: ReactNode }) => {
         }
     }, [state.config]);
 
-    /**
-     * Update configuration
-     */
     const updateConfig = useCallback((config: Partial<MonteCarloConfig>) => {
         dispatch({ type: 'UPDATE_CONFIG', payload: config });
     }, []);
 
-    /**
-     * Reset results (keep config)
-     */
     const resetResults = useCallback(() => {
         dispatch({ type: 'RESET' });
     }, []);
 
-    /**
-     * Generate a new random seed
-     */
     const generateNewSeed = useCallback(() => {
         dispatch({ type: 'UPDATE_CONFIG', payload: { seed: createRandomSeed() } });
     }, []);
 
-    // Memoize context value to prevent unnecessary re-renders
     const contextValue = useMemo(() => ({
         state,
         dispatch,
@@ -183,7 +129,7 @@ export const MonteCarloProvider = ({ children }: { children: ReactNode }) => {
             {children}
         </MonteCarloContext.Provider>
     );
-};
+}
 
 /**
  * Custom hook to access Monte Carlo state and actions

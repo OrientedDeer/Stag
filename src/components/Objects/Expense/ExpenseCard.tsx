@@ -1,75 +1,74 @@
-import { useContext, useState, useEffect, useCallback } from "react";
+import { useContext, useState, useEffect, useCallback, ReactElement } from "react";
 import {
     AnyExpense,
     RentExpense,
-	MortgageExpense,
+    MortgageExpense,
     LoanExpense,
     DependentExpense,
     HealthcareExpense,
     VacationExpense,
     EmergencyExpense,
-	TransportExpense,
-	FoodExpense,
+    TransportExpense,
+    FoodExpense,
     OtherExpense,
-	CharityExpense,
-	SubscriptionExpense,
-	EXPENSE_COLORS_BACKGROUND
-} from './models';
-import { ExpenseContext, AllExpenseKeys } from "./ExpenseContext";
-import { AccountContext } from "../Accounts/AccountContext"; // Import Account Context for syncing
-import { StyledDisplay, StyledInput, StyledSelect } from "../../Layout/InputFields/StyleUI";
-import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput"; // Import new component
-import DeleteExpenseControl from './DeleteExpenseUI';
-import { PercentageInput } from "../../Layout/InputFields/PercentageInput";
-import { NumberInput } from "../../Layout/InputFields/NumberInput";
-import { NameInput } from "../../Layout/InputFields/NameInput";
-import { ToggleInput } from "../../Layout/InputFields/ToggleInput";
-import { formatCompactCurrency } from "../../../tabs/Future/tabs/FutureUtils";
-import { AssumptionsContext } from "../Assumptions/AssumptionsContext";
-import { AlertBanner } from "../../Layout/AlertBanner";
+    CharityExpense,
+    SubscriptionExpense,
+    EXPENSE_COLORS_BACKGROUND
+} from './models.js';
+import { ExpenseContext, AllExpenseKeys } from "./ExpenseContext.js";
+import { AccountContext } from "../Accounts/AccountContext.js";
+import { StyledDisplay, StyledInput, StyledSelect } from "../../Layout/InputFields/StyleUI.js";
+import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput.js";
+import DeleteExpenseControl from './DeleteExpenseUI.js';
+import { PercentageInput } from "../../Layout/InputFields/PercentageInput.js";
+import { NumberInput } from "../../Layout/InputFields/NumberInput.js";
+import { NameInput } from "../../Layout/InputFields/NameInput.js";
+import { ToggleInput } from "../../Layout/InputFields/ToggleInput.js";
+import { formatCompactCurrency } from "../../../tabs/Future/tabs/FutureUtils.js";
+import { AssumptionsContext } from "../Assumptions/AssumptionsContext.js";
+import { AlertBanner } from "../../Layout/AlertBanner.js";
+import { ExpandableCard } from "../../Layout/ExpandableCard.js";
+import { formatDateForInput, getFrequencyAbbrev } from "../../../utils/formatters.js";
 
-// Helper to format Date objects to YYYY-MM-DD for input fields
-const formatDate = (date: Date | undefined): string => {
-    if (!date) return "";
-    try {
-        return date.toISOString().split('T')[0];
-    } catch (e) {
-        return "";
-    }
-};
+function getExpenseDescriptor(expense: AnyExpense): string {
+    if (expense instanceof RentExpense) return "RENT";
+    if (expense instanceof MortgageExpense) return "MORTGAGE";
+    if (expense instanceof LoanExpense) return "LOAN";
+    if (expense instanceof DependentExpense) return "DEPENDENT";
+    if (expense instanceof HealthcareExpense) return "HEALTHCARE";
+    if (expense instanceof VacationExpense) return "VACATION";
+    if (expense instanceof EmergencyExpense) return "EMERGENCY";
+    if (expense instanceof TransportExpense) return "TRANSPORT";
+    if (expense instanceof FoodExpense) return "FOOD";
+    if (expense instanceof OtherExpense) return "OTHER";
+    if (expense instanceof CharityExpense) return "CHARITY";
+    if (expense instanceof SubscriptionExpense) return "SUBSCRIPTION";
+    return "EXPENSE";
+}
 
-// Helper to abbreviate frequency
-const getFrequencyAbbrev = (freq: string) => {
-    switch (freq) {
-        case 'Daily': return 'day';
-        case 'Weekly': return 'wk';
-        case 'Monthly': return 'mo';
-        case 'Annually': return 'yr';
-        default: return '';
-    }
-};
+function getExpenseIconBg(expense: AnyExpense): string {
+    if (expense instanceof RentExpense) return EXPENSE_COLORS_BACKGROUND["Rent"];
+    if (expense instanceof MortgageExpense) return EXPENSE_COLORS_BACKGROUND["Mortgage"];
+    if (expense instanceof LoanExpense) return EXPENSE_COLORS_BACKGROUND["Loan"];
+    if (expense instanceof DependentExpense) return EXPENSE_COLORS_BACKGROUND["Dependent"];
+    if (expense instanceof HealthcareExpense) return EXPENSE_COLORS_BACKGROUND["Healthcare"];
+    if (expense instanceof VacationExpense) return EXPENSE_COLORS_BACKGROUND["Vacation"];
+    if (expense instanceof EmergencyExpense) return EXPENSE_COLORS_BACKGROUND["Emergency"];
+    if (expense instanceof TransportExpense) return EXPENSE_COLORS_BACKGROUND["Transport"];
+    if (expense instanceof FoodExpense) return EXPENSE_COLORS_BACKGROUND["Food"];
+    if (expense instanceof OtherExpense) return EXPENSE_COLORS_BACKGROUND["Other"];
+    if (expense instanceof CharityExpense) return EXPENSE_COLORS_BACKGROUND["Charity"];
+    if (expense instanceof SubscriptionExpense) return EXPENSE_COLORS_BACKGROUND["Subscription"];
+    return "bg-gray-500";
+}
 
-// Chevron icon component
-const ChevronIcon = ({ expanded, className = '' }: { expanded: boolean; className?: string }) => (
-    <svg
-        className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${expanded ? 'rotate-180' : ''} ${className}`}
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="currentColor"
-    >
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-    </svg>
-);
-
-const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
-	const { dispatch: expenseDispatch } = useContext(ExpenseContext);
+function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
+    const { dispatch: expenseDispatch } = useContext(ExpenseContext);
     const { accounts, dispatch: accountDispatch } = useContext(AccountContext);
     const { state: assumptions } = useContext(AssumptionsContext);
     const forceExact = assumptions.display?.useCompactCurrency === false;
     const [dateError, setDateError] = useState<string | undefined>();
-    const [isExpanded, setIsExpanded] = useState(false);
 
-    // Validate end date is after start date
     const validateDates = useCallback((start: Date | undefined, end: Date | undefined) => {
         if (start && end && end < start) {
             setDateError("End date must be after start date");
@@ -78,80 +77,72 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
         }
     }, []);
 
-    // Validate dates on mount and when expense dates change
     useEffect(() => {
         validateDates(expense.startDate, expense.endDate);
     }, [expense.startDate, expense.endDate, validateDates]);
 
-	const isHousing = expense instanceof RentExpense || expense instanceof MortgageExpense;
+    const isHousing = expense instanceof RentExpense || expense instanceof MortgageExpense;
 
-	const getLinkedAccount = () => {
-		if (expense instanceof LoanExpense || expense instanceof MortgageExpense){
-			const linkedAccount = accounts.find((acc) => acc.id === expense.linkedAccountId);
-			return linkedAccount?.name;
-		}
-	}
-
-	// --- Equity and PMI Warning Logic ---
-    let showPmiWarning = false;
-    if (expense instanceof MortgageExpense && expense.valuation > 0) {
-        const equity = (expense.valuation - expense.loan_balance) / expense.valuation;
-        if (equity > 0.2 && expense.pmi > 0) {
-            showPmiWarning = true;
+    const getLinkedAccount = (): string | undefined => {
+        if (expense instanceof LoanExpense || expense instanceof MortgageExpense) {
+            const linkedAccount = accounts.find((acc) => acc.id === expense.linkedAccountId);
+            return linkedAccount?.name;
         }
-    }
-	
-    // --- UNIFIED UPDATER ---
-	const handleFieldUpdate = (field: AllExpenseKeys, value: any) => {
-        // 1. Update Expense
-		expenseDispatch({
-			type: "UPDATE_EXPENSE_FIELD",
-			payload: { id: expense.id, field, value },
-		});
+        return undefined;
+    };
 
-        // 2. Sync Logic (Loan Expense -> Debt Account)
+    // PMI Warning Logic
+    const showPmiWarning = expense instanceof MortgageExpense &&
+        expense.valuation > 0 &&
+        ((expense.valuation - expense.loan_balance) / expense.valuation) > 0.2 &&
+        expense.pmi > 0;
+
+    const handleFieldUpdate = (field: AllExpenseKeys, value: unknown): void => {
+        expenseDispatch({
+            type: "UPDATE_EXPENSE_FIELD",
+            payload: { id: expense.id, field, value },
+        });
+
+        // Sync Loan Expense to Debt Account
         if (expense instanceof LoanExpense && expense.linkedAccountId) {
             const accId = expense.linkedAccountId;
-            
             if (field === 'name') {
-                accountDispatch({ type: 'UPDATE_ACCOUNT_FIELD', payload: { id: accId, field: 'name', value }});
+                accountDispatch({ type: 'UPDATE_ACCOUNT_FIELD', payload: { id: accId, field: 'name', value } });
             }
             if (field === 'amount') {
-                 // Sync monthly payment on account side
-                accountDispatch({ type: 'UPDATE_ACCOUNT_FIELD', payload: { id: accId, field: 'amount', value }});
+                accountDispatch({ type: 'UPDATE_ACCOUNT_FIELD', payload: { id: accId, field: 'amount', value } });
             }
             if (field === 'apr') {
-                accountDispatch({ type: 'UPDATE_ACCOUNT_FIELD', payload: { id: accId, field: 'apr', value }});
+                accountDispatch({ type: 'UPDATE_ACCOUNT_FIELD', payload: { id: accId, field: 'apr', value } });
             }
         }
 
-		if (expense instanceof MortgageExpense) {
-			// Create a temporary clone with the new value to calculate the new payment
-			const updatedExpense = Object.assign(Object.create(Object.getPrototypeOf(expense)), expense);
-			(updatedExpense as any)[field] = value;
+        // Sync Mortgage Expense to Property Account
+        if (expense instanceof MortgageExpense) {
+            const updatedExpense = Object.assign(Object.create(Object.getPrototypeOf(expense)), expense);
+            (updatedExpense as Record<string, unknown>)[field] = value;
 
-			// Recalculate payment using the model's logic
-			if (typeof (updatedExpense as any).calculatePayment === 'function') {
-				const newPayment = (updatedExpense as any).calculatePayment();
-				if (newPayment !== expense.payment) {
-					expenseDispatch({
-						type: "UPDATE_EXPENSE_FIELD",
-						payload: { id: expense.id, field: "payment", value: newPayment },
-					});
-				}
-			}
+            if (typeof (updatedExpense as { calculatePayment?: () => number }).calculatePayment === 'function') {
+                const newPayment = (updatedExpense as { calculatePayment: () => number }).calculatePayment();
+                if (newPayment !== expense.payment) {
+                    expenseDispatch({
+                        type: "UPDATE_EXPENSE_FIELD",
+                        payload: { id: expense.id, field: "payment", value: newPayment },
+                    });
+                }
+            }
 
-			if (typeof (updatedExpense as any).calculateDeductible === 'function') {
-				const newPayment = (updatedExpense as any).calculateDeductible();
-				if (newPayment !== expense.payment) {
-					expenseDispatch({
-						type: "UPDATE_EXPENSE_FIELD",
-						payload: { id: expense.id, field: "tax_deductible", value: newPayment },
-					});
-				}
-			}
+            if (typeof (updatedExpense as { calculateDeductible?: () => number }).calculateDeductible === 'function') {
+                const newDeductible = (updatedExpense as { calculateDeductible: () => number }).calculateDeductible();
+                if (newDeductible !== expense.tax_deductible) {
+                    expenseDispatch({
+                        type: "UPDATE_EXPENSE_FIELD",
+                        payload: { id: expense.id, field: "tax_deductible", value: newDeductible },
+                    });
+                }
+            }
 
-			if (field === "name") {
+            if (field === "name") {
                 accountDispatch({
                     type: "UPDATE_ACCOUNT_FIELD",
                     payload: { id: expense.linkedAccountId, field: "name", value },
@@ -175,14 +166,13 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
                     payload: { id: expense.linkedAccountId, field: "startingLoanBalance", value },
                 });
             }
-		}
-	};
+        }
+    };
 
-    const handleDateChange = (field: AllExpenseKeys, dateString: string) => {
+    const handleDateChange = (field: AllExpenseKeys, dateString: string): void => {
         const newDate = dateString ? new Date(dateString) : undefined;
         handleFieldUpdate(field, newDate);
 
-        // Validate dates after update
         if (field === "startDate") {
             validateDates(newDate, expense.endDate);
         } else if (field === "endDate") {
@@ -190,350 +180,335 @@ const ExpenseCard = ({ expense }: { expense: AnyExpense }) => {
         }
     };
 
-	const getDescriptor = () => {
-		if (expense instanceof RentExpense) return "RENT";
-		if (expense instanceof MortgageExpense) return "Mortgage";
-		if (expense instanceof LoanExpense) return "LOAN";
-		if (expense instanceof DependentExpense) return "DEPENDENT";
-		if (expense instanceof HealthcareExpense) return "HEALTHCARE";
-		if (expense instanceof VacationExpense) return "VACATION";
-		if (expense instanceof EmergencyExpense) return "EMERGENCY";
-		if (expense instanceof TransportExpense) return "TRANSPORT";
-		if (expense instanceof FoodExpense) return "FOOD";
-		if (expense instanceof OtherExpense) return "OTHER";
-		if (expense instanceof CharityExpense) return "CHARITY";
-		if (expense instanceof SubscriptionExpense) return "SUBSCRIPTION";
-		return "EXPENSE";
-	};
-
-	const getIconBg = () => {
-		if (expense instanceof RentExpense) return EXPENSE_COLORS_BACKGROUND["Rent"];
-		if (expense instanceof MortgageExpense) return EXPENSE_COLORS_BACKGROUND["Mortgage"];
-		if (expense instanceof LoanExpense) return EXPENSE_COLORS_BACKGROUND["Loan"];
-		if (expense instanceof DependentExpense) return EXPENSE_COLORS_BACKGROUND["Dependent"];
-		if (expense instanceof HealthcareExpense) return EXPENSE_COLORS_BACKGROUND["Healthcare"];
-		if (expense instanceof VacationExpense) return EXPENSE_COLORS_BACKGROUND["Vacation"];
-		if (expense instanceof EmergencyExpense) return EXPENSE_COLORS_BACKGROUND["Emergency"];
-		if (expense instanceof TransportExpense) return EXPENSE_COLORS_BACKGROUND["Transport"];
-		if (expense instanceof FoodExpense) return EXPENSE_COLORS_BACKGROUND["Food"];
-		if (expense instanceof OtherExpense) return EXPENSE_COLORS_BACKGROUND["Other"];
-		if (expense instanceof CharityExpense) return EXPENSE_COLORS_BACKGROUND["Charity"];
-		if (expense instanceof SubscriptionExpense) return EXPENSE_COLORS_BACKGROUND["Subscription"];
-		return "bg-gray-500";
-	};
-
-    // Get display amount for collapsed view (compact format for large numbers)
-    const getDisplayAmount = () => {
-        if (expense instanceof RentExpense) {
-            return formatCompactCurrency(expense.payment, { forceExact });
-        }
-        if (expense instanceof MortgageExpense || expense instanceof LoanExpense) {
+    // Display amount calculation
+    const getDisplayAmount = (): string => {
+        if (expense instanceof RentExpense || expense instanceof MortgageExpense || expense instanceof LoanExpense) {
             return formatCompactCurrency(expense.payment, { forceExact });
         }
         return formatCompactCurrency(expense.amount, { forceExact });
     };
 
-	return (
-		<div className="w-full">
-            {/* Collapsed View */}
-            {!isExpanded ? (
-                <button
-                    onClick={() => setIsExpanded(true)}
-                    aria-expanded="false"
-                    aria-label={`Expand ${expense.name} expense details`}
-                    className="flex items-center gap-4 p-4 bg-[#18181b] rounded-xl border border-gray-800 cursor-pointer hover:border-gray-600 transition-colors w-full text-left"
-                >
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg ${getIconBg()} text-md font-bold text-white shrink-0`} aria-hidden="true">
-                        {getDescriptor().slice(0, 1)}
-                    </div>
-                    <div className="font-semibold text-white truncate flex-1">
-                        {expense.name}
-                    </div>
-                    <div className="text-gray-300 text-sm whitespace-nowrap">
-                        {getDisplayAmount()}/{getFrequencyAbbrev(expense.frequency)}
-                    </div>
-                    <ChevronIcon expanded={false} />
-                </button>
-            ) : (
-                <>
-                    {/* Expanded Header */}
-                    <div className="flex gap-4 mb-4">
-                        <div className={`w-8 h-8 mt-1 rounded-full flex items-center justify-center shadow-lg ${getIconBg()} text-md font-bold text-white`}>
-                            {getDescriptor().slice(0, 1)}
-                        </div>
-                        <div className="grow">
-                            <NameInput
-                                label=""
-                                id={expense.id}
-                                value={expense.name}
-                                onChange={(val) => handleFieldUpdate("name", val)}
-                            />
-                        </div>
-                        <div className="text-chart-Red-75 ml-auto flex items-center gap-2">
-                            <DeleteExpenseControl expenseId={expense.id} expenseName={expense.name} />
-                            <button
-                                onClick={() => setIsExpanded(false)}
-                                aria-expanded="true"
-                                aria-label={`Collapse ${expense.name} expense details`}
-                                className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
-                            >
-                                <ChevronIcon expanded={true} />
-                            </button>
-                        </div>
-                    </div>
+    const descriptor = getExpenseDescriptor(expense);
+    const iconBg = getExpenseIconBg(expense);
 
-                    {/* Expanded Content */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 bg-[#18181b] p-6 rounded-xl border border-gray-800">
-                {/* Logic for Housing: 
-                    Housing expenses calculate 'amount' as a sum of parts.
-                    The main field edits 'payment' (Rent/Mortgage).
-                    Other types edit 'amount' directly.
-                */}
-				{ !(expense instanceof MortgageExpense) && (
-					<CurrencyInput
-						id={`${expense.id}-amount`}
-						label={expense instanceof RentExpense ? "Rent/Mortgage Payment" : "Amount"}
-						value={expense instanceof RentExpense ? (expense as RentExpense).payment : expense.amount}
-						onChange={(val) => handleFieldUpdate(isHousing ? "payment" : "amount", val)}
-					/>
-				)}
-				{ expense instanceof MortgageExpense && (
-					<StyledDisplay
-						label="Mortgage Payment"
-						value={"$"+expense.payment.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2})}
-					/>
-				)}
-                
+    const headerContent = (
+        <NameInput
+            label=""
+            id={expense.id}
+            value={expense.name}
+            onChange={(val) => handleFieldUpdate("name", val)}
+        />
+    );
+
+    const headerActions = (
+        <div className="text-chart-Red-75">
+            <DeleteExpenseControl expenseId={expense.id} expenseName={expense.name} />
+        </div>
+    );
+
+    return (
+        <ExpandableCard
+            name={expense.name}
+            iconBg={iconBg}
+            iconLabel={descriptor.slice(0, 1)}
+            displayValue={getDisplayAmount()}
+            frequencySuffix={`/${getFrequencyAbbrev(expense.frequency)}`}
+            headerContent={headerContent}
+            headerActions={headerActions}
+            ariaLabelType="expense"
+        >
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 bg-[#18181b] p-6 rounded-xl border border-gray-800">
+                {!(expense instanceof MortgageExpense) && (
+                    <CurrencyInput
+                        id={`${expense.id}-amount`}
+                        label={expense instanceof RentExpense ? "Rent/Mortgage Payment" : "Amount"}
+                        value={expense instanceof RentExpense ? expense.payment : expense.amount}
+                        onChange={(val) => handleFieldUpdate(isHousing ? "payment" : "amount", val)}
+                    />
+                )}
+
+                {expense instanceof MortgageExpense && (
+                    <StyledDisplay
+                        label="Mortgage Payment"
+                        value={"$" + expense.payment.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    />
+                )}
+
                 <StyledSelect
-					id={`${expense.id}-frequency`}
+                    id={`${expense.id}-frequency`}
                     label="Frequency"
                     value={expense.frequency}
                     onChange={(e) => handleFieldUpdate("frequency", e.target.value)}
                     options={["Daily", "Weekly", "Monthly", "Annually"]}
                 />
 
-				<StyledInput
-					id={`${expense.id}-start-date`}
-					label="Start Date"
-					type="date"
-					value={formatDate(expense.startDate)}
-					onChange={(e) => handleDateChange("startDate", e.target.value)}
-				/>
+                <StyledInput
+                    id={`${expense.id}-start-date`}
+                    label="Start Date"
+                    type="date"
+                    value={formatDateForInput(expense.startDate)}
+                    onChange={(e) => handleDateChange("startDate", e.target.value)}
+                />
 
-				<StyledInput
-					id={`${expense.id}-end-date`}
-					label="End Date"
-					type="date"
-					value={formatDate(expense.endDate)}
-					onChange={(e) => handleDateChange("endDate", e.target.value)}
-					error={dateError}
-				/>
+                <StyledInput
+                    id={`${expense.id}-end-date`}
+                    label="End Date"
+                    type="date"
+                    value={formatDateForInput(expense.endDate)}
+                    onChange={(e) => handleDateChange("endDate", e.target.value)}
+                    error={dateError}
+                />
 
-				<ToggleInput
-					id={`${expense.id}-discretionary`}
-					label="Discretionary"
-					enabled={expense.isDiscretionary}
-					setEnabled={(val) => handleFieldUpdate("isDiscretionary", val)}
-					tooltip="Discretionary expenses can be reduced during Guyton-Klinger guardrail triggers in retirement."
-				/>
+                <ToggleInput
+                    id={`${expense.id}-discretionary`}
+                    label="Discretionary"
+                    enabled={expense.isDiscretionary}
+                    setEnabled={(val) => handleFieldUpdate("isDiscretionary", val)}
+                    tooltip="Discretionary expenses can be reduced during Guyton-Klinger guardrail triggers in retirement."
+                />
 
-                {/* --- Specialized Housing Fields --- */}
-				{expense instanceof RentExpense && (
-					<CurrencyInput
-						id={`${expense.id}-utilities`}
-						label="Utilities"
-						value={expense.utilities}
-						onChange={(val) => handleFieldUpdate("utilities", val)}
-					/>
-				)}
+                {expense instanceof RentExpense && (
+                    <CurrencyInput
+                        id={`${expense.id}-utilities`}
+                        label="Utilities"
+                        value={expense.utilities}
+                        onChange={(val) => handleFieldUpdate("utilities", val)}
+                    />
+                )}
 
-				{(expense instanceof MortgageExpense) && (
-					<>
-						<CurrencyInput
-							id={`${expense.id}-valuation`}
-							label="Valuation"
-							value={expense.valuation}
-							onChange={(val) => handleFieldUpdate("valuation", val)}
-						/>
-						<CurrencyInput
-							id={`${expense.id}-starting-loan-balance`}
-							label="Starting Loan Balance"
-							value={expense.starting_loan_balance}
-							onChange={(val) => handleFieldUpdate("starting_loan_balance", val)}
-						/>
-						<CurrencyInput
-							id={`${expense.id}-loan-balance`}
-							label="Current Loan Balance"
-							value={expense.loan_balance}
-							onChange={(val) => handleFieldUpdate("loan_balance", val)}
-						/>
-						<PercentageInput
-							id={`${expense.id}-apr`}
-							label="APR"
-							value={expense.apr}
-							onChange={(val) => handleFieldUpdate("apr", val)}
-						/>
-						<NumberInput
-							id={`${expense.id}-term-length`}
-							label="Term Length (years)"
-							value={expense.term_length}
-							onChange={(val) => handleFieldUpdate("term_length", val)}
-						/>
-						<PercentageInput
-							id={`${expense.id}-property-taxes`}
-							label="Property Taxes"
-							value={expense.property_taxes}
-							onChange={(val) => handleFieldUpdate("property_taxes", val)}
-						/>
-						<CurrencyInput
-							id={`${expense.id}-valuation-deduction`}
-							label="Valuation Deduction"
-							value={expense.valuation_deduction}
-							onChange={(val) => handleFieldUpdate("valuation_deduction", val)}
-						/>
-						<PercentageInput
-							id={`${expense.id}-maintenance`}
-							label="Maintenance"
-							value={expense.maintenance}
-							onChange={(val) => handleFieldUpdate("maintenance", val)}
-						/>
-						<CurrencyInput
-							id={`${expense.id}-utilities`}
-							label="Utilities"
-							value={expense.utilities}
-							onChange={(val) => handleFieldUpdate("utilities", val)}
-						/>
-						<PercentageInput
-							id={`${expense.id}-homeowners-insurance`}
-							label="Homeowners Insurance"
-							value={expense.home_owners_insurance}
-							onChange={(val) => handleFieldUpdate("home_owners_insurance", val)}
-						/>
-						<PercentageInput
-							id={`${expense.id}-pmi`}
-							label="PMI"
-							value={expense.pmi}
-							onChange={(val) => handleFieldUpdate("pmi", val)}
-						/>
-						<CurrencyInput
-							id={`${expense.id}-hoa-fee`}
-							label="HOA Fee"
-							value={expense.hoa_fee}
-							onChange={(val) => handleFieldUpdate("hoa_fee", val)}
-						/>
-													<CurrencyInput
-														id={`${expense.id}-extra-payment`}
-														label="Extra Payment"
-														value={expense.extra_payment}
-														onChange={(val) => handleFieldUpdate("extra_payment", val)}
-													/>
-						                        	<StyledSelect 
-						                        		id={`${expense.id}-tax-deductible`}
-						                        		label="Tax Deductible" 
-						                        		value={expense.is_tax_deductible} 
-						                        		onChange={(e) => handleFieldUpdate("is_tax_deductible", e.target.value)} 
-						                        		options={["Yes", "No", "Itemized"]} 
-						                        	/>
-						                        	{(expense.is_tax_deductible === 'Yes' || expense.is_tax_deductible === 'Itemized') && (
-						                        		<StyledDisplay
-						                        			label="Deductible Amount"
-						                        			value={"$"+expense.tax_deductible.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-						                        		/>
-						                        	)}
-													<StyledDisplay
-														label="Linked to Expense"
-														blankValue="No account found, try re-adding"
-														value={getLinkedAccount()}
-													/>
-						                            <button
-						                                type="button"
-						                                onClick={() => {
-						                                    const today = new Date();
-						                                    const todayStr = today.toISOString().split('T')[0];
-						                                    const newBalance = (expense as MortgageExpense).getBalanceAtDate(todayStr);
-						                                    handleFieldUpdate("loan_balance", newBalance);
-						                                }}
-						                                className="px-5 py-2.5 rounded-lg font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-						                            >
-						                                Reset Loan Balance to Today
-						                            </button>                        						{showPmiWarning && (
-						                                <AlertBanner severity="warning" size="sm" className="col-span-full">
-						                                    With over 20% equity, you may be eligible to have your PMI removed. Contact your lender to inquire about the process.
-						                                </AlertBanner>
-						                            )}					</>				)}
-                
+                {expense instanceof MortgageExpense && (
+                    <MortgageFields
+                        expense={expense}
+                        onFieldUpdate={handleFieldUpdate}
+                        linkedAccountName={getLinkedAccount()}
+                        showPmiWarning={showPmiWarning}
+                    />
+                )}
 
-                {/* --- Specialized Loan Fields --- */}
                 {expense instanceof LoanExpense && (
-					<>
-						<PercentageInput
-							id={`${expense.id}-apr`}
-							label="apr"
-							value={expense.apr}
-							onChange={(val) => handleFieldUpdate("apr", val)}
-						/>
-						<StyledSelect 
-							id={`${expense.id}-interest-type`}
-							label="Interest Type" 
-							value={expense.interest_type} 
-							onChange={(e) => handleFieldUpdate("interest_type", e.target.value)} 
-							options={["Simple", "Compounding"]} 
-						/>
-						<CurrencyInput
-							id={`${expense.id}-payment`}
-							label="Payment"
-							value={expense.payment}
-							onChange={(val) => handleFieldUpdate("payment", val)}
-						/>
-						<StyledSelect 
-							id={`${expense.id}-tax-deductible`}
-							label="Tax Deductible" 
-							value={expense.is_tax_deductible} 
-							onChange={(e) => handleFieldUpdate("is_tax_deductible", e.target.value)} 
-							options={["Yes", "No", "Itemized"]} 
-						/>
-						{(expense.is_tax_deductible === 'Yes' || expense.is_tax_deductible === 'Itemized') && (
-							<CurrencyInput
-								id={`${expense.id}-deductible-amount`}
-								label="Deductible Amount"
-								value={expense.tax_deductible}
-								onChange={(val) => handleFieldUpdate("tax_deductible", val)}
-							/>
-						)}
-						<StyledDisplay
-							label="Linked to Expense"
-							blankValue="No account found, try re-adding"
-							value={getLinkedAccount()}
-						/>
-					</>
-				)}
+                    <LoanFields
+                        expense={expense}
+                        onFieldUpdate={handleFieldUpdate}
+                        linkedAccountName={getLinkedAccount()}
+                    />
+                )}
 
-				{/* --- Specialized Charity Fields --- */}
-				{expense instanceof CharityExpense && (
-					<>
-						<StyledSelect
-							id={`${expense.id}-tax-deductible`}
-							label="Tax Deductible"
-							value={expense.is_tax_deductible}
-							onChange={(e) => handleFieldUpdate("is_tax_deductible", e.target.value)}
-							options={["Yes", "No", "Itemized"]}
-						/>
-						{(expense.is_tax_deductible === 'Yes' || expense.is_tax_deductible === 'Itemized') && (
-							<CurrencyInput
-								id={`${expense.id}-deductible-amount`}
-								label="Deductible Amount"
-								value={expense.tax_deductible}
-								onChange={(val) => handleFieldUpdate("tax_deductible", val)}
-							/>
-						)}
-					</>
-				)}
+                {expense instanceof CharityExpense && (
+                    <CharityFields expense={expense} onFieldUpdate={handleFieldUpdate} />
+                )}
+            </div>
+        </ExpandableCard>
+    );
+}
 
-			            </div>
-                </>
+// Sub-components for type-specific fields
+
+interface MortgageFieldsProps {
+    expense: MortgageExpense;
+    onFieldUpdate: (field: AllExpenseKeys, value: unknown) => void;
+    linkedAccountName: string | undefined;
+    showPmiWarning: boolean;
+}
+
+function MortgageFields({ expense, onFieldUpdate, linkedAccountName, showPmiWarning }: MortgageFieldsProps): ReactElement {
+    const handleResetLoanBalance = (): void => {
+        const today = new Date();
+        const todayStr = today.toISOString().split('T')[0];
+        const newBalance = expense.getBalanceAtDate(todayStr);
+        onFieldUpdate("loan_balance", newBalance);
+    };
+
+    return (
+        <>
+            <CurrencyInput
+                id={`${expense.id}-valuation`}
+                label="Valuation"
+                value={expense.valuation}
+                onChange={(val) => onFieldUpdate("valuation", val)}
+            />
+            <CurrencyInput
+                id={`${expense.id}-starting-loan-balance`}
+                label="Starting Loan Balance"
+                value={expense.starting_loan_balance}
+                onChange={(val) => onFieldUpdate("starting_loan_balance", val)}
+            />
+            <CurrencyInput
+                id={`${expense.id}-loan-balance`}
+                label="Current Loan Balance"
+                value={expense.loan_balance}
+                onChange={(val) => onFieldUpdate("loan_balance", val)}
+            />
+            <PercentageInput
+                id={`${expense.id}-apr`}
+                label="APR"
+                value={expense.apr}
+                onChange={(val) => onFieldUpdate("apr", val)}
+            />
+            <NumberInput
+                id={`${expense.id}-term-length`}
+                label="Term Length (years)"
+                value={expense.term_length}
+                onChange={(val) => onFieldUpdate("term_length", val)}
+            />
+            <PercentageInput
+                id={`${expense.id}-property-taxes`}
+                label="Property Taxes"
+                value={expense.property_taxes}
+                onChange={(val) => onFieldUpdate("property_taxes", val)}
+            />
+            <CurrencyInput
+                id={`${expense.id}-valuation-deduction`}
+                label="Valuation Deduction"
+                value={expense.valuation_deduction}
+                onChange={(val) => onFieldUpdate("valuation_deduction", val)}
+            />
+            <PercentageInput
+                id={`${expense.id}-maintenance`}
+                label="Maintenance"
+                value={expense.maintenance}
+                onChange={(val) => onFieldUpdate("maintenance", val)}
+            />
+            <CurrencyInput
+                id={`${expense.id}-utilities`}
+                label="Utilities"
+                value={expense.utilities}
+                onChange={(val) => onFieldUpdate("utilities", val)}
+            />
+            <PercentageInput
+                id={`${expense.id}-homeowners-insurance`}
+                label="Homeowners Insurance"
+                value={expense.home_owners_insurance}
+                onChange={(val) => onFieldUpdate("home_owners_insurance", val)}
+            />
+            <PercentageInput
+                id={`${expense.id}-pmi`}
+                label="PMI"
+                value={expense.pmi}
+                onChange={(val) => onFieldUpdate("pmi", val)}
+            />
+            <CurrencyInput
+                id={`${expense.id}-hoa-fee`}
+                label="HOA Fee"
+                value={expense.hoa_fee}
+                onChange={(val) => onFieldUpdate("hoa_fee", val)}
+            />
+            <CurrencyInput
+                id={`${expense.id}-extra-payment`}
+                label="Extra Payment"
+                value={expense.extra_payment}
+                onChange={(val) => onFieldUpdate("extra_payment", val)}
+            />
+            <StyledSelect
+                id={`${expense.id}-tax-deductible`}
+                label="Tax Deductible"
+                value={expense.is_tax_deductible}
+                onChange={(e) => onFieldUpdate("is_tax_deductible", e.target.value)}
+                options={["Yes", "No", "Itemized"]}
+            />
+            {(expense.is_tax_deductible === 'Yes' || expense.is_tax_deductible === 'Itemized') && (
+                <StyledDisplay
+                    label="Deductible Amount"
+                    value={"$" + expense.tax_deductible.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                />
             )}
-		</div>
-	);
-};
+            <StyledDisplay
+                label="Linked to Expense"
+                blankValue="No account found, try re-adding"
+                value={linkedAccountName}
+            />
+            <button
+                type="button"
+                onClick={handleResetLoanBalance}
+                className="px-5 py-2.5 rounded-lg font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+            >
+                Reset Loan Balance to Today
+            </button>
+            {showPmiWarning && (
+                <AlertBanner severity="warning" size="sm" className="col-span-full">
+                    With over 20% equity, you may be eligible to have your PMI removed. Contact your lender to inquire about the process.
+                </AlertBanner>
+            )}
+        </>
+    );
+}
+
+interface LoanFieldsProps {
+    expense: LoanExpense;
+    onFieldUpdate: (field: AllExpenseKeys, value: unknown) => void;
+    linkedAccountName: string | undefined;
+}
+
+function LoanFields({ expense, onFieldUpdate, linkedAccountName }: LoanFieldsProps): ReactElement {
+    return (
+        <>
+            <PercentageInput
+                id={`${expense.id}-apr`}
+                label="APR"
+                value={expense.apr}
+                onChange={(val) => onFieldUpdate("apr", val)}
+            />
+            <StyledSelect
+                id={`${expense.id}-interest-type`}
+                label="Interest Type"
+                value={expense.interest_type}
+                onChange={(e) => onFieldUpdate("interest_type", e.target.value)}
+                options={["Simple", "Compounding"]}
+            />
+            <CurrencyInput
+                id={`${expense.id}-payment`}
+                label="Payment"
+                value={expense.payment}
+                onChange={(val) => onFieldUpdate("payment", val)}
+            />
+            <StyledSelect
+                id={`${expense.id}-tax-deductible`}
+                label="Tax Deductible"
+                value={expense.is_tax_deductible}
+                onChange={(e) => onFieldUpdate("is_tax_deductible", e.target.value)}
+                options={["Yes", "No", "Itemized"]}
+            />
+            {(expense.is_tax_deductible === 'Yes' || expense.is_tax_deductible === 'Itemized') && (
+                <CurrencyInput
+                    id={`${expense.id}-deductible-amount`}
+                    label="Deductible Amount"
+                    value={expense.tax_deductible}
+                    onChange={(val) => onFieldUpdate("tax_deductible", val)}
+                />
+            )}
+            <StyledDisplay
+                label="Linked to Expense"
+                blankValue="No account found, try re-adding"
+                value={linkedAccountName}
+            />
+        </>
+    );
+}
+
+interface CharityFieldsProps {
+    expense: CharityExpense;
+    onFieldUpdate: (field: AllExpenseKeys, value: unknown) => void;
+}
+
+function CharityFields({ expense, onFieldUpdate }: CharityFieldsProps): ReactElement {
+    return (
+        <>
+            <StyledSelect
+                id={`${expense.id}-tax-deductible`}
+                label="Tax Deductible"
+                value={expense.is_tax_deductible}
+                onChange={(e) => onFieldUpdate("is_tax_deductible", e.target.value)}
+                options={["Yes", "No", "Itemized"]}
+            />
+            {(expense.is_tax_deductible === 'Yes' || expense.is_tax_deductible === 'Itemized') && (
+                <CurrencyInput
+                    id={`${expense.id}-deductible-amount`}
+                    label="Deductible Amount"
+                    value={expense.tax_deductible}
+                    onChange={(val) => onFieldUpdate("tax_deductible", val)}
+                />
+            )}
+        </>
+    );
+}
 
 export default ExpenseCard;

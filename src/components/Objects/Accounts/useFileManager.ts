@@ -10,6 +10,7 @@ import { AnyIncome, reconstituteIncome } from '../Income/models';
 import { AnyExpense, reconstituteExpense } from '../Expense/models';
 import { TaxState, defaultTaxState } from '../../Objects/Taxes/TaxContext';
 import { ImportKeyContext } from './ImportKeyContext';
+import { BudgetContext, BudgetState } from '../Budget/BudgetContext';
 
 export interface FullBackup {
     version: number;
@@ -19,6 +20,7 @@ export interface FullBackup {
     expenses: any[];
     taxSettings: TaxState;
     assumptions: AssumptionsState;
+    budget?: BudgetState; // Optional for backwards compatibility
 }
 
 export const useFileManager = () => {
@@ -28,8 +30,14 @@ export const useFileManager = () => {
     const { state, dispatch: taxesDispatch } = useContext(TaxContext);
     const { state: assumptions, dispatch: assumptionsDispatch } = useContext(AssumptionsContext);
     const { importKey, incrementImportKey } = useContext(ImportKeyContext);
+    const budgetContext = useContext(BudgetContext);
+    const { dispatch: budgetDispatch } = budgetContext;
 
     const handleGlobalExport = () => {
+        // Extract budget state (excluding dispatch and helper functions)
+        const { months, importSettings, selectedMonth, selectedYear } = budgetContext;
+        const budgetState: BudgetState = { months, importSettings, selectedMonth, selectedYear };
+
         const fullBackup: FullBackup = {
             version: 1,
             accounts: accounts.map(a => ({ ...a, className: a.constructor.name })),
@@ -37,7 +45,8 @@ export const useFileManager = () => {
             incomes: incomes.map(i => ({ ...i, className: i.constructor.name })),
             expenses: expenses.map(e => ({ ...e, className: e.constructor.name })),
             taxSettings: state as TaxState,
-            assumptions: assumptions as AssumptionsState, // Include assumptions in the backup
+            assumptions: assumptions as AssumptionsState,
+            budget: budgetState,
         };
 
         const blob = new Blob([JSON.stringify(fullBackup, null, 2)], { type: 'application/json' });
@@ -88,6 +97,10 @@ export const useFileManager = () => {
             }
             else {
                 assumptionsDispatch({ type: 'RESET_DEFAULTS'});
+            }
+            // Import budget data if present
+            if (data.budget) {
+                budgetDispatch({ type: 'SET_BULK_DATA', payload: data.budget });
             }
             // Increment shared importKey to force chart remounts after import
             incrementImportKey();

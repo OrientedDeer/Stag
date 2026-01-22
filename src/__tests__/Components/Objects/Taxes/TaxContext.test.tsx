@@ -124,22 +124,27 @@ describe('TaxContext', () => {
     expect(state.stateOverride).toBeNull();
   });
 
-  it('should throw on corrupted localStorage data', () => {
+  it('should fall back to defaults on corrupted localStorage data', () => {
     localStorageMock.setItem('tax_settings', 'invalid json');
 
+    let state!: TaxState;
+
     const TestComponent = () => {
-      const { } = useContext(TaxContext);
+      ({ state } = useContext(TaxContext));
       return null;
     };
 
-    // TaxContext doesn't catch JSON parse errors, so it throws
-    expect(() => {
-      render(
-        <TaxProvider>
-          <TestComponent />
-        </TaxProvider>
-      );
-    }).toThrow();
+    // Should not throw - gracefully falls back to default state
+    render(
+      <TaxProvider>
+        <TestComponent />
+      </TaxProvider>
+    );
+
+    // Verify we got the default state
+    expect(state.filingStatus).toBe('Single');
+    expect(state.stateResidency).toBe('DC');
+    expect(state.deductionMethod).toBe('Auto');
   });
 
   it('should save state to localStorage when state changes (debounced)', async () => {

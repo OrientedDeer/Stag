@@ -106,6 +106,57 @@ describe('Income Models', () => {
         expect(nextYearFixed.preTax401k).toBe(10000);
         expect(nextYearFixed.roth401k).toBe(5000);
       });
+
+    it('should initialize ESPP fields with correct defaults', () => {
+      const salary = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 0, 'a1');
+      expect(salary.esppContributionType).toBe('NONE');
+      expect(salary.esppContributionAmount).toBe(0);
+      expect(salary.esppDiscountPercent).toBe(15);
+      expect(salary.esppHasLookback).toBe(true);
+      expect(salary.esppAccountId).toBeNull();
+    });
+
+    it('should calculate annual ESPP contribution for percentage type', () => {
+      const salary = new WorkIncome(
+        'w1', 'Job', 100000, 'Annually', 'Yes',
+        0, 0, 0, 0, 'a1', null, 'FIXED', undefined, undefined, 0, 'custom',
+        'PERCENTAGE', // esppContributionType
+        10,           // esppContributionAmount (10%)
+        15, true, 6, 'espp-1', 7
+      );
+      // 100000 * 10% = 10000
+      expect(salary.getAnnualESPPContribution()).toBe(10000);
+    });
+
+    it('should calculate annual ESPP contribution for fixed type', () => {
+      const salary = new WorkIncome(
+        'w1', 'Job', 5000, 'Monthly', 'Yes',
+        0, 0, 0, 0, 'a1', null, 'FIXED', undefined, undefined, 0, 'custom',
+        'FIXED',      // esppContributionType
+        500,          // esppContributionAmount ($500/month)
+        15, true, 6, 'espp-1', 7
+      );
+      // $500/month * 12 = $6000/year
+      expect(salary.getAnnualESPPContribution()).toBe(6000);
+    });
+
+    it('should return 0 for ESPP contribution when type is NONE', () => {
+      const salary = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 0, 'a1');
+      expect(salary.getAnnualESPPContribution()).toBe(0);
+    });
+
+    it('should preserve ESPP fields when incrementing', () => {
+      const salary = new WorkIncome(
+        'w1', 'Job', 100000, 'Annually', 'Yes',
+        0, 0, 0, 0, 'a1', null, 'FIXED', undefined, undefined, 0, 'custom',
+        'PERCENTAGE', 10, 15, true, 6, 'espp-1', 7
+      );
+      const nextYear = salary.increment(mockAssumptions);
+      expect(nextYear.esppContributionType).toBe('PERCENTAGE');
+      expect(nextYear.esppDiscountPercent).toBe(15);
+      expect(nextYear.esppHasLookback).toBe(true);
+      expect(nextYear.esppAccountId).toBe('espp-1');
+    });
   });
 
   describe('SocialSecurityIncome', () => {

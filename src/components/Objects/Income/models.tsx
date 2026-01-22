@@ -10,9 +10,11 @@ import {
   checkCSRSEligibility,
   calculateFERSSupplement,
 } from '../../../data/PensionData';
+import { parseDate, parseDateRequired, hasClassName } from "../modelUtils";
 
 export type ContributionGrowthStrategy = 'FIXED' | 'GROW_WITH_SALARY' | 'TRACK_ANNUAL_MAX';
 export type AutoMax401kOption = 'disabled' | 'custom' | 'traditional' | 'roth';
+export type ESPPContributionType = 'NONE' | 'PERCENTAGE' | 'FIXED';
 
 export type IncomeFrequency = 'Weekly' | 'Bi-Weekly' | 'Semi-Monthly' | 'Monthly' | 'Annually';
 
@@ -93,6 +95,14 @@ export class WorkIncome extends BaseIncome {
     end_date?: Date,
     public hsaContribution: number = 0,  // HSA contribution (pre-tax + FICA-exempt)
     public autoMax401k: AutoMax401kOption = 'custom',  // Auto-max 401k: disabled, custom, traditional, or roth
+    // ESPP configuration
+    public esppContributionType: ESPPContributionType = 'NONE',
+    public esppContributionAmount: number = 0,      // % of salary (1-15) or fixed $/period
+    public esppDiscountPercent: number = 15,        // Typical ESPP discount (5-15%)
+    public esppHasLookback: boolean = true,         // Lookback provision (purchase at lower of grant/purchase price)
+    public esppOfferingPeriodMonths: number = 6,    // Typical is 6 months
+    public esppAccountId: string | null = null,     // Linked ESPP account
+    public esppExpectedStockGrowth: number = 7,     // Expected annual stock growth for lookback modeling
   ) {
     super(id, name, amount, frequency, earned_income, startDate, end_date);
   }
@@ -178,6 +188,16 @@ export class WorkIncome extends BaseIncome {
     // Health insurance usually outpaces regular inflation
     const newInsurance = this.insurance * (1 + healthcareInflation + generalInflation);
 
+    // ESPP contribution grows with salary if percentage-based
+    let newESPPAmount = this.esppContributionAmount;
+    if (this.esppContributionType === 'PERCENTAGE') {
+      // Percentage stays the same, effective amount grows with salary
+      newESPPAmount = this.esppContributionAmount;
+    } else if (this.esppContributionType === 'FIXED' && this.contributionGrowthStrategy === 'GROW_WITH_SALARY') {
+      // Fixed amount can optionally grow with salary
+      newESPPAmount = this.esppContributionAmount * (1 + salaryGrowth + generalInflation);
+    }
+
     return new WorkIncome(
       this.id,
       this.name,
@@ -194,7 +214,14 @@ export class WorkIncome extends BaseIncome {
       this.startDate,
       this.end_date,
       newHSA,
-      this.autoMax401k
+      this.autoMax401k,
+      this.esppContributionType,
+      newESPPAmount,
+      this.esppDiscountPercent,
+      this.esppHasLookback,
+      this.esppOfferingPeriodMonths,
+      this.esppAccountId,
+      this.esppExpectedStockGrowth
     );
   }
 
@@ -213,6 +240,25 @@ export class WorkIncome extends BaseIncome {
       return { preTax: limit401k, roth: 0 };
     } else {
       return { preTax: 0, roth: limit401k };
+    }
+  }
+
+  /**
+   * Get the annual ESPP contribution based on contribution type and salary
+   */
+  getAnnualESPPContribution(year?: number): number {
+    if (this.esppContributionType === 'NONE') {
+      return 0;
+    }
+
+    const annualSalary = this.getAnnualAmount(year);
+
+    if (this.esppContributionType === 'PERCENTAGE') {
+      // esppContributionAmount is a percentage (e.g., 10 for 10%)
+      return annualSalary * (this.esppContributionAmount / 100);
+    } else {
+      // FIXED: esppContributionAmount is per-period, convert to annual
+      return this.getProratedAnnual(this.esppContributionAmount, year);
     }
   }
 }
@@ -762,79 +808,73 @@ export const CATEGORY_PALETTES: Record<IncomeCategory, string[]> = {
 	Windfall: PALETTE_STEPS.map(i => `bg-chart-Red-${i}`),
 };
 
-export function reconstituteIncome(data: any): AnyIncome | null {
-    if (!data || !data.className) return null;
-    
-    const endDateValue = data.end_date;
-    const endDate = endDateValue ? (typeof endDateValue === 'string' ? new Date(endDateValue) : new Date(endDateValue)) : undefined;
-    const startDateValue = data.startDate || Date.now();
-    const startDate = typeof startDateValue === 'string' ? new Date(startDateValue) : new Date(startDateValue);
+export function reconstituteIncome(data: unknown): AnyIncome | null {
+    if (!hasClassName(data)) return null;
 
-    // Explicitly mapping fields ensures old saves don't break with new class structures
-    const base = {
-        id: data.id,
-        name: data.name || "Unnamed Income",
-        amount: Number(data.amount) || 0,
-        frequency: data.frequency || 'Monthly',
-        startDate: startDate,
-        end_date: endDate,
-        earned_income: data.earned_income || "No"
-    };
+    const startDate = parseDateRequired(data.startDate);
+    const endDate = parseDate(data.end_date);
+    const frequency = (data.frequency as IncomeFrequency) || 'Monthly';
+    const id = String(data.id ?? '');
+    const name = String(data.name ?? 'Unnamed Income');
+    const amount = Number(data.amount) || 0;
+    const earned_income = (data.earned_income as "Yes" | "No") || "No";
 
     switch (data.className) {
-        case 'WorkIncome':
+        case 'WorkIncome': {
             // Map old 'none' value to 'custom' for backwards compatibility
             const autoMax401k = data.autoMax401k === 'none' ? 'custom' : (data.autoMax401k || 'custom');
-            return new WorkIncome(base.id, base.name, base.amount, base.frequency, base.earned_income,
-                data.preTax401k || 0, data.insurance || 0, data.roth401k || 0, data.employerMatch || 0, data.matchAccountId || null, data.taxType || null, data.contributionGrowthStrategy || 'FIXED', base.startDate, base.end_date, data.hsaContribution || 0, autoMax401k);
+            return new WorkIncome(
+                id, name, amount, frequency, earned_income,
+                Number(data.preTax401k) || 0, Number(data.insurance) || 0,
+                Number(data.roth401k) || 0, Number(data.employerMatch) || 0,
+                String(data.matchAccountId ?? ''), (data.taxType as TaxType) || null,
+                (data.contributionGrowthStrategy as ContributionGrowthStrategy) || 'FIXED',
+                startDate, endDate, Number(data.hsaContribution) || 0, autoMax401k as AutoMax401kOption,
+                (data.esppContributionType as ESPPContributionType) || 'NONE',
+                Number(data.esppContributionAmount) || 0,
+                Number(data.esppDiscountPercent ?? 15),
+                (data.esppHasLookback as boolean) ?? true,
+                Number(data.esppOfferingPeriodMonths ?? 6),
+                data.esppAccountId ? String(data.esppAccountId) : null,
+                Number(data.esppExpectedStockGrowth ?? 7)
+            );
+        }
         case 'SocialSecurityIncome':
-            return new SocialSecurityIncome(base.id, base.name, base.amount, base.frequency, 
-                data.claimingAge || 67, data.fullRetirementAgeBenefit || 0, base.startDate, base.end_date);
+            return new SocialSecurityIncome(
+                id, name, amount, frequency, Number(data.claimingAge) || 67,
+                Number(data.fullRetirementAgeBenefit) || 0, startDate, endDate
+            );
         case 'PassiveIncome':
-            return new PassiveIncome(base.id, base.name, base.amount, base.frequency, base.earned_income,
-                data.sourceType || 'Other', base.startDate, base.end_date, data.isReinvested ?? false);
+            return new PassiveIncome(
+                id, name, amount, frequency, earned_income,
+                (data.sourceType as PassiveIncome['sourceType']) || 'Other',
+                startDate, endDate, (data.isReinvested as boolean) ?? false
+            );
         case 'WindfallIncome':
-            return new WindfallIncome(base.id, base.name, base.amount, base.frequency, base.earned_income, base.startDate, base.end_date);
+            return new WindfallIncome(id, name, amount, frequency, earned_income, startDate, endDate);
         case 'CurrentSocialSecurityIncome':
-            return new CurrentSocialSecurityIncome(base.id, base.name, base.amount, base.frequency, base.startDate, base.end_date);
+            return new CurrentSocialSecurityIncome(id, name, amount, frequency, startDate, endDate);
         case 'FutureSocialSecurityIncome':
             return new FutureSocialSecurityIncome(
-                base.id,
-                base.name,
-                data.claimingAge || 67,
-                data.calculatedPIA || 0,
-                data.calculationYear || 0,
-                base.startDate,
-                base.end_date
+                id, name, Number(data.claimingAge) || 67,
+                Number(data.calculatedPIA) || 0, Number(data.calculationYear) || 0,
+                startDate, endDate
             );
         case 'FERSPensionIncome':
             return new FERSPensionIncome(
-                base.id,
-                base.name,
-                data.yearsOfService || 0,
-                data.high3Salary || 0,
-                data.retirementAge || 62,
-                data.birthYear || 1970,
-                data.calculatedBenefit || 0,
-                data.fersSupplement || 0,
-                data.estimatedSSAt62 || 0,
-                base.startDate,
-                base.end_date,
-                data.autoCalculateHigh3 || false,
-                data.linkedIncomeId || null
+                id, name, Number(data.yearsOfService) || 0, Number(data.high3Salary) || 0,
+                Number(data.retirementAge) || 62, Number(data.birthYear) || 1970,
+                Number(data.calculatedBenefit) || 0, Number(data.fersSupplement) || 0,
+                Number(data.estimatedSSAt62) || 0, startDate, endDate,
+                (data.autoCalculateHigh3 as boolean) || false,
+                data.linkedIncomeId ? String(data.linkedIncomeId) : null
             );
         case 'CSRSPensionIncome':
             return new CSRSPensionIncome(
-                base.id,
-                base.name,
-                data.yearsOfService || 0,
-                data.high3Salary || 0,
-                data.retirementAge || 55,
-                data.calculatedBenefit || 0,
-                base.startDate,
-                base.end_date,
-                data.autoCalculateHigh3 || false,
-                data.linkedIncomeId || null
+                id, name, Number(data.yearsOfService) || 0, Number(data.high3Salary) || 0,
+                Number(data.retirementAge) || 55, Number(data.calculatedBenefit) || 0,
+                startDate, endDate, (data.autoCalculateHigh3 as boolean) || false,
+                data.linkedIncomeId ? String(data.linkedIncomeId) : null
             );
         default:
             return null;

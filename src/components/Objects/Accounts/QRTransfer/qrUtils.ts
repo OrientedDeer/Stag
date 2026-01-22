@@ -12,12 +12,21 @@ const KEY_MAP: Record<string, string> = {
     apr: 'r', taxType: 'x', employerBalance: 'b', expenseRatio: 'p',
     tenureYears: 'y', vestedPerYear: 'v', costBasis: 'o',
     isContributionEligible: 'g', linkedAccountId: 'L', nonVestedAmount: 'V',
+    // ESPP Account
+    lots: 'lt', linkedIncomeId: 'li', customROR: 'cr',
+    stockTicker: 'st', currentSharePrice: 'cp', withdrawalPreference: 'wp', minimumHoldingDays: 'mh',
+    // ESPP Lot fields
+    grantDate: 'gd', purchaseDate: 'pd', fmvAtGrant: 'fg', fmvAtPurchase: 'fp',
+    purchasePrice: 'pp', shares: 'sh', totalCost: 'tc', discountAmount: 'da',
     // Income/Expense
     frequency: 'f', startDate: 's', endDate: 'E', annualGrowthRate: 'w',
     earned_income: 'I', isDiscretionary: 'D',
     // Work income
     preTax401k: 'k', roth401k: 'K', insurance: 'u', employerMatch: 'M',
     matchAccountId: 'A', contributionGrowthStrategy: 'G', hsaContribution: 'H', autoMax401k: 'X',
+    // Work income ESPP
+    esppContributionType: 'et', esppContributionAmount: 'ea', esppDiscountPercent: 'ed',
+    esppHasLookback: 'el', esppOfferingPeriodMonths: 'eo', esppAccountId: 'ei', esppExpectedStockGrowth: 'eg',
     // Passive income
     sourceType: 'O', isReinvested: 'R', end_date: 'Z',
     // Social security
@@ -54,12 +63,25 @@ const DEFAULTS: Record<string, Record<string, unknown>> = {
         costBasis: 0,
         nonVestedAmount: 0,
         expenseRatio: 0,
+        // ESPP Account defaults
+        lots: [],
+        linkedIncomeId: null,
+        withdrawalPreference: 'fifo',
+        minimumHoldingDays: 0,
     },
     income: {
         annualGrowthRate: 0.03,
         matchAccountId: null,
         hsaContribution: 0,
         autoMax401k: false,
+        // ESPP Work Income defaults
+        esppContributionType: 'NONE',
+        esppContributionAmount: 0,
+        esppDiscountPercent: 15,
+        esppHasLookback: true,
+        esppOfferingPeriodMonths: 6,
+        esppAccountId: null,
+        esppExpectedStockGrowth: 7,
     },
     expense: {
         annualGrowthRate: 0.03,
@@ -168,21 +190,15 @@ function expandKeys(obj: unknown): unknown {
 }
 
 /**
- * Strips default values from an object.
+ * Strips default values and null from an object.
  */
 function stripDefaults(obj: Record<string, unknown>, type: string): Record<string, unknown> {
     const typeDefaults = DEFAULTS[type] || {};
-    const result: Record<string, unknown> = {};
-
-    for (const [key, value] of Object.entries(obj)) {
-        // Skip null values
-        if (value === null) continue;
-        // Skip default values
-        if (key in typeDefaults && typeDefaults[key] === value) continue;
-        result[key] = value;
-    }
-
-    return result;
+    return Object.fromEntries(
+        Object.entries(obj).filter(([key, value]) =>
+            value !== null && !(key in typeDefaults && typeDefaults[key] === value)
+        )
+    );
 }
 
 /**
@@ -308,19 +324,13 @@ function expandCompactAssumptions(compact: Record<string, unknown>): Record<stri
  * Compresses tax settings by stripping defaults and shortening keys.
  */
 function compactTax(tax: Record<string, unknown>): Record<string, unknown> {
-    const result: Record<string, unknown> = {};
-
-    for (const [key, value] of Object.entries(tax)) {
-        // Skip default/null values
-        if (key in TAX_DEFAULTS && TAX_DEFAULTS[key] === value) continue;
-        if (value === null) continue;
-
-        // Shorten key
-        const shortKey = KEY_MAP[key] || key;
-        result[shortKey] = value;
-    }
-
-    return result;
+    return Object.fromEntries(
+        Object.entries(tax)
+            .filter(([key, value]) =>
+                value !== null && !(key in TAX_DEFAULTS && TAX_DEFAULTS[key] === value)
+            )
+            .map(([key, value]) => [KEY_MAP[key] || key, value])
+    );
 }
 
 /**
@@ -478,11 +488,7 @@ export function isCompactFormat(data: unknown): data is CompactBackup {
 export function compressData(data: object): string {
     const jsonString = JSON.stringify(data);
     const compressed = pako.deflate(jsonString);
-    // Convert Uint8Array to base64
-    const binaryString = Array.from(compressed)
-        .map(byte => String.fromCharCode(byte))
-        .join('');
-    return btoa(binaryString);
+    return btoa(String.fromCharCode(...compressed));
 }
 
 /**

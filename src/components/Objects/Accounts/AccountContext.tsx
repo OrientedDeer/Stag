@@ -1,22 +1,19 @@
-import { createContext, useReducer, ReactNode, Dispatch, useMemo, useCallback } from 'react';
-import {
-    AnyAccount,
-    reconstituteAccount
-} from './models';
-import { useDebouncedLocalStorage } from '../../../hooks/useDebouncedLocalStorage';
+import { createContext, ReactNode, Dispatch, useMemo, useCallback } from 'react';
+import { AnyAccount, reconstituteAccount } from './models';
+import { usePersistedReducer } from '../../../hooks/usePersistedReducer';
 
-type AllKeys<T> = T extends any ? keyof T : never;
+type AllKeys<T> = T extends unknown ? keyof T : never;
 export type AllAccountKeys = AllKeys<AnyAccount>;
 
-// Increment this whenever you make breaking changes to the data structure
 const CURRENT_SCHEMA_VERSION = 1;
+const STORAGE_KEY = 'user_accounts_data';
 
 export interface AmountHistoryEntry {
   date: string;
   num: number;
 }
 
-interface AppState {
+interface AccountState {
   accounts: AnyAccount[];
   amountHistory: Record<string, AmountHistoryEntry[]>;
 }
@@ -24,63 +21,40 @@ interface AppState {
 type Action =
   | { type: 'ADD_ACCOUNT'; payload: AnyAccount }
   | { type: 'DELETE_ACCOUNT'; payload: { id: string } }
-  | { type: 'UPDATE_ACCOUNT_FIELD'; payload: { id: string; field: AllAccountKeys; value: any } }
+  | { type: 'UPDATE_ACCOUNT_FIELD'; payload: { id: string; field: AllAccountKeys; value: unknown } }
   | { type: 'ADD_AMOUNT_SNAPSHOT'; payload: { id: string; amount: number } }
   | { type: 'REORDER_ACCOUNTS'; payload: { startIndex: number; endIndex: number } }
-  | { type: 'UPDATE_HISTORY_ENTRY'; payload: { id: string; index: number; date: string; num: number} }
+  | { type: 'UPDATE_HISTORY_ENTRY'; payload: { id: string; index: number; date: string; num: number } }
   | { type: 'DELETE_HISTORY_ENTRY'; payload: { id: string; index: number } }
   | { type: 'ADD_HISTORY_ENTRY'; payload: { id: string; date: string; num: number } }
   | { type: 'SET_BULK_DATA'; payload: { accounts: AnyAccount[]; amountHistory: Record<string, AmountHistoryEntry[]> } };
 
-const getTodayString = () => new Date().toISOString().split('T')[0];
-const STORAGE_KEY = 'user_accounts_data';
-
-const initialState: AppState = {
+const initialState: AccountState = {
   accounts: [],
   amountHistory: {},
 };
 
+function getTodayString(): string {
+  return new Date().toISOString().split('T')[0];
+}
 
-
-const initializer = (initialState: AppState): AppState => {
-    try {
-        const savedState = localStorage.getItem(STORAGE_KEY);
-        if (savedState) {
-            const parsed = JSON.parse(savedState);
-            const accounts = (parsed.accounts || [])
-                .map(reconstituteAccount)
-                .filter((acc: AnyAccount): acc is AnyAccount => acc !== null);
-
-            return {
-                accounts,
-                amountHistory: parsed.amountHistory || {},
-            };
-        }
-    } catch (e) {
-        console.error("Could not load state:", e);
-    }
-    return initialState;
-};
-
-const accountReducer = (state: AppState, action: Action): AppState => {
+function accountReducer(state: AccountState, action: Action): AccountState {
   switch (action.type) {
     case 'SET_BULK_DATA':
-        return {
-            ...state,
-            accounts: action.payload.accounts,
-            amountHistory: action.payload.amountHistory,
-        };
-    
-    // ... (rest of your existing cases: ADD_ACCOUNT, DELETE_ACCOUNT, etc.)
+      return {
+        ...state,
+        accounts: action.payload.accounts,
+        amountHistory: action.payload.amountHistory,
+      };
+
     case 'ADD_ACCOUNT': {
       const today = getTodayString();
-      const newEntry: AmountHistoryEntry = { date: today, num: action.payload.amount };
       return {
         ...state,
         accounts: [...state.accounts, action.payload],
         amountHistory: {
           ...state.amountHistory,
-          [action.payload.id]: [newEntry], // Initialize with current day's snapshot
+          [action.payload.id]: [{ date: today, num: action.payload.amount }],
         },
       };
     }
@@ -98,13 +72,11 @@ const accountReducer = (state: AppState, action: Action): AppState => {
       return {
         ...state,
         accounts: state.accounts.map((acc) => {
-          if (acc.id === action.payload.id) {
-            const updatedAccount = Object.assign(Object.create(Object.getPrototypeOf(acc)), acc);
-            updatedAccount.className = acc.constructor.name; 
-            updatedAccount[action.payload.field] = action.payload.value;
-            return updatedAccount;
-          }
-          return acc;
+          if (acc.id !== action.payload.id) return acc;
+          const updated = Object.assign(Object.create(Object.getPrototypeOf(acc)), acc);
+          updated.className = acc.constructor.name;
+          updated[action.payload.field] = action.payload.value;
+          return updated;
         }),
       };
 
@@ -113,15 +85,13 @@ const accountReducer = (state: AppState, action: Action): AppState => {
       const today = getTodayString();
       const currentHistory = state.amountHistory[id] || [];
       const lastEntry = currentHistory[currentHistory.length - 1];
-      
       const newEntry: AmountHistoryEntry = { date: today, num: amount };
-      
-      let newHistory: AmountHistoryEntry[];
-      if (lastEntry && lastEntry.date === today) {
-        newHistory = [...currentHistory.slice(0, -1), newEntry];
-      } else {
-        newHistory = [...currentHistory, newEntry];
-      }
+
+      // Replace today's entry if it exists, otherwise append
+      const newHistory = lastEntry?.date === today
+        ? [...currentHistory.slice(0, -1), newEntry]
+        : [...currentHistory, newEntry];
+
       return { ...state, amountHistory: { ...state.amountHistory, [id]: newHistory } };
     }
 
@@ -135,11 +105,9 @@ const accountReducer = (state: AppState, action: Action): AppState => {
     case 'UPDATE_HISTORY_ENTRY': {
       const { id, index, date, num } = action.payload;
       const history = [...(state.amountHistory[id] || [])];
-      if (history[index]) {
-        history[index] = { ...history[index], date, num };
-        return { ...state, amountHistory: { ...state.amountHistory, [id]: history } };
-      }
-      return state;
+      if (!history[index]) return state;
+      history[index] = { ...history[index], date, num };
+      return { ...state, amountHistory: { ...state.amountHistory, [id]: history } };
     }
 
     case 'DELETE_HISTORY_ENTRY': {
@@ -150,19 +118,38 @@ const accountReducer = (state: AppState, action: Action): AppState => {
     }
 
     case 'ADD_HISTORY_ENTRY': {
-        const { id, date, num } = action.payload;
-        const newEntry: AmountHistoryEntry = { date, num };
-        const history = [...(state.amountHistory[id] || []), newEntry];
-        history.sort((a, b) => a.date.localeCompare(b.date));
-        return { ...state, amountHistory: { ...state.amountHistory, [id]: history } };
+      const { id, date, num } = action.payload;
+      const history = [...(state.amountHistory[id] || []), { date, num }];
+      history.sort((a, b) => a.date.localeCompare(b.date));
+      return { ...state, amountHistory: { ...state.amountHistory, [id]: history } };
     }
 
     default:
       return state;
   }
-};
+}
 
-interface AccountContextProps extends AppState {
+function hydrateAccountState(parsed: unknown, initial: AccountState): AccountState {
+  const data = parsed as { accounts?: unknown[]; amountHistory?: Record<string, AmountHistoryEntry[]> };
+  const accounts = (data.accounts || [])
+    .map(reconstituteAccount)
+    .filter((acc): acc is AnyAccount => acc !== null);
+  return {
+    ...initial,
+    accounts,
+    amountHistory: data.amountHistory || {},
+  };
+}
+
+function serializeAccountState(state: AccountState): string {
+  return JSON.stringify({
+    ...state,
+    accounts: state.accounts.map(acc => ({ ...acc, className: acc.constructor.name })),
+    version: CURRENT_SCHEMA_VERSION,
+  });
+}
+
+interface AccountContextProps extends AccountState {
   dispatch: Dispatch<Action>;
   exportData: () => void;
   importData: (jsonData: string) => void;
@@ -176,20 +163,12 @@ export const AccountContext = createContext<AccountContextProps>({
   importData: () => {},
 });
 
-export const AccountProvider = ({ children }: { children: ReactNode }) => {
-  const [state, dispatch] = useReducer(accountReducer, initialState, initializer);
-
-  // Debounced localStorage persistence (500ms delay to prevent main thread blocking)
-  const serializeState = useCallback((s: AppState) => {
-    const serializable = {
-      ...s,
-      accounts: s.accounts.map(acc => ({ ...acc, className: acc.constructor.name })),
-      version: CURRENT_SCHEMA_VERSION
-    };
-    return JSON.stringify(serializable);
-  }, []);
-
-  useDebouncedLocalStorage(STORAGE_KEY, state, serializeState);
+export function AccountProvider({ children }: { children: ReactNode }): React.ReactElement {
+  const [state, dispatch] = usePersistedReducer(accountReducer, initialState, {
+    storageKey: STORAGE_KEY,
+    hydrate: hydrateAccountState,
+    serialize: serializeAccountState,
+  });
 
   const exportData = useCallback(() => {
     const data = {
@@ -208,32 +187,28 @@ export const AccountProvider = ({ children }: { children: ReactNode }) => {
   const importData = useCallback((json: string) => {
     try {
       const parsed = JSON.parse(json);
-      // Migration logic could go here if parsed.version < CURRENT_SCHEMA_VERSION
       const accounts = (parsed.accounts || [])
         .map(reconstituteAccount)
         .filter((acc: AnyAccount | null): acc is AnyAccount => acc !== null);
 
       dispatch({
         type: 'SET_BULK_DATA',
-        payload: { accounts, amountHistory: parsed.amountHistory || {} }
+        payload: { accounts, amountHistory: parsed.amountHistory || {} },
       });
-      alert("Import successful!");
-    } catch (e) {
-      alert("Failed to import data. Check file format.");
+      alert('Import successful!');
+    } catch {
+      alert('Failed to import data. Check file format.');
     }
   }, []);
 
-  // Memoize context value to prevent unnecessary re-renders
-  const contextValue = useMemo(() => ({
-    ...state,
-    dispatch,
-    exportData,
-    importData
-  }), [state, dispatch, exportData, importData]);
+  const contextValue = useMemo(
+    () => ({ ...state, dispatch, exportData, importData }),
+    [state, dispatch, exportData, importData]
+  );
 
   return (
     <AccountContext.Provider value={contextValue}>
       {children}
     </AccountContext.Provider>
   );
-};
+}

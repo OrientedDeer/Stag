@@ -3,6 +3,7 @@ import { AccountContext } from "../../components/Objects/Accounts/AccountContext
 import {
     SavedAccount,
     InvestedAccount,
+    ESPPAccount,
     PropertyAccount,
     DebtAccount,
     ACCOUNT_CATEGORIES,
@@ -95,7 +96,7 @@ const getAccountValue = (account: AnyAccount): number => {
     return account.amount;
 };
 
-const TabsContent = () => {
+export default function AccountTab() {
     const { accounts, dispatch: accountDispatch } = useContext(AccountContext);
     const { dispatch: incomeDispatch } = useContext(IncomeContext);
     const { dispatch: expenseDispatch } = useContext(ExpenseContext);
@@ -108,6 +109,7 @@ const TabsContent = () => {
         return localStorage.getItem('account_active_tab') || 'Saved';
     });
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [showESPPModal, setShowESPPModal] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [showQRGenerate, setShowQRGenerate] = useState(false);
     const [showQRScan, setShowQRScan] = useState(false);
@@ -241,16 +243,30 @@ const TabsContent = () => {
         Invested: (
             <div className="p-4">
                 <AccountList type={InvestedAccount} />
-                <button 
-                    onClick={() => setIsModalOpen(true)}
-                    className="bg-green-600 p-4 rounded-xl text-white font-bold mt-4 hover:bg-green-700 transition-colors"
-                >
-                    + Add Investment
-                </button>
+                <AccountList type={ESPPAccount} />
+                <div className="flex gap-2 mt-4">
+                    <button
+                        onClick={() => setIsModalOpen(true)}
+                        className="bg-green-600 p-4 rounded-xl text-white font-bold hover:bg-green-700 transition-colors"
+                    >
+                        + Add Investment
+                    </button>
+                    <button
+                        onClick={() => setShowESPPModal(true)}
+                        className="bg-emerald-700 p-4 rounded-xl text-white font-bold hover:bg-emerald-600 transition-colors"
+                    >
+                        + Add ESPP
+                    </button>
+                </div>
                 <AddAccountModal
-                    isOpen={isModalOpen} 
-                    onClose={() => setIsModalOpen(false)} 
+                    isOpen={isModalOpen}
+                    onClose={() => setIsModalOpen(false)}
                     selectedType={InvestedAccount}
+                />
+                <AddAccountModal
+                    isOpen={showESPPModal}
+                    onClose={() => setShowESPPModal(false)}
+                    selectedType={ESPPAccount}
                 />
             </div>
         ),
@@ -416,8 +432,4 @@ const TabsContent = () => {
             </div>
         </div>
     );
-};
-
-export default function AccountTab() {
-    return <TabsContent />;
 }

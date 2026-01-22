@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { StyledInput } from "./StyleUI";
+import { formatDecimal, stripLeadingZeros, handleEnterKeyBlur } from "./inputUtils";
 
 interface PercentageInputProps {
     label: string;
@@ -10,84 +11,61 @@ interface PercentageInputProps {
     id?: string;
     isAboveInflation?: boolean;
     disabled?: boolean;
-    max?: number; // Default 100
+    max?: number;
     tooltip?: string;
 }
 
-const format = (val: number) =>
-    val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function validatePercentage(val: number, max: number): string | undefined {
+    if (val < 0) return "Cannot be negative";
+    if (val > max) return `Max ${max}%`;
+    return undefined;
+}
 
 export const PercentageInput: React.FC<PercentageInputProps> = ({ label, value, onChange, onBlur, error, id, isAboveInflation, disabled, max = 100, tooltip }) => {
-    // Local state for the string representation (e.g., "12.50")
     const [displayValue, setDisplayValue] = useState("");
     const [isFocused, setIsFocused] = useState(false);
     const [internalError, setInternalError] = useState<string | undefined>();
 
-    // Built-in validation
-    const validateValue = (val: number): string | undefined => {
-        if (val < 0) return "Cannot be negative";
-        if (val > max) return `Max ${max}%`;
-        return undefined;
-    };
-
-    // Sync local state when the prop value changes (unless we are editing it)
     useEffect(() => {
         if (!isFocused) {
-            setDisplayValue(format(value));
+            setDisplayValue(formatDecimal(value));
         }
     }, [value, isFocused]);
 
-    const handleFocus = () => {
+    const handleFocus = (): void => {
         setIsFocused(true);
-        // On focus, strip formatting so user sees raw number (e.g. "12.5")
         setDisplayValue(value.toString());
     };
 
-    const handleBlur = () => {
+    const handleBlur = (): void => {
         setIsFocused(false);
-        // Parse the current string back to a number
         const cleanVal = displayValue.replace(/[^0-9.]/g, "");
 
         let finalVal = value;
         if (cleanVal === "") {
             finalVal = 0;
             onChange(0);
-            setDisplayValue(format(0));
+            setDisplayValue(formatDecimal(0));
         } else {
             const numVal = parseFloat(cleanVal);
             if (!isNaN(numVal)) {
                 finalVal = numVal;
-                onChange(numVal); // Send the number up to the parent
-                setDisplayValue(format(numVal)); // Re-format local display
+                onChange(numVal);
+                setDisplayValue(formatDecimal(numVal));
             } else {
-                setDisplayValue(format(value)); // Revert if invalid
+                setDisplayValue(formatDecimal(value));
             }
         }
 
-        // Validate and set internal error
-        setInternalError(validateValue(finalVal));
-
-        // Call parent's onBlur callback if provided
+        setInternalError(validatePercentage(finalVal, max));
         onBlur?.();
     };
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        // Allow typing numbers and a single dot
-        let val = e.target.value;
-        // The value from the input might contain the '%' symbol if edited
-        val = val.replace(/%/g, '');
-        // Strip leading zeros except for "0" or "0."
-        val = val.replace(/^0+(?=\d)/, '');
-        setDisplayValue(val);
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
+        const val = e.target.value.replace(/%/g, '');
+        setDisplayValue(stripLeadingZeros(val));
     };
 
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'Enter') {
-            e.currentTarget.blur();
-        }
-    };
-
-    // Use external error if provided, otherwise use internal validation error
     const displayError = error || internalError;
 
     return (
@@ -99,7 +77,7 @@ export const PercentageInput: React.FC<PercentageInputProps> = ({ label, value, 
             onChange={handleChange}
             onFocus={handleFocus}
             onBlur={handleBlur}
-            onKeyDown={handleKeyDown}
+            onKeyDown={handleEnterKeyBlur}
             disabled={disabled}
             error={displayError}
             tooltip={tooltip}

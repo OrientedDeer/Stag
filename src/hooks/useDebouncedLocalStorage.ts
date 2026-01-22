@@ -9,6 +9,7 @@ import { useEffect, useRef } from 'react';
  *
  * @param key - The localStorage key to write to
  * @param value - The value to serialize and store
+ * @param serializer - Function to serialize the value (default: JSON.stringify)
  * @param delay - Debounce delay in milliseconds (default: 500)
  */
 export function useDebouncedLocalStorage<T>(
@@ -19,27 +20,27 @@ export function useDebouncedLocalStorage<T>(
 ): void {
     const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const valueRef = useRef<T>(value);
+    const serializerRef = useRef(serializer);
+    const keyRef = useRef(key);
 
-    // Update ref on every render so we always have the latest value
+    // Update refs on every render so cleanup always has latest values
     valueRef.current = value;
+    serializerRef.current = serializer;
+    keyRef.current = key;
 
     useEffect(() => {
-        // Clear any pending write
         if (timeoutRef.current) {
             clearTimeout(timeoutRef.current);
         }
 
-        // Schedule a new write
         timeoutRef.current = setTimeout(() => {
             try {
-                const serialized = serializer(valueRef.current);
-                localStorage.setItem(key, serialized);
+                localStorage.setItem(key, serializer(valueRef.current));
             } catch (e) {
                 console.error(`Failed to write to localStorage key "${key}":`, e);
             }
         }, delay);
 
-        // Cleanup on unmount
         return () => {
             if (timeoutRef.current) {
                 clearTimeout(timeoutRef.current);
@@ -47,19 +48,17 @@ export function useDebouncedLocalStorage<T>(
         };
     }, [key, value, serializer, delay]);
 
-    // Also write immediately on unmount to ensure we don't lose data
+    // Write immediately on unmount to ensure data is not lost
     useEffect(() => {
         return () => {
             if (timeoutRef.current) {
                 clearTimeout(timeoutRef.current);
             }
             try {
-                const serialized = serializer(valueRef.current);
-                localStorage.setItem(key, serialized);
+                localStorage.setItem(keyRef.current, serializerRef.current(valueRef.current));
             } catch (e) {
-                console.error(`Failed to write to localStorage on unmount:`, e);
+                console.error('Failed to write to localStorage on unmount:', e);
             }
         };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 }

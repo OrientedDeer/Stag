@@ -1,27 +1,8 @@
 import React, { useState, useContext } from 'react';
 import { AssumptionsContext } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { DebtAccount, PropertyAccount, AnyAccount } from '../../../components/Objects/Accounts/models';
-import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider'; // Import RangeSlider
+import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider';
 import { CashflowSankey } from '../../../components/Charts/CashflowSankey';
-import { formatCompactCurrency } from './FutureUtils';
-
-const calculateNetWorth = (accounts: AnyAccount[]) => {
-    let assets = 0;
-    let liabilities = 0;
-    accounts.forEach(acc => {
-        const val = acc.amount || 0;
-        if (acc instanceof DebtAccount) {
-            liabilities += val;
-        } else {
-            assets += val;
-            // PropertyAccount has a loan that counts as liability
-            if (acc instanceof PropertyAccount && acc.loanAmount) {
-                liabilities += acc.loanAmount;
-            }
-        }
-    });
-    return assets - liabilities;
-};
+import { calculateNetWorth, formatCompactCurrency } from './FutureUtils';
 
 export const CashflowTab = React.memo(({ simulationData }: { simulationData: any[] }) => {
     const { state: assumptions } = useContext(AssumptionsContext);

@@ -141,3 +141,17 @@ export function calculateContributionTaxSavings(
   const taxSavings = additionalContribution * marginalTaxRate;
   return { additionalContribution, taxSavings };
 }
+
+/**
+ * Get the ESPP (Employee Stock Purchase Plan) FMV limit.
+ *
+ * IRS limits ESPP purchases to $25,000 of stock Fair Market Value per calendar year.
+ * This is measured at the grant date FMV, not the purchase date.
+ * Note: This is not the amount you can contribute, but the FMV of shares you can acquire.
+ *
+ * @returns Annual ESPP FMV limit ($25,000)
+ */
+export function getESPPLimit(): number {
+  // ESPP limit is fixed at $25,000 FMV and is not adjusted for inflation
+  return 25000;
+}

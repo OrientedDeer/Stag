@@ -27,6 +27,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         { path: "/future/charts", label: "Charts" },
     ];
 
+
 	const currentIcon = (
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="white" viewBox="0 -960 960 960">
 			<path d="M200-280v-280h80v280zm240 0v-280h80v280zM80-120v-80h800v80zm600-160v-280h80v280zM80-640v-80l400-200 400 200v80zm178-80h444zm0 0h444L480-830z" />
@@ -36,6 +37,12 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 	const futureIcon = (
 		<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="white" viewBox="0 -960 960 960">
 			<path d="m136-240-56-56 296-298 160 160 208-206H640v-80h240v240h-80v-104L536-320 376-480z" />
+		</svg>
+	);
+
+	const budgetIcon = (
+		<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="white" viewBox="0 -960 960 960">
+			<path d="M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v560q0 33-23.5 56.5T760-120H200Zm0-80h560v-560H200v560Zm40-80h200v-80H240v80Zm324-132 156-156-56-56-100 100-44-44-56 56 100 100ZM240-520h200v-80H240v80Zm0-160h200v-80H240v80Z" />
 		</svg>
 	);
 
@@ -93,6 +100,19 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 						activeClass={active}
 						onLinkClick={handleLinkClick}
 					/>
+
+					<Link
+						className={`${link} ${pathname.startsWith("/budget") && active} ${isOpen ? "pointer-events-none" : ""}`}
+						to="/budget"
+						onClick={handleLinkClick}
+					>
+						<span className={`flex items-center gap-2 overflow-hidden whitespace-nowrap transition-all duration-300 ${isOpen ? "w-0 opacity-0" : "w-auto opacity-100"}`}>
+							{budgetIcon}
+							<span className={`overflow-hidden whitespace-nowrap transition-all duration-300 ${isOpen ? "w-0 opacity-0" : "w-auto opacity-100"}`}>
+								Budget
+							</span>
+						</span>
+					</Link>
 
 					<SidebarCollapseLink
 						label="Future"

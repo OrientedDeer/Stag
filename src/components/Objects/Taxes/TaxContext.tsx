@@ -1,7 +1,6 @@
-// src/components/Taxes/TaxContext.tsx
-import { createContext, useReducer, ReactNode, useMemo } from 'react';
+import { createContext, ReactNode, useMemo } from 'react';
 import { FilingStatus, max_year } from '../../../data/TaxData';
-import { useDebouncedLocalStorage } from '../../../hooks/useDebouncedLocalStorage';
+import { usePersistedReducer } from '../../../hooks/usePersistedReducer';
 
 export type DeductionMethod = 'Standard' | 'Itemized' | 'Auto';
 
@@ -15,7 +14,7 @@ export interface TaxState {
   year: number;
 }
 
-type Action = 
+type Action =
   | { type: 'SET_STATUS'; payload: FilingStatus }
   | { type: 'SET_STATE'; payload: string }
   | { type: 'SET_DEDUCTION_METHOD'; payload: DeductionMethod }
@@ -35,7 +34,7 @@ export const defaultTaxState: TaxState = {
   year: max_year,
 };
 
-const taxReducer = (state: TaxState, action: Action): TaxState => {
+function taxReducer(state: TaxState, action: Action): TaxState {
   switch (action.type) {
     case 'SET_STATUS': return { ...state, filingStatus: action.payload };
     case 'SET_STATE': return { ...state, stateResidency: action.payload };
@@ -47,40 +46,25 @@ const taxReducer = (state: TaxState, action: Action): TaxState => {
     case 'SET_BULK_DATA': return { ...action.payload };
     default: return state;
   }
-};
-
-interface TaxContextProps {
-    state: TaxState;
-    dispatch: React.Dispatch<Action>;
 }
 
+interface TaxContextProps {
+  state: TaxState;
+  dispatch: React.Dispatch<Action>;
+}
 
 export const TaxContext = createContext<TaxContextProps>({
-    state: defaultTaxState,
-    dispatch: () => null,
+  state: defaultTaxState,
+  dispatch: () => null,
 });
 
-
-export const TaxProvider = ({ children }: { children: ReactNode }) => {
-  // FIXED: Pass taxReducer as the first argument
-  const [state, dispatch] = useReducer(taxReducer, defaultTaxState, (initial) => {
-    const saved = localStorage.getItem('tax_settings');
-    if (saved) {
-        // We merge with initial to ensure new fields (like overrides) exist 
-        // even if the user has an old state saved in their browser
-        return { ...initial, ...JSON.parse(saved) };
-    }
-    return initial;
+export function TaxProvider({ children }: { children: ReactNode }): React.ReactElement {
+  const [state, dispatch] = usePersistedReducer(taxReducer, defaultTaxState, {
+    storageKey: 'tax_settings',
+    // Merge with defaults to ensure new fields exist even with old saved data
   });
 
-  // Debounced localStorage persistence (500ms delay to prevent main thread blocking)
-  useDebouncedLocalStorage('tax_settings', state);
-
-  // Memoize context value to prevent unnecessary re-renders
-  const contextValue = useMemo(() => ({
-    state,
-    dispatch
-  }), [state, dispatch]);
+  const contextValue = useMemo(() => ({ state, dispatch }), [state, dispatch]);
 
   return <TaxContext.Provider value={contextValue}>{children}</TaxContext.Provider>;
-};
+}

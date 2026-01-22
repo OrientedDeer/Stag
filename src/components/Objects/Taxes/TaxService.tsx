@@ -15,6 +15,39 @@ import {
 	defaultAssumptions,
 } from "../../Objects/Assumptions/AssumptionsContext";
 
+// ============================================================================
+// Constants
+// ============================================================================
+
+/** Tax years when TCJA SALT cap was in effect ($10k/$5k MFS) */
+const TCJA_SALT_START_YEAR = 2018;
+const TCJA_SALT_END_YEAR = 2024;
+
+/** Tax years when OBBBA raised SALT cap ($40k/$20k MFS with 1% annual inflation) */
+const OBBBA_SALT_START_YEAR = 2025;
+const OBBBA_SALT_END_YEAR = 2029;
+
+/** SALT cap amounts */
+const SALT_CAP_TCJA_JOINT = 10000;
+const SALT_CAP_TCJA_MFS = 5000;
+const SALT_CAP_OBBBA_JOINT = 40000;
+const SALT_CAP_OBBBA_MFS = 20000;
+const SALT_CAP_ANNUAL_INCREASE = 0.01; // 1% annual increase under OBBBA
+
+/** Social Security combined income thresholds for benefit taxation */
+const SS_THRESHOLDS_SINGLE = { first: 25000, second: 34000 };
+const SS_THRESHOLDS_JOINT = { first: 32000, second: 44000 };
+
+/** Social Security taxation rates */
+const SS_TIER1_TAXABLE_RATE = 0.5;  // 50% of excess taxable in tier 1
+const SS_TIER2_TAXABLE_RATE = 0.85; // 85% of excess taxable in tier 2
+const SS_MAX_TAXABLE_RATE = 0.85;   // Maximum 85% of benefits can be taxed
+
+/** Binary search parameters for gross withdrawal solver */
+const WITHDRAWAL_SOLVER_MAX_ITERATIONS = 50;
+const WITHDRAWAL_SOLVER_TOLERANCE = 0.005;
+const WITHDRAWAL_SOLVER_FALLBACK_TAX_RATE = 0.30;
+
 /**
  * SALT (State and Local Tax) deduction cap.
  *
@@ -30,28 +63,26 @@ import {
 export function getSALTCap(year: number, filingStatus: FilingStatus): number {
 	const isMFS = filingStatus === 'Married Filing Separately';
 
-	if (year < 2018) {
-		// Pre-TCJA: No cap (return a high number)
+	// Pre-TCJA: No cap
+	if (year < TCJA_SALT_START_YEAR) {
 		return Infinity;
 	}
 
-	if (year >= 2018 && year <= 2024) {
-		// TCJA cap
-		return isMFS ? 5000 : 10000;
+	// TCJA cap period (2018-2024)
+	if (year >= TCJA_SALT_START_YEAR && year <= TCJA_SALT_END_YEAR) {
+		return isMFS ? SALT_CAP_TCJA_MFS : SALT_CAP_TCJA_JOINT;
 	}
 
-	if (year >= 2025 && year <= 2029) {
-		// OBBBA raised cap with 1% annual increase starting 2026
-		const baseCapJoint = 40000;
-		const baseCapMFS = 20000;
-		const yearsOfIncrease = Math.max(0, year - 2025);
-		const inflationFactor = Math.pow(1.01, yearsOfIncrease);
-		const cap = isMFS ? baseCapMFS : baseCapJoint;
-		return Math.round(cap * inflationFactor);
+	// OBBBA raised cap period (2025-2029) with 1% annual increase starting 2026
+	if (year >= OBBBA_SALT_START_YEAR && year <= OBBBA_SALT_END_YEAR) {
+		const yearsOfIncrease = Math.max(0, year - OBBBA_SALT_START_YEAR);
+		const inflationFactor = Math.pow(1 + SALT_CAP_ANNUAL_INCREASE, yearsOfIncrease);
+		const baseCap = isMFS ? SALT_CAP_OBBBA_MFS : SALT_CAP_OBBBA_JOINT;
+		return Math.round(baseCap * inflationFactor);
 	}
 
 	// 2030+: Reverts to original TCJA cap
-	return isMFS ? 5000 : 10000;
+	return isMFS ? SALT_CAP_TCJA_MFS : SALT_CAP_TCJA_JOINT;
 }
 
 // Legacy constants for backward compatibility
@@ -219,35 +250,35 @@ export function getTaxableSocialSecurityBenefits(
 
 	// Combined income = AGI + Nontaxable Interest + 50% of SS Benefits
 	// For simplicity, we're not tracking nontaxable interest separately
-	const combinedIncome = agi + (totalSSBenefits * 0.5);
+	const combinedIncome = agi + (totalSSBenefits * SS_TIER1_TAXABLE_RATE);
 
-	// Thresholds based on filing status
-	// Single and Married Filing Separately use lower thresholds
-	// Married Filing Jointly uses higher thresholds
-	const thresholds = filingStatus === 'Single' || filingStatus === 'Married Filing Separately'
-		? { first: 25000, second: 34000 }
-		: { first: 32000, second: 44000 }; // Married Filing Jointly
+	// Select thresholds based on filing status
+	const useSingleThresholds = filingStatus === 'Single' || filingStatus === 'Married Filing Separately';
+	const thresholds = useSingleThresholds ? SS_THRESHOLDS_SINGLE : SS_THRESHOLDS_JOINT;
 
-	// No SS benefits are taxable
+	// No SS benefits are taxable below first threshold
 	if (combinedIncome < thresholds.first) {
 		return 0;
 	}
 
-	// Up to 50% of SS benefits are taxable
+	// Up to 50% of SS benefits are taxable between first and second threshold
 	if (combinedIncome < thresholds.second) {
 		const excessAboveFirst = combinedIncome - thresholds.first;
-		const taxable50Percent = Math.min(excessAboveFirst * 0.5, totalSSBenefits * 0.5);
+		const taxable50Percent = Math.min(
+			excessAboveFirst * SS_TIER1_TAXABLE_RATE,
+			totalSSBenefits * SS_TIER1_TAXABLE_RATE
+		);
 		return Math.min(taxable50Percent, totalSSBenefits);
 	}
 
-	// Up to 85% of SS benefits are taxable
+	// Up to 85% of SS benefits are taxable above second threshold
 	const excessAboveSecond = combinedIncome - thresholds.second;
-	const tier1Amount = (thresholds.second - thresholds.first) * 0.5; // 50% of tier 1
-	const tier2Amount = excessAboveSecond * 0.85; // 85% of tier 2
+	const tier1Amount = (thresholds.second - thresholds.first) * SS_TIER1_TAXABLE_RATE;
+	const tier2Amount = excessAboveSecond * SS_TIER2_TAXABLE_RATE;
 	const totalTaxable = tier1Amount + tier2Amount;
 
 	// Cap at 85% of total benefits
-	return Math.min(totalTaxable, totalSSBenefits * 0.85);
+	return Math.min(totalTaxable, totalSSBenefits * SS_MAX_TAXABLE_RATE);
 }
 
 export function getItemizedDeductions(
@@ -637,7 +668,8 @@ export function calculateGrossWithdrawal(
     const stateParams = getTaxParameters(year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions);
 
     if (!fedParams || !stateParams) {
-        const fallbackGross = netNeeded / (0.7 - penaltyRate);
+        const effectiveNetRate = (1 - WITHDRAWAL_SOLVER_FALLBACK_TAX_RATE) - penaltyRate;
+        const fallbackGross = netNeeded / effectiveNetRate;
         const fallbackPenalty = fallbackGross * penaltyRate;
         return { grossWithdrawn: fallbackGross, totalTax: fallbackGross - netNeeded - fallbackPenalty, penalty: fallbackPenalty };
     }
@@ -674,15 +706,15 @@ export function calculateGrossWithdrawal(
     };
 
     // 3. Binary Search
-    let low = netNeeded; 
+    let low = netNeeded;
     let high = netNeeded * 4; // Safe upper bound
     let grossSolution = high;
 
-    for (let i = 0; i < 50; i++) {
+    for (let i = 0; i < WITHDRAWAL_SOLVER_MAX_ITERATIONS; i++) {
         const mid = (low + high) / 2;
         const netResult = calculateNetFromGross(mid);
 
-        if (Math.abs(netResult - netNeeded) <= 0.005) {
+        if (Math.abs(netResult - netNeeded) <= WITHDRAWAL_SOLVER_TOLERANCE) {
             grossSolution = mid;
             break;
         }
@@ -818,5 +850,85 @@ export function getCombinedMarginalRate(
         fica: ficaRate,
         combined: fedMarginal.rate + stateMarginal.rate + ficaRate,
         federalHeadroom: fedMarginal.headroom
+    };
+}
+
+/**
+ * Calculate ESPP disposition tax breakdown.
+ *
+ * ESPP shares have special tax treatment based on holding periods:
+ *
+ * **Qualifying Disposition** (held 2 years from grant AND 1 year from purchase):
+ * - Ordinary income = lesser of: (1) discount at grant price, or (2) actual gain
+ * - Capital gains = remainder (long-term)
+ *
+ * **Disqualifying Disposition** (sold before meeting both holding periods):
+ * - Ordinary income = FMV at purchase - purchase price (the "bargain element")
+ * - Capital gains = sale price - FMV at purchase (can be short or long term)
+ *
+ * @param sharesToSell - Number of shares being sold
+ * @param salePrice - Sale price per share
+ * @param purchasePrice - Original purchase price per share
+ * @param fmvAtGrant - Fair market value at grant date
+ * @param fmvAtPurchase - Fair market value at purchase date
+ * @param isQualifying - Whether this is a qualifying disposition
+ * @param isLongTermCG - Whether capital gains portion qualifies as long-term (held >1 year from purchase)
+ * @returns Tax breakdown with ordinary income and capital gains amounts
+ */
+export function calculateESPPDispositionTax(
+    sharesToSell: number,
+    salePrice: number,
+    purchasePrice: number,
+    fmvAtGrant: number,
+    fmvAtPurchase: number,
+    isQualifying: boolean,
+    isLongTermCG: boolean
+): {
+    ordinaryIncome: number;
+    shortTermCapitalGains: number;
+    longTermCapitalGains: number;
+    totalTaxableGain: number;
+} {
+    const totalSaleProceeds = sharesToSell * salePrice;
+    const totalCostBasis = sharesToSell * purchasePrice;
+    const totalGain = totalSaleProceeds - totalCostBasis;
+
+    let ordinaryIncome = 0;
+    let shortTermCapitalGains = 0;
+    let longTermCapitalGains = 0;
+
+    if (totalGain <= 0) {
+        // Loss scenario - all goes to capital gains (loss)
+        if (isLongTermCG) {
+            longTermCapitalGains = totalGain;
+        } else {
+            shortTermCapitalGains = totalGain;
+        }
+    } else if (isQualifying) {
+        // Qualifying disposition
+        // Ordinary income = lesser of grant discount or actual gain
+        const grantDiscount = fmvAtGrant * 0.15 * sharesToSell; // Typical 15% discount
+        ordinaryIncome = Math.min(grantDiscount, totalGain);
+        longTermCapitalGains = totalGain - ordinaryIncome; // Always long-term for qualifying
+    } else {
+        // Disqualifying disposition
+        // Ordinary income = bargain element (discount at purchase)
+        const bargainElement = (fmvAtPurchase - purchasePrice) * sharesToSell;
+        ordinaryIncome = Math.max(0, bargainElement);
+
+        // Capital gains = gain beyond the bargain element
+        const capitalGain = totalGain - bargainElement;
+        if (isLongTermCG) {
+            longTermCapitalGains = capitalGain;
+        } else {
+            shortTermCapitalGains = capitalGain;
+        }
+    }
+
+    return {
+        ordinaryIncome,
+        shortTermCapitalGains,
+        longTermCapitalGains,
+        totalTaxableGain: ordinaryIncome + shortTermCapitalGains + longTermCapitalGains
     };
 }

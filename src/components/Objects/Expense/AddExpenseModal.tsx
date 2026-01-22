@@ -33,6 +33,69 @@ interface AddExpenseModalProps {
 	onClose: () => void;
 }
 
+type ExpenseFrequency = "Weekly" | "Monthly" | "Annually";
+type TaxDeductibleOption = "Yes" | "No" | "Itemized";
+type InterestType = "Compounding" | "Simple";
+
+interface ExpenseFormState {
+	name: string;
+	amount: number;
+	frequency: ExpenseFrequency;
+	// Mortgage fields
+	valuation: number;
+	loanBalance: number;
+	startingLoanBalance: number;
+	apr: number;
+	termLength: number;
+	propertyTaxes: number;
+	valuationDeduction: number;
+	maintenance: number;
+	utilities: number;
+	homeOwnersInsurance: number;
+	pmi: number;
+	hoaFee: number;
+	extraPayment: number;
+	// Loan fields
+	interestType: InterestType;
+	payment: number;
+	// Tax fields
+	isTaxDeductible: TaxDeductibleOption;
+	taxDeductibleAmount: number;
+	// Date fields
+	startDate: string;
+	endDate: string;
+	// Other
+	isDiscretionary: boolean;
+}
+
+function getInitialFormState(): ExpenseFormState {
+	return {
+		name: '',
+		amount: 0,
+		frequency: 'Monthly',
+		valuation: 0,
+		loanBalance: 0,
+		startingLoanBalance: 0,
+		apr: 6.23,
+		termLength: 30,
+		propertyTaxes: 0.85,
+		valuationDeduction: 89850,
+		maintenance: 1,
+		utilities: 180,
+		homeOwnersInsurance: 0.56,
+		pmi: 0.58,
+		hoaFee: 0,
+		extraPayment: 0,
+		interestType: 'Compounding',
+		payment: 0,
+		isTaxDeductible: 'No',
+		taxDeductibleAmount: 0,
+		startDate: `${new Date().getFullYear()}-01-01`,
+		endDate: '',
+		isDiscretionary: false,
+	};
+}
+
 const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 	isOpen,
 	onClose,
@@ -42,57 +105,28 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 	const { modalRef, handleKeyDown } = useModalAccessibility(isOpen, onClose);
 	const [step, setStep] = useState<"select" | "details">("select");
 	const [selectedType, setSelectedType] = useState<any>(null);
-	const [name, setName] = useState("");
-	const [amount, setAmount] = useState<number>(0);
-	const [frequency, setFrequency] = useState<"Weekly" | "Monthly" | "Annually">("Monthly");
-
-	// --- Specialized Fields State ---
-	const [valuation, setValuation] = useState<number>(0);
-	const [loanBalance, setLoanBalance] = useState<number>(0);
-	const [apr, setApr] = useState<number>(6.23);
-	const [interestType, setInterestType] = useState<"Compounding" | "Simple">("Compounding");
-	const [termLength, setTermLength] = useState<number>(30);
-	const [propertyTaxes, setPropertyTaxes] = useState<number>(0.85);
-	const [valuationDeduction, setValuationDeduction] = useState<number>(89850);
-	const [maintenance, setMaintenance] = useState<number>(1);
-	const [utilities, setUtilities] = useState<number>(180);
-	const [homeOwnersInsurance, setHomeOwnersInsurance] = useState<number>(0.56);
-	const [pmi, setPmi] = useState<number>(0.58);
-	const [hoaFee, setHoaFee] = useState<number>(0);
-	const [startingLoanBalance, setStartingLoanBalance] = useState<number>(0);
-	// Default to January 1st of current year
-	const [startDate, setStartDate] = useState(`${new Date().getFullYear()}-01-01`);
-	const [endDate, setEndDate] = useState<string>("");
-	const [payment, setPayment] = useState<number>(0);
-	const [extraPayment, setExtraPayment] = useState<number>(0);
-	const [isTaxDeductible, setIsTaxDeductible] = useState<"Yes" | "No" | 'Itemized'>("No");
-	const [taxDeductibleAmount, setTaxDeductibleAmount] = useState<number>(0);
-	const [isDiscretionary, setIsDiscretionary] = useState<boolean>(false);
+	const [form, setForm] = useState<ExpenseFormState>(getInitialFormState);
 	const [dateError, setDateError] = useState<string | undefined>();
 
+	function updateForm<K extends keyof ExpenseFormState>(field: K, value: ExpenseFormState[K]): void {
+		setForm(prev => ({ ...prev, [field]: value }));
+	}
+
 	// Validate end date is after start date
-	const validateDates = (start: string, end: string) => {
+	function validateDates(start: string, end: string): void {
 		if (start && end && new Date(end) < new Date(start)) {
 			setDateError("End date must be after start date");
 		} else {
 			setDateError(undefined);
 		}
-	};
+	}
 
 	const id = generateUniqueId();
 
 	const handleClose = () => {
 		setStep("select");
 		setSelectedType(null);
-		setName("");
-		setAmount(0);
-		setFrequency("Monthly");
-		setInterestType("Compounding");
-		setIsTaxDeductible("No");
-		setTaxDeductibleAmount(0);
-		setIsDiscretionary(false);
-        setStartDate(`${new Date().getFullYear()}-01-01`);
-        setEndDate("");
+		setForm(getInitialFormState());
 		setDateError(undefined);
 		onClose();
 	};
@@ -110,142 +144,83 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 		setSelectedType(() => typeClass);
 		// Set sensible defaults based on expense type
 		if (typeClass === CharityExpense) {
-			setIsTaxDeductible("Itemized");
+			updateForm('isTaxDeductible', 'Itemized');
 		}
 		// Default discretionary for non-essential expense types
 		const discretionaryTypes = [VacationExpense, SubscriptionExpense, CharityExpense, OtherExpense];
-		setIsDiscretionary(discretionaryTypes.includes(typeClass));
+		updateForm('isDiscretionary', discretionaryTypes.includes(typeClass));
 		setStep("details");
 	};
 
 	const handleAdd = () => {
-		if (!selectedType || !name.trim() || dateError) return;
+		if (!selectedType || !form.name.trim() || dateError) return;
 
-		const finalStartDate = startDate ? new Date(`${startDate}T00:00:00.000Z`) : undefined;
-		const finalEndDate = endDate ? new Date(`${endDate}T00:00:00.000Z`) : undefined;
+		const finalStartDate = form.startDate ? new Date(`${form.startDate}T00:00:00.000Z`) : undefined;
+		const finalEndDate = form.endDate ? new Date(`${form.endDate}T00:00:00.000Z`) : undefined;
 
 		let newExpense;
 
 		if (selectedType === RentExpense) {
 			newExpense = new RentExpense(
-				id,
-				name.trim(),
-				payment,
-				utilities,
-				frequency,
-				finalStartDate,
-				finalEndDate
+				id, form.name.trim(), form.payment, form.utilities,
+				form.frequency, finalStartDate, finalEndDate
 			);
 		} else if (selectedType === MortgageExpense) {
 			const newAccount = new PropertyAccount(
-				'ACC' + id.substring(3),
-				name.trim(),
-				valuation,
-				'Financed',
-				loanBalance,
-				loanBalance,
-				id
-			)
-			accountDispatch({type: "ADD_ACCOUNT", payload: newAccount})
-            newExpense = new MortgageExpense(
-                id,
-				name.trim(),
-				frequency,
-				valuation,
-				loanBalance,
-				startingLoanBalance,
-				apr,
-				termLength,
-				propertyTaxes,
-				valuationDeduction,
-				maintenance,
-				utilities,
-				homeOwnersInsurance,
-				pmi,
-				hoaFee,
-				isTaxDeductible,
-				isTaxDeductible ? taxDeductibleAmount : 0,
-				'ACC' + id.substring(3),
-				finalStartDate,
-				payment,
-				extraPayment,
-				finalEndDate
-            );
-        } else if (selectedType === LoanExpense) {
+				'ACC' + id.substring(3), form.name.trim(), form.valuation,
+				'Financed', form.loanBalance, form.loanBalance, id
+			);
+			accountDispatch({ type: "ADD_ACCOUNT", payload: newAccount });
+			newExpense = new MortgageExpense(
+				id, form.name.trim(), form.frequency, form.valuation,
+				form.loanBalance, form.startingLoanBalance, form.apr, form.termLength,
+				form.propertyTaxes, form.valuationDeduction, form.maintenance, form.utilities,
+				form.homeOwnersInsurance, form.pmi, form.hoaFee, form.isTaxDeductible,
+				form.isTaxDeductible !== 'No' ? form.taxDeductibleAmount : 0,
+				'ACC' + id.substring(3), finalStartDate, form.payment, form.extraPayment, finalEndDate
+			);
+		} else if (selectedType === LoanExpense) {
 			const newAccount = new DebtAccount(
-				'ACC' + id.substring(3),
-				name.trim(),
-				amount,
-				id
-			)
-			accountDispatch({type: "ADD_ACCOUNT", payload: newAccount})
-
+				'ACC' + id.substring(3), form.name.trim(), form.amount, id
+			);
+			accountDispatch({ type: "ADD_ACCOUNT", payload: newAccount });
 			newExpense = new LoanExpense(
-				id,
-				name.trim(),
-				amount,
-				frequency,
-				apr,
-				interestType,
-				payment,
-				isTaxDeductible,
-				isTaxDeductible ? taxDeductibleAmount : 0,
-				'ACC' + id.substring(3),
-				finalStartDate,
-				finalEndDate
+				id, form.name.trim(), form.amount, form.frequency, form.apr,
+				form.interestType, form.payment, form.isTaxDeductible,
+				form.isTaxDeductible !== 'No' ? form.taxDeductibleAmount : 0,
+				'ACC' + id.substring(3), finalStartDate, finalEndDate
 			);
 		} else if (selectedType === DependentExpense) {
 			newExpense = new DependentExpense(
-				id,
-				name.trim(),
-				amount,
-				frequency,
-				isTaxDeductible,
-				isTaxDeductible ? taxDeductibleAmount : 0,
-				finalStartDate,
-				finalEndDate
+				id, form.name.trim(), form.amount, form.frequency,
+				form.isTaxDeductible, form.isTaxDeductible !== 'No' ? form.taxDeductibleAmount : 0,
+				finalStartDate, finalEndDate
 			);
 		} else if (selectedType === HealthcareExpense) {
 			newExpense = new HealthcareExpense(
-				id,
-				name.trim(),
-				amount,
-				frequency,
-				isTaxDeductible,
-				isTaxDeductible ? taxDeductibleAmount : 0,
-				finalStartDate,
-				finalEndDate
+				id, form.name.trim(), form.amount, form.frequency,
+				form.isTaxDeductible, form.isTaxDeductible !== 'No' ? form.taxDeductibleAmount : 0,
+				finalStartDate, finalEndDate
 			);
 		} else if (selectedType === CharityExpense) {
 			newExpense = new CharityExpense(
-				id,
-				name.trim(),
-				amount,
-				frequency,
-				isTaxDeductible,
-				isTaxDeductible !== 'No' ? taxDeductibleAmount : 0,
-				finalStartDate,
-				finalEndDate
+				id, form.name.trim(), form.amount, form.frequency,
+				form.isTaxDeductible, form.isTaxDeductible !== 'No' ? form.taxDeductibleAmount : 0,
+				finalStartDate, finalEndDate
 			);
-		} else if (
-			selectedType === TransportExpense ||
-			selectedType === OtherExpense
-		) {
+		} else if (selectedType === TransportExpense || selectedType === OtherExpense) {
 			newExpense = new selectedType(
-				id,
-				name.trim(),
-				amount,
-				frequency,
-				finalStartDate,
-				finalEndDate
+				id, form.name.trim(), form.amount, form.frequency, finalStartDate, finalEndDate
 			);
 		} else {
-			newExpense = new selectedType(id, name.trim(), amount, frequency, finalStartDate, finalEndDate);
+			newExpense = new selectedType(
+				id, form.name.trim(), form.amount, form.frequency, finalStartDate, finalEndDate
+			);
 		}
 
 		// Set discretionary flag
 		if (newExpense) {
-			newExpense.isDiscretionary = isDiscretionary;
+			newExpense.isDiscretionary = form.isDiscretionary;
 		}
 
 		expenseDispatch({ type: "ADD_EXPENSE", payload: newExpense });
@@ -272,7 +247,6 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 	return (
 		<div
 			className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-			onClick={onClose}
 		>
 			<div
 				ref={modalRef}
@@ -280,7 +254,6 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				aria-modal="true"
 				aria-labelledby="add-expense-modal-title"
 				className="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto text-white w-full max-w-lg"
-				onClick={(e) => e.stopPropagation()}
 				onKeyDown={handleKeyDown}
 			>
 				<h2 id="add-expense-modal-title" className="text-xl font-bold mb-6 border-b border-gray-800 pb-3">
@@ -309,18 +282,18 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 								<NameInput
 									label="Expense Name"
 									id={id}
-									value={name}
-									onChange={setName}
+									value={form.name}
+									onChange={(val) => updateForm('name', val)}
 								/>
 							</div>
 							<div className="col-span-2 lg:col-span-1">
-                            <DropdownInput
-                                label="Frequency"
-                                id={`${id}-frequency`}
-                                value={frequency}
-                                onChange={(val) => setFrequency(val as any)}
-                                options={["Daily", "Weekly", "Monthly", "Annually"]}
-                            />
+								<DropdownInput
+									label="Frequency"
+									id={`${id}-frequency`}
+									value={form.frequency}
+									onChange={(val) => updateForm('frequency', val as ExpenseFrequency)}
+									options={["Daily", "Weekly", "Monthly", "Annually"]}
+								/>
 							</div>
 						</div>
 
@@ -331,11 +304,11 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 									label="Start Date"
 									id={`${id}-start-date`}
 									type="date"
-									value={startDate}
+									value={form.startDate}
 									onChange={(e) => {
 										const val = e.target.value === "" ? "" : e.target.value;
-										setStartDate(val);
-										validateDates(val, endDate);
+										updateForm('startDate', val);
+										validateDates(val, form.endDate);
 									}}
 									tooltip="Defaults to model full year expenses. Change to model partial year expenses."
 								/>
@@ -345,11 +318,11 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 									label="End Date (Optional)"
 									id={`${id}-end-date`}
 									type="date"
-									value={endDate}
+									value={form.endDate}
 									onChange={(e) => {
 										const val = e.target.value === "" ? "" : e.target.value;
-										setEndDate(val);
-										validateDates(startDate, val);
+										updateForm('endDate', val);
+										validateDates(form.startDate, val);
 									}}
 									error={dateError}
 								/>
@@ -358,50 +331,50 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 
 						{/* Common Fields Grid */}
 						<div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-                            {(!(selectedType === RentExpense || selectedType === MortgageExpense || selectedType === LoanExpense)) && (
+							{!(selectedType === RentExpense || selectedType === MortgageExpense || selectedType === LoanExpense) && (
 								<CurrencyInput
 									id={`${id}-amount`}
 									label="Amount"
-									value={amount}
-									onChange={setAmount}
+									value={form.amount}
+									onChange={(val) => updateForm('amount', val)}
 								/>
 							)}
-							{((selectedType === LoanExpense)) && (
+							{selectedType === LoanExpense && (
 								<CurrencyInput
 									id={`${id}-balance`}
 									label="Balance"
-									value={amount}
-									onChange={setAmount}
+									value={form.amount}
+									onChange={(val) => updateForm('amount', val)}
 								/>
 							)}
 
 							{selectedType === RentExpense && (
 								<>
-									<CurrencyInput id={`${id}-rent-payment`} label="Rent Payment" value={payment} onChange={setPayment} />
-									<CurrencyInput id={`${id}-utilities`} label="Utilities" value={utilities} onChange={setUtilities} />
+									<CurrencyInput id={`${id}-rent-payment`} label="Rent Payment" value={form.payment} onChange={(val) => updateForm('payment', val)} />
+									<CurrencyInput id={`${id}-utilities`} label="Utilities" value={form.utilities} onChange={(val) => updateForm('utilities', val)} />
 								</>
 							)}
 
 							{selectedType === MortgageExpense && (
 								<>
-									<CurrencyInput id={`${id}-valuation`} label="Valuation" value={valuation} onChange={setValuation} tooltip="Current market value of the property." />
-									<CurrencyInput id={`${id}-starting-loan-balance`} label="Starting Loan Balance" value={startingLoanBalance} onChange={setStartingLoanBalance} tooltip="Original loan amount when the mortgage was taken out." />
-									<CurrencyInput id={`${id}-loan-balance`} label="Current Loan Balance" value={loanBalance} onChange={setLoanBalance} tooltip="Remaining amount owed on the mortgage today." />
-									<PercentageInput id={`${id}-apr`} label="APR" value={apr} onChange={setApr} max={50} tooltip="Annual Percentage Rate - the yearly interest rate on your loan." />
-									<NumberInput id={`${id}-term-length`} label="Term Length (years)" value={termLength} onChange={setTermLength} tooltip="Total length of the mortgage (typically 15 or 30 years)." />
-									<PercentageInput id={`${id}-property-tax-rate`} label="Property Tax Rate" value={propertyTaxes} onChange={setPropertyTaxes} max={20} tooltip="Annual property tax as a percentage of home value. Varies by location (0.5-2.5% typical)." />
-									<CurrencyInput id={`${id}-valuation-deduction`} label="Valuation Deduction" value={valuationDeduction} onChange={setValuationDeduction} tooltip="Homestead exemption or other deductions that reduce taxable property value." />
-									<PercentageInput id={`${id}-maintenance`} label="Maintenance" value={maintenance} onChange={setMaintenance} max={20} tooltip="Annual maintenance budget as % of home value. 1% is a common rule of thumb." />
-									<CurrencyInput id={`${id}-utilities`} label="Utilities" value={utilities} onChange={setUtilities} tooltip="Monthly utility costs (electric, gas, water, etc.)." />
-									<PercentageInput id={`${id}-homeowners-insurance`} label="Homeowners Insurance" value={homeOwnersInsurance} onChange={setHomeOwnersInsurance} max={20} tooltip="Annual insurance as % of home value. Typically 0.3-0.6%." />
-									<PercentageInput id={`${id}-pmi`} label="PMI" value={pmi} onChange={setPmi} max={20} tooltip="Private Mortgage Insurance. Required if down payment < 20%. Usually 0.5-1% of loan annually. Set to 0 if not applicable." />
-									<CurrencyInput id={`${id}-hoa-fee`} label="HOA Fee" value={hoaFee} onChange={setHoaFee} tooltip="Monthly Homeowners Association fee, if applicable." />
-									<CurrencyInput id={`${id}-extra-payment`} label="Extra Payment" value={extraPayment} onChange={setExtraPayment} tooltip="Additional monthly payment toward principal to pay off the mortgage faster." />
+									<CurrencyInput id={`${id}-valuation`} label="Valuation" value={form.valuation} onChange={(val) => updateForm('valuation', val)} tooltip="Current market value of the property." />
+									<CurrencyInput id={`${id}-starting-loan-balance`} label="Starting Loan Balance" value={form.startingLoanBalance} onChange={(val) => updateForm('startingLoanBalance', val)} tooltip="Original loan amount when the mortgage was taken out." />
+									<CurrencyInput id={`${id}-loan-balance`} label="Current Loan Balance" value={form.loanBalance} onChange={(val) => updateForm('loanBalance', val)} tooltip="Remaining amount owed on the mortgage today." />
+									<PercentageInput id={`${id}-apr`} label="APR" value={form.apr} onChange={(val) => updateForm('apr', val)} max={50} tooltip="Annual Percentage Rate - the yearly interest rate on your loan." />
+									<NumberInput id={`${id}-term-length`} label="Term Length (years)" value={form.termLength} onChange={(val) => updateForm('termLength', val)} tooltip="Total length of the mortgage (typically 15 or 30 years)." />
+									<PercentageInput id={`${id}-property-tax-rate`} label="Property Tax Rate" value={form.propertyTaxes} onChange={(val) => updateForm('propertyTaxes', val)} max={20} tooltip="Annual property tax as a percentage of home value. Varies by location (0.5-2.5% typical)." />
+									<CurrencyInput id={`${id}-valuation-deduction`} label="Valuation Deduction" value={form.valuationDeduction} onChange={(val) => updateForm('valuationDeduction', val)} tooltip="Homestead exemption or other deductions that reduce taxable property value." />
+									<PercentageInput id={`${id}-maintenance`} label="Maintenance" value={form.maintenance} onChange={(val) => updateForm('maintenance', val)} max={20} tooltip="Annual maintenance budget as % of home value. 1% is a common rule of thumb." />
+									<CurrencyInput id={`${id}-utilities`} label="Utilities" value={form.utilities} onChange={(val) => updateForm('utilities', val)} tooltip="Monthly utility costs (electric, gas, water, etc.)." />
+									<PercentageInput id={`${id}-homeowners-insurance`} label="Homeowners Insurance" value={form.homeOwnersInsurance} onChange={(val) => updateForm('homeOwnersInsurance', val)} max={20} tooltip="Annual insurance as % of home value. Typically 0.3-0.6%." />
+									<PercentageInput id={`${id}-pmi`} label="PMI" value={form.pmi} onChange={(val) => updateForm('pmi', val)} max={20} tooltip="Private Mortgage Insurance. Required if down payment < 20%. Usually 0.5-1% of loan annually. Set to 0 if not applicable." />
+									<CurrencyInput id={`${id}-hoa-fee`} label="HOA Fee" value={form.hoaFee} onChange={(val) => updateForm('hoaFee', val)} tooltip="Monthly Homeowners Association fee, if applicable." />
+									<CurrencyInput id={`${id}-extra-payment`} label="Extra Payment" value={form.extraPayment} onChange={(val) => updateForm('extraPayment', val)} tooltip="Additional monthly payment toward principal to pay off the mortgage faster." />
 									<DropdownInput
 										id={`${id}-tax-deductible`}
 										label="Tax Deductible"
-										value={isTaxDeductible}
-										onChange={(val) => setIsTaxDeductible(val as "Yes" | "No" | "Itemized")}
+										value={form.isTaxDeductible}
+										onChange={(val) => updateForm('isTaxDeductible', val as TaxDeductibleOption)}
 										options={["No", "Yes", "Itemized"]}
 										tooltip="Yes: always deductible. Itemized: only if you itemize deductions instead of taking standard deduction."
 									/>
@@ -410,28 +383,26 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 
 							{selectedType === LoanExpense && (
 								<>
-									<PercentageInput id={`${id}-apr`} label="APR" value={apr} onChange={setApr} max={50} tooltip="Annual Percentage Rate - the yearly interest rate on your loan." />
+									<PercentageInput id={`${id}-apr`} label="APR" value={form.apr} onChange={(val) => updateForm('apr', val)} max={50} tooltip="Annual Percentage Rate - the yearly interest rate on your loan." />
 									<DropdownInput
 										id={`${id}-interest-type`}
 										label="Interest Type"
-										value={interestType}
-										onChange={(val) => setInterestType(val as "Compounding" | "Simple")}
+										value={form.interestType}
+										onChange={(val) => updateForm('interestType', val as InterestType)}
 										options={["Simple", "Compounding"]}
 										tooltip="Compounding: interest accrues on principal + unpaid interest. Simple: interest only on original principal."
 									/>
-
-									<CurrencyInput id={`${id}-payment`} label="Payment" value={payment} onChange={setPayment} tooltip="Your regular payment amount (per frequency)." />
-
+									<CurrencyInput id={`${id}-payment`} label="Payment" value={form.payment} onChange={(val) => updateForm('payment', val)} tooltip="Your regular payment amount (per frequency)." />
 									<DropdownInput
 										id={`${id}-tax-deductible`}
 										label="Tax Deductible"
-										value={isTaxDeductible}
-										onChange={(val) => setIsTaxDeductible(val as "Yes" | "No" | "Itemized")}
+										value={form.isTaxDeductible}
+										onChange={(val) => updateForm('isTaxDeductible', val as TaxDeductibleOption)}
 										options={["No", "Yes", "Itemized"]}
 										tooltip="Yes: always deductible. Itemized: only if you itemize deductions instead of taking standard deduction."
 									/>
-									{(isTaxDeductible === "Yes" || isTaxDeductible === "Itemized") && (
-										<CurrencyInput id={`${id}-deductible-amount`} label="Deductible Amount" value={taxDeductibleAmount} onChange={setTaxDeductibleAmount} tooltip="Amount of this expense that can be deducted from taxable income." />
+									{(form.isTaxDeductible === "Yes" || form.isTaxDeductible === "Itemized") && (
+										<CurrencyInput id={`${id}-deductible-amount`} label="Deductible Amount" value={form.taxDeductibleAmount} onChange={(val) => updateForm('taxDeductibleAmount', val)} tooltip="Amount of this expense that can be deducted from taxable income." />
 									)}
 								</>
 							)}
@@ -441,13 +412,13 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 									<DropdownInput
 										id={`${id}-tax-deductible`}
 										label="Tax Deductible"
-										value={isTaxDeductible}
-										onChange={(val) => setIsTaxDeductible(val as "Yes" | "No" | "Itemized")}
+										value={form.isTaxDeductible}
+										onChange={(val) => updateForm('isTaxDeductible', val as TaxDeductibleOption)}
 										options={["No", "Yes", "Itemized"]}
 										tooltip="Yes: pre-tax (like HSA contributions). Itemized: only if you itemize deductions."
 									/>
-									{(isTaxDeductible === "Yes" || isTaxDeductible === "Itemized") && (
-										<CurrencyInput id={`${id}-deductible-amount`} label="Deductible Amount" value={taxDeductibleAmount} onChange={setTaxDeductibleAmount} tooltip="Amount of this expense that can be deducted from taxable income." />
+									{(form.isTaxDeductible === "Yes" || form.isTaxDeductible === "Itemized") && (
+										<CurrencyInput id={`${id}-deductible-amount`} label="Deductible Amount" value={form.taxDeductibleAmount} onChange={(val) => updateForm('taxDeductibleAmount', val)} tooltip="Amount of this expense that can be deducted from taxable income." />
 									)}
 								</>
 							)}
@@ -457,13 +428,13 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 									<DropdownInput
 										id={`${id}-tax-deductible`}
 										label="Tax Deductible"
-										value={isTaxDeductible}
-										onChange={(val) => setIsTaxDeductible(val as "Yes" | "No" | "Itemized")}
+										value={form.isTaxDeductible}
+										onChange={(val) => updateForm('isTaxDeductible', val as TaxDeductibleOption)}
 										options={["Yes", "No", "Itemized"]}
 										tooltip="Yes: qualifies for dependent care FSA or tax credit. Itemized: only if you itemize."
 									/>
-									{isTaxDeductible === "Yes" && (
-										<CurrencyInput id={`${id}-deductible-amount`} label="Deductible Amount" value={taxDeductibleAmount} onChange={setTaxDeductibleAmount} tooltip="Amount eligible for dependent care tax benefits." />
+									{form.isTaxDeductible === "Yes" && (
+										<CurrencyInput id={`${id}-deductible-amount`} label="Deductible Amount" value={form.taxDeductibleAmount} onChange={(val) => updateForm('taxDeductibleAmount', val)} tooltip="Amount eligible for dependent care tax benefits." />
 									)}
 								</>
 							)}
@@ -473,13 +444,13 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 									<DropdownInput
 										id={`${id}-tax-deductible`}
 										label="Tax Deductible"
-										value={isTaxDeductible}
-										onChange={(val) => setIsTaxDeductible(val as "Yes" | "No" | "Itemized")}
+										value={form.isTaxDeductible}
+										onChange={(val) => updateForm('isTaxDeductible', val as TaxDeductibleOption)}
 										options={["Itemized", "Yes", "No"]}
 										tooltip="Charitable donations are typically deductible if you itemize. Select 'Itemized' for standard charitable deductions."
 									/>
-									{(isTaxDeductible === "Yes" || isTaxDeductible === "Itemized") && (
-										<CurrencyInput id={`${id}-deductible-amount`} label="Deductible Amount" value={taxDeductibleAmount} onChange={setTaxDeductibleAmount} tooltip="Amount of charitable donation that can be deducted from taxable income." />
+									{(form.isTaxDeductible === "Yes" || form.isTaxDeductible === "Itemized") && (
+										<CurrencyInput id={`${id}-deductible-amount`} label="Deductible Amount" value={form.taxDeductibleAmount} onChange={(val) => updateForm('taxDeductibleAmount', val)} tooltip="Amount of charitable donation that can be deducted from taxable income." />
 									)}
 								</>
 							)}
@@ -489,8 +460,8 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 								<ToggleInput
 									id={`${id}-discretionary`}
 									label="Discretionary"
-									enabled={isDiscretionary}
-									setEnabled={setIsDiscretionary}
+									enabled={form.isDiscretionary}
+									setEnabled={(val) => updateForm('isDiscretionary', val)}
 									tooltip="Discretionary expenses can be reduced during Guyton-Klinger guardrail triggers in retirement, and are affected by lifestyle creep."
 								/>
 							</div>
@@ -508,8 +479,8 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 					{step === "details" && (
 						<button
 							onClick={handleAdd}
-							disabled={!name.trim() || !!dateError}
-							title={!name.trim() ? "Enter a name" : dateError ? "Fix date error" : undefined}
+							disabled={!form.name.trim() || !!dateError}
+							title={!form.name.trim() ? "Enter a name" : dateError ? "Fix date error" : undefined}
 							className="px-5 py-2.5 rounded-lg font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
 						>
 							Add Expense

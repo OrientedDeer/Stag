@@ -7,6 +7,56 @@
 import { SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
 import { AnyAccount, SavedAccount, InvestedAccount, DebtAccount, DeficitDebtAccount } from '../components/Objects/Accounts/models';
 
+// ============================================================================
+// Constants - Rating Thresholds
+// ============================================================================
+
+/** Savings rate thresholds (percentage of income) */
+const SAVINGS_RATE_EXCELLENT = 0.20;
+const SAVINGS_RATE_GOOD = 0.15;
+const SAVINGS_RATE_FAIR = 0.10;
+
+/** Emergency fund thresholds (months of expenses) */
+const EMERGENCY_FUND_EXCELLENT = 6;
+const EMERGENCY_FUND_GOOD = 3;
+const EMERGENCY_FUND_FAIR = 1;
+const EMERGENCY_FUND_POOR = 0.5;
+
+/** Debt-to-income ratio thresholds */
+const DEBT_TO_INCOME_EXCELLENT = 0.20;
+const DEBT_TO_INCOME_GOOD = 0.36;
+const DEBT_TO_INCOME_FAIR = 0.43;
+const DEBT_TO_INCOME_POOR = 0.50;
+
+/** Debt-to-asset ratio thresholds */
+const DEBT_TO_ASSET_EXCELLENT = 0.20;
+const DEBT_TO_ASSET_GOOD = 0.30;
+const DEBT_TO_ASSET_FAIR = 0.50;
+const DEBT_TO_ASSET_POOR = 0.80;
+
+/** Net worth to income ratio thresholds */
+const NET_WORTH_TO_INCOME_EXCELLENT = 3;
+const NET_WORTH_TO_INCOME_GOOD = 1;
+const NET_WORTH_TO_INCOME_FAIR = 0.5;
+
+/** Investment allocation thresholds (percentage of total assets) */
+const INVESTMENT_ALLOCATION_EXCELLENT = 0.60;
+const INVESTMENT_ALLOCATION_GOOD = 0.40;
+const INVESTMENT_ALLOCATION_FAIR = 0.20;
+const INVESTMENT_ALLOCATION_POOR = 0.10;
+
+/** Growth rate thresholds */
+const GROWTH_RATE_EXCELLENT = 0.15;
+const GROWTH_RATE_GOOD = 0.08;
+const GROWTH_RATE_FAIR = 0.03;
+
+/** Number of months in a year (for monthly expense calculations) */
+const MONTHS_PER_YEAR = 12;
+
+// ============================================================================
+// Types
+// ============================================================================
+
 // Rating levels for benchmarks
 export type RatingLevel = 'excellent' | 'good' | 'fair' | 'poor' | 'critical';
 
@@ -97,9 +147,9 @@ function getNetWorth(accounts: AnyAccount[]): number {
  * Common advice: Save at least 10-15% of income
  */
 function rateSavingsRate(rate: number): RatingLevel {
-  if (rate >= 0.20) return 'excellent';
-  if (rate >= 0.15) return 'good';
-  if (rate >= 0.10) return 'fair';
+  if (rate >= SAVINGS_RATE_EXCELLENT) return 'excellent';
+  if (rate >= SAVINGS_RATE_GOOD) return 'good';
+  if (rate >= SAVINGS_RATE_FAIR) return 'fair';
   if (rate >= 0) return 'poor';
   return 'critical';
 }
@@ -109,10 +159,10 @@ function rateSavingsRate(rate: number): RatingLevel {
  * Common advice: 3 months minimum, 6+ for stability
  */
 function rateEmergencyFund(months: number): RatingLevel {
-  if (months >= 6) return 'excellent';
-  if (months >= 3) return 'good';
-  if (months >= 1) return 'fair';
-  if (months >= 0.5) return 'poor';
+  if (months >= EMERGENCY_FUND_EXCELLENT) return 'excellent';
+  if (months >= EMERGENCY_FUND_GOOD) return 'good';
+  if (months >= EMERGENCY_FUND_FAIR) return 'fair';
+  if (months >= EMERGENCY_FUND_POOR) return 'poor';
   return 'critical';
 }
 
@@ -120,10 +170,10 @@ function rateEmergencyFund(months: number): RatingLevel {
  * Rate debt-to-income ratio (target: <36%)
  */
 function rateDebtToIncome(ratio: number): RatingLevel {
-  if (ratio <= 0.20) return 'excellent';
-  if (ratio <= 0.36) return 'good';
-  if (ratio <= 0.43) return 'fair';
-  if (ratio <= 0.50) return 'poor';
+  if (ratio <= DEBT_TO_INCOME_EXCELLENT) return 'excellent';
+  if (ratio <= DEBT_TO_INCOME_GOOD) return 'good';
+  if (ratio <= DEBT_TO_INCOME_FAIR) return 'fair';
+  if (ratio <= DEBT_TO_INCOME_POOR) return 'poor';
   return 'critical';
 }
 
@@ -131,10 +181,10 @@ function rateDebtToIncome(ratio: number): RatingLevel {
  * Rate debt-to-asset ratio (target: <30%)
  */
 function rateDebtToAsset(ratio: number): RatingLevel {
-  if (ratio <= 0.20) return 'excellent';
-  if (ratio <= 0.30) return 'good';
-  if (ratio <= 0.50) return 'fair';
-  if (ratio <= 0.80) return 'poor';
+  if (ratio <= DEBT_TO_ASSET_EXCELLENT) return 'excellent';
+  if (ratio <= DEBT_TO_ASSET_GOOD) return 'good';
+  if (ratio <= DEBT_TO_ASSET_FAIR) return 'fair';
+  if (ratio <= DEBT_TO_ASSET_POOR) return 'poor';
   return 'critical';
 }
 
@@ -144,11 +194,11 @@ function rateDebtToAsset(ratio: number): RatingLevel {
  * Adjusted to be more realistic - most people are behind these targets
  */
 function rateNetWorthToIncome(ratio: number): RatingLevel {
-  if (ratio >= 3) return 'excellent';  // On track for solid retirement
-  if (ratio >= 1) return 'good';       // Ahead of most peers
-  if (ratio >= 0.5) return 'fair';     // Building wealth
-  if (ratio >= 0) return 'poor';       // Starting out
-  return 'critical';                   // Negative net worth
+  if (ratio >= NET_WORTH_TO_INCOME_EXCELLENT) return 'excellent';  // On track for solid retirement
+  if (ratio >= NET_WORTH_TO_INCOME_GOOD) return 'good';           // Ahead of most peers
+  if (ratio >= NET_WORTH_TO_INCOME_FAIR) return 'fair';           // Building wealth
+  if (ratio >= 0) return 'poor';                                   // Starting out
+  return 'critical';                                               // Negative net worth
 }
 
 /**
@@ -156,10 +206,10 @@ function rateNetWorthToIncome(ratio: number): RatingLevel {
  * Higher is better for long-term wealth building
  */
 function rateInvestmentAllocation(ratio: number): RatingLevel {
-  if (ratio >= 0.60) return 'excellent';
-  if (ratio >= 0.40) return 'good';
-  if (ratio >= 0.20) return 'fair';
-  if (ratio >= 0.10) return 'poor';
+  if (ratio >= INVESTMENT_ALLOCATION_EXCELLENT) return 'excellent';
+  if (ratio >= INVESTMENT_ALLOCATION_GOOD) return 'good';
+  if (ratio >= INVESTMENT_ALLOCATION_FAIR) return 'fair';
+  if (ratio >= INVESTMENT_ALLOCATION_POOR) return 'poor';
   return 'critical';
 }
 
@@ -167,9 +217,9 @@ function rateInvestmentAllocation(ratio: number): RatingLevel {
  * Rate growth rate
  */
 function rateGrowthRate(rate: number): RatingLevel {
-  if (rate >= 0.15) return 'excellent';
-  if (rate >= 0.08) return 'good';
-  if (rate >= 0.03) return 'fair';
+  if (rate >= GROWTH_RATE_EXCELLENT) return 'excellent';
+  if (rate >= GROWTH_RATE_GOOD) return 'good';
+  if (rate >= GROWTH_RATE_FAIR) return 'fair';
   if (rate >= 0) return 'poor';
   return 'critical';
 }
@@ -201,7 +251,7 @@ export function calculateFinancialRatios(
     (taxDetails.postTax || 0) +
     (taxDetails.capitalGains || 0);
   const livingExpenses = Math.max(0, totalExpense - taxesAndDeductions);
-  const monthlyLivingExpenses = livingExpenses / 12;
+  const monthlyLivingExpenses = livingExpenses / MONTHS_PER_YEAR;
 
   // 1. Savings Rate = (Income - Expenses) / Income
   const savingsAmount = totalIncome - totalExpense;
@@ -330,7 +380,7 @@ export function calculateRatioTrends(simulation: SimulationYear[]): RatioTrend[]
       (taxDetails.postTax || 0) +
       (taxDetails.capitalGains || 0);
     const livingExpenses = Math.max(0, cashflow.totalExpense - taxesAndDeductions);
-    const monthlyLivingExpenses = livingExpenses / 12;
+    const monthlyLivingExpenses = livingExpenses / MONTHS_PER_YEAR;
 
     return {
       year: year.year,

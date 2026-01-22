@@ -2,7 +2,7 @@ import { useContext, useEffect, useCallback, useState, useMemo } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { AssumptionsContext, WithdrawalBucket } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { AccountContext } from '../../components/Objects/Accounts/AccountContext';
-import { AnyAccount, SavedAccount, InvestedAccount } from '../../components/Objects/Accounts/models';
+import { AnyAccount, ESPPAccount, SavedAccount, InvestedAccount } from '../../components/Objects/Accounts/models';
 import { formatCompactCurrency } from './tabs/FutureUtils';
 import {
     calculateFixedRealWithdrawal,
@@ -34,6 +34,11 @@ const getTaxBadge = (account: AnyAccount | undefined): { label: string; color: s
             default:
                 return { label: 'Taxable', color: 'bg-yellow-600' };
         }
+    }
+
+    if (account instanceof ESPPAccount) {
+        // ESPP has mixed tax treatment: discount is ordinary income, gains are capital gains
+        return { label: 'ESPP (Mixed)', color: 'bg-purple-600' };
     }
 
     return { label: 'Unknown', color: 'bg-gray-600' };
@@ -231,9 +236,9 @@ export default function WithdrawalTab() {
     const formatMoney = useCallback((amount: number) =>
         formatCompactCurrency(amount, { forceExact }), [forceExact]);
 
-    // Filter to only withdrawal-eligible accounts (SavedAccount, InvestedAccount)
+    // Filter to only withdrawal-eligible accounts (SavedAccount, InvestedAccount, ESPPAccount)
     const eligibleAccounts = accounts.filter(
-        acc => acc instanceof SavedAccount || acc instanceof InvestedAccount
+        acc => acc instanceof SavedAccount || acc instanceof InvestedAccount || acc instanceof ESPPAccount
     );
 
     // Sync withdrawal strategy with accounts:

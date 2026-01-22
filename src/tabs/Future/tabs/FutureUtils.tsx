@@ -1,44 +1,51 @@
-import { AnyAccount, DebtAccount, InvestedAccount } from '../../../components/Objects/Accounts/models';
+import { AnyAccount, DebtAccount, InvestedAccount, PropertyAccount } from '../../../components/Objects/Accounts/models';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { AssumptionsState } from '../../../components/Objects/Assumptions/AssumptionsContext';
 
-export const getAccountTotals = (accounts: AnyAccount[]) => {
-    const assets = accounts.reduce((total, acc) => {
-        if (acc instanceof DebtAccount) return total;
-        return total + acc.amount;
-    }, 0);
-    const liabilities = accounts.reduce((total, acc) => {
-        if (acc instanceof DebtAccount) return total + acc.amount;
-        return total;
-    }, 0);
-    return { assets, liabilities, netWorth: assets - liabilities };
-};
+export function getAccountTotals(accounts: AnyAccount[]): { assets: number; liabilities: number; netWorth: number } {
+    let assets = 0;
+    let liabilities = 0;
 
-export const calculateNetWorth = (accounts: AnyAccount[]) => {
+    for (const acc of accounts) {
+        if (acc instanceof DebtAccount) {
+            liabilities += acc.amount;
+        } else {
+            assets += acc.amount;
+            // PropertyAccount has a loan that counts as liability
+            if (acc instanceof PropertyAccount && acc.loanAmount) {
+                liabilities += acc.loanAmount;
+            }
+        }
+    }
+
+    return { assets, liabilities, netWorth: assets - liabilities };
+}
+
+export function calculateNetWorth(accounts: AnyAccount[]): number {
     return getAccountTotals(accounts).netWorth;
 }
 
-export const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value || 0);
+export function formatCurrency(value: number): string {
+    return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    }).format(value || 0);
 }
 
 export interface FormatCurrencyOptions {
-    forceExact?: boolean; // Always show full format, never compact
+    forceExact?: boolean;
 }
 
 /**
  * Format currency in compact notation for space-constrained displays.
  * Uses K (thousands), M (millions), B (billions) suffixes for large numbers.
- * Examples: $1,234 → $1,234, $12,345 → $12.3K, $1,234,567 → $1.23M
- *
- * @param value - The number to format
- * @param options - Formatting options
- * @param options.forceExact - If true, always show full format (no K/M/B suffixes)
+ * Examples: $1,234 -> $1,234, $12,345 -> $12.3K, $1,234,567 -> $1.23M
  */
-export const formatCompactCurrency = (value: number, options?: FormatCurrencyOptions) => {
-    const { forceExact = false } = options || {};
+export function formatCompactCurrency(value: number, options?: FormatCurrencyOptions): string {
+    const forceExact = options?.forceExact ?? false;
 
-    // If forceExact, always use full formatting
     if (forceExact) {
         return formatCurrency(value);
     }
@@ -55,11 +62,11 @@ export const formatCompactCurrency = (value: number, options?: FormatCurrencyOpt
     if (absValue >= 100_000) {
         return `${sign}$${(absValue / 1_000).toFixed(1)}K`;
     }
-    // For amounts under $100K, show full value with 2 decimal places
+
     return formatCurrency(value);
 }
 
-export const findFinancialIndependenceYear = (simulation: SimulationYear[], assumptions: AssumptionsState): number | null => {
+export function findFinancialIndependenceYear(simulation: SimulationYear[], assumptions: AssumptionsState): number | null {
     for (let i = 1; i < simulation.length; i++) {
         const lastYear = simulation[i - 1];
         const currentYear = simulation[i];
@@ -67,11 +74,11 @@ export const findFinancialIndependenceYear = (simulation: SimulationYear[], assu
         const lastYearInvestments = lastYear.accounts
             .filter(acc => acc instanceof InvestedAccount)
             .reduce((sum, acc) => sum + acc.amount, 0);
-        
-        // Financial independence is reached when the withdrawal from investments can cover all expenses.
+
+        // Financial independence: withdrawal from investments covers all expenses
         if (lastYearInvestments * (assumptions.investments.withdrawalRate / 100) > currentYear.cashflow.totalExpense) {
             return currentYear.year;
         }
     }
     return null;
-};
+}

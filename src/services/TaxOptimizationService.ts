@@ -18,6 +18,45 @@ import {
 } from '../data/ContributionLimits';
 
 // ============================================================================
+// Constants
+// ============================================================================
+
+/** Minimum contribution gap to recommend 401k increase */
+const MIN_401K_GAP_FOR_RECOMMENDATION = 1000;
+
+/** Minimum tax savings to recommend 401k increase */
+const MIN_401K_SAVINGS_FOR_RECOMMENDATION = 100;
+
+/** Minimum contribution gap to recommend HSA increase */
+const MIN_HSA_GAP_FOR_RECOMMENDATION = 500;
+
+/** Minimum tax savings to recommend HSA increase */
+const MIN_HSA_SAVINGS_FOR_RECOMMENDATION = 50;
+
+/** Bracket headroom threshold for bracket management recommendation */
+const BRACKET_HEADROOM_THRESHOLD = 10000;
+
+/** Minimum conversion amount to consider for Roth recommendation */
+const MIN_ROTH_CONVERSION_AMOUNT = 5000;
+
+/** Minimum target rate for Roth conversions (always fill at least to 22% bracket) */
+const MIN_CONVERSION_TARGET_RATE = 0.22;
+
+/** Fallback retirement tax rate when simulation data unavailable */
+const FALLBACK_RETIREMENT_TAX_RATE = 0.22;
+
+/** Fallback annual growth rate for investment projections */
+const FALLBACK_GROWTH_RATE = 0.07;
+
+/** Impact thresholds for 401k recommendations */
+const IMPACT_HIGH_401K_THRESHOLD = 2000;
+const IMPACT_MEDIUM_401K_THRESHOLD = 500;
+
+/** Impact thresholds for HSA recommendations */
+const IMPACT_HIGH_HSA_THRESHOLD = 1000;
+const IMPACT_MEDIUM_HSA_THRESHOLD = 300;
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -250,7 +289,7 @@ export function getIncomeThresholdForRate(
 export function getMedianRetirementTaxRate(simulation: SimulationYear[], retirementYear: number): number {
     const retirementYears = simulation.filter(s => s.year >= retirementYear);
 
-    if (retirementYears.length === 0) return 0.22; // Fallback
+    if (retirementYears.length === 0) return FALLBACK_RETIREMENT_TAX_RATE;
 
     const effectiveRates = retirementYears.map(simYear => {
         // Exclude Roth conversion tax to get the "base" retirement tax rate
@@ -281,10 +320,6 @@ export function findRothConversionWindows(
     const retirementAge = assumptions.demographics.retirementAge;
     const birthYear = assumptions.demographics.birthYear;
     const retirementYear = birthYear + retirementAge;
-
-    // Minimum target rate: always fill at least to the 22% bracket
-    // This ensures we show conversion opportunities even when calculated effective retirement rate is low
-    const MIN_CONVERSION_TARGET_RATE = 0.22;
 
     // Get the median retirement tax rate and use the higher of calculated vs minimum
     const calculatedRate = getMedianRetirementTaxRate(simulation, retirementYear);
@@ -387,7 +422,7 @@ export function calculateRothConversion(
     const retirementYears = simulation.filter(s => s.year >= retirementYear);
 
     // Calculate median effective tax rate during retirement from actual simulation
-    let retirementTaxRate = 0.22; // Fallback
+    let retirementTaxRate = FALLBACK_RETIREMENT_TAX_RATE;
     if (retirementYears.length > 0) {
         const effectiveRates = retirementYears.map(simYear => {
             const totalTax = (simYear.taxDetails.fed || 0) +
@@ -405,7 +440,7 @@ export function calculateRothConversion(
     }
 
     // Calculate actual growth rate from simulation data
-    let annualGrowthRate = (assumptions.investments?.returnRates?.ror / 100) || 0.07; // Fallback
+    let annualGrowthRate = (assumptions.investments?.returnRates?.ror / 100) || FALLBACK_GROWTH_RATE;
     if (simulation.length >= 2) {
         // Calculate compound annual growth rate from invested assets
         const getInvestedTotal = (simYear: SimulationYear) =>
@@ -421,13 +456,13 @@ export function calculateRothConversion(
         if (startValue > 0 && years > 0) {
             // Use the assumption rate since CAGR from balances includes contributions
             // The assumption rate is already what the simulation uses
-            annualGrowthRate = (assumptions.investments?.returnRates?.ror / 100) || 0.07;
+            annualGrowthRate = (assumptions.investments?.returnRates?.ror / 100) || FALLBACK_GROWTH_RATE;
         }
     }
 
     // Calculate current marginal tax rate for the conversion
-    let currentTaxRate = 0.22; // Fallback
-    let immediateTaxCost = conversionAmount * 0.22;
+    let currentTaxRate = FALLBACK_RETIREMENT_TAX_RATE;
+    let immediateTaxCost = conversionAmount * FALLBACK_RETIREMENT_TAX_RATE;
     let newBracketRate = 22;
     let headroomRemaining = 0;
 
@@ -580,8 +615,8 @@ function generate401kRecommendation(analysis: TaxAnalysis): TaxRecommendation | 
     const { current401k, limit401k } = analysis.preTaxContributions;
     const gap = limit401k - current401k;
 
-    // Only recommend if there's meaningful headroom (>$1000)
-    if (gap < 1000) return null;
+    // Only recommend if there's meaningful headroom
+    if (gap < MIN_401K_GAP_FOR_RECOMMENDATION) return null;
 
     const savings = calculateContributionTaxSavings(
         current401k,
@@ -589,10 +624,11 @@ function generate401kRecommendation(analysis: TaxAnalysis): TaxRecommendation | 
         analysis.marginalRate.federal + analysis.marginalRate.state
     );
 
-    if (savings.taxSavings < 100) return null;
+    if (savings.taxSavings < MIN_401K_SAVINGS_FOR_RECOMMENDATION) return null;
 
-    const impact: RecommendationImpact = savings.taxSavings >= 2000 ? 'high' :
-        savings.taxSavings >= 500 ? 'medium' : 'low';
+    const impact: RecommendationImpact =
+        savings.taxSavings >= IMPACT_HIGH_401K_THRESHOLD ? 'high' :
+        savings.taxSavings >= IMPACT_MEDIUM_401K_THRESHOLD ? 'medium' : 'low';
 
     return {
         id: '401k-increase',
@@ -615,8 +651,8 @@ function generateHSARecommendation(analysis: TaxAnalysis): TaxRecommendation | n
     const { currentHSA, limitHSA } = analysis.preTaxContributions;
     const gap = limitHSA - currentHSA;
 
-    // Only recommend if there's meaningful headroom (>$500)
-    if (gap < 500) return null;
+    // Only recommend if there's meaningful headroom
+    if (gap < MIN_HSA_GAP_FOR_RECOMMENDATION) return null;
 
     // HSA has triple tax advantage: pre-tax, grows tax-free, tax-free withdrawals for medical
     const combinedRate = analysis.marginalRate.federal +
@@ -629,10 +665,11 @@ function generateHSARecommendation(analysis: TaxAnalysis): TaxRecommendation | n
         combinedRate
     );
 
-    if (savings.taxSavings < 50) return null;
+    if (savings.taxSavings < MIN_HSA_SAVINGS_FOR_RECOMMENDATION) return null;
 
-    const impact: RecommendationImpact = savings.taxSavings >= 1000 ? 'high' :
-        savings.taxSavings >= 300 ? 'medium' : 'low';
+    const impact: RecommendationImpact =
+        savings.taxSavings >= IMPACT_HIGH_HSA_THRESHOLD ? 'high' :
+        savings.taxSavings >= IMPACT_MEDIUM_HSA_THRESHOLD ? 'medium' : 'low';
 
     return {
         id: 'hsa-increase',
@@ -655,8 +692,8 @@ function generateHSARecommendation(analysis: TaxAnalysis): TaxRecommendation | n
 function generateBracketRecommendation(analysis: TaxAnalysis): TaxRecommendation | null {
     const { federalHeadroom, federalBracket } = analysis;
 
-    // Only relevant if close to next bracket (within $10k)
-    if (federalHeadroom > 10000 || federalHeadroom === Infinity) return null;
+    // Only relevant if close to next bracket
+    if (federalHeadroom > BRACKET_HEADROOM_THRESHOLD || federalHeadroom === Infinity) return null;
 
     return {
         id: 'bracket-management',
@@ -681,7 +718,7 @@ function generateRothConversionRecommendation(
 ): TaxRecommendation | null {
     // Find the best window (lowest rate with meaningful headroom)
     const bestWindows = windows
-        .filter(w => w.optimalConversionAmount > 5000)
+        .filter(w => w.optimalConversionAmount > MIN_ROTH_CONVERSION_AMOUNT)
         .sort((a, b) => a.marginalRate - b.marginalRate)
         .slice(0, 3);
 

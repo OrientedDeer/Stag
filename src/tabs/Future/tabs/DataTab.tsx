@@ -1,7 +1,7 @@
 import React, { useMemo, useContext, useState, useCallback } from 'react';
 import { ResponsiveLine } from '@nivo/line';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
-import { AnyAccount, DebtAccount, PropertyAccount } from '../../../components/Objects/Accounts/models';
+import { DebtAccount } from '../../../components/Objects/Accounts/models';
 import { LoanExpense, MortgageExpense } from '../../../components/Objects/Expense/models';
 import { AssumptionsContext } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { AccountContext } from '../../../components/Objects/Accounts/AccountContext';
@@ -11,31 +11,12 @@ import { TaxContext } from '../../../components/Objects/Taxes/TaxContext';
 import { MonteCarloContext } from '../../../components/Objects/Assumptions/MonteCarloContext';
 import { exportToExcel, ExportData } from '../../../services/ExcelExportService';
 import { captureChart, collectReportData, generatePDFReport } from '../../../services/PDFReportService';
-import { formatCompactCurrency, formatCurrency } from './FutureUtils';
+import { calculateNetWorth, formatCompactCurrency, formatCurrency } from './FutureUtils';
 
 interface DataTabProps {
     simulationData: SimulationYear[];
     birthYear: number;
 }
-
-// Helper: Calculate Net Worth
-const calculateNetWorth = (accounts: AnyAccount[]) => {
-    let assets = 0;
-    let liabilities = 0;
-    accounts.forEach(acc => {
-        const val = acc.amount || 0;
-        if (acc instanceof DebtAccount) {
-            liabilities += val;
-        } else {
-            assets += val;
-            // PropertyAccount has a loan that counts as liability
-            if (acc instanceof PropertyAccount && acc.loanAmount) {
-                liabilities += acc.loanAmount;
-            }
-        }
-    });
-    return assets - liabilities;
-};
 
 export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, birthYear }) => {
     const startAge = new Date().getFullYear() - birthYear;

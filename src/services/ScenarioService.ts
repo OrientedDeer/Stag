@@ -338,7 +338,21 @@ export const calculateMilestones = (
 // ============================================================================
 
 /**
- * Compare two loaded scenarios and calculate differences
+ * Build a Map of year to net worth from simulation data.
+ */
+function buildNetWorthByYearMap(simulation: SimulationYear[]): Map<number, number> {
+    return new Map(simulation.map(year => [year.year, calculateNetWorth(year.accounts)]));
+}
+
+/**
+ * Calculate percentage difference safely (returns 0 if baseline is 0).
+ */
+function calculateDeltaPercent(delta: number, baseline: number): number {
+    return baseline !== 0 ? (delta / Math.abs(baseline)) * 100 : 0;
+}
+
+/**
+ * Compare two loaded scenarios and calculate differences.
  */
 export const compareScenarios = (
     baseline: LoadedScenario,
@@ -347,59 +361,30 @@ export const compareScenarios = (
     const baselineMilestones = baseline.milestones;
     const comparisonMilestones = comparison.milestones;
 
-    // Calculate FI year delta (positive means comparison is later)
-    let fiYearDelta: number | null = null;
-    if (baselineMilestones.fiYear !== null && comparisonMilestones.fiYear !== null) {
-        fiYearDelta = comparisonMilestones.fiYear - baselineMilestones.fiYear;
-    }
+    const fiYearDelta = (baselineMilestones.fiYear !== null && comparisonMilestones.fiYear !== null)
+        ? comparisonMilestones.fiYear - baselineMilestones.fiYear
+        : null;
 
-    // Calculate legacy value difference
     const legacyValueDelta = comparisonMilestones.legacyValue - baselineMilestones.legacyValue;
-    const legacyValueDeltaPercent = baselineMilestones.legacyValue !== 0
-        ? (legacyValueDelta / Math.abs(baselineMilestones.legacyValue)) * 100
-        : 0;
-
-    // Calculate peak net worth difference
     const peakNetWorthDelta = comparisonMilestones.peakNetWorth - baselineMilestones.peakNetWorth;
 
-    // Calculate "retirement readiness" as years of expenses covered at retirement
-    // This is a simplified metric
-    const retirementReadinessDelta = 0; // TODO: calculate based on runway at retirement
+    const baselineByYear = buildNetWorthByYearMap(baseline.simulation);
+    const comparisonByYear = buildNetWorthByYearMap(comparison.simulation);
 
-    // Build year-by-year comparison
-    const netWorthByYear: YearComparison[] = [];
+    const allYears = [...new Set([...baselineByYear.keys(), ...comparisonByYear.keys()])].sort((a, b) => a - b);
 
-    // Create maps for quick lookup
-    const baselineByYear = new Map<number, number>();
-    const comparisonByYear = new Map<number, number>();
-
-    for (const year of baseline.simulation) {
-        baselineByYear.set(year.year, calculateNetWorth(year.accounts));
-    }
-    for (const year of comparison.simulation) {
-        comparisonByYear.set(year.year, calculateNetWorth(year.accounts));
-    }
-
-    // Get all unique years
-    const allYears = new Set([...baselineByYear.keys(), ...comparisonByYear.keys()]);
-    const sortedYears = Array.from(allYears).sort((a, b) => a - b);
-
-    for (const year of sortedYears) {
+    const netWorthByYear: YearComparison[] = allYears.map(year => {
         const baselineValue = baselineByYear.get(year) ?? 0;
         const comparisonValue = comparisonByYear.get(year) ?? 0;
         const delta = comparisonValue - baselineValue;
-        const deltaPercent = baselineValue !== 0
-            ? (delta / Math.abs(baselineValue)) * 100
-            : 0;
-
-        netWorthByYear.push({
+        return {
             year,
             baseline: baselineValue,
             comparison: comparisonValue,
             delta,
-            deltaPercent
-        });
-    }
+            deltaPercent: calculateDeltaPercent(delta, baselineValue)
+        };
+    });
 
     return {
         baseline,
@@ -407,9 +392,9 @@ export const compareScenarios = (
         differences: {
             fiYearDelta,
             legacyValueDelta,
-            legacyValueDeltaPercent,
+            legacyValueDeltaPercent: calculateDeltaPercent(legacyValueDelta, baselineMilestones.legacyValue),
             peakNetWorthDelta,
-            retirementReadinessDelta,
+            retirementReadinessDelta: 0,
             netWorthByYear
         }
     };

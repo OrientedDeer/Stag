@@ -8,7 +8,6 @@ These features are complete but need validation:
 - **Scenario Comparison Tool** - Compare saved scenarios
 - **Financial Ratios Tab** - Benchmarks need validation
 - **SSA Earnings Import** - XML import for accurate SS calculation
-- **Excel Export** - 9-sheet export in Data tab
 
 *Note: Tax, Scenarios, Ratios tabs are behind "Experimental Features" toggle.*
 
@@ -64,11 +63,8 @@ These features are complete but need validation:
 
 ## Later
 
-### UX
-- 401k employer contribution UX improvements
-- ESPP support
-
 ### Features
+- ESPP support
 - Real estate enhancements (property sale, depreciation, capital gains)
 - Budget tracking (actual vs projected)
 - Optional localStorage encryption
@@ -82,13 +78,6 @@ These features are complete but need validation:
 ### Technical Debt
 - Screen reader testing
 - Monte Carlo performance testing
-- Tooltip jittering/flickering
 - Roth conversion tax payment improvement
   - Currently grosses up Roth withdrawal to pay conversion tax
   - Consider grossing up the next account in withdrawal order instead
-
----
-
-## Stats
-
-- 835 unit tests, 54 E2E tests passing

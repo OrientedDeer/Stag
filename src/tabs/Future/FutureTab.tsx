@@ -3,7 +3,7 @@ import { runSimulation } from '../../components/Objects/Assumptions/useSimulatio
 import { AssumptionsContext } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { getSimulationInputHash } from '../../services/simulationHash';
 import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
-import { InvestedAccount, PropertyAccount, SavedAccount } from '../../components/Objects/Accounts/models';
+import { ESPPAccount, InvestedAccount, PropertyAccount, SavedAccount } from '../../components/Objects/Accounts/models';
 import { SimulationContext } from '../../components/Objects/Assumptions/SimulationContext';
 import { AccountContext } from '../../components/Objects/Accounts/AccountContext';
 import { IncomeContext } from '../../components/Objects/Income/IncomeContext';
@@ -39,8 +39,8 @@ const AssetsTab = React.memo(({ simulationData }: { simulationData: SimulationYe
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const datum: any = { year: year.year };
             year.accounts.forEach(acc => {
-                // Include only asset accounts (Saved, Invested, Property)
-                if (acc instanceof SavedAccount || acc instanceof InvestedAccount || acc instanceof PropertyAccount) {
+                // Include only asset accounts (Saved, Invested, ESPP, Property)
+                if (acc instanceof SavedAccount || acc instanceof InvestedAccount || acc instanceof ESPPAccount || acc instanceof PropertyAccount) {
                     let val = acc.amount;
                     if (acc instanceof PropertyAccount) {
                         val -= (acc.loanAmount || 0);

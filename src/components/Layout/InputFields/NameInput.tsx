@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { StyledInput } from "./StyleUI";
+import { handleEnterKeyBlur } from "./inputUtils";
 
 interface NameInputProps {
     label: string;
@@ -9,43 +10,26 @@ interface NameInputProps {
     onBlur?: () => void;
     error?: string;
     placeholder?: string;
-    maxLength?: number; // Default 50
+    maxLength?: number;
     tooltip?: string;
 }
 
 export const NameInput: React.FC<NameInputProps> = ({ label, id, value, onChange, onBlur, error, placeholder, maxLength = 50, tooltip }) => {
-    // Use local state to avoid triggering parent updates on every keystroke
-    // This prevents chart animation glitches when editing names
     const [localValue, setLocalValue] = useState(value);
     const [internalError, setInternalError] = useState<string | undefined>();
 
-    // Sync local state when prop value changes externally
     useEffect(() => {
         setLocalValue(value);
     }, [value]);
 
-    // Built-in validation
-    const validateValue = (val: string): string | undefined => {
-        if (val.length > maxLength) return `Max ${maxLength} characters`;
-        return undefined;
-    };
-
-    const handleBlur = () => {
-        // Only update parent on blur to prevent animation glitches
+    const handleBlur = (): void => {
         if (localValue !== value) {
             onChange(localValue);
         }
-        setInternalError(validateValue(localValue));
+        setInternalError(localValue.length > maxLength ? `Max ${maxLength} characters` : undefined);
         onBlur?.();
     };
 
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'Enter') {
-            e.currentTarget.blur();
-        }
-    };
-
-    // Use external error if provided, otherwise use internal validation error
     const displayError = error || internalError;
 
     return (
@@ -56,7 +40,7 @@ export const NameInput: React.FC<NameInputProps> = ({ label, id, value, onChange
             value={localValue}
             onChange={(e) => setLocalValue(e.target.value)}
             onBlur={handleBlur}
-            onKeyDown={handleKeyDown}
+            onKeyDown={handleEnterKeyBlur}
             error={displayError}
             placeholder={placeholder}
             tooltip={tooltip}

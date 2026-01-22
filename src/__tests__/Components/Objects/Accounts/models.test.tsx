@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import {
     SavedAccount,
     InvestedAccount,
+    ESPPAccount,
+    ESPPLot,
     PropertyAccount,
     DebtAccount,
     DeficitDebtAccount,
@@ -349,6 +351,448 @@ describe('Account Models', () => {
         });
     });
 
+    describe('ESPPAccount', () => {
+        const createTestLot = (overrides: Partial<ESPPLot> = {}): ESPPLot => ({
+            id: 'lot-1',
+            grantDate: new Date('2024-01-01'),
+            purchaseDate: new Date('2024-06-30'),
+            fmvAtGrant: 100,
+            fmvAtPurchase: 110,
+            purchasePrice: 85, // 15% discount from grant price
+            shares: 100,
+            totalCost: 8500,
+            discountAmount: 15,
+            ...overrides
+        });
+
+        it('should initialize with correct defaults', () => {
+            const acc = new ESPPAccount('espp-1', 'Company ESPP', 10000);
+            expect(acc.lots).toEqual([]);
+            expect(acc.linkedIncomeId).toBeNull();
+            expect(acc.customROR).toBeUndefined();
+        });
+
+        it('should calculate total cost basis from lots', () => {
+            const lot1 = createTestLot({ id: 'lot-1', totalCost: 1000 });
+            const lot2 = createTestLot({ id: 'lot-2', totalCost: 2000 });
+            const acc = new ESPPAccount('espp-1', 'Company ESPP', 5000, [lot1, lot2]);
+
+            expect(acc.totalCostBasis).toBe(3000);
+        });
+
+        it('should calculate unrealized gains', () => {
+            const lot = createTestLot({ totalCost: 8500 });
+            const acc = new ESPPAccount('espp-1', 'Company ESPP', 12000, [lot]);
+
+            // Current value - cost basis = 12000 - 8500 = 3500
+            expect(acc.unrealizedGains).toBe(3500);
+        });
+
+        it('should return 0 for unrealized gains when at a loss', () => {
+            const lot = createTestLot({ totalCost: 8500 });
+            const acc = new ESPPAccount('espp-1', 'Company ESPP', 5000, [lot]);
+
+            // unrealizedGains should be 0 (not negative) due to Math.max
+            expect(acc.unrealizedGains).toBe(0);
+        });
+
+        it('should identify qualifying disposition after holding period', () => {
+            const acc = new ESPPAccount('espp-1', 'Company ESPP', 10000);
+            const lot = createTestLot({
+                grantDate: new Date('2020-01-01'),
+                purchaseDate: new Date('2020-06-30')
+            });
+
+            // 2 years from grant (Jan 2022) AND 1 year from purchase (Jun 2021)
+            // Sale date in 2023 should be qualifying
+            const saleDate = new Date('2023-01-15');
+            expect(acc.calculateDispositionType(lot, saleDate)).toBe('qualifying');
+        });
+
+        it('should identify disqualifying disposition before holding period', () => {
+            const acc = new ESPPAccount('espp-1', 'Company ESPP', 10000);
+            const lot = createTestLot({
+                grantDate: new Date('2024-01-01'),
+                purchaseDate: new Date('2024-06-30')
+            });
+
+            // Selling in 2024 - not 2 years from grant
+            const saleDate = new Date('2024-12-15');
+            expect(acc.calculateDispositionType(lot, saleDate)).toBe('disqualifying');
+        });
+
+        it('should count qualifying vs disqualifying lots', () => {
+            const oldLot = createTestLot({
+                id: 'old-lot',
+                grantDate: new Date('2020-01-01'),
+                purchaseDate: new Date('2020-06-30')
+            });
+            const newLot = createTestLot({
+                id: 'new-lot',
+                grantDate: new Date('2024-01-01'),
+                purchaseDate: new Date('2024-06-30')
+            });
+            const acc = new ESPPAccount('espp-1', 'Company ESPP', 20000, [oldLot, newLot]);
+
+            const counts = acc.getLotCounts(new Date('2024-12-01'));
+            expect(counts.qualifying).toBe(1);
+            expect(counts.disqualifying).toBe(1);
+        });
+
+        it('should add a lot and update amount', () => {
+            const acc = new ESPPAccount('espp-1', 'Company ESPP', 10000);
+            const newLot = createTestLot({ shares: 50, fmvAtPurchase: 100 });
+
+            const updatedAcc = acc.addLot(newLot);
+
+            expect(updatedAcc.lots.length).toBe(1);
+            // Amount should increase by FMV of new shares: 50 * 100 = 5000
+            expect(updatedAcc.amount).toBe(15000);
+        });
+
+        it('should grow based on assumptions', () => {
+            const acc = new ESPPAccount('espp-1', 'Company ESPP', 10000);
+            const nextYear = acc.increment(mockAssumptions);
+
+            // 10% return (no expense ratio for ESPP)
+            expect(nextYear.amount).toBeCloseTo(11000);
+        });
+
+        it('should use customROR when set', () => {
+            const acc = new ESPPAccount('espp-1', 'Company ESPP', 10000, [], null, 5);
+            const nextYear = acc.increment(mockAssumptions);
+
+            // 5% customROR (inflationAdjusted is false in mockAssumptions)
+            expect(nextYear.amount).toBeCloseTo(10500);
+        });
+
+        it('should calculate sale tax for disqualifying disposition', () => {
+            const lot = createTestLot({
+                purchaseDate: new Date('2024-06-30'),
+                fmvAtGrant: 100,
+                fmvAtPurchase: 110,
+                purchasePrice: 85,
+                shares: 100
+            });
+            const acc = new ESPPAccount('espp-1', 'Company ESPP', 15000, [lot]);
+
+            // Sale at $150 per share, 6 months after purchase (disqualifying)
+            const saleDate = new Date('2025-01-15');
+            const result = acc.calculateSaleTax(50, 150, saleDate);
+
+            // Disqualifying: ordinary income = (110 - 85) * 50 = 1250
+            // Capital gains = (150 - 110) * 50 = 2000 (short-term since < 1 year)
+            expect(result.ordinaryIncome).toBe(1250);
+            expect(result.shortTermGains).toBe(2000);
+            expect(result.longTermGains).toBe(0);
+        });
+
+        it('should remove sold shares using FIFO', () => {
+            const oldLot = createTestLot({ id: 'old', shares: 50, purchaseDate: new Date('2023-01-01') });
+            const newLot = createTestLot({ id: 'new', shares: 50, purchaseDate: new Date('2024-01-01') });
+            const acc = new ESPPAccount('espp-1', 'Company ESPP', 15000, [oldLot, newLot]);
+
+            // Sell 60 shares - should use all of oldLot (50) and 10 from newLot
+            const updatedAcc = acc.removeSoldShares(60, 100);
+
+            expect(updatedAcc.lots.length).toBe(1); // Only newLot remains (partial)
+            expect(updatedAcc.lots[0].shares).toBe(40); // 50 - 10 = 40 remaining
+        });
+
+        // New ESPP Features Tests
+        describe('Advanced ESPP Features', () => {
+            it('should initialize with new properties', () => {
+                const acc = new ESPPAccount(
+                    'espp-1', 'Company ESPP', 10000, [], null, 7,
+                    'AAPL',  // stockTicker
+                    150.50,  // currentSharePrice
+                    'disqualifying_first',  // withdrawalPreference
+                    365      // minimumHoldingDays
+                );
+
+                expect(acc.stockTicker).toBe('AAPL');
+                expect(acc.currentSharePrice).toBe(150.50);
+                expect(acc.withdrawalPreference).toBe('disqualifying_first');
+                expect(acc.minimumHoldingDays).toBe(365);
+            });
+
+            it('should default new properties appropriately', () => {
+                const acc = new ESPPAccount('espp-1', 'Company ESPP', 10000);
+
+                expect(acc.stockTicker).toBeUndefined();
+                expect(acc.currentSharePrice).toBeUndefined();
+                expect(acc.withdrawalPreference).toBe('fifo');
+                expect(acc.minimumHoldingDays).toBe(0);
+            });
+
+            it('should preserve new properties through addLot', () => {
+                const acc = new ESPPAccount(
+                    'espp-1', 'Company ESPP', 10000, [], null, 7,
+                    'AAPL', 150.50, 'qualifying_first', 180
+                );
+                const newLot = createTestLot({ shares: 50, fmvAtPurchase: 100 });
+
+                const updatedAcc = acc.addLot(newLot);
+
+                expect(updatedAcc.stockTicker).toBe('AAPL');
+                expect(updatedAcc.currentSharePrice).toBe(150.50);
+                expect(updatedAcc.withdrawalPreference).toBe('qualifying_first');
+                expect(updatedAcc.minimumHoldingDays).toBe(180);
+            });
+
+            it('should preserve new properties through increment', () => {
+                const acc = new ESPPAccount(
+                    'espp-1', 'Company ESPP', 10000, [], null, undefined,
+                    'GOOG', 100, 'dont_sell_until_qualifying', 90
+                );
+
+                const nextYear = acc.increment(mockAssumptions);
+
+                expect(nextYear.stockTicker).toBe('GOOG');
+                expect(nextYear.currentSharePrice).toBe(100);
+                expect(nextYear.withdrawalPreference).toBe('dont_sell_until_qualifying');
+                expect(nextYear.minimumHoldingDays).toBe(90);
+            });
+
+            it('should preserve new properties through removeSoldShares', () => {
+                const lot = createTestLot({ shares: 100 });
+                const acc = new ESPPAccount(
+                    'espp-1', 'Company ESPP', 15000, [lot], null, undefined,
+                    'MSFT', 200, 'disqualifying_first', 365
+                );
+
+                const updatedAcc = acc.removeSoldShares(50, 100);
+
+                expect(updatedAcc.stockTicker).toBe('MSFT');
+                expect(updatedAcc.currentSharePrice).toBe(200);
+                expect(updatedAcc.withdrawalPreference).toBe('disqualifying_first');
+                expect(updatedAcc.minimumHoldingDays).toBe(365);
+            });
+        });
+
+        describe('getEligibleLots', () => {
+            it('should return all lots when minimumHoldingDays is 0', () => {
+                const lot1 = createTestLot({ id: 'lot-1', purchaseDate: new Date('2024-01-01') });
+                const lot2 = createTestLot({ id: 'lot-2', purchaseDate: new Date('2024-12-01') });
+                const acc = new ESPPAccount('espp-1', 'Company ESPP', 20000, [lot1, lot2]);
+
+                const eligible = acc.getEligibleLots(new Date('2024-12-15'));
+                expect(eligible.length).toBe(2);
+            });
+
+            it('should filter lots based on minimum holding days', () => {
+                // Lot 1: purchased 200 days ago
+                // Lot 2: purchased 50 days ago
+                const baseDate = new Date('2024-06-01');
+                const lot1Date = new Date(baseDate);
+                lot1Date.setDate(lot1Date.getDate() - 200);
+                const lot2Date = new Date(baseDate);
+                lot2Date.setDate(lot2Date.getDate() - 50);
+
+                const lot1 = createTestLot({ id: 'lot-1', purchaseDate: lot1Date });
+                const lot2 = createTestLot({ id: 'lot-2', purchaseDate: lot2Date });
+
+                const acc = new ESPPAccount(
+                    'espp-1', 'Company ESPP', 20000, [lot1, lot2], null, undefined,
+                    undefined, undefined, 'fifo', 100 // 100-day minimum hold
+                );
+
+                const eligible = acc.getEligibleLots(baseDate);
+                expect(eligible.length).toBe(1);
+                expect(eligible[0].id).toBe('lot-1');
+            });
+
+            it('should return empty array when no lots meet holding period', () => {
+                const recentDate = new Date();
+                recentDate.setDate(recentDate.getDate() - 30);
+
+                const lot = createTestLot({ purchaseDate: recentDate });
+                const acc = new ESPPAccount(
+                    'espp-1', 'Company ESPP', 10000, [lot], null, undefined,
+                    undefined, undefined, 'fifo', 365 // 365-day minimum hold
+                );
+
+                const eligible = acc.getEligibleLots(new Date());
+                expect(eligible.length).toBe(0);
+            });
+        });
+
+        describe('getEligibleShares', () => {
+            it('should calculate total eligible shares', () => {
+                const baseDate = new Date('2024-06-01');
+                const oldDate = new Date(baseDate);
+                oldDate.setDate(oldDate.getDate() - 200);
+                const newDate = new Date(baseDate);
+                newDate.setDate(newDate.getDate() - 50);
+
+                const lot1 = createTestLot({ id: 'lot-1', purchaseDate: oldDate, shares: 100 });
+                const lot2 = createTestLot({ id: 'lot-2', purchaseDate: newDate, shares: 50 });
+
+                const acc = new ESPPAccount(
+                    'espp-1', 'Company ESPP', 20000, [lot1, lot2], null, undefined,
+                    undefined, undefined, 'fifo', 100
+                );
+
+                const eligibleShares = acc.getEligibleShares(baseDate);
+                expect(eligibleShares).toBe(100); // Only lot1's shares
+            });
+        });
+
+        describe('hasQualifyingLots', () => {
+            it('should return true when qualifying lots exist', () => {
+                const oldLot = createTestLot({
+                    id: 'old-lot',
+                    grantDate: new Date('2020-01-01'),
+                    purchaseDate: new Date('2020-06-30')
+                });
+                const acc = new ESPPAccount('espp-1', 'Company ESPP', 10000, [oldLot]);
+
+                expect(acc.hasQualifyingLots(new Date('2024-12-01'))).toBe(true);
+            });
+
+            it('should return false when no qualifying lots exist', () => {
+                const newLot = createTestLot({
+                    id: 'new-lot',
+                    grantDate: new Date('2024-01-01'),
+                    purchaseDate: new Date('2024-06-30')
+                });
+                const acc = new ESPPAccount('espp-1', 'Company ESPP', 10000, [newLot]);
+
+                expect(acc.hasQualifyingLots(new Date('2024-12-01'))).toBe(false);
+            });
+        });
+
+        describe('calculateSaleTax with lotOrder', () => {
+            it('should sell disqualifying lots first when preference is disqualifying_first', () => {
+                // Old qualifying lot
+                const qualifyingLot = createTestLot({
+                    id: 'qualifying',
+                    grantDate: new Date('2020-01-01'),
+                    purchaseDate: new Date('2020-06-30'),
+                    shares: 50,
+                    fmvAtGrant: 100,
+                    fmvAtPurchase: 110,
+                    purchasePrice: 85
+                });
+                // New disqualifying lot
+                const disqualifyingLot = createTestLot({
+                    id: 'disqualifying',
+                    grantDate: new Date('2024-01-01'),
+                    purchaseDate: new Date('2024-06-30'),
+                    shares: 50,
+                    fmvAtGrant: 100,
+                    fmvAtPurchase: 110,
+                    purchasePrice: 85
+                });
+
+                const acc = new ESPPAccount('espp-1', 'Company ESPP', 15000, [qualifyingLot, disqualifyingLot]);
+                const saleDate = new Date('2024-12-01');
+
+                // Sell 50 shares with disqualifying_first preference
+                const result = acc.calculateSaleTax(50, 150, saleDate, 'disqualifying_first');
+
+                // Should use the disqualifying lot (all 50 shares from it)
+                expect(result.lotsUsed.length).toBe(1);
+                expect(result.lotsUsed[0].id).toBe('disqualifying');
+            });
+
+            it('should sell qualifying lots first when preference is qualifying_first', () => {
+                // Old qualifying lot
+                const qualifyingLot = createTestLot({
+                    id: 'qualifying',
+                    grantDate: new Date('2020-01-01'),
+                    purchaseDate: new Date('2020-06-30'),
+                    shares: 50
+                });
+                // New disqualifying lot
+                const disqualifyingLot = createTestLot({
+                    id: 'disqualifying',
+                    grantDate: new Date('2024-01-01'),
+                    purchaseDate: new Date('2024-06-30'),
+                    shares: 50
+                });
+
+                const acc = new ESPPAccount('espp-1', 'Company ESPP', 15000, [disqualifyingLot, qualifyingLot]);
+                const saleDate = new Date('2024-12-01');
+
+                // Sell 50 shares with qualifying_first preference
+                const result = acc.calculateSaleTax(50, 150, saleDate, 'qualifying_first');
+
+                // Should use the qualifying lot first
+                expect(result.lotsUsed.length).toBe(1);
+                expect(result.lotsUsed[0].id).toBe('qualifying');
+            });
+
+            it('should respect eligible lots filter', () => {
+                const baseDate = new Date('2024-06-01');
+                const oldDate = new Date(baseDate);
+                oldDate.setDate(oldDate.getDate() - 200);
+                const newDate = new Date(baseDate);
+                newDate.setDate(newDate.getDate() - 50);
+
+                const eligibleLot = createTestLot({ id: 'eligible', purchaseDate: oldDate, shares: 100 });
+                const ineligibleLot = createTestLot({ id: 'ineligible', purchaseDate: newDate, shares: 100 });
+
+                const acc = new ESPPAccount(
+                    'espp-1', 'Company ESPP', 30000, [eligibleLot, ineligibleLot], null, undefined,
+                    undefined, undefined, 'fifo', 100
+                );
+
+                const eligibleLots = acc.getEligibleLots(baseDate);
+                const result = acc.calculateSaleTax(50, 150, baseDate, 'fifo', eligibleLots);
+
+                // Should only use the eligible lot
+                expect(result.lotsUsed.length).toBe(1);
+                expect(result.lotsUsed[0].id).toBe('eligible');
+            });
+        });
+
+        describe('updateLot', () => {
+            it('should update a specific lot', () => {
+                const lot = createTestLot({ id: 'lot-1', shares: 100 });
+                const acc = new ESPPAccount('espp-1', 'Company ESPP', 15000, [lot]);
+
+                const updatedAcc = acc.updateLot('lot-1', { shares: 150 });
+
+                expect(updatedAcc.lots[0].shares).toBe(150);
+            });
+
+            it('should preserve other lots when updating one', () => {
+                const lot1 = createTestLot({ id: 'lot-1', shares: 100 });
+                const lot2 = createTestLot({ id: 'lot-2', shares: 50 });
+                const acc = new ESPPAccount('espp-1', 'Company ESPP', 20000, [lot1, lot2]);
+
+                const updatedAcc = acc.updateLot('lot-1', { shares: 75 });
+
+                expect(updatedAcc.lots.length).toBe(2);
+                expect(updatedAcc.lots.find(l => l.id === 'lot-2')?.shares).toBe(50);
+            });
+        });
+
+        describe('deleteLot', () => {
+            it('should remove a lot by ID', () => {
+                const lot1 = createTestLot({ id: 'lot-1', shares: 100 });
+                const lot2 = createTestLot({ id: 'lot-2', shares: 50 });
+                const acc = new ESPPAccount('espp-1', 'Company ESPP', 20000, [lot1, lot2]);
+
+                const updatedAcc = acc.deleteLot('lot-1');
+
+                expect(updatedAcc.lots.length).toBe(1);
+                expect(updatedAcc.lots[0].id).toBe('lot-2');
+            });
+
+            it('should reduce amount when deleting a lot', () => {
+                const lot = createTestLot({ id: 'lot-1', shares: 100, fmvAtPurchase: 100 });
+                const acc = new ESPPAccount('espp-1', 'Company ESPP', 15000, [lot]);
+
+                const updatedAcc = acc.deleteLot('lot-1');
+
+                // Should reduce by lot value: 100 shares * $100 FMV = $10,000
+                expect(updatedAcc.amount).toBe(5000);
+            });
+        });
+    });
+
     describe('reconstituteAccount', () => {
         it('should create a SavedAccount instance', () => {
             const data = { className: 'SavedAccount', id: 's1', name: 'Savings', amount: 100, apr: 1 };
@@ -397,6 +841,86 @@ describe('Account Models', () => {
                 expect(account.name).toBe('Budget Deficit');
                 expect(account.amount).toBe(5000);
                 expect((account as DeficitDebtAccount).apr).toBe(0);
+            }
+        });
+
+        it('should create an ESPPAccount instance with lots', () => {
+            const data = {
+                className: 'ESPPAccount',
+                id: 'espp-1',
+                name: 'Company ESPP',
+                amount: 15000,
+                lots: [
+                    {
+                        id: 'lot-1',
+                        grantDate: '2024-01-01T00:00:00.000Z',
+                        purchaseDate: '2024-06-30T00:00:00.000Z',
+                        fmvAtGrant: 100,
+                        fmvAtPurchase: 110,
+                        purchasePrice: 85,
+                        shares: 100,
+                        totalCost: 8500,
+                        discountAmount: 15
+                    }
+                ],
+                linkedIncomeId: 'income-1',
+                customROR: 8
+            };
+            const account = reconstituteAccount(data);
+            expect(account).toBeInstanceOf(ESPPAccount);
+            if (account) {
+                const espp = account as ESPPAccount;
+                expect(espp.id).toBe('espp-1');
+                expect(espp.lots.length).toBe(1);
+                expect(espp.lots[0].shares).toBe(100);
+                expect(espp.lots[0].grantDate).toBeInstanceOf(Date);
+                expect(espp.linkedIncomeId).toBe('income-1');
+                expect(espp.customROR).toBe(8);
+            }
+        });
+
+        it('should create an ESPPAccount instance with new properties', () => {
+            const data = {
+                className: 'ESPPAccount',
+                id: 'espp-2',
+                name: 'Advanced ESPP',
+                amount: 25000,
+                lots: [],
+                linkedIncomeId: null,
+                customROR: 6,
+                stockTicker: 'NVDA',
+                currentSharePrice: 450.75,
+                withdrawalPreference: 'disqualifying_first',
+                minimumHoldingDays: 180
+            };
+            const account = reconstituteAccount(data);
+            expect(account).toBeInstanceOf(ESPPAccount);
+            if (account) {
+                const espp = account as ESPPAccount;
+                expect(espp.stockTicker).toBe('NVDA');
+                expect(espp.currentSharePrice).toBe(450.75);
+                expect(espp.withdrawalPreference).toBe('disqualifying_first');
+                expect(espp.minimumHoldingDays).toBe(180);
+            }
+        });
+
+        it('should use default values for missing new ESPP properties', () => {
+            const data = {
+                className: 'ESPPAccount',
+                id: 'espp-3',
+                name: 'Legacy ESPP',
+                amount: 10000,
+                lots: []
+                // No new properties provided
+            };
+            const account = reconstituteAccount(data);
+            expect(account).toBeInstanceOf(ESPPAccount);
+            if (account) {
+                const espp = account as ESPPAccount;
+                expect(espp.stockTicker).toBeUndefined();
+                expect(espp.currentSharePrice).toBeUndefined();
+                expect(espp.withdrawalPreference).toBe('fifo');
+                expect(espp.minimumHoldingDays).toBe(0);
             }
         });
 

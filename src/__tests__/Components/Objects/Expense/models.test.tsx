@@ -5,6 +5,7 @@ import {
   LoanExpense,
   HealthcareExpense,
   BaseExpense,
+  AnyExpense,
   reconstituteExpense,
   getExpenseActiveMultiplier,
   isExpenseActiveInCurrentMonth,
@@ -54,8 +55,8 @@ const inflationAssumptions: AssumptionsState = {
 describe('Expense Models', () => {
   describe('BaseExpense', () => {
     class TestExpense extends BaseExpense {
-      increment(_assumptions: AssumptionsState): TestExpense { return this; }
-      adjustAmount(_ratio: number): TestExpense { return this; }
+      increment(_assumptions: AssumptionsState): AnyExpense { return this as unknown as AnyExpense; }
+      adjustAmount(_ratio: number): AnyExpense { return this as unknown as AnyExpense; }
     }
 
     it('should calculate prorated annual and monthly amounts correctly', () => {

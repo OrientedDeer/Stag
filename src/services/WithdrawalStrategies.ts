@@ -7,6 +7,26 @@
  * - Guyton-Klinger: Dynamic with guardrails based on portfolio performance
  */
 
+// ============================================================================
+// Constants
+// ============================================================================
+
+/** Default Guyton-Klinger upper guardrail (20% above target rate triggers capital preservation) */
+const DEFAULT_GK_UPPER_GUARDRAIL = 1.2;
+
+/** Default Guyton-Klinger lower guardrail (20% below target rate triggers prosperity increase) */
+const DEFAULT_GK_LOWER_GUARDRAIL = 0.8;
+
+/** Default adjustment percentage when guardrails are triggered (10% cut or increase) */
+const DEFAULT_GK_ADJUSTMENT_PERCENT = 10;
+
+/** Years until life expectancy threshold for capital preservation rule */
+const GK_15_YEAR_RULE_THRESHOLD = 15;
+
+// ============================================================================
+// Types
+// ============================================================================
+
 export type GuardrailTrigger = 'none' | 'capital-preservation' | 'prosperity';
 
 export interface WithdrawalResult {
@@ -123,9 +143,9 @@ export function calculateGuytonKlingerWithdrawal(
     baseWithdrawal,
     withdrawalRate,
     inflationRate,
-    upperGuardrail = 1.2,
-    lowerGuardrail = 0.8,
-    adjustmentPercent = 10,
+    upperGuardrail = DEFAULT_GK_UPPER_GUARDRAIL,
+    lowerGuardrail = DEFAULT_GK_LOWER_GUARDRAIL,
+    adjustmentPercent = DEFAULT_GK_ADJUSTMENT_PERCENT,
     yearsRemaining,
     isFirstYear,
   } = params;
@@ -157,7 +177,7 @@ export function calculateGuytonKlingerWithdrawal(
   if (currentWithdrawalRate > targetRate * upperGuardrail) {
     // Capital Preservation Rule: Portfolio has dropped significantly
     // Only apply if more than 15 years until life expectancy
-    const canApplyCapitalPreservation = yearsRemaining === undefined || yearsRemaining > 15;
+    const canApplyCapitalPreservation = yearsRemaining === undefined || yearsRemaining > GK_15_YEAR_RULE_THRESHOLD;
 
     if (canApplyCapitalPreservation) {
       // CUT withdrawal by adjustmentPercent (default 10%)
