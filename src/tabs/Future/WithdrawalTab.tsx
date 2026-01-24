@@ -1,15 +1,9 @@
-import { useContext, useEffect, useCallback, useState, useMemo } from 'react';
+import { useContext, useEffect, useCallback, useState } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { AssumptionsContext, WithdrawalBucket } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { AccountContext } from '../../components/Objects/Accounts/AccountContext';
 import { AnyAccount, ESPPAccount, SavedAccount, InvestedAccount } from '../../components/Objects/Accounts/models';
 import { formatCompactCurrency } from './tabs/FutureUtils';
-import {
-    calculateFixedRealWithdrawal,
-    calculatePercentageWithdrawal,
-    calculateGuytonKlingerWithdrawal,
-    WithdrawalResult
-} from '../../services/WithdrawalStrategies';
 
 // Helper to get tax treatment badge for an account
 const getTaxBadge = (account: AnyAccount | undefined): { label: string; color: string } => {
@@ -42,189 +36,6 @@ const getTaxBadge = (account: AnyAccount | undefined): { label: string; color: s
     }
 
     return { label: 'Unknown', color: 'bg-gray-600' };
-};
-
-// Withdrawal Debug Panel Component
-const WithdrawalDebugPanel: React.FC<{
-    totalPortfolio: number;
-    withdrawalRate: number;
-    inflationRate: number;
-    strategy: string;
-    formatMoney: (amount: number) => string;
-}> = ({ totalPortfolio, withdrawalRate, inflationRate, strategy, formatMoney }) => {
-    const [isExpanded, setIsExpanded] = useState(false);
-
-    // Calculate sample withdrawals for first 10 years of retirement
-    const sampleYears = useMemo(() => {
-        const years: Array<{
-            year: number;
-            portfolio: number;
-            withdrawal: number;
-            rate: number;
-            guardrail: string;
-        }> = [];
-
-        let currentPortfolio = totalPortfolio;
-        let previousWithdrawal: WithdrawalResult | undefined;
-        const returnRate = 0.07; // Assume 7% nominal returns for illustration
-
-        for (let i = 0; i < 10; i++) {
-            let result: WithdrawalResult;
-
-            if (strategy === 'Fixed Real') {
-                result = calculateFixedRealWithdrawal(
-                    totalPortfolio,
-                    withdrawalRate,
-                    inflationRate,
-                    i,
-                    currentPortfolio
-                );
-            } else if (strategy === 'Percentage') {
-                result = calculatePercentageWithdrawal(currentPortfolio, withdrawalRate);
-            } else {
-                // Guyton-Klinger
-                result = calculateGuytonKlingerWithdrawal({
-                    currentPortfolio,
-                    baseWithdrawal: previousWithdrawal?.baseAmount || 0,
-                    withdrawalRate,
-                    inflationRate,
-                    isFirstYear: i === 0,
-                    yearsRemaining: 30 - i,
-                });
-            }
-
-            years.push({
-                year: i + 1,
-                portfolio: currentPortfolio,
-                withdrawal: result.amount,
-                rate: result.currentWithdrawalRate,
-                guardrail: result.guardrailTriggered === 'none' ? '-' :
-                    result.guardrailTriggered === 'capital-preservation' ? '⚠️ Cut' : '📈 Raise',
-            });
-
-            // Simulate portfolio for next year (growth - withdrawal)
-            currentPortfolio = (currentPortfolio - result.amount) * (1 + returnRate);
-            previousWithdrawal = result;
-        }
-
-        return years;
-    }, [totalPortfolio, withdrawalRate, inflationRate, strategy]);
-
-    if (totalPortfolio <= 0) return null;
-
-    return (
-        <div className="mt-6 border border-gray-800 rounded-xl overflow-hidden">
-            <button
-                onClick={() => setIsExpanded(!isExpanded)}
-                className="w-full px-4 py-3 bg-gray-900/50 flex items-center justify-between hover:bg-gray-800/50 transition-colors"
-            >
-                <span className="text-sm font-medium text-gray-300">
-                    🔧 Withdrawal Strategy Debug Panel
-                </span>
-                <svg
-                    className={`w-5 h-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-            </button>
-
-            {isExpanded && (
-                <div className="p-4 bg-gray-900/30 space-y-4">
-                    {/* Current Settings */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                        <div className="bg-gray-800/50 rounded-lg p-3">
-                            <div className="text-gray-400 text-xs uppercase">Strategy</div>
-                            <div className="text-white font-medium">{strategy}</div>
-                        </div>
-                        <div className="bg-gray-800/50 rounded-lg p-3">
-                            <div className="text-gray-400 text-xs uppercase">Portfolio</div>
-                            <div className="text-white font-medium">{formatMoney(totalPortfolio)}</div>
-                        </div>
-                        <div className="bg-gray-800/50 rounded-lg p-3">
-                            <div className="text-gray-400 text-xs uppercase">Rate</div>
-                            <div className="text-white font-medium">{withdrawalRate}%</div>
-                        </div>
-                        <div className="bg-gray-800/50 rounded-lg p-3">
-                            <div className="text-gray-400 text-xs uppercase">Year 1 Withdrawal</div>
-                            <div className="text-emerald-400 font-medium">
-                                {formatMoney(totalPortfolio * (withdrawalRate / 100))}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Sample Year-by-Year Table */}
-                    <div>
-                        <h4 className="text-sm font-medium text-gray-300 mb-2">
-                            Sample 10-Year Projection (assuming 7% returns)
-                        </h4>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead>
-                                    <tr className="text-gray-400 text-xs uppercase">
-                                        <th className="text-left py-2 px-2">Year</th>
-                                        <th className="text-right py-2 px-2">Portfolio</th>
-                                        <th className="text-right py-2 px-2">Withdrawal</th>
-                                        <th className="text-right py-2 px-2">Rate</th>
-                                        {strategy === 'Guyton Klinger' && (
-                                            <th className="text-center py-2 px-2">Guardrail</th>
-                                        )}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {sampleYears.map(row => (
-                                        <tr key={row.year} className="border-t border-gray-800">
-                                            <td className="py-2 px-2 text-gray-300">{row.year}</td>
-                                            <td className="py-2 px-2 text-right text-gray-300">
-                                                {formatMoney(row.portfolio)}
-                                            </td>
-                                            <td className="py-2 px-2 text-right text-emerald-400">
-                                                {formatMoney(row.withdrawal)}
-                                            </td>
-                                            <td className="py-2 px-2 text-right text-gray-400">
-                                                {row.rate.toFixed(1)}%
-                                            </td>
-                                            {strategy === 'Guyton Klinger' && (
-                                                <td className="py-2 px-2 text-center">{row.guardrail}</td>
-                                            )}
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    {/* Strategy Explanation */}
-                    <div className="text-xs text-gray-400 bg-gray-800/30 rounded-lg p-3">
-                        {strategy === 'Fixed Real' && (
-                            <p>
-                                <strong>Fixed Real:</strong> Year 1 withdrawal is {withdrawalRate}% of initial portfolio.
-                                Each subsequent year, the same dollar amount is withdrawn, adjusted for {inflationRate}% inflation.
-                                This maintains purchasing power but may deplete portfolio in bad markets.
-                            </p>
-                        )}
-                        {strategy === 'Percentage' && (
-                            <p>
-                                <strong>Percentage:</strong> Each year, withdraw {withdrawalRate}% of current portfolio value.
-                                Income varies with market performance. Portfolio mathematically never depletes,
-                                but income can drop significantly in bad years.
-                            </p>
-                        )}
-                        {strategy === 'Guyton Klinger' && (
-                            <p>
-                                <strong>Guyton-Klinger:</strong> Dynamic strategy with guardrails.
-                                If withdrawal rate exceeds {(withdrawalRate * 1.2).toFixed(1)}% (upper guardrail),
-                                cut withdrawal by 10%. If rate drops below {(withdrawalRate * 0.8).toFixed(1)}% (lower guardrail),
-                                increase withdrawal by 10%. Otherwise, adjust for inflation.
-                            </p>
-                        )}
-                    </div>
-                </div>
-            )}
-        </div>
-    );
 };
 
 export default function WithdrawalTab() {
@@ -296,12 +107,6 @@ export default function WithdrawalTab() {
             balance: account?.amount || 0,
         };
     });
-
-    // Calculate total portfolio value for debug panel
-    const totalPortfolio = bucketsWithDetails.reduce((sum, b) => sum + b.balance, 0);
-    const withdrawalRate = state.investments?.withdrawalRate || 4;
-    const inflationRate = state.macro?.inflationRate || 3;
-    const withdrawalStrategyType = state.investments?.withdrawalStrategy || 'Fixed Real';
 
     const [showHelp, setShowHelp] = useState(false);
 
@@ -452,14 +257,6 @@ export default function WithdrawalTab() {
                     </DragDropContext>
                 )}
 
-                {/* Withdrawal Debug Panel */}
-                <WithdrawalDebugPanel
-                    totalPortfolio={totalPortfolio}
-                    withdrawalRate={withdrawalRate}
-                    inflationRate={inflationRate}
-                    strategy={withdrawalStrategyType}
-                    formatMoney={formatMoney}
-                />
             </div>
         </div>
     );

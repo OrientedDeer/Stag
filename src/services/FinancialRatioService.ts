@@ -34,10 +34,18 @@ const DEBT_TO_ASSET_GOOD = 0.30;
 const DEBT_TO_ASSET_FAIR = 0.50;
 const DEBT_TO_ASSET_POOR = 0.80;
 
-/** Net worth to income ratio thresholds */
-const NET_WORTH_TO_INCOME_EXCELLENT = 3;
-const NET_WORTH_TO_INCOME_GOOD = 1;
-const NET_WORTH_TO_INCOME_FAIR = 0.5;
+/** Net worth to income age-based targets (Fidelity rule of thumb) */
+const NET_WORTH_AGE_TARGETS: [number, number][] = [
+  [25, 0.5],
+  [30, 1],
+  [35, 2],
+  [40, 3],
+  [45, 4],
+  [50, 6],
+  [55, 7],
+  [60, 8],
+  [67, 10],
+];
 
 /** Investment allocation thresholds (percentage of total assets) */
 const INVESTMENT_ALLOCATION_EXCELLENT = 0.60;
@@ -68,9 +76,13 @@ export interface RatioResult {
 }
 
 export interface FinancialRatios {
-  // Income & Savings
+  // Income & Savings (pre-retirement) / Retirement Spending (post-retirement)
   savingsRate: RatioResult;
   expenseRatio: RatioResult;
+
+  // Retirement-specific
+  withdrawalRate: RatioResult | null;
+  portfolioYears: RatioResult | null;
 
   // Liquidity
   emergencyFundMonths: RatioResult;
@@ -87,6 +99,9 @@ export interface FinancialRatios {
   // Growth (requires multiple years)
   netWorthGrowthRate: RatioResult | null;
   assetGrowthRate: RatioResult | null;
+
+  // Context
+  isRetired: boolean;
 }
 
 export interface RatioTrend {
@@ -189,16 +204,39 @@ function rateDebtToAsset(ratio: number): RatingLevel {
 }
 
 /**
- * Rate net worth to income ratio (target: age-dependent, simplified)
- * Rule of thumb: 1x by 30, 3x by 40, 6x by 50, 10x by retirement
- * Adjusted to be more realistic - most people are behind these targets
+ * Get the target net worth multiple for a given age using interpolation
  */
-function rateNetWorthToIncome(ratio: number): RatingLevel {
-  if (ratio >= NET_WORTH_TO_INCOME_EXCELLENT) return 'excellent';  // On track for solid retirement
-  if (ratio >= NET_WORTH_TO_INCOME_GOOD) return 'good';           // Ahead of most peers
-  if (ratio >= NET_WORTH_TO_INCOME_FAIR) return 'fair';           // Building wealth
-  if (ratio >= 0) return 'poor';                                   // Starting out
-  return 'critical';                                               // Negative net worth
+function getNetWorthTarget(age: number): number {
+  if (age <= NET_WORTH_AGE_TARGETS[0][0]) return NET_WORTH_AGE_TARGETS[0][1];
+  if (age >= NET_WORTH_AGE_TARGETS[NET_WORTH_AGE_TARGETS.length - 1][0]) {
+    return NET_WORTH_AGE_TARGETS[NET_WORTH_AGE_TARGETS.length - 1][1];
+  }
+
+  // Interpolate between nearest brackets
+  for (let i = 0; i < NET_WORTH_AGE_TARGETS.length - 1; i++) {
+    const [age1, target1] = NET_WORTH_AGE_TARGETS[i];
+    const [age2, target2] = NET_WORTH_AGE_TARGETS[i + 1];
+    if (age >= age1 && age <= age2) {
+      const progress = (age - age1) / (age2 - age1);
+      return target1 + progress * (target2 - target1);
+    }
+  }
+  return 1;
+}
+
+/**
+ * Rate net worth to income ratio based on age-appropriate targets
+ * Uses Fidelity rule of thumb: 1x by 30, 3x by 40, 6x by 50, 10x by 67
+ */
+function rateNetWorthToIncome(ratio: number, age?: number): RatingLevel {
+  if (ratio < 0) return 'critical';
+
+  const target = age !== undefined ? getNetWorthTarget(age) : 3;
+
+  if (ratio >= target) return 'excellent';
+  if (ratio >= target * 0.75) return 'good';
+  if (ratio >= target * 0.50) return 'fair';
+  return 'poor';
 }
 
 /**
@@ -214,13 +252,79 @@ function rateInvestmentAllocation(ratio: number): RatingLevel {
 }
 
 /**
- * Rate growth rate
+ * Rate growth rate, adjusted for whether values include inflation.
+ * When inflation is not included (real returns), thresholds are lowered.
  */
-function rateGrowthRate(rate: number): RatingLevel {
-  if (rate >= GROWTH_RATE_EXCELLENT) return 'excellent';
-  if (rate >= GROWTH_RATE_GOOD) return 'good';
-  if (rate >= GROWTH_RATE_FAIR) return 'fair';
-  if (rate >= 0) return 'poor';
+function rateGrowthRate(rate: number, inflationOffset: number = 0): RatingLevel {
+  if (rate >= GROWTH_RATE_EXCELLENT + inflationOffset) return 'excellent';
+  if (rate >= GROWTH_RATE_GOOD + inflationOffset) return 'good';
+  if (rate >= GROWTH_RATE_FAIR + inflationOffset) return 'fair';
+  if (rate >= inflationOffset) return 'poor';
+  return 'critical';
+}
+
+// ============================================================================
+// Retirement-specific rating functions
+// ============================================================================
+
+/**
+ * Get sustainable withdrawal rate based on years remaining.
+ * For 30+ years, the 4% rule applies. For shorter horizons, 1/N is safe.
+ */
+function getSustainableRate(yearsRemaining: number): number {
+  if (yearsRemaining <= 0) return 1.0;
+  return Math.max(0.04, 1 / yearsRemaining);
+}
+
+/**
+ * Rate withdrawal rate for retirees, scaled by years remaining.
+ * With fewer years left, higher withdrawal rates are appropriate.
+ */
+function rateWithdrawalRate(rate: number, yearsRemaining?: number): RatingLevel {
+  const sustainable = getSustainableRate(yearsRemaining ?? 30);
+  if (rate <= sustainable * 0.75) return 'excellent';
+  if (rate <= sustainable * 1.05) return 'good';
+  if (rate <= sustainable * 1.30) return 'fair';
+  if (rate <= sustainable * 1.55) return 'poor';
+  return 'critical';
+}
+
+/**
+ * Rate savings rate for retirees
+ * During retirement, breaking even or slight drawdown is expected
+ */
+function rateRetirementSavingsRate(rate: number): RatingLevel {
+  if (rate >= 0) return 'excellent';      // Building wealth in retirement
+  if (rate >= -0.03) return 'good';       // Sustainable drawdown
+  if (rate >= -0.05) return 'fair';       // Moderate drawdown
+  if (rate >= -0.10) return 'poor';       // High drawdown
+  return 'critical';                       // Rapid depletion
+}
+
+/**
+ * Rate growth rate for retirees, adjusted for inflation mode.
+ * Negative growth is expected during drawdown; preserving capital is excellent.
+ */
+function rateRetirementGrowthRate(rate: number, inflationOffset: number = 0): RatingLevel {
+  if (rate >= 0.05 + inflationOffset) return 'excellent';
+  if (rate >= inflationOffset) return 'good';
+  if (rate >= -0.03 + inflationOffset) return 'fair';
+  if (rate >= -0.05 + inflationOffset) return 'poor';
+  return 'critical';
+}
+
+
+/**
+ * Rate portfolio longevity for retirees, scaled by years remaining.
+ * Hybrid: relative to life expectancy with absolute floor (25 yrs = at least fair).
+ */
+function ratePortfolioYears(years: number, yearsRemaining?: number): RatingLevel {
+  const yrs = Math.max(1, yearsRemaining ?? 30);
+  if (years >= yrs * 1.5) return 'excellent';
+  if (years >= yrs * 1.2) return 'good';
+  // Absolute floor: 25+ years of coverage is never worse than "fair"
+  if (years >= yrs || years >= 25) return 'fair';
+  if (years >= yrs * 0.75 || years >= 20) return 'poor';
   return 'critical';
 }
 
@@ -229,10 +333,29 @@ function rateGrowthRate(rate: number): RatingLevel {
  */
 export function calculateFinancialRatios(
   currentYear: SimulationYear,
-  previousYear?: SimulationYear
+  previousYear?: SimulationYear,
+  age?: number,
+  isRetired?: boolean,
+  lifeExpectancy?: number,
+  inflationAdjusted?: boolean,
+  inflationRate?: number
 ): FinancialRatios {
   const { accounts, cashflow, taxDetails } = currentYear;
   const { totalIncome, totalExpense } = cashflow;
+  const retired = isRetired ?? false;
+
+  // Pre-retirement: base thresholds are nominal (15%/8%/3%).
+  // When showing real returns, lower thresholds by inflation rate.
+  const growthInflationOffset = (inflationAdjusted === false && inflationRate)
+    ? -(inflationRate / 100)
+    : 0;
+
+  // Retirement: base thresholds are real (5%/0%/-3%/-5% = purchasing power terms).
+  // When showing nominal values, raise thresholds by inflation rate (need to grow by
+  // inflation just to maintain purchasing power).
+  const retirementGrowthOffset = (inflationAdjusted !== false && inflationRate)
+    ? (inflationRate / 100)
+    : 0;
 
   // Calculate base values
   const liquidAssets = getLiquidAssets(accounts);
@@ -282,6 +405,44 @@ export function calculateFinancialRatios(
   // 8. Investment Allocation = Invested / Total Assets
   const investmentAllocationValue = totalAssets > 0 ? investedAssets / totalAssets : 0;
 
+  // Retirement-specific metrics
+  let withdrawalRate: RatioResult | null = null;
+  let portfolioYears: RatioResult | null = null;
+
+  if (retired) {
+    const withdrawals = cashflow.withdrawals || 0;
+    const yearsRemaining = (age !== undefined && lifeExpectancy !== undefined)
+      ? Math.max(0, lifeExpectancy - age)
+      : undefined;
+
+    // Withdrawal Rate = withdrawals / total assets
+    if (totalAssets > 0) {
+      const withdrawalRateValue = withdrawals / totalAssets;
+      const sustainable = getSustainableRate(yearsRemaining ?? 30);
+      withdrawalRate = {
+        value: withdrawalRateValue,
+        rating: rateWithdrawalRate(withdrawalRateValue, yearsRemaining),
+        benchmark: `<${Math.round(sustainable * 100)}% sustainable (${yearsRemaining ?? '~30'} yrs left)`,
+        description: 'Annual portfolio withdrawal as percentage of assets',
+      };
+    }
+
+    // Portfolio Years = net worth / annual living expenses
+    if (livingExpenses > 0) {
+      const yearsValue = netWorth / livingExpenses;
+      const target = yearsRemaining ?? 30;
+      const benchmarkText = yearsValue >= 55
+        ? 'Consider increasing spending'
+        : `${target}+ yrs needed, ${Math.round(target * 1.5)}+ excellent`;
+      portfolioYears = {
+        value: yearsValue,
+        rating: ratePortfolioYears(yearsValue, yearsRemaining),
+        benchmark: benchmarkText,
+        description: 'Years of expenses your portfolio can sustain',
+      };
+    }
+  }
+
   // Growth rates (require previous year)
   let netWorthGrowthRate: RatioResult | null = null;
   let assetGrowthRate: RatioResult | null = null;
@@ -293,10 +454,15 @@ export function calculateFinancialRatios(
     // 9. Net Worth Growth Rate
     if (prevNetWorth > 0) {
       const nwGrowth = (netWorth - prevNetWorth) / prevNetWorth;
+      const offset = retired ? retirementGrowthOffset : growthInflationOffset;
+      const goodThreshold = Math.round((retired ? offset : 0.08 + offset) * 100);
+      const excellentThreshold = Math.round((retired ? 0.05 + offset : 0.15 + offset) * 100);
       netWorthGrowthRate = {
         value: nwGrowth,
-        rating: rateGrowthRate(nwGrowth),
-        benchmark: '8%+ good, 15%+ excellent',
+        rating: retired ? rateRetirementGrowthRate(nwGrowth, offset) : rateGrowthRate(nwGrowth, offset),
+        benchmark: retired
+          ? `${goodThreshold}%+ preserving, ${excellentThreshold}%+ growing`
+          : `${goodThreshold}%+ good, ${excellentThreshold}%+ excellent`,
         description: 'Year-over-year change in net worth',
       };
     }
@@ -304,10 +470,15 @@ export function calculateFinancialRatios(
     // 10. Asset Growth Rate
     if (prevAssets > 0) {
       const assetGrowth = (totalAssets - prevAssets) / prevAssets;
+      const offset = retired ? retirementGrowthOffset : growthInflationOffset;
+      const goodThreshold = Math.round((retired ? offset : 0.08 + offset) * 100);
+      const excellentThreshold = Math.round((retired ? 0.05 + offset : 0.15 + offset) * 100);
       assetGrowthRate = {
         value: assetGrowth,
-        rating: rateGrowthRate(assetGrowth),
-        benchmark: '8%+ good, 15%+ excellent',
+        rating: retired ? rateRetirementGrowthRate(assetGrowth, offset) : rateGrowthRate(assetGrowth, offset),
+        benchmark: retired
+          ? `${goodThreshold}%+ preserving, ${excellentThreshold}%+ growing`
+          : `${goodThreshold}%+ good, ${excellentThreshold}%+ excellent`,
         description: 'Year-over-year change in total assets',
       };
     }
@@ -316,16 +487,18 @@ export function calculateFinancialRatios(
   return {
     savingsRate: {
       value: savingsRateValue,
-      rating: rateSavingsRate(savingsRateValue),
-      benchmark: '15%+ good, 20%+ excellent',
-      description: 'Percentage of income saved or invested',
+      rating: retired ? rateRetirementSavingsRate(savingsRateValue) : rateSavingsRate(savingsRateValue),
+      benchmark: retired ? '0%+ sustaining, >-3% sustainable' : '15%+ good, 20%+ excellent',
+      description: retired ? 'Net income after expenses (drawdown rate)' : 'Percentage of income saved or invested',
     },
     expenseRatio: {
       value: expenseRatioValue,
-      rating: rateSavingsRate(1 - expenseRatioValue), // Inverse of savings rate
-      benchmark: '<85% good, <80% excellent',
-      description: 'Percentage of income spent on expenses',
+      rating: retired ? rateRetirementSavingsRate(1 - expenseRatioValue) : rateSavingsRate(1 - expenseRatioValue),
+      benchmark: retired ? '≤100% income covers expenses' : '<85% good, <80% excellent',
+      description: retired ? 'Expenses relative to income (SS + pension + withdrawals)' : 'Percentage of income spent on expenses',
     },
+    withdrawalRate,
+    portfolioYears,
     emergencyFundMonths: {
       value: emergencyMonths,
       rating: rateEmergencyFund(emergencyMonths),
@@ -352,8 +525,10 @@ export function calculateFinancialRatios(
     },
     netWorthToIncomeRatio: {
       value: netWorthToIncomeValue,
-      rating: rateNetWorthToIncome(netWorthToIncomeValue),
-      benchmark: '1x+ good, 3x+ excellent',
+      rating: rateNetWorthToIncome(netWorthToIncomeValue, age),
+      benchmark: age !== undefined
+        ? `Target: ${getNetWorthTarget(age).toFixed(1)}x for age ${age}`
+        : '1x by 30, 3x by 40, 10x by 67',
       description: 'Net worth as multiple of annual income',
     },
     investmentAllocation: {
@@ -364,6 +539,7 @@ export function calculateFinancialRatios(
     },
     netWorthGrowthRate,
     assetGrowthRate,
+    isRetired: retired,
   };
 }
 

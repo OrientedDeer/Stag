@@ -23,25 +23,8 @@ export const DebtStreamChart: React.FC<DebtStreamChartProps> = ({
   keys,
   colors
 }) => {
-  const trimmedData = useMemo(() => {
-    if (!data || data.length === 0) return data;
-
-    // find last index where any loan/debt > 0
-    const lastDebtIndex = data.reduce((last, yearData, idx) => {
-      const hasDebt = keys.some(key => Number(yearData[key]) > 0);
-      return hasDebt ? idx : last;
-    }, -1);
-
-    if (lastDebtIndex === -1) {
-      // no debt at all - just return original
-      return data;
-    }
-
-    const EXTRA_YEARS = 2;
-    const endIndex = Math.min(lastDebtIndex + EXTRA_YEARS, data.length - 1);
-
-    return data.slice(0, endIndex + 1);
-  }, [data, keys]);
+  // Use data as-is; the parent component (DebtTab) controls the range via slider
+  const trimmedData = data;
 
 
   const { state: assumptions } = useContext(AssumptionsContext);

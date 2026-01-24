@@ -1,13 +1,12 @@
 import { useState, useMemo, useContext, useEffect, useCallback, useRef } from 'react';
 import jsQR from 'jsqr';
-import { MortgageExpense } from '../../components/Objects/Expense/models';
+import { MortgageExpense, HealthcareExpense, CLASS_TO_CATEGORY } from '../../components/Objects/Expense/models';
 import { decompressData, isCompactFormat, expandCompactBackup, validatePayload } from '../../components/Objects/Accounts/QRTransfer/qrUtils';
 import { useFileManager } from '../../components/Objects/Accounts/useFileManager';
 import { CurrencyInput } from '../../components/Layout/InputFields/CurrencyInput';
 import { PercentageInput } from '../../components/Layout/InputFields/PercentageInput';
 import { NumberInput } from '../../components/Layout/InputFields/NumberInput';
 import { DropdownInput } from '../../components/Layout/InputFields/DropdownInput';
-import { ToggleInput } from '../../components/Layout/InputFields/ToggleInput';
 import { AssumptionsContext } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { SimulationContext } from '../../components/Objects/Assumptions/SimulationContext';
 import { AccountContext } from '../../components/Objects/Accounts/AccountContext';
@@ -21,6 +20,7 @@ import {
     getTaxParameters,
     calculateTax,
     getMarginalTaxRate,
+    getCombinedMarginalRate,
     getGrossIncome,
     getPreTaxExemptions,
     getEarnedIncome,
@@ -36,6 +36,12 @@ import {
     extractEarningsFromSimulation,
     calculateAIME
 } from '../../services/SocialSecurityCalculator';
+import {
+    getMedianRetirementTaxRate,
+    findRothConversionWindows
+} from '../../services/TaxOptimizationService';
+import { get401kLimit, getHSALimit, getIRALimit } from '../../data/ContributionLimits';
+import { calculateEffectiveConversionTax } from '../../components/Objects/Assumptions/SimulationEngine';
 import {
     getFRA,
     getClaimingAdjustment,
@@ -60,6 +66,8 @@ import {
     getCSRSCOLA,
     PENSION_SYSTEM_COMPARISON
 } from '../../data/PensionData';
+import { SavedAccount, InvestedAccount, DebtAccount, DeficitDebtAccount, PropertyAccount, ESPPAccount } from '../../components/Objects/Accounts/models';
+import { formatCompactCurrency } from '../Future/tabs/FutureUtils';
 
 // Helper to format currency
 const toCurrency = (num: number) =>
@@ -3017,350 +3025,744 @@ function PensionDebugTab() {
 }
 
 // ============================================================================
-// ROTH CONVERSIONS DEBUG TAB
+// ROTH ANALYSIS DEBUG TAB
 // ============================================================================
-function RothConversionsDebugTab() {
+
+// --- Section 1: Recommendation Summary ---
+function RothRecommendationSummary({ currentRate, retirementRate, currentFedRate, currentStateRate, retirementFedRate, retirementStateRate }: {
+    currentRate: number;
+    retirementRate: number;
+    currentFedRate: number;
+    currentStateRate: number;
+    retirementFedRate: number;
+    retirementStateRate: number;
+}) {
+    const diff = currentRate - retirementRate;
+    const verdict = diff > 0.02 ? 'pretax' : diff < -0.02 ? 'roth' : 'close';
+
+    const bannerStyles = {
+        pretax: 'bg-blue-900/30 border-blue-700/50',
+        roth: 'bg-green-900/30 border-green-700/50',
+        close: 'bg-yellow-900/30 border-yellow-700/50'
+    };
+    const textStyles = {
+        pretax: 'text-blue-300',
+        roth: 'text-green-300',
+        close: 'text-yellow-300'
+    };
+    const verdictText = {
+        pretax: 'Pre-Tax Wins',
+        roth: 'Roth Wins',
+        close: 'Close Call'
+    };
+    const explanations = {
+        pretax: `Your current marginal rate (${(currentRate * 100).toFixed(1)}%) is higher than your projected retirement rate (${(retirementRate * 100).toFixed(1)}%). Every $1 contributed pre-tax saves you ${(currentRate * 100).toFixed(1)}% today; you'll only pay ${(retirementRate * 100).toFixed(1)}% on withdrawal.`,
+        roth: `Your projected retirement rate (${(retirementRate * 100).toFixed(1)}%) exceeds your current marginal rate (${(currentRate * 100).toFixed(1)}%). Paying tax now at the lower rate and withdrawing tax-free is more efficient.`,
+        close: `Your current rate (${(currentRate * 100).toFixed(1)}%) and retirement rate (${(retirementRate * 100).toFixed(1)}%) are within 2% of each other. Consider splitting contributions or using bracket-filling strategies.`
+    };
+
+    return (
+        <div className="space-y-4">
+            <div className={`p-4 rounded-lg border ${bannerStyles[verdict]}`}>
+                <h3 className={`text-2xl font-bold ${textStyles[verdict]} text-center`}>{verdictText[verdict]}</h3>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+                <div className="bg-gray-800 p-4 rounded-lg text-center">
+                    <span className="text-gray-400 text-sm">Current Marginal Rate</span>
+                    <p className="text-white text-2xl font-bold">{(currentRate * 100).toFixed(1)}%</p>
+                    <p className="text-gray-400 text-xs mt-1">Fed: {(currentFedRate * 100).toFixed(1)}% | State: {(currentStateRate * 100).toFixed(1)}%</p>
+                    <p className="text-gray-500 text-xs">FICA excluded (applies to both paths)</p>
+                </div>
+                <div className="bg-gray-800 p-4 rounded-lg text-center">
+                    <span className="text-gray-400 text-sm">Projected Retirement Rate</span>
+                    <p className="text-white text-2xl font-bold">{(retirementRate * 100).toFixed(1)}%</p>
+                    <p className="text-gray-400 text-xs mt-1">Fed: {(retirementFedRate * 100).toFixed(1)}% | State: {(retirementStateRate * 100).toFixed(1)}%</p>
+                    <p className="text-gray-500 text-xs">Median effective rate in retirement</p>
+                </div>
+            </div>
+            <p className="text-gray-300 text-sm">{explanations[verdict]}</p>
+        </div>
+    );
+}
+
+// --- Section 2: Tax Rate Timeline ---
+type PhaseType = 'Working' | 'Gap' | 'SS/Pension' | 'RMD';
+interface TimelineRow {
+    year: number;
+    age: number;
+    phase: PhaseType;
+    grossIncome: number;
+    federalMarginalRate: number;
+    effectiveRate: number;
+    taxableIncome: number;
+}
+
+function TaxRateTimeline({ timelineData }: { timelineData: TimelineRow[] }) {
+    const phaseColors: Record<PhaseType, string> = {
+        'Working': 'text-blue-400',
+        'Gap': 'text-green-400',
+        'SS/Pension': 'text-amber-400',
+        'RMD': 'text-purple-400'
+    };
+
+    return (
+        <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
+            <h3 className="text-lg font-semibold text-white mb-4">Tax Rate Timeline</h3>
+            <p className="text-gray-400 text-sm mb-4">Year-by-year marginal and effective rates. Green "Gap" years are prime conversion windows.</p>
+            <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                <table className="w-full text-sm">
+                    <thead className="sticky top-0 bg-gray-900">
+                        <tr className="border-b border-gray-700">
+                            <th className="text-left p-2 text-gray-400">Year</th>
+                            <th className="text-left p-2 text-gray-400">Age</th>
+                            <th className="text-left p-2 text-gray-400">Phase</th>
+                            <th className="text-right p-2 text-gray-400">Gross Income</th>
+                            <th className="text-right p-2 text-gray-400">Taxable Income</th>
+                            <th className="text-right p-2 text-gray-400">Fed Marginal</th>
+                            <th className="text-right p-2 text-gray-400">Effective Rate</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {timelineData.map(row => (
+                            <tr key={row.year} className={`border-b border-gray-800 hover:bg-gray-800/50 ${row.phase === 'Gap' ? 'bg-green-900/10' : ''}`}>
+                                <td className="p-2 text-white">{row.year}</td>
+                                <td className="p-2 text-gray-300">{row.age}</td>
+                                <td className={`p-2 font-semibold ${phaseColors[row.phase]}`}>{row.phase}</td>
+                                <td className="p-2 text-right text-gray-300">{toCurrencyShort(row.grossIncome)}</td>
+                                <td className="p-2 text-right text-gray-300">{toCurrencyShort(row.taxableIncome)}</td>
+                                <td className="p-2 text-right text-white font-semibold">{(row.federalMarginalRate * 100).toFixed(0)}%</td>
+                                <td className={`p-2 text-right font-semibold ${
+                                    row.effectiveRate > 0.3 ? 'text-red-400' :
+                                    row.effectiveRate > 0.15 ? 'text-amber-400' : 'text-green-400'
+                                }`}>
+                                    {(row.effectiveRate * 100).toFixed(1)}%
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+}
+
+// --- Section 3: Bracket Headroom Analysis ---
+interface HeadroomRow {
+    year: number;
+    age: number;
+    taxableIncome: number;
+    bracketHeadrooms: { rate: number; headroom: number }[];
+    totalHeadroom: number;
+    traditionalBalance: number;
+}
+
+function BracketHeadroomAnalysis({ headroomData, targetRate, setTargetRate }: {
+    headroomData: HeadroomRow[];
+    targetRate: number;
+    setTargetRate: (rate: number) => void;
+}) {
+    const rateOptions = [
+        { value: '0.10', label: '10%' },
+        { value: '0.12', label: '12%' },
+        { value: '0.22', label: '22%' },
+        { value: '0.24', label: '24%' },
+        { value: '0.32', label: '32%' }
+    ];
+
+    if (headroomData.length === 0) {
+        return (
+            <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
+                <h3 className="text-lg font-semibold text-white mb-4">Bracket Headroom Analysis</h3>
+                <p className="text-gray-400 text-center py-4">No retirement years in simulation or no Traditional account balances.</p>
+            </div>
+        );
+    }
+
+    // Collect unique bracket rates from the data
+    const bracketRates = headroomData[0]?.bracketHeadrooms.map(b => b.rate) || [];
+
+    return (
+        <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
+            <h3 className="text-lg font-semibold text-white mb-4">Bracket Headroom Analysis</h3>
+            <p className="text-gray-400 text-sm mb-4">Room available in each federal bracket during retirement. Shows how much you can convert and stay within the target bracket.</p>
+            <div className="mb-4 max-w-xs">
+                <DropdownInput
+                    label="Target Bracket"
+                    value={String(targetRate)}
+                    onChange={(v: string) => setTargetRate(Number(v))}
+                    options={rateOptions}
+                    tooltip="Show headroom for brackets up to this rate"
+                />
+            </div>
+            <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                <table className="w-full text-sm">
+                    <thead className="sticky top-0 bg-gray-900">
+                        <tr className="border-b border-gray-700">
+                            <th className="text-left p-2 text-gray-400">Year</th>
+                            <th className="text-left p-2 text-gray-400">Age</th>
+                            <th className="text-right p-2 text-gray-400">Taxable Inc</th>
+                            {bracketRates.map(rate => (
+                                <th key={rate} className="text-right p-2 text-gray-400">{(rate * 100).toFixed(0)}% Room</th>
+                            ))}
+                            <th className="text-right p-2 text-gray-400">Total Room</th>
+                            <th className="text-right p-2 text-gray-400">Trad. Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {headroomData.map(row => (
+                            <tr key={row.year} className="border-b border-gray-800 hover:bg-gray-800/50">
+                                <td className="p-2 text-white">{row.year}</td>
+                                <td className="p-2 text-gray-300">{row.age}</td>
+                                <td className="p-2 text-right text-gray-300">{toCurrencyShort(row.taxableIncome)}</td>
+                                {row.bracketHeadrooms.map(bh => (
+                                    <td key={bh.rate} className={`p-2 text-right ${bh.headroom > 0 ? 'text-green-400' : 'text-gray-600'}`}>
+                                        {bh.headroom > 0 ? toCurrencyShort(bh.headroom) : '-'}
+                                    </td>
+                                ))}
+                                <td className="p-2 text-right text-green-400 font-semibold">{toCurrencyShort(row.totalHeadroom)}</td>
+                                <td className="p-2 text-right text-blue-400">{toCurrencyShort(row.traditionalBalance)}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+}
+
+// --- Section 4: Conversion Windows Analysis ---
+interface ConversionWindowRow {
+    year: number;
+    age: number;
+    bracketHeadroom: number;
+    traditionalAvailable: number;
+    optimalConversion: number;
+    taxCost: number;
+    effectiveRate: number;
+    hasTorpedo: boolean;
+}
+
+function ConversionWindowsAnalysis({ windows, windowSummary }: {
+    windows: ConversionWindowRow[];
+    windowSummary: { totalYears: number; totalHeadroom: number; totalTaxCost: number; avgRate: number; firstAge: number; lastAge: number } | null;
+}) {
+    if (windows.length === 0) {
+        return (
+            <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
+                <h3 className="text-lg font-semibold text-white mb-4">Conversion Windows</h3>
+                <p className="text-gray-400 text-center py-4">No low-tax conversion windows found. This may mean your retirement income already fills higher brackets, or you have no Traditional account balance.</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
+            <h3 className="text-lg font-semibold text-white mb-4">Conversion Windows</h3>
+            <p className="text-gray-400 text-sm mb-4">Years where Roth conversions can be done at rates below your retirement rate. Effective rate includes the SS "tax torpedo" effect.</p>
+
+            {windowSummary && (
+                <div className="bg-gray-800 p-3 rounded-lg mb-4 flex flex-wrap gap-4 text-sm">
+                    <span className="text-white">Window: Ages <span className="text-green-400 font-semibold">{windowSummary.firstAge}-{windowSummary.lastAge}</span> ({windowSummary.totalYears} years)</span>
+                    <span className="text-white">Total Headroom: <span className="text-green-400 font-semibold">{toCurrencyShort(windowSummary.totalHeadroom)}</span></span>
+                    <span className="text-white">Total Tax Cost: <span className="text-red-400 font-semibold">{toCurrencyShort(windowSummary.totalTaxCost)}</span></span>
+                    <span className="text-white">Avg Rate: <span className="text-amber-400 font-semibold">{(windowSummary.avgRate * 100).toFixed(1)}%</span></span>
+                </div>
+            )}
+
+            <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                <table className="w-full text-sm">
+                    <thead className="sticky top-0 bg-gray-900">
+                        <tr className="border-b border-gray-700">
+                            <th className="text-left p-2 text-gray-400">Year</th>
+                            <th className="text-left p-2 text-gray-400">Age</th>
+                            <th className="text-right p-2 text-gray-400">Bracket Room</th>
+                            <th className="text-right p-2 text-gray-400">Trad. Available</th>
+                            <th className="text-right p-2 text-gray-400">Optimal Conv</th>
+                            <th className="text-right p-2 text-gray-400">Tax Cost</th>
+                            <th className="text-right p-2 text-gray-400">Effective Rate</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {windows.map(row => (
+                            <tr key={row.year} className={`border-b border-gray-800 hover:bg-gray-800/50 ${row.hasTorpedo ? 'bg-yellow-900/10' : ''}`}>
+                                <td className="p-2 text-white">{row.year}</td>
+                                <td className="p-2 text-gray-300">{row.age}</td>
+                                <td className="p-2 text-right text-green-400">{toCurrencyShort(row.bracketHeadroom)}</td>
+                                <td className="p-2 text-right text-blue-400">{toCurrencyShort(row.traditionalAvailable)}</td>
+                                <td className="p-2 text-right text-white font-semibold">{toCurrencyShort(row.optimalConversion)}</td>
+                                <td className="p-2 text-right text-red-400">{toCurrencyShort(row.taxCost)}</td>
+                                <td className={`p-2 text-right font-semibold ${row.hasTorpedo ? 'text-yellow-400' : 'text-green-400'}`}>
+                                    {(row.effectiveRate * 100).toFixed(1)}%{row.hasTorpedo ? '*' : ''}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+            {windows.some(w => w.hasTorpedo) && (
+                <p className="text-yellow-400/80 text-xs mt-2">
+                    * Effective rate exceeds bracket rate due to SS "tax torpedo" — conversions push Social Security benefits into taxable territory, increasing total tax beyond the marginal bracket rate.
+                </p>
+            )}
+        </div>
+    );
+}
+
+// --- Section 5: Roth vs Pre-Tax Contribution Comparison ---
+interface ContributionComparison {
+    jobName: string;
+    currentPreTax: number;
+    currentRoth: number;
+    limit: number;
+    currentMarginalRate: number;
+    retirementRate: number;
+    yearsToRetirement: number;
+    ror: number;
+    preTaxPath: { futureValue: number; taxAtWithdrawal: number; afterTaxValue: number; reinvestedSavings: number; total: number };
+    rothPath: { futureValue: number; total: number };
+    winner: 'pretax' | 'roth';
+    advantage: number;
+    breakEvenRate: number;
+    optimalSplit: { preTax: number; roth: number; explanation: string } | null;
+}
+
+function RothVsPreTaxComparison({ comparisons }: { comparisons: ContributionComparison[] }) {
+    if (comparisons.length === 0) {
+        return (
+            <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
+                <h3 className="text-lg font-semibold text-white mb-4">Roth vs Pre-Tax Contribution Comparison</h3>
+                <p className="text-gray-400 text-center py-4">No active work income with 401k contributions found.</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
+            <h3 className="text-lg font-semibold text-white mb-4">Roth vs Pre-Tax Contribution Comparison</h3>
+            <p className="text-gray-400 text-sm mb-4">Compares the after-tax terminal wealth of contributing the full 401k limit as all pre-tax vs all Roth.</p>
+
+            {comparisons.map((comp, idx) => (
+                <div key={idx} className="mb-6 last:mb-0">
+                    <div className="bg-gray-800 p-3 rounded-lg mb-3">
+                        <div className="flex flex-wrap gap-4 text-sm">
+                            <span className="text-white font-semibold">{comp.jobName}</span>
+                            <span className="text-gray-400">Current: {toCurrencyShort(comp.currentPreTax)} pre-tax / {toCurrencyShort(comp.currentRoth)} Roth</span>
+                            <span className="text-gray-400">Limit: {toCurrencyShort(comp.limit)}</span>
+                            <span className="text-gray-400">{comp.yearsToRetirement} yrs to retirement</span>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 mb-3">
+                        <div className={`p-4 rounded-lg border ${comp.winner === 'pretax' ? 'border-blue-700/50 bg-blue-900/20' : 'border-gray-700 bg-gray-800'}`}>
+                            <h4 className="text-blue-400 font-semibold mb-2">All Pre-Tax</h4>
+                            <div className="space-y-1 text-sm">
+                                <div className="flex justify-between"><span className="text-gray-400">Contribution</span><span className="text-white">{toCurrencyShort(comp.limit)}</span></div>
+                                <div className="flex justify-between"><span className="text-gray-400">Tax saved today</span><span className="text-green-400">{toCurrencyShort(comp.limit * comp.currentMarginalRate)}</span></div>
+                                <div className="flex justify-between"><span className="text-gray-400">Future value</span><span className="text-white">{toCurrencyShort(comp.preTaxPath.futureValue)}</span></div>
+                                <div className="flex justify-between"><span className="text-gray-400">Tax at withdrawal</span><span className="text-red-400">-{toCurrencyShort(comp.preTaxPath.taxAtWithdrawal)}</span></div>
+                                <div className="flex justify-between"><span className="text-gray-400">Reinvested savings</span><span className="text-green-400">+{toCurrencyShort(comp.preTaxPath.reinvestedSavings)}</span></div>
+                                <div className="flex justify-between border-t border-gray-600 pt-1 mt-1"><span className="text-white font-semibold">After-tax total</span><span className="text-white font-semibold">{toCurrencyShort(comp.preTaxPath.total)}</span></div>
+                            </div>
+                        </div>
+                        <div className={`p-4 rounded-lg border ${comp.winner === 'roth' ? 'border-green-700/50 bg-green-900/20' : 'border-gray-700 bg-gray-800'}`}>
+                            <h4 className="text-green-400 font-semibold mb-2">All Roth</h4>
+                            <div className="space-y-1 text-sm">
+                                <div className="flex justify-between"><span className="text-gray-400">Contribution</span><span className="text-white">{toCurrencyShort(comp.limit)}</span></div>
+                                <div className="flex justify-between"><span className="text-gray-400">Tax paid today</span><span className="text-red-400">-{toCurrencyShort(comp.limit * comp.currentMarginalRate)}</span></div>
+                                <div className="flex justify-between"><span className="text-gray-400">Future value</span><span className="text-white">{toCurrencyShort(comp.rothPath.futureValue)}</span></div>
+                                <div className="flex justify-between"><span className="text-gray-400">Tax at withdrawal</span><span className="text-green-400">$0</span></div>
+                                <div className="flex justify-between"><span className="text-gray-400">&nbsp;</span><span>&nbsp;</span></div>
+                                <div className="flex justify-between border-t border-gray-600 pt-1 mt-1"><span className="text-white font-semibold">After-tax total</span><span className="text-white font-semibold">{toCurrencyShort(comp.rothPath.total)}</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className={`p-3 rounded-lg border ${comp.winner === 'pretax' ? 'bg-blue-900/20 border-blue-700/50' : 'bg-green-900/20 border-green-700/50'}`}>
+                        <div className="flex flex-wrap justify-between items-center gap-2">
+                            <span className={`font-semibold ${comp.winner === 'pretax' ? 'text-blue-300' : 'text-green-300'}`}>
+                                {comp.winner === 'pretax' ? 'Pre-Tax' : 'Roth'} wins by {toCurrencyShort(comp.advantage)} ({((comp.advantage / Math.min(comp.preTaxPath.total, comp.rothPath.total)) * 100).toFixed(1)}% better)
+                            </span>
+                            <span className="text-gray-400 text-sm">Breakeven retirement rate: {(comp.breakEvenRate * 100).toFixed(1)}%</span>
+                        </div>
+                    </div>
+
+                    {comp.optimalSplit && (
+                        <div className="mt-3 bg-gray-800 p-3 rounded-lg border border-gray-700">
+                            <h4 className="text-amber-400 font-semibold text-sm mb-1">Optimal Split</h4>
+                            <p className="text-gray-300 text-sm">
+                                Pre-tax: {toCurrencyShort(comp.optimalSplit.preTax)} | Roth: {toCurrencyShort(comp.optimalSplit.roth)}
+                            </p>
+                            <p className="text-gray-400 text-xs mt-1">{comp.optimalSplit.explanation}</p>
+                        </div>
+                    )}
+                </div>
+            ))}
+        </div>
+    );
+}
+
+// --- Main Container ---
+function RothAnalysisDebugTab() {
     const { state: assumptions } = useContext(AssumptionsContext);
     const { simulation } = useContext(SimulationContext);
-    const { accounts } = useContext(AccountContext);
+    const { incomes } = useContext(IncomeContext);
+    const { state: taxState } = useContext(TaxContext);
+
+    const [targetRate, setTargetRate] = useState(0.22);
 
     const birthYear = assumptions.demographics.birthYear;
     const retirementAge = assumptions.demographics.retirementAge;
+    const currentYear = new Date().getFullYear();
+    const currentAge = currentYear - birthYear;
+    const retirementYear = birthYear + retirementAge;
+    const ror = (assumptions.investments?.returnRates?.ror / 100) || 0.07;
 
-    // Get all years with Roth conversions
-    const conversionData = useMemo(() => {
+    // --- Section 1 Data: Current vs Retirement Rate ---
+    const rateComparison = useMemo(() => {
+        if (simulation.length === 0) return null;
+
+        // Current marginal rate (fed + state, no FICA)
+        const firstYear = simulation[0];
+        const grossIncome = getGrossIncome(firstYear.incomes, firstYear.year);
+        const preTaxDeductions = getPreTaxExemptions(firstYear.incomes, firstYear.year, currentAge);
+        const marginal = getCombinedMarginalRate(grossIncome, preTaxDeductions, taxState, firstYear.year, assumptions, false);
+
+        // Retirement rate: median effective fed+state rate
+        const retirementEffective = getMedianRetirementTaxRate(simulation, retirementYear);
+
+        // Get retirement fed vs state breakdown from median year
+        const retirementYears = simulation.filter(s => s.year >= retirementYear);
+        let retFed = 0, retState = 0;
+        if (retirementYears.length > 0) {
+            const fedRates = retirementYears.map(sy => {
+                const inc = sy.cashflow.totalIncome;
+                return inc > 0 ? sy.taxDetails.fed / inc : 0;
+            }).sort((a, b) => a - b);
+            const stateRates = retirementYears.map(sy => {
+                const inc = sy.cashflow.totalIncome;
+                return inc > 0 ? sy.taxDetails.state / inc : 0;
+            }).sort((a, b) => a - b);
+            const mid = Math.floor(fedRates.length / 2);
+            retFed = fedRates.length % 2 === 0 ? (fedRates[mid - 1] + fedRates[mid]) / 2 : fedRates[mid];
+            retState = stateRates.length % 2 === 0 ? (stateRates[mid - 1] + stateRates[mid]) / 2 : stateRates[mid];
+        }
+
+        return {
+            currentRate: marginal.federal + marginal.state,
+            currentFedRate: marginal.federal,
+            currentStateRate: marginal.state,
+            retirementRate: retirementEffective,
+            retirementFedRate: retFed,
+            retirementStateRate: retState
+        };
+    }, [simulation, taxState, assumptions, currentAge, retirementYear]);
+
+    // --- Section 2 Data: Tax Rate Timeline ---
+    const timelineData = useMemo((): TimelineRow[] => {
         if (simulation.length === 0) return [];
 
-        return simulation.map((simYear) => {
+        return simulation.map(simYear => {
             const age = simYear.year - birthYear;
-            const isRetired = age >= retirementAge;
-            const hasConversion = simYear.rothConversion && simYear.rothConversion.amount > 0;
-
-            // Get withdrawal amounts from cashflow
-            const totalWithdrawals = simYear.cashflow.withdrawals || 0;
-
-            // Calculate income breakdown
-            // totalIncome = regular income + withdrawals (does NOT include conversions)
+            const grossIncome = simYear.cashflow.totalIncome;
             const totalTax = simYear.taxDetails.fed + simYear.taxDetails.state + simYear.taxDetails.fica;
-            const conversionAmount = simYear.rothConversion?.amount || 0;
-            const conversionTax = simYear.rothConversion?.taxCost || 0;
+            const effectiveRate = grossIncome > 0 ? totalTax / grossIncome : 0;
 
-            // Base income = total income (already excludes conversions since we reverted that fix)
-            const baseIncome = simYear.cashflow.totalIncome;
+            // Get federal marginal rate
+            const fedParams = getTaxParameters(simYear.year, taxState.filingStatus, 'federal', undefined, assumptions);
+            const preTaxDed = getPreTaxExemptions(simYear.incomes, simYear.year, age);
+            const adjustedGross = Math.max(0, getGrossIncome(simYear.incomes, simYear.year) - preTaxDed);
+            const fedStdDed = fedParams?.standardDeduction || 14600;
+            const taxableIncome = Math.max(0, adjustedGross - fedStdDed);
+            const fedMarginal = fedParams ? getMarginalTaxRate(taxableIncome, fedParams) : { rate: 0 };
 
-            // Regular income = income from sources OTHER than withdrawals (SS, pensions, interest, wages)
-            // We calculate this directly from income objects to avoid issues with tax-free vs taxable withdrawals
-            const regularIncome = simYear.incomes.reduce((sum, inc) => {
-                const amount = inc.getAnnualAmount ? inc.getAnnualAmount(simYear.year) : (inc.amount || 0);
-                return sum + amount;
-            }, 0);
+            // Phase detection
+            const hasRMD = simYear.rmdDetails && simYear.rmdDetails.totalRMD > 0;
+            const hasSS = simYear.incomes.some(inc => inc instanceof FutureSocialSecurityIncome || inc instanceof CurrentSocialSecurityIncome);
+            const hasPension = simYear.incomes.some(inc => inc instanceof FERSPensionIncome || inc instanceof CSRSPensionIncome);
 
-            // Taxable income base includes conversions (for effective rate calculation)
-            const taxableIncomeBase = baseIncome + conversionAmount;
-
-            // Calculate effective rates
-            const baseEffectiveRate = baseIncome > 0 ? ((totalTax - conversionTax) / baseIncome) : 0;
-            const conversionEffectiveRate = conversionAmount > 0 ? (conversionTax / conversionAmount) : 0;
-            // Combined rate uses taxable income base (includes conversion)
-            const combinedEffectiveRate = taxableIncomeBase > 0 ? (totalTax / taxableIncomeBase) : 0;
-
-            // RMD info if available
-            const rmdAmount = simYear.rmdDetails?.totalWithdrawn || 0;
+            let phase: PhaseType = 'Working';
+            if (age < retirementAge) {
+                phase = 'Working';
+            } else if (hasRMD) {
+                phase = 'RMD';
+            } else if (hasSS || hasPension) {
+                phase = 'SS/Pension';
+            } else {
+                phase = 'Gap';
+            }
 
             return {
                 year: simYear.year,
                 age,
-                isRetired,
-                hasConversion,
-                regularIncome,
-                withdrawals: totalWithdrawals,
-                rmdAmount,
-                baseIncome,
-                conversionAmount,
-                totalIncome: simYear.cashflow.totalIncome,
-                taxableIncomeBase, // Includes conversion for effective rate calc
-                baseTax: totalTax - conversionTax,
-                conversionTax,
-                totalTax,
-                baseEffectiveRate,
-                conversionEffectiveRate,
-                combinedEffectiveRate,
-                fromAccounts: simYear.rothConversion?.fromAccounts || {},
-                toAccounts: simYear.rothConversion?.toAccounts || {},
-                withdrawalDetail: simYear.cashflow.withdrawalDetail || {},
-                logs: simYear.logs.filter(log =>
-                    log.includes('Roth') ||
-                    log.includes('conversion') ||
-                    log.includes('withdraw') ||
-                    log.includes('RMD')
-                )
+                phase,
+                grossIncome,
+                federalMarginalRate: fedMarginal.rate,
+                effectiveRate,
+                taxableIncome
             };
         });
-    }, [simulation, birthYear, retirementAge]);
+    }, [simulation, birthYear, retirementAge, taxState, assumptions]);
 
-    // Summary stats
-    const summary = useMemo(() => {
-        const conversions = conversionData.filter(d => d.hasConversion);
-        const totalConverted = conversions.reduce((sum, d) => sum + d.conversionAmount, 0);
-        const totalTaxPaid = conversions.reduce((sum, d) => sum + d.conversionTax, 0);
-        const avgConversionRate = totalConverted > 0 ? (totalTaxPaid / totalConverted) : 0;
+    // --- Section 3 Data: Bracket Headroom ---
+    const headroomData = useMemo((): HeadroomRow[] => {
+        if (simulation.length === 0) return [];
 
-        return {
-            totalYearsWithConversions: conversions.length,
-            totalConverted,
-            totalTaxPaid,
-            avgConversionRate,
-            firstConversionYear: conversions[0]?.year,
-            lastConversionYear: conversions[conversions.length - 1]?.year
-        };
-    }, [conversionData]);
+        const retirementYears = simulation.filter(s => (s.year - birthYear) >= retirementAge);
+        if (retirementYears.length === 0) return [];
 
-    // Get Traditional and Roth accounts for context
-    const traditionalAccounts = accounts.filter(acc =>
-        'taxType' in acc && (acc.taxType === 'Traditional 401k' || acc.taxType === 'Traditional IRA')
-    );
-    const rothAccounts = accounts.filter(acc =>
-        'taxType' in acc && (acc.taxType === 'Roth 401k' || acc.taxType === 'Roth IRA')
-    );
+        return retirementYears.map(simYear => {
+            const age = simYear.year - birthYear;
+            const fedParams = getTaxParameters(simYear.year, taxState.filingStatus, 'federal', undefined, assumptions);
+            if (!fedParams) return null;
 
-    // Filter state
-    const [showOnlyConversions, setShowOnlyConversions] = useState(false);
-    const [showRetiredOnly, setShowRetiredOnly] = useState(true);
+            const preTaxDed = getPreTaxExemptions(simYear.incomes, simYear.year, age);
+            const adjustedGross = Math.max(0, getGrossIncome(simYear.incomes, simYear.year) - preTaxDed);
+            const taxableIncome = Math.max(0, adjustedGross - fedParams.standardDeduction);
+
+            // Calculate headroom for each bracket up to target rate
+            const bracketHeadrooms: { rate: number; headroom: number }[] = [];
+            for (const bracket of fedParams.brackets) {
+                if (bracket.rate > targetRate) break;
+                const nextBracketIdx = fedParams.brackets.indexOf(bracket) + 1;
+                const nextThreshold = nextBracketIdx < fedParams.brackets.length
+                    ? fedParams.brackets[nextBracketIdx].threshold
+                    : Infinity;
+                const headroom = Math.max(0, nextThreshold - Math.max(taxableIncome, bracket.threshold));
+                if (headroom < Infinity) {
+                    bracketHeadrooms.push({ rate: bracket.rate, headroom });
+                }
+            }
+
+            const totalHeadroom = bracketHeadrooms.reduce((sum, bh) => sum + bh.headroom, 0);
+
+            // Get Traditional balance for this year
+            const traditionalBalance = simYear.accounts
+                .filter(acc => acc instanceof InvestedAccount &&
+                    (acc.taxType === 'Traditional 401k' || acc.taxType === 'Traditional IRA'))
+                .reduce((sum, acc) => sum + acc.amount, 0);
+
+            return {
+                year: simYear.year,
+                age,
+                taxableIncome,
+                bracketHeadrooms,
+                totalHeadroom,
+                traditionalBalance
+            };
+        }).filter((row): row is HeadroomRow => row !== null);
+    }, [simulation, birthYear, retirementAge, taxState, assumptions, targetRate]);
+
+    // --- Section 4 Data: Conversion Windows ---
+    const conversionWindowData = useMemo(() => {
+        if (simulation.length === 0) return { windows: [] as ConversionWindowRow[], summary: null };
+
+        const opportunities = findRothConversionWindows(simulation, assumptions);
+        if (opportunities.length === 0) return { windows: [] as ConversionWindowRow[], summary: null };
+
+        const windows: ConversionWindowRow[] = opportunities.map(opp => {
+            const simYear = simulation.find(s => s.year === opp.year);
+            if (!simYear) return null;
+
+            const age = opp.age;
+            const traditionalAvailable = simYear.accounts
+                .filter(acc => acc instanceof InvestedAccount &&
+                    (acc.taxType === 'Traditional 401k' || acc.taxType === 'Traditional IRA'))
+                .reduce((sum, acc) => sum + acc.amount, 0);
+
+            const optimalConversion = Math.min(opp.optimalConversionAmount, traditionalAvailable);
+
+            // Calculate effective rate including SS torpedo
+            const fedParams = getTaxParameters(simYear.year, taxState.filingStatus, 'federal', undefined, assumptions);
+            let effectiveRate = opp.taxCost > 0 && opp.optimalConversionAmount > 0
+                ? opp.taxCost / opp.optimalConversionAmount
+                : opp.marginalRate;
+
+            // Check SS torpedo effect
+            if (fedParams && optimalConversion > 0) {
+                const ssBenefits = getSocialSecurityBenefits(simYear.incomes, simYear.year);
+                if (ssBenefits > 0) {
+                    const preTaxDed = getPreTaxExemptions(simYear.incomes, simYear.year, age);
+                    const nonSSIncome = Math.max(0, getGrossIncome(simYear.incomes, simYear.year) - ssBenefits - preTaxDed);
+                    const torpedoResult = calculateEffectiveConversionTax(
+                        nonSSIncome, ssBenefits, optimalConversion, taxState.filingStatus, fedParams
+                    );
+                    effectiveRate = torpedoResult.effectiveRate;
+                }
+            }
+
+            const hasTorpedo = effectiveRate > opp.marginalRate + 0.02;
+
+            return {
+                year: opp.year,
+                age,
+                bracketHeadroom: opp.optimalConversionAmount,
+                traditionalAvailable,
+                optimalConversion,
+                taxCost: opp.taxCost,
+                effectiveRate,
+                hasTorpedo
+            };
+        }).filter((row): row is ConversionWindowRow => row !== null);
+
+        const totalHeadroom = windows.reduce((sum, w) => sum + w.bracketHeadroom, 0);
+        const totalTaxCost = windows.reduce((sum, w) => sum + w.taxCost, 0);
+        const totalConvertible = windows.reduce((sum, w) => sum + w.optimalConversion, 0);
+        const avgRate = totalConvertible > 0 ? totalTaxCost / totalConvertible : 0;
+
+        const summary = windows.length > 0 ? {
+            totalYears: windows.length,
+            totalHeadroom,
+            totalTaxCost,
+            avgRate,
+            firstAge: windows[0].age,
+            lastAge: windows[windows.length - 1].age
+        } : null;
+
+        return { windows, summary };
+    }, [simulation, assumptions, taxState, birthYear]);
+
+    // --- Section 5 Data: Roth vs Pre-Tax Comparison ---
+    const contributionComparisons = useMemo((): ContributionComparison[] => {
+        if (simulation.length === 0) return [];
+
+        const workIncomes = incomes.filter((inc): inc is WorkIncome =>
+            inc instanceof WorkIncome &&
+            (!inc.end_date || inc.end_date.getFullYear() >= currentYear)
+        );
+
+        if (workIncomes.length === 0) return [];
+
+        const retirementRate = rateComparison?.retirementRate || 0.15;
+        const yearsToRetirement = Math.max(1, retirementAge - currentAge);
+        const capGainsRate = 0.15; // Approximate long-term capital gains rate
+
+        return workIncomes.map(income => {
+            const age = currentAge;
+            const effective = income.getEffective401k(currentYear, age);
+            const limit = get401kLimit(currentYear, age);
+
+            // Current marginal rate (fed + state, no FICA)
+            const firstYear = simulation[0];
+            const grossIncome = getGrossIncome(firstYear.incomes, firstYear.year);
+            const preTaxDed = getPreTaxExemptions(firstYear.incomes, firstYear.year, age);
+            const marginal = getCombinedMarginalRate(grossIncome, preTaxDed, taxState, firstYear.year, assumptions, false);
+            const currentMarginalRate = marginal.federal + marginal.state;
+
+            // All Pre-Tax path
+            const preTaxFutureValue = limit * Math.pow(1 + ror, yearsToRetirement);
+            const preTaxTaxAtWithdrawal = preTaxFutureValue * retirementRate;
+            const preTaxAfterTax = preTaxFutureValue - preTaxTaxAtWithdrawal;
+            const taxSavedToday = limit * currentMarginalRate;
+            const reinvestedSavings = taxSavedToday * Math.pow(1 + ror, yearsToRetirement) * (1 - capGainsRate * 0.5);
+            const preTaxTotal = preTaxAfterTax + reinvestedSavings;
+
+            // All Roth path
+            const rothFutureValue = limit * Math.pow(1 + ror, yearsToRetirement);
+            const rothTotal = rothFutureValue; // Tax-free
+
+            const winner = preTaxTotal >= rothTotal ? 'pretax' as const : 'roth' as const;
+            const advantage = Math.abs(preTaxTotal - rothTotal);
+
+            // Breakeven: solve for rate where preTax = roth
+            // FV*(1-r) + taxSaved*(1+ror)^n*(1-cg*0.5) = FV
+            // FV - FV*r + reinvested = FV
+            // -FV*r + reinvested = 0
+            // r = reinvested / FV
+            const breakEvenRate = reinvestedSavings > 0
+                ? 1 - (rothTotal - reinvestedSavings) / preTaxFutureValue
+                : currentMarginalRate;
+
+            // Optimal split: fill current bracket with pre-tax, rest Roth
+            let optimalSplit: ContributionComparison['optimalSplit'] = null;
+            const fedParams = getTaxParameters(currentYear, taxState.filingStatus, 'federal', undefined, assumptions);
+            if (fedParams) {
+                const adjustedGross = Math.max(0, grossIncome - preTaxDed);
+                const taxableIncome = Math.max(0, adjustedGross - fedParams.standardDeduction);
+                const bracketInfo = getMarginalTaxRate(taxableIncome, fedParams);
+
+                if (bracketInfo.rate > retirementRate && bracketInfo.headroom < limit && bracketInfo.headroom > 0) {
+                    // Pre-tax to fill current bracket (income above retirement rate), Roth for rest
+                    const preTaxAmount = Math.min(bracketInfo.headroom, limit);
+                    const rothAmount = limit - preTaxAmount;
+                    const currentBracketPct = (bracketInfo.rate * 100).toFixed(0);
+                    const nextBracketRate = fedParams.brackets.find(b => b.rate > bracketInfo.rate);
+                    const nextPct = nextBracketRate ? (nextBracketRate.rate * 100).toFixed(0) : '?';
+                    optimalSplit = {
+                        preTax: preTaxAmount,
+                        roth: rothAmount,
+                        explanation: `Pre-tax fills the ${currentBracketPct}% bracket (saving at ${currentBracketPct}% now, paying ~${(retirementRate * 100).toFixed(0)}% later). Roth avoids the ${nextPct}% bracket savings since you'd pay similar rates in retirement.`
+                    };
+                } else if (bracketInfo.rate <= retirementRate) {
+                    optimalSplit = {
+                        preTax: 0,
+                        roth: limit,
+                        explanation: `Your current bracket (${(bracketInfo.rate * 100).toFixed(0)}%) is at or below your retirement rate (${(retirementRate * 100).toFixed(0)}%). All Roth is optimal — you'd pay the same or more tax later on pre-tax dollars.`
+                    };
+                }
+            }
+
+            return {
+                jobName: income.name,
+                currentPreTax: effective.preTax,
+                currentRoth: effective.roth,
+                limit,
+                currentMarginalRate,
+                retirementRate,
+                yearsToRetirement,
+                ror,
+                preTaxPath: {
+                    futureValue: preTaxFutureValue,
+                    taxAtWithdrawal: preTaxTaxAtWithdrawal,
+                    afterTaxValue: preTaxAfterTax,
+                    reinvestedSavings,
+                    total: preTaxTotal
+                },
+                rothPath: {
+                    futureValue: rothFutureValue,
+                    total: rothTotal
+                },
+                winner,
+                advantage,
+                breakEvenRate: Math.max(0, Math.min(1, breakEvenRate)),
+                optimalSplit
+            };
+        });
+    }, [simulation, incomes, taxState, assumptions, currentYear, currentAge, retirementAge, ror, rateComparison]);
 
     if (simulation.length === 0) {
         return <div className="text-gray-400 text-center py-8">No simulation data. Run a simulation first.</div>;
     }
 
-    const yearsWithConversions = conversionData.filter(d => d.hasConversion);
-
-    // Apply filters
-    const filteredData = conversionData.filter(d => {
-        if (showRetiredOnly && !d.isRetired) return false;
-        if (showOnlyConversions && !d.hasConversion) return false;
-        return true;
-    });
-
     return (
         <div className="space-y-6">
-            {/* Filter Controls */}
+            {/* Section 1: Recommendation Summary */}
             <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
-                <h3 className="text-lg font-semibold text-white mb-4">Filters & Controls</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <ToggleInput
-                        label="Show Only Conversion Years"
-                        enabled={showOnlyConversions}
-                        setEnabled={setShowOnlyConversions}
-                        tooltip="Filter to only show years where Roth conversions occurred"
-                    />
-                    <ToggleInput
-                        label="Show Only Retirement Years"
-                        enabled={showRetiredOnly}
-                        setEnabled={setShowRetiredOnly}
-                        tooltip="Filter to only show years after retirement"
-                    />
-                </div>
+                <h3 className="text-lg font-semibold text-white mb-4">Contribution Recommendation</h3>
+                {rateComparison ? (
+                    <RothRecommendationSummary {...rateComparison} />
+                ) : (
+                    <p className="text-gray-400">Unable to calculate rate comparison.</p>
+                )}
             </div>
 
-            {/* Configuration Status */}
-            <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
-                <h3 className="text-lg font-semibold text-white mb-4">Roth Conversion Configuration</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div>
-                        <span className="text-gray-400 text-sm">Auto Conversions</span>
-                        <p className={`font-semibold ${assumptions.investments.autoRothConversions ? 'text-green-400' : 'text-red-400'}`}>
-                            {assumptions.investments.autoRothConversions ? 'Enabled' : 'Disabled'}
-                        </p>
-                    </div>
-                    <div>
-                        <span className="text-gray-400 text-sm">Traditional Accounts</span>
-                        <p className="text-white font-semibold">{traditionalAccounts.length}</p>
-                    </div>
-                    <div>
-                        <span className="text-gray-400 text-sm">Roth Accounts</span>
-                        <p className="text-white font-semibold">{rothAccounts.length}</p>
-                    </div>
-                    <div>
-                        <span className="text-gray-400 text-sm">Retirement Age</span>
-                        <p className="text-white font-semibold">{retirementAge}</p>
-                    </div>
-                </div>
-            </div>
+            {/* Section 2: Tax Rate Timeline */}
+            <TaxRateTimeline timelineData={timelineData} />
 
-            {/* Summary Stats */}
-            {yearsWithConversions.length > 0 && (
-                <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
-                    <h3 className="text-lg font-semibold text-white mb-4">Conversion Summary</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                        <div>
-                            <span className="text-gray-400 text-sm">Years with Conversions</span>
-                            <p className="text-white font-semibold text-xl">{summary.totalYearsWithConversions}</p>
-                        </div>
-                        <div>
-                            <span className="text-gray-400 text-sm">Total Converted</span>
-                            <p className="text-green-400 font-semibold text-xl">{toCurrencyShort(summary.totalConverted)}</p>
-                        </div>
-                        <div>
-                            <span className="text-gray-400 text-sm">Total Tax Paid</span>
-                            <p className="text-red-400 font-semibold text-xl">{toCurrencyShort(summary.totalTaxPaid)}</p>
-                        </div>
-                        <div>
-                            <span className="text-gray-400 text-sm">Avg Conversion Rate</span>
-                            <p className="text-amber-400 font-semibold text-xl">{(summary.avgConversionRate * 100).toFixed(1)}%</p>
-                        </div>
-                        <div>
-                            <span className="text-gray-400 text-sm">Conversion Period</span>
-                            <p className="text-white font-semibold">{summary.firstConversionYear} - {summary.lastConversionYear}</p>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Section 3: Bracket Headroom */}
+            <BracketHeadroomAnalysis
+                headroomData={headroomData}
+                targetRate={targetRate}
+                setTargetRate={setTargetRate}
+            />
 
-            {/* Year-by-Year Conversion Details */}
-            <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
-                <h3 className="text-lg font-semibold text-white mb-4">Year-by-Year Analysis</h3>
-                <p className="text-gray-400 text-sm mb-4">
-                    Income breakdown: Regular = SS/pensions/interest | Withdrawals = 401k/IRA pulls | Conv = Roth conversion.
-                    Base Income = Regular + Withdrawals (excludes conversion).
-                </p>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                        <thead>
-                            <tr className="border-b border-gray-700">
-                                <th className="text-left p-2 text-gray-400">Year</th>
-                                <th className="text-left p-2 text-gray-400">Age</th>
-                                <th className="text-right p-2 text-gray-400">Regular</th>
-                                <th className="text-right p-2 text-gray-400">Withdrawals</th>
-                                <th className="text-right p-2 text-gray-400">Conversion</th>
-                                <th className="text-right p-2 text-gray-400">Taxable Inc</th>
-                                <th className="text-right p-2 text-gray-400">Total Tax</th>
-                                <th className="text-right p-2 text-gray-400">Conv Tax</th>
-                                <th className="text-right p-2 text-gray-400">Conv Rate</th>
-                                <th className="text-right p-2 text-gray-400">Combined</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredData
-                                .slice(0, 40)
-                                .map(row => (
-                                    <tr
-                                        key={row.year}
-                                        className={`border-b border-gray-800 hover:bg-gray-800/50 ${row.hasConversion ? 'bg-blue-900/20' : ''}`}
-                                    >
-                                        <td className="p-2 text-white">{row.year}</td>
-                                        <td className="p-2 text-gray-300">{row.age}</td>
-                                        <td className="p-2 text-right text-gray-400">{toCurrencyShort(row.regularIncome)}</td>
-                                        <td className={`p-2 text-right ${row.withdrawals > 0 ? 'text-purple-400' : 'text-gray-600'}`}>
-                                            {row.withdrawals > 0 ? toCurrencyShort(row.withdrawals) : '-'}
-                                        </td>
-                                        <td className={`p-2 text-right font-semibold ${row.hasConversion ? 'text-blue-400' : 'text-gray-600'}`}>
-                                            {row.hasConversion ? toCurrencyShort(row.conversionAmount) : '-'}
-                                        </td>
-                                        <td className="p-2 text-right text-white" title={`Cash: ${toCurrencyShort(row.totalIncome)}, Taxable: ${toCurrencyShort(row.taxableIncomeBase)}`}>
-                                            {toCurrencyShort(row.taxableIncomeBase)}
-                                        </td>
-                                        <td className="p-2 text-right text-red-400">{toCurrencyShort(row.totalTax)}</td>
-                                        <td className={`p-2 text-right ${row.hasConversion ? 'text-red-400' : 'text-gray-600'}`}>
-                                            {row.hasConversion ? toCurrencyShort(row.conversionTax) : '-'}
-                                        </td>
-                                        <td className={`p-2 text-right font-semibold ${row.hasConversion ? 'text-amber-400' : 'text-gray-600'}`}>
-                                            {row.hasConversion ? `${(row.conversionEffectiveRate * 100).toFixed(1)}%` : '-'}
-                                        </td>
-                                        <td className={`p-2 text-right font-semibold ${
-                                            row.combinedEffectiveRate > 0.5 ? 'text-red-500' :
-                                            row.combinedEffectiveRate > 0.3 ? 'text-orange-400' : 'text-green-400'
-                                        }`}>
-                                            {(row.combinedEffectiveRate * 100).toFixed(1)}%
-                                        </td>
-                                    </tr>
-                                ))}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+            {/* Section 4: Conversion Windows */}
+            <ConversionWindowsAnalysis
+                windows={conversionWindowData.windows}
+                windowSummary={conversionWindowData.summary}
+            />
 
-            {/* Account Flow Details */}
-            {yearsWithConversions.length > 0 && (
-                <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
-                    <h3 className="text-lg font-semibold text-white mb-4">Conversion Flow by Year</h3>
-                    <div className="space-y-4 max-h-100 overflow-y-auto">
-                        {yearsWithConversions.map(row => (
-                            <div key={row.year} className="bg-gray-800 p-3 rounded-lg">
-                                <div className="flex justify-between items-center mb-2">
-                                    <span className="font-semibold text-white">{row.year} (Age {row.age})</span>
-                                    <span className="text-blue-400">{toCurrencyShort(row.conversionAmount)} converted</span>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <span className="text-xs text-gray-400 uppercase">From (Traditional)</span>
-                                        {Object.entries(row.fromAccounts).map(([name, amount]) => (
-                                            <div key={name} className="flex justify-between text-sm">
-                                                <span className="text-gray-300">{name}</span>
-                                                <span className="text-red-400">-{toCurrencyShort(amount as number)}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <div>
-                                        <span className="text-xs text-gray-400 uppercase">To (Roth)</span>
-                                        {Object.entries(row.toAccounts).map(([name, amount]) => (
-                                            <div key={name} className="flex justify-between text-sm">
-                                                <span className="text-gray-300">{name}</span>
-                                                <span className="text-green-400">+{toCurrencyShort(amount as number)}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                                <div className="mt-2 text-xs text-gray-400">
-                                    Tax: {toCurrencyShort(row.conversionTax)} ({(row.conversionEffectiveRate * 100).toFixed(1)}% rate)
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
-
-            {/* Diagnostic: High Tax Rate Years */}
-            {(() => {
-                const highTaxYears = conversionData.filter(d => d.combinedEffectiveRate > 0.4 && d.isRetired);
-                if (highTaxYears.length === 0) return null;
-
-                return (
-                    <div className="bg-red-900/20 border border-red-800 p-4 rounded-lg">
-                        <h3 className="text-lg font-semibold text-red-400 mb-4">⚠️ High Effective Tax Rate Years</h3>
-                        <p className="text-gray-400 text-sm mb-4">
-                            These years have combined effective tax rates above 40%. This may indicate an issue with tax calculations or unusually large conversions.
-                        </p>
-                        <div className="space-y-2">
-                            {highTaxYears.slice(0, 10).map(row => (
-                                <div key={row.year} className="bg-gray-900 p-3 rounded flex justify-between items-center">
-                                    <div>
-                                        <span className="text-white font-semibold">{row.year}</span>
-                                        <span className="text-gray-400 ml-2">(Age {row.age})</span>
-                                    </div>
-                                    <div className="text-right">
-                                        <div className="text-red-400 font-semibold">{(row.combinedEffectiveRate * 100).toFixed(1)}% effective</div>
-                                        <div className="text-xs text-gray-400">
-                                            Base: {toCurrencyShort(row.baseIncome)} |
-                                            Conv: {toCurrencyShort(row.conversionAmount)} |
-                                            Tax: {toCurrencyShort(row.totalTax)}
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                );
-            })()}
-
-            {/* No Conversions Message */}
-            {yearsWithConversions.length === 0 && (
-                <div className="bg-gray-900 p-8 rounded-lg border border-gray-800 text-center">
-                    <p className="text-gray-400">
-                        {assumptions.investments.autoRothConversions
-                            ? 'No Roth conversions were performed in the simulation. This could be because you have no Traditional accounts, no Roth accounts, or the tax brackets were already filled.'
-                            : 'Auto Roth Conversions are disabled. Enable them in Assumptions → Investments to see conversion analysis.'}
-                    </p>
-                </div>
-            )}
+            {/* Section 5: Roth vs Pre-Tax Comparison */}
+            <RothVsPreTaxComparison comparisons={contributionComparisons} />
         </div>
     );
 }
@@ -3630,13 +4032,1342 @@ function QRCodeDebugTab() {
 }
 
 // ============================================================================
+// RATIOS DEBUG TAB
+// ============================================================================
+function RatiosDebugTab() {
+    const { simulation } = useContext(SimulationContext);
+    const { state: assumptions } = useContext(AssumptionsContext);
+    const forceExact = assumptions.display?.useCompactCurrency === false;
+    const [selectedYearIdx, setSelectedYearIdx] = useState(0);
+
+    if (simulation.length === 0) return <div className="text-gray-400 p-4">No simulation data available.</div>;
+
+    const simYear = simulation[selectedYearIdx];
+    const { accounts, cashflow } = simYear;
+
+    const savedAccounts = accounts.filter((acc): acc is SavedAccount => acc instanceof SavedAccount);
+    const investedAccounts = accounts.filter((acc): acc is InvestedAccount => acc instanceof InvestedAccount);
+    const debtAccounts = accounts.filter((acc): acc is DebtAccount | DeficitDebtAccount =>
+        acc instanceof DebtAccount || acc instanceof DeficitDebtAccount
+    );
+    const propertyAccounts = accounts.filter((acc): acc is PropertyAccount => acc instanceof PropertyAccount);
+
+    const totalLiquid = savedAccounts.reduce((sum, acc) => sum + acc.amount, 0);
+    const totalInvested = investedAccounts.reduce((sum, acc) => sum + acc.amount, 0);
+    const totalDebt = debtAccounts.reduce((sum, acc) => sum + acc.amount, 0);
+    const totalProperty = propertyAccounts.reduce((sum, acc) => sum + acc.amount, 0);
+    const totalAssets = totalLiquid + totalInvested + totalProperty;
+    const netWorth = totalAssets - totalDebt;
+
+    const taxesAndDeductions = (simYear.taxDetails.fed || 0) +
+        (simYear.taxDetails.state || 0) +
+        (simYear.taxDetails.fica || 0) +
+        (simYear.taxDetails.preTax || 0) +
+        (simYear.taxDetails.insurance || 0) +
+        (simYear.taxDetails.postTax || 0) +
+        (simYear.taxDetails.capitalGains || 0);
+    const livingExpenses = Math.max(0, cashflow.totalExpense - taxesAndDeductions);
+    const monthlyLivingExpenses = livingExpenses / 12;
+    const emergencyMonths = monthlyLivingExpenses > 0 ? totalLiquid / monthlyLivingExpenses : 0;
+
+    return (
+        <div className="space-y-6">
+            {/* Year selector */}
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                <div className="flex items-center gap-4 mb-2">
+                    <h3 className="text-lg font-bold text-white">Year: {simYear.year}</h3>
+                    <span className="text-sm text-gray-400">({selectedYearIdx + 1} of {simulation.length})</span>
+                </div>
+                <input
+                    type="range"
+                    min={0}
+                    max={simulation.length - 1}
+                    value={selectedYearIdx}
+                    onChange={(e) => setSelectedYearIdx(parseInt(e.target.value))}
+                    className="w-full"
+                />
+            </div>
+
+            {/* Accounts Breakdown */}
+            <div className="space-y-2">
+                <h4 className="text-gray-400 font-medium">Accounts by Type</h4>
+                <div className="bg-green-900/20 border border-green-700/30 rounded-lg p-3">
+                    <div className="flex justify-between items-center mb-1">
+                        <span className="text-green-400 font-medium">Savings (Liquid)</span>
+                        <span className="text-green-400 font-bold">{formatCompactCurrency(totalLiquid, { forceExact })}</span>
+                    </div>
+                    {savedAccounts.map((acc) => (
+                        <div key={acc.id} className="flex justify-between text-xs text-gray-300">
+                            <span>• {acc.name}</span>
+                            <span>{formatCompactCurrency(acc.amount, { forceExact })}</span>
+                        </div>
+                    ))}
+                </div>
+                <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-3">
+                    <div className="flex justify-between items-center mb-1">
+                        <span className="text-gray-400 font-medium">Invested (Not Liquid)</span>
+                        <span className="text-gray-400">{formatCompactCurrency(totalInvested, { forceExact })}</span>
+                    </div>
+                    {investedAccounts.map((acc) => (
+                        <div key={acc.id} className="flex justify-between text-xs text-gray-400">
+                            <span>• {acc.name} ({acc.taxType})</span>
+                            <span>{formatCompactCurrency(acc.amount, { forceExact })}</span>
+                        </div>
+                    ))}
+                </div>
+                {propertyAccounts.length > 0 && (
+                    <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-3">
+                        <div className="flex justify-between items-center mb-1">
+                            <span className="text-gray-400 font-medium">Property (Not Liquid)</span>
+                            <span className="text-gray-400">{formatCompactCurrency(totalProperty, { forceExact })}</span>
+                        </div>
+                        {propertyAccounts.map((acc) => (
+                            <div key={acc.id} className="flex justify-between text-xs text-gray-400">
+                                <span>• {acc.name}</span>
+                                <span>{formatCompactCurrency(acc.amount, { forceExact })}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+                {debtAccounts.length > 0 && (
+                    <div className="bg-red-900/20 border border-red-700/30 rounded-lg p-3">
+                        <div className="flex justify-between items-center mb-1">
+                            <span className="text-red-400 font-medium">Debt</span>
+                            <span className="text-red-400">-{formatCompactCurrency(totalDebt, { forceExact })}</span>
+                        </div>
+                        {debtAccounts.map((acc) => (
+                            <div key={acc.id} className="flex justify-between text-xs text-gray-300">
+                                <span>• {acc.name}</span>
+                                <span>-{formatCompactCurrency(acc.amount, { forceExact })}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* Emergency Fund Calculation */}
+            <div className="bg-blue-900/20 border border-blue-700/30 rounded-lg p-3">
+                <h4 className="text-blue-400 font-medium mb-2">Emergency Fund Calculation</h4>
+                <div className="space-y-1 text-xs">
+                    <div className="flex justify-between">
+                        <span className="text-gray-400">Liquid Assets (Savings only):</span>
+                        <span className="text-white">{formatCompactCurrency(totalLiquid, { forceExact })}</span>
+                    </div>
+                    <div className="border-t border-blue-700/20 my-2"></div>
+                    <div className="flex justify-between">
+                        <span className="text-gray-400">Total Expenses:</span>
+                        <span className="text-white">{formatCompactCurrency(cashflow.totalExpense, { forceExact })}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-400">
+                        <span className="pl-2">- Federal Tax:</span>
+                        <span>-{formatCompactCurrency(simYear.taxDetails.fed || 0, { forceExact })}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-400">
+                        <span className="pl-2">- State Tax:</span>
+                        <span>-{formatCompactCurrency(simYear.taxDetails.state || 0, { forceExact })}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-400">
+                        <span className="pl-2">- FICA:</span>
+                        <span>-{formatCompactCurrency(simYear.taxDetails.fica || 0, { forceExact })}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-400">
+                        <span className="pl-2">- 401k/Pre-tax:</span>
+                        <span>-{formatCompactCurrency(simYear.taxDetails.preTax || 0, { forceExact })}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-400">
+                        <span className="pl-2">- Insurance:</span>
+                        <span>-{formatCompactCurrency(simYear.taxDetails.insurance || 0, { forceExact })}</span>
+                    </div>
+                    {(simYear.taxDetails.postTax || 0) > 0 && (
+                        <div className="flex justify-between text-gray-400">
+                            <span className="pl-2">- Post-tax:</span>
+                            <span>-{formatCompactCurrency(simYear.taxDetails.postTax || 0, { forceExact })}</span>
+                        </div>
+                    )}
+                    <div className="flex justify-between border-t border-blue-700/30 pt-1">
+                        <span className="text-gray-300">= Living Expenses:</span>
+                        <span className="text-white font-medium">{formatCompactCurrency(livingExpenses, { forceExact })}</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span className="text-gray-400">Monthly Living Expenses:</span>
+                        <span className="text-white">{formatCompactCurrency(monthlyLivingExpenses, { forceExact })}</span>
+                    </div>
+                    <div className="flex justify-between border-t border-blue-700/30 pt-1 mt-1">
+                        <span className="text-blue-400 font-medium">Emergency Fund Months:</span>
+                        <span className="text-blue-400 font-bold">
+                            {formatCompactCurrency(totalLiquid, { forceExact })} / {formatCompactCurrency(monthlyLivingExpenses, { forceExact })} = {emergencyMonths.toFixed(1)} mo
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            {/* Summary */}
+            <div className="bg-gray-800 rounded-lg p-3">
+                <h4 className="text-gray-300 font-medium mb-2">Summary</h4>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="flex justify-between">
+                        <span className="text-gray-400">Total Assets:</span>
+                        <span className="text-white">{formatCompactCurrency(totalAssets, { forceExact })}</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span className="text-gray-400">Total Debt:</span>
+                        <span className="text-red-400">-{formatCompactCurrency(totalDebt, { forceExact })}</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span className="text-gray-400">Net Worth:</span>
+                        <span className="text-green-400">{formatCompactCurrency(netWorth, { forceExact })}</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span className="text-gray-400">Total Income:</span>
+                        <span className="text-white">{formatCompactCurrency(cashflow.totalIncome, { forceExact })}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ============================================================================
+// WITHDRAWAL DEBUG TAB
+// ============================================================================
+function WithdrawalDebugTab() {
+    const { simulation } = useContext(SimulationContext);
+    const { state: assumptions } = useContext(AssumptionsContext);
+    const [yearFilter, setYearFilter] = useState<string>('Retirement Only');
+
+    const currentYear = new Date().getFullYear();
+    const startAge = currentYear - assumptions.demographics.birthYear;
+    const retirementAge = assumptions.demographics.retirementAge;
+    const isGKStrategy = assumptions.investments.withdrawalStrategy === 'Guyton Klinger';
+
+    const filteredSimulation = useMemo(() => {
+        if (simulation.length === 0) return [];
+        if (yearFilter === 'Retirement Only') {
+            return simulation.filter((_, idx) => startAge + idx >= retirementAge);
+        }
+        return simulation;
+    }, [simulation, yearFilter, startAge, retirementAge]);
+
+    if (simulation.length === 0) return <div className="text-gray-400 p-4">No simulation data available. Run the simulation first.</div>;
+
+    // Compute lifetime withdrawal totals by account
+    // Note: withdrawalDetail is keyed by account NAME, not ID
+    const lifetimeWithdrawals: Record<string, { name: string; total: number; drainedYear: number | null }> = {};
+    simulation.forEach((simYear, idx) => {
+        const age = startAge + idx;
+        const detail = simYear.cashflow.withdrawalDetail || {};
+        for (const [accName, amount] of Object.entries(detail)) {
+            if (!lifetimeWithdrawals[accName]) {
+                lifetimeWithdrawals[accName] = { name: accName, total: 0, drainedYear: null };
+            }
+            lifetimeWithdrawals[accName].total += amount;
+            // Check if account hit zero
+            const acc = simYear.accounts.find(a => a.name === accName);
+            if (acc && acc.amount <= 0 && amount > 0 && lifetimeWithdrawals[accName].drainedYear === null) {
+                lifetimeWithdrawals[accName].drainedYear = simYear.year;
+            }
+        }
+        // Also detect zero balances even without withdrawal in that year
+        if (age >= retirementAge) {
+            simYear.accounts.forEach(acc => {
+                if (lifetimeWithdrawals[acc.name] && acc.amount <= 0 && lifetimeWithdrawals[acc.name].drainedYear === null && lifetimeWithdrawals[acc.name].total > 0) {
+                    lifetimeWithdrawals[acc.name].drainedYear = simYear.year;
+                }
+            });
+        }
+    });
+
+    // Detect early withdrawal penalties (withdrawals from tax-advantaged before 59.5)
+    // Note: withdrawalDetail is keyed by account NAME
+    const penaltyYears: Array<{ year: number; age: number; accountName: string; amount: number; penalty: number }> = [];
+    simulation.forEach((simYear, idx) => {
+        const age = startAge + idx;
+        if (age >= 60) return; // 59.5 check - use 60 as conservative boundary
+        const detail = simYear.cashflow.withdrawalDetail || {};
+        for (const [accName, amount] of Object.entries(detail)) {
+            if (amount <= 0) continue;
+            const acc = simYear.accounts.find(a => a.name === accName);
+            if (acc && acc instanceof InvestedAccount) {
+                const taxAdvantaged = ['Traditional 401k', 'Traditional IRA', 'Roth 401k', 'Roth IRA'];
+                if (taxAdvantaged.includes(acc.taxType)) {
+                    penaltyYears.push({ year: simYear.year, age, accountName: acc.name, amount, penalty: amount * 0.1 });
+                }
+            }
+        }
+    });
+
+    return (
+        <div className="space-y-6">
+            {/* Controls */}
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 flex items-center gap-4">
+                <DropdownInput label="Show Years" value={yearFilter} onChange={setYearFilter} options={['All Years', 'Retirement Only']} />
+            </div>
+
+            {/* Section 1: Withdrawal Order */}
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                <h3 className="text-lg font-bold text-white mb-3">Withdrawal Order</h3>
+                <p className="text-sm text-gray-400 mb-3">
+                    Strategy: <span className="text-green-400">{assumptions.investments.withdrawalStrategy}</span> at {assumptions.investments.withdrawalRate}% |
+                    Configured order: {assumptions.withdrawalStrategy.map(b => b.name).join(' → ') || 'None configured'}
+                </p>
+
+                {/* Lifetime summary */}
+                {Object.keys(lifetimeWithdrawals).length > 0 && (
+                    <div className="mb-4 grid grid-cols-2 md:grid-cols-4 gap-2">
+                        {Object.entries(lifetimeWithdrawals).map(([id, data]) => (
+                            <div key={id} className={`rounded-lg p-2 border ${data.drainedYear ? 'border-red-700/50 bg-red-900/10' : 'border-gray-700 bg-gray-800/50'}`}>
+                                <div className="text-xs text-gray-400">{data.name}</div>
+                                <div className="text-sm font-bold text-white">{toCurrencyShort(data.total)}</div>
+                                {data.drainedYear && <div className="text-xs text-red-400">Drained in {data.drainedYear}</div>}
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {/* Year-by-year table */}
+                <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                    <table className="w-full text-sm">
+                        <thead className="sticky top-0 bg-gray-900">
+                            <tr className="text-gray-400 border-b border-gray-700">
+                                <th className="text-left p-2">Year</th>
+                                <th className="text-left p-2">Age</th>
+                                <th className="text-right p-2">Total</th>
+                                {assumptions.withdrawalStrategy.map(b => (
+                                    <th key={b.id} className="text-right p-2">{b.name}</th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {filteredSimulation.map((simYear, idx) => {
+                                const age = yearFilter === 'Retirement Only' ? retirementAge + idx : startAge + idx;
+                                const detail = simYear.cashflow.withdrawalDetail || {};
+                                const total = Object.values(detail).reduce((s, v) => s + v, 0);
+                                if (total === 0) return null;
+                                return (
+                                    <tr key={simYear.year} className="border-b border-gray-800 hover:bg-gray-800/50">
+                                        <td className="p-2 text-gray-300">{simYear.year}</td>
+                                        <td className="p-2 text-gray-400">{age}</td>
+                                        <td className="p-2 text-right text-white font-medium">{toCurrencyShort(total)}</td>
+                                        {assumptions.withdrawalStrategy.map(b => {
+                                            const acc = simYear.accounts.find(a => a.id === b.accountId);
+                                            const accName = acc?.name || b.name;
+                                            const amt = detail[accName] || 0;
+                                            const drained = acc && acc.amount <= 0;
+                                            return (
+                                                <td key={b.id} className={`p-2 text-right ${drained ? 'text-red-400' : amt > 0 ? 'text-green-400' : 'text-gray-600'}`}>
+                                                    {amt > 0 ? toCurrencyShort(amt) : '—'}
+                                                </td>
+                                            );
+                                        })}
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {/* Section 2: Early Withdrawal Penalties */}
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                <h3 className="text-lg font-bold text-white mb-3">Early Withdrawal Penalties</h3>
+                {penaltyYears.length === 0 ? (
+                    <div className="bg-green-900/20 border border-green-700/50 rounded-lg p-3 text-green-400">
+                        No early withdrawal penalties detected. All tax-advantaged withdrawals occur after age 59.5.
+                    </div>
+                ) : (
+                    <>
+                        <div className="bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-3 mb-3 text-yellow-300">
+                            {penaltyYears.length} early withdrawal(s) detected before age 59.5. Total penalties: {toCurrency(penaltyYears.reduce((s, p) => s + p.penalty, 0))}
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="text-gray-400 border-b border-gray-700">
+                                        <th className="text-left p-2">Year</th>
+                                        <th className="text-left p-2">Age</th>
+                                        <th className="text-left p-2">Account</th>
+                                        <th className="text-right p-2">Withdrawal</th>
+                                        <th className="text-right p-2">10% Penalty</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {penaltyYears.map((p, i) => (
+                                        <tr key={i} className="border-b border-gray-800">
+                                            <td className="p-2 text-gray-300">{p.year}</td>
+                                            <td className="p-2 text-gray-400">{p.age}</td>
+                                            <td className="p-2 text-white">{p.accountName}</td>
+                                            <td className="p-2 text-right text-yellow-300">{toCurrency(p.amount)}</td>
+                                            <td className="p-2 text-right text-red-400">{toCurrency(p.penalty)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </>
+                )}
+            </div>
+
+            {/* Section 3: Guyton-Klinger Details */}
+            {isGKStrategy && (
+                <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                    <h3 className="text-lg font-bold text-white mb-3">Guyton-Klinger Guardrail Details</h3>
+                    <p className="text-sm text-gray-400 mb-3">
+                        Target Rate: {assumptions.investments.withdrawalRate}% |
+                        Upper Guardrail: {assumptions.investments.gkUpperGuardrail}x |
+                        Lower Guardrail: {assumptions.investments.gkLowerGuardrail}x |
+                        Adjustment: {assumptions.investments.gkAdjustmentPercent}%
+                    </p>
+                    <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                        <table className="w-full text-sm">
+                            <thead className="sticky top-0 bg-gray-900">
+                                <tr className="text-gray-400 border-b border-gray-700">
+                                    <th className="text-left p-2">Year</th>
+                                    <th className="text-right p-2">Withdrawal</th>
+                                    <th className="text-right p-2">Target Rate</th>
+                                    <th className="text-right p-2">Current Rate</th>
+                                    <th className="text-center p-2">Trigger</th>
+                                    <th className="text-right p-2">Adjustment</th>
+                                    <th className="text-left p-2">Warning</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredSimulation.map((simYear) => {
+                                    const sw = simYear.strategyWithdrawal;
+                                    const sa = simYear.strategyAdjustment;
+                                    if (!sw) return null;
+                                    const triggerColor = sa?.guardrailTriggered === 'capital-preservation' ? 'text-red-400'
+                                        : sa?.guardrailTriggered === 'prosperity' ? 'text-blue-400' : 'text-green-400';
+                                    return (
+                                        <tr key={simYear.year} className="border-b border-gray-800 hover:bg-gray-800/50">
+                                            <td className="p-2 text-gray-300">{simYear.year}</td>
+                                            <td className="p-2 text-right text-white">{toCurrencyShort(sw.amount)}</td>
+                                            <td className="p-2 text-right text-gray-400">{sw.targetWithdrawalRate.toFixed(2)}%</td>
+                                            <td className="p-2 text-right text-gray-300">{sw.currentWithdrawalRate.toFixed(2)}%</td>
+                                            <td className={`p-2 text-center font-medium ${triggerColor}`}>
+                                                {sa?.guardrailTriggered || 'none'}
+                                            </td>
+                                            <td className="p-2 text-right text-gray-300">
+                                                {sa?.actualAdjustment ? `${sa.actualAdjustment > 0 ? '+' : ''}${toCurrencyShort(sa.actualAdjustment)}` : '—'}
+                                            </td>
+                                            <td className="p-2 text-yellow-300 text-xs">{sa?.warning || ''}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ============================================================================
+// ACCOUNTS DEBUG TAB
+// ============================================================================
+function AccountsDebugTab() {
+    const { simulation } = useContext(SimulationContext);
+    const { state: assumptions } = useContext(AssumptionsContext);
+    const [accountFilter, setAccountFilter] = useState<string>('All');
+
+    const currentYear = new Date().getFullYear();
+    const startAge = currentYear - assumptions.demographics.birthYear;
+    const retirementAge = assumptions.demographics.retirementAge;
+    const inflationRate = assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate / 100 : 0;
+
+    if (simulation.length === 0) return <div className="text-gray-400 p-4">No simulation data available. Run the simulation first.</div>;
+
+    const investedAccounts = simulation[0].accounts.filter((a): a is InvestedAccount => a instanceof InvestedAccount);
+    const accountOptions = ['All', ...investedAccounts.map(a => a.name)];
+
+    // Section 1: Investment Returns
+    const returnsData = useMemo(() => {
+        return simulation.map((simYear, idx) => {
+            const prevYear = idx > 0 ? simulation[idx - 1] : null;
+            const age = startAge + idx;
+            const year = simYear.year;
+            const contributions = simYear.cashflow.bucketDetail || {};
+            const withdrawals = simYear.cashflow.withdrawalDetail || {};
+
+            const accountReturns: Record<string, { startBal: number; endBal: number; netContrib: number; growth: number; returnPct: number; realReturn: number }> = {};
+            let totalStart = 0, totalEnd = 0, totalGrowth = 0;
+
+            simYear.accounts.forEach(acc => {
+                if (!(acc instanceof InvestedAccount)) return;
+                if (accountFilter !== 'All' && acc.name !== accountFilter) return;
+                const prevAcc = prevYear?.accounts.find(a => a.id === acc.id);
+                const startBal = prevAcc?.amount || 0;
+                const endBal = acc.amount;
+                const contrib = contributions[acc.id] || 0;
+                const withdrawal = withdrawals[acc.name] || 0;
+                const netContrib = contrib - withdrawal;
+                const growth = endBal - startBal - netContrib;
+                const returnPct = startBal > 0 ? (growth / startBal) * 100 : 0;
+                const realReturn = returnPct - (inflationRate * 100);
+                accountReturns[acc.id] = { startBal, endBal, netContrib, growth, returnPct, realReturn };
+                totalStart += startBal;
+                totalEnd += endBal;
+                totalGrowth += growth;
+            });
+
+            const portfolioReturn = totalStart > 0 ? (totalGrowth / totalStart) * 100 : 0;
+            return { year, age, accountReturns, portfolioReturn, totalGrowth };
+        });
+    }, [simulation, startAge, accountFilter, inflationRate]);
+
+    // Section 2: Contribution Limits
+    const contributionData = useMemo(() => {
+        return simulation.map((simYear, idx) => {
+            const age = startAge + idx;
+            const year = simYear.year;
+            const isWorking = age < retirementAge;
+            if (!isWorking) return null;
+
+            const inflationAdjusted = assumptions.macro.inflationAdjusted;
+            const limit401k = get401kLimit(year, age, inflationAdjusted);
+            const limitHSA = getHSALimit(year, age, 'individual', inflationAdjusted);
+            const limitIRA = getIRALimit(year, age, inflationAdjusted);
+
+            // Sum 401k contributions from work incomes
+            let actual401k = 0;
+            let actualHSA = 0;
+            simYear.incomes.forEach(inc => {
+                if (inc instanceof WorkIncome) {
+                    const effective = inc.getEffective401k(year, age);
+                    actual401k += effective.preTax + effective.roth;
+                    actualHSA += inc.hsaContribution || 0;
+                }
+            });
+
+            return {
+                year, age,
+                limit401k, actual401k, util401k: limit401k > 0 ? (actual401k / limit401k) * 100 : 0,
+                limitHSA, actualHSA, utilHSA: limitHSA > 0 ? (actualHSA / limitHSA) * 100 : 0,
+                limitIRA,
+                catchUp: age >= 50
+            };
+        }).filter(Boolean);
+    }, [simulation, startAge, retirementAge, assumptions.macro.inflationAdjusted]);
+
+    // Section 3: Employer Matching
+    const matchingData = useMemo(() => {
+        return simulation.map((simYear, idx) => {
+            const prevYear = idx > 0 ? simulation[idx - 1] : null;
+            const age = startAge + idx;
+            const matchAccounts: Array<{ name: string; employerBal: number; vestedPct: number; unvested: number; matchContrib: number }> = [];
+
+            simYear.accounts.forEach(acc => {
+                if (!(acc instanceof InvestedAccount) || acc.employerBalance <= 0) return;
+                const prevAcc = prevYear?.accounts.find(a => a.id === acc.id) as InvestedAccount | undefined;
+                const tenure = acc.tenureYears || 0;
+                const vestedPct = Math.min(1, tenure * acc.vestedPerYear);
+                const unvested = acc.employerBalance * (1 - vestedPct);
+                const prevEmployer = prevAcc?.employerBalance || 0;
+                const ror = assumptions.investments.returnRates.ror / 100;
+                const matchContrib = Math.max(0, acc.employerBalance - prevEmployer * (1 + ror));
+                matchAccounts.push({ name: acc.name, employerBal: acc.employerBalance, vestedPct, unvested, matchContrib });
+            });
+
+            return { year: simYear.year, age, matchAccounts };
+        }).filter(d => d.matchAccounts.length > 0);
+    }, [simulation, startAge, assumptions.investments.returnRates.ror]);
+
+    return (
+        <div className="space-y-6">
+            {/* Controls */}
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 flex items-center gap-4">
+                <DropdownInput label="Account" value={accountFilter} onChange={setAccountFilter} options={accountOptions} />
+            </div>
+
+            {/* Section 1: Investment Returns */}
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                <h3 className="text-lg font-bold text-white mb-3">Investment Returns</h3>
+                <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                    <table className="w-full text-sm">
+                        <thead className="sticky top-0 bg-gray-900">
+                            <tr className="text-gray-400 border-b border-gray-700">
+                                <th className="text-left p-2">Year</th>
+                                <th className="text-left p-2">Age</th>
+                                <th className="text-right p-2">Growth</th>
+                                <th className="text-right p-2">Nominal %</th>
+                                <th className="text-right p-2">Real %</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {returnsData.map(d => {
+                                const realReturn = d.portfolioReturn - (inflationRate * 100);
+                                const color = realReturn > 0 ? 'text-green-400' : realReturn > -2 ? 'text-yellow-300' : 'text-red-400';
+                                return (
+                                    <tr key={d.year} className="border-b border-gray-800 hover:bg-gray-800/50">
+                                        <td className="p-2 text-gray-300">{d.year}</td>
+                                        <td className="p-2 text-gray-400">{d.age}</td>
+                                        <td className="p-2 text-right text-white">{toCurrencyShort(d.totalGrowth)}</td>
+                                        <td className="p-2 text-right text-gray-300">{d.portfolioReturn.toFixed(1)}%</td>
+                                        <td className={`p-2 text-right font-medium ${color}`}>{realReturn.toFixed(1)}%</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {/* Section 2: Contribution Limits */}
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                <h3 className="text-lg font-bold text-white mb-3">Contribution Limits</h3>
+                <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                    <table className="w-full text-sm">
+                        <thead className="sticky top-0 bg-gray-900">
+                            <tr className="text-gray-400 border-b border-gray-700">
+                                <th className="text-left p-2">Year</th>
+                                <th className="text-left p-2">Age</th>
+                                <th className="text-right p-2">401k Actual</th>
+                                <th className="text-right p-2">401k Limit</th>
+                                <th className="text-right p-2">401k %</th>
+                                <th className="text-right p-2">HSA Actual</th>
+                                <th className="text-right p-2">HSA Limit</th>
+                                <th className="text-center p-2">Catch-up</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {contributionData.map(d => {
+                                if (!d) return null;
+                                const utilColor = d.util401k >= 95 ? 'text-green-400' : d.util401k >= 50 ? 'text-yellow-300' : 'text-gray-400';
+                                return (
+                                    <tr key={d.year} className="border-b border-gray-800">
+                                        <td className="p-2 text-gray-300">{d.year}</td>
+                                        <td className="p-2 text-gray-400">{d.age}</td>
+                                        <td className="p-2 text-right text-white">{toCurrencyShort(d.actual401k)}</td>
+                                        <td className="p-2 text-right text-gray-400">{toCurrencyShort(d.limit401k)}</td>
+                                        <td className={`p-2 text-right font-medium ${utilColor}`}>{d.util401k.toFixed(0)}%</td>
+                                        <td className="p-2 text-right text-white">{toCurrencyShort(d.actualHSA)}</td>
+                                        <td className="p-2 text-right text-gray-400">{toCurrencyShort(d.limitHSA)}</td>
+                                        <td className="p-2 text-center">{d.catchUp ? <span className="text-blue-400 text-xs">50+</span> : ''}</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {/* Section 3: Employer Matching */}
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                <h3 className="text-lg font-bold text-white mb-3">Employer Matching & Vesting</h3>
+                {matchingData.length === 0 ? (
+                    <div className="text-gray-400">No employer match accounts found.</div>
+                ) : (
+                    <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                        <table className="w-full text-sm">
+                            <thead className="sticky top-0 bg-gray-900">
+                                <tr className="text-gray-400 border-b border-gray-700">
+                                    <th className="text-left p-2">Year</th>
+                                    <th className="text-left p-2">Account</th>
+                                    <th className="text-right p-2">Employer Bal</th>
+                                    <th className="text-right p-2">Vested %</th>
+                                    <th className="text-right p-2">Unvested</th>
+                                    <th className="text-right p-2">Match Contrib</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {matchingData.map(d =>
+                                    d.matchAccounts.map((ma, i) => (
+                                        <tr key={`${d.year}-${i}`} className="border-b border-gray-800">
+                                            <td className="p-2 text-gray-300">{d.year}</td>
+                                            <td className="p-2 text-white">{ma.name}</td>
+                                            <td className="p-2 text-right text-gray-300">{toCurrencyShort(ma.employerBal)}</td>
+                                            <td className={`p-2 text-right ${ma.vestedPct >= 1 ? 'text-green-400' : 'text-yellow-300'}`}>
+                                                {(ma.vestedPct * 100).toFixed(0)}%
+                                            </td>
+                                            <td className="p-2 text-right text-red-400">{ma.unvested > 0 ? toCurrencyShort(ma.unvested) : '—'}</td>
+                                            <td className="p-2 text-right text-green-400">{ma.matchContrib > 0 ? toCurrencyShort(ma.matchContrib) : '—'}</td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+// ============================================================================
+// INCOME & EXPENSES DEBUG TAB
+// ============================================================================
+function IncomeExpensesDebugTab() {
+    const { simulation } = useContext(SimulationContext);
+    const { state: assumptions } = useContext(AssumptionsContext);
+    const [showRealDollars, setShowRealDollars] = useState(false);
+
+    const currentYear = new Date().getFullYear();
+    const startAge = currentYear - assumptions.demographics.birthYear;
+    const inflationRate = assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate / 100 : 0;
+
+    if (simulation.length === 0) return <div className="text-gray-400 p-4">No simulation data available. Run the simulation first.</div>;
+
+    // Section 1: Salary Projections
+    const salaryData = useMemo(() => {
+        return simulation.map((simYear, idx) => {
+            const age = startAge + idx;
+            const cumulativeInflation = Math.pow(1 + inflationRate, idx);
+            const workIncomes = simYear.incomes.filter((inc): inc is WorkIncome => inc instanceof WorkIncome);
+            return workIncomes.map(inc => {
+                const nominalSalary = inc.amount;
+                const realSalary = cumulativeInflation > 0 ? nominalSalary / cumulativeInflation : nominalSalary;
+                const prevYear = idx > 0 ? simulation[idx - 1] : null;
+                const prevInc = prevYear?.incomes.find(i => i.id === inc.id) as WorkIncome | undefined;
+                const yoyGrowth = prevInc && prevInc.amount > 0 ? ((inc.amount - prevInc.amount) / prevInc.amount) * 100 : 0;
+                const effective401k = inc.getEffective401k(simYear.year, age);
+                const totalContrib = effective401k.preTax + effective401k.roth + (inc.hsaContribution || 0);
+                return {
+                    year: simYear.year, age, name: inc.name,
+                    nominalSalary, realSalary, yoyGrowth, totalContrib,
+                    totalComp: nominalSalary + totalContrib
+                };
+            });
+        }).flat();
+    }, [simulation, startAge, inflationRate]);
+
+    // Section 2: Expense Breakdown
+    const expenseData = useMemo(() => {
+        const categoryTotals: Record<string, number[]> = {};
+        let totalFixed = 0, totalDiscretionary = 0;
+
+        simulation.forEach((simYear, idx) => {
+            const cumulativeInflation = Math.pow(1 + inflationRate, idx);
+            simYear.expenses.forEach(exp => {
+                const category = CLASS_TO_CATEGORY[exp.constructor.name] || 'Other';
+                if (!categoryTotals[category]) categoryTotals[category] = new Array(simulation.length).fill(0);
+                const annual = exp.getAnnualAmount(simYear.year);
+                const value = showRealDollars && cumulativeInflation > 0 ? annual / cumulativeInflation : annual;
+                categoryTotals[category][idx] += value;
+                if (exp.isDiscretionary) totalDiscretionary += annual;
+                else totalFixed += annual;
+            });
+        });
+
+        const grandTotal = totalFixed + totalDiscretionary;
+        return { categoryTotals, totalFixed, totalDiscretionary, fixedPct: grandTotal > 0 ? (totalFixed / grandTotal) * 100 : 0 };
+    }, [simulation, inflationRate, showRealDollars]);
+
+    // Find largest category
+    const largestCategory = useMemo(() => {
+        let max = 0, maxCat = '';
+        for (const [cat, vals] of Object.entries(expenseData.categoryTotals)) {
+            const total = vals.reduce((s, v) => s + v, 0);
+            if (total > max) { max = total; maxCat = cat; }
+        }
+        return maxCat;
+    }, [expenseData]);
+
+    // Section 3: Healthcare Costs
+    const healthcareData = useMemo(() => {
+        return simulation.map((simYear, idx) => {
+            const age = startAge + idx;
+            const cumulativeInflation = Math.pow(1 + inflationRate, idx);
+            const healthExpenses = simYear.expenses.filter((e): e is HealthcareExpense => e instanceof HealthcareExpense);
+            const totalHealthcare = healthExpenses.reduce((s, e) => s + e.getAnnualAmount(simYear.year), 0);
+            const realCost = cumulativeInflation > 0 ? totalHealthcare / cumulativeInflation : totalHealthcare;
+            const totalIncome = simYear.cashflow.totalIncome;
+            const pctOfIncome = totalIncome > 0 ? (totalHealthcare / totalIncome) * 100 : 0;
+            return { year: simYear.year, age, totalHealthcare, realCost, pctOfIncome, isMedicare: age >= 65 };
+        }).filter(d => d.totalHealthcare > 0);
+    }, [simulation, startAge, inflationRate]);
+
+    return (
+        <div className="space-y-6">
+            {/* Controls */}
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 flex items-center gap-4">
+                <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                    <input type="checkbox" checked={showRealDollars} onChange={e => setShowRealDollars(e.target.checked)} className="rounded" />
+                    Today's Dollars (inflation-adjusted)
+                </label>
+            </div>
+
+            {/* Section 1: Salary Projections */}
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                <h3 className="text-lg font-bold text-white mb-3">Salary Projections</h3>
+                {salaryData.length === 0 ? (
+                    <div className="text-gray-400">No work income found.</div>
+                ) : (
+                    <>
+                        <div className="mb-3 flex gap-4 text-sm">
+                            <span className="text-gray-400">Total Lifetime Earnings: <span className="text-white font-bold">{toCurrencyShort(salaryData.reduce((s, d) => s + d.nominalSalary, 0))}</span></span>
+                            <span className="text-gray-400">Avg Real Growth: <span className="text-green-400">{salaryData.length > 1 ? (salaryData.reduce((s, d) => s + d.yoyGrowth, 0) / (salaryData.length - 1)).toFixed(1) : 0}%</span></span>
+                        </div>
+                        <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                            <table className="w-full text-sm">
+                                <thead className="sticky top-0 bg-gray-900">
+                                    <tr className="text-gray-400 border-b border-gray-700">
+                                        <th className="text-left p-2">Year</th>
+                                        <th className="text-left p-2">Age</th>
+                                        <th className="text-left p-2">Source</th>
+                                        <th className="text-right p-2">Salary</th>
+                                        <th className="text-right p-2">{showRealDollars ? 'Real' : 'Growth'}</th>
+                                        <th className="text-right p-2">Contributions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {salaryData.map((d, i) => (
+                                        <tr key={i} className="border-b border-gray-800">
+                                            <td className="p-2 text-gray-300">{d.year}</td>
+                                            <td className="p-2 text-gray-400">{d.age}</td>
+                                            <td className="p-2 text-white">{d.name}</td>
+                                            <td className="p-2 text-right text-white">{toCurrencyShort(d.nominalSalary)}</td>
+                                            <td className={`p-2 text-right ${d.yoyGrowth > 0 ? 'text-green-400' : 'text-gray-400'}`}>
+                                                {showRealDollars ? toCurrencyShort(d.realSalary) : `${d.yoyGrowth.toFixed(1)}%`}
+                                            </td>
+                                            <td className="p-2 text-right text-blue-400">{toCurrencyShort(d.totalContrib)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </>
+                )}
+            </div>
+
+            {/* Section 2: Expense Breakdown */}
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                <h3 className="text-lg font-bold text-white mb-3">Expense Breakdown</h3>
+                <div className="grid grid-cols-3 gap-3 mb-4">
+                    <div className="bg-gray-800/50 rounded-lg p-3 text-center">
+                        <div className="text-xs text-gray-400">Fixed</div>
+                        <div className="text-lg font-bold text-white">{expenseData.fixedPct.toFixed(0)}%</div>
+                    </div>
+                    <div className="bg-gray-800/50 rounded-lg p-3 text-center">
+                        <div className="text-xs text-gray-400">Discretionary</div>
+                        <div className="text-lg font-bold text-white">{(100 - expenseData.fixedPct).toFixed(0)}%</div>
+                    </div>
+                    <div className="bg-gray-800/50 rounded-lg p-3 text-center">
+                        <div className="text-xs text-gray-400">Largest Category</div>
+                        <div className="text-lg font-bold text-green-400">{largestCategory}</div>
+                    </div>
+                </div>
+                <div className="overflow-x-auto max-h-64 overflow-y-auto">
+                    <table className="w-full text-sm">
+                        <thead className="sticky top-0 bg-gray-900">
+                            <tr className="text-gray-400 border-b border-gray-700">
+                                <th className="text-left p-2">Category</th>
+                                {simulation.slice(0, Math.min(simulation.length, 10)).map((sy) => (
+                                    <th key={sy.year} className="text-right p-2">{sy.year}</th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {Object.entries(expenseData.categoryTotals).map(([cat, vals]) => (
+                                <tr key={cat} className="border-b border-gray-800">
+                                    <td className="p-2 text-white">{cat}</td>
+                                    {vals.slice(0, 10).map((v, i) => (
+                                        <td key={i} className="p-2 text-right text-gray-300">{v > 0 ? toCurrencyShort(v) : '—'}</td>
+                                    ))}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {/* Section 3: Healthcare Costs */}
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                <h3 className="text-lg font-bold text-white mb-3">Healthcare Costs</h3>
+                {healthcareData.length === 0 ? (
+                    <div className="text-gray-400">No healthcare expenses found.</div>
+                ) : (
+                    <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                        <table className="w-full text-sm">
+                            <thead className="sticky top-0 bg-gray-900">
+                                <tr className="text-gray-400 border-b border-gray-700">
+                                    <th className="text-left p-2">Year</th>
+                                    <th className="text-left p-2">Age</th>
+                                    <th className="text-right p-2">Annual Cost</th>
+                                    <th className="text-right p-2">{showRealDollars ? 'Real Cost' : '% of Income'}</th>
+                                    <th className="text-center p-2">Medicare</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {healthcareData.map(d => (
+                                    <tr key={d.year} className={`border-b border-gray-800 ${d.isMedicare ? 'bg-blue-900/10' : ''}`}>
+                                        <td className="p-2 text-gray-300">{d.year}</td>
+                                        <td className="p-2 text-gray-400">{d.age}</td>
+                                        <td className="p-2 text-right text-white">{toCurrencyShort(d.totalHealthcare)}</td>
+                                        <td className="p-2 text-right text-gray-300">
+                                            {showRealDollars ? toCurrencyShort(d.realCost) : `${d.pctOfIncome.toFixed(1)}%`}
+                                        </td>
+                                        <td className="p-2 text-center">{d.isMedicare ? <span className="text-blue-400 text-xs">65+</span> : ''}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+// ============================================================================
+// CASH FLOW DEBUG TAB
+// ============================================================================
+function CashFlowDebugTab() {
+    const { simulation } = useContext(SimulationContext);
+    const { state: assumptions } = useContext(AssumptionsContext);
+    const [periodFilter, setPeriodFilter] = useState<string>('All Years');
+
+    const currentYear = new Date().getFullYear();
+    const startAge = currentYear - assumptions.demographics.birthYear;
+    const retirementAge = assumptions.demographics.retirementAge;
+    const inflationRate = assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate / 100 : 0;
+
+    if (simulation.length === 0) return <div className="text-gray-400 p-4">No simulation data available. Run the simulation first.</div>;
+
+    const filteredSimulation = useMemo(() => {
+        if (periodFilter === 'Accumulation') return simulation.filter((_, idx) => startAge + idx < retirementAge);
+        if (periodFilter === 'Retirement') return simulation.filter((_, idx) => startAge + idx >= retirementAge);
+        return simulation;
+    }, [simulation, periodFilter, startAge, retirementAge]);
+
+    // Section 1: Priority Waterfall
+    const waterfallData = useMemo(() => {
+        return filteredSimulation.map((simYear) => {
+            const bucketDetail = simYear.cashflow.bucketDetail || {};
+            const buckets = assumptions.priorities.map(bucket => {
+                const allocated = bucketDetail[bucket.accountId || ''] || 0;
+                return { name: bucket.name, capType: bucket.capType, capValue: bucket.capValue, allocated, hit: bucket.capType === 'MAX' && allocated > 0 };
+            });
+            const preBucketSurplus = simYear.cashflow.discretionary + simYear.cashflow.bucketAllocations;
+            return { year: simYear.year, age: startAge + (simulation.indexOf(simYear)), buckets, preBucketSurplus };
+        });
+    }, [filteredSimulation, simulation, assumptions.priorities, startAge]);
+
+    // Section 2: Net Worth Timeline
+    const netWorthData = useMemo(() => {
+        let peakNW = -Infinity, peakYear = 0;
+        const data = simulation.map((simYear, idx) => {
+            const age = startAge + idx;
+            let assets = 0, liabilities = 0;
+            simYear.accounts.forEach(acc => {
+                if (acc instanceof InvestedAccount || acc instanceof SavedAccount || acc instanceof ESPPAccount || acc instanceof PropertyAccount) {
+                    assets += acc.amount;
+                } else if (acc instanceof DebtAccount) {
+                    liabilities += acc.amount;
+                }
+            });
+            const netWorth = assets - liabilities;
+            if (netWorth > peakNW) { peakNW = netWorth; peakYear = simYear.year; }
+            return { year: simYear.year, age, assets, liabilities, netWorth };
+        });
+        return { data, peakYear, peakNW };
+    }, [simulation, startAge]);
+
+    // Section 3: Cash Flow Summary
+    const cashFlowSummary = useMemo(() => {
+        return filteredSimulation.map((simYear) => {
+            const totalIncome = simYear.cashflow.totalIncome;
+            const totalExpense = simYear.cashflow.totalExpense;
+            const taxes = (simYear.taxDetails.fed || 0) + (simYear.taxDetails.state || 0) +
+                (simYear.taxDetails.fica || 0) + (simYear.taxDetails.capitalGains || 0);
+            const livingExpenses = Math.max(0, totalExpense - taxes - (simYear.taxDetails.preTax || 0) - (simYear.taxDetails.insurance || 0) - (simYear.taxDetails.postTax || 0));
+            const totalInvested = simYear.cashflow.totalInvested;
+            const savingsRate = totalIncome > 0 ? (totalInvested / totalIncome) * 100 : 0;
+            const age = startAge + simulation.indexOf(simYear);
+            return { year: simYear.year, age, totalIncome, livingExpenses, taxes, totalInvested, savingsRate, isRetired: age >= retirementAge };
+        });
+    }, [filteredSimulation, simulation, startAge, retirementAge]);
+
+    // Section 4: Inflation Impact
+    const inflationData = useMemo(() => {
+        return simulation.map((simYear, idx) => {
+            const cumulativeInflation = Math.pow(1 + inflationRate, idx);
+            const purchasingPower = cumulativeInflation > 0 ? 1 / cumulativeInflation : 1;
+            const nominalIncome = simYear.cashflow.totalIncome;
+            const realIncome = cumulativeInflation > 0 ? nominalIncome / cumulativeInflation : nominalIncome;
+            return { year: simYear.year, age: startAge + idx, cumulativeInflation, purchasingPower, nominalIncome, realIncome };
+        });
+    }, [simulation, startAge, inflationRate]);
+
+    return (
+        <div className="space-y-6">
+            {/* Controls */}
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 flex items-center gap-4">
+                <DropdownInput label="Period" value={periodFilter} onChange={setPeriodFilter} options={['All Years', 'Accumulation', 'Retirement']} />
+            </div>
+
+            {/* Section 1: Priority Waterfall */}
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                <h3 className="text-lg font-bold text-white mb-3">Priority Waterfall</h3>
+                {assumptions.priorities.length === 0 ? (
+                    <div className="text-gray-400">No priority buckets configured.</div>
+                ) : (
+                    <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                        <table className="w-full text-sm">
+                            <thead className="sticky top-0 bg-gray-900">
+                                <tr className="text-gray-400 border-b border-gray-700">
+                                    <th className="text-left p-2">Year</th>
+                                    <th className="text-right p-2">Surplus</th>
+                                    {assumptions.priorities.map(b => (
+                                        <th key={b.id} className="text-right p-2">{b.name}</th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {waterfallData.map(d => (
+                                    <tr key={d.year} className="border-b border-gray-800">
+                                        <td className="p-2 text-gray-300">{d.year}</td>
+                                        <td className="p-2 text-right text-white">{toCurrencyShort(d.preBucketSurplus)}</td>
+                                        {d.buckets.map((b, i) => (
+                                            <td key={i} className={`p-2 text-right ${b.allocated > 0 ? (b.hit ? 'text-yellow-300' : 'text-green-400') : 'text-gray-600'}`}>
+                                                {b.allocated > 0 ? toCurrencyShort(b.allocated) : '—'}
+                                            </td>
+                                        ))}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+
+            {/* Section 2: Net Worth Timeline */}
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                <h3 className="text-lg font-bold text-white mb-3">Net Worth Timeline</h3>
+                <div className="mb-3 text-sm text-gray-400">
+                    Peak: <span className="text-green-400 font-bold">{toCurrencyShort(netWorthData.peakNW)}</span> in {netWorthData.peakYear}
+                </div>
+                <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                    <table className="w-full text-sm">
+                        <thead className="sticky top-0 bg-gray-900">
+                            <tr className="text-gray-400 border-b border-gray-700">
+                                <th className="text-left p-2">Year</th>
+                                <th className="text-left p-2">Age</th>
+                                <th className="text-right p-2">Assets</th>
+                                <th className="text-right p-2">Liabilities</th>
+                                <th className="text-right p-2">Net Worth</th>
+                                <th className="text-right p-2">YoY Change</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {netWorthData.data.map((d, idx) => {
+                                const prev = idx > 0 ? netWorthData.data[idx - 1] : null;
+                                const change = prev ? d.netWorth - prev.netWorth : 0;
+                                const changeColor = change > 0 ? 'text-green-400' : change < 0 ? 'text-red-400' : 'text-gray-500';
+                                return (
+                                    <tr key={d.year} className={`border-b border-gray-800 ${d.age === retirementAge ? 'border-t-2 border-t-yellow-600' : ''}`}>
+                                        <td className="p-2 text-gray-300">{d.year}</td>
+                                        <td className="p-2 text-gray-400">{d.age}</td>
+                                        <td className="p-2 text-right text-green-400">{toCurrencyShort(d.assets)}</td>
+                                        <td className="p-2 text-right text-red-400">{d.liabilities > 0 ? toCurrencyShort(d.liabilities) : '—'}</td>
+                                        <td className="p-2 text-right text-white font-medium">{toCurrencyShort(d.netWorth)}</td>
+                                        <td className={`p-2 text-right ${changeColor}`}>
+                                            {idx > 0 ? `${change >= 0 ? '+' : ''}${toCurrencyShort(change)}` : '—'}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {/* Section 3: Cash Flow Summary */}
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                <h3 className="text-lg font-bold text-white mb-3">Cash Flow Summary</h3>
+                <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                    <table className="w-full text-sm">
+                        <thead className="sticky top-0 bg-gray-900">
+                            <tr className="text-gray-400 border-b border-gray-700">
+                                <th className="text-left p-2">Year</th>
+                                <th className="text-left p-2">Age</th>
+                                <th className="text-right p-2">Income</th>
+                                <th className="text-right p-2">Living Exp</th>
+                                <th className="text-right p-2">Taxes</th>
+                                <th className="text-right p-2">Invested</th>
+                                <th className="text-right p-2">Savings Rate</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {cashFlowSummary.map(d => {
+                                const srColor = d.savingsRate >= 20 ? 'text-green-400' : d.savingsRate >= 10 ? 'text-yellow-300' : 'text-red-400';
+                                return (
+                                    <tr key={d.year} className={`border-b border-gray-800 ${d.isRetired ? 'bg-blue-900/5' : ''}`}>
+                                        <td className="p-2 text-gray-300">{d.year}</td>
+                                        <td className="p-2 text-gray-400">{d.age}</td>
+                                        <td className="p-2 text-right text-green-400">{toCurrencyShort(d.totalIncome)}</td>
+                                        <td className="p-2 text-right text-white">{toCurrencyShort(d.livingExpenses)}</td>
+                                        <td className="p-2 text-right text-gray-400">{toCurrencyShort(d.taxes)}</td>
+                                        <td className="p-2 text-right text-blue-400">{d.totalInvested > 0 ? toCurrencyShort(d.totalInvested) : '—'}</td>
+                                        <td className={`p-2 text-right font-medium ${d.isRetired ? 'text-gray-500' : srColor}`}>
+                                            {d.isRetired ? 'N/A' : `${d.savingsRate.toFixed(0)}%`}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {/* Section 4: Inflation Impact */}
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                <h3 className="text-lg font-bold text-white mb-3">Inflation Impact</h3>
+                <p className="text-sm text-gray-400 mb-3">Rate: {(inflationRate * 100).toFixed(1)}% | Shows erosion of purchasing power over time.</p>
+                <div className="overflow-x-auto max-h-64 overflow-y-auto">
+                    <table className="w-full text-sm">
+                        <thead className="sticky top-0 bg-gray-900">
+                            <tr className="text-gray-400 border-b border-gray-700">
+                                <th className="text-left p-2">Year</th>
+                                <th className="text-left p-2">Age</th>
+                                <th className="text-right p-2">$1 Today =</th>
+                                <th className="text-right p-2">Nominal Income</th>
+                                <th className="text-right p-2">Real Income</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {inflationData.filter((_, i) => i % 5 === 0 || i === inflationData.length - 1).map(d => (
+                                <tr key={d.year} className="border-b border-gray-800">
+                                    <td className="p-2 text-gray-300">{d.year}</td>
+                                    <td className="p-2 text-gray-400">{d.age}</td>
+                                    <td className="p-2 text-right text-yellow-300">${(d.purchasingPower * 100).toFixed(0)}¢</td>
+                                    <td className="p-2 text-right text-white">{toCurrencyShort(d.nominalIncome)}</td>
+                                    <td className="p-2 text-right text-green-400">{toCurrencyShort(d.realIncome)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ============================================================================
+// VALIDATION DEBUG TAB
+// ============================================================================
+function ValidationDebugTab() {
+    const { simulation } = useContext(SimulationContext);
+    const { state: assumptions } = useContext(AssumptionsContext);
+    const { accounts } = useContext(AccountContext);
+    const { incomes } = useContext(IncomeContext);
+    const { expenses } = useContext(ExpenseContext);
+    const [severityFilter, setSeverityFilter] = useState<string>('All');
+
+    const currentYear = new Date().getFullYear();
+    const startAge = currentYear - assumptions.demographics.birthYear;
+
+    type Issue = { type: 'error' | 'warning' | 'info'; title: string; detail: string; section: string };
+
+    // Section 2: Assumption Conflicts (context-based, works without simulation)
+    const assumptionIssues = useMemo<Issue[]>(() => {
+        const issues: Issue[] = [];
+
+        if (assumptions.demographics.retirementAge >= assumptions.demographics.lifeExpectancy) {
+            issues.push({ type: 'error', title: 'Retirement age >= life expectancy', detail: `Retirement ${assumptions.demographics.retirementAge} >= Life ${assumptions.demographics.lifeExpectancy}`, section: 'Assumptions' });
+        }
+
+        if (assumptions.investments.autoRothConversions) {
+            const hasTraditional = accounts.some(a => a instanceof InvestedAccount && (a.taxType === 'Traditional 401k' || a.taxType === 'Traditional IRA'));
+            if (!hasTraditional) {
+                issues.push({ type: 'warning', title: 'Auto Roth conversions enabled but no Traditional accounts', detail: 'No Traditional 401k or IRA accounts configured.', section: 'Assumptions' });
+            }
+        }
+
+        if (assumptions.withdrawalStrategy.length === 0) {
+            issues.push({ type: 'warning', title: 'No withdrawal strategy configured', detail: 'No accounts in withdrawal order. Retirement withdrawals may not function.', section: 'Assumptions' });
+        }
+
+        const ror = assumptions.investments.returnRates.ror;
+        const inflation = assumptions.macro.inflationRate;
+        if (ror < inflation) {
+            issues.push({ type: 'warning', title: 'Rate of return below inflation', detail: `ROR ${ror}% < inflation ${inflation}% = negative real returns (${(ror - inflation).toFixed(1)}%)`, section: 'Assumptions' });
+        }
+
+        if (assumptions.macro.healthcareInflation < assumptions.macro.inflationRate) {
+            issues.push({ type: 'info', title: 'Healthcare inflation below general inflation', detail: `Healthcare ${assumptions.macro.healthcareInflation}% < general ${assumptions.macro.inflationRate}%. This is unusual.`, section: 'Assumptions' });
+        }
+
+        return issues;
+    }, [assumptions, accounts]);
+
+    // Section 3: Missing Data Alerts (context-based)
+    const missingDataIssues = useMemo<Issue[]>(() => {
+        const issues: Issue[] = [];
+
+        if (accounts.length === 0) issues.push({ type: 'warning', title: 'No accounts configured', detail: 'Add savings or investment accounts.', section: 'Missing Data' });
+        if (incomes.length === 0) issues.push({ type: 'warning', title: 'No income configured', detail: 'Add work income or other income sources.', section: 'Missing Data' });
+        if (expenses.length === 0) issues.push({ type: 'info', title: 'No expenses configured', detail: 'Simulation assumes zero living expenses.', section: 'Missing Data' });
+
+        // Check matchAccountId references
+        incomes.forEach(inc => {
+            if (inc instanceof WorkIncome && inc.matchAccountId) {
+                const matchAccount = accounts.find(a => a.id === inc.matchAccountId);
+                if (!matchAccount) {
+                    issues.push({ type: 'error', title: `Match account not found: ${inc.name}`, detail: `Work income "${inc.name}" references non-existent match account.`, section: 'Missing Data' });
+                }
+            }
+        });
+
+        if (assumptions.priorities.length === 0 && accounts.length > 0) {
+            issues.push({ type: 'info', title: 'No priority buckets configured', detail: 'Surplus cash will go to discretionary. Configure priority order for auto-investing.', section: 'Missing Data' });
+        }
+
+        const hasHealthcare = expenses.some(e => e instanceof HealthcareExpense);
+        if (!hasHealthcare && expenses.length > 0) {
+            issues.push({ type: 'info', title: 'No healthcare expenses', detail: 'Healthcare is often a significant retirement expense.', section: 'Missing Data' });
+        }
+
+        const birthYear = assumptions.demographics.birthYear;
+        if (birthYear < 1930 || birthYear > currentYear - 10) {
+            issues.push({ type: 'warning', title: 'Birth year may be incorrect', detail: `Birth year ${birthYear} seems unusual.`, section: 'Missing Data' });
+        }
+
+        return issues;
+    }, [accounts, incomes, expenses, assumptions, currentYear]);
+
+    // Section 1: Data Consistency (requires simulation)
+    const consistencyIssues = useMemo<Issue[]>(() => {
+        if (simulation.length === 0) return [];
+        const issues: Issue[] = [];
+
+        simulation.forEach((simYear, idx) => {
+            const age = startAge + idx;
+            const year = simYear.year;
+
+            // Negative account balances
+            simYear.accounts.forEach(acc => {
+                if (acc.amount < -0.01 && !(acc instanceof DebtAccount || acc instanceof DeficitDebtAccount)) {
+                    issues.push({ type: 'error', title: `Negative balance: ${acc.name}`, detail: `${acc.name} = ${toCurrency(acc.amount)} in ${year} (age ${age})`, section: 'Consistency' });
+                }
+            });
+
+            // Deficit debt growing
+            if (idx > 0) {
+                const prevYear = simulation[idx - 1];
+                simYear.accounts.forEach(acc => {
+                    if (acc instanceof DeficitDebtAccount) {
+                        const prev = prevYear.accounts.find(a => a.id === acc.id);
+                        if (prev && acc.amount > prev.amount + 0.01) {
+                            issues.push({ type: 'warning', title: `Deficit debt growing: ${acc.name}`, detail: `${toCurrencyShort(prev.amount)} -> ${toCurrencyShort(acc.amount)} in ${year}`, section: 'Consistency' });
+                        }
+                    }
+                });
+            }
+
+            // RMD shortfall
+            if (simYear.rmdDetails && simYear.rmdDetails.shortfall > 0) {
+                issues.push({ type: 'error', title: `RMD shortfall in ${year}`, detail: `Required: ${toCurrency(simYear.rmdDetails.totalRMD)}, withdrawn: ${toCurrency(simYear.rmdDetails.totalWithdrawn)}. Penalty: ${toCurrency(simYear.rmdDetails.penalty)}`, section: 'Consistency' });
+            }
+
+            // Negative discretionary without withdrawals
+            if (simYear.cashflow.discretionary < -1 && simYear.cashflow.withdrawals <= 0 && age >= assumptions.demographics.retirementAge) {
+                issues.push({ type: 'warning', title: `Negative cash flow in ${year}`, detail: `Discretionary: ${toCurrency(simYear.cashflow.discretionary)} with no withdrawals at age ${age}`, section: 'Consistency' });
+            }
+        });
+
+        // Income/expense date conflicts
+        incomes.forEach(inc => {
+            if (inc.startDate && inc.end_date && inc.startDate > inc.end_date) {
+                issues.push({ type: 'error', title: `Date conflict: ${inc.name}`, detail: `Start date after end date for income "${inc.name}"`, section: 'Consistency' });
+            }
+        });
+        expenses.forEach(exp => {
+            if (exp.startDate && exp.endDate && exp.startDate > exp.endDate) {
+                issues.push({ type: 'error', title: `Date conflict: ${exp.name}`, detail: `Start date after end date for expense "${exp.name}"`, section: 'Consistency' });
+            }
+        });
+
+        return issues;
+    }, [simulation, startAge, incomes, expenses, assumptions.demographics.retirementAge]);
+
+    const allIssues = [...consistencyIssues, ...assumptionIssues, ...missingDataIssues];
+    const filteredIssues = severityFilter === 'All' ? allIssues
+        : severityFilter === 'Errors Only' ? allIssues.filter(i => i.type === 'error')
+        : allIssues.filter(i => i.type === 'error' || i.type === 'warning');
+
+    const errorCount = allIssues.filter(i => i.type === 'error').length;
+    const warningCount = allIssues.filter(i => i.type === 'warning').length;
+    const infoCount = allIssues.filter(i => i.type === 'info').length;
+
+    const overallStatus = errorCount > 0 ? 'error' : warningCount > 0 ? 'warning' : 'healthy';
+
+    return (
+        <div className="space-y-6">
+            {/* Controls */}
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 flex items-center gap-4">
+                <DropdownInput label="Severity" value={severityFilter} onChange={setSeverityFilter} options={['All', 'Errors Only', 'Warnings+']} />
+            </div>
+
+            {/* Overall Health Banner */}
+            <div className={`rounded-lg p-4 border ${
+                overallStatus === 'error' ? 'bg-red-900/20 border-red-800' :
+                overallStatus === 'warning' ? 'bg-yellow-900/30 border-yellow-700/50' :
+                'bg-green-900/20 border-green-700/50'
+            }`}>
+                <div className="flex items-center justify-between">
+                    <span className={`text-lg font-bold ${
+                        overallStatus === 'error' ? 'text-red-400' :
+                        overallStatus === 'warning' ? 'text-yellow-300' :
+                        'text-green-400'
+                    }`}>
+                        {overallStatus === 'error' ? 'Issues Found' : overallStatus === 'warning' ? 'Warnings Present' : 'All Checks Passed'}
+                    </span>
+                    <div className="flex gap-3 text-sm">
+                        {errorCount > 0 && <span className="text-red-400">{errorCount} Error{errorCount !== 1 ? 's' : ''}</span>}
+                        {warningCount > 0 && <span className="text-yellow-300">{warningCount} Warning{warningCount !== 1 ? 's' : ''}</span>}
+                        {infoCount > 0 && <span className="text-blue-400">{infoCount} Info</span>}
+                    </div>
+                </div>
+            </div>
+
+            {simulation.length === 0 && (
+                <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-3 text-blue-400 text-sm">
+                    Run simulation for additional runtime checks (data consistency, RMD shortfalls, negative balances).
+                </div>
+            )}
+
+            {/* Issue Cards */}
+            <div className="space-y-2">
+                {filteredIssues.length === 0 ? (
+                    <div className="text-gray-400 text-sm p-4">No issues found at this severity level.</div>
+                ) : (
+                    filteredIssues.map((issue, i) => (
+                        <div key={i} className={`rounded-lg p-3 border ${
+                            issue.type === 'error' ? 'bg-red-900/20 border-red-800' :
+                            issue.type === 'warning' ? 'bg-yellow-900/30 border-yellow-700/50' :
+                            'bg-blue-900/20 border-blue-700/50'
+                        }`}>
+                            <div className="flex items-start justify-between gap-2">
+                                <div>
+                                    <span className={`text-sm font-medium ${
+                                        issue.type === 'error' ? 'text-red-400' :
+                                        issue.type === 'warning' ? 'text-yellow-300' :
+                                        'text-blue-400'
+                                    }`}>{issue.title}</span>
+                                    <p className="text-xs text-gray-400 mt-1">{issue.detail}</p>
+                                </div>
+                                <span className="text-xs text-gray-500 whitespace-nowrap">{issue.section}</span>
+                            </div>
+                        </div>
+                    ))
+                )}
+            </div>
+        </div>
+    );
+}
+
+// ============================================================================
 // MAIN TESTING COMPONENT WITH TABS
 // ============================================================================
-const TESTING_TABS = ['Simulation Debug', 'Tax Debug', 'Tax Brackets', 'Social Security', 'Pensions', 'RMDs', 'Roth Conversions', 'Mortgage', 'QR Code'];
+const TESTING_TABS = ['Simulation Debug', 'Tax Debug', 'Tax Brackets', 'Social Security', 'Pensions', 'RMDs', 'Roth Analysis', 'Ratios', 'Mortgage', 'QR Code', 'Withdrawals', 'Accounts', 'Income & Expenses', 'Cash Flow', 'Validation'];
 
 export default function Testing() {
+    const { state: assumptionsState } = useContext(AssumptionsContext);
+    const showExperimental = assumptionsState.display?.showExperimentalFeatures ?? false;
+
     const [activeTab, setActiveTab] = useState(() => {
-        const saved = localStorage.getItem('stag_testing_tab');
+        let saved = localStorage.getItem('stag_testing_tab');
+        if (saved === 'Roth Conversions') saved = 'Roth Analysis';
         return saved && TESTING_TABS.includes(saved) ? saved : 'Simulation Debug';
     });
 
@@ -3645,6 +5376,14 @@ export default function Testing() {
         setActiveTab(tab);
         localStorage.setItem('stag_testing_tab', tab);
     };
+
+    if (!showExperimental) {
+        return (
+            <div className="w-full min-h-screen bg-gray-950 text-gray-100 p-8 flex items-center justify-center">
+                <p className="text-gray-500">Enable experimental features in Assumptions to access Testing.</p>
+            </div>
+        );
+    }
 
     return (
         <div className="w-full min-h-screen bg-gray-950 text-gray-100 p-8 overflow-y-auto">
@@ -3677,9 +5416,15 @@ export default function Testing() {
                 {activeTab === 'Social Security' && <SocialSecurityDebugTab />}
                 {activeTab === 'Pensions' && <PensionDebugTab />}
                 {activeTab === 'RMDs' && <RMDDebugTab />}
-                {activeTab === 'Roth Conversions' && <RothConversionsDebugTab />}
+                {activeTab === 'Roth Analysis' && <RothAnalysisDebugTab />}
+                {activeTab === 'Ratios' && <RatiosDebugTab />}
                 {activeTab === 'Mortgage' && <MortgageTestingTab />}
                 {activeTab === 'QR Code' && <QRCodeDebugTab />}
+                {activeTab === 'Withdrawals' && <WithdrawalDebugTab />}
+                {activeTab === 'Accounts' && <AccountsDebugTab />}
+                {activeTab === 'Income & Expenses' && <IncomeExpensesDebugTab />}
+                {activeTab === 'Cash Flow' && <CashFlowDebugTab />}
+                {activeTab === 'Validation' && <ValidationDebugTab />}
             </div>
         </div>
     );

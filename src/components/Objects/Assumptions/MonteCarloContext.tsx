@@ -1,4 +1,4 @@
-// @refresh reset - This file exports both components and hooks, so full remount is needed for HMR
+/* @refresh reset */
 import { createContext, useReducer, useContext, ReactNode, useMemo, useCallback } from 'react';
 import { useDebouncedLocalStorage } from '../../../hooks/useDebouncedLocalStorage';
 import {

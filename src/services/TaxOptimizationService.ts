@@ -142,6 +142,35 @@ export interface RothConversionResult {
     };
 }
 
+export interface RothAnalysis {
+    mode: 'contribution' | 'conversion';
+    amount: number;
+    currentEffectiveRate: number;
+    retirementMarginalRate: number;
+    breakEvenRate: number;
+    growthYears: number;
+    growthRate: number;
+
+    traditional: {
+        startingAmount: number;
+        valueAtWithdrawal: number;
+        taxAtWithdrawal: number;
+        afterTaxValue: number;
+    };
+    roth: {
+        amountAfterTax: number;
+        valueAtWithdrawal: number;
+        afterTaxValue: number;
+    };
+
+    benefit: number;
+    verdict: 'roth' | 'traditional' | 'even';
+    reason: string;
+
+    optimalAmount: number | null;  // Amount that maximizes Roth benefit, null if Roth never wins
+    optimalVerdict: 'all-roth' | 'all-traditional' | 'optimal';
+}
+
 export interface TaxProjection {
     year: number;
     age: number;
@@ -553,6 +582,317 @@ export function calculateRothConversion(
             yearsUntilRetirement
         }
     };
+}
+
+/**
+ * Calculate the break-even future tax rate where Roth and Traditional produce identical after-tax values.
+ * For contributions: equals the current marginal rate.
+ * For conversions: equals the effective rate on the conversion amount (immediateTaxCost / amount).
+ */
+export function calculateBreakEvenRate(
+    currentTaxableIncome: number,
+    amount: number,
+    mode: 'contribution' | 'conversion',
+    taxState: TaxState,
+    year: number,
+    assumptions: AssumptionsState
+): number {
+    const fedParams = TaxService.getTaxParameters(
+        year,
+        taxState.filingStatus,
+        'federal',
+        undefined,
+        assumptions
+    );
+
+    if (!fedParams) return FALLBACK_RETIREMENT_TAX_RATE;
+
+    if (mode === 'contribution') {
+        // For new contributions, break-even is the marginal rate (rate on the next dollar)
+        const actualTaxableIncome = Math.max(0, currentTaxableIncome - fedParams.standardDeduction);
+        const bracket = TaxService.getMarginalTaxRate(actualTaxableIncome, fedParams);
+        return bracket.rate;
+    } else {
+        // For conversions, break-even is the effective rate on the conversion amount
+        const taxBefore = TaxService.calculateTax(currentTaxableIncome, 0, fedParams);
+        const taxAfter = TaxService.calculateTax(currentTaxableIncome + amount, 0, fedParams);
+        const immediateTaxCost = taxAfter - taxBefore;
+        return amount > 0 ? immediateTaxCost / amount : 0;
+    }
+}
+
+/** Step size for optimal amount search */
+const OPTIMAL_SEARCH_STEP = 500;
+/** Minimum search max if computed max is too low */
+const OPTIMAL_SEARCH_MIN_MAX = 5000;
+
+/**
+ * Find the optimal Roth amount by stepping through amounts and computing
+ * total benefit at each level. Returns the amount with peak benefit.
+ *
+ * For each candidate amount X:
+ *   - taxNow = incremental tax from converting/contributing X at current year
+ *   - grownAmount = X * (1+r)^n
+ *   - taxLater = incremental tax from withdrawing grownAmount at withdrawal year
+ *   - benefit = taxLater - taxNow * (1+r)^n
+ *     (equivalent to: Roth after-tax value - Traditional after-tax value)
+ *
+ * Returns the X that maximizes benefit, or null if benefit is never positive.
+ */
+export function findOptimalRothAmount(
+    mode: 'contribution' | 'conversion',
+    growthYears: number,
+    currentTaxableIncome: number,
+    taxState: TaxState,
+    year: number,
+    assumptions: AssumptionsState,
+    simulation: SimulationYear[],
+    maxAmount: number
+): { optimalAmount: number | null; optimalVerdict: 'all-roth' | 'all-traditional' | 'optimal' } {
+    const birthYear = assumptions.demographics.birthYear;
+    const growthRate = (assumptions.investments?.returnRates?.ror / 100) || FALLBACK_GROWTH_RATE;
+    const growthFactor = Math.pow(1 + growthRate, growthYears);
+
+    // Get current year tax params
+    const fedParamsNow = TaxService.getTaxParameters(
+        year, taxState.filingStatus, 'federal', undefined, assumptions
+    );
+    if (!fedParamsNow) return { optimalAmount: null, optimalVerdict: 'all-traditional' };
+
+    // Get withdrawal year tax params and base income
+    const withdrawalYear = year + growthYears;
+    const withdrawalSimYear = simulation.find(s => s.year === withdrawalYear)
+        || simulation[simulation.length - 1];
+    if (!withdrawalSimYear) return { optimalAmount: null, optimalVerdict: 'all-traditional' };
+
+    const simAge = withdrawalSimYear.year - birthYear;
+    const fedParamsWithdrawal = TaxService.getTaxParameters(
+        withdrawalSimYear.year, taxState.filingStatus, 'federal', undefined, assumptions
+    );
+    if (!fedParamsWithdrawal) return { optimalAmount: null, optimalVerdict: 'all-traditional' };
+
+    const grossIncomeWithdrawal = TaxService.getGrossIncome(withdrawalSimYear.incomes, withdrawalSimYear.year);
+    const preTaxWithdrawal = TaxService.getPreTaxExemptions(withdrawalSimYear.incomes, withdrawalSimYear.year, simAge);
+    const baseWithdrawalIncome = Math.max(0, grossIncomeWithdrawal - preTaxWithdrawal);
+
+    // Base tax amounts (no conversion/contribution)
+    const baseTaxNow = TaxService.calculateTax(currentTaxableIncome, 0, fedParamsNow);
+    const baseTaxWithdrawal = TaxService.calculateTax(baseWithdrawalIncome, 0, fedParamsWithdrawal);
+
+    // For contribution mode, current marginal rate is fixed
+    let fixedMarginalRate = 0;
+    if (mode === 'contribution') {
+        const actualTaxableNow = Math.max(0, currentTaxableIncome - fedParamsNow.standardDeduction);
+        const bracket = TaxService.getMarginalTaxRate(actualTaxableNow, fedParamsNow);
+        fixedMarginalRate = bracket.rate;
+    }
+
+    const searchMax = Math.max(OPTIMAL_SEARCH_MIN_MAX, maxAmount);
+    const step = Math.max(OPTIMAL_SEARCH_STEP, Math.floor(searchMax / 1000) * OPTIMAL_SEARCH_STEP);
+
+    let bestAmount = 0;
+    let bestBenefit = 0;
+    let everPositive = false;
+    let everNegative = false;
+
+    for (let x = step; x <= searchMax; x += step) {
+        // Tax cost now
+        let taxNow: number;
+        if (mode === 'contribution') {
+            taxNow = x * fixedMarginalRate;
+        } else {
+            const taxAfterConversion = TaxService.calculateTax(currentTaxableIncome + x, 0, fedParamsNow);
+            taxNow = taxAfterConversion - baseTaxNow;
+        }
+
+        // Tax cost at withdrawal
+        const grownAmount = x * growthFactor;
+        const taxAfterWithdrawal = TaxService.calculateTax(baseWithdrawalIncome + grownAmount, 0, fedParamsWithdrawal);
+        const taxLater = taxAfterWithdrawal - baseTaxWithdrawal;
+
+        // Benefit: how much more you'd pay in Traditional vs Roth (positive = Roth wins)
+        // Roth after-tax = (x - taxNow) * growthFactor
+        // Trad after-tax = x * growthFactor - taxLater
+        // benefit = Roth - Trad = taxLater - taxNow * growthFactor
+        const benefit = taxLater - taxNow * growthFactor;
+
+        if (benefit > bestBenefit) {
+            bestBenefit = benefit;
+            bestAmount = x;
+        }
+        if (benefit > 0) everPositive = true;
+        if (benefit < 0) everNegative = true;
+    }
+
+    if (!everPositive) {
+        return { optimalAmount: null, optimalVerdict: 'all-traditional' };
+    }
+
+    // Only report 'all-roth' if benefit was positive at every tested amount
+    if (!everNegative) {
+        return { optimalAmount: null, optimalVerdict: 'all-roth' };
+    }
+
+    // Mixed: return the amount with peak benefit
+    return { optimalAmount: bestAmount, optimalVerdict: 'optimal' };
+}
+
+/**
+ * Analyze Roth vs Pre-Tax decision for both new contributions and conversions.
+ * Uses explicit growth years (user-controlled) rather than auto-calculated.
+ */
+export function analyzeRothVsPreTax(
+    amount: number,
+    mode: 'contribution' | 'conversion',
+    growthYears: number,
+    currentTaxableIncome: number,
+    taxState: TaxState,
+    year: number,
+    assumptions: AssumptionsState,
+    simulation: SimulationYear[],
+    maxAmount: number
+): RothAnalysis {
+    const fedParams = TaxService.getTaxParameters(
+        year,
+        taxState.filingStatus,
+        'federal',
+        undefined,
+        assumptions
+    );
+
+    const birthYear = assumptions.demographics.birthYear;
+
+    // Growth rate from assumptions
+    const growthRate = (assumptions.investments?.returnRates?.ror / 100) || FALLBACK_GROWTH_RATE;
+
+    // Calculate current tax cost based on mode
+    let immediateTaxCost: number;
+    let currentEffectiveRate: number;
+
+    if (mode === 'contribution') {
+        // For contributions, tax cost is the marginal rate on this amount
+        if (fedParams) {
+            const actualTaxableIncome = Math.max(0, currentTaxableIncome - fedParams.standardDeduction);
+            const bracket = TaxService.getMarginalTaxRate(actualTaxableIncome, fedParams);
+            currentEffectiveRate = bracket.rate;
+            immediateTaxCost = amount * currentEffectiveRate;
+        } else {
+            currentEffectiveRate = FALLBACK_RETIREMENT_TAX_RATE;
+            immediateTaxCost = amount * currentEffectiveRate;
+        }
+    } else {
+        // For conversions, use bracket math (same as calculateRothConversion)
+        if (fedParams) {
+            const taxBefore = TaxService.calculateTax(currentTaxableIncome, 0, fedParams);
+            const taxAfter = TaxService.calculateTax(currentTaxableIncome + amount, 0, fedParams);
+            immediateTaxCost = taxAfter - taxBefore;
+            currentEffectiveRate = amount > 0 ? immediateTaxCost / amount : 0;
+        } else {
+            currentEffectiveRate = FALLBACK_RETIREMENT_TAX_RATE;
+            immediateTaxCost = amount * currentEffectiveRate;
+        }
+    }
+
+    // Traditional path: full amount grows tax-deferred, taxed at withdrawal
+    const traditionalStart = amount;
+    const traditionalAtWithdrawal = traditionalStart * Math.pow(1 + growthRate, growthYears);
+
+    // Calculate actual tax on the withdrawal using bracket math at the withdrawal year.
+    // This correctly handles cases where income is below the standard deduction.
+    const withdrawalYear = year + growthYears;
+    let traditionalTaxAtWithdrawal = traditionalAtWithdrawal * FALLBACK_RETIREMENT_TAX_RATE;
+    const withdrawalSimYear = simulation.find(s => s.year === withdrawalYear)
+        || simulation[simulation.length - 1];
+    if (withdrawalSimYear) {
+        const simAge = withdrawalSimYear.year - birthYear;
+        const simFedParams = TaxService.getTaxParameters(
+            withdrawalSimYear.year,
+            taxState.filingStatus,
+            'federal',
+            undefined,
+            assumptions
+        );
+        if (simFedParams) {
+            const grossIncome = TaxService.getGrossIncome(withdrawalSimYear.incomes, withdrawalSimYear.year);
+            const preTaxDeductions = TaxService.getPreTaxExemptions(withdrawalSimYear.incomes, withdrawalSimYear.year, simAge);
+            // Base income before the Traditional withdrawal (fedParams includes standard deduction)
+            const baseIncome = Math.max(0, grossIncome - preTaxDeductions);
+            const taxBefore = TaxService.calculateTax(baseIncome, 0, simFedParams);
+            const taxAfter = TaxService.calculateTax(baseIncome + traditionalAtWithdrawal, 0, simFedParams);
+            traditionalTaxAtWithdrawal = taxAfter - taxBefore;
+        }
+    }
+
+    // Derive effective withdrawal rate for display
+    const retirementMarginalRate = traditionalAtWithdrawal > 0
+        ? traditionalTaxAtWithdrawal / traditionalAtWithdrawal
+        : FALLBACK_RETIREMENT_TAX_RATE;
+
+    // Break-even rate
+    const breakEvenRate = calculateBreakEvenRate(currentTaxableIncome, amount, mode, taxState, year, assumptions);
+
+    const traditionalAfterTax = traditionalAtWithdrawal - traditionalTaxAtWithdrawal;
+
+    // Roth path: pay tax now, remainder grows tax-free
+    const rothAfterTax = amount - immediateTaxCost;
+    const rothAtWithdrawal = rothAfterTax * Math.pow(1 + growthRate, growthYears);
+    const rothAfterTaxValue = rothAtWithdrawal; // Tax-free
+
+    // Benefit: positive = Roth wins
+    const benefit = rothAfterTaxValue - traditionalAfterTax;
+
+    // Verdict and reason
+    let verdict: 'roth' | 'traditional' | 'even';
+    let reason: string;
+    const modeLabel = mode === 'contribution' ? 'Choosing Roth' : `Converting at age ${year - birthYear}`;
+    const tradLabel = mode === 'contribution' ? 'pre-tax' : 'traditional';
+
+    if (Math.abs(benefit) < 1) {
+        verdict = 'even';
+        reason = 'Both options produce the same after-tax value.';
+    } else if (benefit > 0) {
+        verdict = 'roth';
+        reason = `${modeLabel} saves ${formatDollars(benefit)} because your current rate (${(currentEffectiveRate * 100).toFixed(1)}%) is lower than your projected withdrawal rate (${(retirementMarginalRate * 100).toFixed(1)}%).`;
+    } else {
+        verdict = 'traditional';
+        reason = `Keeping ${tradLabel} saves ${formatDollars(Math.abs(benefit))} because your current rate (${(currentEffectiveRate * 100).toFixed(1)}%) is higher than your projected withdrawal rate (${(retirementMarginalRate * 100).toFixed(1)}%).`;
+    }
+
+    // Calculate optimal amount
+    const { optimalAmount, optimalVerdict } = findOptimalRothAmount(
+        mode, growthYears, currentTaxableIncome, taxState, year, assumptions, simulation, maxAmount
+    );
+
+    return {
+        mode,
+        amount,
+        currentEffectiveRate,
+        retirementMarginalRate,
+        breakEvenRate,
+        growthYears,
+        growthRate,
+        traditional: {
+            startingAmount: traditionalStart,
+            valueAtWithdrawal: traditionalAtWithdrawal,
+            taxAtWithdrawal: traditionalTaxAtWithdrawal,
+            afterTaxValue: traditionalAfterTax
+        },
+        roth: {
+            amountAfterTax: rothAfterTax,
+            valueAtWithdrawal: rothAtWithdrawal,
+            afterTaxValue: rothAfterTaxValue
+        },
+        benefit,
+        verdict,
+        reason,
+        optimalAmount,
+        optimalVerdict
+    };
+}
+
+/** Format dollars for reason strings */
+function formatDollars(value: number): string {
+    return '$' + Math.round(value).toLocaleString();
 }
 
 /**

@@ -1,3 +1,4 @@
+/* @refresh reset */
 import { createContext, useReducer, useContext, ReactNode, useMemo, useCallback, useEffect } from 'react';
 import {
     ScenarioState,

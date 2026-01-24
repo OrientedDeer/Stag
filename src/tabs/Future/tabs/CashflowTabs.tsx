@@ -31,7 +31,8 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
 
     return (
          <div className="flex flex-col gap-4">
-            {/* Guyton-Klinger Guardrail Note */}
+            {/* Info banners - min-h prevents chart from shifting when banners appear/disappear */}
+            <div className="min-h-[52px] flex flex-col gap-2 justify-end">
             {gkTriggered === 'capital-preservation' && (
                 <div className="p-3 bg-amber-900/20 border border-amber-700/50 rounded-lg text-sm">
                     <div className="flex items-start gap-2">
@@ -69,6 +70,7 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
                     </div>
                 </div>
             )}
+            </div>
 
             {/* 1. SANKEY CHART */}
             <div className="overflow-visible">

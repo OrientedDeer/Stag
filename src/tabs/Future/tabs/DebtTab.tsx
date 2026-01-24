@@ -13,13 +13,12 @@ export const DebtTab: React.FC<DebtTabProps> = React.memo(({ simulationData }) =
     // --- RANGE SLIDER STATE ---
     const minYear = simulationData.length > 0 ? simulationData[0].year : 2025;
     const maxYear = simulationData.length > 0 ? simulationData[simulationData.length - 1].year : 2060;
-    const [range, setRange] = useState<[number, number]>([minYear, Math.min(maxYear, minYear + 32)]);
 
-    const { data, keys, debtFreeYear } = useMemo(() => {
+    // Calculate debtFreeYear and keys from full simulation data (independent of range)
+    const { keys, debtFreeYear } = useMemo(() => {
         let debtFreeYear: number | null = null;
-        
-        // 1. Calculate stable keys and debtFreeYear from FULL data
         const allKeys = new Set<string>();
+
         simulationData.forEach(year => {
             let yearTotalDebt = 0;
             year.expenses.forEach(exp => {
@@ -41,13 +40,27 @@ export const DebtTab: React.FC<DebtTabProps> = React.memo(({ simulationData }) =
             if (yearTotalDebt <= 1 && debtFreeYear === null) debtFreeYear = year.year;
         });
 
-        // 2. Filter simulation data for the chart range
+        return { keys: Array.from(allKeys), debtFreeYear };
+    }, [simulationData]);
+
+    // Default range end: debtFreeYear + 2, or full range if no debt-free year
+    const defaultEnd = debtFreeYear ? Math.min(maxYear, debtFreeYear + 2) : maxYear;
+    const [range, setRange] = useState<[number, number]>([minYear, defaultEnd]);
+
+    // Update range if defaultEnd changes (e.g., debts added/removed)
+    const [prevDefaultEnd, setPrevDefaultEnd] = useState(defaultEnd);
+    if (prevDefaultEnd !== defaultEnd) {
+        setPrevDefaultEnd(defaultEnd);
+        setRange([minYear, defaultEnd]);
+    }
+
+    // Filter and map simulation data for the chart based on slider range
+    const data = useMemo(() => {
         const filteredSim = simulationData.filter(d => d.year >= range[0] && d.year <= range[1]);
 
-        // 3. Map ONLY the filtered data for the chart
-        const mappedData = filteredSim.map(year => {
+        return filteredSim.map(year => {
             const datum: any = { year: year.year };
-            allKeys.forEach(key => datum[key] = 0);
+            keys.forEach(key => datum[key] = 0);
 
             year.expenses.forEach(exp => {
                 if (exp instanceof LoanExpense || exp instanceof MortgageExpense) {
@@ -61,9 +74,7 @@ export const DebtTab: React.FC<DebtTabProps> = React.memo(({ simulationData }) =
 
             return datum;
         });
-
-        return { data: mappedData, keys: Array.from(allKeys), debtFreeYear };
-    }, [simulationData, range]);
+    }, [simulationData, range, keys]);
 
     const colors = useMemo(() => {
         const palette = ['#f87171', '#fb923c', '#facc15', '#a3a3a3', '#ef4444', '#f97316'];

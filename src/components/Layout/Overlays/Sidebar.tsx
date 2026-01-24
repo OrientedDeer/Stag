@@ -1,4 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
+import { useContext } from "react";
+import { AssumptionsContext } from "../../Objects/Assumptions/AssumptionsContext";
 import SidebarCollapseLink from './SidebarCollapseLink'; // Make sure the path is correct
 type SidebarProps = {
   isOpen: boolean;
@@ -7,6 +9,8 @@ type SidebarProps = {
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 	const { pathname } = useLocation();
+	const { state: assumptions } = useContext(AssumptionsContext);
+	const showExperimental = assumptions.display?.showExperimentalFeatures ?? false;
 
 	const link = `flex items-center mb-1 p-2 rounded text-White ${
 		isOpen ? "" : "hover:bg-gray-600"
@@ -124,6 +128,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 						onLinkClick={handleLinkClick}
 					/>
 
+					{showExperimental && (
 					<Link
 						className={`${link} ${pathname === "/testing" && active} ${isOpen ? "pointer-events-none" : ""}`}
 						to="/testing"
@@ -138,6 +143,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 							</span>
 						</span>
 					</Link>
+				)}
 				</nav>
 			</div>
 		</>

@@ -87,7 +87,7 @@ export interface SimulationYear {
  * @param fedParams - Federal tax parameters
  * @returns Object with tax details including effective rate
  */
-function calculateEffectiveConversionTax(
+export function calculateEffectiveConversionTax(
     nonSSIncome: number,
     totalSSBenefits: number,
     conversionAmount: number,
@@ -203,7 +203,8 @@ function performAutoRothConversion(
     taxState: TaxState,
     _previousSimulation: SimulationYear[],
     logs: string[],
-    estimatedTraditionalWithdrawal: number = 0
+    estimatedTraditionalWithdrawal: number = 0,
+    priorInflows: Record<string, number> = {}
 ): SimulationYear['rothConversion'] | undefined {
     // Get federal tax parameters
     const fedParams = TaxService.getTaxParameters(
@@ -382,7 +383,9 @@ function performAutoRothConversion(
     for (const tradAccount of traditionalAccounts) {
         if (remainingToConvert <= 0) break;
 
-        const availableBalance = tradAccount.amount;
+        // Account for any prior outflows (e.g., RMD withdrawals) already recorded
+        const priorOutflow = priorInflows[tradAccount.id] || 0;
+        const availableBalance = tradAccount.amount + Math.min(0, priorOutflow);
         if (availableBalance <= 0) continue;
 
         const convertAmount = Math.min(remainingToConvert, availableBalance);
@@ -409,8 +412,10 @@ function performAutoRothConversion(
     }
 
     // Calculate tax cost on the conversion (including SS torpedo effect)
+    // Must include estimatedTraditionalWithdrawal in base income since those
+    // withdrawals also add to taxable income in the same year
     const conversionTaxResult = calculateEffectiveConversionTax(
-        agiExcludingSS,
+        agiExcludingSS + estimatedTraditionalWithdrawal,
         totalSSBenefits,
         totalConverted,
         taxState.filingStatus,
@@ -1133,7 +1138,8 @@ export function simulateOneYear(
             taxState,
             previousSimulation,
             logs,
-            estimatedTraditionalWithdrawal
+            estimatedTraditionalWithdrawal,
+            userInflows
         );
 
         if (conversionResult && conversionResult.amount > 0) {
@@ -1282,6 +1288,12 @@ export function simulateOneYear(
             let availableBalance = account.amount;
             if (account instanceof InvestedAccount) {
                 availableBalance = account.vestedAmount; // Use the getter from models.tsx
+            }
+            // Subtract any prior outflows already recorded (e.g., RMD withdrawals, Roth conversions)
+            // userInflows are negative for withdrawals, so subtracting a negative adds back
+            const priorOutflow = userInflows[account.id] || 0;
+            if (priorOutflow < 0) {
+                availableBalance += priorOutflow; // priorOutflow is negative, so this reduces balance
             }
             if (availableBalance <= 0) continue;
 

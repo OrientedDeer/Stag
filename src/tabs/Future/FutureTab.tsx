@@ -26,10 +26,8 @@ import { TaxOptimizationTab } from './tabs/TaxOptimizationTab';
 import { ScenarioComparisonTab } from './tabs/ScenarioComparisonTab';
 import { FinancialRatiosTab } from './tabs/FinancialRatiosTab';
 
-// Base tabs always shown
-const base_tabs = ["Overview", "Cashflow", "Assets", "Debt", "Monte Carlo", "Data"];
-// Experimental tabs only shown when enabled
-const experimental_tabs = ["Tax", "Scenarios", "Ratios"];
+// All visible tabs
+const all_tabs = ["Overview", "Cashflow", "Assets", "Debt", "Monte Carlo", "Tax", "Scenarios", "Ratios", "Data"];
 
 // --- Inline Assets Tab (Memoized) ---
 const AssetsTab = React.memo(({ simulationData }: { simulationData: SimulationYear[] }) => {
@@ -204,7 +202,7 @@ export default function FutureTab() {
     const { state: taxState } = useContext(TaxContext);
     const [activeTab, setActiveTab] = useState(() => {
         const saved = localStorage.getItem('stag_future_tab');
-        return saved && base_tabs.concat(experimental_tabs).includes(saved) ? saved : 'Overview';
+        return saved && all_tabs.includes(saved) ? saved : 'Overview';
     });
 
     // Persist tab selection
@@ -214,15 +212,7 @@ export default function FutureTab() {
     };
     const [isLoading, setIsLoading] = useState(false);
 
-    // Compute visible tabs based on experimental features setting
-    const showExperimental = assumptions.display?.showExperimentalFeatures ?? false;
-    const visible_tabs = useMemo(() => {
-        if (showExperimental) {
-            // Insert experimental tabs before "Data"
-            return [...base_tabs.slice(0, -1), ...experimental_tabs, "Data"];
-        }
-        return base_tabs;
-    }, [showExperimental]);
+    const visible_tabs = all_tabs;
 
     // Compute current input hash for staleness detection
     const currentInputHash = useMemo(() =>

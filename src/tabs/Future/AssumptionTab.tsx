@@ -255,7 +255,7 @@ export default function AssumptionTab() {
                             label="Experimental"
                             enabled={state.display?.showExperimentalFeatures ?? false}
                             setEnabled={(val) => dispatch({ type: "UPDATE_DISPLAY", payload: { showExperimentalFeatures: val } })}
-                            tooltip="Show Tax, Scenarios, and Ratios tabs"
+                            tooltip="Show Testing tab and experimental calculators"
                         />
 
                         <ToggleInput

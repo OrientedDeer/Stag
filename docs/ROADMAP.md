@@ -11,13 +11,15 @@ These features are complete but need validation:
 - **Financial Ratios Tab** - Benchmarks need validation
 - **SSA Earnings Import** - XML import for accurate SS calculation
 
-*Note: Tax, Scenarios, Ratios tabs are behind "Experimental Features" toggle.*
+*Note: Testing tab and experimental calculators (Roth Analysis panel) are behind "Experimental Features" toggle.*
 
 ---
 
 ## High Priority
 
 ### Testing/Debug Tab Enhancements
+
+Available tabs: Simulation Debug, Tax Debug, Tax Brackets, Social Security, Pensions, RMDs, Roth Analysis, Ratios, Mortgage, QR Code, Withdrawals, Accounts, Income & Expenses, Cash Flow, Validation
 
 **Tax Calculations**
 - [x] Federal Tax - Bracket breakdown, marginal vs effective rates, deductions applied
@@ -32,39 +34,45 @@ These features are complete but need validation:
 - [x] RMDs - Table values, calculated amounts by account, aggregation rules
 
 **Withdrawal Logic**
-- [ ] Withdrawal Order - Which accounts drained, amounts from each, why
+- [x] Withdrawal Order - Which accounts drained, amounts from each, why
 - [ ] Roth Conversions - Auto-conversion decisions, tax impact, optimal amounts
-- [ ] Early Withdrawal Penalties - When 10% penalty applies, amounts
-- [ ] Guyton-Klinger Details - Guardrail triggers, adjustment calculations
+- [x] Early Withdrawal Penalties - When 10% penalty applies, amounts
+- [x] Guyton-Klinger Details - Guardrail triggers, adjustment calculations
 
 **Account Growth**
-- [ ] Investment Returns - Year-by-year growth, nominal vs real returns
-- [ ] Contribution Limits - 401k/IRA/HSA limits by year, catch-up contributions
-- [ ] Employer Matching - Match calculations, vesting schedules
+- [x] Investment Returns - Year-by-year growth, nominal vs real returns
+- [x] Contribution Limits - 401k/IRA/HSA limits by year, catch-up contributions
+- [x] Employer Matching - Match calculations, vesting schedules
 
 **Income & Expenses**
-- [ ] Salary Projections - Growth rates, inflation adjustment, lifestyle creep
-- [ ] Expense Breakdown - Fixed vs discretionary, inflation by category
-- [ ] Healthcare Costs - Age-based inflation, Medicare transition
+- [x] Salary Projections - Growth rates, inflation adjustment, lifestyle creep
+- [x] Expense Breakdown - Fixed vs discretionary, inflation by category
+- [x] Healthcare Costs - Age-based inflation, Medicare transition
 
 **Priority/Allocation**
-- [ ] Priority Waterfall - Monthly allocation flow, caps hit, remainder
+- [x] Priority Waterfall - Monthly allocation flow, caps hit, remainder
 - [ ] Emergency Fund Tracking - Target vs actual, months of expenses
 
 **Aggregate Views**
-- [ ] Net Worth Timeline - Assets vs liabilities breakdown
-- [ ] Cash Flow Summary - Income vs expenses vs savings by year
-- [ ] Inflation Impact - Purchasing power erosion visualization
+- [x] Net Worth Timeline - Assets vs liabilities breakdown
+- [x] Cash Flow Summary - Income vs expenses vs savings by year
+- [x] Inflation Impact - Purchasing power erosion visualization
 
 **Validation/Warnings**
-- [ ] Data Consistency Checks - Impossible values, date conflicts
-- [ ] Assumption Conflicts - Contradictory settings
-- [ ] Missing Data Alerts - Required fields not filled
+- [x] Data Consistency Checks - Impossible values, date conflicts
+- [x] Assumption Conflicts - Contradictory settings
+- [x] Missing Data Alerts - Required fields not filled
 
 ---
 
 ## Recently Completed
 
+- **Roth vs Pre-Tax Analysis Panel** - New calculator on Tax tab with contribution/conversion modes, explicit growth years, break-even rate, tax rate sparkline, and auto-optimal amount detection (experimental)
+- **Tab Visibility Restructure** - Tax, Scenarios, and Ratios tabs are now always visible; Testing tab moved behind experimental toggle
+- **Debug Tabs Expansion** - Added 5 new Testing tab groups: Withdrawals, Accounts, Income & Expenses, Cash Flow, Validation (15 new debug sections total)
+- **Roth Conversion Tax Fix** - Fixed $0 tax cost bug where conversion tax didn't account for Traditional withdrawal income in the same year
+- **Withdrawal Balance Guard** - Fixed phantom money bug where Roth conversions and expense withdrawals could overdraw the same account (now respects prior outflows)
+- **Chart Layout Stability** - Info banners on cashflow chart no longer shift the chart when appearing/disappearing
 - **ESPP Support** - Full Employee Stock Purchase Plan account tracking with lot-level detail, qualifying/disqualifying disposition tax handling, configurable withdrawal preferences
 - **Budget Tracking** - Track actual spending vs projections with CSV import, auto-categorization rules, monthly snapshots, spending trends analysis
 
