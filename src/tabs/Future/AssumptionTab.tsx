@@ -214,7 +214,13 @@ export default function AssumptionTab() {
                 onClick={() => setShowAdvanced(!showAdvanced)}
                 className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors mb-4"
             >
-                <span className={`transform transition-transform ${showAdvanced ? 'rotate-90' : ''}`}>▶</span>
+                <svg
+                    className={`w-4 h-4 transition-transform duration-200 ${showAdvanced ? 'rotate-0' : '-rotate-90'}`}
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                >
+                    <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
                 <span className="text-sm font-medium">Advanced Settings</span>
                 {!showAdvanced && <span className="text-xs text-gray-400">(inflation details, income growth, expense assumptions)</span>}
             </button>

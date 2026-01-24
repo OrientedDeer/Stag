@@ -6,6 +6,8 @@ export default function SettingsTab() {
     const { importSettings, dispatch } = useContext(BudgetContext);
     const { expenses } = useContext(ExpenseContext);
 
+    const [showRules, setShowRules] = useState(false);
+    const [showFormats, setShowFormats] = useState(false);
     const [showAddRule, setShowAddRule] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [formData, setFormData] = useState({
@@ -70,29 +72,41 @@ export default function SettingsTab() {
 
             {/* Auto-categorization Rules */}
             <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-                <div className="flex items-center justify-between mb-4">
+                <button
+                    onClick={() => setShowRules(!showRules)}
+                    className="w-full flex items-center justify-between text-left"
+                >
                     <div>
                         <h4 className="font-medium text-white">Auto-categorization Rules</h4>
                         <p className="text-sm text-gray-400 mt-1">
-                            Define patterns to automatically categorize imported transactions.
+                            {rules.length} rule{rules.length !== 1 ? 's' : ''} defined
                         </p>
                     </div>
-                    <div className="flex gap-2">
-                        {rules.length > 0 && (
-                            <button
-                                onClick={handleReapplyAllRules}
-                                className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg text-sm font-medium transition-colors"
-                            >
-                                Re-apply All
-                            </button>
-                        )}
+                    <svg
+                        className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${showRules ? 'rotate-0' : '-rotate-90'}`}
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                    >
+                        <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                </button>
+
+                {showRules && <>
+                <div className="flex items-center justify-end gap-2 mt-4 mb-4">
+                    {rules.length > 0 && (
                         <button
-                            onClick={() => setShowAddRule(true)}
-                            className="px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded-lg text-sm font-medium transition-colors"
+                            onClick={handleReapplyAllRules}
+                            className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg text-sm font-medium transition-colors"
                         >
-                            Add Rule
+                            Re-apply All
                         </button>
-                    </div>
+                    )}
+                    <button
+                        onClick={() => setShowAddRule(true)}
+                        className="px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded-lg text-sm font-medium transition-colors"
+                    >
+                        Add Rule
+                    </button>
                 </div>
 
                 {/* Add Rule Form */}
@@ -223,17 +237,31 @@ export default function SettingsTab() {
                         </table>
                     </div>
                 )}
+                </>}
             </div>
 
             {/* Saved Import Formats */}
             <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-                <div className="mb-4">
-                    <h4 className="font-medium text-white">Saved Import Formats</h4>
-                    <p className="text-sm text-gray-400 mt-1">
-                        Previously used CSV formats are automatically recognized.
-                    </p>
-                </div>
+                <button
+                    onClick={() => setShowFormats(!showFormats)}
+                    className="w-full flex items-center justify-between text-left"
+                >
+                    <div>
+                        <h4 className="font-medium text-white">Saved Import Formats</h4>
+                        <p className="text-sm text-gray-400 mt-1">
+                            {savedFormats.length} format{savedFormats.length !== 1 ? 's' : ''} saved
+                        </p>
+                    </div>
+                    <svg
+                        className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${showFormats ? 'rotate-0' : '-rotate-90'}`}
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                    >
+                        <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                </button>
 
+                {showFormats && <>
                 {savedFormats.length === 0 ? (
                     <div className="text-center py-8 text-gray-500">
                         <p>No saved formats yet.</p>
@@ -280,6 +308,7 @@ export default function SettingsTab() {
                         ))}
                     </div>
                 )}
+                </>}
             </div>
 
             {/* Info Section */}

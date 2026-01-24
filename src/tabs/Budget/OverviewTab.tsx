@@ -9,7 +9,7 @@ import {
 } from '../../components/Objects/Budget/budgetUtils';
 
 export default function OverviewTab() {
-    const { months, selectedMonth, selectedYear, dispatch } = useContext(BudgetContext);
+    const { months, selectedMonth, selectedYear, importSettings, dispatch } = useContext(BudgetContext);
     const { expenses } = useContext(ExpenseContext);
 
     const currentSnapshot = useMemo(() =>
@@ -147,6 +147,14 @@ export default function OverviewTab() {
         return `${startMonth} '${startYear} - ${endMonth} '${endYear}`;
     }, [selectedMonth, selectedYear]);
 
+    const lastImportDate = useMemo(() => {
+        const formats = importSettings?.savedCSVFormats || [];
+        if (formats.length === 0) return null;
+        const dates = formats.map(f => new Date(f.lastUsed).getTime()).filter(t => !isNaN(t));
+        if (dates.length === 0) return null;
+        return new Date(Math.max(...dates));
+    }, [importSettings?.savedCSVFormats]);
+
     return (
         <div className="space-y-6">
             {/* Quick Stats Cards */}
@@ -191,6 +199,22 @@ export default function OverviewTab() {
                 </div>
             </div>
 
+            {/* Last Import Indicator */}
+            {lastImportDate && (
+                <div className="text-xs text-gray-500 text-right -mt-3">
+                    Last import: {lastImportDate.toLocaleDateString('en-US', {
+                        month: 'short', day: 'numeric', year: 'numeric'
+                    })}
+                    {(() => {
+                        const days = Math.floor((Date.now() - lastImportDate.getTime()) / (1000 * 60 * 60 * 24));
+                        if (days === 0) return ' (today)';
+                        if (days === 1) return ' (yesterday)';
+                        if (days > 30) return ` (${days} days ago)`;
+                        return ` (${days} days ago)`;
+                    })()}
+                </div>
+            )}
+
             {/* Year Progress */}
             <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
                 <h3 className="text-sm text-gray-400 mb-3">Year Progress</h3>
@@ -230,11 +254,11 @@ export default function OverviewTab() {
                         const getButtonClasses = () => {
                             if (hasMonthData) {
                                 switch (budgetStatus) {
-                                    case 'very-under': return 'bg-blue-500 text-white hover:bg-blue-400';
-                                    case 'under': return 'bg-teal-600 text-white hover:bg-teal-500';
-                                    case 'over': return 'bg-orange-500 text-white hover:bg-orange-400';
-                                    case 'very-over': return 'bg-rose-600 text-white hover:bg-rose-500';
-                                    default: return 'bg-teal-600 text-white hover:bg-teal-500';
+                                    case 'very-under': return 'bg-emerald-500 text-white hover:bg-emerald-400';
+                                    case 'under': return 'bg-green-600 text-white hover:bg-green-500';
+                                    case 'over': return 'bg-amber-500 text-white hover:bg-amber-400';
+                                    case 'very-over': return 'bg-red-500 text-white hover:bg-red-400';
+                                    default: return 'bg-green-600 text-white hover:bg-green-500';
                                 }
                             }
                             return isFuture
@@ -263,19 +287,19 @@ export default function OverviewTab() {
                 </div>
                 <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-xs text-gray-500">
                     <div className="flex items-center gap-1.5">
-                        <div className="w-2.5 h-2.5 rounded bg-blue-500"></div>
+                        <div className="w-2.5 h-2.5 rounded bg-emerald-500"></div>
                         <span>&lt;80%</span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                        <div className="w-2.5 h-2.5 rounded bg-teal-600"></div>
+                        <div className="w-2.5 h-2.5 rounded bg-green-600"></div>
                         <span>80-100%</span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                        <div className="w-2.5 h-2.5 rounded bg-orange-500"></div>
+                        <div className="w-2.5 h-2.5 rounded bg-amber-500"></div>
                         <span>100-120%</span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                        <div className="w-2.5 h-2.5 rounded bg-rose-600"></div>
+                        <div className="w-2.5 h-2.5 rounded bg-red-500"></div>
                         <span>&gt;120%</span>
                     </div>
                 </div>
