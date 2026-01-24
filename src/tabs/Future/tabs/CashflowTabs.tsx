@@ -36,7 +36,7 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
             {gkTriggered === 'capital-preservation' && (
                 <div className="p-3 bg-amber-900/20 border border-amber-700/50 rounded-lg text-sm">
                     <div className="flex items-start gap-2">
-                        <span className="text-amber-400 font-semibold">📉 Capital Preservation Rule:</span>
+                        <span className="text-amber-400 font-semibold">Capital Preservation Rule:</span>
                         <span className="text-gray-300">
                             Portfolio dropped below the guardrail threshold. Discretionary expenses were
                             <span className="text-amber-300"> reduced by {gkAdjustmentPercent ? `${Math.abs(gkAdjustmentPercent * 100).toFixed(0)}%` : '10%'}</span> to protect your portfolio.
@@ -47,7 +47,7 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
             {gkTriggered === 'prosperity' && (
                 <div className="p-3 bg-green-900/20 border border-green-700/50 rounded-lg text-sm">
                     <div className="flex items-start gap-2">
-                        <span className="text-green-400 font-semibold">📈 Prosperity Rule:</span>
+                        <span className="text-green-400 font-semibold">Prosperity Rule:</span>
                         <span className="text-gray-300">
                             Portfolio exceeded the upper guardrail threshold. Discretionary expenses were
                             <span className="text-green-300"> increased by {gkAdjustmentPercent ? `${Math.abs(gkAdjustmentPercent * 100).toFixed(0)}%` : '10%'}</span> to enjoy your gains.

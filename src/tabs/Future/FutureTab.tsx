@@ -361,10 +361,17 @@ export default function FutureTab() {
                 <div className="mb-6 p-4 bg-gray-900 rounded-xl border border-gray-800 shadow-lg">
                     <div className="flex items-center gap-3 mb-4">
                         <h2 className="text-xl font-bold text-white">Retirement Timeline</h2>
-                        {isLoading && (
+                        {isLoading ? (
                             <span className="px-2 py-1 text-xs bg-blue-600 text-white rounded-full flex items-center gap-1">
                                 <LoadingSpinner size="sm" /> Updating...
                             </span>
+                        ) : (
+                            <button
+                                onClick={handleRecalculate}
+                                className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-full transition-colors"
+                            >
+                                ↻ Recalculate
+                            </button>
                         )}
                     </div>
 

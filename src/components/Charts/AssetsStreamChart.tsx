@@ -67,13 +67,22 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
     if (filteredData.length === 0) return undefined;
 
     const range = filteredData.length;
+    const mobile = (containerWidth ?? 800) < 640;
+
     let step = 1;
-    if (range > 41) step = 2;
+    if (mobile) {
+      if (range > 30) step = 5;
+      else if (range > 15) step = 3;
+      else if (range > 8) step = 2;
+    } else {
+      if (range > 40) step = 5;
+      else if (range > 20) step = 2;
+    }
 
     return filteredData
       .map((_, i) => i)
       .filter((i) => i === 0 || i === filteredData.length - 1 || i % step === 0);
-  }, [filteredData]);
+  }, [filteredData, containerWidth]);
 
   const theme = {
     axis: { ticks: { text: { fill: '#9ca3af', fontSize: 11 } } },

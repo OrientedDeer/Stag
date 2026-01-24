@@ -199,10 +199,17 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
 
         const years = percentiles.p50.map(p => p.year);
         const range = years.length;
+        const mobile = (containerWidth ?? 800) < 640;
 
-        // Determine step size based on range (aim for ~8-10 ticks max)
         let step = 1;
-        if (range > 41) step = 2;
+        if (mobile) {
+            if (range > 30) step = 5;
+            else if (range > 15) step = 3;
+            else if (range > 8) step = 2;
+        } else {
+            if (range > 40) step = 5;
+            else if (range > 20) step = 2;
+        }
 
         // Filter years at regular intervals
         return years.filter((year, i) => {
@@ -211,7 +218,7 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
             // Include years at step intervals
             return (year - years[0]) % step === 0;
         });
-    }, [percentiles.p50]);
+    }, [percentiles.p50, containerWidth]);
 
     // Custom layer to render filled areas between percentile bands
     const AreaLayer = ({ xScale, yScale }: any) => {

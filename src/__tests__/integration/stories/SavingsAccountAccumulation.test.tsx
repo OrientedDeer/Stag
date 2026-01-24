@@ -173,7 +173,9 @@ describe('Story: Savings Account Accumulation', () => {
             [workIncome],
             [livingExpenses],
             assumptions,
-            taxState
+            taxState,
+            undefined,
+            new Date(2025, 11, 31) // December — no partial-year adjustment
         );
 
         // Check interest calculation for each year
@@ -197,7 +199,9 @@ describe('Story: Savings Account Accumulation', () => {
             [workIncome],
             [tinyExpenses],
             isolatedAssumptions,
-            taxState
+            taxState,
+            undefined,
+            new Date(2025, 11, 31) // December — no partial-year adjustment
         );
 
         // Check compound growth: each year balance = prev * 1.05
@@ -373,7 +377,9 @@ describe('Story: Savings Account Accumulation', () => {
             [workIncome],
             [livingExpenses],
             assumptions,
-            taxState
+            taxState,
+            undefined,
+            new Date(2025, 11, 31) // December — no partial-year adjustment
         );
 
         // Check year 2 interest incomes

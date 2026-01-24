@@ -41,7 +41,7 @@ export interface AssumptionsState {
     returnRates: {
       ror: number;   // e.g., 10.0
     };
-    withdrawalStrategy: 'Fixed Real' | 'Percentage' | 'Guyton Klinger';
+    withdrawalStrategy: 'None' | 'Fixed Real' | 'Percentage' | 'Guyton Klinger';
     withdrawalRate: number; // e.g., 4.0
     // Guyton-Klinger guardrail settings
     gkUpperGuardrail: number;     // Default 1.2 (20% above target triggers cut)
@@ -49,6 +49,11 @@ export interface AssumptionsState {
     gkAdjustmentPercent: number;  // Default 10 (10% cut/increase per GK rules)
     // Auto Roth conversions during retirement
     autoRothConversions: boolean; // Automatically convert Traditional to Roth in low-tax years
+    // Auto Roth conversion target
+    rothConversionTargetBracket: number; // Max effective rate for conversions (e.g., 0.22)
+    // Tax-optimized withdrawal splitting
+    taxOptimizedWithdrawals: boolean; // Enable bracket-aware withdrawal splitting
+    taxOptimizedTargetBracket: number; // Target bracket ceiling as decimal (e.g., 0.22)
     };
   demographics: {
     birthYear: number;
@@ -90,6 +95,9 @@ export const defaultAssumptions: AssumptionsState = {
     gkLowerGuardrail: 0.8,      // Boost when rate < target * 0.8
     gkAdjustmentPercent: 10,    // 10% adjustment (per actual GK rules)
     autoRothConversions: false, // Auto-convert Traditional to Roth in retirement
+    rothConversionTargetBracket: 0.22, // Convert up to 22% effective rate
+    taxOptimizedWithdrawals: false, // Bracket-aware withdrawal splitting
+    taxOptimizedTargetBracket: 0.22, // Default to 22% bracket ceiling
   },
   demographics: {
     retirementAge: 65,
@@ -231,8 +239,14 @@ const assumptionsReducer = (state: AssumptionsState, action: Action): Assumption
       };
     case 'UPDATE_DEMOGRAPHICS':
       return { ...state, demographics: { ...state.demographics, ...action.payload } };
-    case 'UPDATE_DISPLAY':
-      return { ...state, display: { ...state.display, ...action.payload } };
+    case 'UPDATE_DISPLAY': {
+      const newDisplay = { ...state.display, ...action.payload };
+      // Disable experimental features when toggled off
+      const investments = (action.payload.showExperimentalFeatures === false && state.investments.taxOptimizedWithdrawals)
+        ? { ...state.investments, taxOptimizedWithdrawals: false }
+        : state.investments;
+      return { ...state, display: newDisplay, investments };
+    }
     case 'RESET_DEFAULTS':
       // Preserve user's allocations and withdrawal order
       return {

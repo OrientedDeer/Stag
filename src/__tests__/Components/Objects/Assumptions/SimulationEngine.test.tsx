@@ -65,12 +65,14 @@ describe('Simulation Engine', () => {
         // --- EXECUTE ---
         // Run for 2 years
         const result = runSimulation(
-            2, 
-            [testAccount], 
+            2,
+            [testAccount],
             [], // No Income
             [], // No Expenses
-            cleanAssumptions, 
-            mockTaxState
+            cleanAssumptions,
+            mockTaxState,
+            undefined,
+            new Date(2025, 11, 31) // December — no partial-year adjustment
         );
 
         // --- ASSERT ---

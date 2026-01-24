@@ -71,8 +71,20 @@ export class InvestedAccount extends BaseAccount {
     public costBasis: number = amount, // Default to current amount for backwards compatibility
     // Optional custom return rate (overrides global assumptions)
     public customROR?: number, // undefined means use global assumptions
+    // Track Roth conversion amounts with the year they occurred (for 5-year rule)
+    public conversionHistory: { year: number; amount: number }[] = [],
   ) {
     super(id, name, amount);
+  }
+
+  // Total amount in costBasis that came from conversions
+  get totalConversionBasis(): number {
+    return this.conversionHistory.reduce((sum, c) => sum + c.amount, 0);
+  }
+
+  // Amount of costBasis that represents regular contributions (not conversions)
+  get regularContributions(): number {
+    return Math.max(0, this.costBasis - this.totalConversionBasis);
   }
 
   // Calculate unrealized gains (amount above cost basis)
@@ -108,7 +120,9 @@ export class InvestedAccount extends BaseAccount {
     assumptions: AssumptionsState,
     userContribution: number = 0,
     employerContribution: number = 0,
-    overrideReturnRate?: number
+    overrideReturnRate?: number,
+    conversionAmount: number = 0,
+    currentYear: number = 0
   ): InvestedAccount {
 
     // 1. Calculate Growth Rate
@@ -162,7 +176,7 @@ export class InvestedAccount extends BaseAccount {
         preGrowthUserBalance -= withdrawalAmount;
       }
 
-      // Reduce cost basis proportionally on withdrawal (before growth)
+      // Reduce cost basis and conversion history proportionally on withdrawal (before growth)
       if (this.amount > 0) {
         const withdrawalPct = withdrawalAmount / this.amount;
         preGrowthCostBasis = this.costBasis * (1 - withdrawalPct);
@@ -174,6 +188,22 @@ export class InvestedAccount extends BaseAccount {
       // Add contributions to cost basis (vested employer contributions count as basis)
       const vestedEmployerContrib = employerContribution * vestedPct;
       preGrowthCostBasis = this.costBasis + userContribution + vestedEmployerContrib;
+    }
+
+    // Build updated conversion history
+    let newConversionHistory = [...this.conversionHistory];
+
+    // On withdrawal, reduce conversion history proportionally
+    if (userContribution < 0 && this.amount > 0) {
+      const withdrawalPct = Math.abs(userContribution) / this.amount;
+      newConversionHistory = newConversionHistory
+        .map(c => ({ year: c.year, amount: c.amount * (1 - withdrawalPct) }))
+        .filter(c => c.amount > 0.01); // Remove negligible entries
+    }
+
+    // Add new conversion entry if applicable
+    if (conversionAmount > 0 && currentYear > 0) {
+      newConversionHistory.push({ year: currentYear, amount: conversionAmount });
     }
 
     // 5. Now apply growth to the adjusted (post-transaction) balances
@@ -202,7 +232,8 @@ export class InvestedAccount extends BaseAccount {
       this.isContributionEligible,
       this.vestedPerYear,
       finalCostBasis,
-      this.customROR
+      this.customROR,
+      newConversionHistory
     );
   }
 }
@@ -749,7 +780,10 @@ export function reconstituteAccount(data: unknown): AnyAccount | null {
         case 'SavedAccount':
             return new SavedAccount(id, name, amount, Number(data.apr) || 0);
 
-        case 'InvestedAccount':
+        case 'InvestedAccount': {
+            const conversionHistory = Array.isArray(data.conversionHistory)
+                ? data.conversionHistory.map((c: any) => ({ year: Number(c.year), amount: Number(c.amount) }))
+                : [];
             return new InvestedAccount(
                 id, name, amount,
                 Number(data.employerBalance) || 0,
@@ -759,8 +793,10 @@ export function reconstituteAccount(data: unknown): AnyAccount | null {
                 (data.isContributionEligible as boolean) ?? true,
                 Number(data.vestedPerYear ?? 0.2),
                 Number(data.costBasis ?? amount),
-                data.customROR !== undefined ? Number(data.customROR) : undefined
+                data.customROR !== undefined ? Number(data.customROR) : undefined,
+                conversionHistory
             );
+        }
 
         case 'ESPPAccount': {
             const lotsData = Array.isArray(data.lots) ? data.lots : [];

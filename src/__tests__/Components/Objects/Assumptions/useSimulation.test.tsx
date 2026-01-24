@@ -205,7 +205,7 @@ describe('useSimulation - runSimulation', () => {
             // Override returns: year 1 = 20%, year 2 = -10%
             const yearlyReturns = [20, -10];
 
-            const result = runSimulation(2, [account], [], [], baseAssumptions, baseTaxState, yearlyReturns);
+            const result = runSimulation(2, [account], [], [], baseAssumptions, baseTaxState, yearlyReturns, new Date(2025, 11, 31));
 
             // Year 0: $100,000
             expect(result[0].accounts[0].amount).toBe(100000);
@@ -223,7 +223,7 @@ describe('useSimulation - runSimulation', () => {
             );
 
             // No yearlyReturns = use assumptions (10% in baseAssumptions)
-            const result = runSimulation(2, [account], [], [], baseAssumptions, baseTaxState);
+            const result = runSimulation(2, [account], [], [], baseAssumptions, baseTaxState, undefined, new Date(2025, 11, 31));
 
             // Year 1: $100,000 * 1.10 = $110,000
             expect(result[1].accounts[0].amount).toBeCloseTo(110000, 0);
@@ -240,7 +240,7 @@ describe('useSimulation - runSimulation', () => {
             // Only provide 1 year of overrides for a 3 year simulation
             const yearlyReturns = [15]; // Year 1 only
 
-            const result = runSimulation(3, [account], [], [], baseAssumptions, baseTaxState, yearlyReturns);
+            const result = runSimulation(3, [account], [], [], baseAssumptions, baseTaxState, yearlyReturns, new Date(2025, 11, 31));
 
             // Year 1 uses override (15%)
             expect(result[1].accounts[0].amount).toBeCloseTo(115000, 0);
@@ -284,7 +284,7 @@ describe('useSimulation - runSimulation', () => {
         it('should carry forward account balances year to year', () => {
             const account = new SavedAccount('sav-1', 'Savings', 10000, 5); // 5% APR
 
-            const result = runSimulation(3, [account], [], [], baseAssumptions, baseTaxState);
+            const result = runSimulation(3, [account], [], [], baseAssumptions, baseTaxState, undefined, new Date(2025, 11, 31));
 
             // Year 0: $10,000
             expect(result[0].accounts[0].amount).toBe(10000);

@@ -35,6 +35,9 @@ function createMockAssumptions(overrides: Partial<AssumptionsState['demographics
       gkLowerGuardrail: 0.8,
       gkAdjustmentPercent: 10,
       autoRothConversions: false,
+      rothConversionTargetBracket: 0.22,
+      taxOptimizedWithdrawals: false,
+      taxOptimizedTargetBracket: 0.22,
     },
     income: {
       salaryGrowth: 3,

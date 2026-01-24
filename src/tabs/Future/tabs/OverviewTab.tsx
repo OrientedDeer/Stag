@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { ChartTooltipPortal } from '../../../components/Charts/ChartTooltipPortal';
 import { ResponsiveLine } from '@nivo/line';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
-import { SavedAccount, InvestedAccount, PropertyAccount, DebtAccount } from '../../../components/Objects/Accounts/models';
+import { SavedAccount, InvestedAccount, PropertyAccount, DebtAccount, DeficitDebtAccount } from '../../../components/Objects/Accounts/models';
 import { formatCompactCurrency } from './FutureUtils';
 import { LoanExpense, MortgageExpense } from '../../../components/Objects/Expense/models';
 import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider';
@@ -150,11 +150,17 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
 
         const years = rawData.map(d => d.year);
         const range = years.length;
+        const mobile = (containerWidth ?? 800) < 640;
 
-        // Determine step size based on range (aim for ~8-10 ticks max)
         let step = 1;
-        if (range > 41) step = 2;
-        else if (range > 25) step = 1;
+        if (mobile) {
+            if (range > 30) step = 5;
+            else if (range > 15) step = 3;
+            else if (range > 8) step = 2;
+        } else {
+            if (range > 40) step = 5;
+            else if (range > 20) step = 2;
+        }
 
         // Filter years at regular intervals
         return years.filter((year, i) => {
@@ -163,7 +169,7 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
             // Include years at step intervals
             return (year - years[0]) % step === 0;
         });
-    }, [rawData]);
+    }, [rawData, containerWidth]);
 
     // 5. Custom Tooltip
     const CustomTooltip = ({ slice }: any) => {
@@ -219,8 +225,8 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
         assumptions.demographics.birthYear
     );
 
-    // Check for Guyton-Klinger warnings in simulation data
-    const gkWarnings = useMemo(() => {
+    // Check for strategy warnings in simulation data
+    const strategyWarnings = useMemo(() => {
         const warnings: Array<{ year: number; warning: string }> = [];
         simulationData.forEach(year => {
             if (year.strategyAdjustment?.warning) {
@@ -233,7 +239,7 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
         return warnings;
     }, [simulationData]);
 
-    // Count GK guardrail triggers for summary
+    // Count guardrail triggers for summary
     const gkTriggerCount = useMemo(() => {
         let capitalPreservation = 0;
         let prosperity = 0;
@@ -245,6 +251,20 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
             }
         });
         return { capitalPreservation, prosperity };
+    }, [simulationData]);
+
+    // Check for uncovered deficit (expenses exceed all available income + withdrawals)
+    const deficitInfo = useMemo(() => {
+        let firstYear: number | null = null;
+        let maxAmount = 0;
+        for (const year of simulationData) {
+            const deficitAcc = year.accounts.find(acc => acc instanceof DeficitDebtAccount);
+            if (deficitAcc) {
+                if (!firstYear) firstYear = year.year;
+                maxAmount = Math.max(maxAmount, deficitAcc.amount);
+            }
+        }
+        return firstYear ? { firstYear, maxAmount } : null;
     }, [simulationData]);
 
     // Check if user qualifies for SS but hasn't set up SS income
@@ -307,20 +327,20 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                 </AlertBanner>
             )}
 
-            {/* Guyton-Klinger Warning Banner */}
-            {gkWarnings.length > 0 && (
-                <AlertBanner severity="warning" title="Guyton-Klinger Strategy Warning">
+            {/* Strategy Warning Banner */}
+            {strategyWarnings.length > 0 && (
+                <AlertBanner severity="warning" title="Withdrawal Strategy Warning">
                     <div className="text-sm space-y-2">
                         <p>
-                            In <span className="text-amber-300 font-semibold">{gkWarnings.length} year(s)</span> of your simulation,
-                            the Capital Preservation rule would require cutting more than your discretionary expenses allow.
+                            In <span className="text-amber-300 font-semibold">{strategyWarnings.length} year(s)</span> of your simulation,
+                            your spending exceeds the strategy budget and cannot be fully covered by cutting discretionary expenses.
                         </p>
                         <div className="text-gray-400 text-xs space-y-1">
                             <p><strong>Consider:</strong></p>
                             <ul className="list-disc list-inside pl-2">
                                 <li>Marking more expenses as discretionary</li>
-                                <li>Choosing a different withdrawal strategy</li>
-                                <li>Lowering your withdrawal rate</li>
+                                <li>Reducing fixed expenses</li>
+                                <li>Increasing your withdrawal rate</li>
                             </ul>
                         </div>
                     </div>
@@ -346,6 +366,28 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                                 {gkTriggerCount.prosperity} expense increase(s)
                             </span>
                         )}
+                    </div>
+                </AlertBanner>
+            )}
+
+            {/* Deficit Warning */}
+            {deficitInfo && (
+                <AlertBanner severity="error" title="Plan Has Uncovered Deficit">
+                    <div className="text-sm space-y-2">
+                        <p>
+                            Starting in <span className="text-red-300 font-semibold">{deficitInfo.firstYear}</span>,
+                            your expenses exceed all available income and withdrawable savings,
+                            reaching up to {formatCompactCurrency(deficitInfo.maxAmount, { forceExact })} in uncovered shortfall.
+                        </p>
+                        <div className="text-gray-400 text-xs space-y-1">
+                            <p><strong>Consider adjusting:</strong></p>
+                            <ul className="list-disc list-inside pl-2">
+                                <li>Increasing retirement age or savings rate</li>
+                                <li>Reducing planned expenses</li>
+                                <li>Lowering the withdrawal rate</li>
+                                <li>Adding additional income sources</li>
+                            </ul>
+                        </div>
                     </div>
                 </AlertBanner>
             )}

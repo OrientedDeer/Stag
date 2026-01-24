@@ -143,23 +143,28 @@ export default function AssumptionTab() {
                         <DropdownInput
                             label="Strategy"
                             value={state.investments.withdrawalStrategy}
-                            options={['Fixed Real', 'Percentage', 'Guyton Klinger']}
-                            onChange={(val) => dispatch({ type: 'UPDATE_INVESTMENTS', payload: { withdrawalStrategy: val as 'Fixed Real' | 'Percentage' | 'Guyton Klinger' } })}
+                            options={['None', 'Fixed Real', 'Percentage', 'Guyton Klinger']}
+                            onChange={(val) => dispatch({ type: 'UPDATE_INVESTMENTS', payload: { withdrawalStrategy: val as 'None' | 'Fixed Real' | 'Percentage' | 'Guyton Klinger' } })}
                         />
+                        {state.investments.withdrawalStrategy !== 'None' && (
                         <PercentageInput
                             label="Withdrawal Rate"
                             value={state.investments.withdrawalRate}
                             onChange={(val) => dispatch({ type: 'UPDATE_INVESTMENTS', payload: { withdrawalRate: val } })}
                         />
+                        )}
                     </div>
 
                     {/* Strategy Description */}
                     <div className="text-xs text-gray-400 bg-gray-800/50 rounded-lg p-3">
+                        {state.investments.withdrawalStrategy === 'None' && (
+                            <p><span className="text-gray-300 font-medium">None:</span> Withdraw exactly what your listed expenses require. No target rate — accounts are drawn down as needed to cover your planned spending.</p>
+                        )}
                         {state.investments.withdrawalStrategy === 'Fixed Real' && (
-                            <p><span className="text-gray-300 font-medium">Fixed Real:</span> Withdraw a fixed percentage of your initial portfolio, adjusted for inflation each year. Predictable income that maintains purchasing power.</p>
+                            <p><span className="text-gray-300 font-medium">Fixed Real:</span> Withdraw a fixed percentage of your initial portfolio, adjusted for inflation each year. Discretionary expenses are trimmed to stay within this budget.</p>
                         )}
                         {state.investments.withdrawalStrategy === 'Percentage' && (
-                            <p><span className="text-gray-300 font-medium">Percentage:</span> Withdraw a fixed percentage of your current portfolio each year. Income varies with market performance but portfolio never fully depletes.</p>
+                            <p><span className="text-gray-300 font-medium">Percentage:</span> Withdraw a fixed percentage of your current portfolio each year. Discretionary expenses are trimmed to fit the budget, which naturally adjusts with market performance.</p>
                         )}
                         {state.investments.withdrawalStrategy === 'Guyton Klinger' && (
                             <p><span className="text-gray-300 font-medium">Guyton-Klinger:</span> Dynamic strategy that adjusts spending based on portfolio performance. Cuts discretionary expenses in bad markets, increases them in good markets.</p>
@@ -262,8 +267,26 @@ export default function AssumptionTab() {
                             label="Auto Roth Conversions"
                             enabled={state.investments.autoRothConversions ?? false}
                             setEnabled={(val) => dispatch({ type: 'UPDATE_INVESTMENTS', payload: { autoRothConversions: val } })}
-                            tooltip="During retirement, automatically convert Traditional to Roth to fill lower tax brackets (up to 22%). Assumes withdrawals in retirement would be taxed at 22% or higher."
+                            tooltip="During retirement, automatically convert Traditional to Roth up to the target bracket's effective rate (including SS torpedo effect)"
                         />
+
+                        {state.investments.autoRothConversions && (
+                            <DropdownInput
+                                label="Conversion Target"
+                                value={String(state.investments.rothConversionTargetBracket ?? 0.22)}
+                                onChange={(val) => dispatch({ type: 'UPDATE_INVESTMENTS', payload: { rothConversionTargetBracket: parseFloat(val) } })}
+                                options={[
+                                    { value: '0.1', label: '10%' },
+                                    { value: '0.12', label: '12%' },
+                                    { value: '0.22', label: '22%' },
+                                    { value: '0.24', label: '24%' },
+                                    { value: '0.32', label: '32%' },
+                                    { value: '0.35', label: '35%' },
+                                    { value: '0.37', label: '37%' },
+                                ]}
+                                tooltip="Maximum effective tax rate (including SS torpedo) for Roth conversions"
+                            />
+                        )}
 
                         <ToggleInput
                             label="Prior Year Mode"

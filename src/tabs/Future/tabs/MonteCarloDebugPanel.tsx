@@ -220,7 +220,7 @@ export const MonteCarloDebugPanel = React.memo(({ summary, config }: MonteCarloD
             {isVisible && (
                 <div className="mt-4 space-y-3 bg-gray-900 border border-gray-700 rounded-xl p-4">
                     <div className="text-yellow-500 text-xs mb-4 flex items-center gap-2">
-                        <span>⚠️</span>
+                        <span className="font-bold">[DEBUG]</span>
                         <span>Debug information - for development and troubleshooting</span>
                     </div>
 

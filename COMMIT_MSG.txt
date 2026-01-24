@@ -1,0 +1,61 @@
+Enforce withdrawal strategy spending caps, add partial-year contributions, and UX fixes
+
+Withdrawal Strategy Overhaul:
+- All strategies (Fixed Real, Percentage, GK) now enforce spending caps by
+  trimming discretionary expenses when they exceed the strategy budget
+- Add "None" strategy: withdraw exactly what listed expenses require
+- Fixed Real/Percentage compute target then cap spending (same pattern as GK)
+- Generalize strategy warning banner on OverviewTab (was GK-specific)
+- Update strategy descriptions to reflect spending cap behavior
+- GK spending cap moved to after expenses are summed (fixes ordering)
+
+Tax-Optimized Withdrawals (Experimental):
+- Move tax-optimized withdrawal UI behind experimental features toggle
+- Auto-disable taxOptimizedWithdrawals when experimental is turned off
+- Bracket-aware withdrawal: fill Traditional up to target, then tax-free
+- Classify accounts by tax category for two-phase withdrawal ordering
+
+5-Year Roth Conversion Tracking:
+- Track conversionHistory on InvestedAccount (year + amount)
+- Proper IRS 3-step early withdrawal ordering: contributions (free),
+  conversions FIFO (5-year penalty), then earnings (taxable + penalty)
+- Skip Roth conversion when deficit exceeds penalty-free sources
+- QR compression support for conversionHistory field
+
+Roth Conversion Target Bracket:
+- Make auto Roth conversion target bracket configurable (was hardcoded 22%)
+- Add dropdown UI on AssumptionTab when auto conversions enabled
+
+Partial-Year Simulation:
+- Add remaining-fraction 401k/Roth contributions and employer match to
+  Year 0 accounts so Year 1 starts from projected balances
+- Remove fractional growth (was double-counting with Year 1's full-year growth)
+- Add referenceDate parameter to runSimulation for testability
+- Skip adjustment in priorYearMode or when in December
+
+Mobile Chart X-Axis Labels:
+- Viewport-aware tick thinning across all 4 chart files
+- Target ~6-8 labels on mobile (step 2/3/5) vs ~10-12 on desktop
+
+Deficit Warning Banner:
+- Detect DeficitDebtAccount in simulation data on OverviewTab
+- Show error-severity AlertBanner with first year and max shortfall amount
+
+Recalculate Button:
+- Add manual recalculate button next to Retirement Timeline heading
+- Shows "Updating..." spinner while running
+
+Style Consistency:
+- Replace all emojis in SimulationEngine debug logs with text prefixes
+  ([WARN], [SKIP], [INFO], [PENSION], [FLOW], [CUT], [TARGET], [OK])
+- Remove emojis from user-facing UI (CashflowTabs, CashflowSankey,
+  MonteCarloDebugPanel) — styling already conveys meaning
+
+Roadmap:
+- Add detailed 8-step RSU implementation plan
+- Move completed items (mobile labels, deficit banner) to Recently Completed
+- Remove completed High Priority items
+
+Test updates:
+- Pass referenceDate=December to tests relying on full-year assumptions
+- Adjust tolerances for partial-year-aware calculations

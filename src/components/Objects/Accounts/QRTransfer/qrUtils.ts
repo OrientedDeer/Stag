@@ -10,7 +10,7 @@ const KEY_MAP: Record<string, string> = {
     id: 'd', name: 'n', amount: 'a', className: 'c',
     // Accounts
     apr: 'r', taxType: 'x', employerBalance: 'b', expenseRatio: 'p',
-    tenureYears: 'y', vestedPerYear: 'v', costBasis: 'o',
+    tenureYears: 'y', vestedPerYear: 'v', costBasis: 'o', conversionHistory: 'ch',
     isContributionEligible: 'g', linkedAccountId: 'L', nonVestedAmount: 'V',
     // ESPP Account
     lots: 'lt', linkedIncomeId: 'li', customROR: 'cr',
@@ -43,7 +43,7 @@ const KEY_MAP: Record<string, string> = {
     salaryGrowth: 'sg', qualifiesForSocialSecurity: 'ss', socialSecurityFundingPercent: 'sp',
     lifestyleCreep: 'lc', housingAppreciation: 'ha', rentInflation: 'ri',
     ror: 'rr', withdrawalStrategy: 'ws', withdrawalRate: 'wr',
-    gkUpperGuardrail: 'gu', gkLowerGuardrail: 'gl', gkAdjustmentPercent: 'ga', autoRothConversions: 'ar',
+    gkUpperGuardrail: 'gu', gkLowerGuardrail: 'gl', gkAdjustmentPercent: 'ga', autoRothConversions: 'ar', rothConversionTargetBracket: 'rb', taxOptimizedWithdrawals: 'tw', taxOptimizedTargetBracket: 'tb',
     retirementAge: 'ra', lifeExpectancy: 'le', birthYear: 'by', priorYearMode: 'pm',
     useCompactCurrency: 'cc', showExperimentalFeatures: 'ef', hsaEligible: 'he',
     // Priorities/Withdrawal
@@ -63,6 +63,7 @@ const DEFAULTS: Record<string, Record<string, unknown>> = {
         tenureYears: 0,
         vestedPerYear: 0,
         costBasis: 0,
+        conversionHistory: [],
         nonVestedAmount: 0,
         expenseRatio: 0,
         // ESPP Account defaults
@@ -116,6 +117,9 @@ const ASSUMPTIONS_DEFAULTS: Record<string, unknown> = {
     gkLowerGuardrail: 0.8,
     gkAdjustmentPercent: 10,
     autoRothConversions: false,
+    rothConversionTargetBracket: 0.22,
+    taxOptimizedWithdrawals: false,
+    taxOptimizedTargetBracket: 0.22,
     // Demographics
     retirementAge: 65,
     lifeExpectancy: 90,
@@ -269,6 +273,9 @@ function expandAssumptions(flat: Record<string, unknown>): Record<string, unknow
             gkLowerGuardrail: flat.gkLowerGuardrail ?? ASSUMPTIONS_DEFAULTS.gkLowerGuardrail,
             gkAdjustmentPercent: flat.gkAdjustmentPercent ?? ASSUMPTIONS_DEFAULTS.gkAdjustmentPercent,
             autoRothConversions: flat.autoRothConversions ?? ASSUMPTIONS_DEFAULTS.autoRothConversions,
+            rothConversionTargetBracket: flat.rothConversionTargetBracket ?? ASSUMPTIONS_DEFAULTS.rothConversionTargetBracket,
+            taxOptimizedWithdrawals: flat.taxOptimizedWithdrawals ?? ASSUMPTIONS_DEFAULTS.taxOptimizedWithdrawals,
+            taxOptimizedTargetBracket: flat.taxOptimizedTargetBracket ?? ASSUMPTIONS_DEFAULTS.taxOptimizedTargetBracket,
         },
         demographics: {
             birthYear: flat.birthYear, // No default - must be provided

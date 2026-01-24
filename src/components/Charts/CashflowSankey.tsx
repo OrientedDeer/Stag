@@ -39,7 +39,7 @@ class SankeyErrorBoundary extends Component<
                     className="flex items-center justify-center bg-red-900/10 border border-red-700 rounded-lg"
                 >
                     <div className="text-center p-6">
-                        <div className="text-red-400 text-lg font-bold mb-2">⚠️ Rendering Error</div>
+                        <div className="text-red-400 text-lg font-bold mb-2">Rendering Error</div>
                         <div className="text-gray-300 text-sm mb-2">
                             The chart failed to render. This is likely a data structure issue.
                         </div>
@@ -507,7 +507,7 @@ export const CashflowSankey = ({
         return (
             <div style={{ height: `${height}px` }} className="flex items-center justify-center bg-red-900/10 border border-red-700 rounded-lg">
                 <div className="text-center p-6 max-w-lg">
-                    <div className="text-red-400 text-lg font-bold mb-2">⚠️ Chart Error</div>
+                    <div className="text-red-400 text-lg font-bold mb-2">Chart Error</div>
                     <div className="text-gray-300 text-sm mb-4">{error}</div>
                     {debugData && (
                         <details className="text-left">

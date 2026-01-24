@@ -72,7 +72,7 @@ export interface BacktestConfig {
   /** Whether to adjust withdrawals for inflation each year (for simple mode) */
   inflationAdjustedWithdrawals: boolean;
   /** Withdrawal strategy to use (defaults to inflation-adjusted fixed for backward compatibility) */
-  withdrawalStrategy?: 'Fixed Real' | 'Percentage' | 'Guyton Klinger';
+  withdrawalStrategy?: 'None' | 'Fixed Real' | 'Percentage' | 'Guyton Klinger';
   /** Withdrawal rate as percentage (e.g., 4 for 4%) */
   withdrawalRate?: number;
   /** Guyton-Klinger upper guardrail (default 1.2) */
@@ -147,7 +147,7 @@ export function runSingleBacktest(
 
   // For withdrawal strategy tracking
   let previousWithdrawalResult: WithdrawalResult | undefined;
-  const useStrategy = withdrawalStrategy && withdrawalRate !== undefined;
+  const useStrategy = withdrawalStrategy && withdrawalStrategy !== 'None' && withdrawalRate !== undefined;
 
   for (let i = 0; i < retirementYears; i++) {
     const year = startYear + i;

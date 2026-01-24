@@ -59,14 +59,23 @@ export const DebtStreamChart: React.FC<DebtStreamChartProps> = ({
     if (trimmedData.length === 0) return undefined;
 
     const range = trimmedData.length;
+    const mobile = (containerWidth ?? 800) < 640;
+
     let step = 1;
-    if (range > 41) step = 2;
+    if (mobile) {
+      if (range > 30) step = 5;
+      else if (range > 15) step = 3;
+      else if (range > 8) step = 2;
+    } else {
+      if (range > 40) step = 5;
+      else if (range > 20) step = 2;
+    }
 
     // Return indices at regular intervals
     return trimmedData
       .map((_, i) => i)
       .filter((i) => i === 0 || i === trimmedData.length - 1 || i % step === 0);
-  }, [trimmedData]);
+  }, [trimmedData, containerWidth]);
 
   // Dark Theme for Nivo to match Overview/Cashflow style
   const theme = {

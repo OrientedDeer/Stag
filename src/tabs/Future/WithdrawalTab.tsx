@@ -4,6 +4,8 @@ import { AssumptionsContext, WithdrawalBucket } from '../../components/Objects/A
 import { AccountContext } from '../../components/Objects/Accounts/AccountContext';
 import { AnyAccount, ESPPAccount, SavedAccount, InvestedAccount } from '../../components/Objects/Accounts/models';
 import { formatCompactCurrency } from './tabs/FutureUtils';
+import { ToggleInput } from '../../components/Layout/InputFields/ToggleInput';
+import { DropdownInput } from '../../components/Layout/InputFields/DropdownInput';
 
 // Helper to get tax treatment badge for an account
 const getTaxBadge = (account: AnyAccount | undefined): { label: string; color: string } => {
@@ -158,7 +160,9 @@ export default function WithdrawalTab() {
                 )}
 
                 <p className="text-gray-400 mb-6 text-sm">
-                    Drag to reorder. When expenses exceed income, accounts are drained in the order shown below.
+                    Drag to reorder. {state.investments.taxOptimizedWithdrawals
+                        ? 'Traditional accounts are bracket-capped; others withdraw fully in this order.'
+                        : 'When expenses exceed income, accounts are drained in the order shown below.'}
                 </p>
 
                 {/* Tax Treatment Legend */}
@@ -176,6 +180,48 @@ export default function WithdrawalTab() {
                         <span className="text-gray-400 text-sm">Brokerage</span>
                     </div>
                 </div>
+
+                {/* Tax-Optimized Withdrawal Settings (Experimental) */}
+                {state.display?.showExperimentalFeatures && (
+                <div className="mb-6 p-4 bg-gray-900/50 rounded-xl border border-gray-800 space-y-4">
+                    <ToggleInput
+                        label="Tax-Optimized Withdrawals"
+                        enabled={state.investments.taxOptimizedWithdrawals}
+                        setEnabled={(val) => dispatch({ type: 'UPDATE_INVESTMENTS', payload: { taxOptimizedWithdrawals: val } })}
+                        tooltip="Fill Traditional withdrawals up to a target bracket, then use tax-free accounts for the remainder"
+                    />
+
+                    {state.investments.taxOptimizedWithdrawals && (
+                        <>
+                            <DropdownInput
+                                label="Target Bracket"
+                                value={String(state.investments.taxOptimizedTargetBracket)}
+                                onChange={(val) => dispatch({ type: 'UPDATE_INVESTMENTS', payload: { taxOptimizedTargetBracket: parseFloat(val) } })}
+                                options={[
+                                    { value: '0.1', label: '10%' },
+                                    { value: '0.12', label: '12%' },
+                                    { value: '0.22', label: '22%' },
+                                    { value: '0.24', label: '24%' },
+                                    { value: '0.32', label: '32%' },
+                                    { value: '0.35', label: '35%' },
+                                    { value: '0.37', label: '37%' },
+                                ]}
+                                tooltip="Traditional withdrawals will stay within this bracket; remaining deficit covered by tax-free accounts"
+                            />
+
+                            <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-3 text-xs text-gray-300 space-y-1">
+                                <p className="text-blue-400 font-semibold mb-1">How it works:</p>
+                                <ol className="list-decimal list-inside space-y-0.5">
+                                    <li>Accounts are withdrawn in your drag order above</li>
+                                    <li>Traditional accounts are capped at the target bracket ceiling</li>
+                                    <li>Other accounts (Roth, Brokerage, etc.) withdraw normally</li>
+                                    <li>If still short, Traditional resumes with no cap</li>
+                                </ol>
+                            </div>
+                        </>
+                    )}
+                </div>
+                )}
 
                 {bucketsWithDetails.length === 0 ? (
                     <div className="bg-gray-900/50 border border-dashed border-gray-700 rounded-xl px-6 py-12 text-center">

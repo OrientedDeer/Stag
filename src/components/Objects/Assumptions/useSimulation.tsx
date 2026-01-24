@@ -1,7 +1,7 @@
 import { simulateOneYear, SimulationYear } from './SimulationEngine';
 import * as TaxService from '../../Objects/Taxes/TaxService';
-import { WorkIncome } from '../Income/models';
-import { AnyAccount } from '../Accounts/models';
+import { WorkIncome, getIncomeActiveMultiplier } from '../Income/models';
+import { AnyAccount, InvestedAccount } from '../Accounts/models';
 import { AnyIncome } from '../Income/models';
 import { AnyExpense } from '../Expense/models';
 import { AssumptionsState } from './AssumptionsContext';
@@ -14,7 +14,8 @@ export const runSimulation = (
     expenses: AnyExpense[],
     assumptions: AssumptionsState,
     taxState: TaxState,
-    yearlyReturns?: number[]
+    yearlyReturns?: number[],
+    referenceDate?: Date
 ): SimulationYear[] => {
         
     // Calculate start year and current age from birth year
@@ -90,10 +91,63 @@ export const runSimulation = (
 
     timeline.push(yearZero);
 
+    // --- STEP 1.5: PARTIAL-YEAR ADJUSTMENT ---
+    // Apply remaining fraction of current year's growth and contributions
+    // so Year 1 starts from projected end-of-year balances, not today's balances.
+    const refDate = referenceDate ?? new Date();
+    const currentMonth = refDate.getMonth(); // 0=Jan, 11=Dec
+    const remainingFraction = (11 - currentMonth) / 12; // Jan→11/12, Dec→0/12
+
+    let adjustedAccounts: AnyAccount[] = [...yearZero.accounts];
+
+    if (remainingFraction > 0 && !assumptions.demographics.priorYearMode) {
+        // Calculate partial-year payroll contributions per account
+        const partialContributions: Record<string, { user: number; employer: number }> = {};
+
+        yearZero.incomes.forEach(inc => {
+            if (inc instanceof WorkIncome && inc.matchAccountId) {
+                const activeMultiplier = getIncomeActiveMultiplier(inc, startYear);
+                // Overlap between remaining months and income's active period
+                const effectiveFraction = Math.min(remainingFraction, activeMultiplier);
+                if (effectiveFraction <= 0) return;
+
+                const userContrib = (inc.preTax401k + inc.roth401k) * effectiveFraction;
+                const employerContrib = inc.employerMatch * effectiveFraction;
+
+                const existing = partialContributions[inc.matchAccountId] || { user: 0, employer: 0 };
+                partialContributions[inc.matchAccountId] = {
+                    user: existing.user + userContrib,
+                    employer: existing.employer + employerContrib,
+                };
+            }
+        });
+
+        // Apply partial-year contributions (no growth — Year 1 handles full-year growth)
+        adjustedAccounts = adjustedAccounts.map(acc => {
+            if (acc instanceof InvestedAccount) {
+                const contribs = partialContributions[acc.id] || { user: 0, employer: 0 };
+                if (contribs.user === 0 && contribs.employer === 0) return acc;
+
+                const newAmount = acc.amount + contribs.user + contribs.employer;
+                const newEmployerBalance = acc.employerBalance + contribs.employer;
+                const newCostBasis = acc.costBasis + contribs.user + contribs.employer;
+
+                return new InvestedAccount(
+                    acc.id, acc.name, newAmount, newEmployerBalance,
+                    acc.tenureYears, acc.expenseRatio, acc.taxType,
+                    acc.isContributionEligible, acc.vestedPerYear, newCostBasis, acc.customROR,
+                    acc.conversionHistory
+                );
+            }
+
+            return acc;
+        });
+    }
+
     // --- STEP 2: RUN FUTURE SIMULATION ---
     let currentIncomes = yearZero.incomes;
     let currentExpenses = yearZero.expenses;
-    let currentAccounts = yearZero.accounts;
+    let currentAccounts: AnyAccount[] = adjustedAccounts;
 
     // CHANGED: Use effectiveYearsToRun instead of yearsToRun
     for (let i = 1; i <= effectiveYearsToRun; i++) {

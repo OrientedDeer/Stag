@@ -190,6 +190,55 @@ function estimateTraditionalWithdrawalForExpenses(
     return estimatedTraditionalWithdrawal;
 }
 
+type TaxCategory = 'tax-deferred' | 'tax-free' | 'taxable' | 'mixed';
+
+/**
+ * Classify an account by its tax treatment for withdrawal ordering.
+ */
+function classifyAccountTaxCategory(account: AnyAccount): TaxCategory {
+    if (account instanceof SavedAccount) return 'tax-free';
+    if (account instanceof InvestedAccount) {
+        switch (account.taxType) {
+            case 'Traditional 401k':
+            case 'Traditional IRA':
+                return 'tax-deferred';
+            case 'Roth 401k':
+            case 'Roth IRA':
+            case 'HSA':
+                return 'tax-free';
+            case 'Brokerage':
+            default:
+                return 'taxable';
+        }
+    }
+    if (account instanceof ESPPAccount) return 'mixed';
+    return 'taxable';
+}
+
+/**
+ * Calculate how much Traditional (tax-deferred) withdrawal fits within
+ * the user's target bracket ceiling without pushing into a higher bracket.
+ */
+function calculateTraditionalWithdrawalCap(
+    totalGrossIncome: number,
+    preTaxDeductions: number,
+    rothConversionAmount: number,
+    year: number,
+    taxState: TaxState,
+    assumptions: AssumptionsState
+): number {
+    const targetRate = assumptions.investments.taxOptimizedTargetBracket;
+    const fedParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'federal', undefined, assumptions);
+    if (!fedParams) return Infinity;
+
+    const standardDeduction = fedParams.standardDeduction || 0;
+    const baseTaxableIncome = (totalGrossIncome - preTaxDeductions) + rothConversionAmount;
+    const bracketThreshold = getIncomeThresholdForRate(targetRate, fedParams);
+    const maxGross = bracketThreshold + standardDeduction;
+
+    return Math.max(0, maxGross - baseTaxableIncome);
+}
+
 /**
  * Perform automatic Roth conversions during retirement.
  * Converts from Traditional accounts (in withdrawal order) to Roth accounts (reverse order).
@@ -237,26 +286,8 @@ function performAutoRothConversion(
     const adjustedGross = nonSSGross + taxableSSBenefits;
     const taxableIncome = Math.max(0, adjustedGross - preTaxDeductions);
 
-    // Get retirement tax rate from previous simulation or use fallback
-    //const retirementAge = assumptions.demographics.retirementAge;
-    //const currentYear = new Date().getFullYear();
-    // const startYear = assumptions.demographics.priorYearMode
-    //     ? currentYear - 1
-    //     : currentYear;
-    //const startAge = startYear - assumptions.demographics.birthYear;
-    //const retirementYear = startYear + (retirementAge - startAge);
-
-    // Minimum target rate: always fill at least to the 22% bracket
-    // This ensures we do conversions even when calculated effective retirement rate is low
-    const MIN_CONVERSION_TARGET_RATE = 0.22;
-
-    // Use the higher of: minimum target rate OR calculated retirement effective rate
-    // This way, if someone has high retirement income (25% effective rate), we'd target 25%
-    let retirementTaxRate = MIN_CONVERSION_TARGET_RATE;
-    // if (previousSimulation.length >= 5) {
-    //     const calculatedRate = getMedianRetirementTaxRate(previousSimulation, retirementYear);
-    //     retirementTaxRate = Math.max(MIN_CONVERSION_TARGET_RATE, calculatedRate);
-    // }
+    // Use user-configured target bracket for conversions
+    const retirementTaxRate = assumptions.investments.rothConversionTargetBracket;
 
     // Check effective rate on a test conversion to see if we should convert at all
     // The effective rate includes the SS "tax torpedo" effect
@@ -532,7 +563,7 @@ export function simulateOneYear(
                         const reductionFactor = 1 - (eligibility.reductionPercent / 100);
                         const actualBenefit = baseBenefit * reductionFactor;
 
-                        logs.push(`🏛️ FERS Pension started: High-3 calculated as $${high3.toLocaleString()}/yr from ${salaryHistory.length} years of salary history`);
+                        logs.push(`[PENSION] FERS Pension started: High-3 calculated as $${high3.toLocaleString()}/yr from ${salaryHistory.length} years of salary history`);
                         if (eligibility.reductionPercent > 0) {
                             logs.push(`   Base benefit: $${baseBenefit.toLocaleString()}/yr, reduced by ${eligibility.reductionPercent}% (${eligibility.message})`);
                         }
@@ -594,7 +625,7 @@ export function simulateOneYear(
                         const reductionFactor = 1 - (eligibility.reductionPercent / 100);
                         const actualBenefit = baseBenefit * reductionFactor;
 
-                        logs.push(`🏛️ CSRS Pension started: High-3 calculated as $${high3.toLocaleString()}/yr from ${salaryHistory.length} years of salary history`);
+                        logs.push(`[PENSION] CSRS Pension started: High-3 calculated as $${high3.toLocaleString()}/yr from ${salaryHistory.length} years of salary history`);
                         if (eligibility.reductionPercent > 0) {
                             logs.push(`   Base benefit: $${baseBenefit.toLocaleString()}/yr, reduced by ${eligibility.reductionPercent}% (${eligibility.message})`);
                         }
@@ -658,7 +689,7 @@ export function simulateOneYear(
                     );
                 } catch (error) {
                     console.error('Error calculating Social Security benefits:', error);
-                    logs.push(`⚠️ Error calculating Social Security benefits: ${error}`);
+                    logs.push(`[WARN] Error calculating Social Security benefits: ${error}`);
                     // Return original income unchanged if calculation fails
                     return inc.increment(assumptions);
                 }
@@ -700,7 +731,7 @@ export function simulateOneYear(
                     // Calculate monthly reduced benefit
                     const monthlyReduced = earningsTest.reducedBenefit / 12;
 
-                    logs.push(`⚠️ Earnings test applied: SS benefit reduced from $${(annualSSBenefit/12).toFixed(2)}/month to $${monthlyReduced.toFixed(2)}/month`);
+                    logs.push(`[WARN] Earnings test applied: SS benefit reduced from $${(annualSSBenefit/12).toFixed(2)}/month to $${monthlyReduced.toFixed(2)}/month`);
                     logs.push(`  ${earningsTest.reason}`);
                     logs.push(`  Amount withheld: $${earningsTest.amountWithheld.toLocaleString()}/year`);
                     logs.push(`  Note: Withheld benefits would be recalculated at FRA (not yet implemented)`);
@@ -760,13 +791,14 @@ export function simulateOneYear(
                     }
                     return exp;
                 });
-                logs.push(`📈 Lifestyle creep: Salary raise of $${totalRaise.toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr → Discretionary expenses increased by $${lifestyleCreepAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr (${assumptions.expenses.lifestyleCreep}%)`);
+                logs.push(`[FLOW] Lifestyle creep: Salary raise of $${totalRaise.toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr → Discretionary expenses increased by $${lifestyleCreepAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr (${assumptions.expenses.lifestyleCreep}%)`);
             }
         }
     }
 
     // ------------------------------------------------------------------
-    // GUYTON-KLINGER EXPENSE ADJUSTMENT (Must happen BEFORE expenses are summed)
+    // GUYTON-KLINGER TARGET CALCULATION
+    // Computes GK withdrawal target. Spending cap enforced after expenses are summed.
     // ------------------------------------------------------------------
     let strategyWithdrawalResult: WithdrawalResult | undefined;
     let strategyAdjustmentResult: SimulationYear['strategyAdjustment'] | undefined;
@@ -806,83 +838,18 @@ export function simulateOneYear(
             yearsRemaining,
         });
 
-        logs.push(`📊 Retirement withdrawal strategy: Guyton Klinger`);
+        logs.push(`[INFO] Retirement withdrawal strategy: Guyton Klinger`);
         logs.push(`  Target withdrawal: $${strategyWithdrawalResult.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
         logs.push(`  Portfolio value: $${totalInvestedAssets.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
         logs.push(`  Effective rate: ${((strategyWithdrawalResult.amount / totalInvestedAssets) * 100).toFixed(2)}%`);
 
-        // Check if a guardrail was triggered
+        // Log guardrail triggers (actual spending cap is enforced after expenses are summed)
         if (strategyWithdrawalResult.guardrailTriggered !== 'none') {
-            const adjustmentPercent = assumptions.investments.gkAdjustmentPercent / 100;
-            const baseWithdrawal = strategyWithdrawalResult.baseAmount;
-            const requiredAdjustment = baseWithdrawal * adjustmentPercent;
-
-            // Calculate total discretionary expenses
-            const discretionaryExpenses = nextExpenses.filter(exp => exp.isDiscretionary);
-            const totalDiscretionary = discretionaryExpenses.reduce((sum, exp) => {
-                if (exp instanceof MortgageExpense) {
-                    return sum + exp.calculateAnnualAmortization(year).totalPayment;
-                }
-                if (exp instanceof LoanExpense) {
-                    return sum + exp.calculateAnnualAmortization(year).totalPayment;
-                }
-                return sum + exp.getAnnualAmount(year);
-            }, 0);
-
-            let actualAdjustment = 0;
-            let warning: string | undefined;
-
             if (strategyWithdrawalResult.guardrailTriggered === 'capital-preservation') {
-                // Need to CUT discretionary expenses
-                if (requiredAdjustment > totalDiscretionary) {
-                    // Can't cut enough - apply what we can and warn
-                    actualAdjustment = totalDiscretionary;
-                    warning = `Guyton-Klinger Capital Preservation requires cutting $${requiredAdjustment.toLocaleString(undefined, { maximumFractionDigits: 0 })}, but only $${totalDiscretionary.toLocaleString(undefined, { maximumFractionDigits: 0 })} in discretionary expenses available. Consider marking more expenses as discretionary or choosing a different strategy.`;
-                    logs.push(`⚠️ GK Capital Preservation: Cannot fully apply 10% cut`);
-                    logs.push(`  Required: $${requiredAdjustment.toLocaleString(undefined, { maximumFractionDigits: 0 })}, Available: $${totalDiscretionary.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
-                } else {
-                    actualAdjustment = requiredAdjustment;
-                    logs.push(`📉 GK Capital Preservation triggered: Cutting discretionary expenses by $${actualAdjustment.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
-                }
-
-                // Apply proportional cut to discretionary expenses
-                if (actualAdjustment > 0 && totalDiscretionary > 0) {
-                    const cutRatio = 1 - (actualAdjustment / totalDiscretionary);
-                    nextExpenses = nextExpenses.map(exp => {
-                        if (exp.isDiscretionary) {
-                            return exp.adjustAmount(cutRatio);
-                        }
-                        return exp;
-                    });
-                }
+                logs.push(`[CUT] GK Capital Preservation triggered: withdrawal target reduced by ${assumptions.investments.gkAdjustmentPercent}%`);
             } else if (strategyWithdrawalResult.guardrailTriggered === 'prosperity') {
-                // INCREASE discretionary expenses
-                actualAdjustment = requiredAdjustment;
-                logs.push(`📈 GK Prosperity triggered: Increasing discretionary expenses by $${actualAdjustment.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
-
-                // Apply proportional increase to discretionary expenses
-                if (totalDiscretionary > 0) {
-                    const increaseRatio = 1 + (actualAdjustment / totalDiscretionary);
-                    nextExpenses = nextExpenses.map(exp => {
-                        if (exp.isDiscretionary) {
-                            return exp.adjustAmount(increaseRatio);
-                        }
-                        return exp;
-                    });
-                } else {
-                    // No discretionary expenses to increase - just log it
-                    logs.push(`  Note: No discretionary expenses to increase`);
-                    actualAdjustment = 0;
-                }
+                logs.push(`[FLOW] GK Prosperity triggered: withdrawal target increased by ${assumptions.investments.gkAdjustmentPercent}%`);
             }
-
-            strategyAdjustmentResult = {
-                guardrailTriggered: strategyWithdrawalResult.guardrailTriggered,
-                requiredAdjustment,
-                actualAdjustment,
-                discretionaryAvailable: totalDiscretionary,
-                warning,
-            };
         }
     }
 
@@ -1075,7 +1042,7 @@ export function simulateOneYear(
         const penalty = shortfall * 0.25; // 25% penalty on shortfall (SECURE Act 2.0)
 
         if (shortfall > 0) {
-            logs.push(`⚠️ RMD shortfall: $${shortfall.toLocaleString(undefined, { maximumFractionDigits: 0 })} - Penalty: $${penalty.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+            logs.push(`[WARN] RMD shortfall: $${shortfall.toLocaleString(undefined, { maximumFractionDigits: 0 })} - Penalty: $${penalty.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
         }
 
         rmdDetails = {
@@ -1123,13 +1090,43 @@ export function simulateOneYear(
             - totalTax - preliminaryLivingExpenses - preliminaryReinvested;
 
         // Estimate Traditional withdrawal needed to cover expense deficit (if any)
-        const estimatedTraditionalWithdrawal = estimateTraditionalWithdrawalForExpenses(
+        let estimatedTraditionalWithdrawal = estimateTraditionalWithdrawalForExpenses(
             preliminaryCash,
             accounts,
             assumptions.withdrawalStrategy || []
         );
 
-        const conversionResult = performAutoRothConversion(
+        // Cap estimate at bracket headroom when tax-optimized withdrawals are enabled
+        if (assumptions.investments.taxOptimizedWithdrawals && estimatedTraditionalWithdrawal > 0) {
+            const headroom = calculateTraditionalWithdrawalCap(
+                totalGrossIncome, preTaxDeductions, 0, year, taxState, assumptions
+            );
+            estimatedTraditionalWithdrawal = Math.min(estimatedTraditionalWithdrawal, headroom);
+        }
+
+        // Skip conversion if under 59.5 and deficit would require early Roth gains (penalty)
+        let skipConversion = false;
+        if (currentAge < 59.5 && preliminaryCash < 0) {
+            const deficit = Math.abs(preliminaryCash);
+            const penaltyFreeSources = accounts.reduce((sum, acc) => {
+                const priorOutflow = Math.min(0, userInflows[acc.id] || 0);
+                const available = acc.amount + priorOutflow;
+                if (available <= 0) return sum;
+                if (acc instanceof SavedAccount) return sum + available;
+                if (acc instanceof InvestedAccount) {
+                    if (acc.taxType === 'Brokerage') return sum + available;
+                    if (acc.taxType === 'Roth 401k' || acc.taxType === 'Roth IRA') return sum + Math.min(available, acc.costBasis);
+                }
+                if (acc instanceof ESPPAccount) return sum + available;
+                return sum;
+            }, 0);
+            if (deficit > penaltyFreeSources) {
+                skipConversion = true;
+                logs.push(`[SKIP] Skipping Roth conversion: deficit $${deficit.toLocaleString(undefined, { maximumFractionDigits: 0 })} exceeds penalty-free sources $${penaltyFreeSources.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+            }
+        }
+
+        const conversionResult = skipConversion ? undefined : performAutoRothConversion(
             accounts,
             allIncomes,
             nextExpenses,
@@ -1191,17 +1188,20 @@ export function simulateOneYear(
 
     // Apply Roth conversion flows (if any)
     // Withdrawals from Traditional accounts (negative) and deposits to Roth accounts (positive)
+    // Also track conversion deposits separately for 5-year rule tracking
+    const conversionDeposits: Record<string, number> = {};
     if (rothConversionResult) {
         for (const [accountId, amount] of Object.entries(rothConversionResult.fromAccountIds)) {
             userInflows[accountId] = (userInflows[accountId] || 0) - amount; // Negative = withdrawal
         }
         for (const [accountId, amount] of Object.entries(rothConversionResult.toAccountIds)) {
             userInflows[accountId] = (userInflows[accountId] || 0) + amount; // Positive = deposit
+            conversionDeposits[accountId] = (conversionDeposits[accountId] || 0) + amount;
         }
     }
 
     // 3. LIVING EXPENSES (The Bills)
-    const totalLivingExpenses = nextExpenses.reduce((sum, exp) => {
+    let totalLivingExpenses = nextExpenses.reduce((sum, exp) => {
         if (exp instanceof MortgageExpense) {
             return sum + exp.calculateAnnualAmortization(year).totalPayment;
         }
@@ -1224,10 +1224,86 @@ export function simulateOneYear(
     let withdrawalPenalties = 0;
 
     // ------------------------------------------------------------------
-    // RETIREMENT WITHDRAWAL STRATEGY (for non-GK strategies)
-    // Note: Guyton-Klinger is handled earlier so it can adjust expenses
+    // GUYTON-KLINGER SPENDING CAP
+    // If GK is active, the target withdrawal IS the budget. If the deficit
+    // exceeds the GK target, trim discretionary expenses to stay within it.
     // ------------------------------------------------------------------
-    if (isRetired && assumptions.investments.withdrawalStrategy !== 'Guyton Klinger') {
+    if (strategyWithdrawalResult && assumptions.investments.withdrawalStrategy === 'Guyton Klinger' && discretionaryCash < 0) {
+        const deficit = Math.abs(discretionaryCash);
+        const gkBudget = strategyWithdrawalResult.amount;
+
+        if (deficit > gkBudget) {
+            const excessSpending = deficit - gkBudget;
+
+            // Calculate total discretionary expenses
+            const totalDiscretionary = nextExpenses.reduce((sum, exp) => {
+                if (!exp.isDiscretionary) return sum;
+                if (exp instanceof MortgageExpense) {
+                    return sum + exp.calculateAnnualAmortization(year).totalPayment;
+                }
+                if (exp instanceof LoanExpense) {
+                    return sum + exp.calculateAnnualAmortization(year).totalPayment;
+                }
+                return sum + exp.getAnnualAmount(year);
+            }, 0);
+
+            if (totalDiscretionary > 0) {
+                const trimAmount = Math.min(excessSpending, totalDiscretionary);
+                const cutRatio = 1 - (trimAmount / totalDiscretionary);
+
+                nextExpenses = nextExpenses.map(exp => {
+                    if (exp.isDiscretionary) {
+                        return exp.adjustAmount(cutRatio);
+                    }
+                    return exp;
+                });
+
+                // Recalculate totalLivingExpenses and discretionaryCash after trimming
+                totalLivingExpenses = nextExpenses.reduce((sum, exp) => {
+                    if (exp instanceof MortgageExpense) {
+                        return sum + exp.calculateAnnualAmortization(year).totalPayment;
+                    }
+                    if (exp instanceof LoanExpense) {
+                        return sum + exp.calculateAnnualAmortization(year).totalPayment;
+                    }
+                    return sum + exp.getAnnualAmount(year);
+                }, 0);
+                discretionaryCash = totalGrossIncome - preTaxDeductions - postTaxDeductions - totalTax - totalLivingExpenses - reinvestedIncome;
+
+                logs.push(`[TARGET] GK spending cap: trimmed discretionary by $${trimAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} to stay within $${gkBudget.toLocaleString(undefined, { maximumFractionDigits: 0 })} budget`);
+
+                if (trimAmount >= totalDiscretionary) {
+                    logs.push(`[WARN] GK cap: all discretionary expenses eliminated but fixed expenses still exceed budget`);
+                }
+
+                strategyAdjustmentResult = {
+                    guardrailTriggered: strategyWithdrawalResult.guardrailTriggered,
+                    requiredAdjustment: excessSpending,
+                    actualAdjustment: trimAmount,
+                    discretionaryAvailable: totalDiscretionary,
+                    warning: trimAmount < excessSpending
+                        ? `GK budget is $${gkBudget.toLocaleString(undefined, { maximumFractionDigits: 0 })} but fixed expenses alone create a $${(deficit - totalDiscretionary).toLocaleString(undefined, { maximumFractionDigits: 0 })} deficit. Consider reducing fixed expenses.`
+                        : undefined,
+                };
+            } else {
+                logs.push(`[WARN] GK spending cap: deficit ($${deficit.toLocaleString(undefined, { maximumFractionDigits: 0 })}) exceeds budget ($${gkBudget.toLocaleString(undefined, { maximumFractionDigits: 0 })}) but no discretionary expenses to trim`);
+                strategyAdjustmentResult = {
+                    guardrailTriggered: strategyWithdrawalResult.guardrailTriggered,
+                    requiredAdjustment: excessSpending,
+                    actualAdjustment: 0,
+                    discretionaryAvailable: 0,
+                    warning: `GK budget is $${gkBudget.toLocaleString(undefined, { maximumFractionDigits: 0 })} but no discretionary expenses to trim. All expenses are fixed.`,
+                };
+            }
+        } else {
+            logs.push(`[OK] GK spending cap: deficit ($${deficit.toLocaleString(undefined, { maximumFractionDigits: 0 })}) within budget ($${gkBudget.toLocaleString(undefined, { maximumFractionDigits: 0 })})`);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // RETIREMENT WITHDRAWAL STRATEGY (for non-GK strategies)
+    // ------------------------------------------------------------------
+    if (isRetired && assumptions.investments.withdrawalStrategy !== 'Guyton Klinger' && assumptions.investments.withdrawalStrategy !== 'None') {
         // Calculate total invested assets (for withdrawal calculations)
         const totalInvestedAssets = accounts.reduce((sum, acc) => {
             if (acc instanceof InvestedAccount || acc instanceof SavedAccount || acc instanceof ESPPAccount) {
@@ -1255,10 +1331,80 @@ export function simulateOneYear(
             previousStrategyResult
         );
 
-        logs.push(`📊 Retirement withdrawal strategy: ${assumptions.investments.withdrawalStrategy}`);
+        logs.push(`[INFO] Retirement withdrawal strategy: ${assumptions.investments.withdrawalStrategy}`);
         logs.push(`  Target withdrawal: $${strategyWithdrawalResult.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
         logs.push(`  Portfolio value: $${totalInvestedAssets.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
         logs.push(`  Effective rate: ${((strategyWithdrawalResult.amount / totalInvestedAssets) * 100).toFixed(2)}%`);
+    }
+
+    // ------------------------------------------------------------------
+    // STRATEGY SPENDING CAP (Fixed Real / Percentage)
+    // The strategy target IS the budget. If expenses exceed it, trim discretionary.
+    // ------------------------------------------------------------------
+    if (strategyWithdrawalResult && assumptions.investments.withdrawalStrategy !== 'Guyton Klinger' && assumptions.investments.withdrawalStrategy !== 'None' && discretionaryCash < 0) {
+        const deficit = Math.abs(discretionaryCash);
+        const budget = strategyWithdrawalResult.amount;
+
+        if (deficit > budget) {
+            const excessSpending = deficit - budget;
+
+            const totalDiscretionary = nextExpenses.reduce((sum, exp) => {
+                if (!exp.isDiscretionary) return sum;
+                if (exp instanceof MortgageExpense) {
+                    return sum + exp.calculateAnnualAmortization(year).totalPayment;
+                }
+                if (exp instanceof LoanExpense) {
+                    return sum + exp.calculateAnnualAmortization(year).totalPayment;
+                }
+                return sum + exp.getAnnualAmount(year);
+            }, 0);
+
+            if (totalDiscretionary > 0) {
+                const trimAmount = Math.min(excessSpending, totalDiscretionary);
+                const cutRatio = 1 - (trimAmount / totalDiscretionary);
+
+                nextExpenses = nextExpenses.map(exp => {
+                    if (exp.isDiscretionary) {
+                        return exp.adjustAmount(cutRatio);
+                    }
+                    return exp;
+                });
+
+                totalLivingExpenses = nextExpenses.reduce((sum, exp) => {
+                    if (exp instanceof MortgageExpense) {
+                        return sum + exp.calculateAnnualAmortization(year).totalPayment;
+                    }
+                    if (exp instanceof LoanExpense) {
+                        return sum + exp.calculateAnnualAmortization(year).totalPayment;
+                    }
+                    return sum + exp.getAnnualAmount(year);
+                }, 0);
+                discretionaryCash = totalGrossIncome - preTaxDeductions - postTaxDeductions - totalTax - totalLivingExpenses - reinvestedIncome;
+
+                logs.push(`[TARGET] ${assumptions.investments.withdrawalStrategy} spending cap: trimmed discretionary by $${trimAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} to stay within $${budget.toLocaleString(undefined, { maximumFractionDigits: 0 })} budget`);
+
+                if (trimAmount < excessSpending) {
+                    strategyAdjustmentResult = {
+                        guardrailTriggered: 'capital-preservation',
+                        requiredAdjustment: excessSpending,
+                        actualAdjustment: trimAmount,
+                        discretionaryAvailable: totalDiscretionary,
+                        warning: `${assumptions.investments.withdrawalStrategy} budget is $${budget.toLocaleString(undefined, { maximumFractionDigits: 0 })} but fixed expenses alone create a $${(deficit - totalDiscretionary).toLocaleString(undefined, { maximumFractionDigits: 0 })} deficit. Consider reducing fixed expenses.`,
+                    };
+                }
+            } else {
+                logs.push(`[WARN] ${assumptions.investments.withdrawalStrategy} spending cap: deficit exceeds budget but no discretionary expenses to trim`);
+                strategyAdjustmentResult = {
+                    guardrailTriggered: 'capital-preservation',
+                    requiredAdjustment: excessSpending,
+                    actualAdjustment: 0,
+                    discretionaryAvailable: 0,
+                    warning: `${assumptions.investments.withdrawalStrategy} budget is $${budget.toLocaleString(undefined, { maximumFractionDigits: 0 })} but no discretionary expenses to trim. All expenses are fixed.`,
+                };
+            }
+        } else {
+            logs.push(`[OK] ${assumptions.investments.withdrawalStrategy} spending cap: deficit ($${deficit.toLocaleString(undefined, { maximumFractionDigits: 0 })}) within budget ($${budget.toLocaleString(undefined, { maximumFractionDigits: 0 })})`);
+        }
     }
 
     // ------------------------------------------------------------------
@@ -1267,19 +1413,51 @@ export function simulateOneYear(
     // Note: RMD cash is already included in discretionaryCash via totalGrossIncome and totalTax
     // (totalGrossIncome includes RMD withdrawal, totalTax includes RMD tax)
 
-    // Calculate deficit - only withdraw what's needed to cover expenses
-    // The strategy result is tracked for informational purposes but we only
-    // withdraw to cover actual deficits, not the full strategy amount
+    // Calculate deficit - withdraw what's needed to cover expenses (capped by strategy above)
     const deficitAmount = discretionaryCash < 0 ? Math.abs(discretionaryCash) : 0;
     let amountToWithdraw = deficitAmount;
 
     if (amountToWithdraw > 0) {
         let deficit = amountToWithdraw;
 
-        // Loop through Withdrawal Strategy
+        // Build withdrawal iteration order
         const strategy = assumptions.withdrawalStrategy || [];
+        let traditionalHeadroomRemaining = Infinity;
+        interface PhasedBucket { accountId: string; name: string; id: string; cappedTraditional: boolean }
+        let withdrawalBuckets: PhasedBucket[];
 
-        for (const bucket of strategy) {
+        if (assumptions.investments.taxOptimizedWithdrawals) {
+            // Tax-optimized: cap Traditional accounts at bracket ceiling in user's order,
+            // then overflow back to Traditional uncapped if deficit remains
+            const rothConversionAmount = rothConversionResult?.amount || 0;
+            traditionalHeadroomRemaining = calculateTraditionalWithdrawalCap(
+                totalGrossIncome, preTaxDeductions, rothConversionAmount, year, taxState, assumptions
+            );
+
+            // Identify Traditional (tax-deferred) buckets for overflow pass
+            const deferredBuckets = strategy.filter(b => {
+                const acc = accounts.find(a => a.id === b.accountId);
+                return acc && classifyAccountTaxCategory(acc) === 'tax-deferred';
+            });
+
+            // Use user's drag order with bracket cap on Traditional, then overflow
+            withdrawalBuckets = [
+                ...strategy.map(b => {
+                    const acc = accounts.find(a => a.id === b.accountId);
+                    const isDeferred = acc && classifyAccountTaxCategory(acc) === 'tax-deferred';
+                    return { ...b, cappedTraditional: !!isDeferred };
+                }),
+                ...deferredBuckets.map(b => ({ ...b, cappedTraditional: false })),
+            ];
+
+            logs.push(`[TARGET] Tax-optimized withdrawals: target ${(assumptions.investments.taxOptimizedTargetBracket * 100).toFixed(0)}% bracket`);
+            logs.push(`  Traditional headroom: $${traditionalHeadroomRemaining.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+        } else {
+            // Legacy sequential behavior
+            withdrawalBuckets = strategy.map(b => ({ ...b, cappedTraditional: false }));
+        }
+
+        for (const bucket of withdrawalBuckets) {
             if (deficit <= 0.01) break;
 
             const account = accounts.find(acc => acc.id === bucket.accountId);
@@ -1312,18 +1490,53 @@ export function simulateOneYear(
                 // For Roth accounts with early withdrawal, we need to track that the
                 // gains portion is taxable (contributions come out first tax-free)
                 if (isRoth && isEarly && account instanceof InvestedAccount) {
-                    // Roth follows "ordering rules": contributions first, then conversions, then gains
-                    // Simplified: withdraw from cost basis first (tax-free), then gains (taxable)
-                    const costBasis = account.costBasis;
+                    // IRS Roth ordering rules (before 59.5):
+                    // Step 1: Regular contributions — tax-free, penalty-free
+                    // Step 2: Conversions (FIFO) — tax-free, 10% penalty if within 5 years
+                    // Step 3: Earnings — taxable income + 10% penalty
+
+                    const regularContribs = account.regularContributions;
                     const accountGains = account.unrealizedGains;
+                    let usedFromBalance = 0;
 
-                    // How much can we withdraw tax-free from contributions?
-                    const taxFreeWithdrawal = Math.min(deficit, costBasis, availableBalance);
-                    let remainingDeficit = deficit - taxFreeWithdrawal;
+                    // Step 1: Regular contributions (penalty-free, tax-free)
+                    const step1Amount = Math.min(deficit, regularContribs, availableBalance);
+                    deficit -= step1Amount;
+                    usedFromBalance += step1Amount;
 
-                    if (remainingDeficit > 0 && accountGains > 0) {
-                        // Need to dip into gains - these are taxed + 10% penalty
-                        // Use solver to find gross gains withdrawal needed to net remainingDeficit
+                    // Step 2: Conversions (FIFO, oldest first)
+                    // Tax-free but 10% penalty if conversion is less than 5 years old
+                    if (deficit > 0 && account.conversionHistory.length > 0) {
+                        // Sort by year ascending (FIFO)
+                        const sortedConversions = [...account.conversionHistory].sort((a, b) => a.year - b.year);
+                        let conversionPenalty = 0;
+
+                        for (const conversion of sortedConversions) {
+                            if (deficit <= 0) break;
+                            if (conversion.amount <= 0) continue;
+
+                            const convWithdraw = Math.min(deficit, conversion.amount, availableBalance - usedFromBalance);
+                            if (convWithdraw <= 0) break;
+
+                            // 10% penalty if within 5 years of conversion
+                            if ((year - conversion.year) < 5) {
+                                conversionPenalty += convWithdraw * 0.10;
+                            }
+
+                            deficit -= convWithdraw;
+                            usedFromBalance += convWithdraw;
+                        }
+
+                        if (conversionPenalty > 0) {
+                            withdrawalPenalties += conversionPenalty;
+                            // Penalty reduces net, so we need more gross to cover it
+                            deficit += conversionPenalty;
+                            logs.push(`[WARN] Roth 5-year rule: 10% penalty on $${(conversionPenalty / 0.10).toLocaleString(undefined, { maximumFractionDigits: 0 })} converted funds withdrawn early`);
+                        }
+                    }
+
+                    // Step 3: Earnings — taxable income + 10% penalty
+                    if (deficit > 0 && accountGains > 0) {
                         const fedParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'federal', undefined, assumptions);
                         const stateParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions);
 
@@ -1336,7 +1549,7 @@ export function simulateOneYear(
 
                         // Use solver with 10% penalty to find gross gains withdrawal
                         const gainsResult = TaxService.calculateGrossWithdrawal(
-                            remainingDeficit,
+                            deficit,
                             currentFedIncome,
                             currentFedDeduction,
                             currentStateIncome,
@@ -1347,8 +1560,8 @@ export function simulateOneYear(
                             0.10 // 10% early withdrawal penalty
                         );
 
-                        // Cap gross gains at available gains
-                        const grossGainsWithdrawal = Math.min(gainsResult.grossWithdrawn, accountGains, availableBalance - taxFreeWithdrawal);
+                        // Cap gross gains at available gains and remaining balance
+                        const grossGainsWithdrawal = Math.min(gainsResult.grossWithdrawn, accountGains, availableBalance - usedFromBalance);
 
                         // Recalculate actual tax/penalty for the capped amount
                         const fedApplied = { ...fedParams!, standardDeduction: currentFedDeduction };
@@ -1366,16 +1579,14 @@ export function simulateOneYear(
                         withdrawalPenalties += earlyPenalty;
                         totalGrossIncome += grossGainsWithdrawal;
 
-                        logs.push(`⚠️ Early Roth withdrawal: $${grossGainsWithdrawal.toLocaleString(undefined, { maximumFractionDigits: 0 })} gains taxed + 10% penalty`);
+                        logs.push(`[WARN] Early Roth withdrawal: $${grossGainsWithdrawal.toLocaleString(undefined, { maximumFractionDigits: 0 })} earnings taxed + 10% penalty`);
 
-                        withdrawAmount = taxFreeWithdrawal + grossGainsWithdrawal;
+                        usedFromBalance += grossGainsWithdrawal;
                         const netFromGains = grossGainsWithdrawal - taxOnGains - earlyPenalty;
-                        deficit -= (taxFreeWithdrawal + netFromGains);
-                    } else {
-                        // All from contributions - completely tax-free
-                        withdrawAmount = taxFreeWithdrawal;
-                        deficit -= taxFreeWithdrawal;
+                        deficit -= netFromGains;
                     }
+
+                    withdrawAmount = usedFromBalance;
                 } else {
                     // Normal tax-free withdrawal (qualified Roth, HSA, or SavedAccount)
                     withdrawAmount = Math.min(deficit, availableBalance);
@@ -1386,6 +1597,14 @@ export function simulateOneYear(
             
             // SCENARIO 2: Pre-Tax (Traditional 401k/IRA)
             else if (account instanceof InvestedAccount && (account.taxType === 'Traditional 401k' || account.taxType === 'Traditional IRA')) {
+                // Phase 1 cap: skip if no headroom remains for capped Traditional
+                if (bucket.cappedTraditional && traditionalHeadroomRemaining <= 0) continue;
+
+                // Effective cap: headroom limit in Phase 1, balance limit otherwise
+                const effectiveCap = bucket.cappedTraditional
+                    ? Math.min(availableBalance, traditionalHeadroomRemaining)
+                    : availableBalance;
+
                 // 1. Calculate Baselines
                 const fedParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'federal', undefined, assumptions);
                 const stateParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions);
@@ -1402,7 +1621,7 @@ export function simulateOneYear(
                 // 2. Call Solver with penalty rate integrated
                 const penaltyRate = isEarly ? 0.10 : 0;
                 const result = TaxService.calculateGrossWithdrawal(
-                    Math.min(deficit, availableBalance),
+                    Math.min(deficit, effectiveCap),
                     currentFedIncome,
                     currentFedDeduction,
                     currentStateIncome,
@@ -1413,9 +1632,9 @@ export function simulateOneYear(
                     penaltyRate
                 );
 
-                // Overdraft Check
-                if (result.grossWithdrawn > availableBalance) {
-                    withdrawAmount = availableBalance;
+                // Overdraft / Headroom Cap Check
+                if (result.grossWithdrawn > effectiveCap) {
+                    withdrawAmount = effectiveCap;
 
                     // Manual tax calc for the partial amount
                     const fedApplied = { ...fedParams!, standardDeduction: currentFedDeduction };
@@ -1447,6 +1666,11 @@ export function simulateOneYear(
                 // 3. Update Baselines
                 totalGrossIncome += withdrawAmount;
                 withdrawalTaxes += taxHit;
+
+                // 4. Decrement Traditional headroom (gross amount consumed)
+                if (bucket.cappedTraditional) {
+                    traditionalHeadroomRemaining -= withdrawAmount;
+                }
             }
             // SCENARIO 3: Brokerage (Capital Gains Tax)
             else if (account instanceof InvestedAccount && account.taxType === 'Brokerage') {
@@ -1542,7 +1766,7 @@ export function simulateOneYear(
                 capitalGainsTaxTotal += taxHit;
 
                 if (allocation.gains > 0 || taxHit > 0) {
-                    logs.push(`📈 Brokerage withdrawal: $${grossWithdrawal.toLocaleString(undefined, { maximumFractionDigits: 0 })} ` +
+                    logs.push(`[FLOW] Brokerage withdrawal: $${grossWithdrawal.toLocaleString(undefined, { maximumFractionDigits: 0 })} ` +
                         `(Basis: $${allocation.basis.toLocaleString(undefined, { maximumFractionDigits: 0 })}, ` +
                         `Gains: $${allocation.gains.toLocaleString(undefined, { maximumFractionDigits: 0 })}, ` +
                         `Cap Gains Tax: $${taxHit.toLocaleString(undefined, { maximumFractionDigits: 0 })})`);
@@ -1557,7 +1781,7 @@ export function simulateOneYear(
                     const eligibleLots = account.getEligibleLots(saleDate);
                     const hasQualifying = eligibleLots.some(lot => account.calculateDispositionType(lot, saleDate) === 'qualifying');
                     if (!hasQualifying) {
-                        logs.push(`⏭️ ESPP ${account.name}: Skipping (no qualifying lots, preference set to wait)`);
+                        logs.push(`[SKIP] ESPP ${account.name}: Skipping (no qualifying lots, preference set to wait)`);
                         continue; // Move to next account in withdrawal order
                     }
                 }
@@ -1568,7 +1792,7 @@ export function simulateOneYear(
 
                 // If no eligible lots due to holding period restriction
                 if (eligibleShares === 0 && account.minimumHoldingDays > 0) {
-                    logs.push(`⏭️ ESPP ${account.name}: Skipping (no lots meet ${account.minimumHoldingDays}-day holding requirement)`);
+                    logs.push(`[SKIP] ESPP ${account.name}: Skipping (no lots meet ${account.minimumHoldingDays}-day holding requirement)`);
                     continue;
                 }
 
@@ -1576,7 +1800,7 @@ export function simulateOneYear(
                 if (account.totalShares === 0) {
                     withdrawAmount = Math.min(deficit, availableBalance);
                     deficit -= withdrawAmount;
-                    logs.push(`📈 ESPP withdrawal (no lots): $${withdrawAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+                    logs.push(`[FLOW] ESPP withdrawal (no lots): $${withdrawAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
                 } else {
                     // ESPP sales have mixed tax treatment:
                     // - Discount portion: ordinary income (qualifying) or full discount as ordinary (disqualifying)
@@ -1700,7 +1924,7 @@ export function simulateOneYear(
                     capitalGainsTaxTotal += capGainsTax + stateCapGainsTax;
                     totalGrossIncome += taxResult.ordinaryIncome + taxResult.shortTermGains;
 
-                    logs.push(`📈 ESPP withdrawal: $${grossWithdrawal.toLocaleString(undefined, { maximumFractionDigits: 0 })} ` +
+                    logs.push(`[FLOW] ESPP withdrawal: $${grossWithdrawal.toLocaleString(undefined, { maximumFractionDigits: 0 })} ` +
                         `(Ordinary: $${taxResult.ordinaryIncome.toLocaleString(undefined, { maximumFractionDigits: 0 })}, ` +
                         `ST Gains: $${taxResult.shortTermGains.toLocaleString(undefined, { maximumFractionDigits: 0 })}, ` +
                         `LT Gains: $${taxResult.longTermGains.toLocaleString(undefined, { maximumFractionDigits: 0 })}, ` +
@@ -1712,7 +1936,7 @@ export function simulateOneYear(
             else {
                 withdrawAmount = Math.min(deficit, availableBalance);
                 deficit -= withdrawAmount;
-                logs.push(`⚠️ Fallback withdrawal from ${account.name}: ${withdrawAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+                logs.push(`[WARN] Fallback withdrawal from ${account.name}: ${withdrawAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
             }
 
             // Apply Withdrawal to USER inflows (assuming we drain user vested funds first)
@@ -1790,7 +2014,7 @@ export function simulateOneYear(
             );
         }
 
-        logs.push(`⚠️ Uncovered deficit of $${uncoveredDeficit.toLocaleString(undefined, { maximumFractionDigits: 0 })} added to deficit debt`);
+        logs.push(`[WARN] Uncovered deficit of $${uncoveredDeficit.toLocaleString(undefined, { maximumFractionDigits: 0 })} added to deficit debt`);
         logs.push(`  Total deficit debt: $${existingDeficitDebt.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
 
         // Deficit is now captured as debt, so reset discretionary cash to 0
@@ -1848,7 +2072,7 @@ export function simulateOneYear(
         // Find the linked ESPP account
         const esppAccount = accounts.find(acc => acc.id === inc.esppAccountId && acc instanceof ESPPAccount) as ESPPAccount | undefined;
         if (!esppAccount) {
-            logs.push(`⚠️ ESPP account ${inc.esppAccountId} not found for ${inc.name}`);
+            logs.push(`[WARN] ESPP account ${inc.esppAccountId} not found for ${inc.name}`);
             return;
         }
 
@@ -1894,13 +2118,13 @@ export function simulateOneYear(
             if (totalESPPFMVThisYear + fmvOfShares > esppLimit) {
                 const remainingFMV = Math.max(0, esppLimit - totalESPPFMVThisYear);
                 if (remainingFMV <= 0) {
-                    logs.push(`⚠️ ESPP: ${inc.name} hit $25k annual limit - purchase skipped`);
+                    logs.push(`[WARN] ESPP: ${inc.name} hit $25k annual limit - purchase skipped`);
                     continue;
                 }
                 // Reduce shares to stay within limit
                 const reducedShares = remainingFMV / fmvAtPurchase;
                 const reducedContribution = reducedShares * purchasePrice;
-                logs.push(`⚠️ ESPP: ${inc.name} purchase reduced to stay within $25k limit`);
+                logs.push(`[WARN] ESPP: ${inc.name} purchase reduced to stay within $25k limit`);
 
                 // Create the lot with reduced shares
                 const lot: ESPPLot = {
@@ -1944,7 +2168,7 @@ export function simulateOneYear(
                 if (!esppLots[esppAccount.id]) esppLots[esppAccount.id] = [];
                 esppLots[esppAccount.id].push(lot);
 
-                logs.push(`📈 ESPP: ${inc.name} purchased ${shares.toFixed(2)} shares @ $${purchasePrice.toFixed(2)} (${(discountPercent * 100).toFixed(0)}% discount${inc.esppHasLookback ? ' + lookback' : ''})`);
+                logs.push(`[FLOW] ESPP: ${inc.name} purchased ${shares.toFixed(2)} shares @ $${purchasePrice.toFixed(2)} (${(discountPercent * 100).toFixed(0)}% discount${inc.esppHasLookback ? ' + lookback' : ''})`);
             }
         }
     });
@@ -2059,7 +2283,9 @@ export function simulateOneYear(
         if (acc instanceof InvestedAccount) {
             // CHANGED: Pass user/employer streams separately to handle vesting
             // Pass returnOverride for Monte Carlo simulations
-            return acc.increment(assumptions, userIn, employerIn, returnOverride);
+            // Pass conversion deposits for 5-year rule tracking
+            const convAmount = conversionDeposits[acc.id] || 0;
+            return acc.increment(assumptions, userIn, employerIn, returnOverride, convAmount, year);
         }
 
         if (acc instanceof SavedAccount) {

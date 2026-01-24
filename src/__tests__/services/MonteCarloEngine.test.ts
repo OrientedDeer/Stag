@@ -479,6 +479,9 @@ describe('Return Rate Override Integration', () => {
                 gkLowerGuardrail: 0.8,
                 gkAdjustmentPercent: 10,
                 autoRothConversions: false,
+                rothConversionTargetBracket: 0.22,
+                taxOptimizedWithdrawals: false,
+                taxOptimizedTargetBracket: 0.22,
             },
             macro: {
                 inflationRate: 2.6,
