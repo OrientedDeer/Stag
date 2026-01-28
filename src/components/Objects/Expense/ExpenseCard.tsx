@@ -17,18 +17,19 @@ import {
 } from './models.js';
 import { ExpenseContext, AllExpenseKeys } from "./ExpenseContext.js";
 import { AccountContext } from "../Accounts/AccountContext.js";
-import { StyledDisplay, StyledInput, StyledSelect } from "../../Layout/InputFields/StyleUI.js";
+import { StyledDisplay, StyledSelect } from "../../Layout/InputFields/StyleUI.js";
 import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput.js";
 import DeleteExpenseControl from './DeleteExpenseUI.js';
 import { PercentageInput } from "../../Layout/InputFields/PercentageInput.js";
 import { NumberInput } from "../../Layout/InputFields/NumberInput.js";
 import { NameInput } from "../../Layout/InputFields/NameInput.js";
 import { ToggleInput } from "../../Layout/InputFields/ToggleInput.js";
+import { TriggerSelector } from "../../Layout/InputFields/TriggerSelector.js";
 import { formatCompactCurrency } from "../../../tabs/Future/tabs/FutureUtils.js";
 import { AssumptionsContext } from "../Assumptions/AssumptionsContext.js";
 import { AlertBanner } from "../../Layout/AlertBanner.js";
 import { ExpandableCard } from "../../Layout/ExpandableCard.js";
-import { formatDateForInput, getFrequencyAbbrev } from "../../../utils/formatters.js";
+import { getFrequencyAbbrev } from "../../../utils/formatters.js";
 
 function getExpenseDescriptor(expense: AnyExpense): string {
     if (expense instanceof RentExpense) return "RENT";
@@ -169,17 +170,6 @@ function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
         }
     };
 
-    const handleDateChange = (field: AllExpenseKeys, dateString: string): void => {
-        const newDate = dateString ? new Date(dateString) : undefined;
-        handleFieldUpdate(field, newDate);
-
-        if (field === "startDate") {
-            validateDates(newDate, expense.endDate);
-        } else if (field === "endDate") {
-            validateDates(expense.startDate, newDate);
-        }
-    };
-
     // Display amount calculation
     const getDisplayAmount = (): string => {
         if (expense instanceof RentExpense || expense instanceof MortgageExpense || expense instanceof LoanExpense) {
@@ -242,21 +232,26 @@ function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
                     options={["Daily", "Weekly", "Monthly", "Annually"]}
                 />
 
-                <StyledInput
-                    id={`${expense.id}-start-date`}
-                    label="Start Date"
-                    type="date"
-                    value={formatDateForInput(expense.startDate)}
-                    onChange={(e) => handleDateChange("startDate", e.target.value)}
+                <TriggerSelector
+                    id={`${expense.id}-start`}
+                    label="Start"
+                    date={expense.startDate}
+                    milestoneId={expense.startMilestoneId}
+                    milestones={assumptions.milestones || []}
+                    onDateChange={(date) => handleFieldUpdate("startDate", date)}
+                    onMilestoneChange={(id) => handleFieldUpdate("startMilestoneId", id)}
+                    tooltip="When this expense begins - fixed date or milestone trigger"
                 />
 
-                <StyledInput
-                    id={`${expense.id}-end-date`}
-                    label="End Date"
-                    type="date"
-                    value={formatDateForInput(expense.endDate)}
-                    onChange={(e) => handleDateChange("endDate", e.target.value)}
-                    error={dateError}
+                <TriggerSelector
+                    id={`${expense.id}-end`}
+                    label="End"
+                    date={expense.endDate}
+                    milestoneId={expense.endMilestoneId}
+                    milestones={assumptions.milestones || []}
+                    onDateChange={(date) => handleFieldUpdate("endDate", date)}
+                    onMilestoneChange={(id) => handleFieldUpdate("endMilestoneId", id)}
+                    tooltip="When this expense ends - fixed date or milestone trigger"
                 />
 
                 <ToggleInput
@@ -266,6 +261,12 @@ function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
                     setEnabled={(val) => handleFieldUpdate("isDiscretionary", val)}
                     tooltip="Discretionary expenses can be reduced during Guyton-Klinger guardrail triggers in retirement."
                 />
+
+                {dateError && (
+                    <div className="col-span-full text-red-400 text-xs">
+                        {dateError}
+                    </div>
+                )}
 
                 {expense instanceof RentExpense && (
                     <CurrencyInput

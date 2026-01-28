@@ -8,7 +8,7 @@ import React from 'react';
 import { Document, Page, Text, View, Image, StyleSheet, pdf } from '@react-pdf/renderer';
 import html2canvas from 'html2canvas';
 import { SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
-import { AssumptionsState } from '../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsState, getRetirementAge, getLifeExpectancy, getBirthYear } from '../components/Objects/Assumptions/AssumptionsContext';
 import { MonteCarloSummary } from './MonteCarloTypes';
 import { AnyAccount, DebtAccount, PropertyAccount } from '../components/Objects/Accounts/models';
 
@@ -214,9 +214,9 @@ function findFIYear(
     simulation: SimulationYear[],
     assumptions: AssumptionsState
 ): { year: number; age: number } | null {
-    const retirementAge = assumptions.demographics.retirementAge;
+    const retirementAge = getRetirementAge(assumptions.milestones);
     const startYear = simulation.length > 0 ? simulation[0].year : new Date().getFullYear();
-    const startAge = startYear - assumptions.demographics.birthYear;
+    const startAge = startYear - getBirthYear(assumptions.milestones);
 
     for (let i = 0; i < simulation.length; i++) {
         const year = simulation[i];
@@ -291,7 +291,9 @@ export function collectReportData(
     const fiInfo = findFIYear(simulation, assumptions);
 
     // Find retirement year data
-    const retirementYearIndex = assumptions.demographics.retirementAge - (new Date().getFullYear() - assumptions.demographics.birthYear);
+    const retirementAge = getRetirementAge(assumptions.milestones);
+    const lifeExpectancy = getLifeExpectancy(assumptions.milestones);
+    const retirementYearIndex = retirementAge - (new Date().getFullYear() - getBirthYear(assumptions.milestones));
     const retirementYear = simulation[retirementYearIndex] || lastYear;
 
     // Calculate projected retirement income
@@ -299,14 +301,14 @@ export function collectReportData(
 
     // Years to retirement
     const yearsToRetirement = Math.max(0,
-        assumptions.demographics.retirementAge - (new Date().getFullYear() - assumptions.demographics.birthYear)
+        retirementAge - (new Date().getFullYear() - getBirthYear(assumptions.milestones))
     );
 
     return {
         // Demographics
-        currentAge: new Date().getFullYear() - assumptions.demographics.birthYear,
-        retirementAge: assumptions.demographics.retirementAge,
-        lifeExpectancy: assumptions.demographics.lifeExpectancy,
+        currentAge: new Date().getFullYear() - getBirthYear(assumptions.milestones),
+        retirementAge,
+        lifeExpectancy,
 
         // Key metrics
         currentNetWorth,

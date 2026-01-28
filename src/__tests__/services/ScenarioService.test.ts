@@ -16,7 +16,7 @@ import {
     SCENARIOS_STORAGE_KEY
 } from '../../services/ScenarioTypes';
 import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
-import { defaultAssumptions, AssumptionsState } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { defaultAssumptions, AssumptionsState, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { InvestedAccount, SavedAccount, PropertyAccount } from '../../components/Objects/Accounts/models';
 
 // --- Mock localStorage ---
@@ -130,12 +130,8 @@ const createMockSimulation = (years: number, startYear: number = 2024): Simulati
 
 const createTestAssumptions = (): AssumptionsState => ({
     ...defaultAssumptions,
-    demographics: {
-        ...defaultAssumptions.demographics,
-        birthYear: 1989, // Age 35 in 2024
-        retirementAge: 65,
-        lifeExpectancy: 90
-    },
+    demographics: {},
+    milestones: createBuiltinMilestones(1989, 65, 90), // Age 35 in 2024
     investments: {
         ...defaultAssumptions.investments,
         withdrawalRate: 4

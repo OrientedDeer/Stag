@@ -2,6 +2,78 @@
 import { createContext, useReducer, useContext, ReactNode, useMemo } from 'react';
 import { useDebouncedLocalStorage } from '../../../hooks/useDebouncedLocalStorage';
 import { EarningsRecord } from '../../../services/SocialSecurityCalculator';
+import { CustomMilestone } from '../../../services/simulation/types';
+
+// Built-in milestone IDs that cannot be removed
+export const BUILTIN_MILESTONE_IDS = {
+    BIRTH: 'BUILTIN_BIRTH',
+    RETIRE: 'BUILTIN_RETIRE',
+    END_OF_PLAN: 'BUILTIN_END_OF_PLAN',
+} as const;
+
+// Check if a milestone is a built-in milestone
+export const isBuiltinMilestone = (id: string): boolean =>
+    Object.values(BUILTIN_MILESTONE_IDS).includes(id as typeof BUILTIN_MILESTONE_IDS[keyof typeof BUILTIN_MILESTONE_IDS]);
+
+// Default values for built-in milestones
+export const DEFAULT_BIRTH_YEAR = 1990;
+export const DEFAULT_RETIREMENT_AGE = 65;
+export const DEFAULT_LIFE_EXPECTANCY = 90;
+
+// Create default built-in milestones
+export const createBuiltinMilestones = (
+    birthYear: number = DEFAULT_BIRTH_YEAR,
+    retirementAge: number = DEFAULT_RETIREMENT_AGE,
+    lifeExpectancy: number = DEFAULT_LIFE_EXPECTANCY
+): CustomMilestone[] => [
+    {
+        id: BUILTIN_MILESTONE_IDS.BIRTH,
+        name: 'Birth',
+        conditions: [{ type: 'YEAR', operator: '=', value: birthYear }],
+        color: '#3b82f6', // blue-500
+    },
+    {
+        id: BUILTIN_MILESTONE_IDS.RETIRE,
+        name: 'Retire',
+        conditions: [{ type: 'AGE', operator: '>=', value: retirementAge }],
+        color: '#22c55e', // green-500
+    },
+    {
+        id: BUILTIN_MILESTONE_IDS.END_OF_PLAN,
+        name: 'End of Plan',
+        // Trigger AFTER life expectancy year so expenses continue through it
+        conditions: [{ type: 'AGE', operator: '>=', value: lifeExpectancy}],
+        color: '#6b7280', // gray-500
+    },
+];
+
+// Helper: Get the AGE value from a milestone's first AGE condition
+const getAgeFromMilestone = (milestone: CustomMilestone | undefined, defaultValue: number): number => {
+    if (!milestone) return defaultValue;
+    const ageCondition = milestone.conditions.find(c => c.type === 'AGE');
+    return ageCondition?.value ?? defaultValue;
+};
+
+// Get birth year from the Birth milestone
+export const getBirthYear = (milestones: CustomMilestone[]): number => {
+    const birthMilestone = milestones.find(m => m.id === BUILTIN_MILESTONE_IDS.BIRTH);
+    if (!birthMilestone) return DEFAULT_BIRTH_YEAR;
+    const yearCondition = birthMilestone.conditions.find(c => c.type === 'YEAR');
+    return yearCondition?.value ?? DEFAULT_BIRTH_YEAR;
+};
+
+// Get retirement age from the Retire milestone
+export const getRetirementAge = (milestones: CustomMilestone[]): number => {
+    const retireMilestone = milestones.find(m => m.id === BUILTIN_MILESTONE_IDS.RETIRE);
+    return getAgeFromMilestone(retireMilestone, DEFAULT_RETIREMENT_AGE);
+};
+
+// Get life expectancy from the End of Plan milestone
+export const getLifeExpectancy = (milestones: CustomMilestone[]): number => {
+    const endOfPlanMilestone = milestones.find(m => m.id === BUILTIN_MILESTONE_IDS.END_OF_PLAN);
+    const rawValue = getAgeFromMilestone(endOfPlanMilestone, DEFAULT_LIFE_EXPECTANCY);
+    return rawValue;
+};
 
 export type CapType = 'MAX' | 'FIXED' | 'REMAINDER' | 'MULTIPLE_OF_EXPENSES';
 
@@ -49,18 +121,16 @@ export interface AssumptionsState {
     gkAdjustmentPercent: number;  // Default 10 (10% cut/increase per GK rules)
     // Auto Roth conversions during retirement
     autoRothConversions: boolean; // Automatically convert Traditional to Roth in low-tax years
-    // Auto Roth conversion target
+    // Auto Roth conversion target (used when taxOptimizationEnabled is false)
     rothConversionTargetBracket: number; // Max effective rate for conversions (e.g., 0.22)
-    // Tax-optimized withdrawal splitting
-    taxOptimizedWithdrawals: boolean; // Enable bracket-aware withdrawal splitting
-    taxOptimizedTargetBracket: number; // Target bracket ceiling as decimal (e.g., 0.22)
+    // Tax Optimization Mode
+    taxOptimizationEnabled: boolean; // When enabled, uses smart withdrawal order and auto-calculated Roth conversions
     };
   demographics: {
-    birthYear: number;
-    retirementAge: number;
-    lifeExpectancy: number;
     priorEarnings?: EarningsRecord[];  // SSA earnings history imported from XML
     priorYearMode?: boolean;  // If true, simulation starts from last year using verified data
+    // NOTE: birthYear, retirementAge, and lifeExpectancy are derived from milestones
+    // Use getBirthYear(), getRetirementAge(), getLifeExpectancy() helpers
   };
   display: {
     useCompactCurrency: boolean; // Show $1.2M instead of $1,200,000
@@ -69,6 +139,7 @@ export interface AssumptionsState {
   };
   priorities: PriorityBucket[];
   withdrawalStrategy: WithdrawalBucket[]; // The "Burn Order"
+  milestones: CustomMilestone[]; // User-defined milestone triggers
 }
 
 export const defaultAssumptions: AssumptionsState = {
@@ -96,14 +167,11 @@ export const defaultAssumptions: AssumptionsState = {
     gkAdjustmentPercent: 10,    // 10% adjustment (per actual GK rules)
     autoRothConversions: false, // Auto-convert Traditional to Roth in retirement
     rothConversionTargetBracket: 0.22, // Convert up to 22% effective rate
-    taxOptimizedWithdrawals: false, // Bracket-aware withdrawal splitting
-    taxOptimizedTargetBracket: 0.22, // Default to 22% bracket ceiling
+    taxOptimizationEnabled: false, // Disabled by default - use manual withdrawal order
   },
   demographics: {
-    retirementAge: 65,
-    lifeExpectancy: 90,
-    birthYear: new Date().getFullYear() - 24, // Default to 24 years old
     priorYearMode: false, // Default to current year mode
+    // birthYear, retirementAge, lifeExpectancy are now in milestones
   },
   display: {
     useCompactCurrency: true,
@@ -112,6 +180,7 @@ export const defaultAssumptions: AssumptionsState = {
   },
   priorities: [],
   withdrawalStrategy: [],
+  milestones: createBuiltinMilestones(), // Built-in milestones with default values (birth 1990, retire 65, life 90)
 };
 
 /**
@@ -178,22 +247,97 @@ function migrateAssumptions(saved: unknown, defaults: AssumptionsState): Assumpt
     // Arrays: use saved if it's a valid array, otherwise use default
     priorities: Array.isArray(data.priorities) ? data.priorities as PriorityBucket[] : defaults.priorities,
     withdrawalStrategy: Array.isArray(data.withdrawalStrategy) ? data.withdrawalStrategy as WithdrawalBucket[] : defaults.withdrawalStrategy,
+    milestones: Array.isArray(data.milestones) ? data.milestones as CustomMilestone[] : defaults.milestones,
   };
 
-  // Migration: Convert old startAge/startYear to birthYear
+  // Migration: Get legacy values from old demographics if present
   const savedDemographics = data.demographics as Record<string, unknown> | undefined;
-  if (savedDemographics && !savedDemographics.birthYear) {
-    // Old format had startAge and startYear
+
+  // Handle very old format with startAge/startYear
+  let legacyBirthYear = savedDemographics?.birthYear as number | undefined;
+  if (!legacyBirthYear && savedDemographics) {
     const startAge = savedDemographics.startAge as number | undefined;
     const startYear = savedDemographics.startYear as number | undefined;
     if (startAge !== undefined && startYear !== undefined) {
-      // Calculate birth year from the old format
-      migrated.demographics.birthYear = startYear - startAge;
+      legacyBirthYear = startYear - startAge;
     } else if (startAge !== undefined) {
-      // If only startAge exists, use current year
-      migrated.demographics.birthYear = new Date().getFullYear() - startAge;
+      legacyBirthYear = new Date().getFullYear() - startAge;
     }
   }
+
+  const legacyRetirementAge = savedDemographics?.retirementAge as number | undefined;
+  const legacyLifeExpectancy = savedDemographics?.lifeExpectancy as number | undefined;
+
+  // Use legacy values or defaults for creating built-in milestones
+  const birthYearForMilestones = legacyBirthYear ?? DEFAULT_BIRTH_YEAR;
+  const retirementAgeForMilestones = legacyRetirementAge ?? DEFAULT_RETIREMENT_AGE;
+  const lifeExpectancyForMilestones = legacyLifeExpectancy ?? DEFAULT_LIFE_EXPECTANCY;
+
+  // Migration: Ensure built-in milestones always exist
+  const existingIds = new Set(migrated.milestones.map(m => m.id));
+
+  // If Birth milestone doesn't exist, create it with legacy or default value
+  if (!existingIds.has(BUILTIN_MILESTONE_IDS.BIRTH)) {
+    migrated.milestones.unshift({
+      id: BUILTIN_MILESTONE_IDS.BIRTH,
+      name: 'Birth',
+      conditions: [{ type: 'YEAR', operator: '=', value: birthYearForMilestones }],
+      color: '#3b82f6',
+    });
+  }
+
+  // If Retire milestone doesn't exist, create it with legacy or default value
+  if (!existingIds.has(BUILTIN_MILESTONE_IDS.RETIRE)) {
+    const birthIndex = migrated.milestones.findIndex(m => m.id === BUILTIN_MILESTONE_IDS.BIRTH);
+    const insertIndex = birthIndex >= 0 ? birthIndex + 1 : 0;
+    migrated.milestones.splice(insertIndex, 0, {
+      id: BUILTIN_MILESTONE_IDS.RETIRE,
+      name: 'Retire',
+      conditions: [{ type: 'AGE', operator: '>=', value: retirementAgeForMilestones }],
+      color: '#22c55e',
+    });
+  }
+
+  // If End of Plan milestone doesn't exist, create it with legacy or default value
+  if (!existingIds.has(BUILTIN_MILESTONE_IDS.END_OF_PLAN)) {
+    const retireIndex = migrated.milestones.findIndex(m => m.id === BUILTIN_MILESTONE_IDS.RETIRE);
+    const insertIndex = retireIndex >= 0 ? retireIndex + 1 : 0;
+    migrated.milestones.splice(insertIndex, 0, {
+      id: BUILTIN_MILESTONE_IDS.END_OF_PLAN,
+      name: 'End of Plan',
+      // Trigger AFTER life expectancy year so expenses continue through it
+      conditions: [{ type: 'AGE', operator: '>=', value: lifeExpectancyForMilestones }],
+      color: '#6b7280',
+    });
+  }
+
+  // Ensure built-in milestones have correct names and formats
+  migrated.milestones = migrated.milestones.map(m => {
+    if (m.id === BUILTIN_MILESTONE_IDS.BIRTH) {
+      return { ...m, name: 'Birth' };
+    }
+    if (m.id === BUILTIN_MILESTONE_IDS.RETIRE) {
+      return { ...m, name: 'Retire' };
+    }
+    if (m.id === BUILTIN_MILESTONE_IDS.END_OF_PLAN) {
+      // Migrate old format (operator '>') to new format (operator '>=' with value+1)
+      const ageCondition = m.conditions.find(c => c.type === 'AGE');
+      if (ageCondition && ageCondition.operator === '>') {
+        return {
+          ...m,
+          name: 'End of Plan',
+          conditions: [{ type: 'AGE' as const, operator: '>=' as const, value: ageCondition.value + 1 }],
+        };
+      }
+      return { ...m, name: 'End of Plan' };
+    }
+    return m;
+  });
+
+  // Clear deprecated fields (they're now derived from milestones)
+  delete (migrated.demographics as Record<string, unknown>).birthYear;
+  delete (migrated.demographics as Record<string, unknown>).retirementAge;
+  delete (migrated.demographics as Record<string, unknown>).lifeExpectancy;
 
   return migrated;
 }
@@ -217,7 +361,11 @@ type Action =
   | { type: 'REMOVE_WITHDRAWAL_STRATEGY'; payload: string }
   | { type: 'UPDATE_WITHDRAWAL_STRATEGY'; payload: WithdrawalBucket }
   | { type: 'SET_PRIOR_EARNINGS'; payload: EarningsRecord[] }
-  | { type: 'CLEAR_PRIOR_EARNINGS' };
+  | { type: 'CLEAR_PRIOR_EARNINGS' }
+  | { type: 'SET_MILESTONES'; payload: CustomMilestone[] }
+  | { type: 'ADD_MILESTONE'; payload: CustomMilestone }
+  | { type: 'REMOVE_MILESTONE'; payload: string }
+  | { type: 'UPDATE_MILESTONE'; payload: CustomMilestone };
 
 const assumptionsReducer = (state: AssumptionsState, action: Action): AssumptionsState => {
   switch (action.type) {
@@ -239,20 +387,15 @@ const assumptionsReducer = (state: AssumptionsState, action: Action): Assumption
       };
     case 'UPDATE_DEMOGRAPHICS':
       return { ...state, demographics: { ...state.demographics, ...action.payload } };
-    case 'UPDATE_DISPLAY': {
-      const newDisplay = { ...state.display, ...action.payload };
-      // Disable experimental features when toggled off
-      const investments = (action.payload.showExperimentalFeatures === false && state.investments.taxOptimizedWithdrawals)
-        ? { ...state.investments, taxOptimizedWithdrawals: false }
-        : state.investments;
-      return { ...state, display: newDisplay, investments };
-    }
+    case 'UPDATE_DISPLAY':
+      return { ...state, display: { ...state.display, ...action.payload } };
     case 'RESET_DEFAULTS':
-      // Preserve user's allocations and withdrawal order
+      // Preserve user's allocations, withdrawal order, and milestones
       return {
         ...defaultAssumptions,
         priorities: state.priorities,
         withdrawalStrategy: state.withdrawalStrategy,
+        milestones: state.milestones,
       };
     case 'SET_BULK_DATA':
       return action.payload;
@@ -288,6 +431,26 @@ const assumptionsReducer = (state: AssumptionsState, action: Action): Assumption
             ...state,
             demographics: { ...state.demographics, priorEarnings: undefined }
         };
+    case 'SET_MILESTONES':
+        return { ...state, milestones: action.payload };
+    case 'ADD_MILESTONE':
+        return { ...state, milestones: [...state.milestones, action.payload] };
+    case 'REMOVE_MILESTONE':
+        // Prevent removing built-in milestones
+        if (isBuiltinMilestone(action.payload)) {
+            return state;
+        }
+        return { ...state, milestones: state.milestones.filter(m => m.id !== action.payload) };
+    case 'UPDATE_MILESTONE': {
+        // For built-in milestones, preserve the name
+        const updatedMilestone = isBuiltinMilestone(action.payload.id)
+            ? { ...action.payload, name: state.milestones.find(m => m.id === action.payload.id)?.name || action.payload.name }
+            : action.payload;
+        return {
+            ...state,
+            milestones: state.milestones.map(m => m.id === updatedMilestone.id ? updatedMilestone : m)
+        };
+    }
     default:
       return state;
   }

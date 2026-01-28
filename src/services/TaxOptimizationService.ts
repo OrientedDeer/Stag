@@ -6,7 +6,7 @@
  */
 
 import { SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
-import { AssumptionsState } from '../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsState, getRetirementAge, getLifeExpectancy, getBirthYear } from '../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../components/Objects/Taxes/TaxContext';
 import { AnyIncome, WorkIncome } from '../components/Objects/Income/models';
 import { InvestedAccount } from '../components/Objects/Accounts/models';
@@ -195,7 +195,7 @@ export function analyzeTaxSituation(
     taxState: TaxState
 ): TaxAnalysis {
     const { year, incomes } = simulationYear;
-    const age = year - assumptions.demographics.birthYear;
+    const age = year - getBirthYear(assumptions.milestones);
 
     // Get gross income and deductions
     const grossIncome = TaxService.getGrossIncome(incomes, year);
@@ -278,8 +278,8 @@ export function generateRecommendations(
     if (hasTraditionalBalance) {
         const windows = findRothConversionWindows(simulation, assumptions);
         // Calculate retirement tax rate for the recommendation
-        const retirementAge = assumptions.demographics.retirementAge;
-        const retirementYear = assumptions.demographics.birthYear + retirementAge;
+        const retirementAge = getRetirementAge(assumptions.milestones);
+        const retirementYear = getBirthYear(assumptions.milestones) + retirementAge;
         const retirementTaxRate = getMedianRetirementTaxRate(simulation, retirementYear);
         const recRoth = generateRothConversionRecommendation(windows, retirementTaxRate);
         if (recRoth) recommendations.push(recRoth);
@@ -346,8 +346,8 @@ export function findRothConversionWindows(
     assumptions: AssumptionsState
 ): RothConversionOpportunity[] {
     const opportunities: RothConversionOpportunity[] = [];
-    const retirementAge = assumptions.demographics.retirementAge;
-    const birthYear = assumptions.demographics.birthYear;
+    const retirementAge = getRetirementAge(assumptions.milestones);
+    const birthYear = getBirthYear(assumptions.milestones);
     const retirementYear = birthYear + retirementAge;
 
     // Get the median retirement tax rate and use the higher of calculated vs minimum
@@ -441,9 +441,9 @@ export function calculateRothConversion(
         assumptions
     );
 
-    const retirementAge = assumptions.demographics.retirementAge;
-    const birthYear = assumptions.demographics.birthYear;
-    const lifeExpectancy = assumptions.demographics.lifeExpectancy;
+    const retirementAge = getRetirementAge(assumptions.milestones);
+    const birthYear = getBirthYear(assumptions.milestones);
+    const lifeExpectancy = getLifeExpectancy(assumptions.milestones);
     const currentAge = year - birthYear;
 
     // Calculate growth horizon: years the money will compound before withdrawal
@@ -649,7 +649,7 @@ export function findOptimalRothAmount(
     simulation: SimulationYear[],
     maxAmount: number
 ): { optimalAmount: number | null; optimalVerdict: 'all-roth' | 'all-traditional' | 'optimal' } {
-    const birthYear = assumptions.demographics.birthYear;
+    const birthYear = getBirthYear(assumptions.milestones);
     const growthRate = (assumptions.investments?.returnRates?.ror / 100) || FALLBACK_GROWTH_RATE;
     const growthFactor = Math.pow(1 + growthRate, growthYears);
 
@@ -760,7 +760,7 @@ export function analyzeRothVsPreTax(
         assumptions
     );
 
-    const birthYear = assumptions.demographics.birthYear;
+    const birthYear = getBirthYear(assumptions.milestones);
 
     // Growth rate from assumptions
     const growthRate = (assumptions.investments?.returnRates?.ror / 100) || FALLBACK_GROWTH_RATE;
@@ -904,10 +904,10 @@ export function generateTaxProjections(
     taxState: TaxState
 ): TaxProjection[] {
     const projections: TaxProjection[] = [];
-    const retirementAge = assumptions.demographics.retirementAge;
+    const retirementAge = getRetirementAge(assumptions.milestones);
 
     for (const simYear of simulation) {
-        const age = simYear.year - assumptions.demographics.birthYear;
+        const age = simYear.year - getBirthYear(assumptions.milestones);
 
         const grossIncome = TaxService.getGrossIncome(simYear.incomes, simYear.year);
         const preTaxDeductions = TaxService.getPreTaxExemptions(simYear.incomes, simYear.year, age);

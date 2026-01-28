@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { runSimulation } from '../../../../components/Objects/Assumptions/useSimulation';
-import { AssumptionsState, defaultAssumptions } from '../../../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../../../components/Objects/Taxes/TaxContext';
 import { SavedAccount, InvestedAccount } from '../../../../components/Objects/Accounts/models';
 import { WorkIncome } from '../../../../components/Objects/Income/models';
@@ -10,11 +10,8 @@ import { FoodExpense } from '../../../../components/Objects/Expense/models';
 const currentYear = new Date().getFullYear();
 const baseAssumptions: AssumptionsState = {
     ...defaultAssumptions,
-    demographics: {
-        birthYear: currentYear - 30, // age 30 in current year
-        lifeExpectancy: 90,
-        retirementAge: 65
-    },
+    demographics: {},
+    milestones: createBuiltinMilestones(currentYear - 30, 65, 90), // age 30, retire at 65, life expectancy 90
     macro: {
         ...defaultAssumptions.macro,
         inflationRate: 0,
@@ -149,11 +146,8 @@ describe('useSimulation - runSimulation', () => {
         it('should cap simulation at life expectancy', () => {
             const shortLifeAssumptions: AssumptionsState = {
                 ...baseAssumptions,
-                demographics: {
-                    birthYear: currentYear - 85, // age 85 in current year
-                    lifeExpectancy: 90, // Only 5 years left
-                    retirementAge: 65
-                }
+                demographics: {},
+                milestones: createBuiltinMilestones(currentYear - 85, 65, 90) // age 85, retire at 65, life expectancy 90 (5 years left)
             };
 
             // Request 30 years but should only get 5 + Year 0 = 6 total
@@ -167,11 +161,8 @@ describe('useSimulation - runSimulation', () => {
         it('should return only Year 0 when already at life expectancy', () => {
             const atEndAssumptions: AssumptionsState = {
                 ...baseAssumptions,
-                demographics: {
-                    birthYear: currentYear - 90, // age 90 in current year
-                    lifeExpectancy: 90, // 0 years left
-                    retirementAge: 65
-                }
+                demographics: {},
+                milestones: createBuiltinMilestones(currentYear - 90, 65, 90) // age 90 in current year, 0 years left
             };
 
             const result = runSimulation(30, [], [], [], atEndAssumptions, baseTaxState);
@@ -182,11 +173,8 @@ describe('useSimulation - runSimulation', () => {
         it('should run full duration when life expectancy is far out', () => {
             const longLifeAssumptions: AssumptionsState = {
                 ...baseAssumptions,
-                demographics: {
-                    birthYear: currentYear - 30, // age 30 in current year
-                    lifeExpectancy: 100, // 70 years left
-                    retirementAge: 65
-                }
+                demographics: {},
+                milestones: createBuiltinMilestones(currentYear - 30, 65, 100) // age 30, retire at 65, life expectancy 100 (70 years left)
             };
 
             // Request 10 years - should get all 10 + Year 0
@@ -254,11 +242,8 @@ describe('useSimulation - runSimulation', () => {
         it('should pass previous timeline to each year for SS calculation', () => {
             const assumptions: AssumptionsState = {
                 ...baseAssumptions,
-                demographics: {
-                    birthYear: currentYear - 30, // age 30 in current year
-                    lifeExpectancy: 90,
-                    retirementAge: 65
-                }
+                demographics: {},
+                milestones: createBuiltinMilestones(currentYear - 30, 65, 90) // age 30, retire at 65, life expectancy 90
             };
 
             const incomes = [
@@ -352,11 +337,8 @@ describe('useSimulation - runSimulation', () => {
             // Life expectancy cap should catch this
             const pastAssumptions: AssumptionsState = {
                 ...baseAssumptions,
-                demographics: {
-                    birthYear: currentYear - 95, // age 95 in current year
-                    lifeExpectancy: 90, // Already past life expectancy
-                    retirementAge: 65
-                }
+                demographics: {},
+                milestones: createBuiltinMilestones(currentYear - 95, 65, 90) // age 95 in current year, already past life expectancy 90
             };
 
             const result = runSimulation(10, [], [], [], pastAssumptions, baseTaxState);

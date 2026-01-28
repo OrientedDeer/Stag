@@ -110,7 +110,7 @@ export function extractEarningsFromSimulation(
   if (incomesToCheck) {
     incomesToCheck.forEach(income => {
       if (income instanceof WorkIncome && income.earned_income === 'Yes' && income.startDate) {
-        const jobStartYear = new Date(income.startDate).getUTCFullYear();
+        const jobStartYear = new Date(income.startDate).getFullYear();
         // Get full annual amount WITHOUT year parameter to avoid proration
         // This gives us the salary amount before any retirement zeroing
         const annualSalary = income.getAnnualAmount();

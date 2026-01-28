@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { AssumptionsState, defaultAssumptions } from '../../../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../../../components/Objects/Taxes/TaxContext';
 import { InvestedAccount, SavedAccount, DebtAccount, DeficitDebtAccount, PropertyAccount } from '../../../../components/Objects/Accounts/models';
 import { WorkIncome, FutureSocialSecurityIncome, PassiveIncome } from '../../../../components/Objects/Income/models';
@@ -11,11 +11,8 @@ import { simulateOneYear } from '../../../../components/Objects/Assumptions/Simu
 // We clone the default and override specific fields to ensure 10% growth is exactly 10%.
 const cleanAssumptions: AssumptionsState = {
     ...defaultAssumptions,
-    demographics: {
-        birthYear: 1995, // Age 30 in 2025
-        lifeExpectancy: 90,
-        retirementAge: 67
-    },
+    demographics: {},
+    milestones: createBuiltinMilestones(1995, 67, 90), // Age 30 in 2025, retire at 67, life expectancy 90
     income: {
         ...defaultAssumptions.income,
         salaryGrowth: 0
@@ -514,12 +511,8 @@ describe('Simulation Engine', () => {
     describe('Guyton-Klinger Withdrawal Strategy', () => {
         const retiredAssumptions: AssumptionsState = {
             ...cleanAssumptions,
-            demographics: {
-                ...cleanAssumptions.demographics,
-                birthYear: 1960, // Age 65 in 2025, already retired
-                retirementAge: 65,
-                lifeExpectancy: 90
-            },
+            demographics: {},
+            milestones: createBuiltinMilestones(1960, 65, 90), // Age 65 in 2025, already retired
             investments: {
                 ...cleanAssumptions.investments,
                 withdrawalStrategy: 'Guyton Klinger',
@@ -671,12 +664,8 @@ describe('Simulation Engine', () => {
             // Age 76 with life expectancy 90 = 14 years remaining (< 15)
             const nearEndAssumptions: AssumptionsState = {
                 ...retiredAssumptions,
-                demographics: {
-                    ...retiredAssumptions.demographics,
-                    birthYear: 1949, // Age 76 in 2025
-                    retirementAge: 65,
-                    lifeExpectancy: 90
-                }
+                demographics: {},
+                milestones: createBuiltinMilestones(1949, 65, 90) // Age 76 in 2025
             };
 
             const portfolio = new InvestedAccount(
@@ -718,11 +707,8 @@ describe('Simulation Engine', () => {
             // Set up assumptions where we're at claiming age
             const ssAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
-                demographics: {
-                    birthYear: 1958, // Age 67 in 2025, at claiming age
-                    lifeExpectancy: 90,
-                    retirementAge: 67
-                }
+                demographics: {},
+                milestones: createBuiltinMilestones(1958, 67, 90) // Age 67 in 2025, at claiming age
             };
 
             // Create FutureSocialSecurityIncome with claiming age 67
@@ -783,11 +769,8 @@ describe('Simulation Engine', () => {
             // Age 63 claiming at 62 (before FRA)
             const earlySSAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
-                demographics: {
-                    birthYear: 1962, // Age 63 in 2025
-                    lifeExpectancy: 90,
-                    retirementAge: 67
-                }
+                demographics: {},
+                milestones: createBuiltinMilestones(1962, 67, 90) // Age 63 in 2025
             };
 
             // SS already being received (calculated in previous year)
@@ -836,11 +819,8 @@ describe('Simulation Engine', () => {
             // Age 67+ (at or after FRA for most birth years)
             const postFRAAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
-                demographics: {
-                    birthYear: 1957, // Age 68 in 2025, past FRA
-                    lifeExpectancy: 90,
-                    retirementAge: 67
-                }
+                demographics: {},
+                milestones: createBuiltinMilestones(1957, 67, 90) // Age 68 in 2025, past FRA
             };
 
             const activeSS = new FutureSocialSecurityIncome(
@@ -906,11 +886,8 @@ describe('Simulation Engine', () => {
             // Age < 59.5 for early withdrawal
             const earlyAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
-                demographics: {
-                    birthYear: 1980, // Age 45 in 2025
-                    lifeExpectancy: 90,
-                    retirementAge: 67
-                },
+                demographics: {},
+                milestones: createBuiltinMilestones(1980, 67, 90), // Age 45 in 2025
                 withdrawalStrategy: [{ id: 'w1', name: 'Roth', accountId: 'roth-1' }]
             };
 
@@ -943,11 +920,8 @@ describe('Simulation Engine', () => {
 
             const earlyAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
-                demographics: {
-                    birthYear: 1980, // Age 45 in 2025
-                    lifeExpectancy: 90,
-                    retirementAge: 67
-                },
+                demographics: {},
+                milestones: createBuiltinMilestones(1980, 67, 90), // Age 45 in 2025
                 withdrawalStrategy: [{ id: 'w1', name: 'Roth', accountId: 'roth-1' }]
             };
 
@@ -970,11 +944,8 @@ describe('Simulation Engine', () => {
         it('should end work income at retirement age', () => {
             const retirementAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
-                demographics: {
-                    birthYear: 1960, // Age 65 in 2025
-                    lifeExpectancy: 90,
-                    retirementAge: 65  // Retiring this year
-                }
+                demographics: {},
+                milestones: createBuiltinMilestones(1960, 65, 90) // Age 65 in 2025, retiring this year
             };
 
             // Work income without explicit end date
@@ -1015,12 +986,10 @@ describe('Simulation Engine', () => {
                 mockTaxState
             );
 
-            // Income should be zeroed out in retirement year
-            const resultIncome = result.incomes.find(inc => inc.id === 'inc-1') as WorkIncome;
-            expect(resultIncome).toBeDefined();
-            expect(resultIncome.amount).toBe(0);
-            expect(resultIncome.preTax401k).toBe(0);
-            expect(resultIncome.employerMatch).toBe(0);
+            // Income should be filtered out (no endMilestoneId = auto-stop at retirement)
+            const resultIncome = result.incomes.find(inc => inc.id === 'inc-1') as WorkIncome | undefined;
+            // With safety net: WorkIncome without endMilestoneId is filtered out at retirement
+            expect(resultIncome).toBeUndefined();
         });
     });
 
@@ -1110,11 +1079,8 @@ describe('Simulation Engine', () => {
         it('should not perform conversions when autoRothConversions is disabled', () => {
             const retiredAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
-                demographics: {
-                    birthYear: 1958, // Age 67 in 2025
-                    lifeExpectancy: 90,
-                    retirementAge: 65
-                },
+                demographics: {},
+                milestones: createBuiltinMilestones(1958, 65, 90), // Age 67 in 2025
                 investments: {
                     ...cleanAssumptions.investments,
                     autoRothConversions: false
@@ -1143,14 +1109,11 @@ describe('Simulation Engine', () => {
         it('should perform conversions when autoRothConversions is enabled and retired', () => {
             const retiredAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
-                demographics: {
-                    birthYear: 1958, // Age 67 in 2025
-                    lifeExpectancy: 90,
-                    retirementAge: 65
-                },
+                demographics: {},
+                milestones: createBuiltinMilestones(1958, 65, 90), // Age 67 in 2025
                 investments: {
                     ...cleanAssumptions.investments,
-                    autoRothConversions: true
+                    taxOptimizationEnabled: true
                 },
                 withdrawalStrategy: [
                     { id: 'ws-trad-1', accountId: 'trad-1', name: 'Traditional 401k' },
@@ -1186,14 +1149,11 @@ describe('Simulation Engine', () => {
         it('should not perform conversions before retirement', () => {
             const workingAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
-                demographics: {
-                    birthYear: 1985, // Age 40 in 2025
-                    lifeExpectancy: 90,
-                    retirementAge: 65
-                },
+                demographics: {},
+                milestones: createBuiltinMilestones(1985, 65, 90), // Age 40 in 2025
                 investments: {
                     ...cleanAssumptions.investments,
-                    autoRothConversions: true
+                    taxOptimizationEnabled: true
                 }
             };
 
@@ -1220,14 +1180,11 @@ describe('Simulation Engine', () => {
         it('should transfer from Traditional to Roth accounts', () => {
             const retiredAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
-                demographics: {
-                    birthYear: 1958, // Age 67 in 2025
-                    lifeExpectancy: 90,
-                    retirementAge: 65
-                },
+                demographics: {},
+                milestones: createBuiltinMilestones(1958, 65, 90), // Age 67 in 2025
                 investments: {
                     ...cleanAssumptions.investments,
-                    autoRothConversions: true
+                    taxOptimizationEnabled: true
                 },
                 withdrawalStrategy: [
                     { id: 'ws-trad-1', accountId: 'trad-1', name: 'Traditional 401k' },
@@ -1275,14 +1232,11 @@ describe('Simulation Engine', () => {
         it('should log conversion details', () => {
             const retiredAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
-                demographics: {
-                    birthYear: 1958, // Age 67 in 2025
-                    lifeExpectancy: 90,
-                    retirementAge: 65
-                },
+                demographics: {},
+                milestones: createBuiltinMilestones(1958, 65, 90), // Age 67 in 2025
                 investments: {
                     ...cleanAssumptions.investments,
-                    autoRothConversions: true
+                    taxOptimizationEnabled: true
                 },
                 withdrawalStrategy: [
                     { id: 'ws-trad-1', accountId: 'trad-1', name: 'Traditional 401k' },
@@ -1319,14 +1273,11 @@ describe('Simulation Engine', () => {
             // because the old code mutated accounts directly, leading to division by zero
             const retiredAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
-                demographics: {
-                    birthYear: 1958, // Age 67 in 2025
-                    lifeExpectancy: 90,
-                    retirementAge: 65
-                },
+                demographics: {},
+                milestones: createBuiltinMilestones(1958, 65, 90), // Age 67 in 2025
                 investments: {
                     ...cleanAssumptions.investments,
-                    autoRothConversions: true
+                    taxOptimizationEnabled: true
                 },
                 withdrawalStrategy: [
                     { id: 'ws-trad-1', accountId: 'trad-1', name: 'Traditional 401k' },
@@ -1370,14 +1321,11 @@ describe('Simulation Engine', () => {
         it('should include fromAccountIds and toAccountIds in conversion result', () => {
             const retiredAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
-                demographics: {
-                    birthYear: 1958, // Age 67 in 2025
-                    lifeExpectancy: 90,
-                    retirementAge: 65
-                },
+                demographics: {},
+                milestones: createBuiltinMilestones(1958, 55, 90), // Retired at 55 (early retiree), age 67 in 2025
                 investments: {
                     ...cleanAssumptions.investments,
-                    autoRothConversions: true
+                    taxOptimizationEnabled: true
                 },
                 withdrawalStrategy: [
                     { id: 'ws-trad-1', accountId: 'trad-1', name: 'Traditional 401k' },
@@ -1425,14 +1373,11 @@ describe('Simulation Engine', () => {
         it('should not convert when no Traditional accounts exist', () => {
             const retiredAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
-                demographics: {
-                    birthYear: 1958, // Age 67 in 2025
-                    lifeExpectancy: 90,
-                    retirementAge: 65
-                },
+                demographics: {},
+                milestones: createBuiltinMilestones(1958, 65, 90), // Age 67 in 2025
                 investments: {
                     ...cleanAssumptions.investments,
-                    autoRothConversions: true
+                    taxOptimizationEnabled: true
                 },
                 withdrawalStrategy: []
             };
@@ -1457,14 +1402,11 @@ describe('Simulation Engine', () => {
         it('should not convert when no Roth accounts exist', () => {
             const retiredAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
-                demographics: {
-                    birthYear: 1958, // Age 67 in 2025
-                    lifeExpectancy: 90,
-                    retirementAge: 65
-                },
+                demographics: {},
+                milestones: createBuiltinMilestones(1958, 65, 90), // Age 67 in 2025
                 investments: {
                     ...cleanAssumptions.investments,
-                    autoRothConversions: true
+                    taxOptimizationEnabled: true
                 },
                 withdrawalStrategy: []
             };
@@ -1501,14 +1443,11 @@ describe('Simulation Engine', () => {
 
             const retiredAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
-                demographics: {
-                    birthYear: 1958,
-                    lifeExpectancy: 90,
-                    retirementAge: 65
-                },
+                demographics: {},
+                milestones: createBuiltinMilestones(1958, 55, 90), // Retired at 55 (early retiree)
                 investments: {
                     ...cleanAssumptions.investments,
-                    autoRothConversions: true,
+                    taxOptimizationEnabled: true,
                     returnRates: { ror: 0 } // 0% return for simpler math
                 },
                 withdrawalStrategy: [
@@ -1518,8 +1457,8 @@ describe('Simulation Engine', () => {
             };
 
             const ssIncome = new PassiveIncome(
-                'ss-1', 
-                'Pension', 
+                'ss-1',
+                'Pension',
                 existingIncome / 12, // Monthly amount,
                 'Monthly',
                 'Yes',
@@ -1569,14 +1508,11 @@ describe('Simulation Engine', () => {
 
             const retiredAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
-                demographics: {
-                    birthYear: 1958,
-                    lifeExpectancy: 90,
-                    retirementAge: 65
-                },
+                demographics: {},
+                milestones: createBuiltinMilestones(1958, 65, 90),
                 investments: {
                     ...cleanAssumptions.investments,
-                    autoRothConversions: true,
+                    taxOptimizationEnabled: true,
                     returnRates: { ror: 0 }
                 },
                 withdrawalStrategy: [
@@ -1622,15 +1558,12 @@ describe('Simulation Engine', () => {
             // Scenario: Retired with some income, conversion should not exceed bracket top
             const retiredAssumptions: AssumptionsState = {
                 ...cleanAssumptions,
-                demographics: {
-                    birthYear: 2001,
-                    lifeExpectancy: 90,
-                    retirementAge: 43
-                },
+                demographics: {},
+                milestones: createBuiltinMilestones(2001, 43, 90),
                 investments: {
                     ...cleanAssumptions.investments,
                     returnRates: { ror: 5.9 },
-                    autoRothConversions: true,
+                    taxOptimizationEnabled: true,
                 },
                 withdrawalStrategy: [
                     { id: 'ws-brok-1', accountId: 'brok-1', name: 'Brokerage' },

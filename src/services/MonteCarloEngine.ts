@@ -5,7 +5,7 @@ import { runSimulation } from '../components/Objects/Assumptions/useSimulation';
 import { AnyAccount } from '../components/Objects/Accounts/models';
 import { AnyIncome } from '../components/Objects/Income/models';
 import { AnyExpense } from '../components/Objects/Expense/models';
-import { AssumptionsState } from '../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsState, getLifeExpectancy, getBirthYear } from '../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../components/Objects/Taxes/TaxContext';
 
 /**
@@ -87,7 +87,7 @@ export async function runMonteCarloSimulation(
 
     // Calculate years to run based on life expectancy
     const yearsToRun = Math.max(0,
-        assumptions.demographics.lifeExpectancy - (new Date().getFullYear() - assumptions.demographics.birthYear)
+        getLifeExpectancy(assumptions.milestones) - (new Date().getFullYear() - getBirthYear(assumptions.milestones))
     );
 
     // Chunk size for yielding to UI
@@ -139,7 +139,7 @@ export function runMonteCarloSimulationSync(
     const scenarios: ScenarioResult[] = [];
 
     const yearsToRun = Math.max(0,
-        assumptions.demographics.lifeExpectancy - (new Date().getFullYear() - assumptions.demographics.birthYear)
+        getLifeExpectancy(assumptions.milestones) - (new Date().getFullYear() - getBirthYear(assumptions.milestones))
     );
 
     for (let i = 0; i < config.numScenarios; i++) {

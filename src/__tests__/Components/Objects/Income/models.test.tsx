@@ -53,8 +53,9 @@ describe('Income Models', () => {
   });
 
   describe('getIncomeActiveMultiplier', () => {
-    const income = new WindfallIncome('w1', 'Test', 1000, 'Annually', 'No', new Date('2025-04-01'), new Date('2026-09-30'));
-    
+    // Use Date constructor with args to ensure local time (month is 0-indexed, so 3 = April, 8 = September)
+    const income = new WindfallIncome('w1', 'Test', 1000, 'Annually', 'No', new Date(2025, 3, 1), new Date(2026, 8, 30));
+
     it('should handle various year scenarios for multiplier', () => {
       expect(getIncomeActiveMultiplier(income, 2024)).toBe(0); // Before start
       expect(getIncomeActiveMultiplier(income, 2027)).toBe(0); // After end
@@ -478,7 +479,8 @@ describe('Income Models', () => {
 
     it('should apply time-based multiplier when year is provided', () => {
       // Income active April-December 2025 (9 months)
-      const income = new TestIncome('t1', 'Test', 12000, 'Annually', 'No', new Date('2025-04-01'), new Date('2025-12-31'));
+      // Use Date constructor with args to ensure local time (month is 0-indexed, so 3 = April)
+      const income = new TestIncome('t1', 'Test', 12000, 'Annually', 'No', new Date(2025, 3, 1), new Date(2025, 11, 31));
 
       // Without year - full amount
       expect(income.getAnnualAmount()).toBe(12000);
@@ -488,14 +490,16 @@ describe('Income Models', () => {
     });
 
     it('should return zero when income not active in requested year', () => {
-      const income = new TestIncome('t1', 'Test', 12000, 'Annually', 'No', new Date('2025-01-01'), new Date('2025-12-31'));
+      // Use Date constructor with args to ensure local time
+      const income = new TestIncome('t1', 'Test', 12000, 'Annually', 'No', new Date(2025, 0, 1), new Date(2025, 11, 31));
 
       expect(income.getAnnualAmount(2024)).toBe(0); // Before start
       expect(income.getAnnualAmount(2026)).toBe(0); // After end
     });
 
     it('should apply multiplier to monthly amount with year', () => {
-      const income = new TestIncome('t1', 'Test', 12000, 'Annually', 'No', new Date('2025-04-01'), new Date('2025-12-31'));
+      // Use Date constructor with args to ensure local time (month is 0-indexed, so 3 = April)
+      const income = new TestIncome('t1', 'Test', 12000, 'Annually', 'No', new Date(2025, 3, 1), new Date(2025, 11, 31));
 
       // Monthly with year applies the same multiplier
       expect(income.getMonthlyAmount(2025)).toBe((12000 * (9/12)) / 12);

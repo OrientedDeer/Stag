@@ -48,14 +48,6 @@ const MilestoneSummaryPanel: React.FC<{
             </div>
             <div className="p-4 space-y-3">
                 <div>
-                    <div className="text-xs text-gray-400 uppercase">Financial Independence</div>
-                    <div className="text-xl font-bold text-white">
-                        {milestones.fiYear
-                            ? `Age ${milestones.fiAge} (${milestones.fiYear})`
-                            : 'Not reached'}
-                    </div>
-                </div>
-                <div>
                     <div className="text-xs text-gray-400 uppercase">Retirement</div>
                     <div className="text-xl font-bold text-white">
                         Age {milestones.retirementAge} ({milestones.retirementYear})
@@ -94,11 +86,6 @@ export const SideBySideView: React.FC<SideBySideViewProps> = ({ comparison }) =>
     const { baseline, comparison: comp, differences } = comparison;
 
     // Determine which is "better" for highlighting
-    const fiHighlight = (): 'baseline' | 'comparison' | null => {
-        if (differences.fiYearDelta === null || differences.fiYearDelta === 0) return null;
-        return differences.fiYearDelta < 0 ? 'comparison' : 'baseline';
-    };
-
     const legacyHighlight = (): 'baseline' | 'comparison' | null => {
         if (differences.legacyValueDelta === 0) return null;
         return differences.legacyValueDelta > 0 ? 'comparison' : 'baseline';
@@ -146,18 +133,6 @@ export const SideBySideView: React.FC<SideBySideViewProps> = ({ comparison }) =>
 
                 {/* Rows */}
                 <div className="px-4">
-                    <StatRow
-                        label="FI Age"
-                        baselineValue={baseline.milestones.fiAge ?? 'N/A'}
-                        comparisonValue={comp.milestones.fiAge ?? 'N/A'}
-                        highlight={fiHighlight()}
-                    />
-                    <StatRow
-                        label="FI Year"
-                        baselineValue={baseline.milestones.fiYear ?? 'N/A'}
-                        comparisonValue={comp.milestones.fiYear ?? 'N/A'}
-                        highlight={fiHighlight()}
-                    />
                     <StatRow
                         label="Retirement Age"
                         baselineValue={baseline.milestones.retirementAge ?? 'N/A'}

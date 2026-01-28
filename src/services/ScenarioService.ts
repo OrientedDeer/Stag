@@ -14,7 +14,7 @@ import {
     SCENARIOS_STORAGE_KEY
 } from './ScenarioTypes';
 import { SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
-import { AssumptionsState } from '../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsState, getRetirementAge, getBirthYear } from '../components/Objects/Assumptions/AssumptionsContext';
 import { AnyAccount, DebtAccount, InvestedAccount, PropertyAccount } from '../components/Objects/Accounts/models';
 import { TaxState } from '../components/Objects/Taxes/TaxContext';
 import { AmountHistoryEntry } from '../components/Objects/Accounts/AccountContext';
@@ -270,7 +270,7 @@ const findFinancialIndependenceYear = (
         // FI is reached when withdrawal can cover expenses
         const withdrawalRate = assumptions.investments?.withdrawalRate || 4;
         if (lastYearInvestments * (withdrawalRate / 100) > currentYear.cashflow.totalExpense) {
-            const age = currentYear.year - assumptions.demographics.birthYear;
+            const age = currentYear.year - getBirthYear(assumptions.milestones);
             return { year: currentYear.year, age };
         }
     }
@@ -302,7 +302,8 @@ export const calculateMilestones = (
     const fi = findFinancialIndependenceYear(simulation, assumptions);
 
     // Calculate retirement year from assumptions
-    const retirementYear = assumptions.demographics.birthYear + assumptions.demographics.retirementAge;
+    const retirementAge = getRetirementAge(assumptions.milestones);
+    const retirementYear = getBirthYear(assumptions.milestones) + retirementAge;
 
     // Find peak net worth and year
     let peakNetWorth = -Infinity;
@@ -324,7 +325,7 @@ export const calculateMilestones = (
         fiYear: fi.year,
         fiAge: fi.age,
         retirementYear,
-        retirementAge: assumptions.demographics.retirementAge,
+        retirementAge,
         legacyValue,
         peakNetWorth,
         peakYear,

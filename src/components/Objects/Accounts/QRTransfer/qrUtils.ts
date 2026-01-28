@@ -43,7 +43,7 @@ const KEY_MAP: Record<string, string> = {
     salaryGrowth: 'sg', qualifiesForSocialSecurity: 'ss', socialSecurityFundingPercent: 'sp',
     lifestyleCreep: 'lc', housingAppreciation: 'ha', rentInflation: 'ri',
     ror: 'rr', withdrawalStrategy: 'ws', withdrawalRate: 'wr',
-    gkUpperGuardrail: 'gu', gkLowerGuardrail: 'gl', gkAdjustmentPercent: 'ga', autoRothConversions: 'ar', rothConversionTargetBracket: 'rb', taxOptimizedWithdrawals: 'tw', taxOptimizedTargetBracket: 'tb',
+    gkUpperGuardrail: 'gu', gkLowerGuardrail: 'gl', gkAdjustmentPercent: 'ga', autoRothConversions: 'ar', rothConversionTargetBracket: 'rb', taxOptimizedTargetBracket: 'tb',
     retirementAge: 'ra', lifeExpectancy: 'le', birthYear: 'by', priorYearMode: 'pm',
     useCompactCurrency: 'cc', showExperimentalFeatures: 'ef', hsaEligible: 'he',
     // Priorities/Withdrawal
@@ -118,8 +118,6 @@ const ASSUMPTIONS_DEFAULTS: Record<string, unknown> = {
     gkAdjustmentPercent: 10,
     autoRothConversions: false,
     rothConversionTargetBracket: 0.22,
-    taxOptimizedWithdrawals: false,
-    taxOptimizedTargetBracket: 0.22,
     // Demographics
     retirementAge: 65,
     lifeExpectancy: 90,
@@ -274,8 +272,6 @@ function expandAssumptions(flat: Record<string, unknown>): Record<string, unknow
             gkAdjustmentPercent: flat.gkAdjustmentPercent ?? ASSUMPTIONS_DEFAULTS.gkAdjustmentPercent,
             autoRothConversions: flat.autoRothConversions ?? ASSUMPTIONS_DEFAULTS.autoRothConversions,
             rothConversionTargetBracket: flat.rothConversionTargetBracket ?? ASSUMPTIONS_DEFAULTS.rothConversionTargetBracket,
-            taxOptimizedWithdrawals: flat.taxOptimizedWithdrawals ?? ASSUMPTIONS_DEFAULTS.taxOptimizedWithdrawals,
-            taxOptimizedTargetBracket: flat.taxOptimizedTargetBracket ?? ASSUMPTIONS_DEFAULTS.taxOptimizedTargetBracket,
         },
         demographics: {
             birthYear: flat.birthYear, // No default - must be provided

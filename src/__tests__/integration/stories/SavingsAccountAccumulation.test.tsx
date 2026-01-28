@@ -19,7 +19,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { AssumptionsState, defaultAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { SavedAccount } from '../../../components/Objects/Accounts/models';
 import { WorkIncome, PassiveIncome } from '../../../components/Objects/Income/models';
@@ -52,11 +52,8 @@ describe('Story: Savings Account Accumulation', () => {
 
     const assumptions: AssumptionsState = {
         ...defaultAssumptions,
-        demographics: {
-            birthYear,
-            lifeExpectancy: 90,
-            retirementAge,
-        },
+        demographics: {},
+        milestones: createBuiltinMilestones(birthYear, retirementAge, 90),
         income: {
             ...defaultAssumptions.income,
             salaryGrowth: 0, // No salary growth for clearer math
@@ -239,7 +236,7 @@ describe('Story: Savings Account Accumulation', () => {
             [savingsAccount],
             [], // No other income
             [livingExpenses],
-            { ...assumptions, demographics: { ...assumptions.demographics, retirementAge: 30 } },
+            { ...assumptions, milestones: createBuiltinMilestones(birthYear, 30, 90) },
             taxState
         );
 
@@ -257,7 +254,7 @@ describe('Story: Savings Account Accumulation', () => {
         // Only interest income (no work income)
         const retiredAssumptions = {
             ...assumptions,
-            demographics: { ...assumptions.demographics, retirementAge: 30 },
+            milestones: createBuiltinMilestones(birthYear, 30, 90),
         };
 
         const simulation = runSimulation(
@@ -285,7 +282,7 @@ describe('Story: Savings Account Accumulation', () => {
 
         const retiredAssumptions = {
             ...assumptions,
-            demographics: { ...assumptions.demographics, retirementAge: 30 },
+            milestones: createBuiltinMilestones(birthYear, 30, 90),
         };
 
         const simulation = runSimulation(
@@ -348,7 +345,7 @@ describe('Story: Savings Account Accumulation', () => {
         // No work income - will need withdrawals
         const retiredAssumptions = {
             ...assumptions,
-            demographics: { ...assumptions.demographics, retirementAge: 30 },
+            milestones: createBuiltinMilestones(birthYear, 30, 90),
             withdrawalStrategy: [
                 { id: 'ws-savings', name: 'Small Savings', accountId: 'acc-small' },
             ],

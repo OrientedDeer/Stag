@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { AssumptionsState, defaultAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { InvestedAccount } from '../../../components/Objects/Accounts/models';
 import { WorkIncome, FutureSocialSecurityIncome } from '../../../components/Objects/Income/models';
@@ -45,11 +45,8 @@ describe('Differential Scenarios: Roth Conversions', () => {
     function createAssumptions(enableRothConversions: boolean): AssumptionsState {
         return {
             ...defaultAssumptions,
-            demographics: {
-                birthYear,
-                lifeExpectancy: 90,
-                retirementAge,
-            },
+            demographics: {},
+            milestones: createBuiltinMilestones(birthYear, retirementAge, 90),
             macro: {
                 ...defaultAssumptions.macro,
                 inflationRate: 0,
@@ -142,11 +139,8 @@ describe('Differential Scenarios: Social Security Timing', () => {
     function createScenario(ssClaimingAge: number) {
         const assumptions: AssumptionsState = {
             ...defaultAssumptions,
-            demographics: {
-                birthYear,
-                lifeExpectancy: 95,
-                retirementAge,
-            },
+            demographics: {},
+            milestones: createBuiltinMilestones(birthYear, retirementAge, 95),
             macro: {
                 ...defaultAssumptions.macro,
                 inflationRate: 0,
@@ -250,11 +244,8 @@ describe('Differential Scenarios: Return Rates', () => {
     function createScenario(returnRate: number) {
         const assumptions: AssumptionsState = {
             ...defaultAssumptions,
-            demographics: {
-                birthYear,
-                lifeExpectancy: 90,
-                retirementAge,
-            },
+            demographics: {},
+            milestones: createBuiltinMilestones(birthYear, retirementAge, 90),
             macro: {
                 ...defaultAssumptions.macro,
                 inflationRate: 0,
@@ -335,11 +326,8 @@ describe('Differential Scenarios: Withdrawal Rate', () => {
     function createScenario(withdrawalRate: number) {
         const assumptions: AssumptionsState = {
             ...defaultAssumptions,
-            demographics: {
-                birthYear,
-                lifeExpectancy: 90,
-                retirementAge,
-            },
+            demographics: {},
+            milestones: createBuiltinMilestones(birthYear, retirementAge, 90),
             macro: {
                 ...defaultAssumptions.macro,
                 inflationRate: 0,
@@ -453,11 +441,8 @@ describe('Differential Scenarios: Sequence of Returns', () => {
         function createWithdrawalScenario(returnRate: number, initialBalance: number) {
             const assumptions: AssumptionsState = {
                 ...defaultAssumptions,
-                demographics: {
-                    birthYear,
-                    lifeExpectancy: 90,
-                    retirementAge,
-                },
+                demographics: {},
+                milestones: createBuiltinMilestones(birthYear, retirementAge, 90),
                 macro: {
                     ...defaultAssumptions.macro,
                     inflationRate: 0,
@@ -531,11 +516,8 @@ describe('Differential Scenarios: Sequence of Returns', () => {
             function createScenario(returnRate: number, initialBalance: number) {
                 const assumptions: AssumptionsState = {
                     ...defaultAssumptions,
-                    demographics: {
-                        birthYear,
-                        lifeExpectancy: 90,
-                        retirementAge,
-                    },
+                    demographics: {},
+                    milestones: createBuiltinMilestones(birthYear, retirementAge, 90),
                     macro: {
                         ...defaultAssumptions.macro,
                         inflationRate: 0,

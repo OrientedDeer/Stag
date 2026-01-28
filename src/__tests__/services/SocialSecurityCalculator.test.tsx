@@ -251,12 +251,13 @@ describe('SocialSecurityCalculator', () => {
   describe('extractEarningsFromSimulation', () => {
     it('should extract work income from simulation years', () => {
       // Create mock simulation years with work income
+      // Use Date constructor with args to ensure local time (month is 0-indexed)
       const mockSimulation: SimulationYear[] = [
         {
           year: 2020,
           incomes: [
             new WorkIncome('1', 'Job', 80000, 'Annually', 'Yes', 0, 0, 0, 0, '', null, 'FIXED',
-              new Date('2020-01-01'), undefined),
+              new Date(2020, 0, 1), undefined),
           ],
           expenses: [],
           accounts: [],
@@ -268,7 +269,7 @@ describe('SocialSecurityCalculator', () => {
           year: 2021,
           incomes: [
             new WorkIncome('1', 'Job', 85000, 'Annually', 'Yes', 0, 0, 0, 0, '', null, 'FIXED',
-              new Date('2020-01-01'), undefined),
+              new Date(2020, 0, 1), undefined),
           ],
           expenses: [],
           accounts: [],
@@ -287,12 +288,13 @@ describe('SocialSecurityCalculator', () => {
 
     it('should cap earnings at SS wage base', () => {
       // 2024 SS wage base: $168,600
+      // Use Date constructor with args to ensure local time
       const mockSimulation: SimulationYear[] = [
         {
           year: 2024,
           incomes: [
             new WorkIncome('1', 'Job', 250000, 'Annually', 'Yes', 0, 0, 0, 0, '', null, 'FIXED',
-              new Date('2024-01-01'), undefined),
+              new Date(2024, 0, 1), undefined),
           ],
           expenses: [],
           accounts: [],
@@ -309,14 +311,15 @@ describe('SocialSecurityCalculator', () => {
     });
 
     it('should combine multiple work incomes in same year', () => {
+      // Use Date constructor with args to ensure local time
       const mockSimulation: SimulationYear[] = [
         {
           year: 2020,
           incomes: [
             new WorkIncome('1', 'Job 1', 50000, 'Annually', 'Yes', 0, 0, 0, 0, '', null, 'FIXED',
-              new Date('2020-01-01'), undefined),
+              new Date(2020, 0, 1), undefined),
             new WorkIncome('2', 'Job 2', 30000, 'Annually', 'Yes', 0, 0, 0, 0, '', null, 'FIXED',
-              new Date('2020-01-01'), undefined),
+              new Date(2020, 0, 1), undefined),
           ],
           expenses: [],
           accounts: [],

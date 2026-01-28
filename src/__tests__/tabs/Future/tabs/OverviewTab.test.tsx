@@ -46,8 +46,14 @@ vi.mock('../../../../components/Objects/Assumptions/AssumptionsContext', () => (
       macro: {
         inflationRate: 3,
       },
+      milestones: [
+        { id: 'BUILTIN_BIRTH', name: 'Birth', conditions: [{ type: 'YEAR', operator: '=', value: 1990 }] },
+        { id: 'BUILTIN_RETIRE', name: 'Retire', conditions: [{ type: 'AGE', operator: '>=', value: 65 }] },
+        { id: 'BUILTIN_END_OF_PLAN', name: 'End of Plan', conditions: [{ type: 'AGE', operator: '>=', value: 90 }] },
+      ],
     },
   }),
+  getBirthYear: () => 1990,
 }));
 
 // -----------------------------------------------------------------------------

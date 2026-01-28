@@ -18,7 +18,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { AssumptionsState, defaultAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { InvestedAccount } from '../../../components/Objects/Accounts/models';
 import { WorkIncome, FutureSocialSecurityIncome } from '../../../components/Objects/Income/models';
@@ -58,11 +58,8 @@ describe('Temporal Boundary Tests', () => {
 
         const retirementAssumptions: AssumptionsState = {
             ...defaultAssumptions,
-            demographics: {
-                birthYear,
-                lifeExpectancy: 90,
-                retirementAge,
-            },
+            demographics: {},
+            milestones: createBuiltinMilestones(birthYear, retirementAge, 90),
             income: {
                 ...defaultAssumptions.income,
                 salaryGrowth: 0,
@@ -207,11 +204,8 @@ describe('Temporal Boundary Tests', () => {
 
         const ssAssumptions: AssumptionsState = {
             ...defaultAssumptions,
-            demographics: {
-                birthYear,
-                lifeExpectancy: 90,
-                retirementAge: ssClaimingAge,
-            },
+            demographics: {},
+            milestones: createBuiltinMilestones(birthYear, ssClaimingAge, 90),
             income: {
                 ...defaultAssumptions.income,
                 salaryGrowth: 0,
@@ -310,10 +304,7 @@ describe('Temporal Boundary Tests', () => {
 
             const workingAssumptions = {
                 ...ssAssumptions,
-                demographics: {
-                    ...ssAssumptions.demographics,
-                    retirementAge: 67, // Retires at FRA
-                },
+                milestones: createBuiltinMilestones(birthYear, 67, 90), // Retires at FRA
             };
 
             const simulation = runSimulation(
@@ -364,10 +355,7 @@ describe('Temporal Boundary Tests', () => {
 
             const fraAssumptions = {
                 ...ssAssumptions,
-                demographics: {
-                    ...ssAssumptions.demographics,
-                    retirementAge: 70,
-                },
+                milestones: createBuiltinMilestones(birthYear, 70, 90),
             };
 
             const simulation = runSimulation(
@@ -407,11 +395,8 @@ describe('Temporal Boundary Tests', () => {
 
         const rmdAssumptions: AssumptionsState = {
             ...defaultAssumptions,
-            demographics: {
-                birthYear,
-                lifeExpectancy: 95,
-                retirementAge: 65,
-            },
+            demographics: {},
+            milestones: createBuiltinMilestones(birthYear, 65, 95),
             income: {
                 ...defaultAssumptions.income,
                 salaryGrowth: 0,
@@ -583,11 +568,8 @@ describe('Temporal Boundary Tests', () => {
 
         const finalYearAssumptions: AssumptionsState = {
             ...defaultAssumptions,
-            demographics: {
-                birthYear,
-                lifeExpectancy,
-                retirementAge: 65,
-            },
+            demographics: {},
+            milestones: createBuiltinMilestones(birthYear, 65, lifeExpectancy),
             income: {
                 ...defaultAssumptions.income,
                 salaryGrowth: 0,

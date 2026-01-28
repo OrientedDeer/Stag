@@ -18,7 +18,7 @@ import {
 import { formatCompactCurrency } from './FutureUtils';
 import { Tooltip } from '../../../components/Layout/InputFields/Tooltip';
 import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider';
-import { AssumptionsContext } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsContext, getBirthYear, getRetirementAge, getLifeExpectancy } from '../../../components/Objects/Assumptions/AssumptionsContext';
 
 interface FinancialRatiosTabProps {
   simulationData: SimulationYear[];
@@ -154,9 +154,9 @@ export const FinancialRatiosTab: React.FC<FinancialRatiosTabProps> = React.memo(
     const { state: assumptions } = useContext(AssumptionsContext);
     const forceExact = assumptions.display?.useCompactCurrency === false;
 
-    const birthYear = assumptions.demographics?.birthYear;
-    const retirementAge = assumptions.demographics?.retirementAge;
-    const lifeExpectancy = assumptions.demographics?.lifeExpectancy;
+    const birthYear = getBirthYear(assumptions.milestones);
+    const retirementAge = getRetirementAge(assumptions.milestones);
+    const lifeExpectancy = getLifeExpectancy(assumptions.milestones);
     const inflationAdjusted = assumptions.macro?.inflationAdjusted;
     const inflationRate = assumptions.macro?.inflationRate;
 

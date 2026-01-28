@@ -6,7 +6,7 @@ import {
   BacktestSummary,
 } from '../../../services/HistoricalBacktest';
 import { formatCompactCurrency, calculateNetWorth } from './FutureUtils';
-import { useAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { useAssumptions, getBirthYear, getRetirementAge, getLifeExpectancy } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { CurrencyInput } from '../../../components/Layout/InputFields/CurrencyInput';
 import { DropdownInput } from '../../../components/Layout/InputFields/DropdownInput';
@@ -31,11 +31,11 @@ export const HistoricalBacktestPanel = React.memo(({ simulationData }: Historica
     }
 
     const currentYear = new Date().getFullYear();
-    const birthYear = assumptions.demographics?.birthYear || (currentYear - 30);
+    const birthYear = getBirthYear(assumptions.milestones);
     const startYear = assumptions.demographics?.priorYearMode ? currentYear - 1 : currentYear;
     const startAge = startYear - birthYear;
-    const retirementAge = assumptions.demographics?.retirementAge || 65;
-    const lifeExpectancy = assumptions.demographics?.lifeExpectancy || 90;
+    const retirementAge = getRetirementAge(assumptions.milestones);
+    const lifeExpectancy = getLifeExpectancy(assumptions.milestones);
 
     // Calculate retirement year and get the year AFTER retirement for stable numbers
     const retirementYear = startYear + (retirementAge - startAge);
@@ -59,7 +59,7 @@ export const HistoricalBacktestPanel = React.memo(({ simulationData }: Historica
       annualWithdrawal: Math.round(annualWithdrawal),
       retirementYears: Math.round(retirementYears / 5) * 5 // Round to nearest 5
     };
-  }, [simulationData, assumptions.demographics?.birthYear, assumptions.demographics?.priorYearMode, assumptions.demographics?.retirementAge, assumptions.demographics?.lifeExpectancy]);
+  }, [simulationData, assumptions.milestones, assumptions.demographics?.priorYearMode]);
 
   // Get withdrawal strategy settings from assumptions
   const withdrawalStrategy = assumptions.investments?.withdrawalStrategy || 'Fixed Real';

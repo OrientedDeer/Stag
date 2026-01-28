@@ -13,6 +13,7 @@ import { getExpenseActiveMultiplier } from "../../Objects/Expense/models";
 import {
 	AssumptionsState,
 	defaultAssumptions,
+	getBirthYear,
 } from "../../Objects/Assumptions/AssumptionsContext";
 
 // ============================================================================
@@ -434,7 +435,7 @@ export function calculateStateTax(
 
 	const annualGross = getGrossIncome(incomes, year);
 	// Calculate age from assumptions for auto-max 401k feature
-	const age = assumptions?.demographics ? year - assumptions.demographics.birthYear : undefined;
+	const age = assumptions?.milestones ? year - getBirthYear(assumptions.milestones) : undefined;
 	const incomePreTaxDeductions = getPreTaxExemptions(incomes, year, age);
 	const expenseAboveLineDeductions = getYesDeductions(expenses, year);
 	const totalPreTaxDeductions =
@@ -513,7 +514,7 @@ export function calculateFederalTax(
 
 	const annualGross = getGrossIncome(incomes, year);
 	// Calculate age from assumptions for auto-max 401k feature
-	const age = assumptions?.demographics ? year - assumptions.demographics.birthYear : undefined;
+	const age = assumptions?.milestones ? year - getBirthYear(assumptions.milestones) : undefined;
 	const incomePreTaxDeductions = getPreTaxExemptions(incomes, year, age);
 	const stateTax = calculateStateTax(
 		state,

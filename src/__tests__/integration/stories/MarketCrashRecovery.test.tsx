@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { AssumptionsState, defaultAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { InvestedAccount } from '../../../components/Objects/Accounts/models';
 import { FutureSocialSecurityIncome } from '../../../components/Objects/Income/models';
@@ -46,11 +46,8 @@ describe('Story 5: Market Crash Recovery (Guyton-Klinger)', () => {
     // Guyton-Klinger assumptions
     const gkAssumptions: AssumptionsState = {
         ...defaultAssumptions,
-        demographics: {
-            birthYear,
-            lifeExpectancy,
-            retirementAge,
-        },
+        demographics: {},
+        milestones: createBuiltinMilestones(birthYear, retirementAge, lifeExpectancy),
         income: {
             ...defaultAssumptions.income,
             salaryGrowth: 0,
@@ -253,10 +250,7 @@ describe('Story 5: Market Crash Recovery (Guyton-Klinger)', () => {
         // Create assumptions with someone near end of life expectancy
         const nearEndAssumptions: AssumptionsState = {
             ...gkAssumptions,
-            demographics: {
-                ...gkAssumptions.demographics,
-                lifeExpectancy: 80, // Only 15 years from age 65
-            },
+            milestones: createBuiltinMilestones(birthYear, retirementAge, 80), // Only 15 years from age 65
         };
 
         const crashReturns = createCrashReturns(5, -40);
@@ -509,10 +503,7 @@ describe('Story 5: Market Crash Recovery (Guyton-Klinger)', () => {
         // Capital preservation should NEVER trigger regardless of market crash
         const nearEndAssumptions: AssumptionsState = {
             ...gkAssumptions,
-            demographics: {
-                ...gkAssumptions.demographics,
-                lifeExpectancy: 78, // 65 + 13 = 78, so 13 years remaining (< 15)
-            },
+            milestones: createBuiltinMilestones(birthYear, retirementAge, 78), // 65 + 13 = 78, so 13 years remaining (< 15)
         };
 
         // Severe crash that would normally trigger capital preservation

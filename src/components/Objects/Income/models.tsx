@@ -40,6 +40,8 @@ export abstract class BaseIncome implements Income {
     public startDate?: Date,
     public end_date?: Date,
     public annualGrowthRate: number = 0.03,
+    public startMilestoneId?: string,  // Start income when this milestone is reached
+    public endMilestoneId?: string,    // End income when this milestone is reached
   ) {}
   getProratedAnnual(value: number, year?: number): number {
     let annual = 0;
@@ -105,8 +107,10 @@ export class WorkIncome extends BaseIncome {
     public esppAccountId: string | null = null,     // Linked ESPP account
     public esppExpectedStockGrowth: number = 7,     // Expected annual stock growth for lookback modeling
     public pensionSystem: PensionSystem = 'NONE',   // Which pension system this job is covered by
+    startMilestoneId?: string,
+    endMilestoneId?: string,
   ) {
-    super(id, name, amount, frequency, earned_income, startDate, end_date);
+    super(id, name, amount, frequency, earned_income, startDate, end_date, 0.03, startMilestoneId, endMilestoneId);
   }
   increment (assumptions: AssumptionsState, year?: number, age?: number): WorkIncome {
     const salaryGrowth = assumptions.income.salaryGrowth / 100;
@@ -224,7 +228,9 @@ export class WorkIncome extends BaseIncome {
       this.esppOfferingPeriodMonths,
       this.esppAccountId,
       this.esppExpectedStockGrowth,
-      this.pensionSystem
+      this.pensionSystem,
+      this.startMilestoneId,
+      this.endMilestoneId
     );
   }
 
@@ -276,8 +282,10 @@ export class SocialSecurityIncome extends BaseIncome {
     public fullRetirementAgeBenefit?: number, // Optional: store FRA benefit for reference
     startDate?: Date,
     end_date?: Date,
+    startMilestoneId?: string,
+    endMilestoneId?: string,
   ) {
-    super(id, name, amount, frequency, "No", startDate, end_date);
+    super(id, name, amount, frequency, "No", startDate, end_date, 0.03, startMilestoneId, endMilestoneId);
   }
 
   /**
@@ -330,7 +338,9 @@ export class SocialSecurityIncome extends BaseIncome {
       this.claimingAge,
       this.fullRetirementAgeBenefit ? this.fullRetirementAgeBenefit * (1 + generalInflation) : undefined,
       this.startDate,
-      this.end_date
+      this.end_date,
+      this.startMilestoneId,
+      this.endMilestoneId
     );
   }
 }
@@ -346,8 +356,10 @@ export class PassiveIncome extends BaseIncome {
     startDate?: Date,
     end_date?: Date,
     public isReinvested: boolean = false,  // If true, income is taxable but not available as spendable cash (e.g., savings interest that stays in the account)
+    startMilestoneId?: string,
+    endMilestoneId?: string,
   ) {
-    super(id, name, amount, frequency, earned_income, startDate, end_date);
+    super(id, name, amount, frequency, earned_income, startDate, end_date, 0.03, startMilestoneId, endMilestoneId);
   }
   increment (assumptions: AssumptionsState): PassiveIncome {
     let growthRate = 0;
@@ -386,7 +398,9 @@ export class PassiveIncome extends BaseIncome {
       this.sourceType,
       this.startDate,
       this.end_date,
-      this.isReinvested
+      this.isReinvested,
+      this.startMilestoneId,
+      this.endMilestoneId
     );
   }
 }
@@ -400,8 +414,10 @@ export class WindfallIncome extends BaseIncome {
     earned_income: "Yes" | "No",
     startDate?: Date,
     end_date?: Date,
+    startMilestoneId?: string,
+    endMilestoneId?: string,
   ) {
-    super(id, name, amount, frequency, earned_income, startDate, end_date);
+    super(id, name, amount, frequency, earned_income, startDate, end_date, 0.03, startMilestoneId, endMilestoneId);
   }
   increment (assumptions: AssumptionsState): WindfallIncome {
     const inflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
@@ -415,7 +431,9 @@ export class WindfallIncome extends BaseIncome {
       this.frequency,
       this.earned_income,
       this.startDate,
-      this.end_date
+      this.end_date,
+      this.startMilestoneId,
+      this.endMilestoneId
     );
   }
 }
@@ -439,9 +457,11 @@ export class CurrentSocialSecurityIncome extends BaseIncome {
     frequency: IncomeFrequency,
     startDate?: Date,
     end_date?: Date,
+    startMilestoneId?: string,
+    endMilestoneId?: string,
   ) {
     // Social Security is never considered "earned income" for tax purposes
-    super(id, name, amount, frequency, "No", startDate, end_date);
+    super(id, name, amount, frequency, "No", startDate, end_date, 0.03, startMilestoneId, endMilestoneId);
   }
 
   increment(assumptions: AssumptionsState): CurrentSocialSecurityIncome {
@@ -454,7 +474,9 @@ export class CurrentSocialSecurityIncome extends BaseIncome {
       this.amount * (1 + cola),
       this.frequency,
       this.startDate,
-      this.end_date
+      this.end_date,
+      this.startMilestoneId,
+      this.endMilestoneId
     );
   }
 }
@@ -484,10 +506,12 @@ export class FutureSocialSecurityIncome extends BaseIncome {
     public calculationYear: number = 0,  // Year when PIA was calculated
     startDate?: Date,
     end_date?: Date,
+    startMilestoneId?: string,
+    endMilestoneId?: string,
   ) {
     // Amount is annual (calculatedPIA × 12)
     // Social Security is never considered "earned income" for tax purposes
-    super(id, name, calculatedPIA * 12, 'Annually', "No", startDate, end_date);
+    super(id, name, calculatedPIA * 12, 'Annually', "No", startDate, end_date, 0.03, startMilestoneId, endMilestoneId);
   }
 
   increment(assumptions: AssumptionsState): FutureSocialSecurityIncome {
@@ -501,7 +525,9 @@ export class FutureSocialSecurityIncome extends BaseIncome {
       this.calculatedPIA * (1 + cola),
       this.calculationYear,
       this.startDate,
-      this.end_date
+      this.end_date,
+      this.startMilestoneId,
+      this.endMilestoneId
     );
   }
 }
@@ -534,9 +560,11 @@ export class FERSPensionIncome extends BaseIncome {
     end_date?: Date,
     public autoCalculateHigh3: boolean = false,  // If true, calculate High-3 from linked income
     public linkedIncomeId: string | null = null,  // Work income to track for High-3 calculation
+    startMilestoneId?: string,
+    endMilestoneId?: string,
   ) {
     // Amount is the calculated annual benefit
-    super(id, name, calculatedBenefit, 'Annually', "No", startDate, end_date);
+    super(id, name, calculatedBenefit, 'Annually', "No", startDate, end_date, 0.03, startMilestoneId, endMilestoneId);
   }
 
   /**
@@ -605,7 +633,9 @@ export class FERSPensionIncome extends BaseIncome {
       this.startDate,
       this.end_date,
       this.autoCalculateHigh3,
-      this.linkedIncomeId
+      this.linkedIncomeId,
+      this.startMilestoneId,
+      this.endMilestoneId
     );
   }
 
@@ -643,9 +673,11 @@ export class CSRSPensionIncome extends BaseIncome {
     end_date?: Date,
     public autoCalculateHigh3: boolean = false,  // If true, calculate High-3 from linked income
     public linkedIncomeId: string | null = null,  // Work income to track for High-3 calculation
+    startMilestoneId?: string,
+    endMilestoneId?: string,
   ) {
     // Amount is the calculated annual benefit
-    super(id, name, calculatedBenefit, 'Annually', "No", startDate, end_date);
+    super(id, name, calculatedBenefit, 'Annually', "No", startDate, end_date, 0.03, startMilestoneId, endMilestoneId);
   }
 
   /**
@@ -684,7 +716,9 @@ export class CSRSPensionIncome extends BaseIncome {
       this.startDate,
       this.end_date,
       this.autoCalculateHigh3,
-      this.linkedIncomeId
+      this.linkedIncomeId,
+      this.startMilestoneId,
+      this.endMilestoneId
     );
   }
 }
@@ -722,18 +756,18 @@ export function calculateSocialSecurityStartDate(
 
 export function getIncomeActiveMultiplier(income: AnyIncome, year: number): number {
     const incomeStartDate = income.startDate ? new Date(income.startDate) : new Date();
-    const startYear = incomeStartDate.getUTCFullYear();
+    const startYear = incomeStartDate.getFullYear();
 
     const safeEndDate = income.end_date ? new Date(income.end_date) : null;
-    const endYear = safeEndDate ? safeEndDate.getUTCFullYear() : null;
+    const endYear = safeEndDate ? safeEndDate.getFullYear() : null;
 
     if (startYear > year) return 0;
     if (endYear !== null && endYear < year) return 0;
 
-    const startMonthIndex = (startYear < year) ? 0 : incomeStartDate.getUTCMonth();
+    const startMonthIndex = (startYear < year) ? 0 : incomeStartDate.getMonth();
 
     const endMonthIndex = (safeEndDate && endYear === year)
-        ? safeEndDate.getUTCMonth()
+        ? safeEndDate.getMonth()
         : 11;
 
     const monthsActive = endMonthIndex - startMonthIndex + 1;
@@ -743,12 +777,12 @@ export function getIncomeActiveMultiplier(income: AnyIncome, year: number): numb
 
 export function isIncomeActiveInCurrentMonth(income: AnyIncome): boolean {
     const today = new Date();
-    const currentYear = today.getUTCFullYear();
-    const currentMonth = today.getUTCMonth(); // 0-indexed
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth(); // 0-indexed
 
     const incomeStartDate = income.startDate != null ? income.startDate : new Date();
-    const incomeStartYear = incomeStartDate.getUTCFullYear();
-    const incomeStartMonth = incomeStartDate.getUTCMonth();
+    const incomeStartYear = incomeStartDate.getFullYear();
+    const incomeStartMonth = incomeStartDate.getMonth();
 
     const currentMonthStart = new Date(currentYear, currentMonth, 1);
     const incomeEffectiveStart = new Date(incomeStartYear, incomeStartMonth, 1);
@@ -759,10 +793,10 @@ export function isIncomeActiveInCurrentMonth(income: AnyIncome): boolean {
 
     if (income.end_date) {
         const incomeEndDate = new Date(income.end_date);
-        const incomeEndYear = incomeEndDate.getUTCFullYear();
-        const incomeEndMonth = incomeEndDate.getUTCMonth();
+        const incomeEndYear = incomeEndDate.getFullYear();
+        const incomeEndMonth = incomeEndDate.getMonth();
 
-        const incomeEffectiveEnd = new Date(incomeEndYear, incomeEndMonth + 1, 0); 
+        const incomeEffectiveEnd = new Date(incomeEndYear, incomeEndMonth + 1, 0);
 
         if (incomeEffectiveEnd < currentMonthStart) {
             return false;
@@ -821,6 +855,8 @@ export function reconstituteIncome(data: unknown): AnyIncome | null {
     const name = String(data.name ?? 'Unnamed Income');
     const amount = Number(data.amount) || 0;
     const earned_income = (data.earned_income as "Yes" | "No") || "No";
+    const startMilestoneId = data.startMilestoneId ? String(data.startMilestoneId) : undefined;
+    const endMilestoneId = data.endMilestoneId ? String(data.endMilestoneId) : undefined;
 
     switch (data.className) {
         case 'WorkIncome': {
@@ -840,29 +876,34 @@ export function reconstituteIncome(data: unknown): AnyIncome | null {
                 Number(data.esppOfferingPeriodMonths ?? 6),
                 data.esppAccountId ? String(data.esppAccountId) : null,
                 Number(data.esppExpectedStockGrowth ?? 7),
-                (data.pensionSystem as PensionSystem) || 'NONE'
+                (data.pensionSystem as PensionSystem) || 'NONE',
+                startMilestoneId, endMilestoneId
             );
         }
         case 'SocialSecurityIncome':
             return new SocialSecurityIncome(
                 id, name, amount, frequency, Number(data.claimingAge) || 67,
-                Number(data.fullRetirementAgeBenefit) || 0, startDate, endDate
+                Number(data.fullRetirementAgeBenefit) || 0, startDate, endDate,
+                startMilestoneId, endMilestoneId
             );
         case 'PassiveIncome':
             return new PassiveIncome(
                 id, name, amount, frequency, earned_income,
                 (data.sourceType as PassiveIncome['sourceType']) || 'Other',
-                startDate, endDate, (data.isReinvested as boolean) ?? false
+                startDate, endDate, (data.isReinvested as boolean) ?? false,
+                startMilestoneId, endMilestoneId
             );
         case 'WindfallIncome':
-            return new WindfallIncome(id, name, amount, frequency, earned_income, startDate, endDate);
+            return new WindfallIncome(id, name, amount, frequency, earned_income, startDate, endDate,
+                startMilestoneId, endMilestoneId);
         case 'CurrentSocialSecurityIncome':
-            return new CurrentSocialSecurityIncome(id, name, amount, frequency, startDate, endDate);
+            return new CurrentSocialSecurityIncome(id, name, amount, frequency, startDate, endDate,
+                startMilestoneId, endMilestoneId);
         case 'FutureSocialSecurityIncome':
             return new FutureSocialSecurityIncome(
                 id, name, Number(data.claimingAge) || 67,
                 Number(data.calculatedPIA) || 0, Number(data.calculationYear) || 0,
-                startDate, endDate
+                startDate, endDate, startMilestoneId, endMilestoneId
             );
         case 'FERSPensionIncome':
             return new FERSPensionIncome(
@@ -871,14 +912,16 @@ export function reconstituteIncome(data: unknown): AnyIncome | null {
                 Number(data.calculatedBenefit) || 0, Number(data.fersSupplement) || 0,
                 Number(data.estimatedSSAt62) || 0, startDate, endDate,
                 (data.autoCalculateHigh3 as boolean) || false,
-                data.linkedIncomeId ? String(data.linkedIncomeId) : null
+                data.linkedIncomeId ? String(data.linkedIncomeId) : null,
+                startMilestoneId, endMilestoneId
             );
         case 'CSRSPensionIncome':
             return new CSRSPensionIncome(
                 id, name, Number(data.yearsOfService) || 0, Number(data.high3Salary) || 0,
                 Number(data.retirementAge) || 55, Number(data.calculatedBenefit) || 0,
                 startDate, endDate, (data.autoCalculateHigh3 as boolean) || false,
-                data.linkedIncomeId ? String(data.linkedIncomeId) : null
+                data.linkedIncomeId ? String(data.linkedIncomeId) : null,
+                startMilestoneId, endMilestoneId
             );
         default:
             return null;

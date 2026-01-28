@@ -21,9 +21,10 @@ import { PercentageInput } from "../../Layout/InputFields/PercentageInput";
 import { DropdownInput } from "../../Layout/InputFields/DropdownInput";
 import { NumberInput } from "../../Layout/InputFields/NumberInput";
 import { NameInput } from "../../Layout/InputFields/NameInput";
-import { StyledInput } from "../../Layout/InputFields/StyleUI";
 import { ToggleInput } from "../../Layout/InputFields/ToggleInput";
+import { TriggerSelector } from "../../Layout/InputFields/TriggerSelector";
 import { useModalAccessibility } from "../../../hooks/useModalAccessibility";
+import { AssumptionsContext, BUILTIN_MILESTONE_IDS } from "../Assumptions/AssumptionsContext";
 
 const generateUniqueId = () =>
 	`EXS-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -61,9 +62,11 @@ interface ExpenseFormState {
 	// Tax fields
 	isTaxDeductible: TaxDeductibleOption;
 	taxDeductibleAmount: number;
-	// Date fields
-	startDate: string;
-	endDate: string;
+	// Date/Milestone fields
+	startDate: Date | undefined;
+	endDate: Date | undefined;
+	startMilestoneId: string | undefined;
+	endMilestoneId: string | undefined;
 	// Other
 	isDiscretionary: boolean;
 }
@@ -90,8 +93,10 @@ function getInitialFormState(): ExpenseFormState {
 		payment: 0,
 		isTaxDeductible: 'No',
 		taxDeductibleAmount: 0,
-		startDate: `${new Date().getFullYear()}-01-01`,
-		endDate: '',
+		startDate: new Date(Date.UTC(new Date().getFullYear(), 0, 1)),
+		endDate: undefined,
+		startMilestoneId: undefined,
+		endMilestoneId: undefined,
 		isDiscretionary: false,
 	};
 }
@@ -102,6 +107,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 }) => {
 	const { dispatch: expenseDispatch } = useContext(ExpenseContext);
 	const { dispatch: accountDispatch } = useContext(AccountContext);
+	const { state: assumptions } = useContext(AssumptionsContext);
 	const { modalRef, handleKeyDown } = useModalAccessibility(isOpen, onClose);
 	const [step, setStep] = useState<"select" | "details">("select");
 	const [selectedType, setSelectedType] = useState<any>(null);
@@ -113,8 +119,8 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 	}
 
 	// Validate end date is after start date
-	function validateDates(start: string, end: string): void {
-		if (start && end && new Date(end) < new Date(start)) {
+	function validateDates(start: Date | undefined, end: Date | undefined): void {
+		if (start && end && end < start) {
 			setDateError("End date must be after start date");
 		} else {
 			setDateError(undefined);
@@ -149,21 +155,27 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 		// Default discretionary for non-essential expense types
 		const discretionaryTypes = [VacationExpense, SubscriptionExpense, CharityExpense, OtherExpense];
 		updateForm('isDiscretionary', discretionaryTypes.includes(typeClass));
+		// Default end milestone to End of Plan for all expenses
+		updateForm('endMilestoneId', BUILTIN_MILESTONE_IDS.END_OF_PLAN);
 		setStep("details");
 	};
 
 	const handleAdd = () => {
 		if (!selectedType || !form.name.trim() || dateError) return;
 
-		const finalStartDate = form.startDate ? new Date(`${form.startDate}T00:00:00.000Z`) : undefined;
-		const finalEndDate = form.endDate ? new Date(`${form.endDate}T00:00:00.000Z`) : undefined;
+		const finalStartDate = form.startDate;
+		const finalEndDate = form.endDate;
+		const finalStartMilestoneId = form.startMilestoneId;
+		// Default end milestone to End of Plan if no end date/milestone specified
+		const finalEndMilestoneId = form.endMilestoneId || (finalEndDate ? undefined : BUILTIN_MILESTONE_IDS.END_OF_PLAN);
 
 		let newExpense;
 
 		if (selectedType === RentExpense) {
 			newExpense = new RentExpense(
 				id, form.name.trim(), form.payment, form.utilities,
-				form.frequency, finalStartDate, finalEndDate
+				form.frequency, finalStartDate, finalEndDate,
+				finalStartMilestoneId, finalEndMilestoneId
 			);
 		} else if (selectedType === MortgageExpense) {
 			const newAccount = new PropertyAccount(
@@ -177,7 +189,8 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				form.propertyTaxes, form.valuationDeduction, form.maintenance, form.utilities,
 				form.homeOwnersInsurance, form.pmi, form.hoaFee, form.isTaxDeductible,
 				form.isTaxDeductible !== 'No' ? form.taxDeductibleAmount : 0,
-				'ACC' + id.substring(3), finalStartDate, form.payment, form.extraPayment, finalEndDate
+				'ACC' + id.substring(3), finalStartDate, form.payment, form.extraPayment, finalEndDate,
+				finalStartMilestoneId, finalEndMilestoneId
 			);
 		} else if (selectedType === LoanExpense) {
 			const newAccount = new DebtAccount(
@@ -188,33 +201,39 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				id, form.name.trim(), form.amount, form.frequency, form.apr,
 				form.interestType, form.payment, form.isTaxDeductible,
 				form.isTaxDeductible !== 'No' ? form.taxDeductibleAmount : 0,
-				'ACC' + id.substring(3), finalStartDate, finalEndDate
+				'ACC' + id.substring(3), finalStartDate, finalEndDate,
+				finalStartMilestoneId, finalEndMilestoneId
 			);
 		} else if (selectedType === DependentExpense) {
 			newExpense = new DependentExpense(
 				id, form.name.trim(), form.amount, form.frequency,
 				form.isTaxDeductible, form.isTaxDeductible !== 'No' ? form.taxDeductibleAmount : 0,
-				finalStartDate, finalEndDate
+				finalStartDate, finalEndDate,
+				finalStartMilestoneId, finalEndMilestoneId
 			);
 		} else if (selectedType === HealthcareExpense) {
 			newExpense = new HealthcareExpense(
 				id, form.name.trim(), form.amount, form.frequency,
 				form.isTaxDeductible, form.isTaxDeductible !== 'No' ? form.taxDeductibleAmount : 0,
-				finalStartDate, finalEndDate
+				finalStartDate, finalEndDate,
+				finalStartMilestoneId, finalEndMilestoneId
 			);
 		} else if (selectedType === CharityExpense) {
 			newExpense = new CharityExpense(
 				id, form.name.trim(), form.amount, form.frequency,
 				form.isTaxDeductible, form.isTaxDeductible !== 'No' ? form.taxDeductibleAmount : 0,
-				finalStartDate, finalEndDate
+				finalStartDate, finalEndDate,
+				finalStartMilestoneId, finalEndMilestoneId
 			);
 		} else if (selectedType === TransportExpense || selectedType === OtherExpense) {
 			newExpense = new selectedType(
-				id, form.name.trim(), form.amount, form.frequency, finalStartDate, finalEndDate
+				id, form.name.trim(), form.amount, form.frequency, finalStartDate, finalEndDate,
+				finalStartMilestoneId, finalEndMilestoneId
 			);
 		} else {
 			newExpense = new selectedType(
-				id, form.name.trim(), form.amount, form.frequency, finalStartDate, finalEndDate
+				id, form.name.trim(), form.amount, form.frequency, finalStartDate, finalEndDate,
+				finalStartMilestoneId, finalEndMilestoneId
 			);
 		}
 
@@ -297,36 +316,39 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 							</div>
 						</div>
 
-						{/* Start and End Dates */}
+						{/* Start and End Triggers */}
 						<div className="grid grid-cols-2 gap-4">
-							<div>
-								<StyledInput
-									label="Start Date"
-									id={`${id}-start-date`}
-									type="date"
-									value={form.startDate}
-									onChange={(e) => {
-										const val = e.target.value === "" ? "" : e.target.value;
-										updateForm('startDate', val);
-										validateDates(val, form.endDate);
-									}}
-									tooltip="Defaults to model full year expenses. Change to model partial year expenses."
-								/>
-							</div>
-							<div>
-								<StyledInput
-									label="End Date (Optional)"
-									id={`${id}-end-date`}
-									type="date"
-									value={form.endDate}
-									onChange={(e) => {
-										const val = e.target.value === "" ? "" : e.target.value;
-										updateForm('endDate', val);
-										validateDates(form.startDate, val);
-									}}
-									error={dateError}
-								/>
-							</div>
+							<TriggerSelector
+								id={`${id}-start`}
+								label="Start"
+								date={form.startDate}
+								milestoneId={form.startMilestoneId}
+								milestones={assumptions.milestones || []}
+								onDateChange={(date) => {
+									updateForm('startDate', date);
+									validateDates(date, form.endDate);
+								}}
+								onMilestoneChange={(milestoneId) => updateForm('startMilestoneId', milestoneId)}
+								tooltip="When this expense begins"
+							/>
+							<TriggerSelector
+								id={`${id}-end`}
+								label="End"
+								date={form.endDate}
+								milestoneId={form.endMilestoneId}
+								milestones={assumptions.milestones || []}
+								onDateChange={(date) => {
+									updateForm('endDate', date);
+									validateDates(form.startDate, date);
+								}}
+								onMilestoneChange={(milestoneId) => updateForm('endMilestoneId', milestoneId)}
+								tooltip="When this expense ends"
+							/>
+							{dateError && (
+								<div className="col-span-full text-red-400 text-xs">
+									{dateError}
+								</div>
+							)}
 						</div>
 
 						{/* Common Fields Grid */}

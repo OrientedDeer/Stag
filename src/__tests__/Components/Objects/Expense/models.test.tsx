@@ -74,8 +74,9 @@ describe('Expense Models', () => {
   });
 
   describe('getExpenseActiveMultiplier', () => {
-    const expense = new OtherExpense('e1', 'Test', 100, 'Annually', new Date('2025-07-01'), new Date('2026-06-30'));
-    
+    // Use Date constructor with args to ensure local time (month is 0-indexed, so 6 = July)
+    const expense = new OtherExpense('e1', 'Test', 100, 'Annually', new Date(2025, 6, 1), new Date(2026, 5, 30));
+
     it('should handle various year scenarios', () => {
       expect(getExpenseActiveMultiplier(expense, 2024)).toBe(0);
       expect(getExpenseActiveMultiplier(expense, 2027)).toBe(0);

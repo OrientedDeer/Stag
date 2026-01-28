@@ -556,7 +556,7 @@ export default function TransactionsTab() {
                             onClick={() => setGroupByCategory(!groupByCategory)}
                             className={`relative inline-flex items-center h-5 rounded-full w-9 shrink-0 transition-colors duration-200 ${groupByCategory ? 'bg-green-600' : 'bg-gray-600'}`}
                         >
-                            <span className={`inline-block w-3.5 h-3.5 transform bg-white rounded-full transition-transform duration-200 ${groupByCategory ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+                            <span className={`inline-block w-3.5 h-3.5 transform bg-white rounded-full transition-transform duration-200 ${groupByCategory ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
                         </button>
                         <span>Group by category</span>
                     </div>
@@ -568,7 +568,7 @@ export default function TransactionsTab() {
                             onClick={() => dispatch({ type: 'SET_AUTO_CREATE_RULES', payload: !importSettings.autoCreateRules })}
                             className={`relative inline-flex items-center h-5 rounded-full w-9 shrink-0 transition-colors duration-200 ${importSettings.autoCreateRules ? 'bg-green-600' : 'bg-gray-600'}`}
                         >
-                            <span className={`inline-block w-3.5 h-3.5 transform bg-white rounded-full transition-transform duration-200 ${importSettings.autoCreateRules ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+                            <span className={`inline-block w-3.5 h-3.5 transform bg-white rounded-full transition-transform duration-200 ${importSettings.autoCreateRules ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
                         </button>
                         <span>Auto-create rules</span>
                         <Tooltip text="When enabled, categorizing a transaction will automatically create a rule to apply the same category to future transactions with matching descriptions" />
@@ -664,7 +664,7 @@ export default function TransactionsTab() {
                             className="flex items-center gap-2 text-sm text-gray-300"
                         >
                             <span className={`relative inline-flex items-center h-5 rounded-full w-9 shrink-0 transition-colors duration-200 ${formData.isCredit ? 'bg-green-600' : 'bg-gray-600'}`}>
-                                <span className={`inline-block w-3.5 h-3.5 transform bg-white rounded-full transition-transform duration-200 ${formData.isCredit ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+                                <span className={`inline-block w-3.5 h-3.5 transform bg-white rounded-full transition-transform duration-200 ${formData.isCredit ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
                             </span>
                             {formData.isCredit ? 'Credit/Income' : 'Expense'}
                         </button>
@@ -1271,7 +1271,7 @@ function TransactionRow({
                             value={editDescription}
                             onChange={(e) => setEditDescription(e.target.value)}
                             placeholder="Description"
-                            className="flex-1 min-w-[120px] bg-gray-900 border border-gray-600 rounded px-2 py-1.5 text-sm text-white focus:border-green-500 focus:outline-none"
+                            className="flex-1 min-w-30 bg-gray-900 border border-gray-600 rounded px-2 py-1.5 text-sm text-white focus:border-green-500 focus:outline-none"
                         />
                         <input
                             type="number"
@@ -1287,7 +1287,7 @@ function TransactionRow({
                             className="flex items-center gap-1.5 text-xs text-gray-300 whitespace-nowrap"
                         >
                             <span className={`relative inline-flex items-center h-5 rounded-full w-9 shrink-0 transition-colors duration-200 ${isCredit ? 'bg-green-600' : 'bg-gray-600'}`}>
-                                <span className={`inline-block w-3.5 h-3.5 transform bg-white rounded-full transition-transform duration-200 ${isCredit ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+                                <span className={`inline-block w-3.5 h-3.5 transform bg-white rounded-full transition-transform duration-200 ${isCredit ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
                             </span>
                             Credit
                         </button>

@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { Listbox } from '@headlessui/react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Listbox, Portal } from '@headlessui/react';
 import { InputGroup } from './StyleUI';
 
 type Option = { value: string; label: string } | string;
@@ -34,6 +34,9 @@ export const CustomDropdown: React.FC<CustomDropdownProps> = ({
     id,
     tooltip
 }) => {
+    const buttonRef = useRef<HTMLButtonElement>(null);
+    const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null);
+
     const normalizedOptions = options.map(opt =>
         typeof opt === 'string' ? { value: opt, label: opt } : opt
     );
@@ -53,28 +56,60 @@ export const CustomDropdown: React.FC<CustomDropdownProps> = ({
 
     const selectedOption = normalizedOptions.find(opt => opt.value === value);
 
+    // Generate a stable id for accessibility
+    const buttonId = id || `dropdown-${label.toLowerCase().replace(/\s+/g, '-')}`;
+
+    // Update dropdown position when opening
+    const updatePosition = () => {
+        if (buttonRef.current) {
+            const rect = buttonRef.current.getBoundingClientRect();
+            setDropdownPosition({
+                top: rect.bottom + window.scrollY + 4,
+                left: rect.left + window.scrollX,
+                width: rect.width
+            });
+        }
+    };
+
     return (
-        <InputGroup label={label} id={id} error={error} tooltip={tooltip}>
+        <InputGroup label={label} id={buttonId} error={error} tooltip={tooltip}>
             <Listbox value={value} onChange={onChange}>
                 {({ open }) => (
                     <div className="relative">
-                        <Listbox.Button className="w-full text-left flex items-center justify-between bg-transparent text-white text-md font-semibold cursor-pointer">
+                        <Listbox.Button
+                            ref={buttonRef}
+                            id={buttonId}
+                            onClick={updatePosition}
+                            className="w-full text-left flex items-center justify-between bg-transparent text-white text-md font-semibold cursor-pointer"
+                        >
                             <span>{selectedOption?.label || value}</span>
                             <ChevronIcon open={open} />
                         </Listbox.Button>
-                        <Listbox.Options className="absolute z-50 mt-1 w-full bg-gray-900 border border-gray-700 rounded-md shadow-lg max-h-60 overflow-auto focus:outline-none">
-                            {normalizedOptions.map(opt => (
-                                <Listbox.Option
-                                    key={opt.value}
-                                    value={opt.value}
-                                    className={({ active, selected }) =>
-                                        `px-3 py-2 cursor-pointer ${active ? 'bg-gray-800' : ''} ${selected ? 'text-green-400' : 'text-white'}`
-                                    }
+                        {dropdownPosition && (
+                            <Portal>
+                                <Listbox.Options
+                                    className="fixed z-[9999] bg-gray-900 border border-gray-700 rounded-md shadow-lg max-h-60 overflow-auto focus:outline-none"
+                                    style={{
+                                        top: dropdownPosition.top,
+                                        left: dropdownPosition.left,
+                                        width: dropdownPosition.width || 'auto',
+                                        minWidth: '120px'
+                                    }}
                                 >
-                                    {opt.label}
-                                </Listbox.Option>
-                            ))}
-                        </Listbox.Options>
+                                {normalizedOptions.map(opt => (
+                                    <Listbox.Option
+                                        key={opt.value}
+                                        value={opt.value}
+                                        className={({ active, selected }) =>
+                                            `px-3 py-2 cursor-pointer ${active ? 'bg-gray-800' : ''} ${selected ? 'text-green-400' : 'text-white'}`
+                                        }
+                                    >
+                                        {opt.label}
+                                    </Listbox.Option>
+                                ))}
+                                </Listbox.Options>
+                            </Portal>
+                        )}
                     </div>
                 )}
             </Listbox>

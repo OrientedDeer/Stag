@@ -23,6 +23,8 @@ export abstract class BaseExpense implements Expense {
     public startDate?: Date,
     public endDate?: Date,
     public isDiscretionary: boolean = false, // Can be cut during Guyton-Klinger guardrail triggers
+    public startMilestoneId?: string,  // Start expense when this milestone is reached
+    public endMilestoneId?: string,    // End expense when this milestone is reached
   ) { }
   getProratedAnnual(value: number, year?: number): number {
     let annual = 0;
@@ -84,8 +86,10 @@ export abstract class SimpleExpense extends BaseExpense {
     frequency: ExpenseFrequency,
     startDate?: Date,
     endDate?: Date,
+    startMilestoneId?: string,
+    endMilestoneId?: string,
   ) {
-    super(id, name, amount, frequency, startDate, endDate);
+    super(id, name, amount, frequency, startDate, endDate, false, startMilestoneId, endMilestoneId);
   }
 
   /**
@@ -98,6 +102,8 @@ export abstract class SimpleExpense extends BaseExpense {
     frequency: ExpenseFrequency,
     startDate?: Date,
     endDate?: Date,
+    startMilestoneId?: string,
+    endMilestoneId?: string,
   ): AnyExpense;
 
   increment(assumptions: AssumptionsState): AnyExpense {
@@ -108,7 +114,9 @@ export abstract class SimpleExpense extends BaseExpense {
       this.amount * (1 + generalInflation),
       this.frequency,
       this.startDate,
-      this.endDate
+      this.endDate,
+      this.startMilestoneId,
+      this.endMilestoneId
     );
     result.isDiscretionary = this.isDiscretionary;
     return result;
@@ -121,7 +129,9 @@ export abstract class SimpleExpense extends BaseExpense {
       this.amount * ratio,
       this.frequency,
       this.startDate,
-      this.endDate
+      this.endDate,
+      this.startMilestoneId,
+      this.endMilestoneId
     );
     result.isDiscretionary = this.isDiscretionary;
     return result;
@@ -139,8 +149,10 @@ export class RentExpense extends BaseExpense {
     frequency: ExpenseFrequency,
     startDate?: Date,
     endDate?: Date,
+    startMilestoneId?: string,
+    endMilestoneId?: string,
   ) {
-    super(id, name, payment + utilities, frequency, startDate, endDate);
+    super(id, name, payment + utilities, frequency, startDate, endDate, false, startMilestoneId, endMilestoneId);
   }
 
   increment(assumptions: AssumptionsState): RentExpense {
@@ -151,7 +163,8 @@ export class RentExpense extends BaseExpense {
     const newUtilities = this.utilities * (1 + generalInflation);
 
     const result = new RentExpense(
-      this.id, this.name, newPayment, newUtilities, this.frequency, this.startDate, this.endDate
+      this.id, this.name, newPayment, newUtilities, this.frequency, this.startDate, this.endDate,
+      this.startMilestoneId, this.endMilestoneId
     );
     result.isDiscretionary = this.isDiscretionary;
     return result;
@@ -159,7 +172,8 @@ export class RentExpense extends BaseExpense {
 
   adjustAmount(ratio: number): RentExpense {
     const result = new RentExpense(
-      this.id, this.name, this.payment * ratio, this.utilities * ratio, this.frequency, this.startDate, this.endDate
+      this.id, this.name, this.payment * ratio, this.utilities * ratio, this.frequency, this.startDate, this.endDate,
+      this.startMilestoneId, this.endMilestoneId
     );
     result.isDiscretionary = this.isDiscretionary;
     return result;
@@ -190,6 +204,8 @@ export class MortgageExpense extends BaseExpense {
     public payment: number = 0,
     public extra_payment: number = 0,
     endDate?: Date,
+    startMilestoneId?: string,
+    endMilestoneId?: string,
   ) {
     const r = apr / 100 / 12;
     const n = term_length * 12;
@@ -206,7 +222,7 @@ export class MortgageExpense extends BaseExpense {
     payment = principal_payment + property_tax_payment + pmi_payment + hoa_fee + repair_payment + utilities + home_owners_insurance_payment + interest_payment + extra_payment;
     tax_deductible = interest_payment;
 
-    super(id, name, payment, frequency, startDate, endDate);
+    super(id, name, payment, frequency, startDate, endDate, false, startMilestoneId, endMilestoneId);
     this.payment = payment;
     this.tax_deductible = tax_deductible;
   }
@@ -259,7 +275,8 @@ export class MortgageExpense extends BaseExpense {
       this.apr, this.term_length, this.property_taxes, newDeduction,
       this.maintenance, newUtilities, this.home_owners_insurance, nextPmi, newHoa,
       this.is_tax_deductible, this.tax_deductible, this.linkedAccountId,
-      this.startDate, this.payment, this.extra_payment, this.endDate
+      this.startDate, this.payment, this.extra_payment, this.endDate,
+      this.startMilestoneId, this.endMilestoneId
     );
 
     nextYearMortgage.tax_deductible = totalInterestPaid;
@@ -279,8 +296,8 @@ export class MortgageExpense extends BaseExpense {
 
 
   calculateAnnualAmortization(year: number): { totalInterest: number, totalPrincipal: number, totalPayment: number } {
-    const purchaseYear = this.startDate != null ? this.startDate.getUTCFullYear() : new Date().getUTCFullYear();
-    const purchaseMonth = this.startDate != null ? this.startDate.getUTCMonth() : new Date().getUTCMonth();
+    const purchaseYear = this.startDate != null ? this.startDate.getFullYear() : new Date().getFullYear();
+    const purchaseMonth = this.startDate != null ? this.startDate.getMonth() : new Date().getMonth();
 
     if (year < purchaseYear) {
       return { totalInterest: 0, totalPrincipal: 0, totalPayment: 0 };
@@ -396,12 +413,12 @@ export class MortgageExpense extends BaseExpense {
     const start = new Date(this.startDate != null ? this.startDate : new Date());
 
     // If target is before purchase, the loan didn't exist yet (return 0)
-    if (targetDate.getUTCDate() < start.getUTCDate()) return 0;
+    if (targetDate < start) return 0;
 
     // Calculate months elapsed
     const monthsElapsed =
-      (targetDate.getUTCFullYear() - start.getUTCFullYear()) * 12 +
-      (targetDate.getUTCMonth() - start.getUTCMonth());
+      (targetDate.getFullYear() - start.getFullYear()) * 12 +
+      (targetDate.getMonth() - start.getMonth());
 
     if (monthsElapsed <= 0) return this.starting_loan_balance;
 
@@ -441,6 +458,8 @@ export class LoanExpense extends BaseExpense {
     public linkedAccountId: string,
     startDate?: Date,
     endDate?: Date,
+    startMilestoneId?: string,
+    endMilestoneId?: string,
   ) {
     const effectiveStartDate = startDate || new Date();
     const effectiveEndDate = endDate || (() => {
@@ -449,7 +468,7 @@ export class LoanExpense extends BaseExpense {
       return end;
     })();
 
-    super(id, name, amount, frequency, effectiveStartDate, effectiveEndDate);
+    super(id, name, amount, frequency, effectiveStartDate, effectiveEndDate, false, startMilestoneId, endMilestoneId);
 
     if (!this.payment) {
       this.payment = this.calculatePaymentFromEndDate();
@@ -490,19 +509,21 @@ export class LoanExpense extends BaseExpense {
       this.tax_deductible,
       this.linkedAccountId,
       this.startDate,
-      this.endDate
+      this.endDate,
+      this.startMilestoneId,
+      this.endMilestoneId
     );
     result.isDiscretionary = this.isDiscretionary;
     return result;
   }
 
   calculateAnnualAmortization(year: number): { totalInterest: number, totalPrincipal: number, totalPayment: number } {
-    const loanStartYear = this.startDate ? this.startDate.getUTCFullYear() : new Date().getUTCFullYear();
+    const loanStartYear = this.startDate ? this.startDate.getFullYear() : new Date().getFullYear();
     if (year < loanStartYear) {
         return { totalInterest: 0, totalPrincipal: 0, totalPayment: 0 };
     }
 
-    const loanEndYear = this.endDate ? this.endDate.getUTCFullYear() : null;
+    const loanEndYear = this.endDate ? this.endDate.getFullYear() : null;
     if (loanEndYear !== null && year > loanEndYear) {
         return { totalInterest: 0, totalPrincipal: 0, totalPayment: 0 };
     }
@@ -512,9 +533,9 @@ export class LoanExpense extends BaseExpense {
     let totalPrincipal = 0;
 
     const monthlyRate = this.apr / 100 / 12;
-    
-    const startMonth = (year === loanStartYear) ? (this.startDate ? this.startDate.getUTCMonth() : 0) : 0;
-    const endMonth = (loanEndYear === year) ? (this.endDate ? this.endDate.getUTCMonth() : 11) : 11;
+
+    const startMonth = (year === loanStartYear) ? (this.startDate ? this.startDate.getMonth() : 0) : 0;
+    const endMonth = (loanEndYear === year) ? (this.endDate ? this.endDate.getMonth() : 11) : 11;
 
     for (let month = startMonth; month <= endMonth; month++) {
         if (balance <= 0) {
@@ -610,15 +631,18 @@ export class DependentExpense extends BaseExpense {
     public tax_deductible: number,
     startDate?: Date,
     endDate?: Date,
+    startMilestoneId?: string,
+    endMilestoneId?: string,
   ) {
-    super(id, name, amount, frequency, startDate, endDate);
+    super(id, name, amount, frequency, startDate, endDate, false, startMilestoneId, endMilestoneId);
   }
 
   increment(assumptions: AssumptionsState): DependentExpense {
     const generalInflation = this.getGeneralInflation(assumptions);
     const result = new DependentExpense(
       this.id, this.name, this.amount * (1 + generalInflation), this.frequency,
-      this.is_tax_deductible, this.tax_deductible, this.startDate, this.endDate
+      this.is_tax_deductible, this.tax_deductible, this.startDate, this.endDate,
+      this.startMilestoneId, this.endMilestoneId
     );
     result.isDiscretionary = this.isDiscretionary;
     return result;
@@ -627,7 +651,8 @@ export class DependentExpense extends BaseExpense {
   adjustAmount(ratio: number): DependentExpense {
     const result = new DependentExpense(
       this.id, this.name, this.amount * ratio, this.frequency,
-      this.is_tax_deductible, this.tax_deductible, this.startDate, this.endDate
+      this.is_tax_deductible, this.tax_deductible, this.startDate, this.endDate,
+      this.startMilestoneId, this.endMilestoneId
     );
     result.isDiscretionary = this.isDiscretionary;
     return result;
@@ -644,15 +669,18 @@ export class HealthcareExpense extends BaseExpense {
     public tax_deductible: number,
     startDate?: Date,
     endDate?: Date,
+    startMilestoneId?: string,
+    endMilestoneId?: string,
   ) {
-    super(id, name, amount, frequency, startDate, endDate);
+    super(id, name, amount, frequency, startDate, endDate, false, startMilestoneId, endMilestoneId);
   }
 
   increment(assumptions: AssumptionsState): HealthcareExpense {
     const inflation = assumptions.macro.healthcareInflation / 100;
     const result = new HealthcareExpense(
       this.id, this.name, this.amount * (1 + inflation), this.frequency,
-      this.is_tax_deductible, this.tax_deductible, this.startDate, this.endDate
+      this.is_tax_deductible, this.tax_deductible, this.startDate, this.endDate,
+      this.startMilestoneId, this.endMilestoneId
     );
     result.isDiscretionary = this.isDiscretionary;
     return result;
@@ -661,7 +689,8 @@ export class HealthcareExpense extends BaseExpense {
   adjustAmount(ratio: number): HealthcareExpense {
     const result = new HealthcareExpense(
       this.id, this.name, this.amount * ratio, this.frequency,
-      this.is_tax_deductible, this.tax_deductible, this.startDate, this.endDate
+      this.is_tax_deductible, this.tax_deductible, this.startDate, this.endDate,
+      this.startMilestoneId, this.endMilestoneId
     );
     result.isDiscretionary = this.isDiscretionary;
     return result;
@@ -670,49 +699,55 @@ export class HealthcareExpense extends BaseExpense {
 
 export class VacationExpense extends SimpleExpense {
   protected createInstance(
-    id: string, name: string, amount: number, frequency: ExpenseFrequency, startDate?: Date, endDate?: Date
+    id: string, name: string, amount: number, frequency: ExpenseFrequency, startDate?: Date, endDate?: Date,
+    startMilestoneId?: string, endMilestoneId?: string
   ): VacationExpense {
-    return new VacationExpense(id, name, amount, frequency, startDate, endDate);
+    return new VacationExpense(id, name, amount, frequency, startDate, endDate, startMilestoneId, endMilestoneId);
   }
 }
 
 export class SubscriptionExpense extends SimpleExpense {
   protected createInstance(
-    id: string, name: string, amount: number, frequency: ExpenseFrequency, startDate?: Date, endDate?: Date
+    id: string, name: string, amount: number, frequency: ExpenseFrequency, startDate?: Date, endDate?: Date,
+    startMilestoneId?: string, endMilestoneId?: string
   ): SubscriptionExpense {
-    return new SubscriptionExpense(id, name, amount, frequency, startDate, endDate);
+    return new SubscriptionExpense(id, name, amount, frequency, startDate, endDate, startMilestoneId, endMilestoneId);
   }
 }
 
 export class EmergencyExpense extends SimpleExpense {
   protected createInstance(
-    id: string, name: string, amount: number, frequency: ExpenseFrequency, startDate?: Date, endDate?: Date
+    id: string, name: string, amount: number, frequency: ExpenseFrequency, startDate?: Date, endDate?: Date,
+    startMilestoneId?: string, endMilestoneId?: string
   ): EmergencyExpense {
-    return new EmergencyExpense(id, name, amount, frequency, startDate, endDate);
+    return new EmergencyExpense(id, name, amount, frequency, startDate, endDate, startMilestoneId, endMilestoneId);
   }
 }
 
 export class TransportExpense extends SimpleExpense {
   protected createInstance(
-    id: string, name: string, amount: number, frequency: ExpenseFrequency, startDate?: Date, endDate?: Date
+    id: string, name: string, amount: number, frequency: ExpenseFrequency, startDate?: Date, endDate?: Date,
+    startMilestoneId?: string, endMilestoneId?: string
   ): TransportExpense {
-    return new TransportExpense(id, name, amount, frequency, startDate, endDate);
+    return new TransportExpense(id, name, amount, frequency, startDate, endDate, startMilestoneId, endMilestoneId);
   }
 }
 
 export class FoodExpense extends SimpleExpense {
   protected createInstance(
-    id: string, name: string, amount: number, frequency: ExpenseFrequency, startDate?: Date, endDate?: Date
+    id: string, name: string, amount: number, frequency: ExpenseFrequency, startDate?: Date, endDate?: Date,
+    startMilestoneId?: string, endMilestoneId?: string
   ): FoodExpense {
-    return new FoodExpense(id, name, amount, frequency, startDate, endDate);
+    return new FoodExpense(id, name, amount, frequency, startDate, endDate, startMilestoneId, endMilestoneId);
   }
 }
 
 export class OtherExpense extends SimpleExpense {
   protected createInstance(
-    id: string, name: string, amount: number, frequency: ExpenseFrequency, startDate?: Date, endDate?: Date
+    id: string, name: string, amount: number, frequency: ExpenseFrequency, startDate?: Date, endDate?: Date,
+    startMilestoneId?: string, endMilestoneId?: string
   ): OtherExpense {
-    return new OtherExpense(id, name, amount, frequency, startDate, endDate);
+    return new OtherExpense(id, name, amount, frequency, startDate, endDate, startMilestoneId, endMilestoneId);
   }
 }
 
@@ -726,16 +761,19 @@ export class CharityExpense extends BaseExpense {
     public tax_deductible: number,
     startDate?: Date,
     endDate?: Date,
+    startMilestoneId?: string,
+    endMilestoneId?: string,
   ) {
-    super(id, name, amount, frequency, startDate, endDate);
-    this.isDiscretionary = true; // Charity is typically discretionary
+    super(id, name, amount, frequency, startDate, endDate, true, startMilestoneId, endMilestoneId);
+    // Charity is typically discretionary - already set via super call
   }
 
   increment(assumptions: AssumptionsState): CharityExpense {
     const generalInflation = this.getGeneralInflation(assumptions);
     const result = new CharityExpense(
       this.id, this.name, this.amount * (1 + generalInflation), this.frequency,
-      this.is_tax_deductible, this.tax_deductible, this.startDate, this.endDate
+      this.is_tax_deductible, this.tax_deductible, this.startDate, this.endDate,
+      this.startMilestoneId, this.endMilestoneId
     );
     result.isDiscretionary = this.isDiscretionary;
     return result;
@@ -744,7 +782,8 @@ export class CharityExpense extends BaseExpense {
   adjustAmount(ratio: number): CharityExpense {
     const result = new CharityExpense(
       this.id, this.name, this.amount * ratio, this.frequency,
-      this.is_tax_deductible, this.tax_deductible, this.startDate, this.endDate
+      this.is_tax_deductible, this.tax_deductible, this.startDate, this.endDate,
+      this.startMilestoneId, this.endMilestoneId
     );
     result.isDiscretionary = this.isDiscretionary;
     return result;
@@ -755,18 +794,18 @@ export type AnyExpense = RentExpense | MortgageExpense | LoanExpense | Dependent
 
 export function getExpenseActiveMultiplier(expense: BaseExpense, year: number): number {
   const expenseStartDate = expense.startDate ? new Date(expense.startDate) : new Date();
-  const startYear = expenseStartDate.getUTCFullYear();
+  const startYear = expenseStartDate.getFullYear();
 
   const safeEndDate = expense.endDate ? new Date(expense.endDate) : null;
-  const endYear = safeEndDate ? safeEndDate.getUTCFullYear() : null;
+  const endYear = safeEndDate ? safeEndDate.getFullYear() : null;
 
   if (startYear > year) return 0;
   if (endYear !== null && endYear < year) return 0;
 
-  const startMonthIndex = (startYear < year) ? 0 : expenseStartDate.getUTCMonth();
+  const startMonthIndex = (startYear < year) ? 0 : expenseStartDate.getMonth();
 
   const endMonthIndex = (safeEndDate && endYear === year)
-    ? safeEndDate.getUTCMonth()
+    ? safeEndDate.getMonth()
     : 11;
 
   const monthsActive = endMonthIndex - startMonthIndex + 1;
@@ -776,12 +815,12 @@ export function getExpenseActiveMultiplier(expense: BaseExpense, year: number): 
 
 export function isExpenseActiveInCurrentMonth(expense: AnyExpense): boolean {
   const today = new Date();
-  const currentYear = today.getUTCFullYear();
-  const currentMonth = today.getUTCMonth();
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth();
 
   const expenseStartDate = expense.startDate != null ? expense.startDate : new Date();
-  const expenseStartYear = expenseStartDate.getUTCFullYear();
-  const expenseStartMonth = expenseStartDate.getUTCMonth();
+  const expenseStartYear = expenseStartDate.getFullYear();
+  const expenseStartMonth = expenseStartDate.getMonth();
 
   const currentMonthStart = new Date(currentYear, currentMonth, 1);
   const expenseEffectiveStart = new Date(expenseStartYear, expenseStartMonth, 1);
@@ -792,8 +831,8 @@ export function isExpenseActiveInCurrentMonth(expense: AnyExpense): boolean {
 
   if (expense.endDate) {
     const expenseEndDate = new Date(expense.endDate);
-    const expenseEndYear = expenseEndDate.getUTCFullYear();
-    const expenseEndMonth = expenseEndDate.getUTCMonth();
+    const expenseEndYear = expenseEndDate.getFullYear();
+    const expenseEndMonth = expenseEndDate.getMonth();
 
     const expenseEffectiveEnd = new Date(expenseEndYear, expenseEndMonth + 1, 0);
 
@@ -879,6 +918,8 @@ export function reconstituteExpense(data: unknown): AnyExpense | null {
     const name = String(data.name ?? 'Unnamed Expense');
     const amount = Number(data.amount) || 0;
     const isDiscretionary = (data.isDiscretionary as boolean) ?? false;
+    const startMilestoneId = data.startMilestoneId ? String(data.startMilestoneId) : undefined;
+    const endMilestoneId = data.endMilestoneId ? String(data.endMilestoneId) : undefined;
 
     let expense: AnyExpense | null = null;
 
@@ -887,7 +928,7 @@ export function reconstituteExpense(data: unknown): AnyExpense | null {
         case 'RentExpense':
             expense = new RentExpense(
                 id, name, Number(data.payment) || 0, Number(data.utilities) || 0,
-                frequency, startDate, endDate
+                frequency, startDate, endDate, startMilestoneId, endMilestoneId
             );
             break;
         case 'MortgageExpense':
@@ -901,7 +942,8 @@ export function reconstituteExpense(data: unknown): AnyExpense | null {
                 Number(data.pmi) || 0, Number(data.hoa_fee) || 0,
                 (data.is_tax_deductible as 'Yes' | 'No' | 'Itemized') || 'No',
                 Number(data.tax_deductible) || 0, String(data.linkedAccountId ?? ''),
-                startDate, Number(data.payment) || 0, Number(data.extra_payment) || 0, endDate
+                startDate, Number(data.payment) || 0, Number(data.extra_payment) || 0, endDate,
+                startMilestoneId, endMilestoneId
             );
             break;
         case 'LoanExpense':
@@ -911,46 +953,55 @@ export function reconstituteExpense(data: unknown): AnyExpense | null {
                 Number(data.payment) || 0,
                 (data.is_tax_deductible as 'Yes' | 'No' | 'Itemized') || 'No',
                 Number(data.tax_deductible) || 0, String(data.linkedAccountId ?? ''),
-                startDate, endDate
+                startDate, endDate, startMilestoneId, endMilestoneId
             );
             break;
         case 'DependentExpense':
             expense = new DependentExpense(
                 id, name, amount, frequency,
                 (data.is_tax_deductible as 'Yes' | 'No' | 'Itemized') || 'No',
-                Number(data.tax_deductible) || 0, startDate, endDate
+                Number(data.tax_deductible) || 0, startDate, endDate,
+                startMilestoneId, endMilestoneId
             );
             break;
         case 'HealthcareExpense':
             expense = new HealthcareExpense(
                 id, name, amount, frequency,
                 (data.is_tax_deductible as 'Yes' | 'No' | 'Itemized') || 'No',
-                Number(data.tax_deductible) || 0, startDate, endDate
+                Number(data.tax_deductible) || 0, startDate, endDate,
+                startMilestoneId, endMilestoneId
             );
             break;
         case 'VacationExpense':
-            expense = new VacationExpense(id, name, amount, frequency, startDate, endDate);
+            expense = new VacationExpense(id, name, amount, frequency, startDate, endDate,
+                startMilestoneId, endMilestoneId);
             break;
         case 'SubscriptionExpense':
-            expense = new SubscriptionExpense(id, name, amount, frequency, startDate, endDate);
+            expense = new SubscriptionExpense(id, name, amount, frequency, startDate, endDate,
+                startMilestoneId, endMilestoneId);
             break;
         case 'EmergencyExpense':
-            expense = new EmergencyExpense(id, name, amount, frequency, startDate, endDate);
+            expense = new EmergencyExpense(id, name, amount, frequency, startDate, endDate,
+                startMilestoneId, endMilestoneId);
             break;
         case 'TransportExpense':
-            expense = new TransportExpense(id, name, amount, frequency, startDate, endDate);
+            expense = new TransportExpense(id, name, amount, frequency, startDate, endDate,
+                startMilestoneId, endMilestoneId);
             break;
         case 'FoodExpense':
-            expense = new FoodExpense(id, name, amount, frequency, startDate, endDate);
+            expense = new FoodExpense(id, name, amount, frequency, startDate, endDate,
+                startMilestoneId, endMilestoneId);
             break;
         case 'OtherExpense':
-            expense = new OtherExpense(id, name, amount, frequency, startDate, endDate);
+            expense = new OtherExpense(id, name, amount, frequency, startDate, endDate,
+                startMilestoneId, endMilestoneId);
             break;
         case 'CharityExpense':
             expense = new CharityExpense(
                 id, name, amount, frequency,
                 (data.is_tax_deductible as 'Yes' | 'No' | 'Itemized') || 'Itemized',
-                Number(data.tax_deductible) || 0, startDate, endDate
+                Number(data.tax_deductible) || 0, startDate, endDate,
+                startMilestoneId, endMilestoneId
             );
             break;
         default:

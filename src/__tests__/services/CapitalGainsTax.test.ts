@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { InvestedAccount } from '../../components/Objects/Accounts/models';
 import { calculateCapitalGainsTax } from '../../components/Objects/Taxes/TaxService';
 import { TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
 
 describe('Capital Gains Tax', () => {
     const baseTaxState: TaxState = {
@@ -33,13 +34,14 @@ describe('Capital Gains Tax', () => {
 
         it('should track gains after growth', () => {
             const assumptions = {
-                demographics: { birthYear: 1994, retirementAge: 65, lifeExpectancy: 90 },
+                demographics: {},
                 macro: { inflationRate: 3, healthcareInflation: 5, inflationAdjusted: false },
-                investments: { returnRates: { ror: 7 }, withdrawalRate: 4, withdrawalStrategy: 'Fixed Real' as const, gkUpperGuardrail: 1.2, gkLowerGuardrail: 0.8, gkAdjustmentPercent: 10, autoRothConversions: false, rothConversionTargetBracket: 0.22, taxOptimizedWithdrawals: false, taxOptimizedTargetBracket: 0.22 },
+                investments: { returnRates: { ror: 7 }, withdrawalRate: 4, withdrawalStrategy: 'Fixed Real' as const, gkUpperGuardrail: 1.2, gkLowerGuardrail: 0.8, gkAdjustmentPercent: 10, autoRothConversions: false, rothConversionTargetBracket: 0.22, taxOptimizationEnabled: false },
                 income: { salaryGrowth: 3, qualifiesForSocialSecurity: true, socialSecurityFundingPercent: 100 },
                 expenses: { lifestyleCreep: 0, housingAppreciation: 3, rentInflation: 3 },
                 priorities: [],
                 withdrawalStrategy: [],
+                milestones: createBuiltinMilestones(1994, 65, 90),
                 display: { useCompactCurrency: true, showExperimentalFeatures: false, hsaEligible: true },
             };
 
@@ -62,13 +64,14 @@ describe('Capital Gains Tax', () => {
 
         it('should increase costBasis with contributions', () => {
             const assumptions = {
-                demographics: { birthYear: 1994, retirementAge: 65, lifeExpectancy: 90 },
+                demographics: {},
                 macro: { inflationRate: 3, healthcareInflation: 5, inflationAdjusted: false },
-                investments: { returnRates: { ror: 7 }, withdrawalRate: 4, withdrawalStrategy: 'Fixed Real' as const, gkUpperGuardrail: 1.2, gkLowerGuardrail: 0.8, gkAdjustmentPercent: 10, autoRothConversions: false, rothConversionTargetBracket: 0.22, taxOptimizedWithdrawals: false, taxOptimizedTargetBracket: 0.22 },
+                investments: { returnRates: { ror: 7 }, withdrawalRate: 4, withdrawalStrategy: 'Fixed Real' as const, gkUpperGuardrail: 1.2, gkLowerGuardrail: 0.8, gkAdjustmentPercent: 10, autoRothConversions: false, rothConversionTargetBracket: 0.22, taxOptimizationEnabled: false },
                 income: { salaryGrowth: 3, qualifiesForSocialSecurity: true, socialSecurityFundingPercent: 100 },
                 expenses: { lifestyleCreep: 0, housingAppreciation: 3, rentInflation: 3 },
                 priorities: [],
                 withdrawalStrategy: [],
+                milestones: createBuiltinMilestones(1994, 65, 90),
                 display: { useCompactCurrency: true, showExperimentalFeatures: false, hsaEligible: true },
             };
 
@@ -89,13 +92,14 @@ describe('Capital Gains Tax', () => {
 
         it('should decrease costBasis proportionally on withdrawal', () => {
             const assumptions = {
-                demographics: { birthYear: 1994, retirementAge: 65, lifeExpectancy: 90 },
+                demographics: {},
                 macro: { inflationRate: 3, healthcareInflation: 5, inflationAdjusted: false },
-                investments: { returnRates: { ror: 7 }, withdrawalRate: 4, withdrawalStrategy: 'Fixed Real' as const, gkUpperGuardrail: 1.2, gkLowerGuardrail: 0.8, gkAdjustmentPercent: 10, autoRothConversions: false, rothConversionTargetBracket: 0.22, taxOptimizedWithdrawals: false, taxOptimizedTargetBracket: 0.22 },
+                investments: { returnRates: { ror: 7 }, withdrawalRate: 4, withdrawalStrategy: 'Fixed Real' as const, gkUpperGuardrail: 1.2, gkLowerGuardrail: 0.8, gkAdjustmentPercent: 10, autoRothConversions: false, rothConversionTargetBracket: 0.22, taxOptimizationEnabled: false },
                 income: { salaryGrowth: 3, qualifiesForSocialSecurity: true, socialSecurityFundingPercent: 100 },
                 expenses: { lifestyleCreep: 0, housingAppreciation: 3, rentInflation: 3 },
                 priorities: [],
                 withdrawalStrategy: [],
+                milestones: createBuiltinMilestones(1994, 65, 90),
                 display: { useCompactCurrency: true, showExperimentalFeatures: false, hsaEligible: true },
             };
 

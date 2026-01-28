@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { AssumptionsState, defaultAssumptions } from '../../../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsState, defaultAssumptions, createBuiltinMilestones, getLifeExpectancy, getBirthYear } from '../../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../../../components/Objects/Taxes/TaxContext';
 import { runSimulation } from '../../../../components/Objects/Assumptions/useSimulation';
 import { AnyAccount, DebtAccount, InvestedAccount, PropertyAccount, SavedAccount } from '../../../../components/Objects/Accounts/models';
@@ -33,11 +33,8 @@ describe('Critical Simulation Logic', () => {
         // --- SETUP ---
         const zeroGrowthAssumptions: AssumptionsState = {
             ...defaultAssumptions,
-            demographics: {
-                birthYear: 1995, // startAge 30 in 2025
-                lifeExpectancy: 90,
-                retirementAge: 67,
-            },
+            demographics: {},
+            milestones: createBuiltinMilestones(1995, 67, 90),
             macro: {
                 ...defaultAssumptions.macro,
                 inflationRate: 0,
@@ -101,11 +98,8 @@ describe('Critical Simulation Logic', () => {
         // --- SETUP ---
         const assumptionsWithInflation: AssumptionsState = {
             ...defaultAssumptions,
-            demographics: {
-                birthYear: 1995, // startAge 30 in 2025
-                lifeExpectancy: 90,
-                retirementAge: 67,
-            },
+            demographics: {},
+            milestones: createBuiltinMilestones(1995, 67, 90),
             macro: {
                 ...defaultAssumptions.macro,
                 inflationRate: 3, // 3% inflation
@@ -160,11 +154,8 @@ describe('Critical Simulation Logic', () => {
         // --- SETUP ---
         const zeroGrowthAssumptions: AssumptionsState = {
             ...defaultAssumptions,
-            demographics: {
-                birthYear: 1995, // startAge 30 in 2025
-                lifeExpectancy: 90,
-                retirementAge: 67,
-            },
+            demographics: {},
+            milestones: createBuiltinMilestones(1995, 67, 90),
             macro: { 
                 inflationRate: 0, 
                 inflationAdjusted: false, 
@@ -231,11 +222,8 @@ describe('Critical Simulation Logic', () => {
         const currentYear = new Date().getFullYear();
         const cliffAssumptions: AssumptionsState = {
             ...defaultAssumptions,
-            demographics: {
-                birthYear: currentYear - 30, // age 30 in current year
-                lifeExpectancy: 40, // End simulation at age 40
-                retirementAge: 67,
-            },
+            demographics: {},
+            milestones: createBuiltinMilestones(currentYear - 30, 67, 40), // Birth year for age 30, end simulation at age 40
             macro: { ...defaultAssumptions.macro, inflationRate: 0, inflationAdjusted: false },
         };
 
@@ -248,13 +236,14 @@ describe('Critical Simulation Logic', () => {
         // --- ASSERT ---
         // The simulation runs from age 30 up to and *including* age 40.
         // So, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 -> 11 years.
-        const startAge = currentYear - cliffAssumptions.demographics.birthYear;
-        const expectedYears = cliffAssumptions.demographics.lifeExpectancy - startAge + 1;
+        const startAge = currentYear - getBirthYear(cliffAssumptions.milestones);
+        const lifeExpectancy = getLifeExpectancy(cliffAssumptions.milestones);
+        const expectedYears = lifeExpectancy - startAge + 1; // +1 to include both start and end ages
         expect(result).toHaveLength(expectedYears);
 
         // Verify the last entry is indeed for age 40
         const lastYearResult = result[result.length - 1];
-        const lastYearAge = lastYearResult.year - cliffAssumptions.demographics.birthYear;
+        const lastYearAge = lastYearResult.year - getBirthYear(cliffAssumptions.milestones);
         expect(lastYearAge).toBe(40);
     });
 
@@ -262,11 +251,8 @@ describe('Critical Simulation Logic', () => {
         // --- SETUP ---
         const fixedCapAssumptions: AssumptionsState = {
             ...defaultAssumptions,
-            demographics: {
-                birthYear: 1995, // startAge 30 in 2025
-                lifeExpectancy: 90,
-                retirementAge: 67,
-            },
+            demographics: {},
+            milestones: createBuiltinMilestones(1995, 67, 90),
             macro: { ...defaultAssumptions.macro, inflationRate: 0, inflationAdjusted: false },
             investments: { ...defaultAssumptions.investments, returnRates: { ror: 0 } },
             income: { ...defaultAssumptions.income, salaryGrowth: 0 },

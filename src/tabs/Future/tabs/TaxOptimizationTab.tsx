@@ -1,7 +1,7 @@
 import React, { useState, useContext, useMemo } from 'react';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { InvestedAccount } from '../../../components/Objects/Accounts/models';
-import { useAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { useAssumptions, getRetirementAge, getLifeExpectancy, getBirthYear } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxContext } from '../../../components/Objects/Taxes/TaxContext';
 import { formatCompactCurrency, formatCurrency } from './FutureUtils';
 import { CurrencyInput } from '../../../components/Layout/InputFields/CurrencyInput';
@@ -271,9 +271,9 @@ const RothAnalysisPanel = ({
 }) => {
     const [mode, setMode] = useState<'contribution' | 'conversion'>('contribution');
     const startYear = new Date().getFullYear();
-    const startAge = startYear - assumptions.demographics.birthYear;
-    const retirementAge = assumptions.demographics.retirementAge;
-    const lifeExpectancy = assumptions.demographics.lifeExpectancy;
+    const startAge = startYear - getBirthYear(assumptions.milestones);
+    const retirementAge = getRetirementAge(assumptions.milestones);
+    const lifeExpectancy = getLifeExpectancy(assumptions.milestones);
 
     const defaultGrowthYears = useMemo(() => {
         return startAge < retirementAge

@@ -1,6 +1,6 @@
 import React, { useState, useContext, useMemo, useEffect, useCallback } from 'react';
 import { runSimulation } from '../../components/Objects/Assumptions/useSimulation';
-import { AssumptionsContext } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsContext, getLifeExpectancy, getBirthYear } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { getSimulationInputHash } from '../../services/simulationHash';
 import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 import { ESPPAccount, InvestedAccount, PropertyAccount, SavedAccount } from '../../components/Objects/Accounts/models';
@@ -113,14 +113,13 @@ interface ProgressTimelineProps {
 }
 
 const ProgressTimeline = React.memo(({ milestones }: ProgressTimelineProps) => {
-    const { currentAge, retirementAge, fiAge, lifeExpectancy } = milestones;
+    const { currentAge, retirementAge, lifeExpectancy } = milestones;
 
     // Calculate positions as percentages
     const startAge = 0;
     const range = lifeExpectancy - startAge;
     const currentPos = ((currentAge - startAge) / range) * 100;
     const retirementPos = ((retirementAge - startAge) / range) * 100;
-    const fiPos = fiAge ? ((fiAge - startAge) / range) * 100 : null;
 
     return (
         <div className="relative h-8 bg-gray-800 rounded-full overflow-hidden">
@@ -129,15 +128,6 @@ const ProgressTimeline = React.memo(({ milestones }: ProgressTimelineProps) => {
                 className="absolute h-full bg-linear-to-r from-green-600 to-green-500 rounded-l-full"
                 style={{ width: `${currentPos}%` }}
             />
-
-            {/* FI marker */}
-            {fiPos && fiPos > currentPos && (
-                <div
-                    className="absolute top-0 h-full w-1 bg-blue-400"
-                    style={{ left: `${fiPos}%` }}
-                    title={`FI: Age ${fiAge}`}
-                />
-            )}
 
             {/* Retirement marker */}
             <div
@@ -160,14 +150,6 @@ const ProgressTimeline = React.memo(({ milestones }: ProgressTimelineProps) => {
             >
                 {currentAge}
             </div>
-            {fiPos && fiPos > currentPos && (
-                <div
-                    className="absolute -bottom-5 text-xs text-blue-400 transform -translate-x-1/2"
-                    style={{ left: `${fiPos}%` }}
-                >
-                    {fiAge}
-                </div>
-            )}
             <div
                 className="absolute -bottom-5 text-xs text-amber-400 transform -translate-x-1/2"
                 style={{ left: `${retirementPos}%` }}
@@ -178,19 +160,6 @@ const ProgressTimeline = React.memo(({ milestones }: ProgressTimelineProps) => {
         </div>
     );
 });
-
-// --- Milestone Badge Component (Memoized) ---
-interface MilestoneBadgeProps {
-    age: number;
-    label: string;
-    reached: boolean;
-}
-
-const MilestoneBadge = React.memo(({ age, label, reached }: MilestoneBadgeProps) => (
-    <span className={`px-2 py-1 rounded text-xs ${reached ? 'bg-green-900/50 text-green-400' : 'bg-gray-800 text-gray-400'}`}>
-        {formatAge(age)} {label}
-    </span>
-));
 
 // --- Main Component ---
 export default function FutureTab() {
@@ -234,9 +203,9 @@ export default function FutureTab() {
 
     const executeSimulation = useCallback(() => {
         const currentYear = new Date().getFullYear();
-        const startAge = currentYear - assumptions.demographics.birthYear;
+        const startAge = currentYear - getBirthYear(assumptions.milestones);
         return runSimulation(
-            assumptions.demographics.lifeExpectancy - startAge,
+            getLifeExpectancy(assumptions.milestones) - startAge,
             accounts,
             incomes,
             expenses,
@@ -336,7 +305,7 @@ export default function FutureTab() {
                 <FinancialRatiosTab simulationData={simulation} />
             </div>
             <div className={activeTab === 'Data' ? '' : 'hidden'}>
-                <DataTab simulationData={simulation} birthYear={assumptions.demographics.birthYear} />
+                <DataTab simulationData={simulation} birthYear={getBirthYear(assumptions.milestones)} />
             </div>
         </>
     );
@@ -375,8 +344,8 @@ export default function FutureTab() {
                         )}
                     </div>
 
-                    {/* Milestone Cards Grid - 4 columns if FI reached, 3 columns otherwise */}
-                    <div className={`grid grid-cols-2 gap-3 mb-6 ${milestones.fiYear ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
+                    {/* Milestone Cards Grid */}
+                    <div className="grid grid-cols-2 gap-3 mb-6 md:grid-cols-3">
                         <MilestoneCard
                             title="Current"
                             age={milestones.currentAge}
@@ -390,16 +359,6 @@ export default function FutureTab() {
                             status={milestones.currentAge >= milestones.retirementAge ? 'reached' : 'future'}
                             yearsUntil={milestones.retirementAge - milestones.currentAge}
                         />
-                        {/* Only show FI Target if it's achieved within the simulation */}
-                        {milestones.fiYear && (
-                            <MilestoneCard
-                                title="FI Target"
-                                age={milestones.fiAge!}
-                                year={milestones.fiYear}
-                                status={milestones.currentYear >= milestones.fiYear ? 'reached' : 'projected'}
-                                yearsUntil={milestones.fiYear - milestones.currentYear}
-                            />
-                        )}
                         <MilestoneCard
                             title="Plan End"
                             age={milestones.lifeExpectancy}
@@ -410,20 +369,8 @@ export default function FutureTab() {
                     </div>
 
                     {/* Progress Timeline */}
-                    <div className="mb-8">
+                    <div>
                         <ProgressTimeline milestones={milestones} />
-                    </div>
-
-                    {/* Key Milestone Badges */}
-                    <div className="flex flex-wrap gap-2">
-                        {milestones.keyMilestones.map((m) => (
-                            <MilestoneBadge
-                                key={m.age}
-                                age={m.age}
-                                label={m.name}
-                                reached={m.isReached}
-                            />
-                        ))}
                     </div>
                 </div>
 

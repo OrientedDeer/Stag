@@ -36,6 +36,13 @@ export interface ESPPLot {
   discountAmount: number; // Per-share discount (for tax calculation)
 }
 
+// Brokerage Lot interface for tracking individual contributions (simulation-internal, not persisted)
+export interface BrokerageLot {
+  purchaseYear: number;    // Year contribution was made
+  costBasis: number;       // Original amount (never grows)
+  currentValue: number;    // Market value (grows with returns)
+}
+
 export class SavedAccount extends BaseAccount {
   constructor(
     id: string,
@@ -73,6 +80,8 @@ export class InvestedAccount extends BaseAccount {
     public customROR?: number, // undefined means use global assumptions
     // Track Roth conversion amounts with the year they occurred (for 5-year rule)
     public conversionHistory: { year: number; amount: number }[] = [],
+    // Simulation-internal lot tracking for brokerage accounts (not persisted)
+    public lots: BrokerageLot[] = [],
   ) {
     super(id, name, amount);
   }
@@ -103,6 +112,47 @@ export class InvestedAccount extends BaseAccount {
       basis: withdrawAmount * basisPortion,
       gains: withdrawAmount * gainsPortion,
     };
+  }
+
+  // Calculate lot-aware withdrawal breakdown for brokerage accounts
+  // Returns short-term vs long-term gains based on holding period of each lot
+  calculateLotAwareWithdrawal(withdrawAmount: number, currentYear: number): {
+    shortTermGains: number; longTermGains: number; basisReturn: number
+  } {
+    // Fall back to proportional method if no lots present
+    if (this.lots.length === 0 || this.amount <= 0) {
+      const allocation = this.calculateWithdrawalAllocation(withdrawAmount);
+      return { shortTermGains: 0, longTermGains: allocation.gains, basisReturn: allocation.basis };
+    }
+
+    const totalLotValue = this.lots.reduce((sum, lot) => sum + lot.currentValue, 0);
+    if (totalLotValue <= 0) {
+      return { shortTermGains: 0, longTermGains: 0, basisReturn: withdrawAmount };
+    }
+
+    let shortTermGains = 0;
+    let longTermGains = 0;
+    let basisReturn = 0;
+
+    // Proportional withdrawal across all lots
+    const withdrawalPct = Math.min(1, withdrawAmount / totalLotValue);
+
+    for (const lot of this.lots) {
+      const lotWithdraw = lot.currentValue * withdrawalPct;
+      const lotBasisWithdrawn = lot.costBasis * withdrawalPct;
+      const lotGain = Math.max(0, lotWithdraw - lotBasisWithdrawn);
+
+      basisReturn += lotBasisWithdrawn;
+
+      // A lot is long-term if currentYear - purchaseYear >= 2 (conservative BOY timing)
+      if (currentYear - lot.purchaseYear >= 2) {
+        longTermGains += lotGain;
+      } else {
+        shortTermGains += lotGain;
+      }
+    }
+
+    return { shortTermGains, longTermGains, basisReturn };
   }
 
   // Helper to calculate the current "Risk" (Unvested Amount)
@@ -206,11 +256,46 @@ export class InvestedAccount extends BaseAccount {
       newConversionHistory.push({ year: currentYear, amount: conversionAmount });
     }
 
+    // Lot lifecycle (Brokerage accounts only, simulation-internal)
+    let newLots: BrokerageLot[] = [];
+    if (this.taxType === 'Brokerage') {
+      // Seed lot: first time we see an empty lots array with existing balance
+      if (this.lots.length === 0 && this.amount > 0 && currentYear > 0) {
+        newLots = [{ purchaseYear: currentYear - 2, costBasis: this.costBasis, currentValue: this.amount }];
+      } else {
+        newLots = [...this.lots];
+      }
+
+      if (userContribution < 0 && this.amount > 0) {
+        // Withdrawal: reduce each lot proportionally
+        const withdrawalPct = Math.abs(userContribution) / this.amount;
+        newLots = newLots
+          .map(lot => ({
+            purchaseYear: lot.purchaseYear,
+            costBasis: lot.costBasis * (1 - withdrawalPct),
+            currentValue: lot.currentValue * (1 - withdrawalPct),
+          }))
+          .filter(lot => lot.currentValue >= 0.01);
+      } else if (userContribution > 0 && currentYear > 0) {
+        // Contribution: push a new lot
+        newLots.push({ purchaseYear: currentYear, costBasis: userContribution, currentValue: userContribution });
+      }
+    }
+
     // 5. Now apply growth to the adjusted (post-transaction) balances
     const preGrowthTotal = preGrowthUserBalance + preGrowthEmployerBalance;
     const grownTotal = preGrowthTotal * returnRate;
     const grownEmployerBalance = preGrowthEmployerBalance * returnRate;
     // Note: Cost basis does NOT grow with market returns - it only tracks contributions
+
+    // Grow lots proportionally (costBasis stays fixed, currentValue grows)
+    if (this.taxType === 'Brokerage' && newLots.length > 0) {
+      newLots = newLots.map(lot => ({
+        purchaseYear: lot.purchaseYear,
+        costBasis: lot.costBasis,
+        currentValue: lot.currentValue * returnRate,
+      }));
+    }
 
     // 6. Final safety checks
     let finalEmployerBalance = grownEmployerBalance;
@@ -233,7 +318,8 @@ export class InvestedAccount extends BaseAccount {
       this.vestedPerYear,
       finalCostBasis,
       this.customROR,
-      newConversionHistory
+      newConversionHistory,
+      newLots
     );
   }
 }

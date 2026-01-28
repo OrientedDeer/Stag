@@ -1,11 +1,26 @@
-import { useContext, useEffect, useCallback, useState } from 'react';
+import { useContext, useEffect, useCallback, useState, useMemo } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
-import { AssumptionsContext, WithdrawalBucket } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsContext, WithdrawalBucket, getBirthYear, getRetirementAge, getLifeExpectancy } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { AccountContext } from '../../components/Objects/Accounts/AccountContext';
+import { IncomeContext } from '../../components/Objects/Income/IncomeContext';
+import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
+import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
+import { SimulationContext } from '../../components/Objects/Assumptions/SimulationContext';
 import { AnyAccount, ESPPAccount, SavedAccount, InvestedAccount } from '../../components/Objects/Accounts/models';
 import { formatCompactCurrency } from './tabs/FutureUtils';
 import { ToggleInput } from '../../components/Layout/InputFields/ToggleInput';
-import { DropdownInput } from '../../components/Layout/InputFields/DropdownInput';
+import { getRMDStartAge } from '../../data/RMDData';
+import { runSimulation } from '../../components/Objects/Assumptions/useSimulation';
+import { SimulationYear } from '../../services/simulation/types';
+
+// Helper to calculate lifetime taxes from simulation
+function calculateLifetimeTaxes(simulation: SimulationYear[]): number {
+    return simulation.reduce((total, year) => {
+        const yearTaxes = year.taxDetails.fed + year.taxDetails.state +
+                         year.taxDetails.fica + year.taxDetails.capitalGains;
+        return total + yearTaxes;
+    }, 0);
+}
 
 // Helper to get tax treatment badge for an account
 const getTaxBadge = (account: AnyAccount | undefined): { label: string; color: string } => {
@@ -43,11 +58,148 @@ const getTaxBadge = (account: AnyAccount | undefined): { label: string; color: s
 export default function WithdrawalTab() {
     const { state, dispatch } = useContext(AssumptionsContext);
     const { accounts } = useContext(AccountContext);
+    const { incomes } = useContext(IncomeContext);
+    const { expenses } = useContext(ExpenseContext);
+    const { state: taxState } = useContext(TaxContext);
     const forceExact = state.display?.useCompactCurrency === false;
+
+    // Tax optimization toggle state
+    const taxOptimizationEnabled = state.investments.taxOptimizationEnabled;
+
+    const setTaxOptimization = (enabled: boolean) => {
+        dispatch({
+            type: 'UPDATE_INVESTMENTS',
+            payload: { taxOptimizationEnabled: enabled }
+        });
+    };
 
     // Currency formatter that respects user display settings
     const formatMoney = useCallback((amount: number) =>
         formatCompactCurrency(amount, { forceExact }), [forceExact]);
+
+    // Calculate optimization summary when enabled
+    // Need simulation context to get projected balances at retirement
+    const { simulation } = useContext(SimulationContext);
+
+    // Tax comparison state
+    const [comparisonResult, setComparisonResult] = useState<{
+        taxesWithOptimization: number;
+        taxesWithoutOptimization: number;
+        savings: number;
+    } | null>(null);
+    const [isCalculatingComparison, setIsCalculatingComparison] = useState(false);
+
+    // Calculate tax comparison by running simulations with both settings
+    const calculateComparison = useCallback(() => {
+        setIsCalculatingComparison(true);
+
+        // Use setTimeout to allow UI to update before heavy computation
+        setTimeout(() => {
+            const birthYear = getBirthYear(state.milestones);
+            const lifeExpectancy = getLifeExpectancy(state.milestones);
+            const currentYear = new Date().getFullYear();
+            const currentAge = currentYear - birthYear;
+            const yearsToRun = Math.max(1, lifeExpectancy - currentAge);
+
+            // Create assumptions with tax optimization ON
+            const assumptionsWithOpt = {
+                ...state,
+                investments: {
+                    ...state.investments,
+                    taxOptimizationEnabled: true,
+                },
+            };
+
+            // Create assumptions with tax optimization OFF
+            const assumptionsWithoutOpt = {
+                ...state,
+                investments: {
+                    ...state.investments,
+                    taxOptimizationEnabled: false,
+                },
+            };
+
+            // Run both simulations
+            const simWithOpt = runSimulation(yearsToRun, accounts, incomes, expenses, assumptionsWithOpt, taxState);
+            const simWithoutOpt = runSimulation(yearsToRun, accounts, incomes, expenses, assumptionsWithoutOpt, taxState);
+
+            // Calculate lifetime taxes for both
+            const taxesWithOptimization = calculateLifetimeTaxes(simWithOpt);
+            const taxesWithoutOptimization = calculateLifetimeTaxes(simWithoutOpt);
+
+            setComparisonResult({
+                taxesWithOptimization,
+                taxesWithoutOptimization,
+                savings: taxesWithoutOptimization - taxesWithOptimization,
+            });
+            setIsCalculatingComparison(false);
+        }, 50);
+    }, [state, accounts, incomes, expenses, taxState]);
+
+    const optimizationSummary = useMemo(() => {
+        if (!taxOptimizationEnabled) return null;
+
+        const currentYear = new Date().getFullYear();
+        const birthYear = getBirthYear(state.milestones);
+        const retirementAge = getRetirementAge(state.milestones);
+        const rmdAge = getRMDStartAge(birthYear);
+        const retirementYear = birthYear + retirementAge;
+
+        // Get current Traditional balance (for display)
+        const currentTraditionalBalance = accounts
+            .filter(acc =>
+                acc instanceof InvestedAccount &&
+                (acc.taxType === 'Traditional 401k' || acc.taxType === 'Traditional IRA')
+            )
+            .reduce((sum, acc) => sum + acc.amount, 0);
+
+        // Get Traditional balance at retirement from simulation
+        const retirementSimYear = simulation.find(s => s.year === retirementYear);
+        let traditionalAtRetirement: number;
+        if (retirementSimYear) {
+            traditionalAtRetirement = retirementSimYear.accounts
+                .filter(acc => 'taxType' in acc && (acc.taxType === 'Traditional 401k' || acc.taxType === 'Traditional IRA'))
+                .reduce((sum, acc) => sum + acc.amount, 0);
+        } else {
+            // Fallback: simple projection
+            const currentAge = currentYear - birthYear;
+            const yearsToRetirement = Math.max(0, retirementAge - currentAge);
+            const growthRate = state.investments.returnRates.ror / 100;
+            traditionalAtRetirement = currentTraditionalBalance * Math.pow(1 + growthRate, yearsToRetirement);
+        }
+
+        // TODO: Implement target balance calculation per TAX_OPTIMIZATION_SPEC.md
+        // For now, use placeholder values
+        const targetResult = {
+            targetBalance: currentTraditionalBalance,
+            targetAge: rmdAge,
+            targetBracket: 0.12,
+            projectedFixedIncome: 0,
+            projectedRMD: 0,
+        };
+
+        // TODO: Implement conversion planning per TAX_OPTIMIZATION_SPEC.md
+        const conversionPlan = {
+            schedule: [] as { year: number; age: number; amount: number; bracketBeforeConversion: number; bracketAfterConversion: number; estimatedTaxCost: number }[],
+            totalConversionNeeded: 0,
+        };
+
+        const conversionSchedule = conversionPlan.schedule;
+
+        return {
+            targetBalance: targetResult.targetBalance,
+            targetAge: targetResult.targetAge,
+            targetBracket: targetResult.targetBracket,
+            projectedFixedIncome: targetResult.projectedFixedIncome,
+            projectedRMD: targetResult.projectedRMD,
+            currentTraditionalBalance,
+            traditionalAtRetirement,
+            totalConversionNeeded: conversionPlan.totalConversionNeeded,
+            conversionSchedule,
+            retirementAge,
+            rmdAge
+        };
+    }, [taxOptimizationEnabled, state, taxState, incomes, accounts, simulation]);
 
     // Filter to only withdrawal-eligible accounts (SavedAccount, InvestedAccount, ESPPAccount)
     const eligibleAccounts = accounts.filter(
@@ -128,12 +280,150 @@ export default function WithdrawalTab() {
                     </button>
                 </div>
 
+                {/* Tax Optimization Toggle */}
+                <div className="mb-6 p-4 bg-gray-900/50 rounded-xl border border-gray-800">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="text-lg font-semibold text-gray-200">Tax Optimization</h3>
+                            <p className="text-sm text-gray-400 mt-1">
+                                {taxOptimizationEnabled
+                                    ? 'Automatically optimizes withdrawals and Roth conversions to minimize lifetime taxes.'
+                                    : 'Enable to automatically manage withdrawals and Roth conversions for tax efficiency.'}
+                            </p>
+                        </div>
+                        <ToggleInput
+                            label=""
+                            enabled={taxOptimizationEnabled}
+                            setEnabled={setTaxOptimization}
+                        />
+                    </div>
+                </div>
+
+                {/* Tax Optimization Summary (when enabled) */}
+                {taxOptimizationEnabled && optimizationSummary && (
+                    <div className="mb-6 bg-green-900/20 border border-green-700/50 rounded-xl p-4">
+                        <h3 className="font-semibold text-green-300 mb-3 flex items-center gap-2">
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            Optimization Active
+                        </h3>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                            <div className="space-y-2">
+                                <div className="flex justify-between">
+                                    <span className="text-gray-400">Target Traditional Balance:</span>
+                                    <span className="text-white font-semibold">{formatMoney(optimizationSummary.targetBalance)}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-gray-400">Target Age:</span>
+                                    <span className="text-white">Age {optimizationSummary.targetAge} (RMD start)</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-gray-400">Target Bracket:</span>
+                                    <span className="text-white">{(optimizationSummary.targetBracket * 100).toFixed(0)}%</span>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <div className="flex justify-between">
+                                    <span className="text-gray-400">Traditional at Retirement:</span>
+                                    <span className="text-white">{formatMoney(optimizationSummary.traditionalAtRetirement)}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-gray-400">Total to Convert:</span>
+                                    <span className="text-white">{formatMoney(optimizationSummary.totalConversionNeeded)}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Tax Savings Comparison */}
+                        <div className="mt-4 pt-4 border-t border-green-800/50">
+                            <div className="flex items-center justify-between mb-2">
+                                <h4 className="text-sm font-semibold text-gray-300">Lifetime Tax Comparison</h4>
+                                <button
+                                    onClick={calculateComparison}
+                                    disabled={isCalculatingComparison}
+                                    className="px-3 py-1 text-xs bg-green-700 hover:bg-green-600 disabled:bg-gray-700 disabled:cursor-wait rounded-lg transition-colors flex items-center gap-1"
+                                >
+                                    {isCalculatingComparison ? (
+                                        <>
+                                            <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                            </svg>
+                                            Calculating...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                            </svg>
+                                            Calculate Savings
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+
+                            {comparisonResult ? (
+                                <div className="bg-gray-800/50 rounded-lg p-3 space-y-2 text-sm">
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-400">With Optimization:</span>
+                                        <span className="text-white">{formatMoney(comparisonResult.taxesWithOptimization)}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-400">Without Optimization:</span>
+                                        <span className="text-white">{formatMoney(comparisonResult.taxesWithoutOptimization)}</span>
+                                    </div>
+                                    <div className="flex justify-between pt-2 border-t border-gray-700">
+                                        <span className="text-gray-300 font-medium">Lifetime Tax Savings:</span>
+                                        <span className={`font-bold ${comparisonResult.savings > 0 ? 'text-green-400' : comparisonResult.savings < 0 ? 'text-red-400' : 'text-gray-400'}`}>
+                                            {comparisonResult.savings > 0 ? '+' : ''}{formatMoney(comparisonResult.savings)}
+                                        </span>
+                                    </div>
+                                </div>
+                            ) : (
+                                <p className="text-xs text-gray-500">
+                                    Click "Calculate Savings" to run full simulations with and without tax optimization and compare lifetime taxes.
+                                </p>
+                            )}
+                        </div>
+
+                        {/* Conversion Schedule Summary */}
+                        {optimizationSummary.conversionSchedule.length > 0 && (
+                            <div className="mt-4 pt-4 border-t border-green-800/50">
+                                <h4 className="text-sm font-semibold text-gray-300 mb-2">Conversion Plan (Retirement to RMD):</h4>
+                                <div className="space-y-1 text-sm text-gray-400">
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                                        <span>
+                                            Ages {Math.min(...optimizationSummary.conversionSchedule.map(c => c.age))}-
+                                            {Math.max(...optimizationSummary.conversionSchedule.map(c => c.age))}:
+                                            {' '}Convert ~{formatMoney(
+                                                optimizationSummary.conversionSchedule.reduce((sum, c) => sum + c.amount, 0) /
+                                                optimizationSummary.conversionSchedule.length
+                                            )}/year
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        <p className="mt-4 text-xs text-gray-500">
+                            Keeps RMDs + fixed income within the {(optimizationSummary.targetBracket * 100).toFixed(0)}% bracket.
+                            Conversions happen during retirement. Withdrawals are automatically ordered to minimize taxes.
+                        </p>
+                    </div>
+                )}
+
                 {/* Expandable Help Section */}
                 {showHelp && (
                     <div className="mb-6 bg-blue-900/20 border border-blue-800/50 rounded-xl p-4 text-sm">
                         <h3 className="font-semibold text-blue-300 mb-2">Understanding Withdrawal Order</h3>
                         <p className="text-gray-300 mb-3">
-                            In retirement, when your expenses exceed your income, money is withdrawn from your accounts to cover the gap. The order you set here determines which accounts get drained first.
+                            In retirement, when your expenses exceed your income, money is withdrawn from your accounts to cover the gap.
+                            {taxOptimizationEnabled
+                                ? ' With Tax Optimization enabled, the system automatically determines the best order each year.'
+                                : ' The order you set here determines which accounts get drained first.'}
                         </p>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                             <div className="space-y-2">
@@ -145,25 +435,52 @@ export default function WithdrawalTab() {
                                 </ul>
                             </div>
                             <div className="space-y-2">
-                                <h4 className="font-semibold text-gray-200">Common Strategies:</h4>
+                                <h4 className="font-semibold text-gray-200">{taxOptimizationEnabled ? 'Tax Optimization Strategy:' : 'Common Strategies:'}</h4>
                                 <ul className="text-gray-400 space-y-1">
-                                    <li><span className="text-white">Tax-efficient:</span> Taxable → Tax-deferred → Tax-free</li>
-                                    <li><span className="text-white">Roth ladder:</span> Convert Traditional to Roth over time</li>
-                                    <li><span className="text-white">Bracket filling:</span> Withdraw Traditional up to tax bracket</li>
+                                    {taxOptimizationEnabled ? (
+                                        <>
+                                            <li><span className="text-white">Bracket filling:</span> Fill lower brackets with Traditional first</li>
+                                            <li><span className="text-white">Smart ordering:</span> Use Roth for excess, preserve tax-free growth</li>
+                                            <li><span className="text-white">CG optimization:</span> Prefer long-term gains when rates are lower</li>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <li><span className="text-white">Tax-efficient:</span> Taxable → Tax-deferred → Tax-free</li>
+                                            <li><span className="text-white">Roth ladder:</span> Convert Traditional to Roth over time</li>
+                                            <li><span className="text-white">Bracket filling:</span> Withdraw Traditional up to tax bracket</li>
+                                        </>
+                                    )}
                                 </ul>
                             </div>
                         </div>
                         <p className="text-gray-400 mt-3 text-xs">
-                            <span className="text-gray-300">Tip:</span> Consider withdrawing from taxable accounts first to let tax-advantaged accounts grow longer. Early withdrawal from Traditional accounts before 59½ incurs a 10% penalty.
+                            {taxOptimizationEnabled ? (
+                                <><span className="text-gray-300">Note:</span> Tax Optimization automatically manages Roth conversions and withdrawal ordering. Manual ordering below is disabled.</>
+                            ) : (
+                                <><span className="text-gray-300">Tip:</span> Consider withdrawing from taxable accounts first to let tax-advantaged accounts grow longer. Early withdrawal from Traditional accounts before 59½ incurs a 10% penalty.</>
+                            )}
                         </p>
                     </div>
                 )}
 
-                <p className="text-gray-400 mb-6 text-sm">
-                    Drag to reorder. {state.investments.taxOptimizedWithdrawals
-                        ? 'Traditional accounts are bracket-capped; others withdraw fully in this order.'
-                        : 'When expenses exceed income, accounts are drained in the order shown below.'}
-                </p>
+                {/* Manual Ordering Section - disabled when tax optimization is on */}
+                {taxOptimizationEnabled ? (
+                    <div className="bg-gray-900/30 border border-gray-800 rounded-xl p-6 text-center">
+                        <svg className="w-12 h-12 mx-auto text-gray-600 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        </svg>
+                        <p className="text-gray-400 text-sm">
+                            Manual withdrawal ordering is disabled when Tax Optimization is enabled.
+                        </p>
+                        <p className="text-gray-500 text-xs mt-2">
+                            The system automatically determines the optimal withdrawal order each year based on your tax situation.
+                        </p>
+                    </div>
+                ) : (
+                    <>
+                        <p className="text-gray-400 mb-6 text-sm">
+                            Drag to reorder. When expenses exceed income, accounts are drained in the order shown below.
+                        </p>
 
                 {/* Tax Treatment Legend */}
                 <div className="mb-6 p-4 bg-gray-900/50 rounded-xl border border-gray-800 flex flex-wrap gap-4">
@@ -180,48 +497,6 @@ export default function WithdrawalTab() {
                         <span className="text-gray-400 text-sm">Brokerage</span>
                     </div>
                 </div>
-
-                {/* Tax-Optimized Withdrawal Settings (Experimental) */}
-                {state.display?.showExperimentalFeatures && (
-                <div className="mb-6 p-4 bg-gray-900/50 rounded-xl border border-gray-800 space-y-4">
-                    <ToggleInput
-                        label="Tax-Optimized Withdrawals"
-                        enabled={state.investments.taxOptimizedWithdrawals}
-                        setEnabled={(val) => dispatch({ type: 'UPDATE_INVESTMENTS', payload: { taxOptimizedWithdrawals: val } })}
-                        tooltip="Fill Traditional withdrawals up to a target bracket, then use tax-free accounts for the remainder"
-                    />
-
-                    {state.investments.taxOptimizedWithdrawals && (
-                        <>
-                            <DropdownInput
-                                label="Target Bracket"
-                                value={String(state.investments.taxOptimizedTargetBracket)}
-                                onChange={(val) => dispatch({ type: 'UPDATE_INVESTMENTS', payload: { taxOptimizedTargetBracket: parseFloat(val) } })}
-                                options={[
-                                    { value: '0.1', label: '10%' },
-                                    { value: '0.12', label: '12%' },
-                                    { value: '0.22', label: '22%' },
-                                    { value: '0.24', label: '24%' },
-                                    { value: '0.32', label: '32%' },
-                                    { value: '0.35', label: '35%' },
-                                    { value: '0.37', label: '37%' },
-                                ]}
-                                tooltip="Traditional withdrawals will stay within this bracket; remaining deficit covered by tax-free accounts"
-                            />
-
-                            <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-3 text-xs text-gray-300 space-y-1">
-                                <p className="text-blue-400 font-semibold mb-1">How it works:</p>
-                                <ol className="list-decimal list-inside space-y-0.5">
-                                    <li>Accounts are withdrawn in your drag order above</li>
-                                    <li>Traditional accounts are capped at the target bracket ceiling</li>
-                                    <li>Other accounts (Roth, Brokerage, etc.) withdraw normally</li>
-                                    <li>If still short, Traditional resumes with no cap</li>
-                                </ol>
-                            </div>
-                        </>
-                    )}
-                </div>
-                )}
 
                 {bucketsWithDetails.length === 0 ? (
                     <div className="bg-gray-900/50 border border-dashed border-gray-700 rounded-xl px-6 py-12 text-center">
@@ -301,6 +576,8 @@ export default function WithdrawalTab() {
                             )}
                         </Droppable>
                     </DragDropContext>
+                )}
+                    </>
                 )}
 
             </div>

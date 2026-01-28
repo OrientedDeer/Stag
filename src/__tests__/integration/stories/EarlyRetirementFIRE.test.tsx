@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { AssumptionsState, defaultAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { InvestedAccount } from '../../../components/Objects/Accounts/models';
 import { WorkIncome, FutureSocialSecurityIncome } from '../../../components/Objects/Income/models';
@@ -39,11 +39,8 @@ describe('Story 2: Early Retirement FIRE', () => {
 
     const assumptions: AssumptionsState = {
         ...defaultAssumptions,
-        demographics: {
-            birthYear,
-            lifeExpectancy: 90,
-            retirementAge,
-        },
+        demographics: {},
+        milestones: createBuiltinMilestones(birthYear, retirementAge, 90),
         income: {
             ...defaultAssumptions.income,
             salaryGrowth: 0, // No salary growth for simplicity

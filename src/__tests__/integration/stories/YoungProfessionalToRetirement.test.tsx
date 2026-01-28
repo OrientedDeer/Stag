@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { AssumptionsState, defaultAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { InvestedAccount } from '../../../components/Objects/Accounts/models';
 import { WorkIncome, FutureSocialSecurityIncome } from '../../../components/Objects/Income/models';
@@ -41,11 +41,8 @@ describe('Story 1: Young Professional → Retirement', () => {
 
     const assumptions: AssumptionsState = {
         ...defaultAssumptions,
-        demographics: {
-            birthYear,
-            lifeExpectancy: 90,
-            retirementAge,
-        },
+        demographics: {},
+        milestones: createBuiltinMilestones(birthYear, retirementAge, 90),
         income: {
             ...defaultAssumptions.income,
             salaryGrowth: 3.0, // 3% real raises
@@ -273,9 +270,12 @@ describe('Story 1: Young Professional → Retirement', () => {
             const preRetirementWorkIncome = getWorkIncome(preRetirementYear);
             expect(preRetirementWorkIncome?.amount, 'Should have work income before retirement').toBeGreaterThan(0);
 
-            // At retirement: work income should be zero
+            // At retirement: work income should be zero or absent (filtered out)
             const atRetirementWorkIncome = getWorkIncome(atRetirementYear);
-            expect(atRetirementWorkIncome?.amount, 'Work income should be 0 at retirement').toBe(0);
+            expect(
+                atRetirementWorkIncome === undefined || atRetirementWorkIncome.amount === 0,
+                'Work income should be 0 or absent at retirement'
+            ).toBe(true);
 
             // At retirement: should start withdrawing (if there's a deficit)
             // Note: Withdrawals only happen if income doesn't cover expenses

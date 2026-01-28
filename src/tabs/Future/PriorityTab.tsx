@@ -1,6 +1,6 @@
 import { useState, useContext, useMemo, useCallback } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
-import { AssumptionsContext, PriorityBucket, CapType } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsContext, PriorityBucket, CapType, getBirthYear } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { AccountContext } from '../../components/Objects/Accounts/AccountContext';
 import { IncomeContext } from '../../components/Objects/Income/IncomeContext';
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
@@ -59,7 +59,7 @@ export default function PriorityTab() {
     const monthlyTaxes = federalTax + stateTax + ficaTax;
 
     // Paycheck deductions (401k, insurance, HSA)
-    const age = state.demographics ? year - state.demographics.birthYear : undefined;
+    const age = state.milestones ? year - getBirthYear(state.milestones) : undefined;
     const deductionBreakdown = useMemo(() => {
         let pretax401k = 0;
         let roth401k = 0;
@@ -92,7 +92,7 @@ export default function PriorityTab() {
 
     const getAccountContributionLimit = useCallback((account: AnyAccount): number | null => {
         if (!(account instanceof InvestedAccount)) return null;
-        const age = year - state.demographics.birthYear;
+        const age = year - getBirthYear(state.milestones);
 
         switch (account.taxType) {
             case 'Traditional 401k':
@@ -106,7 +106,7 @@ export default function PriorityTab() {
             default:
                 return null;
         }
-    }, [year, state.demographics.birthYear]);
+    }, [year, state.milestones]);
 
     // Priority warnings for exceeding IRS limits
     const priorityWarnings = useMemo(() => {

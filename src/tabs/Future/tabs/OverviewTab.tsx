@@ -10,7 +10,7 @@ import { AlertBanner } from '../../../components/Layout/AlertBanner';
 import { getFRA } from '../../../data/SocialSecurityData';
 import { FutureSocialSecurityIncome } from '../../../components/Objects/Income/models';
 import { getEarnedIncome } from '../../../components/Objects/Taxes/TaxService';
-import { useAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { useAssumptions, getBirthYear } from '../../../components/Objects/Assumptions/AssumptionsContext';
 
 const MIN_CHART_WIDTH = 300;
 
@@ -222,7 +222,7 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
     // Check for earnings test scenario (use first year in filtered data)
     const earningsTestCheck = checkEarningsTest(
         filteredData[0],
-        assumptions.demographics.birthYear
+        getBirthYear(assumptions.milestones)
     );
 
     // Check for strategy warnings in simulation data

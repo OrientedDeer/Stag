@@ -2,26 +2,26 @@ import { describe, it, expect } from 'vitest';
 import {
   calculateMilestones,
   findFinancialIndependenceYear,
-  yearsUntil,
   formatAge,
+  yearsUntil,
 } from '../../services/MilestoneCalculator';
-import { AssumptionsState } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsState, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 import { InvestedAccount } from '../../components/Objects/Accounts/models';
 import { OtherExpense } from '../../components/Objects/Expense/models';
 
 // Helper to create mock assumptions
-function createMockAssumptions(overrides: Partial<AssumptionsState['demographics']> = {}): AssumptionsState {
+function createMockAssumptions(overrides: { birthYear?: number; retirementAge?: number; lifeExpectancy?: number; priorYearMode?: boolean } = {}): AssumptionsState {
   // birthYear = currentYear - startAge. For tests, we use a fixed year calculation.
   const currentYear = new Date().getFullYear();
+  const birthYear = overrides.birthYear ?? currentYear - 30; // Equivalent to startAge: 30
+  const retirementAge = overrides.retirementAge ?? 65;
+  const lifeExpectancy = overrides.lifeExpectancy ?? 90;
   return {
     demographics: {
-      birthYear: currentYear - 30, // Equivalent to startAge: 30
-      retirementAge: 65,
-      lifeExpectancy: 90,
-      priorYearMode: false,
-      ...overrides,
+      priorYearMode: overrides.priorYearMode ?? false,
     },
+    milestones: createBuiltinMilestones(birthYear, retirementAge, lifeExpectancy),
     macro: {
       inflationRate: 3,
       healthcareInflation: 5,
@@ -36,8 +36,7 @@ function createMockAssumptions(overrides: Partial<AssumptionsState['demographics
       gkAdjustmentPercent: 10,
       autoRothConversions: false,
       rothConversionTargetBracket: 0.22,
-      taxOptimizedWithdrawals: false,
-      taxOptimizedTargetBracket: 0.22,
+      taxOptimizationEnabled: false,
     },
     income: {
       salaryGrowth: 3,
@@ -150,53 +149,6 @@ describe('MilestoneCalculator', () => {
       expect(result.fiAge).toBeNull();
     });
 
-    it('should include all 6 key milestones', () => {
-      const assumptions = createMockAssumptions();
-      const simulation: SimulationYear[] = [];
-
-      const result = calculateMilestones(assumptions, simulation);
-
-      expect(result.keyMilestones).toHaveLength(6);
-
-      const milestoneAges = result.keyMilestones.map(m => m.age);
-      expect(milestoneAges).toContain(59.5);
-      expect(milestoneAges).toContain(62);
-      expect(milestoneAges).toContain(65);
-      expect(milestoneAges).toContain(67);
-      expect(milestoneAges).toContain(70);
-      expect(milestoneAges).toContain(73);
-    });
-
-    it('should mark milestones as reached when past current age', () => {
-      const assumptions = createMockAssumptions({ birthYear: new Date().getFullYear() - 68 });
-      const simulation: SimulationYear[] = [];
-
-      const result = calculateMilestones(assumptions, simulation);
-
-      // 59.5, 62, 65, 67 should be reached; 70, 73 should not
-      const reachedMilestones = result.keyMilestones.filter(m => m.isReached);
-      expect(reachedMilestones.map(m => m.age)).toEqual([59.5, 62, 65, 67]);
-
-      const unreachedMilestones = result.keyMilestones.filter(m => !m.isReached);
-      expect(unreachedMilestones.map(m => m.age)).toEqual([70, 73]);
-    });
-
-    it('should calculate yearsUntil for each milestone', () => {
-      const assumptions = createMockAssumptions({ birthYear: new Date().getFullYear() - 60 });
-      const simulation: SimulationYear[] = [];
-
-      const result = calculateMilestones(assumptions, simulation);
-
-      const ssMilestone = result.keyMilestones.find(m => m.age === 62);
-      expect(ssMilestone?.yearsUntil).toBe(2);
-
-      const medicareMilestone = result.keyMilestones.find(m => m.age === 65);
-      expect(medicareMilestone?.yearsUntil).toBe(5);
-
-      // Already passed milestone should have yearsUntil = 0
-      const penaltyFreeMilestone = result.keyMilestones.find(m => m.age === 59.5);
-      expect(penaltyFreeMilestone?.yearsUntil).toBe(0);
-    });
   });
 
   describe('findFinancialIndependenceYear', () => {
@@ -331,26 +283,6 @@ describe('MilestoneCalculator', () => {
   });
 
   describe('Edge Cases', () => {
-    it('should handle young age (all milestones in future)', () => {
-      const assumptions = createMockAssumptions({ birthYear: new Date().getFullYear() - 25 });
-      const simulation: SimulationYear[] = [];
-
-      const result = calculateMilestones(assumptions, simulation);
-
-      expect(result.keyMilestones.every(m => !m.isReached)).toBe(true);
-      expect(result.keyMilestones.every(m => m.yearsUntil > 0)).toBe(true);
-    });
-
-    it('should handle old age (all milestones passed)', () => {
-      const assumptions = createMockAssumptions({ birthYear: new Date().getFullYear() - 75 });
-      const simulation: SimulationYear[] = [];
-
-      const result = calculateMilestones(assumptions, simulation);
-
-      expect(result.keyMilestones.every(m => m.isReached)).toBe(true);
-      expect(result.keyMilestones.every(m => m.yearsUntil === 0)).toBe(true);
-    });
-
     it('should handle retirement age equal to current age', () => {
       const assumptions = createMockAssumptions({ birthYear: new Date().getFullYear() - 65, retirementAge: 65 });
       const simulation: SimulationYear[] = [];

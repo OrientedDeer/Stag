@@ -14,7 +14,7 @@ import {
     PensionSystem
 } from "./models.js";
 import { IncomeContext, AllIncomeKeys } from "./IncomeContext.js";
-import { StyledInput, StyledSelect } from "../../Layout/InputFields/StyleUI.js";
+import { StyledSelect } from "../../Layout/InputFields/StyleUI.js";
 import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput.js";
 import DeleteIncomeControl from './DeleteIncomeUI.js';
 import { NameInput } from "../../Layout/InputFields/NameInput.js";
@@ -24,8 +24,9 @@ import { AccountContext } from "../Accounts/AccountContext.js";
 import { InvestedAccount, ESPPAccount } from "../../Objects/Accounts/models.js";
 import { PercentageInput } from "../../Layout/InputFields/PercentageInput.js";
 import { ToggleInput } from "../../Layout/InputFields/ToggleInput.js";
+import { TriggerSelector } from "../../Layout/InputFields/TriggerSelector.js";
 import { formatCompactCurrency } from "../../../tabs/Future/tabs/FutureUtils.js";
-import { AssumptionsContext } from "../Assumptions/AssumptionsContext.js";
+import { AssumptionsContext, getBirthYear } from "../Assumptions/AssumptionsContext.js";
 import { parseSSAXml, validateEarningsImport, formatEarningsSummary } from "../../../services/SSAImportService.js";
 import { get401kLimit, getHSALimit } from "../../../data/ContributionLimits.js";
 import { AlertBanner } from "../../Layout/AlertBanner.js";
@@ -77,8 +78,8 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
                     return;
                 }
 
-                const birthYear = assumptions.demographics.birthYear;
-                const validation = validateEarningsImport(earnings, birthYear);
+                const birthYearVal = getBirthYear(assumptions.milestones);
+                const validation = validateEarningsImport(earnings, birthYearVal);
 
                 if (validation.warnings.length > 0) {
                     const proceed = confirm(
@@ -95,7 +96,7 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
         };
         reader.readAsText(file);
         e.target.value = '';
-    }, [assumptions.demographics.birthYear, assumptionsDispatch]);
+    }, [assumptions.milestones, assumptionsDispatch]);
 
     // Validate end date is after start date
     const validateDates = useCallback((start: Date | undefined, end: Date | undefined) => {
@@ -133,7 +134,7 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
         if (!(income instanceof WorkIncome)) return null;
 
         const year = new Date().getFullYear();
-        const age = year - assumptions.demographics.birthYear;
+        const age = year - getBirthYear(assumptions.milestones);
 
         const getAnnualMultiplier = (freq: IncomeFrequency): number => {
             switch (freq) {
@@ -173,7 +174,7 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
         }
 
         return warnings.length > 0 ? warnings : null;
-    }, [income, assumptions.demographics.birthYear]);
+    }, [income, assumptions.milestones]);
 
     const handleMatchAccountChange = useCallback((newAccountId: string | null) => {
         const account = accounts.find(acc => acc.id === newAccountId) as InvestedAccount | undefined;
@@ -201,17 +202,6 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
             }
         }
     }, [isWorkIncome, matchAccountId, employerMatch, contributionAccounts, handleMatchAccountChange]);
-
-    const handleDateChange = (field: AllIncomeKeys, dateString: string): void => {
-        const newDate = dateString ? new Date(dateString) : undefined;
-        handleFieldUpdate(field, newDate);
-
-        if (field === "startDate") {
-            validateDates(newDate, income.end_date);
-        } else if (field === "end_date") {
-            validateDates(income.startDate, newDate);
-        }
-    };
 
     // Display calculations
     const getDisplayAmount = (): string => {
@@ -348,21 +338,31 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
                     <FutureSocialSecurityDateFields income={income} />
                 ) : (
                     <>
-                        <StyledInput
-                            id={`${income.id}-start-date`}
-                            label="Start Date"
-                            type="date"
-                            value={formatDateForInput(income.startDate)}
-                            onChange={(e) => handleDateChange("startDate", e.target.value)}
+                        <TriggerSelector
+                            id={`${income.id}-start`}
+                            label="Start"
+                            date={income.startDate}
+                            milestoneId={income.startMilestoneId}
+                            milestones={assumptions.milestones || []}
+                            onDateChange={(date) => handleFieldUpdate("startDate", date)}
+                            onMilestoneChange={(id) => handleFieldUpdate("startMilestoneId", id)}
+                            tooltip="When this income begins - fixed date or milestone trigger"
                         />
-                        <StyledInput
-                            id={`${income.id}-end-date`}
-                            label="End Date"
-                            type="date"
-                            value={formatDateForInput(income.end_date)}
-                            onChange={(e) => handleDateChange("end_date", e.target.value)}
-                            error={dateError}
+                        <TriggerSelector
+                            id={`${income.id}-end`}
+                            label="End"
+                            date={income.end_date}
+                            milestoneId={income.endMilestoneId}
+                            milestones={assumptions.milestones || []}
+                            onDateChange={(date) => handleFieldUpdate("end_date", date)}
+                            onMilestoneChange={(id) => handleFieldUpdate("endMilestoneId", id)}
+                            tooltip="When this income ends - fixed date or milestone trigger"
                         />
+                        {dateError && (
+                            <div className="col-span-full text-red-400 text-xs">
+                                {dateError}
+                            </div>
+                        )}
                     </>
                 )}
             </div>

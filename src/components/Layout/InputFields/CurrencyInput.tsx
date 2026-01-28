@@ -59,10 +59,13 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({ label, value, onCh
 
     const displayError = error || internalError;
 
+    // Only add ($) suffix if there's a label, otherwise the $ in the value is enough
+    const displayLabel = label ? `${label} ($)` : '';
+
     return (
         <StyledInput
             id={id}
-            label={`${label} ($)`}
+            label={displayLabel}
             type="text"
             value={isFocused ? displayValue : `$${displayValue}`}
             onChange={handleChange}

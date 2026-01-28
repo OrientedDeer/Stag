@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { AssumptionsState, defaultAssumptions } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../components/Objects/Taxes/TaxContext';
 import { InvestedAccount } from '../../components/Objects/Accounts/models';
 import { FutureSocialSecurityIncome } from '../../components/Objects/Income/models';
@@ -26,11 +26,8 @@ describe('Roth Conversion Deficit Debug', () => {
         // Setup: Early retirement with low income, Roth conversion enabled
         const retiredAssumptions: AssumptionsState = {
             ...defaultAssumptions,
-            demographics: {
-                birthYear: 1960, // Age 65 in 2025
-                lifeExpectancy: 90,
-                retirementAge: 65
-            },
+            demographics: {},
+            milestones: createBuiltinMilestones(1960, 65, 90),
             investments: {
                 ...defaultAssumptions.investments,
                 returnRates: { ror: 7 },
@@ -125,11 +122,8 @@ describe('Roth Conversion Deficit Debug', () => {
     it('should compare with and without Roth conversions', () => {
         const baseAssumptions: AssumptionsState = {
             ...defaultAssumptions,
-            demographics: {
-                birthYear: 1960,
-                lifeExpectancy: 90,
-                retirementAge: 65
-            },
+            demographics: {},
+            milestones: createBuiltinMilestones(1960, 65, 90),
             investments: {
                 ...defaultAssumptions.investments,
                 returnRates: { ror: 7 },

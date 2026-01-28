@@ -1,16 +1,17 @@
 import { useContext, useState, useMemo } from "react";
 import { AssumptionsContext } from "../../components/Objects/Assumptions/AssumptionsContext";
 import { ExpenseContext } from "../../components/Objects/Expense/ExpenseContext";
-import { NumberInput } from "../../components/Layout/InputFields/NumberInput";
 import { PercentageInput } from "../../components/Layout/InputFields/PercentageInput";
 import { DropdownInput } from "../../components/Layout/InputFields/DropdownInput";
 import { ToggleInput } from "../../components/Layout/InputFields/ToggleInput";
+import MilestoneModal from "../../components/Objects/Assumptions/MilestoneModal";
 
 export default function AssumptionTab() {
   const { state, dispatch } = useContext(AssumptionsContext);
   const { expenses } = useContext(ExpenseContext);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [showMilestoneModal, setShowMilestoneModal] = useState(false);
 
   // Check if there are any discretionary expenses
   const hasDiscretionaryExpenses = useMemo(() => {
@@ -44,7 +45,7 @@ export default function AssumptionTab() {
                         <div className="space-y-2">
                             <h4 className="font-semibold text-gray-200">Key Settings:</h4>
                             <ul className="text-gray-400 space-y-1">
-                                <li><span className="text-white">Retirement Age</span> — When work income stops</li>
+                                <li><span className="text-white">Milestones</span> — Birth year, retirement age, life expectancy</li>
                                 <li><span className="text-white">Investment Return</span> — Expected annual growth (7% is historical avg)</li>
                                 <li><span className="text-white">Inflation</span> — How fast prices rise (3% is typical)</li>
                                 <li><span className="text-white">Withdrawal Rate</span> — % of portfolio taken yearly in retirement</li>
@@ -67,71 +68,70 @@ export default function AssumptionTab() {
 
             {/* Essential Settings */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                {/* Left Column - Demographics & Returns */}
+                {/* Left Column - Milestones & Growth Rates */}
                 <div className="bg-gray-900 border border-gray-800 p-5 rounded-xl shadow-lg space-y-5">
-                    <h3 className="text-sm font-semibold text-white border-b border-gray-700 pb-2">Demographics</h3>
-
-                    <div className="grid grid-cols-3 gap-3">
-                        <NumberInput
-                            label="Birth Year"
-                            value={state.demographics.birthYear}
-                            onChange={(val) => dispatch({ type: 'UPDATE_DEMOGRAPHICS', payload: { birthYear: val } })}
-                            tooltip="Your birth year. Used for Social Security, RMDs, and other age-based calculations."
-                        />
-                        <NumberInput
-                            label="Retirement Age"
-                            value={state.demographics.retirementAge}
-                            onChange={(val) => dispatch({ type: 'UPDATE_DEMOGRAPHICS', payload: { retirementAge: val } })}
-                            tooltip="Target age to stop working. At this age, work income stops and you'll begin withdrawing from investments. Check the Overview tab to see if you're on track."
-                        />
-                        <NumberInput
-                            label="Life Expectancy"
-                            value={state.demographics.lifeExpectancy}
-                            onChange={(val) => dispatch({ type: 'UPDATE_DEMOGRAPHICS', payload: { lifeExpectancy: val } })}
-                            tooltip="Age to project your finances to. Average US life expectancy is ~78, but many plan to 90+ for safety."
-                        />
+                    <div>
+                        <h3 className="text-sm font-semibold text-white border-b border-gray-700 pb-2 mb-3">Milestones</h3>
+                        <button
+                            onClick={() => setShowMilestoneModal(true)}
+                            className="w-full flex items-center justify-between px-3 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm font-medium text-gray-200 transition-colors"
+                        >
+                            <div className="flex items-center gap-2">
+                                <svg className="w-4 h-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+                                </svg>
+                                <span>Edit Milestones</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-400">{state.milestones?.length || 0} defined</span>
+                                <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
+                            </div>
+                        </button>
+                        <p className="text-xs text-gray-400 mt-2">Birth year, retirement age, life expectancy, and custom goals.</p>
                     </div>
 
                     <div className="pt-4 border-t border-gray-800">
-                        <h3 className="text-sm font-semibold text-white border-b border-gray-700 pb-2 mb-2">Growth Rates</h3>
-                        <p className="text-xs text-blue-400 mb-3">All growth rates are real (above inflation), not nominal.</p>
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className={`transition-opacity duration-300 ${!state.macro.inflationAdjusted ? 'opacity-50' : 'opacity-100'}`}>
-                                <PercentageInput
-                                    label="Inflation"
-                                    value={state.macro.inflationRate}
-                                    onChange={(val) => dispatch({ type: 'UPDATE_MACRO', payload: { inflationRate: val } })}
-                                    disabled={!state.macro.inflationAdjusted}
-                                />
-                            </div>
+                        <h3 className="text-sm font-semibold text-white border-b border-gray-700 pb-2 mb-3">Growth Rates</h3>
+                    <p className="text-xs text-blue-400">All growth rates are real (above inflation), not nominal.</p>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className={`transition-opacity duration-300 ${!state.macro.inflationAdjusted ? 'opacity-50' : 'opacity-100'}`}>
                             <PercentageInput
-                                label="Investment Return"
-                                value={state.investments.returnRates.ror}
-                                onChange={(val) => dispatch({ type: 'UPDATE_INVESTMENT_RATES', payload: { ror: val } })}
-                                isAboveInflation={state.macro.inflationAdjusted}
+                                label="Inflation"
+                                value={state.macro.inflationRate}
+                                onChange={(val) => dispatch({ type: 'UPDATE_MACRO', payload: { inflationRate: val } })}
+                                disabled={!state.macro.inflationAdjusted}
                             />
                         </div>
+                        <PercentageInput
+                            label="Investment Return"
+                            value={state.investments.returnRates.ror}
+                            onChange={(val) => dispatch({ type: 'UPDATE_INVESTMENT_RATES', payload: { ror: val } })}
+                            isAboveInflation={state.macro.inflationAdjusted}
+                        />
+                    </div>
 
-                        <div className="mt-4">
-                            <h4 className="text-xs uppercase text-gray-400 font-semibold mb-2">Inflation Adjusted</h4>
-                            <div className="flex bg-gray-800 p-1 rounded-lg border border-gray-700">
-                                <button
-                                    onClick={() => dispatch({ type: "UPDATE_MACRO", payload: { inflationAdjusted: true } })}
-                                    className={`flex-1 py-1.5 text-xs rounded-md transition-all ${state.macro.inflationAdjusted ? "bg-green-600 text-white shadow-lg" : "text-gray-400 hover:text-white"}`}
-                                >
-                                    Enabled
-                                </button>
-                                <button
-                                    onClick={() => dispatch({ type: "UPDATE_MACRO", payload: { inflationAdjusted: false } })}
-                                    className={`flex-1 py-1.5 text-xs rounded-md transition-all ${!state.macro.inflationAdjusted ? "bg-green-600 text-white shadow-lg" : "text-gray-400 hover:text-white"}`}
-                                >
-                                    Disabled
-                                </button>
-                            </div>
-                            <p className="text-xs text-gray-400 mt-1">
-                                {state.macro.inflationAdjusted ? "Values grow with inflation over time" : "All values shown in today's dollars"}
-                            </p>
+                    <div className="mt-4">
+                        <h4 className="text-xs uppercase text-gray-400 font-semibold mb-2">Inflation Adjusted</h4>
+                        <div className="flex bg-gray-800 p-1 rounded-lg border border-gray-700">
+                            <button
+                                onClick={() => dispatch({ type: "UPDATE_MACRO", payload: { inflationAdjusted: true } })}
+                                className={`flex-1 py-1.5 text-xs rounded-md transition-all ${state.macro.inflationAdjusted ? "bg-green-600 text-white shadow-lg" : "text-gray-400 hover:text-white"}`}
+                            >
+                                Enabled
+                            </button>
+                            <button
+                                onClick={() => dispatch({ type: "UPDATE_MACRO", payload: { inflationAdjusted: false } })}
+                                className={`flex-1 py-1.5 text-xs rounded-md transition-all ${!state.macro.inflationAdjusted ? "bg-green-600 text-white shadow-lg" : "text-gray-400 hover:text-white"}`}
+                            >
+                                Disabled
+                            </button>
                         </div>
+                        <p className="text-xs text-gray-400 mt-1">
+                            {state.macro.inflationAdjusted ? "Values grow with inflation over time" : "All values shown in today's dollars"}
+                        </p>
+                    </div>
                     </div>
                 </div>
 
@@ -270,31 +270,6 @@ export default function AssumptionTab() {
                         />
 
                         <ToggleInput
-                            label="Auto Roth Conversions"
-                            enabled={state.investments.autoRothConversions ?? false}
-                            setEnabled={(val) => dispatch({ type: 'UPDATE_INVESTMENTS', payload: { autoRothConversions: val } })}
-                            tooltip="During retirement, automatically convert Traditional to Roth up to the target bracket's effective rate (including SS torpedo effect)"
-                        />
-
-                        {state.investments.autoRothConversions && (
-                            <DropdownInput
-                                label="Conversion Target"
-                                value={String(state.investments.rothConversionTargetBracket ?? 0.22)}
-                                onChange={(val) => dispatch({ type: 'UPDATE_INVESTMENTS', payload: { rothConversionTargetBracket: parseFloat(val) } })}
-                                options={[
-                                    { value: '0.1', label: '10%' },
-                                    { value: '0.12', label: '12%' },
-                                    { value: '0.22', label: '22%' },
-                                    { value: '0.24', label: '24%' },
-                                    { value: '0.32', label: '32%' },
-                                    { value: '0.35', label: '35%' },
-                                    { value: '0.37', label: '37%' },
-                                ]}
-                                tooltip="Maximum effective tax rate (including SS torpedo) for Roth conversions"
-                            />
-                        )}
-
-                        <ToggleInput
                             label="Prior Year Mode"
                             enabled={state.demographics.priorYearMode ?? false}
                             setEnabled={(val) => dispatch({ type: 'UPDATE_DEMOGRAPHICS', payload: { priorYearMode: val } })}
@@ -368,6 +343,11 @@ export default function AssumptionTab() {
                 </button>
             </div>
         </div>
+
+        <MilestoneModal
+            isOpen={showMilestoneModal}
+            onClose={() => setShowMilestoneModal(false)}
+        />
     </div>
   );
 }

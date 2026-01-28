@@ -8,7 +8,7 @@ import { AnyAccount, InvestedAccount, SavedAccount, PropertyAccount, DebtAccount
 import { AnyIncome } from '../components/Objects/Income/models';
 import { AnyExpense } from '../components/Objects/Expense/models';
 import { TaxState } from '../components/Objects/Taxes/TaxContext';
-import { AssumptionsState } from '../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsState, getRetirementAge, getLifeExpectancy, getBirthYear } from '../components/Objects/Assumptions/AssumptionsContext';
 
 // ============================================================================
 // Types
@@ -41,7 +41,7 @@ function formatCurrency(value: number): number {
 }
 
 function getAge(year: number, assumptions: AssumptionsState): number {
-    return year - assumptions.demographics.birthYear;
+    return year - getBirthYear(assumptions.milestones);
 }
 
 function generateFilename(): string {
@@ -515,9 +515,9 @@ function buildCurrentStateSheet(data: ExportData): XLSX.WorkSheet {
     // Demographics
     rows.push(['Demographics']);
     rows.push(['Setting', 'Value']);
-    rows.push(['Birth Year', assumptions.demographics.birthYear]);
-    rows.push(['Retirement Age', assumptions.demographics.retirementAge]);
-    rows.push(['Life Expectancy', assumptions.demographics.lifeExpectancy]);
+    rows.push(['Birth Year', getBirthYear(assumptions.milestones)]);
+    rows.push(['Retirement Age', getRetirementAge(assumptions.milestones)]);
+    rows.push(['Life Expectancy', getLifeExpectancy(assumptions.milestones)]);
     rows.push([]);
 
     // Growth Rates

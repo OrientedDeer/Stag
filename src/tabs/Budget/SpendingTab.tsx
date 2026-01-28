@@ -9,7 +9,7 @@ import { BudgetContext, Transaction } from '../../components/Objects/Budget/Budg
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
 import { AccountContext } from '../../components/Objects/Accounts/AccountContext';
 import { InvestedAccount, SavedAccount } from '../../components/Objects/Accounts/models';
-import { useAssumptions } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { useAssumptions, getBirthYear } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
 import { SimulationContext } from '../../components/Objects/Assumptions/SimulationContext';
 import { get401kLimit, getIRALimit, getHSALimit } from '../../data/ContributionLimits';
@@ -40,7 +40,7 @@ export default function SpendingTab() {
     const priorities = assumptions.priorities;
 
     // Calculate age from birth year
-    const currentAge = selectedYear - assumptions.demographics.birthYear;
+    const currentAge = selectedYear - getBirthYear(assumptions.milestones);
 
     // Get simulation's bucket allocations for REMAINDER type priorities
     const simulatedBucketAllocations = useMemo(() => {

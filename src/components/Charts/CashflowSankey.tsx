@@ -3,7 +3,7 @@ import { ResponsiveSankey } from '@nivo/sankey';
 import { WorkIncome, AnyIncome, PassiveIncome } from '../Objects/Income/models';
 import { MortgageExpense, AnyExpense, CLASS_TO_CATEGORY } from '../Objects/Expense/models';
 import { AnyAccount } from '../Objects/Accounts/models';
-import { AssumptionsContext } from '../Objects/Assumptions/AssumptionsContext';
+import { AssumptionsContext, getBirthYear } from '../Objects/Assumptions/AssumptionsContext';
 import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
 
 // Error Boundary to catch Nivo rendering errors
@@ -108,7 +108,8 @@ export const CashflowSankey = ({
 }: CashflowSankeyProps) => {
     const { state: assumptions } = useContext(AssumptionsContext);
     const forceExact = assumptions.display?.useCompactCurrency === false;
-    const age = assumptions.demographics ? year - assumptions.demographics.birthYear : undefined;
+    const birthYear = assumptions.milestones ? getBirthYear(assumptions.milestones) : undefined;
+    const age = birthYear ? year - birthYear : undefined;
 
     // Memoized currency formatter that respects user settings
     const currencyFormatter = useCallback((value: number) => {

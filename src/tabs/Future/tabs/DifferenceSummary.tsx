@@ -62,24 +62,6 @@ export const DifferenceSummary: React.FC<DifferenceSummaryProps> = ({ comparison
     const forceExact = assumptions.display?.useCompactCurrency === false;
     const { baseline, comparison: comp, differences } = comparison;
 
-    // Format FI year delta
-    const formatFIYearDelta = () => {
-        if (differences.fiYearDelta === null) {
-            return { delta: 'N/A', isPositive: null };
-        }
-        if (differences.fiYearDelta === 0) {
-            return { delta: 'Same year', isPositive: null };
-        }
-        const years = Math.abs(differences.fiYearDelta);
-        const yearText = years === 1 ? 'year' : 'years';
-        if (differences.fiYearDelta < 0) {
-            return { delta: `${years} ${yearText} earlier`, isPositive: true };
-        }
-        return { delta: `${years} ${yearText} later`, isPositive: false };
-    };
-
-    const fiDelta = formatFIYearDelta();
-
     // Format legacy value delta
     const formatLegacyDelta = () => {
         const delta = differences.legacyValueDelta;
@@ -146,20 +128,7 @@ export const DifferenceSummary: React.FC<DifferenceSummaryProps> = ({ comparison
             </div>
 
             {/* Delta cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <DeltaCard
-                    label="Financial Independence"
-                    baselineValue={baseline.milestones.fiYear
-                        ? `Age ${baseline.milestones.fiAge}`
-                        : 'Not reached'}
-                    comparisonValue={comp.milestones.fiYear
-                        ? `Age ${comp.milestones.fiAge}`
-                        : 'Not reached'}
-                    delta={fiDelta.delta}
-                    isPositive={fiDelta.isPositive}
-                    sublabel="Year you can stop working"
-                />
-
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <DeltaCard
                     label="Legacy Value"
                     baselineValue={formatCompactCurrency(baseline.milestones.legacyValue, { forceExact })}
@@ -183,18 +152,6 @@ export const DifferenceSummary: React.FC<DifferenceSummaryProps> = ({ comparison
             <div className="bg-gray-800/30 rounded-xl border border-gray-700 p-4">
                 <h4 className="text-white font-semibold mb-3">Key Insights</h4>
                 <ul className="space-y-2 text-sm text-gray-300">
-                    {differences.fiYearDelta !== null && differences.fiYearDelta !== 0 && (
-                        <li className="flex items-start gap-2">
-                            <span className={differences.fiYearDelta < 0 ? 'text-green-400' : 'text-red-400'}>
-                                {differences.fiYearDelta < 0 ? '\u2713' : '\u2717'}
-                            </span>
-                            <span>
-                                The comparison scenario {differences.fiYearDelta < 0 ? 'reaches' : 'delays'} financial independence
-                                by {Math.abs(differences.fiYearDelta)} year{Math.abs(differences.fiYearDelta) !== 1 ? 's' : ''}
-                            </span>
-                        </li>
-                    )}
-
                     {differences.legacyValueDelta !== 0 && (
                         <li className="flex items-start gap-2">
                             <span className={differences.legacyValueDelta > 0 ? 'text-green-400' : 'text-red-400'}>

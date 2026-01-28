@@ -4,19 +4,10 @@
  * Calculates retirement milestones and financial independence metrics.
  */
 
-import { AssumptionsState } from '../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsState, getRetirementAge, getLifeExpectancy, getBirthYear, BUILTIN_MILESTONE_IDS } from '../components/Objects/Assumptions/AssumptionsContext';
 import { SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
 import { InvestedAccount } from '../components/Objects/Accounts/models';
 import { MortgageExpense } from '../components/Objects/Expense/models';
-
-export interface Milestone {
-  name: string;
-  age: number;
-  year: number;
-  description: string;
-  isReached: boolean;
-  yearsUntil: number;
-}
 
 export interface MilestonesSummary {
   currentAge: number;
@@ -28,25 +19,12 @@ export interface MilestonesSummary {
   lifeExpectancy: number;
   lifeExpectancyYear: number;
   progress: number; // 0-100 (current position between birth and life expectancy)
-  keyMilestones: Milestone[];
 }
 
 export interface FIResult {
   year: number;
   age: number;
 }
-
-/**
- * Key retirement milestone ages with descriptions
- */
-const KEY_MILESTONE_AGES: Array<{ age: number; name: string; description: string }> = [
-  { age: 59.5, name: 'Penalty-Free', description: 'Penalty-free retirement withdrawals' },
-  { age: 62, name: 'SS Eligible', description: 'Social Security benefits available (reduced)' },
-  { age: 65, name: 'Medicare', description: 'Medicare eligibility begins' },
-  { age: 67, name: 'Full SS', description: 'Full Social Security retirement age' },
-  { age: 70, name: 'Max SS', description: 'Maximum Social Security benefits' },
-  { age: 73, name: 'RMDs', description: 'Required Minimum Distributions begin' },
-];
 
 /**
  * Find the year when Financial Independence is reached.
@@ -83,8 +61,25 @@ export function findFinancialIndependenceYear(
     const grossWithdrawalNeeded = annualLivingExpenses / (1 - estimatedTaxRate);
 
     if (safeWithdrawalAmount >= grossWithdrawalNeeded) {
-      const age = currentYear.year - assumptions.demographics.birthYear;
+      const age = currentYear.year - getBirthYear(assumptions.milestones);
       return { year: currentYear.year, age };
+    }
+  }
+  return null;
+}
+
+/**
+ * Find when a specific milestone was reached in the simulation.
+ * Returns the first year where the milestone appears in milestoneEvents.
+ */
+function findMilestoneReachYear(
+  simulation: SimulationYear[],
+  milestoneId: string
+): { year: number; age: number } | null {
+  for (const year of simulation) {
+    const event = year.milestoneEvents?.find(e => e.milestoneId === milestoneId);
+    if (event) {
+      return { year: event.yearReached, age: event.ageReached };
     }
   }
   return null;
@@ -97,7 +92,10 @@ export function calculateMilestones(
   assumptions: AssumptionsState,
   simulation: SimulationYear[]
 ): MilestonesSummary {
-  const { birthYear, retirementAge, lifeExpectancy, priorYearMode } = assumptions.demographics;
+  const { priorYearMode } = assumptions.demographics;
+  const birthYear = getBirthYear(assumptions.milestones);
+  const configuredRetirementAge = getRetirementAge(assumptions.milestones);
+  const lifeExpectancy = getLifeExpectancy(assumptions.milestones);
 
   // Calculate start year and age from birth year
   const calendarYear = new Date().getFullYear();
@@ -108,8 +106,13 @@ export function calculateMilestones(
   const currentYear = startYear;
   const currentAge = startAge;
 
+  // Find actual retirement year/age from simulation (when RETIRE milestone was reached)
+  // This handles milestones with multiple conditions (e.g., AGE >= 65 AND NET_WORTH >= 1M)
+  const actualRetirement = findMilestoneReachYear(simulation, BUILTIN_MILESTONE_IDS.RETIRE);
+  const retirementAge = actualRetirement?.age ?? configuredRetirementAge;
+
   // Calculate retirement year
-  const retirementYear = startYear + (retirementAge - startAge);
+  const retirementYear = actualRetirement?.year ?? (startYear + (configuredRetirementAge - startAge));
 
   // Calculate life expectancy year
   const lifeExpectancyYear = startYear + (lifeExpectancy - startAge);
@@ -121,22 +124,6 @@ export function calculateMilestones(
   // Progress from birth (age 0) to life expectancy
   const progress = Math.min(100, Math.max(0, (currentAge / lifeExpectancy) * 100));
 
-  // Build key milestones
-  const keyMilestones: Milestone[] = KEY_MILESTONE_AGES.map(({ age, name, description }) => {
-    const milestoneYear = startYear + (age - startAge);
-    const isReached = currentAge >= age;
-    const yearsUntil = isReached ? 0 : Math.ceil(age - currentAge);
-
-    return {
-      name,
-      age,
-      year: milestoneYear,
-      description,
-      isReached,
-      yearsUntil,
-    };
-  });
-
   return {
     currentAge,
     currentYear,
@@ -147,7 +134,6 @@ export function calculateMilestones(
     lifeExpectancy,
     lifeExpectancyYear,
     progress,
-    keyMilestones,
   };
 }
 

@@ -1,5 +1,5 @@
 import React, { useState, useContext } from 'react';
-import { AssumptionsContext } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsContext, getBirthYear } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider';
 import { CashflowSankey } from '../../../components/Charts/CashflowSankey';
 import { calculateNetWorth, formatCompactCurrency } from './FutureUtils';
@@ -14,8 +14,8 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
 	
     const selectedYearIndex = simulationData.findIndex(s => s.year === selectedYear);
     const yearData = simulationData[selectedYearIndex];
-	
-    const age = selectedYear - assumptions.demographics.birthYear;
+
+    const age = selectedYear - getBirthYear(assumptions.milestones);
     const netWorth = yearData ? calculateNetWorth(yearData.accounts) : 0;
 
     if (!yearData) return <div>No data</div>;

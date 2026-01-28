@@ -432,7 +432,7 @@ const CSVImportModal: React.FC<CSVImportModalProps> = ({ isOpen, onClose }) => {
                                             {csvContent.rows.slice(0, 3).map((row, rowIndex) => (
                                                 <tr key={rowIndex} className="border-b border-gray-800">
                                                     {row.map((cell, cellIndex) => (
-                                                        <td key={cellIndex} className="px-2 py-2 text-gray-300 truncate max-w-[150px]">
+                                                        <td key={cellIndex} className="px-2 py-2 text-gray-300 truncate max-w-37.5">
                                                             {cell || '-'}
                                                         </td>
                                                     ))}
@@ -592,7 +592,7 @@ const CSVImportModal: React.FC<CSVImportModalProps> = ({ isOpen, onClose }) => {
                                                     <td className="px-3 py-2 text-gray-300">
                                                         {txn.date.toLocaleDateString()}
                                                     </td>
-                                                    <td className="px-3 py-2 text-white truncate max-w-[250px]">
+                                                    <td className="px-3 py-2 text-white truncate max-w-62.5">
                                                         {txn.description}
                                                     </td>
                                                     <td className={`px-3 py-2 text-right ${txn.amount < 0 ? 'text-red-400' : 'text-green-400'}`}>

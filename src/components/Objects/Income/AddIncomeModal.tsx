@@ -24,8 +24,8 @@ import { ToggleInput } from "../../Layout/InputFields/ToggleInput";
 import { AccountContext } from "../Accounts/AccountContext";
 import { InvestedAccount, ESPPAccount } from "../../Objects/Accounts/models";
 import { PercentageInput } from "../../Layout/InputFields/PercentageInput";
-import { StyledInput } from "../../Layout/InputFields/StyleUI";
-import { AssumptionsContext } from "../Assumptions/AssumptionsContext";
+import { TriggerSelector } from "../../Layout/InputFields/TriggerSelector";
+import { AssumptionsContext, BUILTIN_MILESTONE_IDS, getLifeExpectancy, getBirthYear } from "../Assumptions/AssumptionsContext";
 import { getClaimingAdjustment } from "../../../data/SocialSecurityData";
 import { useModalAccessibility } from "../../../hooks/useModalAccessibility";
 import { getFERSMRA, checkFERSEligibility, checkCSRSEligibility, calculateFERSBasicBenefit, calculateCSRSBasicBenefit } from "../../../data/PensionData";
@@ -45,8 +45,10 @@ interface IncomeFormState {
     name: string;
     amount: number;
     frequency: IncomeFrequency;
-    startDate: string;
-    endDate: string;
+    startDate: Date | undefined;
+    endDate: Date | undefined;
+    startMilestoneId: string | undefined;
+    endMilestoneId: string | undefined;
     earnedIncome: EarnedIncomeOption;
     // Work income / 401k fields
     preTax401k: number;
@@ -81,8 +83,10 @@ function getInitialFormState(): IncomeFormState {
         name: '',
         amount: 0,
         frequency: 'Monthly',
-        startDate: `${new Date().getFullYear()}-01-01`,
-        endDate: '',
+        startDate: new Date(Date.UTC(new Date().getFullYear(), 0, 1)),
+        endDate: undefined,
+        startMilestoneId: undefined,
+        endMilestoneId: undefined,
         earnedIncome: 'Yes',
         preTax401k: 0,
         insurance: 0,
@@ -119,7 +123,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
     const [form, setForm] = useState<IncomeFormState>(getInitialFormState);
     const [dateError, setDateError] = useState<string | undefined>();
 
-    const pensionBirthYear = assumptions.demographics.birthYear;
+    const pensionBirthYear = getBirthYear(assumptions.milestones);
 
     function updateForm<K extends keyof IncomeFormState>(field: K, value: IncomeFormState[K]): void {
         setForm(prev => ({ ...prev, [field]: value }));
@@ -132,8 +136,8 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
     }
 
     // Validate end date is after start date
-    function validateDates(start: string, end: string): void {
-        if (start && end && new Date(end) < new Date(start)) {
+    function validateDates(start: Date | undefined, end: Date | undefined): void {
+        if (start && end && end < start) {
             setDateError("End date must be after start date");
         } else {
             setDateError(undefined);
@@ -188,14 +192,32 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
 
     const handleTypeSelect = (typeClass: any) => {
         setSelectedType(() => typeClass);
+        // Set smart default end milestone based on income type
+        if (typeClass === WorkIncome) {
+            updateForm('endMilestoneId', BUILTIN_MILESTONE_IDS.RETIRE);
+        } else if (typeClass === PassiveIncome || typeClass === CurrentSocialSecurityIncome ||
+                   typeClass === FutureSocialSecurityIncome || typeClass === SocialSecurityIncome ||
+                   typeClass === FERSPensionIncome || typeClass === CSRSPensionIncome) {
+            updateForm('endMilestoneId', BUILTIN_MILESTONE_IDS.END_OF_PLAN);
+        }
+        // WindfallIncome gets no default - it's a one-time event
         setStep('details');
     };
 
     const handleAdd = () => {
         if (!selectedType || !form.name.trim() || dateError) return;
 
-        const finalStartDate = form.startDate ? new Date(`${form.startDate}T00:00:00.000Z`) : undefined;
-        const finalEndDate = form.endDate ? new Date(`${form.endDate}T00:00:00.000Z`) : undefined;
+        // Use form dates/milestones directly - they're already the right types
+        const finalStartDate = form.startDate;
+        const finalEndDate = form.endDate;
+        const finalStartMilestoneId = form.startMilestoneId;
+        // Default end milestone based on income type if not set
+        const getDefaultEndMilestone = (defaultMilestone: string) => {
+            if (form.endMilestoneId) return form.endMilestoneId;
+            if (finalEndDate) return undefined;
+            return defaultMilestone;
+        };
+
         let newIncome;
 
         if (selectedType === WorkIncome) {
@@ -208,30 +230,31 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                 form.matchAccountId, taxType, form.contributionGrowthStrategy,
                 finalStartDate, finalEndDate, form.hsaContribution, form.autoMax401k,
                 form.esppContributionType, form.esppContributionAmount, form.esppDiscountPercent,
-                form.esppHasLookback, 6, finalEsppAccountId, 7, form.pensionSystem
+                form.esppHasLookback, 6, finalEsppAccountId, 7, form.pensionSystem,
+                finalStartMilestoneId, getDefaultEndMilestone(BUILTIN_MILESTONE_IDS.RETIRE)
             );
         } else if (selectedType === CurrentSocialSecurityIncome) {
             newIncome = new CurrentSocialSecurityIncome(
-                id, form.name.trim(), form.amount, form.frequency, finalStartDate, finalEndDate
+                id, form.name.trim(), form.amount, form.frequency, finalStartDate, finalEndDate,
+                finalStartMilestoneId, getDefaultEndMilestone(BUILTIN_MILESTONE_IDS.END_OF_PLAN)
             );
         } else if (selectedType === FutureSocialSecurityIncome) {
             newIncome = new FutureSocialSecurityIncome(
-                id, form.name.trim(), form.claimingAge, 0, 0, undefined, undefined
+                id, form.name.trim(), form.claimingAge, 0, 0, undefined, undefined,
+                finalStartMilestoneId, getDefaultEndMilestone(BUILTIN_MILESTONE_IDS.END_OF_PLAN)
             );
         } else if (selectedType === SocialSecurityIncome) {
             const ssStartDate = calculateSocialSecurityStartDate(
-                assumptions.demographics.birthYear, form.claimingAge
+                getBirthYear(assumptions.milestones), form.claimingAge
             );
             newIncome = new SocialSecurityIncome(
                 id, form.name.trim(), form.amount, form.frequency,
-                form.claimingAge, undefined, ssStartDate, finalEndDate
+                form.claimingAge, undefined, ssStartDate, finalEndDate,
+                finalStartMilestoneId, getDefaultEndMilestone(BUILTIN_MILESTONE_IDS.END_OF_PLAN)
             );
         } else if (selectedType === FERSPensionIncome) {
-            const retirementYear = assumptions.demographics.birthYear + form.pensionRetirementAge;
+            const retirementYear = getBirthYear(assumptions.milestones) + form.pensionRetirementAge;
             const pensionStartDate = new Date(Date.UTC(retirementYear, 0, 1));
-            const pensionEndDate = new Date(Date.UTC(
-                assumptions.demographics.birthYear + assumptions.demographics.lifeExpectancy, 11, 31
-            ));
             let effectiveHigh3 = form.pensionHigh3Salary;
             if (form.autoCalculateHigh3 && form.linkedIncomeId) {
                 const linkedIncome = workIncomes.find(inc => inc.id === form.linkedIncomeId);
@@ -245,15 +268,13 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
             newIncome = new FERSPensionIncome(
                 id, form.name.trim(), form.pensionYearsOfService, effectiveHigh3,
                 form.pensionRetirementAge, pensionBirthYear, estimatedBenefit, 0, 0,
-                pensionStartDate, pensionEndDate,
-                form.autoCalculateHigh3, form.autoCalculateHigh3 ? form.linkedIncomeId : null
+                pensionStartDate, undefined,
+                form.autoCalculateHigh3, form.autoCalculateHigh3 ? form.linkedIncomeId : null,
+                finalStartMilestoneId, getDefaultEndMilestone(BUILTIN_MILESTONE_IDS.END_OF_PLAN)
             );
         } else if (selectedType === CSRSPensionIncome) {
-            const retirementYear = assumptions.demographics.birthYear + form.pensionRetirementAge;
+            const retirementYear = getBirthYear(assumptions.milestones) + form.pensionRetirementAge;
             const pensionStartDate = new Date(Date.UTC(retirementYear, 0, 1));
-            const pensionEndDate = new Date(Date.UTC(
-                assumptions.demographics.birthYear + assumptions.demographics.lifeExpectancy, 11, 31
-            ));
             let effectiveHigh3 = form.pensionHigh3Salary;
             if (form.autoCalculateHigh3 && form.linkedIncomeId) {
                 const linkedIncome = workIncomes.find(inc => inc.id === form.linkedIncomeId);
@@ -265,21 +286,25 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
             newIncome = new CSRSPensionIncome(
                 id, form.name.trim(), form.pensionYearsOfService, effectiveHigh3,
                 form.pensionRetirementAge, estimatedBenefit,
-                pensionStartDate, pensionEndDate,
-                form.autoCalculateHigh3, form.autoCalculateHigh3 ? form.linkedIncomeId : null
+                pensionStartDate, undefined,
+                form.autoCalculateHigh3, form.autoCalculateHigh3 ? form.linkedIncomeId : null,
+                finalStartMilestoneId, getDefaultEndMilestone(BUILTIN_MILESTONE_IDS.END_OF_PLAN)
             );
         } else if (selectedType === PassiveIncome) {
             newIncome = new PassiveIncome(
                 id, form.name.trim(), form.amount, form.frequency, "Yes",
-                form.sourceType, finalStartDate, finalEndDate
+                form.sourceType, finalStartDate, finalEndDate, false,
+                finalStartMilestoneId, getDefaultEndMilestone(BUILTIN_MILESTONE_IDS.END_OF_PLAN)
             );
         } else if (selectedType === WindfallIncome) {
             newIncome = new WindfallIncome(
-                id, form.name.trim(), form.amount, form.frequency, "No", finalStartDate, finalEndDate
+                id, form.name.trim(), form.amount, form.frequency, "No", finalStartDate, finalEndDate,
+                finalStartMilestoneId, form.endMilestoneId
             );
         } else {
             newIncome = new selectedType(
-                id, form.name.trim(), form.amount, form.frequency, "Yes", finalStartDate, finalEndDate
+                id, form.name.trim(), form.amount, form.frequency, "Yes", finalStartDate, finalEndDate,
+                finalStartMilestoneId, form.endMilestoneId
             );
         }
 
@@ -507,34 +532,37 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                              selectedType !== FERSPensionIncome &&
                              selectedType !== CSRSPensionIncome && (
                                 <>
-                                    <div>
-                                        <StyledInput
-                                            label="Start Date"
-                                            id={`${id}-start-date`}
-                                            type="date"
-                                            value={form.startDate}
-                                            onChange={(e) => {
-                                                const val = e.target.value === "" ? "" : e.target.value;
-                                                updateForm('startDate', val);
-                                                validateDates(val, form.endDate);
-                                            }}
-                                            tooltip="Defaults to model full year income. Change to model partial year income."
-                                        />
-                                    </div>
-                                    <div>
-                                        <StyledInput
-                                            label="End Date (Optional)"
-                                            id={`${id}-end-date`}
-                                            type="date"
-                                            value={form.endDate}
-                                            onChange={(e) => {
-                                                const val = e.target.value === "" ? "" : e.target.value;
-                                                updateForm('endDate', val);
-                                                validateDates(form.startDate, val);
-                                            }}
-                                            error={dateError}
-                                        />
-                                    </div>
+                                    <TriggerSelector
+                                        id={`${id}-start`}
+                                        label="Start"
+                                        date={form.startDate}
+                                        milestoneId={form.startMilestoneId}
+                                        milestones={assumptions.milestones || []}
+                                        onDateChange={(date) => {
+                                            updateForm('startDate', date);
+                                            validateDates(date, form.endDate);
+                                        }}
+                                        onMilestoneChange={(milestoneId) => updateForm('startMilestoneId', milestoneId)}
+                                        tooltip="When this income begins"
+                                    />
+                                    <TriggerSelector
+                                        id={`${id}-end`}
+                                        label="End"
+                                        date={form.endDate}
+                                        milestoneId={form.endMilestoneId}
+                                        milestones={assumptions.milestones || []}
+                                        onDateChange={(date) => {
+                                            updateForm('endDate', date);
+                                            validateDates(form.startDate, date);
+                                        }}
+                                        onMilestoneChange={(milestoneId) => updateForm('endMilestoneId', milestoneId)}
+                                        tooltip="When this income ends"
+                                    />
+                                    {dateError && (
+                                        <div className="col-span-full text-red-400 text-xs">
+                                            {dateError}
+                                        </div>
+                                    )}
                                 </>
                             )}
                             {selectedType === CurrentSocialSecurityIncome && (
@@ -567,7 +595,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                         <div className="flex justify-between items-center mt-1">
                                             <span className="text-gray-300">Benefits Start:</span>
                                             <span className="font-medium text-blue-200">
-                                                {assumptions.demographics.birthYear + form.claimingAge}
+                                                {getBirthYear(assumptions.milestones) + form.claimingAge}
                                             </span>
                                         </div>
                                         <div className="text-xs text-gray-400 mt-2">
@@ -660,7 +688,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                             <div className="flex justify-between">
                                                 <span>Benefits Start:</span>
                                                 <span className="text-green-200">
-                                                    {assumptions.demographics.birthYear + form.pensionRetirementAge}
+                                                    {getBirthYear(assumptions.milestones) + form.pensionRetirementAge}
                                                 </span>
                                             </div>
                                             <div className="flex justify-between">
@@ -753,7 +781,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                             <div className="flex justify-between">
                                                 <span>Benefits Start:</span>
                                                 <span className="text-green-200">
-                                                    {assumptions.demographics.birthYear + form.pensionRetirementAge}
+                                                    {getBirthYear(assumptions.milestones) + form.pensionRetirementAge}
                                                 </span>
                                             </div>
                                             <div className="flex justify-between">
@@ -790,8 +818,8 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                         <p className="wrap-break-word">- Benefit calculated from your 35 highest earning years</p>
                                         <p className="wrap-break-word">- Uses SSA wage indexing and bend points formula</p>
                                         <p className="wrap-break-word">- Claiming at {form.claimingAge}: {(getClaimingAdjustment(form.claimingAge) * 100).toFixed(1)}% of FRA benefit</p>
-                                        <p className="wrap-break-word">- Benefits start in {assumptions.demographics.birthYear + form.claimingAge}</p>
-                                        <p className="wrap-break-word">- Benefits end at life expectancy (age {assumptions.demographics.lifeExpectancy})</p>
+                                        <p className="wrap-break-word">- Benefits start in {getBirthYear(assumptions.milestones) + form.claimingAge}</p>
+                                        <p className="wrap-break-word">- Benefits end at life expectancy (age {getLifeExpectancy(assumptions.milestones)})</p>
                                     </div>
                                 </div>
                                 <div className="text-sm text-gray-400 wrap-break-word">

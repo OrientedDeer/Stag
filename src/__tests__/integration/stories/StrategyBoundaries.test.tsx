@@ -23,7 +23,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { AssumptionsState, defaultAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { InvestedAccount, PropertyAccount } from '../../../components/Objects/Accounts/models';
 import { FutureSocialSecurityIncome } from '../../../components/Objects/Income/models';
@@ -73,11 +73,8 @@ describe('Strategy Boundary Tests', () => {
 
         const bracketAssumptions: AssumptionsState = {
             ...defaultAssumptions,
-            demographics: {
-                birthYear,
-                lifeExpectancy: 90,
-                retirementAge,
-            },
+            demographics: {},
+            milestones: createBuiltinMilestones(birthYear, retirementAge, 90),
             income: {
                 ...defaultAssumptions.income,
                 salaryGrowth: 0,
@@ -244,11 +241,8 @@ describe('Strategy Boundary Tests', () => {
 
         const gkAssumptions: AssumptionsState = {
             ...defaultAssumptions,
-            demographics: {
-                birthYear,
-                lifeExpectancy: 90,
-                retirementAge,
-            },
+            demographics: {},
+            milestones: createBuiltinMilestones(birthYear, retirementAge, 90),
             income: {
                 ...defaultAssumptions.income,
                 salaryGrowth: 0,
@@ -382,11 +376,8 @@ describe('Strategy Boundary Tests', () => {
 
         const pmiAssumptions: AssumptionsState = {
             ...defaultAssumptions,
-            demographics: {
-                birthYear,
-                lifeExpectancy: 90,
-                retirementAge,
-            },
+            demographics: {},
+            milestones: createBuiltinMilestones(birthYear, retirementAge, 90),
             income: {
                 ...defaultAssumptions.income,
                 salaryGrowth: 2,
@@ -548,11 +539,8 @@ describe('Strategy Boundary Tests', () => {
 
         const depletionAssumptions: AssumptionsState = {
             ...defaultAssumptions,
-            demographics: {
-                birthYear,
-                lifeExpectancy: 90,
-                retirementAge,
-            },
+            demographics: {},
+            milestones: createBuiltinMilestones(birthYear, retirementAge, 90),
             income: {
                 ...defaultAssumptions.income,
                 salaryGrowth: 0,

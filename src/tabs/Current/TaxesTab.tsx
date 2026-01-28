@@ -2,7 +2,7 @@ import { useContext } from "react";
 import { IncomeContext } from "../../components/Objects/Income/IncomeContext";
 import { ExpenseContext } from "../../components/Objects/Expense/ExpenseContext";
 import { TaxContext } from "../../components/Objects/Taxes/TaxContext";
-import { AssumptionsContext } from "../../components/Objects/Assumptions/AssumptionsContext";
+import { AssumptionsContext, getBirthYear } from "../../components/Objects/Assumptions/AssumptionsContext";
 import { TAX_DATABASE, FilingStatus } from "../../data/TaxData";
 import {
     calculateFicaTax,
@@ -52,7 +52,7 @@ export default function TaxesTab() {
     const fedAppliedMainDeduction =
         effectiveDeductionMethod === "Standard" ? fedStandardDeduction : federalItemizedTotal;
     // Calculate age for auto-max 401k feature
-    const age = taxYear - assumptions.demographics.birthYear;
+    const age = taxYear - getBirthYear(assumptions.milestones);
     const incomePreTaxDeductions = getPreTaxExemptions(incomes, taxYear, age);
     const incomePostTaxDeductions = getPostTaxExemptions(incomes, taxYear, age);
     const expenseAboveLineDeductions = getYesDeductions(expenses, taxYear);

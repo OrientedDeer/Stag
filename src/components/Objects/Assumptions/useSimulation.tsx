@@ -4,7 +4,7 @@ import { WorkIncome, getIncomeActiveMultiplier } from '../Income/models';
 import { AnyAccount, InvestedAccount } from '../Accounts/models';
 import { AnyIncome } from '../Income/models';
 import { AnyExpense } from '../Expense/models';
-import { AssumptionsState } from './AssumptionsContext';
+import { AssumptionsState, getLifeExpectancy, getBirthYear } from './AssumptionsContext';
 import { TaxState } from '../Taxes/TaxContext';
 
 export const runSimulation = (
@@ -24,11 +24,13 @@ export const runSimulation = (
     const startYear = assumptions.demographics.priorYearMode
         ? currentYear - 1
         : currentYear;
-    const startAge = startYear - assumptions.demographics.birthYear;
+    const birthYear = getBirthYear(assumptions.milestones);
+    const startAge = startYear - birthYear;
 
-    // --- NEW: LIFE EXPECTANCY CAP ---
-    // Calculate how many years the user actually has left
-    const yearsUntilDeath = Math.max(0, assumptions.demographics.lifeExpectancy - startAge);
+    // --- LIFE EXPECTANCY CAP ---
+    // Calculate how many years the user actually has left (derived from End of Plan milestone)
+    const lifeExpectancy = getLifeExpectancy(assumptions.milestones);
+    const yearsUntilDeath = Math.max(0, lifeExpectancy - startAge);
 
     // Run for the requested time, OR until death—whichever comes first.
     const effectiveYearsToRun = Math.min(yearsToRun, yearsUntilDeath);
@@ -148,6 +150,8 @@ export const runSimulation = (
     let currentIncomes = yearZero.incomes;
     let currentExpenses = yearZero.expenses;
     let currentAccounts: AnyAccount[] = adjustedAccounts;
+    let previousActiveMilestones: string[] = [];
+    let milestoneReachYears: Map<string, number> = new Map();
 
     // CHANGED: Use effectiveYearsToRun instead of yearsToRun
     for (let i = 1; i <= effectiveYearsToRun; i++) {
@@ -164,7 +168,9 @@ export const runSimulation = (
             assumptions,
             taxState,
             timeline,  // Pass previous simulation history for SS calculation
-            returnOverride
+            returnOverride,
+            previousActiveMilestones,
+            milestoneReachYears
         );
 
         timeline.push(result);
@@ -172,6 +178,14 @@ export const runSimulation = (
         currentIncomes = result.incomes;
         currentExpenses = result.expenses;
         currentAccounts = result.accounts;
+        previousActiveMilestones = result.activeMilestones || [];
+
+        // Track when each milestone was first reached
+        result.milestoneEvents?.forEach(event => {
+            if (!milestoneReachYears.has(event.milestoneId)) {
+                milestoneReachYears.set(event.milestoneId, event.yearReached);
+            }
+        });
     }
 
     return timeline;

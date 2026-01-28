@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { AssumptionsState, defaultAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { InvestedAccount } from '../../../components/Objects/Accounts/models';
 import { WorkIncome, FutureSocialSecurityIncome } from '../../../components/Objects/Income/models';
@@ -47,11 +47,8 @@ describe('Golden Master Snapshot', () => {
 
     const assumptions: AssumptionsState = {
         ...defaultAssumptions,
-        demographics: {
-            birthYear: BIRTH_YEAR,
-            lifeExpectancy: 95,
-            retirementAge: RETIREMENT_AGE,
-        },
+        demographics: {},
+        milestones: createBuiltinMilestones(BIRTH_YEAR, RETIREMENT_AGE, 95),
         income: {
             ...defaultAssumptions.income,
             salaryGrowth: 3.0,

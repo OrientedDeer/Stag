@@ -30,6 +30,8 @@ function serializeIncomeFields(income: AnyIncome): Record<string, unknown> {
         className: income.constructor.name,
         startDate: income.startDate?.toISOString(),
         endDate: income.end_date?.toISOString(),
+        startMilestoneId: income.startMilestoneId,
+        endMilestoneId: income.endMilestoneId,
     };
 
     if (income instanceof WorkIncome) {
@@ -105,6 +107,8 @@ export function getSimulationInputHash(
             amount: e.getAnnualAmount(),
             name: e.name,
             className: e.constructor.name,
+            startMilestoneId: e.startMilestoneId,
+            endMilestoneId: e.endMilestoneId,
         })),
         assumptions: {
             demographics: assumptions.demographics,
@@ -114,6 +118,7 @@ export function getSimulationInputHash(
             investments: assumptions.investments,
             priorities: assumptions.priorities,
             withdrawalStrategy: assumptions.withdrawalStrategy,
+            milestones: assumptions.milestones,
         },
         taxState: {
             filingStatus: taxState.filingStatus,

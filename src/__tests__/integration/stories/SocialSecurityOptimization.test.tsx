@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { AssumptionsState, defaultAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { InvestedAccount } from '../../../components/Objects/Accounts/models';
 import { WorkIncome, FutureSocialSecurityIncome } from '../../../components/Objects/Income/models';
@@ -44,11 +44,8 @@ describe('Story 3: Social Security Optimization', () => {
     function runWithClaimingAge(claimingAge: number, birthYear: number = 1960) {
         const assumptions: AssumptionsState = {
             ...defaultAssumptions,
-            demographics: {
-                birthYear,
-                lifeExpectancy: 90,
-                retirementAge: claimingAge, // Retire when claiming SS
-            },
+            demographics: {},
+            milestones: createBuiltinMilestones(birthYear, claimingAge, 90), // Retire when claiming SS
             income: {
                 ...defaultAssumptions.income,
                 salaryGrowth: 3.0,
@@ -190,11 +187,8 @@ describe('Story 3: Social Security Optimization', () => {
         // Create a scenario where person claims SS at 62 but keeps working
         const assumptions: AssumptionsState = {
             ...defaultAssumptions,
-            demographics: {
-                birthYear,
-                lifeExpectancy: 90,
-                retirementAge: 70, // Retires at 70, but claims SS at 62
-            },
+            demographics: {},
+            milestones: createBuiltinMilestones(birthYear, 70, 90), // Retires at 70, but claims SS at 62
             income: {
                 ...defaultAssumptions.income,
                 salaryGrowth: 0,
@@ -286,11 +280,8 @@ describe('Story 3: Social Security Optimization', () => {
 
         const assumptions: AssumptionsState = {
             ...defaultAssumptions,
-            demographics: {
-                birthYear,
-                lifeExpectancy: 90,
-                retirementAge: 70, // Retires at 70, but claims SS at FRA (67)
-            },
+            demographics: {},
+            milestones: createBuiltinMilestones(birthYear, 70, 90), // Retires at 70, but claims SS at FRA (67)
             income: {
                 ...defaultAssumptions.income,
                 salaryGrowth: 0,

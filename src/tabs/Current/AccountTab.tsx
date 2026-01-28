@@ -19,7 +19,7 @@ import { useFileManager } from "../../components/Objects/Accounts/useFileManager
 import { IncomeContext } from "../../components/Objects/Income/IncomeContext";
 import { ExpenseContext } from "../../components/Objects/Expense/ExpenseContext";
 import { TaxContext } from "../../components/Objects/Taxes/TaxContext";
-import { AssumptionsContext, defaultAssumptions } from "../../components/Objects/Assumptions/AssumptionsContext";
+import { AssumptionsContext, defaultAssumptions, createBuiltinMilestones } from "../../components/Objects/Assumptions/AssumptionsContext";
 import { SimulationContext } from "../../components/Objects/Assumptions/SimulationContext";
 import { QRGenerateModal, QRScanModal } from "../../components/Objects/Accounts/QRTransfer";
 
@@ -210,10 +210,7 @@ export default function AccountTab() {
         // (RESET_DEFAULTS preserves those arrays)
         assumptionsDispatch({ type: 'SET_BULK_DATA', payload: {
             ...defaultAssumptions,
-            demographics: {
-                ...defaultAssumptions.demographics,
-                birthYear: new Date().getFullYear() - 24, // Reset to default age
-            }
+            milestones: createBuiltinMilestones(new Date().getFullYear() - 24), // Reset to default age (birth year = current year - 24)
         }});
         simulationDispatch({ type: 'SET_SIMULATION', payload: [] });
 

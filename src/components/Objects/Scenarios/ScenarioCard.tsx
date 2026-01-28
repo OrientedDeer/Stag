@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { SavedScenario } from '../../../services/ScenarioTypes';
 import { ConfirmDialog } from '../../Layout/ConfirmDialog';
+import { getRetirementAge, getLifeExpectancy, BUILTIN_MILESTONE_IDS } from '../Assumptions/AssumptionsContext';
 
 interface ScenarioCardProps {
     scenario: SavedScenario;
@@ -56,6 +57,23 @@ const ScenarioAssumptionsModal: React.FC<{
         }));
     };
 
+    // Update a milestone's condition value
+    const handleMilestoneChange = (milestoneId: string, conditionType: 'AGE' | 'YEAR', value: number) => {
+        setEditedAssumptions((prev: any) => {
+            const milestones = prev.milestones || [];
+            const updatedMilestones = milestones.map((m: any) => {
+                if (m.id !== milestoneId) return m;
+                return {
+                    ...m,
+                    conditions: m.conditions.map((c: any) =>
+                        c.type === conditionType ? { ...c, value } : c
+                    ),
+                };
+            });
+            return { ...prev, milestones: updatedMilestones };
+        });
+    };
+
     const handleSave = () => {
         onSave(editedAssumptions);
         onClose();
@@ -63,7 +81,7 @@ const ScenarioAssumptionsModal: React.FC<{
 
     const macro = editedAssumptions.macro || {};
     const investments = editedAssumptions.investments || {};
-    const demographics = editedAssumptions.demographics || {};
+    const milestones = editedAssumptions.milestones || [];
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
@@ -137,7 +155,7 @@ const ScenarioAssumptionsModal: React.FC<{
                         </div>
                     </div>
 
-                    {/* Demographics */}
+                    {/* Demographics (from Milestones) */}
                     <div>
                         <h4 className="text-sm font-medium text-gray-300 mb-2">Demographics</h4>
                         <div className="grid grid-cols-2 gap-3">
@@ -145,8 +163,8 @@ const ScenarioAssumptionsModal: React.FC<{
                                 <label className="block text-xs text-gray-400 mb-1">Retirement Age</label>
                                 <input
                                     type="number"
-                                    value={demographics.retirementAge ?? 65}
-                                    onChange={(e) => handleChange('demographics', 'retirementAge', parseInt(e.target.value))}
+                                    value={getRetirementAge(milestones)}
+                                    onChange={(e) => handleMilestoneChange(BUILTIN_MILESTONE_IDS.RETIRE, 'AGE', parseInt(e.target.value))}
                                     className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm"
                                 />
                             </div>
@@ -154,8 +172,8 @@ const ScenarioAssumptionsModal: React.FC<{
                                 <label className="block text-xs text-gray-400 mb-1">Life Expectancy</label>
                                 <input
                                     type="number"
-                                    value={demographics.lifeExpectancy ?? 90}
-                                    onChange={(e) => handleChange('demographics', 'lifeExpectancy', parseInt(e.target.value))}
+                                    value={getLifeExpectancy(milestones)}
+                                    onChange={(e) => handleMilestoneChange(BUILTIN_MILESTONE_IDS.END_OF_PLAN, 'AGE', parseInt(e.target.value))}
                                     className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm"
                                 />
                             </div>

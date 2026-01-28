@@ -9,6 +9,10 @@ import {
   AssumptionsState,
   PriorityBucket,
   WithdrawalBucket,
+  getRetirementAge,
+  getLifeExpectancy,
+  getBirthYear,
+  BUILTIN_MILESTONE_IDS,
 } from '../../../../components/Objects/Assumptions/AssumptionsContext';
 
 // Mock localStorage
@@ -405,7 +409,7 @@ describe('AssumptionsContext', () => {
   });
 
   describe('Demographics Reducer Actions', () => {
-    it('should update demographics settings', () => {
+    it('should update birth year via milestone', () => {
       let state!: AssumptionsState;
       let dispatch: React.Dispatch<any>;
 
@@ -416,13 +420,24 @@ describe('AssumptionsContext', () => {
 
       render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
 
+      // Update birth year via UPDATE_MILESTONE on the Birth milestone
+      const birthMilestone = state.milestones.find(m => m.id === BUILTIN_MILESTONE_IDS.BIRTH);
+      expect(birthMilestone).toBeDefined();
+
       act(() => {
-        dispatch({ type: 'UPDATE_DEMOGRAPHICS', payload: { retirementAge: 70, lifeExpectancy: 95 } });
+        dispatch({
+          type: 'UPDATE_MILESTONE',
+          payload: {
+            ...birthMilestone!,
+            conditions: [{ type: 'YEAR', operator: '=', value: 1990 }]
+          }
+        });
       });
 
-      expect(state.demographics.retirementAge).toBe(70);
-      expect(state.demographics.lifeExpectancy).toBe(95);
-      expect(state.demographics.birthYear).toBe(defaultAssumptions.demographics.birthYear);
+      expect(getBirthYear(state.milestones)).toBe(1990);
+      // Retirement age and life expectancy are now derived from milestones
+      expect(getRetirementAge(state.milestones)).toBeGreaterThan(0);
+      expect(getLifeExpectancy(state.milestones)).toBeGreaterThan(0);
     });
   });
 
@@ -616,8 +631,7 @@ describe('AssumptionsContext', () => {
           healthcareInflation: 5.0,
         },
         demographics: {
-          birthYear: '1995', // String instead of number
-          retirementAge: 65,
+          retirementAge: 65, // Legacy field - should be migrated to milestone
         },
       };
       localStorageMock.getItem.mockReturnValueOnce(JSON.stringify(badData));
@@ -632,11 +646,13 @@ describe('AssumptionsContext', () => {
 
       // Wrong type should fall back to default
       expect(state.macro.inflationRate).toBe(defaultAssumptions.macro.inflationRate);
-      expect(state.demographics.birthYear).toBe(defaultAssumptions.demographics.birthYear);
+      // Birth year is now derived from milestones
+      expect(getBirthYear(state.milestones)).toBeGreaterThan(0);
 
       // Correct types should be preserved
       expect(state.macro.healthcareInflation).toBe(5.0);
-      expect(state.demographics.retirementAge).toBe(65);
+      // retirementAge is now derived from milestones (legacy data should migrate to milestones)
+      expect(getRetirementAge(state.milestones)).toBe(65);
     });
 
     it('should handle deeply nested fields like returnRates', () => {

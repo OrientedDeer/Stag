@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { AssumptionsState, defaultAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { InvestedAccount } from '../../../components/Objects/Accounts/models';
 import { FutureSocialSecurityIncome } from '../../../components/Objects/Income/models';
@@ -49,11 +49,8 @@ describe('Story 4: RMD Compliance', () => {
 
     const assumptions: AssumptionsState = {
         ...defaultAssumptions,
-        demographics: {
-            birthYear,
-            lifeExpectancy: 95,
-            retirementAge: 65, // Already retired
-        },
+        demographics: {},
+        milestones: createBuiltinMilestones(birthYear, 65, 95), // Already retired
         income: {
             ...defaultAssumptions.income,
             salaryGrowth: 0,

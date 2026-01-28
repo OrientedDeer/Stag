@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { AssumptionsState, defaultAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { InvestedAccount, PropertyAccount, DebtAccount } from '../../../components/Objects/Accounts/models';
 import { WorkIncome } from '../../../components/Objects/Income/models';
@@ -46,11 +46,8 @@ describe('Story 7: Debt Payoff', () => {
 
     const assumptions: AssumptionsState = {
         ...defaultAssumptions,
-        demographics: {
-            birthYear,
-            lifeExpectancy: 90,
-            retirementAge,
-        },
+        demographics: {},
+        milestones: createBuiltinMilestones(birthYear, retirementAge, 90),
         income: {
             ...defaultAssumptions.income,
             salaryGrowth: 3.0,

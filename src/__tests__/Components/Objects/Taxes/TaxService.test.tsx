@@ -427,8 +427,9 @@ describe('TaxService: Additional Functions', () => {
         });
 
         it('should calculate federal tax with itemized deductions', () => {
-            const income = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
-            const mortgage = new MortgageExpense('m1', 'Home', 'Monthly', 500000, 400000, 400000, 3, 30, 1.2, 0, 1, 100, 0.3, 0, 50, 'Itemized', 0.8, 'a1', new Date('2020-01-01'));
+            // Use Date constructor with args to ensure local time
+            const income = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date(2020, 0, 1));
+            const mortgage = new MortgageExpense('m1', 'Home', 'Monthly', 500000, 400000, 400000, 3, 30, 1.2, 0, 1, 100, 0.3, 0, 50, 'Itemized', 0.8, 'a1', new Date(2020, 0, 1));
             mortgage.loan_balance = mortgage.getBalanceAtDate('2024-01-02');
             const taxState = createTaxState({ deductionMethod: 'Itemized', stateResidency: 'DC' });
             const fedTax = calculateFederalTax(taxState, [income], [mortgage], 2024, noInflationAssumptions);

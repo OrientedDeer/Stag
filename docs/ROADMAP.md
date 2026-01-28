@@ -4,50 +4,66 @@
 
 These features are complete but need validation:
 
-- **Budget Tracking Tab** - CSV import, category mappings, spending analysis
 - **ESPP Accounts** - Lot tracking, tax calculations, withdrawal preferences
-- **Tax Optimization Tab** - Recommendations need accuracy review
-- **Scenario Comparison Tool** - Compare saved scenarios
-- **Financial Ratios Tab** - Benchmarks need validation
 - **SSA Earnings Import** - XML import for accurate SS calculation
-
-*Note: Testing tab and experimental calculators (Roth Analysis panel) are behind "Experimental Features" toggle.*
 
 ---
 
 ## High Priority
 
-### Tax-Aware Withdrawal Splitting ([#28](https://github.com/OrientedDeer/Stag/issues/28))
+### Tax Optimization System ([#28](https://github.com/OrientedDeer/Stag/issues/28))
 
-The current withdrawal system drains accounts in a fixed user-defined order. With both Roth and Traditional accounts, draining Traditional first can push taxable income into high brackets unnecessarily. Needs a smarter strategy that splits withdrawals across account types to minimize total tax.
+A unified "Tax Optimization" toggle on the withdrawal screen that intelligently minimizes lifetime taxes while maintaining plan success rate.
 
-Considerations:
-- Splitting Traditional withdrawals to stay within a target bracket, then pulling remainder from Roth
-- Interaction with RMDs (mandatory Traditional withdrawals that can't be avoided)
-- Interaction with Auto Roth Conversions (which already do bracket-filling)
-- May need a new withdrawal strategy option ("Tax-Optimized") alongside existing Fixed Real / Percentage / Guyton-Klinger
-- The withdrawal bucket priority list UI may need per-bucket caps or tax-aware grouping
+**Goals:**
+- Primary: Minimize lifetime taxes
+- Secondary: Maintain or improve Monte Carlo success rate (avoid the trap where tax optimization increases plan failures)
 
-### Partial-Year Simulation ([#26](https://github.com/OrientedDeer/Stag/issues/26))
+**Core Algorithm:**
 
-Projections assume the current year has no remaining contributions or income growth. This is accurate in December but significantly underestimates in January (11 months of contributions ignored).
+1. **Calculate Target Traditional Balance** at RMD age (73-75)
+   - Input: Expected fixed income (SS, pensions), tax brackets, life expectancy
+   - Output: Ideal Traditional balance that keeps RMDs + income within optimal bracket
+   - Auto-calculate optimal target bracket based on lifetime tax + success rate
 
-Considerations:
-- Need to determine the fraction of the current year remaining (e.g., month-based)
-- Scale current-year contributions, income, and expenses by remaining fraction
-- Account contributions (401k, HSA, IRA) that have already been made vs. remaining
-- Employer match calculations for partial year
-- May need a "year-to-date contributions" input or auto-detect from account history
-- First simulation year becomes a partial year; subsequent years remain full
+2. **Multi-Year Roth Conversion Planning** (pre-retirement)
+   - Spread conversions over years to reach target balance (better than one large conversion)
+   - Each year: convert up to bracket headroom
+   - Prefer steady conversions over large single-year conversions
 
-### Expense Category Reassignment ([#25](https://github.com/OrientedDeer/Stag/issues/25))
+3. **Smart Withdrawal Execution** (retirement)
+   - Each year: Calculate "bracket space" = Target bracket ceiling − Fixed income
+   - Fill bracket space from Traditional (or do Roth conversions if still above target)
+   - Take remaining needs from Roth (tax-free)
+   - Use brokerage strategically (prefer long-term lots, factor in short-term cost)
 
-Users cannot change an expense's category without deleting and recreating it. The category should be editable via the existing edit dropdown.
+4. **Success Rate Guard**
+   - Compare success rate with optimization ON vs OFF
+   - If success rate drops >2%: dial back aggressiveness (reduce early-year conversions, preserve liquidity)
 
-Considerations:
-- Each expense class (MortgageExpense, LoanExpense, etc.) has different fields — changing category may require migrating or dropping class-specific data
-- Need to decide: allow only within same "shape" (e.g., between discretionary categories) or allow full type changes?
-- If full type changes are allowed, need a reconstitution step to swap the class instance
+**Files to Modify:**
+
+| File | Changes |
+|------|---------|
+| `services/simulation/TaxOptimizedWithdrawal.ts` | **NEW** - Core algorithm (~400 lines) |
+| `tabs/Future/WithdrawalTab.tsx` | Add toggle, hide manual ordering when ON, show optimization summary |
+| `components/Objects/Assumptions/AssumptionsContext.tsx` | Add `taxOptimizationEnabled`, remove `rothConversionTargetBracket` |
+| `components/Objects/Assumptions/SimulationEngine.tsx` | Call smart withdrawal when enabled |
+| `services/simulation/RothConversionService.ts` | Accept conversion schedule from optimizer |
+| `services/TaxOptimizationService.ts` | Add lifetime tax calculation, strategy comparison |
+| `services/simulation/WithdrawalService.ts` | Add lot-aware brokerage logic |
+
+**Important - Inflation Handling:**
+- Respect `inflationAdjusted` toggle: when ON, inflate brackets/ceilings to future years; when OFF, use nominal values
+
+**Implementation Order:**
+1. AssumptionsContext - Add toggle
+2. TaxOptimizedWithdrawal.ts - Core algorithm (new file)
+3. SimulationEngine - Integration point
+4. WithdrawalTab UI - Toggle and summary display
+5. Lot-aware brokerage - WithdrawalService enhancement
+6. Success rate guard - Monte Carlo integration
+7. Tests - Unit and integration
 
 ### Testing/Debug Tab — Remaining
 
@@ -57,6 +73,11 @@ Considerations:
 
 ## Recently Completed
 
+- **Partial-Year Simulation** ([#26](https://github.com/OrientedDeer/Stag/issues/26)) - First simulation year scales contributions by remaining months; fixed double-counting growth bug
+- **Withdrawal Strategy: "None"** - Explicit option that skips strategy calculation and just spends listed expenses
+- **Fixed Real / Percentage Spending Caps** - These strategies now enforce their budget by trimming discretionary spending (previously informational only)
+- **Tax-Optimized Withdrawals** - Moved behind the Experimental Features toggle; auto-disabled when experimental is turned off
+- **Budget UX** - Collapsible settings sections (minimized by default), last-import date indicator, year progress color scheme update
 - **Mobile Chart X-Axis Labels** - Viewport-aware tick thinning targets ~6-8 labels on mobile vs ~10-12 on desktop across all charts
 - **Deficit Warning Banner** - Error-severity AlertBanner on OverviewTab when simulation generates uncovered deficits, showing first year and max shortfall with actionable suggestions
 - **5-Year Roth Conversion Tracking** - Proper IRS ordering rules for early Roth withdrawals: contributions first (free), then conversions FIFO (10% penalty within 5 years), then earnings (taxable + penalty)
@@ -180,7 +201,23 @@ Add RSUAccount handling in the SimulationEngine withdrawal section (alongside In
 - RSU income should appear in the Testing/Debug "Income & Expenses" panel
 - Consider whether RSU vesting income triggers Roth conversion optimization changes
 
+### Performance Sweeps
+
+Many pages exceed the 150ms render threshold, triggering React warnings. Target improvements:
+
+- **Memoization audit** — Review expensive computations in render paths; add `useMemo`/`useCallback` where missing
+- **Context splitting** — Large contexts (SimulationContext, AssumptionsContext) trigger widespread re-renders; consider splitting into smaller, focused contexts
+- **Chart optimization** — Nivo charts are heavy; investigate lazy loading, virtualization for large datasets, or lighter chart libraries for simple visualizations
+- **Simulation caching** — Cache intermediate simulation results; avoid full re-runs when only display options change
+- **Component code-splitting** — Lazy load heavy tabs (Testing, Scenarios, Monte Carlo) that aren't immediately visible
+- **Profile specific pages** — Use React DevTools Profiler to identify worst offenders:
+  - Future tab (runs simulation on mount)
+  - Monte Carlo tab (heavy computation)
+  - Testing tab (many debug panels)
+  - Budget tab (transaction table rendering)
+
 ### Technical Debt
+- Split SimulationEngine.tsx into multiple files (withdrawal logic, tax integration, income processing, etc.) — currently ~2000 lines and difficult to navigate
 - Screen reader testing
 - Monte Carlo performance testing
 - Roth conversion tax payment improvement

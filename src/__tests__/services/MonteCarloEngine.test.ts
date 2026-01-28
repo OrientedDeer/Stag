@@ -480,19 +480,15 @@ describe('Return Rate Override Integration', () => {
                 gkAdjustmentPercent: 10,
                 autoRothConversions: false,
                 rothConversionTargetBracket: 0.22,
-                taxOptimizedWithdrawals: false,
-                taxOptimizedTargetBracket: 0.22,
+                taxOptimizationEnabled: false,
             },
             macro: {
                 inflationRate: 2.6,
                 healthcareInflation: 3.9,
                 inflationAdjusted: false, // Important: not inflation adjusted
             },
-            demographics: {
-                birthYear: 1995, // Age 30 in 2025
-                retirementAge: 65,
-                lifeExpectancy: 90,
-            },
+            demographics: {},
+            milestones: [],  // Milestones not needed for this increment test
             income: { salaryGrowth: 1.0, qualifiesForSocialSecurity: true, socialSecurityFundingPercent: 100 },
             expenses: { lifestyleCreep: 75, housingAppreciation: 1.4, rentInflation: 1.2 },
             display: { useCompactCurrency: true, showExperimentalFeatures: false, hsaEligible: true },

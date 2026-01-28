@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { AssumptionsState, defaultAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { InvestedAccount, PropertyAccount, DebtAccount, SavedAccount } from '../../../components/Objects/Accounts/models';
 import { WorkIncome, FutureSocialSecurityIncome } from '../../../components/Objects/Income/models';
@@ -44,11 +44,8 @@ describe('Long-Horizon Stability: 50-Year Lifecycle', () => {
 
     const assumptions: AssumptionsState = {
         ...defaultAssumptions,
-        demographics: {
-            birthYear,
-            lifeExpectancy: 95,
-            retirementAge,
-        },
+        demographics: {},
+        milestones: createBuiltinMilestones(birthYear, retirementAge, 95),
         income: {
             ...defaultAssumptions.income,
             salaryGrowth: 2.0,
@@ -154,11 +151,8 @@ describe('Long-Horizon Stability: Complex Scenario with Debt', () => {
 
     const assumptions: AssumptionsState = {
         ...defaultAssumptions,
-        demographics: {
-            birthYear,
-            lifeExpectancy: 95,
-            retirementAge,
-        },
+        demographics: {},
+        milestones: createBuiltinMilestones(birthYear, retirementAge, 95),
         income: {
             ...defaultAssumptions.income,
             salaryGrowth: 3.0,
@@ -319,11 +313,8 @@ describe('Long-Horizon Stability: Extreme Scenarios', () => {
     it('should handle very high return rate (15%) for 40 years', () => {
         const assumptions: AssumptionsState = {
             ...defaultAssumptions,
-            demographics: {
-                birthYear: 1985,
-                lifeExpectancy: 95,
-                retirementAge: 65,
-            },
+            demographics: {},
+            milestones: createBuiltinMilestones(1985, 65, 95),
             macro: {
                 ...defaultAssumptions.macro,
                 inflationRate: 0,
@@ -369,11 +360,8 @@ describe('Long-Horizon Stability: Extreme Scenarios', () => {
         const retirementAge = 65;
         const assumptions: AssumptionsState = {
             ...defaultAssumptions,
-            demographics: {
-                birthYear,
-                lifeExpectancy: 95,
-                retirementAge,
-            },
+            demographics: {},
+            milestones: createBuiltinMilestones(birthYear, retirementAge, 95),
             macro: {
                 ...defaultAssumptions.macro,
                 inflationRate: 0,
@@ -417,11 +405,8 @@ describe('Long-Horizon Stability: Extreme Scenarios', () => {
     it('should handle high inflation (8%) for 40 years', () => {
         const assumptions: AssumptionsState = {
             ...defaultAssumptions,
-            demographics: {
-                birthYear: 1985,
-                lifeExpectancy: 95,
-                retirementAge: 65,
-            },
+            demographics: {},
+            milestones: createBuiltinMilestones(1985, 65, 95),
             macro: {
                 ...defaultAssumptions.macro,
                 inflationRate: 8, // High inflation
@@ -498,7 +483,8 @@ describe('Feedback Loop Prevention', () => {
 
             const assumptions: AssumptionsState = {
                 ...defaultAssumptions,
-                demographics: { birthYear, lifeExpectancy: 90, retirementAge },
+                demographics: {},
+                milestones: createBuiltinMilestones(birthYear, retirementAge, 90),
                 macro: {
                     ...defaultAssumptions.macro,
                     inflationRate: 0,
@@ -550,7 +536,8 @@ describe('Feedback Loop Prevention', () => {
             // This isolates income calculation from complex portfolio interactions
             const assumptions: AssumptionsState = {
                 ...defaultAssumptions,
-                demographics: { birthYear, lifeExpectancy: 90, retirementAge },
+                demographics: {},
+                milestones: createBuiltinMilestones(birthYear, retirementAge, 90),
                 income: {
                     ...defaultAssumptions.income,
                     salaryGrowth: 0, // Explicitly disable salary growth
@@ -601,7 +588,8 @@ describe('Feedback Loop Prevention', () => {
         it('should have taxes always less than income', () => {
             const assumptions: AssumptionsState = {
                 ...defaultAssumptions,
-                demographics: { birthYear, lifeExpectancy: 90, retirementAge },
+                demographics: {},
+                milestones: createBuiltinMilestones(birthYear, retirementAge, 90),
                 macro: {
                     ...defaultAssumptions.macro,
                     inflationRate: 0,
@@ -682,7 +670,8 @@ describe('Feedback Loop Prevention', () => {
 
             const assumptions: AssumptionsState = {
                 ...defaultAssumptions,
-                demographics: { birthYear, lifeExpectancy: 90, retirementAge },
+                demographics: {},
+                milestones: createBuiltinMilestones(birthYear, retirementAge, 90),
                 macro: {
                     ...defaultAssumptions.macro,
                     inflationRate: 0,
@@ -740,7 +729,8 @@ describe('Feedback Loop Prevention', () => {
 
             const assumptions: AssumptionsState = {
                 ...defaultAssumptions,
-                demographics: { birthYear, lifeExpectancy: 90, retirementAge },
+                demographics: {},
+                milestones: createBuiltinMilestones(birthYear, retirementAge, 90),
                 income: {
                     ...defaultAssumptions.income,
                     salaryGrowth: 0,
@@ -803,7 +793,8 @@ describe('Feedback Loop Prevention', () => {
 
             const assumptions: AssumptionsState = {
                 ...defaultAssumptions,
-                demographics: { birthYear, lifeExpectancy: 90, retirementAge },
+                demographics: {},
+                milestones: createBuiltinMilestones(birthYear, retirementAge, 90),
                 macro: {
                     ...defaultAssumptions.macro,
                     inflationRate: 0,
