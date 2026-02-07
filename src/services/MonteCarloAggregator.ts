@@ -133,10 +133,14 @@ export function analyzeScenario(
     // Find year of depletion (if any) - when deficit debt is created
     // This means expenses couldn't be covered by income + withdrawals
     // Note: Regular debt (mortgages, loans) doesn't count as failure
+    //
+    // BUG FIX: Use className check instead of instanceof because accounts
+    // may be plain objects (serialized) rather than class instances
     let yearOfDepletion: number | null = null;
     for (let i = 0; i < timeline.length; i++) {
         const hasDeficitDebt = timeline[i].accounts.some(
-            acc => acc instanceof DeficitDebtAccount
+            acc => acc instanceof DeficitDebtAccount ||
+                   (acc as any).className === 'DeficitDebtAccount'
         );
         if (hasDeficitDebt) {
             yearOfDepletion = timeline[i].year;

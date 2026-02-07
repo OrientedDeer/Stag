@@ -143,10 +143,10 @@ export default function AssumptionTab() {
                         <DropdownInput
                             label="Strategy"
                             value={state.investments.withdrawalStrategy}
-                            options={['None', 'Fixed Real', 'Percentage', 'Guyton Klinger']}
-                            onChange={(val) => dispatch({ type: 'UPDATE_INVESTMENTS', payload: { withdrawalStrategy: val as 'None' | 'Fixed Real' | 'Percentage' | 'Guyton Klinger' } })}
+                            options={['None', 'Needs Based', 'Fixed Real', 'Percentage', 'Guyton Klinger']}
+                            onChange={(val) => dispatch({ type: 'UPDATE_INVESTMENTS', payload: { withdrawalStrategy: val as 'None' | 'Needs Based' | 'Fixed Real' | 'Percentage' | 'Guyton Klinger' } })}
                         />
-                        {state.investments.withdrawalStrategy !== 'None' && (
+                        {state.investments.withdrawalStrategy !== 'None' && state.investments.withdrawalStrategy !== 'Needs Based' && (
                         <PercentageInput
                             label="Withdrawal Rate"
                             value={state.investments.withdrawalRate}
@@ -160,11 +160,14 @@ export default function AssumptionTab() {
                         {state.investments.withdrawalStrategy === 'None' && (
                             <p><span className="text-gray-300 font-medium">None:</span> Withdraw exactly what your listed expenses require. No target rate — accounts are drawn down as needed to cover your planned spending.</p>
                         )}
+                        {state.investments.withdrawalStrategy === 'Needs Based' && (
+                            <p><span className="text-gray-300 font-medium">Needs Based:</span> Withdraw exactly what your expenses require — no more, no less. Surplus income is invested; deficits are covered by withdrawals. Discretionary spending is never adjusted.</p>
+                        )}
                         {state.investments.withdrawalStrategy === 'Fixed Real' && (
-                            <p><span className="text-gray-300 font-medium">Fixed Real:</span> Withdraw a fixed percentage of your initial portfolio, adjusted for inflation each year. Discretionary expenses are trimmed to stay within this budget.</p>
+                            <p><span className="text-gray-300 font-medium">Fixed Real:</span> Withdraw a fixed percentage of your initial portfolio, adjusted for inflation each year. Discretionary expenses are adjusted (up or down) to match this budget.</p>
                         )}
                         {state.investments.withdrawalStrategy === 'Percentage' && (
-                            <p><span className="text-gray-300 font-medium">Percentage:</span> Withdraw a fixed percentage of your current portfolio each year. Discretionary expenses are trimmed to fit the budget, which naturally adjusts with market performance.</p>
+                            <p><span className="text-gray-300 font-medium">Percentage:</span> Withdraw a fixed percentage of your current portfolio each year. Discretionary expenses are adjusted (up or down) to fit the budget, which naturally varies with market performance.</p>
                         )}
                         {state.investments.withdrawalStrategy === 'Guyton Klinger' && (
                             <p><span className="text-gray-300 font-medium">Guyton-Klinger:</span> Dynamic strategy that adjusts spending based on portfolio performance. Cuts discretionary expenses in bad markets, increases them in good markets.</p>
@@ -267,6 +270,22 @@ export default function AssumptionTab() {
                             enabled={state.display?.showExperimentalFeatures ?? false}
                             setEnabled={(val) => dispatch({ type: "UPDATE_DISPLAY", payload: { showExperimentalFeatures: val } })}
                             tooltip="Show Testing tab and experimental calculators"
+                        />
+
+                        {state.display?.showExperimentalFeatures && (
+                            <ToggleInput
+                                label="V2 Simulation Engine"
+                                enabled={state.simulation?.useNewEngine ?? false}
+                                setEnabled={(val) => dispatch({ type: "UPDATE_SIMULATION", payload: { useNewEngine: val } })}
+                                tooltip="Use the new YearSolver-based simulation engine. Features: conversion-before-withdrawal ordering, algebraic gross-up, and iterative convergence."
+                            />
+                        )}
+
+                        <ToggleInput
+                            label="ACA-Aware Conversions"
+                            enabled={state.investments.acaAware ?? true}
+                            setEnabled={(val) => dispatch({ type: 'UPDATE_INVESTMENTS', payload: { acaAware: val } })}
+                            tooltip="Limit Roth conversions before age 65 to stay under the ACA subsidy cliff. Turn off to allow larger conversions if you have non-ACA health coverage."
                         />
 
                         <ToggleInput

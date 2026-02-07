@@ -178,10 +178,52 @@ export function processInflows(
         const iraLimit = getIRALimit(year, currentAge);
         let totalIRAContributionsThisYear = 0;
 
+        // Track which accounts had withdrawals this year
+        // Used to detect "withdrawal mode" and prevent wasteful round-trips
+        const accountWithdrawalAmounts = new Map<string, number>(
+            Object.entries(withdrawalState.withdrawalDetail)
+                .filter(([_, amount]) => amount > 0)
+                .map(([name, amount]) => {
+                    // Find the account ID by name
+                    const account = accounts.find(acc => acc.name === name);
+                    return [account?.id || '', amount] as const;
+                })
+                .filter(([id]) => id !== '') as [string, number][]
+        );
+
+        // Calculate total withdrawals from all investment accounts
+        const totalInvestmentWithdrawals = Array.from(accountWithdrawalAmounts.values())
+            .reduce((sum, amt) => sum + amt, 0);
+
         assumptions.priorities.forEach((priority) => {
             if (discretionaryCash <= 0 || !priority.accountId) return;
 
             const targetAccount = accounts.find(acc => acc.id === priority.accountId);
+
+            // Check if this account had withdrawals
+            const withdrawalAmount = accountWithdrawalAmounts.get(priority.accountId) || 0;
+
+            // Skip savings/investment bucket allocations if we're using a spending-based
+            // withdrawal strategy (Fixed Real, Percentage, Guyton Klinger) AND we had
+            // withdrawals this year. This prevents wasteful round-trips where:
+            // - We withdraw from Brokerage to fund Fixed Real target
+            // - Then deposit surplus into the same or different savings/investment bucket
+            // - Creating unnecessary capital gains taxes on the withdrawal
+            //
+            // Debt payments are still allowed (reduce liabilities, not create new investments)
+            // Deficit-driven withdrawals (Needs Based / None strategy) - surplus should go to buckets
+            const spendingStrategies = ['Fixed Real', 'Percentage', 'Guyton Klinger'];
+            const isSpendingStrategy = spendingStrategies.includes(assumptions.investments.withdrawalStrategy);
+
+            if (isSpendingStrategy && totalInvestmentWithdrawals > 0) {
+                const isSavingsOrInvestment = targetAccount instanceof InvestedAccount ||
+                                               targetAccount instanceof SavedAccount;
+                if (isSavingsOrInvestment) {
+                    const roundTripType = withdrawalAmount > 0 ? 'same-account' : 'cross-account';
+                    logs.push(`[SKIP] Bucket "${priority.name}": spending strategy active, avoiding ${roundTripType} round-trip`);
+                    return;
+                }
+            }
 
             let amountToContribute = 0;
 

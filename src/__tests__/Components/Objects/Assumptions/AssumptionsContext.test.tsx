@@ -12,8 +12,10 @@ import {
   getRetirementAge,
   getLifeExpectancy,
   getBirthYear,
+  getAgeFromMilestone,
   BUILTIN_MILESTONE_IDS,
 } from '../../../../components/Objects/Assumptions/AssumptionsContext';
+import { CustomMilestone } from '../../../../services/simulation/types';
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -676,6 +678,139 @@ describe('AssumptionsContext', () => {
       expect(state.investments.withdrawalRate).toBe(3.5);
       // Missing nested object gets default
       expect(state.investments.returnRates.ror).toBe(defaultAssumptions.investments.returnRates.ror);
+    });
+  });
+
+  describe('getBirthYear', () => {
+    it('should return year value when BIRTH milestone exists with YEAR condition', () => {
+      const milestones = [
+        {
+          id: BUILTIN_MILESTONE_IDS.BIRTH,
+          name: 'Birth',
+          conditions: [{ type: 'YEAR' as const, operator: '=' as const, value: 1985 }],
+        },
+      ];
+      expect(getBirthYear(milestones)).toBe(1985);
+    });
+
+    it('should return DEFAULT_BIRTH_YEAR when BIRTH milestone is missing', () => {
+      const milestones: CustomMilestone[] = [];
+      expect(getBirthYear(milestones)).toBe(1990); // DEFAULT_BIRTH_YEAR
+    });
+
+    it('should return DEFAULT_BIRTH_YEAR when BIRTH milestone has no YEAR condition', () => {
+      const milestones = [
+        {
+          id: BUILTIN_MILESTONE_IDS.BIRTH,
+          name: 'Birth',
+          conditions: [{ type: 'AGE' as const, operator: '>=' as const, value: 0 }], // Wrong condition type
+        },
+      ];
+      expect(getBirthYear(milestones)).toBe(1990); // DEFAULT_BIRTH_YEAR
+    });
+  });
+
+  describe('getRetirementAge', () => {
+    it('should return age value when RETIRE milestone exists with AGE condition', () => {
+      const milestones = [
+        {
+          id: BUILTIN_MILESTONE_IDS.RETIRE,
+          name: 'Retire',
+          conditions: [{ type: 'AGE' as const, operator: '>=' as const, value: 60 }],
+        },
+      ];
+      expect(getRetirementAge(milestones)).toBe(60);
+    });
+
+    it('should return DEFAULT_RETIREMENT_AGE when RETIRE milestone is missing', () => {
+      const milestones: CustomMilestone[] = [];
+      expect(getRetirementAge(milestones)).toBe(65); // DEFAULT_RETIREMENT_AGE
+    });
+
+    it('should return DEFAULT_RETIREMENT_AGE when RETIRE milestone has no AGE condition', () => {
+      const milestones = [
+        {
+          id: BUILTIN_MILESTONE_IDS.RETIRE,
+          name: 'Retire',
+          conditions: [{ type: 'YEAR' as const, operator: '=' as const, value: 2050 }], // Wrong condition type
+        },
+      ];
+      expect(getRetirementAge(milestones)).toBe(65); // DEFAULT_RETIREMENT_AGE
+    });
+  });
+
+  describe('getLifeExpectancy', () => {
+    it('should return age value when END_OF_PLAN milestone exists with AGE condition', () => {
+      const milestones = [
+        {
+          id: BUILTIN_MILESTONE_IDS.END_OF_PLAN,
+          name: 'End of Plan',
+          conditions: [{ type: 'AGE' as const, operator: '>=' as const, value: 95 }],
+        },
+      ];
+      expect(getLifeExpectancy(milestones)).toBe(95);
+    });
+
+    it('should return DEFAULT_LIFE_EXPECTANCY when END_OF_PLAN milestone is missing', () => {
+      const milestones: CustomMilestone[] = [];
+      expect(getLifeExpectancy(milestones)).toBe(90); // DEFAULT_LIFE_EXPECTANCY
+    });
+
+    it('should return DEFAULT_LIFE_EXPECTANCY when END_OF_PLAN milestone has no AGE condition', () => {
+      const milestones = [
+        {
+          id: BUILTIN_MILESTONE_IDS.END_OF_PLAN,
+          name: 'End of Plan',
+          conditions: [{ type: 'YEAR' as const, operator: '=' as const, value: 2080 }], // Wrong condition type
+        },
+      ];
+      expect(getLifeExpectancy(milestones)).toBe(90); // DEFAULT_LIFE_EXPECTANCY
+    });
+  });
+
+  describe('getAgeFromMilestone', () => {
+    it('should return age value when milestone has AGE condition', () => {
+      const milestone: CustomMilestone = {
+        id: 'test-milestone',
+        name: 'Test',
+        conditions: [{ type: 'AGE', operator: '>=', value: 55 }],
+      };
+      expect(getAgeFromMilestone(milestone, 99)).toBe(55);
+    });
+
+    it('should return defaultValue when milestone is undefined', () => {
+      expect(getAgeFromMilestone(undefined, 42)).toBe(42);
+    });
+
+    it('should return defaultValue when milestone has no AGE condition', () => {
+      const milestone: CustomMilestone = {
+        id: 'test-milestone',
+        name: 'Test',
+        conditions: [{ type: 'YEAR', operator: '=', value: 2030 }],
+      };
+      expect(getAgeFromMilestone(milestone, 77)).toBe(77);
+    });
+
+    it('should return 0 when AGE condition value is 0 (not default)', () => {
+      const milestone: CustomMilestone = {
+        id: 'birth-milestone',
+        name: 'Birth',
+        conditions: [{ type: 'AGE', operator: '>=', value: 0 }],
+      };
+      expect(getAgeFromMilestone(milestone, 99)).toBe(0);
+    });
+
+    it('should use first AGE condition when multiple conditions exist', () => {
+      const milestone: CustomMilestone = {
+        id: 'multi-condition',
+        name: 'Multi',
+        conditions: [
+          { type: 'YEAR', operator: '=', value: 2030 },
+          { type: 'AGE', operator: '>=', value: 60 },
+          { type: 'AGE', operator: '<=', value: 70 },
+        ],
+      };
+      expect(getAgeFromMilestone(milestone, 99)).toBe(60); // First AGE condition
     });
   });
 });

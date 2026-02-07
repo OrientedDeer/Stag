@@ -170,7 +170,13 @@ export function projectIncomes(
         }
 
         if (inc instanceof FutureSocialSecurityIncome) {
-            if (currentAge === inc.claimingAge && inc.calculatedPIA === 0) {
+            // Recalculate PIA every year until claiming age so it reflects growing earnings history.
+            // After claiming age (or if already activated), fall through to inc.increment() for COLA.
+            // Only enter this block if: (before claiming) OR (at claiming and not yet activated)
+            const shouldRecalculate = currentAge < inc.claimingAge ||
+                (currentAge === inc.claimingAge && inc.calculatedPIA === 0);
+
+            if (shouldRecalculate) {
                 try {
                     const inflationAdjusted = assumptions.macro.inflationAdjusted;
                     const earningsHistory = extractEarningsFromSimulation(
@@ -184,32 +190,57 @@ export function projectIncomes(
                     const wageGrowthRate = assumptions.macro.inflationRate / 100;
                     const aimeCalc = calculateAIME(earningsHistory, year, inc.claimingAge, birthYear, wageGrowthRate, inflationAdjusted);
 
-                    const endDate = new Date(Date.UTC(
-                        birthYear + getLifeExpectancy(assumptions.milestones),
-                        11, 31
-                    ));
-
                     const fundingPercent = (assumptions.income?.socialSecurityFundingPercent ?? 100) / 100;
                     const adjustedMonthlyBenefit = aimeCalc.adjustedBenefit * fundingPercent;
 
-                    logs.push(`Social Security benefits calculated: $${adjustedMonthlyBenefit.toFixed(2)}/month at age ${inc.claimingAge}`);
+                    logs.push(`Social Security PIA calculated: $${adjustedMonthlyBenefit.toFixed(2)}/month (claiming at age ${inc.claimingAge})`);
                     logs.push(`  AIME: $${aimeCalc.aime.toFixed(2)}, PIA: $${aimeCalc.pia.toFixed(2)}${fundingPercent < 1 ? `, Funding: ${fundingPercent * 100}%` : ''}`);
 
-                    return new FutureSocialSecurityIncome(
-                        inc.id,
-                        inc.name,
-                        inc.claimingAge,
-                        adjustedMonthlyBenefit,
-                        year,
-                        new Date(Date.UTC(year, 0, 1)),
-                        endDate
-                    );
+                    if (currentAge === inc.claimingAge) {
+                        // At claiming age - activate the income
+                        // Set both calculatedPIA (feeds amount) and projectedPIA
+                        const endDate = new Date(Date.UTC(
+                            birthYear + getLifeExpectancy(assumptions.milestones),
+                            11, 31
+                        ));
+                        return new FutureSocialSecurityIncome(
+                            inc.id,
+                            inc.name,
+                            inc.claimingAge,
+                            adjustedMonthlyBenefit,  // calculatedPIA - activates income (amount = PIA * 12)
+                            year,
+                            new Date(Date.UTC(year, 0, 1)),
+                            endDate,
+                            inc.startMilestoneId,
+                            inc.endMilestoneId,
+                            adjustedMonthlyBenefit   // projectedPIA - same as calculatedPIA at activation
+                        );
+                    } else {
+                        // Before claiming age - store projectedPIA for planning, but keep amount = 0
+                        // calculatedPIA = 0 so amount stays 0 (income not yet active)
+                        // projectedPIA = calculated value for Roth conversion planning
+                        const claimingYear = birthYear + inc.claimingAge;
+                        const futureStartDate = new Date(Date.UTC(claimingYear, 0, 1));
+                        return new FutureSocialSecurityIncome(
+                            inc.id,
+                            inc.name,
+                            inc.claimingAge,
+                            0,  // calculatedPIA = 0 (amount stays 0, income not active)
+                            year,  // calculationYear = current year when PIA was calculated
+                            futureStartDate,
+                            inc.end_date,
+                            inc.startMilestoneId,
+                            inc.endMilestoneId,
+                            adjustedMonthlyBenefit  // projectedPIA = calculated value for planning
+                        );
+                    }
                 } catch (error) {
                     console.error('Error calculating Social Security benefits:', error);
                     logs.push(`[WARN] Error calculating Social Security benefits: ${error}`);
                     return inc.increment(assumptions);
                 }
             }
+            // After claiming age (or already activated): falls through to inc.increment() below for COLA
         }
 
         // Pass year and age for WorkIncome to support TRACK_ANNUAL_MAX strategy

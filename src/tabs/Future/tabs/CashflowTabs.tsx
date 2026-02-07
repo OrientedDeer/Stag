@@ -1,16 +1,24 @@
-import React, { useState, useContext } from 'react';
-import { AssumptionsContext, getBirthYear } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import React, { useState, useContext, useCallback } from 'react';
+import { AssumptionsContext, getBirthYear, getRetirementAge } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { TaxContext } from '../../../components/Objects/Taxes/TaxContext';
 import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider';
-import { CashflowSankey } from '../../../components/Charts/CashflowSankey';
+import { CashflowSankey, SankeyImbalance } from '../../../components/Charts/CashflowSankey';
 import { calculateNetWorth, formatCompactCurrency } from './FutureUtils';
 
 export const CashflowTab = React.memo(({ simulationData }: { simulationData: any[] }) => {
     const { state: assumptions } = useContext(AssumptionsContext);
+    const { state: taxState } = useContext(TaxContext);
     const forceExact = assumptions.display?.useCompactCurrency === false;
     const formatCurrency = (value: number) => formatCompactCurrency(value || 0, { forceExact });
     const startYear = simulationData.length > 0 ? simulationData[0].year : new Date().getFullYear();
     const endYear = simulationData.length > 0 ? simulationData[simulationData.length - 1].year : startYear;
     const [selectedYear, setSelectedYear] = useState(startYear);
+    const [sankeyImbalances, setSankeyImbalances] = useState<SankeyImbalance[]>([]);
+
+    // Callback to receive Sankey balance check results
+    const handleBalanceCheck = useCallback((imbalances: SankeyImbalance[]) => {
+        setSankeyImbalances(imbalances);
+    }, []);
 	
     const selectedYearIndex = simulationData.findIndex(s => s.year === selectedYear);
     const yearData = simulationData[selectedYearIndex];
@@ -28,6 +36,14 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
     // Check for Guyton-Klinger guardrail trigger in selected year
     const gkTriggered = yearData.strategyAdjustment?.guardrailTriggered;
     const gkAdjustmentPercent = yearData.strategyAdjustment?.adjustmentPercent;
+
+    // ACA cliff checks
+    const acaAware = assumptions.investments.acaAware !== false;
+    const acaConversionLimited = yearData.taxOptimizationTarget?.limitingFactor === 'ACA_CLIFF';
+    const acaCliff = taxState.filingStatus === 'Married Filing Jointly' ? 125000 : 62500;
+    const nonConversionMAGI = yearData.cashflow.totalIncome - conversionAmount;
+    const retirementAge = getRetirementAge(assumptions.milestones);
+    const withdrawalExceedsACA = acaAware && age >= retirementAge && age < 65 && !acaConversionLimited && nonConversionMAGI > acaCliff;
 
     return (
          <div className="flex flex-col gap-4">
@@ -70,6 +86,59 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
                     </div>
                 </div>
             )}
+
+            {/* ACA Cliff Warning */}
+            {yearData.taxOptimizationTarget?.limitingFactor === 'ACA_CLIFF' && (() => {
+                const details = yearData.taxOptimizationTarget?.constraintDetails;
+                const hasBrokerageWithdrawal = Object.entries(yearData.cashflow.withdrawalDetail || {}).some(
+                    ([name, amt]) => (amt as number) >= 0.005 && name.toLowerCase().includes('brokerage')
+                );
+                const gainPct = hasBrokerageWithdrawal && details?.brokerageGainRatio != null && details.brokerageGainRatio >= 0.005
+                    ? Math.round(details.brokerageGainRatio * 100) : null;
+                return (
+                    <div className="p-3 bg-yellow-900/30 border border-yellow-700/50 rounded-lg text-sm">
+                        <div className="flex items-start gap-2">
+                            <span className="text-yellow-300 font-semibold">ACA Cliff:</span>
+                            <span className="text-gray-300">
+                                Roth conversions limited to keep MAGI under the ACA subsidy cliff
+                                ({formatCurrency(details?.acaCliffThreshold || 0)}).
+                                {gainPct != null && <> Brokerage is <span className="text-yellow-200">{gainPct}% gains</span> — withdrawals add capital gains to MAGI, eating into conversion room.</>}
+                                {' '}Disable <span className="text-yellow-200">ACA-Aware Conversions</span> in Advanced Settings if you have non-ACA health coverage.
+                            </span>
+                        </div>
+                    </div>
+                );
+            })()}
+
+            {/* ACA Cliff Warning — Withdrawals exceed cliff */}
+            {withdrawalExceedsACA && (
+                <div className="p-3 bg-yellow-900/30 border border-yellow-700/50 rounded-lg text-sm">
+                    <div className="flex items-start gap-2">
+                        <span className="text-yellow-300 font-semibold">ACA Cliff:</span>
+                        <span className="text-gray-300">
+                            Income from withdrawals alone ({formatCurrency(nonConversionMAGI)}) exceeds the ACA subsidy cliff
+                            ({formatCurrency(acaCliff)}). You may lose ACA premium subsidies regardless of Roth conversion strategy.
+                        </span>
+                    </div>
+                </div>
+            )}
+
+            {/* Sankey Imbalance Error (Development Debug Aid) */}
+            {sankeyImbalances.length > 0 && (
+                <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg text-sm">
+                    <div className="flex flex-col gap-1">
+                        <span className="text-red-400 font-semibold">⚠️ Sankey Imbalance Detected:</span>
+                        {sankeyImbalances.map((imbalance, idx) => (
+                            <span key={idx} className="text-gray-300 ml-4">
+                                <span className="text-red-300">{imbalance.nodeName}</span> has{' '}
+                                <span className="text-green-400">{formatCurrency(imbalance.inflows)}</span> inflows but{' '}
+                                <span className="text-amber-400">{formatCurrency(imbalance.outflows)}</span> outflows{' '}
+                                (difference: <span className="text-red-400">{formatCurrency(imbalance.difference)}</span>)
+                            </span>
+                        ))}
+                    </div>
+                </div>
+            )}
             </div>
 
             {/* 1. SANKEY CHART */}
@@ -85,7 +154,9 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
                     accounts={yearData.accounts}
                     withdrawals={yearData.cashflow.withdrawalDetail || {}}
                     rothConversion={yearData.rothConversion}
+                    livingExpenses={yearData.cashflow.livingExpenses}
                     height={400}
+                    onBalanceCheck={handleBalanceCheck}
                 />
             </div>
 

@@ -399,3 +399,144 @@ describe('Story 4: RMD Compliance', () => {
         }
     });
 });
+
+describe('Story 4b: RMD Compliance for Birth Year 1965+ (RMD at 75)', () => {
+    // Birth year 1965: RMD starts at age 75 under SECURE Act 2.0
+    const birthYear = 1965;
+    const rmdStartAge = 75;
+    const yearsToSimulate = 15;
+
+    const taxState: TaxState = {
+        filingStatus: 'Single',
+        stateResidency: 'DC',
+        deductionMethod: 'Standard',
+        fedOverride: null,
+        ficaOverride: null,
+        stateOverride: null,
+        year: 2035, // Current age is 70 (2035 - 1965 = 70)
+    };
+
+    const assumptions: AssumptionsState = {
+        ...defaultAssumptions,
+        demographics: {},
+        milestones: createBuiltinMilestones(birthYear, 65, 95),
+        income: {
+            ...defaultAssumptions.income,
+            salaryGrowth: 0,
+        },
+        macro: {
+            ...defaultAssumptions.macro,
+            inflationRate: 0,
+            inflationAdjusted: false,
+        },
+        investments: {
+            ...defaultAssumptions.investments,
+            returnRates: { ror: 7 },
+            autoRothConversions: false,
+        },
+        withdrawalStrategy: [
+            { id: 'ws-trad', name: 'Traditional 401k', accountId: 'acc-trad401k' },
+        ],
+    };
+
+    const traditional401k = new InvestedAccount(
+        'acc-trad401k',
+        'Traditional 401k',
+        1500000,
+        0,
+        30,
+        0.05,
+        'Traditional 401k',
+        true,
+        1.0,
+        500000
+    );
+
+    const futureSS = new FutureSocialSecurityIncome(
+        'inc-ss',
+        'Social Security',
+        70,
+        2500,
+        2034
+    );
+
+    const livingExpenses = new FoodExpense(
+        'exp-living',
+        'Living Expenses',
+        50000,
+        'Annually',
+        new Date('2035-01-01')
+    );
+
+    it('should NOT have RMD at ages 72-74 for birth year 1965', () => {
+        const simulation = runSimulation(
+            yearsToSimulate,
+            [traditional401k],
+            [futureSS],
+            [livingExpenses],
+            assumptions,
+            taxState
+        );
+
+        // Ages 72, 73, 74 should NOT have RMD for birth year 1965
+        for (const year of simulation) {
+            const age = getAge(year.year, birthYear);
+            if (age >= 72 && age < rmdStartAge) {
+                const hasRMDLog = hasLogMessage(year, 'rmd');
+                expect(
+                    hasRMDLog,
+                    `Birth year 1965: RMD should NOT exist at age ${age} (RMD starts at ${rmdStartAge})`
+                ).toBe(false);
+            }
+        }
+    });
+
+    it('should start RMD at age 75 for birth year 1965', () => {
+        const simulation = runSimulation(
+            yearsToSimulate,
+            [traditional401k],
+            [futureSS],
+            [livingExpenses],
+            assumptions,
+            taxState
+        );
+
+        const rmdYear = getYearByAge(simulation, rmdStartAge, birthYear);
+        expect(rmdYear, `Should have simulation year for age ${rmdStartAge}`).toBeDefined();
+
+        if (rmdYear) {
+            const hasRMDLog = hasLogMessage(rmdYear, 'rmd');
+            expect(
+                hasRMDLog,
+                `Birth year 1965: RMD should exist at age ${rmdStartAge}`
+            ).toBe(true);
+        }
+    });
+
+    it('should use correct divisor (24.6) at age 75', () => {
+        const simulation = runSimulation(
+            yearsToSimulate,
+            [traditional401k],
+            [futureSS],
+            [livingExpenses],
+            assumptions,
+            taxState
+        );
+
+        const preRMDYear = getYearByAge(simulation, rmdStartAge - 1, birthYear);
+        const rmdYear = getYearByAge(simulation, rmdStartAge, birthYear);
+
+        if (preRMDYear && rmdYear) {
+            const priorBalance = getAccountById(preRMDYear, 'acc-trad401k')?.amount || 0;
+            const traditionalWithdrawal = rmdYear.cashflow.withdrawalDetail['Traditional 401k'] || 0;
+
+            // IRS divisor at age 75 is 24.6
+            const expectedRMD = priorBalance / 24.6;
+
+            expect(
+                traditionalWithdrawal,
+                `Age 75 RMD: withdrawal ($${traditionalWithdrawal.toFixed(0)}) should be ≥ expected ($${expectedRMD.toFixed(0)})`
+            ).toBeGreaterThanOrEqual(expectedRMD * 0.9);
+        }
+    });
+});

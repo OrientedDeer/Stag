@@ -16,6 +16,10 @@ function makeWithdrawalState(): WithdrawalState {
         withdrawalDetail: {},
         withdrawalPenalties: 0,
         totalGrossIncome: 0,
+        traditionalWithdrawals: 0,
+        longTermCapitalGains: 0,
+        shortTermCapitalGains: 0,
+        stateCapitalGainsTax: 0,
     };
 }
 

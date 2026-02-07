@@ -6,6 +6,48 @@ import { AnyIncome } from '../Income/models';
 import { AnyExpense } from '../Expense/models';
 import { AssumptionsState, getLifeExpectancy, getBirthYear } from './AssumptionsContext';
 import { TaxState } from '../Taxes/TaxContext';
+import { BaselineProjections } from '../../../services/simulation/types';
+import { getRMDStartAge } from '../../../data/RMDData';
+
+/**
+ * Extract baseline projections from a simulation run WITHOUT Roth conversions.
+ * These projections capture the actual simulated values at RMD age, including:
+ * - Traditional balance with all contributions, growth, and withdrawals
+ * - SS income with COLA applied
+ * - Pension income with COLA applied
+ */
+export function extractBaselineProjections(
+    simulation: SimulationYear[],
+    birthYear: number
+): BaselineProjections | null {
+    const rmdStartAge = getRMDStartAge(birthYear);
+    const rmdYear = birthYear + rmdStartAge;
+
+    const rmdYearData = simulation.find(y => y.year === rmdYear);
+    if (!rmdYearData) {
+        // RMD year is beyond simulation range
+        return null;
+    }
+
+    // Sum Traditional balances from all Traditional accounts
+    const traditionalBalanceAtRMD = rmdYearData.accounts
+        .filter(acc => acc instanceof InvestedAccount &&
+            (acc.taxType === 'Traditional 401k' || acc.taxType === 'Traditional IRA'))
+        .reduce((sum, acc) => sum + (acc as InvestedAccount).amount, 0);
+
+    // Get SS at RMD year (already has COLA applied by simulation)
+    const ssAtRMD = TaxService.getSocialSecurityBenefits(rmdYearData.incomes, rmdYear);
+
+    // Get pension at RMD year (already has COLA applied)
+    const pensionAtRMD = rmdYearData.incomes
+        .filter(inc =>
+            (inc as any).className === 'FERSPensionIncome' ||
+            (inc as any).className === 'CSRSPensionIncome' ||
+            (inc as any).className === 'PensionIncome')
+        .reduce((sum, inc) => sum + (inc.getAnnualAmount?.(rmdYear) ?? 0), 0);
+
+    return { traditionalBalanceAtRMD, ssAtRMD, pensionAtRMD, rmdYear };
+}
 
 export const runSimulation = (
     yearsToRun: number = 30,
@@ -15,7 +57,8 @@ export const runSimulation = (
     assumptions: AssumptionsState,
     taxState: TaxState,
     yearlyReturns?: number[],
-    referenceDate?: Date
+    referenceDate?: Date,
+    baselineProjections?: BaselineProjections
 ): SimulationYear[] => {
         
     // Calculate start year and current age from birth year
@@ -50,7 +93,7 @@ export const runSimulation = (
         inc instanceof WorkIncome ? sum + inc.getProratedAnnual(inc.insurance, startYear) : sum, 0
     );
 
-    const currentFed = TaxService.calculateFederalTax(taxState, incomes, expenses, startYear, assumptions);
+    const currentFed = TaxService.calculateFederalTaxFromIncomes(taxState, incomes, expenses, 0, startYear, assumptions);
     const currentState = TaxService.calculateStateTax(taxState, incomes, expenses, startYear, assumptions);
     const currentFica = TaxService.calculateFicaTax(taxState, incomes, startYear, assumptions);
     const currentTotalTax = currentFed + currentState + currentFica;
@@ -68,6 +111,7 @@ export const runSimulation = (
         cashflow: {
             totalIncome: currentGross,
             totalExpense: currentLivingExpenses + currentTotalTax + currentPreTax + currentPostTax,
+            livingExpenses: currentLivingExpenses,
             discretionary: currentDiscretionary,
             // In Year 0, we treat the input as "Static", so invested is effectively 0 or the sum of payroll deductions
             investedUser: currentPreTax + currentPostTax - currentInsurance,
@@ -86,7 +130,9 @@ export const runSimulation = (
             preTax: currentPreTax - currentInsurance,
             insurance: currentInsurance,
             postTax: currentPostTax,
-            capitalGains: 0
+            capitalGains: 0,
+            withdrawalOrdinaryTax: 0,
+            niit: 0
         },
         logs: ["Baseline Year 0 initialized from current context data."]
     };
@@ -170,7 +216,8 @@ export const runSimulation = (
             timeline,  // Pass previous simulation history for SS calculation
             returnOverride,
             previousActiveMilestones,
-            milestoneReachYears
+            milestoneReachYears,
+            baselineProjections
         );
 
         timeline.push(result);
@@ -189,4 +236,61 @@ export const runSimulation = (
     }
 
     return timeline;
+};
+
+/**
+ * Run simulation with two-pass optimization for accurate Roth conversion decisions.
+ *
+ * Pass 1: Run WITHOUT Roth conversions to get accurate baseline projections
+ *         (Traditional balance, SS, pension at RMD age with all contributions/COLA)
+ *
+ * Pass 2: Run WITH conversions, using Pass 1 projections to make informed decisions
+ *
+ * This produces more accurate conversion recommendations because it uses actual
+ * simulated values instead of naive projections that miss future contributions,
+ * COLA adjustments, and pre-RMD withdrawals.
+ */
+export const runSimulationWithOptimization = (
+    yearsToRun: number = 30,
+    accounts: AnyAccount[],
+    incomes: AnyIncome[],
+    expenses: AnyExpense[],
+    assumptions: AssumptionsState,
+    taxState: TaxState,
+    yearlyReturns?: number[],
+    referenceDate?: Date
+): SimulationYear[] => {
+    // Only do two-pass if tax optimization is enabled
+    if (!assumptions.investments.taxOptimizationEnabled) {
+        return runSimulation(
+            yearsToRun, accounts, incomes, expenses, assumptions, taxState,
+            yearlyReturns, referenceDate
+        );
+    }
+
+    const birthYear = getBirthYear(assumptions.milestones);
+
+    // PASS 1: Run WITHOUT Roth conversions to get baseline projections
+    const baselineAssumptions: AssumptionsState = {
+        ...assumptions,
+        investments: {
+            ...assumptions.investments,
+            taxOptimizationEnabled: false,  // Disable conversions for baseline
+            autoRothConversions: false,
+        }
+    };
+
+    const baselineSimulation = runSimulation(
+        yearsToRun, accounts, incomes, expenses, baselineAssumptions, taxState,
+        yearlyReturns, referenceDate
+    );
+
+    // EXTRACT baseline projections from Pass 1
+    const baselineProjections = extractBaselineProjections(baselineSimulation, birthYear);
+
+    // PASS 2: Run WITH conversions, using baseline projections
+    return runSimulation(
+        yearsToRun, accounts, incomes, expenses, assumptions, taxState,
+        yearlyReturns, referenceDate, baselineProjections ?? undefined
+    );
 };

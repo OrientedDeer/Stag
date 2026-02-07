@@ -5,6 +5,26 @@ export interface TaxBracket {
   rate: number;      // Decimal (0.10 for 10%)
 }
 
+// State-specific Social Security treatment
+export type SocialSecurityTreatment = 'exempt' | 'taxable' | 'income-based';
+
+// State-specific long-term capital gains treatment
+export type LTCGTreatment = 'ordinary' | 'preferential' | 'exempt';
+
+// Retirement income exemption configuration
+export interface RetirementIncomeExemption {
+  amount: number;
+  appliesTo: ('pension' | '401k' | 'ira' | 'all')[];
+  ageRequirement?: number;
+  perPerson: boolean;
+}
+
+// Social Security exemption phaseout thresholds
+export interface SSExemptionPhaseout {
+  start: number;
+  end: number;
+}
+
 export interface TaxParameters {
   standardDeduction: number;
   brackets: TaxBracket[];
@@ -13,6 +33,16 @@ export interface TaxParameters {
   medicareTaxRate: number;
   // Long-term capital gains brackets (based on taxable income thresholds)
   capitalGainsBrackets?: TaxBracket[];
+
+  // State-specific fields (all optional, for state use):
+  socialSecurityTreatment?: SocialSecurityTreatment;
+  ssExemptionThreshold?: number;
+  ssExemptionPhaseout?: SSExemptionPhaseout;
+  ltcgTreatment?: LTCGTreatment;
+  retirementIncomeExemption?: RetirementIncomeExemption;
+  seniorDeduction?: number;
+  seniorAge?: number;
+  seniorDeductionPerPerson?: boolean;  // If true, MFJ gets double the deduction (assumes both spouses same age)
 }
 
 export const max_year = 2026;
@@ -237,7 +267,8 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt'
                 },
                 'Married Filing Jointly': {
                     standardDeduction: 11080,
@@ -254,7 +285,8 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt'
                 },
                 'Married Filing Separately': {
                     standardDeduction: 5540,
@@ -271,7 +303,8 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt'
                 }
             },
             2026: {
@@ -290,7 +323,8 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt'
                 },
                 'Married Filing Jointly': {
                     standardDeduction: 11_338,
@@ -307,7 +341,8 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt'
                 },
                 'Married Filing Separately': {
                     standardDeduction: 5669,
@@ -324,7 +359,8 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt'
                 }
             }
         },
@@ -343,7 +379,8 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt'
                 },
                 'Married Filing Jointly': {
                     standardDeduction: 29200,
@@ -358,7 +395,8 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt'
                 },
                 'Married Filing Separately': {
                     standardDeduction: 14600,
@@ -373,7 +411,8 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt'
                 },
             },
             2025: {
@@ -390,7 +429,8 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt'
                 },
                 'Married Filing Jointly': {
                     standardDeduction: 30000,
@@ -405,7 +445,8 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt'
                 },
                 'Married Filing Separately': {
                     standardDeduction: 15000,
@@ -420,7 +461,8 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt'
                 },
             },
             2026: {
@@ -437,7 +479,8 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt'
                 },
                 'Married Filing Jointly': {
                     standardDeduction: 30000,
@@ -452,7 +495,8 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt'
                 },
                 'Married Filing Separately': {
                     standardDeduction: 15000,
@@ -467,7 +511,8 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt'
                 },
             }
         },
@@ -570,7 +615,8 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt'
                 },
                 'Married Filing Jointly': {
                     standardDeduction: 25500,
@@ -579,7 +625,8 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt'
                 },
                 'Married Filing Separately': {
                     standardDeduction: 12750,
@@ -588,7 +635,8 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt'
                 },
             },
             2025: {
@@ -599,7 +647,8 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt'
                 },
                 'Married Filing Jointly': {
                     standardDeduction: 25500,
@@ -608,7 +657,8 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt'
                 },
                 'Married Filing Separately': {
                     standardDeduction: 12750,
@@ -617,7 +667,8 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt'
                 },
             },
             2026: {
@@ -628,7 +679,8 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt'
                 },
                 'Married Filing Jointly': {
                     standardDeduction: 25500,
@@ -637,7 +689,8 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt'
                 },
                 'Married Filing Separately': {
                     standardDeduction: 12750,
@@ -646,12 +699,14 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt'
                 },
             }
         },
         "Virginia": {
             // VA has 4 brackets: 2%, 3%, 5%, 5.75%
+            // VA also has a $12k senior deduction at age 65+
             2024: {
                 Single: {
                     standardDeduction: 8500,
@@ -663,7 +718,11 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt',
+                    seniorDeduction: 12000,
+                    seniorAge: 65,
+                    seniorDeductionPerPerson: true
                 },
                 'Married Filing Jointly': {
                     standardDeduction: 17000,
@@ -675,7 +734,11 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt',
+                    seniorDeduction: 12000,
+                    seniorAge: 65,
+                    seniorDeductionPerPerson: true  // $24k total for MFJ (both spouses 65+)
                 },
                 'Married Filing Separately': {
                     standardDeduction: 8500,
@@ -687,7 +750,11 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt',
+                    seniorDeduction: 12000,
+                    seniorAge: 65,
+                    seniorDeductionPerPerson: true
                 },
             },
             2025: {
@@ -701,7 +768,11 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt',
+                    seniorDeduction: 12000,
+                    seniorAge: 65,
+                    seniorDeductionPerPerson: true
                 },
                 'Married Filing Jointly': {
                     standardDeduction: 17500,
@@ -713,7 +784,11 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt',
+                    seniorDeduction: 12000,
+                    seniorAge: 65,
+                    seniorDeductionPerPerson: true  // $24k total for MFJ (both spouses 65+)
                 },
                 'Married Filing Separately': {
                     standardDeduction: 8750,
@@ -725,7 +800,11 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt',
+                    seniorDeduction: 12000,
+                    seniorAge: 65,
+                    seniorDeductionPerPerson: true
                 },
             },
             2026: {
@@ -739,7 +818,11 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt',
+                    seniorDeduction: 12000,
+                    seniorAge: 65,
+                    seniorDeductionPerPerson: true
                 },
                 'Married Filing Jointly': {
                     standardDeduction: 17500,
@@ -751,7 +834,11 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt',
+                    seniorDeduction: 12000,
+                    seniorAge: 65,
+                    seniorDeductionPerPerson: true  // $24k total for MFJ (both spouses 65+)
                 },
                 'Married Filing Separately': {
                     standardDeduction: 8750,
@@ -763,7 +850,11 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
-                    medicareTaxRate: 0.0
+                    medicareTaxRate: 0.0,
+                    socialSecurityTreatment: 'exempt',
+                    seniorDeduction: 12000,
+                    seniorAge: 65,
+                    seniorDeductionPerPerson: true
                 },
             }
         }

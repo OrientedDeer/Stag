@@ -31,6 +31,8 @@ export interface Income {
 
 // 2. Base Abstract Class
 export abstract class BaseIncome implements Income {
+  /** Discriminator for type checking that survives minification and serialization */
+  public className: string = '';
   constructor(
     public id: string,
     public name: string,
@@ -111,10 +113,10 @@ export class WorkIncome extends BaseIncome {
     endMilestoneId?: string,
   ) {
     super(id, name, amount, frequency, earned_income, startDate, end_date, 0.03, startMilestoneId, endMilestoneId);
+    this.className = 'WorkIncome';
   }
   increment (assumptions: AssumptionsState, year?: number, age?: number): WorkIncome {
     const salaryGrowth = assumptions.income.salaryGrowth / 100;
-    const healthcareInflation = assumptions.macro.healthcareInflation / 100;
     const generalInflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
 
     // 1. Grow Salary
@@ -139,8 +141,9 @@ export class WorkIncome extends BaseIncome {
         // Cap contributions at IRS annual limits
         if (year !== undefined && age !== undefined) {
           // Get annual limits (includes catch-up for age 50+/55+)
-          const limit401k = get401kLimit(year, age);
-          const limitHSA = getHSALimit(year, age, 'individual'); // Default to individual coverage
+          const inflationAdjusted = assumptions.macro.inflationAdjusted;
+          const limit401k = get401kLimit(year, age, inflationAdjusted);
+          const limitHSA = getHSALimit(year, age, 'individual', inflationAdjusted);
 
           // Combined 401k limit (pre-tax + Roth share same limit)
           // Grow current values first, then cap at limit
@@ -180,7 +183,7 @@ export class WorkIncome extends BaseIncome {
       newPreTax = 0;
       newRoth = 0;
     } else if ((this.autoMax401k === 'traditional' || this.autoMax401k === 'roth') && year !== undefined && age !== undefined) {
-      const limit401k = get401kLimit(year, age);
+      const limit401k = get401kLimit(year, age, assumptions.macro.inflationAdjusted);
       if (this.autoMax401k === 'traditional') {
         newPreTax = limit401k;
         newRoth = 0;
@@ -191,8 +194,8 @@ export class WorkIncome extends BaseIncome {
     }
 
     // 4. Grow Insurance Cost
-    // Health insurance usually outpaces regular inflation
-    const newInsurance = this.insurance * (1 + healthcareInflation + generalInflation);
+    // Insurance grows with salary (it's a payroll deduction)
+    const newInsurance = this.insurance * (1 + salaryGrowth + generalInflation);
 
     // ESPP contribution grows with salary if percentage-based
     let newESPPAmount = this.esppContributionAmount;
@@ -236,15 +239,16 @@ export class WorkIncome extends BaseIncome {
 
   /**
    * Get the effective 401k contributions for a given year/age, applying autoMax401k if enabled
+   * @param inflationAdjusted - If true, projects limits for future years with inflation. Defaults to true.
    */
-  getEffective401k(year: number, age: number): { preTax: number; roth: number } {
+  getEffective401k(year: number, age: number, inflationAdjusted: boolean = true): { preTax: number; roth: number } {
     if (this.autoMax401k === 'disabled') {
       return { preTax: 0, roth: 0 };
     }
     if (this.autoMax401k === 'custom') {
       return { preTax: this.preTax401k, roth: this.roth401k };
     }
-    const limit401k = get401kLimit(year, age);
+    const limit401k = get401kLimit(year, age, inflationAdjusted);
     if (this.autoMax401k === 'traditional') {
       return { preTax: limit401k, roth: 0 };
     } else {
@@ -286,6 +290,7 @@ export class SocialSecurityIncome extends BaseIncome {
     endMilestoneId?: string,
   ) {
     super(id, name, amount, frequency, "No", startDate, end_date, 0.03, startMilestoneId, endMilestoneId);
+    this.className = 'SocialSecurityIncome';
   }
 
   /**
@@ -360,6 +365,7 @@ export class PassiveIncome extends BaseIncome {
     endMilestoneId?: string,
   ) {
     super(id, name, amount, frequency, earned_income, startDate, end_date, 0.03, startMilestoneId, endMilestoneId);
+    this.className = 'PassiveIncome';
   }
   increment (assumptions: AssumptionsState): PassiveIncome {
     let growthRate = 0;
@@ -418,6 +424,7 @@ export class WindfallIncome extends BaseIncome {
     endMilestoneId?: string,
   ) {
     super(id, name, amount, frequency, earned_income, startDate, end_date, 0.03, startMilestoneId, endMilestoneId);
+    this.className = 'WindfallIncome';
   }
   increment (assumptions: AssumptionsState): WindfallIncome {
     const inflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
@@ -462,6 +469,7 @@ export class CurrentSocialSecurityIncome extends BaseIncome {
   ) {
     // Social Security is never considered "earned income" for tax purposes
     super(id, name, amount, frequency, "No", startDate, end_date, 0.03, startMilestoneId, endMilestoneId);
+    this.className = 'CurrentSocialSecurityIncome';
   }
 
   increment(assumptions: AssumptionsState): CurrentSocialSecurityIncome {
@@ -502,16 +510,18 @@ export class FutureSocialSecurityIncome extends BaseIncome {
     id: string,
     name: string,
     public claimingAge: number,
-    public calculatedPIA: number = 0,  // Monthly benefit, set by simulation
+    public calculatedPIA: number = 0,  // Monthly benefit at claiming (feeds amount)
     public calculationYear: number = 0,  // Year when PIA was calculated
     startDate?: Date,
     end_date?: Date,
     startMilestoneId?: string,
     endMilestoneId?: string,
+    public projectedPIA: number = 0,  // Monthly benefit for planning (does NOT feed amount)
   ) {
     // Amount is annual (calculatedPIA × 12)
     // Social Security is never considered "earned income" for tax purposes
     super(id, name, calculatedPIA * 12, 'Annually', "No", startDate, end_date, 0.03, startMilestoneId, endMilestoneId);
+    this.className = 'FutureSocialSecurityIncome';
   }
 
   increment(assumptions: AssumptionsState): FutureSocialSecurityIncome {
@@ -527,7 +537,8 @@ export class FutureSocialSecurityIncome extends BaseIncome {
       this.startDate,
       this.end_date,
       this.startMilestoneId,
-      this.endMilestoneId
+      this.endMilestoneId,
+      this.projectedPIA * (1 + cola)  // Keep projectedPIA in sync with COLA
     );
   }
 }
@@ -565,6 +576,7 @@ export class FERSPensionIncome extends BaseIncome {
   ) {
     // Amount is the calculated annual benefit
     super(id, name, calculatedBenefit, 'Annually', "No", startDate, end_date, 0.03, startMilestoneId, endMilestoneId);
+    this.className = 'FERSPensionIncome';
   }
 
   /**
@@ -678,6 +690,7 @@ export class CSRSPensionIncome extends BaseIncome {
   ) {
     // Amount is the calculated annual benefit
     super(id, name, calculatedBenefit, 'Annually', "No", startDate, end_date, 0.03, startMilestoneId, endMilestoneId);
+    this.className = 'CSRSPensionIncome';
   }
 
   /**
@@ -903,7 +916,8 @@ export function reconstituteIncome(data: unknown): AnyIncome | null {
             return new FutureSocialSecurityIncome(
                 id, name, Number(data.claimingAge) || 67,
                 Number(data.calculatedPIA) || 0, Number(data.calculationYear) || 0,
-                startDate, endDate, startMilestoneId, endMilestoneId
+                startDate, endDate, startMilestoneId, endMilestoneId,
+                Number(data.projectedPIA) || 0  // Preserve projectedPIA across save/reload
             );
         case 'FERSPensionIncome':
             return new FERSPensionIncome(

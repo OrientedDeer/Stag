@@ -48,7 +48,7 @@ export const createBuiltinMilestones = (
 ];
 
 // Helper: Get the AGE value from a milestone's first AGE condition
-const getAgeFromMilestone = (milestone: CustomMilestone | undefined, defaultValue: number): number => {
+export const getAgeFromMilestone = (milestone: CustomMilestone | undefined, defaultValue: number): number => {
     if (!milestone) return defaultValue;
     const ageCondition = milestone.conditions.find(c => c.type === 'AGE');
     return ageCondition?.value ?? defaultValue;
@@ -90,7 +90,7 @@ export interface WithdrawalBucket {
   id: string;
   name: string;      // e.g. "Emergency Fund", "Brokerage"
   accountId: string; // The account to drain
-  // No "Cap" needed usually - we just drain until empty, then move to next.
+  maxAmount?: number; // Optional cap on annual withdrawal from this bucket (e.g., to stay in a tax bracket)
 }
 
 export interface AssumptionsState {
@@ -113,7 +113,7 @@ export interface AssumptionsState {
     returnRates: {
       ror: number;   // e.g., 10.0
     };
-    withdrawalStrategy: 'None' | 'Fixed Real' | 'Percentage' | 'Guyton Klinger';
+    withdrawalStrategy: 'None' | 'Needs Based' | 'Fixed Real' | 'Percentage' | 'Guyton Klinger';
     withdrawalRate: number; // e.g., 4.0
     // Guyton-Klinger guardrail settings
     gkUpperGuardrail: number;     // Default 1.2 (20% above target triggers cut)
@@ -125,12 +125,16 @@ export interface AssumptionsState {
     rothConversionTargetBracket: number; // Max effective rate for conversions (e.g., 0.22)
     // Tax Optimization Mode
     taxOptimizationEnabled: boolean; // When enabled, uses smart withdrawal order and auto-calculated Roth conversions
+    acaAware: boolean; // When true, limit Roth conversions to stay under ACA subsidy cliff (pre-65)
     };
   demographics: {
     priorEarnings?: EarningsRecord[];  // SSA earnings history imported from XML
     priorYearMode?: boolean;  // If true, simulation starts from last year using verified data
     // NOTE: birthYear, retirementAge, and lifeExpectancy are derived from milestones
     // Use getBirthYear(), getRetirementAge(), getLifeExpectancy() helpers
+  };
+  simulation: {
+    useNewEngine: boolean;  // When true, uses the new YearSolver-based simulation engine (Phase 2R)
   };
   display: {
     useCompactCurrency: boolean; // Show $1.2M instead of $1,200,000
@@ -168,10 +172,14 @@ export const defaultAssumptions: AssumptionsState = {
     autoRothConversions: false, // Auto-convert Traditional to Roth in retirement
     rothConversionTargetBracket: 0.22, // Convert up to 22% effective rate
     taxOptimizationEnabled: false, // Disabled by default - use manual withdrawal order
+    acaAware: true, // Limit Roth conversions to stay under ACA subsidy cliff (pre-65)
   },
   demographics: {
     priorYearMode: false, // Default to current year mode
     // birthYear, retirementAge, lifeExpectancy are now in milestones
+  },
+  simulation: {
+    useNewEngine: false, // Default to old engine; set true to use new YearSolver-based engine
   },
   display: {
     useCompactCurrency: true,
@@ -243,6 +251,7 @@ function migrateAssumptions(saved: unknown, defaults: AssumptionsState): Assumpt
       ),
     },
     demographics: mergeSection(data.demographics, defaults.demographics),
+    simulation: mergeSection(data.simulation, defaults.simulation),
     display: mergeSection(data.display, defaults.display),
     // Arrays: use saved if it's a valid array, otherwise use default
     priorities: Array.isArray(data.priorities) ? data.priorities as PriorityBucket[] : defaults.priorities,
@@ -349,6 +358,7 @@ type Action =
   | { type: 'UPDATE_INVESTMENTS'; payload: Partial<AssumptionsState['investments']> }
   | { type: 'UPDATE_INVESTMENT_RATES'; payload: Partial<AssumptionsState['investments']['returnRates']> }
   | { type: 'UPDATE_DEMOGRAPHICS'; payload: Partial<AssumptionsState['demographics']> }
+  | { type: 'UPDATE_SIMULATION'; payload: Partial<AssumptionsState['simulation']> }
   | { type: 'UPDATE_DISPLAY'; payload: Partial<AssumptionsState['display']> }
   | { type: 'RESET_DEFAULTS' }
   | { type: 'SET_BULK_DATA'; payload: AssumptionsState }
@@ -387,6 +397,8 @@ const assumptionsReducer = (state: AssumptionsState, action: Action): Assumption
       };
     case 'UPDATE_DEMOGRAPHICS':
       return { ...state, demographics: { ...state.demographics, ...action.payload } };
+    case 'UPDATE_SIMULATION':
+      return { ...state, simulation: { ...state.simulation, ...action.payload } };
     case 'UPDATE_DISPLAY':
       return { ...state, display: { ...state.display, ...action.payload } };
     case 'RESET_DEFAULTS':

@@ -303,9 +303,45 @@ describe('Withdrawal Strategies', () => {
       expect(result.amount).toBe(100000);
     });
 
-    it('should handle zero portfolio (edge case)', () => {
+    it('should handle zero portfolio for Percentage (no NaN/Infinity)', () => {
       const result = calculatePercentageWithdrawal(0, 4);
       expect(result.amount).toBe(0);
+      expect(result.currentWithdrawalRate).toBe(4); // Percentage hardcodes this
+      expect(Number.isFinite(result.currentWithdrawalRate)).toBe(true);
+    });
+
+    it('should handle zero portfolio for Fixed Real (no NaN/Infinity)', () => {
+      const result = calculateFixedRealWithdrawal(0, 4, 3, 0, 0);
+      expect(result.amount).toBe(0);
+      expect(result.currentWithdrawalRate).toBe(0);
+      expect(Number.isFinite(result.currentWithdrawalRate)).toBe(true);
+    });
+
+    it('should handle zero portfolio for Guyton-Klinger (no NaN/Infinity)', () => {
+      const result = calculateGuytonKlingerWithdrawal({
+        currentPortfolio: 0,
+        baseWithdrawal: 0,
+        withdrawalRate: 4,
+        inflationRate: 3,
+        isFirstYear: true,
+      });
+      expect(result.amount).toBe(0);
+      expect(result.currentWithdrawalRate).toBe(4); // First year uses target rate
+      expect(Number.isFinite(result.currentWithdrawalRate)).toBe(true);
+    });
+
+    it('should handle zero portfolio mid-retirement for GK (no NaN/Infinity)', () => {
+      const result = calculateGuytonKlingerWithdrawal({
+        currentPortfolio: 0,
+        baseWithdrawal: 40000, // Had withdrawals before
+        withdrawalRate: 4,
+        inflationRate: 3,
+        isFirstYear: false,
+      });
+      // Portfolio depleted, but still calculates without NaN
+      expect(result.currentWithdrawalRate).toBe(0);
+      expect(Number.isFinite(result.currentWithdrawalRate)).toBe(true);
+      expect(Number.isFinite(result.amount)).toBe(true);
     });
 
     it('should handle many years of inflation', () => {

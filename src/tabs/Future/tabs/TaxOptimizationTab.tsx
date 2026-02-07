@@ -269,6 +269,11 @@ const RothAnalysisPanel = ({
     projections: TaxProjection[];
     forceExact: boolean;
 }) => {
+    // Guard: if milestones not loaded yet, don't render
+    if (!assumptions?.milestones) {
+        return null;
+    }
+
     const [mode, setMode] = useState<'contribution' | 'conversion'>('contribution');
     const startYear = new Date().getFullYear();
     const startAge = startYear - getBirthYear(assumptions.milestones);
@@ -328,12 +333,12 @@ const RothAnalysisPanel = ({
         }));
     }, [projections]);
 
-    // Get taxable income and search max for selected year
-    const { selectedYear, taxableIncome, searchMax } = useMemo(() => {
+    // Get taxable income, SS benefits, LTCG, and search max for selected year
+    const { selectedYear, taxableIncome, socialSecurityBenefits, ltcgIncome, searchMax } = useMemo(() => {
         const yearNum = startYear + (selectedAge - startAge);
         const simYear = simulation.find(s => s.year === yearNum);
         if (!simYear) {
-            return { selectedYear: yearNum, taxableIncome: 0, searchMax: 10000 };
+            return { selectedYear: yearNum, taxableIncome: 0, socialSecurityBenefits: 0, ltcgIncome: 0, searchMax: 10000 };
         }
         const grossIncome = simYear.cashflow.totalIncome;
         const preTaxDeductions = (simYear.taxDetails.preTax || 0);
@@ -345,9 +350,17 @@ const RothAnalysisPanel = ({
             )
             .reduce((sum, acc) => sum + acc.amount, 0);
         const disposableIncome = Math.max(0, grossIncome - simYear.cashflow.totalExpense);
+        // Extract Social Security benefits from incomes
+        const ssBenefits = simYear.incomes
+            .filter(inc => (inc as any).className === 'SocialSecurityIncome')
+            .reduce((sum, inc) => sum + (inc.getAnnualAmount?.() ?? 0), 0);
+        // LTCG is typically from capital gains tax details or 0 if not available
+        const ltcg = simYear.taxDetails.capitalGains || 0;
         return {
             selectedYear: yearNum,
             taxableIncome: Math.max(0, grossIncome - preTaxDeductions),
+            socialSecurityBenefits: ssBenefits,
+            ltcgIncome: ltcg,
             searchMax: disposableIncome + traditionalBalance
         };
     }, [selectedAge, startAge, startYear, simulation]);
@@ -355,9 +368,12 @@ const RothAnalysisPanel = ({
     // Compute optimal amount independently (doesn't depend on user's chosen amount)
     const optimal = useMemo(() => {
         return findOptimalRothAmount(
-            mode, displayGrowthYears, taxableIncome, taxState, selectedYear, assumptions, simulation, searchMax
+            mode, displayGrowthYears, taxableIncome,
+            socialSecurityBenefits, ltcgIncome,
+            taxState, selectedYear, assumptions, simulation, searchMax,
+            null  // stateParams - TODO: add state tax support
         );
-    }, [mode, displayGrowthYears, taxableIncome, taxState, selectedYear, assumptions, simulation, searchMax]);
+    }, [mode, displayGrowthYears, taxableIncome, socialSecurityBenefits, ltcgIncome, taxState, selectedYear, assumptions, simulation, searchMax]);
 
     // Derive display amount: auto tracks optimal, manual uses user's value
     const displayAmount = autoAmount && optimal.optimalAmount
@@ -373,13 +389,16 @@ const RothAnalysisPanel = ({
             mode,
             displayGrowthYears,
             taxableIncome,
+            socialSecurityBenefits,
+            ltcgIncome,
             taxState,
             selectedYear,
             assumptions,
             simulation,
-            searchMax
+            searchMax,
+            null  // stateParams - TODO: add state tax support
         );
-    }, [displayAmount, mode, displayGrowthYears, taxableIncome, taxState, selectedYear, assumptions, simulation, searchMax]);
+    }, [displayAmount, mode, displayGrowthYears, taxableIncome, socialSecurityBenefits, ltcgIncome, taxState, selectedYear, assumptions, simulation, searchMax]);
 
     const benefitColor = analysis.verdict === 'roth' ? 'text-green-400' : analysis.verdict === 'traditional' ? 'text-red-400' : 'text-gray-400';
     const benefitLabel = analysis.verdict === 'roth' ? 'Roth wins' : analysis.verdict === 'traditional' ? 'Pre-Tax wins' : 'Break-even';

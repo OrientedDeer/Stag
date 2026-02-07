@@ -6,8 +6,8 @@ import {
   applyClaimingAdjustment,
   extractEarningsFromSimulation,
   estimateBenefitFromCurrentIncome,
-  calculateWorkCredits,
   calculateEarningsTestReduction,
+  validateEarningsRecord,
   EarningsRecord,
 } from '../../services/SocialSecurityCalculator';
 import {
@@ -15,6 +15,9 @@ import {
   getBendPoints,
   getWageBase,
   getEarningsTestLimit,
+  getFRA,
+  getClaimingAdjustment,
+  lookupYearlyData,
 } from '../../data/SocialSecurityData';
 import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 import { WorkIncome } from '../../components/Objects/Income/models';
@@ -334,6 +337,204 @@ describe('SocialSecurityCalculator', () => {
       expect(earnings).toHaveLength(1);
       expect(earnings[0].amount).toBe(80000); // 50k + 30k
     });
+
+    describe('priority override logic', () => {
+      it('imported SSA earnings override simulation earnings', () => {
+        const mockSimulation: SimulationYear[] = [
+          {
+            year: 2020,
+            incomes: [
+              new WorkIncome('1', 'Job', 80000, 'Annually', 'Yes', 0, 0, 0, 0, '', null, 'FIXED',
+                new Date(2020, 0, 1), undefined),
+            ],
+            expenses: [],
+            accounts: [],
+            cashflow: {} as any,
+            taxDetails: {} as any,
+            logs: [],
+          },
+        ];
+
+        const importedSSAEarnings: EarningsRecord[] = [
+          { year: 2020, amount: 75000 },
+        ];
+
+        const earnings = extractEarningsFromSimulation(mockSimulation, importedSSAEarnings);
+
+        expect(earnings).toHaveLength(1);
+        expect(earnings[0].amount).toBe(75000); // Imported wins over simulation
+      });
+
+      it('imported SSA earnings override auto-generated earnings', () => {
+        // Job started in 2015 with $60k salary, simulation starts 2020
+        const mockSimulation: SimulationYear[] = [
+          {
+            year: 2020,
+            incomes: [
+              new WorkIncome('1', 'Job', 60000, 'Annually', 'Yes', 0, 0, 0, 0, '', null, 'FIXED',
+                new Date(2015, 0, 1), undefined), // Started in 2015
+            ],
+            expenses: [],
+            accounts: [],
+            cashflow: {} as any,
+            taxDetails: {} as any,
+            logs: [],
+          },
+        ];
+
+        const importedSSAEarnings: EarningsRecord[] = [
+          { year: 2018, amount: 50000 },
+        ];
+
+        const earnings = extractEarningsFromSimulation(mockSimulation, importedSSAEarnings);
+        const year2018 = earnings.find(e => e.year === 2018);
+
+        expect(year2018).toBeDefined();
+        expect(year2018!.amount).toBe(50000); // Imported wins over auto-generated $60k
+      });
+
+      it('simulation earnings override auto-generated earnings', () => {
+        // Job started in 2015 with $60k salary
+        // Simulation year 2018 has actual earnings of $70k
+        const mockSimulation: SimulationYear[] = [
+          {
+            year: 2018,
+            incomes: [
+              new WorkIncome('1', 'Job', 70000, 'Annually', 'Yes', 0, 0, 0, 0, '', null, 'FIXED',
+                new Date(2015, 0, 1), undefined), // Started in 2015, but 2018 has $70k
+            ],
+            expenses: [],
+            accounts: [],
+            cashflow: {} as any,
+            taxDetails: {} as any,
+            logs: [],
+          },
+        ];
+
+        const earnings = extractEarningsFromSimulation(mockSimulation);
+        const year2018 = earnings.find(e => e.year === 2018);
+
+        expect(year2018).toBeDefined();
+        expect(year2018!.amount).toBe(70000); // Simulation wins over auto-generated
+      });
+
+      it('auto-generation creates records for pre-simulation years', () => {
+        // Job started in 2015 with $100k salary, simulation starts in 2020
+        const mockSimulation: SimulationYear[] = [
+          {
+            year: 2020,
+            incomes: [
+              new WorkIncome('1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 0, '', null, 'FIXED',
+                new Date(2015, 0, 1), undefined),
+            ],
+            expenses: [],
+            accounts: [],
+            cashflow: {} as any,
+            taxDetails: {} as any,
+            logs: [],
+          },
+        ];
+
+        const earnings = extractEarningsFromSimulation(mockSimulation);
+
+        // Should have records for 2015, 2016, 2017, 2018, 2019 (auto) + 2020 (simulation)
+        expect(earnings.find(e => e.year === 2015)).toBeDefined();
+        expect(earnings.find(e => e.year === 2016)).toBeDefined();
+        expect(earnings.find(e => e.year === 2017)).toBeDefined();
+        expect(earnings.find(e => e.year === 2018)).toBeDefined();
+        expect(earnings.find(e => e.year === 2019)).toBeDefined();
+        expect(earnings.find(e => e.year === 2020)).toBeDefined();
+
+        // Auto-generated should be capped at wage base (all years < $100k wage base would be $100k)
+        const year2019 = earnings.find(e => e.year === 2019);
+        expect(year2019!.amount).toBe(100000); // $100k < 2019 wage base of $132,900
+      });
+
+      it('all three tiers combined correctly', () => {
+        // Job started 2015 with $60k salary (auto-generates 2015-2019)
+        // Simulation 2020-2023 with varying earnings
+        // Imported SSA for 2017, 2018, 2022
+        const mockSimulation: SimulationYear[] = [
+          {
+            year: 2020,
+            incomes: [
+              new WorkIncome('1', 'Job', 60000, 'Annually', 'Yes', 0, 0, 0, 0, '', null, 'FIXED',
+                new Date(2015, 0, 1), undefined),
+            ],
+            expenses: [],
+            accounts: [],
+            cashflow: {} as any,
+            taxDetails: {} as any,
+            logs: [],
+          },
+          {
+            year: 2021,
+            incomes: [
+              new WorkIncome('1', 'Job', 65000, 'Annually', 'Yes', 0, 0, 0, 0, '', null, 'FIXED',
+                new Date(2015, 0, 1), undefined),
+            ],
+            expenses: [],
+            accounts: [],
+            cashflow: {} as any,
+            taxDetails: {} as any,
+            logs: [],
+          },
+          {
+            year: 2022,
+            incomes: [
+              new WorkIncome('1', 'Job', 70000, 'Annually', 'Yes', 0, 0, 0, 0, '', null, 'FIXED',
+                new Date(2015, 0, 1), undefined),
+            ],
+            expenses: [],
+            accounts: [],
+            cashflow: {} as any,
+            taxDetails: {} as any,
+            logs: [],
+          },
+          {
+            year: 2023,
+            incomes: [
+              new WorkIncome('1', 'Job', 75000, 'Annually', 'Yes', 0, 0, 0, 0, '', null, 'FIXED',
+                new Date(2015, 0, 1), undefined),
+            ],
+            expenses: [],
+            accounts: [],
+            cashflow: {} as any,
+            taxDetails: {} as any,
+            logs: [],
+          },
+        ];
+
+        const importedSSAEarnings: EarningsRecord[] = [
+          { year: 2017, amount: 55000 },
+          { year: 2018, amount: 58000 },
+          { year: 2022, amount: 72000 },
+        ];
+
+        const earnings = extractEarningsFromSimulation(mockSimulation, importedSSAEarnings);
+
+        // 2015-2016: auto-generated ($60k)
+        expect(earnings.find(e => e.year === 2015)!.amount).toBe(60000);
+        expect(earnings.find(e => e.year === 2016)!.amount).toBe(60000);
+
+        // 2017-2018: imported (overrides auto-generated)
+        expect(earnings.find(e => e.year === 2017)!.amount).toBe(55000);
+        expect(earnings.find(e => e.year === 2018)!.amount).toBe(58000);
+
+        // 2019: auto-generated ($60k)
+        expect(earnings.find(e => e.year === 2019)!.amount).toBe(60000);
+
+        // 2020-2021: simulation
+        expect(earnings.find(e => e.year === 2020)!.amount).toBe(60000);
+        expect(earnings.find(e => e.year === 2021)!.amount).toBe(65000);
+
+        // 2022: imported (overrides simulation $70k)
+        expect(earnings.find(e => e.year === 2022)!.amount).toBe(72000);
+
+        // 2023: simulation
+        expect(earnings.find(e => e.year === 2023)!.amount).toBe(75000);
+      });
+    });
   });
 
   describe('estimateBenefitFromCurrentIncome', () => {
@@ -387,35 +588,6 @@ describe('SocialSecurityCalculator', () => {
       // Verify approximate ratios (70%, 100%, 124%)
       expect(earlyBenefit / fraBenefit).toBeCloseTo(0.70, 1);
       expect(delayedBenefit / fraBenefit).toBeCloseTo(1.24, 1);
-    });
-  });
-
-  describe('calculateWorkCredits', () => {
-    it('should calculate correct number of work credits', () => {
-      // Need $1,730 per credit (2024), max 4 credits per year
-      const earnings: EarningsRecord[] = [
-        { year: 2020, amount: 10000 }, // 5 credits, but max 4
-        { year: 2021, amount: 5000 },  // 2 credits
-        { year: 2022, amount: 1000 },  // 0 credits
-      ];
-
-      const credits = calculateWorkCredits(earnings);
-
-      // 4 + 2 + 0 = 6 total credits
-      expect(credits).toBe(6);
-    });
-
-    it('should require 40 credits to qualify (10 years)', () => {
-      const earnings: EarningsRecord[] = [];
-
-      // 10 years of earnings above threshold
-      for (let year = 2010; year <= 2019; year++) {
-        earnings.push({ year, amount: 20000 }); // Enough for 4 credits each
-      }
-
-      const credits = calculateWorkCredits(earnings);
-
-      expect(credits).toBeGreaterThanOrEqual(40); // Qualified!
     });
   });
 
@@ -744,6 +916,335 @@ describe('SocialSecurityCalculator', () => {
         // Without inflation, bend points are lower, so PIA should be different
         // (higher bend points = lower PIA for same AIME since less falls in 90% bracket)
         expect(piaNoInflation).not.toBe(piaWithInflation);
+      });
+    });
+  });
+
+  describe('getFRA', () => {
+    it('should return 67 for birthYear >= 1960', () => {
+      expect(getFRA(1960)).toBe(67);
+      expect(getFRA(1965)).toBe(67);
+      expect(getFRA(1980)).toBe(67);
+    });
+
+    it('should return 65 for birthYear < 1937', () => {
+      expect(getFRA(1936)).toBe(65);
+      expect(getFRA(1930)).toBe(65);
+    });
+
+    it('should return 66 for birthYear 1943-1954', () => {
+      expect(getFRA(1943)).toBe(66);
+      expect(getFRA(1950)).toBe(66);
+      expect(getFRA(1954)).toBe(66);
+    });
+
+    it('should return fractional FRA for transitional years (1955-1959)', () => {
+      // 1955: 66 years 2 months = 66.167
+      expect(getFRA(1955)).toBeCloseTo(66.167, 2);
+      // 1958: 66 years 8 months = 66.667
+      expect(getFRA(1958)).toBeCloseTo(66.667, 2);
+      // 1959: 66 years 10 months = 66.833
+      expect(getFRA(1959)).toBeCloseTo(66.833, 2);
+    });
+
+    it('should return fractional FRA for early transitional years (1937-1942)', () => {
+      // 1937: 65 years = 65
+      expect(getFRA(1937)).toBe(65);
+      // 1940: 65 years 6 months = 65.5
+      expect(getFRA(1940)).toBe(65.5);
+      // 1942: 65 years 10 months = 65.833
+      expect(getFRA(1942)).toBeCloseTo(65.833, 2);
+    });
+  });
+
+  describe('getClaimingAdjustment', () => {
+    describe('FRA 67 cases (birth years 1960+)', () => {
+      it('should return 0.70 for claiming at 62', () => {
+        // 5 years early = 60 months early
+        // First 36 months: 36 * 5/9 * 0.01 = 0.20 reduction
+        // Additional 24 months: 24 * 5/12 * 0.01 = 0.10 reduction
+        // Total: 1.0 - 0.30 = 0.70
+        expect(getClaimingAdjustment(62, 67)).toBeCloseTo(0.70, 2);
+      });
+
+      it('should return 1.00 for claiming at FRA 67', () => {
+        expect(getClaimingAdjustment(67, 67)).toBe(1.00);
+      });
+
+      it('should return 1.24 for claiming at 70', () => {
+        // 3 years late = 36 months late
+        // Increase: 36 * 2/3 * 0.01 = 0.24
+        // Result: 1.0 + 0.24 = 1.24
+        expect(getClaimingAdjustment(70, 67)).toBeCloseTo(1.24, 2);
+      });
+    });
+
+    describe('FRA 66 cases (birth years 1943-1954)', () => {
+      it('should return 0.75 for claiming at 62', () => {
+        // 4 years early = 48 months early
+        // First 36 months: 36 * 5/9 * 0.01 = 0.20 reduction
+        // Additional 12 months: 12 * 5/12 * 0.01 = 0.05 reduction
+        // Total: 1.0 - 0.25 = 0.75
+        expect(getClaimingAdjustment(62, 66)).toBeCloseTo(0.75, 2);
+      });
+
+      it('should return 1.00 for claiming at FRA 66', () => {
+        expect(getClaimingAdjustment(66, 66)).toBe(1.00);
+      });
+
+      it('should return 1.32 for claiming at 70', () => {
+        // 4 years late = 48 months late
+        // Increase: 48 * 2/3 * 0.01 = 0.32
+        // Result: 1.0 + 0.32 = 1.32
+        expect(getClaimingAdjustment(70, 66)).toBeCloseTo(1.32, 2);
+      });
+    });
+
+    describe('FRA 65 cases (birth year < 1938)', () => {
+      it('should return 0.80 for claiming at 62', () => {
+        // 3 years early = 36 months early (all within first 36)
+        // Reduction: 36 * 5/9 * 0.01 = 0.20
+        // Result: 1.0 - 0.20 = 0.80
+        expect(getClaimingAdjustment(62, 65)).toBeCloseTo(0.80, 2);
+      });
+
+      it('should return 1.00 for claiming at FRA 65', () => {
+        expect(getClaimingAdjustment(65, 65)).toBe(1.00);
+      });
+
+      it('should return 1.40 for claiming at 70', () => {
+        // 5 years late = 60 months late
+        // Increase: 60 * 2/3 * 0.01 = 0.40
+        // Result: 1.0 + 0.40 = 1.40
+        expect(getClaimingAdjustment(70, 65)).toBeCloseTo(1.40, 2);
+      });
+    });
+
+    describe('edge cases', () => {
+      it('should use age 62 value for claimingAge < 62', () => {
+        // For FRA 67, age 62 = 0.70
+        expect(getClaimingAdjustment(61, 67)).toBeCloseTo(0.70, 2);
+        expect(getClaimingAdjustment(55, 67)).toBeCloseTo(0.70, 2);
+
+        // For FRA 66, age 62 = 0.75
+        expect(getClaimingAdjustment(61, 66)).toBeCloseTo(0.75, 2);
+      });
+
+      it('should use age 70 value for claimingAge > 70', () => {
+        // For FRA 67, age 70 = 1.24
+        expect(getClaimingAdjustment(71, 67)).toBeCloseTo(1.24, 2);
+        expect(getClaimingAdjustment(80, 67)).toBeCloseTo(1.24, 2);
+
+        // For FRA 66, age 70 = 1.32
+        expect(getClaimingAdjustment(75, 66)).toBeCloseTo(1.32, 2);
+      });
+
+      it('should interpolate correctly for fractional ages', () => {
+        // 64.5 with FRA 67: 2.5 years early = 30 months
+        // Reduction: 30 * 5/9 * 0.01 = 0.1667
+        // Result: 1.0 - 0.1667 = 0.833
+        expect(getClaimingAdjustment(64.5, 67)).toBeCloseTo(0.833, 2);
+
+        // 68.5 with FRA 67: 1.5 years late = 18 months
+        // Increase: 18 * 2/3 * 0.01 = 0.12
+        // Result: 1.0 + 0.12 = 1.12
+        expect(getClaimingAdjustment(68.5, 67)).toBeCloseTo(1.12, 2);
+      });
+    });
+
+    describe('intermediate ages (FRA 67)', () => {
+      it('should return ~0.867 for claiming at 65', () => {
+        // 2 years early = 24 months early (all within first 36)
+        // Reduction: 24 * 5/9 * 0.01 = 0.1333
+        // Result: 1.0 - 0.1333 = 0.867
+        expect(getClaimingAdjustment(65, 67)).toBeCloseTo(0.867, 2);
+      });
+
+      it('should return ~1.08 for claiming at 68', () => {
+        // 1 year late = 12 months late
+        // Increase: 12 * 2/3 * 0.01 = 0.08
+        // Result: 1.0 + 0.08 = 1.08
+        expect(getClaimingAdjustment(68, 67)).toBeCloseTo(1.08, 2);
+      });
+    });
+  });
+
+  describe('lookupYearlyData', () => {
+    // Test data: simple numeric values by year
+    const testData: Record<number, number> = {
+      2020: 100,
+      2022: 110,
+      2024: 120,
+    };
+    const projectFuture = (base: number, multiplier: number) => Math.round(base * multiplier);
+
+    it('should return exact value when year exists in data', () => {
+      const result = lookupYearlyData(testData, 2022, projectFuture, 0.05, true);
+      expect(result).toBe(110);
+    });
+
+    it('should project forward when year > latest and inflationAdjusted=true', () => {
+      // 2026 is 2 years after 2024 (latest)
+      // Growth: 120 * (1.05)^2 = 132.3 → rounds to 132
+      const result = lookupYearlyData(testData, 2026, projectFuture, 0.05, true);
+      expect(result).toBe(132);
+    });
+
+    it('should return latest value when year > latest and inflationAdjusted=false', () => {
+      // Should return 2024's value (120) without projection
+      const result = lookupYearlyData(testData, 2026, projectFuture, 0.05, false);
+      expect(result).toBe(120);
+    });
+
+    it('should return earliest value when year < earliest', () => {
+      // 2019 is before 2020 (earliest)
+      const result = lookupYearlyData(testData, 2019, projectFuture, 0.05, true);
+      expect(result).toBe(100); // 2020's value
+    });
+
+    it('should return earliest value for gaps in data (year between entries but not found)', () => {
+      // 2021 doesn't exist, 2020 is earliest
+      const result = lookupYearlyData(testData, 2021, projectFuture, 0.05, true);
+      expect(result).toBe(100); // Falls through to earliestYear
+    });
+
+    it('should project correctly with different growth rates', () => {
+      // 10% growth rate, 2 years forward
+      // 120 * (1.10)^2 = 145.2 → rounds to 145
+      const result = lookupYearlyData(testData, 2026, projectFuture, 0.10, true);
+      expect(result).toBe(145);
+    });
+
+    it('should handle single-entry data', () => {
+      const singleData = { 2024: 100 };
+
+      // Exact match
+      expect(lookupYearlyData(singleData, 2024, projectFuture, 0.05, true)).toBe(100);
+
+      // Before
+      expect(lookupYearlyData(singleData, 2020, projectFuture, 0.05, true)).toBe(100);
+
+      // After with projection
+      const result = lookupYearlyData(singleData, 2025, projectFuture, 0.05, true);
+      expect(result).toBe(105); // 100 * 1.05
+    });
+  });
+
+  describe('validateEarningsRecord', () => {
+    describe('Valid earnings', () => {
+      it('should return true for earnings at zero', () => {
+        const record: EarningsRecord = { year: 2024, amount: 0 };
+        expect(validateEarningsRecord(record)).toBe(true);
+      });
+
+      it('should return true for earnings below wage base', () => {
+        // 2024 wage base is ~$168,600
+        const record: EarningsRecord = { year: 2024, amount: 100000 };
+        expect(validateEarningsRecord(record)).toBe(true);
+      });
+
+      it('should return true for earnings at wage base', () => {
+        // Get exact wage base for 2024
+        const wageBase = getWageBase(2024, 0.025, true);
+        const record: EarningsRecord = { year: 2024, amount: wageBase };
+        expect(validateEarningsRecord(record)).toBe(true);
+      });
+
+      it('should return true for typical earnings amount', () => {
+        const record: EarningsRecord = { year: 2024, amount: 50000 };
+        expect(validateEarningsRecord(record)).toBe(true);
+      });
+    });
+
+    describe('Invalid earnings', () => {
+      it('should return false for negative earnings', () => {
+        const record: EarningsRecord = { year: 2024, amount: -1000 };
+        expect(validateEarningsRecord(record)).toBe(false);
+      });
+
+      it('should return false for earnings above wage base', () => {
+        // Wage base for 2024 is ~$168,600
+        const record: EarningsRecord = { year: 2024, amount: 200000 };
+        expect(validateEarningsRecord(record)).toBe(false);
+      });
+
+      it('should return false for extremely high earnings', () => {
+        const record: EarningsRecord = { year: 2024, amount: 1000000 };
+        expect(validateEarningsRecord(record)).toBe(false);
+      });
+    });
+
+    describe('Wage base checks across years', () => {
+      it('should validate against correct wage base for historical year', () => {
+        // 2020 wage base was $137,700
+        const validRecord: EarningsRecord = { year: 2020, amount: 130000 };
+        const invalidRecord: EarningsRecord = { year: 2020, amount: 150000 };
+
+        expect(validateEarningsRecord(validRecord)).toBe(true);
+        expect(validateEarningsRecord(invalidRecord)).toBe(false);
+      });
+
+      it('should validate against projected wage base for future year', () => {
+        // Future year with inflationAdjusted=true should use projected wage base
+        const record: EarningsRecord = { year: 2030, amount: 150000 };
+        expect(validateEarningsRecord(record, true)).toBe(true);
+      });
+
+      it('should use latest known wage base when inflationAdjusted=false', () => {
+        // With inflationAdjusted=false, uses latest known values
+        const record: EarningsRecord = { year: 2030, amount: 168600 };
+        expect(validateEarningsRecord(record, false)).toBe(true);
+      });
+    });
+
+    describe('Edge cases', () => {
+      it('should return true for exactly zero amount', () => {
+        const record: EarningsRecord = { year: 2024, amount: 0 };
+        expect(validateEarningsRecord(record, true)).toBe(true);
+        expect(validateEarningsRecord(record, false)).toBe(true);
+      });
+
+      it('should return true for $1 earnings', () => {
+        const record: EarningsRecord = { year: 2024, amount: 1 };
+        expect(validateEarningsRecord(record)).toBe(true);
+      });
+
+      it('should return false for $1 over wage base', () => {
+        const wageBase = getWageBase(2024, 0.025, true);
+        const record: EarningsRecord = { year: 2024, amount: wageBase + 1 };
+        expect(validateEarningsRecord(record)).toBe(false);
+      });
+
+      it('should handle old historical years', () => {
+        // Very old year with low wage base
+        const record: EarningsRecord = { year: 1980, amount: 20000 };
+        expect(validateEarningsRecord(record)).toBe(true);
+      });
+    });
+
+    describe('inflationAdjusted parameter', () => {
+      it('should default to true for inflationAdjusted', () => {
+        // With default (inflationAdjusted=true), future years use projected wage base
+        const record: EarningsRecord = { year: 2030, amount: 200000 };
+        const resultDefault = validateEarningsRecord(record);
+        const resultExplicit = validateEarningsRecord(record, true);
+        expect(resultDefault).toBe(resultExplicit);
+      });
+
+      it('should use different wage bases based on inflationAdjusted', () => {
+        // For a future year, the wage base differs based on inflation adjustment
+        const wageBaseWithInflation = getWageBase(2040, 0.025, true);
+        const wageBaseNoInflation = getWageBase(2040, 0.025, false);
+
+        // With inflation projection, wage base should be higher
+        expect(wageBaseWithInflation).toBeGreaterThan(wageBaseNoInflation);
+
+        // Amount valid with inflation but invalid without
+        const testAmount = wageBaseNoInflation + 1000;
+        const recordFuture: EarningsRecord = { year: 2040, amount: testAmount };
+
+        expect(validateEarningsRecord(recordFuture, true)).toBe(true);
+        expect(validateEarningsRecord(recordFuture, false)).toBe(false);
       });
     });
   });

@@ -303,44 +303,37 @@ export const FRA_BY_BIRTH_YEAR: Record<number, number> = {
  * Early claiming (before FRA): ~6.67% reduction per year (actually 5/9 of 1% per month for first 36 months, then 5/12 of 1%)
  * Delayed claiming (after FRA): 8% increase per year (actually 2/3 of 1% per month)
  */
-export const CLAIMING_ADJUSTMENTS: Record<number, number> = {
-  62: 0.70,
-  63: 0.75,
-  64: 0.80,
-  65: 0.867,
-  66: 0.933,
-  67: 1.00,  // Full Retirement Age
-  68: 1.08,
-  69: 1.16,
-  70: 1.24,  // Maximum benefit
-};
-
 /**
- * Helper function to get claiming age adjustment factor
- * Handles fractional ages and interpolates between whole years
+ * Helper function to get claiming age adjustment factor.
+ * Calculates the benefit adjustment based on claiming age relative to Full Retirement Age (FRA).
+ *
+ * Early claiming (before FRA):
+ *   - First 36 months early: 5/9 of 1% reduction per month
+ *   - Additional months early: 5/12 of 1% reduction per month
+ *
+ * Delayed claiming (after FRA):
+ *   - 2/3 of 1% increase per month (8% per year)
+ *
+ * Valid claiming range: 62-70. Ages outside this range use the boundary values.
  */
 export function getClaimingAdjustment(claimingAge: number, fra: number = 67): number {
-  // Clamp to valid range
-  if (claimingAge < 62) return 0.70;
-  if (claimingAge >= 70) return 1.24;
+  // Clamp to valid claiming range (62-70)
+  const effectiveAge = Math.max(62, Math.min(70, claimingAge));
 
-  // If exactly at a whole year, return the exact factor
-  if (Number.isInteger(claimingAge) && CLAIMING_ADJUSTMENTS[claimingAge]) {
-    return CLAIMING_ADJUSTMENTS[claimingAge];
-  }
+  const monthsFromFRA = (effectiveAge - fra) * 12;
 
-  // Calculate based on months from FRA
-  const monthsFromFRA = (claimingAge - fra) * 12;
-
-  if (claimingAge < fra) {
-    // Early claiming: First 36 months = 5/9 of 1% per month, then 5/12 of 1%
-    const firstReduction = Math.min(36, Math.abs(monthsFromFRA)) * (5/9) * 0.01;
-    const additionalReduction = Math.max(0, Math.abs(monthsFromFRA) - 36) * (5/12) * 0.01;
-    return Math.max(0.70, 1.0 - firstReduction - additionalReduction);
+  if (effectiveAge < fra) {
+    // Early claiming reduction
+    // First 36 months: 5/9 of 1% per month
+    // Additional months: 5/12 of 1% per month
+    const firstReduction = Math.min(36, Math.abs(monthsFromFRA)) * (5 / 9) * 0.01;
+    const additionalReduction = Math.max(0, Math.abs(monthsFromFRA) - 36) * (5 / 12) * 0.01;
+    return 1.0 - firstReduction - additionalReduction;
   } else {
-    // Delayed claiming: 2/3 of 1% per month (8% per year)
-    const increase = monthsFromFRA * (2/3) * 0.01;
-    return Math.min(1.24, 1.0 + increase);
+    // Delayed claiming increase
+    // 2/3 of 1% per month (8% per year)
+    const increase = monthsFromFRA * (2 / 3) * 0.01;
+    return 1.0 + increase;
   }
 }
 
@@ -358,7 +351,7 @@ export function getFRA(birthYear: number): number {
  * Generic helper to look up yearly data with future projection support.
  * Reduces code duplication across getWageIndexFactor, getBendPoints, getWageBase, etc.
  */
-function lookupYearlyData<T>(
+export function lookupYearlyData<T>(
   data: Record<number, T>,
   year: number,
   projectFuture: (baseValue: T, growthMultiplier: number) => T,

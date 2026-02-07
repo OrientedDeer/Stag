@@ -4,6 +4,38 @@ import { TaxState } from "../../components/Objects/Taxes/TaxContext";
 import * as TaxService from "../../components/Objects/Taxes/TaxService";
 import { SimulationYear, WithdrawalState } from "./types";
 
+/**
+ * ARCHITECTURAL NOTE: Tax Calculation in Withdrawal Service
+ * =========================================================
+ *
+ * This service calculates capital gains tax during withdrawal execution for two purposes:
+ *   1. Gross-up calculation: Determine how much to withdraw to net a target amount
+ *   2. Tracking: Accumulate tax amounts in WithdrawalState
+ *
+ * IMPORTANT: The tax calculated here is for gross-up purposes only. The FINAL federal
+ * tax (including LTCG, NIIT, and SS taxability effects) is calculated post-hoc in
+ * SimulationEngine using TaxService.calculateTotalFederalTax().
+ *
+ * Why this matters:
+ *   - Capital gains affect SS taxability (LTCG counts toward provisional income)
+ *   - This creates a circular dependency: withdraw → tax → withdraw more
+ *   - We break the cycle by calculating tax twice:
+ *     1. Here: Approximate tax for gross-up (may underestimate if LTCG affects SS)
+ *     2. SimulationEngine: Final correct tax via calculateTotalFederalTax
+ *
+ * The result is:
+ *   - Final tax number IS CORRECT for the withdrawals that occurred
+ *   - We may have slightly over-withdrawn if we underestimated tax during gross-up
+ *   - This is an acceptable approximation (no iteration to convergence)
+ *
+ * Tracking fields in WithdrawalState:
+ *   - capitalGainsTaxTotal: Fed + State cap gains tax (for gross-up, NOT added to final tax)
+ *   - stateCapitalGainsTax: State portion only (added to final tax in SimulationEngine)
+ *   - longTermCapitalGains/shortTermCapitalGains: Actual gains for post-hoc federal tax
+ *
+ * FUTURE REWRITE: Use calculateTotalFederalTax throughout with an iterative solver.
+ */
+
 export interface WithdrawalResult {
     discretionaryCash: number;
     withdrawalState: WithdrawalState;
@@ -19,8 +51,21 @@ export interface DeficitDebtResult {
 }
 
 /**
+ * Withdrawal plan from tax optimization (amounts by account type)
+ */
+export interface WithdrawalPlan {
+    traditional: number;
+    roth: number;
+    brokerage: number;
+    savings: number;
+}
+
+/**
  * Execute withdrawals to cover expense deficits.
  * Walks through the withdrawal strategy order, applying tax scenarios per account type.
+ *
+ * @param withdrawalPlan - Optional: If provided by tax optimizer, use these exact amounts
+ *                         instead of the normal order-based logic.
  */
 export function executeWithdrawals(
     discretionaryCash: number,
@@ -33,8 +78,15 @@ export function executeWithdrawals(
     withdrawalState: WithdrawalState,
     _rothConversionResult: SimulationYear['rothConversion'] | undefined,
     isRetired: boolean,
-    logs: string[]
+    logs: string[],
+    withdrawalPlan?: WithdrawalPlan
 ): { discretionaryCash: number; logs: string[] } {
+    // If a withdrawal plan is provided, execute it directly
+    if (withdrawalPlan) {
+        return executeWithdrawalPlan(
+            discretionaryCash, accounts, assumptions, withdrawalState, withdrawalPlan, logs
+        );
+    }
     const deficitAmount = discretionaryCash < 0 ? Math.abs(discretionaryCash) : 0;
     let amountToWithdraw = deficitAmount;
 
@@ -179,55 +231,29 @@ export function executeWithdrawals(
             }
         }
         // SCENARIO 2: Pre-Tax (Traditional 401k/IRA)
+        // Tax on Traditional withdrawals is now handled by unified tax calculation in SimulationEngine
+        // Here we just track the withdrawal amount and apply early withdrawal penalty gross-up
         else if (account instanceof InvestedAccount && (account.taxType === 'Traditional 401k' || account.taxType === 'Traditional IRA')) {
-            const fedParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'federal', undefined, assumptions);
-            const stateParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions);
-
-            const currentFedIncome = withdrawalState.totalGrossIncome - preTaxDeductions;
-            const currentStateIncome = withdrawalState.totalGrossIncome - preTaxDeductions;
-
-            const stdDedFed = fedParams?.standardDeduction || 12950;
-            const stdDedState = stateParams?.standardDeduction || 0;
-            const currentFedDeduction = taxState.deductionMethod === 'Standard' ? stdDedFed : 0;
-            const currentStateDeduction = taxState.deductionMethod === 'Standard' ? stdDedState : 0;
-
             const penaltyRate = isEarly ? 0.10 : 0;
-            const result = TaxService.calculateGrossWithdrawal(
-                Math.min(deficit, availableBalance),
-                currentFedIncome,
-                currentFedDeduction,
-                currentStateIncome,
-                currentStateDeduction,
-                taxState,
-                year,
-                assumptions,
-                penaltyRate
-            );
 
-            if (result.grossWithdrawn > availableBalance) {
-                withdrawAmount = availableBalance;
+            // Gross up for early withdrawal penalty (need to withdraw more to net the same after penalty)
+            // If penalty is 10%, we need to withdraw deficit / 0.9 to have deficit left after penalty
+            const grossNeeded = penaltyRate > 0 ? deficit / (1 - penaltyRate) : deficit;
+            withdrawAmount = Math.min(grossNeeded, availableBalance);
 
-                const fedApplied = { ...fedParams!, standardDeduction: currentFedDeduction };
-                const stateApplied = { ...stateParams!, standardDeduction: currentStateDeduction };
+            // Track early withdrawal penalty (10% before age 59.5)
+            const actualPenalty = withdrawAmount * penaltyRate;
+            withdrawalState.withdrawalPenalties += actualPenalty;
 
-                const fedBase = TaxService.calculateTax(currentFedIncome, 0, fedApplied);
-                const fedNew = TaxService.calculateTax(currentFedIncome + withdrawAmount, 0, fedApplied);
-                const stateBase = TaxService.calculateTax(currentStateIncome, 0, stateApplied);
-                const stateNew = TaxService.calculateTax(currentStateIncome + withdrawAmount, 0, stateApplied);
-
-                taxHit = (fedNew - fedBase) + (stateNew - stateBase);
-                const actualPenalty = withdrawAmount * penaltyRate;
-                withdrawalState.withdrawalPenalties += actualPenalty;
-                deficit -= (withdrawAmount - taxHit - actualPenalty);
-            } else {
-                withdrawAmount = result.grossWithdrawn;
-                taxHit = result.totalTax;
-                withdrawalState.withdrawalPenalties += result.penalty;
-                deficit -= deficit; // Fully covered
-            }
-
+            // Update gross income for tracking (used by unified tax calculation)
             withdrawalState.totalGrossIncome += withdrawAmount;
-            withdrawalState.withdrawalTaxes += taxHit;
+
+            // Track Traditional withdrawals separately for unified tax calculation
+            withdrawalState.traditionalWithdrawals += withdrawAmount;
+
+            // Reduce deficit by net amount (withdrawal minus penalty)
+            // Tax is handled separately by unified calculation in SimulationEngine
+            deficit -= (withdrawAmount - actualPenalty);
         }
         // SCENARIO 3: Brokerage (Capital Gains Tax with lot-aware short/long-term split)
         else if (account instanceof InvestedAccount && account.taxType === 'Brokerage') {
@@ -327,8 +353,15 @@ export function executeWithdrawals(
             // Short-term gains are taxed as ordinary income, track in withdrawalTaxes
             withdrawalState.withdrawalTaxes += shortTermTax;
             withdrawalState.totalGrossIncome += lotAllocation.shortTermGains;
-            // Long-term gains tracked in capitalGainsTaxTotal
+            // Capital gains tax tracking:
+            // - capitalGainsTaxTotal: used for withdrawal gross-up calculations (includes fed+state)
+            // - stateCapitalGainsTax: state portion tracked separately for final tax assembly
+            // - Federal LTCG+NIIT is calculated post-hoc via calculateTotalFederalTax
             withdrawalState.capitalGainsTaxTotal += capitalGainsTax + stateCapGainsTax;
+            withdrawalState.stateCapitalGainsTax += stateCapGainsTax;
+            // Track actual gains amounts for post-hoc federal tax calculation
+            withdrawalState.longTermCapitalGains += lotAllocation.longTermGains;
+            withdrawalState.shortTermCapitalGains += lotAllocation.shortTermGains;
 
             const totalGains = lotAllocation.shortTermGains + lotAllocation.longTermGains;
             if (totalGains > 0 || taxHit > 0) {
@@ -468,8 +501,13 @@ export function executeWithdrawals(
                 deficit -= netReceived;
 
                 withdrawalState.withdrawalTaxes += ordinaryTax + stateOrdinaryTax + shortTermTax;
+                // Capital gains tax tracking (see brokerage section for architecture notes)
                 withdrawalState.capitalGainsTaxTotal += capGainsTax + stateCapGainsTax;
+                withdrawalState.stateCapitalGainsTax += stateCapGainsTax;
                 withdrawalState.totalGrossIncome += taxResult.ordinaryIncome + taxResult.shortTermGains;
+                // Track actual gains amounts for post-hoc federal tax calculation
+                withdrawalState.longTermCapitalGains += taxResult.longTermGains;
+                withdrawalState.shortTermCapitalGains += taxResult.shortTermGains;
 
                 logs.push(`[FLOW] ESPP withdrawal: $${grossWithdrawal.toLocaleString(undefined, { maximumFractionDigits: 0 })} ` +
                     `(Ordinary: $${taxResult.ordinaryIncome.toLocaleString(undefined, { maximumFractionDigits: 0 })}, ` +
@@ -532,7 +570,8 @@ export function processDeficitDebt(
         acc => acc instanceof DeficitDebtAccount && acc.id === DEFICIT_DEBT_ID
     ) as DeficitDebtAccount | undefined;
 
-    if (discretionaryCash < 0) {
+    // Only create deficit debt for deficits > $0.005 (ignore small rounding errors)
+    if (discretionaryCash < -0.005) {
         const uncoveredDeficit = Math.abs(discretionaryCash);
 
         if (existingDeficitDebt) {
@@ -556,4 +595,200 @@ export function processDeficitDebt(
     }
 
     return { existingDeficitDebt, deficitDebtPayment, discretionaryCash, logs };
+}
+
+/**
+ * Execute a pre-planned withdrawal allocation.
+ * Used when tax optimization has already determined the optimal withdrawal mix.
+ */
+function executeWithdrawalPlan(
+    discretionaryCash: number,
+    accounts: AnyAccount[],
+    assumptions: AssumptionsState,
+    withdrawalState: WithdrawalState,
+    plan: WithdrawalPlan,
+    logs: string[]
+): { discretionaryCash: number; logs: string[] } {
+    let cash = discretionaryCash;
+
+    // DEBUG: Log plan execution start (disabled - uncomment to enable)
+    // console.log(`[executeWithdrawalPlan] Starting:`, {
+    //     discretionaryCash,
+    //     plan,
+    //     existingWithdrawals: { ...withdrawalState.withdrawalDetail }
+    // });
+
+    logs.push(`📋 Executing tax-optimized withdrawal plan:`);
+
+    // Withdraw from Traditional accounts
+    // Tax on Traditional withdrawals is handled by unified tax calculation in SimulationEngine
+    if (plan.traditional > 0) {
+        const tradAccounts = accounts.filter(
+            acc => acc instanceof InvestedAccount &&
+            (acc.taxType === 'Traditional 401k' || acc.taxType === 'Traditional IRA')
+        ) as InvestedAccount[];
+
+        let remaining = plan.traditional;
+        for (const acc of tradAccounts) {
+            if (remaining <= 0) break;
+            const priorOutflow = withdrawalState.userInflows[acc.id] || 0;
+            const available = acc.amount + Math.min(0, priorOutflow);
+            if (available <= 0) continue;
+
+            const withdrawAmount = Math.min(remaining, available);
+            withdrawalState.userInflows[acc.id] = (withdrawalState.userInflows[acc.id] || 0) - withdrawAmount;
+            withdrawalState.totalWithdrawals += withdrawAmount;
+            withdrawalState.withdrawalDetail[acc.name] = (withdrawalState.withdrawalDetail[acc.name] || 0) + withdrawAmount;
+            withdrawalState.totalGrossIncome += withdrawAmount;  // Add to gross income for tax calc
+            withdrawalState.traditionalWithdrawals += withdrawAmount;  // Track for unified tax calc
+            cash += withdrawAmount;
+            remaining -= withdrawAmount;
+            logs.push(`  Traditional (${acc.name}): $${withdrawAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+        }
+    }
+
+    // Withdraw from Roth accounts
+    if (plan.roth > 0) {
+        const rothAccounts = accounts.filter(
+            acc => acc instanceof InvestedAccount &&
+            (acc.taxType === 'Roth 401k' || acc.taxType === 'Roth IRA')
+        ) as InvestedAccount[];
+
+        let remaining = plan.roth;
+        for (const acc of rothAccounts) {
+            if (remaining <= 0) break;
+            const priorOutflow = withdrawalState.userInflows[acc.id] || 0;
+            const available = acc.amount + Math.min(0, priorOutflow);
+            if (available <= 0) continue;
+
+            const withdrawAmount = Math.min(remaining, available);
+            withdrawalState.userInflows[acc.id] = (withdrawalState.userInflows[acc.id] || 0) - withdrawAmount;
+            withdrawalState.totalWithdrawals += withdrawAmount;
+            withdrawalState.withdrawalDetail[acc.name] = (withdrawalState.withdrawalDetail[acc.name] || 0) + withdrawAmount;
+            cash += withdrawAmount;
+            remaining -= withdrawAmount;
+            logs.push(`  Roth (${acc.name}): $${withdrawAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+        }
+    }
+
+    // Withdraw from Brokerage accounts
+    if (plan.brokerage > 0) {
+        const brokerageAccounts = accounts.filter(
+            acc => acc instanceof InvestedAccount && acc.taxType === 'Brokerage'
+        ) as InvestedAccount[];
+
+        let remaining = plan.brokerage;
+        for (const acc of brokerageAccounts) {
+            if (remaining <= 0) break;
+            const priorOutflow = withdrawalState.userInflows[acc.id] || 0;
+            const available = acc.amount + Math.min(0, priorOutflow);
+            if (available <= 0) continue;
+
+            const withdrawAmount = Math.min(remaining, available);
+            withdrawalState.userInflows[acc.id] = (withdrawalState.userInflows[acc.id] || 0) - withdrawAmount;
+            withdrawalState.totalWithdrawals += withdrawAmount;
+            withdrawalState.withdrawalDetail[acc.name] = (withdrawalState.withdrawalDetail[acc.name] || 0) + withdrawAmount;
+            cash += withdrawAmount;
+            remaining -= withdrawAmount;
+            logs.push(`  Brokerage (${acc.name}): $${withdrawAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+        }
+    }
+
+    // Withdraw from Savings accounts
+    if (plan.savings > 0) {
+        const savingsAccounts = accounts.filter(acc => acc instanceof SavedAccount);
+
+        let remaining = plan.savings;
+        for (const acc of savingsAccounts) {
+            if (remaining <= 0) break;
+            const priorOutflow = withdrawalState.userInflows[acc.id] || 0;
+            const available = acc.amount + Math.min(0, priorOutflow);
+            if (available <= 0) continue;
+
+            const withdrawAmount = Math.min(remaining, available);
+            withdrawalState.userInflows[acc.id] = (withdrawalState.userInflows[acc.id] || 0) - withdrawAmount;
+            withdrawalState.totalWithdrawals += withdrawAmount;
+            withdrawalState.withdrawalDetail[acc.name] = (withdrawalState.withdrawalDetail[acc.name] || 0) + withdrawAmount;
+            cash += withdrawAmount;
+            remaining -= withdrawAmount;
+            logs.push(`  Savings (${acc.name}): $${withdrawAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+        }
+    }
+
+    // Fallback: If the plan couldn't cover the deficit (accounts depleted),
+    // try to withdraw from any available account using the user's withdrawal strategy order
+    if (cash < 0) {
+        const remainingDeficit = Math.abs(cash);
+        logs.push(`  ⚠️ Plan shortfall: $${remainingDeficit.toLocaleString(undefined, { maximumFractionDigits: 0 })} still needed, trying fallback`);
+
+        // Use user's withdrawal strategy order for fallback (respects their preferences)
+        const userStrategy = assumptions.withdrawalStrategy || [];
+        const usedAccountIds = new Set<string>();
+
+        let deficit = remainingDeficit;
+
+        // First, try accounts in user's withdrawal strategy order
+        for (const bucket of userStrategy) {
+            if (deficit <= 0.01) break;
+            const acc = accounts.find(a => a.id === bucket.accountId);
+            if (!acc) continue;
+            usedAccountIds.add(acc.id);
+
+            const priorOutflow = withdrawalState.userInflows[acc.id] || 0;
+            const available = acc.amount + Math.min(0, priorOutflow);
+            if (available <= 0) continue;
+
+            const withdrawAmount = Math.min(deficit, available);
+            withdrawalState.userInflows[acc.id] = (withdrawalState.userInflows[acc.id] || 0) - withdrawAmount;
+            withdrawalState.totalWithdrawals += withdrawAmount;
+            withdrawalState.withdrawalDetail[acc.name] = (withdrawalState.withdrawalDetail[acc.name] || 0) + withdrawAmount;
+
+            // Track Traditional withdrawals for tax calculation
+            if (acc instanceof InvestedAccount &&
+                (acc.taxType === 'Traditional 401k' || acc.taxType === 'Traditional IRA')) {
+                withdrawalState.traditionalWithdrawals += withdrawAmount;
+                withdrawalState.totalGrossIncome += withdrawAmount;
+            }
+
+            cash += withdrawAmount;
+            deficit -= withdrawAmount;
+            logs.push(`  Fallback (${acc.name}): $${withdrawAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+        }
+
+        // Then, try any remaining accounts not in the strategy (safety net)
+        if (deficit > 0.01) {
+            for (const acc of accounts) {
+                if (deficit <= 0.01) break;
+                if (usedAccountIds.has(acc.id)) continue;
+
+                const priorOutflow = withdrawalState.userInflows[acc.id] || 0;
+                const available = acc.amount + Math.min(0, priorOutflow);
+                if (available <= 0) continue;
+
+                const withdrawAmount = Math.min(deficit, available);
+                withdrawalState.userInflows[acc.id] = (withdrawalState.userInflows[acc.id] || 0) - withdrawAmount;
+                withdrawalState.totalWithdrawals += withdrawAmount;
+                withdrawalState.withdrawalDetail[acc.name] = (withdrawalState.withdrawalDetail[acc.name] || 0) + withdrawAmount;
+
+                // Track Traditional withdrawals for tax calculation
+                if (acc instanceof InvestedAccount &&
+                    (acc.taxType === 'Traditional 401k' || acc.taxType === 'Traditional IRA')) {
+                    withdrawalState.traditionalWithdrawals += withdrawAmount;
+                    withdrawalState.totalGrossIncome += withdrawAmount;
+                }
+
+                cash += withdrawAmount;
+                deficit -= withdrawAmount;
+                logs.push(`  Fallback (${acc.name}): $${withdrawAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+            }
+        }
+    }
+
+    // DEBUG: Log final state (disabled - uncomment to enable)
+    // console.log(`[executeWithdrawalPlan] Finished:`, {
+    //     finalCash: cash,
+    //     withdrawalDetail: { ...withdrawalState.withdrawalDetail }
+    // });
+
+    return { discretionaryCash: cash, logs };
 }

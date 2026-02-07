@@ -161,7 +161,7 @@ function getNetWorth(accounts: AnyAccount[]): number {
  * Rate savings rate (target: 15%+)
  * Common advice: Save at least 10-15% of income
  */
-function rateSavingsRate(rate: number): RatingLevel {
+export function rateSavingsRate(rate: number): RatingLevel {
   if (rate >= SAVINGS_RATE_EXCELLENT) return 'excellent';
   if (rate >= SAVINGS_RATE_GOOD) return 'good';
   if (rate >= SAVINGS_RATE_FAIR) return 'fair';
@@ -173,7 +173,7 @@ function rateSavingsRate(rate: number): RatingLevel {
  * Rate emergency fund (target: 3-6 months)
  * Common advice: 3 months minimum, 6+ for stability
  */
-function rateEmergencyFund(months: number): RatingLevel {
+export function rateEmergencyFund(months: number): RatingLevel {
   if (months >= EMERGENCY_FUND_EXCELLENT) return 'excellent';
   if (months >= EMERGENCY_FUND_GOOD) return 'good';
   if (months >= EMERGENCY_FUND_FAIR) return 'fair';
@@ -184,7 +184,7 @@ function rateEmergencyFund(months: number): RatingLevel {
 /**
  * Rate debt-to-income ratio (target: <36%)
  */
-function rateDebtToIncome(ratio: number): RatingLevel {
+export function rateDebtToIncome(ratio: number): RatingLevel {
   if (ratio <= DEBT_TO_INCOME_EXCELLENT) return 'excellent';
   if (ratio <= DEBT_TO_INCOME_GOOD) return 'good';
   if (ratio <= DEBT_TO_INCOME_FAIR) return 'fair';
@@ -195,7 +195,7 @@ function rateDebtToIncome(ratio: number): RatingLevel {
 /**
  * Rate debt-to-asset ratio (target: <30%)
  */
-function rateDebtToAsset(ratio: number): RatingLevel {
+export function rateDebtToAsset(ratio: number): RatingLevel {
   if (ratio <= DEBT_TO_ASSET_EXCELLENT) return 'excellent';
   if (ratio <= DEBT_TO_ASSET_GOOD) return 'good';
   if (ratio <= DEBT_TO_ASSET_FAIR) return 'fair';
@@ -206,7 +206,7 @@ function rateDebtToAsset(ratio: number): RatingLevel {
 /**
  * Get the target net worth multiple for a given age using interpolation
  */
-function getNetWorthTarget(age: number): number {
+export function getNetWorthTarget(age: number): number {
   if (age <= NET_WORTH_AGE_TARGETS[0][0]) return NET_WORTH_AGE_TARGETS[0][1];
   if (age >= NET_WORTH_AGE_TARGETS[NET_WORTH_AGE_TARGETS.length - 1][0]) {
     return NET_WORTH_AGE_TARGETS[NET_WORTH_AGE_TARGETS.length - 1][1];
@@ -228,7 +228,7 @@ function getNetWorthTarget(age: number): number {
  * Rate net worth to income ratio based on age-appropriate targets
  * Uses Fidelity rule of thumb: 1x by 30, 3x by 40, 6x by 50, 10x by 67
  */
-function rateNetWorthToIncome(ratio: number, age?: number): RatingLevel {
+export function rateNetWorthToIncome(ratio: number, age?: number): RatingLevel {
   if (ratio < 0) return 'critical';
 
   const target = age !== undefined ? getNetWorthTarget(age) : 3;
@@ -243,7 +243,7 @@ function rateNetWorthToIncome(ratio: number, age?: number): RatingLevel {
  * Rate investment allocation (target: 40%+)
  * Higher is better for long-term wealth building
  */
-function rateInvestmentAllocation(ratio: number): RatingLevel {
+export function rateInvestmentAllocation(ratio: number): RatingLevel {
   if (ratio >= INVESTMENT_ALLOCATION_EXCELLENT) return 'excellent';
   if (ratio >= INVESTMENT_ALLOCATION_GOOD) return 'good';
   if (ratio >= INVESTMENT_ALLOCATION_FAIR) return 'fair';
@@ -255,7 +255,7 @@ function rateInvestmentAllocation(ratio: number): RatingLevel {
  * Rate growth rate, adjusted for whether values include inflation.
  * When inflation is not included (real returns), thresholds are lowered.
  */
-function rateGrowthRate(rate: number, inflationOffset: number = 0): RatingLevel {
+export function rateGrowthRate(rate: number, inflationOffset: number = 0): RatingLevel {
   if (rate >= GROWTH_RATE_EXCELLENT + inflationOffset) return 'excellent';
   if (rate >= GROWTH_RATE_GOOD + inflationOffset) return 'good';
   if (rate >= GROWTH_RATE_FAIR + inflationOffset) return 'fair';
@@ -271,7 +271,7 @@ function rateGrowthRate(rate: number, inflationOffset: number = 0): RatingLevel 
  * Get sustainable withdrawal rate based on years remaining.
  * For 30+ years, the 4% rule applies. For shorter horizons, 1/N is safe.
  */
-function getSustainableRate(yearsRemaining: number): number {
+export function getSustainableRate(yearsRemaining: number): number {
   if (yearsRemaining <= 0) return 1.0;
   return Math.max(0.04, 1 / yearsRemaining);
 }
@@ -280,7 +280,7 @@ function getSustainableRate(yearsRemaining: number): number {
  * Rate withdrawal rate for retirees, scaled by years remaining.
  * With fewer years left, higher withdrawal rates are appropriate.
  */
-function rateWithdrawalRate(rate: number, yearsRemaining?: number): RatingLevel {
+export function rateWithdrawalRate(rate: number, yearsRemaining?: number): RatingLevel {
   const sustainable = getSustainableRate(yearsRemaining ?? 30);
   if (rate <= sustainable * 0.75) return 'excellent';
   if (rate <= sustainable * 1.05) return 'good';
@@ -293,7 +293,7 @@ function rateWithdrawalRate(rate: number, yearsRemaining?: number): RatingLevel 
  * Rate savings rate for retirees
  * During retirement, breaking even or slight drawdown is expected
  */
-function rateRetirementSavingsRate(rate: number): RatingLevel {
+export function rateRetirementSavingsRate(rate: number): RatingLevel {
   if (rate >= 0) return 'excellent';      // Building wealth in retirement
   if (rate >= -0.03) return 'good';       // Sustainable drawdown
   if (rate >= -0.05) return 'fair';       // Moderate drawdown
@@ -305,7 +305,7 @@ function rateRetirementSavingsRate(rate: number): RatingLevel {
  * Rate growth rate for retirees, adjusted for inflation mode.
  * Negative growth is expected during drawdown; preserving capital is excellent.
  */
-function rateRetirementGrowthRate(rate: number, inflationOffset: number = 0): RatingLevel {
+export function rateRetirementGrowthRate(rate: number, inflationOffset: number = 0): RatingLevel {
   if (rate >= 0.05 + inflationOffset) return 'excellent';
   if (rate >= inflationOffset) return 'good';
   if (rate >= -0.03 + inflationOffset) return 'fair';
@@ -318,7 +318,7 @@ function rateRetirementGrowthRate(rate: number, inflationOffset: number = 0): Ra
  * Rate portfolio longevity for retirees, scaled by years remaining.
  * Hybrid: relative to life expectancy with absolute floor (25 yrs = at least fair).
  */
-function ratePortfolioYears(years: number, yearsRemaining?: number): RatingLevel {
+export function ratePortfolioYears(years: number, yearsRemaining?: number): RatingLevel {
   const yrs = Math.max(1, yearsRemaining ?? 30);
   if (years >= yrs * 1.5) return 'excellent';
   if (years >= yrs * 1.2) return 'good';

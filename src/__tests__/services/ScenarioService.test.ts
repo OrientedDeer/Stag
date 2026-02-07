@@ -9,11 +9,13 @@ import {
     createScenario,
     calculateMilestones,
     compareScenarios,
-    createLoadedScenarioFromSimulation
+    createLoadedScenarioFromSimulation,
+    validateAndTransformScenarioImport
 } from '../../services/ScenarioService';
 import {
     SavedScenario,
-    SCENARIOS_STORAGE_KEY
+    SCENARIOS_STORAGE_KEY,
+    SCENARIO_VERSION
 } from '../../services/ScenarioTypes';
 import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 import { defaultAssumptions, AssumptionsState, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
@@ -103,6 +105,7 @@ const createMockSimulation = (years: number, startYear: number = 2024): Simulati
             cashflow: {
                 totalIncome: 100000,
                 totalExpense: 60000,
+            livingExpenses: 0,
                 discretionary: 40000,
                 investedUser: 20000,
                 investedMatch: 5000,
@@ -119,7 +122,8 @@ const createMockSimulation = (years: number, startYear: number = 2024): Simulati
                 preTax: 20000,
                 insurance: 2000,
                 postTax: 0,
-                capitalGains: 0
+                capitalGains: 0,
+                niit: 0
             },
             logs: []
         });
@@ -344,6 +348,257 @@ describe('calculateMilestones', () => {
         expect(milestones.retirementYear).toBe(2054);
         expect(milestones.retirementAge).toBe(65);
     });
+
+    describe('financial independence calculation', () => {
+        it('should find FI year when investments × withdrawalRate > expenses', () => {
+            // Setup: $2M investments × 4% = $80k > $60k expenses
+            const assumptions = createTestAssumptions();
+
+            const simulation: SimulationYear[] = [
+                {
+                    year: 2024,
+                    incomes: [],
+                    expenses: [],
+                    accounts: [
+                        new InvestedAccount('inv-1', '401k', 2000000, 0, 0, 0.1, 'Traditional 401k', true)
+                    ],
+                    cashflow: {
+                        totalIncome: 100000,
+                        totalExpense: 60000,
+                        livingExpenses: 60000,
+                        discretionary: 0,
+                        investedUser: 0,
+                        investedMatch: 0,
+                        totalInvested: 0,
+                        bucketAllocations: 0,
+                        bucketDetail: {},
+                        withdrawals: 0,
+                        withdrawalDetail: {}
+                    },
+                    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0 },
+                    logs: []
+                },
+                {
+                    year: 2025,
+                    incomes: [],
+                    expenses: [],
+                    accounts: [
+                        new InvestedAccount('inv-1', '401k', 2100000, 0, 0, 0.1, 'Traditional 401k', true)
+                    ],
+                    cashflow: {
+                        totalIncome: 100000,
+                        totalExpense: 60000, // $2M × 4% = $80k > $60k = FI achieved!
+                        livingExpenses: 60000,
+                        discretionary: 0,
+                        investedUser: 0,
+                        investedMatch: 0,
+                        totalInvested: 0,
+                        bucketAllocations: 0,
+                        bucketDetail: {},
+                        withdrawals: 0,
+                        withdrawalDetail: {}
+                    },
+                    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0 },
+                    logs: []
+                }
+            ];
+
+            const milestones = calculateMilestones(simulation, assumptions);
+
+            expect(milestones.fiYear).toBe(2025);
+            // Age = 2025 - 1989 (birthYear from createTestAssumptions) = 36
+            expect(milestones.fiAge).toBe(36);
+        });
+
+        it('should return null FI when investments × withdrawalRate < expenses', () => {
+            // Setup: $500k investments × 4% = $20k < $60k expenses
+            const assumptions = createTestAssumptions();
+
+            const simulation: SimulationYear[] = [
+                {
+                    year: 2024,
+                    incomes: [],
+                    expenses: [],
+                    accounts: [
+                        new InvestedAccount('inv-1', '401k', 500000, 0, 0, 0.1, 'Traditional 401k', true)
+                    ],
+                    cashflow: {
+                        totalIncome: 100000,
+                        totalExpense: 60000,
+                        livingExpenses: 60000,
+                        discretionary: 0,
+                        investedUser: 0,
+                        investedMatch: 0,
+                        totalInvested: 0,
+                        bucketAllocations: 0,
+                        bucketDetail: {},
+                        withdrawals: 0,
+                        withdrawalDetail: {}
+                    },
+                    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0 },
+                    logs: []
+                },
+                {
+                    year: 2025,
+                    incomes: [],
+                    expenses: [],
+                    accounts: [
+                        new InvestedAccount('inv-1', '401k', 550000, 0, 0, 0.1, 'Traditional 401k', true)
+                    ],
+                    cashflow: {
+                        totalIncome: 100000,
+                        totalExpense: 60000, // $500k × 4% = $20k < $60k = NOT FI
+                        livingExpenses: 60000,
+                        discretionary: 0,
+                        investedUser: 0,
+                        investedMatch: 0,
+                        totalInvested: 0,
+                        bucketAllocations: 0,
+                        bucketDetail: {},
+                        withdrawals: 0,
+                        withdrawalDetail: {}
+                    },
+                    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0 },
+                    logs: []
+                }
+            ];
+
+            const milestones = calculateMilestones(simulation, assumptions);
+
+            expect(milestones.fiYear).toBeNull();
+            expect(milestones.fiAge).toBeNull();
+        });
+
+        it('should find FI year achieved in later year (not immediately)', () => {
+            // FI not achieved until year 4 when investments finally exceed 4% threshold
+            const assumptions = createTestAssumptions();
+
+            const simulation: SimulationYear[] = [
+                {
+                    year: 2024,
+                    incomes: [],
+                    expenses: [],
+                    accounts: [
+                        new InvestedAccount('inv-1', '401k', 500000, 0, 0, 0.1, 'Traditional 401k', true)
+                    ],
+                    cashflow: {
+                        totalIncome: 100000,
+                        totalExpense: 60000,
+                        livingExpenses: 60000,
+                        discretionary: 0,
+                        investedUser: 0,
+                        investedMatch: 0,
+                        totalInvested: 0,
+                        bucketAllocations: 0,
+                        bucketDetail: {},
+                        withdrawals: 0,
+                        withdrawalDetail: {}
+                    },
+                    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0 },
+                    logs: []
+                },
+                {
+                    year: 2025,
+                    incomes: [],
+                    expenses: [],
+                    accounts: [
+                        new InvestedAccount('inv-1', '401k', 800000, 0, 0, 0.1, 'Traditional 401k', true)
+                    ],
+                    cashflow: {
+                        totalIncome: 100000,
+                        totalExpense: 60000, // $500k × 4% = $20k < $60k = NOT FI
+                        livingExpenses: 60000,
+                        discretionary: 0,
+                        investedUser: 0,
+                        investedMatch: 0,
+                        totalInvested: 0,
+                        bucketAllocations: 0,
+                        bucketDetail: {},
+                        withdrawals: 0,
+                        withdrawalDetail: {}
+                    },
+                    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0 },
+                    logs: []
+                },
+                {
+                    year: 2026,
+                    incomes: [],
+                    expenses: [],
+                    accounts: [
+                        new InvestedAccount('inv-1', '401k', 1200000, 0, 0, 0.1, 'Traditional 401k', true)
+                    ],
+                    cashflow: {
+                        totalIncome: 100000,
+                        totalExpense: 60000, // $800k × 4% = $32k < $60k = NOT FI
+                        livingExpenses: 60000,
+                        discretionary: 0,
+                        investedUser: 0,
+                        investedMatch: 0,
+                        totalInvested: 0,
+                        bucketAllocations: 0,
+                        bucketDetail: {},
+                        withdrawals: 0,
+                        withdrawalDetail: {}
+                    },
+                    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0 },
+                    logs: []
+                },
+                {
+                    year: 2027,
+                    incomes: [],
+                    expenses: [],
+                    accounts: [
+                        new InvestedAccount('inv-1', '401k', 1800000, 0, 0, 0.1, 'Traditional 401k', true)
+                    ],
+                    cashflow: {
+                        totalIncome: 100000,
+                        totalExpense: 60000, // $1.2M × 4% = $48k < $60k = NOT FI
+                        livingExpenses: 60000,
+                        discretionary: 0,
+                        investedUser: 0,
+                        investedMatch: 0,
+                        totalInvested: 0,
+                        bucketAllocations: 0,
+                        bucketDetail: {},
+                        withdrawals: 0,
+                        withdrawalDetail: {}
+                    },
+                    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0 },
+                    logs: []
+                },
+                {
+                    year: 2028,
+                    incomes: [],
+                    expenses: [],
+                    accounts: [
+                        new InvestedAccount('inv-1', '401k', 2200000, 0, 0, 0.1, 'Traditional 401k', true)
+                    ],
+                    cashflow: {
+                        totalIncome: 100000,
+                        totalExpense: 60000, // $1.8M × 4% = $72k > $60k = FI ACHIEVED!
+                        livingExpenses: 60000,
+                        discretionary: 0,
+                        investedUser: 0,
+                        investedMatch: 0,
+                        totalInvested: 0,
+                        bucketAllocations: 0,
+                        bucketDetail: {},
+                        withdrawals: 0,
+                        withdrawalDetail: {}
+                    },
+                    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0 },
+                    logs: []
+                }
+            ];
+
+            const milestones = calculateMilestones(simulation, assumptions);
+
+            // FI achieved in 2028 when previous year (2027) investments of $1.8M × 4% = $72k > $60k
+            expect(milestones.fiYear).toBe(2028);
+            // Age = 2028 - 1989 = 39
+            expect(milestones.fiAge).toBe(39);
+        });
+    });
 });
 
 // =============================================================================
@@ -458,8 +713,8 @@ describe('net worth calculation with PropertyAccount', () => {
                     ''
                 )
             ],
-            cashflow: { totalIncome: 0, totalExpense: 0, discretionary: 0, investedUser: 0, investedMatch: 0, totalInvested: 0, bucketAllocations: 0, bucketDetail: {}, withdrawals: 0, withdrawalDetail: {} },
-            taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0 },
+            cashflow: { totalIncome: 0, totalExpense: 0, livingExpenses: 0, discretionary: 0, investedUser: 0, investedMatch: 0, totalInvested: 0, bucketAllocations: 0, bucketDetail: {}, withdrawals: 0, withdrawalDetail: {} },
+            taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0 },
             logs: []
         }];
 
@@ -481,8 +736,8 @@ describe('net worth calculation with PropertyAccount', () => {
             accounts: [
                 new InvestedAccount('inv-1', '401k', 200000, 0, 0, 0.1, 'Traditional 401k', true)
             ],
-            cashflow: { totalIncome: 0, totalExpense: 0, discretionary: 0, investedUser: 0, investedMatch: 0, totalInvested: 0, bucketAllocations: 0, bucketDetail: {}, withdrawals: 0, withdrawalDetail: {} },
-            taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0 },
+            cashflow: { totalIncome: 0, totalExpense: 0, livingExpenses: 0, discretionary: 0, investedUser: 0, investedMatch: 0, totalInvested: 0, bucketAllocations: 0, bucketDetail: {}, withdrawals: 0, withdrawalDetail: {} },
+            taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0 },
             logs: []
         }];
 
@@ -497,8 +752,8 @@ describe('net worth calculation with PropertyAccount', () => {
                 new InvestedAccount('inv-1', '401k', 100000, 0, 0, 0.1, 'Traditional 401k', true),
                 new PropertyAccount('property-1', 'Home', 500000, 'Financed', 400000, 400000, '')
             ],
-            cashflow: { totalIncome: 0, totalExpense: 0, discretionary: 0, investedUser: 0, investedMatch: 0, totalInvested: 0, bucketAllocations: 0, bucketDetail: {}, withdrawals: 0, withdrawalDetail: {} },
-            taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0 },
+            cashflow: { totalIncome: 0, totalExpense: 0, livingExpenses: 0, discretionary: 0, investedUser: 0, investedMatch: 0, totalInvested: 0, bucketAllocations: 0, bucketDetail: {}, withdrawals: 0, withdrawalDetail: {} },
+            taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0 },
             logs: []
         }];
 
@@ -524,8 +779,8 @@ describe('net worth calculation with PropertyAccount', () => {
             accounts: [
                 new InvestedAccount('inv-1', '401k', 150000, 0, 0, 0.1, 'Traditional 401k', true)
             ],
-            cashflow: { totalIncome: 0, totalExpense: 0, discretionary: 0, investedUser: 0, investedMatch: 0, totalInvested: 0, bucketAllocations: 0, bucketDetail: {}, withdrawals: 0, withdrawalDetail: {} },
-            taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0 },
+            cashflow: { totalIncome: 0, totalExpense: 0, livingExpenses: 0, discretionary: 0, investedUser: 0, investedMatch: 0, totalInvested: 0, bucketAllocations: 0, bucketDetail: {}, withdrawals: 0, withdrawalDetail: {} },
+            taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0 },
             logs: []
         }];
 
@@ -540,8 +795,8 @@ describe('net worth calculation with PropertyAccount', () => {
                 new InvestedAccount('inv-1', '401k', 50000, 0, 0, 0.1, 'Traditional 401k', true),
                 new PropertyAccount('property-1', 'Home', 500000, 'Financed', 300000, 400000, '')
             ],
-            cashflow: { totalIncome: 0, totalExpense: 0, discretionary: 0, investedUser: 0, investedMatch: 0, totalInvested: 0, bucketAllocations: 0, bucketDetail: {}, withdrawals: 0, withdrawalDetail: {} },
-            taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0 },
+            cashflow: { totalIncome: 0, totalExpense: 0, livingExpenses: 0, discretionary: 0, investedUser: 0, investedMatch: 0, totalInvested: 0, bucketAllocations: 0, bucketDetail: {}, withdrawals: 0, withdrawalDetail: {} },
+            taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0 },
             logs: []
         }];
 
@@ -554,5 +809,150 @@ describe('net worth calculation with PropertyAccount', () => {
         expect(result.differences.legacyValueDelta).toBe(100000);
         expect(result.differences.netWorthByYear[0].baseline).toBe(150000);
         expect(result.differences.netWorthByYear[0].comparison).toBe(250000);
+    });
+});
+
+// =============================================================================
+// validateAndTransformScenarioImport Tests
+// =============================================================================
+
+describe('validateAndTransformScenarioImport', () => {
+    const createValidInput = () => ({
+        metadata: {
+            id: 'original-id',
+            name: 'Test Scenario',
+            createdAt: '2024-01-01T00:00:00.000Z',
+            updatedAt: '2024-01-01T00:00:00.000Z'
+        },
+        inputs: {
+            accounts: [],
+            incomes: [],
+            expenses: [],
+            taxSettings: {},
+            assumptions: {}
+        },
+        version: '1.0.0'
+    });
+
+    describe('invalid input types', () => {
+        it('should throw "not a valid object" for null input', () => {
+            expect(() => validateAndTransformScenarioImport(null))
+                .toThrow('Invalid scenario file: not a valid object');
+        });
+
+        it('should throw "not a valid object" for undefined input', () => {
+            expect(() => validateAndTransformScenarioImport(undefined))
+                .toThrow('Invalid scenario file: not a valid object');
+        });
+
+        it('should throw "not a valid object" for string input', () => {
+            expect(() => validateAndTransformScenarioImport('not an object'))
+                .toThrow('Invalid scenario file: not a valid object');
+        });
+
+        it('should throw "not a valid object" for number input', () => {
+            expect(() => validateAndTransformScenarioImport(12345))
+                .toThrow('Invalid scenario file: not a valid object');
+        });
+    });
+
+    describe('missing required fields', () => {
+        it('should throw "missing metadata or inputs" when metadata is missing', () => {
+            const input = { inputs: { accounts: [] } };
+            expect(() => validateAndTransformScenarioImport(input))
+                .toThrow('Invalid scenario file: missing metadata or inputs');
+        });
+
+        it('should throw "missing metadata or inputs" when inputs is missing', () => {
+            const input = { metadata: { id: '1', name: 'Test' } };
+            expect(() => validateAndTransformScenarioImport(input))
+                .toThrow('Invalid scenario file: missing metadata or inputs');
+        });
+
+        it('should throw "missing required metadata fields" when metadata.id is missing', () => {
+            const input = {
+                metadata: { name: 'Test' },
+                inputs: { accounts: [] }
+            };
+            expect(() => validateAndTransformScenarioImport(input))
+                .toThrow('Invalid scenario file: missing required metadata fields');
+        });
+
+        it('should throw "missing required metadata fields" when metadata.name is missing', () => {
+            const input = {
+                metadata: { id: '1' },
+                inputs: { accounts: [] }
+            };
+            expect(() => validateAndTransformScenarioImport(input))
+                .toThrow('Invalid scenario file: missing required metadata fields');
+        });
+    });
+
+    describe('valid input transformation', () => {
+        it('should return SavedScenario with new ID for valid input', () => {
+            const input = createValidInput();
+            const result = validateAndTransformScenarioImport(input);
+
+            expect(result.metadata.id).not.toBe('original-id');
+            expect(result.metadata.id).toContain('scenario_');
+        });
+
+        it('should add "(Imported)" suffix to name', () => {
+            const input = createValidInput();
+            const result = validateAndTransformScenarioImport(input);
+
+            expect(result.metadata.name).toBe('Test Scenario (Imported)');
+        });
+
+        it('should set updatedAt to current time', () => {
+            const input = createValidInput();
+            const beforeTime = new Date().toISOString();
+            const result = validateAndTransformScenarioImport(input);
+            const afterTime = new Date().toISOString();
+
+            expect(result.metadata.updatedAt).not.toBe('2024-01-01T00:00:00.000Z');
+            expect(result.metadata.updatedAt >= beforeTime).toBe(true);
+            expect(result.metadata.updatedAt <= afterTime).toBe(true);
+        });
+
+        it('should use SCENARIO_VERSION default when version is missing', () => {
+            const input = createValidInput();
+            delete (input as any).version;
+
+            const result = validateAndTransformScenarioImport(input);
+
+            expect(result.version).toBe(SCENARIO_VERSION);
+        });
+
+        it('should preserve original version when provided', () => {
+            const input = createValidInput();
+            input.version = '2.5.0';
+
+            const result = validateAndTransformScenarioImport(input);
+
+            expect(result.version).toBe('2.5.0');
+        });
+
+        it('should preserve other metadata fields', () => {
+            const input = createValidInput();
+            input.metadata.createdAt = '2023-06-15T12:00:00.000Z';
+            (input.metadata as any).description = 'A test description';
+            (input.metadata as any).tags = ['tag1', 'tag2'];
+
+            const result = validateAndTransformScenarioImport(input);
+
+            expect(result.metadata.createdAt).toBe('2023-06-15T12:00:00.000Z');
+            expect(result.metadata.description).toBe('A test description');
+            expect(result.metadata.tags).toEqual(['tag1', 'tag2']);
+        });
+
+        it('should preserve inputs object', () => {
+            const input = createValidInput();
+            input.inputs.accounts = [{ id: 'acc1', name: 'Test Account' }] as any;
+
+            const result = validateAndTransformScenarioImport(input);
+
+            expect(result.inputs.accounts).toEqual([{ id: 'acc1', name: 'Test Account' }]);
+        });
     });
 });

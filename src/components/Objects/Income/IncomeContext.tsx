@@ -36,7 +36,7 @@ function incomeReducer(state: IncomeState, action: Action): IncomeState {
         incomes: state.incomes.map((inc) => {
           if (inc.id !== action.payload.id) return inc;
           const updated = Object.assign(Object.create(Object.getPrototypeOf(inc)), inc);
-          updated.className = inc.constructor.name;
+          updated.className = inc.className || inc.constructor.name;
           updated[action.payload.field] = action.payload.value;
           return updated;
         }),
@@ -68,7 +68,7 @@ function hydrateIncomeState(parsed: unknown, initial: IncomeState): IncomeState 
 function serializeIncomeState(state: IncomeState): string {
   return JSON.stringify({
     ...state,
-    incomes: state.incomes.map(inc => ({ ...inc, className: inc.constructor.name })),
+    incomes: state.incomes.map(inc => ({ ...inc, className: inc.className || inc.constructor.name })),
   });
 }
 

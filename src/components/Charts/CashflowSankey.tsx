@@ -3,7 +3,7 @@ import { ResponsiveSankey } from '@nivo/sankey';
 import { WorkIncome, AnyIncome, PassiveIncome } from '../Objects/Income/models';
 import { MortgageExpense, AnyExpense, CLASS_TO_CATEGORY } from '../Objects/Expense/models';
 import { AnyAccount } from '../Objects/Accounts/models';
-import { AssumptionsContext, getBirthYear } from '../Objects/Assumptions/AssumptionsContext';
+import { AssumptionsContext } from '../Objects/Assumptions/AssumptionsContext';
 import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
 
 // Error Boundary to catch Nivo rendering errors
@@ -73,7 +73,8 @@ interface CashflowSankeyProps {
         fed: number;
         state: number;
         fica: number;
-        capitalGains?: number;
+        capitalGains?: number; // From brokerage/ESPP withdrawals
+        withdrawalOrdinaryTax?: number; // From Roth earnings (5-year rule), Traditional, HSA non-medical
     };
     bucketAllocations?: Record<string, number>;
     accounts?: AnyAccount[];
@@ -84,9 +85,19 @@ interface CashflowSankeyProps {
         fromAccounts: Record<string, number>;
         toAccounts: Record<string, number>;
     };
+    livingExpenses?: number; // Actual living expenses from simulation (after spending cap adjustments)
     height?: number; // Optional height prop
     extraLeftPadding?: number; // Extra left margin for longer labels
     extraRightPadding?: number; // Extra right margin for longer labels
+    onBalanceCheck?: (imbalances: SankeyImbalance[]) => void; // Callback to report node imbalances
+}
+
+// Type for reporting Sankey node imbalances
+export interface SankeyImbalance {
+    nodeName: string;
+    inflows: number;
+    outflows: number;
+    difference: number;
 }
 
 // Minimum threshold for including a value in the chart (avoids $0 nodes)
@@ -102,14 +113,14 @@ export const CashflowSankey = ({
     accounts = [],
     withdrawals = {},
     rothConversion,
+    livingExpenses: providedLivingExpenses,
     height = 300,
     extraLeftPadding = 0,
-    extraRightPadding = 0
+    extraRightPadding = 0,
+    onBalanceCheck
 }: CashflowSankeyProps) => {
     const { state: assumptions } = useContext(AssumptionsContext);
     const forceExact = assumptions.display?.useCompactCurrency === false;
-    const birthYear = assumptions.milestones ? getBirthYear(assumptions.milestones) : undefined;
-    const age = birthYear ? year - birthYear : undefined;
 
     // Memoized currency formatter that respects user settings
     const currencyFormatter = useCallback((value: number) => {
@@ -122,7 +133,7 @@ export const CashflowSankey = ({
 
     // 1. Logic Block (The "Util" part)
     // Refactored to return { data, error, debugData } directly to avoid infinite loops
-    const { data, error, debugData } = useMemo(() => {
+    const { data, error, debugData, imbalances } = useMemo(() => {
         try {
             const nodes: any[] = [];
             const links: any[] = [];
@@ -161,12 +172,12 @@ export const CashflowSankey = ({
 
                 if (inc instanceof WorkIncome) {
                     let empMatch = 0;
-                    const effective401k = age !== undefined
-                        ? inc.getEffective401k(year, age)
-                        : { preTax: inc.preTax401k, roth: inc.roth401k };
-                    employee401k += inc.getProratedAnnual(effective401k.preTax, year);
+                    // Use stored values directly - these are from the simulation which already
+                    // computed the correct values via increment(). Don't call getEffective401k()
+                    // which would recalculate with potentially wrong inflation settings.
+                    employee401k += inc.getProratedAnnual(inc.preTax401k, year);
                     totalInsurance += inc.getProratedAnnual(inc.insurance, year);
-                    employeeRoth += inc.getProratedAnnual(effective401k.roth, year);
+                    employeeRoth += inc.getProratedAnnual(inc.roth401k, year);
 
                     if (inc.employerMatch != null) {
                         empMatch = inc.getProratedAnnual(inc.employerMatch, year);
@@ -194,16 +205,17 @@ export const CashflowSankey = ({
             });
 
             const mortgageInterestAndEscrow = totalMortgagePayment - totalPrincipal;
-            const totalTaxes = taxes.fed + taxes.state + taxes.fica + (taxes.capitalGains || 0);
+            const totalTaxes = taxes.fed + taxes.state + taxes.fica + (taxes.capitalGains || 0) + (taxes.withdrawalOrdinaryTax || 0);
             const totalBucketSavings = Object.values(bucketAllocations).reduce((a, b) => a + b, 0);
             const totalWithdrawals = Object.values(withdrawals).reduce((a, b) => a + b, 0);
 
-            // Roth conversion flows through Gross Pay to show tax impact
-            // The conversion is taxable income, and the tax is paid from withdrawal accounts
+            // Roth conversions flow through Gross Pay → Net Pay for visualization (shows tax impact),
+            // but they are NOT subtracted from remaining because they're internal transfers,
+            // not spendable cash outflows.
             const rothConversionAmount = rothConversion?.amount || 0;
 
             // --- Waterfall Math ---
-            // Include withdrawals AND Roth conversions in gross pay since they're taxable income
+            // Include withdrawals AND Roth conversions in gross pay for visual flow
             const grossPayNodeValue = grossPayCalculated + totalEmployerMatch + totalWithdrawals + rothConversionAmount;
             const totalTradSavings = employee401k + totalEmployerMatchForTrad;
             const totalRothSavings = employeeRoth + totalEmployerMatchForRoth;
@@ -223,10 +235,67 @@ export const CashflowSankey = ({
                 expenseCatTotals.set(category, (expenseCatTotals.get(category) || 0) + amount);
             });
 
-            const totalExpenses = Array.from(expenseCatTotals.values()).reduce((a, b) => a + b, 0);
-            // Roth conversion flows out to Roth accounts (shown as outflow from Net Pay)
-            // Reinvested income is subtracted because it flows directly to savings accounts, not through Net Pay
-            const remaining = netPayFlow - totalRothSavings - totalExpenses - mortgageInterestAndEscrow - totalPrincipal - totalBucketSavings - rothConversionAmount - totalReinvested;
+            const calculatedExpenses = Array.from(expenseCatTotals.values()).reduce((a, b) => a + b, 0);
+
+            // The simulation calculates discretionary cash = income + withdrawals - taxes - expenses - reinvested
+            // If there are bucket allocations, the simulation determined there was surplus AFTER expenses.
+            // The remaining after all outflows should be approximately zero (or small positive).
+            //
+            // The issue is that reinvested income flows:
+            // Income → Gross Pay → (taxes) → Net Pay → Reinvested savings
+            // And bucket allocations represent discretionary cash AFTER expenses.
+            //
+            // For the Sankey to balance, we calculate remaining as what's left after all outflows.
+            // If remaining is negative but there are bucket allocations, we have inconsistent data.
+            // In that case, we adjust to not show a false deficit.
+
+            // Use provided or calculated expenses
+            // IMPORTANT: providedLivingExpenses includes mortgage, but we show mortgage as separate nodes
+            // So we must subtract mortgage to avoid double-counting
+            let totalExpenses = providedLivingExpenses !== undefined
+                ? providedLivingExpenses - totalMortgagePayment  // Subtract mortgage since shown separately
+                : calculatedExpenses;
+
+            // Calculate what remaining would be
+            // The conversion flows: Convert → Gross Pay → (taxes) → Net Pay → To Roth
+            // We must subtract rothConversionAmount because it flows OUT of Net Pay to Roth accounts.
+            let remaining = netPayFlow - totalRothSavings - totalExpenses - mortgageInterestAndEscrow - totalPrincipal - totalBucketSavings - rothConversionAmount - totalReinvested;
+
+            // DEBUG: Trace "remaining" calculation
+            console.log(`[SANKEY TRACE] Year ${year}:`, {
+                // Components of netPayFlow
+                grossPayCalculated,
+                totalEmployerMatch,
+                totalWithdrawals,
+                grossPayNodeValue,
+                totalTradSavings,
+                totalInsurance,
+                totalTaxes,
+                netPayFlow,
+                // Components subtracted from netPayFlow
+                totalRothSavings,
+                totalExpenses,
+                providedLivingExpenses,
+                totalMortgagePayment,
+                'providedLivingExpenses - mortgage': providedLivingExpenses !== undefined ? providedLivingExpenses - totalMortgagePayment : 'N/A',
+                calculatedExpenses,
+                mortgageInterestAndEscrow,
+                totalPrincipal,
+                totalBucketSavings,
+                totalReinvested,
+                // Roth conversion (shown separately, routes around Net Pay)
+                rothConversionAmount,
+                // Result
+                remaining,
+                formula: `${netPayFlow} - ${totalRothSavings} - ${totalExpenses} - ${mortgageInterestAndEscrow} - ${totalPrincipal} - ${totalBucketSavings} - ${rothConversionAmount} - ${totalReinvested} = ${remaining}`
+            });
+
+            // If there are bucket allocations but remaining is negative, the data is inconsistent.
+            // The simulation calculated surplus (hence bucket allocations), so there's no real deficit.
+            // The bucket allocations prove the simulation had money left over after expenses.
+            if (remaining < -1 && totalBucketSavings > 0) {
+                remaining = 0;
+            }
 
             // =================================================================
             // NODES - Order matters for visual stability!
@@ -318,6 +387,7 @@ export const CashflowSankey = ({
             if (taxes.state >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'State Tax', color: '#fbbf24', label: 'State Tax' });
             if (taxes.fica >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'FICA Tax', color: '#d97706', label: 'FICA Tax' });
             if ((taxes.capitalGains || 0) >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Cap Gains Tax', color: '#ca8a04', label: 'Cap Gains Tax' });
+            if ((taxes.withdrawalOrdinaryTax || 0) >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Withdrawal Tax', color: '#a855f7', label: 'Withdrawal Tax' });
 
             // --- Column 4: Net Pay ---
             nodes.push({ id: 'Net Pay', color: '#3b82f6', label: 'Net Pay' });
@@ -356,9 +426,16 @@ export const CashflowSankey = ({
             });
 
             // Roth conversion destinations (flows out of Net Pay to Roth accounts)
+            // Use full conversion amount (not net-after-withholding) because the tax
+            // is already deducted at Gross Pay → Tax nodes. Using net amounts would
+            // double-count the tax and create a deficit at the Net Pay node.
+            const toAccountsTotal = rothConversion
+                ? Object.values(rothConversion.toAccounts).reduce((a, b) => a + b, 0)
+                : 0;
+            const conversionScale = toAccountsTotal > 0 ? rothConversionAmount / toAccountsTotal : 1;
             const conversionDestItems = rothConversion
                 ? Object.entries(rothConversion.toAccounts)
-                    .filter(([_, amount]) => amount >= MIN_DISPLAY_THRESHOLD)
+                    .filter(([_, amount]) => amount * conversionScale >= MIN_DISPLAY_THRESHOLD)
                     .sort(([a], [b]) => a.localeCompare(b))
                 : [];
 
@@ -415,6 +492,7 @@ export const CashflowSankey = ({
             if (taxes.state >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Gross Pay', target: 'State Tax', value: taxes.state });
             if (taxes.fica >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Gross Pay', target: 'FICA Tax', value: taxes.fica });
             if ((taxes.capitalGains || 0) >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Gross Pay', target: 'Cap Gains Tax', value: taxes.capitalGains! });
+            if ((taxes.withdrawalOrdinaryTax || 0) >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Gross Pay', target: 'Withdrawal Tax', value: taxes.withdrawalOrdinaryTax! });
 
             // Always show Gross Pay → Net Pay if there's any positive net pay
             if (netPayFlow >= MIN_DISPLAY_THRESHOLD) {
@@ -450,9 +528,9 @@ export const CashflowSankey = ({
                 }
 
                 // Roth conversion destinations: Net Pay flows to Roth accounts
-                // (the conversion amount was added to Gross Pay and flows through to Net Pay)
+                // Use scaled amount so links match the full rothConversionAmount
                 conversionDestItems.forEach(([accountName, amount]) => {
-                    links.push({ source: 'Net Pay', target: `To Roth: ${accountName}`, value: amount });
+                    links.push({ source: 'Net Pay', target: `To Roth: ${accountName}`, value: amount * conversionScale });
                 });
 
                 // Reinvested income flows from Net Pay back to the savings account
@@ -479,27 +557,60 @@ export const CashflowSankey = ({
             // Check for circular dependencies or other issues
             if (uniqueNodes.length === 0) {
                 console.warn('No nodes generated for Sankey chart');
-                return { data: { nodes: [], links: [] }, error: null, debugData: null };
+                return { data: { nodes: [], links: [] }, error: null, debugData: null, imbalances: [] };
             }
 
             if (validLinks.length === 0) {
                 console.warn('No links generated for Sankey chart');
-                return { data: { nodes: [], links: [] }, error: null, debugData: null };
+                return { data: { nodes: [], links: [] }, error: null, debugData: null, imbalances: [] };
             }
 
             const result = { nodes: uniqueNodes, links: validLinks };
 
-            return { data: result, error: null, debugData: result };
+            // Validate intermediate nodes (nodes with BOTH inflows AND outflows)
+            // Source nodes only have outflows, sink nodes only have inflows
+            // Intermediate nodes should have inflows = outflows (within $1 tolerance)
+            const imbalances: SankeyImbalance[] = [];
+
+            for (const node of uniqueNodes) {
+                const nodeName = node.id;
+
+                const inflows = validLinks
+                    .filter(l => l.target === nodeName)
+                    .reduce((sum, l) => sum + l.value, 0);
+                const outflows = validLinks
+                    .filter(l => l.source === nodeName)
+                    .reduce((sum, l) => sum + l.value, 0);
+
+                // Only check nodes that have BOTH inflows and outflows (intermediate nodes)
+                // Source nodes (inflows = 0) and sink nodes (outflows = 0) are excluded
+                if (inflows > 0 && outflows > 0) {
+                    const difference = Math.abs(inflows - outflows);
+                    if (difference > 1) {
+                        imbalances.push({ nodeName, inflows, outflows, difference });
+                    }
+                }
+            }
+
+            return { data: result, error: null, debugData: result, imbalances };
 
         } catch (err: any) {
             console.error('Error generating Sankey data:', err);
-            return { 
-                data: { nodes: [], links: [] }, 
-                error: err.message || 'Unknown error', 
-                debugData: null 
+            return {
+                data: { nodes: [], links: [] },
+                error: err.message || 'Unknown error',
+                debugData: null,
+                imbalances: []
             };
         }
     }, [incomes, expenses, year, taxes, bucketAllocations, accounts, withdrawals, rothConversion]);
+
+    // Call balance check callback when imbalances change
+    useEffect(() => {
+        if (onBalanceCheck) {
+            onBalanceCheck(imbalances);
+        }
+    }, [imbalances, onBalanceCheck]);
 
     // 2. Render Block (The "Renderer" part)
 

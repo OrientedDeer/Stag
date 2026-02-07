@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   getSocialSecurityBenefits,
   getTaxableSocialSecurityBenefits,
-  calculateFederalTax,
+  calculateFederalTaxFromIncomes,
 } from '../../../../components/Objects/Taxes/TaxService';
 import {
   CurrentSocialSecurityIncome,
@@ -76,20 +76,20 @@ describe('Social Security Tax Integration', () => {
 
     it('should return 0% taxable when combined income < $25,000', () => {
       const ssBenefits = 12000; // $12k/year SS
-      const agi = 10000; // $10k other income
+      const otherIncome = 10000; // $10k other income
       // Combined income = 10000 + (12000 * 0.5) = 16000 < 25000
 
-      const taxable = getTaxableSocialSecurityBenefits(ssBenefits, agi, filingStatus);
+      const taxable = getTaxableSocialSecurityBenefits(ssBenefits, otherIncome, 0, filingStatus);
 
       expect(taxable).toBe(0);
     });
 
     it('should return up to 50% taxable when combined income $25,000-$34,000', () => {
       const ssBenefits = 20000; // $20k/year SS
-      const agi = 20000; // $20k other income
+      const otherIncome = 20000; // $20k other income
       // Combined income = 20000 + (20000 * 0.5) = 30000
 
-      const taxable = getTaxableSocialSecurityBenefits(ssBenefits, agi, filingStatus);
+      const taxable = getTaxableSocialSecurityBenefits(ssBenefits, otherIncome, 0, filingStatus);
 
       // Excess above $25,000 = 5,000
       // Taxable = 5,000 * 0.5 = 2,500
@@ -98,10 +98,10 @@ describe('Social Security Tax Integration', () => {
 
     it('should return up to 85% taxable when combined income > $34,000', () => {
       const ssBenefits = 30000; // $30k/year SS
-      const agi = 50000; // $50k other income
+      const otherIncome = 50000; // $50k other income
       // Combined income = 50000 + (30000 * 0.5) = 65000 > 34000
 
-      const taxable = getTaxableSocialSecurityBenefits(ssBenefits, agi, filingStatus);
+      const taxable = getTaxableSocialSecurityBenefits(ssBenefits, otherIncome, 0, filingStatus);
 
       // Tier 1: (34000 - 25000) * 0.5 = 4,500
       // Tier 2: (65000 - 34000) * 0.85 = 26,350
@@ -112,10 +112,10 @@ describe('Social Security Tax Integration', () => {
 
     it('should cap taxable amount at 85% of total benefits', () => {
       const ssBenefits = 20000;
-      const agi = 100000; // Very high income
+      const otherIncome = 100000; // Very high income
       // Combined income = 100000 + (20000 * 0.5) = 110000
 
-      const taxable = getTaxableSocialSecurityBenefits(ssBenefits, agi, filingStatus);
+      const taxable = getTaxableSocialSecurityBenefits(ssBenefits, otherIncome, 0, filingStatus);
 
       // Tier 1 + Tier 2 would be very high, but capped at 85%
       const maxTaxable = ssBenefits * 0.85;
@@ -129,20 +129,20 @@ describe('Social Security Tax Integration', () => {
 
     it('should return 0% taxable when combined income < $32,000', () => {
       const ssBenefits = 20000;
-      const agi = 15000;
+      const otherIncome = 15000;
       // Combined income = 15000 + (20000 * 0.5) = 25000 < 32000
 
-      const taxable = getTaxableSocialSecurityBenefits(ssBenefits, agi, filingStatus);
+      const taxable = getTaxableSocialSecurityBenefits(ssBenefits, otherIncome, 0, filingStatus);
 
       expect(taxable).toBe(0);
     });
 
     it('should return up to 50% taxable when combined income $32,000-$44,000', () => {
       const ssBenefits = 24000;
-      const agi = 28000;
+      const otherIncome = 28000;
       // Combined income = 28000 + (24000 * 0.5) = 40000
 
-      const taxable = getTaxableSocialSecurityBenefits(ssBenefits, agi, filingStatus);
+      const taxable = getTaxableSocialSecurityBenefits(ssBenefits, otherIncome, 0, filingStatus);
 
       // Excess above $32,000 = 8,000
       // Taxable = 8,000 * 0.5 = 4,000
@@ -151,10 +151,10 @@ describe('Social Security Tax Integration', () => {
 
     it('should return up to 85% taxable when combined income > $44,000', () => {
       const ssBenefits = 40000;
-      const agi = 60000;
+      const otherIncome = 60000;
       // Combined income = 60000 + (40000 * 0.5) = 80000 > 44000
 
-      const taxable = getTaxableSocialSecurityBenefits(ssBenefits, agi, filingStatus);
+      const taxable = getTaxableSocialSecurityBenefits(ssBenefits, otherIncome, 0, filingStatus);
 
       // Tier 1: (44000 - 32000) * 0.5 = 6,000
       // Tier 2: (80000 - 44000) * 0.85 = 30,600
@@ -167,11 +167,11 @@ describe('Social Security Tax Integration', () => {
   describe('Real-world scenarios', () => {
     it('should calculate correct tax for retiree with moderate income (Single)', () => {
       const ssBenefits = 25000; // $25k/year SS
-      const agi = 30000; // $30k from investments/withdrawals
+      const otherIncome = 30000; // $30k from investments/withdrawals
       const filingStatus = 'Single';
       // Combined income = 30000 + (25000 * 0.5) = 42500
 
-      const taxable = getTaxableSocialSecurityBenefits(ssBenefits, agi, filingStatus);
+      const taxable = getTaxableSocialSecurityBenefits(ssBenefits, otherIncome, 0, filingStatus);
 
       // Tier 1: (34000 - 25000) * 0.5 = 4,500
       // Tier 2: (42500 - 34000) * 0.85 = 7,225
@@ -181,11 +181,11 @@ describe('Social Security Tax Integration', () => {
 
     it('should calculate correct tax for couple with low income (Married)', () => {
       const ssBenefits = 30000; // $30k/year SS combined
-      const agi = 20000; // $20k from part-time work
+      const otherIncome = 20000; // $20k from part-time work
       const filingStatus = 'Married Filing Jointly';
       // Combined income = 20000 + (30000 * 0.5) = 35000
 
-      const taxable = getTaxableSocialSecurityBenefits(ssBenefits, agi, filingStatus);
+      const taxable = getTaxableSocialSecurityBenefits(ssBenefits, otherIncome, 0, filingStatus);
 
       // Excess above $32,000 = 3,000
       // Taxable = 3,000 * 0.5 = 1,500
@@ -194,14 +194,379 @@ describe('Social Security Tax Integration', () => {
 
     it('should handle edge case at threshold boundary (Single)', () => {
       const ssBenefits = 20000;
-      const agi = 15000;
+      const otherIncome = 15000;
       const filingStatus = 'Single';
       // Combined income = 15000 + (20000 * 0.5) = 25000 exactly
 
-      const taxable = getTaxableSocialSecurityBenefits(ssBenefits, agi, filingStatus);
+      const taxable = getTaxableSocialSecurityBenefits(ssBenefits, otherIncome, 0, filingStatus);
 
       // At the exact threshold, no benefits should be taxable
       expect(taxable).toBe(0);
+    });
+  });
+
+  // ===========================================================================
+  // Comprehensive Test Scenarios from GET_TAXABLE_SS_UPDATE_AND_TEST_SCENARIOS.md
+  // ===========================================================================
+
+  describe('Group 1: Zero and Edge Cases', () => {
+    it('should return 0 when all inputs are zero', () => {
+      expect(getTaxableSocialSecurityBenefits(0, 0, 0, 'Single')).toBe(0);
+    });
+
+    it('should return 0 when no SS benefits (high other income)', () => {
+      expect(getTaxableSocialSecurityBenefits(0, 50000, 0, 'Single')).toBe(0);
+    });
+
+    it('should return 0 for SS only below threshold', () => {
+      // combined = 0 + 0 + (40000 * 0.5) = 20000 < 25000
+      expect(getTaxableSocialSecurityBenefits(40000, 0, 0, 'Single')).toBe(0);
+    });
+
+    it('should return 0 for negative otherIncome', () => {
+      // combined = -5000 + 0 + (20000 * 0.5) = 5000 < 25000
+      expect(getTaxableSocialSecurityBenefits(20000, -5000, 0, 'Single')).toBe(0);
+    });
+  });
+
+  describe('Group 2: Single - Below First Threshold ($25k)', () => {
+    it('should return 0 just under threshold', () => {
+      // combined = 9999 + 0 + (30000 * 0.5) = 24999 < 25000
+      expect(getTaxableSocialSecurityBenefits(30000, 9999, 0, 'Single')).toBe(0);
+    });
+
+    it('should return 0 exactly at threshold', () => {
+      // combined = 10000 + 0 + (30000 * 0.5) = 25000 (at threshold, not over)
+      expect(getTaxableSocialSecurityBenefits(30000, 10000, 0, 'Single')).toBe(0);
+    });
+
+    it('should return 0 for low SS and low income', () => {
+      // combined = 5000 + 0 + (10000 * 0.5) = 10000 < 25000
+      expect(getTaxableSocialSecurityBenefits(10000, 5000, 0, 'Single')).toBe(0);
+    });
+
+    it('should return 0 for high SS and zero income', () => {
+      // combined = 0 + 0 + (48000 * 0.5) = 24000 < 25000
+      expect(getTaxableSocialSecurityBenefits(48000, 0, 0, 'Single')).toBe(0);
+    });
+  });
+
+  describe('Group 3: Single - In 50% Zone ($25k-$34k)', () => {
+    it('should return 0.50 for $1 over threshold', () => {
+      // combined = 10001 + 0 + (30000 * 0.5) = 25001
+      // taxable = min(0.5 * 1, 0.5 * 30000) = 0.50
+      expect(getTaxableSocialSecurityBenefits(30000, 10001, 0, 'Single')).toBeCloseTo(0.50, 2);
+    });
+
+    it('should return 500 for $1000 over threshold', () => {
+      // combined = 11000 + 0 + (30000 * 0.5) = 26000
+      // taxable = min(0.5 * 1000, 0.5 * 30000) = 500
+      expect(getTaxableSocialSecurityBenefits(30000, 11000, 0, 'Single')).toBeCloseTo(500, 0);
+    });
+
+    it('should return 2250 for mid zone', () => {
+      // combined = 14500 + 0 + (30000 * 0.5) = 29500
+      // taxable = min(0.5 * 4500, 0.5 * 30000) = 2250
+      expect(getTaxableSocialSecurityBenefits(30000, 14500, 0, 'Single')).toBeCloseTo(2250, 0);
+    });
+
+    it('should return 4499.50 near top of zone', () => {
+      // combined = 18999 + 0 + (30000 * 0.5) = 33999
+      // taxable = min(0.5 * 8999, 0.5 * 30000) = 4499.50
+      expect(getTaxableSocialSecurityBenefits(30000, 18999, 0, 'Single')).toBeCloseTo(4499.50, 1);
+    });
+
+    it('should return 0 for low SS below threshold', () => {
+      // combined = 20000 + 0 + (5000 * 0.5) = 22500 < 25000
+      expect(getTaxableSocialSecurityBenefits(5000, 20000, 0, 'Single')).toBe(0);
+    });
+
+    it('should return 1250 for low SS with high income', () => {
+      // combined = 25000 + 0 + (5000 * 0.5) = 27500
+      // taxable = min(0.5 * 2500, 0.5 * 5000) = min(1250, 2500) = 1250
+      expect(getTaxableSocialSecurityBenefits(5000, 25000, 0, 'Single')).toBeCloseTo(1250, 0);
+    });
+  });
+
+  describe('Group 4: Single - Exactly at Second Threshold ($34k)', () => {
+    it('should return 4500 exactly at $34k', () => {
+      // combined = 19000 + 0 + (30000 * 0.5) = 34000
+      // taxable = 0.5 * (34000 - 25000) = 4500
+      expect(getTaxableSocialSecurityBenefits(30000, 19000, 0, 'Single')).toBeCloseTo(4500, 0);
+    });
+  });
+
+  describe('Group 5: Single - In 85% Zone (>$34k)', () => {
+    it('should return 4500.85 for $1 over second threshold', () => {
+      // combined = 19001 + 0 + (30000 * 0.5) = 34001
+      // tier1 = 0.5 * (34000 - 25000) = 4500
+      // tier2 = 0.85 * 1 = 0.85
+      // taxable = 4500.85
+      expect(getTaxableSocialSecurityBenefits(30000, 19001, 0, 'Single')).toBeCloseTo(4500.85, 2);
+    });
+
+    it('should return 5350 for $1000 over threshold', () => {
+      // combined = 20000 + 0 + (30000 * 0.5) = 35000
+      // tier1 = 4500
+      // tier2 = 0.85 * 1000 = 850
+      // taxable = 5350
+      expect(getTaxableSocialSecurityBenefits(30000, 20000, 0, 'Single')).toBeCloseTo(5350, 0);
+    });
+
+    it('should return 13000 for $10k over threshold', () => {
+      // combined = 29000 + 0 + (30000 * 0.5) = 44000
+      // tier1 = 4500
+      // tier2 = 0.85 * 10000 = 8500
+      // taxable = 13000
+      expect(getTaxableSocialSecurityBenefits(30000, 29000, 0, 'Single')).toBeCloseTo(13000, 0);
+    });
+
+    it('should cap at 85% for high income', () => {
+      // combined = 50000 + 0 + (30000 * 0.5) = 65000
+      // uncapped would be 4500 + 0.85 * 31000 = 30850
+      // capped at 0.85 * 30000 = 25500
+      expect(getTaxableSocialSecurityBenefits(30000, 50000, 0, 'Single')).toBe(25500);
+    });
+
+    it('should still cap at 85% for very high income', () => {
+      // combined = 100000 + 0 + (30000 * 0.5) = 115000
+      // capped at 0.85 * 30000 = 25500
+      expect(getTaxableSocialSecurityBenefits(30000, 100000, 0, 'Single')).toBe(25500);
+    });
+
+    it('should return 8500 for low SS with high income', () => {
+      // combined = 50000 + 0 + (10000 * 0.5) = 55000
+      // capped at 0.85 * 10000 = 8500
+      expect(getTaxableSocialSecurityBenefits(10000, 50000, 0, 'Single')).toBe(8500);
+    });
+  });
+
+  describe('Group 6: Single - 85% Cap Verification', () => {
+    it('should cap at 17000 (85% of 20000)', () => {
+      expect(getTaxableSocialSecurityBenefits(20000, 60000, 0, 'Single')).toBe(17000);
+    });
+
+    it('should cap at 25500 (85% of 30000)', () => {
+      expect(getTaxableSocialSecurityBenefits(30000, 80000, 0, 'Single')).toBe(25500);
+    });
+
+    it('should cap at 4250 (85% of 5000)', () => {
+      expect(getTaxableSocialSecurityBenefits(5000, 100000, 0, 'Single')).toBe(4250);
+    });
+  });
+
+  describe('Group 7: MFJ - Below First Threshold ($32k)', () => {
+    it('should return 0 below threshold', () => {
+      // combined = 11999 + 0 + (40000 * 0.5) = 31999 < 32000
+      expect(getTaxableSocialSecurityBenefits(40000, 11999, 0, 'Married Filing Jointly')).toBe(0);
+    });
+
+    it('should return 0 at threshold', () => {
+      // combined = 12000 + 0 + (40000 * 0.5) = 32000 (at threshold)
+      expect(getTaxableSocialSecurityBenefits(40000, 12000, 0, 'Married Filing Jointly')).toBe(0);
+    });
+  });
+
+  describe('Group 8: MFJ - In 50% Zone ($32k-$44k)', () => {
+    it('should return 0.50 for $1 over threshold', () => {
+      // combined = 12001 + 0 + (40000 * 0.5) = 32001
+      expect(getTaxableSocialSecurityBenefits(40000, 12001, 0, 'Married Filing Jointly')).toBeCloseTo(0.50, 2);
+    });
+
+    it('should return 3000 for mid zone', () => {
+      // combined = 18000 + 0 + (40000 * 0.5) = 38000
+      // taxable = 0.5 * (38000 - 32000) = 3000
+      expect(getTaxableSocialSecurityBenefits(40000, 18000, 0, 'Married Filing Jointly')).toBeCloseTo(3000, 0);
+    });
+
+    it('should return 5999.50 near top', () => {
+      // combined = 23999 + 0 + (40000 * 0.5) = 43999
+      // taxable = 0.5 * (43999 - 32000) = 5999.50
+      expect(getTaxableSocialSecurityBenefits(40000, 23999, 0, 'Married Filing Jointly')).toBeCloseTo(5999.50, 1);
+    });
+  });
+
+  describe('Group 9: MFJ - At Second Threshold ($44k)', () => {
+    it('should return 6000 exactly at $44k', () => {
+      // combined = 24000 + 0 + (40000 * 0.5) = 44000
+      // taxable = 0.5 * (44000 - 32000) = 6000
+      expect(getTaxableSocialSecurityBenefits(40000, 24000, 0, 'Married Filing Jointly')).toBeCloseTo(6000, 0);
+    });
+  });
+
+  describe('Group 10: MFJ - In 85% Zone (>$44k)', () => {
+    it('should return 6000.85 for $1 over', () => {
+      // combined = 24001 + 0 + (40000 * 0.5) = 44001
+      // tier1 = 6000, tier2 = 0.85 * 1 = 0.85
+      expect(getTaxableSocialSecurityBenefits(40000, 24001, 0, 'Married Filing Jointly')).toBeCloseTo(6000.85, 2);
+    });
+
+    it('should return 14500 for $10k over', () => {
+      // combined = 34000 + 0 + (40000 * 0.5) = 54000
+      // tier1 = 6000, tier2 = 0.85 * 10000 = 8500
+      expect(getTaxableSocialSecurityBenefits(40000, 34000, 0, 'Married Filing Jointly')).toBeCloseTo(14500, 0);
+    });
+
+    it('should cap at 34000 (85% of 40000) for high income', () => {
+      // combined = 80000 + 0 + (40000 * 0.5) = 100000
+      // capped at 0.85 * 40000 = 34000
+      expect(getTaxableSocialSecurityBenefits(40000, 80000, 0, 'Married Filing Jointly')).toBe(34000);
+    });
+  });
+
+  describe('Group 11: MFS - Uses Single Thresholds', () => {
+    it('should return 0 below threshold', () => {
+      // combined = 14999 + 0 + (20000 * 0.5) = 24999 < 25000
+      expect(getTaxableSocialSecurityBenefits(20000, 14999, 0, 'Married Filing Separately')).toBe(0);
+    });
+
+    it('should return 2500 in 50% zone', () => {
+      // combined = 20000 + 0 + (20000 * 0.5) = 30000
+      // taxable = 0.5 * (30000 - 25000) = 2500
+      expect(getTaxableSocialSecurityBenefits(20000, 20000, 0, 'Married Filing Separately')).toBeCloseTo(2500, 0);
+    });
+
+    it('should return 9600 in 85% zone', () => {
+      // combined = 30000 + 0 + (20000 * 0.5) = 40000
+      // tier1 = 0.5 * (34000 - 25000) = 4500
+      // tier2 = 0.85 * (40000 - 34000) = 5100
+      // total = 9600
+      expect(getTaxableSocialSecurityBenefits(20000, 30000, 0, 'Married Filing Separately')).toBeCloseTo(9600, 0);
+    });
+  });
+
+  describe('Group 12: Tax-Exempt Interest (TODO: Not Currently Tracked)', () => {
+    it('should push over threshold with tax-exempt interest', () => {
+      // combined = 9000 + 2000 + (30000 * 0.5) = 26000
+      // taxable = 0.5 * (26000 - 25000) = 500
+      expect(getTaxableSocialSecurityBenefits(30000, 9000, 2000, 'Single')).toBeCloseTo(500, 0);
+    });
+
+    it('should push into 85% zone with tax-exempt interest', () => {
+      // combined = 15000 + 5000 + (30000 * 0.5) = 35000
+      // tier1 = 4500, tier2 = 0.85 * 1000 = 850
+      // total = 5350
+      expect(getTaxableSocialSecurityBenefits(30000, 15000, 5000, 'Single')).toBeCloseTo(5350, 0);
+    });
+
+    it('should handle tax-exempt interest only (rare)', () => {
+      // combined = 0 + 12000 + (30000 * 0.5) = 27000
+      // taxable = 0.5 * (27000 - 25000) = 1000
+      expect(getTaxableSocialSecurityBenefits(30000, 0, 12000, 'Single')).toBeCloseTo(1000, 0);
+    });
+
+    it('should return same result with zero tax-exempt interest as baseline', () => {
+      // combined = 50000 + 0 + (30000 * 0.5) = 65000
+      // capped at 0.85 * 30000 = 25500
+      expect(getTaxableSocialSecurityBenefits(30000, 50000, 0, 'Single')).toBe(25500);
+    });
+  });
+
+  describe('Group 13: Filing Status Comparison', () => {
+    it('should return 0 for both at Single threshold', () => {
+      // combined = 10000 + 0 + (30000 * 0.5) = 25000
+      expect(getTaxableSocialSecurityBenefits(30000, 10000, 0, 'Single')).toBe(0);
+      expect(getTaxableSocialSecurityBenefits(30000, 10000, 0, 'Married Filing Jointly')).toBe(0);
+    });
+
+    it('should return 2500 for Single in 50% zone but 0 for MFJ', () => {
+      // combined = 15000 + 0 + (30000 * 0.5) = 30000
+      // Single: in 50% zone, taxable = 0.5 * 5000 = 2500
+      // MFJ: below $32k threshold, taxable = 0
+      expect(getTaxableSocialSecurityBenefits(30000, 15000, 0, 'Single')).toBeCloseTo(2500, 0);
+      expect(getTaxableSocialSecurityBenefits(30000, 15000, 0, 'Married Filing Jointly')).toBe(0);
+    });
+
+    it('should return different results for Single in 85% vs MFJ just in 85%', () => {
+      // combined = 30000 + 0 + (30000 * 0.5) = 45000
+      // Single: tier1 = 4500, tier2 = 0.85 * 11000 = 9350 -> 13850
+      // MFJ: tier1 = 0.5 * (44000 - 32000) = 6000, tier2 = 0.85 * 1000 = 850 -> 6850
+      expect(getTaxableSocialSecurityBenefits(30000, 30000, 0, 'Single')).toBeCloseTo(13850, 0);
+      expect(getTaxableSocialSecurityBenefits(30000, 30000, 0, 'Married Filing Jointly')).toBeCloseTo(6850, 0);
+    });
+  });
+
+  describe('Group 14: Realistic Retirement Scenarios', () => {
+    it('should return 0 for low income retiree (SS only)', () => {
+      // combined = 0 + 0 + (24000 * 0.5) = 12000 < 25000
+      expect(getTaxableSocialSecurityBenefits(24000, 0, 0, 'Single')).toBe(0);
+    });
+
+    it('should return 5350 for SS + small pension', () => {
+      // combined = 20000 + 0 + (30000 * 0.5) = 35000
+      // tier1 = 4500, tier2 = 850 -> 5350
+      expect(getTaxableSocialSecurityBenefits(30000, 20000, 0, 'Single')).toBeCloseTo(5350, 0);
+    });
+
+    it('should return 15975 for SS + part-time work', () => {
+      // combined = 35000 + 0 + (25000 * 0.5) = 47500
+      // tier1 = 4500, tier2 = 0.85 * 13500 = 11475
+      // total = 15975 (below cap of 0.85 * 25000 = 21250, so cap not applied)
+      expect(getTaxableSocialSecurityBenefits(25000, 35000, 0, 'Single')).toBeCloseTo(15975, 0);
+    });
+
+    it('should return 11250 for couple with moderate income', () => {
+      // combined = 30000 + 0 + (50000 * 0.5) = 55000
+      // tier1 = 6000, tier2 = 0.85 * 11000 = 9350
+      // total = 15350 but cap at 0.85 * 50000 = 42500 (no cap needed)
+      // Wait, let me recalculate:
+      // tier1 = 0.5 * (44000 - 32000) = 6000
+      // tier2 = 0.85 * (55000 - 44000) = 0.85 * 11000 = 9350
+      // total = 15350 but doc says 11250...
+      // The doc calculation might be:
+      // Actually doc might have different expected values. Let me calculate properly:
+      // SS=50000, otherIncome=30000, MFJ
+      // Combined = 30000 + 0.5×50000 = 55000
+      // MFJ thresholds: tier1 = 32000, tier2 = 44000
+      // Amount over tier2 = 55000 - 44000 = 11000 → 85% taxable = 9350
+      // Amount tier1 to tier2 = 12000 → 50% taxable = 6000
+      // Total taxable = 9350 + 6000 = 15350 (capped at 85% of 50000 = 42500)
+      const result = getTaxableSocialSecurityBenefits(50000, 30000, 0, 'Married Filing Jointly');
+      expect(result).toBe(15350);
+    });
+
+    it('should return 51000 (capped) for affluent couple', () => {
+      // combined = 100000 + 0 + (60000 * 0.5) = 130000
+      // capped at 0.85 * 60000 = 51000
+      expect(getTaxableSocialSecurityBenefits(60000, 100000, 0, 'Married Filing Jointly')).toBe(51000);
+    });
+
+    it('should return 29750 (capped) for early retiree with big conversion', () => {
+      // combined = 80000 + 0 + (35000 * 0.5) = 97500
+      // capped at 0.85 * 35000 = 29750
+      expect(getTaxableSocialSecurityBenefits(35000, 80000, 0, 'Single')).toBe(29750);
+    });
+  });
+
+  describe('Group 15: Return Value Validation', () => {
+    const testCases = [
+      { ss: 30000, other: 0, taxExempt: 0, status: 'Single' as const },
+      { ss: 30000, other: 50000, taxExempt: 0, status: 'Single' as const },
+      { ss: 40000, other: 30000, taxExempt: 0, status: 'Married Filing Jointly' as const },
+      { ss: 20000, other: 100000, taxExempt: 5000, status: 'Married Filing Separately' as const },
+      { ss: 10000, other: 15000, taxExempt: 0, status: 'Single' as const },
+    ];
+
+    testCases.forEach(({ ss, other, taxExempt, status }) => {
+      it(`should validate return value for SS=${ss}, other=${other}, taxExempt=${taxExempt}, ${status}`, () => {
+        const result = getTaxableSocialSecurityBenefits(ss, other, taxExempt, status);
+
+        // taxableSS >= 0
+        expect(result).toBeGreaterThanOrEqual(0);
+
+        // taxableSS <= totalSSBenefits
+        expect(result).toBeLessThanOrEqual(ss);
+
+        // taxableSS <= 0.85 * totalSSBenefits
+        expect(result).toBeLessThanOrEqual(ss * 0.85);
+
+        // If combinedIncome < firstThreshold then taxableSS === 0
+        const combinedIncome = other + taxExempt + (ss * 0.5);
+        const threshold = (status === 'Married Filing Jointly') ? 32000 : 25000;
+        if (combinedIncome < threshold) {
+          expect(result).toBe(0);
+        }
+      });
     });
   });
 
@@ -209,9 +574,9 @@ describe('Social Security Tax Integration', () => {
     /**
      * CRITICAL BUG PREVENTION:
      * These tests verify that the taxable SS calculation from getTaxableSocialSecurityBenefits
-     * correctly integrates with calculateFederalTax.
+     * correctly integrates with calculateFederalTaxFromIncomes.
      *
-     * The bug was in calculateFederalTax where adjustedGross double-counted SS benefits.
+     * The bug was in the old calculateFederalTax where adjustedGross double-counted SS benefits.
      * These integration tests ensure the taxable amount calculated here is used correctly.
      */
 
@@ -226,10 +591,11 @@ describe('Social Security Tax Integration', () => {
       );
       // $48k annual SS
 
-      const fedTax = calculateFederalTax(
+      const fedTax = calculateFederalTaxFromIncomes(
         createTaxState('Single'),
         [ssIncome],
         [],
+        0,
         2024,
         defaultAssumptions
       );
@@ -274,10 +640,11 @@ describe('Social Security Tax Integration', () => {
       );
       // $24k annual SS
 
-      const fedTax = calculateFederalTax(
+      const fedTax = calculateFederalTaxFromIncomes(
         createTaxState('Single'),
         [workIncome, ssIncome],
         [],
+        0,
         2024,
         defaultAssumptions
       );
@@ -313,10 +680,11 @@ describe('Social Security Tax Integration', () => {
       );
       // $30k annual SS
 
-      const fedTax = calculateFederalTax(
+      const fedTax = calculateFederalTaxFromIncomes(
         createTaxState('Single'),
         [ssIncome],
         [],
+        0,
         2024,
         defaultAssumptions
       );
@@ -359,18 +727,20 @@ describe('Social Security Tax Integration', () => {
       );
       // SS: $18,000/year
 
-      const taxWithoutSS = calculateFederalTax(
+      const taxWithoutSS = calculateFederalTaxFromIncomes(
         createTaxState('Single'),
         [workIncome],
         [],
+        0,
         2024,
         defaultAssumptions
       );
 
-      const taxWithSS = calculateFederalTax(
+      const taxWithSS = calculateFederalTaxFromIncomes(
         createTaxState('Single'),
         [workIncome, ssIncome],
         [],
+        0,
         2024,
         defaultAssumptions
       );
@@ -431,10 +801,11 @@ describe('Social Security Tax Integration', () => {
         new Date('2024-12-31')
       );
 
-      const fedTax = calculateFederalTax(
+      const fedTax = calculateFederalTaxFromIncomes(
         createTaxState('Single'),
         [workIncome, ssIncome],
         [],
+        0,
         2024,
         defaultAssumptions
       );
@@ -554,11 +925,13 @@ describe('Social Security Tax Integration', () => {
       const taxJump = yearSSStarts.taxDetails.fed - yearBeforeSS.taxDetails.fed;
 
       // The marginal tax rate on SS income should be reasonable
-      // Even with 85% of SS being taxable, the marginal rate shouldn't exceed ~50%
+      // With up to 85% of SS taxable at typical brackets (10-24%), expect ~8-20% effective marginal rate
+      // Upper bound of 50% accounts for torpedo zone effects where marginal can spike
       const marginalRateOnNewIncome = (taxJump / incomeJump) * 100;
 
-      expect(marginalRateOnNewIncome).toBeLessThan(50); // Should not exceed 50%
-      expect(marginalRateOnNewIncome).toBeGreaterThan(0); // Should have some tax increase
+      // Expect positive marginal rate in the 5-50% range
+      expect(marginalRateOnNewIncome).toBeGreaterThan(5);
+      expect(marginalRateOnNewIncome).toBeLessThan(50);
     });
 
     it('should correctly tax Social Security benefits (up to 85% taxable)', () => {

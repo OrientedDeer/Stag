@@ -557,7 +557,8 @@ describe('Feedback Loop Prevention', () => {
 
             const workIncome = new WorkIncome(
                 'inc-work', 'Job', 100000, 'Annually', 'Yes',
-                0, 0, 0, 0, '', null, 'FIXED'
+                0, 0, 0, 0, '', null, 'FIXED',
+                new Date(2025, 0, 1)  // Start Jan 1, 2025 to ensure full-year income
             );
             const futureSS = new FutureSocialSecurityIncome('inc-ss', 'SS', 70, 0, 0);
             const expenses = new FoodExpense('exp-living', 'Living', 50000, 'Annually', new Date('2025-01-01'));

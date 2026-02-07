@@ -31,6 +31,7 @@
     "@nivo/sankey": "^0.99.0",
     "@nivo/stream": "^0.99.0",
     "@react-pdf/renderer": "^4.3.2",
+    "@rollup/rollup-linux-x64-gnu": "^4.57.1",
     "@yudiel/react-qr-scanner": "^2.5.0",
     "cloc": "^2.6.0-cloc",
     "html2canvas": "^1.4.1",

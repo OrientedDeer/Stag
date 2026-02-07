@@ -201,6 +201,39 @@ export const exportScenarioToFile = (scenario: SavedScenario): void => {
 };
 
 /**
+ * Validate and transform a parsed scenario file for import.
+ * Throws if validation fails.
+ */
+export function validateAndTransformScenarioImport(parsed: unknown): SavedScenario {
+    if (!parsed || typeof parsed !== 'object') {
+        throw new Error('Invalid scenario file: not a valid object');
+    }
+
+    const obj = parsed as Record<string, unknown>;
+
+    if (!obj.metadata || !obj.inputs) {
+        throw new Error('Invalid scenario file: missing metadata or inputs');
+    }
+
+    const metadata = obj.metadata as Record<string, unknown>;
+    if (!metadata.id || !metadata.name) {
+        throw new Error('Invalid scenario file: missing required metadata fields');
+    }
+
+    // Generate a new ID to avoid conflicts with existing scenarios
+    return {
+        ...obj,
+        metadata: {
+            ...metadata,
+            id: generateScenarioId(),
+            name: `${metadata.name} (Imported)`,
+            updatedAt: new Date().toISOString()
+        },
+        version: obj.version || SCENARIO_VERSION
+    } as SavedScenario;
+}
+
+/**
  * Import a scenario from a JSON file
  */
 export const importScenarioFromFile = async (file: File): Promise<SavedScenario> => {
@@ -211,29 +244,7 @@ export const importScenarioFromFile = async (file: File): Promise<SavedScenario>
             try {
                 const content = e.target?.result as string;
                 const parsed = JSON.parse(content);
-
-                // Validate the scenario structure
-                if (!parsed.metadata || !parsed.inputs) {
-                    throw new Error('Invalid scenario file: missing metadata or inputs');
-                }
-
-                if (!parsed.metadata.id || !parsed.metadata.name) {
-                    throw new Error('Invalid scenario file: missing required metadata fields');
-                }
-
-                // Generate a new ID to avoid conflicts with existing scenarios
-                const importedScenario: SavedScenario = {
-                    ...parsed,
-                    metadata: {
-                        ...parsed.metadata,
-                        id: generateScenarioId(), // New ID for import
-                        name: `${parsed.metadata.name} (Imported)`,
-                        updatedAt: new Date().toISOString()
-                    },
-                    version: parsed.version || SCENARIO_VERSION
-                };
-
-                resolve(importedScenario);
+                resolve(validateAndTransformScenarioImport(parsed));
             } catch (e) {
                 reject(new Error(`Failed to parse scenario file: ${e instanceof Error ? e.message : 'Unknown error'}`));
             }

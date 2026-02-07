@@ -151,6 +151,9 @@ export function getExpectedAccountBalance(
 /**
  * Get expected monthly contribution for an account based on simulation
  * This is calculated from the annual change divided by 12
+ *
+ * TODO: This function is exported and tested but not used in the app.
+ * Either wire it up to the budget tracking UI or delete it.
  */
 export function getExpectedMonthlyContribution(
     accountId: string,
@@ -182,6 +185,9 @@ export function getExpectedMonthlyContribution(
 
 /**
  * Calculate the difference between actual and expected values
+ *
+ * TODO: This function is exported and tested but not used in the app.
+ * Either wire it up to the budget tracking UI or delete it.
  */
 export interface VarianceResult {
     actual: number;
@@ -211,6 +217,9 @@ export function calculateVariance(
 
 /**
  * Get spending by category for a month
+ *
+ * TODO: This function is exported and tested but not used in the app.
+ * Either wire it up to the budget tracking UI or delete it.
  */
 export interface CategorySpending {
     expenseId: string;
@@ -247,6 +256,9 @@ export function getCategorySpending(
 
 /**
  * Get account balances for a month compared to expected
+ *
+ * TODO: This function is exported and tested but not used in the app.
+ * Either wire it up to the budget tracking UI or delete it.
  */
 export interface AccountBalance {
     accountId: string;
@@ -397,6 +409,9 @@ export function getNetSpendingByCategory(transactions: Transaction[]): Record<st
 /**
  * Calculate income by category
  * Uses actual transaction amounts
+ *
+ * TODO: This function is exported and tested but not used in the app.
+ * Either wire it up to the budget tracking UI or delete it.
  */
 export function getIncomeByCategory(transactions: Transaction[]): Record<IncomeCategory, number> {
     const result: Partial<Record<IncomeCategory, number>> = {};

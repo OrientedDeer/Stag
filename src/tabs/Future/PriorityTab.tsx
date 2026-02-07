@@ -6,7 +6,7 @@ import { IncomeContext } from '../../components/Objects/Income/IncomeContext';
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
 import { AnyAccount, InvestedAccount } from '../../components/Objects/Accounts/models';
 import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
-import { calculateFederalTax, calculateStateTax, calculateFicaTax } from '../../components/Objects/Taxes/TaxService';
+import { calculateFederalTaxFromIncomes, calculateStateTax, calculateFicaTax } from '../../components/Objects/Taxes/TaxService';
 import { WorkIncome } from '../../components/Objects/Income/models';
 import { formatCompactCurrency } from './tabs/FutureUtils';
 import { get401kLimit, getIRALimit, getHSALimit } from '../../data/ContributionLimits';
@@ -53,7 +53,7 @@ export default function PriorityTab() {
     [expenses, year]);
 
     // Tax calculations (monthly)
-    const federalTax = useMemo(() => calculateFederalTax(taxState, incomes, expenses, year, state) / 12, [taxState, incomes, expenses, year, state]);
+    const federalTax = useMemo(() => calculateFederalTaxFromIncomes(taxState, incomes, expenses, 0, year, state) / 12, [taxState, incomes, expenses, year, state]);
     const stateTax = useMemo(() => calculateStateTax(taxState, incomes, expenses, year, state) / 12, [taxState, incomes, expenses, year, state]);
     const ficaTax = useMemo(() => calculateFicaTax(taxState, incomes, year, state) / 12, [taxState, incomes, year, state]);
     const monthlyTaxes = federalTax + stateTax + ficaTax;

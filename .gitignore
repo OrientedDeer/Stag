@@ -31,3 +31,8 @@ test-results/
 
 # Test coverage
 coverage/
+
+# Personal scenario tests (real financial data)
+**/reconstituted-scenario*.json
+**/reconstituted-scenario*.backup
+**/TEAM_HANDOFF.md

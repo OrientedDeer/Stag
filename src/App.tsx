@@ -43,7 +43,7 @@ export default function App() {
                 <div className="flex flex-col flex-1 overflow-hidden">
                   <TopBar setIsOpen={setIsOpen} title="Menu"/>
 
-                  <main className="flex-1 overflow-y-auto">
+                  <main className="flex-1 overflow-y-auto custom-scrollbar">
                     <Routes>
                       <Route index element={<Dashboard />} />
                       <Route path="/dashboard" element={<Dashboard />} />

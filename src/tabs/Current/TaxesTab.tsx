@@ -12,7 +12,7 @@ import {
     getPostTaxExemptions,
     getItemizedDeductions,
     getYesDeductions,
-    calculateFederalTax,
+    calculateFederalTaxFromIncomes,
     calculateStateTax,
     getPostTaxEmployerMatch
 } from "../../components/Objects/Taxes/TaxService";
@@ -32,7 +32,7 @@ export default function TaxesTab() {
     const taxYear = state.year;
 
     const stateTax = calculateStateTax(state, incomes, expenses, taxYear, assumptions);
-    const federalTax = calculateFederalTax(state, incomes, expenses, taxYear, assumptions);
+    const federalTax = calculateFederalTaxFromIncomes(state, incomes, expenses, 0, taxYear, assumptions);
     const ficaTax = calculateFicaTax(state, incomes, taxYear, assumptions);
     const annualGross = getGrossIncome(incomes, taxYear);
     
@@ -186,7 +186,7 @@ export default function TaxesTab() {
                                 <div>
                                     <p className="text-gray-400 text-sm mb-1 font-medium">Estimated Net Pay (Annual)</p>
                                     <h2 className="text-6xl font-black text-green-400 tracking-tight">
-                                        ${netPaycheck.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                        ${netPaycheck.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </h2>
                                 </div>
                                 <div className="text-left sm:text-right border-l sm:border-l-0 sm:border-r border-gray-800 pl-4 sm:pl-0 sm:pr-4">
@@ -234,7 +234,7 @@ export default function TaxesTab() {
                                 
                                 <div className="flex justify-between text-gray-400 text-sm font-semibold items-center border-t border-gray-800/50 pt-2 mt-2">
                                     <span>Adjusted Gross Income (AGI)</span>
-                                    <span className="font-mono">${(Math.max(0, annualGross - totalPreTaxDeductions)).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                    <span className="font-mono">${(Math.max(0, annualGross - totalPreTaxDeductions)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                 </div>
 
                                 {/* ... Tax Breakdown ... */}
@@ -242,19 +242,19 @@ export default function TaxesTab() {
 
                                 <div className="flex justify-between text-red-400 items-center">
                                     <span className="text-lg">Federal Income Tax {state.fedOverride !== null && "(Manual)"}</span>
-                                    <span className="font-mono text-lg">-${federalTax.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                    <span className="font-mono text-lg">-${federalTax.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                 </div>
 
                                 <div className="flex justify-between text-red-400 items-center">
                                     <span className="text-lg">FICA (SS & Medicare) {state.ficaOverride !== null && "(Manual)"}</span>
-                                    <span className="font-mono text-lg">-${ficaTax.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                    <span className="font-mono text-lg">-${ficaTax.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                 </div>
 
                                 <div className="flex justify-between text-red-400 items-center">
                                     <span className="text-lg">{state.stateResidency} State Tax {state.stateOverride !== null && "(Manual)"}</span>
                                     <span className="font-mono text-lg">
                                         {stateParams || state.stateOverride !== null
-                                            ? `-$${stateTax.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                                            ? `-$${stateTax.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                                             : "$0"}
                                     </span>
                                 </div>
@@ -270,7 +270,7 @@ export default function TaxesTab() {
                                 <div className="flex justify-between border-t border-gray-700 pt-6 mt-6 items-center">
                                     <span className="text-3xl font-bold text-white">Net Take Home</span>
                                     <span className="text-3xl font-black text-green-400 font-mono">
-                                        ${netPaycheck.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                        ${netPaycheck.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </span>
                                 </div>
                             </div>

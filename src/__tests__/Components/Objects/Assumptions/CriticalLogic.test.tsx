@@ -161,7 +161,7 @@ describe('Critical Simulation Logic', () => {
                 inflationAdjusted: false, 
                 healthcareInflation: 0 
             },
-            investments: { ...defaultAssumptions.investments, returnRates: { ror: 0 } },
+            investments: { ...defaultAssumptions.investments, returnRates: { ror: 0 }, withdrawalStrategy: 'Needs Based' },
             income: { ...defaultAssumptions.income, salaryGrowth: 0 },
             // 1. Tell the simulation to pull from 'acc-1' when broke
             withdrawalStrategy: [

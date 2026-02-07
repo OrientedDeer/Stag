@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { SeededRandom, calculateMean, calculateStdDev } from '../../services/RandomGenerator';
 import {
     calculateSuccessRate,
@@ -8,9 +8,19 @@ import {
     summarizeScenarios,
     calculateFinalNetWorthStats,
 } from '../../services/MonteCarloAggregator';
-import { ScenarioResult } from '../../services/MonteCarloTypes';
+import {
+    validateConfig,
+    estimateRunTime,
+    runMonteCarloSimulationSync,
+    runMonteCarloSimulation,
+} from '../../services/MonteCarloEngine';
+import { ScenarioResult, MonteCarloConfig } from '../../services/MonteCarloTypes';
 import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 import { SavedAccount, InvestedAccount, DeficitDebtAccount } from '../../components/Objects/Accounts/models';
+import { PassiveIncome } from '../../components/Objects/Income/models';
+import { OtherExpense } from '../../components/Objects/Expense/models';
+import { defaultAssumptions, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { TaxState } from '../../components/Objects/Taxes/TaxContext';
 
 // --- SeededRandom Tests ---
 describe('SeededRandom', () => {
@@ -204,6 +214,7 @@ describe('MonteCarloAggregator', () => {
         cashflow: {
             totalIncome: 0,
             totalExpense: 0,
+          livingExpenses: 0,
             discretionary: 0,
             investedUser: 0,
             investedMatch: 0,
@@ -221,6 +232,7 @@ describe('MonteCarloAggregator', () => {
             insurance: 0,
             postTax: 0,
             capitalGains: 0,
+            niit: 0,
         },
         logs: [],
     });
@@ -358,6 +370,7 @@ describe('MonteCarloAggregator', () => {
                 cashflow: {
                     totalIncome: 0,
                     totalExpense: 0,
+          livingExpenses: 0,
                     discretionary: 0,
                     investedUser: 0,
                     investedMatch: 0,
@@ -368,7 +381,7 @@ describe('MonteCarloAggregator', () => {
                     withdrawalDetail: {},
                 },
                 taxDetails: {
-                    fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0,
+                    fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0,
                 },
                 logs: [],
             });
@@ -492,6 +505,7 @@ describe('Return Rate Override Integration', () => {
             income: { salaryGrowth: 1.0, qualifiesForSocialSecurity: true, socialSecurityFundingPercent: 100 },
             expenses: { lifestyleCreep: 75, housingAppreciation: 1.4, rentInflation: 1.2 },
             display: { useCompactCurrency: true, showExperimentalFeatures: false, hsaEligible: true },
+            simulation: { useNewEngine: false },
             priorities: [],
             withdrawalStrategy: [],
         };
@@ -508,5 +522,721 @@ describe('Return Rate Override Integration', () => {
         // With negative override of -20% (minus 0.1% expense ratio = -20.1% "growth")
         const negativeGrowth = account.increment(assumptions, 0, 0, -20);
         expect(negativeGrowth.amount).toBeCloseTo(100000 * 0.799, 0);
+    });
+});
+
+// ============================================================================
+// MonteCarloEngine Tests
+// ============================================================================
+
+// --- Test Fixtures ---
+function createTestConfig(overrides: Partial<MonteCarloConfig> = {}): MonteCarloConfig {
+    return {
+        enabled: true,
+        numScenarios: 10,
+        returnMean: 7,
+        returnStdDev: 15,
+        seed: 12345,
+        preset: 'custom',
+        ...overrides,
+    };
+}
+
+function createTestAssumptions(birthYear: number = 1970, retirementAge: number = 65, lifeExpectancy: number = 90) {
+    return {
+        ...defaultAssumptions,
+        milestones: createBuiltinMilestones(birthYear, retirementAge, lifeExpectancy),
+        investments: {
+            ...defaultAssumptions.investments,
+            returnRates: { ror: 7 },
+        },
+    };
+}
+
+function createTestTaxState(): TaxState {
+    return {
+        filingStatus: 'Single',
+        stateResidency: 'Virginia',
+        deductionMethod: 'Standard',
+        fedOverride: null,
+        ficaOverride: null,
+        stateOverride: null,
+        year: 2025,
+    };
+}
+
+function createTestAccounts() {
+    // Brokerage account with $500,000
+    return [
+        new InvestedAccount('brokerage1', 'Brokerage', 500000, 0, 0, 0.1, 'Brokerage'),
+    ];
+}
+
+function createTestIncomes() {
+    // Passive income of $30,000/year
+    return [
+        new PassiveIncome(
+            'passive1', 'Dividends', 30000, 'Annually', 'No', 'Dividend',
+            new Date('2025-01-01'), new Date('2100-12-31')
+        ),
+    ];
+}
+
+function createTestExpenses() {
+    // Basic expense of $40,000/year (creates small deficit to test withdrawals)
+    return [
+        new OtherExpense(
+            'expense1', 'Living Expenses', 40000, 'Annually',
+            new Date('2025-01-01'), new Date('2100-12-31')
+        ),
+    ];
+}
+
+// --- validateConfig Tests ---
+describe('validateConfig', () => {
+    describe('numScenarios validation', () => {
+        it('should return error when numScenarios = 0', () => {
+            const config = createTestConfig({ numScenarios: 0 });
+            const result = validateConfig(config);
+            expect(result).not.toBeNull();
+            expect(result).toContain('at least 1');
+        });
+
+        it('should return error when numScenarios = -1', () => {
+            const config = createTestConfig({ numScenarios: -1 });
+            const result = validateConfig(config);
+            expect(result).not.toBeNull();
+            expect(result).toContain('at least 1');
+        });
+
+        it('should return error when numScenarios = 10001 (over 10000 limit)', () => {
+            const config = createTestConfig({ numScenarios: 10001 });
+            const result = validateConfig(config);
+            expect(result).not.toBeNull();
+            expect(result).toContain('10,000');
+        });
+
+        it('should return null when numScenarios = 1 (valid, boundary)', () => {
+            const config = createTestConfig({ numScenarios: 1 });
+            const result = validateConfig(config);
+            expect(result).toBeNull();
+        });
+
+        it('should return null when numScenarios = 10000 (valid, boundary)', () => {
+            const config = createTestConfig({ numScenarios: 10000 });
+            const result = validateConfig(config);
+            expect(result).toBeNull();
+        });
+
+        it('should return null when numScenarios = 500 (valid, middle)', () => {
+            const config = createTestConfig({ numScenarios: 500 });
+            const result = validateConfig(config);
+            expect(result).toBeNull();
+        });
+    });
+
+    describe('returnStdDev validation', () => {
+        it('should return error when returnStdDev = -1', () => {
+            const config = createTestConfig({ returnStdDev: -1 });
+            const result = validateConfig(config);
+            expect(result).not.toBeNull();
+            expect(result).toContain('negative');
+        });
+
+        it('should return error when returnStdDev = 101 (over 100 limit)', () => {
+            const config = createTestConfig({ returnStdDev: 101 });
+            const result = validateConfig(config);
+            expect(result).not.toBeNull();
+            expect(result).toContain('100');
+        });
+
+        it('should return null when returnStdDev = 0 (valid, boundary)', () => {
+            const config = createTestConfig({ returnStdDev: 0 });
+            const result = validateConfig(config);
+            expect(result).toBeNull();
+        });
+
+        it('should return null when returnStdDev = 100 (valid, boundary)', () => {
+            const config = createTestConfig({ returnStdDev: 100 });
+            const result = validateConfig(config);
+            expect(result).toBeNull();
+        });
+
+        it('should return null when returnStdDev = 15 (valid, typical value)', () => {
+            const config = createTestConfig({ returnStdDev: 15 });
+            const result = validateConfig(config);
+            expect(result).toBeNull();
+        });
+    });
+
+    describe('combined validation', () => {
+        it('should return error when both numScenarios and returnStdDev invalid', () => {
+            const config = createTestConfig({ numScenarios: 0, returnStdDev: -1 });
+            const result = validateConfig(config);
+            expect(result).not.toBeNull();
+            // Should return the first error encountered (numScenarios checked first)
+        });
+
+        it('should return null for fully valid config', () => {
+            const config = createTestConfig({
+                numScenarios: 100,
+                returnMean: 7,
+                returnStdDev: 15,
+                seed: 42,
+            });
+            const result = validateConfig(config);
+            expect(result).toBeNull();
+        });
+    });
+});
+
+// --- estimateRunTime Tests ---
+describe('estimateRunTime', () => {
+    it('should return 15000ms for numScenarios=100, yearsToRun=30', () => {
+        const result = estimateRunTime(100, 30);
+        expect(result).toBe(100 * 30 * 5); // 15000
+    });
+
+    it('should return 5ms for numScenarios=1, yearsToRun=1', () => {
+        const result = estimateRunTime(1, 1);
+        expect(result).toBe(5);
+    });
+
+    it('should return 0ms for numScenarios=0, yearsToRun=30', () => {
+        const result = estimateRunTime(0, 30);
+        expect(result).toBe(0);
+    });
+
+    it('should return 200000ms for numScenarios=1000, yearsToRun=40', () => {
+        const result = estimateRunTime(1000, 40);
+        expect(result).toBe(1000 * 40 * 5); // 200000
+    });
+});
+
+// --- runMonteCarloSimulationSync Tests ---
+describe('runMonteCarloSimulationSync', () => {
+    // Use shorter simulation for faster tests
+    const shortAssumptions = createTestAssumptions(2015, 65, 75); // Born 2015, retire 65, die 75 = 10 years of simulation
+
+    describe('structure tests', () => {
+        it('should return MonteCarloSummary object', () => {
+            const config = createTestConfig({ numScenarios: 5 });
+            const result = runMonteCarloSimulationSync(
+                config,
+                createTestAccounts(),
+                createTestIncomes(),
+                createTestExpenses(),
+                shortAssumptions,
+                createTestTaxState()
+            );
+
+            expect(result).toBeDefined();
+            expect(typeof result).toBe('object');
+        });
+
+        it('should have successRate as number between 0 and 100', () => {
+            const config = createTestConfig({ numScenarios: 5 });
+            const result = runMonteCarloSimulationSync(
+                config,
+                createTestAccounts(),
+                createTestIncomes(),
+                createTestExpenses(),
+                shortAssumptions,
+                createTestTaxState()
+            );
+
+            expect(typeof result.successRate).toBe('number');
+            expect(result.successRate).toBeGreaterThanOrEqual(0);
+            expect(result.successRate).toBeLessThanOrEqual(100);
+        });
+
+        it('should have percentiles with p10, p25, p50, p75, p90 keys', () => {
+            const config = createTestConfig({ numScenarios: 5 });
+            const result = runMonteCarloSimulationSync(
+                config,
+                createTestAccounts(),
+                createTestIncomes(),
+                createTestExpenses(),
+                shortAssumptions,
+                createTestTaxState()
+            );
+
+            expect(result.percentiles).toBeDefined();
+            expect(result.percentiles).toHaveProperty('p10');
+            expect(result.percentiles).toHaveProperty('p25');
+            expect(result.percentiles).toHaveProperty('p50');
+            expect(result.percentiles).toHaveProperty('p75');
+            expect(result.percentiles).toHaveProperty('p90');
+        });
+
+        it('should have totalScenarios matching config', () => {
+            const config = createTestConfig({ numScenarios: 7 });
+            const result = runMonteCarloSimulationSync(
+                config,
+                createTestAccounts(),
+                createTestIncomes(),
+                createTestExpenses(),
+                shortAssumptions,
+                createTestTaxState()
+            );
+
+            expect(result.totalScenarios).toBe(7);
+        });
+
+        it('should have worstCase, medianCase, bestCase scenarios', () => {
+            const config = createTestConfig({ numScenarios: 5 });
+            const result = runMonteCarloSimulationSync(
+                config,
+                createTestAccounts(),
+                createTestIncomes(),
+                createTestExpenses(),
+                shortAssumptions,
+                createTestTaxState()
+            );
+
+            expect(result.worstCase).toBeDefined();
+            expect(result.medianCase).toBeDefined();
+            expect(result.bestCase).toBeDefined();
+            expect(typeof result.worstCase.finalNetWorth).toBe('number');
+            expect(typeof result.medianCase.finalNetWorth).toBe('number');
+            expect(typeof result.bestCase.finalNetWorth).toBe('number');
+        });
+
+        it('should have worstCase <= medianCase <= bestCase final net worth', () => {
+            const config = createTestConfig({ numScenarios: 10 });
+            const result = runMonteCarloSimulationSync(
+                config,
+                createTestAccounts(),
+                createTestIncomes(),
+                createTestExpenses(),
+                shortAssumptions,
+                createTestTaxState()
+            );
+
+            expect(result.worstCase.finalNetWorth).toBeLessThanOrEqual(result.medianCase.finalNetWorth);
+            expect(result.medianCase.finalNetWorth).toBeLessThanOrEqual(result.bestCase.finalNetWorth);
+        });
+
+        it('should have averageFinalNetWorth as number', () => {
+            const config = createTestConfig({ numScenarios: 5 });
+            const result = runMonteCarloSimulationSync(
+                config,
+                createTestAccounts(),
+                createTestIncomes(),
+                createTestExpenses(),
+                shortAssumptions,
+                createTestTaxState()
+            );
+
+            expect(typeof result.averageFinalNetWorth).toBe('number');
+        });
+
+        it('should have seed matching config', () => {
+            const config = createTestConfig({ numScenarios: 5, seed: 99999 });
+            const result = runMonteCarloSimulationSync(
+                config,
+                createTestAccounts(),
+                createTestIncomes(),
+                createTestExpenses(),
+                shortAssumptions,
+                createTestTaxState()
+            );
+
+            expect(result.seed).toBe(99999);
+        });
+    });
+
+    describe('behavior tests', () => {
+        it('should produce different results with different seeds', () => {
+            const config1 = createTestConfig({ numScenarios: 5, seed: 12345 });
+            const config2 = createTestConfig({ numScenarios: 5, seed: 54321 });
+
+            const result1 = runMonteCarloSimulationSync(
+                config1,
+                createTestAccounts(),
+                createTestIncomes(),
+                createTestExpenses(),
+                shortAssumptions,
+                createTestTaxState()
+            );
+
+            const result2 = runMonteCarloSimulationSync(
+                config2,
+                createTestAccounts(),
+                createTestIncomes(),
+                createTestExpenses(),
+                shortAssumptions,
+                createTestTaxState()
+            );
+
+            // Final net worths should differ
+            expect(result1.medianCase.finalNetWorth).not.toBe(result2.medianCase.finalNetWorth);
+        });
+
+        it('should produce same results with same seed (deterministic)', () => {
+            const config = createTestConfig({ numScenarios: 5, seed: 42 });
+
+            const result1 = runMonteCarloSimulationSync(
+                config,
+                createTestAccounts(),
+                createTestIncomes(),
+                createTestExpenses(),
+                shortAssumptions,
+                createTestTaxState()
+            );
+
+            const result2 = runMonteCarloSimulationSync(
+                config,
+                createTestAccounts(),
+                createTestIncomes(),
+                createTestExpenses(),
+                shortAssumptions,
+                createTestTaxState()
+            );
+
+            expect(result1.medianCase.finalNetWorth).toBe(result2.medianCase.finalNetWorth);
+            expect(result1.successRate).toBe(result2.successRate);
+            expect(result1.averageFinalNetWorth).toBe(result2.averageFinalNetWorth);
+        });
+
+        it('should generally produce higher median finalNetWorth with higher returnMean', () => {
+            const lowReturnConfig = createTestConfig({ numScenarios: 20, returnMean: 3, seed: 100 });
+            const highReturnConfig = createTestConfig({ numScenarios: 20, returnMean: 12, seed: 100 });
+
+            const lowResult = runMonteCarloSimulationSync(
+                lowReturnConfig,
+                createTestAccounts(),
+                createTestIncomes(),
+                createTestExpenses(),
+                shortAssumptions,
+                createTestTaxState()
+            );
+
+            const highResult = runMonteCarloSimulationSync(
+                highReturnConfig,
+                createTestAccounts(),
+                createTestIncomes(),
+                createTestExpenses(),
+                shortAssumptions,
+                createTestTaxState()
+            );
+
+            expect(highResult.medianCase.finalNetWorth).toBeGreaterThan(lowResult.medianCase.finalNetWorth);
+        });
+
+        it('should produce wider spread in finalNetWorth with higher returnStdDev', () => {
+            const lowVolConfig = createTestConfig({ numScenarios: 30, returnStdDev: 5, seed: 200 });
+            const highVolConfig = createTestConfig({ numScenarios: 30, returnStdDev: 25, seed: 200 });
+
+            const lowVolResult = runMonteCarloSimulationSync(
+                lowVolConfig,
+                createTestAccounts(),
+                createTestIncomes(),
+                createTestExpenses(),
+                shortAssumptions,
+                createTestTaxState()
+            );
+
+            const highVolResult = runMonteCarloSimulationSync(
+                highVolConfig,
+                createTestAccounts(),
+                createTestIncomes(),
+                createTestExpenses(),
+                shortAssumptions,
+                createTestTaxState()
+            );
+
+            const lowVolSpread = lowVolResult.bestCase.finalNetWorth - lowVolResult.worstCase.finalNetWorth;
+            const highVolSpread = highVolResult.bestCase.finalNetWorth - highVolResult.worstCase.finalNetWorth;
+
+            expect(highVolSpread).toBeGreaterThan(lowVolSpread);
+        });
+
+        it('should work with numScenarios=1 (edge case)', () => {
+            const config = createTestConfig({ numScenarios: 1 });
+
+            const result = runMonteCarloSimulationSync(
+                config,
+                createTestAccounts(),
+                createTestIncomes(),
+                createTestExpenses(),
+                shortAssumptions,
+                createTestTaxState()
+            );
+
+            expect(result.totalScenarios).toBe(1);
+            // All cases should be the same with only 1 scenario
+            expect(result.worstCase.finalNetWorth).toBe(result.bestCase.finalNetWorth);
+        });
+
+        it('should handle zero starting balance gracefully', () => {
+            const config = createTestConfig({ numScenarios: 3 });
+            const emptyAccounts = [
+                new InvestedAccount('brokerage1', 'Brokerage', 0, 0, 0, 0.1, 'Brokerage'),
+            ];
+
+            const result = runMonteCarloSimulationSync(
+                config,
+                emptyAccounts,
+                createTestIncomes(),
+                createTestExpenses(),
+                shortAssumptions,
+                createTestTaxState()
+            );
+
+            expect(result.totalScenarios).toBe(3);
+            // Should complete without errors
+        });
+    });
+
+    describe('edge cases', () => {
+        it('should handle very short simulation (few years)', () => {
+            // Born 1960, retire 65, die 70 = person is 66 in 2026, simulation runs ~4 years
+            const veryShortAssumptions = createTestAssumptions(1960, 65, 70);
+            const config = createTestConfig({ numScenarios: 3 });
+
+            const result = runMonteCarloSimulationSync(
+                config,
+                createTestAccounts(),
+                createTestIncomes(),
+                createTestExpenses(),
+                veryShortAssumptions,
+                createTestTaxState()
+            );
+
+            expect(result.totalScenarios).toBe(3);
+            // Percentile arrays should be short (person is 66 in 2026, dies at 70 = ~4 years)
+            expect(result.percentiles.p50.length).toBeLessThanOrEqual(10);
+        });
+
+        it('should handle zero income scenario', () => {
+            const config = createTestConfig({ numScenarios: 3 });
+
+            const result = runMonteCarloSimulationSync(
+                config,
+                createTestAccounts(),
+                [], // No income
+                createTestExpenses(),
+                shortAssumptions,
+                createTestTaxState()
+            );
+
+            expect(result.totalScenarios).toBe(3);
+            // With no income and expenses, net worth should generally decrease
+        });
+
+        it('should handle zero expense scenario', () => {
+            const config = createTestConfig({ numScenarios: 3 });
+
+            const result = runMonteCarloSimulationSync(
+                config,
+                createTestAccounts(),
+                createTestIncomes(),
+                [], // No expenses
+                shortAssumptions,
+                createTestTaxState()
+            );
+
+            expect(result.totalScenarios).toBe(3);
+            // With income and no expenses, success rate should be high
+            expect(result.successRate).toBeGreaterThanOrEqual(0);
+        });
+    });
+
+    describe('runSingleScenario behavior (tested via public functions)', () => {
+        it('should vary results between scenarios due to random returns', () => {
+            const config = createTestConfig({ numScenarios: 10, seed: 999 });
+
+            const result = runMonteCarloSimulationSync(
+                config,
+                createTestAccounts(),
+                createTestIncomes(),
+                createTestExpenses(),
+                shortAssumptions,
+                createTestTaxState()
+            );
+
+            // Worst and best should be different with random returns
+            expect(result.worstCase.finalNetWorth).not.toBe(result.bestCase.finalNetWorth);
+        });
+
+        it('should have different yearly returns for different scenarios', () => {
+            const config = createTestConfig({ numScenarios: 5, seed: 888 });
+
+            const result = runMonteCarloSimulationSync(
+                config,
+                createTestAccounts(),
+                createTestIncomes(),
+                createTestExpenses(),
+                shortAssumptions,
+                createTestTaxState()
+            );
+
+            // Worst and best cases should have different returns
+            const worstReturns = JSON.stringify(result.worstCase.yearlyReturns);
+            const bestReturns = JSON.stringify(result.bestCase.yearlyReturns);
+
+            expect(worstReturns).not.toBe(bestReturns);
+        });
+    });
+});
+
+// --- runMonteCarloSimulation (async) Tests ---
+describe('runMonteCarloSimulation', () => {
+    const shortAssumptions = createTestAssumptions(2015, 65, 75);
+
+    it('should return same structure as sync version', async () => {
+        const config = createTestConfig({ numScenarios: 5 });
+
+        const result = await runMonteCarloSimulation(
+            config,
+            createTestAccounts(),
+            createTestIncomes(),
+            createTestExpenses(),
+            shortAssumptions,
+            createTestTaxState()
+        );
+
+        expect(result).toBeDefined();
+        expect(result.totalScenarios).toBe(5);
+        expect(result.percentiles).toHaveProperty('p50');
+        expect(result.worstCase).toBeDefined();
+        expect(result.medianCase).toBeDefined();
+        expect(result.bestCase).toBeDefined();
+    });
+
+    it('should call onProgress callback with increasing values', async () => {
+        const config = createTestConfig({ numScenarios: 20 });
+        const progressValues: number[] = [];
+
+        await runMonteCarloSimulation(
+            config,
+            createTestAccounts(),
+            createTestIncomes(),
+            createTestExpenses(),
+            shortAssumptions,
+            createTestTaxState(),
+            (progress) => progressValues.push(progress)
+        );
+
+        // Should have called progress at least once
+        expect(progressValues.length).toBeGreaterThan(0);
+
+        // Values should be increasing (or equal for same-chunk updates)
+        for (let i = 1; i < progressValues.length; i++) {
+            expect(progressValues[i]).toBeGreaterThanOrEqual(progressValues[i - 1]);
+        }
+    });
+
+    it('should call onProgress with values between 0 and 100', async () => {
+        const config = createTestConfig({ numScenarios: 15 });
+        const progressValues: number[] = [];
+
+        await runMonteCarloSimulation(
+            config,
+            createTestAccounts(),
+            createTestIncomes(),
+            createTestExpenses(),
+            shortAssumptions,
+            createTestTaxState(),
+            (progress) => progressValues.push(progress)
+        );
+
+        for (const value of progressValues) {
+            expect(value).toBeGreaterThanOrEqual(0);
+            expect(value).toBeLessThanOrEqual(100);
+        }
+    });
+
+    it('should call onProgress at least once', async () => {
+        const config = createTestConfig({ numScenarios: 5 });
+        const progressCallback = vi.fn();
+
+        await runMonteCarloSimulation(
+            config,
+            createTestAccounts(),
+            createTestIncomes(),
+            createTestExpenses(),
+            shortAssumptions,
+            createTestTaxState(),
+            progressCallback
+        );
+
+        expect(progressCallback).toHaveBeenCalled();
+    });
+
+    it('should have final progress at 100', async () => {
+        const config = createTestConfig({ numScenarios: 10 });
+        const progressValues: number[] = [];
+
+        await runMonteCarloSimulation(
+            config,
+            createTestAccounts(),
+            createTestIncomes(),
+            createTestExpenses(),
+            shortAssumptions,
+            createTestTaxState(),
+            (progress) => progressValues.push(progress)
+        );
+
+        // Final progress should be 100
+        const finalProgress = progressValues[progressValues.length - 1];
+        expect(finalProgress).toBe(100);
+    });
+
+    it('should work without onProgress callback (optional param)', async () => {
+        const config = createTestConfig({ numScenarios: 5 });
+
+        // Should not throw when onProgress is not provided
+        const result = await runMonteCarloSimulation(
+            config,
+            createTestAccounts(),
+            createTestIncomes(),
+            createTestExpenses(),
+            shortAssumptions,
+            createTestTaxState()
+            // No onProgress callback
+        );
+
+        expect(result.totalScenarios).toBe(5);
+    });
+
+    it('should resolve successfully with valid config', async () => {
+        const config = createTestConfig({ numScenarios: 3 });
+
+        await expect(runMonteCarloSimulation(
+            config,
+            createTestAccounts(),
+            createTestIncomes(),
+            createTestExpenses(),
+            shortAssumptions,
+            createTestTaxState()
+        )).resolves.toBeDefined();
+    });
+
+    it('should produce same results as sync version with same seed', async () => {
+        const config = createTestConfig({ numScenarios: 5, seed: 77777 });
+
+        const asyncResult = await runMonteCarloSimulation(
+            config,
+            createTestAccounts(),
+            createTestIncomes(),
+            createTestExpenses(),
+            shortAssumptions,
+            createTestTaxState()
+        );
+
+        const syncResult = runMonteCarloSimulationSync(
+            config,
+            createTestAccounts(),
+            createTestIncomes(),
+            createTestExpenses(),
+            shortAssumptions,
+            createTestTaxState()
+        );
+
+        // Results should be identical
+        expect(asyncResult.medianCase.finalNetWorth).toBe(syncResult.medianCase.finalNetWorth);
+        expect(asyncResult.successRate).toBe(syncResult.successRate);
     });
 });

@@ -4,6 +4,7 @@ import {
     InvestedAccount,
     ESPPAccount,
     ESPPLot,
+    BrokerageLot,
     PropertyAccount,
     DebtAccount,
     DeficitDebtAccount,
@@ -42,6 +43,20 @@ describe('Account Models', () => {
             const nextYear = acc.increment(mockAssumptions, 500);
             // BOY timing: (1000 + 500) * 1.05 = 1575
             expect(nextYear.amount).toBeCloseTo((1000 + 500) * 1.05);
+        });
+
+        it('should grow $10,000 at 5% APR without contribution to $10,500', () => {
+            const acc = new SavedAccount('s1', 'Savings', 10000, 5); // 5% APR
+            const nextYear = acc.increment(mockAssumptions, 0);
+            // $10,000 × 1.05 = $10,500
+            expect(nextYear.amount).toBe(10500);
+        });
+
+        it('should grow $10,000 + $2,000 contribution at 5% APR to $12,600', () => {
+            const acc = new SavedAccount('s1', 'Savings', 10000, 5); // 5% APR
+            const nextYear = acc.increment(mockAssumptions, 2000);
+            // BOY timing: ($10,000 + $2,000) × 1.05 = $12,600
+            expect(nextYear.amount).toBe(12600);
         });
     });
 
@@ -283,6 +298,276 @@ describe('Account Models', () => {
             expect(next.employerBalance).toBeLessThanOrEqual(next.amount);
             expect(next.employerBalance).toBeGreaterThanOrEqual(0);
         });
+
+        // User-specified hand-verified test scenarios
+        it('should grow $100,000 + $6,000 user + $3,000 employer at 7% to $116,630', () => {
+            const assumptions7Pct = {
+                ...mockAssumptions,
+                investments: {
+                    ...mockAssumptions.investments,
+                    returnRates: { ror: 7 } // 7%
+                }
+            };
+
+            // Account with 0 expense ratio for exact calculation
+            const acc = new InvestedAccount(
+                'i1', '401k',
+                100000, // amount
+                0,      // employerBalance (starts at 0)
+                0,      // tenureYears
+                0,      // expenseRatio = 0 for exact match
+                'Traditional 401k',
+                true,
+                0.2     // vestedPerYear
+            );
+
+            const nextYear = acc.increment(assumptions7Pct, 6000, 3000);
+
+            // BOY timing: ($100,000 + $6,000 + $3,000) × 1.07 = $109,000 × 1.07 = $116,630
+            expect(nextYear.amount).toBeCloseTo(116630);
+        });
+
+        it('should use overrideReturnRate for Monte Carlo: ($100,000 + $9,000) × 1.10 = $119,900', () => {
+            // Account with 0 expense ratio
+            const acc = new InvestedAccount(
+                'i1', '401k',
+                100000, // amount
+                0, 0, 0, // employerBalance, tenureYears, expenseRatio
+                'Traditional 401k', true, 0.2
+            );
+
+            // overrideReturnRate = 10% takes priority over global assumptions
+            const nextYear = acc.increment(mockAssumptions, 6000, 3000, 10);
+
+            // BOY timing: ($100,000 + $9,000) × 1.10 = $119,900
+            expect(nextYear.amount).toBeCloseTo(119900);
+        });
+
+        it('should track conversionAmount in conversionHistory', () => {
+            const acc = new InvestedAccount(
+                'i1', 'Roth IRA',
+                50000, 0, 0, 0, 'Roth IRA', true, 0.2, 50000
+            );
+
+            // Add a $50,000 Roth conversion in year 2025
+            const nextYear = acc.increment(mockAssumptions, 0, 0, undefined, 50000, 2025);
+
+            // Conversion should be tracked in history
+            expect(nextYear.conversionHistory).toHaveLength(1);
+            expect(nextYear.conversionHistory[0].amount).toBe(50000);
+            expect(nextYear.conversionHistory[0].year).toBe(2025);
+        });
+
+        it('should create lots for brokerage accounts with currentYear', () => {
+            const acc = new InvestedAccount(
+                'i1', 'Taxable Brokerage',
+                100000, // amount
+                0, 0, 0,
+                'Brokerage', // taxType - triggers lot tracking
+                true, 0.2,
+                100000 // costBasis
+            );
+
+            // Contribute $10,000 in year 2025
+            const nextYear = acc.increment(mockAssumptions, 10000, 0, undefined, 0, 2025);
+
+            // Should have lots: seed lot + new contribution lot
+            expect(nextYear.lots.length).toBeGreaterThanOrEqual(1);
+            // Find the new contribution lot
+            const newLot = nextYear.lots.find(l => l.purchaseYear === 2025);
+            expect(newLot).toBeDefined();
+            expect(newLot?.costBasis).toBe(10000);
+        });
+
+        // Getter tests
+        describe('unrealizedGains getter', () => {
+            it('should return $50,000 for amount=$150,000, costBasis=$100,000', () => {
+                const acc = new InvestedAccount(
+                    'i1', 'Brokerage', 150000, 0, 0, 0, 'Brokerage', true, 0.2, 100000
+                );
+                expect(acc.unrealizedGains).toBe(50000);
+            });
+
+            it('should return $0 for amount=$80,000, costBasis=$100,000 (no negative gains)', () => {
+                const acc = new InvestedAccount(
+                    'i1', 'Brokerage', 80000, 0, 0, 0, 'Brokerage', true, 0.2, 100000
+                );
+                // max(0, 80000 - 100000) = max(0, -20000) = 0
+                expect(acc.unrealizedGains).toBe(0);
+            });
+
+            it('should return $0 for amount=$100,000, costBasis=$100,000 (breakeven)', () => {
+                const acc = new InvestedAccount(
+                    'i1', 'Brokerage', 100000, 0, 0, 0, 'Brokerage', true, 0.2, 100000
+                );
+                expect(acc.unrealizedGains).toBe(0);
+            });
+        });
+
+        describe('totalConversionBasis getter', () => {
+            it('should return $25,000 for two conversions totaling $25,000', () => {
+                const acc = new InvestedAccount(
+                    'i1', 'Roth IRA', 50000, 0, 0, 0, 'Roth IRA', true, 0.2, 50000, undefined,
+                    [{ year: 2020, amount: 10000 }, { year: 2021, amount: 15000 }]
+                );
+                expect(acc.totalConversionBasis).toBe(25000);
+            });
+
+            it('should return $0 for empty conversionHistory', () => {
+                const acc = new InvestedAccount(
+                    'i1', 'Roth IRA', 50000, 0, 0, 0, 'Roth IRA', true, 0.2, 50000, undefined, []
+                );
+                expect(acc.totalConversionBasis).toBe(0);
+            });
+        });
+
+        describe('regularContributions getter', () => {
+            it('should return $25,000 for costBasis=$50,000, totalConversionBasis=$25,000', () => {
+                const acc = new InvestedAccount(
+                    'i1', 'Roth IRA', 75000, 0, 0, 0, 'Roth IRA', true, 0.2, 50000, undefined,
+                    [{ year: 2020, amount: 10000 }, { year: 2021, amount: 15000 }]
+                );
+                // regularContributions = costBasis - totalConversionBasis = 50000 - 25000 = 25000
+                expect(acc.regularContributions).toBe(25000);
+            });
+
+            it('should return $0 for costBasis=$25,000, totalConversionBasis=$25,000', () => {
+                const acc = new InvestedAccount(
+                    'i1', 'Roth IRA', 50000, 0, 0, 0, 'Roth IRA', true, 0.2, 25000, undefined,
+                    [{ year: 2020, amount: 25000 }]
+                );
+                // regularContributions = 25000 - 25000 = 0
+                expect(acc.regularContributions).toBe(0);
+            });
+        });
+
+        describe('calculateWithdrawalAllocation (proportional method)', () => {
+            it('should split $10,000 withdrawal from $100k balance, $60k basis: basis=$6k, gains=$4k', () => {
+                const acc = new InvestedAccount(
+                    'i1', 'Brokerage', 100000, 0, 0, 0, 'Brokerage', true, 0.2, 60000
+                );
+                const allocation = acc.calculateWithdrawalAllocation(10000);
+
+                // gains portion = 40000/100000 = 40%
+                // basis portion = 60000/100000 = 60%
+                expect(allocation.gains).toBe(4000);  // 10000 × 0.40
+                expect(allocation.basis).toBe(6000);  // 10000 × 0.60
+            });
+
+            it('should return all basis when no gains: $50k balance, $50k basis, withdraw $10k', () => {
+                const acc = new InvestedAccount(
+                    'i1', 'Brokerage', 50000, 0, 0, 0, 'Brokerage', true, 0.2, 50000
+                );
+                const allocation = acc.calculateWithdrawalAllocation(10000);
+
+                // 0% gains, 100% basis
+                expect(allocation.gains).toBe(0);
+                expect(allocation.basis).toBe(10000);
+            });
+
+            it('should return all gains when no basis: $100k balance, $0 basis, withdraw $25k', () => {
+                const acc = new InvestedAccount(
+                    'i1', 'Brokerage', 100000, 0, 0, 0, 'Brokerage', true, 0.2, 0
+                );
+                const allocation = acc.calculateWithdrawalAllocation(25000);
+
+                // 100% gains, 0% basis
+                expect(allocation.gains).toBe(25000);
+                expect(allocation.basis).toBe(0);
+            });
+        });
+
+        describe('calculateLotAwareWithdrawal (FIFO lot selection)', () => {
+            it('should use FIFO and classify gains by holding period (3 lots, withdraw $20k)', () => {
+                // Setup: 3 lots with different purchase years
+                const lots: BrokerageLot[] = [
+                    { purchaseYear: 2020, costBasis: 10000, currentValue: 15000 }, // Long-term (6 years)
+                    { purchaseYear: 2023, costBasis: 20000, currentValue: 25000 }, // Long-term (3 years)
+                    { purchaseYear: 2025, costBasis: 15000, currentValue: 18000 }, // Short-term (1 year)
+                ];
+                const totalValue = 15000 + 25000 + 18000; // 58000
+                const totalBasis = 10000 + 20000 + 15000; // 45000
+
+                const acc = new InvestedAccount(
+                    'i1', 'Brokerage', totalValue, 0, 0, 0, 'Brokerage', true, 0.2, totalBasis, undefined, [], lots
+                );
+
+                // Withdraw $20,000 in year 2026
+                const result = acc.calculateLotAwareWithdrawal(20000, 2026);
+
+                // FIFO: Sells Lot 1 first ($15,000), then $5,000 from Lot 2
+                // Lot 1: All 15000 sold, gain = 15000 - 10000 = 5000 (long-term: 2026-2020=6 >= 2)
+                // Lot 2: 5000 sold (20% of 25000), gain = 5000 - (20000 × 0.20) = 5000 - 4000 = 1000 (long-term: 2026-2023=3 >= 2)
+                expect(result.longTermGains).toBeCloseTo(5000 + 1000, 0); // 6000
+                expect(result.shortTermGains).toBe(0); // No short-term lots touched
+                expect(result.basisReturn).toBeCloseTo(10000 + 4000, 0); // 14000
+            });
+
+            it('should classify all gains as short-term when all lots are recent', () => {
+                // All lots purchased in 2025
+                const lots: BrokerageLot[] = [
+                    { purchaseYear: 2025, costBasis: 10000, currentValue: 15000 }, // gain = 5000
+                    { purchaseYear: 2025, costBasis: 20000, currentValue: 25000 }, // gain = 5000
+                    { purchaseYear: 2025, costBasis: 15000, currentValue: 18000 }, // gain = 3000
+                ];
+                const totalValue = 58000;
+                const totalBasis = 45000;
+
+                const acc = new InvestedAccount(
+                    'i1', 'Brokerage', totalValue, 0, 0, 0, 'Brokerage', true, 0.2, totalBasis, undefined, [], lots
+                );
+
+                // Withdraw 30000 in year 2025 (same year as purchase)
+                const result = acc.calculateLotAwareWithdrawal(30000, 2025);
+
+                // 2025-2025=0 < 2, so all short-term
+                // FIFO order: Lot 1 fully (15000, gain 5000) + Lot 2 partial (15000/25000 = 60%, gain 3000)
+                // Total short-term gains = 5000 + 3000 = 8000
+                expect(result.longTermGains).toBe(0);
+                expect(result.shortTermGains).toBeCloseTo(8000, 0);
+            });
+
+            it('should handle withdrawing entire account and match unrealized gains', () => {
+                const lots: BrokerageLot[] = [
+                    { purchaseYear: 2020, costBasis: 20000, currentValue: 30000 }, // Long-term
+                    { purchaseYear: 2025, costBasis: 20000, currentValue: 28000 }, // Short-term
+                ];
+                const totalValue = 30000 + 28000; // 58000
+                const totalBasis = 20000 + 20000; // 40000
+                const totalGains = totalValue - totalBasis; // 18000
+
+                const acc = new InvestedAccount(
+                    'i1', 'Brokerage', totalValue, 0, 0, 0, 'Brokerage', true, 0.2, totalBasis, undefined, [], lots
+                );
+
+                // Withdraw entire account
+                const result = acc.calculateLotAwareWithdrawal(totalValue, 2026);
+
+                // Total gains should match unrealized gains
+                expect(result.longTermGains + result.shortTermGains).toBeCloseTo(totalGains, 0);
+                expect(result.basisReturn).toBeCloseTo(totalBasis, 0);
+
+                // Lot 1 (2020): 30000 - 20000 = 10000 long-term
+                // Lot 2 (2025): 28000 - 20000 = 8000 short-term (2026-2025=1 < 2)
+                expect(result.longTermGains).toBeCloseTo(10000, 0);
+                expect(result.shortTermGains).toBeCloseTo(8000, 0);
+            });
+
+            it('should fallback to proportional method when no lots exist', () => {
+                // Account without lots (e.g., legacy data)
+                const acc = new InvestedAccount(
+                    'i1', 'Brokerage', 100000, 0, 0, 0, 'Brokerage', true, 0.2, 60000
+                    // No lots array provided
+                );
+
+                const result = acc.calculateLotAwareWithdrawal(20000, 2025);
+
+                // Should fallback to proportional: all gains treated as long-term
+                expect(result.longTermGains).toBeCloseTo(8000, 0); // 20000 × (40000/100000)
+                expect(result.shortTermGains).toBe(0);
+                expect(result.basisReturn).toBeCloseTo(12000, 0); // 20000 × (60000/100000)
+            });
+        });
     });
 
     describe('PropertyAccount', () => {
@@ -299,6 +584,27 @@ describe('Account Models', () => {
             expect(nextYear.amount).toBe(510000);
             expect(nextYear.loanAmount).toBe(395000);
         });
+
+        it('should appreciate $400,000 at 3% to $412,000', () => {
+            const assumptions3Pct = {
+                ...mockAssumptions,
+                expenses: {
+                    ...mockAssumptions.expenses,
+                    housingAppreciation: 3, // 3%
+                }
+            };
+            const acc = new PropertyAccount('p1', 'Home', 400000, 'Financed', 300000, 300000, 'm1');
+            const nextYear = acc.increment(assumptions3Pct);
+            // $400,000 × 1.03 = $412,000
+            expect(nextYear.amount).toBe(412000);
+        });
+
+        it('should use newValue override to set property value to $450,000', () => {
+            const acc = new PropertyAccount('p1', 'Home', 400000, 'Financed', 300000, 300000, 'm1');
+            const nextYear = acc.increment(mockAssumptions, { newValue: 450000 });
+            // Override sets exact value regardless of appreciation rate
+            expect(nextYear.amount).toBe(450000);
+        });
     });
 
     describe('DebtAccount', () => {
@@ -314,6 +620,20 @@ describe('Account Models', () => {
             // Simulate a payment reducing the balance
             const nextYear = acc.increment(mockAssumptions, 18000);
             expect(nextYear.amount).toBe(18000);
+        });
+
+        it('should grow $5,000 at 20% APR to $6,000', () => {
+            const acc = new DebtAccount('d1', 'Credit Card', 5000, 'l1', 20); // 20% APR
+            const nextYear = acc.increment(mockAssumptions);
+            // $5,000 × 1.20 = $6,000
+            expect(nextYear.amount).toBe(6000);
+        });
+
+        it('should use override to set balance to $3,000', () => {
+            const acc = new DebtAccount('d1', 'Credit Card', 5000, 'l1', 20);
+            const nextYear = acc.increment(mockAssumptions, 3000);
+            // Override sets exact balance regardless of APR
+            expect(nextYear.amount).toBe(3000);
         });
     });
 
@@ -789,6 +1109,206 @@ describe('Account Models', () => {
 
                 // Should reduce by lot value: 100 shares * $100 FMV = $10,000
                 expect(updatedAcc.amount).toBe(5000);
+            });
+        });
+
+        // User-specified hand-verified test scenarios for ESPP
+        describe('calculateDispositionType edge cases', () => {
+            it('should return disqualifying when < 2 years from grant', () => {
+                const acc = new ESPPAccount('espp-1', 'Company ESPP', 10000);
+                const lot = createTestLot({
+                    grantDate: new Date('2023-01-15'),
+                    purchaseDate: new Date('2023-07-15')
+                });
+
+                // 2024-06-01: Only ~1.4 years from grant (needs 2 years)
+                const saleDate = new Date('2024-06-01');
+                expect(acc.calculateDispositionType(lot, saleDate)).toBe('disqualifying');
+            });
+
+            it('should return qualifying when 2+ years from grant AND 1+ year from purchase', () => {
+                const acc = new ESPPAccount('espp-1', 'Company ESPP', 10000);
+                const lot = createTestLot({
+                    grantDate: new Date('2023-01-15'),
+                    purchaseDate: new Date('2023-07-15')
+                });
+
+                // 2025-02-01: 2+ years from grant (Jan 2023), 1.5+ years from purchase (Jul 2023)
+                const saleDate = new Date('2025-02-01');
+                expect(acc.calculateDispositionType(lot, saleDate)).toBe('qualifying');
+            });
+
+            it('should return qualifying at exactly 2 years from grant + 1 year from purchase', () => {
+                const acc = new ESPPAccount('espp-1', 'Company ESPP', 10000);
+                const lot = createTestLot({
+                    grantDate: new Date('2022-01-15'),
+                    purchaseDate: new Date('2022-07-15')
+                });
+
+                // Exactly 2 years from grant: 2024-01-15
+                // Exactly 1 year from purchase: 2023-07-15
+                // Sale at 2024-07-15: 2.5 years from grant, 2 years from purchase (both conditions met)
+                const saleDate = new Date('2024-07-15');
+                expect(acc.calculateDispositionType(lot, saleDate)).toBe('qualifying');
+            });
+
+            it('should return disqualifying when 2+ years from grant but < 1 year from purchase', () => {
+                const acc = new ESPPAccount('espp-1', 'Company ESPP', 10000);
+                // Grant date is 2 years ago, but purchase just happened 6 months ago
+                const lot = createTestLot({
+                    grantDate: new Date('2022-01-01'),
+                    purchaseDate: new Date('2024-01-01')  // Long offering period
+                });
+
+                // 2024-06-01: 2.4 years from grant BUT only 5 months from purchase
+                const saleDate = new Date('2024-06-01');
+                expect(acc.calculateDispositionType(lot, saleDate)).toBe('disqualifying');
+            });
+        });
+
+        describe('calculateSaleTax with hand-verified values', () => {
+            it('should calculate disqualifying disposition: ordinary=$2000, STCG=$2000', () => {
+                // Disqualifying: bargain element is ordinary income
+                const lot: ESPPLot = {
+                    id: 'lot-1',
+                    grantDate: new Date('2024-01-01'),
+                    purchaseDate: new Date('2024-06-30'),
+                    fmvAtGrant: 100,
+                    fmvAtPurchase: 100,  // FMV at purchase = $100
+                    purchasePrice: 80,    // Purchase price = $80 (20% discount)
+                    shares: 100,
+                    totalCost: 8000,
+                    discountAmount: 20
+                };
+                const acc = new ESPPAccount('espp-1', 'Company ESPP', 12000, [lot]);
+
+                // Sale at $120/share, 3 months after purchase (disqualifying, short-term)
+                const saleDate = new Date('2024-10-01');
+                const result = acc.calculateSaleTax(100, 120, saleDate);
+
+                // Disqualifying:
+                // Ordinary income = (FMV at purchase - purchase price) × shares = ($100 - $80) × 100 = $2,000
+                // Capital gains = (sale price - FMV at purchase) × shares = ($120 - $100) × 100 = $2,000 (short-term)
+                expect(result.ordinaryIncome).toBe(2000);
+                expect(result.shortTermGains).toBe(2000);
+                expect(result.longTermGains).toBe(0);
+            });
+
+            it('should calculate qualifying disposition: ordinary=$1500, LTCG=$2500', () => {
+                // Qualifying: ordinary income = lesser of grant discount or actual gain
+                const lot: ESPPLot = {
+                    id: 'lot-1',
+                    grantDate: new Date('2020-01-01'),
+                    purchaseDate: new Date('2020-06-30'),
+                    fmvAtGrant: 100,      // FMV at grant = $100
+                    fmvAtPurchase: 100,   // FMV at purchase = $100
+                    purchasePrice: 80,     // Purchase price = $80 (from 15% discount on grant or purchase)
+                    shares: 100,
+                    totalCost: 8000,
+                    discountAmount: 20
+                };
+                const acc = new ESPPAccount('espp-1', 'Company ESPP', 12000, [lot]);
+
+                // Sale at $120/share, 3+ years after (qualifying, long-term)
+                const saleDate = new Date('2023-07-01');
+                const result = acc.calculateSaleTax(100, 120, saleDate);
+
+                // Qualifying:
+                // Grant discount = 15% of FMV at grant = $100 × 0.15 = $15/share
+                // Actual gain = $120 - $80 = $40/share
+                // Ordinary income = min($15, $40) × 100 = $1,500
+                // LTCG = ($40 - $15) × 100 = $2,500
+                expect(result.ordinaryIncome).toBe(1500);
+                expect(result.longTermGains).toBe(2500);
+                expect(result.shortTermGains).toBe(0);
+            });
+
+            it('should compare lotOrder effects with mixed qualifying/disqualifying lots', () => {
+                const qualifyingLot: ESPPLot = {
+                    id: 'qualifying',
+                    grantDate: new Date('2020-01-01'),
+                    purchaseDate: new Date('2020-06-30'),
+                    fmvAtGrant: 100,
+                    fmvAtPurchase: 100,
+                    purchasePrice: 85,
+                    shares: 50,
+                    totalCost: 4250,
+                    discountAmount: 15
+                };
+                const disqualifyingLot: ESPPLot = {
+                    id: 'disqualifying',
+                    grantDate: new Date('2024-01-01'),
+                    purchaseDate: new Date('2024-06-30'),
+                    fmvAtGrant: 100,
+                    fmvAtPurchase: 100,
+                    purchasePrice: 85,
+                    shares: 50,
+                    totalCost: 4250,
+                    discountAmount: 15
+                };
+
+                const acc = new ESPPAccount('espp-1', 'Company ESPP', 15000, [qualifyingLot, disqualifyingLot]);
+                const saleDate = new Date('2024-12-01');
+
+                // Sell with disqualifying_first - should use disqualifying lot
+                const resultDQ = acc.calculateSaleTax(50, 120, saleDate, 'disqualifying_first');
+                expect(resultDQ.lotsUsed[0].id).toBe('disqualifying');
+                // Disqualifying: ordinary = (100-85) × 50 = $750
+                expect(resultDQ.ordinaryIncome).toBe(750);
+
+                // Sell with qualifying_first - should use qualifying lot
+                const resultQ = acc.calculateSaleTax(50, 120, saleDate, 'qualifying_first');
+                expect(resultQ.lotsUsed[0].id).toBe('qualifying');
+                // Qualifying: ordinary = min(15%, gain) × 50
+                // Grant discount = 100 × 0.15 = $15/share
+                // Actual gain = 120 - 85 = $35/share
+                // Ordinary = min(15, 35) × 50 = $750
+                expect(resultQ.ordinaryIncome).toBe(750);
+                // LTCG = (35 - 15) × 50 = $1000
+                expect(resultQ.longTermGains).toBe(1000);
+            });
+        });
+
+        describe('increment preserves lot costBasis', () => {
+            it('should grow $50,000 at 8% to $54,000', () => {
+                const assumptions8Pct = {
+                    ...mockAssumptions,
+                    investments: {
+                        ...mockAssumptions.investments,
+                        returnRates: { ror: 8 }
+                    }
+                };
+
+                const acc = new ESPPAccount('espp-1', 'Company ESPP', 50000);
+                const nextYear = acc.increment(assumptions8Pct);
+
+                // $50,000 × 1.08 = $54,000
+                expect(nextYear.amount).toBe(54000);
+            });
+
+            it('should preserve lot costBasis after increment', () => {
+                const lot: ESPPLot = {
+                    id: 'lot-1',
+                    grantDate: new Date('2024-01-01'),
+                    purchaseDate: new Date('2024-06-30'),
+                    fmvAtGrant: 100,
+                    fmvAtPurchase: 110,
+                    purchasePrice: 85,
+                    shares: 100,
+                    totalCost: 8500,  // This is the costBasis
+                    discountAmount: 15
+                };
+                const acc = new ESPPAccount('espp-1', 'Company ESPP', 11000, [lot]);
+
+                const nextYear = acc.increment(mockAssumptions);
+
+                // Amount should grow (10% in mockAssumptions)
+                expect(nextYear.amount).toBeCloseTo(12100);
+
+                // But lot's totalCost (costBasis) should remain unchanged
+                expect(nextYear.lots[0].totalCost).toBe(8500);
+                expect(nextYear.lots[0].purchasePrice).toBe(85);
+                expect(nextYear.lots[0].shares).toBe(100);
             });
         });
     });

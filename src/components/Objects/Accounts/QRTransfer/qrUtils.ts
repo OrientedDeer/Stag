@@ -32,7 +32,7 @@ const KEY_MAP: Record<string, string> = {
     // Passive income
     sourceType: 'O', isReinvested: 'R', end_date: 'Z',
     // Social security
-    claimingAge: 'C', calculatedPIA: 'P', calculationYear: 'W',
+    claimingAge: 'C', calculatedPIA: 'P', calculationYear: 'W', projectedPIA: 'pp',
     // Expenses
     payment: 'J', utilities: 'U', interest_type: 'T', is_tax_deductible: 'B', tax_deductible: 'Q',
     // Tax
@@ -141,7 +141,7 @@ const TAX_DEFAULTS: Record<string, unknown> = {
 /**
  * Converts an ISO date string to days since epoch.
  */
-function dateToDays(dateStr: string): number {
+export function dateToDays(dateStr: string): number {
     const date = new Date(dateStr);
     return Math.floor((date.getTime() - EPOCH) / MS_PER_DAY);
 }
@@ -149,7 +149,7 @@ function dateToDays(dateStr: string): number {
 /**
  * Converts days since epoch back to ISO date string.
  */
-function daysToDate(days: number): string {
+export function daysToDate(days: number): string {
     const date = new Date(EPOCH + days * MS_PER_DAY);
     return date.toISOString().split('T')[0];
 }
@@ -158,7 +158,7 @@ function daysToDate(days: number): string {
  * Recursively shorten all keys in an object.
  * Handles Date objects by converting to ISO strings.
  */
-function shortenKeys(obj: unknown): unknown {
+export function shortenKeys(obj: unknown): unknown {
     if (Array.isArray(obj)) {
         return obj.map(shortenKeys);
     }
@@ -180,7 +180,7 @@ function shortenKeys(obj: unknown): unknown {
 /**
  * Recursively expand all keys in an object.
  */
-function expandKeys(obj: unknown): unknown {
+export function expandKeys(obj: unknown): unknown {
     if (Array.isArray(obj)) {
         return obj.map(expandKeys);
     }
@@ -198,7 +198,7 @@ function expandKeys(obj: unknown): unknown {
 /**
  * Strips default values and null from an object.
  */
-function stripDefaults(obj: Record<string, unknown>, type: string): Record<string, unknown> {
+export function stripDefaults(obj: Record<string, unknown>, type: string): Record<string, unknown> {
     const typeDefaults = DEFAULTS[type] || {};
     return Object.fromEntries(
         Object.entries(obj).filter(([key, value]) =>
@@ -210,7 +210,7 @@ function stripDefaults(obj: Record<string, unknown>, type: string): Record<strin
 /**
  * Restores default values to an object.
  */
-function restoreDefaults(obj: Record<string, unknown>, type: string): Record<string, unknown> {
+export function restoreDefaults(obj: Record<string, unknown>, type: string): Record<string, unknown> {
     const typeDefaults = DEFAULTS[type] || {};
     return { ...typeDefaults, ...obj };
 }
@@ -218,7 +218,7 @@ function restoreDefaults(obj: Record<string, unknown>, type: string): Record<str
 /**
  * Flattens the nested assumptions structure into a single-level object.
  */
-function flattenAssumptions(assumptions: Record<string, unknown>): Record<string, unknown> {
+export function flattenAssumptions(assumptions: Record<string, unknown>): Record<string, unknown> {
     const flat: Record<string, unknown> = {};
 
     for (const [category, values] of Object.entries(assumptions)) {
@@ -246,7 +246,7 @@ function flattenAssumptions(assumptions: Record<string, unknown>): Record<string
 /**
  * Expands a flattened assumptions object back to nested structure.
  */
-function expandAssumptions(flat: Record<string, unknown>): Record<string, unknown> {
+export function expandAssumptions(flat: Record<string, unknown>): Record<string, unknown> {
     return {
         macro: {
             inflationRate: flat.inflationRate ?? ASSUMPTIONS_DEFAULTS.inflationRate,
@@ -292,7 +292,7 @@ function expandAssumptions(flat: Record<string, unknown>): Record<string, unknow
 /**
  * Compresses assumptions by flattening, stripping defaults, and shortening keys.
  */
-function compactAssumptions(assumptions: Record<string, unknown>): Record<string, unknown> {
+export function compactAssumptions(assumptions: Record<string, unknown>): Record<string, unknown> {
     const flat = flattenAssumptions(assumptions);
     const result: Record<string, unknown> = {};
 
@@ -320,7 +320,7 @@ function compactAssumptions(assumptions: Record<string, unknown>): Record<string
 /**
  * Expands compact assumptions back to full nested structure.
  */
-function expandCompactAssumptions(compact: Record<string, unknown>): Record<string, unknown> {
+export function expandCompactAssumptions(compact: Record<string, unknown>): Record<string, unknown> {
     // First expand short keys to full keys
     const expanded = expandKeys(compact) as Record<string, unknown>;
     // Then rebuild nested structure with defaults
@@ -351,7 +351,7 @@ function expandCompactTax(compact: Record<string, unknown>): Record<string, unkn
 /**
  * Compacts amountHistory to use indexes and day arrays.
  */
-function compactHistory(
+export function compactHistory(
     history: Record<string, Array<{ date: string; num: number }>>,
     accounts: Array<{ id: string }>
 ): Record<string, Array<[number, number]>> {
@@ -374,7 +374,7 @@ function compactHistory(
 /**
  * Expands compacted amountHistory back to full format.
  */
-function expandHistory(
+export function expandHistory(
     compact: Record<string, Array<[number, number]>>,
     accounts: Array<{ id: string }>
 ): Record<string, Array<{ date: string; num: number }>> {

@@ -9,7 +9,7 @@ import { defaultData } from '../data/defaultData';
 import { TaxContext } from '../components/Objects/Taxes/TaxContext';
 import { AssumptionsContext } from '../components/Objects/Assumptions/AssumptionsContext';
 import { TAX_DATABASE } from '../data/TaxData';
-import { calculateFederalTax, calculateFicaTax, calculateStateTax } from '../components/Objects/Taxes/TaxService';
+import { calculateFederalTaxFromIncomes, calculateFicaTax, calculateStateTax } from '../components/Objects/Taxes/TaxService';
 import { CashflowSankey } from '../components/Charts/CashflowSankey';
 import { useFileManager } from '../components/Objects/Accounts/useFileManager';
 import { formatCompactCurrency } from './Future/tabs/FutureUtils';
@@ -73,7 +73,7 @@ export default function Dashboard() {
       const fedParams = TAX_DATABASE.federal[year]?.[taxState.filingStatus];
       const stateParams = TAX_DATABASE.states[taxState.stateResidency]?.[year]?.[taxState.filingStatus];
   
-      let annualFedTax = fedParams ? calculateFederalTax(taxState, incomes, expenses, year, assumptions) : 0;
+      let annualFedTax = fedParams ? calculateFederalTaxFromIncomes(taxState, incomes, expenses, 0, year, assumptions) : 0;
       let annualStateTax = stateParams ? calculateStateTax(taxState, incomes, expenses, year, assumptions) : 0;
       let annualFicaTax = fedParams ? calculateFicaTax(taxState, incomes, year, assumptions) : 0;
   

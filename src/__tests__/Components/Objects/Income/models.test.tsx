@@ -62,6 +62,41 @@ describe('Income Models', () => {
       expect(getIncomeActiveMultiplier(income, 2025)).toBe(9 / 12); // Starts in April, 9 months active
       expect(getIncomeActiveMultiplier(income, 2026)).toBe(9 / 12); // Ends in Sept, 9 months active
     });
+
+    // Hand-verified test cases for Batch 19
+    // PassiveIncome(id, name, amount, frequency, earned_income, sourceType, startDate?, end_date?)
+    it('should return 1.0 for full year active (starts Jan, no end)', () => {
+      const fullYear = new PassiveIncome('p1', 'Full Year', 1000, 'Annually', 'No', 'Interest', new Date(2024, 0, 1));
+      expect(getIncomeActiveMultiplier(fullYear, 2024)).toBe(1.0);
+    });
+
+    it('should return 0 for year before income starts', () => {
+      const futureStart = new PassiveIncome('p2', 'Future', 1000, 'Annually', 'No', 'Interest', new Date(2024, 0, 1));
+      expect(getIncomeActiveMultiplier(futureStart, 2023)).toBe(0);
+    });
+
+    it('should return 0.5 for income starting July (6 months active)', () => {
+      // July is month 6 (0-indexed), so July through December = 6 months
+      const midYearStart = new PassiveIncome('p3', 'Mid Year Start', 1000, 'Annually', 'No', 'Interest', new Date(2024, 6, 1));
+      expect(getIncomeActiveMultiplier(midYearStart, 2024)).toBe(6 / 12);
+    });
+
+    it('should return 0.25 for income ending March (3 months active)', () => {
+      // Jan through March = 3 months (month 0, 1, 2)
+      const endsMarch = new PassiveIncome('p4', 'Ends March', 1000, 'Annually', 'No', 'Interest', new Date(2024, 0, 1), new Date(2024, 2, 31));
+      expect(getIncomeActiveMultiplier(endsMarch, 2024)).toBe(3 / 12);
+    });
+
+    it('should return 0 for year after income ends', () => {
+      const endedIncome = new PassiveIncome('p5', 'Ended', 1000, 'Annually', 'No', 'Interest', new Date(2024, 0, 1), new Date(2024, 2, 31));
+      expect(getIncomeActiveMultiplier(endedIncome, 2025)).toBe(0);
+    });
+
+    it('should handle income spanning year boundary (Nov 2023 to Feb 2024)', () => {
+      // In 2024: Jan and Feb are active = 2 months
+      const spanning = new PassiveIncome('p6', 'Spanning', 1000, 'Annually', 'No', 'Interest', new Date(2023, 10, 1), new Date(2024, 1, 29));
+      expect(getIncomeActiveMultiplier(spanning, 2024)).toBeCloseTo(2 / 12, 4);
+    });
   });
 
   describe('isIncomeActiveInCurrentMonth', () => {
@@ -89,9 +124,9 @@ describe('Income Models', () => {
         expect(nextYearSalary.amount).toBe(107000);
     });
 
-    it('should grow insurance by healthcareInflation and inflation', () => {
-        // 3000 * (1 + healthcareInflation + inflation) = 3000 * (1 + 0.05 + 0.03) = 3240
-        expect(nextYearSalary.insurance).toBe(3240);
+    it('should grow insurance by salaryGrowth and inflation', () => {
+        // 3000 * (1 + salaryGrowth + inflation) = 3000 * (1 + 0.04 + 0.03) = 3210
+        expect(nextYearSalary.insurance).toBe(3210);
     });
 
     it('should grow contributions if strategy is GROW_WITH_SALARY', () => {
@@ -157,6 +192,102 @@ describe('Income Models', () => {
       expect(nextYear.esppDiscountPercent).toBe(15);
       expect(nextYear.esppHasLookback).toBe(true);
       expect(nextYear.esppAccountId).toBe('espp-1');
+    });
+  });
+
+  describe('WorkIncome.getEffective401k', () => {
+    it('should return { preTax: 0, roth: 0 } when mode is disabled', () => {
+      const income = new WorkIncome(
+        'w1', 'Job', 100000, 'Annually', 'Yes',
+        15000, 5000, 0, 0, 'a1', 'Traditional 401k', 'FIXED', undefined, undefined, 0,
+        'disabled'  // autoMax401k
+      );
+      const result = income.getEffective401k(2024, 45);
+      expect(result.preTax).toBe(0);
+      expect(result.roth).toBe(0);
+    });
+
+    it('should return preTax/roth properties when mode is custom', () => {
+      const income = new WorkIncome(
+        'w1', 'Job', 100000, 'Annually', 'Yes',
+        15000, 0, 5000, 0, 'a1', 'Traditional 401k', 'FIXED', undefined, undefined, 0,
+        'custom'  // autoMax401k
+      );
+      const result = income.getEffective401k(2024, 45);
+      expect(result.preTax).toBe(15000);
+      expect(result.roth).toBe(5000);
+    });
+
+    it('should return full limit as traditional when mode is traditional (under 50)', () => {
+      const income = new WorkIncome(
+        'w1', 'Job', 100000, 'Annually', 'Yes',
+        0, 0, 0, 0, 'a1', 'Traditional 401k', 'FIXED', undefined, undefined, 0,
+        'traditional'  // autoMax401k
+      );
+      const result = income.getEffective401k(2024, 45);
+      // 2024 base limit: $23,000 (no catch-up for under 50)
+      expect(result.preTax).toBe(23000);
+      expect(result.roth).toBe(0);
+    });
+
+    it('should return full limit as Roth when mode is roth (under 50)', () => {
+      const income = new WorkIncome(
+        'w1', 'Job', 100000, 'Annually', 'Yes',
+        0, 0, 0, 0, 'a1', 'Roth 401k', 'FIXED', undefined, undefined, 0,
+        'roth'  // autoMax401k
+      );
+      const result = income.getEffective401k(2024, 45);
+      // 2024 base limit: $23,000 (no catch-up for under 50)
+      expect(result.preTax).toBe(0);
+      expect(result.roth).toBe(23000);
+    });
+
+    it('should include catch-up contribution at age 50+ for traditional mode', () => {
+      const income = new WorkIncome(
+        'w1', 'Job', 100000, 'Annually', 'Yes',
+        0, 0, 0, 0, 'a1', 'Traditional 401k', 'FIXED', undefined, undefined, 0,
+        'traditional'  // autoMax401k
+      );
+      const result = income.getEffective401k(2024, 50);
+      // 2024: $23,000 base + $7,500 catch-up = $30,500
+      expect(result.preTax).toBe(30500);
+      expect(result.roth).toBe(0);
+    });
+
+    it('should include catch-up contribution at age 50+ for roth mode', () => {
+      const income = new WorkIncome(
+        'w1', 'Job', 100000, 'Annually', 'Yes',
+        0, 0, 0, 0, 'a1', 'Roth 401k', 'FIXED', undefined, undefined, 0,
+        'roth'  // autoMax401k
+      );
+      const result = income.getEffective401k(2024, 55);
+      // 2024: $23,000 base + $7,500 catch-up = $30,500
+      expect(result.preTax).toBe(0);
+      expect(result.roth).toBe(30500);
+    });
+
+    it('should use 2025 limits when year is 2025', () => {
+      const income = new WorkIncome(
+        'w1', 'Job', 100000, 'Annually', 'Yes',
+        0, 0, 0, 0, 'a1', 'Traditional 401k', 'FIXED', undefined, undefined, 0,
+        'traditional'  // autoMax401k
+      );
+      const result = income.getEffective401k(2025, 45);
+      // 2025 base limit: $23,500 (no catch-up for under 50)
+      expect(result.preTax).toBe(23500);
+      expect(result.roth).toBe(0);
+    });
+
+    it('should use 2025 limits with catch-up at age 50+', () => {
+      const income = new WorkIncome(
+        'w1', 'Job', 100000, 'Annually', 'Yes',
+        0, 0, 0, 0, 'a1', 'Traditional 401k', 'FIXED', undefined, undefined, 0,
+        'traditional'  // autoMax401k
+      );
+      const result = income.getEffective401k(2025, 50);
+      // 2025: $23,500 base + $7,500 catch-up = $31,000
+      expect(result.preTax).toBe(31000);
+      expect(result.roth).toBe(0);
     });
   });
 
@@ -657,10 +788,14 @@ describe('Income Models', () => {
       });
 
       it('should calculate intermediate early claiming reductions', () => {
-        // Age 63: 5 years early = 1.0 - (5 * 0.0667) = ~0.67 but capped at 0.70
+        // Age 63: 4 years early = 1.0 - (4 * 0.0667) = 0.7332
         expect(SocialSecurityIncome.calculateBenefitAdjustment(63)).toBeCloseTo(0.7333, 2);
-        // Age 65: 2 years early = 1.0 - (2 * 0.0667) = ~0.867
+        // Age 64: 3 years early = 1.0 - (3 * 0.0667) = 0.7999
+        expect(SocialSecurityIncome.calculateBenefitAdjustment(64)).toBeCloseTo(0.7999, 2);
+        // Age 65: 2 years early = 1.0 - (2 * 0.0667) = 0.8666
         expect(SocialSecurityIncome.calculateBenefitAdjustment(65)).toBeCloseTo(0.8666, 2);
+        // Age 66: 1 year early = 1.0 - (1 * 0.0667) = 0.9333
+        expect(SocialSecurityIncome.calculateBenefitAdjustment(66)).toBeCloseTo(0.9333, 2);
       });
 
       it('should calculate intermediate delayed claiming increases', () => {
@@ -668,6 +803,18 @@ describe('Income Models', () => {
         expect(SocialSecurityIncome.calculateBenefitAdjustment(68)).toBe(1.08);
         // Age 69: 2 years delayed = 1.0 + (2 * 0.08) = 1.16
         expect(SocialSecurityIncome.calculateBenefitAdjustment(69)).toBe(1.16);
+      });
+
+      it('should verify ~6.67%/year reduction before FRA and 8%/year after', () => {
+        // Reduction rate before FRA: ~6.67% per year
+        const age65 = SocialSecurityIncome.calculateBenefitAdjustment(65);
+        const age66 = SocialSecurityIncome.calculateBenefitAdjustment(66);
+        expect(age66 - age65).toBeCloseTo(0.0667, 3); // ~6.67% difference per year
+
+        // Increase rate after FRA: 8% per year
+        const age67 = SocialSecurityIncome.calculateBenefitAdjustment(67);
+        const age68 = SocialSecurityIncome.calculateBenefitAdjustment(68);
+        expect(age68 - age67).toBeCloseTo(0.08, 5); // 8% per year
       });
     });
 
@@ -777,6 +924,124 @@ describe('Income Models', () => {
       const supplement = fersPension.calculateSupplement();
       expect(supplement).toBe(0);
     });
+
+    // DIRECT unit tests for FERSPensionIncome.calculateBenefit() - Batch 28
+    describe('calculateBenefit - DIRECT tests', () => {
+      it('should calculate $30,000 for 30 years, $100k high-3, age 60 (full eligibility, 1% multiplier)', () => {
+        // Age 60 with 20+ years = full benefit, no reduction
+        // Multiplier is 1% (not 1.1% since age < 62)
+        // 30 × $100,000 × 0.01 = $30,000
+        const pension = new FERSPensionIncome(
+          'fers-calc-1', 'Test FERS', 30, 100000, 60, 1970
+        );
+        expect(pension.calculateBenefit()).toBe(30000);
+      });
+
+      it('should calculate $12,000 for 15 years, $80k high-3, age 62 (1% multiplier since <20 years)', () => {
+        // Age 62 with 5+ years = full benefit
+        // Multiplier is 1% (not 1.1% since years < 20)
+        // 15 × $80,000 × 0.01 = $12,000
+        const pension = new FERSPensionIncome(
+          'fers-calc-2', 'Test FERS', 15, 80000, 62, 1965
+        );
+        expect(pension.calculateBenefit()).toBe(12000);
+      });
+
+      it('should calculate $26,400 for 20 years, $120k high-3, age 62 (1.1% multiplier)', () => {
+        // Age 62 with 20+ years = 1.1% multiplier
+        // 20 × $120,000 × 0.011 = $26,400
+        const pension = new FERSPensionIncome(
+          'fers-calc-3', 'Test FERS', 20, 120000, 62, 1965
+        );
+        expect(pension.calculateBenefit()).toBe(26400);
+      });
+
+      it('should calculate $27,500 for 25 years, $100k high-3, age 65 (1.1% multiplier)', () => {
+        // Age 65 with 20+ years = 1.1% multiplier
+        // 25 × $100,000 × 0.011 = $27,500
+        const pension = new FERSPensionIncome(
+          'fers-calc-4', 'Test FERS', 25, 100000, 65, 1960
+        );
+        expect(pension.calculateBenefit()).toBe(27500);
+      });
+
+      it('should calculate $13,500 for 15 years, $100k high-3, age 60 with 10% MRA+10 reduction', () => {
+        // Age 60 with 15 years (< 20) triggers MRA+10 reduction
+        // Reduction: (62 - 60) × 5% = 10%
+        // Base: 15 × $100,000 × 0.01 = $15,000
+        // After reduction: $15,000 × 0.90 = $13,500
+        const pension = new FERSPensionIncome(
+          'fers-calc-5', 'Test FERS', 15, 100000, 60, 1970
+        );
+        expect(pension.calculateBenefit()).toBe(13500);
+      });
+
+      it('should calculate $11,700 for 18 years, $100k high-3, age 58 with 20% MRA+10 reduction', () => {
+        // Age 58 with 18 years (< 20) triggers MRA+10 reduction
+        // MRA for birth year 1970 = 57, so age 58 >= MRA
+        // Reduction: (62 - 58) × 5% = 20%
+        // Base: 18 × $100,000 × 0.01 = $18,000
+        // After reduction: $18,000 × 0.80 = $14,400
+        const pension = new FERSPensionIncome(
+          'fers-calc-6', 'Test FERS', 18, 100000, 58, 1970
+        );
+        expect(pension.calculateBenefit()).toBe(14400);
+      });
+    });
+
+    // DIRECT unit tests for FERSPensionIncome.calculateSupplement() - Batch 28
+    describe('calculateSupplement - DIRECT tests', () => {
+      it('should calculate $18,000 supplement for 30 years, $24,000 annual SS at 62', () => {
+        // Formula: (yearsOfService / 40) × (estimatedSSAt62 / 12) × 12
+        // = (30 / 40) × ($24,000 / 12) × 12 = 0.75 × $2,000 × 12 = $18,000
+        // Must be unreduced retirement (MRA + 30 years)
+        const pension = new FERSPensionIncome(
+          'fers-supp-1', 'Test FERS', 30, 100000, 57, 1970, 0, 0, 24000
+        );
+        expect(pension.calculateSupplement()).toBe(18000);
+      });
+
+      it('should calculate $10,000 supplement for 20 years, $20,000 annual SS at 62', () => {
+        // Formula: (20 / 40) × ($20,000 / 12) × 12 = 0.5 × $1,666.67 × 12 = $10,000
+        // Need age 60+ with 20+ years for unreduced retirement
+        const pension = new FERSPensionIncome(
+          'fers-supp-2', 'Test FERS', 20, 100000, 60, 1970, 0, 0, 20000
+        );
+        expect(pension.calculateSupplement()).toBe(10000);
+      });
+
+      it('should calculate $28,000 supplement for 40 years, $28,000 annual SS at 62', () => {
+        // Formula: (40 / 40) × ($28,000 / 12) × 12 = 1.0 × $2,333.33 × 12 = $28,000
+        const pension = new FERSPensionIncome(
+          'fers-supp-3', 'Test FERS', 40, 100000, 57, 1970, 0, 0, 28000
+        );
+        expect(pension.calculateSupplement()).toBe(28000);
+      });
+
+      it('should return $0 supplement for MRA+10 (reduced) retirement', () => {
+        // 15 years at age 60 = MRA+10 with 10% reduction
+        // MRA+10 retirees don't get the FERS supplement
+        const pension = new FERSPensionIncome(
+          'fers-supp-4', 'Test FERS', 15, 100000, 60, 1970, 0, 0, 30000
+        );
+        expect(pension.calculateSupplement()).toBe(0);
+      });
+
+      it('should return $0 supplement for retirement at age 62+', () => {
+        // Supplement only for retirees before age 62
+        const pension = new FERSPensionIncome(
+          'fers-supp-5', 'Test FERS', 25, 100000, 62, 1970, 0, 0, 24000
+        );
+        expect(pension.calculateSupplement()).toBe(0);
+      });
+
+      it('should return $0 supplement when estimatedSSAt62 is 0', () => {
+        const pension = new FERSPensionIncome(
+          'fers-supp-6', 'Test FERS', 30, 100000, 57, 1970, 0, 0, 0
+        );
+        expect(pension.calculateSupplement()).toBe(0);
+      });
+    });
   });
 
   describe('CSRSPensionIncome', () => {
@@ -807,6 +1072,93 @@ describe('Income Models', () => {
       const nextYear = pensionWithLink.increment(mockAssumptions);
       expect(nextYear.autoCalculateHigh3).toBe(true);
       expect(nextYear.linkedIncomeId).toBe('work-income-1');
+    });
+
+    // DIRECT unit tests for CSRSPensionIncome.calculateBenefit() - Batch 28
+    describe('calculateBenefit - DIRECT tests', () => {
+      it('should calculate $7,500 for 5 years, $100k high-3 (1.5% tier only)', () => {
+        // First 5 years at 1.5%: 5 × $100,000 × 0.015 = $7,500
+        const pension = new CSRSPensionIncome(
+          'csrs-calc-1', 'Test CSRS', 5, 100000, 62
+        );
+        expect(pension.calculateBenefit()).toBe(7500);
+      });
+
+      it('should calculate $16,250 for 10 years, $100k high-3 (1.5% + 1.75% tiers)', () => {
+        // First 5 years: 5 × $100,000 × 0.015 = $7,500
+        // Next 5 years: 5 × $100,000 × 0.0175 = $8,750
+        // Total: $7,500 + $8,750 = $16,250
+        const pension = new CSRSPensionIncome(
+          'csrs-calc-2', 'Test CSRS', 10, 100000, 62
+        );
+        expect(pension.calculateBenefit()).toBe(16250);
+      });
+
+      it('should calculate $36,250 for 20 years, $100k high-3 (all three tiers)', () => {
+        // First 5 years: 5 × $100,000 × 0.015 = $7,500
+        // Years 6-10: 5 × $100,000 × 0.0175 = $8,750
+        // Years 11-20: 10 × $100,000 × 0.02 = $20,000
+        // Total: $7,500 + $8,750 + $20,000 = $36,250
+        const pension = new CSRSPensionIncome(
+          'csrs-calc-3', 'Test CSRS', 20, 100000, 60
+        );
+        expect(pension.calculateBenefit()).toBe(36250);
+      });
+
+      it('should calculate $56,250 for 30 years, $100k high-3', () => {
+        // First 5 years: $7,500
+        // Years 6-10: $8,750
+        // Years 11-30: 20 × $100,000 × 0.02 = $40,000
+        // Total: $7,500 + $8,750 + $40,000 = $56,250
+        const pension = new CSRSPensionIncome(
+          'csrs-calc-4', 'Test CSRS', 30, 100000, 55
+        );
+        expect(pension.calculateBenefit()).toBe(56250);
+      });
+
+      it('should cap at $80,000 (80% of $100k) for 42 years', () => {
+        // First 5 years: $7,500
+        // Years 6-10: $8,750
+        // Years 11-42: 32 × $100,000 × 0.02 = $64,000
+        // Total before cap: $7,500 + $8,750 + $64,000 = $80,250
+        // Capped at 80% of High-3: $80,000
+        const pension = new CSRSPensionIncome(
+          'csrs-calc-5', 'Test CSRS', 42, 100000, 62
+        );
+        expect(pension.calculateBenefit()).toBe(80000);
+      });
+
+      it('should apply 4% early retirement reduction for age 53 with 30 years', () => {
+        // Base benefit: $56,250 (30 years)
+        // Early retirement at age 53 with 30+ years qualifies via "any age with 25+ years"
+        // Reduction: (55 - 53) × 2% = 4%
+        // After reduction: $56,250 × 0.96 = $54,000
+        const pension = new CSRSPensionIncome(
+          'csrs-calc-6', 'Test CSRS', 30, 100000, 53
+        );
+        expect(pension.calculateBenefit()).toBe(54000);
+      });
+
+      it('should apply 6% early retirement reduction for age 52 with 30 years', () => {
+        // Base benefit: $56,250 (30 years)
+        // Reduction: (55 - 52) × 2% = 6%
+        // After reduction: $56,250 × 0.94 = $52,875
+        const pension = new CSRSPensionIncome(
+          'csrs-calc-7', 'Test CSRS', 30, 100000, 52
+        );
+        expect(pension.calculateBenefit()).toBe(52875);
+      });
+
+      it('should apply max 10% reduction cap for very early retirement', () => {
+        // Age 48 with 25 years qualifies via "any age with 25+ years"
+        // Reduction: (55 - 48) × 2% = 14%, but capped at 10%
+        // Base: 5×1.5% + 5×1.75% + 15×2% = $7,500 + $8,750 + $30,000 = $46,250
+        // After 10% reduction: $46,250 × 0.90 = $41,625
+        const pension = new CSRSPensionIncome(
+          'csrs-calc-8', 'Test CSRS', 25, 100000, 48
+        );
+        expect(pension.calculateBenefit()).toBe(41625);
+      });
     });
   });
 

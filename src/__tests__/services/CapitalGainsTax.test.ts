@@ -43,6 +43,7 @@ describe('Capital Gains Tax', () => {
                 withdrawalStrategy: [],
                 milestones: createBuiltinMilestones(1994, 65, 90),
                 display: { useCompactCurrency: true, showExperimentalFeatures: false, hsaEligible: true },
+                simulation: { useNewEngine: false },
             };
 
             let account = new InvestedAccount(
@@ -73,6 +74,7 @@ describe('Capital Gains Tax', () => {
                 withdrawalStrategy: [],
                 milestones: createBuiltinMilestones(1994, 65, 90),
                 display: { useCompactCurrency: true, showExperimentalFeatures: false, hsaEligible: true },
+                simulation: { useNewEngine: false },
             };
 
             let account = new InvestedAccount(
@@ -101,6 +103,7 @@ describe('Capital Gains Tax', () => {
                 withdrawalStrategy: [],
                 milestones: createBuiltinMilestones(1994, 65, 90),
                 display: { useCompactCurrency: true, showExperimentalFeatures: false, hsaEligible: true },
+                simulation: { useNewEngine: false },
             };
 
             // Start with $100k balance, $80k cost basis (so $20k in gains)

@@ -143,6 +143,7 @@ describe('FutureUtils', () => {
       cashflow: {
         totalIncome: 0,
         totalExpense,
+        livingExpenses: totalExpense,
         discretionary: 0,
         investedUser: 0,
         investedMatch: 0,
@@ -160,6 +161,7 @@ describe('FutureUtils', () => {
         insurance: 0,
         postTax: 0,
         capitalGains: 0,
+        niit: 0,
       },
       logs: [],
     });

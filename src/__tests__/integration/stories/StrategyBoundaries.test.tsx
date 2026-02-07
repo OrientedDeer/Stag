@@ -138,13 +138,17 @@ describe('Strategy Boundary Tests', () => {
                 taxState
             );
 
-            // Check each retirement year
+            // Check each retirement year BEFORE RMD age (when conversions are voluntary)
+            // After RMD age, mandatory distributions push income higher regardless of conversion strategy
+            const rmdStartAge = 73;  // RMD start age for this birth year
+
             for (let i = 1; i < simulation.length; i++) {
                 const year = simulation[i];
                 const prevYear = simulation[i - 1];
                 const age = getAge(year.year, birthYear);
 
                 if (age < retirementAge) continue;
+                if (age >= rmdStartAge) continue;  // Skip RMD years - mandatory distributions control income
 
                 // Check if there was a Roth conversion (Traditional decreased)
                 const tradBefore = getAccountById(prevYear, 'acc-trad')?.amount || 0;

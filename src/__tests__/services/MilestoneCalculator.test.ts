@@ -52,6 +52,9 @@ function createMockAssumptions(overrides: { birthYear?: number; retirementAge?: 
       showExperimentalFeatures: false,
       hsaEligible: true,
     },
+    simulation: {
+      useNewEngine: false,
+    },
     priorities: [],
     withdrawalStrategy: [],
   } as AssumptionsState;
@@ -90,6 +93,7 @@ function createMockSimulationYear(
     cashflow: {
       totalIncome: 0,
       totalExpense: annualExpenses,
+      livingExpenses: annualExpenses,
       discretionary: 0,
       investedUser: 0,
       investedMatch: 0,
@@ -107,6 +111,7 @@ function createMockSimulationYear(
       insurance: 0,
       postTax: 0,
       capitalGains: 0,
+      niit: 0,
     },
     logs: [],
   };

@@ -151,14 +151,20 @@ export function getGrossIncome(incomes: AnyIncome[], year: number): number {
 	}, 0);
 }
 
-export function getPreTaxExemptions(incomes: AnyIncome[], year: number, age?: number): number {
+/**
+ * Get pre-tax exemptions (401k, insurance, HSA) from work incomes.
+ * @param useStoredValue - If true, reads stored preTax401k directly instead of calling getEffective401k().
+ *                         Use true in simulation (after increment() has run), false for UI preview.
+ */
+export function getPreTaxExemptions(incomes: AnyIncome[], year: number, age?: number, useStoredValue: boolean = false): number {
 	return incomes
 		.filter((inc) => inc instanceof WorkIncome)
 		.reduce((acc, inc) => {
-			// Use effective 401k if age is provided (for auto-max feature)
-			const preTax401k = age !== undefined
-				? inc.getEffective401k(year, age).preTax
-				: inc.preTax401k;
+			// Use stored value if requested (simulation context where increment() already computed correct value)
+			// Otherwise use effective 401k for UI preview (where increment() hasn't run yet)
+			const preTax401k = useStoredValue
+				? inc.preTax401k
+				: (age !== undefined ? inc.getEffective401k(year, age).preTax : inc.preTax401k);
 			return (
 				acc +
 				inc.getProratedAnnual(preTax401k, year) +
@@ -180,14 +186,20 @@ export function getPostTaxEmployerMatch(
 	}, 0);
 }
 
-export function getPostTaxExemptions(incomes: AnyIncome[], year: number, age?: number): number {
+/**
+ * Get post-tax exemptions (Roth 401k) from work incomes.
+ * @param useStoredValue - If true, reads stored roth401k directly instead of calling getEffective401k().
+ *                         Use true in simulation (after increment() has run), false for UI preview.
+ */
+export function getPostTaxExemptions(incomes: AnyIncome[], year: number, age?: number, useStoredValue: boolean = false): number {
 	return incomes
 		.filter((inc) => inc instanceof WorkIncome)
 		.reduce((acc, inc) => {
-			// Use effective 401k if age is provided (for auto-max feature)
-			const roth401k = age !== undefined
-				? inc.getEffective401k(year, age).roth
-				: inc.roth401k;
+			// Use stored value if requested (simulation context where increment() already computed correct value)
+			// Otherwise use effective 401k for UI preview (where increment() hasn't run yet)
+			const roth401k = useStoredValue
+				? inc.roth401k
+				: (age !== undefined ? inc.getEffective401k(year, age).roth : inc.roth401k);
 			return acc + inc.getProratedAnnual(roth401k, year);
 		}, 0);
 }
@@ -229,10 +241,10 @@ export function getSocialSecurityBenefits(incomes: AnyIncome[], year: number): n
 /**
  * Calculate taxable portion of Social Security benefits
  *
- * Combined Income = AGI + Nontaxable Interest + 50% of SS Benefits
+ * Combined Income = otherIncome + taxExemptInterest + 50% of SS Benefits
  *
- * Thresholds (2024):
- * Single:
+ * Thresholds (not inflation-adjusted since 1984/1993):
+ * Single/MFS:
  *   < $25,000: 0% taxable
  *   $25,000-$34,000: Up to 50% taxable
  *   > $34,000: Up to 85% taxable
@@ -241,17 +253,36 @@ export function getSocialSecurityBenefits(incomes: AnyIncome[], year: number): n
  *   < $32,000: 0% taxable
  *   $32,000-$44,000: Up to 50% taxable
  *   > $44,000: Up to 85% taxable
+ *
+ * @param totalSSBenefits - Gross Social Security benefits received
+ * @param otherIncome - All taxable income EXCEPT SS. Must include:
+ *                      - Wages and salaries
+ *                      - Pension income
+ *                      - Traditional IRA/401k withdrawals
+ *                      - Roth conversions
+ *                      - Long-term capital gains
+ *                      - Short-term capital gains
+ *                      - Qualified dividends
+ *                      - Ordinary dividends
+ *                      - Interest income
+ *                      - Rental income
+ *                      - Any other taxable income
+ * @param taxExemptInterest - Municipal bond interest. Not taxed federally, but DOES count
+ *                            toward SS combined income calculation. Pass 0 if not tracking.
+ *                            TODO: System does not currently track tax-exempt interest separately.
+ * @param filingStatus - Tax filing status (Single, MFJ, MFS)
+ * @returns Taxable portion of SS benefits (0 to 85% of totalSSBenefits)
  */
 export function getTaxableSocialSecurityBenefits(
 	totalSSBenefits: number,
-	agi: number,
+	otherIncome: number,
+	taxExemptInterest: number,
 	filingStatus: FilingStatus
 ): number {
 	if (totalSSBenefits === 0) return 0;
 
-	// Combined income = AGI + Nontaxable Interest + 50% of SS Benefits
-	// For simplicity, we're not tracking nontaxable interest separately
-	const combinedIncome = agi + (totalSSBenefits * SS_TIER1_TAXABLE_RATE);
+	// Combined income = otherIncome + taxExemptInterest + 50% of SS Benefits
+	const combinedIncome = otherIncome + taxExemptInterest + (totalSSBenefits * SS_TIER1_TAXABLE_RATE);
 
 	// Select thresholds based on filing status
 	const useSingleThresholds = filingStatus === 'Single' || filingStatus === 'Married Filing Separately';
@@ -323,33 +354,410 @@ export function getYesDeductions(expenses: AnyExpense[], year: number): number {
 		}, 0);
 }
 
+/**
+ * Result of the unified federal tax calculation
+ */
+export interface TotalFederalTaxResult {
+	taxableSS: number;      // Taxable portion of SS benefits
+	ordinaryTax: number;    // Tax on ordinary income (wages, pensions, withdrawals, taxable SS, STCG)
+	ltcgTax: number;        // Tax on long-term capital gains + qualified dividends
+	niitTax: number;        // Net Investment Income Tax (3.8% on investment income above threshold)
+	totalTax: number;       // ordinaryTax + ltcgTax + niitTax
+}
+
+/** NIIT thresholds by filing status */
+const NIIT_THRESHOLDS: Record<FilingStatus, number> = {
+	'Single': 200000,
+	'Married Filing Jointly': 250000,
+	'Married Filing Separately': 125000,
+};
+
+/** NIIT rate */
+const NIIT_RATE = 0.038;
+
+/**
+ * Calculate Net Investment Income Tax (NIIT) as a standalone function.
+ *
+ * NIIT is 3.8% on the LESSER of:
+ * - Net investment income (STCG + LTCG + dividends)
+ * - MAGI exceeding threshold ($200k single, $250k MFJ, $125k MFS)
+ *
+ * Used by Option B post-hoc tax correction after withdrawals determine actual LTCG/STCG.
+ *
+ * @param magi - Modified Adjusted Gross Income (includes ordinary income, STCG, LTCG, taxable SS)
+ * @param shortTermCapitalGains - Short-term capital gains realized
+ * @param longTermCapitalGains - Long-term capital gains realized
+ * @param filingStatus - Tax filing status
+ * @returns NIIT amount
+ */
+export function calculateNIIT(
+	magi: number,
+	shortTermCapitalGains: number,
+	longTermCapitalGains: number,
+	filingStatus: FilingStatus
+): number {
+	const niitThreshold = NIIT_THRESHOLDS[filingStatus];
+	const netInvestmentIncome = shortTermCapitalGains + longTermCapitalGains;
+
+	if (netInvestmentIncome <= 0) return 0;
+
+	const magiExcess = Math.max(0, magi - niitThreshold);
+	if (magiExcess <= 0) return 0;
+
+	// NIIT applies to the lesser of investment income or MAGI excess
+	const niitBase = Math.min(netInvestmentIncome, magiExcess);
+	return niitBase * NIIT_RATE;
+}
+
+/**
+ * Unified federal tax calculation that handles all income types and their interactions.
+ *
+ * This function properly handles:
+ * - Social Security taxability (provisional income calculation)
+ * - STCG taxed as ordinary income (but counted as investment income for NIIT)
+ * - LTCG stacking on top of ordinary income for bracket determination
+ * - NIIT (3.8% on investment income above threshold)
+ * - Standard deduction applied to ordinary income only
+ *
+ * Calculation order:
+ * 1. Calculate provisional income for SS taxability
+ * 2. Calculate taxable SS using getTaxableSocialSecurityBenefits
+ * 3. Calculate taxable ordinary income (includes STCG)
+ * 4. Calculate ordinary tax on taxable ordinary income
+ * 5. Calculate LTCG tax where gains "stack" on top of ordinary taxable income
+ * 6. Calculate NIIT on investment income above threshold
+ *
+ * @param ordinaryIncome - Wages, Traditional withdrawals, pensions, Roth conversions (NOT STCG)
+ * @param socialSecurityBenefits - Gross SS benefits (we calculate taxable portion internally)
+ * @param shortTermCapitalGains - STCG (taxed as ordinary income, but is investment income for NIIT)
+ * @param longTermCapitalGains - LTCG + qualified dividends
+ * @param preTaxDeductions - 401k, HSA contributions, etc.
+ * @param filingStatus - Tax filing status
+ * @param params - Federal tax parameters (brackets, standard deduction, LTCG brackets)
+ */
+export function calculateTotalFederalTax(
+	ordinaryIncome: number,
+	socialSecurityBenefits: number,
+	shortTermCapitalGains: number,
+	longTermCapitalGains: number,
+	preTaxDeductions: number,
+	filingStatus: FilingStatus,
+	params: TaxParameters
+): TotalFederalTaxResult {
+	// =========================================================================
+	// STEP 1: Calculate provisional income for SS taxability
+	// =========================================================================
+	// IRS formula: Provisional Income = AGI (excluding SS) + tax-exempt interest + 50% of SS
+	// For simplicity, we don't track tax-exempt interest separately
+	// Note: Both STCG and LTCG count toward provisional income
+	const provisionalIncome = ordinaryIncome + shortTermCapitalGains + longTermCapitalGains + (socialSecurityBenefits * 0.5);
+
+	// =========================================================================
+	// STEP 2: Calculate taxable portion of Social Security
+	// =========================================================================
+	// TODO: Verify all income types are included (LTCG, STCG, dividends, etc.)
+	const taxableSS = getTaxableSocialSecurityBenefits(
+		socialSecurityBenefits,
+		provisionalIncome - (socialSecurityBenefits * 0.5), // Pass otherIncome excluding SS
+		0, // taxExemptInterest - not currently tracked
+		filingStatus
+	);
+
+	// =========================================================================
+	// STEP 3: Calculate taxable ordinary income (includes STCG)
+	// =========================================================================
+	// STCG is taxed as ordinary income, so include it here
+	// Note: LTCG does NOT get the standard deduction - it stacks on top
+	const totalOrdinaryIncome = ordinaryIncome + shortTermCapitalGains + taxableSS;
+	const adjustedOrdinary = Math.max(0, totalOrdinaryIncome - preTaxDeductions);
+	const taxableOrdinary = Math.max(0, adjustedOrdinary - params.standardDeduction);
+
+	// =========================================================================
+	// STEP 4: Calculate ordinary income tax (includes STCG)
+	// =========================================================================
+	let ordinaryTax = 0;
+	for (let i = 0; i < params.brackets.length; i++) {
+		const current = params.brackets[i];
+		const next = params.brackets[i + 1];
+		const upperLimit = next ? next.threshold : Infinity;
+
+		if (taxableOrdinary > current.threshold) {
+			const amountInBracket = Math.min(taxableOrdinary, upperLimit) - current.threshold;
+			ordinaryTax += amountInBracket * current.rate;
+		}
+	}
+
+	// =========================================================================
+	// STEP 5: Calculate LTCG tax (stacks on top of ordinary income)
+	// =========================================================================
+	let ltcgTax = 0;
+	if (longTermCapitalGains > 0 && params.capitalGainsBrackets) {
+		const brackets = params.capitalGainsBrackets;
+		let remainingGains = longTermCapitalGains;
+
+		// LTCG stacks on top of taxable ordinary income for threshold purposes
+		let incomeStack = taxableOrdinary;
+
+		for (let i = 0; i < brackets.length && remainingGains > 0; i++) {
+			const bracket = brackets[i];
+			const nextBracket = brackets[i + 1];
+			const upperLimit = nextBracket ? nextBracket.threshold : Infinity;
+
+			// Skip if we're already past this bracket
+			if (incomeStack >= upperLimit) continue;
+
+			// How much room is left in this bracket?
+			const bracketFloor = Math.max(incomeStack, bracket.threshold);
+			const roomInBracket = upperLimit - bracketFloor;
+
+			// How much of the gains fall in this bracket?
+			const gainsInBracket = Math.min(remainingGains, roomInBracket);
+
+			// Calculate tax for this portion
+			ltcgTax += gainsInBracket * bracket.rate;
+
+			// Move up the income stack and reduce remaining gains
+			incomeStack += gainsInBracket;
+			remainingGains -= gainsInBracket;
+		}
+	}
+
+	// =========================================================================
+	// STEP 6: Calculate NIIT (Net Investment Income Tax)
+	// =========================================================================
+	// NIIT is 3.8% on the LESSER of:
+	// - Net investment income (STCG + LTCG + dividends - we don't track dividends separately)
+	// - MAGI exceeding threshold ($200k single, $250k MFJ, $125k MFS)
+	let niitTax = 0;
+	const niitThreshold = NIIT_THRESHOLDS[filingStatus];
+	const netInvestmentIncome = shortTermCapitalGains + longTermCapitalGains;
+
+	if (netInvestmentIncome > 0) {
+		// MAGI for NIIT purposes = AGI (roughly ordinaryIncome + STCG + LTCG + taxableSS - preTaxDeductions)
+		// Note: MAGI has some adjustments but for simplicity we use AGI
+		const magi = ordinaryIncome + shortTermCapitalGains + longTermCapitalGains + taxableSS - preTaxDeductions;
+		const magiExcess = Math.max(0, magi - niitThreshold);
+
+		if (magiExcess > 0) {
+			// NIIT applies to the lesser of investment income or MAGI excess
+			const niitBase = Math.min(netInvestmentIncome, magiExcess);
+			niitTax = niitBase * NIIT_RATE;
+		}
+	}
+
+	return {
+		taxableSS,
+		ordinaryTax,
+		ltcgTax,
+		niitTax,
+		totalTax: ordinaryTax + ltcgTax + niitTax
+	};
+}
+
+/**
+ * Legacy tax calculation function for backwards compatibility.
+ * Use calculateTotalFederalTax for new code that needs SS/LTCG/NIIT handling.
+ *
+ * @param grossIncome - Gross income before deductions
+ * @param preTaxDeductions - 401k, HSA, etc.
+ * @param params - Tax parameters
+ * @returns Tax amount (ordinary income tax only, no SS/LTCG/NIIT)
+ */
 export function calculateTax(
 	grossIncome: number,
 	preTaxDeductions: number,
 	params: TaxParameters
 ): number {
-	const adjustedGross = Math.max(0, grossIncome - preTaxDeductions);
+	// Use the new unified function with no SS, no STCG, no LTCG
+	return calculateTotalFederalTax(
+		grossIncome,
+		0,  // no SS
+		0,  // no STCG
+		0,  // no LTCG
+		preTaxDeductions,
+		'Single',  // filing status doesn't matter when SS=0 and no investment income
+		params
+	).ordinaryTax;
+}
 
-	const taxableIncome = Math.max(0, adjustedGross - params.standardDeduction);
-
-	let totalTax = 0;
-
-	for (let i = 0; i < params.brackets.length; i++) {
-		const current = params.brackets[i];
-
-		const next = params.brackets[i + 1];
-
-		const upperLimit = next ? next.threshold : Infinity;
-
-		if (taxableIncome > current.threshold) {
-			const amountInBracket =
-				Math.min(taxableIncome, upperLimit) - current.threshold;
-
-			totalTax += amountInBracket * current.rate;
-		}
+/**
+ * Calculate federal tax from income/expense objects using calculateTotalFederalTax.
+ *
+ * This function extracts all needed values from the income/expense arrays and
+ * properly handles SS taxability, LTCG stacking, and NIIT through the unified
+ * tax calculation.
+ *
+ * @param state - Tax state (filing status, overrides, deduction method)
+ * @param incomes - Income objects (SS, pensions, work income)
+ * @param expenses - Expense objects (for itemized deductions)
+ * @param additionalOrdinaryIncome - Traditional withdrawals + Roth conversions + RMDs (default 0)
+ * @param year - Tax year
+ * @param assumptions - Assumptions for inflation adjustments
+ * @param stcg - Short-term capital gains (default 0)
+ * @param ltcg - Long-term capital gains (default 0)
+ * @returns Federal tax amount
+ */
+export function calculateFederalTaxFromIncomes(
+	state: TaxState,
+	incomes: AnyIncome[],
+	expenses: AnyExpense[],
+	additionalOrdinaryIncome: number = 0,
+	year: number,
+	assumptions?: AssumptionsState,
+	stcg: number = 0,
+	ltcg: number = 0
+): number {
+	// DEBUG: Simple trace to see what years hit this function
+	if (year === 2027) {
+		console.log('>>> calculateFederalTaxFromIncomes CALLED for year 2027');
 	}
 
-	return totalTax;
+	if (state.fedOverride !== null) {
+		return state.fedOverride;
+	}
+
+	// Get gross income from income objects (excludes additional ordinary income)
+	const incomeGross = getGrossIncome(incomes, year);
+
+	// Calculate age from assumptions for auto-max 401k feature
+	const age = assumptions?.milestones ? year - getBirthYear(assumptions.milestones) : undefined;
+
+	// Get pre-tax deductions (401k, HSA, etc.)
+	const incomePreTaxDeductions = getPreTaxExemptions(incomes, year, age);
+	const expenseAboveLineDeductions = getYesDeductions(expenses, year);
+	const totalPreTaxDeductions = incomePreTaxDeductions + expenseAboveLineDeductions;
+
+	// DEBUG: Trace tax calculation for Year 2027
+	if (year === 2027) {
+		console.log('\n========== TAX TRACE: Year 2027 ==========');
+		console.log('--- GROSS INCOME BREAKDOWN ---');
+		incomes.forEach(inc => {
+			const amt = inc.getProratedAnnual(inc.amount, year);
+			if (amt > 0) {
+				const reinvestFlag = 'isReinvested' in inc ? ` [reinvested=${(inc as any).isReinvested}]` : '';
+				console.log(`  ${inc.name} (${inc.constructor.name}): $${amt.toFixed(2)}${reinvestFlag}`);
+			}
+		});
+		console.log(`  TOTAL incomeGross: $${incomeGross.toFixed(2)}`);
+		console.log(`  additionalOrdinaryIncome: $${additionalOrdinaryIncome.toFixed(2)}`);
+
+		console.log('\n--- PRE-TAX DEDUCTIONS (from incomes) ---');
+		incomes.filter(inc => inc.constructor.name === 'WorkIncome').forEach(inc => {
+			const w = inc as any;
+			const effective401k = age !== undefined ? w.getEffective401k(year, age) : { preTax: w.preTax401k, roth: w.roth401k };
+			console.log(`  ${inc.name}:`);
+			console.log(`    401k (pre-tax): $${inc.getProratedAnnual(effective401k.preTax, year).toFixed(2)}`);
+			console.log(`    Insurance: $${inc.getProratedAnnual(w.insurance, year).toFixed(2)}`);
+			console.log(`    HSA: $${inc.getProratedAnnual(w.hsaContribution || 0, year).toFixed(2)}`);
+		});
+		console.log(`  TOTAL incomePreTaxDeductions: $${incomePreTaxDeductions.toFixed(2)}`);
+
+		console.log('\n--- ABOVE-LINE DEDUCTIONS (from expenses) ---');
+		expenses.filter(exp => 'is_tax_deductible' in exp && (exp as any).is_tax_deductible === 'Yes').forEach(exp => {
+			console.log(`  ${exp.name}: is_tax_deductible="${(exp as any).is_tax_deductible}", tax_deductible=$${(exp as any).tax_deductible}`);
+		});
+		console.log(`  TOTAL expenseAboveLineDeductions: $${expenseAboveLineDeductions.toFixed(2)}`);
+		console.log(`  TOTAL totalPreTaxDeductions: $${totalPreTaxDeductions.toFixed(2)}`);
+	}
+
+	// Get Social Security benefits
+	const totalSSBenefits = getSocialSecurityBenefits(incomes, year);
+
+	// Calculate ordinary income (gross excluding SS, plus additional ordinary income)
+	const nonSSGross = incomeGross - totalSSBenefits;
+	const ordinaryIncome = nonSSGross + additionalOrdinaryIncome;
+
+	// Get federal tax parameters
+	const fedParams = getTaxParameters(
+		year,
+		state.filingStatus,
+		"federal",
+		undefined,
+		assumptions
+	);
+
+	if (!fedParams) return 0;
+
+	// Calculate state tax for SALT deduction
+	const stateTax = additionalOrdinaryIncome > 0
+		? calculateUnifiedStateTax(state, incomes, expenses, additionalOrdinaryIncome, year, assumptions)
+		: calculateStateTax(state, incomes, expenses, year, assumptions);
+
+	// Apply SALT cap
+	const saltCap = getSALTCap(year, state.filingStatus);
+	const cappedStateTax = Math.min(stateTax, saltCap);
+
+	// Calculate itemized deductions
+	const itemizedTotal = getItemizedDeductions(expenses, year) + cappedStateTax;
+
+	// Helper to calculate tax with a specific deduction amount
+	const calcTaxWithDeduction = (deductionAmount: number): number => {
+		const paramsWithDeduction = {
+			...fedParams,
+			standardDeduction: deductionAmount
+		};
+		return calculateTotalFederalTax(
+			ordinaryIncome,
+			totalSSBenefits,
+			stcg,
+			ltcg,
+			totalPreTaxDeductions,
+			state.filingStatus,
+			paramsWithDeduction
+		).totalTax;
+	};
+
+	// DEBUG: Continue trace for Year 2027
+	if (year === 2027) {
+		const agi = ordinaryIncome - totalPreTaxDeductions;
+		console.log('\n--- AGI CALCULATION ---');
+		console.log(`  ordinaryIncome (nonSSGross + additional): $${ordinaryIncome.toFixed(2)}`);
+		console.log(`  - totalPreTaxDeductions: $${totalPreTaxDeductions.toFixed(2)}`);
+		console.log(`  = AGI: $${agi.toFixed(2)}`);
+
+		console.log('\n--- DEDUCTION ---');
+		console.log(`  deductionMethod: ${state.deductionMethod}`);
+		console.log(`  standardDeduction: $${fedParams.standardDeduction.toFixed(2)}`);
+		console.log(`  itemizedTotal: $${itemizedTotal.toFixed(2)}`);
+
+		const taxableIncome = Math.max(0, agi - fedParams.standardDeduction);
+		console.log(`  Taxable income (AGI - standard): $${taxableIncome.toFixed(2)}`);
+
+		console.log('\n--- TAX BRACKETS (2026 frozen) ---');
+		fedParams.brackets.forEach((b, i) => {
+			const next = fedParams.brackets[i + 1];
+			const upper = next ? next.threshold : 'Infinity';
+			console.log(`  ${(b.rate * 100).toFixed(0)}%: $${b.threshold} - $${upper}`);
+		});
+	}
+
+	// Handle Auto: pick whichever results in lower tax
+	if (state.deductionMethod === "Auto") {
+		const taxWithStandard = calcTaxWithDeduction(fedParams.standardDeduction);
+		const taxWithItemized = calcTaxWithDeduction(itemizedTotal);
+		const finalTax = Math.min(taxWithStandard, taxWithItemized);
+		if (year === 2027) {
+			console.log('\n--- FINAL TAX ---');
+			console.log(`  taxWithStandard: $${taxWithStandard.toFixed(2)}`);
+			console.log(`  taxWithItemized: $${taxWithItemized.toFixed(2)}`);
+			console.log(`  FINAL (min): $${finalTax.toFixed(2)}`);
+			console.log('==========================================\n');
+		}
+		return finalTax;
+	}
+
+	const appliedDeduction = state.deductionMethod === "Standard"
+		? fedParams.standardDeduction
+		: itemizedTotal;
+
+	const finalTax = calcTaxWithDeduction(appliedDeduction);
+	if (year === 2027) {
+		console.log('\n--- FINAL TAX ---');
+		console.log(`  appliedDeduction: $${appliedDeduction.toFixed(2)}`);
+		console.log(`  FINAL TAX: $${finalTax.toFixed(2)}`);
+		console.log('==========================================\n');
+	}
+	return finalTax;
 }
 
 export function calculateFicaTax(
@@ -383,45 +791,6 @@ export function calculateFicaTax(
 	return ssTax + medicareTax;
 }
 
-/**
- * States that tax Social Security benefits (as of 2024).
- *
- * Most states (37 + DC) do NOT tax Social Security at all.
- * These states DO tax SS, though many have partial exemptions:
- * - Colorado: Large exemptions for seniors 55+/65+
- * - Connecticut: Income-based exemption (AGI < $75k single / $100k joint exempt)
- * - Kansas: AGI < $75k fully exempt
- * - Minnesota: Full taxation, following federal rules
- * - Montana: Some deductions available
- * - New Mexico: Income-based exemptions
- * - Rhode Island: Income-based exemption (AGI < $101,000 exempt)
- * - Utah: Tax credit offsets for some taxpayers
- * - Vermont: Income-based exemption
- * - West Virginia: Phasing out (65% exempt in 2024, fully exempt by 2026)
- *
- * For simplicity, we use the federal taxable SS amount for these states.
- * For all other states, SS is fully exempt from state income tax.
- */
-export const STATES_THAT_TAX_SOCIAL_SECURITY = new Set([
-	'CO', // Colorado
-	'CT', // Connecticut
-	'KS', // Kansas
-	'MN', // Minnesota
-	'MT', // Montana
-	'NM', // New Mexico
-	'RI', // Rhode Island
-	'UT', // Utah
-	'VT', // Vermont
-	'WV', // West Virginia (phasing out)
-]);
-
-/**
- * Check if a state taxes Social Security benefits
- */
-export function doesStateTaxSocialSecurity(stateCode: string): boolean {
-	return STATES_THAT_TAX_SOCIAL_SECURITY.has(stateCode);
-}
-
 export function calculateStateTax(
 	state: TaxState,
 	incomes: AnyIncome[],
@@ -453,29 +822,50 @@ export function calculateStateTax(
 	if (!stateParams) return 0;
 
 	// Handle Social Security benefits for state tax
-	// Most states don't tax SS at all; some tax it like federal
+	// Use data-driven socialSecurityTreatment field, defaulting to 'exempt'
+	const ssTreatment = stateParams.socialSecurityTreatment ?? 'exempt';
 	const totalSSBenefits = getSocialSecurityBenefits(incomes, year);
 	let adjustedGrossForState = annualGross;
 
 	if (totalSSBenefits > 0) {
-		if (doesStateTaxSocialSecurity(state.stateResidency)) {
+		if (ssTreatment === 'taxable') {
 			// States that tax SS: use only the taxable portion (like federal)
 			const nonSSGross = annualGross - totalSSBenefits;
 			const agiExcludingSS = nonSSGross - totalPreTaxDeductions;
+			// TODO: Verify all income types are included (LTCG, STCG, dividends, etc.)
 			const taxableSSBenefits = getTaxableSocialSecurityBenefits(
 				totalSSBenefits,
 				agiExcludingSS,
+				0, // taxExemptInterest - not currently tracked
 				state.filingStatus
 			);
 			// Subtract full SS, add back only taxable portion
 			adjustedGrossForState = annualGross - totalSSBenefits + taxableSSBenefits;
+		} else if (ssTreatment === 'income-based') {
+			// TODO: Implement income-based SS exemption for states like CO, CT, etc.
+			// For now, treat as exempt (conservative approach)
+			adjustedGrossForState = annualGross - totalSSBenefits;
 		} else {
-			// States that don't tax SS: exclude SS benefits entirely
+			// 'exempt' - States that don't tax SS: exclude SS benefits entirely
 			adjustedGrossForState = annualGross - totalSSBenefits;
 		}
 	}
 
-	const stateStandardDeduction = stateParams.standardDeduction || 0;
+	// Apply senior deduction if applicable
+	// For per-person deductions (like Virginia), MFJ gets double (assumes both spouses same age)
+	let seniorDeductionAmount = 0;
+	if (stateParams.seniorDeduction && age !== undefined) {
+		const seniorAge = stateParams.seniorAge ?? 65;
+		if (age >= seniorAge) {
+			seniorDeductionAmount = stateParams.seniorDeduction;
+			// Double for MFJ if this is a per-person deduction
+			if (stateParams.seniorDeductionPerPerson && state.filingStatus === 'Married Filing Jointly') {
+				seniorDeductionAmount *= 2;
+			}
+		}
+	}
+
+	const stateStandardDeduction = (stateParams.standardDeduction || 0) + seniorDeductionAmount;
 
 	// Handle Auto: pick whichever results in lower tax
 	if (state.deductionMethod === "Auto") {
@@ -501,88 +891,115 @@ export function calculateStateTax(
 	});
 }
 
-export function calculateFederalTax(
+/**
+ * Calculate state tax including additional ordinary income from withdrawals.
+ *
+ * @param state - Tax state
+ * @param incomes - Original income objects
+ * @param expenses - Expenses (for deductions)
+ * @param additionalOrdinaryIncome - Traditional withdrawals + Roth conversions + RMDs
+ * @param year - Tax year
+ * @param assumptions - Assumptions for inflation adjustments
+ * @returns State tax including all income sources
+ */
+export function calculateUnifiedStateTax(
 	state: TaxState,
 	incomes: AnyIncome[],
 	expenses: AnyExpense[],
+	additionalOrdinaryIncome: number,
 	year: number,
 	assumptions?: AssumptionsState
-) {
-	if (state.fedOverride !== null) {
-		return state.fedOverride;
+): number {
+	if (state.stateOverride !== null) {
+		return state.stateOverride;
 	}
 
-	const annualGross = getGrossIncome(incomes, year);
-	// Calculate age from assumptions for auto-max 401k feature
-	const age = assumptions?.milestones ? year - getBirthYear(assumptions.milestones) : undefined;
-	const incomePreTaxDeductions = getPreTaxExemptions(incomes, year, age);
-	const stateTax = calculateStateTax(
-		state,
-		incomes,
-		expenses,
-		year,
-		assumptions
-	);
-	const expenseAboveLineDeductions = getYesDeductions(expenses, year);
-	const totalPreTaxDeductions =
-		incomePreTaxDeductions + expenseAboveLineDeductions;
-
-	// Get Social Security benefits first
-	const totalSSBenefits = getSocialSecurityBenefits(incomes, year);
-
-	// Calculate AGI EXCLUDING Social Security for taxability calculation
-	// The IRS formula for "Combined Income" uses AGI before adding SS benefits
-	const nonSSGross = annualGross - totalSSBenefits;
-	const agiExcludingSS = nonSSGross - totalPreTaxDeductions;
-
-	// Calculate taxable portion of SS benefits
-	const taxableSSBenefits = getTaxableSocialSecurityBenefits(
-		totalSSBenefits,
-		agiExcludingSS,  // Pass AGI WITHOUT SS benefits
-		state.filingStatus
-	);
-
-	// Adjust gross income for SS taxation
-	// annualGross includes the full SS benefits, but only the taxable portion should be included
-	// So we subtract the full amount and add back only the taxable portion
-	const adjustedGross = annualGross - totalSSBenefits + taxableSSBenefits;
-
-	// Apply SALT cap to state tax deduction
-	// Cap varies by year: $10k (2018-2024), $40k (2025-2029), $10k (2030+)
-	const saltCap = getSALTCap(year, state.filingStatus);
-	const cappedStateTax = Math.min(stateTax, saltCap);
-	const itemizedTotal = getItemizedDeductions(expenses, year) + cappedStateTax;
-	const fedParams = getTaxParameters(
+	const stateParams = getTaxParameters(
 		year,
 		state.filingStatus,
-		"federal",
-		undefined,
+		"state",
+		state.stateResidency,
 		assumptions
 	);
 
-	if (!fedParams) return 0;
+	if (!stateParams) return 0; // No state income tax
 
-	const fedStandardDeduction = fedParams.standardDeduction;
+	// Get gross income from incomes + additional ordinary income
+	const incomeGross = getGrossIncome(incomes, year);
+	const annualGross = incomeGross + additionalOrdinaryIncome;
+
+	// Calculate age from assumptions
+	const age = assumptions?.milestones ? year - getBirthYear(assumptions.milestones) : undefined;
+	const incomePreTaxDeductions = getPreTaxExemptions(incomes, year, age);
+	const expenseAboveLineDeductions = getYesDeductions(expenses, year);
+	const totalPreTaxDeductions = incomePreTaxDeductions + expenseAboveLineDeductions;
+
+	// Handle Social Security benefits for state tax
+	// Use data-driven socialSecurityTreatment field, defaulting to 'exempt'
+	const ssTreatment = stateParams.socialSecurityTreatment ?? 'exempt';
+	const totalSSBenefits = getSocialSecurityBenefits(incomes, year);
+	let adjustedGross = annualGross;
+
+	if (totalSSBenefits > 0) {
+		if (ssTreatment === 'taxable') {
+			// States that tax SS: use only the taxable portion (like federal)
+			const nonSSGross = annualGross - totalSSBenefits;
+			const agiExcludingSS = nonSSGross - totalPreTaxDeductions;
+			// TODO: Verify all income types are included (LTCG, STCG, dividends, etc.)
+			const taxableSSBenefits = getTaxableSocialSecurityBenefits(
+				totalSSBenefits,
+				agiExcludingSS,
+				0, // taxExemptInterest - not currently tracked
+				state.filingStatus
+			);
+			// Subtract full SS, add back only taxable portion
+			adjustedGross = annualGross - totalSSBenefits + taxableSSBenefits;
+		} else if (ssTreatment === 'income-based') {
+			// TODO: Implement income-based SS exemption for states like CO, CT, etc.
+			// For now, treat as exempt (conservative approach)
+			adjustedGross = annualGross - totalSSBenefits;
+		} else {
+			// 'exempt' - States that don't tax SS: exclude SS benefits entirely
+			adjustedGross = annualGross - totalSSBenefits;
+		}
+	}
+
+	// Apply senior deduction if applicable
+	// For per-person deductions (like Virginia), MFJ gets double (assumes both spouses same age)
+	let seniorDeductionAmount = 0;
+	if (stateParams.seniorDeduction && age !== undefined) {
+		const seniorAge = stateParams.seniorAge ?? 65;
+		if (age >= seniorAge) {
+			seniorDeductionAmount = stateParams.seniorDeduction;
+			// Double for MFJ if this is a per-person deduction
+			if (stateParams.seniorDeductionPerPerson && state.filingStatus === 'Married Filing Jointly') {
+				seniorDeductionAmount *= 2;
+			}
+		}
+	}
+
+	const itemizedTotal = getItemizedDeductions(expenses, year);
+	const stateStandardDeduction = (stateParams.standardDeduction || 0) + seniorDeductionAmount;
 
 	// Handle Auto: pick whichever results in lower tax
 	if (state.deductionMethod === "Auto") {
 		const taxWithStandard = calculateTax(adjustedGross, totalPreTaxDeductions, {
-			...fedParams,
-			standardDeduction: fedStandardDeduction,
+			...stateParams,
+			standardDeduction: stateStandardDeduction,
 		});
 		const taxWithItemized = calculateTax(adjustedGross, totalPreTaxDeductions, {
-			...fedParams,
-			standardDeduction: itemizedTotal,
+			...stateParams,
+			standardDeduction: itemizedTotal + seniorDeductionAmount,
 		});
 		return Math.min(taxWithStandard, taxWithItemized);
 	}
 
-	const fedAppliedMainDeduction =
-		state.deductionMethod === "Standard" ? fedStandardDeduction : itemizedTotal;
+	const stateAppliedMainDeduction =
+		state.deductionMethod === "Standard" ? stateStandardDeduction : itemizedTotal + seniorDeductionAmount;
 
 	return calculateTax(adjustedGross, totalPreTaxDeductions, {
-		...fedParams,
-		standardDeduction: fedAppliedMainDeduction,
+		...stateParams,
+		standardDeduction: stateAppliedMainDeduction,
 	});
 }
 
@@ -688,7 +1105,7 @@ export function calculateGrossWithdrawal(
         const marginalStateTax = stateTaxNew - stateTaxBase;
 
         // B. SALT Deductibility in gross withdrawal calculation
-        // Note: The basic $10k SALT cap is enforced in calculateFederalTax().
+        // Note: The basic $10k SALT cap is enforced in calculateFederalTaxFromIncomes().
         // For this gross withdrawal solver, we intentionally ignore marginal SALT deductibility
         // because tracking remaining SALT headroom adds complexity and rarely impacts results
         // significantly. This conservative approach avoids under-withholding scenarios.
@@ -866,6 +1283,9 @@ export function getCombinedMarginalRate(
  * **Disqualifying Disposition** (sold before meeting both holding periods):
  * - Ordinary income = FMV at purchase - purchase price (the "bargain element")
  * - Capital gains = sale price - FMV at purchase (can be short or long term)
+ *
+ * TODO: This function is exported and tested but not used in the app.
+ * Either wire it up to the ESPP account UI (e.g., lot sale preview) or delete it.
  *
  * @param sharesToSell - Number of shares being sold
  * @param salePrice - Sale price per share

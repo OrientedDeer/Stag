@@ -1,0 +1,433 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Tax Optimization Snapshot Tests > Edge Case Snapshots > Low balance scenario - limited conversion opportunity 1`] = `
+{
+  "balances": {
+    "atRMDAge": {
+      "roth": 7064,
+      "traditional": 77493,
+    },
+    "end": {
+      "brokerage": 0,
+      "roth": 0,
+      "savings": 0,
+      "traditional": 0,
+    },
+    "start": {
+      "brokerage": 80000,
+      "roth": 50000,
+      "savings": 20000,
+      "traditional": 150000,
+    },
+  },
+  "conversionYears": [
+    67,
+    68,
+  ],
+  "decades": {
+    "60s": {
+      "conversions": 23633,
+      "tax": 0,
+      "withdrawals": 110338,
+    },
+    "70s": {
+      "conversions": 0,
+      "tax": 7151,
+      "withdrawals": 390974,
+    },
+    "80s": {
+      "conversions": 0,
+      "tax": 0,
+      "withdrawals": 540539,
+    },
+    "90s": {
+      "conversions": 0,
+      "tax": 0,
+      "withdrawals": 394515,
+    },
+  },
+  "deficitYears": [
+    76,
+    77,
+    78,
+    79,
+    80,
+    81,
+    82,
+    83,
+    84,
+    85,
+    86,
+    87,
+    88,
+    89,
+    90,
+    91,
+    92,
+    93,
+    94,
+    95,
+  ],
+  "summary": {
+    "conversionYearCount": 2,
+    "deficitYearCount": 20,
+    "totalConversions": 23633,
+    "totalLifetimeTax": 7151,
+    "totalRMDs": 1522,
+    "totalWithdrawals": 1436367,
+  },
+}
+`;
+
+exports[`Tax Optimization Snapshot Tests > Edge Case Snapshots > Very high Traditional balance - risk of large RMDs 1`] = `
+{
+  "balances": {
+    "atRMDAge": {
+      "roth": 997147,
+      "traditional": 2640895,
+    },
+    "end": {
+      "brokerage": 343497,
+      "roth": 5035443,
+      "savings": 155933,
+      "traditional": 2899350,
+    },
+    "start": {
+      "brokerage": 500000,
+      "roth": 200000,
+      "savings": 50000,
+      "traditional": 2000000,
+    },
+  },
+  "conversionYears": [
+    67,
+    68,
+    69,
+    70,
+    71,
+    72,
+    73,
+    74,
+  ],
+  "decades": {
+    "60s": {
+      "conversions": 203202,
+      "tax": 18261,
+      "withdrawals": 207412,
+    },
+    "70s": {
+      "conversions": 334256,
+      "tax": 271201,
+      "withdrawals": 1028447,
+    },
+    "80s": {
+      "conversions": 0,
+      "tax": 919665,
+      "withdrawals": 2118945,
+    },
+    "90s": {
+      "conversions": 0,
+      "tax": 907512,
+      "withdrawals": 1888576,
+    },
+  },
+  "deficitYears": [],
+  "summary": {
+    "conversionYearCount": 8,
+    "deficitYearCount": 0,
+    "totalConversions": 537458,
+    "totalLifetimeTax": 2116639,
+    "totalRMDs": 4658923,
+    "totalWithdrawals": 5243380,
+  },
+}
+`;
+
+exports[`Tax Optimization Snapshot Tests > FIRE Scenario Snapshot > FIRE scenario with tax optimization OFF - snapshot 1`] = `
+{
+  "balances": {
+    "atRMDAge": {
+      "roth": 807392,
+      "traditional": 11275656,
+    },
+    "end": {
+      "brokerage": 0,
+      "roth": 4137053,
+      "savings": 0,
+      "traditional": 15406065,
+    },
+    "start": {
+      "brokerage": 581000,
+      "roth": 213000,
+      "savings": 50000,
+      "traditional": 841000,
+    },
+  },
+  "conversionYears": [],
+  "decades": {
+    "40s": {
+      "conversions": 0,
+      "tax": 0,
+      "withdrawals": 447726,
+    },
+    "50s": {
+      "conversions": 0,
+      "tax": 8226,
+      "withdrawals": 707805,
+    },
+    "60s": {
+      "conversions": 0,
+      "tax": 3639,
+      "withdrawals": 899153,
+    },
+    "70s": {
+      "conversions": 0,
+      "tax": 1585882,
+      "withdrawals": 3444318,
+    },
+    "80s": {
+      "conversions": 0,
+      "tax": 6072106,
+      "withdrawals": 10170883,
+    },
+    "90s": {
+      "conversions": 0,
+      "tax": 6126269,
+      "withdrawals": 9726022,
+    },
+  },
+  "deficitYears": [],
+  "summary": {
+    "conversionYearCount": 0,
+    "deficitYearCount": 0,
+    "totalConversions": 0,
+    "totalLifetimeTax": 13796121,
+    "totalRMDs": 22803393,
+    "totalWithdrawals": 25395906,
+  },
+}
+`;
+
+exports[`Tax Optimization Snapshot Tests > FIRE Scenario Snapshot > FIRE scenario with tax optimization ON - snapshot 1`] = `
+{
+  "balances": {
+    "atRMDAge": {
+      "roth": 8828296,
+      "traditional": 2210568,
+    },
+    "end": {
+      "brokerage": 0,
+      "roth": 52196284,
+      "savings": 0,
+      "traditional": 2866011,
+    },
+    "start": {
+      "brokerage": 581000,
+      "roth": 213000,
+      "savings": 50000,
+      "traditional": 841000,
+    },
+  },
+  "conversionYears": [
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51,
+    52,
+    53,
+    54,
+    55,
+    56,
+    57,
+    58,
+    59,
+    60,
+    61,
+    62,
+    63,
+    64,
+    65,
+  ],
+  "decades": {
+    "40s": {
+      "conversions": 361102,
+      "tax": 26023,
+      "withdrawals": 473749,
+    },
+    "50s": {
+      "conversions": 512885,
+      "tax": 34790,
+      "withdrawals": 734365,
+    },
+    "60s": {
+      "conversions": 139703,
+      "tax": 86727,
+      "withdrawals": 996530,
+    },
+    "70s": {
+      "conversions": 0,
+      "tax": 171535,
+      "withdrawals": 1193028,
+    },
+    "80s": {
+      "conversions": 0,
+      "tax": 579922,
+      "withdrawals": 1892103,
+    },
+    "90s": {
+      "conversions": 0,
+      "tax": 627170,
+      "withdrawals": 1809345,
+    },
+  },
+  "deficitYears": [],
+  "summary": {
+    "conversionYearCount": 24,
+    "deficitYearCount": 0,
+    "totalConversions": 1013690,
+    "totalLifetimeTax": 1526167,
+    "totalRMDs": 4242145,
+    "totalWithdrawals": 7099119,
+  },
+}
+`;
+
+exports[`Tax Optimization Snapshot Tests > FIRE Scenario Snapshot > should produce tax savings in FIRE scenario 1`] = `
+{
+  "taxOptOffLifetimeTax": 13796121,
+  "taxOptOnLifetimeTax": 1526167,
+  "taxSavings": 12269954,
+  "taxSavingsPercent": 89,
+}
+`;
+
+exports[`Tax Optimization Snapshot Tests > Traditional Retiree Scenario Snapshot > Traditional retiree with tax optimization OFF - snapshot 1`] = `
+{
+  "balances": {
+    "atRMDAge": {
+      "roth": 80161,
+      "traditional": 826828,
+    },
+    "end": {
+      "brokerage": 0,
+      "roth": 0,
+      "savings": 0,
+      "traditional": 372391,
+    },
+    "start": {
+      "brokerage": 200000,
+      "roth": 100000,
+      "savings": 30000,
+      "traditional": 500000,
+    },
+  },
+  "conversionYears": [],
+  "decades": {
+    "60s": {
+      "conversions": 0,
+      "tax": 0,
+      "withdrawals": 141863,
+    },
+    "70s": {
+      "conversions": 0,
+      "tax": 51182,
+      "withdrawals": 579199,
+    },
+    "80s": {
+      "conversions": 0,
+      "tax": 146996,
+      "withdrawals": 778412,
+    },
+    "90s": {
+      "conversions": 0,
+      "tax": 97114,
+      "withdrawals": 568128,
+    },
+  },
+  "deficitYears": [],
+  "summary": {
+    "conversionYearCount": 0,
+    "deficitYearCount": 0,
+    "totalConversions": 0,
+    "totalLifetimeTax": 295292,
+    "totalRMDs": 1062873,
+    "totalWithdrawals": 2067602,
+  },
+}
+`;
+
+exports[`Tax Optimization Snapshot Tests > Traditional Retiree Scenario Snapshot > Traditional retiree with tax optimization ON - snapshot 1`] = `
+{
+  "balances": {
+    "atRMDAge": {
+      "roth": 181201,
+      "traditional": 693264,
+    },
+    "end": {
+      "brokerage": 0,
+      "roth": 0,
+      "savings": 43940,
+      "traditional": 506865,
+    },
+    "start": {
+      "brokerage": 200000,
+      "roth": 100000,
+      "savings": 30000,
+      "traditional": 500000,
+    },
+  },
+  "conversionYears": [
+    67,
+    68,
+    69,
+    70,
+    71,
+  ],
+  "decades": {
+    "60s": {
+      "conversions": 46874,
+      "tax": 0,
+      "withdrawals": 141863,
+    },
+    "70s": {
+      "conversions": 16601,
+      "tax": 26879,
+      "withdrawals": 556490,
+    },
+    "80s": {
+      "conversions": 0,
+      "tax": 123491,
+      "withdrawals": 717934,
+    },
+    "90s": {
+      "conversions": 0,
+      "tax": 95999,
+      "withdrawals": 529138,
+    },
+  },
+  "deficitYears": [],
+  "summary": {
+    "conversionYearCount": 5,
+    "deficitYearCount": 0,
+    "totalConversions": 63475,
+    "totalLifetimeTax": 246368,
+    "totalRMDs": 1069810,
+    "totalWithdrawals": 1945425,
+  },
+}
+`;
+
+exports[`Tax Optimization Snapshot Tests > Traditional Retiree Scenario Snapshot > should produce tax savings in Traditional retiree scenario 1`] = `
+{
+  "taxOptOffLifetimeTax": 295292,
+  "taxOptOnLifetimeTax": 246368,
+  "taxSavings": 48924,
+  "taxSavingsPercent": 17,
+}
+`;

@@ -418,27 +418,6 @@ export function validateEarningsRecord(record: EarningsRecord, inflationAdjusted
 }
 
 /**
- * Calculate work credits earned
- * Need 40 credits (10 years) to qualify for Social Security
- * Earn up to 4 credits per year based on earnings
- *
- * 2024: $1,730 per credit ($6,920 for 4 credits)
- */
-export function calculateWorkCredits(earningsHistory: EarningsRecord[]): number {
-  let totalCredits = 0;
-
-  earningsHistory.forEach(record => {
-    // Simplified: Each $1,730 of earnings = 1 credit (max 4 per year)
-    // In reality, this threshold changes yearly
-    const creditThreshold = 1730;
-    const creditsThisYear = Math.min(4, Math.floor(record.amount / creditThreshold));
-    totalCredits += creditsThisYear;
-  });
-
-  return totalCredits;
-}
-
-/**
  * Calculate Social Security benefit reduction due to earnings test
  *
  * When claiming benefits before Full Retirement Age (FRA) and continuing to work,

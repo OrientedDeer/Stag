@@ -375,11 +375,11 @@ export default function FutureTab() {
                 </div>
 
                 {/* Tab System */}
-                <div className="bg-gray-900 rounded-lg overflow-hidden mb-1 flex border border-gray-800">
+                <div className="bg-gray-900 rounded-lg mb-1 flex border border-gray-800 overflow-x-auto custom-scrollbar">
                     {visible_tabs.map((tab) => (
                         <button
                             key={tab}
-                            className={`flex-1 font-semibold p-3 transition-colors duration-200 ${activeTab === tab
+                            className={`flex-1 min-w-fit font-semibold px-4 py-3 transition-colors duration-200 whitespace-nowrap ${activeTab === tab
                                 ? "text-green-300 bg-gray-800 border-b-2 border-green-300"
                                 : "text-gray-400 hover:bg-gray-800 hover:text-white"
                                 }`}

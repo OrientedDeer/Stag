@@ -108,11 +108,14 @@ export function processRMDs(
             const totalSSBenefits = TaxService.getSocialSecurityBenefits(allIncomes, year);
             let currentStateIncome = totalGrossIncome - preTaxDeductions;
             if (totalSSBenefits > 0) {
-                if (TaxService.doesStateTaxSocialSecurity(taxState.stateResidency)) {
+                const ssTreatment = stateParams?.socialSecurityTreatment ?? 'exempt';
+                if (ssTreatment === 'taxable') {
                     const agiExcludingSS = totalGrossIncome - totalSSBenefits - preTaxDeductions;
-                    const taxableSSBenefits = TaxService.getTaxableSocialSecurityBenefits(totalSSBenefits, agiExcludingSS, taxState.filingStatus);
+                    // TODO: Verify all income types are included (LTCG, STCG, dividends, etc.)
+                    const taxableSSBenefits = TaxService.getTaxableSocialSecurityBenefits(totalSSBenefits, agiExcludingSS, 0, taxState.filingStatus);
                     currentStateIncome = totalGrossIncome - totalSSBenefits + taxableSSBenefits - preTaxDeductions;
                 } else {
+                    // 'exempt' or 'income-based' - exclude SS benefits entirely (income-based TODO: implement phaseout)
                     currentStateIncome = totalGrossIncome - totalSSBenefits - preTaxDeductions;
                 }
             }

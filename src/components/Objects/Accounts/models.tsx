@@ -115,11 +115,12 @@ export class InvestedAccount extends BaseAccount {
   }
 
   // Calculate lot-aware withdrawal breakdown for brokerage accounts
+  // Uses FIFO (First In, First Out) - sells oldest lots first
   // Returns short-term vs long-term gains based on holding period of each lot
   calculateLotAwareWithdrawal(withdrawAmount: number, currentYear: number): {
     shortTermGains: number; longTermGains: number; basisReturn: number
   } {
-    // Fall back to proportional method if no lots present
+    // Fall back to simple method if no lots present
     if (this.lots.length === 0 || this.amount <= 0) {
       const allocation = this.calculateWithdrawalAllocation(withdrawAmount);
       return { shortTermGains: 0, longTermGains: allocation.gains, basisReturn: allocation.basis };
@@ -133,18 +134,29 @@ export class InvestedAccount extends BaseAccount {
     let shortTermGains = 0;
     let longTermGains = 0;
     let basisReturn = 0;
+    let remainingToWithdraw = Math.min(withdrawAmount, totalLotValue);
 
-    // Proportional withdrawal across all lots
-    const withdrawalPct = Math.min(1, withdrawAmount / totalLotValue);
+    // FIFO: Sort lots by purchaseYear ascending (oldest first)
+    const sortedLots = [...this.lots].sort((a, b) => a.purchaseYear - b.purchaseYear);
 
-    for (const lot of this.lots) {
-      const lotWithdraw = lot.currentValue * withdrawalPct;
-      const lotBasisWithdrawn = lot.costBasis * withdrawalPct;
+    for (const lot of sortedLots) {
+      if (remainingToWithdraw <= 0) break;
+
+      // How much to take from this lot
+      const lotWithdraw = Math.min(lot.currentValue, remainingToWithdraw);
+      remainingToWithdraw -= lotWithdraw;
+
+      // Calculate basis and gain for this portion
+      // Basis withdrawn is proportional to value withdrawn from this lot
+      const lotWithdrawPct = lot.currentValue > 0 ? lotWithdraw / lot.currentValue : 0;
+      const lotBasisWithdrawn = lot.costBasis * lotWithdrawPct;
       const lotGain = Math.max(0, lotWithdraw - lotBasisWithdrawn);
 
       basisReturn += lotBasisWithdrawn;
 
-      // A lot is long-term if currentYear - purchaseYear >= 2 (conservative BOY timing)
+      // Long-term if held >= 2 years (conservative with year-only precision)
+      // e.g., purchased 2022, sold 2024 → difference = 2 → definitely long-term
+      // Using >= 2 avoids misclassifying short-term as long-term (Dec 2023 → Jan 2024 = 1 year diff but only 1 month held)
       if (currentYear - lot.purchaseYear >= 2) {
         longTermGains += lotGain;
       } else {
@@ -267,15 +279,27 @@ export class InvestedAccount extends BaseAccount {
       }
 
       if (userContribution < 0 && this.amount > 0) {
-        // Withdrawal: reduce each lot proportionally
-        const withdrawalPct = Math.abs(userContribution) / this.amount;
-        newLots = newLots
-          .map(lot => ({
+        // Withdrawal: FIFO - reduce oldest lots first
+        let remainingToWithdraw = Math.abs(userContribution);
+
+        // Sort by purchaseYear ascending (oldest first)
+        newLots.sort((a, b) => a.purchaseYear - b.purchaseYear);
+
+        // Reduce lots in FIFO order
+        newLots = newLots.map(lot => {
+          if (remainingToWithdraw <= 0) return lot;
+
+          const withdrawFromLot = Math.min(lot.currentValue, remainingToWithdraw);
+          remainingToWithdraw -= withdrawFromLot;
+
+          // Reduce basis proportionally to value withdrawn
+          const withdrawPct = lot.currentValue > 0 ? withdrawFromLot / lot.currentValue : 1;
+          return {
             purchaseYear: lot.purchaseYear,
-            costBasis: lot.costBasis * (1 - withdrawalPct),
-            currentValue: lot.currentValue * (1 - withdrawalPct),
-          }))
-          .filter(lot => lot.currentValue >= 0.01);
+            costBasis: lot.costBasis * (1 - withdrawPct),
+            currentValue: lot.currentValue - withdrawFromLot,
+          };
+        }).filter(lot => lot.currentValue >= 0.01); // Remove fully sold lots
       } else if (userContribution > 0 && currentYear > 0) {
         // Contribution: push a new lot
         newLots.push({ purchaseYear: currentYear, costBasis: userContribution, currentValue: userContribution });
@@ -481,7 +505,13 @@ export class ESPPAccount extends BaseAccount {
         }
       } else {
         // Qualifying: ordinary income is lesser of grant discount or actual gain
-        const grantDiscount = (lot.fmvAtGrant * 0.15) * sharesToUse; // 15% discount at grant
+        // Per IRS rules for §423 ESPP qualifying dispositions:
+        // Grant discount = 15% of FMV at grant (the statutory maximum)
+        // This is capped at actual discount received to never exceed real benefit
+        const statutoryDiscount = lot.fmvAtGrant * 0.15;
+        const actualDiscount = lot.fmvAtGrant - lot.purchasePrice;
+        const grantDiscountPerShare = Math.min(statutoryDiscount, actualDiscount);
+        const grantDiscount = grantDiscountPerShare * sharesToUse;
         const actualGain = (salePrice - lot.purchasePrice) * sharesToUse;
 
         if (actualGain <= 0) {
