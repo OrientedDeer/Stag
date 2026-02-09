@@ -507,6 +507,7 @@ describe('Return Rate Override Integration', () => {
             income: { salaryGrowth: 1.0, qualifiesForSocialSecurity: true, socialSecurityFundingPercent: 100 },
             expenses: { lifestyleCreep: 75, housingAppreciation: 1.4, rentInflation: 1.2 },
             display: { useCompactCurrency: true, showExperimentalFeatures: false, hsaEligible: true },
+            simulation: { useNewEngine: true },
             priorities: [],
             withdrawalStrategy: [],
         };

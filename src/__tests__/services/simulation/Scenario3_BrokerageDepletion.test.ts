@@ -69,7 +69,7 @@ function createScenarioExpenses() {
     return { living };
 }
 
-function createScenarioAssumptions(): AssumptionsState {
+function createScenarioAssumptions(_useNewEngine: boolean = false): AssumptionsState {
     return {
         ...defaultAssumptions,
         milestones: createBuiltinMilestones(BIRTH_YEAR, 60, 95),
