@@ -421,7 +421,7 @@ describe('budgetUtils', () => {
       },
       taxDetails: {
         fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0,
-        capitalGains: 0, niit: 0,
+        capitalGains: 0, withdrawalOrdinaryTax: 0, niit: 0,
       },
       logs: [],
     });
@@ -516,7 +516,7 @@ describe('budgetUtils', () => {
       },
       taxDetails: {
         fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0,
-        capitalGains: 0, niit: 0,
+        capitalGains: 0, withdrawalOrdinaryTax: 0, niit: 0,
       },
       logs: [],
     });
@@ -846,7 +846,7 @@ describe('budgetUtils', () => {
       },
       taxDetails: {
         fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0,
-        capitalGains: 0, niit: 0,
+        capitalGains: 0, withdrawalOrdinaryTax: 0, niit: 0,
       },
       logs: [],
     });

@@ -47,7 +47,6 @@ function createAssumptions(): AssumptionsState {
     return {
         ...defaultAssumptions,
         milestones: createBuiltinMilestones(BIRTH_YEAR, 60, 95),
-        simulation: { useNewEngine: true },
         investments: {
             ...defaultAssumptions.investments,
             taxOptimizationEnabled: false,

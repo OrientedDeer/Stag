@@ -94,6 +94,7 @@ const createMockSimulationYear = (
             insurance: 0,
             postTax: 0,
             capitalGains: 0,
+            withdrawalOrdinaryTax: 0,
             niit: 0
         },
         logs: []

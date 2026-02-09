@@ -33,9 +33,9 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
     const conversionAmount = yearData.rothConversion?.amount || 0;
     const conversionTax = yearData.rothConversion?.taxCost || 0;
 
-    // Check for Guyton-Klinger guardrail trigger in selected year
+    // Check for withdrawal strategy adjustment in selected year
     const gkTriggered = yearData.strategyAdjustment?.guardrailTriggered;
-    const gkAdjustmentPercent = yearData.strategyAdjustment?.adjustmentPercent;
+    const gkActualAdjustment = yearData.strategyAdjustment?.actualAdjustment;
 
     // ACA cliff checks
     const acaAware = assumptions.investments.acaAware !== false;
@@ -55,7 +55,7 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
                         <span className="text-amber-400 font-semibold">Capital Preservation Rule:</span>
                         <span className="text-gray-300">
                             Portfolio dropped below the guardrail threshold. Discretionary expenses were
-                            <span className="text-amber-300"> reduced by {gkAdjustmentPercent ? `${Math.abs(gkAdjustmentPercent * 100).toFixed(0)}%` : '10%'}</span> to protect your portfolio.
+                            <span className="text-amber-300"> reduced by ${gkActualAdjustment?.toLocaleString(undefined, { maximumFractionDigits: 0 }) ?? '?'}</span> to protect your portfolio.
                         </span>
                     </div>
                 </div>
@@ -66,7 +66,18 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
                         <span className="text-green-400 font-semibold">Prosperity Rule:</span>
                         <span className="text-gray-300">
                             Portfolio exceeded the upper guardrail threshold. Discretionary expenses were
-                            <span className="text-green-300"> increased by {gkAdjustmentPercent ? `${Math.abs(gkAdjustmentPercent * 100).toFixed(0)}%` : '10%'}</span> to enjoy your gains.
+                            <span className="text-green-300"> increased by ${gkActualAdjustment?.toLocaleString(undefined, { maximumFractionDigits: 0 }) ?? '?'}</span> to enjoy your gains.
+                        </span>
+                    </div>
+                </div>
+            )}
+            {gkTriggered === 'none' && yearData.strategyAdjustment && (
+                <div className="p-3 bg-blue-900/20 border border-blue-700/50 rounded-lg text-sm">
+                    <div className="flex items-start gap-2">
+                        <span className="text-blue-400 font-semibold">Spending Cap:</span>
+                        <span className="text-gray-300">
+                            Your withdrawal strategy budget is less than your expenses. Discretionary spending was
+                            <span className="text-blue-300"> reduced by ${gkActualAdjustment?.toLocaleString(undefined, { maximumFractionDigits: 0 }) ?? '?'}</span> to stay within budget.
                         </span>
                     </div>
                 </div>

@@ -37,6 +37,7 @@ function createMockAssumptions(overrides: { birthYear?: number; retirementAge?: 
       autoRothConversions: false,
       rothConversionTargetBracket: 0.22,
       taxOptimizationEnabled: false,
+      acaAware: true,
     },
     income: {
       salaryGrowth: 3,
@@ -51,9 +52,6 @@ function createMockAssumptions(overrides: { birthYear?: number; retirementAge?: 
       useCompactCurrency: true,
       showExperimentalFeatures: false,
       hsaEligible: true,
-    },
-    simulation: {
-      useNewEngine: false,
     },
     priorities: [],
     withdrawalStrategy: [],
@@ -111,6 +109,7 @@ function createMockSimulationYear(
       insurance: 0,
       postTax: 0,
       capitalGains: 0,
+      withdrawalOrdinaryTax: 0,
       niit: 0,
     },
     logs: [],

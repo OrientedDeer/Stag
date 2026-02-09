@@ -123,6 +123,7 @@ const createMockSimulation = (years: number, startYear: number = 2024): Simulati
                 insurance: 2000,
                 postTax: 0,
                 capitalGains: 0,
+                withdrawalOrdinaryTax: 0,
                 niit: 0
             },
             logs: []
@@ -375,7 +376,7 @@ describe('calculateMilestones', () => {
                         withdrawals: 0,
                         withdrawalDetail: {}
                     },
-                    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0 },
+                    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, withdrawalOrdinaryTax: 0, niit: 0 },
                     logs: []
                 },
                 {
@@ -398,7 +399,7 @@ describe('calculateMilestones', () => {
                         withdrawals: 0,
                         withdrawalDetail: {}
                     },
-                    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0 },
+                    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, withdrawalOrdinaryTax: 0, niit: 0 },
                     logs: []
                 }
             ];
@@ -435,7 +436,7 @@ describe('calculateMilestones', () => {
                         withdrawals: 0,
                         withdrawalDetail: {}
                     },
-                    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0 },
+                    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, withdrawalOrdinaryTax: 0, niit: 0 },
                     logs: []
                 },
                 {
@@ -458,7 +459,7 @@ describe('calculateMilestones', () => {
                         withdrawals: 0,
                         withdrawalDetail: {}
                     },
-                    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0 },
+                    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, withdrawalOrdinaryTax: 0, niit: 0 },
                     logs: []
                 }
             ];
@@ -494,7 +495,7 @@ describe('calculateMilestones', () => {
                         withdrawals: 0,
                         withdrawalDetail: {}
                     },
-                    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0 },
+                    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, withdrawalOrdinaryTax: 0, niit: 0 },
                     logs: []
                 },
                 {
@@ -517,7 +518,7 @@ describe('calculateMilestones', () => {
                         withdrawals: 0,
                         withdrawalDetail: {}
                     },
-                    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0 },
+                    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, withdrawalOrdinaryTax: 0, niit: 0 },
                     logs: []
                 },
                 {
@@ -540,7 +541,7 @@ describe('calculateMilestones', () => {
                         withdrawals: 0,
                         withdrawalDetail: {}
                     },
-                    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0 },
+                    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, withdrawalOrdinaryTax: 0, niit: 0 },
                     logs: []
                 },
                 {
@@ -563,7 +564,7 @@ describe('calculateMilestones', () => {
                         withdrawals: 0,
                         withdrawalDetail: {}
                     },
-                    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0 },
+                    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, withdrawalOrdinaryTax: 0, niit: 0 },
                     logs: []
                 },
                 {
@@ -586,7 +587,7 @@ describe('calculateMilestones', () => {
                         withdrawals: 0,
                         withdrawalDetail: {}
                     },
-                    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0 },
+                    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, withdrawalOrdinaryTax: 0, niit: 0 },
                     logs: []
                 }
             ];
@@ -714,7 +715,7 @@ describe('net worth calculation with PropertyAccount', () => {
                 )
             ],
             cashflow: { totalIncome: 0, totalExpense: 0, livingExpenses: 0, discretionary: 0, investedUser: 0, investedMatch: 0, totalInvested: 0, bucketAllocations: 0, bucketDetail: {}, withdrawals: 0, withdrawalDetail: {} },
-            taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0 },
+            taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, withdrawalOrdinaryTax: 0, niit: 0 },
             logs: []
         }];
 
@@ -737,7 +738,7 @@ describe('net worth calculation with PropertyAccount', () => {
                 new InvestedAccount('inv-1', '401k', 200000, 0, 0, 0.1, 'Traditional 401k', true)
             ],
             cashflow: { totalIncome: 0, totalExpense: 0, livingExpenses: 0, discretionary: 0, investedUser: 0, investedMatch: 0, totalInvested: 0, bucketAllocations: 0, bucketDetail: {}, withdrawals: 0, withdrawalDetail: {} },
-            taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0 },
+            taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, withdrawalOrdinaryTax: 0, niit: 0 },
             logs: []
         }];
 
@@ -753,7 +754,7 @@ describe('net worth calculation with PropertyAccount', () => {
                 new PropertyAccount('property-1', 'Home', 500000, 'Financed', 400000, 400000, '')
             ],
             cashflow: { totalIncome: 0, totalExpense: 0, livingExpenses: 0, discretionary: 0, investedUser: 0, investedMatch: 0, totalInvested: 0, bucketAllocations: 0, bucketDetail: {}, withdrawals: 0, withdrawalDetail: {} },
-            taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0 },
+            taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, withdrawalOrdinaryTax: 0, niit: 0 },
             logs: []
         }];
 
@@ -780,7 +781,7 @@ describe('net worth calculation with PropertyAccount', () => {
                 new InvestedAccount('inv-1', '401k', 150000, 0, 0, 0.1, 'Traditional 401k', true)
             ],
             cashflow: { totalIncome: 0, totalExpense: 0, livingExpenses: 0, discretionary: 0, investedUser: 0, investedMatch: 0, totalInvested: 0, bucketAllocations: 0, bucketDetail: {}, withdrawals: 0, withdrawalDetail: {} },
-            taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0 },
+            taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, withdrawalOrdinaryTax: 0, niit: 0 },
             logs: []
         }];
 
@@ -796,7 +797,7 @@ describe('net worth calculation with PropertyAccount', () => {
                 new PropertyAccount('property-1', 'Home', 500000, 'Financed', 300000, 400000, '')
             ],
             cashflow: { totalIncome: 0, totalExpense: 0, livingExpenses: 0, discretionary: 0, investedUser: 0, investedMatch: 0, totalInvested: 0, bucketAllocations: 0, bucketDetail: {}, withdrawals: 0, withdrawalDetail: {} },
-            taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0 },
+            taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, withdrawalOrdinaryTax: 0, niit: 0 },
             logs: []
         }];
 

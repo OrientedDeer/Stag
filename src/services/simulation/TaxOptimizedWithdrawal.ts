@@ -836,7 +836,7 @@ export function calculateDynamicConversionCeiling(
     rmdStartAge: number,
     taxParams: TaxParameters,
     taxState: TaxState,
-    stateParams: TaxParameters | null = null,
+    _stateParams: TaxParameters | null = null,
     acaOptions?: ACAOptions,
     baselineProjections?: BaselineProjections
 ): ConversionCeilingResult {
@@ -907,6 +907,9 @@ export function calculateDynamicConversionCeiling(
 
     let bracketSpacePerYear = 0;
     if (ceiling > 0) {
+        // Use federal-only rates for ceiling comparison — the ceiling (e.g., 12%)
+        // refers to the federal bracket, not the combined federal+state rate.
+        // State tax is still fully accounted for in the actual conversion tax cost.
         const conversionLimit = calculateEffectiveRateConversionLimit(
             currentAGI,
             socialSecurityThisYear,
@@ -916,7 +919,7 @@ export function calculateDynamicConversionCeiling(
             taxParams,
             taxState,
             taxState.year,
-            stateParams,
+            null, // federal-only: state tax should not reduce bracket space
             acaOptions
         );
         bracketSpacePerYear = conversionLimit.maxConversion;

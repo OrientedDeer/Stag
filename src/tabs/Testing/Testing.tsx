@@ -78,6 +78,155 @@ const toCurrencyShort = (num: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(num);
 
 // ============================================================================
+// COPY-FRIENDLY TEXT SUMMARY
+// ============================================================================
+function generateYearSummaryText(simYear: SimulationYear, age: number, accountsContext: AnyAccount[]): string {
+    const fmt = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
+    const lines: string[] = [];
+
+    lines.push(`Year ${simYear.year} (Age ${age})`);
+    lines.push('');
+
+    // ACCOUNTS
+    lines.push('ACCOUNTS');
+    let totalBalance = 0;
+    for (const acc of simYear.accounts) {
+        const isInvested = acc instanceof InvestedAccount;
+        const isESPP = acc instanceof ESPPAccount;
+        const isSaved = acc instanceof SavedAccount;
+        const isDebt = acc instanceof DebtAccount || acc instanceof DeficitDebtAccount;
+        const isProperty = acc instanceof PropertyAccount;
+        const type = isInvested ? (acc as InvestedAccount).taxType :
+            isESPP ? 'ESPP' : isSaved ? 'Savings' : isDebt ? 'Debt' : isProperty ? 'Property' : 'Unknown';
+        lines.push(`  ${acc.name} (${type}): ${fmt(acc.amount)}`);
+        totalBalance += acc.amount;
+    }
+    lines.push(`  Total: ${fmt(totalBalance)}`);
+    lines.push('');
+
+    // INCOME
+    lines.push('INCOME');
+    for (const inc of simYear.incomes) {
+        const className = (inc as { className?: string }).className || inc.constructor.name;
+        const amount = inc.getProratedAnnual(inc.amount, simYear.year);
+        if (inc instanceof WorkIncome) {
+            const parts: string[] = [];
+            if (inc.preTax401k > 0) parts.push(`preTax401k: ${fmt(inc.preTax401k)}`);
+            if (inc.roth401k > 0) parts.push(`roth401k: ${fmt(inc.roth401k)}`);
+            if (inc.employerMatch > 0) parts.push(`match: ${fmt(inc.employerMatch)}`);
+            if (inc.insurance > 0) parts.push(`insurance: ${fmt(inc.insurance)}`);
+            if (inc.hsaContribution > 0) parts.push(`hsa: ${fmt(inc.hsaContribution)}`);
+            const detail = parts.length > 0 ? ` (${parts.join(', ')})` : '';
+            lines.push(`  Work: ${inc.name} — ${fmt(amount)}${detail}`);
+        } else if (className === 'FutureSocialSecurityIncome' || className === 'CurrentSocialSecurityIncome') {
+            lines.push(`  Social Security: ${inc.name} — ${fmt(amount)}`);
+        } else if (className === 'FERSPensionIncome' || className === 'CSRSPensionIncome') {
+            lines.push(`  Pension: ${inc.name} — ${fmt(amount)}`);
+        } else if (inc instanceof PassiveIncome) {
+            const reinvested = inc.isReinvested ? ' (reinvested)' : '';
+            lines.push(`  Passive: ${inc.name} — ${fmt(amount)}${reinvested}`);
+        } else {
+            lines.push(`  ${inc.name} — ${fmt(amount)}`);
+        }
+    }
+    lines.push(`  Total: ${fmt(simYear.cashflow.totalIncome)}`);
+    lines.push('');
+
+    // WITHDRAWALS
+    const withdrawalEntries = Object.entries(simYear.cashflow.withdrawalDetail);
+    if (withdrawalEntries.length > 0) {
+        lines.push('WITHDRAWALS');
+        for (const [name, amount] of withdrawalEntries) {
+            const account = simYear.accounts.find(a => a.name === name);
+            const isTraditional = account instanceof InvestedAccount &&
+                ((account as InvestedAccount).taxType === 'Traditional 401k' || (account as InvestedAccount).taxType === 'Traditional IRA');
+            const isBrokerage = account instanceof InvestedAccount && (account as InvestedAccount).taxType === 'Brokerage';
+            const taxable = isTraditional || isBrokerage || account instanceof ESPPAccount;
+            lines.push(`  ${name}: ${fmt(amount)}${taxable ? ' (taxable)' : ''}`);
+        }
+        lines.push(`  Total: ${fmt(simYear.cashflow.withdrawals)}`);
+        lines.push('');
+    }
+
+    // CONTRIBUTIONS
+    lines.push('CONTRIBUTIONS');
+    const contribParts: string[] = [];
+    if (simYear.cashflow.investedUser > 0) contribParts.push(`User: ${fmt(simYear.cashflow.investedUser)}`);
+    if (simYear.cashflow.investedMatch > 0) contribParts.push(`Employer: ${fmt(simYear.cashflow.investedMatch)}`);
+    if (simYear.cashflow.bucketAllocations > 0) contribParts.push(`Buckets: ${fmt(simYear.cashflow.bucketAllocations)}`);
+    if (contribParts.length > 0) lines.push(`  ${contribParts.join(' | ')}`);
+    const bucketEntries = Object.entries(simYear.cashflow.bucketDetail);
+    if (bucketEntries.length > 0) {
+        for (const [id, amount] of bucketEntries) {
+            const acc = accountsContext.find(a => a.id === id);
+            lines.push(`  Bucket: ${acc?.name || id} — ${fmt(amount)}`);
+        }
+    }
+    lines.push(`  Total Invested: ${fmt(simYear.cashflow.totalInvested)}`);
+    lines.push('');
+
+    // TAXES
+    lines.push('TAXES');
+    lines.push(`  Federal: ${fmt(simYear.taxDetails.fed)} | State: ${fmt(simYear.taxDetails.state)} | FICA: ${fmt(simYear.taxDetails.fica)}`);
+    lines.push(`  Cap Gains Tax: ${fmt(simYear.taxDetails.capitalGains)} | Withdrawal Tax: ${fmt(simYear.taxDetails.withdrawalOrdinaryTax)} | NIIT: ${fmt(simYear.taxDetails.niit)}`);
+    const totalTax = simYear.taxDetails.fed + simYear.taxDetails.state + simYear.taxDetails.fica +
+        simYear.taxDetails.capitalGains + simYear.taxDetails.withdrawalOrdinaryTax + simYear.taxDetails.niit;
+    lines.push(`  Total: ${fmt(totalTax)}`);
+    lines.push('');
+
+    // CASHFLOW
+    lines.push('CASHFLOW');
+    lines.push(`  Living Expenses: ${fmt(simYear.cashflow.livingExpenses)} | Total Expense: ${fmt(simYear.cashflow.totalExpense)}`);
+    lines.push(`  Discretionary: ${fmt(simYear.cashflow.discretionary)}`);
+    lines.push('');
+
+    // ROTH CONVERSION
+    if (simYear.rothConversion && simYear.rothConversion.amount > 0) {
+        lines.push('ROTH CONVERSION');
+        const effRate = ((simYear.rothConversion.taxCost / simYear.rothConversion.amount) * 100).toFixed(1);
+        lines.push(`  Amount: ${fmt(simYear.rothConversion.amount)} | Tax Cost: ${fmt(simYear.rothConversion.taxCost)} | Effective Rate: ${effRate}%`);
+        for (const [name, amt] of Object.entries(simYear.rothConversion.fromAccounts)) {
+            lines.push(`  From: ${name} — ${fmt(amt)}`);
+        }
+        for (const [name, amt] of Object.entries(simYear.rothConversion.toAccounts)) {
+            lines.push(`  To: ${name} — ${fmt(amt)}`);
+        }
+        lines.push('');
+    }
+
+    // RMD
+    if (simYear.rmdDetails && simYear.rmdDetails.totalRMD > 0) {
+        lines.push('RMD');
+        lines.push(`  Required: ${fmt(simYear.rmdDetails.totalRMD)} | Withdrawn: ${fmt(simYear.rmdDetails.totalWithdrawn)}`);
+        if (simYear.rmdDetails.shortfall > 0) {
+            lines.push(`  Shortfall: ${fmt(simYear.rmdDetails.shortfall)} | Penalty: ${fmt(simYear.rmdDetails.penalty)}`);
+        }
+        for (const rmd of simYear.rmdDetails.accountBreakdown) {
+            lines.push(`  ${rmd.accountName}: ${fmt(rmd.rmdAmount)}`);
+        }
+        lines.push('');
+    }
+
+    // STRATEGY ADJUSTMENT
+    if (simYear.strategyAdjustment) {
+        lines.push('STRATEGY ADJUSTMENT');
+        lines.push(`  Guardrail: ${simYear.strategyAdjustment.guardrailTriggered} | Required: ${fmt(simYear.strategyAdjustment.requiredAdjustment)} | Actual: ${fmt(simYear.strategyAdjustment.actualAdjustment)}`);
+        if (simYear.strategyAdjustment.warning) lines.push(`  Warning: ${simYear.strategyAdjustment.warning}`);
+        lines.push('');
+    }
+
+    // LOGS
+    if (simYear.logs.length > 0) {
+        lines.push('LOGS');
+        for (const log of simYear.logs) {
+            lines.push(`  ${log}`);
+        }
+    }
+
+    return lines.join('\n');
+}
+
+// ============================================================================
 // DETAILED YEAR PANEL COMPONENT
 // ============================================================================
 interface DetailedYearPanelProps {
@@ -582,6 +731,7 @@ function SimulationDebugTab() {
     const [selectedYear, setSelectedYear] = useState<number | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [showDetailedView, setShowDetailedView] = useState(false);
+    const [copyButtonText, setCopyButtonText] = useState('Copy as Text');
 
     const retirementAge = getRetirementAge(assumptions.milestones);
     const currentYear = new Date().getFullYear();
@@ -956,16 +1106,32 @@ function SimulationDebugTab() {
                         <h3 className="text-lg font-bold text-white">
                             Year {selectedYearData.year} Details (Age {selectedYearData.age})
                         </h3>
-                        <button
-                            onClick={() => setShowDetailedView(!showDetailedView)}
-                            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                                showDetailedView
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                            }`}
-                        >
-                            {showDetailedView ? '◉ Detailed View' : '○ Basic View'}
-                        </button>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => {
+                                    const fullSimYear = simulation.find(s => s.year === selectedYearData.year);
+                                    if (!fullSimYear) return;
+                                    const text = generateYearSummaryText(fullSimYear, selectedYearData.age, accounts);
+                                    navigator.clipboard.writeText(text).then(() => {
+                                        setCopyButtonText('Copied!');
+                                        setTimeout(() => setCopyButtonText('Copy as Text'), 1500);
+                                    });
+                                }}
+                                className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors bg-gray-700 text-gray-300 hover:bg-gray-600"
+                            >
+                                {copyButtonText}
+                            </button>
+                            <button
+                                onClick={() => setShowDetailedView(!showDetailedView)}
+                                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                                    showDetailedView
+                                        ? 'bg-blue-600 text-white'
+                                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                }`}
+                            >
+                                {showDetailedView ? '◉ Detailed View' : '○ Basic View'}
+                            </button>
+                        </div>
                     </div>
 
                     {/* Detailed View Panel */}

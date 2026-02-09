@@ -85,6 +85,13 @@ Nivo charts (`@nivo/sankey`, `@nivo/line`, `@nivo/stream`, etc.) are used throug
 - **Warning (yellow):** `bg-yellow-900/30 border border-yellow-700/50 rounded-lg` with `text-yellow-300`
 - **Error (red):** `bg-red-900/20 border border-red-800 rounded-lg` with `text-red-400`
 
+## Debugging the Simulation Engine
+
+- **Use `logs.push()` instead of `console.log`**: Every `SimulationYear` has a `logs: string[]` array that flows through the simulation engine. Add debug messages via `logs.push(...)` — they are viewable per-year in the Testing tab's year inspector under "Simulation Logs".
+- **Prefix debug logs with `[DEBUG]`**: Use a prefix like `[DEBUG section]` so they're easy to spot and clean up later (e.g., `logs.push(\`[DEBUG growAccounts] balance=$\${amount}\`)`).
+- **Remove debug logs before committing**: Debug logs are temporary — remove them once the issue is resolved.
+- **Key files that carry `logs`**: The `logs` array is passed through `SimulationEngine.tsx`, `AccountGrowth.ts`, `RothConversionService.ts`, `WithdrawalPlanner.ts`, and other simulation services. Most functions already accept a `logs` parameter.
+
 ## Testing Guidelines
 
 - **Investigate failures before loosening tests**: When a test fails, first investigate whether the failure indicates a real bug in the code. Do NOT immediately loosen test assertions or tolerances to make tests pass. Read the relevant source code to understand the intended behavior before deciding whether the test expectation or the code is wrong.

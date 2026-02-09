@@ -77,7 +77,7 @@ function executeYearPlan(
         }
 
         if (withdrawal.gross > 0) {
-            logs.push(`[V2] Withdrew $${withdrawal.gross.toLocaleString()} from ${withdrawal.accountName} (${withdrawal.reason})`);
+            logs.push(`[V2 exec] Withdrew $${withdrawal.gross.toLocaleString()} from ${withdrawal.accountName} (${withdrawal.reason})`);
         }
     }
 
@@ -93,10 +93,13 @@ function executeYearPlan(
             withdrawalState.userInflows[sourceAccount.id] =
                 (withdrawalState.userInflows[sourceAccount.id] || 0) - plan.conversion.amount;
 
-            // Add to target (Roth) - will be applied in growAccounts
+            // Add to target (Roth) - userInflows drives the balance change,
+            // conversionDeposits tracks conversion history in increment()
+            withdrawalState.userInflows[targetAccount.id] =
+                (withdrawalState.userInflows[targetAccount.id] || 0) + plan.conversion.netToRoth;
             conversionDeposits[targetAccount.id] = plan.conversion.netToRoth;
 
-            logs.push(`[V2] Roth conversion: $${plan.conversion.amount.toLocaleString()} from ${sourceAccount.name} → ${targetAccount.name}`);
+            logs.push(`[V2] Roth conversion: $${plan.conversion.amount.toLocaleString()} from ${sourceAccount.name} → ${targetAccount.name}`);;
         }
     }
 
@@ -294,14 +297,66 @@ function simulateOneYearWithNewEngine(
 
     const yearPlan = solveYear(solverInput);
 
-    // Log decisions from solver
+    // Log decisions from solver (planning phase)
     yearPlan.decisions.forEach(d => {
         if (d.category === 'warning') {
             logs.push(`⚠️ ${d.description}`);
+        } else if (d.category === 'conversion' || d.category === 'withdrawal') {
+            // Always log conversion/withdrawal decisions (skip, reduce, execute)
+            if (d.amount) {
+                logs.push(`[V2 plan] ${d.category}: $${d.amount.toLocaleString()} - ${d.description}`);
+            } else {
+                logs.push(`[V2 plan] ${d.category}: ${d.description}`);
+            }
         } else if (d.amount) {
-            logs.push(`[V2] ${d.category}: $${d.amount.toLocaleString()} - ${d.description}`);
+            logs.push(`[V2 plan] ${d.category}: $${d.amount.toLocaleString()} - ${d.description}`);
         }
     });
+
+    // ------------------------------------------------------------------
+    // ADJUST EXPENSES FOR GK TRIMMING + BUILD STRATEGY ADJUSTMENT RESULT
+    // ------------------------------------------------------------------
+    // When GK guardrails trim discretionary spending, the solver uses a reduced
+    // effectiveLivingExpenses but the expense objects still report full amounts.
+    // Adjust discretionary expense objects so their getAnnualAmount() values
+    // match the actual trimmed spending. This ensures downstream consumers
+    // (like the Sankey chart) get consistent data without needing corrections.
+    let strategyAdjustmentResult: SimulationYear['strategyAdjustment'] = undefined;
+
+    if (yearPlan.totalExpenses < totalLivingExpenses) {
+        const trimAmount = totalLivingExpenses - yearPlan.totalExpenses;
+        const totalDiscretionary = calculateTotalDiscretionary(nextExpenses, year);
+        if (totalDiscretionary > 0) {
+            const cutRatio = 1 - Math.min(trimAmount, totalDiscretionary) / totalDiscretionary;
+            nextExpenses = nextExpenses.map(exp =>
+                exp.isDiscretionary ? exp.adjustAmount(cutRatio) : exp
+            );
+        }
+
+        // Populate strategyAdjustment so the UI can show warning banners.
+        // This fires for any withdrawal strategy budget cap — including the first
+        // retirement year where guardrailTriggered is 'none' (just the base 4% withdrawal).
+        if (strategyWithdrawalResult) {
+            strategyAdjustmentResult = {
+                guardrailTriggered: strategyWithdrawalResult.guardrailTriggered,
+                requiredAdjustment: trimAmount,
+                actualAdjustment: Math.min(trimAmount, totalDiscretionary),
+                discretionaryAvailable: totalDiscretionary,
+                warning: totalDiscretionary < trimAmount
+                    ? `Fixed expenses exceed budget. Only $${totalDiscretionary.toLocaleString()} of $${trimAmount.toLocaleString()} could be cut.`
+                    : undefined,
+            };
+        }
+    } else if (strategyWithdrawalResult && strategyWithdrawalResult.guardrailTriggered === 'prosperity'
+        && yearPlan.totalExpenses > totalLivingExpenses) {
+        // Prosperity: solver increased spending above original expenses
+        strategyAdjustmentResult = {
+            guardrailTriggered: 'prosperity',
+            requiredAdjustment: 0,
+            actualAdjustment: yearPlan.totalExpenses - totalLivingExpenses,
+            discretionaryAvailable: discretionaryExpenses,
+        };
+    }
 
     // ------------------------------------------------------------------
     // EXECUTE YEAR PLAN (Phase 3)
@@ -413,7 +468,12 @@ function simulateOneYearWithNewEngine(
     const spendableIncome = yearPlan.income.spendable;
     const totalCashAvailable = spendableIncome + withdrawalState.totalWithdrawals;
     const totalBucketAllocationsForSankey = totalSurplusAllocations + inflowResult.totalBucketAllocations;
-    const trueUserSaved = totalCashAvailable - totalTax - totalInsuranceCost - totalLivingExpenses - discretionaryCash - totalBucketAllocationsForSankey;
+    // Use solver's actual expenses (yearPlan.totalExpenses) which reflects GK budget trimming,
+    // not the pre-trim totalLivingExpenses. Otherwise the Sankey equation is unbalanced when
+    // GK cuts discretionary spending — withdrawals cover the trimmed amount but this formula
+    // subtracts the full (untrimmed) expenses, creating a phantom negative "invested" amount.
+    const actualLivingExpenses = yearPlan.totalExpenses;
+    const trueUserSaved = totalCashAvailable - totalTax - totalInsuranceCost - actualLivingExpenses - discretionaryCash - totalBucketAllocationsForSankey;
 
     // Filter out RMD incomes from returned array
     const returnedIncomes = allIncomes.filter(inc =>
@@ -441,8 +501,8 @@ function simulateOneYearWithNewEngine(
         cashflow: {
             // Use spendableIncome for Sankey (excludes reinvested dividends which aren't cash)
             totalIncome: spendableIncome,
-            totalExpense: totalLivingExpenses + totalTax + preTaxDeductions + postTaxDeductions,
-            livingExpenses: totalLivingExpenses,
+            totalExpense: actualLivingExpenses + totalTax + preTaxDeductions + postTaxDeductions,
+            livingExpenses: actualLivingExpenses,
             discretionary: discretionaryCash,
             investedUser: trueUserSaved,
             investedMatch: inflowResult.totalEmployerMatch,
@@ -465,6 +525,7 @@ function simulateOneYearWithNewEngine(
         },
         logs,
         strategyWithdrawal: strategyWithdrawalResult,
+        strategyAdjustment: strategyAdjustmentResult,
         rothConversion: rothConversionResult,
         rmdDetails,
         milestoneEvents: milestoneResult.newlyReached,
@@ -909,6 +970,7 @@ export function simulateOneYear(
         fedTax += convResult.fedTaxIncrease;
         stateTax += convResult.stateTaxIncrease;
         totalTax = fedTax + stateTax + ficaTax;
+
 
         // NOTE: We do NOT add conversion amount to totalGrossIncome.
         // Roth conversions are NOT spendable income - they're inter-account transfers.

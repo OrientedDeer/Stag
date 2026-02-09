@@ -8,7 +8,7 @@ import { InvestedAccount, SavedAccount } from '../../components/Objects/Accounts
 import { WorkIncome, FutureSocialSecurityIncome } from '../../components/Objects/Income/models';
 import { FoodExpense } from '../../components/Objects/Expense/models';
 import { runSimulation } from '../../components/Objects/Assumptions/useSimulation';
-import { calculateAIME, extractEarningsFromSimulation } from '../../services/SocialSecurityCalculator';
+import { calculateAIME } from '../../services/SocialSecurityCalculator';
 
 describe('SS Benefit Verification', () => {
     it('should verify SS benefit at claiming age 67', () => {
@@ -58,7 +58,7 @@ describe('SS Benefit Verification', () => {
         // WorkIncome with start date 17 years ago (2026)
         const workIncome = new WorkIncome(
             'inc-work', 'Job', 100000, 'Annually', 'Yes',
-            0, 0, 0, 0, undefined, 'Traditional 401k', 'TRACK_ANNUAL_MAX',
+            0, 0, 0, 0, '', 'Traditional 401k', 'TRACK_ANNUAL_MAX',
             new Date('2026-01-01'), // Started working at age 25
             new Date('2042-12-31'), // Stopped at age 42
         );

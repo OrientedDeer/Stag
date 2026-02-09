@@ -66,7 +66,7 @@ const createMockYear = (year: number): SimulationYear => ({
     expenses: [],
     accounts: [],
     cashflow: { totalIncome: 0, totalExpense: 0, livingExpenses: 0, discretionary: 0, investedUser: 0, investedMatch: 0, totalInvested: 0, bucketAllocations: 0, bucketDetail: {}, withdrawals: 0, withdrawalDetail: {} },
-    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0 },
+    taxDetails: { fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, withdrawalOrdinaryTax: 0, niit: 0 },
     logs: [],
 });
 

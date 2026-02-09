@@ -23,6 +23,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 // Level 1: Unit imports
 import { classifyIncome } from '../../../services/simulation/IncomeClassifier';
 import { planWithdrawals, createOrderedSnapshots } from '../../../services/simulation/WithdrawalPlanner';
+import { AccountBalanceSnapshot } from '../../../services/simulation/types';
 
 // Level 2: Solver imports
 import { solveRetirementYear, YearSolverInput } from '../../../services/simulation/YearSolver';
@@ -79,13 +80,10 @@ function createScenarioExpenses() {
     return { living };
 }
 
-function createScenarioAssumptions(useNewEngine: boolean = true): AssumptionsState {
+function createScenarioAssumptions(): AssumptionsState {
     return {
         ...defaultAssumptions,
         milestones: createBuiltinMilestones(BIRTH_YEAR, 55, 95),
-        simulation: {
-            useNewEngine,
-        },
         investments: {
             ...defaultAssumptions.investments,
             taxOptimizationEnabled: true,
@@ -365,7 +363,7 @@ describe('Scenario 8: Level 2 - Solver Tests', () => {
             const buffer = ACA_CLIFF_2025 - magi;
             expect(buffer).toBeGreaterThan(0);
             expect(buffer).toBeGreaterThanOrEqual(500); // At least $500 buffer
-            expect(buffer).toBeLessThan(5000); // But not excessive (wasting conversion opportunity)
+            expect(buffer).toBeLessThan(5000); // Buffer should be small — under ACA cliff by a narrow margin
         }
     });
 });
@@ -570,5 +568,355 @@ describe('Scenario 8: Hand-Calculated Values', () => {
         expect(finalMAGI).toBe(61076);
         expect(buffer).toBeCloseTo(1424, 0);
         expect(buffer).toBeGreaterThan(500); // At least $500 buffer per spec
+    });
+});
+
+// =============================================================================
+// LEVEL 4: ACA CLIFF WITHDRAWAL SUBSTITUTION TESTS
+// =============================================================================
+
+describe('Scenario 8: ACA Cliff Brokerage → Roth Withdrawal Substitution', () => {
+    const assumptions = createScenarioAssumptions();
+    const taxState = createScenarioTaxState();
+
+    /**
+     * Helper to create snapshots directly for planWithdrawals testing.
+     * This bypasses createOrderedSnapshots to control exact snapshot properties.
+     */
+    function makeSnapshot(overrides: Partial<AccountBalanceSnapshot> & { accountId: string; accountType: AccountBalanceSnapshot['accountType'] }): AccountBalanceSnapshot {
+        return {
+            accountName: overrides.accountName ?? overrides.accountId,
+            balance: overrides.balance ?? overrides.vestedBalance ?? 0,
+            vestedBalance: overrides.vestedBalance ?? overrides.balance ?? 0,
+            gainRatio: overrides.gainRatio ?? 0,
+            rothContributions: overrides.rothContributions,
+            conversionHistory: overrides.conversionHistory,
+            esppLots: overrides.esppLots,
+            ...overrides,
+        };
+    }
+
+    describe('Unit: planWithdrawals with ACA options', () => {
+        it('should substitute Roth for brokerage when LTCG would breach cliff', () => {
+            // Setup: MAGI is already 50k (e.g., from conversion).
+            // Cliff is 62500. Brokerage has 50% gain ratio.
+            // Need $20k net. Gross-up at 0% LTCG rate = $20k gross → $10k LTCG.
+            // Projected MAGI = 50k + 10k = 60k < 62500. But let's make it tighter:
+            // MAGI = 58000. Need $20k net from brokerage with gainRatio=0.6.
+            // LTCG = gross × 0.6. At 0% LTCG rate, gross = 20k, LTCG = 12k.
+            // Projected MAGI = 58000 + 12000 = 70000 > 62500 cliff → should cap brokerage.
+            const snapshots: AccountBalanceSnapshot[] = [
+                makeSnapshot({
+                    accountId: 'brok-1',
+                    accountName: 'Brokerage',
+                    accountType: 'brokerage',
+                    balance: 200000,
+                    vestedBalance: 200000,
+                    gainRatio: 0.6,
+                }),
+                makeSnapshot({
+                    accountId: 'roth-1',
+                    accountName: 'Roth IRA',
+                    accountType: 'roth_ira',
+                    balance: 100000,
+                    vestedBalance: 100000,
+                    gainRatio: 0,
+                    rothContributions: 80000,
+                    conversionHistory: [],
+                }),
+            ];
+
+            const acaOpts = {
+                acaCliffThreshold: 62500,
+                currentMAGI: 58000,
+            };
+
+            const result = planWithdrawals(
+                20000, // netNeeded
+                snapshots,
+                60, // age (over 59.5, no penalty)
+                SCENARIO_YEAR,
+                taxState,
+                58000, // currentOrdinaryIncome
+                assumptions,
+                'Spending deficit',
+                acaOpts
+            );
+
+            // Should have both brokerage and Roth withdrawals
+            const brokerageW = result.withdrawals.filter(w => w.source === 'brokerage');
+            const rothW = result.withdrawals.filter(w => w.reason === 'ACA cliff Roth substitution');
+
+            expect(brokerageW.length).toBe(1);
+            expect(rothW.length).toBeGreaterThan(0);
+
+            // Brokerage should be capped (less than full $20k gross)
+            expect(brokerageW[0].gross).toBeLessThan(20000);
+
+            // Total LTCG + currentMAGI should stay under cliff
+            const totalLTCG = brokerageW[0].capitalGains?.longTerm ?? 0;
+            expect(58000 + totalLTCG).toBeLessThanOrEqual(62500);
+
+            // Total net should cover the deficit
+            expect(result.remainingDeficit).toBeLessThan(1);
+        });
+
+        it('should proceed with full brokerage when no Roth available (graceful fallback)', () => {
+            // Only brokerage, no Roth in withdrawal order
+            const snapshots: AccountBalanceSnapshot[] = [
+                makeSnapshot({
+                    accountId: 'brok-1',
+                    accountName: 'Brokerage',
+                    accountType: 'brokerage',
+                    balance: 200000,
+                    vestedBalance: 200000,
+                    gainRatio: 0.5,
+                }),
+            ];
+
+            const acaOpts = {
+                acaCliffThreshold: 62500,
+                currentMAGI: 58000,
+            };
+
+            const result = planWithdrawals(
+                15000,
+                snapshots,
+                60,
+                SCENARIO_YEAR,
+                taxState,
+                58000,
+                assumptions,
+                'Spending deficit',
+                acaOpts
+            );
+
+            // Should still produce a brokerage withdrawal (accept cliff breach)
+            const brokerageW = result.withdrawals.filter(w => w.source === 'brokerage');
+            expect(brokerageW.length).toBe(1);
+
+            // Should have a warning about insufficient Roth or just cap and leave shortfall
+            // The brokerage is capped, and with no Roth, there's a remaining deficit
+            // OR the warning is logged about insufficient Roth
+            const hasWarningOrDeficit = result.remainingDeficit > 0 ||
+                result.decisions.some(d => d.description.toLowerCase().includes('insufficient roth') ||
+                                           d.description.toLowerCase().includes('aca'));
+            expect(hasWarningOrDeficit).toBe(true);
+        });
+
+        it('should handle partial Roth coverage', () => {
+            // Roth has only $3k — not enough to cover the full shortfall
+            const snapshots: AccountBalanceSnapshot[] = [
+                makeSnapshot({
+                    accountId: 'brok-1',
+                    accountName: 'Brokerage',
+                    accountType: 'brokerage',
+                    balance: 200000,
+                    vestedBalance: 200000,
+                    gainRatio: 0.6,
+                }),
+                makeSnapshot({
+                    accountId: 'roth-1',
+                    accountName: 'Roth IRA',
+                    accountType: 'roth_ira',
+                    balance: 3000,
+                    vestedBalance: 3000,
+                    gainRatio: 0,
+                    rothContributions: 3000,
+                    conversionHistory: [],
+                }),
+            ];
+
+            const acaOpts = {
+                acaCliffThreshold: 62500,
+                currentMAGI: 58000,
+            };
+
+            const result = planWithdrawals(
+                20000,
+                snapshots,
+                60,
+                SCENARIO_YEAR,
+                taxState,
+                58000,
+                assumptions,
+                'Spending deficit',
+                acaOpts
+            );
+
+            // Should have Roth substitution for what's available
+            const rothW = result.withdrawals.filter(w => w.reason === 'ACA cliff Roth substitution');
+            expect(rothW.length).toBe(1);
+            expect(rothW[0].gross).toBeLessThanOrEqual(3000);
+
+            // Should have warning about insufficient Roth for full substitution
+            const insufficientWarning = result.decisions.find(d =>
+                d.description.toLowerCase().includes('insufficient roth')
+            );
+            expect(insufficientWarning).toBeDefined();
+        });
+
+        it('should not trigger ACA substitution when MAGI stays under cliff', () => {
+            // Low gain ratio = low LTCG = MAGI stays under cliff
+            const snapshots: AccountBalanceSnapshot[] = [
+                makeSnapshot({
+                    accountId: 'brok-1',
+                    accountName: 'Brokerage',
+                    accountType: 'brokerage',
+                    balance: 200000,
+                    vestedBalance: 200000,
+                    gainRatio: 0.05, // Very low gains
+                }),
+                makeSnapshot({
+                    accountId: 'roth-1',
+                    accountName: 'Roth IRA',
+                    accountType: 'roth_ira',
+                    balance: 100000,
+                    vestedBalance: 100000,
+                    gainRatio: 0,
+                    rothContributions: 80000,
+                    conversionHistory: [],
+                }),
+            ];
+
+            const acaOpts = {
+                acaCliffThreshold: 62500,
+                currentMAGI: 40000, // Low base MAGI
+            };
+
+            const result = planWithdrawals(
+                15000,
+                snapshots,
+                60,
+                SCENARIO_YEAR,
+                taxState,
+                40000,
+                assumptions,
+                'Spending deficit',
+                acaOpts
+            );
+
+            // Should NOT have any Roth substitution
+            const rothSubstitution = result.withdrawals.filter(w => w.reason === 'ACA cliff Roth substitution');
+            expect(rothSubstitution.length).toBe(0);
+
+            // Should have only brokerage withdrawal
+            const brokerageW = result.withdrawals.filter(w => w.source === 'brokerage');
+            expect(brokerageW.length).toBe(1);
+        });
+
+        it('should not trigger ACA substitution when no ACA options provided', () => {
+            const snapshots: AccountBalanceSnapshot[] = [
+                makeSnapshot({
+                    accountId: 'brok-1',
+                    accountName: 'Brokerage',
+                    accountType: 'brokerage',
+                    balance: 200000,
+                    vestedBalance: 200000,
+                    gainRatio: 0.6,
+                }),
+            ];
+
+            // No acaWithdrawalOptions passed
+            const result = planWithdrawals(
+                20000,
+                snapshots,
+                60,
+                SCENARIO_YEAR,
+                taxState,
+                58000,
+                assumptions,
+                'Spending deficit'
+                // no ACA options
+            );
+
+            // Full brokerage withdrawal, no substitution
+            expect(result.withdrawals.length).toBe(1);
+            expect(result.withdrawals[0].source).toBe('brokerage');
+        });
+    });
+
+    describe('Solver: ACA withdrawal substitution in solveRetirementYear', () => {
+        it('should keep MAGI under cliff when brokerage withdrawal generates LTCG', () => {
+            const accounts = createScenarioAccounts();
+            const expenses = createScenarioExpenses();
+
+            const solverInput: YearSolverInput = {
+                year: SCENARIO_YEAR,
+                currentAge: 58,
+                isRetired: true,
+                incomes: [],
+                expenses: [expenses.living],
+                totalLivingExpenses: 45000,
+                rmdAmount: 0,
+                accounts: [accounts.brokerage, accounts.traditional, accounts.roth, accounts.savings],
+                withdrawalOrder: [
+                    { accountId: 'brokerage-1' },
+                    { accountId: 'trad-1' },
+                    { accountId: 'roth-1' },
+                    { accountId: 'savings-1' },
+                ],
+                taxState: createScenarioTaxState(),
+                assumptions: createScenarioAssumptions(),
+                taxOptimizationEnabled: true,
+                acaAware: true,
+            };
+
+            const yearPlan = solveRetirementYear(solverInput);
+
+            // Total MAGI = conversion + LTCG from all withdrawals
+            const conversionAmount = yearPlan.conversion?.amount ?? 0;
+            const totalLTCG = yearPlan.withdrawals.reduce((sum, w) => {
+                return sum + (w.capitalGains?.longTerm ?? 0);
+            }, 0);
+            const magi = conversionAmount + totalLTCG;
+
+            // MAGI should stay under ACA cliff
+            expect(magi).toBeLessThan(ACA_CLIFF_2025);
+
+            // No unfunded deficit
+            expect(yearPlan.unfundedDeficit).toBe(0);
+        });
+
+        it('should log ACA-related decisions when Roth substitution occurs', () => {
+            const accounts = createScenarioAccounts();
+
+            // Use higher expenses to force larger brokerage withdrawal (more LTCG pressure)
+            const highExpenses = new OtherExpense(
+                'living-1', 'Living Expenses', 50000, 'Annually', new Date('2020-01-01')
+            );
+
+            const solverInput: YearSolverInput = {
+                year: SCENARIO_YEAR,
+                currentAge: 58,
+                isRetired: true,
+                incomes: [],
+                expenses: [highExpenses],
+                totalLivingExpenses: 50000,
+                rmdAmount: 0,
+                accounts: [accounts.brokerage, accounts.traditional, accounts.roth, accounts.savings],
+                withdrawalOrder: [
+                    { accountId: 'brokerage-1' },
+                    { accountId: 'trad-1' },
+                    { accountId: 'roth-1' },
+                    { accountId: 'savings-1' },
+                ],
+                taxState: createScenarioTaxState(),
+                assumptions: createScenarioAssumptions(),
+                taxOptimizationEnabled: true,
+                acaAware: true,
+            };
+
+            const yearPlan = solveRetirementYear(solverInput);
+
+            // Check that ACA-related decisions exist (either conversion reduction or withdrawal substitution)
+            const acaDecisions = yearPlan.decisions.filter(d =>
+                d.description.toLowerCase().includes('aca') ||
+                d.description.toLowerCase().includes('magi') ||
+                d.description.toLowerCase().includes('cliff')
+            );
+
+            expect(acaDecisions.length).toBeGreaterThan(0);
+        });
     });
 });

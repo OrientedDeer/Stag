@@ -261,35 +261,6 @@ export const CashflowSankey = ({
             // We must subtract rothConversionAmount because it flows OUT of Net Pay to Roth accounts.
             let remaining = netPayFlow - totalRothSavings - totalExpenses - mortgageInterestAndEscrow - totalPrincipal - totalBucketSavings - rothConversionAmount - totalReinvested;
 
-            // DEBUG: Trace "remaining" calculation
-            console.log(`[SANKEY TRACE] Year ${year}:`, {
-                // Components of netPayFlow
-                grossPayCalculated,
-                totalEmployerMatch,
-                totalWithdrawals,
-                grossPayNodeValue,
-                totalTradSavings,
-                totalInsurance,
-                totalTaxes,
-                netPayFlow,
-                // Components subtracted from netPayFlow
-                totalRothSavings,
-                totalExpenses,
-                providedLivingExpenses,
-                totalMortgagePayment,
-                'providedLivingExpenses - mortgage': providedLivingExpenses !== undefined ? providedLivingExpenses - totalMortgagePayment : 'N/A',
-                calculatedExpenses,
-                mortgageInterestAndEscrow,
-                totalPrincipal,
-                totalBucketSavings,
-                totalReinvested,
-                // Roth conversion (shown separately, routes around Net Pay)
-                rothConversionAmount,
-                // Result
-                remaining,
-                formula: `${netPayFlow} - ${totalRothSavings} - ${totalExpenses} - ${mortgageInterestAndEscrow} - ${totalPrincipal} - ${totalBucketSavings} - ${rothConversionAmount} - ${totalReinvested} = ${remaining}`
-            });
-
             // If there are bucket allocations but remaining is negative, the data is inconsistent.
             // The simulation calculated surplus (hence bucket allocations), so there's no real deficit.
             // The bucket allocations prove the simulation had money left over after expenses.

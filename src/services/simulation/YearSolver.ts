@@ -43,6 +43,7 @@ import { getRMDStartAge } from "../../data/RMDData";
 import {
     calculateDynamicConversionCeiling,
     coarseToFineSearch,
+    getAcaCliffThreshold,
 } from "./TaxOptimizedWithdrawal";
 import { estimateFixedIncomeAtRMD } from "./helpers";
 import { allocateSurplus, SurplusAllocationSettings } from "./SurplusAllocator";
@@ -101,6 +102,7 @@ interface ConversionPlan {
     additionalOrdinaryIncome: number;
     decisions: DecisionLogEntry[];
     taxOptimizationTarget?: TaxOptimizationTarget;
+    bracketSpaceForSpending: number;  // bracket space reserved for Traditional spending
 }
 
 // =============================================================================
@@ -212,16 +214,13 @@ function planConversion(
     socialSecurityBenefits: number,
     fedParams: TaxParameters,
     stateParams: TaxParameters | null,
-    surplus: number // Cash surplus that could pay conversion tax
+    surplus: number, // Cash surplus that could pay conversion tax
+    spendingDeficit: number  // pre-tax deficit estimate (expenses + roughTax - spendable - RMD)
 ): ConversionPlan {
     const decisions: DecisionLogEntry[] = [];
+    let bracketSpaceForSpending = 0;
 
     const traditionalBalance = getTotalTraditionalBalance(input.accounts);
-
-    // DEBUG: Log early-exit info for 2057
-    if (input.year >= 2055 && input.year <= 2060) {
-        console.log(`[ROTH-DEBUG ${input.year}] planConversion entered. age=${input.currentAge}, isRetired=${input.isRetired}, taxOptEnabled=${input.taxOptimizationEnabled}, tradBalance=$${Math.round(traditionalBalance).toLocaleString()}`);
-    }
 
     // Skip conversion if not enabled or not retired
     if (!input.taxOptimizationEnabled || !input.isRetired) {
@@ -232,6 +231,7 @@ function planConversion(
             taxSource: 'SURPLUS',
             additionalOrdinaryIncome: 0,
             decisions,
+            bracketSpaceForSpending: 0,
             taxOptimizationTarget: {
                 targetTraditionalAtRMD: 0,
                 conversionNeededThisYear: 0,
@@ -259,6 +259,7 @@ function planConversion(
             taxSource: 'SURPLUS',
             additionalOrdinaryIncome: 0,
             decisions,
+            bracketSpaceForSpending: 0,
             taxOptimizationTarget: {
                 targetTraditionalAtRMD: 0,
                 conversionNeededThisYear: 0,
@@ -279,11 +280,6 @@ function planConversion(
     const birthYear = input.year - input.currentAge;
     const rmdStartAge = getRMDStartAge(birthYear);
     const yearsUntilRMD = Math.max(0, rmdStartAge - input.currentAge);
-
-    if (input.year >= 2055 && input.year <= 2060 && yearsUntilRMD <= 0) {
-        console.log(`[ROTH-DEBUG ${input.year}] AT_RMD_AGE: age=${input.currentAge}, rmdStartAge=${rmdStartAge} => conversions disabled`);
-        console.log(`[ROTH-DEBUG ${input.year}] Traditional balance: $${Math.round(traditionalBalance).toLocaleString()}`);
-    }
 
     // Project SS and pension at RMD age
     const pensionIncome = input.incomes
@@ -424,10 +420,6 @@ function planConversion(
     // Compare projected balance (what we'll have at RMD without conversions) against ideal target
     // NOT current balance vs target - that's comparing apples to oranges
     const projectedBalanceAtRMD = ceilingResult.projectedBalanceAtRMD;
-    if (input.year >= 2055 && input.year <= 2060) {
-        console.log(`[ROTH-DEBUG ${input.year}] BALANCE_BELOW_TARGET check: projected=$${Math.round(projectedBalanceAtRMD).toLocaleString()} vs ideal=$${Math.round(idealTargetBalance).toLocaleString()} => ${projectedBalanceAtRMD <= idealTargetBalance ? 'SKIP' : 'PROCEED'}`);
-        console.log(`[ROTH-DEBUG ${input.year}] yearsUntilRMD=${yearsUntilRMD}, tradBalance=$${Math.round(traditionalBalance).toLocaleString()}, growthRate=${(growthRate*100).toFixed(1)}%`);
-    }
     if (projectedBalanceAtRMD <= idealTargetBalance) {
         decisions.push({
             category: 'conversion',
@@ -442,12 +434,13 @@ function planConversion(
             taxSource: 'SURPLUS',
             additionalOrdinaryIncome: 0,
             decisions,
+            bracketSpaceForSpending: 0,
             taxOptimizationTarget,
         };
     }
 
     // Calculate bracket space
-    const bracketSpace = Math.max(0, ceilingResult.bracketSpacePerYear);
+    let bracketSpace = Math.max(0, ceilingResult.bracketSpacePerYear);
 
     if (bracketSpace <= 0) {
         decisions.push({
@@ -462,35 +455,136 @@ function planConversion(
             taxSource: 'SURPLUS',
             additionalOrdinaryIncome: 0,
             decisions,
+            bracketSpaceForSpending: 0,
             taxOptimizationTarget,
         };
     }
 
+    // =========================================================================
+    // SPENDING DEFICIT: Reserve bracket space for Traditional withdrawals
+    // =========================================================================
+    // When there's a spending deficit and brokerage can't cover it, the solver
+    // would convert Traditional→Roth then withdraw Roth for spending — a wasteful
+    // roundtrip. Instead, reserve bracket space for direct Traditional withdrawal.
+    //
+    // Two guards:
+    // 1. Age >= 59.5 only. Under 59.5, conversion is strictly cheaper than
+    //    penalized Traditional withdrawal. Spending comes from Roth contribution
+    //    basis (penalty-free FIFO) or brokerage.
+    // 2. Brokerage insufficient. When brokerage covers the deficit, no roundtrip
+    //    exists — conversion fills brackets while brokerage handles spending.
+    //    Only reserve for the shortfall that would spill into Roth.
+    const penaltyApplies = input.currentAge < 59.5;
+    if (spendingDeficit > 0 && traditionalBalance > 0 && bracketSpace > 0 && !penaltyApplies) {
+        // Check how much of the deficit brokerage can cover
+        const brokerageBalance = getTotalBrokerageBalance(input.accounts);
+        const brokerageGainRatio = getBrokerageGainRatio(input.accounts);
+        const ltcgRate = getLTCGRateForIncome(baseOrdinaryIncome, fedParams);
+        // Gross down: brokerage withdrawal of $B yields $B × (1 - gainRatio × ltcgRate) net
+        const brokerageCoverage = brokerageBalance * (1 - brokerageGainRatio * ltcgRate);
+        const rothBoundDeficit = Math.max(0, spendingDeficit - brokerageCoverage);
+
+        if (rothBoundDeficit > 0) {
+            const marginalResult = TaxService.getMarginalTaxRate(
+                Math.max(0, baseOrdinaryIncome - fedParams.standardDeduction),
+                fedParams
+            );
+            const stateRate = stateParams
+                ? TaxService.getMarginalTaxRate(
+                    Math.max(0, baseOrdinaryIncome - stateParams.standardDeduction),
+                    stateParams
+                  ).rate
+                : 0;
+
+            // Only reserve when marginal rate is at or below the ceiling
+            if (marginalResult.rate <= ceilingResult.conversionCeiling + 0.005) {
+                // Gross-up the Roth-bound portion to bracket space terms
+                const totalEffectiveRate = marginalResult.rate + stateRate;
+                const grossForDeficit = rothBoundDeficit / Math.max(0.5, 1 - totalEffectiveRate);
+                bracketSpaceForSpending = Math.min(grossForDeficit, bracketSpace, traditionalBalance);
+
+                // Reduce bracket space available for conversion
+                bracketSpace = Math.max(0, bracketSpace - bracketSpaceForSpending);
+
+                decisions.push({
+                    category: 'conversion',
+                    amount: bracketSpaceForSpending,
+                    description: `Reserved $${Math.round(bracketSpaceForSpending).toLocaleString()} bracket space ` +
+                        `for Traditional spending (Roth-bound deficit $${Math.round(rothBoundDeficit).toLocaleString()} ` +
+                        `of $${Math.round(spendingDeficit).toLocaleString()} total, ` +
+                        `brokerage covers $${Math.round(brokerageCoverage).toLocaleString()}, ` +
+                        `marginal rate ${(marginalResult.rate * 100).toFixed(1)}% ` +
+                        `vs ${(ceilingResult.conversionCeiling * 100).toFixed(0)}% ceiling).`,
+                });
+
+                if (bracketSpace <= 0) {
+                    taxOptimizationTarget.limitingFactor = 'SPENDING_DEFICIT';
+                }
+            }
+        }
+    }
+
     // Calculate conversion amount using PMT pacing (min of bracket space, PMT amount, and balance)
     // PMT pacing gives us a smoothly decreasing conversion over time to reach the ideal target
-    let conversionAmount = Math.min(
-        bracketSpace,
-        pmtConversionAmount > 0 ? pmtConversionAmount : bracketSpace,
-        traditionalBalance
-    );
+    // Can't convert what we'll spend from Traditional directly
+    const availableTraditional = traditionalBalance - bracketSpaceForSpending;
+    const pmtCap = pmtConversionAmount > 0 ? pmtConversionAmount : bracketSpace;
+    let conversionAmount = Math.min(bracketSpace, pmtCap, availableTraditional);
 
-    // Use coarse-to-fine search for optimal amount considering SS torpedo
+    // Use coarse-to-fine search for optimal amount considering SS torpedo.
+    // Federal-only rates: the ceiling (e.g., 12%) is a federal bracket target.
+    // State tax is still fully accounted for in the actual conversion tax cost.
+    // Adjust base income and available balance for spending reservation.
+    const adjustedBaseIncome = baseOrdinaryIncome + bracketSpaceForSpending;
     const searchResult = coarseToFineSearch(
         ceilingResult.conversionCeiling,
-        traditionalBalance,
-        baseOrdinaryIncome,
+        traditionalBalance - bracketSpaceForSpending,
+        adjustedBaseIncome,
         socialSecurityBenefits,
         0, // ltcgIncome
         fedParams,
         input.taxState,
         input.year,
-        stateParams,
+        null, // federal-only: state tax should not reduce conversion amount
         acaOptions,
         input.assumptions
     );
 
     if (searchResult.amount > 0) {
         conversionAmount = Math.min(conversionAmount, searchResult.amount);
+    }
+
+    // Log conversion sizing breakdown so the user can see what constrained the amount
+    {
+        const constraints: string[] = [];
+        const rawBracketSpace = ceilingResult.bracketSpacePerYear;
+        const effectiveBracket = bracketSpace; // after spending reservation
+
+        if (bracketSpaceForSpending > 0) {
+            constraints.push(`spending reservation $${Math.round(bracketSpaceForSpending).toLocaleString()}`);
+        }
+        if (pmtConversionAmount > 0 && pmtConversionAmount < effectiveBracket) {
+            constraints.push(`PMT pacing $${Math.round(pmtConversionAmount).toLocaleString()} (target $${Math.round(idealTargetBalance).toLocaleString()} in ${yearsUntilRMD}yr)`);
+        }
+        if (availableTraditional < effectiveBracket && availableTraditional < pmtCap) {
+            constraints.push(`Traditional balance $${Math.round(availableTraditional).toLocaleString()}`);
+        }
+        if (searchResult.amount > 0 && searchResult.amount < conversionAmount + 100) {
+            constraints.push(`SS torpedo search $${Math.round(searchResult.amount).toLocaleString()}${searchResult.edgeType === 'SS_TORPEDO' ? ' (torpedo)' : ''}`);
+        }
+
+        const limitedBy = constraints.length > 0
+            ? `Limited by: ${constraints.join('; ')}.`
+            : `Using full bracket space.`;
+
+        decisions.push({
+            category: 'conversion',
+            amount: conversionAmount,
+            description: `Conversion sizing: bracket space $${Math.round(rawBracketSpace).toLocaleString()} ` +
+                `(ceiling ${(ceilingResult.conversionCeiling * 100).toFixed(0)}%), ` +
+                `PMT pacing $${Math.round(pmtConversionAmount).toLocaleString()}, ` +
+                `result $${Math.round(conversionAmount).toLocaleString()}. ${limitedBy}`,
+        });
     }
 
     // =========================================================================
@@ -547,9 +641,12 @@ function planConversion(
             const ltcgRate = getLTCGRateForIncome(allOrdinaryIncome, fedParams);
             const estimatedLTCG = estimateLTCGFromDeficit(estimatedDeficit, gainRatio, ltcgRate);
 
-            // MAGI for ACA = all income sources (base + SS + conversion + capital gains)
-            // Must match the formula in calculateEffectiveConversionTax (helpers.ts)
-            return baseOrdinaryIncome + socialSecurityBenefits + conversion + estimatedLTCG;
+            // ACA MAGI = all gross income including 100% of SS (not just taxable portion)
+            // spendable + reinvested already includes full SS, so no separate SS addition needed.
+            // Previous formula (baseOrdinaryIncome + socialSecurityBenefits) double-counted SS
+            // because baseOrdinaryIncome already contains taxableSS.
+            const grossIncomeBase = incomeClass.classified.spendable + incomeClass.classified.reinvested;
+            return grossIncomeBase + conversion + estimatedLTCG;
         };
 
         const originalConversion = conversionAmount;
@@ -615,35 +712,6 @@ function planConversion(
         }
     }
 
-    // DEBUG: Log conversion decision details for 2057
-    if (input.year >= 2055 && input.year <= 2060) {
-        console.log(`[ROTH-DEBUG ${input.year}] ========== Conversion Decision ==========`);
-        console.log(`[ROTH-DEBUG ${input.year}] Traditional balance: $${Math.round(traditionalBalance).toLocaleString()}`);
-        console.log(`[ROTH-DEBUG ${input.year}] Ideal target at RMD: $${Math.round(idealTargetBalance).toLocaleString()}`);
-        console.log(`[ROTH-DEBUG ${input.year}] Projected balance at RMD (no conversions): $${Math.round(projectedBalanceAtRMD).toLocaleString()}`);
-        console.log(`[ROTH-DEBUG ${input.year}] Years until RMD: ${yearsUntilRMD}`);
-        console.log(`[ROTH-DEBUG ${input.year}] Growth rate: ${(growthRate * 100).toFixed(1)}%`);
-        console.log(`[ROTH-DEBUG ${input.year}] RMD start age: ${rmdStartAge}, current age: ${input.currentAge}`);
-        console.log(`[ROTH-DEBUG ${input.year}] --- Income ---`);
-        console.log(`[ROTH-DEBUG ${input.year}] Base ordinary income: $${Math.round(baseOrdinaryIncome).toLocaleString()}`);
-        console.log(`[ROTH-DEBUG ${input.year}] Social Security benefits: $${Math.round(socialSecurityBenefits).toLocaleString()}`);
-        console.log(`[ROTH-DEBUG ${input.year}] SS at RMD: $${Math.round(fixedIncomeAtRMD.ssAtRMD).toLocaleString()}`);
-        console.log(`[ROTH-DEBUG ${input.year}] Pension at RMD: $${Math.round(fixedIncomeAtRMD.pensionAtRMD).toLocaleString()}`);
-        console.log(`[ROTH-DEBUG ${input.year}] Passive income: $${Math.round(passiveIncome).toLocaleString()}`);
-        console.log(`[ROTH-DEBUG ${input.year}] --- Ceiling & Bracket Space ---`);
-        console.log(`[ROTH-DEBUG ${input.year}] Conversion ceiling (target rate): ${(ceilingResult.conversionCeiling * 100).toFixed(0)}%`);
-        console.log(`[ROTH-DEBUG ${input.year}] Bracket space per year: $${Math.round(ceilingResult.bracketSpacePerYear).toLocaleString()}`);
-        console.log(`[ROTH-DEBUG ${input.year}] Projected RMD bracket: ${(ceilingResult.projectedRMDBracket * 100).toFixed(0)}%`);
-        console.log(`[ROTH-DEBUG ${input.year}] --- Pacing ---`);
-        console.log(`[ROTH-DEBUG ${input.year}] PMT conversion amount: $${Math.round(pmtConversionAmount).toLocaleString()}`);
-        console.log(`[ROTH-DEBUG ${input.year}] --- Constraints Applied ---`);
-        console.log(`[ROTH-DEBUG ${input.year}] min(bracketSpace=$${Math.round(bracketSpace).toLocaleString()}, pmt=$${Math.round(pmtConversionAmount).toLocaleString()}, balance=$${Math.round(traditionalBalance).toLocaleString()}) => $${Math.round(Math.min(bracketSpace, pmtConversionAmount > 0 ? pmtConversionAmount : bracketSpace, traditionalBalance)).toLocaleString()}`);
-        console.log(`[ROTH-DEBUG ${input.year}] coarseToFineSearch result: $${Math.round(searchResult.amount).toLocaleString()} (edge: ${searchResult.edgeType || 'none'})`);
-        console.log(`[ROTH-DEBUG ${input.year}] Final conversion amount: $${Math.round(conversionAmount).toLocaleString()}`);
-        console.log(`[ROTH-DEBUG ${input.year}] ACA aware: ${input.acaAware}, age < 65: ${input.currentAge < 65}`);
-        console.log(`[ROTH-DEBUG ${input.year}] ==========================================`);
-    }
-
     // Update constraint details if SS torpedo was detected
     if (searchResult.edgeType === 'SS_TORPEDO') {
         constraintDetails.ssTorpedoTriggered = true;
@@ -680,6 +748,7 @@ function planConversion(
             taxSource: 'SURPLUS',
             additionalOrdinaryIncome: 0,
             decisions,
+            bracketSpaceForSpending,
             taxOptimizationTarget,
         };
     }
@@ -724,6 +793,7 @@ function planConversion(
                 taxSource: 'SURPLUS',
                 additionalOrdinaryIncome: 0,
                 decisions,
+                bracketSpaceForSpending,
                 taxOptimizationTarget,
             };
         }
@@ -744,6 +814,7 @@ function planConversion(
             taxSource: 'SURPLUS',
             additionalOrdinaryIncome: 0,
             decisions,
+            bracketSpaceForSpending,
             taxOptimizationTarget,
         };
     }
@@ -785,6 +856,7 @@ function planConversion(
         taxSource,
         additionalOrdinaryIncome: conversionAmount,
         decisions,
+        bracketSpaceForSpending,
         taxOptimizationTarget,
     };
 }
@@ -909,6 +981,28 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
         effectiveLivingExpenses
     );
 
+    // Rough tax estimate for preliminary deficit (before conversion is known)
+    const roughPreTaxDeductions = TaxService.getPreTaxExemptions(input.incomes, input.year, input.currentAge, true);
+    const roughFedTax = TaxService.calculateTotalFederalTax(
+        baseOrdinaryIncome - socialSecurityBenefits,
+        socialSecurityBenefits,
+        0, 0, // no STCG/LTCG
+        roughPreTaxDeductions,
+        input.taxState.filingStatus,
+        fedParams
+    ).totalTax;
+    const roughStateTax = stateParams
+        ? TaxService.calculateTax(baseOrdinaryIncome, roughPreTaxDeductions, stateParams)
+        : 0;
+    const roughFica = TaxService.calculateFicaTax(input.taxState, input.incomes, input.year, input.assumptions);
+    const roughTax = roughFedTax + roughStateTax + roughFica;
+
+    const preliminaryDeficit = Math.max(0,
+        effectiveLivingExpenses + roughTax -
+        incomeClassification.classified.spendable -
+        input.rmdAmount
+    );
+
     // Step B: Plan Roth conversion FIRST
     const conversionPlan = planConversion(
         input,
@@ -916,7 +1010,8 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
         socialSecurityBenefits,
         fedParams,
         stateParams ?? null, // Convert undefined to null
-        initialSurplusEstimate
+        initialSurplusEstimate,
+        preliminaryDeficit
     );
     decisions.push(...conversionPlan.decisions);
 
@@ -1022,18 +1117,69 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
 
     if (baseDeficit > 0) {
         // Create account snapshots in withdrawal order
-        const accountSnapshots = createOrderedSnapshots(
-            input.accounts,
-            input.withdrawalOrder,
-            input.currentAge,
-            input.year
-        );
+        let accountSnapshots;
+
+        if (conversionPlan.bracketSpaceForSpending > 0) {
+            // Tax-optimized order: put capped Traditional first, then normal order
+            const allSnapshots = createOrderedSnapshots(
+                input.accounts, input.withdrawalOrder, input.currentAge, input.year
+            );
+
+            const tradSnapshots: typeof allSnapshots = [];
+            const otherSnapshots: typeof allSnapshots = [];
+            let remainingCap = conversionPlan.bracketSpaceForSpending;
+
+            for (const s of allSnapshots) {
+                if ((s.accountType === 'traditional_401k' || s.accountType === 'traditional_ira')
+                    && remainingCap > 0) {
+                    const capped = Math.min(s.vestedBalance, remainingCap);
+                    tradSnapshots.push({ ...s, vestedBalance: capped });
+                    remainingCap -= capped;
+                    // Add remaining balance back to normal order
+                    const remainder = s.vestedBalance - capped;
+                    if (remainder > 0) {
+                        otherSnapshots.push({ ...s, vestedBalance: remainder });
+                    }
+                } else {
+                    otherSnapshots.push(s);
+                }
+            }
+
+            accountSnapshots = [...tradSnapshots, ...otherSnapshots];
+
+            decisions.push({
+                category: 'withdrawal',
+                description: `Tax-optimized order: Traditional first ` +
+                    `(cap $${Math.round(conversionPlan.bracketSpaceForSpending).toLocaleString()}) ` +
+                    `then normal order.`,
+            });
+        } else {
+            accountSnapshots = createOrderedSnapshots(
+                input.accounts, input.withdrawalOrder, input.currentAge, input.year
+            );
+        }
 
         // Plan withdrawals - algebraic gross-up handles LTCG tax calculation in 1 pass
         // No iteration loop needed: the formula gross = baseDeficit / (1 - gainRatio × ltcgRate)
         // correctly computes the withdrawal amount including LTCG tax in a single calculation.
         // The LTCG rate is determined by ordinary income (wages, SS, pensions, conversions, RMD)
         // which is fixed before withdrawal planning begins.
+
+        // Pass ACA options so brokerage withdrawals can be capped when LTCG would breach the cliff,
+        // substituting tax-free Roth withdrawals instead.
+        const acaWithdrawalOpts = input.acaAware && input.currentAge < 65
+            ? {
+                acaCliffThreshold: getAcaCliffThreshold(
+                    input.taxState.filingStatus === 'Married Filing Jointly' ? 'married_filing_jointly' : 'single',
+                    input.year
+                ),
+                // ACA MAGI = all gross income including 100% of SS benefits.
+                // taxableBase (= spendable + reinvested) already includes full SS,
+                // so we just add conversion income on top.
+                currentMAGI: taxableBase + conversionPlan.additionalOrdinaryIncome,
+            }
+            : undefined;
+
         const withdrawalResult = planWithdrawals(
             baseDeficit,
             accountSnapshots,
@@ -1041,7 +1187,9 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
             input.year,
             input.taxState,
             allOrdinaryIncome,
-            input.assumptions
+            input.assumptions,
+            'Spending deficit',
+            acaWithdrawalOpts
         );
 
         withdrawals = [
@@ -1068,10 +1216,12 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     // Step G: Calculate final surplus
     const totalGrossWithdrawals = withdrawals.reduce((sum, w) => sum + w.gross, 0);
 
-    // Total tax = ordinary tax + LTCG tax + FICA + penalties
+    // Total tax = ordinary tax + LTCG tax + withdrawal ordinary tax + FICA + penalties
     // ordinaryTax covers income tax on wages, SS, pensions, conversions
     // ltcgTax covers capital gains from brokerage withdrawals (computed by algebraic gross-up)
-    const totalTax = ordinaryTax + ltcgTax + ficaTax + totalPenalties;
+    // withdrawalOrdinaryTax covers tax on Roth earnings (5-year rule), Traditional, HSA non-medical
+    // All of these consume cash from grossWithdrawals and must be in cashOut for surplus to be correct.
+    const totalTax = ordinaryTax + ltcgTax + withdrawalOrdinaryTax + ficaTax + totalPenalties;
 
     // Final cash flow
     const cashIn =

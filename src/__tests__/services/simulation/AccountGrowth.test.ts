@@ -27,6 +27,7 @@ function createWithdrawalState(overrides: Partial<WithdrawalState> = {}): Withdr
         employerInflows: {},
         withdrawalTaxes: 0,
         capitalGainsTaxTotal: 0,
+        withdrawalOrdinaryTaxTotal: 0,
         strategyWithdrawalExecuted: 0,
         totalWithdrawals: 0,
         withdrawalDetail: {},

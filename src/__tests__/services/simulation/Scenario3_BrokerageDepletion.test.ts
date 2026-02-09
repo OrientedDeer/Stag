@@ -69,13 +69,10 @@ function createScenarioExpenses() {
     return { living };
 }
 
-function createScenarioAssumptions(useNewEngine: boolean = true): AssumptionsState {
+function createScenarioAssumptions(): AssumptionsState {
     return {
         ...defaultAssumptions,
         milestones: createBuiltinMilestones(BIRTH_YEAR, 60, 95),
-        simulation: {
-            useNewEngine,
-        },
         investments: {
             ...defaultAssumptions.investments,
             taxOptimizationEnabled: false, // Keep it simple for depletion test

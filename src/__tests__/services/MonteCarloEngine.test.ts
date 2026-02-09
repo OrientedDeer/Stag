@@ -232,6 +232,7 @@ describe('MonteCarloAggregator', () => {
             insurance: 0,
             postTax: 0,
             capitalGains: 0,
+            withdrawalOrdinaryTax: 0,
             niit: 0,
         },
         logs: [],
@@ -381,7 +382,7 @@ describe('MonteCarloAggregator', () => {
                     withdrawalDetail: {},
                 },
                 taxDetails: {
-                    fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, niit: 0,
+                    fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0, capitalGains: 0, withdrawalOrdinaryTax: 0, niit: 0,
                 },
                 logs: [],
             });
@@ -494,6 +495,7 @@ describe('Return Rate Override Integration', () => {
                 autoRothConversions: false,
                 rothConversionTargetBracket: 0.22,
                 taxOptimizationEnabled: false,
+                acaAware: true,
             },
             macro: {
                 inflationRate: 2.6,
@@ -505,7 +507,6 @@ describe('Return Rate Override Integration', () => {
             income: { salaryGrowth: 1.0, qualifiesForSocialSecurity: true, socialSecurityFundingPercent: 100 },
             expenses: { lifestyleCreep: 75, housingAppreciation: 1.4, rentInflation: 1.2 },
             display: { useCompactCurrency: true, showExperimentalFeatures: false, hsaEligible: true },
-            simulation: { useNewEngine: false },
             priorities: [],
             withdrawalStrategy: [],
         };

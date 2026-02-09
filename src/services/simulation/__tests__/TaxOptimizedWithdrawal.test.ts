@@ -871,26 +871,6 @@ describe('getRMDDivisor', () => {
 describe('calculateIdealTargetBalance', () => {
     const year = 2024;
 
-    const singleTaxState: TaxState = {
-        filingStatus: 'Single',
-        stateResidency: 'Virginia',
-        deductionMethod: 'Standard',
-        fedOverride: null,
-        ficaOverride: null,
-        stateOverride: null,
-        year: year,
-    };
-
-    const mfjTaxState: TaxState = {
-        filingStatus: 'Married Filing Jointly',
-        stateResidency: 'Virginia',
-        deductionMethod: 'Standard',
-        fedOverride: null,
-        ficaOverride: null,
-        stateOverride: null,
-        year: year,
-    };
-
     const getSingleParams = () => TaxService.getTaxParameters(year, 'Single', 'federal')!;
     const getMFJParams = () => TaxService.getTaxParameters(year, 'Married Filing Jointly', 'federal')!;
 
@@ -908,10 +888,7 @@ describe('calculateIdealTargetBalance', () => {
                 0,              // passiveIncomeAtRMD
                 0.12,           // targetBracket
                 73,             // rmdStartAge
-                taxParams,
-                singleTaxState,
-                null,           // stateParams
-                year
+                taxParams
             );
 
             // Ideal balance = RMD space × RMD divisor (26.5 at age 73)
@@ -931,10 +908,7 @@ describe('calculateIdealTargetBalance', () => {
                 0,              // passiveIncomeAtRMD
                 0.12,           // targetBracket
                 73,             // rmdStartAge
-                taxParams,
-                mfjTaxState,
-                null,           // stateParams
-                year
+                taxParams
             );
 
             // MFJ should have larger ideal balance than single
@@ -954,10 +928,7 @@ describe('calculateIdealTargetBalance', () => {
                 0,              // passiveIncomeAtRMD
                 0.12,           // targetBracket
                 73,
-                taxParams,
-                singleTaxState,
-                null,           // stateParams
-                year
+                taxParams
             );
 
             // Simple bracket math: grossCeiling - taxableSS - pension
@@ -975,10 +946,7 @@ describe('calculateIdealTargetBalance', () => {
                 0,              // passiveIncomeAtRMD
                 0.12,
                 73,
-                taxParams,
-                singleTaxState,
-                null,           // stateParams
-                year
+                taxParams
             );
 
             // Compare with age 75 (divisor 24.6)
@@ -988,10 +956,7 @@ describe('calculateIdealTargetBalance', () => {
                 0,              // passiveIncomeAtRMD
                 0.12,
                 75,
-                taxParams,
-                singleTaxState,
-                null,           // stateParams
-                year
+                taxParams
             );
 
             // Higher divisor at 73 means higher ideal balance
@@ -1015,10 +980,7 @@ describe('calculateIdealTargetBalance', () => {
                 0,              // passiveIncomeAtRMD
                 0.22,           // Target 22% bracket
                 73,
-                singleParams,
-                singleTaxState,
-                null,           // stateParams
-                year
+                singleParams
             );
 
             const mfjResult = calculateIdealTargetBalance(
@@ -1027,10 +989,7 @@ describe('calculateIdealTargetBalance', () => {
                 0,              // passiveIncomeAtRMD
                 0.22,
                 73,
-                mfjParams,
-                mfjTaxState,
-                null,           // stateParams
-                year
+                mfjParams
             );
 
             // MFJ brackets are wider, so ideal balance should be larger
@@ -1052,10 +1011,7 @@ describe('calculateIdealTargetBalance', () => {
                 0,  // passiveIncomeAtRMD
                 targetBracket,
                 rmdStartAge,
-                taxParams,
-                singleTaxState,
-                null,
-                year
+                taxParams
             );
 
             // calculateIdealTargetBalance uses SIMPLE bracket math:
@@ -1087,10 +1043,7 @@ describe('calculateIdealTargetBalance', () => {
                 0,              // passiveIncomeAtRMD
                 0.12,           // targetBracket
                 70,             // rmdStartAge - before RMD tables start
-                taxParams,
-                singleTaxState,
-                null,
-                year
+                taxParams
             );
 
             expect(result).toBe(0);
@@ -1108,10 +1061,7 @@ describe('calculateIdealTargetBalance', () => {
                 0,              // passiveIncomeAtRMD
                 0.12,           // targetBracket
                 73,
-                taxParams,
-                singleTaxState,
-                null,
-                year
+                taxParams
             );
 
             // With SS: SS torpedo eats bracket space
@@ -1121,10 +1071,7 @@ describe('calculateIdealTargetBalance', () => {
                 0,              // passiveIncomeAtRMD
                 0.12,           // targetBracket
                 73,
-                taxParams,
-                singleTaxState,
-                null,
-                year
+                taxParams
             );
 
             // SS torpedo should reduce ideal balance (SS eats bracket space)
@@ -1137,14 +1084,7 @@ describe('calculateIdealTargetBalance', () => {
             const taxParams = getSingleParams();
 
             // Note: calculateIdealTargetBalance uses SIMPLE bracket math based on
-            // federal brackets only. The stateParams parameter is accepted but
-            // not currently used in the calculation.
-
-            // Use Texas (no state tax)
-            const noStateTaxState: TaxState = {
-                ...singleTaxState,
-                stateResidency: 'TX',  // Texas has no state income tax
-            };
+            // federal brackets only. State params are not part of the function signature.
 
             const resultNoStateTax = calculateIdealTargetBalance(
                 0,              // pensionIncomeAtRMD
@@ -1152,25 +1092,17 @@ describe('calculateIdealTargetBalance', () => {
                 0,              // passiveIncomeAtRMD
                 0.22,           // targetBracket
                 73,
-                taxParams,
-                noStateTaxState,
-                null,           // No state params
-                year
+                taxParams
             );
 
-            // With state tax: get state params for Virginia (~5% state tax)
-            const stateParams = TaxService.getTaxParameters(year, 'Single', 'state', 'Virginia');
-
+            // With state tax: same federal params (state not used in calculation)
             const resultWithStateTax = calculateIdealTargetBalance(
                 0,              // pensionIncomeAtRMD
                 30_000,         // ssAtRMD
                 0,              // passiveIncomeAtRMD
                 0.22,           // targetBracket
                 73,
-                taxParams,
-                singleTaxState, // Virginia
-                stateParams ?? null,    // State params (not used in current implementation)
-                year
+                taxParams
             );
 
             // Current implementation uses simple federal bracket math only,
@@ -1671,10 +1603,7 @@ describe('calculateDynamicConversionCeiling', () => {
                 0,  // passiveIncomeAtRMD
                 0.12,
                 inputs.rmdStartAge,
-                taxParams,
-                singleTaxState,
-                null,
-                year
+                taxParams
             );
 
             expect(result.idealTargetBalance).toBeCloseTo(expectedIdealTarget, 0);
@@ -1892,7 +1821,6 @@ describe('calculateConversionThisYear', () => {
     describe('early returns', () => {
         it('returns 0 when balance equals target', () => {
             const result = calculateConversionThisYear(
-                0,                  // passiveIncomeAtRMD
                 500_000,    // currentBalance
                 500_000,    // effectiveTarget - equal
                 10,         // yearsUntilRMD

@@ -179,7 +179,7 @@ export const defaultAssumptions: AssumptionsState = {
     // birthYear, retirementAge, lifeExpectancy are now in milestones
   },
   simulation: {
-    useNewEngine: false, // Default to old engine; set true to use new YearSolver-based engine
+    useNewEngine: true, // Use YearSolver-based V2 engine by default
   },
   display: {
     useCompactCurrency: true,

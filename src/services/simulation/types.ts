@@ -224,7 +224,7 @@ export interface PlannedWithdrawal {
     /** Tax on this withdrawal */
     tax: number;
     /** Reason for withdrawal */
-    reason: 'Required Minimum Distribution' | 'Spending deficit' | 'Conversion tax' | 'Healthcare expense';
+    reason: 'Required Minimum Distribution' | 'Spending deficit' | 'Conversion tax' | 'Healthcare expense' | 'ACA cliff Roth substitution';
 }
 
 /**
@@ -330,7 +330,8 @@ export type ConversionLimitingFactor =
     | 'PACING'                // Damping/pacing formula limited conversion
     | 'TRADITIONAL_DEPLETED'  // No Traditional balance left to convert
     | 'NOT_RETIRED'           // Not retired yet, no conversions
-    | 'AT_RMD_AGE';           // At or past RMD age, no conversions
+    | 'AT_RMD_AGE'            // At or past RMD age, no conversions
+    | 'SPENDING_DEFICIT';      // Bracket space shared with Traditional spending withdrawals
 
 /**
  * Tax optimization target information (for UI display).

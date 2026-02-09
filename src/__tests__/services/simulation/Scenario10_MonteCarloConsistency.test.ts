@@ -98,13 +98,10 @@ function createModerateScenarioExpenses() {
     return { living };
 }
 
-function createModerateScenarioAssumptions(useNewEngine: boolean = true): AssumptionsState {
+function createModerateScenarioAssumptions(): AssumptionsState {
     return {
         ...defaultAssumptions,
         milestones: createBuiltinMilestones(BIRTH_YEAR, 60, 95),
-        simulation: {
-            useNewEngine,
-        },
         investments: {
             ...defaultAssumptions.investments,
             taxOptimizationEnabled: false,

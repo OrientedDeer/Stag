@@ -397,6 +397,10 @@ export function planWithdrawals(
     let cumulativeLTCG = 0; // Tracks LTCG from brokerage/ESPP for ACA MAGI headroom
     let runningOrdinaryIncome = currentOrdinaryIncome;
 
+    // ACA cliff: track Roth amounts pre-consumed by look-ahead substitution
+    const acaRothConsumed = new Map<string, number>();
+    const ACA_WITHDRAWAL_BUFFER = 500; // Buffer under cliff for withdrawal LTCG
+
     // Get tax parameters
     const fedParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'federal', undefined, assumptions);
     const stateParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions);
@@ -449,7 +453,11 @@ export function planWithdrawals(
     // Process each account in order
     for (const snapshot of accountOrder) {
         if (remainingNetNeeded <= 0) break;
-        if (snapshot.vestedBalance <= 0) continue;
+
+        // Reduce available balance for Roth accounts already tapped by ACA substitution look-ahead
+        const acaAlreadyConsumed = acaRothConsumed.get(snapshot.accountId) ?? 0;
+        const effectiveVestedBalance = snapshot.vestedBalance - acaAlreadyConsumed;
+        if (effectiveVestedBalance <= 0) continue;
 
         const ltcgRate = getLTCGRate(runningOrdinaryIncome);
         const marginalRate = getMarginalRate(runningOrdinaryIncome) + stateRate;
@@ -459,7 +467,7 @@ export function planWithdrawals(
         switch (snapshot.accountType) {
             case 'savings': {
                 const result = grossUpSavings(remainingNetNeeded);
-                const grossToWithdraw = Math.min(result.gross, snapshot.vestedBalance);
+                const grossToWithdraw = Math.min(result.gross, effectiveVestedBalance);
                 const netReceived = grossToWithdraw;
 
                 withdrawal = {
@@ -481,13 +489,141 @@ export function planWithdrawals(
 
             case 'brokerage': {
                 const result = grossUpBrokerage(remainingNetNeeded, snapshot.gainRatio, ltcgRate);
-                const grossToWithdraw = Math.min(result.gross, snapshot.vestedBalance);
+                let grossToWithdraw = Math.min(result.gross, effectiveVestedBalance);
 
                 // Recalculate for actual amount if capped
                 const actualGainRatio = snapshot.gainRatio;
-                const actualLTCG = grossToWithdraw * actualGainRatio;
-                const actualTax = actualLTCG * ltcgRate;
-                const netReceived = grossToWithdraw - actualTax;
+                let actualLTCG = grossToWithdraw * actualGainRatio;
+                let actualTax = actualLTCG * ltcgRate;
+                let netReceived = grossToWithdraw - actualTax;
+
+                // =================================================================
+                // ACA CLIFF CHECK: Cap brokerage withdrawal if LTCG would breach cliff
+                // Substitute tax-free Roth withdrawals for the remainder
+                // =================================================================
+                if (acaWithdrawalOptions && grossToWithdraw > 0) {
+                    const projectedMAGI = acaWithdrawalOptions.currentMAGI + cumulativeLTCG + actualLTCG;
+
+                    if (projectedMAGI > acaWithdrawalOptions.acaCliffThreshold) {
+                        // Calculate how much LTCG headroom we have
+                        const magiHeadroom = Math.max(0,
+                            acaWithdrawalOptions.acaCliffThreshold - ACA_WITHDRAWAL_BUFFER
+                            - acaWithdrawalOptions.currentMAGI - cumulativeLTCG
+                        );
+
+                        // Convert LTCG headroom to max safe gross withdrawal
+                        // LTCG = gross × gainRatio, so gross = LTCG / gainRatio
+                        let maxSafeGross: number;
+                        if (actualGainRatio > 0) {
+                            const maxSafeLTCG = magiHeadroom;
+                            maxSafeGross = maxSafeLTCG / actualGainRatio;
+                        } else {
+                            maxSafeGross = grossToWithdraw; // No gains, no MAGI impact
+                        }
+
+                        const originalGross = grossToWithdraw;
+                        const originalNet = netReceived;
+                        grossToWithdraw = Math.max(0, Math.min(grossToWithdraw, maxSafeGross));
+
+                        // Recalculate with capped amount
+                        actualLTCG = grossToWithdraw * actualGainRatio;
+                        actualTax = actualLTCG * ltcgRate;
+                        netReceived = grossToWithdraw - actualTax;
+
+                        // Calculate deficit still needing coverage from Roth
+                        const netShortfall = originalNet - netReceived;
+
+                        if (netShortfall > 0) {
+                            // Look-ahead: find Roth accounts in the withdrawal order
+                            let rothSubstitutionNet = 0;
+
+                            for (const rothSnapshot of accountOrder) {
+                                if (rothSubstitutionNet >= netShortfall) break;
+                                if (rothSnapshot.accountType !== 'roth_ira' && rothSnapshot.accountType !== 'roth_401k') continue;
+
+                                const alreadyConsumed = acaRothConsumed.get(rothSnapshot.accountId) ?? 0;
+                                const availableRoth = rothSnapshot.vestedBalance - alreadyConsumed;
+                                if (availableRoth <= 0) continue;
+
+                                const stillNeeded = netShortfall - rothSubstitutionNet;
+
+                                // Use grossUpRoth for proper contribution/conversion/earnings ordering
+                                // TODO: rothContributions and conversionHistory may be stale if Roth was
+                                // partially consumed by an earlier withdrawal in the same loop. This could
+                                // lead to incorrect penalty/tax calculations for very early retirees.
+                                const rothResult = grossUpRoth(
+                                    Math.min(stillNeeded, availableRoth),
+                                    Math.max(0, (rothSnapshot.rothContributions ?? 0) - alreadyConsumed),
+                                    rothSnapshot.conversionHistory ?? [],
+                                    year,
+                                    currentAge,
+                                    marginalRate
+                                );
+
+                                const rothGross = Math.min(rothResult.gross, availableRoth);
+                                const rothRatio = rothGross / rothResult.gross;
+                                const rothTax = rothResult.tax * rothRatio;
+                                const rothPenalty = rothResult.penalty * rothRatio;
+                                const rothNet = rothGross - rothTax - rothPenalty;
+
+                                if (rothNet <= 0) continue;
+
+                                // Track consumption
+                                acaRothConsumed.set(rothSnapshot.accountId, alreadyConsumed + rothGross);
+                                rothSubstitutionNet += rothNet;
+
+                                // Record the Roth substitution withdrawal
+                                const rothWithdrawal: PlannedWithdrawal = {
+                                    source: rothSnapshot.accountType,
+                                    accountId: rothSnapshot.accountId,
+                                    accountName: rothSnapshot.accountName,
+                                    gross: rothGross,
+                                    net: rothNet,
+                                    penalty: rothPenalty,
+                                    tax: rothTax,
+                                    reason: 'ACA cliff Roth substitution',
+                                };
+
+                                withdrawals.push(rothWithdrawal);
+                                totalNet += rothNet;
+                                totalGross += rothGross;
+                                totalTax += rothTax;
+                                totalPenalties += rothPenalty;
+
+                                // Roth earnings add to ordinary income if under 59.5
+                                if (rothResult.fromEarnings > 0 && currentAge < 59.5) {
+                                    runningOrdinaryIncome += rothResult.fromEarnings * rothRatio;
+                                }
+
+                                decisions.push({
+                                    category: 'withdrawal',
+                                    account: rothSnapshot.accountName,
+                                    amount: rothGross,
+                                    description: `ACA cliff Roth substitution: $${rothGross.toLocaleString()} from ${rothSnapshot.accountName} (tax-free) replaces brokerage to avoid MAGI breach.`,
+                                });
+                            }
+
+                            // Reduce remainingNetNeeded by what Roth covered
+                            remainingNetNeeded -= rothSubstitutionNet;
+
+                            decisions.push({
+                                category: 'withdrawal',
+                                account: snapshot.accountName,
+                                amount: grossToWithdraw,
+                                description: `ACA cliff: Brokerage capped at $${grossToWithdraw.toLocaleString()} (was $${originalGross.toLocaleString()}). LTCG $${actualLTCG.toLocaleString()} keeps MAGI under cliff $${acaWithdrawalOptions.acaCliffThreshold.toLocaleString()}. Roth substituted $${rothSubstitutionNet.toLocaleString()}.`,
+                            });
+
+                            if (rothSubstitutionNet < netShortfall) {
+                                // Not enough Roth to cover the gap — accept cliff breach for remainder
+                                decisions.push({
+                                    category: 'warning',
+                                    amount: netShortfall - rothSubstitutionNet,
+                                    description: `Insufficient Roth balance for full ACA substitution. Remaining $${(netShortfall - rothSubstitutionNet).toLocaleString()} unfunded by substitution.`,
+                                });
+                            }
+                        }
+                    }
+                }
 
                 withdrawal = {
                     source: 'brokerage',
@@ -501,6 +637,7 @@ export function planWithdrawals(
                     reason,
                 };
 
+                cumulativeLTCG += actualLTCG;
                 remainingNetNeeded -= netReceived;
                 totalNet += netReceived;
                 totalGross += grossToWithdraw;
@@ -512,7 +649,7 @@ export function planWithdrawals(
             case 'traditional_401k':
             case 'traditional_ira': {
                 const result = grossUpTraditional(remainingNetNeeded, marginalRate, currentAge);
-                const grossToWithdraw = Math.min(result.gross, snapshot.vestedBalance);
+                const grossToWithdraw = Math.min(result.gross, effectiveVestedBalance);
 
                 // Recalculate for actual amount if capped
                 const penaltyRate = currentAge < EARLY_WITHDRAWAL_AGE ? EARLY_WITHDRAWAL_PENALTY_RATE : 0;
@@ -555,13 +692,13 @@ export function planWithdrawals(
             case 'roth_ira': {
                 const result = grossUpRoth(
                     remainingNetNeeded,
-                    snapshot.rothContributions ?? 0,
+                    Math.max(0, (snapshot.rothContributions ?? 0) - acaAlreadyConsumed),
                     snapshot.conversionHistory ?? [],
                     year,
                     currentAge,
                     marginalRate
                 );
-                const grossToWithdraw = Math.min(result.gross, snapshot.vestedBalance);
+                const grossToWithdraw = Math.min(result.gross, effectiveVestedBalance);
 
                 // For simplicity, if we can't withdraw the full gross, pro-rate the components
                 const ratio = grossToWithdraw / result.gross;
@@ -607,7 +744,7 @@ export function planWithdrawals(
                 const penaltyRate = currentAge < 65 ? 0.20 : 0;
                 const effectiveRate = marginalRate + penaltyRate;
                 const gross = remainingNetNeeded / (1 - effectiveRate);
-                const grossToWithdraw = Math.min(gross, snapshot.vestedBalance);
+                const grossToWithdraw = Math.min(gross, effectiveVestedBalance);
 
                 const actualPenalty = grossToWithdraw * penaltyRate;
                 const actualTax = grossToWithdraw * marginalRate;
@@ -650,7 +787,7 @@ export function planWithdrawals(
                     // Estimate gross needed
                     const estimatedGross = Math.min(
                         remainingNetNeeded / (1 - snapshot.gainRatio * ltcgRate),
-                        snapshot.vestedBalance
+                        effectiveVestedBalance
                     );
 
                     // Walk lots in order, consuming shares until we have enough
@@ -703,6 +840,7 @@ export function planWithdrawals(
                     // ESPP ordinary income affects tax bracket
                     runningOrdinaryIncome += esppOrdinaryIncome;
 
+                    cumulativeLTCG += esppLTCG;
                     remainingNetNeeded -= netReceived;
                     totalNet += netReceived;
                     totalGross += grossToWithdraw;
@@ -722,7 +860,7 @@ export function planWithdrawals(
                 } else {
                     // Fallback: treat like brokerage if no ESPP lot data
                     const result = grossUpBrokerage(remainingNetNeeded, snapshot.gainRatio, ltcgRate);
-                    const grossToWithdraw = Math.min(result.gross, snapshot.vestedBalance);
+                    const grossToWithdraw = Math.min(result.gross, effectiveVestedBalance);
 
                     const actualLTCG = grossToWithdraw * snapshot.gainRatio;
                     const actualTax = actualLTCG * ltcgRate;
@@ -740,6 +878,7 @@ export function planWithdrawals(
                         reason,
                     };
 
+                    cumulativeLTCG += actualLTCG;
                     remainingNetNeeded -= netReceived;
                     totalNet += netReceived;
                     totalGross += grossToWithdraw;

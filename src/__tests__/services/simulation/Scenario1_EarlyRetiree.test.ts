@@ -76,13 +76,10 @@ function createScenarioExpenses() {
     return { living };
 }
 
-function createScenarioAssumptions(useNewEngine: boolean = true): AssumptionsState {
+function createScenarioAssumptions(): AssumptionsState {
     return {
         ...defaultAssumptions,
         milestones: createBuiltinMilestones(BIRTH_YEAR, 35, 95), // Retired at 35
-        simulation: {
-            useNewEngine,
-        },
         investments: {
             ...defaultAssumptions.investments,
             taxOptimizationEnabled: true,
