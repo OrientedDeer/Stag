@@ -7,7 +7,8 @@ import { AccountContext } from '../components/Objects/Accounts/AccountContext';
 import { NetWorthCard } from '../components/Charts/Networth';
 import { defaultData } from '../data/defaultData';
 import { TaxContext } from '../components/Objects/Taxes/TaxContext';
-import { AssumptionsContext } from '../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsContext, getBirthYear } from '../components/Objects/Assumptions/AssumptionsContext';
+import { WorkIncome, AnyIncome } from '../components/Objects/Income/models';
 import { TAX_DATABASE } from '../data/TaxData';
 import { calculateFederalTaxFromIncomes, calculateFicaTax, calculateStateTax } from '../components/Objects/Taxes/TaxService';
 import { CashflowSankey } from '../components/Charts/CashflowSankey';
@@ -65,14 +66,37 @@ export default function Dashboard() {
     setShowDisclaimer(false);
   };
 
-  const { incomes } = useContext(IncomeContext);
-  
-      const year = 2026;
-  
+  const { incomes: rawIncomes } = useContext(IncomeContext);
+
+      const year = new Date().getFullYear();
+      const startAge = year - getBirthYear(assumptions.milestones);
+
+      // Resolve autoMax401k on WorkIncome objects so Sankey shows IRS-limit-capped values
+      const incomes: AnyIncome[] = useMemo(() => rawIncomes.map(inc => {
+          if (inc instanceof WorkIncome && inc.autoMax401k !== 'custom') {
+              const effective = inc.getEffective401k(year, startAge);
+              if (effective.preTax !== inc.preTax401k || effective.roth !== inc.roth401k) {
+                  return new WorkIncome(
+                      inc.id, inc.name, inc.amount, inc.frequency,
+                      inc.earned_income, effective.preTax, inc.insurance,
+                      effective.roth, inc.employerMatch, inc.matchAccountId,
+                      inc.taxType, inc.contributionGrowthStrategy,
+                      inc.startDate, inc.end_date, inc.hsaContribution,
+                      inc.autoMax401k, inc.esppContributionType,
+                      inc.esppContributionAmount, inc.esppDiscountPercent,
+                      inc.esppHasLookback, inc.esppOfferingPeriodMonths,
+                      inc.esppAccountId, inc.esppExpectedStockGrowth,
+                      inc.pensionSystem, inc.startMilestoneId, inc.endMilestoneId
+                  );
+              }
+          }
+          return inc;
+      }), [rawIncomes, year, startAge]);
+
       // Calculate taxes locally to pass them in
       const fedParams = TAX_DATABASE.federal[year]?.[taxState.filingStatus];
       const stateParams = TAX_DATABASE.states[taxState.stateResidency]?.[year]?.[taxState.filingStatus];
-  
+
       let annualFedTax = fedParams ? calculateFederalTaxFromIncomes(taxState, incomes, expenses, 0, year, assumptions) : 0;
       let annualStateTax = stateParams ? calculateStateTax(taxState, incomes, expenses, year, assumptions) : 0;
       let annualFicaTax = fedParams ? calculateFicaTax(taxState, incomes, year, assumptions) : 0;
