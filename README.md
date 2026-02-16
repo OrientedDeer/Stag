@@ -81,32 +81,6 @@ npm run dev
 
 Open [http://localhost:5173](http://localhost:5173) in your browser.
 
-### Cloud Backup (Optional)
-
-Cloud backup lets you encrypt your data on-device and store it in S3. It requires setting up your own AWS resources (all free tier eligible). Without these environment variables, the app works fully offline with no network requests.
-
-1. **Create AWS resources:**
-   - **S3 bucket** — stores encrypted backup blobs
-   - **Cognito User Pool** — Google and/or GitHub OAuth sign-in
-   - **Lambda function** — generates pre-signed S3 URLs (~50 lines, see `infrastructure/lambda/index.mjs`)
-   - **API Gateway (HTTP API)** — JWT-authorized routes to Lambda
-
-2. **Set environment variables** (create a `.env` file):
-   ```
-   VITE_COGNITO_DOMAIN=your-domain.auth.us-east-2.amazoncognito.com
-   VITE_COGNITO_CLIENT_ID=your-client-id
-   VITE_CLOUD_API_ENDPOINT=https://your-api-id.execute-api.us-east-2.amazonaws.com
-   ```
-
-3. **How it works:**
-   - Sign in via Google or GitHub (OAuth PKCE, no secrets in the browser)
-   - Enter a passphrase to encrypt your data locally (AES-256-GCM with PBKDF2, 600k iterations)
-   - Encrypted blob is uploaded to S3 via pre-signed URL
-   - The server never sees your plaintext data
-   - Passphrase is used once and discarded from memory
-
-All AWS services used fall within the free tier for personal use (Cognito 50k MAU, Lambda 1M requests/month, S3 5GB, API Gateway 1M calls/month).
-
 ---
 
 ## How It Works

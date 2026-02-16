@@ -12,7 +12,8 @@ export interface BackupMetadata {
 }
 
 /**
- * Request a pre-signed PUT URL from the API, then upload the encrypted backup to S3.
+ * Request a pre-signed POST URL from the API, then upload the encrypted backup to S3.
+ * Server enforces a 5 MB content-length-range condition on the pre-signed POST.
  */
 export async function uploadBackup(
     apiEndpoint: string,
@@ -24,7 +25,18 @@ export async function uploadBackup(
     const envelope = await encrypt(plaintext, passphrase);
     const blob = JSON.stringify(envelope);
 
-    // Get pre-signed PUT URL from Lambda
+    // Enforce 5 MB size limit before uploading
+    const MAX_BACKUP_SIZE = 5 * 1024 * 1024; // 5 MB
+    const blobSize = new Blob([blob]).size;
+    if (blobSize > MAX_BACKUP_SIZE) {
+        const sizeMB = (blobSize / (1024 * 1024)).toFixed(2);
+        throw new Error(
+            `Backup size (${sizeMB} MB) exceeds the 5 MB limit. ` +
+            `Try removing unused accounts or historical data to reduce the size.`
+        );
+    }
+
+    // Get pre-signed POST URL and fields from Lambda
     const response = await fetch(`${apiEndpoint}/backup`, {
         method: 'POST',
         headers: {
@@ -38,16 +50,22 @@ export async function uploadBackup(
         throw new Error(`Failed to get upload URL: ${response.status} ${errorText}`);
     }
 
-    const { uploadUrl } = await response.json();
+    const { uploadUrl, fields } = await response.json();
 
-    // Upload encrypted blob directly to S3 via pre-signed URL
+    // Upload encrypted blob to S3 via pre-signed POST (multipart form)
+    const formData = new FormData();
+    for (const [k, v] of Object.entries(fields as Record<string, string>)) {
+        formData.append(k, v);
+    }
+    formData.append('file', new Blob([blob], { type: 'application/octet-stream' }));
+
     const uploadResponse = await fetch(uploadUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/octet-stream' },
-        body: blob,
+        method: 'POST',
+        body: formData,
     });
 
-    if (!uploadResponse.ok) {
+    // S3 pre-signed POST returns 204 on success
+    if (!uploadResponse.ok && uploadResponse.status !== 204) {
         throw new Error(`Upload failed: ${uploadResponse.status}`);
     }
 

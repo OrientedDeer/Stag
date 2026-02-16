@@ -10,12 +10,14 @@
  *   - URL_EXPIRY: Pre-signed URL expiry in seconds (default: 300)
  */
 
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 
 const s3 = new S3Client({});
 const BUCKET = process.env.BUCKET_NAME || 'stag-cloud-backups';
 const URL_EXPIRY = parseInt(process.env.URL_EXPIRY || '300', 10);
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB
 
 export const handler = async (event) => {
     const method = event.requestContext?.http?.method || event.httpMethod;
@@ -30,14 +32,21 @@ export const handler = async (event) => {
     try {
         switch (method) {
             case 'POST': {
-                // Generate pre-signed PUT URL for uploading encrypted backup
-                const command = new PutObjectCommand({
+                // Generate pre-signed POST for uploading encrypted backup.
+                // content-length-range condition ensures S3 rejects uploads over 5 MB.
+                const { url: uploadUrl, fields } = await createPresignedPost(s3, {
                     Bucket: BUCKET,
                     Key: key,
-                    ContentType: 'application/octet-stream',
+                    Conditions: [
+                        ['content-length-range', 0, MAX_UPLOAD_BYTES],
+                        ['eq', '$Content-Type', 'application/octet-stream'],
+                    ],
+                    Fields: {
+                        'Content-Type': 'application/octet-stream',
+                    },
+                    Expires: URL_EXPIRY,
                 });
-                const uploadUrl = await getSignedUrl(s3, command, { expiresIn: URL_EXPIRY });
-                return response(200, { uploadUrl });
+                return response(200, { uploadUrl, fields, maxSize: MAX_UPLOAD_BYTES });
             }
 
             case 'GET': {
