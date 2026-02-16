@@ -5,88 +5,26 @@
 These features are complete but need validation:
 
 - **ESPP Accounts** - Lot tracking, tax calculations, withdrawal preferences
+- **Tax Optimization System** ([#28](https://github.com/OrientedDeer/Stag/issues/28)) - Roth conversion planning, smart withdrawal ordering, bracket-aware execution. Tests need updating.
 
 ---
 
 ## High Priority
 
-### Tax Optimization System ([#28](https://github.com/OrientedDeer/Stag/issues/28))
+### Tax-Adjusted Net Worth Comparison
 
-A unified "Tax Optimization" toggle on the withdrawal screen that intelligently minimizes lifetime taxes while maintaining plan success rate.
-
-**Goals:**
-- Primary: Minimize lifetime taxes
-- Secondary: Maintain or improve Monte Carlo success rate (avoid the trap where tax optimization increases plan failures)
-
-**Core Algorithm:**
-
-1. **Calculate Target Traditional Balance** at RMD age (73-75)
-   - Input: Expected fixed income (SS, pensions), tax brackets, life expectancy
-   - Output: Ideal Traditional balance that keeps RMDs + income within optimal bracket
-   - Auto-calculate optimal target bracket based on lifetime tax + success rate
-
-2. **Multi-Year Roth Conversion Planning** (pre-retirement)
-   - Spread conversions over years to reach target balance (better than one large conversion)
-   - Each year: convert up to bracket headroom
-   - Prefer steady conversions over large single-year conversions
-
-3. **Smart Withdrawal Execution** (retirement)
-   - Each year: Calculate "bracket space" = Target bracket ceiling − Fixed income
-   - Fill bracket space from Traditional (or do Roth conversions if still above target)
-   - Take remaining needs from Roth (tax-free)
-   - Use brokerage strategically (prefer long-term lots, factor in short-term cost)
-
-4. **Success Rate Guard**
-   - Compare success rate with optimization ON vs OFF
-   - If success rate drops >2%: dial back aggressiveness (reduce early-year conversions, preserve liquidity)
-
-**Files to Modify:**
-
-| File | Changes |
-|------|---------|
-| `services/simulation/TaxOptimizedWithdrawal.ts` | **NEW** - Core algorithm (~400 lines) |
-| `tabs/Future/WithdrawalTab.tsx` | Add toggle, hide manual ordering when ON, show optimization summary |
-| `components/Objects/Assumptions/AssumptionsContext.tsx` | Add `taxOptimizationEnabled`, remove `rothConversionTargetBracket` |
-| `components/Objects/Assumptions/SimulationEngine.tsx` | Call smart withdrawal when enabled |
-| `services/simulation/RothConversionService.ts` | Accept conversion schedule from optimizer |
-| `services/TaxOptimizationService.ts` | Add lifetime tax calculation, strategy comparison |
-| `services/simulation/WithdrawalService.ts` | Add lot-aware brokerage logic |
-
-**Important - Inflation Handling:**
-- Respect `inflationAdjusted` toggle: when ON, inflate brackets/ceilings to future years; when OFF, use nominal values
-
-**Implementation Order:**
-1. AssumptionsContext - Add toggle
-2. TaxOptimizedWithdrawal.ts - Core algorithm (new file)
-3. SimulationEngine - Integration point
-4. WithdrawalTab UI - Toggle and summary display
-5. Lot-aware brokerage - WithdrawalService enhancement
-6. Success rate guard - Monte Carlo integration
-7. Tests - Unit and integration
-
-### Testing/Debug Tab — Remaining
-
-- Emergency Fund Tracking - Target vs actual, months of expenses
+- The headline "total balance" number doesn't tell the full story — $2M in Roth is worth more than $2M in Traditional because the Traditional money has a hidden tax liability
+- Show a tax-adjusted net worth metric that discounts Traditional/pre-tax balances by estimated future tax rate
+- Use this to demonstrate the real value of tax optimization: even if total nominal balances look similar with optimization ON vs OFF, the after-tax purchasing power can be significantly different
+- Display on the withdrawal or overview tab as a comparison (e.g., "Effective after-tax wealth: $X with optimization vs $Y without")
 
 ---
 
 ## Recently Completed
 
 - **Partial-Year Simulation** ([#26](https://github.com/OrientedDeer/Stag/issues/26)) - First simulation year scales contributions by remaining months; fixed double-counting growth bug
-- **Withdrawal Strategy: "None"** - Explicit option that skips strategy calculation and just spends listed expenses
-- **Fixed Real / Percentage Spending Caps** - These strategies now enforce their budget by trimming discretionary spending (previously informational only)
 - **Tax-Optimized Withdrawals** - Moved behind the Experimental Features toggle; auto-disabled when experimental is turned off
 - **Budget UX** - Collapsible settings sections (minimized by default), last-import date indicator, year progress color scheme update
-- **Mobile Chart X-Axis Labels** - Viewport-aware tick thinning targets ~6-8 labels on mobile vs ~10-12 on desktop across all charts
-- **Deficit Warning Banner** - Error-severity AlertBanner on OverviewTab when simulation generates uncovered deficits, showing first year and max shortfall with actionable suggestions
-- **5-Year Roth Conversion Tracking** - Proper IRS ordering rules for early Roth withdrawals: contributions first (free), then conversions FIFO (10% penalty within 5 years), then earnings (taxable + penalty)
-- **Roth vs Pre-Tax Analysis Panel** - New calculator on Tax tab with contribution/conversion modes, explicit growth years, break-even rate, and auto-optimal amount detection (experimental)
-- **Tab Visibility Restructure** - Tax, Scenarios, and Ratios tabs are now always visible; Testing tab moved behind experimental toggle
-- **Debug Tabs Expansion** - Added 5 new Testing tab groups: Withdrawals, Accounts, Income & Expenses, Cash Flow, Validation (15 new debug sections total)
-- **Roth Conversion Tax Fix** - Fixed $0 tax cost bug where conversion tax didn't account for Traditional withdrawal income in the same year
-- **Withdrawal Balance Guard** - Fixed phantom money bug where Roth conversions and expense withdrawals could overdraw the same account (now respects prior outflows)
-- **Chart Layout Stability** - Info banners on cashflow chart no longer shift the chart when appearing/disappearing
-- **ESPP Support** - Full Employee Stock Purchase Plan account tracking with lot-level detail, qualifying/disqualifying disposition tax handling, configurable withdrawal preferences
 - **Budget Tracking** - Track actual spending vs projections with CSV import, auto-categorization rules, monthly snapshots, spending trends analysis
 - **Cloud Backup with Client-Side Encryption** - Optional zero-knowledge cloud backup using AES-256-GCM encryption (Web Crypto API, no dependencies). OAuth sign-in via Google/GitHub through AWS Cognito, pre-signed S3 URLs, passphrase never stored. Unified Data Management panel in sidebar consolidates local file export/import, QR code transfer, and cloud backup
 
@@ -98,7 +36,6 @@ A unified "Tax Optimization" toggle on the withdrawal screen that intelligently 
 - RSU (Restricted Stock Unit) support — see detailed breakdown below
 - Tutorial / walkthrough for new users
   - Should wait until the app is essentially feature-complete to avoid constant updates
-- ~~Optional localStorage encryption~~ — Covered by cloud backup encryption (CryptoService exists for local encrypted export if needed)
 
 ### RSU (Restricted Stock Unit) Support
 
