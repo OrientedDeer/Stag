@@ -581,6 +581,7 @@ export default function TransactionsTab() {
                                 {selectedIds.size} selected
                             </span>
                             <select
+                                name="bulk-category"
                                 value={bulkCategory}
                                 onChange={(e) => setBulkCategory(e.target.value)}
                                 className="bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none"
@@ -640,12 +641,14 @@ export default function TransactionsTab() {
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                         <input
                             type="date"
+                            name="txn-date"
                             value={formData.date}
                             onChange={(e) => setFormData({ ...formData, date: e.target.value })}
                             className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-green-500 focus:outline-none"
                         />
                         <input
                             type="text"
+                            name="txn-description"
                             placeholder="Description"
                             value={formData.description}
                             onChange={(e) => setFormData({ ...formData, description: e.target.value })}
@@ -653,6 +656,7 @@ export default function TransactionsTab() {
                         />
                         <input
                             type="number"
+                            name="txn-amount"
                             placeholder="Amount"
                             value={formData.amount}
                             onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
@@ -710,6 +714,7 @@ export default function TransactionsTab() {
                             </div>
                             {formData.creditType === 'income' && (
                                 <select
+                                    name="txn-income-category"
                                     value={formData.incomeCategory}
                                     onChange={(e) => setFormData({ ...formData, incomeCategory: e.target.value as IncomeCategory | '' })}
                                     className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-green-500 focus:outline-none"
@@ -722,6 +727,7 @@ export default function TransactionsTab() {
                             )}
                             {formData.creditType === 'reimbursement' && (
                                 <select
+                                    name="txn-reimbursement-expense"
                                     value={formData.expenseId}
                                     onChange={(e) => setFormData({ ...formData, expenseId: e.target.value })}
                                     className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-green-500 focus:outline-none"
@@ -736,6 +742,7 @@ export default function TransactionsTab() {
                     ) : (
                         <div className="mt-4">
                             <select
+                                name="txn-expense-category"
                                 value={formData.expenseId}
                                 onChange={(e) => setFormData({ ...formData, expenseId: e.target.value })}
                                 className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-green-500 focus:outline-none"
@@ -1262,12 +1269,14 @@ function TransactionRow({
                     <div className="flex items-center gap-2 flex-wrap">
                         <input
                             type="date"
+                            name="edit-txn-date"
                             value={editDate}
                             onChange={(e) => setEditDate(e.target.value)}
                             className="w-32 bg-gray-900 border border-gray-600 rounded px-2 py-1.5 text-sm text-white focus:border-green-500 focus:outline-none"
                         />
                         <input
                             type="text"
+                            name="edit-txn-description"
                             value={editDescription}
                             onChange={(e) => setEditDescription(e.target.value)}
                             placeholder="Description"
@@ -1275,6 +1284,7 @@ function TransactionRow({
                         />
                         <input
                             type="number"
+                            name="edit-txn-amount"
                             value={editAmount}
                             onChange={(e) => setEditAmount(e.target.value)}
                             placeholder="Amount"
@@ -1298,6 +1308,7 @@ function TransactionRow({
                         {isCredit ? (
                             <>
                                 <select
+                                    name="edit-txn-credit-type"
                                     value={editCreditType}
                                     onChange={(e) => setEditCreditType(e.target.value as 'income' | 'reimbursement' | 'transfer' | 'contribution')}
                                     className="bg-gray-900 border border-gray-600 rounded px-2 py-1.5 text-sm text-white focus:border-green-500 focus:outline-none"
@@ -1309,6 +1320,7 @@ function TransactionRow({
                                 </select>
                                 {editCreditType === 'income' && (
                                     <select
+                                        name="edit-txn-income-category"
                                         value={editIncomeCategory}
                                         onChange={(e) => setEditIncomeCategory(e.target.value as IncomeCategory | '')}
                                         className="bg-gray-900 border border-gray-600 rounded px-2 py-1.5 text-sm text-white focus:border-green-500 focus:outline-none"
@@ -1321,6 +1333,7 @@ function TransactionRow({
                                 )}
                                 {editCreditType === 'reimbursement' && (
                                     <select
+                                        name="edit-txn-reimbursement-expense"
                                         value={editExpenseId}
                                         onChange={(e) => setEditExpenseId(e.target.value)}
                                         className="bg-gray-900 border border-gray-600 rounded px-2 py-1.5 text-sm text-white focus:border-green-500 focus:outline-none"
@@ -1333,6 +1346,7 @@ function TransactionRow({
                                 )}
                                 {editCreditType === 'contribution' && (
                                     <select
+                                        name="edit-txn-target-account"
                                         value={editTargetAccountId}
                                         onChange={(e) => setEditTargetAccountId(e.target.value)}
                                         className="bg-gray-900 border border-gray-600 rounded px-2 py-1.5 text-sm text-white focus:border-green-500 focus:outline-none"
@@ -1346,6 +1360,7 @@ function TransactionRow({
                             </>
                         ) : (
                             <select
+                                name="edit-txn-expense-category"
                                 value={editExpenseId}
                                 onChange={(e) => setEditExpenseId(e.target.value)}
                                 className="bg-gray-900 border border-gray-600 rounded px-2 py-1.5 text-sm text-white focus:border-green-500 focus:outline-none"

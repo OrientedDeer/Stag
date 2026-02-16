@@ -2,7 +2,6 @@ import { useContext, useMemo, useCallback } from 'react';
 import {
     DataSheetGrid,
     keyColumn,
-    textColumn,
 } from 'react-datasheet-grid';
 import 'react-datasheet-grid/dist/style.css';
 import { BudgetContext, Transaction } from '../../components/Objects/Budget/BudgetContext';
@@ -20,7 +19,7 @@ import {
     formatCurrency,
 } from '../../components/Objects/Budget/budgetUtils';
 import { useAutoReconcile } from '../../hooks/useAutoReconcile';
-import { currencyColumn } from '../../components/Layout/DataSheetColumns';
+import { currencyColumn, readOnlyTextColumn } from '../../components/Layout/DataSheetColumns';
 
 interface SpendingRow {
     id: string;
@@ -273,7 +272,7 @@ export default function SpendingTab() {
     // Define columns - use keyColumn and cast to avoid type issues with nullable fields
     const columns = useMemo(() => [
         {
-            ...keyColumn('category', textColumn),
+            ...keyColumn('category', readOnlyTextColumn),
             title: 'Category',
             disabled: true,
             minWidth: 150,

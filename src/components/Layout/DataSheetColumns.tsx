@@ -1,4 +1,15 @@
-import { floatColumn } from 'react-datasheet-grid';
+import { floatColumn, textColumn } from 'react-datasheet-grid';
+
+/**
+ * Read-only text column that renders a span instead of an input,
+ * avoiding browser warnings about form fields missing id/name attributes.
+ */
+export const readOnlyTextColumn = {
+    ...textColumn,
+    component: function ReadOnlyTextCell({ rowData }: { rowData: string | null }) {
+        return <span className="dsg-input">{rowData ?? ''}</span>;
+    },
+};
 
 /**
  * Custom currency column for react-datasheet-grid that always shows 2 decimal places.

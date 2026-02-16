@@ -117,6 +117,7 @@ export default function SettingsTab() {
                                 <label className="block text-xs text-gray-400 mb-1">Pattern</label>
                                 <input
                                     type="text"
+                                    name="rule-pattern"
                                     placeholder="e.g., AMAZON, NETFLIX"
                                     value={formData.pattern}
                                     onChange={(e) => setFormData({ ...formData, pattern: e.target.value })}
@@ -126,6 +127,7 @@ export default function SettingsTab() {
                             <div>
                                 <label className="block text-xs text-gray-400 mb-1">Category</label>
                                 <select
+                                    name="rule-category"
                                     value={formData.expenseId}
                                     onChange={(e) => setFormData({ ...formData, expenseId: e.target.value })}
                                     className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-green-500 focus:outline-none"
@@ -345,11 +347,13 @@ function EditRuleForm({
         <div className="flex-1 flex items-center gap-3">
             <input
                 type="text"
+                name="edit-rule-pattern"
                 value={pattern}
                 onChange={(e) => setPattern(e.target.value)}
                 className="flex-1 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white text-sm focus:border-green-500 focus:outline-none"
             />
             <select
+                name="edit-rule-category"
                 value={expenseId}
                 onChange={(e) => setExpenseId(e.target.value)}
                 className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white text-sm focus:border-green-500 focus:outline-none"

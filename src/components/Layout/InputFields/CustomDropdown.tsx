@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { Listbox, Portal } from '@headlessui/react';
 import { InputGroup } from './StyleUI';
 
@@ -57,7 +57,8 @@ export const CustomDropdown: React.FC<CustomDropdownProps> = ({
     const selectedOption = normalizedOptions.find(opt => opt.value === value);
 
     // Generate a stable id for accessibility
-    const buttonId = id || `dropdown-${label.toLowerCase().replace(/\s+/g, '-')}`;
+    const reactId = useId();
+    const buttonId = id || label.toLowerCase().replace(/\s+/g, '-') || reactId;
 
     // Update dropdown position when opening
     const updatePosition = () => {

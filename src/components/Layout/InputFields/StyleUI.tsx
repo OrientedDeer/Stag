@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId } from 'react';
 import { Tooltip } from './Tooltip';
 
 interface InputGroupProps {
@@ -13,10 +13,12 @@ interface InputGroupProps {
 export const InputGroup: React.FC<InputGroupProps> = ({ label, children, className = '', id, error, tooltip }) => (
   <div className="flex flex-col">
     <div className={`bg-gray-900 border rounded-md px-3 py-2 flex flex-col justify-center focus-within:ring-1 transition-all ${error ? 'border-red-500 focus-within:ring-red-400' : 'border-gray-700 focus-within:ring-green-300'} ${className}`}>
-      <label htmlFor={id} className="text-xs sm:text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide leading-tight flex items-center gap-1.5" title={label}>
-        {label}
-        {tooltip && <Tooltip text={tooltip} />}
-      </label>
+      {label && (
+        <label htmlFor={id} className="text-xs sm:text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide leading-tight flex items-center gap-1.5" title={label}>
+          {label}
+          {tooltip && <Tooltip text={tooltip} />}
+        </label>
+      )}
       {children}
     </div>
     {error && <span className="text-red-400 text-xs mt-1">{error}</span>}
@@ -44,7 +46,8 @@ interface StyledInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
 }
 
 export const StyledInput: React.FC<StyledInputProps> = ({ label, id: providedId, className = '', error, tooltip, ...props }) => {
-  const id = providedId || label.toLowerCase().replace(/\s/g, '-');
+  const reactId = useId();
+  const id = providedId || label.toLowerCase().replace(/\s/g, '-') || reactId;
   return (
     <InputGroup label={label} className={className} id={id} error={error} tooltip={tooltip}>
       <input
@@ -64,7 +67,8 @@ interface StyledSelectProps extends React.SelectHTMLAttributes<HTMLSelectElement
 }
 
 export const StyledSelect: React.FC<StyledSelectProps> = ({ label, options, id: providedId, tooltip, ...props }) => {
-  const id = providedId || label.toLowerCase().replace(/\s/g, '-');
+  const reactId = useId();
+  const id = providedId || label.toLowerCase().replace(/\s/g, '-') || reactId;
   return (
     <InputGroup label={label} id={id} tooltip={tooltip}>
       <select

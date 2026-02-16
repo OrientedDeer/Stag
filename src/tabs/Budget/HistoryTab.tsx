@@ -2,7 +2,6 @@ import { useContext, useMemo } from 'react';
 import {
     DataSheetGrid,
     keyColumn,
-    textColumn,
 } from 'react-datasheet-grid';
 import 'react-datasheet-grid/dist/style.css';
 import { BudgetContext } from '../../components/Objects/Budget/BudgetContext';
@@ -12,7 +11,7 @@ import {
     formatCurrency,
     getExpenseMonthlyBudget,
 } from '../../components/Objects/Budget/budgetUtils';
-import { currencyColumn } from '../../components/Layout/DataSheetColumns';
+import { currencyColumn, readOnlyTextColumn } from '../../components/Layout/DataSheetColumns';
 
 interface HistoryRow {
     month: string;
@@ -89,7 +88,7 @@ export default function HistoryTab() {
     const columns = useMemo(() => {
         const cols = [
             {
-                ...keyColumn('month', textColumn),
+                ...keyColumn('month', readOnlyTextColumn),
                 title: 'Month',
                 disabled: true,
                 minWidth: 60,

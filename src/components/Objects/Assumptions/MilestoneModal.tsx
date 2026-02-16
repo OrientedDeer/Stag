@@ -28,13 +28,19 @@ const CONDITION_TYPE_OPTIONS: { value: MilestoneConditionType; label: string }[]
     { value: 'AGE', label: 'Age' },
 ];
 
-const OPERATOR_OPTIONS: { value: MilestoneOperator; label: string }[] = [
+const ALL_OPERATOR_OPTIONS: { value: MilestoneOperator; label: string }[] = [
     { value: '>=', label: '>=' },
     { value: '<=', label: '<=' },
     { value: '>', label: '>' },
     { value: '<', label: '<' },
     { value: '=', label: '=' },
 ];
+
+// Exact match ('=') is hidden for monetary conditions — hitting an exact dollar amount is near-impossible
+const getOperatorOptions = (type: MilestoneConditionType) =>
+    (type === 'NET_WORTH' || type === 'LIQUID_NET_WORTH' || type === 'TOTAL_DEBT')
+        ? ALL_OPERATOR_OPTIONS.filter(o => o.value !== '=')
+        : ALL_OPERATOR_OPTIONS;
 
 const VALUE_TYPE_OPTIONS: { value: MilestoneValueType; label: string }[] = [
     { value: 'FIXED', label: 'Fixed' },
@@ -331,13 +337,20 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose }) => {
                                                         label=""
                                                         value={condition.type}
                                                         options={CONDITION_TYPE_OPTIONS}
-                                                        onChange={(val) => updateCondition(index, 'type', val as MilestoneConditionType)}
+                                                        onChange={(val) => {
+                                                            updateCondition(index, 'type', val as MilestoneConditionType);
+                                                            // Auto-correct '=' to '>=' when switching to monetary type
+                                                            const isMon = val === 'NET_WORTH' || val === 'LIQUID_NET_WORTH' || val === 'TOTAL_DEBT';
+                                                            if (isMon && condition.operator === '=') {
+                                                                updateCondition(index, 'operator', '>=');
+                                                            }
+                                                        }}
                                                     />
                                                     {/* Operator */}
                                                     <DropdownInput
                                                         label=""
                                                         value={condition.operator}
-                                                        options={OPERATOR_OPTIONS}
+                                                        options={getOperatorOptions(condition.type)}
                                                         onChange={(val) => updateCondition(index, 'operator', val as MilestoneOperator)}
                                                     />
                                                     {/* Value */}
