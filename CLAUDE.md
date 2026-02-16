@@ -79,6 +79,10 @@ Nivo charts (`@nivo/sankey`, `@nivo/line`, `@nivo/stream`, etc.) are used throug
 - **No console.log**: Remove debug logs before committing
 - **Styled inputs**: Use components from `src/components/Layout/InputFields/` (ToggleInput, DropdownInput, CurrencyInput, NumberInput, NameInput)
 
+## Output Formatting
+
+- **No markdown tables**: Don't use markdown table syntax (`|`, `---`) when presenting data. Use simple `name: value` lists instead — they're easier to copy/paste and read in a terminal.
+
 ## Alert/Message Styles
 
 - **Info (blue):** `bg-blue-900/20 border border-blue-700/50 rounded-lg` with `text-blue-400`

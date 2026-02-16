@@ -322,7 +322,17 @@ function planConversion(
     );
 
     // Calculate dynamic ceiling first (needed for target balance calculation)
-    const growthRate = (input.assumptions.investments.returnRates.ror / 100) || DEFAULT_GROWTH_RATE;
+    // Use net growth rate (RoR minus expense ratio) since we're projecting actual balance growth
+    const grossRoR = input.assumptions.investments.returnRates.ror || (DEFAULT_GROWTH_RATE * 100);
+    const tradAccounts = input.accounts.filter(a =>
+        a instanceof InvestedAccount &&
+        (a.taxType === 'Traditional 401k' || a.taxType === 'Traditional IRA')
+    ) as InvestedAccount[];
+    const totalTradBalance = tradAccounts.reduce((sum, a) => sum + a.vestedAmount, 0);
+    const weightedER = totalTradBalance > 0
+        ? tradAccounts.reduce((sum, a) => sum + a.expenseRatio * a.vestedAmount, 0) / totalTradBalance
+        : 0;
+    const growthRate = (grossRoR - weightedER) / 100;
 
     // Use ACA options if enabled
     let acaOptions: ACAOptions | undefined;
@@ -335,6 +345,8 @@ function planConversion(
             estimatedSubsidyLoss: 12000, // Conservative estimate
         };
     }
+
+    const configTargetBracket = input.assumptions.investments.rothConversionTargetBracket ?? 0.12;
 
     const ceilingResult = calculateDynamicConversionCeiling(
         traditionalBalance,
@@ -350,7 +362,9 @@ function planConversion(
         fedParams,
         input.taxState,
         stateParams,
-        acaOptions
+        acaOptions,
+        undefined, // baselineProjections
+        configTargetBracket
     );
 
     // Use idealTargetBalance from the ceiling calculation (new three-tier system)
@@ -778,25 +792,10 @@ function planConversion(
     } else if (brokerageBalance >= conversionTax) {
         taxSource = 'BROKERAGE';
     } else {
-        // Default: allow withholding from conversion
+        // No surplus or brokerage to pay tax — tax is covered by the
+        // spending deficit (which already includes conversion tax via
+        // finalFedResult.totalTax). Full conversion amount reaches Roth.
         taxSource = 'WITHHOLD';
-        // Withhold tax from conversion
-        netToRoth = conversionAmount - conversionTax;
-        if (netToRoth <= 0) {
-            decisions.push({
-                category: 'conversion',
-                description: 'Skipped Roth conversion: withholding would leave nothing for Roth.',
-            });
-            return {
-                conversion: null,
-                conversionTax: 0,
-                taxSource: 'SURPLUS',
-                additionalOrdinaryIncome: 0,
-                decisions,
-                bracketSpaceForSpending,
-                taxOptimizationTarget,
-            };
-        }
     }
 
     // Find source and target accounts
@@ -1024,17 +1023,30 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     );
 
     // Step C: Calculate ordinary tax (with conversion)
-    const allOrdinaryIncome = baseOrdinaryIncome + conversionPlan.additionalOrdinaryIncome;
+    //
+    // Income views for tax computation:
+    //   nonSSBaseIncome: all income EXCLUDING Social Security (stable base for iteration)
+    //   allOrdinaryIncome: nonSS + conversion (used for state tax and planner — excludes SS)
+    //   currentSSTaxable: taxable portion of SS, computed externally with Trad withdrawal
+    //                     in combined income. Added to allOrdinaryIncome for federal tax only.
+    //
+    // Why separate? DC (and most states) exempts SS from state tax. The planner also needs
+    // the state starting position without SS. Federal tax needs SS taxable in the income base.
+    const nonSSBaseIncome = taxableBase - socialSecurityBenefits;
+    const conversionAdded = conversionPlan.additionalOrdinaryIncome;
 
-    // Recalculate SS taxability with conversion (used internally by calculateTotalFederalTax)
-    // Note: This value is calculated for debugging/logging purposes
-    const _taxableSSWithConversion = TaxService.getTaxableSocialSecurityBenefits(
+    // Initial SS taxable estimate (no Traditional withdrawal yet)
+    let currentSSTaxable = TaxService.getTaxableSocialSecurityBenefits(
         socialSecurityBenefits,
-        allOrdinaryIncome - socialSecurityBenefits, // non-SS income
+        nonSSBaseIncome + conversionAdded,
         0,
         input.taxState.filingStatus
     );
-    void _taxableSSWithConversion; // Suppress unused warning
+
+    // allOrdinaryIncome: includes taxable SS. Used for federal tax and planner's federal bracket
+    // positioning. For state tax (and planner's state brackets), currentSSTaxable is excluded
+    // since DC and most states exempt SS from income tax.
+    let allOrdinaryIncome = nonSSBaseIncome + currentSSTaxable + conversionAdded;
 
     // Calculate FICA (only on wages)
     const ficaTax = TaxService.calculateFicaTax(
@@ -1050,48 +1062,23 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     // Start with conservative estimate (no LTCG tax yet)
     const preTaxDeductions = TaxService.getPreTaxExemptions(input.incomes, input.year, input.currentAge, true);
 
-    const ordinaryTaxResult = TaxService.calculateTotalFederalTax(
-        allOrdinaryIncome - socialSecurityBenefits, // non-SS ordinary income
-        socialSecurityBenefits,
-        0, // STCG
-        0, // LTCG - not known yet
-        preTaxDeductions,
-        input.taxState.filingStatus,
-        fedParams
-    );
+    // Step D+E: Iterative LTCG-aware deficit and withdrawal planning
+    //
+    // We use calculateTotalFederalTax() with bracket-stacked LTCG as the authoritative
+    // tax source. The planner's flat-rate gross-up is kept as-is for withdrawal sizing.
+    // We iterate because:
+    //   - Total tax (including LTCG) affects the deficit
+    //   - LTCG depends on withdrawal amount (which depends on deficit)
+    //   - Converges in 2-3 iterations since LTCG tax is a fraction of total withdrawal
 
-    const stateTax = stateParams
-        ? TaxService.calculateTax(allOrdinaryIncome, preTaxDeductions, stateParams)
-        : 0;
-
-    // Ordinary tax is FIXED - includes income tax on wages, SS, pensions, conversions, Traditional withdrawals
-    // This does NOT include LTCG tax - that's computed separately from withdrawal results
-    const ordinaryTax = ordinaryTaxResult.totalTax + stateTax;
-
-    // Base deficit = expenses + ordinaryTax + FICA - spendable income - RMD
-    // CRITICAL: LTCG tax is NEVER included here - the algebraic gross-up handles it
-    // Note: Use effectiveLivingExpenses which accounts for GK budget constraints
-    // Note: ordinaryTax already includes conversion tax (via allOrdinaryIncome), so no
-    // separate adjustment is needed for taxSource='BROKERAGE'. The taxSource flag is
-    // purely bookkeeping - it indicates where the tax payment comes from, not that we
-    // need additional withdrawal.
-    const baseDeficit =
-        effectiveLivingExpenses +
-        ordinaryTax +
-        ficaTax -
-        incomeClassification.classified.spendable -
-        input.rmdAmount;
-
-    // Step E: Plan withdrawals (if deficit > 0)
     let withdrawals: PlannedWithdrawal[] = [];
-    let ltcgTax = 0; // Capital gains tax from brokerage/ESPP withdrawals
-    let withdrawalOrdinaryTax = 0; // Ordinary income tax from Roth earnings (5-year rule), Traditional, HSA non-medical
+    let withdrawalOrdinaryTax = 0;
     let withdrawalDecisions: DecisionLogEntry[] = [];
     let totalPenalties = 0;
-    let iterations = 1;
+    let iterations = 0;
     let converged = true;
 
-        if (input.rmdAmount > 0) {
+    if (input.rmdAmount > 0) {
         // Find Traditional accounts for RMD source
         const tradAccount = getFirstTraditionalAccount(input.accounts);
         if (tradAccount) {
@@ -1115,73 +1102,144 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
         }
     }
 
-    if (baseDeficit > 0) {
-        // Create account snapshots in withdrawal order
-        let accountSnapshots;
+    // Create account snapshots in withdrawal order (before the loop - these don't change)
+    let accountSnapshots = createOrderedSnapshots(
+        input.accounts, input.withdrawalOrder, input.currentAge, input.year
+    );
 
-        if (conversionPlan.bracketSpaceForSpending > 0) {
-            // Tax-optimized order: put capped Traditional first, then normal order
-            const allSnapshots = createOrderedSnapshots(
-                input.accounts, input.withdrawalOrder, input.currentAge, input.year
-            );
+    if (conversionPlan.bracketSpaceForSpending > 0) {
+        // Tax-optimized order: put capped Traditional first, then normal order
+        const allSnapshots = accountSnapshots;
+        const tradSnapshots: typeof allSnapshots = [];
+        const otherSnapshots: typeof allSnapshots = [];
+        let remainingCap = conversionPlan.bracketSpaceForSpending;
 
-            const tradSnapshots: typeof allSnapshots = [];
-            const otherSnapshots: typeof allSnapshots = [];
-            let remainingCap = conversionPlan.bracketSpaceForSpending;
-
-            for (const s of allSnapshots) {
-                if ((s.accountType === 'traditional_401k' || s.accountType === 'traditional_ira')
-                    && remainingCap > 0) {
-                    const capped = Math.min(s.vestedBalance, remainingCap);
-                    tradSnapshots.push({ ...s, vestedBalance: capped });
-                    remainingCap -= capped;
-                    // Add remaining balance back to normal order
-                    const remainder = s.vestedBalance - capped;
-                    if (remainder > 0) {
-                        otherSnapshots.push({ ...s, vestedBalance: remainder });
-                    }
-                } else {
-                    otherSnapshots.push(s);
+        for (const s of allSnapshots) {
+            if ((s.accountType === 'traditional_401k' || s.accountType === 'traditional_ira')
+                && remainingCap > 0) {
+                const capped = Math.min(s.vestedBalance, remainingCap);
+                tradSnapshots.push({ ...s, vestedBalance: capped });
+                remainingCap -= capped;
+                const remainder = s.vestedBalance - capped;
+                if (remainder > 0) {
+                    otherSnapshots.push({ ...s, vestedBalance: remainder });
                 }
+            } else {
+                otherSnapshots.push(s);
             }
-
-            accountSnapshots = [...tradSnapshots, ...otherSnapshots];
-
-            decisions.push({
-                category: 'withdrawal',
-                description: `Tax-optimized order: Traditional first ` +
-                    `(cap $${Math.round(conversionPlan.bracketSpaceForSpending).toLocaleString()}) ` +
-                    `then normal order.`,
-            });
-        } else {
-            accountSnapshots = createOrderedSnapshots(
-                input.accounts, input.withdrawalOrder, input.currentAge, input.year
-            );
         }
 
-        // Plan withdrawals - algebraic gross-up handles LTCG tax calculation in 1 pass
-        // No iteration loop needed: the formula gross = baseDeficit / (1 - gainRatio × ltcgRate)
-        // correctly computes the withdrawal amount including LTCG tax in a single calculation.
-        // The LTCG rate is determined by ordinary income (wages, SS, pensions, conversions, RMD)
-        // which is fixed before withdrawal planning begins.
+        accountSnapshots = [...tradSnapshots, ...otherSnapshots];
 
-        // Pass ACA options so brokerage withdrawals can be capped when LTCG would breach the cliff,
-        // substituting tax-free Roth withdrawals instead.
-        const acaWithdrawalOpts = input.acaAware && input.currentAge < 65
-            ? {
-                acaCliffThreshold: getAcaCliffThreshold(
-                    input.taxState.filingStatus === 'Married Filing Jointly' ? 'married_filing_jointly' : 'single',
-                    input.year
-                ),
-                // ACA MAGI = all gross income including 100% of SS benefits.
-                // taxableBase (= spendable + reinvested) already includes full SS,
-                // so we just add conversion income on top.
-                currentMAGI: taxableBase + conversionPlan.additionalOrdinaryIncome,
-            }
-            : undefined;
+        decisions.push({
+            category: 'withdrawal',
+            description: `Tax-optimized order: Traditional first ` +
+                `(cap $${Math.round(conversionPlan.bracketSpaceForSpending).toLocaleString()}) ` +
+                `then normal order.`,
+        });
+    }
 
+    // ACA withdrawal options (computed once, used in each iteration)
+    const acaWithdrawalOpts = input.acaAware && input.currentAge < 65
+        ? {
+            acaCliffThreshold: getAcaCliffThreshold(
+                input.taxState.filingStatus === 'Married Filing Jointly' ? 'married_filing_jointly' : 'single',
+                input.year
+            ),
+            // ACA MAGI = all gross income including 100% of SS benefits.
+            // taxableBase (= spendable + reinvested) already includes full SS,
+            // so we just add conversion income on top.
+            currentMAGI: taxableBase + conversionPlan.additionalOrdinaryIncome,
+        }
+        : undefined;
+
+    // Iterative deficit loop: converges on LTCG and SS taxability.
+    //
+    // Two circular dependencies resolved by iteration:
+    //   1. LTCG depends on withdrawal → withdrawal depends on deficit → deficit depends on LTCG tax
+    //   2. SS taxable depends on combined income (includes Traditional withdrawal) →
+    //      fed tax depends on SS taxable → deficit depends on fed → withdrawal depends on deficit
+    //
+    // Architecture: calculateTotalFederalTax() computes SS taxable internally from provisional
+    // income. But its ordinaryTax covers ALL income passed in (including Traditional withdrawal),
+    // while withdrawalOrdinaryTax from the planner separately covers the withdrawal tax.
+    // To avoid double-counting, we compute SS taxable EXTERNALLY (with Traditional withdrawal
+    // in combined income) and pass SS=0 to calculateTotalFederalTax(), with the pre-computed
+    // taxable SS baked into allOrdinaryIncome. This way the function computes tax only on
+    // base income + taxable SS, and the planner handles withdrawal tax separately.
+    //
+    // Convergence: SS taxable is piecewise-linear and monotonic, so 2-4 iterations.
+    let estimatedLTCG = 0;
+    let estimatedTradWithdrawal = 0;
+
+    // Initial federal tax: SS taxable computed without Traditional withdrawal
+    // Pass allOrdinaryIncome (which includes taxable SS) with SS=0 to skip internal SS calc
+    let finalFedResult = TaxService.calculateTotalFederalTax(
+        allOrdinaryIncome, // nonSS + taxableSS + conversion (SS pre-computed externally)
+        0, // SS=0: taxable SS already in allOrdinaryIncome
+        0, // STCG
+        0, // LTCG - not known yet
+        preTaxDeductions,
+        input.taxState.filingStatus,
+        fedParams
+    );
+    // State tax: exclude SS taxable (DC and most states exempt SS from income tax)
+    // State tax on the Traditional withdrawal is in withdrawalOrdinaryTax from the planner.
+    let finalStateTax = stateParams
+        ? TaxService.calculateTax(allOrdinaryIncome - currentSSTaxable, preTaxDeductions, stateParams)
+        : 0;
+
+    const MAX_ITERATIONS = 10;
+    for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
+        if (iter > 0) {
+            // Recompute SS taxable with Traditional withdrawal in combined income.
+            // IRS combined income = AGI excluding SS + 50% × SS.
+            // AGI excluding SS includes: base income + conversion + Trad withdrawal + LTCG.
+            const updatedSSTaxable = TaxService.getTaxableSocialSecurityBenefits(
+                socialSecurityBenefits,
+                nonSSBaseIncome + conversionAdded + estimatedTradWithdrawal + estimatedLTCG,
+                0,
+                input.taxState.filingStatus
+            );
+
+            // Update SS taxable and allOrdinaryIncome
+            currentSSTaxable = updatedSSTaxable;
+            allOrdinaryIncome = nonSSBaseIncome + currentSSTaxable + conversionAdded;
+
+            // Federal tax: allOrdinaryIncome includes taxable SS, pass SS=0
+            finalFedResult = TaxService.calculateTotalFederalTax(
+                allOrdinaryIncome,
+                0, // SS=0: taxable SS already in allOrdinaryIncome
+                0, // STCG
+                estimatedLTCG,
+                preTaxDeductions,
+                input.taxState.filingStatus,
+                fedParams
+            );
+
+            // State tax: exclude SS taxable (DC and most states exempt SS)
+            // Include LTCG in base (DC and most states tax gains as ordinary income)
+            finalStateTax = stateParams
+                ? TaxService.calculateTax(allOrdinaryIncome - currentSSTaxable + estimatedLTCG, preTaxDeductions, stateParams)
+                : 0;
+        }
+
+        // Deficit includes authoritative LTCG tax (via finalFedResult.totalTax)
+        const deficit =
+            effectiveLivingExpenses +
+            finalFedResult.totalTax +
+            finalStateTax +
+            ficaTax -
+            incomeClassification.classified.spendable -
+            input.rmdAmount;
+
+        if (deficit <= 0) break;
+
+        // Plan withdrawals - planner uses allOrdinaryIncome as starting income position
+        // Pass currentSSTaxable as stateExemptIncome so the planner excludes it from
+        // state bracket positioning (DC and most states exempt SS from income tax)
         const withdrawalResult = planWithdrawals(
-            baseDeficit,
+            deficit,
             accountSnapshots,
             input.currentAge,
             input.year,
@@ -1189,39 +1247,55 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
             allOrdinaryIncome,
             input.assumptions,
             'Spending deficit',
-            acaWithdrawalOpts
+            acaWithdrawalOpts,
+            currentSSTaxable
         );
 
+        // Update tracking variables from this iteration
         withdrawals = [
             ...withdrawals.filter(w => w.reason === 'Required Minimum Distribution'), // Keep RMD
             ...withdrawalResult.withdrawals,
         ];
-        // Split withdrawal taxes by source:
-        // - Capital gains tax: from brokerage/ESPP withdrawals (have w.capitalGains)
-        // - Ordinary tax: from Roth earnings (5-year rule), Traditional, HSA non-medical (no w.capitalGains)
-        ltcgTax = withdrawalResult.withdrawals
-            .filter(w => w.capitalGains !== undefined)
-            .reduce((sum, w) => sum + w.tax, 0);
         withdrawalOrdinaryTax = withdrawalResult.withdrawals
             .filter(w => w.capitalGains === undefined)
             .reduce((sum, w) => sum + w.tax, 0);
         totalPenalties = withdrawalResult.totalPenalties;
         withdrawalDecisions = withdrawalResult.decisions;
-        iterations = 1; // Always 1 with algebraic gross-up
-        converged = true;
+        iterations = iter + 1;
 
-        decisions.push(...withdrawalDecisions);
+
+        // Extract Traditional spending withdrawal (exclude RMDs — already in nonSSBaseIncome)
+        const newTradWithdrawal = withdrawalResult.withdrawals
+            .filter(w => w.source === 'traditional_401k' || w.source === 'traditional_ira')
+            .reduce((sum, w) => sum + w.gross, 0);
+
+        // Check convergence: both LTCG and Traditional withdrawal (which drives SS taxable) must stabilize
+        const newLTCG = withdrawalResult.totalLTCG;
+        const ltcgDelta = Math.abs(newLTCG - estimatedLTCG);
+        const tradDelta = Math.abs(newTradWithdrawal - estimatedTradWithdrawal);
+        estimatedLTCG = newLTCG;
+        estimatedTradWithdrawal = newTradWithdrawal;
+
+        if (ltcgDelta < 1 && tradDelta < 1) {
+            converged = true;
+            break;
+        }
     }
 
-    // Step G: Calculate final surplus
+    // DO NOT recompute tax after the loop with plan.totalLTCG.
+    // The withdrawal was sized for the deficit computed from finalFedResult/finalStateTax.
+    // Recomputing with the planner's actual LTCG (which differs by up to the convergence
+    // threshold from estimatedLTCG) would create a mismatch between reported taxes and
+    // withdrawal amount, causing Sankey balance leaks.
+
+    decisions.push(...withdrawalDecisions);
+
+    // Step F: Calculate final surplus using authoritative tax values
     const totalGrossWithdrawals = withdrawals.reduce((sum, w) => sum + w.gross, 0);
 
-    // Total tax = ordinary tax + LTCG tax + withdrawal ordinary tax + FICA + penalties
-    // ordinaryTax covers income tax on wages, SS, pensions, conversions
-    // ltcgTax covers capital gains from brokerage withdrawals (computed by algebraic gross-up)
-    // withdrawalOrdinaryTax covers tax on Roth earnings (5-year rule), Traditional, HSA non-medical
-    // All of these consume cash from grossWithdrawals and must be in cashOut for surplus to be correct.
-    const totalTax = ordinaryTax + ltcgTax + withdrawalOrdinaryTax + ficaTax + totalPenalties;
+    // Total tax uses authoritative federal (ordinary + LTCG + NIIT) + state (with LTCG)
+    // + withdrawal ordinary tax (Roth 5-year, Traditional, HSA) + FICA + penalties
+    const totalTax = finalFedResult.totalTax + finalStateTax + withdrawalOrdinaryTax + ficaTax + totalPenalties;
 
     // Final cash flow
     const cashIn =
@@ -1233,7 +1307,8 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
         totalTax;
 
     const surplus = Math.max(0, cashIn - cashOut);
-    const unfundedDeficit = Math.max(0, cashOut - cashIn);
+    const rawDeficit = cashOut - cashIn;
+    const unfundedDeficit = rawDeficit < 0.01 ? 0 : rawDeficit;
 
     if (unfundedDeficit > 0) {
         decisions.push({
@@ -1243,29 +1318,32 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
         });
     }
 
-    // Build tax summary
-    // ordinaryTax = federal ordinary + state ordinary (calculated once, never includes LTCG)
-    // ltcgTax = LTCG tax from brokerage/ESPP withdrawals (capital gains)
-    // withdrawalOrdinaryTax = tax from Roth earnings (5-year rule), Traditional withdrawals, HSA non-medical
-    const stateTaxAmount = stateParams ? TaxService.calculateTax(allOrdinaryIncome, preTaxDeductions, stateParams) : 0;
+    // Build tax summary with authoritative values
+    // federal: ordinaryTax only (LTCG and NIIT are separate line items)
+    // state: includes LTCG in income base (DC and most states tax gains as ordinary)
+    // capitalGainsLT: authoritative bracket-stacked LTCG tax from calculateTotalFederalTax
+    // niit: from calculateTotalFederalTax (3.8% on investment income above threshold)
     const taxSummary: YearPlanTax = {
-        federal: ordinaryTax - stateTaxAmount,
-        state: stateTaxAmount,
+        federal: finalFedResult.ordinaryTax,
+        state: finalStateTax,
         fica: ficaTax,
-        capitalGainsLT: ltcgTax, // Capital gains tax from brokerage/ESPP withdrawals
+        capitalGainsLT: finalFedResult.ltcgTax,
         capitalGainsST: 0,
-        withdrawalOrdinaryTax, // Tax from Roth earnings (5-year rule), Traditional, HSA non-medical
-        niit: 0, // Would need to calculate separately
+        withdrawalOrdinaryTax,
+        niit: finalFedResult.niitTax,
         penalties: totalPenalties,
         total: totalTax,
     };
 
     // Step G: Allocate surplus (if any)
     let surplusAllocations: YearPlan['surplusAllocations'] = [];
+    let surplusDeficitDebtPayment = 0;
     if (surplus > 0) {
         const priorityBuckets = (input.assumptions.priorities || []).map((p, idx) => ({
             accountId: p.accountId || '',
             priority: idx,
+            capType: p.capType,
+            capValue: p.capValue,
         })).filter(p => p.accountId);
 
         const earnedIncome = TaxService.getEarnedIncome(input.incomes, input.year);
@@ -1274,6 +1352,7 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
             rothIRAContributionEnabled: true,
             rothIRALimit: getIRALimit(input.year, input.currentAge, input.assumptions.macro.inflationAdjusted),
             rothIRAContributedThisYear: 0,
+            monthlyExpenses: effectiveLivingExpenses / 12,
         };
 
         const surplusResult = allocateSurplus(
@@ -1285,6 +1364,7 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
         );
 
         surplusAllocations = surplusResult.allocations;
+        surplusDeficitDebtPayment = surplusResult.deficitDebtPayment;
         decisions.push(...surplusResult.decisions);
     }
 
@@ -1296,6 +1376,7 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
         conversion: conversionPlan.conversion,
         contributions: [], // No contributions in retirement
         surplusAllocations,
+        deficitDebtPayment: surplusDeficitDebtPayment,
         tax: taxSummary,
         surplus,
         unfundedDeficit,
@@ -1309,7 +1390,7 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
 }
 
 /**
- * Solve a working year (simpler - no withdrawals/conversions).
+ * Solve a working year (no conversions, but withdrawals occur if income < expenses).
  */
 export function solveWorkingYear(input: YearSolverInput): YearPlan {
     const decisions: DecisionLogEntry[] = [];
@@ -1377,34 +1458,86 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
 
     const totalTax = taxResult.totalTax + stateTax + ficaTax;
 
-    // Calculate surplus/deficit
+    // Calculate initial surplus/deficit
     // IMPORTANT: Must subtract pre-tax deductions (401k, HSA) and post-tax deductions
     // (Roth 401k, after-tax contributions) from cashIn because they reduce spendable
     // cash even though they may reduce taxes or be after-tax.
     // Note: spendable already excludes reinvested income (handled by classifyIncome).
-    const cashIn = incomeClassification.classified.spendable - preTaxDeductions - postTaxDeductions;
-    const cashOut = input.totalLivingExpenses + totalTax;
-    const surplus = Math.max(0, cashIn - cashOut);
-    const unfundedDeficit = Math.max(0, cashOut - cashIn);
+    const incomeCashIn = incomeClassification.classified.spendable - preTaxDeductions - postTaxDeductions;
+    const incomeCashOut = input.totalLivingExpenses + totalTax;
+    const initialDeficit = Math.max(0, incomeCashOut - incomeCashIn);
+
+    // Plan withdrawals if income doesn't cover expenses
+    let withdrawals: PlannedWithdrawal[] = [];
+    let ltcgTax = 0;
+    let withdrawalOrdinaryTax = 0;
+    let totalPenalties = 0;
+
+    if (initialDeficit > 0) {
+        const accountSnapshots = createOrderedSnapshots(
+            input.accounts, input.withdrawalOrder, input.currentAge, input.year
+        );
+
+        const withdrawalResult = planWithdrawals(
+            initialDeficit,
+            accountSnapshots,
+            input.currentAge,
+            input.year,
+            input.taxState,
+            taxableOrdinaryBase, // ordinary income for LTCG bracket determination
+            input.assumptions,
+            'Spending deficit'
+        );
+
+        withdrawals = withdrawalResult.withdrawals;
+        ltcgTax = withdrawalResult.withdrawals
+            .filter(w => w.capitalGains !== undefined)
+            .reduce((sum, w) => sum + w.tax, 0);
+        withdrawalOrdinaryTax = withdrawalResult.withdrawals
+            .filter(w => w.capitalGains === undefined)
+            .reduce((sum, w) => sum + w.tax, 0);
+        totalPenalties = withdrawalResult.totalPenalties;
+        decisions.push(...withdrawalResult.decisions);
+    }
+
+    // Final cash flow including withdrawals
+    const totalGrossWithdrawals = withdrawals.reduce((sum, w) => sum + w.gross, 0);
+    const finalTotalTax = totalTax + ltcgTax + withdrawalOrdinaryTax + totalPenalties;
+
+    const finalCashIn = incomeCashIn + totalGrossWithdrawals;
+    const finalCashOut = input.totalLivingExpenses + finalTotalTax;
+    const surplus = Math.max(0, finalCashIn - finalCashOut);
+    const unfundedDeficit = Math.max(0, finalCashOut - finalCashIn);
+
+    if (unfundedDeficit > 0) {
+        decisions.push({
+            category: 'warning',
+            amount: unfundedDeficit,
+            description: `Unfunded deficit of $${unfundedDeficit.toLocaleString()}. Insufficient account balances.`,
+        });
+    }
 
     const taxSummary: YearPlanTax = {
         federal: taxResult.totalTax,
         state: stateTax,
         fica: ficaTax,
-        capitalGainsLT: 0,
+        capitalGainsLT: ltcgTax,
         capitalGainsST: 0,
-        withdrawalOrdinaryTax: 0,
+        withdrawalOrdinaryTax,
         niit: 0,
-        penalties: 0,
-        total: totalTax,
+        penalties: totalPenalties,
+        total: finalTotalTax,
     };
 
     // Allocate surplus (if any)
     let surplusAllocations: YearPlan['surplusAllocations'] = [];
+    let surplusDeficitDebtPayment = 0;
     if (surplus > 0) {
         const priorityBuckets = (input.assumptions.priorities || []).map((p, idx) => ({
             accountId: p.accountId || '',
             priority: idx,
+            capType: p.capType,
+            capValue: p.capValue,
         })).filter(p => p.accountId);
 
         const earnedIncome = TaxService.getEarnedIncome(input.incomes, input.year);
@@ -1413,6 +1546,7 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
             rothIRAContributionEnabled: true,
             rothIRALimit: getIRALimit(input.year, input.currentAge, input.assumptions.macro.inflationAdjusted),
             rothIRAContributedThisYear: 0,
+            monthlyExpenses: input.totalLivingExpenses / 12,
         };
 
         const surplusResult = allocateSurplus(
@@ -1424,6 +1558,7 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
         );
 
         surplusAllocations = surplusResult.allocations;
+        surplusDeficitDebtPayment = surplusResult.deficitDebtPayment;
         decisions.push(...surplusResult.decisions);
     }
 
@@ -1431,10 +1566,11 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
         year: input.year,
         isRetired: false,
         income: incomeClassification.classified,
-        withdrawals: [],
+        withdrawals,
         conversion: null,
         contributions: [], // Will be filled by contribution planning
         surplusAllocations,
+        deficitDebtPayment: surplusDeficitDebtPayment,
         tax: taxSummary,
         surplus,
         unfundedDeficit,

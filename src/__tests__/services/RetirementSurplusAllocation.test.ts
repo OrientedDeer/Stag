@@ -3,7 +3,7 @@ import { simulateOneYear } from '../../components/Objects/Assumptions/Simulation
 import { defaultAssumptions, createBuiltinMilestones, BUILTIN_MILESTONE_IDS } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { defaultTaxState } from '../../components/Objects/Taxes/TaxContext';
 import { SavedAccount, InvestedAccount } from '../../components/Objects/Accounts/models';
-import { FoodExpense } from '../../components/Objects/Expense/models';
+import { FoodExpense, OtherExpense } from '../../components/Objects/Expense/models';
 import { PassiveIncome } from '../../components/Objects/Income/models';
 
 describe('Fixed Real Withdrawal Strategy', () => {
@@ -174,10 +174,15 @@ describe('Fixed Real Withdrawal Strategy', () => {
         const incomes: any[] = [];
 
         // Expenses EXCEED 4% target ($80k > $68k)
-        const expense = new FoodExpense(
-            'exp-living', 'Living Expenses', 80000, 'Annually', new Date('2040-01-01')
+        // Split into fixed ($30k) and discretionary ($50k) so the cap can trim discretionary
+        const fixedExpense = new FoodExpense(
+            'exp-fixed', 'Fixed Expenses', 30000, 'Annually', new Date('2040-01-01')
         );
-        const expenses = [expense];
+        const discretionaryExpense = new OtherExpense(
+            'exp-disc', 'Discretionary', 50000, 'Annually', new Date('2040-01-01')
+        );
+        discretionaryExpense.isDiscretionary = true;
+        const expenses = [fixedExpense, discretionaryExpense];
 
         const result = simulateOneYear(
             year,
@@ -192,10 +197,19 @@ describe('Fixed Real Withdrawal Strategy', () => {
             new Map([[BUILTIN_MILESTONE_IDS.RETIRE, year - 1]])
         );
 
-        // When expenses exceed target, they should be capped
-        // The strategyAdjustment should indicate trimming occurred
-        const hasCap = result.strategyAdjustment?.guardrailTriggered === 'capital-preservation' ||
-                       result.logs.some(l => l.includes('spending cap'));
-        expect(hasCap).toBe(true);
+        // When expenses ($80k) exceed the 4% target (~$68k), spending should be capped.
+        // V2 caps via the GK budget mechanism — verify expenses were actually reduced.
+        const actualLivingExpenses = result.cashflow.livingExpenses;
+        const portfolioValue = 1700000;
+        const withdrawalRate = 4 / 100;
+        const target = portfolioValue * withdrawalRate; // $68,000
+
+        expect(
+            actualLivingExpenses,
+            `Living expenses ($${actualLivingExpenses.toFixed(0)}) should be capped at ~4% target ($${target.toFixed(0)}), not full $80k`
+        ).toBeLessThan(80000);
+
+        // Should be close to the 4% target
+        expect(actualLivingExpenses).toBeGreaterThanOrEqual(target * 0.95);
     });
 });

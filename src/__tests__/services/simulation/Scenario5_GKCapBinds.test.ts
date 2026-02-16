@@ -101,7 +101,7 @@ function createScenarioExpenses() {
     return { fixed, discretionary };
 }
 
-function createScenarioAssumptions(_useNewEngine: boolean = false): AssumptionsState {
+function createScenarioAssumptions(): AssumptionsState {
     return {
         ...defaultAssumptions,
         milestones: createBuiltinMilestones(BIRTH_YEAR, 60, 95),
@@ -457,7 +457,7 @@ describe('Scenario 5: Level 3 - Full Simulation', () => {
         const accounts = createScenarioAccounts();
         const incomes = createScenarioIncomes();
         const expenses = createScenarioExpenses();
-        const assumptions = createScenarioAssumptions(true);
+        const assumptions = createScenarioAssumptions();
         const taxState = createScenarioTaxState();
 
         const result = simulateOneYear(
@@ -477,7 +477,7 @@ describe('Scenario 5: Level 3 - Full Simulation', () => {
         const accounts = createScenarioAccounts();
         const incomes = createScenarioIncomes();
         const expenses = createScenarioExpenses();
-        const assumptions = createScenarioAssumptions(true);
+        const assumptions = createScenarioAssumptions();
         const taxState = createScenarioTaxState();
 
         const result = simulateOneYear(

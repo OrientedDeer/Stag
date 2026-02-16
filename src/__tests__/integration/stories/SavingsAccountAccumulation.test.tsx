@@ -180,22 +180,14 @@ describe('Story: Savings Account Accumulation', () => {
     });
 
     it('should grow account at exactly APR rate each year', () => {
-        // Use only savings account with no expenses that could drain it
-        const isolatedAssumptions = {
-            ...assumptions,
-        };
-
-        // Very small expenses so account grows
-        const tinyExpenses = new FoodExpense(
-            'exp-tiny', 'Tiny Expenses', 1000, 'Annually', new Date('2025-01-01')
-        );
-
+        // Isolate savings growth: no income or expenses so surplus allocation
+        // doesn't inflate the account beyond pure APR growth.
         const simulation = runSimulation(
             10, // 10 years
             [savingsAccount],
-            [workIncome],
-            [tinyExpenses],
-            isolatedAssumptions,
+            [],
+            [],
+            assumptions,
             taxState,
             undefined,
             new Date(2025, 11, 31) // December — no partial-year adjustment
@@ -229,7 +221,7 @@ describe('Story: Savings Account Accumulation', () => {
     // TAX TREATMENT TESTS
     // ==========================================================================
 
-    it('should include interest in taxable income (totalIncome)', () => {
+    it('should include interest in taxable income (incomes array)', () => {
         // Savings account only, no work income
         const simulation = runSimulation(
             5,
@@ -240,13 +232,19 @@ describe('Story: Savings Account Accumulation', () => {
             taxState
         );
 
-        // Year 2 should have interest income in totalIncome
+        // Year 2 should have interest income in the incomes array (taxable)
+        // Note: cashflow.totalIncome is spendable-only and excludes reinvested interest
         const year2 = simulation[1];
         const expectedInterest = 100000 * 0.05; // $5,000
 
+        const interestIncomes = year2.incomes.filter(
+            inc => inc instanceof PassiveIncome && inc.sourceType === 'Interest'
+        ) as PassiveIncome[];
+        const totalInterest = interestIncomes.reduce((sum, inc) => sum + inc.amount, 0);
+
         expect(
-            year2.cashflow.totalIncome,
-            `Total income should include ~$5k interest`
+            totalInterest,
+            `Interest incomes should include ~$5k interest`
         ).toBeGreaterThanOrEqual(expectedInterest * 0.95);
     });
 
@@ -308,14 +306,15 @@ describe('Story: Savings Account Accumulation', () => {
     // ==========================================================================
 
     it('should generate no interest when account balance is zero', () => {
-        // Start with zero balance
+        // Start with zero balance, no income/expenses so surplus doesn't
+        // deposit into the account and create a non-zero balance.
         const emptySavings = new SavedAccount('acc-empty', 'Empty Savings', 0, 5);
 
         const simulation = runSimulation(
             5,
             [emptySavings],
-            [workIncome],
-            [livingExpenses],
+            [],
+            [],
             assumptions,
             taxState
         );
@@ -413,11 +412,13 @@ describe('Story: Savings Account Accumulation', () => {
     });
 
     it('should have total interest income match expected compound formula', () => {
+        // No income/expenses so surplus allocation doesn't inflate the
+        // savings balance beyond pure compound interest growth.
         const simulation = runSimulation(
             10,
             [savingsAccount],
-            [workIncome],
-            [livingExpenses],
+            [],
+            [],
             assumptions,
             taxState
         );

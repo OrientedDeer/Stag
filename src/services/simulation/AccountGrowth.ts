@@ -2,8 +2,7 @@ import { AnyAccount, InvestedAccount, SavedAccount, ESPPAccount, PropertyAccount
 import { AnyExpense, MortgageExpense, LoanExpense } from "../../components/Objects/Expense/models";
 import { AnyIncome, WorkIncome, getIncomeActiveMultiplier } from "../../components/Objects/Income/models";
 import { AssumptionsState } from "../../components/Objects/Assumptions/AssumptionsContext";
-import { getESPPLimit, getIRALimit } from "../../data/ContributionLimits";
-import { getEarnedIncome } from "../../components/Objects/Taxes/TaxService";
+import { getESPPLimit } from "../../data/ContributionLimits";
 import { WithdrawalState } from "./types";
 
 export interface InflowResult {
@@ -23,13 +22,13 @@ export interface InflowResult {
 export function processInflows(
     incomesWithEarningsTest: AnyIncome[],
     accounts: AnyAccount[],
-    assumptions: AssumptionsState,
+    _assumptions: AssumptionsState,
     year: number,
     withdrawalState: WithdrawalState,
     discretionaryCash: number,
-    existingDeficitDebt: DeficitDebtAccount | undefined,
-    totalLivingExpenses: number,
-    currentAge: number,
+    _existingDeficitDebt: DeficitDebtAccount | undefined,
+    _totalLivingExpenses: number,
+    _currentAge: number,
     logs: string[]
 ): InflowResult {
     const bucketDetail: Record<string, number> = {};
@@ -156,137 +155,8 @@ export function processInflows(
         }
     });
 
-    // 5b. Pay down deficit debt FIRST
-    if (discretionaryCash > 0 && existingDeficitDebt && existingDeficitDebt.amount > 0) {
-        const payment = Math.min(discretionaryCash, existingDeficitDebt.amount);
-        discretionaryCash -= payment;
-        deficitDebtPayment = payment;
-
-        logs.push(`💵 Paid down $${payment.toLocaleString(undefined, { maximumFractionDigits: 0 })} of deficit debt`);
-
-        if (existingDeficitDebt.amount - payment <= 0) {
-            logs.push(`  Deficit debt fully paid off!`);
-        } else {
-            logs.push(`  Remaining deficit debt: $${(existingDeficitDebt.amount - payment).toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
-        }
-    }
-
-    // 5c. Priority Waterfall (Surplus Only)
-    if (discretionaryCash > 0) {
-        // IRA contributions require earned income and are capped at the IRA limit
-        const earnedIncomeThisYear = getEarnedIncome(incomesWithEarningsTest, year);
-        const iraLimit = getIRALimit(year, currentAge);
-        let totalIRAContributionsThisYear = 0;
-
-        // Track which accounts had withdrawals this year
-        // Used to detect "withdrawal mode" and prevent wasteful round-trips
-        const accountWithdrawalAmounts = new Map<string, number>(
-            Object.entries(withdrawalState.withdrawalDetail)
-                .filter(([_, amount]) => amount > 0)
-                .map(([name, amount]) => {
-                    // Find the account ID by name
-                    const account = accounts.find(acc => acc.name === name);
-                    return [account?.id || '', amount] as const;
-                })
-                .filter(([id]) => id !== '') as [string, number][]
-        );
-
-        // Calculate total withdrawals from all investment accounts
-        const totalInvestmentWithdrawals = Array.from(accountWithdrawalAmounts.values())
-            .reduce((sum, amt) => sum + amt, 0);
-
-        assumptions.priorities.forEach((priority) => {
-            if (discretionaryCash <= 0 || !priority.accountId) return;
-
-            const targetAccount = accounts.find(acc => acc.id === priority.accountId);
-
-            // Check if this account had withdrawals
-            const withdrawalAmount = accountWithdrawalAmounts.get(priority.accountId) || 0;
-
-            // Skip savings/investment bucket allocations if we're using a spending-based
-            // withdrawal strategy (Fixed Real, Percentage, Guyton Klinger) AND we had
-            // withdrawals this year. This prevents wasteful round-trips where:
-            // - We withdraw from Brokerage to fund Fixed Real target
-            // - Then deposit surplus into the same or different savings/investment bucket
-            // - Creating unnecessary capital gains taxes on the withdrawal
-            //
-            // Debt payments are still allowed (reduce liabilities, not create new investments)
-            // Deficit-driven withdrawals (Needs Based / None strategy) - surplus should go to buckets
-            const spendingStrategies = ['Fixed Real', 'Percentage', 'Guyton Klinger'];
-            const isSpendingStrategy = spendingStrategies.includes(assumptions.investments.withdrawalStrategy);
-
-            if (isSpendingStrategy && totalInvestmentWithdrawals > 0) {
-                const isSavingsOrInvestment = targetAccount instanceof InvestedAccount ||
-                                               targetAccount instanceof SavedAccount;
-                if (isSavingsOrInvestment) {
-                    const roundTripType = withdrawalAmount > 0 ? 'same-account' : 'cross-account';
-                    logs.push(`[SKIP] Bucket "${priority.name}": spending strategy active, avoiding ${roundTripType} round-trip`);
-                    return;
-                }
-            }
-
-            let amountToContribute = 0;
-
-            if (priority.capType === 'FIXED') {
-                const yearlyCap = (priority.capValue || 0) * 12;
-                amountToContribute = Math.min(yearlyCap, discretionaryCash);
-            }
-            else if (priority.capType === 'REMAINDER') {
-                amountToContribute = discretionaryCash;
-            }
-            else if (priority.capType === 'MAX') {
-                amountToContribute = Math.min(priority.capValue || 0, discretionaryCash);
-            }
-            else if (priority.capType === 'MULTIPLE_OF_EXPENSES') {
-                const monthlyExpenses = totalLivingExpenses / 12;
-                const target = monthlyExpenses * (priority.capValue || 0);
-
-                const currentBalance = targetAccount ? targetAccount.amount : 0;
-
-                let growthRate = 0;
-                if (targetAccount instanceof SavedAccount || targetAccount instanceof DebtAccount) {
-                    growthRate = targetAccount.apr;
-                } else if (targetAccount instanceof InvestedAccount) {
-                    growthRate = assumptions.investments.returnRates.ror;
-                }
-
-                const expectedGrowth = currentBalance * (growthRate / 100);
-                const needed = target - (currentBalance + expectedGrowth);
-
-                amountToContribute = Math.max(0, Math.min(needed, discretionaryCash));
-            }
-
-            // IRA accounts require earned income - cap contributions at earned income and IRA limit
-            if (targetAccount instanceof InvestedAccount &&
-                (targetAccount.taxType === 'Traditional IRA' || targetAccount.taxType === 'Roth IRA')) {
-                const remainingIRALimit = Math.max(0, iraLimit - totalIRAContributionsThisYear);
-                const remainingEarnedIncome = Math.max(0, earnedIncomeThisYear - totalIRAContributionsThisYear);
-                const iraCapacity = Math.min(remainingIRALimit, remainingEarnedIncome);
-
-                if (amountToContribute > iraCapacity) {
-                    if (earnedIncomeThisYear === 0) {
-                        logs.push(`[WARN] IRA contribution blocked: no earned income in ${year}`);
-                    } else if (iraCapacity < amountToContribute) {
-                        logs.push(`[WARN] IRA contribution capped at $${iraCapacity.toLocaleString(undefined, { maximumFractionDigits: 0 })} ` +
-                            `(earned income: $${earnedIncomeThisYear.toLocaleString(undefined, { maximumFractionDigits: 0 })}, ` +
-                            `IRA limit: $${iraLimit.toLocaleString(undefined, { maximumFractionDigits: 0 })})`);
-                    }
-                    amountToContribute = iraCapacity;
-                }
-
-                if (amountToContribute > 0) {
-                    totalIRAContributionsThisYear += amountToContribute;
-                }
-            }
-
-            if (amountToContribute > 0) {
-                discretionaryCash -= amountToContribute;
-                withdrawalState.userInflows[priority.accountId] = (withdrawalState.userInflows[priority.accountId] || 0) + amountToContribute;
-                bucketDetail[priority.accountId] = (bucketDetail[priority.accountId] || 0) + amountToContribute;
-                totalBucketAllocations += amountToContribute;
-            }
-        });
-    }
+    // Note: Deficit debt paydown and priority waterfall are handled by
+    // SurplusAllocator.allocateSurplus() in the V2 YearSolver path.
 
     return {
         totalEmployerMatch,

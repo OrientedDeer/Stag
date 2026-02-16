@@ -304,6 +304,13 @@ export class InvestedAccount extends BaseAccount {
         // Contribution: push a new lot
         newLots.push({ purchaseYear: currentYear, costBasis: userContribution, currentValue: userContribution });
       }
+
+      // Derive costBasis from lot-level truth after FIFO processing.
+      // The blended proportional reduction (line 244) diverges from FIFO lot accounting
+      // because FIFO sells high-gain lots first, removing less basis than the blended ratio.
+      if (newLots.length > 0) {
+        preGrowthCostBasis = newLots.reduce((sum, lot) => sum + lot.costBasis, 0);
+      }
     }
 
     // 5. Now apply growth to the adjusted (post-transaction) balances

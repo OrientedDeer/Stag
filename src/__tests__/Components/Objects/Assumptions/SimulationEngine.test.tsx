@@ -897,8 +897,8 @@ describe('Simulation Engine', () => {
 
             const result = simulateOneYear(2025, [], [expense], [rothAccount], earlyAssumptions, mockTaxState);
 
-            // Should have early Roth withdrawal log
-            expect(result.logs.some(log => log.includes('Early Roth'))).toBe(true);
+            // Should have early withdrawal penalty log for Roth
+            expect(result.logs.some(log => log.includes('Early withdrawal penalty') && log.includes('Roth'))).toBe(true);
 
             // Tax should be charged on gains portion
             expect(result.taxDetails.fed).toBeGreaterThan(0);
@@ -1338,8 +1338,10 @@ describe('Simulation Engine', () => {
                 ]
             };
 
+            // $3M Traditional exceeds ideal target at 10% growth over 6 years,
+            // so projected RMD lands above 12% ceiling, triggering conversions
             const traditional401k = new InvestedAccount(
-                'trad-1', 'Traditional 401k', 500000, 0, 0, 0.1, 'Traditional 401k'
+                'trad-1', 'Traditional 401k', 3000000, 0, 0, 0.1, 'Traditional 401k'
             );
             const roth401k = new InvestedAccount(
                 'roth-1', 'Roth 401k', 100000, 0, 0, 0.1, 'Roth 401k'
@@ -1483,9 +1485,10 @@ describe('Simulation Engine', () => {
                 false
             );
 
-            // Larger balance to ensure RMDs land in 22%+ bracket with three-tier algorithm
+            // $3M balance so projected RMDs exceed 12% bracket ceiling at 7% growth
+            // $3M * 1.07^6 = $4.5M → RMD ~$175k → well into 22% bracket → ceiling = 12%
             const traditional401k = new InvestedAccount(
-                'trad-1', 'Traditional 401k', 1_000_000, 0, 0, 0, 'Traditional 401k'
+                'trad-1', 'Traditional 401k', 3_000_000, 0, 0, 0, 'Traditional 401k'
             );
             const roth401k = new InvestedAccount(
                 'roth-1', 'Roth 401k', 100000, 0, 0, 0, 'Roth 401k'
@@ -1500,7 +1503,7 @@ describe('Simulation Engine', () => {
                 noStateTaxState
             );
 
-            // With $1M balance and 7% growth, projected RMDs are in 22% bracket
+            // With $3M balance and 7% growth, projected RMD exceeds ideal target
             // So ceiling = 12% and conversions should happen
             expect(result.rothConversion).toBeDefined();
             if (result.rothConversion) {

@@ -66,7 +66,6 @@ export interface SimulationYear {
     // Milestone tracking
     milestoneEvents?: MilestoneReachEvent[];      // Milestones reached this year
     activeMilestones?: string[];                   // All milestone IDs reached so far
-    // Tax optimization target (V2 engine only)
     taxOptimizationTarget?: TaxOptimizationTarget;
 }
 
@@ -397,6 +396,9 @@ export interface YearPlan {
 
     /** Planned surplus allocations */
     surplusAllocations: PlannedSurplusAllocation[];
+
+    /** Amount allocated to pay down deficit debt from surplus */
+    deficitDebtPayment: number;
 
     /** Tax summary */
     tax: YearPlanTax;

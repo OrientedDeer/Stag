@@ -15,7 +15,7 @@ Most retirement calculators oversimplify the math or hide the good stuff behind 
 - **Free & Open Source** — No subscriptions, no ads, no "premium" features. Everything is available to everyone.
 - **Comprehensive Simulation** — Models income, expenses, taxes, RMDs, Social Security, federal pensions (FERS/CSRS), and more across your entire lifetime.
 - **Tax-Smart** — Automatic Roth conversion optimization, withdrawal strategy modeling, and bracket-aware planning.
-- **Private by Design** — Runs entirely in your browser. Your financial data never leaves your device.
+- **Private by Design** — Runs entirely in your browser. Your financial data never leaves your device unless you opt in to cloud backup (encrypted on-device before upload).
 
 ---
 
@@ -55,7 +55,8 @@ Most retirement calculators oversimplify the math or hide the good stuff behind 
 ### Data Management
 - Export/import JSON backups
 - QR code transfer between devices
-- Everything stored locally in your browser
+- Optional encrypted cloud backup (AES-256-GCM, zero-knowledge)
+- Everything stored locally in your browser by default
 
 ---
 
@@ -80,6 +81,32 @@ npm run dev
 
 Open [http://localhost:5173](http://localhost:5173) in your browser.
 
+### Cloud Backup (Optional)
+
+Cloud backup lets you encrypt your data on-device and store it in S3. It requires setting up your own AWS resources (all free tier eligible). Without these environment variables, the app works fully offline with no network requests.
+
+1. **Create AWS resources:**
+   - **S3 bucket** — stores encrypted backup blobs
+   - **Cognito User Pool** — Google and/or GitHub OAuth sign-in
+   - **Lambda function** — generates pre-signed S3 URLs (~50 lines, see `infrastructure/lambda/index.mjs`)
+   - **API Gateway (HTTP API)** — JWT-authorized routes to Lambda
+
+2. **Set environment variables** (create a `.env` file):
+   ```
+   VITE_COGNITO_DOMAIN=your-domain.auth.us-east-2.amazoncognito.com
+   VITE_COGNITO_CLIENT_ID=your-client-id
+   VITE_CLOUD_API_ENDPOINT=https://your-api-id.execute-api.us-east-2.amazonaws.com
+   ```
+
+3. **How it works:**
+   - Sign in via Google or GitHub (OAuth PKCE, no secrets in the browser)
+   - Enter a passphrase to encrypt your data locally (AES-256-GCM with PBKDF2, 600k iterations)
+   - Encrypted blob is uploaded to S3 via pre-signed URL
+   - The server never sees your plaintext data
+   - Passphrase is used once and discarded from memory
+
+All AWS services used fall within the free tier for personal use (Cognito 50k MAU, Lambda 1M requests/month, S3 5GB, API Gateway 1M calls/month).
+
 ---
 
 ## How It Works
@@ -101,7 +128,9 @@ The simulation accounts for interactions between these systems—like how Roth c
 - **React 19** + **TypeScript** + **Vite**
 - **Tailwind CSS** for styling
 - **Nivo** for charts and visualizations
-- **LocalStorage** for data persistence (no backend)
+- **LocalStorage** for data persistence (no backend required)
+- **Web Crypto API** for client-side encryption (AES-256-GCM, PBKDF2)
+- **AWS** (Cognito, Lambda, S3, API Gateway) for optional cloud backup
 
 ---
 

@@ -118,7 +118,7 @@ function createScenarioExpenses() {
     return { living };
 }
 
-function createScenarioAssumptions(_useNewEngine: boolean = false): AssumptionsState {
+function createScenarioAssumptions(): AssumptionsState {
     return {
         ...defaultAssumptions,
         milestones: createBuiltinMilestones(BIRTH_YEAR, 40, 95),
@@ -356,7 +356,7 @@ describe('Scenario 9: Level 3 - Full Simulation', () => {
     it('should produce consistent results with V2 engine', () => {
         const accounts = createScenarioAccounts();
         const expenses = createScenarioExpenses();
-        const assumptions = createScenarioAssumptions(true);
+        const assumptions = createScenarioAssumptions();
         const taxState = createScenarioTaxState();
 
         const result = simulateOneYear(
@@ -375,7 +375,7 @@ describe('Scenario 9: Level 3 - Full Simulation', () => {
     it('should have withdrawals to cover expenses', () => {
         const accounts = createScenarioAccounts();
         const expenses = createScenarioExpenses();
-        const assumptions = createScenarioAssumptions(true);
+        const assumptions = createScenarioAssumptions();
         const taxState = createScenarioTaxState();
 
         const result = simulateOneYear(
@@ -393,7 +393,7 @@ describe('Scenario 9: Level 3 - Full Simulation', () => {
     it('should have capital gains tax from ESPP', () => {
         const accounts = createScenarioAccounts();
         const expenses = createScenarioExpenses();
-        const assumptions = createScenarioAssumptions(true);
+        const assumptions = createScenarioAssumptions();
         const taxState = createScenarioTaxState();
 
         const result = simulateOneYear(

@@ -146,10 +146,10 @@ describe('Expense Models', () => {
       const nextYear = rent.increment(inflationAssumptions);
 
       // New Rent = 1000 * (1 + rentInflation + generalInflation) = 1000 * (1 + 0.04 + 0.03) = 1070
-      // New Utilities = 100 * (1 + generalInflation) = 100 * (1 + 0.03) = 103
+      // New Utilities = 100 * (1 + rentInflation + generalInflation) = 100 * (1 + 0.04 + 0.03) = 107
       expect(nextYear.payment).toBeCloseTo(1070);
-      expect(nextYear.utilities).toBeCloseTo(103);
-      expect(nextYear.amount).toBeCloseTo(1173);
+      expect(nextYear.utilities).toBeCloseTo(107);
+      expect(nextYear.amount).toBeCloseTo(1177);
     });
   });
 
@@ -999,9 +999,9 @@ describe('Expense Models', () => {
       const rent = new RentExpense('r1', 'Apt', 1000, 100, 'Monthly');
       const nextYear = rent.increment(mockAssumptions); // inflationAdjusted = false
 
-      // Should only apply rent inflation, not general inflation
+      // Should apply rent inflation (general inflation disabled when inflationAdjusted=false)
       expect(nextYear.payment).toBeCloseTo(1000 * 1.04);
-      expect(nextYear.utilities).toBeCloseTo(100); // No inflation
+      expect(nextYear.utilities).toBeCloseTo(100 * 1.04); // Rent inflation applies to utilities too
     });
 
     it('should handle MortgageExpense with different frequencies', () => {

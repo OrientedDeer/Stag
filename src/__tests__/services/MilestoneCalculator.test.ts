@@ -53,7 +53,6 @@ function createMockAssumptions(overrides: { birthYear?: number; retirementAge?: 
       showExperimentalFeatures: false,
       hsaEligible: true,
     },
-    simulation: { useNewEngine: true },
     priorities: [],
     withdrawalStrategy: [],
   } as AssumptionsState;

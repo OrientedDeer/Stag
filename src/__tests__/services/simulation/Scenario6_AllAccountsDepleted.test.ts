@@ -93,7 +93,7 @@ function createScenarioExpenses() {
     return { nursing };
 }
 
-function createScenarioAssumptions(_useNewEngine: boolean = false): AssumptionsState {
+function createScenarioAssumptions(): AssumptionsState {
     return {
         ...defaultAssumptions,
         milestones: createBuiltinMilestones(BIRTH_YEAR, 65, 100),
@@ -336,7 +336,7 @@ describe('Scenario 6: Level 3 - Full Simulation', () => {
         const accounts = createScenarioAccounts();
         const incomes = createScenarioIncomes();
         const expenses = createScenarioExpenses();
-        const assumptions = createScenarioAssumptions(true);
+        const assumptions = createScenarioAssumptions();
         const taxState = createScenarioTaxState();
 
         // Should not throw
@@ -356,7 +356,7 @@ describe('Scenario 6: Level 3 - Full Simulation', () => {
         const accounts = createScenarioAccounts();
         const incomes = createScenarioIncomes();
         const expenses = createScenarioExpenses();
-        const assumptions = createScenarioAssumptions(true);
+        const assumptions = createScenarioAssumptions();
         const taxState = createScenarioTaxState();
 
         const result = simulateOneYear(
@@ -381,7 +381,7 @@ describe('Scenario 6: Level 3 - Full Simulation', () => {
         const accounts = createScenarioAccounts();
         const incomes = createScenarioIncomes();
         const expenses = createScenarioExpenses();
-        const assumptions = createScenarioAssumptions(true);
+        const assumptions = createScenarioAssumptions();
         const taxState = createScenarioTaxState();
 
         const result = simulateOneYear(

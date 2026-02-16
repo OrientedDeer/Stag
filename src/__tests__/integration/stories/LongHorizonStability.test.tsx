@@ -499,20 +499,12 @@ describe('Feedback Loop Prevention', () => {
             };
 
             const savingsAccount = new SavedAccount('acc-savings', 'HYSA', initialBalance, apr);
-            // Income = $60k, after ~25% tax = ~$45k net
-            // Expenses = $45k, so no surplus to deposit
-            const workIncome = new WorkIncome(
-                'inc-work', 'Job', 60000, 'Annually', 'Yes',
-                0, 0, 0, 0, '', null, 'FIXED'
-            );
-            const futureSS = new FutureSocialSecurityIncome('inc-ss', 'SS', 70, 0, 0);
-            const expenses = new FoodExpense('exp-living', 'Living', 45000, 'Annually', new Date('2025-01-01'));
-
+            // No income or expenses — isolate pure APR compound growth
             const simulation = runSimulation(
                 20, // 20 years
                 [savingsAccount],
-                [workIncome, futureSS],
-                [expenses],
+                [],
+                [],
                 assumptions,
                 taxState
             );

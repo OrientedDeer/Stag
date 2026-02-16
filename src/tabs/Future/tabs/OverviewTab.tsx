@@ -4,7 +4,7 @@ import { ResponsiveLine } from '@nivo/line';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { SavedAccount, InvestedAccount, PropertyAccount, DebtAccount, DeficitDebtAccount } from '../../../components/Objects/Accounts/models';
 import { formatCompactCurrency } from './FutureUtils';
-import { LoanExpense, MortgageExpense } from '../../../components/Objects/Expense/models';
+import { MortgageExpense } from '../../../components/Objects/Expense/models';
 import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider';
 import { AlertBanner } from '../../../components/Layout/AlertBanner';
 import { getFRA } from '../../../data/SocialSecurityData';
@@ -107,15 +107,14 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                 .reduce((sum, acc) => sum + (acc.amount), 0);
 
             let debt = 0;
-            // Include debt from expenses (loans, mortgages)
+            // Include mortgage debt from expenses (linked to PropertyAccount, not DebtAccount)
             year.expenses.forEach(exp => {
-                if (exp instanceof LoanExpense) {
-                    debt += (exp.amount);
-                } else if (exp instanceof MortgageExpense) {
+                if (exp instanceof MortgageExpense) {
                     debt += (exp.loan_balance);
                 }
             });
-            // Include debt from accounts (DebtAccount, DeficitDebtAccount)
+            // Include debt from accounts (DebtAccount tracks loan balances, DeficitDebtAccount tracks uncovered deficits)
+            // Note: LoanExpense is NOT counted here — DebtAccount already tracks the same linked balance
             year.accounts.forEach(acc => {
                 if (acc instanceof DebtAccount) {
                     debt += acc.amount;

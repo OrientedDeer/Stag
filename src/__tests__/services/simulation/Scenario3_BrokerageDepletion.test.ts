@@ -69,7 +69,7 @@ function createScenarioExpenses() {
     return { living };
 }
 
-function createScenarioAssumptions(_useNewEngine: boolean = false): AssumptionsState {
+function createScenarioAssumptions(): AssumptionsState {
     return {
         ...defaultAssumptions,
         milestones: createBuiltinMilestones(BIRTH_YEAR, 60, 95),
@@ -304,7 +304,7 @@ describe('Scenario 3: Level 3 - Full Simulation', () => {
     it('should produce consistent results with V2 engine', () => {
         const accounts = createScenarioAccounts();
         const expenses = createScenarioExpenses();
-        const assumptions = createScenarioAssumptions(true);
+        const assumptions = createScenarioAssumptions();
         const taxState = createScenarioTaxState();
 
         const result = simulateOneYear(
@@ -323,7 +323,7 @@ describe('Scenario 3: Level 3 - Full Simulation', () => {
     it('should deplete brokerage to $0 (no dust)', () => {
         const accounts = createScenarioAccounts();
         const expenses = createScenarioExpenses();
-        const assumptions = createScenarioAssumptions(true);
+        const assumptions = createScenarioAssumptions();
         const taxState = createScenarioTaxState();
 
         const result = simulateOneYear(
@@ -350,7 +350,7 @@ describe('Scenario 3: Level 3 - Full Simulation', () => {
     it('should not have phantom remaining balance', () => {
         const accounts = createScenarioAccounts();
         const expenses = createScenarioExpenses();
-        const assumptions = createScenarioAssumptions(true);
+        const assumptions = createScenarioAssumptions();
         const taxState = createScenarioTaxState();
 
         const result = simulateOneYear(

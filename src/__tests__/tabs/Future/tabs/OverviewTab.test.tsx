@@ -115,9 +115,10 @@ describe('OverviewTab', () => {
         expect(propertySeries.data[0].y).toBe(300000);
 
         // Check Debt Series (Should be negative)
-        // Debt includes: DebtAccount (15000) + LoanExpense (15000) + MortgageExpense (250000) = 280000
+        // Debt includes: DebtAccount (15000) + MortgageExpense (250000) = 265000
+        // Note: LoanExpense is NOT double-counted — DebtAccount already tracks the linked balance
         const debtSeries = chartData.find((s: any) => s.id === 'Debt');
-        expect(debtSeries.data[0].y).toBe(-280000);
+        expect(debtSeries.data[0].y).toBe(-265000);
     });
 
     it('filters data based on the range slider', async () => {

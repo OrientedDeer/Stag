@@ -133,9 +133,6 @@ export interface AssumptionsState {
     // NOTE: birthYear, retirementAge, and lifeExpectancy are derived from milestones
     // Use getBirthYear(), getRetirementAge(), getLifeExpectancy() helpers
   };
-  simulation: {
-    useNewEngine: boolean;  // When true, uses the new YearSolver-based simulation engine (Phase 2R)
-  };
   display: {
     useCompactCurrency: boolean; // Show $1.2M instead of $1,200,000
     showExperimentalFeatures: boolean; // Show Tax, Scenarios, Ratios tabs
@@ -177,9 +174,6 @@ export const defaultAssumptions: AssumptionsState = {
   demographics: {
     priorYearMode: false, // Default to current year mode
     // birthYear, retirementAge, lifeExpectancy are now in milestones
-  },
-  simulation: {
-    useNewEngine: true, // Use YearSolver-based V2 engine by default
   },
   display: {
     useCompactCurrency: true,
@@ -251,7 +245,6 @@ function migrateAssumptions(saved: unknown, defaults: AssumptionsState): Assumpt
       ),
     },
     demographics: mergeSection(data.demographics, defaults.demographics),
-    simulation: mergeSection(data.simulation, defaults.simulation),
     display: mergeSection(data.display, defaults.display),
     // Arrays: use saved if it's a valid array, otherwise use default
     priorities: Array.isArray(data.priorities) ? data.priorities as PriorityBucket[] : defaults.priorities,
@@ -358,7 +351,6 @@ type Action =
   | { type: 'UPDATE_INVESTMENTS'; payload: Partial<AssumptionsState['investments']> }
   | { type: 'UPDATE_INVESTMENT_RATES'; payload: Partial<AssumptionsState['investments']['returnRates']> }
   | { type: 'UPDATE_DEMOGRAPHICS'; payload: Partial<AssumptionsState['demographics']> }
-  | { type: 'UPDATE_SIMULATION'; payload: Partial<AssumptionsState['simulation']> }
   | { type: 'UPDATE_DISPLAY'; payload: Partial<AssumptionsState['display']> }
   | { type: 'RESET_DEFAULTS' }
   | { type: 'SET_BULK_DATA'; payload: AssumptionsState }
@@ -397,8 +389,6 @@ const assumptionsReducer = (state: AssumptionsState, action: Action): Assumption
       };
     case 'UPDATE_DEMOGRAPHICS':
       return { ...state, demographics: { ...state.demographics, ...action.payload } };
-    case 'UPDATE_SIMULATION':
-      return { ...state, simulation: { ...state.simulation, ...action.payload } };
     case 'UPDATE_DISPLAY':
       return { ...state, display: { ...state.display, ...action.payload } };
     case 'RESET_DEFAULTS':

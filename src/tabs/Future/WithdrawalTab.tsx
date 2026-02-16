@@ -277,43 +277,27 @@ export default function WithdrawalTab() {
         let targetBracketFromV2: number | null = null;
 
         if (v2Target) {
-            // Use V2 engine's calculated target
             effectiveTarget = v2Target.targetTraditionalAtRMD;
             targetBracketFromV2 = v2Target.targetBracketCeiling;
-            // DEBUG: Log V2 path
-            console.log('[WithdrawalTab] Using V2 target:', {
-                targetTraditionalAtRMD: v2Target.targetTraditionalAtRMD,
-                targetBracketCeiling: v2Target.targetBracketCeiling,
-            });
         } else {
-            // Fallback to local calculation for old engine or when V2 target unavailable
-            // Use idealTargetBalance from the new three-tier ceiling system
-            console.log('[WithdrawalTab] Using FALLBACK path (no V2 target found in simulation)');
+            // Fallback when simulation hasn't run yet or target unavailable
             effectiveTarget = projectedTraditionalAtRMD;
             if (taxParams && yearsUntilRMD > 0) {
                 const ceilingResult = calculateDynamicConversionCeiling(
                     currentTraditionalBalance,
                     yearsUntilRMD,
-                    fixedIncomeResult.pensionAtRMD,  // pensionIncomeAtRMD
-                    fixedIncomeResult.ssAtRMD,       // ssAtRMD
-                    extractedIncome.passiveIncome,   // TODO: passiveIncomeAtRMD should use projected value from estimateFixedIncomeAtRMD, not raw current value
-                    0,  // currentAGI (simplified - use 0 for target calculation)
-                    0,  // socialSecurityThisYear
-                    0,  // ltcgIncome
+                    fixedIncomeResult.pensionAtRMD,
+                    fixedIncomeResult.ssAtRMD,
+                    extractedIncome.passiveIncome,
+                    0,
+                    0,
+                    0,
                     growthRateForTarget,
-                    rmdAge,  // RMD start age based on birth year
+                    rmdAge,
                     taxParams,
                     taxState
                 );
-                // Use idealTargetBalance directly from the ceiling result (new PMT pacing algorithm)
                 effectiveTarget = ceilingResult.idealTargetBalance;
-                console.log('[WithdrawalTab] Fallback ceilingResult:', {
-                    idealTargetBalance: ceilingResult.idealTargetBalance,
-                    conversionCeiling: ceilingResult.conversionCeiling,
-                    projectedBalanceAtRMD: ceilingResult.projectedBalanceAtRMD,
-                    projectedRMDBracket: ceilingResult.projectedRMDBracket,
-                    bracketSpacePerYear: ceilingResult.bracketSpacePerYear,
-                });
             }
         }
 

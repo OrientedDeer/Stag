@@ -1,6 +1,8 @@
 import { Link, useLocation } from "react-router-dom";
-import { useContext } from "react";
+import { useContext, useState } from "react";
 import { AssumptionsContext } from "../../Objects/Assumptions/AssumptionsContext";
+import { CloudBackupContext } from "../../Objects/CloudBackup/CloudBackupContext";
+import CloudBackupPanel from "../../Objects/CloudBackup/CloudBackupPanel";
 import SidebarCollapseLink from './SidebarCollapseLink'; // Make sure the path is correct
 type SidebarProps = {
   isOpen: boolean;
@@ -11,13 +13,15 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 	const { pathname } = useLocation();
 	const { state: assumptions } = useContext(AssumptionsContext);
 	const showExperimental = assumptions.display?.showExperimentalFeatures ?? false;
+	const { isAuthenticated, lastBackupTimestamp } = useContext(CloudBackupContext);
+	const [dataPanelOpen, setDataPanelOpen] = useState(false);
 
 	const link = `flex items-center mb-1 p-2 rounded text-White ${
 		isOpen ? "" : "hover:bg-gray-600"
 	}`;
 
 	const active = `${isOpen ? "w-0 opacity-0" : "w-auto opacity-100"} bg-gray-600 font-semibold text-green-300`;
-	
+
 	const currentSubLinks = [
         { path: "/current/accounts", label: "Accounts" },
         { path: "/current/income", label: "Income" },
@@ -79,7 +83,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 				fixed top-0 left-0
 				${isSidebarVisible ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
 			`}>
-				<nav className="flex flex-col gap-1 pt-14 md:pt-0">
+				<nav className="flex flex-col gap-1 pt-14 md:pt-0 flex-1">
 					<Link
 						className={`${link} ${pathname === "/dashboard" && active} ${isOpen ? "pointer-events-none" : ""}`}
 						to="/dashboard"
@@ -145,7 +149,33 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 					</Link>
 				)}
 				</nav>
+
+				{/* Data Management Footer */}
+				<div className={`border-t border-gray-700 p-2 overflow-hidden transition-all duration-300 ${isOpen ? "w-0 opacity-0" : "w-auto opacity-100"}`}>
+					<button
+						onClick={() => setDataPanelOpen(!dataPanelOpen)}
+						className={`flex items-center gap-2 w-full p-2 rounded text-sm transition-colors ${
+							isOpen ? "pointer-events-none" : "hover:bg-gray-700"
+						}`}
+						title="Data Management"
+					>
+						<div className="relative shrink-0">
+							<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+							</svg>
+							{isAuthenticated && lastBackupTimestamp && (
+								<span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-green-400 rounded-full" />
+							)}
+						</div>
+						<span className={`overflow-hidden whitespace-nowrap transition-all duration-300 text-gray-400 ${isOpen ? "w-0 opacity-0" : "w-auto opacity-100"}`}>
+							Data
+						</span>
+					</button>
+				</div>
 			</div>
+
+			{/* Data Management Panel - outside sidebar div to avoid transform containment */}
+			<CloudBackupPanel isOpen={dataPanelOpen} onClose={() => setDataPanelOpen(false)} />
 		</>
 	);
 }

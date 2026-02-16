@@ -23,6 +23,7 @@ import {
     DecisionLogEntry,
 } from "./types";
 import * as TaxService from "../../components/Objects/Taxes/TaxService";
+import { TaxBracket } from "../../data/TaxData";
 
 // =============================================================================
 // CONSTANTS
@@ -259,28 +260,113 @@ function grossUpBrokerage(
 }
 
 /**
+ * Compute piecewise tax on a known gross Traditional withdrawal.
+ * Walks federal and state brackets stacked on current taxable income positions.
+ */
+function computeTaxOnGross(
+    grossAmount: number,
+    fedTaxableIncome: number,
+    stateTaxableIncome: number,
+    fedBrackets: TaxBracket[],
+    stateBrackets: TaxBracket[] | null,
+    remainingFedStdDedSpace: number,
+    remainingStateStdDedSpace: number
+): { fedTax: number; stateTax: number; totalTax: number } {
+    // Federal: tax applies to amount above std deduction space
+    const fedTaxableWithdrawal = Math.max(0, grossAmount - remainingFedStdDedSpace);
+    let fedTax = 0;
+    if (fedTaxableWithdrawal > 0 && fedBrackets.length > 0) {
+        let remaining = fedTaxableWithdrawal;
+        let incomePos = fedTaxableIncome;
+        for (let i = 0; i < fedBrackets.length && remaining > 0; i++) {
+            const bracket = fedBrackets[i];
+            const nextThreshold = fedBrackets[i + 1]?.threshold ?? Infinity;
+            if (incomePos >= nextThreshold) continue;
+            const floor = Math.max(incomePos, bracket.threshold);
+            const room = nextThreshold - floor;
+            const inBracket = Math.min(remaining, room);
+            fedTax += inBracket * bracket.rate;
+            incomePos += inBracket;
+            remaining -= inBracket;
+        }
+    }
+
+    // State: same approach
+    let stateTax = 0;
+    if (stateBrackets && stateBrackets.length > 0) {
+        const stateTaxableWithdrawal = Math.max(0, grossAmount - remainingStateStdDedSpace);
+        if (stateTaxableWithdrawal > 0) {
+            let remaining = stateTaxableWithdrawal;
+            let incomePos = stateTaxableIncome;
+            for (let i = 0; i < stateBrackets.length && remaining > 0; i++) {
+                const bracket = stateBrackets[i];
+                const nextThreshold = stateBrackets[i + 1]?.threshold ?? Infinity;
+                if (incomePos >= nextThreshold) continue;
+                const floor = Math.max(incomePos, bracket.threshold);
+                const room = nextThreshold - floor;
+                const inBracket = Math.min(remaining, room);
+                stateTax += inBracket * bracket.rate;
+                incomePos += inBracket;
+                remaining -= inBracket;
+            }
+        }
+    }
+
+    return { fedTax, stateTax, totalTax: fedTax + stateTax };
+}
+
+
+/**
  * Calculate gross withdrawal needed for a given net from Traditional accounts.
- * Uses algebraic formula: gross = net / (1 - marginalRate - penaltyRate)
+ * Uses binary search over computeTaxOnGross to correctly handle separate
+ * federal and state standard deduction spaces and bracket positions.
  */
 function grossUpTraditional(
     netNeeded: number,
-    marginalRate: number,
-    age: number
+    age: number,
+    fedTaxableIncome: number,
+    stateTaxableIncome: number,
+    fedBrackets: TaxBracket[],
+    stateBrackets: TaxBracket[] | null,
+    remainingFedStdDedSpace: number,
+    remainingStateStdDedSpace: number
 ): { gross: number; tax: number; penalty: number } {
-    const penaltyRate = age < EARLY_WITHDRAWAL_AGE ? EARLY_WITHDRAWAL_PENALTY_RATE : 0;
-    const effectiveRate = marginalRate + penaltyRate;
-
-    // Guard against division by zero or negative rates
-    if (effectiveRate >= 1) {
-        // This shouldn't happen, but guard against it
-        return { gross: netNeeded * 2, tax: netNeeded * marginalRate * 2, penalty: netNeeded * penaltyRate * 2 };
+    if (netNeeded <= 0) {
+        return { gross: 0, tax: 0, penalty: 0 };
     }
 
-    const gross = netNeeded / (1 - effectiveRate);
-    const tax = gross * marginalRate;
-    const penalty = gross * penaltyRate;
+    const penaltyRate = age < EARLY_WITHDRAWAL_AGE ? EARLY_WITHDRAWAL_PENALTY_RATE : 0;
 
-    return { gross, tax, penalty };
+    // Binary search: find gross such that gross - tax(gross) - penalty(gross) = netNeeded
+    let lo = netNeeded;
+    let hi = netNeeded * 3;
+
+    let bestGross = netNeeded;
+    let bestTax = 0;
+
+    for (let iter = 0; iter < 60; iter++) {
+        const mid = (lo + hi) / 2;
+        const taxResult = computeTaxOnGross(
+            mid, fedTaxableIncome, stateTaxableIncome,
+            fedBrackets, stateBrackets,
+            remainingFedStdDedSpace, remainingStateStdDedSpace
+        );
+        const penalty = mid * penaltyRate;
+        const net = mid - taxResult.totalTax - penalty;
+
+        bestGross = mid;
+        bestTax = taxResult.totalTax;
+
+        if (Math.abs(net - netNeeded) < 0.0001) break;
+
+        if (net < netNeeded) {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+
+    return { gross: bestGross, tax: bestTax, penalty: bestGross * penaltyRate };
 }
 
 /**
@@ -293,7 +379,8 @@ function grossUpRoth(
     conversionHistory: { year: number; amount: number }[],
     currentYear: number,
     age: number,
-    marginalRate: number
+    marginalRate: number,
+    maxGross: number = Infinity
 ): { gross: number; tax: number; penalty: number; fromContributions: number; fromConversions: number; fromEarnings: number } {
     let remaining = netNeeded;
     let fromContributions = 0;
@@ -301,30 +388,32 @@ function grossUpRoth(
     let fromEarnings = 0;
     let tax = 0;
     let penalty = 0;
+    let grossUsed = 0;
 
     // 1. Contributions first - tax-free, penalty-free
-    if (contributionBasis > 0 && remaining > 0) {
-        const fromContrib = Math.min(remaining, contributionBasis);
+    if (contributionBasis > 0 && remaining > 0 && grossUsed < maxGross) {
+        const fromContrib = Math.min(remaining, contributionBasis, maxGross - grossUsed);
         fromContributions = fromContrib;
+        grossUsed += fromContrib;
         remaining -= fromContrib;
     }
 
     // 2. Conversions second - FIFO by year, 5-year rule for penalty
-    if (remaining > 0 && conversionHistory.length > 0) {
+    if (remaining > 0 && grossUsed < maxGross && conversionHistory.length > 0) {
         // Sort by year (oldest first)
         const sortedConversions = [...conversionHistory].sort((a, b) => a.year - b.year);
 
         for (const conv of sortedConversions) {
-            if (remaining <= 0) break;
+            if (remaining <= 0 || grossUsed >= maxGross) break;
 
             const yearsHeld = currentYear - conv.year;
             const penaltyApplies = age < EARLY_WITHDRAWAL_AGE && yearsHeld < 5;
 
-            const fromThisConv = Math.min(remaining, conv.amount);
+            const fromThisConv = Math.min(remaining, conv.amount, maxGross - grossUsed);
             fromConversions += fromThisConv;
+            grossUsed += fromThisConv;
 
             if (penaltyApplies) {
-                // Need to gross up for penalty
                 const penaltyOnConv = fromThisConv * EARLY_WITHDRAWAL_PENALTY_RATE;
                 penalty += penaltyOnConv;
             }
@@ -334,20 +423,21 @@ function grossUpRoth(
     }
 
     // 3. Earnings last - tax + penalty if under 59.5
-    if (remaining > 0) {
+    if (remaining > 0 && grossUsed < maxGross) {
+        const grossRoom = maxGross - grossUsed;
         if (age < EARLY_WITHDRAWAL_AGE) {
             // Earnings are taxed as ordinary income + 10% penalty
             const penaltyRate = EARLY_WITHDRAWAL_PENALTY_RATE;
             const effectiveRate = marginalRate + penaltyRate;
 
-            // Gross up the remaining need
-            const grossEarnings = remaining / (1 - effectiveRate);
+            // Gross up the remaining need, capped by available room
+            const grossEarnings = Math.min(remaining / (1 - effectiveRate), grossRoom);
             fromEarnings = grossEarnings;
             tax = grossEarnings * marginalRate;
             penalty += grossEarnings * penaltyRate;
         } else {
             // After 59.5, earnings are tax-free too (qualified distribution)
-            fromEarnings = remaining;
+            fromEarnings = Math.min(remaining, grossRoom);
         }
     }
 
@@ -382,7 +472,10 @@ export function planWithdrawals(
     currentOrdinaryIncome: number,
     assumptions: AssumptionsState | undefined,
     reason: PlannedWithdrawal['reason'] = 'Spending deficit',
-    acaWithdrawalOptions?: { acaCliffThreshold: number; currentMAGI: number }
+    acaWithdrawalOptions?: { acaCliffThreshold: number; currentMAGI: number },
+    /** Income included in currentOrdinaryIncome for federal brackets but exempt from state tax
+     *  (e.g., taxable Social Security for DC and most states that exempt SS). */
+    stateExemptIncome: number = 0
 ): WithdrawalPlanResult {
     const withdrawals: PlannedWithdrawal[] = [];
     const decisions: DecisionLogEntry[] = [];
@@ -557,13 +650,13 @@ export function planWithdrawals(
                                     rothSnapshot.conversionHistory ?? [],
                                     year,
                                     currentAge,
-                                    marginalRate
+                                    marginalRate,
+                                    availableRoth
                                 );
 
-                                const rothGross = Math.min(rothResult.gross, availableRoth);
-                                const rothRatio = rothGross / rothResult.gross;
-                                const rothTax = rothResult.tax * rothRatio;
-                                const rothPenalty = rothResult.penalty * rothRatio;
+                                const rothGross = rothResult.gross;
+                                const rothTax = rothResult.tax;
+                                const rothPenalty = rothResult.penalty;
                                 const rothNet = rothGross - rothTax - rothPenalty;
 
                                 if (rothNet <= 0) continue;
@@ -592,7 +685,7 @@ export function planWithdrawals(
 
                                 // Roth earnings add to ordinary income if under 59.5
                                 if (rothResult.fromEarnings > 0 && currentAge < 59.5) {
-                                    runningOrdinaryIncome += rothResult.fromEarnings * rothRatio;
+                                    runningOrdinaryIncome += rothResult.fromEarnings;
                                 }
 
                                 decisions.push({
@@ -648,14 +741,46 @@ export function planWithdrawals(
 
             case 'traditional_401k':
             case 'traditional_ira': {
-                const result = grossUpTraditional(remainingNetNeeded, marginalRate, currentAge);
+                // Compute taxable income positions and remaining std ded space
+                // Federal: uses full runningOrdinaryIncome (includes taxable SS)
+                const fedTaxable = Math.max(0, runningOrdinaryIncome - (fedParams?.standardDeduction ?? 0));
+                // State: excludes stateExemptIncome (e.g., taxable SS for DC)
+                const stateIncomeForBrackets = runningOrdinaryIncome - stateExemptIncome;
+                const stateTaxable = stateParams ? Math.max(0, stateIncomeForBrackets - stateParams.standardDeduction) : 0;
+                const fedStdDedSpace = Math.max(0, (fedParams?.standardDeduction ?? 0) - runningOrdinaryIncome);
+                const stateStdDedSpace = stateParams
+                    ? Math.max(0, stateParams.standardDeduction - stateIncomeForBrackets)
+                    : Infinity;
+
+                const result = grossUpTraditional(
+                    remainingNetNeeded, currentAge,
+                    fedTaxable, stateTaxable,
+                    fedParams?.brackets ?? [], stateParams?.brackets ?? null,
+                    fedStdDedSpace, stateStdDedSpace
+                );
                 const grossToWithdraw = Math.min(result.gross, effectiveVestedBalance);
 
-                // Recalculate for actual amount if capped
+                // Compute tax: if capped by balance, recompute piecewise; otherwise use gross-up result
                 const penaltyRate = currentAge < EARLY_WITHDRAWAL_AGE ? EARLY_WITHDRAWAL_PENALTY_RATE : 0;
-                const actualPenalty = grossToWithdraw * penaltyRate;
-                const actualTax = grossToWithdraw * marginalRate;
-                const netReceived = grossToWithdraw - actualTax - actualPenalty;
+                let actualTax: number;
+                let actualPenalty: number;
+                let netReceived: number;
+
+                if (grossToWithdraw < result.gross) {
+                    // Capped by account balance — recompute tax piecewise for actual gross
+                    const taxResult = computeTaxOnGross(
+                        grossToWithdraw, fedTaxable, stateTaxable,
+                        fedParams?.brackets ?? [], stateParams?.brackets ?? null,
+                        fedStdDedSpace, stateStdDedSpace
+                    );
+                    actualTax = taxResult.totalTax;
+                    actualPenalty = grossToWithdraw * penaltyRate;
+                    netReceived = grossToWithdraw - actualTax - actualPenalty;
+                } else {
+                    actualTax = result.tax;
+                    actualPenalty = result.penalty;
+                    netReceived = grossToWithdraw - actualTax - actualPenalty;
+                }
 
                 withdrawal = {
                     source: snapshot.accountType,
@@ -696,15 +821,11 @@ export function planWithdrawals(
                     snapshot.conversionHistory ?? [],
                     year,
                     currentAge,
-                    marginalRate
+                    marginalRate,
+                    effectiveVestedBalance
                 );
-                const grossToWithdraw = Math.min(result.gross, effectiveVestedBalance);
-
-                // For simplicity, if we can't withdraw the full gross, pro-rate the components
-                const ratio = grossToWithdraw / result.gross;
-                const actualTax = result.tax * ratio;
-                const actualPenalty = result.penalty * ratio;
-                const netReceived = grossToWithdraw - actualTax - actualPenalty;
+                const grossToWithdraw = result.gross;
+                const netReceived = grossToWithdraw - result.tax - result.penalty;
 
                 withdrawal = {
                     source: snapshot.accountType,
@@ -712,28 +833,28 @@ export function planWithdrawals(
                     accountName: snapshot.accountName,
                     gross: grossToWithdraw,
                     net: netReceived,
-                    penalty: actualPenalty,
-                    tax: actualTax,
+                    penalty: result.penalty,
+                    tax: result.tax,
                     reason,
                 };
 
                 // Roth earnings (if any) add to ordinary income
                 if (result.fromEarnings > 0 && currentAge < EARLY_WITHDRAWAL_AGE) {
-                    runningOrdinaryIncome += result.fromEarnings * ratio;
+                    runningOrdinaryIncome += result.fromEarnings;
                 }
 
                 remainingNetNeeded -= netReceived;
                 totalNet += netReceived;
                 totalGross += grossToWithdraw;
-                totalTax += actualTax;
-                totalPenalties += actualPenalty;
+                totalTax += result.tax;
+                totalPenalties += result.penalty;
 
-                if (actualPenalty > 0) {
+                if (result.penalty > 0) {
                     decisions.push({
                         category: 'withdrawal',
                         account: snapshot.accountName,
-                        amount: actualPenalty,
-                        description: `Early withdrawal penalty of $${actualPenalty.toFixed(0)} on Roth withdrawal (5-year rule).`,
+                        amount: result.penalty,
+                        description: `Early withdrawal penalty of $${result.penalty.toFixed(0)} on Roth withdrawal (5-year rule).`,
                     });
                 }
                 break;
@@ -927,7 +1048,7 @@ export function planWithdrawals(
         totalPenalties,
         totalLTCG,
         totalSTCG,
-        remainingDeficit: Math.max(0, remainingNetNeeded),
+        remainingDeficit: remainingNetNeeded < 0.01 ? 0 : remainingNetNeeded,
         decisions,
     };
 }

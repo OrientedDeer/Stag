@@ -181,7 +181,10 @@ describe('Savings Account Interest Income', () => {
       );
 
       // Interest of 50000 * 0.05 = 2500 should be included in gross income
-      expect(result.cashflow.totalIncome).toBeCloseTo(2500, 1);
+      // Note: cashflow.totalIncome is spendable-only (excludes reinvested interest).
+      // Use getGrossIncome which includes all income for tax purposes.
+      const grossIncome = TaxService.getGrossIncome(result.incomes, year);
+      expect(grossIncome).toBeCloseTo(2500, 1);
     });
 
     it('should NOT be subject to FICA (earned income check)', () => {
@@ -449,15 +452,18 @@ describe('Savings Account Interest Income', () => {
       expect(accountGrowth).toBeCloseTo(5000, 0);
 
       // Verify: Interest is in gross income (for taxes)
-      expect(cashflowIncome).toBeCloseTo(5000, 0);
+      // Note: cashflow.totalIncome is spendable-only; use getGrossIncome for taxable total
+      const grossIncome = TaxService.getGrossIncome(result.incomes, year);
+      expect(grossIncome).toBeCloseTo(5000, 0);
+
+      // Verify: cashflow.totalIncome excludes reinvested interest (spendable only)
+      expect(cashflowIncome).toBe(0);
 
       // Verify: Interest income has isReinvested flag
       expect(interestIncome.isReinvested).toBe(true);
 
       // Verify: Interest is NOT available as discretionary cash
-      // With $5k income, ~$0 taxes (below deduction), and no expenses,
-      // discretionary cash should be ~$0 (or slightly negative due to interest subtraction)
-      // If phantom money existed, discretionary would be ~$5k
+      // Interest is reinvested, so discretionary should be ~$0
       expect(discretionaryCash).toBeLessThan(100); // Near zero, not $5000
     });
 
@@ -495,8 +501,10 @@ describe('Savings Account Interest Income', () => {
       // Verify interest flow is correct:
       // - Account grew by interest (stays in account)
       expect(grownAccount.amount).toBeCloseTo(initialBalance * 1.05, 0);
-      // - Interest appears in income (for taxes)
-      expect(result.cashflow.totalIncome).toBeCloseTo(5000, 0);
+      // - Interest appears in gross income (for taxes) but NOT in cashflow.totalIncome (spendable only)
+      const grossIncome = TaxService.getGrossIncome(result.incomes, year);
+      expect(grossIncome).toBeCloseTo(5000, 0);
+      expect(result.cashflow.totalIncome).toBe(0); // Reinvested interest excluded from spendable
       // - Interest is NOT discretionary (it's reinvested in the account)
       expect(result.cashflow.discretionary).toBeLessThan(100);
     });

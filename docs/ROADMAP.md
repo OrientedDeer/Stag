@@ -5,7 +5,6 @@
 These features are complete but need validation:
 
 - **ESPP Accounts** - Lot tracking, tax calculations, withdrawal preferences
-- **SSA Earnings Import** - XML import for accurate SS calculation
 
 ---
 
@@ -89,6 +88,7 @@ A unified "Tax Optimization" toggle on the withdrawal screen that intelligently 
 - **Chart Layout Stability** - Info banners on cashflow chart no longer shift the chart when appearing/disappearing
 - **ESPP Support** - Full Employee Stock Purchase Plan account tracking with lot-level detail, qualifying/disqualifying disposition tax handling, configurable withdrawal preferences
 - **Budget Tracking** - Track actual spending vs projections with CSV import, auto-categorization rules, monthly snapshots, spending trends analysis
+- **Cloud Backup with Client-Side Encryption** - Optional zero-knowledge cloud backup using AES-256-GCM encryption (Web Crypto API, no dependencies). OAuth sign-in via Google/GitHub through AWS Cognito, pre-signed S3 URLs, passphrase never stored. Unified Data Management panel in sidebar consolidates local file export/import, QR code transfer, and cloud backup
 
 ---
 
@@ -98,10 +98,7 @@ A unified "Tax Optimization" toggle on the withdrawal screen that intelligently 
 - RSU (Restricted Stock Unit) support — see detailed breakdown below
 - Tutorial / walkthrough for new users
   - Should wait until the app is essentially feature-complete to avoid constant updates
-- Real estate enhancements (property sale, depreciation, capital gains)
-- Optional localStorage encryption
-- Zero bracket harvesting (withdraw from Traditional tax-free when below standard deduction)
-  - Needs design work on interaction with Auto Roth Conversions
+- ~~Optional localStorage encryption~~ — Covered by cloud backup encryption (CryptoService exists for local encrypted export if needed)
 
 ### RSU (Restricted Stock Unit) Support
 
@@ -217,9 +214,5 @@ Many pages exceed the 150ms render threshold, triggering React warnings. Target 
   - Budget tab (transaction table rendering)
 
 ### Technical Debt
-- Split SimulationEngine.tsx into multiple files (withdrawal logic, tax integration, income processing, etc.) — currently ~2000 lines and difficult to navigate
 - Screen reader testing
 - Monte Carlo performance testing
-- Roth conversion tax payment improvement
-  - Currently grosses up Roth withdrawal to pay conversion tax
-  - Consider grossing up the next account in withdrawal order instead

@@ -1,8 +1,8 @@
 /**
- * Integration tests for the new YearSolver-based simulation engine (V2).
+ * Integration tests for the YearSolver-based simulation engine.
  *
- * These tests verify that the new engine produces correct results
- * for various scenarios and compare behavior with the old engine.
+ * These tests verify that the engine produces correct results
+ * for various scenarios.
  */
 import { describe, it, expect } from 'vitest';
 import { simulateOneYear } from '../../../components/Objects/Assumptions/SimulationEngine';
@@ -23,7 +23,6 @@ import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
 function createTestAssumptions(overrides: {
     birthYear?: number;
     retirementAge?: number;
-    useNewEngine?: boolean;
     taxOptimizationEnabled?: boolean;
     withdrawalStrategy?: { id: string; name: string; accountId: string }[];
 } = {}): AssumptionsState {
@@ -33,9 +32,6 @@ function createTestAssumptions(overrides: {
     return {
         ...defaultAssumptions,
         milestones: createBuiltinMilestones(birthYear, retirementAge, 95),
-        simulation: {
-            useNewEngine: overrides.useNewEngine ?? false,
-        },
         investments: {
             ...defaultAssumptions.investments,
             taxOptimizationEnabled: overrides.taxOptimizationEnabled ?? false,
@@ -61,9 +57,9 @@ function createTestTaxState(): TaxState {
 // Basic Functionality Tests
 // =============================================================================
 
-describe('YearSolver Integration (V2 Engine)', () => {
+describe('YearSolver Integration', () => {
     describe('Basic Working Year', () => {
-        it('should handle a simple working year with both engines', () => {
+        it('should handle a simple working year', () => {
             // Setup: Working person with $100k salary, $50k expenses
             const workIncome = new WorkIncome(
                 'work-1', 'Job', 100000, 'Annually', 'Yes',
@@ -79,31 +75,20 @@ describe('YearSolver Integration (V2 Engine)', () => {
             );
 
             const taxState = createTestTaxState();
-
-            // Run with OLD engine
-            const oldAssumptions = createTestAssumptions({ birthYear: 1990, useNewEngine: false });
-            const oldResult = simulateOneYear(
+            const assumptions = createTestAssumptions({ birthYear: 1990 });
+            const result = simulateOneYear(
                 2025, [workIncome], [expense], [checking, trad401k],
-                oldAssumptions, taxState
-            );
-
-            // Run with NEW engine
-            const newAssumptions = createTestAssumptions({ birthYear: 1990, useNewEngine: true });
-            const newResult = simulateOneYear(
-                2025, [workIncome], [expense], [checking, trad401k],
-                newAssumptions, taxState
+                assumptions, taxState
             );
 
             // Basic sanity checks
-            expect(oldResult.year).toBe(2025);
-            expect(newResult.year).toBe(2025);
+            expect(result.year).toBe(2025);
 
-            // Both should have positive discretionary cash (income > expenses)
-            expect(oldResult.cashflow.discretionary).toBeGreaterThanOrEqual(0);
-            expect(newResult.cashflow.discretionary).toBeGreaterThanOrEqual(0);
+            // Should have positive discretionary cash (income > expenses)
+            expect(result.cashflow.discretionary).toBeGreaterThanOrEqual(0);
 
-            // New engine should add a V2 log entry
-            expect(newResult.logs.some(l => l.includes('[V2 Engine]'))).toBe(true);
+            // Should add a V2 log entry
+            expect(result.logs.some(l => l.includes('[V2 Engine]'))).toBe(true);
         });
     });
 
@@ -123,36 +108,20 @@ describe('YearSolver Integration (V2 Engine)', () => {
             );
 
             const taxState = createTestTaxState();
-
-            // Run with OLD engine
-            const oldAssumptions = createTestAssumptions({
+            const assumptions = createTestAssumptions({
                 birthYear: 1955,
                 retirementAge: 65,
-                useNewEngine: false,
             });
-            const oldResult = simulateOneYear(
+            const result = simulateOneYear(
                 2025, [pension], [expense], [savings, traditional],
-                oldAssumptions, taxState
+                assumptions, taxState
             );
 
-            // Run with NEW engine
-            const newAssumptions = createTestAssumptions({
-                birthYear: 1955,
-                retirementAge: 65,
-                useNewEngine: true,
-            });
-            const newResult = simulateOneYear(
-                2025, [pension], [expense], [savings, traditional],
-                newAssumptions, taxState
-            );
-
-            // Both should show income > expenses (surplus)
-            expect(oldResult.cashflow.totalIncome).toBeGreaterThan(oldResult.cashflow.livingExpenses);
-            expect(newResult.cashflow.totalIncome).toBeGreaterThan(newResult.cashflow.livingExpenses);
+            // Should show income > expenses (surplus)
+            expect(result.cashflow.totalIncome).toBeGreaterThan(result.cashflow.livingExpenses);
 
             // No withdrawals should be needed since pension covers expenses
-            expect(oldResult.cashflow.withdrawals).toBe(0);
-            expect(newResult.cashflow.withdrawals).toBe(0);
+            expect(result.cashflow.withdrawals).toBe(0);
         });
 
         it('should handle retirement year with deficit requiring withdrawals', () => {
@@ -170,27 +139,24 @@ describe('YearSolver Integration (V2 Engine)', () => {
             );
 
             const taxState = createTestTaxState();
-
-            // Run with NEW engine
-            const newAssumptions = createTestAssumptions({
+            const assumptions = createTestAssumptions({
                 birthYear: 1955,
                 retirementAge: 65,
-                useNewEngine: true,
                 withdrawalStrategy: [
                     { id: 'ws-1', name: 'Savings', accountId: 'savings-1' },
                     { id: 'ws-2', name: 'Traditional', accountId: 'trad-1' },
                 ],
             });
-            const newResult = simulateOneYear(
+            const result = simulateOneYear(
                 2025, [ss], [expense], [savings, traditional],
-                newAssumptions, taxState
+                assumptions, taxState
             );
 
             // Withdrawals should be needed to cover deficit
-            expect(newResult.cashflow.withdrawals).toBeGreaterThan(0);
+            expect(result.cashflow.withdrawals).toBeGreaterThan(0);
 
             // Should have V2 engine log
-            expect(newResult.logs.some(l => l.includes('[V2 Engine]'))).toBe(true);
+            expect(result.logs.some(l => l.includes('[V2 Engine]'))).toBe(true);
         });
     });
 
@@ -215,12 +181,9 @@ describe('YearSolver Integration (V2 Engine)', () => {
             );
 
             const taxState = createTestTaxState();
-
-            // Run with NEW engine + tax optimization
-            const newAssumptions = createTestAssumptions({
+            const assumptions = createTestAssumptions({
                 birthYear: 1960,
                 retirementAge: 60,
-                useNewEngine: true,
                 taxOptimizationEnabled: true,
                 withdrawalStrategy: [
                     { id: 'ws-1', name: 'Brokerage', accountId: 'brok-1' },
@@ -231,7 +194,7 @@ describe('YearSolver Integration (V2 Engine)', () => {
 
             const result = simulateOneYear(
                 2025, [pension], [expense], [traditional, roth, brokerage],
-                newAssumptions, taxState
+                assumptions, taxState
             );
 
             // When tax optimization is enabled and there's bracket space,

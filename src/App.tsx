@@ -24,6 +24,7 @@ import PriorityTab from "./tabs/Future/PriorityTab";
 import WithdrawalTab from "./tabs/Future/WithdrawalTab";
 import BudgetTab from "./tabs/Budget/BudgetTab";
 import { BudgetProvider } from "./components/Objects/Budget/BudgetContext";
+import { CloudBackupProvider } from "./components/Objects/CloudBackup/CloudBackupContext";
 
 export default function App() {
   const [isOpen, setIsOpen] = useState(false); // shared variable
@@ -38,6 +39,7 @@ export default function App() {
               <MonteCarloProvider>
               <ScenarioProvider>
               <BudgetProvider>
+              <CloudBackupProvider>
               <div className="flex h-screen">
                 <Sidebar isOpen={isOpen} onClose={() => setIsOpen(true)}/>
                 <div className="flex flex-col flex-1 overflow-hidden">
@@ -67,6 +69,7 @@ export default function App() {
                   </main>
                 </div>
               </div>
+              </CloudBackupProvider>
               </BudgetProvider>
               </ScenarioProvider>
               </MonteCarloProvider>

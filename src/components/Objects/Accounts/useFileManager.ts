@@ -113,6 +113,9 @@ export const useFileManager = () => {
     };
 
     const getBackupData = (): FullBackup => {
+        const { months, importSettings, selectedMonth, selectedYear } = budgetContext;
+        const budgetState: BudgetState = { months, importSettings, selectedMonth, selectedYear };
+
         return {
             version: 1,
             accounts: accounts.map(a => ({ ...a, className: a.constructor.name })),
@@ -121,6 +124,7 @@ export const useFileManager = () => {
             expenses: expenses.map(e => ({ ...e, className: e.constructor.name })),
             taxSettings: state as TaxState,
             assumptions: assumptions as AssumptionsState,
+            budget: budgetState,
         };
     };
 

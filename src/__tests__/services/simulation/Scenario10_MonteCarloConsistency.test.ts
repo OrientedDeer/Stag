@@ -98,7 +98,7 @@ function createModerateScenarioExpenses() {
     return { living };
 }
 
-function createModerateScenarioAssumptions(_useNewEngine: boolean = false): AssumptionsState {
+function createModerateScenarioAssumptions(): AssumptionsState {
     return {
         ...defaultAssumptions,
         milestones: createBuiltinMilestones(BIRTH_YEAR, 60, 95),
@@ -156,7 +156,7 @@ describe('Scenario 10: Level 1 - Single Year Validation', () => {
         const accounts = createModerateScenarioAccounts();
         const incomes = createModerateScenarioIncomes();
         const expenses = createModerateScenarioExpenses();
-        const assumptions = createModerateScenarioAssumptions(true);
+        const assumptions = createModerateScenarioAssumptions();
         const taxState = createModerateScenarioTaxState();
 
         const result = runYear(
@@ -185,7 +185,7 @@ describe('Scenario 10: Level 1 - Single Year Validation', () => {
         const accounts = createModerateScenarioAccounts();
         const incomes = createModerateScenarioIncomes();
         const expenses = createModerateScenarioExpenses();
-        const assumptions = createModerateScenarioAssumptions(true);
+        const assumptions = createModerateScenarioAssumptions();
         const taxState = createModerateScenarioTaxState();
 
         const result = runYear(
@@ -206,7 +206,7 @@ describe('Scenario 10: Level 1 - Single Year Validation', () => {
         const accounts = createModerateScenarioAccounts();
         const incomes = createModerateScenarioIncomes();
         const expenses = createModerateScenarioExpenses();
-        const assumptions = createModerateScenarioAssumptions(true);
+        const assumptions = createModerateScenarioAssumptions();
         const taxState = createModerateScenarioTaxState();
 
         const result = runYear(
@@ -240,7 +240,7 @@ describe('Scenario 10: Level 2 - Multi-Year Sequence', () => {
         let accounts = createModerateScenarioAccounts();
         const incomes = createModerateScenarioIncomes();
         const expenses = createModerateScenarioExpenses();
-        const assumptions = createModerateScenarioAssumptions(true);
+        const assumptions = createModerateScenarioAssumptions();
         const taxState = createModerateScenarioTaxState();
 
         const results: SimulationYear[] = [];
@@ -303,7 +303,7 @@ describe('Scenario 10: Level 2 - Multi-Year Sequence', () => {
 
         const incomes = createModerateScenarioIncomes();
         const expenses = createModerateScenarioExpenses();
-        const assumptions = createModerateScenarioAssumptions(true);
+        const assumptions = createModerateScenarioAssumptions();
         const taxState = createModerateScenarioTaxState();
 
         // Should not crash even with declining portfolio
@@ -330,7 +330,7 @@ describe('Scenario 10: Level 3 - Consistency Checks', () => {
         const accounts2 = createModerateScenarioAccounts();
         const incomes = createModerateScenarioIncomes();
         const expenses = createModerateScenarioExpenses();
-        const assumptions = createModerateScenarioAssumptions(true);
+        const assumptions = createModerateScenarioAssumptions();
         const taxState = createModerateScenarioTaxState();
 
         const result1 = simulateOneYear(
@@ -361,7 +361,7 @@ describe('Scenario 10: Level 3 - Consistency Checks', () => {
         const accounts = createModerateScenarioAccounts();
         const incomes = createModerateScenarioIncomes();
         const expenses = createModerateScenarioExpenses();
-        const assumptions = createModerateScenarioAssumptions(true);
+        const assumptions = createModerateScenarioAssumptions();
         const taxState = createModerateScenarioTaxState();
 
         const result = runYear(
@@ -385,7 +385,7 @@ describe('Scenario 10: Level 3 - Consistency Checks', () => {
         const accounts = createModerateScenarioAccounts();
         const incomes = createModerateScenarioIncomes();
         const expenses = createModerateScenarioExpenses();
-        const assumptions = createModerateScenarioAssumptions(true);
+        const assumptions = createModerateScenarioAssumptions();
         const taxState = createModerateScenarioTaxState();
 
         const result = runYear(
@@ -502,7 +502,7 @@ describe('Scenario 10: Level 4 - Monte Carlo Simulation', () => {
         const accounts2 = createModerateScenarioAccounts();
         const incomes = createModerateScenarioIncomes();
         const expenses = createModerateScenarioExpenses();
-        const assumptions = createModerateScenarioAssumptions(true);
+        const assumptions = createModerateScenarioAssumptions();
         const taxState = createModerateScenarioTaxState();
         const config = createMonteCarloConfig(FIXED_SEED);
 
@@ -535,7 +535,7 @@ describe('Scenario 10: Level 4 - Monte Carlo Simulation', () => {
         const accounts = createModerateScenarioAccounts();
         const incomes = createModerateScenarioIncomes();
         const expenses = createModerateScenarioExpenses();
-        const assumptions = createModerateScenarioAssumptions(true);
+        const assumptions = createModerateScenarioAssumptions();
         const taxState = createModerateScenarioTaxState();
         const config = createMonteCarloConfig();
 
@@ -566,7 +566,7 @@ describe('Scenario 10: Level 4 - Monte Carlo Simulation', () => {
         const accounts = createModerateScenarioAccounts();
         const incomes = createModerateScenarioIncomes();
         const expenses = createModerateScenarioExpenses();
-        const assumptions = createModerateScenarioAssumptions(true);
+        const assumptions = createModerateScenarioAssumptions();
         const taxState = createModerateScenarioTaxState();
         const config = createMonteCarloConfig();
 
@@ -592,7 +592,7 @@ describe('Scenario 10: Level 4 - Monte Carlo Simulation', () => {
         const accounts = createModerateScenarioAccounts();
         const incomes = createModerateScenarioIncomes();
         const expenses = createModerateScenarioExpenses();
-        const assumptions = createModerateScenarioAssumptions(true);
+        const assumptions = createModerateScenarioAssumptions();
         const taxState = createModerateScenarioTaxState();
         const config = createMonteCarloConfig();
 
@@ -630,7 +630,7 @@ describe('Scenario 10: Level 4 - Monte Carlo Simulation', () => {
         const accounts = createModerateScenarioAccounts();
         const incomes = createModerateScenarioIncomes();
         const expenses = createModerateScenarioExpenses();
-        const assumptions = createModerateScenarioAssumptions(true);
+        const assumptions = createModerateScenarioAssumptions();
         const taxState = createModerateScenarioTaxState();
         const config = createMonteCarloConfig();
 
@@ -663,7 +663,7 @@ describe('Scenario 10: Level 4 - Monte Carlo Simulation', () => {
         const accounts = createModerateScenarioAccounts();
         const incomes = createModerateScenarioIncomes();
         const expenses = createModerateScenarioExpenses();
-        const assumptions = createModerateScenarioAssumptions(true);
+        const assumptions = createModerateScenarioAssumptions();
         const taxState = createModerateScenarioTaxState();
         const config = createMonteCarloConfig();
 
@@ -706,7 +706,7 @@ describe('Scenario 10: Level 4 - Monte Carlo Simulation', () => {
         const accounts = createModerateScenarioAccounts();
         const incomes = createModerateScenarioIncomes();
         const expenses = createModerateScenarioExpenses();
-        const assumptions = createModerateScenarioAssumptions(true);
+        const assumptions = createModerateScenarioAssumptions();
         const taxState = createModerateScenarioTaxState();
         const config = createMonteCarloConfig();
 
@@ -749,7 +749,7 @@ describe('Scenario 10: Level 4 - Monte Carlo Simulation', () => {
         const accounts = createModerateScenarioAccounts();
         const incomes = createModerateScenarioIncomes();
         const expenses = createModerateScenarioExpenses();
-        const assumptions = createModerateScenarioAssumptions(true);
+        const assumptions = createModerateScenarioAssumptions();
         const taxState = createModerateScenarioTaxState();
         const config = createMonteCarloConfig();
 
@@ -794,7 +794,7 @@ describe('Scenario 10: Level 4 - Monte Carlo Simulation', () => {
         const accounts = createModerateScenarioAccounts();
         const incomes = createModerateScenarioIncomes();
         const expenses = createModerateScenarioExpenses();
-        const assumptions = createModerateScenarioAssumptions(true);
+        const assumptions = createModerateScenarioAssumptions();
         const taxState = createModerateScenarioTaxState();
         const config = createMonteCarloConfig();
 
@@ -825,7 +825,7 @@ describe('Scenario 10: Level 4 - Monte Carlo Simulation', () => {
         const accounts = createModerateScenarioAccounts();
         const incomes = createModerateScenarioIncomes();
         const expenses = createModerateScenarioExpenses();
-        const assumptions = createModerateScenarioAssumptions(true);
+        const assumptions = createModerateScenarioAssumptions();
         const taxState = createModerateScenarioTaxState();
         const config = createMonteCarloConfig();
 
@@ -894,7 +894,7 @@ describe('Scenario 10: Level 4 - Monte Carlo Simulation', () => {
         const accounts = createModerateScenarioAccounts();
         const incomes = createModerateScenarioIncomes();
         const expenses = createModerateScenarioExpenses();
-        const assumptions = createModerateScenarioAssumptions(true);
+        const assumptions = createModerateScenarioAssumptions();
         const taxState = createModerateScenarioTaxState();
         const config = createMonteCarloConfig();
 

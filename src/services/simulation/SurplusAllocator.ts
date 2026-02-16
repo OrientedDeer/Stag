@@ -16,6 +16,7 @@
 
 import { AnyAccount, SavedAccount, InvestedAccount, DeficitDebtAccount } from "../../components/Objects/Accounts/models";
 import { PlannedSurplusAllocation, DecisionLogEntry } from "./types";
+import { CapType } from "../../components/Objects/Assumptions/AssumptionsContext";
 
 // =============================================================================
 // TYPES
@@ -39,6 +40,8 @@ export interface SurplusAllocationSettings {
     rothIRALimit: number;
     /** Amount already contributed to Roth IRA this year */
     rothIRAContributedThisYear: number;
+    /** Monthly expenses (used for MULTIPLE_OF_EXPENSES cap type) */
+    monthlyExpenses?: number;
 }
 
 // =============================================================================
@@ -50,7 +53,7 @@ export interface SurplusAllocationSettings {
  *
  * @param surplus - Amount of surplus cash to allocate
  * @param accounts - All accounts (for finding targets)
- * @param priorityBuckets - User's priority bucket order (account IDs)
+ * @param priorityBuckets - User's priority bucket order with cap settings
  * @param earnedIncome - Earned income this year (for Roth IRA eligibility)
  * @param settings - Allocation settings
  * @returns Allocation plan
@@ -58,7 +61,7 @@ export interface SurplusAllocationSettings {
 export function allocateSurplus(
     surplus: number,
     accounts: AnyAccount[],
-    priorityBuckets: { accountId: string; priority: number }[],
+    priorityBuckets: { accountId: string; priority: number; capType?: CapType; capValue?: number }[],
     earnedIncome: number,
     settings: SurplusAllocationSettings
 ): SurplusAllocationResult {
@@ -166,30 +169,57 @@ export function allocateSurplus(
         const account = accounts.find(a => a.id === bucket.accountId);
         if (!account) continue;
 
+        // Determine cap for this bucket
+        const capType = bucket.capType ?? 'REMAINDER';
+        const capValue = bucket.capValue ?? 0;
+        let bucketCap: number;
+
+        switch (capType) {
+            case 'FIXED':
+                // capValue is monthly amount → annual
+                bucketCap = capValue * 12;
+                break;
+            case 'MAX':
+                // capValue is max annual allocation
+                bucketCap = capValue;
+                break;
+            case 'MULTIPLE_OF_EXPENSES':
+                // capValue is number of months of expenses → target balance
+                // Use totalExpenses from settings to compute target
+                bucketCap = Math.max(0,
+                    (settings.monthlyExpenses ?? 0) * capValue - account.amount
+                );
+                break;
+            case 'REMAINDER':
+            default:
+                bucketCap = Infinity;
+                break;
+        }
+
+        // Apply cap to what we can allocate from remaining surplus
+        const maxForBucket = Math.min(remaining, bucketCap);
+        if (maxForBucket <= 0) continue;
+
         // Handle different account types
         if (account instanceof SavedAccount) {
-            // Emergency fund / savings - fill up to target
-            const currentBalance = account.amount;
-            const target = settings.emergencyFundTarget;
+            const toAdd = maxForBucket;
 
-            if (currentBalance < target) {
-                const toAdd = Math.min(remaining, target - currentBalance);
+            allocations.push({
+                accountId: account.id,
+                amount: toAdd,
+                reason: capType === 'REMAINDER'
+                    ? `Savings contribution (remainder)`
+                    : `Savings contribution (${capType} cap: $${bucketCap.toLocaleString()})`,
+            });
 
-                allocations.push({
-                    accountId: account.id,
-                    amount: toAdd,
-                    reason: `Emergency fund contribution (target: $${target.toLocaleString()}, current: $${currentBalance.toLocaleString()})`,
-                });
+            decisions.push({
+                category: 'surplus',
+                account: account.name,
+                amount: toAdd,
+                description: `Allocated $${toAdd.toLocaleString()} to savings (${account.name}).`,
+            });
 
-                decisions.push({
-                    category: 'surplus',
-                    account: account.name,
-                    amount: toAdd,
-                    description: `Allocated $${toAdd.toLocaleString()} to emergency fund (${account.name}).`,
-                });
-
-                remaining -= toAdd;
-            }
+            remaining -= toAdd;
         } else if (account instanceof InvestedAccount) {
             // Check if it's a Roth IRA
             if (account.taxType === 'Roth IRA') {
@@ -214,7 +244,7 @@ export function allocateSurplus(
 
                 // Calculate available contribution room
                 const contributionRoom = Math.max(0, settings.rothIRALimit - settings.rothIRAContributedThisYear);
-                const maxContribution = Math.min(remaining, earnedIncome, contributionRoom);
+                const maxContribution = Math.min(maxForBucket, earnedIncome, contributionRoom);
 
                 if (maxContribution > 0) {
                     allocations.push({
@@ -239,30 +269,40 @@ export function allocateSurplus(
                     });
                 }
             } else if (account.taxType === 'Brokerage') {
-                // Brokerage - catch-all, takes all remaining
+                // Brokerage - allocate up to cap (or all remaining for REMAINDER)
+                const toAdd = maxForBucket;
+
                 allocations.push({
                     accountId: account.id,
-                    amount: remaining,
-                    reason: `Brokerage investment (surplus remainder)`,
+                    amount: toAdd,
+                    reason: capType === 'REMAINDER'
+                        ? `Brokerage investment (surplus remainder)`
+                        : `Brokerage investment (${capType} cap: $${bucketCap.toLocaleString()})`,
                 });
 
                 decisions.push({
                     category: 'surplus',
                     account: account.name,
-                    amount: remaining,
-                    description: `Invested $${remaining.toLocaleString()} surplus in brokerage.`,
+                    amount: toAdd,
+                    description: `Invested $${toAdd.toLocaleString()} surplus in brokerage.`,
                 });
 
-                remaining = 0;
+                remaining -= toAdd;
             }
             // Skip other account types (Traditional, etc.) for surplus allocation
         }
     }
 
+    // Collect account IDs already allocated via priority buckets so catch-all
+    // doesn't deposit additional surplus into a capped account.
+    const bucketAccountIds = new Set(sortedBuckets.map(b => b.accountId));
+
     // 3. If there's still remaining surplus, find any brokerage account
+    //    (skip accounts already in a priority bucket)
     if (remaining > 0) {
         const brokerage = accounts.find(a =>
             a instanceof InvestedAccount && a.taxType === 'Brokerage'
+            && !bucketAccountIds.has(a.id)
         );
 
         if (brokerage) {
@@ -284,8 +324,10 @@ export function allocateSurplus(
     }
 
     // 4. If STILL remaining (no brokerage account), find any savings account
+    //    (skip accounts already in a priority bucket)
     if (remaining > 0) {
-        const savings = accounts.find(a => a instanceof SavedAccount);
+        const savings = accounts.find(a => a instanceof SavedAccount
+            && !bucketAccountIds.has(a.id));
 
         if (savings) {
             allocations.push({

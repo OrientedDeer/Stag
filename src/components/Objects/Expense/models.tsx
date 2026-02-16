@@ -160,7 +160,7 @@ export class RentExpense extends BaseExpense {
     const generalInflation = this.getGeneralInflation(assumptions);
 
     const newPayment = this.payment * (1 + rentInflation + generalInflation);
-    const newUtilities = this.utilities * (1 + generalInflation);
+    const newUtilities = this.utilities * (1 + rentInflation + generalInflation);
 
     const result = new RentExpense(
       this.id, this.name, newPayment, newUtilities, this.frequency, this.startDate, this.endDate,

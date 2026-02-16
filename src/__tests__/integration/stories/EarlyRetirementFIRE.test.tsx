@@ -310,8 +310,10 @@ describe('Story 2: Early Retirement FIRE', () => {
     it('should drain accounts in order during FIRE bridge period', () => {
         // Use 0% returns so accounts actually drain during the bridge period
         // (With 7% returns, $500k would grow faster than $50k/year expenses)
+        // No work income — person is already retired at simulation start
         const zeroReturnAssumptions: AssumptionsState = {
             ...assumptions,
+            milestones: createBuiltinMilestones(birthYear, birthYear - 1990 + 2025, 90), // Already retired (retirementAge = current age)
             investments: {
                 ...assumptions.investments,
                 returnRates: { ror: 0 },
@@ -321,7 +323,7 @@ describe('Story 2: Early Retirement FIRE', () => {
         const simulation = runSimulation(
             yearsToSimulate,
             [brokerageAccount, rothIRA, traditionalIRA],
-            [workIncome, futureSS],
+            [futureSS],      // No work income — start from retirement portfolio
             [livingExpenses],
             zeroReturnAssumptions,
             taxState
@@ -332,7 +334,6 @@ describe('Story 2: Early Retirement FIRE', () => {
 
         for (const year of simulation) {
             const age = getAge(year.year, birthYear);
-            if (age < retirementAge) continue;
 
             const brokerage = getAccountById(year, 'acc-brokerage');
             const roth = getAccountById(year, 'acc-roth');
@@ -387,7 +388,7 @@ describe('Story 2: Early Retirement FIRE', () => {
     });
 
     it('should have deficit debt if accounts run out before SS', () => {
-        // Create a scenario with insufficient funds
+        // Create a scenario with insufficient funds — person already retired
         const smallBrokerage = new InvestedAccount(
             'acc-brokerage', 'Brokerage', 100000, 0, 10, 0.05, 'Brokerage', true, 1.0, 100000
         );
@@ -402,12 +403,18 @@ describe('Story 2: Early Retirement FIRE', () => {
             'exp-living', 'Living Expenses', 80000, 'Annually', new Date('2025-01-01')
         );
 
+        // Person is already retired at start — no work income to inflate accounts
+        const retiredAssumptions: AssumptionsState = {
+            ...assumptions,
+            milestones: createBuiltinMilestones(birthYear, birthYear - 1990 + 2025, 90),
+        };
+
         const simulation = runSimulation(
             yearsToSimulate,
             [smallBrokerage, smallRoth, smallTrad],
-            [workIncome, futureSS],
+            [futureSS],  // No work income
             [highExpenses],
-            assumptions,
+            retiredAssumptions,
             taxState
         );
 

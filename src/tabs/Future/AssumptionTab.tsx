@@ -272,15 +272,6 @@ export default function AssumptionTab() {
                             tooltip="Show Testing tab and experimental calculators"
                         />
 
-                        {state.display?.showExperimentalFeatures && (
-                            <ToggleInput
-                                label="V2 Simulation Engine"
-                                enabled={state.simulation?.useNewEngine ?? false}
-                                setEnabled={(val) => dispatch({ type: "UPDATE_SIMULATION", payload: { useNewEngine: val } })}
-                                tooltip="Use the new YearSolver-based simulation engine. Features: conversion-before-withdrawal ordering, algebraic gross-up, and iterative convergence."
-                            />
-                        )}
-
                         <ToggleInput
                             label="ACA-Aware Conversions"
                             enabled={state.investments.acaAware ?? true}

@@ -1,4 +1,4 @@
-import React, { useState, useContext, useRef, useEffect, useMemo } from "react"; // Added useRef, useMemo
+import React, { useState, useContext, useEffect, useMemo } from "react";
 import { AccountContext } from "../../components/Objects/Accounts/AccountContext";
 import {
     SavedAccount,
@@ -15,17 +15,10 @@ import AccountCard from "../../components/Objects/Accounts/AccountCard";
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import AddAccountModal from "../../components/Objects/Accounts/AddAccountModal";
 import { ObjectsIcicleChart, tailwindToCssVar, getDistributedColors } from "../../components/Charts/ObjectsIcicleChart";
-import { useFileManager } from "../../components/Objects/Accounts/useFileManager";
-import { IncomeContext } from "../../components/Objects/Income/IncomeContext";
-import { ExpenseContext } from "../../components/Objects/Expense/ExpenseContext";
-import { TaxContext } from "../../components/Objects/Taxes/TaxContext";
-import { AssumptionsContext, defaultAssumptions, createBuiltinMilestones } from "../../components/Objects/Assumptions/AssumptionsContext";
-import { SimulationContext } from "../../components/Objects/Assumptions/SimulationContext";
-import { QRGenerateModal, QRScanModal } from "../../components/Objects/Accounts/QRTransfer";
 
 const AccountList = ({ type }: { type: any }) => {
     const { accounts, dispatch } = useContext(AccountContext);
-    
+
     const filteredAccounts = accounts
         .map((acc, index) => ({ acc, originalIndex: index }))
         .filter(({ acc }) => acc instanceof type);
@@ -48,9 +41,9 @@ const AccountList = ({ type }: { type: any }) => {
         <DragDropContext onDragEnd={onDragEnd}>
             <Droppable droppableId="accounts-list">
                 {(provided) => (
-                    <div 
-                        {...provided.droppableProps} 
-                        ref={provided.innerRef} 
+                    <div
+                        {...provided.droppableProps}
+                        ref={provided.innerRef}
                         className="flex flex-col"
                     >
                         {filteredAccounts.map(({ acc }, index) => (
@@ -61,7 +54,7 @@ const AccountList = ({ type }: { type: any }) => {
                                         {...provided.draggableProps}
                                         className={`relative group pb-6 ${snapshot.isDragging ? 'z-50' : ''}`}
                                     >
-                                        <div 
+                                        <div
                                             {...provided.dragHandleProps}
                                             className="absolute -left-3 top-2 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-2 text-green-200"
                                         >
@@ -97,25 +90,13 @@ const getAccountValue = (account: AnyAccount): number => {
 };
 
 export default function AccountTab() {
-    const { accounts, dispatch: accountDispatch } = useContext(AccountContext);
-    const { dispatch: incomeDispatch } = useContext(IncomeContext);
-    const { dispatch: expenseDispatch } = useContext(ExpenseContext);
-    const { dispatch: taxDispatch } = useContext(TaxContext);
-    const { dispatch: assumptionsDispatch } = useContext(AssumptionsContext);
-    const { dispatch: simulationDispatch } = useContext(SimulationContext);
-    const { handleGlobalExport, handleGlobalImport, getBackupData } = useFileManager();
+    const { accounts } = useContext(AccountContext);
 
     const [activeTab, setActiveTab] = useState<string>(() => {
         return localStorage.getItem('account_active_tab') || 'Saved';
     });
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [showESPPModal, setShowESPPModal] = useState(false);
-    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-    const [showQRGenerate, setShowQRGenerate] = useState(false);
-    const [showQRScan, setShowQRScan] = useState(false);
-
-    // Ref for the hidden file input
-    const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Data wrangling for icicle chart
     const hierarchicalData = useMemo(() => {
@@ -179,62 +160,23 @@ export default function AccountTab() {
         localStorage.setItem('account_active_tab', activeTab);
     }, [activeTab]);
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        
-        // This is where the conversion happens from "File" to "String"
-        reader.onload = (event) => {
-            const result = event.target?.result;
-            if (typeof result === 'string') {
-                // NOW we call importData with the string it expects
-                handleGlobalImport(result);
-            }
-        };
-
-        reader.readAsText(file);
-
-        // Reset the input value so you can import the same file again if needed
-        e.target.value = '';
-    };
-
-    const handleDeleteAllData = () => {
-        // Clear all contexts
-        accountDispatch({ type: 'SET_BULK_DATA', payload: { accounts: [], amountHistory: {} } });
-        incomeDispatch({ type: 'SET_BULK_DATA', payload: { incomes: [] } });
-        expenseDispatch({ type: 'SET_BULK_DATA', payload: { expenses: [] } });
-        taxDispatch({ type: 'SET_STATUS', payload: 'Single' }); // Reset to defaults
-        // Use SET_BULK_DATA to fully reset assumptions including priorities and withdrawal strategy
-        // (RESET_DEFAULTS preserves those arrays)
-        assumptionsDispatch({ type: 'SET_BULK_DATA', payload: {
-            ...defaultAssumptions,
-            milestones: createBuiltinMilestones(new Date().getFullYear() - 24), // Reset to default age (birth year = current year - 24)
-        }});
-        simulationDispatch({ type: 'SET_SIMULATION', payload: [] });
-
-        // Close the modal
-        setShowDeleteConfirm(false);
-    };
-
     const tabs = ACCOUNT_CATEGORIES;
 
     const tabContent: Record<string, React.ReactNode> = {
         Cash: (
             <div className="p-4">
                 <AccountList type={SavedAccount} />
-                <button 
+                <button
                     onClick={() => setIsModalOpen(true)}
                     className="bg-green-600 p-4 rounded-xl text-white font-bold mt-4 hover:bg-green-700 transition-colors"
                 >
                     + Add Cash
                 </button>
                 <AddAccountModal
-                    isOpen={isModalOpen} 
-                    onClose={() => setIsModalOpen(false)} 
+                    isOpen={isModalOpen}
+                    onClose={() => setIsModalOpen(false)}
                     selectedType={SavedAccount}
-                />    
+                />
             </div>
         ),
         Invested: (
@@ -270,15 +212,15 @@ export default function AccountTab() {
         Property: (
             <div className="p-4">
                 <AccountList type={PropertyAccount} />
-                <button 
+                <button
                     onClick={() => setIsModalOpen(true)}
                     className="bg-green-600 p-4 rounded-xl text-white font-bold mt-4 hover:bg-green-700 transition-colors"
                 >
                     + Add Property
                 </button>
                 <AddAccountModal
-                    isOpen={isModalOpen} 
-                    onClose={() => setIsModalOpen(false)} 
+                    isOpen={isModalOpen}
+                    onClose={() => setIsModalOpen(false)}
                     selectedType={PropertyAccount}
                 />
             </div>
@@ -286,15 +228,15 @@ export default function AccountTab() {
         Debt: (
             <div className="p-4">
                 <AccountList type={DebtAccount} />
-                <button 
+                <button
                     onClick={() => setIsModalOpen(true)}
                     className="bg-green-600 p-4 rounded-xl text-white font-bold mt-4 hover:bg-green-700 transition-colors"
                 >
                     + Add Debt
                 </button>
                 <AddAccountModal
-                    isOpen={isModalOpen} 
-                    onClose={() => setIsModalOpen(false)} 
+                    isOpen={isModalOpen}
+                    onClose={() => setIsModalOpen(false)}
                     selectedType={DebtAccount}
                 />
             </div>
@@ -304,52 +246,12 @@ export default function AccountTab() {
     return (
         <div className="w-full min-h-full flex bg-gray-950 justify-center pt-6 pb-24">
             <div className="w-full px-4 sm:px-8 max-w-screen-2xl">
-                
+
                 <div className="space-y-4 mb-4 p-4 bg-gray-900 rounded-xl border border-gray-800">
-                    {/* Header with Export/Import Buttons */}
                     <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
                         <h2 className="text-xl font-bold text-white">
                             Account Amounts
                         </h2>
-                        <div className="flex gap-2">
-                            <button
-                                onClick={handleGlobalExport}
-                                className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-lg border border-gray-700 text-xs font-medium transition-colors"
-                            >
-                                Export Backup
-                            </button>
-                            <button
-                                onClick={() => fileInputRef.current?.click()}
-                                className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-lg border border-gray-700 text-xs font-medium transition-colors"
-                            >
-                                Import Backup
-                            </button>
-                            <button
-                                onClick={() => setShowQRGenerate(true)}
-                                className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-lg border border-gray-700 text-xs font-medium transition-colors"
-                            >
-                                Share QR
-                            </button>
-                            <button
-                                onClick={() => setShowQRScan(true)}
-                                className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-lg border border-gray-700 text-xs font-medium transition-colors"
-                            >
-                                Scan QR
-                            </button>
-                            <button
-                                onClick={() => setShowDeleteConfirm(true)}
-                                className="px-3 py-1.5 bg-red-900/20 hover:bg-red-900/40 text-red-300 rounded-lg border border-red-700 text-xs font-medium transition-colors"
-                            >
-                                Delete All Data
-                            </button>
-                            <input
-                                type="file"
-                                ref={fileInputRef}
-                                onChange={handleFileChange}
-                                accept=".json"
-                                className="hidden"
-                            />
-                        </div>
                     </div>
 
                     {accounts.length > 0 && (
@@ -378,54 +280,6 @@ export default function AccountTab() {
                 <div className="bg-[#09090b] border border-gray-800 rounded-xl min-h-100 mb-4">
                     {tabContent[activeTab]}
                 </div>
-
-                {/* Delete Confirmation Modal */}
-                {showDeleteConfirm && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                        <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl p-6 max-w-md w-full mx-4">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="bg-red-500/20 p-2 rounded-lg">
-                                    <svg className="w-6 h-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                    </svg>
-                                </div>
-                                <h3 className="text-xl font-bold text-white">Delete All Data?</h3>
-                            </div>
-                            <p className="text-gray-300 mb-6">
-                                This will permanently delete all your accounts, incomes, expenses, tax settings, assumptions, and simulation data.
-                                <span className="block mt-2 text-red-400 font-semibold">This action cannot be undone.</span>
-                            </p>
-                            <div className="flex gap-3 justify-end">
-                                <button
-                                    onClick={() => setShowDeleteConfirm(false)}
-                                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={handleDeleteAllData}
-                                    className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-medium transition-colors"
-                                >
-                                    Delete Everything
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* QR Generate Modal */}
-                <QRGenerateModal
-                    isOpen={showQRGenerate}
-                    onClose={() => setShowQRGenerate(false)}
-                    backupData={getBackupData()}
-                />
-
-                {/* QR Scan Modal */}
-                <QRScanModal
-                    isOpen={showQRScan}
-                    onClose={() => setShowQRScan(false)}
-                    onImport={handleGlobalImport}
-                />
             </div>
         </div>
     );
