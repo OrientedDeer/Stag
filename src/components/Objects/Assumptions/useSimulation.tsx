@@ -80,22 +80,47 @@ export const runSimulation = (
 
     const timeline: SimulationYear[] = [];
 
+    // --- STEP 0.5: RESOLVE autoMax401k ON WORK INCOMES ---
+    // When autoMax401k is 'traditional' or 'roth', the stored preTax401k/roth401k values
+    // are the user's custom values, not the IRS-limit-capped values. Resolve them now
+    // so Year 0 incomes have effective values for Sankey charts and partial-year adjustments.
+    const resolvedIncomes: AnyIncome[] = incomes.map(inc => {
+        if (inc instanceof WorkIncome && inc.autoMax401k !== 'custom') {
+            const effective = inc.getEffective401k(startYear, startAge);
+            if (effective.preTax !== inc.preTax401k || effective.roth !== inc.roth401k) {
+                return new WorkIncome(
+                    inc.id, inc.name, inc.amount, inc.frequency,
+                    inc.earned_income, effective.preTax, inc.insurance,
+                    effective.roth, inc.employerMatch, inc.matchAccountId,
+                    inc.taxType, inc.contributionGrowthStrategy,
+                    inc.startDate, inc.end_date, inc.hsaContribution,
+                    inc.autoMax401k, inc.esppContributionType,
+                    inc.esppContributionAmount, inc.esppDiscountPercent,
+                    inc.esppHasLookback, inc.esppOfferingPeriodMonths,
+                    inc.esppAccountId, inc.esppExpectedStockGrowth,
+                    inc.pensionSystem, inc.startMilestoneId, inc.endMilestoneId
+                );
+            }
+        }
+        return inc;
+    });
+
     // --- STEP 1: CREATE YEAR 0 (Baseline) ---
     // Note: Interest income is NOT included in Year 0 to allow users to match
     // their actual tax situation. Interest is generated starting in Year 1.
 
     // Calculate current baseline metrics using existing TaxService logic
-    // Pass startAge to getPreTaxExemptions/getPostTaxExemptions for auto-max 401k feature
-    const currentGross = TaxService.getGrossIncome(incomes, startYear);
-    const currentPreTax = TaxService.getPreTaxExemptions(incomes, startYear, startAge);
-    const currentPostTax = TaxService.getPostTaxExemptions(incomes, startYear, startAge);
-    const currentInsurance = incomes.reduce((sum, inc) =>
+    // Resolved incomes have effective 401k values baked in, so useStoredValue=true is safe
+    const currentGross = TaxService.getGrossIncome(resolvedIncomes, startYear);
+    const currentPreTax = TaxService.getPreTaxExemptions(resolvedIncomes, startYear, startAge, true);
+    const currentPostTax = TaxService.getPostTaxExemptions(resolvedIncomes, startYear, startAge, true);
+    const currentInsurance = resolvedIncomes.reduce((sum, inc) =>
         inc instanceof WorkIncome ? sum + inc.getProratedAnnual(inc.insurance, startYear) : sum, 0
     );
 
-    const currentFed = TaxService.calculateFederalTaxFromIncomes(taxState, incomes, expenses, 0, startYear, assumptions);
-    const currentState = TaxService.calculateStateTax(taxState, incomes, expenses, startYear, assumptions);
-    const currentFica = TaxService.calculateFicaTax(taxState, incomes, startYear, assumptions);
+    const currentFed = TaxService.calculateFederalTaxFromIncomes(taxState, resolvedIncomes, expenses, 0, startYear, assumptions);
+    const currentState = TaxService.calculateStateTax(taxState, resolvedIncomes, expenses, startYear, assumptions);
+    const currentFica = TaxService.calculateFicaTax(taxState, resolvedIncomes, startYear, assumptions);
     const currentTotalTax = currentFed + currentState + currentFica;
 
     const currentLivingExpenses = expenses.reduce((sum, exp) => sum + exp.getAnnualAmount(startYear), 0);
@@ -105,7 +130,7 @@ export const runSimulation = (
 
     const yearZero: SimulationYear = {
         year: startYear,
-        incomes: [...incomes],
+        incomes: [...resolvedIncomes],
         expenses: [...expenses],
         accounts: [...accounts],
         cashflow: {
@@ -115,9 +140,9 @@ export const runSimulation = (
             discretionary: currentDiscretionary,
             // In Year 0, we treat the input as "Static", so invested is effectively 0 or the sum of payroll deductions
             investedUser: currentPreTax + currentPostTax - currentInsurance,
-            investedMatch: incomes.reduce((sum, inc) => inc instanceof WorkIncome ? sum + inc.employerMatch : sum, 0),
+            investedMatch: resolvedIncomes.reduce((sum, inc) => inc instanceof WorkIncome ? sum + inc.employerMatch : sum, 0),
             totalInvested: (currentPreTax + currentPostTax - currentInsurance) +
-                            incomes.reduce((sum, inc) => inc instanceof WorkIncome ? sum + inc.employerMatch : sum, 0),
+                            resolvedIncomes.reduce((sum, inc) => inc instanceof WorkIncome ? sum + inc.employerMatch : sum, 0),
             bucketAllocations: 0,
             bucketDetail: {}, // Initialize empty for Year 0
             withdrawals: 0,
