@@ -235,12 +235,6 @@ export default function WithdrawalTab() {
                 (i.projectedPIA > 0 || i.calculatedPIA > 0)
             )
         );
-        console.log('[WithdrawalTab] simulation data:', {
-            length: simulation?.length,
-            year0PIA: (simulation?.[0]?.incomes?.find((i: any) => i.className === 'FutureSocialSecurityIncome') as any)?.projectedPIA,
-            year1PIA: (simulation?.[1]?.incomes?.find((i: any) => i.className === 'FutureSocialSecurityIncome') as any)?.projectedPIA,
-            selectedYear: simWithSS ? simulation.indexOf(simWithSS) : 'none'
-        });
         const extractedIncome = extractIncomeForRMDEstimate(
             simWithSS?.incomes ?? incomes,
             currentYear,
@@ -258,17 +252,6 @@ export default function WithdrawalTab() {
             extractedIncome.ssCola,
             extractedIncome.pensionCola
         );
-
-        // DEBUG: Log fixed income values going into target balance calculation
-        console.log('[WithdrawalTab] Fixed income inputs for target balance:', {
-            ssAtRMD: fixedIncomeResult.ssAtRMD,
-            pensionAtRMD: fixedIncomeResult.pensionAtRMD,
-            passiveIncome: extractedIncome.passiveIncome,
-            yearsProjected: fixedIncomeResult.yearsProjected,
-            currentTraditionalBalance,
-            yearsUntilRMD,
-            growthRate: growthRateForTarget,
-        });
 
         // Try to use V2 engine's tax optimization target (more accurate)
         // The V2 solver calculates this holistically during simulation
