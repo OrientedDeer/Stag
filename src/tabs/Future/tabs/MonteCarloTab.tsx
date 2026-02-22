@@ -1,4 +1,4 @@
-import React, { useMemo, useContext, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useContext, useState, useEffect } from 'react';
 import { FanChart } from '../../../components/Charts/FanChart';
 import { useMonteCarlo } from '../../../components/Objects/Assumptions/MonteCarloContext';
 import { AccountContext } from '../../../components/Objects/Accounts/AccountContext';
@@ -65,17 +65,30 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
         ? config.preset
         : 'historical'; // Fallback for old 'historical_real' or 'historical_nominal' values
 
-    // Track previous inflation setting to detect changes
-    const prevInflationAdjusted = useRef(inflationAdjusted);
-
-    // Auto-update return mean when inflation setting changes (for non-custom presets)
+    // Auto-update return mean when inflation setting changes.
+    // Uses config.lastInflationAdjusted (persisted to localStorage) instead of a ref,
+    // so the change is detected even if the component unmounts and remounts (tab switching).
+    const inflationRate = assumptions.macro?.inflationRate ?? 0;
     useEffect(() => {
-        if (prevInflationAdjusted.current !== inflationAdjusted && normalizedPreset !== 'custom') {
-            const newMean = getPresetReturnMean(normalizedPreset, inflationAdjusted);
-            updateConfig({ returnMean: newMean });
+        if (normalizedPreset !== 'custom') {
+            // For named presets, always sync to the expected value
+            const expectedMean = getPresetReturnMean(normalizedPreset, inflationAdjusted);
+            if (config.returnMean !== expectedMean) {
+                updateConfig({ returnMean: expectedMean, lastInflationAdjusted: inflationAdjusted });
+            } else if (config.lastInflationAdjusted !== inflationAdjusted) {
+                updateConfig({ lastInflationAdjusted: inflationAdjusted });
+            }
+        } else {
+            // For custom, adjust by inflation rate when the toggle changes
+            if (config.lastInflationAdjusted !== undefined && config.lastInflationAdjusted !== inflationAdjusted) {
+                const adjustment = inflationAdjusted ? inflationRate : -inflationRate;
+                const newMean = Math.round((config.returnMean + adjustment) * 10) / 10;
+                updateConfig({ returnMean: newMean, lastInflationAdjusted: inflationAdjusted });
+            } else if (config.lastInflationAdjusted === undefined) {
+                updateConfig({ lastInflationAdjusted: inflationAdjusted });
+            }
         }
-        prevInflationAdjusted.current = inflationAdjusted;
-    }, [inflationAdjusted, normalizedPreset, updateConfig]);
+    }, [inflationAdjusted, inflationRate, normalizedPreset, config.returnMean, config.lastInflationAdjusted, updateConfig]);
 
     // Extract deterministic baseline for comparison
     const deterministicLine = useMemo(() => {
@@ -89,6 +102,7 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
             preset: presetKey,
             returnMean: getPresetReturnMean(presetKey, inflationAdjusted),
             returnStdDev: preset.returnStdDev,
+            lastInflationAdjusted: inflationAdjusted,
         });
     };
 

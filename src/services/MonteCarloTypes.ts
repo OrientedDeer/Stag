@@ -17,6 +17,8 @@ export interface MonteCarloConfig {
     returnStdDev: number;
     /** Selected preset key (for UI tracking) */
     preset: ReturnPresetKey;
+    /** Tracks the inflation toggle state when returnMean was last set (survives unmount via localStorage) */
+    lastInflationAdjusted?: boolean;
 }
 
 /**
