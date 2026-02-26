@@ -183,7 +183,7 @@ export default function Dashboard() {
             <AlertBanner severity="info" onDismiss={dismissDisclaimer}>
               <span className="text-sm">
                 <strong>Your data is stored locally in your browser.</strong>{' '}
-                Use Export (on Accounts) to back up your data. It is not sent to any server and will be lost if you clear browser data.
+                Use the Data panel in the sidebar to export or set up cloud backups. Local data will be lost if you clear browser data.
               </span>
             </AlertBanner>
           )}
