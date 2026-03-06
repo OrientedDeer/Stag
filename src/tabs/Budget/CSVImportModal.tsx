@@ -137,7 +137,8 @@ const CSVImportModal: React.FC<CSVImportModalProps> = ({ isOpen, onClose }) => {
                 setStage('mapping');
             }
         } catch (e) {
-            setError('Failed to parse CSV file. Please check the file format.');
+            const detail = e instanceof Error ? e.message : String(e);
+            setError(`Failed to parse CSV file: ${detail}`);
         }
     }, [importSettings, existingTransactions]);
 
@@ -385,7 +386,7 @@ const CSVImportModal: React.FC<CSVImportModalProps> = ({ isOpen, onClose }) => {
                                 <input
                                     id="csv-file-input"
                                     type="file"
-                                    accept=".csv"
+                                    accept=".csv,text/csv"
                                     onChange={handleFileSelect}
                                     className="hidden"
                                 />

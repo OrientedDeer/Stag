@@ -191,7 +191,9 @@ export function isLikelyIncome(description: string): boolean {
  * Parse a CSV string into headers and rows
  */
 export function parseCSV(content: string): ParsedCSV {
-    const lines = content.split(/\r?\n/).filter(line => line.trim());
+    // Strip UTF-8 BOM if present (common in bank CSV downloads)
+    const cleaned = content.replace(/^\uFEFF/, '');
+    const lines = cleaned.split(/\r?\n/).filter(line => line.trim());
 
     if (lines.length === 0) {
         return { headers: [], rows: [], hasHeaders: true };
@@ -766,7 +768,7 @@ export function detectDuplicates(
     for (const newTxn of newTransactions) {
         const isDuplicate = existingTransactions.some(existing => {
             // Same date
-            const sameDate = existing.date.toDateString() === newTxn.date.toDateString();
+            const sameDate = new Date(existing.date).toDateString() === new Date(newTxn.date).toDateString();
             // Same amount
             const sameAmount = Math.abs(existing.amount - newTxn.amount) < 0.01;
             // Similar description (at least 80% match)
