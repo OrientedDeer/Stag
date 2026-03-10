@@ -912,7 +912,7 @@ export function reconstituteExpense(data: unknown): AnyExpense | null {
     if (!hasClassName(data)) return null;
 
     const startDate = parseDateRequired(data.startDate);
-    const endDate = parseDate(data.end_date);
+    const endDate = parseDate(data.endDate);
     const frequency = (data.frequency as ExpenseFrequency) || 'Monthly';
     const id = String(data.id ?? '');
     const name = String(data.name ?? 'Unnamed Expense');

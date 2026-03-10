@@ -215,7 +215,7 @@ export default function CloudBackupPanel({ isOpen, onClose }: CloudBackupPanelPr
                                     onClick={() => setConfirmDeleteAll(true)}
                                     className="w-full text-left text-red-400 hover:text-red-300 text-xs transition-colors px-1"
                                 >
-                                    Delete All Data
+                                    Delete Local Data
                                 </button>
                             ) : (
                                 <div className="bg-red-900/20 border border-red-800 rounded-lg p-3">

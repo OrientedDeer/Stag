@@ -7,14 +7,9 @@ import {
     formatCurrency,
     getExpenseMonthlyBudget,
 } from '../../components/Objects/Budget/budgetUtils';
-import { useAutoReconcile } from '../../hooks/useAutoReconcile';
-
 export default function TrendsTab() {
-    const { months, dispatch } = useContext(BudgetContext);
+    const { months } = useContext(BudgetContext);
     const { expenses } = useContext(ExpenseContext);
-
-    // Auto-reconcile - sync spending with transaction totals
-    useAutoReconcile(months, dispatch);
 
     // Get last 6 months of data (relative to current date or selected year)
     const trendData = useMemo(() => {

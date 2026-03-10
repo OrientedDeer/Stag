@@ -28,7 +28,8 @@ export default function SettingsTab() {
 
         dispatch({ type: 'ADD_CATEGORY_MAPPING', payload: newRule });
         // Apply the new rule to all existing uncategorized transactions
-        dispatch({ type: 'APPLY_CATEGORY_RULE', payload: newRule });
+        const ruleExpense = expenses.find(e => e.id === newRule.expenseId);
+        dispatch({ type: 'APPLY_CATEGORY_RULE', payload: { ...newRule, expenseStart: ruleExpense?.startDate, expenseEnd: ruleExpense?.endDate } });
 
         setFormData({ pattern: '', expenseId: '', isRegex: false });
         setShowAddRule(false);
@@ -53,9 +54,10 @@ export default function SettingsTab() {
     const handleReapplyAllRules = useCallback(() => {
         // Apply each rule to all uncategorized transactions
         importSettings.categoryMappings.forEach(rule => {
-            dispatch({ type: 'APPLY_CATEGORY_RULE', payload: rule });
+            const ruleExpense = expenses.find(e => e.id === rule.expenseId);
+            dispatch({ type: 'APPLY_CATEGORY_RULE', payload: { ...rule, expenseStart: ruleExpense?.startDate, expenseEnd: ruleExpense?.endDate } });
         });
-    }, [dispatch, importSettings.categoryMappings]);
+    }, [dispatch, importSettings.categoryMappings, expenses]);
 
     const rules = importSettings.categoryMappings;
     const savedFormats = importSettings.savedCSVFormats || [];

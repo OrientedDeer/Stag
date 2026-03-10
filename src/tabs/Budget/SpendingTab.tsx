@@ -18,7 +18,6 @@ import {
     calculateBudgetSummary,
     formatCurrency,
 } from '../../components/Objects/Budget/budgetUtils';
-import { useAutoReconcile } from '../../hooks/useAutoReconcile';
 import { currencyColumn, readOnlyTextColumn } from '../../components/Layout/DataSheetColumns';
 
 interface SpendingRow {
@@ -30,7 +29,7 @@ interface SpendingRow {
 }
 
 export default function SpendingTab() {
-    const { months, selectedMonth, selectedYear, dispatch } = useContext(BudgetContext);
+    const { months, selectedMonth, selectedYear } = useContext(BudgetContext);
     const { expenses } = useContext(ExpenseContext);
     const { accounts } = useContext(AccountContext);
     const { assumptions } = useAssumptions();
@@ -248,9 +247,6 @@ export default function SpendingTab() {
     }, [priorities, accounts, getAnnualGoal, transactionContributions, selectedMonth, startingBalances, currentSnapshot]);
 
     const hasPriorityBuckets = priorities.filter(p => p.accountId).length > 0;
-
-    // Auto-reconcile - sync spending with transaction totals
-    useAutoReconcile(months, dispatch);
 
     // Create rows for the grid
     const rows: SpendingRow[] = useMemo(() => {

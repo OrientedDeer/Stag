@@ -9,6 +9,7 @@ import {
     formatMonthYear,
     calculateNetCashFlow,
     sortTransactionsByDateThenAmount,
+    getActiveExpenses,
 } from '../../components/Objects/Budget/budgetUtils';
 import { Tooltip } from '../../components/Layout/InputFields/Tooltip';
 import { ChevronIcon } from '../../components/Layout/Icons/ChevronIcon';
@@ -16,6 +17,11 @@ import CSVImportModal from './CSVImportModal';
 
 // Special prefix for contribution categories
 const CONTRIBUTION_PREFIX = '__CONTRIB__';
+
+/** Format a Date as YYYY-MM-DD using local timezone (avoids UTC shift from toISOString) */
+function toLocalDateString(d: Date): string {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 export default function TransactionsTab() {
     const { months, selectedMonth, selectedYear, dispatch, getOrCreateMonth, importSettings } = useContext(BudgetContext);
@@ -38,6 +44,11 @@ export default function TransactionsTab() {
         const currentYearSim = simulation.find(s => s.year === selectedYear);
         return currentYearSim?.cashflow.bucketDetail || {};
     }, [simulation, selectedYear]);
+
+    const activeExpenses = useMemo(() =>
+        getActiveExpenses(expenses, selectedMonth, selectedYear),
+        [expenses, selectedMonth, selectedYear]
+    );
 
     const [showAddForm, setShowAddForm] = useState(false);
     const [showImportModal, setShowImportModal] = useState(false);
@@ -89,7 +100,7 @@ export default function TransactionsTab() {
         description: '',
         amount: '',
         expenseId: '',
-        date: new Date().toISOString().split('T')[0],
+        date: toLocalDateString(new Date()),
         isCredit: false,
         creditType: 'income' as 'income' | 'reimbursement' | 'transfer',
         incomeCategory: '' as IncomeCategory | '',
@@ -295,7 +306,7 @@ export default function TransactionsTab() {
             if (formData.creditType === 'transfer') {
                 newTransaction = {
                     id: `TXN-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-                    date: new Date(formData.date),
+                    date: new Date(formData.date + 'T00:00:00'),
                     description: formData.description,
                     amount: Math.abs(amount),
                     isTransfer: true,
@@ -303,7 +314,7 @@ export default function TransactionsTab() {
             } else if (formData.creditType === 'reimbursement') {
                 newTransaction = {
                     id: `TXN-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-                    date: new Date(formData.date),
+                    date: new Date(formData.date + 'T00:00:00'),
                     description: formData.description,
                     amount: Math.abs(amount),
                     expenseId: formData.expenseId || undefined,
@@ -313,7 +324,7 @@ export default function TransactionsTab() {
                 // Income
                 newTransaction = {
                     id: `TXN-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-                    date: new Date(formData.date),
+                    date: new Date(formData.date + 'T00:00:00'),
                     description: formData.description,
                     amount: Math.abs(amount),
                     incomeCategory: formData.incomeCategory || undefined,
@@ -327,7 +338,7 @@ export default function TransactionsTab() {
 
             newTransaction = {
                 id: `TXN-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-                date: new Date(formData.date),
+                date: new Date(formData.date + 'T00:00:00'),
                 description: formData.description,
                 amount: -Math.abs(amount), // Expenses/contributions are negative (money out)
                 expenseId: (isTransfer || isContribution) ? undefined : (formData.expenseId || undefined),
@@ -346,7 +357,7 @@ export default function TransactionsTab() {
             description: '',
             amount: '',
             expenseId: '',
-            date: new Date().toISOString().split('T')[0],
+            date: toLocalDateString(new Date()),
             isCredit: false,
             creditType: 'income',
             incomeCategory: '',
@@ -413,6 +424,7 @@ export default function TransactionsTab() {
                     r => r.pattern.toLowerCase() === transaction.description.toLowerCase()
                 );
                 if (!existingRule) {
+                    const ruleExpense = expenses.find(e => e.id === cleanedUpdates.expenseId);
                     const newRule = {
                         id: `RULE-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
                         pattern: transaction.description,
@@ -420,7 +432,7 @@ export default function TransactionsTab() {
                         isRegex: false,
                     };
                     dispatch({ type: 'ADD_CATEGORY_MAPPING', payload: newRule });
-                    dispatch({ type: 'APPLY_CATEGORY_RULE', payload: newRule });
+                    dispatch({ type: 'APPLY_CATEGORY_RULE', payload: { ...newRule, expenseStart: ruleExpense?.startDate, expenseEnd: ruleExpense?.endDate } });
                 }
             }
         }
@@ -485,6 +497,7 @@ export default function TransactionsTab() {
                         );
                         if (!existingRule) {
                             createdRulePatterns.add(patternLower);
+                            const bulkRuleExpense = expenses.find(e => e.id === expenseId);
                             const newRule = {
                                 id: `RULE-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
                                 pattern: transaction.description,
@@ -492,7 +505,7 @@ export default function TransactionsTab() {
                                 isRegex: false,
                             };
                             dispatch({ type: 'ADD_CATEGORY_MAPPING', payload: newRule });
-                            dispatch({ type: 'APPLY_CATEGORY_RULE', payload: newRule });
+                            dispatch({ type: 'APPLY_CATEGORY_RULE', payload: { ...newRule, expenseStart: bulkRuleExpense?.startDate, expenseEnd: bulkRuleExpense?.endDate } });
                         }
                     }
                 }
@@ -588,7 +601,7 @@ export default function TransactionsTab() {
                             >
                                 <option value="">Uncategorized</option>
                                 <option value={TRANSFER_CATEGORY_ID}>Transfer</option>
-                                {expenses.map(exp => (
+                                {activeExpenses.map(exp => (
                                     <option key={exp.id} value={exp.id}>{exp.name}</option>
                                 ))}
                             </select>
@@ -733,7 +746,7 @@ export default function TransactionsTab() {
                                     className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-green-500 focus:outline-none"
                                 >
                                     <option value="">Select expense to offset...</option>
-                                    {expenses.map(exp => (
+                                    {activeExpenses.map(exp => (
                                         <option key={exp.id} value={exp.id}>{exp.name}</option>
                                     ))}
                                 </select>
@@ -750,7 +763,7 @@ export default function TransactionsTab() {
                                 <option value="">Select category...</option>
                                 <option value={TRANSFER_CATEGORY_ID}>Transfer</option>
                                 <optgroup label="Expenses">
-                                    {expenses.map(exp => (
+                                    {activeExpenses.map(exp => (
                                         <option key={exp.id} value={exp.id}>{exp.name}</option>
                                     ))}
                                 </optgroup>
@@ -845,6 +858,7 @@ export default function TransactionsTab() {
                                 key={t.id}
                                 transaction={t}
                                 expenses={expenses}
+                                activeExpenses={activeExpenses}
                                 accounts={accounts}
                                 priorities={priorities}
                                 isEditing={editingId === t.id}
@@ -888,6 +902,7 @@ export default function TransactionsTab() {
                                             key={t.id}
                                             transaction={t}
                                             expenses={expenses}
+                                            activeExpenses={activeExpenses}
                                             accounts={accounts}
                                             priorities={priorities}
                                             isEditing={editingId === t.id}
@@ -938,6 +953,7 @@ export default function TransactionsTab() {
                                                         key={t.id}
                                                         transaction={t}
                                                         expenses={expenses}
+                                                        activeExpenses={activeExpenses}
                                                         accounts={accounts}
                                                         priorities={priorities}
                                                         isEditing={editingId === t.id}
@@ -985,6 +1001,7 @@ export default function TransactionsTab() {
                                             key={t.id}
                                             transaction={t}
                                             expenses={expenses}
+                                            activeExpenses={activeExpenses}
                                             accounts={accounts}
                                             priorities={priorities}
                                             isEditing={editingId === t.id}
@@ -1043,6 +1060,7 @@ export default function TransactionsTab() {
                                                 key={t.id}
                                                 transaction={t}
                                                 expenses={expenses}
+                                                activeExpenses={activeExpenses}
                                                 accounts={accounts}
                                                 priorities={priorities}
                                                 isEditing={editingId === t.id}
@@ -1102,6 +1120,7 @@ export default function TransactionsTab() {
                                                         key={t.id}
                                                         transaction={t}
                                                         expenses={expenses}
+                                                        activeExpenses={activeExpenses}
                                                         accounts={accounts}
                                                         priorities={priorities}
                                                         isEditing={editingId === t.id}
@@ -1130,6 +1149,7 @@ export default function TransactionsTab() {
 function TransactionRow({
     transaction,
     expenses,
+    activeExpenses,
     accounts,
     priorities,
     isEditing,
@@ -1143,6 +1163,7 @@ function TransactionRow({
 }: {
     transaction: Transaction;
     expenses: any[];
+    activeExpenses: any[];
     accounts: any[];
     priorities: any[];
     isEditing: boolean;
@@ -1154,9 +1175,7 @@ function TransactionRow({
     onToggleSelect: () => void;
     showCategory?: boolean;
 }) {
-    const [editDate, setEditDate] = useState(
-        new Date(transaction.date).toISOString().split('T')[0]
-    );
+    const [editDate, setEditDate] = useState(() => toLocalDateString(new Date(transaction.date)));
     const [editDescription, setEditDescription] = useState(transaction.description);
     const [editAmount, setEditAmount] = useState(Math.abs(transaction.amount).toString());
     const [isCredit, setIsCredit] = useState(transaction.amount > 0);
@@ -1192,7 +1211,7 @@ function TransactionRow({
             // Credit transaction
             if (editCreditType === 'transfer') {
                 onUpdate({
-                    date: new Date(editDate),
+                    date: new Date(editDate + 'T00:00:00'),
                     description: editDescription,
                     amount: Math.abs(amount),
                     isTransfer: true,
@@ -1204,7 +1223,7 @@ function TransactionRow({
                 });
             } else if (editCreditType === 'contribution') {
                 onUpdate({
-                    date: new Date(editDate),
+                    date: new Date(editDate + 'T00:00:00'),
                     description: editDescription,
                     amount: Math.abs(amount),
                     isTransfer: true,
@@ -1216,7 +1235,7 @@ function TransactionRow({
                 });
             } else if (editCreditType === 'reimbursement') {
                 onUpdate({
-                    date: new Date(editDate),
+                    date: new Date(editDate + 'T00:00:00'),
                     description: editDescription,
                     amount: Math.abs(amount),
                     isTransfer: false,
@@ -1229,7 +1248,7 @@ function TransactionRow({
             } else {
                 // Income
                 onUpdate({
-                    date: new Date(editDate),
+                    date: new Date(editDate + 'T00:00:00'),
                     description: editDescription,
                     amount: Math.abs(amount),
                     isTransfer: false,
@@ -1247,7 +1266,7 @@ function TransactionRow({
             const targetAccountId = isContribution ? editExpenseId.replace(CONTRIBUTION_PREFIX, '') : undefined;
 
             onUpdate({
-                date: new Date(editDate),
+                date: new Date(editDate + 'T00:00:00'),
                 description: editDescription,
                 amount: -Math.abs(amount),
                 expenseId: (isTransfer || isContribution) ? undefined : (editExpenseId || undefined),
@@ -1339,9 +1358,13 @@ function TransactionRow({
                                         className="bg-gray-900 border border-gray-600 rounded px-2 py-1.5 text-sm text-white focus:border-green-500 focus:outline-none"
                                     >
                                         <option value="">Select expense to offset...</option>
-                                        {expenses.map(exp => (
+                                        {activeExpenses.map(exp => (
                                             <option key={exp.id} value={exp.id}>{exp.name}</option>
                                         ))}
+                                        {editExpenseId && !activeExpenses.find(e => e.id === editExpenseId) && (() => {
+                                            const inactiveExp = expenses.find(e => e.id === editExpenseId);
+                                            return inactiveExp ? <option value={inactiveExp.id}>{inactiveExp.name} (ended)</option> : null;
+                                        })()}
                                     </select>
                                 )}
                                 {editCreditType === 'contribution' && (
@@ -1368,9 +1391,13 @@ function TransactionRow({
                                 <option value="">Uncategorized</option>
                                 <option value={TRANSFER_CATEGORY_ID}>Transfer</option>
                                 <optgroup label="Expenses">
-                                    {expenses.map(exp => (
+                                    {activeExpenses.map(exp => (
                                         <option key={exp.id} value={exp.id}>{exp.name}</option>
                                     ))}
+                                    {editExpenseId && !activeExpenses.find(e => e.id === editExpenseId) && (() => {
+                                        const inactiveExp = expenses.find(e => e.id === editExpenseId);
+                                        return inactiveExp ? <option value={inactiveExp.id}>{inactiveExp.name} (ended)</option> : null;
+                                    })()}
                                 </optgroup>
                                 {priorities.filter((p: any) => p.accountId).length > 0 && (
                                     <optgroup label="Contributions">

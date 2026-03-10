@@ -1,6 +1,7 @@
 import { useContext, useState } from 'react';
 import { BudgetContext } from '../../components/Objects/Budget/BudgetContext';
 import { formatMonthYear, navigateMonth } from '../../components/Objects/Budget/budgetUtils';
+import { useAutoReconcile } from '../../hooks/useAutoReconcile';
 import SpendingTab from './SpendingTab';
 import OverviewTab from './OverviewTab';
 import HistoryTab from './HistoryTab';
@@ -11,7 +12,10 @@ import SettingsTab from './SettingsTab';
 const tabs = ['Overview', 'Spending', 'Transactions', 'History', 'Trends', 'Settings'];
 
 export default function BudgetTab() {
-    const { selectedMonth, selectedYear, dispatch } = useContext(BudgetContext);
+    const { months, selectedMonth, selectedYear, dispatch } = useContext(BudgetContext);
+
+    // Auto-reconcile - sync spending with transaction totals (runs once for all sub-tabs)
+    useAutoReconcile(months, dispatch);
     const [activeTab, setActiveTab] = useState(() => {
         const saved = localStorage.getItem('stag_budget_tab');
         return saved && tabs.includes(saved) ? saved : 'Overview';

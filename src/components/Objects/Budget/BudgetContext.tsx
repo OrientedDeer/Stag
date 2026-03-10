@@ -65,7 +65,7 @@ export type BudgetAction =
     | { type: 'ADD_CATEGORY_MAPPING'; payload: CategoryMapping }
     | { type: 'UPDATE_CATEGORY_MAPPING'; payload: { id: string; updates: Partial<CategoryMapping> } }
     | { type: 'DELETE_CATEGORY_MAPPING'; payload: { id: string } }
-    | { type: 'APPLY_CATEGORY_RULE'; payload: CategoryMapping }
+    | { type: 'APPLY_CATEGORY_RULE'; payload: CategoryMapping & { expenseStart?: Date | string | null; expenseEnd?: Date | string | null } }
     | { type: 'ADD_CSV_FORMAT'; payload: SavedCSVMapping }
     | { type: 'UPDATE_CSV_FORMAT'; payload: { id: string; updates: Partial<SavedCSVMapping> } }
     | { type: 'DELETE_CSV_FORMAT'; payload: { id: string } }
@@ -325,7 +325,7 @@ function budgetReducer(state: BudgetState, action: BudgetAction): BudgetState {
 
         case 'APPLY_CATEGORY_RULE': {
             // Apply a category rule to all matching uncategorized transactions
-            const rule = action.payload;
+            const { expenseStart, expenseEnd, ...rule } = action.payload;
             const matchesRule = (description: string): boolean => {
                 if (rule.isRegex) {
                     try {
@@ -337,12 +337,20 @@ function budgetReducer(state: BudgetState, action: BudgetAction): BudgetState {
                 return description.toLowerCase().includes(rule.pattern.toLowerCase());
             };
 
+            // Check if the target expense is active for a given month
+            const isActiveForMonth = (month: number, year: number): boolean => {
+                const targetDate = new Date(year, month - 1, 15);
+                if (expenseStart && new Date(expenseStart) > targetDate) return false;
+                if (expenseEnd && new Date(expenseEnd) < targetDate) return false;
+                return true;
+            };
+
             return {
                 ...state,
                 months: state.months.map(month => ({
                     ...month,
                     transactions: month.transactions.map(t =>
-                        !t.expenseId && matchesRule(t.description)
+                        !t.expenseId && matchesRule(t.description) && isActiveForMonth(month.month, month.year)
                             ? { ...t, expenseId: rule.expenseId }
                             : t
                     ),
