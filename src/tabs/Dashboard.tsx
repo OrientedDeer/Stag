@@ -123,13 +123,13 @@ export default function Dashboard() {
     const categoryMap = new Map<string, number>();
     expenses.forEach(exp => {
       const cat = getExpenseCategory(exp);
-      categoryMap.set(cat, (categoryMap.get(cat) || 0) + exp.getAnnualAmount());
+      categoryMap.set(cat, (categoryMap.get(cat) || 0) + exp.getAnnualAmount(year));
     });
     return Array.from(categoryMap.entries())
       .map(([id, value]) => ({ id, value, label: id }))
       .filter(item => item.value > 0)
       .sort((a, b) => b.value - a.value);
-  }, [expenses]);
+  }, [expenses, year]);
 
   // Color palette for expense categories
   const categoryColors: Record<string, string> = {

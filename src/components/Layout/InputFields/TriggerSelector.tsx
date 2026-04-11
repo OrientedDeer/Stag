@@ -114,7 +114,8 @@ export function TriggerSelector({
 
     const handleDateInput = (dateString: string) => {
         if (dateString) {
-            onDateChange(new Date(dateString));
+            const [y, m, d] = dateString.split('-').map(Number);
+            onDateChange(new Date(y, m - 1, d));
         } else {
             onDateChange(undefined);
         }

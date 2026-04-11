@@ -528,8 +528,12 @@ describe('Income Models', () => {
             end_date: '2030-12-31T00:00:00.000Z'
         };
         const income = reconstituteIncome(data);
-        expect(income?.startDate).toEqual(new Date('2030-01-01T00:00:00.000Z'));
-        expect(income?.end_date).toEqual(new Date('2030-12-31T00:00:00.000Z'));
+        expect(income!.startDate!.getFullYear()).toBe(2030);
+        expect(income!.startDate!.getMonth()).toBe(0); // January
+        expect(income!.startDate!.getDate()).toBe(1);
+        expect(income!.end_date?.getFullYear()).toBe(2030);
+        expect(income!.end_date?.getMonth()).toBe(11); // December
+        expect(income!.end_date?.getDate()).toBe(31);
     });
 
     it('should reconstitute CurrentSocialSecurityIncome', () => {

@@ -18,14 +18,12 @@ describe('modelUtils', () => {
       expect(result?.getUTCDate()).toBe(15);
     });
 
-    it('should parse ISO datetime string with timezone', () => {
+    it('should parse ISO datetime string as local date', () => {
       const result = parseDate('2024-06-15T10:30:00Z');
       expect(result).toBeInstanceOf(Date);
-      expect(result?.getUTCFullYear()).toBe(2024);
-      expect(result?.getUTCMonth()).toBe(5); // June
-      expect(result?.getUTCDate()).toBe(15);
-      expect(result?.getUTCHours()).toBe(10);
-      expect(result?.getUTCMinutes()).toBe(30);
+      expect(result?.getFullYear()).toBe(2024);
+      expect(result?.getMonth()).toBe(5); // June
+      expect(result?.getDate()).toBe(15);
     });
 
     it('should return same Date object when input is Date', () => {

@@ -22,7 +22,21 @@ export function parseDate(value: unknown, fallback?: Date): Date | undefined {
     return value;
   }
 
-  if (typeof value === 'string' || typeof value === 'number') {
+  if (typeof value === 'string') {
+    // Parse YYYY-MM-DD strings as local time to avoid UTC timezone shift
+    const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (dateOnly) {
+      return new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]));
+    }
+    // For full ISO strings (e.g. from JSON serialization), extract the date portion as local time
+    const isoDate = value.match(/^(\d{4})-(\d{2})-(\d{2})T/);
+    if (isoDate) {
+      return new Date(Number(isoDate[1]), Number(isoDate[2]) - 1, Number(isoDate[3]));
+    }
+    return new Date(value);
+  }
+
+  if (typeof value === 'number') {
     return new Date(value);
   }
 

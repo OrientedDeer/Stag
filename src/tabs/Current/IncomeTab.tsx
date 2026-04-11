@@ -64,7 +64,14 @@ const IncomeList = () => {
 											{...provided.dragHandleProps}
 											className="absolute -left-3 top-2 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-2 text-green-200"
 										>
-											⋮⋮
+											<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+												<line x1="8" y1="6" x2="21" y2="6"></line>
+												<line x1="8" y1="12" x2="21" y2="12"></line>
+												<line x1="8" y1="18" x2="21" y2="18"></line>
+												<line x1="3" y1="6" x2="3.01" y2="6"></line>
+												<line x1="3" y1="12" x2="3.01" y2="12"></line>
+												<line x1="3" y1="18" x2="3.01" y2="18"></line>
+											</svg>
 										</div>
 										<div className="ml-4">
 											<IncomeCard income={inc} />
