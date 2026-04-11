@@ -607,11 +607,6 @@ export function calculateFederalTaxFromIncomes(
 	stcg: number = 0,
 	ltcg: number = 0
 ): number {
-	// DEBUG: Simple trace to see what years hit this function
-	if (year === 2027) {
-		console.log('>>> calculateFederalTaxFromIncomes CALLED for year 2027');
-	}
-
 	if (state.fedOverride !== null) {
 		return state.fedOverride;
 	}
@@ -626,39 +621,6 @@ export function calculateFederalTaxFromIncomes(
 	const incomePreTaxDeductions = getPreTaxExemptions(incomes, year, age);
 	const expenseAboveLineDeductions = getYesDeductions(expenses, year);
 	const totalPreTaxDeductions = incomePreTaxDeductions + expenseAboveLineDeductions;
-
-	// DEBUG: Trace tax calculation for Year 2027
-	if (year === 2027) {
-		console.log('\n========== TAX TRACE: Year 2027 ==========');
-		console.log('--- GROSS INCOME BREAKDOWN ---');
-		incomes.forEach(inc => {
-			const amt = inc.getProratedAnnual(inc.amount, year);
-			if (amt > 0) {
-				const reinvestFlag = 'isReinvested' in inc ? ` [reinvested=${(inc as any).isReinvested}]` : '';
-				console.log(`  ${inc.name} (${inc.constructor.name}): $${amt.toFixed(2)}${reinvestFlag}`);
-			}
-		});
-		console.log(`  TOTAL incomeGross: $${incomeGross.toFixed(2)}`);
-		console.log(`  additionalOrdinaryIncome: $${additionalOrdinaryIncome.toFixed(2)}`);
-
-		console.log('\n--- PRE-TAX DEDUCTIONS (from incomes) ---');
-		incomes.filter(inc => inc.constructor.name === 'WorkIncome').forEach(inc => {
-			const w = inc as any;
-			const effective401k = age !== undefined ? w.getEffective401k(year, age) : { preTax: w.preTax401k, roth: w.roth401k };
-			console.log(`  ${inc.name}:`);
-			console.log(`    401k (pre-tax): $${inc.getProratedAnnual(effective401k.preTax, year).toFixed(2)}`);
-			console.log(`    Insurance: $${inc.getProratedAnnual(w.insurance, year).toFixed(2)}`);
-			console.log(`    HSA: $${inc.getProratedAnnual(w.hsaContribution || 0, year).toFixed(2)}`);
-		});
-		console.log(`  TOTAL incomePreTaxDeductions: $${incomePreTaxDeductions.toFixed(2)}`);
-
-		console.log('\n--- ABOVE-LINE DEDUCTIONS (from expenses) ---');
-		expenses.filter(exp => 'is_tax_deductible' in exp && (exp as any).is_tax_deductible === 'Yes').forEach(exp => {
-			console.log(`  ${exp.name}: is_tax_deductible="${(exp as any).is_tax_deductible}", tax_deductible=$${(exp as any).tax_deductible}`);
-		});
-		console.log(`  TOTAL expenseAboveLineDeductions: $${expenseAboveLineDeductions.toFixed(2)}`);
-		console.log(`  TOTAL totalPreTaxDeductions: $${totalPreTaxDeductions.toFixed(2)}`);
-	}
 
 	// Get Social Security benefits
 	const totalSSBenefits = getSocialSecurityBenefits(incomes, year);
@@ -707,42 +669,11 @@ export function calculateFederalTaxFromIncomes(
 		).totalTax;
 	};
 
-	// DEBUG: Continue trace for Year 2027
-	if (year === 2027) {
-		const agi = ordinaryIncome - totalPreTaxDeductions;
-		console.log('\n--- AGI CALCULATION ---');
-		console.log(`  ordinaryIncome (nonSSGross + additional): $${ordinaryIncome.toFixed(2)}`);
-		console.log(`  - totalPreTaxDeductions: $${totalPreTaxDeductions.toFixed(2)}`);
-		console.log(`  = AGI: $${agi.toFixed(2)}`);
-
-		console.log('\n--- DEDUCTION ---');
-		console.log(`  deductionMethod: ${state.deductionMethod}`);
-		console.log(`  standardDeduction: $${fedParams.standardDeduction.toFixed(2)}`);
-		console.log(`  itemizedTotal: $${itemizedTotal.toFixed(2)}`);
-
-		const taxableIncome = Math.max(0, agi - fedParams.standardDeduction);
-		console.log(`  Taxable income (AGI - standard): $${taxableIncome.toFixed(2)}`);
-
-		console.log('\n--- TAX BRACKETS (2026 frozen) ---');
-		fedParams.brackets.forEach((b, i) => {
-			const next = fedParams.brackets[i + 1];
-			const upper = next ? next.threshold : 'Infinity';
-			console.log(`  ${(b.rate * 100).toFixed(0)}%: $${b.threshold} - $${upper}`);
-		});
-	}
-
 	// Handle Auto: pick whichever results in lower tax
 	if (state.deductionMethod === "Auto") {
 		const taxWithStandard = calcTaxWithDeduction(fedParams.standardDeduction);
 		const taxWithItemized = calcTaxWithDeduction(itemizedTotal);
 		const finalTax = Math.min(taxWithStandard, taxWithItemized);
-		if (year === 2027) {
-			console.log('\n--- FINAL TAX ---');
-			console.log(`  taxWithStandard: $${taxWithStandard.toFixed(2)}`);
-			console.log(`  taxWithItemized: $${taxWithItemized.toFixed(2)}`);
-			console.log(`  FINAL (min): $${finalTax.toFixed(2)}`);
-			console.log('==========================================\n');
-		}
 		return finalTax;
 	}
 
@@ -751,12 +682,6 @@ export function calculateFederalTaxFromIncomes(
 		: itemizedTotal;
 
 	const finalTax = calcTaxWithDeduction(appliedDeduction);
-	if (year === 2027) {
-		console.log('\n--- FINAL TAX ---');
-		console.log(`  appliedDeduction: $${appliedDeduction.toFixed(2)}`);
-		console.log(`  FINAL TAX: $${finalTax.toFixed(2)}`);
-		console.log('==========================================\n');
-	}
 	return finalTax;
 }
 

@@ -531,25 +531,6 @@ export function extractIncomeForRMDEstimate(
     const ssCola = inflationAdjusted ? 0.02 : 0;
     const pensionCola = inflationAdjusted ? 0.02 : 0;
 
-    // DEBUG: Trace income extraction for RMD target balance diagnosis
-    console.log('[extractIncomeForRMDEstimate] Income items found:', {
-        ssItems: incomes.filter(i => i.className === 'SocialSecurityIncome' || i.className === 'CurrentSocialSecurityIncome').map(i => ({ className: i.className, annual: i.getAnnualAmount(currentYear) })),
-        futureSS: incomes.filter(i => i.className === 'FutureSocialSecurityIncome').map(i => ({ className: i.className, projectedPIA: i.projectedPIA, calculatedPIA: i.calculatedPIA, amount: i.amount, claimingAge: i.claimingAge })),
-        pensionItems: incomes.filter(i => i.className && i.className.includes('Pension')).map(i => ({ className: i.className, annual: i.getAnnualAmount(currentYear) })),
-        passiveItems: incomes.filter(i => i.className === 'PassiveIncome').map(i => ({ className: i.className, annual: i.getAnnualAmount(currentYear) })),
-        allClassNames: incomes.map(i => i.className),
-    });
-    console.log('[extractIncomeForRMDEstimate] Extracted values:', {
-        socialSecurityBenefits,
-        futureSS_PIA,
-        ssClaimingAge,
-        pensionIncome,
-        passiveIncome,
-        ssCola,
-        pensionCola,
-        inflationAdjusted
-    });
-
     return {
         socialSecurityBenefits,
         futureSS_PIA,
