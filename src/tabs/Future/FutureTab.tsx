@@ -96,11 +96,11 @@ const MilestoneCard = React.memo(({ title, age, year, status, yearsUntil }: Mile
     };
 
     return (
-        <div className={`rounded-xl border-2 p-4 text-center ${statusColors[status]}`}>
-            <div className="text-xs text-gray-400 uppercase tracking-wide mb-1">{title}</div>
-            <div className="text-2xl font-bold text-white">Age {formatAge(age)}</div>
-            <div className="text-sm text-gray-400">{year}</div>
-            <div className={`text-xs mt-1 font-semibold ${status === 'now' || status === 'reached' ? 'text-green-400' : status === 'projected' ? 'text-blue-400' : 'text-gray-400'}`}>
+        <div className={`rounded-lg border p-2 text-center ${statusColors[status]}`}>
+            <div className="text-[10px] text-gray-400 uppercase tracking-wide">{title}</div>
+            <div className="text-lg font-bold text-white leading-tight">Age {formatAge(age)}</div>
+            <div className="text-xs text-gray-400">{year}</div>
+            <div className={`text-[10px] font-semibold ${status === 'now' || status === 'reached' ? 'text-green-400' : status === 'projected' ? 'text-blue-400' : 'text-gray-400'}`}>
                 {statusLabels[status]}
             </div>
         </div>
@@ -122,7 +122,7 @@ const ProgressTimeline = React.memo(({ milestones }: ProgressTimelineProps) => {
     const retirementPos = ((retirementAge - startAge) / range) * 100;
 
     return (
-        <div className="relative h-8 bg-gray-800 rounded-full overflow-hidden">
+        <div className="relative h-5 bg-gray-800 rounded-full overflow-hidden">
             {/* Progress fill */}
             <div
                 className="absolute h-full bg-linear-to-r from-green-600 to-green-500 rounded-l-full"
@@ -143,20 +143,20 @@ const ProgressTimeline = React.memo(({ milestones }: ProgressTimelineProps) => {
             />
 
             {/* Labels */}
-            <div className="absolute -bottom-5 left-0 text-xs text-gray-400">0</div>
+            <div className="absolute -bottom-4 left-0 text-xs text-gray-400">0</div>
             <div
-                className="absolute -bottom-5 text-xs text-gray-400 transform -translate-x-1/2"
+                className="absolute -bottom-4 text-xs text-gray-400 transform -translate-x-1/2"
                 style={{ left: `${currentPos}%` }}
             >
                 {currentAge}
             </div>
             <div
-                className="absolute -bottom-5 text-xs text-amber-400 transform -translate-x-1/2"
+                className="absolute -bottom-4 text-xs text-amber-400 transform -translate-x-1/2"
                 style={{ left: `${retirementPos}%` }}
             >
                 {retirementAge}
             </div>
-            <div className="absolute -bottom-5 right-0 text-xs text-gray-400">{lifeExpectancy}</div>
+            <div className="absolute -bottom-4 right-0 text-xs text-gray-400">{lifeExpectancy}</div>
         </div>
     );
 });
@@ -327,9 +327,9 @@ export default function FutureTab() {
                 )}
 
                 {/* Milestone Cards */}
-                <div className="mb-6 p-4 bg-gray-900 rounded-xl border border-gray-800 shadow-lg">
-                    <div className="flex items-center gap-3 mb-4">
-                        <h2 className="text-xl font-bold text-white">Retirement Timeline</h2>
+                <div className="mb-4 p-3 bg-gray-900 rounded-xl border border-gray-800 shadow-lg">
+                    <div className="flex items-center gap-3 mb-2">
+                        <h2 className="text-base font-bold text-white">Retirement Timeline</h2>
                         {isLoading ? (
                             <span className="px-2 py-1 text-xs bg-blue-600 text-white rounded-full flex items-center gap-1">
                                 <LoadingSpinner size="sm" /> Updating...
@@ -345,7 +345,7 @@ export default function FutureTab() {
                     </div>
 
                     {/* Milestone Cards Grid */}
-                    <div className="grid grid-cols-2 gap-3 mb-6 md:grid-cols-3">
+                    <div className="grid grid-cols-3 gap-2 mb-3">
                         <MilestoneCard
                             title="Current"
                             age={milestones.currentAge}

@@ -140,7 +140,7 @@ export const NetWorthCard = () => {
                 {chartData[0].data.length > 1 ? (
                     <ResponsiveLine
                         data={chartData}
-                        margin={{ top: 0, right: 15, bottom: 20, left: 15 }}
+                        margin={{ top: 10, right: 15, bottom: 20, left: 15 }}
                         xScale={{
                             type: 'time',
                             useUTC: false,

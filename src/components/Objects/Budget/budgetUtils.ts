@@ -88,6 +88,28 @@ export interface BudgetSummary {
     percentSpent: number;
 }
 
+/**
+ * Calculate uncategorized spending from a snapshot's transactions.
+ * These are non-transfer, non-contribution, non-income expenses with no expenseId.
+ */
+export function getUncategorizedSpending(snapshot: MonthlySnapshot | undefined): number {
+    if (!snapshot?.transactions) return 0;
+    return snapshot.transactions
+        .filter(t => !t.isTransfer && !t.targetAccountId && !t.expenseId && t.amount < 0
+            && !(t.amount > 0 && !t.isReimbursement && t.incomeCategory))
+        .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+}
+
+/**
+ * Count uncategorized transactions in a snapshot.
+ */
+export function getUncategorizedCount(snapshot: MonthlySnapshot | undefined): number {
+    if (!snapshot?.transactions) return 0;
+    return snapshot.transactions
+        .filter(t => !t.isTransfer && !t.targetAccountId && !t.expenseId && t.amount < 0)
+        .length;
+}
+
 export function calculateBudgetSummary(
     expenses: AnyExpense[],
     snapshot: MonthlySnapshot | undefined,
@@ -95,9 +117,11 @@ export function calculateBudgetSummary(
     year: number
 ): BudgetSummary {
     const totalBudget = calculateTotalMonthlyBudget(expenses, month, year);
-    const totalSpent = snapshot
+    const categorizedSpent = snapshot
         ? Object.values(snapshot.spending).reduce((sum, val) => sum + val, 0)
         : 0;
+    const uncategorizedSpent = getUncategorizedSpending(snapshot);
+    const totalSpent = categorizedSpent + uncategorizedSpent;
     const remaining = totalBudget - totalSpent;
 
     return {

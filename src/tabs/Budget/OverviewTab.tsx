@@ -5,6 +5,8 @@ import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext'
 import {
     calculateBudgetSummary,
     formatCurrency,
+    getUncategorizedCount,
+    getUncategorizedSpending,
     MONTH_NAMES,
 } from '../../components/Objects/Budget/budgetUtils';
 
@@ -53,10 +55,11 @@ export default function OverviewTab() {
             }, 0);
             totalBudget += monthBudget;
 
-            // Get actual spending for month (if it exists)
+            // Get actual spending for month (if it exists), including uncategorized
             const snapshot = months.find(m => m.year === selectedYear && m.month === month);
             if (snapshot) {
                 totalSpent += Object.values(snapshot.spending).reduce((s, v) => s + v, 0);
+                totalSpent += getUncategorizedSpending(snapshot);
             }
         }
 
@@ -147,6 +150,16 @@ export default function OverviewTab() {
         return `${startMonth} '${startYear} - ${endMonth} '${endYear}`;
     }, [selectedMonth, selectedYear]);
 
+    const uncategorizedCount = useMemo(() =>
+        getUncategorizedCount(currentSnapshot),
+        [currentSnapshot]
+    );
+
+    const uncategorizedTotal = useMemo(() =>
+        getUncategorizedSpending(currentSnapshot),
+        [currentSnapshot]
+    );
+
     const lastImportDate = useMemo(() => {
         const formats = importSettings?.savedCSVFormats || [];
         if (formats.length === 0) return null;
@@ -199,6 +212,21 @@ export default function OverviewTab() {
                 </div>
             </div>
 
+            {/* Uncategorized Transactions Warning */}
+            {uncategorizedCount > 0 && (
+                <div className="bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-4 flex items-start gap-3 -mt-1">
+                    <span className="text-yellow-400 text-lg leading-none mt-0.5">!</span>
+                    <div>
+                        <p className="text-yellow-300 text-sm font-medium">
+                            {uncategorizedCount} uncategorized transaction{uncategorizedCount !== 1 ? 's' : ''} ({formatCurrency(uncategorizedTotal)})
+                        </p>
+                        <p className="text-yellow-200/60 text-xs mt-0.5">
+                            Review and categorize them in the Transactions tab so spending is tracked accurately.
+                        </p>
+                    </div>
+                </div>
+            )}
+
             {/* Last Import Indicator */}
             {lastImportDate && (
                 <div className="text-xs text-gray-500 text-right -mt-3">
@@ -242,7 +270,7 @@ export default function OverviewTab() {
                                 if (endDate && endDate < targetDate) return sum;
                                 return sum + exp.getMonthlyAmount();
                             }, 0);
-                            const monthSpent = Object.values(monthSnapshot.spending).reduce((s, v) => s + v, 0);
+                            const monthSpent = Object.values(monthSnapshot.spending).reduce((s, v) => s + v, 0) + getUncategorizedSpending(monthSnapshot);
                             percentSpent = monthBudget > 0 ? (monthSpent / monthBudget) * 100 : 0;
 
                             if (percentSpent <= 80) budgetStatus = 'very-under';
