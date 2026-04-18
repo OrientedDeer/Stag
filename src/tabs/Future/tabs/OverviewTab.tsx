@@ -238,19 +238,44 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
         return warnings;
     }, [simulationData]);
 
-    // Count guardrail triggers for summary
+    // Count strategy-adjustment categories for summary
     const gkTriggerCount = useMemo(() => {
         let capitalPreservation = 0;
         let prosperity = 0;
+        let budgetCap = 0;
         simulationData.forEach(year => {
-            if (year.strategyAdjustment?.guardrailTriggered === 'capital-preservation') {
-                capitalPreservation++;
-            } else if (year.strategyAdjustment?.guardrailTriggered === 'prosperity') {
-                prosperity++;
-            }
+            const trig = year.strategyAdjustment?.guardrailTriggered;
+            if (trig === 'capital-preservation') capitalPreservation++;
+            else if (trig === 'prosperity') prosperity++;
+            else if (year.strategyAdjustment) budgetCap++;
         });
-        return { capitalPreservation, prosperity };
+        return { capitalPreservation, prosperity, budgetCap };
     }, [simulationData]);
+
+    // Build vertical markers for years where the withdrawal strategy adjusted spending.
+    // Captures: GK capital-preservation cuts (red), prosperity boosts (green),
+    // and budget-cap trims (amber) for any Fixed Real / Percentage / GK strategy.
+    const gkMarkers = useMemo(() => {
+        return filteredData
+            .filter(y => y.strategyAdjustment !== undefined)
+            .map(y => {
+                const trig = y.strategyAdjustment?.guardrailTriggered;
+                const stroke =
+                    trig === 'capital-preservation' ? '#ef4444' :
+                    trig === 'prosperity' ? '#22c55e' :
+                    '#f59e0b';
+                return {
+                    axis: 'x' as const,
+                    value: y.year,
+                    lineStyle: {
+                        stroke,
+                        strokeWidth: 2,
+                        strokeDasharray: '4 3',
+                        strokeOpacity: 0.85,
+                    },
+                };
+            });
+    }, [filteredData]);
 
     // Check for uncovered deficit (expenses exceed all available income + withdrawals)
     const deficitInfo = useMemo(() => {
@@ -346,25 +371,30 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                 </AlertBanner>
             )}
 
-            {/* Guyton-Klinger Guardrail Summary (show when strategy is GK and triggers happened) */}
-            {assumptions.investments?.withdrawalStrategy === 'Guyton Klinger' &&
-             (gkTriggerCount.capitalPreservation > 0 || gkTriggerCount.prosperity > 0) && (
+            {/* Strategy adjustment summary (any strategy that trimmed/boosted spending) */}
+            {(gkTriggerCount.capitalPreservation > 0 || gkTriggerCount.prosperity > 0 || gkTriggerCount.budgetCap > 0) && (
                 <AlertBanner severity="success" size="sm">
-                    <div className="flex items-center gap-2">
-                        <span className="font-medium">Guyton-Klinger Adjustments:</span>
+                    <div className="flex items-center gap-3 flex-wrap">
+                        <span className="font-medium">Spending Adjustments:</span>
                         {gkTriggerCount.capitalPreservation > 0 && (
-                            <span className="text-red-300">
-                                {gkTriggerCount.capitalPreservation} expense cut(s)
+                            <span className="text-red-300 inline-flex items-center gap-1">
+                                <span className="inline-block w-3 border-t-2 border-dashed border-red-400" />
+                                {gkTriggerCount.capitalPreservation} GK cut(s)
                             </span>
-                        )}
-                        {gkTriggerCount.capitalPreservation > 0 && gkTriggerCount.prosperity > 0 && (
-                            <span className="text-gray-400">|</span>
                         )}
                         {gkTriggerCount.prosperity > 0 && (
-                            <span className="text-green-300">
-                                {gkTriggerCount.prosperity} expense increase(s)
+                            <span className="text-green-300 inline-flex items-center gap-1">
+                                <span className="inline-block w-3 border-t-2 border-dashed border-green-400" />
+                                {gkTriggerCount.prosperity} GK boost(s)
                             </span>
                         )}
+                        {gkTriggerCount.budgetCap > 0 && (
+                            <span className="text-amber-300 inline-flex items-center gap-1">
+                                <span className="inline-block w-3 border-t-2 border-dashed border-amber-400" />
+                                {gkTriggerCount.budgetCap} budget cap(s)
+                            </span>
+                        )}
+                        <span className="text-gray-400 text-xs">— marked on chart</span>
                     </div>
                 </AlertBanner>
             )}
@@ -449,6 +479,8 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                     useMesh={true}
                     enableSlices="x"
                     sliceTooltip={CustomTooltip}
+                    markers={gkMarkers}
+                    layers={['grid', 'axes', 'areas', 'lines', 'crosshair', 'markers', 'slices', 'points', 'mesh', 'legends']}
                     theme={{
                         "background": "transparent",
                         "text": { "fontSize": 12, "fill": "#9ca3af" },

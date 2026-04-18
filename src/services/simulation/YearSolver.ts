@@ -973,10 +973,10 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
             input.taxState.filingStatus
         );
 
-    // Initial surplus estimate (for determining if conversion tax can be paid from surplus)
+    // Initial surplus estimate (for determining if conversion tax can be paid from surplus).
+    // Note: classifyIncome adds rmdAmount to spendable, so we don't add it again here.
     const initialSurplusEstimate = Math.max(0,
-        incomeClassification.classified.spendable +
-        input.rmdAmount -
+        incomeClassification.classified.spendable -
         effectiveLivingExpenses
     );
 
@@ -996,10 +996,10 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     const roughFica = TaxService.calculateFicaTax(input.taxState, input.incomes, input.year, input.assumptions);
     const roughTax = roughFedTax + roughStateTax + roughFica;
 
+    // Note: classifyIncome adds rmdAmount to spendable, so we don't subtract it again.
     const preliminaryDeficit = Math.max(0,
         effectiveLivingExpenses + roughTax -
-        incomeClassification.classified.spendable -
-        input.rmdAmount
+        incomeClassification.classified.spendable
     );
 
     // Step B: Plan Roth conversion FIRST
@@ -1224,14 +1224,14 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
                 : 0;
         }
 
-        // Deficit includes authoritative LTCG tax (via finalFedResult.totalTax)
+        // Deficit includes authoritative LTCG tax (via finalFedResult.totalTax).
+        // Note: classifyIncome adds rmdAmount to spendable, so we don't subtract it again.
         const deficit =
             effectiveLivingExpenses +
             finalFedResult.totalTax +
             finalStateTax +
             ficaTax -
-            incomeClassification.classified.spendable -
-            input.rmdAmount;
+            incomeClassification.classified.spendable;
 
         if (deficit <= 0) break;
 
@@ -1290,8 +1290,12 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
 
     decisions.push(...withdrawalDecisions);
 
-    // Step F: Calculate final surplus using authoritative tax values
-    const totalGrossWithdrawals = withdrawals.reduce((sum, w) => sum + w.gross, 0);
+    // Step F: Calculate final surplus using authoritative tax values.
+    // Exclude RMD entries from totalGrossWithdrawals — RMD is already in spendable
+    // (classifyIncome puts it there) and including it here would double-count cash in.
+    const totalGrossWithdrawals = withdrawals
+        .filter(w => w.reason !== 'Required Minimum Distribution')
+        .reduce((sum, w) => sum + w.gross, 0);
 
     // Total tax uses authoritative federal (ordinary + LTCG + NIIT) + state (with LTCG)
     // + withdrawal ordinary tax (Roth 5-year, Traditional, HSA) + FICA + penalties

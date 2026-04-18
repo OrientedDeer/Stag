@@ -49,6 +49,13 @@ function executeYearPlan(
             continue;
         }
 
+        // Skip RMDs — RMDService.processRMDs() already deducted from the account and
+        // recorded the totals. The RMD entry is in plan.withdrawals only as a tracking
+        // record for the solver's iteration logic and consumers that filter by reason.
+        if (withdrawal.reason === 'Required Minimum Distribution') {
+            continue;
+        }
+
         // Deduct from account (will be applied in growAccounts)
         withdrawalState.userInflows[account.id] =
             (withdrawalState.userInflows[account.id] || 0) - withdrawal.gross;

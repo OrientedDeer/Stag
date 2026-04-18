@@ -2644,10 +2644,11 @@ function TaxBracketVisualizationTab() {
             const fedParams = getTaxParameters(year, filingStatus, 'federal', undefined, assumptions);
             if (!fedParams) return null;
 
-            // Get taxable income from simulation
-            // Include Roth conversions as they are taxable income
+            // Get taxable income from simulation.
+            // Use sim engine's spendable income (includes RMDs, which are filtered out of
+            // simYear.incomes). Add Roth conversions on top — they're taxable but not spendable.
             const rothConversionAmount = simYear.rothConversion?.amount || 0;
-            const grossIncome = getGrossIncome(simYear.incomes, year) + rothConversionAmount;
+            const grossIncome = simYear.cashflow.totalIncome + rothConversionAmount;
             const preTaxDeductions = getPreTaxExemptions(simYear.incomes, year, age);
             const aboveLineDeductions = getYesDeductions(simYear.expenses, year);
             const totalPreTax = preTaxDeductions + aboveLineDeductions;
@@ -4038,7 +4039,10 @@ function RothAnalysisDebugTab() {
             // Get federal marginal rate
             const fedParams = getTaxParameters(simYear.year, taxState.filingStatus, 'federal', undefined, assumptions);
             const preTaxDed = getPreTaxExemptions(simYear.incomes, simYear.year, age);
-            const adjustedGross = Math.max(0, getGrossIncome(simYear.incomes, simYear.year) - preTaxDed);
+            // Use cashflow.totalIncome (includes RMDs which are filtered from simYear.incomes)
+            // plus Roth conversion (taxable but not spendable).
+            const conversionAmt = simYear.rothConversion?.amount || 0;
+            const adjustedGross = Math.max(0, simYear.cashflow.totalIncome + conversionAmt - preTaxDed);
             const fedStdDed = fedParams?.standardDeduction || 14600;
             const taxableIncome = Math.max(0, adjustedGross - fedStdDed);
             const fedMarginal = fedParams ? getMarginalTaxRate(taxableIncome, fedParams) : { rate: 0 };
@@ -4084,7 +4088,9 @@ function RothAnalysisDebugTab() {
             if (!fedParams) return null;
 
             const preTaxDed = getPreTaxExemptions(simYear.incomes, simYear.year, age);
-            const adjustedGross = Math.max(0, getGrossIncome(simYear.incomes, simYear.year) - preTaxDed);
+            // Use cashflow.totalIncome so RMDs (filtered from simYear.incomes) are included.
+            const conversionAmt = simYear.rothConversion?.amount || 0;
+            const adjustedGross = Math.max(0, simYear.cashflow.totalIncome + conversionAmt - preTaxDed);
             const taxableIncome = Math.max(0, adjustedGross - fedParams.standardDeduction);
 
             // Calculate headroom for each bracket up to target rate
@@ -4150,7 +4156,8 @@ function RothAnalysisDebugTab() {
                 const ssBenefits = getSocialSecurityBenefits(simYear.incomes, simYear.year);
                 if (ssBenefits > 0) {
                     const preTaxDed = getPreTaxExemptions(simYear.incomes, simYear.year, age);
-                    const nonSSIncome = Math.max(0, getGrossIncome(simYear.incomes, simYear.year) - ssBenefits - preTaxDed);
+                    // Use cashflow.totalIncome so RMDs (filtered from simYear.incomes) are included.
+                    const nonSSIncome = Math.max(0, simYear.cashflow.totalIncome - ssBenefits - preTaxDed);
                     const torpedoResult = calculateEffectiveConversionTax(
                         nonSSIncome, ssBenefits, 0, optimalConversion, taxState.filingStatus, fedParams, null
                     );

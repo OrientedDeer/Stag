@@ -9,7 +9,6 @@ import { TaxContext } from '../../../components/Objects/Taxes/TaxContext';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { calculateNetWorth, formatCompactCurrency } from './FutureUtils';
 import { YearlyPercentile, RETURN_PRESETS, ReturnPresetKey, getPresetReturnMean } from '../../../services/MonteCarloTypes';
-import { MonteCarloDebugPanel } from './MonteCarloDebugPanel';
 import { HISTORICAL_STATS } from '../../../data/HistoricalReturns';
 import { HistoricalBacktestPanel } from './HistoricalBacktestPanel';
 import { DropdownInput } from '../../../components/Layout/InputFields/DropdownInput';
@@ -69,6 +68,7 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
     // Uses config.lastInflationAdjusted (persisted to localStorage) instead of a ref,
     // so the change is detected even if the component unmounts and remounts (tab switching).
     const inflationRate = assumptions.macro?.inflationRate ?? 0;
+    const ror = assumptions.investments?.returnRates?.ror ?? 0;
     useEffect(() => {
         if (normalizedPreset !== 'custom') {
             // For named presets, always sync to the expected value
@@ -79,30 +79,46 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
                 updateConfig({ lastInflationAdjusted: inflationAdjusted });
             }
         } else {
-            // For custom, adjust by inflation rate when the toggle changes
-            if (config.lastInflationAdjusted !== undefined && config.lastInflationAdjusted !== inflationAdjusted) {
-                const adjustment = inflationAdjusted ? inflationRate : -inflationRate;
-                const newMean = Math.round((config.returnMean + adjustment) * 10) / 10;
-                updateConfig({ returnMean: newMean, lastInflationAdjusted: inflationAdjusted });
-            } else if (config.lastInflationAdjusted === undefined) {
-                updateConfig({ lastInflationAdjusted: inflationAdjusted });
+            // For custom, sync to assumptions: ror + inflation (if toggle on), else just ror.
+            // Only re-sync when an assumption value actually changed — never when the user
+            // is mid-edit on the Mean Return field.
+            const assumptionsChanged =
+                config.lastInflationAdjusted !== inflationAdjusted ||
+                config.lastInflationRate !== inflationRate ||
+                config.lastRor !== ror;
+            if (assumptionsChanged) {
+                const expectedMean = inflationAdjusted ? ror + inflationRate : ror;
+                const rounded = Math.round(expectedMean * 10) / 10;
+                updateConfig({
+                    returnMean: rounded,
+                    lastInflationAdjusted: inflationAdjusted,
+                    lastInflationRate: inflationRate,
+                    lastRor: ror,
+                });
             }
         }
-    }, [inflationAdjusted, inflationRate, normalizedPreset, config.returnMean, config.lastInflationAdjusted, updateConfig]);
+    }, [inflationAdjusted, inflationRate, ror, normalizedPreset, config.returnMean, config.lastInflationAdjusted, config.lastInflationRate, config.lastRor, updateConfig]);
 
     // Extract deterministic baseline for comparison
     const deterministicLine = useMemo(() => {
         return extractDeterministicLine(simulationData);
     }, [simulationData]);
 
-    // Handle preset selection - uses inflation setting to determine real vs nominal
+    // Handle preset selection - uses inflation setting to determine real vs nominal.
+    // Custom preset pulls its return mean from assumptions (ror + inflation if toggle on).
     const handlePresetChange = (presetKey: ReturnPresetKey) => {
         const preset = RETURN_PRESETS[presetKey];
+        const customMean = inflationAdjusted ? ror + inflationRate : ror;
+        const returnMean = presetKey === 'custom'
+            ? Math.round(customMean * 10) / 10
+            : getPresetReturnMean(presetKey, inflationAdjusted);
         updateConfig({
             preset: presetKey,
-            returnMean: getPresetReturnMean(presetKey, inflationAdjusted),
+            returnMean,
             returnStdDev: preset.returnStdDev,
             lastInflationAdjusted: inflationAdjusted,
+            lastInflationRate: inflationRate,
+            lastRor: ror,
         });
     };
 
@@ -402,11 +418,6 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
                         <li><strong>Red Line:</strong> Worst performing simulation run</li>
                     </ul>
                 </div>
-
-                {/* Debug Panel */}
-                {summary && (
-                    <MonteCarloDebugPanel summary={summary} config={config} />
-                )}
             </div>
             </>
             )}

@@ -19,6 +19,10 @@ export interface MonteCarloConfig {
     preset: ReturnPresetKey;
     /** Tracks the inflation toggle state when returnMean was last set (survives unmount via localStorage) */
     lastInflationAdjusted?: boolean;
+    /** Tracks the inflation rate from assumptions when the custom returnMean was last synced */
+    lastInflationRate?: number;
+    /** Tracks the assumptions investment return rate when the custom returnMean was last synced */
+    lastRor?: number;
 }
 
 /**
