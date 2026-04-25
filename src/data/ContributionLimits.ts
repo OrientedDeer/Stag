@@ -42,7 +42,7 @@ export const CONTRIBUTION_LIMITS: Record<number, YearlyContributionLimits> = {
   2026: {
     traditional401k: 24500,     // Projected
     catchUp401k: 7500,
-    traditionalIRA: 7000,
+    traditionalIRA: 7500,
     catchUpIRA: 1000,
     hsaIndividual: 4400,        // Projected
     hsaFamily: 8750,            // Projected
