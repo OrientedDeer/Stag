@@ -234,6 +234,15 @@ interface InvestedAccountFieldsProps {
 function InvestedAccountFields({ account, onFieldUpdate }: InvestedAccountFieldsProps): ReactElement {
     return (
         <>
+            {account.taxType === 'Brokerage' && (
+                <CurrencyInput
+                    id={`${account.id}-cost-basis`}
+                    label="Cost Basis"
+                    value={account.costBasis}
+                    onChange={(val) => onFieldUpdate("costBasis", val)}
+                    tooltip="Your original purchase cost. Used to calculate capital gains taxes on withdrawals."
+                />
+            )}
             <PercentageInput
                 id={`${account.id}-expense-ratio`}
                 label="Expense Ratio"
@@ -316,12 +325,12 @@ function Contribution401kFields({ account, onFieldUpdate }: Contribution401kFiel
                     />
                     <StyledDisplay
                         label="Non-Vested Amount"
-                        value={account.nonVestedAmount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                        value={account.nonVestedAmount.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
                         tooltip="Employer contributions you'd lose if you left today."
                     />
                     <StyledDisplay
                         label="Vested Amount"
-                        value={account.vestedAmount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                        value={account.vestedAmount.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
                         tooltip="Employer contributions that are yours to keep."
                     />
                     <PercentageInput
@@ -502,13 +511,13 @@ function ESPPHoldingsSummary({ account }: { account: ESPPAccount }): ReactElemen
                 <div>
                     <div className="text-gray-400">Cost Basis</div>
                     <div className="text-white font-medium">
-                        {account.totalCostBasis.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                        {account.totalCostBasis.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
                     </div>
                 </div>
                 <div>
                     <div className="text-gray-400">Unrealized Gain</div>
                     <div className={`font-medium ${account.unrealizedGains >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {account.unrealizedGains.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                        {account.unrealizedGains.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
                         {account.totalCostBasis > 0 && (
                             <span className="text-xs ml-1">
                                 ({((account.unrealizedGains / account.totalCostBasis) * 100).toFixed(1)}%)
@@ -599,7 +608,7 @@ function ESPPLotRow({ lot, index, account, onEdit, onDelete }: ESPPLotRowProps):
                     <div className="text-xs text-gray-500">
                         Grant: {grantDate.toLocaleDateString()} | Purchase: {purchaseDate.toLocaleDateString()} |
                         FMV@Grant: ${lot.fmvAtGrant.toFixed(2)} | FMV@Purchase: ${lot.fmvAtPurchase.toFixed(2)} |
-                        Basis: {lot.totalCost.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                        Basis: {lot.totalCost.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
                     </div>
                 </div>
                 <div className="flex gap-1 ml-2">

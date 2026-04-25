@@ -354,11 +354,14 @@ export const CashflowSankey = ({
             // --- Column 3: Deductions from Gross Pay (consistent order) ---
             if (totalTradSavings >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: '401k Savings', color: '#10b981', label: '401k Savings' });
             if (totalInsurance >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Benefits', color: '#6366f1', label: 'Benefits' });
-            if (taxes.fed >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Federal Tax', color: '#f59e0b', label: 'Federal Tax' });
-            if (taxes.state >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'State Tax', color: '#fbbf24', label: 'State Tax' });
-            if (taxes.fica >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'FICA Tax', color: '#d97706', label: 'FICA Tax' });
-            if ((taxes.capitalGains || 0) >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Cap Gains Tax', color: '#ca8a04', label: 'Cap Gains Tax' });
-            if ((taxes.withdrawalOrdinaryTax || 0) >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Withdrawal Tax', color: '#a855f7', label: 'Withdrawal Tax' });
+            if (totalTaxes >= MIN_DISPLAY_THRESHOLD) {
+                nodes.push({ id: 'Taxes', color: '#f59e0b', label: 'Taxes' });
+                if (taxes.fed >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Federal Tax', color: '#f59e0b', label: 'Federal Tax' });
+                if (taxes.state >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'State Tax', color: '#fbbf24', label: 'State Tax' });
+                if (taxes.fica >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'FICA Tax', color: '#d97706', label: 'FICA Tax' });
+                if ((taxes.capitalGains || 0) >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Cap Gains Tax', color: '#ca8a04', label: 'Cap Gains Tax' });
+                if ((taxes.withdrawalOrdinaryTax || 0) >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Withdrawal Tax', color: '#a855f7', label: 'Withdrawal Tax' });
+            }
 
             // --- Column 4: Net Pay ---
             nodes.push({ id: 'Net Pay', color: '#3b82f6', label: 'Net Pay' });
@@ -459,11 +462,14 @@ export const CashflowSankey = ({
             // --- Links FROM Gross Pay (deductions) ---
             if (totalTradSavings >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Gross Pay', target: '401k Savings', value: totalTradSavings });
             if (totalInsurance >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Gross Pay', target: 'Benefits', value: totalInsurance });
-            if (taxes.fed >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Gross Pay', target: 'Federal Tax', value: taxes.fed });
-            if (taxes.state >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Gross Pay', target: 'State Tax', value: taxes.state });
-            if (taxes.fica >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Gross Pay', target: 'FICA Tax', value: taxes.fica });
-            if ((taxes.capitalGains || 0) >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Gross Pay', target: 'Cap Gains Tax', value: taxes.capitalGains! });
-            if ((taxes.withdrawalOrdinaryTax || 0) >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Gross Pay', target: 'Withdrawal Tax', value: taxes.withdrawalOrdinaryTax! });
+            if (totalTaxes >= MIN_DISPLAY_THRESHOLD) {
+                links.push({ source: 'Gross Pay', target: 'Taxes', value: totalTaxes });
+                if (taxes.fed >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Taxes', target: 'Federal Tax', value: taxes.fed });
+                if (taxes.state >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Taxes', target: 'State Tax', value: taxes.state });
+                if (taxes.fica >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Taxes', target: 'FICA Tax', value: taxes.fica });
+                if ((taxes.capitalGains || 0) >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Taxes', target: 'Cap Gains Tax', value: taxes.capitalGains! });
+                if ((taxes.withdrawalOrdinaryTax || 0) >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Taxes', target: 'Withdrawal Tax', value: taxes.withdrawalOrdinaryTax! });
+            }
 
             // Always show Gross Pay → Net Pay if there's any positive net pay
             if (netPayFlow >= MIN_DISPLAY_THRESHOLD) {

@@ -24,3 +24,7 @@ export function handleEnterKeyBlur(e: React.KeyboardEvent<HTMLInputElement>): vo
 export function formatDecimal(val: number): string {
     return val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+
+export function formatWholeDollar(val: number): string {
+    return val.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}

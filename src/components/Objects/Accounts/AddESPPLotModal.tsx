@@ -203,12 +203,12 @@ const AddESPPLotModal: React.FC<AddESPPLotModalProps> = ({
                         <div className="grid grid-cols-2 gap-4">
                             <StyledDisplay
                                 label="Total Cost Basis"
-                                value={totalCost.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                                value={totalCost.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
                                 tooltip="Purchase price × number of shares"
                             />
                             <StyledDisplay
                                 label="Discount/Share"
-                                value={discountAmount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+                                value={discountAmount.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
                                 tooltip="Amount saved per share from ESPP discount"
                             />
                             <div className="col-span-2">

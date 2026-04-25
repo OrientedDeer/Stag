@@ -220,7 +220,7 @@ function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
                 {expense instanceof MortgageExpense && (
                     <StyledDisplay
                         label="Mortgage Payment"
-                        value={"$" + expense.payment.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        value={"$" + expense.payment.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                     />
                 )}
 

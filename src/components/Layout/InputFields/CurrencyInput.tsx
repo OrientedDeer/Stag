@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { StyledInput } from "./StyleUI";
-import { formatDecimal, stripLeadingZeros, handleEnterKeyBlur } from "./inputUtils";
+import { formatWholeDollar, stripLeadingZeros, handleEnterKeyBlur } from "./inputUtils";
 
 interface CurrencyInputProps {
     label: string;
@@ -20,7 +20,7 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({ label, value, onCh
 
     useEffect(() => {
         if (!isFocused) {
-            setDisplayValue(formatDecimal(value));
+            setDisplayValue(formatWholeDollar(value));
         }
     }, [value, isFocused]);
 
@@ -37,15 +37,15 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({ label, value, onCh
         if (cleanVal === "" || cleanVal === "-") {
             finalVal = 0;
             onChange(0);
-            setDisplayValue(formatDecimal(0));
+            setDisplayValue(formatWholeDollar(0));
         } else {
-            const numVal = parseFloat(cleanVal);
+            const numVal = Math.round(parseFloat(cleanVal));
             if (!isNaN(numVal)) {
                 finalVal = numVal;
                 onChange(numVal);
-                setDisplayValue(formatDecimal(Math.abs(numVal)));
+                setDisplayValue(formatWholeDollar(Math.abs(numVal)));
             } else {
-                setDisplayValue(formatDecimal(value));
+                setDisplayValue(formatWholeDollar(value));
             }
         }
 

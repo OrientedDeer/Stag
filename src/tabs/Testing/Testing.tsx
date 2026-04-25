@@ -72,7 +72,7 @@ import { SimulationYear, ConversionLimitingFactor } from '../../services/simulat
 
 // Helper to format currency
 const toCurrency = (num: number) =>
-    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num);
+    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(num);
 
 const toCurrencyShort = (num: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(num);
@@ -799,10 +799,14 @@ function SimulationDebugTab() {
         if (simulation.length === 0) return null;
 
         const issues: Array<{ year: number; age: number; type: string; message: string; severity: 'error' | 'warning' | 'info' }> = [];
+        const birthYear = currentYear - startAge;
+
         const yearData: Array<{
             year: number;
             age: number;
+            isEndOfYearProjection: boolean;
             isRetired: boolean;
+            netWorth: number;
             totalIncome: number;
             totalExpenses: number;
             totalWithdrawals: number;
@@ -818,7 +822,7 @@ function SimulationDebugTab() {
         }> = [];
 
         simulation.forEach((simYear, idx) => {
-            const age = startAge + idx;
+            const age = simYear.year - birthYear;
             const isRetired = age >= retirementAge;
 
             // Extract data
@@ -858,7 +862,8 @@ function SimulationDebugTab() {
             // Check for issues
             // 1. Deficit when there's money in accounts
             if (simYear.cashflow.discretionary < -1) {
-                const totalAvailable = Object.values(accountBalances).reduce((sum, bal) => sum + bal, 0);
+                const totalAvailable = simYear.accounts.reduce((sum, acc) =>
+                    acc instanceof DebtAccount ? sum : sum + acc.amount, 0);
                 if (totalAvailable > Math.abs(simYear.cashflow.discretionary)) {
                     issues.push({
                         year: simYear.year,
@@ -899,13 +904,14 @@ function SimulationDebugTab() {
 
             // 4. Alternating expense patterns (check against previous year)
             if (idx > 0) {
-                const prevExpenseCount = simulation[idx - 1].expenses.length;
+                const prevYear = simulation[idx - 1];
+                const prevExpenseCount = prevYear.expenses.length;
                 const currExpenseCount = simYear.expenses.length;
-                const prevExpenseTotal = simulation[idx - 1].cashflow.totalExpense;
+                const prevExpenseTotal = prevYear.cashflow.totalExpense;
                 const currExpenseTotal = simYear.cashflow.totalExpense;
 
                 // Check if this is the first year of retirement (transition year)
-                const prevAge = startAge + idx - 1;
+                const prevAge = prevYear.year - birthYear;
                 const wasRetiredLastYear = prevAge >= retirementAge;
                 const isFirstRetirementYear = isRetired && !wasRetiredLastYear;
 
@@ -922,10 +928,12 @@ function SimulationDebugTab() {
                 // Skip expense swing warning for:
                 // - First year of retirement (expected drop in 401k, FICA, etc.)
                 // - Guyton-Klinger guardrail triggers (prosperity/austerity adjustments)
+                // - Transitions from/to EOY projection (prorated amounts cause false positives)
                 const hasGKTrigger = (simYear.logs || []).some(log =>
                     log.includes('GK Prosperity') || log.includes('GK Austerity')
                 );
-                if (!isFirstRetirementYear && !hasGKTrigger && prevExpenseTotal > 0 && Math.abs(currExpenseTotal - prevExpenseTotal) / prevExpenseTotal > 0.5) {
+                const prevIsEOY = prevYear.isEndOfYearProjection;
+                if (!isFirstRetirementYear && !hasGKTrigger && !prevIsEOY && !simYear.isEndOfYearProjection && prevExpenseTotal > 0 && Math.abs(currExpenseTotal - prevExpenseTotal) / prevExpenseTotal > 0.5) {
                     issues.push({
                         year: simYear.year,
                         age,
@@ -936,14 +944,22 @@ function SimulationDebugTab() {
                 }
             }
 
+            const netWorth = simYear.accounts.reduce((sum, acc) => {
+                if (acc instanceof DebtAccount) return sum - acc.amount;
+                if (acc instanceof PropertyAccount) return sum + acc.amount - (acc.loanAmount || 0);
+                return sum + acc.amount;
+            }, 0);
+
             yearData.push({
                 year: simYear.year,
                 age,
+                isEndOfYearProjection: !!simYear.isEndOfYearProjection,
                 isRetired,
                 totalIncome: simYear.cashflow.totalIncome,
                 totalExpenses: simYear.cashflow.totalExpense,
                 totalWithdrawals,
                 discretionary: simYear.cashflow.discretionary,
+                netWorth,
                 accountBalances,
                 workIncomes,
                 socialSecurityIncome,
@@ -1058,22 +1074,23 @@ function SimulationDebugTab() {
                                 <th className="p-2 text-right text-gray-400">Expenses</th>
                                 <th className="p-2 text-right text-gray-400">Withdrawals</th>
                                 <th className="p-2 text-right text-gray-400">Discretionary</th>
-                                <th className="p-2 text-right text-gray-400">Total Assets</th>
+                                <th className="p-2 text-right text-gray-400">Net Worth</th>
                             </tr>
                         </thead>
                         <tbody>
                             {analysis?.yearData.map(row => {
-                                const totalAssets = Object.values(row.accountBalances).reduce((sum, bal) => sum + bal, 0);
                                 const hasIssue = analysis.issues.some(i => i.year === row.year);
                                 return (
                                     <tr
-                                        key={row.year}
+                                        key={`${row.year}-${row.isEndOfYearProjection ? 'eoy' : 'main'}`}
                                         className={`border-t border-gray-800 cursor-pointer hover:bg-gray-800 ${
                                             selectedYear === row.year ? 'bg-blue-900/30' : ''
-                                        } ${hasIssue ? 'bg-red-900/10' : ''}`}
+                                        } ${hasIssue ? 'bg-red-900/10' : ''} ${row.isEndOfYearProjection ? 'opacity-60 italic' : ''}`}
                                         onClick={() => setSelectedYear(row.year)}
                                     >
-                                        <td className="p-2 font-mono">{row.year}</td>
+                                        <td className="p-2 font-mono">
+                                            {row.isEndOfYearProjection ? `Dec ${row.year}` : row.year}
+                                        </td>
                                         <td className="p-2">{row.age}</td>
                                         <td className="p-2">
                                             <span className={`px-2 py-0.5 rounded text-xs ${
@@ -1090,7 +1107,7 @@ function SimulationDebugTab() {
                                         <td className={`p-2 text-right font-mono ${row.discretionary < 0 ? 'text-red-500 font-bold' : 'text-gray-400'}`}>
                                             {toCurrencyShort(row.discretionary)}
                                         </td>
-                                        <td className="p-2 text-right font-mono text-blue-400">{toCurrencyShort(totalAssets)}</td>
+                                        <td className="p-2 text-right font-mono text-blue-400">{toCurrencyShort(row.netWorth)}</td>
                                     </tr>
                                 );
                             })}
@@ -1519,8 +1536,9 @@ function TaxDebugTab() {
     const taxData = useMemo(() => {
         if (simulation.length === 0) return [];
 
-        return simulation.map((simYear, idx) => {
-            const age = startAge + idx;
+        const birthYear = currentYear - startAge;
+        return simulation.filter(y => !y.isEndOfYearProjection).map((simYear) => {
+            const age = simYear.year - birthYear;
             const year = simYear.year;
             const incomes = simYear.incomes;
             const expenses = simYear.expenses;
@@ -2296,7 +2314,8 @@ function SocialSecurityDebugTab() {
 // ============================================================================
 function RMDDebugTab() {
     const { state: assumptions } = useContext(AssumptionsContext);
-    const { simulation } = useContext(SimulationContext);
+    const { simulation: rawSimulation } = useContext(SimulationContext);
+    const simulation = useMemo(() => rawSimulation.filter(y => !y.isEndOfYearProjection), [rawSimulation]);
     const { accounts } = useContext(AccountContext);
 
     const defaultBirthYear = getBirthYear(assumptions.milestones);
@@ -2625,7 +2644,8 @@ function RMDDebugTab() {
 // ============================================================================
 function TaxBracketVisualizationTab() {
     const { state: assumptions } = useContext(AssumptionsContext);
-    const { simulation } = useContext(SimulationContext);
+    const { simulation: rawSimulation } = useContext(SimulationContext);
+    const simulation = useMemo(() => rawSimulation.filter(y => !y.isEndOfYearProjection), [rawSimulation]);
     const { state: taxState } = useContext(TaxContext);
 
     const currentYear = new Date().getFullYear();
@@ -5941,7 +5961,8 @@ function TaxOptimizationDebugTab() {
     const { accounts } = useContext(AccountContext);
     const { incomes: _incomes } = useContext(IncomeContext);
     const { state: _taxState } = useContext(TaxContext);
-    const { simulation } = useContext(SimulationContext);
+    const { simulation: rawSimulation } = useContext(SimulationContext);
+    const simulation = useMemo(() => rawSimulation.filter(y => !y.isEndOfYearProjection), [rawSimulation]);
 
     const currentYear = new Date().getFullYear();
     const birthYear = getBirthYear(assumptions.milestones);
@@ -6029,7 +6050,11 @@ function TaxOptimizationDebugTab() {
     // Calculate net worth for selected year
     const selectedNetWorth = useMemo(() => {
         if (!yearData) return 0;
-        return yearData.accounts.reduce((sum, acc) => sum + acc.amount, 0);
+        return yearData.accounts.reduce((sum, acc) => {
+            if (acc instanceof DebtAccount) return sum - acc.amount;
+            if (acc instanceof PropertyAccount) return sum + acc.amount - (acc.loanAmount || 0);
+            return sum + acc.amount;
+        }, 0);
     }, [yearData]);
 
     // Get Traditional and Roth balances for selected year

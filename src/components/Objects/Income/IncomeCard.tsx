@@ -380,7 +380,7 @@ function FutureSocialSecurityAmountField({ income }: { income: FutureSocialSecur
             </label>
             <div className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-gray-300">
                 {income.calculatedPIA > 0
-                    ? `$${income.calculatedPIA.toFixed(2)}/month`
+                    ? `$${Math.round(income.calculatedPIA).toLocaleString()}/month`
                     : 'Will be calculated at claiming age'}
             </div>
         </div>

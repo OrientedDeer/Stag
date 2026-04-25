@@ -220,7 +220,7 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
           }}
           axisLeft={mode === 'percent'
             ? { tickValues: [0, .25, .5, .75, 1], format: '>-.0%' }
-            : { tickValues: 10, format: (v) => formatCurrency(Number(v)).replace('.00', '') }
+            : { tickValues: 10, format: (v) => formatCurrency(Number(v)) }
           }
           enableGridX={false}
           enableGridY={true}

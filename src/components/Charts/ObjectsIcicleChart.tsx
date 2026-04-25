@@ -125,7 +125,7 @@ export const ObjectsIcicleChart = ({
                             <div className="font-bold text-gray-200 mb-1">{id}</div>
                             <div className="flex items-baseline gap-2">
                                 <span className="text-green-400 font-mono">
-                                    ${displayValue.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 })}
+                                    ${displayValue.toLocaleString(undefined, { maximumFractionDigits: 0, minimumFractionDigits: 0 })}
                                 </span>
                                 {!isRoot && (
                                     <span className="text-gray-400">

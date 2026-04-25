@@ -202,7 +202,7 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
                         </div>
                         <div>
                             <span className="font-bold text-gray-400">Expenses:</span>
-                            <span className="text-orange-400"> {formatCurrency(yearData.cashflow.totalExpense)}</span>
+                            <span className="text-orange-400"> {formatCurrency(yearData.cashflow.livingExpenses)}</span>
                         </div>
                         <div>
                             <span className="font-bold text-gray-400">Net Worth:</span>

@@ -178,7 +178,7 @@ export const NetWorthCard = () => {
                         tooltip={({ point }: any) => (
                             <div className="bg-gray-800 border border-gray-700 p-2 rounded shadow-xl text-xs">
                                 <span className="text-gray-400">{point.data.xFormatted}: </span>
-                                <span className="text-green-400 font-bold">${point.data.y.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                <span className="text-green-400 font-bold">${point.data.y.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                             </div>
                         )}
                     />
