@@ -175,7 +175,7 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
         }
 
         const result: string[] = [];
-        rawData.forEach((d, i) => {
+        rawData.forEach((d) => {
             if (d.yearLabel === 'Today' || d.isEOY) {
                 result.push(d.yearLabel);
                 return;
