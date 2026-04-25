@@ -91,6 +91,10 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
         return simulationData.filter(d => d.year >= activeRange[0] && d.year <= activeRange[1]);
     }, [simulationData, activeRange]);
 
+    // Detect if the simulation includes the "Today" + "EOY" pair
+    const hasEOYPoint = useMemo(() => filteredData.some(d => d.isEndOfYearProjection), [filteredData]);
+    const baselineYear = useMemo(() => filteredData.find(d => !d.isEndOfYearProjection)?.year, [filteredData]);
+
     // 4. Calculate Chart Data from Filtered Data
     const rawData = useMemo(() => {
         return filteredData.map(year => {
@@ -121,8 +125,16 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                 }
             });
 
+            const yearLabel = year.isEndOfYearProjection
+                ? `Dec ${year.year}`
+                : (hasEOYPoint && year.year === baselineYear)
+                    ? 'Today'
+                    : String(year.year);
+
             return {
                 year: year.year,
+                yearLabel,
+                isEOY: !!year.isEndOfYearProjection,
                 Invested: invested,
                 Saved: saved,
                 Property: property,
@@ -137,7 +149,7 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
             id,
             data: rawData.map(d => ({
                 ...d, // Embed full data for robust tooltip access
-                x: d.year,
+                x: d.yearLabel,
                 y: d[id]
             }))
         }));
@@ -147,27 +159,34 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
     const xTickValues = useMemo(() => {
         if (rawData.length === 0) return undefined;
 
-        const years = rawData.map(d => d.year);
-        const range = years.length;
+        // Always show Today and EOY labels; apply step filter to regular years
+        const regularYears = rawData.filter(d => !d.isEOY && d.yearLabel !== 'Today');
+        const count = regularYears.length;
         const mobile = (containerWidth ?? 800) < 640;
 
         let step = 1;
         if (mobile) {
-            if (range > 30) step = 5;
-            else if (range > 15) step = 3;
-            else if (range > 8) step = 2;
+            if (count > 30) step = 5;
+            else if (count > 15) step = 3;
+            else if (count > 8) step = 2;
         } else {
-            if (range > 40) step = 5;
-            else if (range > 20) step = 2;
+            if (count > 40) step = 5;
+            else if (count > 20) step = 2;
         }
 
-        // Filter years at regular intervals
-        return years.filter((year, i) => {
-            // Always include first and last
-            if (i === 0 || i === years.length - 1) return true;
-            // Include years at step intervals
-            return (year - years[0]) % step === 0;
+        const result: string[] = [];
+        rawData.forEach((d, i) => {
+            if (d.yearLabel === 'Today' || d.isEOY) {
+                result.push(d.yearLabel);
+                return;
+            }
+            // For regular years, include first, last, and every Nth
+            const ri = regularYears.indexOf(d);
+            if (ri === 0 || ri === regularYears.length - 1 || d.year % step === 0) {
+                result.push(d.yearLabel);
+            }
         });
+        return result;
     }, [rawData, containerWidth]);
 
     // 5. Custom Tooltip
@@ -184,7 +203,7 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
             <ChartTooltipPortal>
             <div className="bg-gray-800 p-3 rounded border border-gray-700 shadow-xl text-xs min-w-37.5">
                 <div className="font-bold text-white mb-2 pb-1 border-b border-gray-600">
-                    Year: {data.year}
+                    {data.yearLabel === 'Today' ? `Today (${data.year})` : data.isEOY ? `Projected Dec ${data.year}` : `Year: ${data.year}`}
                 </div>
                 <div className="flex flex-col gap-1">
                     <div className="flex justify-between gap-4">

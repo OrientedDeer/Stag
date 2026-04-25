@@ -259,6 +259,11 @@ export default function TaxesTab() {
                                     </span>
                                 </div>
 
+                                <div className="flex justify-between text-red-300 font-semibold items-center border-t border-red-900/40 pt-3 mt-1">
+                                    <span className="text-lg">Total Taxes</span>
+                                    <span className="font-mono text-lg">-${(federalTax + ficaTax + stateTax).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                </div>
+
                                 {/* NEW: Roth Deduction Display */}
                                 {incomePostTaxDeductions > 0 && (
                                     <div className="flex justify-between text-green-500 text-sm italic items-center pt-2">

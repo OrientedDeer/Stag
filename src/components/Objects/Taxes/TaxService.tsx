@@ -180,7 +180,7 @@ export function getPostTaxEmployerMatch(
 ): number {
 	return incomes.reduce((acc, inc) => {
 		if (inc instanceof WorkIncome && inc.taxType === "Roth 401k") {
-			return acc + inc.getProratedAnnual(inc.employerMatch, year);
+			return acc + inc.getEffectiveAnnualEmployerMatch(year);
 		}
 		return acc;
 	}, 0);

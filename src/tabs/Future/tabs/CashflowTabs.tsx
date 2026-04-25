@@ -188,13 +188,25 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
                         />
                     </div>
                     
-                    <div className="flex gap-4 text-white min-w-fit">
+                    <div className="flex flex-wrap gap-4 text-white min-w-fit text-sm">
                         <div>
-                            <span className="font-bold">Net Worth:</span>
-                            <span className='text-green-400'> {formatCurrency(netWorth)}</span>
+                            <span className="font-bold text-gray-400">Age:</span> {age}
                         </div>
                         <div>
-                            <span className="font-bold">Age:</span> {age}
+                            <span className="font-bold text-gray-400">Income:</span>
+                            <span className="text-emerald-400"> {formatCurrency(yearData.cashflow.totalIncome)}</span>
+                        </div>
+                        <div>
+                            <span className="font-bold text-gray-400">Taxes:</span>
+                            <span className="text-red-400"> {formatCurrency((yearData.taxDetails.fed || 0) + (yearData.taxDetails.state || 0) + (yearData.taxDetails.fica || 0))}</span>
+                        </div>
+                        <div>
+                            <span className="font-bold text-gray-400">Expenses:</span>
+                            <span className="text-orange-400"> {formatCurrency(yearData.cashflow.totalExpense)}</span>
+                        </div>
+                        <div>
+                            <span className="font-bold text-gray-400">Net Worth:</span>
+                            <span className='text-green-400'> {formatCurrency(netWorth)}</span>
                         </div>
                     </div>
                 </div>

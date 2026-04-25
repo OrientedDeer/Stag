@@ -276,6 +276,12 @@ export default function FutureTab() {
         );
     }
 
+    // Filter out end-of-year projection points for tabs that don't need them
+    const simulationWithoutEOY = useMemo(() =>
+        simulation.filter(y => !y.isEndOfYearProjection),
+        [simulation]
+    );
+
     // Tab content with CSS visibility to avoid unmounting charts
     // This keeps Nivo charts mounted, preventing expensive re-initialization
     const renderTabContent = () => (
@@ -284,28 +290,28 @@ export default function FutureTab() {
                 <OverviewTab simulationData={simulation} />
             </div>
             <div className={activeTab === 'Cashflow' ? '' : 'hidden'}>
-                <CashflowTab simulationData={simulation} />
+                <CashflowTab simulationData={simulationWithoutEOY} />
             </div>
             <div className={activeTab === 'Assets' ? '' : 'hidden'}>
-                <AssetsTab simulationData={simulation} />
+                <AssetsTab simulationData={simulationWithoutEOY} />
             </div>
             <div className={activeTab === 'Debt' ? '' : 'hidden'}>
-                <DebtTab simulationData={simulation} />
+                <DebtTab simulationData={simulationWithoutEOY} />
             </div>
             <div className={activeTab === 'Monte Carlo' ? '' : 'hidden'}>
-                <MonteCarloTab simulationData={simulation} />
+                <MonteCarloTab simulationData={simulationWithoutEOY} />
             </div>
             <div className={activeTab === 'Tax' ? '' : 'hidden'}>
-                <TaxOptimizationTab simulationData={simulation} />
+                <TaxOptimizationTab simulationData={simulationWithoutEOY} />
             </div>
             <div className={activeTab === 'Scenarios' ? '' : 'hidden'}>
-                <ScenarioComparisonTab simulationData={simulation} />
+                <ScenarioComparisonTab simulationData={simulationWithoutEOY} />
             </div>
             <div className={activeTab === 'Ratios' ? '' : 'hidden'}>
-                <FinancialRatiosTab simulationData={simulation} />
+                <FinancialRatiosTab simulationData={simulationWithoutEOY} />
             </div>
             <div className={activeTab === 'Data' ? '' : 'hidden'}>
-                <DataTab simulationData={simulation} birthYear={getBirthYear(assumptions.milestones)} />
+                <DataTab simulationData={simulationWithoutEOY} birthYear={getBirthYear(assumptions.milestones)} />
             </div>
         </>
     );

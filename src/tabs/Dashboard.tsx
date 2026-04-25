@@ -116,7 +116,7 @@ export default function Dashboard() {
   const dashboardMetrics = useMemo(() => {
     const employeeIncome = incomes.reduce((sum, inc) => sum + inc.getAnnualAmount(year), 0);
     const employerMatch = incomes.reduce((sum, inc) => {
-      if (inc instanceof WorkIncome) return sum + inc.getProratedAnnual(inc.employerMatch, year);
+      if (inc instanceof WorkIncome) return sum + inc.getEffectiveAnnualEmployerMatch(year);
       return sum;
     }, 0);
     const grossIncome = employeeIncome + employerMatch;
@@ -206,7 +206,7 @@ export default function Dashboard() {
             totalPreTax += inc.getProratedAnnual(effective.preTax, year);
             totalRoth += inc.getProratedAnnual(effective.roth, year);
             totalHSA += inc.getProratedAnnual(inc.hsaContribution, year);
-            totalMatch += inc.getProratedAnnual(inc.employerMatch, year);
+            totalMatch += inc.getEffectiveAnnualEmployerMatch(year);
             totalESPP += inc.getAnnualESPPContribution(year);
             totalInsurance += inc.getProratedAnnual(inc.insurance, year);
           }

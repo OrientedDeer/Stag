@@ -47,7 +47,7 @@ export function processInflows(
             const currentMatch = withdrawalState.employerInflows[inc.matchAccountId] || 0;
 
             const selfContribution = (inc.preTax401k + inc.roth401k) * activeMultiplier;
-            const employerMatch = inc.employerMatch * activeMultiplier;
+            const employerMatch = inc.getEffectiveAnnualEmployerMatch() * activeMultiplier;
 
             totalEmployerMatch += employerMatch;
 

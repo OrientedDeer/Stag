@@ -843,7 +843,7 @@ function SimulationDebugTab() {
                         name: inc.name,
                         amount: inc.getProratedAnnual(inc.amount, simYear.year),
                         contrib401k: inc.getProratedAnnual(inc.preTax401k + inc.roth401k, simYear.year),
-                        employerMatch: inc.getProratedAnnual(inc.employerMatch, simYear.year),
+                        employerMatch: inc.getEffectiveAnnualEmployerMatch(simYear.year),
                     });
                 } else if (inc instanceof FutureSocialSecurityIncome || inc instanceof CurrentSocialSecurityIncome) {
                     socialSecurityIncome += inc.getProratedAnnual(inc.amount, simYear.year);

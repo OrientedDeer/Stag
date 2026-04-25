@@ -54,7 +54,10 @@ interface IncomeFormState {
     preTax401k: number;
     insurance: number;
     roth401k: number;
+    employerMatchType: 'fixed' | 'percent';
     employerMatch: number;
+    employerMatchPercent: number;
+    employerMatchMax: number;
     matchAccountId: string;
     contributionGrowthStrategy: ContributionGrowthStrategy;
     hsaContribution: number;
@@ -91,7 +94,10 @@ function getInitialFormState(): IncomeFormState {
         preTax401k: 0,
         insurance: 0,
         roth401k: 0,
+        employerMatchType: 'fixed',
         employerMatch: 0,
+        employerMatchPercent: 0,
+        employerMatchMax: 0,
         matchAccountId: '',
         contributionGrowthStrategy: 'FIXED',
         hsaContribution: 0,
@@ -231,7 +237,8 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                 finalStartDate, finalEndDate, form.hsaContribution, form.autoMax401k,
                 form.esppContributionType, form.esppContributionAmount, form.esppDiscountPercent,
                 form.esppHasLookback, 6, finalEsppAccountId, 7, form.pensionSystem,
-                finalStartMilestoneId, getDefaultEndMilestone(BUILTIN_MILESTONE_IDS.RETIRE)
+                finalStartMilestoneId, getDefaultEndMilestone(BUILTIN_MILESTONE_IDS.RETIRE),
+                form.employerMatchType, form.employerMatchPercent, form.employerMatchMax
             );
         } else if (selectedType === CurrentSocialSecurityIncome) {
             newIncome = new CurrentSocialSecurityIncome(
@@ -440,8 +447,23 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                     )}
                                     {form.autoMax401k !== 'disabled' && (
                                         <>
-                                            <CurrencyInput label="Employer Match" value={form.employerMatch} onChange={(val) => updateForm('employerMatch', val)} tooltip="Monthly amount your employer contributes to your 401k. Free money!" />
-                                            {form.employerMatch > 0 && (
+                                            <DropdownInput
+                                                label="Employer Match"
+                                                options={[{ value: 'fixed', label: 'Fixed Amount' }, { value: 'percent', label: '% of Earnings' }]}
+                                                value={form.employerMatchType}
+                                                onChange={(val) => updateForm('employerMatchType', val as 'fixed' | 'percent')}
+                                                tooltip="Fixed: a set dollar amount per year. % of Earnings: a percentage of salary up to an optional annual cap."
+                                            />
+                                            {form.employerMatchType === 'fixed' && (
+                                                <CurrencyInput label="Match Amount" value={form.employerMatch} onChange={(val) => updateForm('employerMatch', val)} tooltip="Annual amount your employer contributes to your 401k." />
+                                            )}
+                                            {form.employerMatchType === 'percent' && (
+                                                <>
+                                                    <NumberInput label="Match %" value={form.employerMatchPercent} onChange={(val) => updateForm('employerMatchPercent', val)} min={0} max={100} tooltip="Percentage of your salary your employer matches (e.g., 4 for 4%)." />
+                                                    <CurrencyInput label="Annual Cap" value={form.employerMatchMax} onChange={(val) => updateForm('employerMatchMax', val)} tooltip="Maximum annual employer match in dollars. This cap is fixed and does not adjust for inflation. Leave at 0 for no cap." />
+                                                </>
+                                            )}
+                                            {(form.employerMatchType === 'fixed' ? form.employerMatch > 0 : form.employerMatchPercent > 0) && (
                                                 <DropdownInput
                                                     label="Match Account"
                                                     onChange={(val) => updateForm('matchAccountId', val)}

@@ -179,8 +179,8 @@ export const CashflowSankey = ({
                     totalInsurance += inc.getProratedAnnual(inc.insurance, year);
                     employeeRoth += inc.getProratedAnnual(inc.roth401k, year);
 
-                    if (inc.employerMatch != null) {
-                        empMatch = inc.getProratedAnnual(inc.employerMatch, year);
+                    if (inc.matchAccountId) {
+                        empMatch = inc.getEffectiveAnnualEmployerMatch(year);
                         totalEmployerMatch += empMatch;
                     }
 

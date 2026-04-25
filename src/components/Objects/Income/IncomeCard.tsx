@@ -472,13 +472,43 @@ function WorkIncomeFields({
             )}
             {income.autoMax401k !== 'disabled' && (
                 <>
-                    <CurrencyInput
-                        id={`${income.id}-employer-match`}
+                    <DropdownInput
+                        id={`${income.id}-employer-match-type`}
                         label="Employer Match"
-                        value={income.employerMatch}
-                        onChange={(val) => onFieldUpdate("employerMatch", val)}
+                        options={[{ value: 'fixed', label: 'Fixed Amount' }, { value: 'percent', label: '% of Earnings' }]}
+                        value={income.employerMatchType ?? 'fixed'}
+                        onChange={(val) => onFieldUpdate("employerMatchType", val as 'fixed' | 'percent')}
+                        tooltip="Fixed: a set dollar amount per year. % of Earnings: a percentage of salary up to an optional annual cap."
                     />
-                    {income.employerMatch > 0 && (
+                    {(income.employerMatchType ?? 'fixed') === 'fixed' && (
+                        <CurrencyInput
+                            id={`${income.id}-employer-match`}
+                            label="Match Amount"
+                            value={income.employerMatch}
+                            onChange={(val) => onFieldUpdate("employerMatch", val)}
+                        />
+                    )}
+                    {income.employerMatchType === 'percent' && (
+                        <>
+                            <NumberInput
+                                id={`${income.id}-employer-match-percent`}
+                                label="Match %"
+                                value={income.employerMatchPercent ?? 0}
+                                onChange={(val) => onFieldUpdate("employerMatchPercent", val)}
+                                min={0}
+                                max={100}
+                                tooltip="Percentage of your salary your employer matches (e.g., 4 for 4%)."
+                            />
+                            <CurrencyInput
+                                id={`${income.id}-employer-match-max`}
+                                label="Annual Cap"
+                                value={income.employerMatchMax ?? 0}
+                                onChange={(val) => onFieldUpdate("employerMatchMax", val)}
+                                tooltip="Maximum annual employer match in dollars. This cap is fixed and does not adjust for inflation. Leave at 0 for no cap."
+                            />
+                        </>
+                    )}
+                    {((income.employerMatchType ?? 'fixed') === 'fixed' ? income.employerMatch > 0 : (income.employerMatchPercent ?? 0) > 0) && (
                         <DropdownInput
                             label="Match Account"
                             onChange={(val) => onMatchAccountChange(val)}

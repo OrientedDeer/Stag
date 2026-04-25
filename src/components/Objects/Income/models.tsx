@@ -16,6 +16,7 @@ export type ContributionGrowthStrategy = 'FIXED' | 'GROW_WITH_SALARY' | 'TRACK_A
 export type AutoMax401kOption = 'disabled' | 'custom' | 'traditional' | 'roth';
 export type ESPPContributionType = 'NONE' | 'PERCENTAGE' | 'FIXED';
 export type PensionSystem = 'NONE' | 'FERS' | 'CSRS';
+export type EmployerMatchType = 'fixed' | 'percent';
 
 export type IncomeFrequency = 'Weekly' | 'Bi-Weekly' | 'Semi-Monthly' | 'Monthly' | 'Annually';
 
@@ -111,9 +112,25 @@ export class WorkIncome extends BaseIncome {
     public pensionSystem: PensionSystem = 'NONE',   // Which pension system this job is covered by
     startMilestoneId?: string,
     endMilestoneId?: string,
+    public employerMatchType: EmployerMatchType = 'fixed',
+    public employerMatchPercent: number = 0,
+    public employerMatchMax: number = 0,  // Annual cap in dollars (0 = no cap)
   ) {
     super(id, name, amount, frequency, earned_income, startDate, end_date, 0.03, startMilestoneId, endMilestoneId);
     this.className = 'WorkIncome';
+  }
+
+  getEffectiveAnnualEmployerMatch(year?: number): number {
+    if (this.employerMatchType === 'percent') {
+      const annualSalary = this.getProratedAnnual(this.amount, year);
+      const matchAmount = annualSalary * (this.employerMatchPercent / 100);
+      if (this.employerMatchMax > 0) {
+        const activeMult = year !== undefined ? getIncomeActiveMultiplier(this as unknown as AnyIncome, year) : 1;
+        return Math.min(matchAmount, this.employerMatchMax * activeMult);
+      }
+      return matchAmount;
+    }
+    return this.getProratedAnnual(this.employerMatch, year);
   }
   increment (assumptions: AssumptionsState, year?: number, age?: number): WorkIncome {
     const salaryGrowth = assumptions.income.salaryGrowth / 100;
@@ -233,7 +250,10 @@ export class WorkIncome extends BaseIncome {
       this.esppExpectedStockGrowth,
       this.pensionSystem,
       this.startMilestoneId,
-      this.endMilestoneId
+      this.endMilestoneId,
+      this.employerMatchType,
+      this.employerMatchPercent,
+      this.employerMatchMax,
     );
   }
 
@@ -890,7 +910,10 @@ export function reconstituteIncome(data: unknown): AnyIncome | null {
                 data.esppAccountId ? String(data.esppAccountId) : null,
                 Number(data.esppExpectedStockGrowth ?? 7),
                 (data.pensionSystem as PensionSystem) || 'NONE',
-                startMilestoneId, endMilestoneId
+                startMilestoneId, endMilestoneId,
+                (data.employerMatchType as EmployerMatchType) || 'fixed',
+                Number(data.employerMatchPercent) || 0,
+                Number(data.employerMatchMax) || 0,
             );
         }
         case 'SocialSecurityIncome':

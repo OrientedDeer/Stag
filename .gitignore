@@ -36,3 +36,6 @@ coverage/
 # Personal scenario tests (real financial data)
 **/reconstituted-scenario*
 **/TEAM_HANDOFF.md
+
+# Personal research notes
+NOTES.md

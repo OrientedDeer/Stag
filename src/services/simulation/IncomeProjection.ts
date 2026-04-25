@@ -67,7 +67,10 @@ export function projectIncomes(
                 inc.esppExpectedStockGrowth,
                 inc.pensionSystem,
                 inc.startMilestoneId,
-                inc.endMilestoneId  // CRITICAL: Preserve milestone IDs
+                inc.endMilestoneId,  // CRITICAL: Preserve milestone IDs
+                inc.employerMatchType,
+                inc.employerMatchPercent,
+                inc.employerMatchMax,
             );
         }
 

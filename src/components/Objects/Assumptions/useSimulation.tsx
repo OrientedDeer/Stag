@@ -140,9 +140,9 @@ export const runSimulation = (
             discretionary: currentDiscretionary,
             // In Year 0, we treat the input as "Static", so invested is effectively 0 or the sum of payroll deductions
             investedUser: currentPreTax + currentPostTax - currentInsurance,
-            investedMatch: resolvedIncomes.reduce((sum, inc) => inc instanceof WorkIncome ? sum + inc.employerMatch : sum, 0),
+            investedMatch: resolvedIncomes.reduce((sum, inc) => inc instanceof WorkIncome ? sum + inc.getEffectiveAnnualEmployerMatch() : sum, 0),
             totalInvested: (currentPreTax + currentPostTax - currentInsurance) +
-                            resolvedIncomes.reduce((sum, inc) => inc instanceof WorkIncome ? sum + inc.employerMatch : sum, 0),
+                            resolvedIncomes.reduce((sum, inc) => inc instanceof WorkIncome ? sum + inc.getEffectiveAnnualEmployerMatch() : sum, 0),
             bucketAllocations: 0,
             bucketDetail: {}, // Initialize empty for Year 0
             withdrawals: 0,
@@ -185,7 +185,7 @@ export const runSimulation = (
                 if (effectiveFraction <= 0) return;
 
                 const userContrib = (inc.preTax401k + inc.roth401k) * effectiveFraction;
-                const employerContrib = inc.employerMatch * effectiveFraction;
+                const employerContrib = inc.getEffectiveAnnualEmployerMatch() * effectiveFraction;
 
                 const existing = partialContributions[inc.matchAccountId] || { user: 0, employer: 0 };
                 partialContributions[inc.matchAccountId] = {
@@ -215,6 +215,35 @@ export const runSimulation = (
 
             return acc;
         });
+    }
+
+    // --- STEP 1.75: INSERT END-OF-YEAR PROJECTION ---
+    // Insert a synthetic data point representing projected balances at December 31 of the current year.
+    // This prevents the "big jump" confusion between Year 0 (today) and Year 1 (end of next year).
+    if (remainingFraction > 0 && !assumptions.demographics.priorYearMode) {
+        const eoyYear: SimulationYear = {
+            ...yearZero,
+            accounts: adjustedAccounts,
+            cashflow: {
+                ...yearZero.cashflow,
+                totalIncome: yearZero.cashflow.totalIncome * remainingFraction,
+                totalExpense: yearZero.cashflow.totalExpense * remainingFraction,
+                livingExpenses: yearZero.cashflow.livingExpenses * remainingFraction,
+                investedUser: yearZero.cashflow.investedUser * remainingFraction,
+                investedMatch: yearZero.cashflow.investedMatch * remainingFraction,
+                totalInvested: yearZero.cashflow.totalInvested * remainingFraction,
+                discretionary: yearZero.cashflow.discretionary * remainingFraction,
+            },
+            taxDetails: {
+                ...yearZero.taxDetails,
+                fed: yearZero.taxDetails.fed * remainingFraction,
+                state: yearZero.taxDetails.state * remainingFraction,
+                fica: yearZero.taxDetails.fica * remainingFraction,
+            },
+            isEndOfYearProjection: true,
+            logs: [],
+        };
+        timeline.push(eoyYear);
     }
 
     // --- STEP 2: RUN FUTURE SIMULATION ---

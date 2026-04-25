@@ -67,6 +67,8 @@ export interface SimulationYear {
     milestoneEvents?: MilestoneReachEvent[];      // Milestones reached this year
     activeMilestones?: string[];                   // All milestone IDs reached so far
     taxOptimizationTarget?: TaxOptimizationTarget;
+    // Marks a synthetic "projected end of current year" data point inserted between Year 0 and Year 1
+    isEndOfYearProjection?: boolean;
 }
 
 // Internal withdrawal tracking state passed between simulation phases
