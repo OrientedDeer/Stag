@@ -81,6 +81,12 @@ export interface ConversionCeilingResult {
 
     /** What balance WOULD keep RMDs in 12% bracket (may be unachievable) */
     idealTargetBalance: number;
+
+    /** Peak mid-retirement RMD amount (balance / 15) used to select ceiling */
+    peakRMD: number;
+
+    /** Tax bracket the peak RMD lands in — this is what drives ceiling selection */
+    peakRMDBracket: number;
 }
 
 /**
@@ -786,7 +792,9 @@ export function calculateDynamicConversionCeiling(
             bracketSpacePerYear: 0,
             projectedBalanceAtRMD: currentTraditionalBalance,
             projectedRMDBracket: 0,
-            idealTargetBalance: 0
+            idealTargetBalance: 0,
+            peakRMD: 0,
+            peakRMDBracket: 0,
         };
     }
 
@@ -906,7 +914,9 @@ export function calculateDynamicConversionCeiling(
         bracketSpacePerYear,
         projectedBalanceAtRMD: effectiveProjectedBalance,
         projectedRMDBracket,
-        idealTargetBalance
+        idealTargetBalance,
+        peakRMD,
+        peakRMDBracket,
     };
 }
 

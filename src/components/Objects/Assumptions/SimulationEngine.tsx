@@ -468,7 +468,11 @@ function simulateOneYearWithNewEngine(
     // Note: totalGrossIncome includes reinvested dividends which are taxable but NOT cash.
     // The solver's spendable income correctly excludes these.
     const spendableIncome = yearPlan.income.spendable;
-    const totalCashAvailable = spendableIncome + withdrawalState.totalWithdrawals;
+    // LTCG is a pass-through: brokerage gross-up pays it directly to the government.
+    // Subtracting it here prevents double-counting: the gross withdrawal already includes LTCG,
+    // and totalTax also includes it, so without this correction trueUserSaved = LTCG (phantom).
+    const ltcgPassThrough = yearPlan.tax.capitalGainsLT;
+    const totalCashAvailable = spendableIncome + withdrawalState.totalWithdrawals - ltcgPassThrough;
     const totalBucketAllocationsForSankey = totalSurplusAllocations + inflowResult.totalBucketAllocations;
     // Use solver's actual expenses (yearPlan.totalExpenses) which reflects GK budget trimming,
     // not the pre-trim totalLivingExpenses. Otherwise the Sankey equation is unbalanced when

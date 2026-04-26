@@ -370,6 +370,18 @@ function planConversion(
     // Use idealTargetBalance from the ceiling calculation (new three-tier system)
     const idealTargetBalance = ceilingResult.idealTargetBalance;
 
+    // Log ceiling decision so it's visible in the year inspector
+    decisions.push({
+        category: 'conversion',
+        description:
+            `Ceiling: ${yearsUntilRMD}yr to RMD, ` +
+            `Trad@RMD ~$${Math.round(ceilingResult.projectedBalanceAtRMD).toLocaleString()} ` +
+            `(baseline no-conversion), ` +
+            `peak RMD ~$${Math.round(ceilingResult.peakRMD).toLocaleString()}/yr ` +
+            `→ ${(ceilingResult.peakRMDBracket * 100).toFixed(0)}% bracket ` +
+            `→ ceiling ${ceilingResult.conversionCeiling > 0 ? (ceilingResult.conversionCeiling * 100).toFixed(0) + '%' : 'none (0%)'}.`,
+    });
+
     // Calculate PMT-based conversion amount (new pacing algorithm)
     // Formula: pmt = (currentBalance * r^n - idealTarget) * (r - 1) / (r^n - 1)
     const r = 1 + growthRate;
@@ -1301,10 +1313,19 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     // + withdrawal ordinary tax (Roth 5-year, Traditional, HSA) + FICA + penalties
     const totalTax = finalFedResult.totalTax + finalStateTax + withdrawalOrdinaryTax + ficaTax + totalPenalties;
 
-    // Final cash flow
+    // Final cash flow.
+    // LTCG tax is a pass-through: brokerage gross-up pays it directly to the government.
+    // The deficit already included LTCG (via finalFedResult.totalTax), so the gross withdrawal
+    // is deficit + ltcgTax. Counting that full gross as spendable cash-in would create a phantom
+    // surplus equal to ltcgTax. Subtract it so only the net (post-tax) portion is cash-in.
+    const actualLTCGTax = withdrawals
+        .filter(w => w.capitalGains !== undefined)
+        .reduce((sum, w) => sum + w.tax, 0);
+
     const cashIn =
         incomeClassification.classified.spendable +
-        totalGrossWithdrawals;
+        totalGrossWithdrawals -
+        actualLTCGTax;
 
     const cashOut =
         effectiveLivingExpenses +

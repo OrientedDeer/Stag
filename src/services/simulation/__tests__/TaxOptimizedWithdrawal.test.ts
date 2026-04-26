@@ -2492,7 +2492,9 @@ describe('calculateTargetTraditionalBalance', () => {
         bracketSpacePerYear: 30_000,
         projectedBalanceAtRMD: 600_000,
         projectedRMDBracket: 0.22,
-        idealTargetBalance: 400_000
+        idealTargetBalance: 400_000,
+        peakRMD: 40_000,
+        peakRMDBracket: 0.22,
     };
 
     // Helper to create a mock ConversionCeilingResult

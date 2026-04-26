@@ -75,6 +75,7 @@ interface CashflowSankeyProps {
         fica: number;
         capitalGains?: number; // From brokerage/ESPP withdrawals
         withdrawalOrdinaryTax?: number; // From Roth earnings (5-year rule), Traditional, HSA non-medical
+        niit?: number; // Net Investment Income Tax (3.8% on net investment income)
     };
     bucketAllocations?: Record<string, number>;
     accounts?: AnyAccount[];
@@ -205,9 +206,15 @@ export const CashflowSankey = ({
             });
 
             const mortgageInterestAndEscrow = totalMortgagePayment - totalPrincipal;
-            const totalTaxes = taxes.fed + taxes.state + taxes.fica + (taxes.capitalGains || 0) + (taxes.withdrawalOrdinaryTax || 0);
+            const totalTaxes = taxes.fed + taxes.state + taxes.fica + (taxes.capitalGains || 0) + (taxes.withdrawalOrdinaryTax || 0) + (taxes.niit || 0);
             const totalBucketSavings = Object.values(bucketAllocations).reduce((a, b) => a + b, 0);
             const totalWithdrawals = Object.values(withdrawals).reduce((a, b) => a + b, 0);
+
+            // LTCG is a pass-through: the brokerage gross withdrawal includes LTCG paid directly
+            // to the government. Using gross here while totalTaxes also includes LTCG would create
+            // a phantom "remaining" equal to LTCG. Use net withdrawals (gross - LTCG) instead.
+            const ltcgPassThrough = taxes.capitalGains || 0;
+            const netWithdrawals = totalWithdrawals - ltcgPassThrough;
 
             // Roth conversions flow through Gross Pay → Net Pay for visualization (shows tax impact),
             // but they are NOT subtracted from remaining because they're internal transfers,
@@ -215,8 +222,8 @@ export const CashflowSankey = ({
             const rothConversionAmount = rothConversion?.amount || 0;
 
             // --- Waterfall Math ---
-            // Include withdrawals AND Roth conversions in gross pay for visual flow
-            const grossPayNodeValue = grossPayCalculated + totalEmployerMatch + totalWithdrawals + rothConversionAmount;
+            // Include net withdrawals (not gross) AND Roth conversions in gross pay for visual flow
+            const grossPayNodeValue = grossPayCalculated + totalEmployerMatch + netWithdrawals + rothConversionAmount;
             const totalTradSavings = employee401k + totalEmployerMatchForTrad;
             const totalRothSavings = employeeRoth + totalEmployerMatchForRoth;
 
@@ -360,6 +367,7 @@ export const CashflowSankey = ({
                 if (taxes.state >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'State Tax', color: '#fbbf24', label: 'State Tax' });
                 if (taxes.fica >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'FICA Tax', color: '#d97706', label: 'FICA Tax' });
                 if ((taxes.capitalGains || 0) >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Cap Gains Tax', color: '#ca8a04', label: 'Cap Gains Tax' });
+                if ((taxes.niit || 0) >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'NIIT', color: '#b45309', label: 'NIIT' });
                 if ((taxes.withdrawalOrdinaryTax || 0) >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Withdrawal Tax', color: '#a855f7', label: 'Withdrawal Tax' });
             }
 
@@ -450,8 +458,11 @@ export const CashflowSankey = ({
                 links.push({ source: item.name, target: 'Gross Pay', value: item.amount });
             });
 
+            // Scale withdrawal links to net amounts (gross - LTCG pass-through, pro-rated).
+            // This keeps Gross Pay balanced: LTCG is captured in the Taxes outflow.
+            const withdrawalNetScale = totalWithdrawals > 0 ? netWithdrawals / totalWithdrawals : 1;
             withdrawalItems.forEach(([accountName, amount]) => {
-                links.push({ source: `Withdraw: ${accountName}`, target: 'Gross Pay', value: amount });
+                links.push({ source: `Withdraw: ${accountName}`, target: 'Gross Pay', value: amount * withdrawalNetScale });
             });
 
             // Roth conversion sources flow into Gross Pay (taxable income)
@@ -468,6 +479,7 @@ export const CashflowSankey = ({
                 if (taxes.state >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Taxes', target: 'State Tax', value: taxes.state });
                 if (taxes.fica >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Taxes', target: 'FICA Tax', value: taxes.fica });
                 if ((taxes.capitalGains || 0) >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Taxes', target: 'Cap Gains Tax', value: taxes.capitalGains! });
+                if ((taxes.niit || 0) >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Taxes', target: 'NIIT', value: taxes.niit! });
                 if ((taxes.withdrawalOrdinaryTax || 0) >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Taxes', target: 'Withdrawal Tax', value: taxes.withdrawalOrdinaryTax! });
             }
 
