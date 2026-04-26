@@ -151,7 +151,7 @@ describe('useSimulation - runSimulation', () => {
             };
 
             // Request 30 years but should only get 5 + Year 0 = 6 total
-            const result = runSimulation(30, [], [], [], shortLifeAssumptions, baseTaxState);
+            const result = runSimulation(30, [], [], [], shortLifeAssumptions, baseTaxState, undefined, new Date(2025, 11, 31));
 
             expect(result.length).toBe(6); // Year 0 + 5 years
             expect(result[0].year).toBe(currentYear);
@@ -165,7 +165,7 @@ describe('useSimulation - runSimulation', () => {
                 milestones: createBuiltinMilestones(currentYear - 90, 65, 90) // age 90 in current year, 0 years left
             };
 
-            const result = runSimulation(30, [], [], [], atEndAssumptions, baseTaxState);
+            const result = runSimulation(30, [], [], [], atEndAssumptions, baseTaxState, undefined, new Date(2025, 11, 31));
 
             expect(result.length).toBe(1); // Only Year 0
         });
@@ -178,7 +178,7 @@ describe('useSimulation - runSimulation', () => {
             };
 
             // Request 10 years - should get all 10 + Year 0
-            const result = runSimulation(10, [], [], [], longLifeAssumptions, baseTaxState);
+            const result = runSimulation(10, [], [], [], longLifeAssumptions, baseTaxState, undefined, new Date(2025, 11, 31));
 
             expect(result.length).toBe(11); // Year 0 + 10 years
         });
@@ -255,7 +255,7 @@ describe('useSimulation - runSimulation', () => {
                 )
             ];
 
-            const result = runSimulation(5, [], incomes, [], assumptions, baseTaxState);
+            const result = runSimulation(5, [], incomes, [], assumptions, baseTaxState, undefined, new Date(2025, 11, 31));
 
             // Each year should have accumulated history
             expect(result.length).toBe(6);
@@ -302,7 +302,7 @@ describe('useSimulation - runSimulation', () => {
                 )
             ];
 
-            const result = runSimulation(3, [], incomes, [], assumptions, baseTaxState);
+            const result = runSimulation(3, [], incomes, [], assumptions, baseTaxState, undefined, new Date(2025, 11, 31));
 
             // Year 0: $100,000
             expect(result[0].incomes[0].amount).toBe(100000);
@@ -317,7 +317,7 @@ describe('useSimulation - runSimulation', () => {
 
     describe('Edge Cases', () => {
         it('should handle empty inputs', () => {
-            const result = runSimulation(5, [], [], [], baseAssumptions, baseTaxState);
+            const result = runSimulation(5, [], [], [], baseAssumptions, baseTaxState, undefined, new Date(2025, 11, 31));
 
             expect(result.length).toBe(6);
             expect(result[0].accounts).toEqual([]);
@@ -326,7 +326,7 @@ describe('useSimulation - runSimulation', () => {
         });
 
         it('should handle zero years requested', () => {
-            const result = runSimulation(0, [], [], [], baseAssumptions, baseTaxState);
+            const result = runSimulation(0, [], [], [], baseAssumptions, baseTaxState, undefined, new Date(2025, 11, 31));
 
             // Should still return Year 0
             expect(result.length).toBe(1);
@@ -341,7 +341,7 @@ describe('useSimulation - runSimulation', () => {
                 milestones: createBuiltinMilestones(currentYear - 95, 65, 90) // age 95 in current year, already past life expectancy 90
             };
 
-            const result = runSimulation(10, [], [], [], pastAssumptions, baseTaxState);
+            const result = runSimulation(10, [], [], [], pastAssumptions, baseTaxState, undefined, new Date(2025, 11, 31));
 
             // yearsUntilDeath = max(0, 90 - 95) = 0
             // Should only get Year 0

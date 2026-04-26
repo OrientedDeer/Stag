@@ -141,8 +141,8 @@ describe('OverviewTab', () => {
         const points = chartData[0].data;
 
         expect(points).toHaveLength(2);
-        expect(points[0].x).toBe(2026);
-        expect(points[1].x).toBe(2027);
+        expect(points[0].x).toBe('2026');
+        expect(points[1].x).toBe('2027');
     });
 
     it('handles empty simulation data without crashing', () => {

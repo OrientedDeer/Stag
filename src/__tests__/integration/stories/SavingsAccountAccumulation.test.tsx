@@ -143,7 +143,9 @@ describe('Story: Savings Account Accumulation', () => {
             [workIncome],
             [livingExpenses],
             assumptions,
-            taxState
+            taxState,
+            undefined,
+            new Date(2025, 11, 31)
         );
 
         // With 2 savings accounts, there should be at most 2 interest incomes per year
@@ -229,7 +231,9 @@ describe('Story: Savings Account Accumulation', () => {
             [], // No other income
             [livingExpenses],
             { ...assumptions, milestones: createBuiltinMilestones(birthYear, 30, 90) },
-            taxState
+            taxState,
+            undefined,
+            new Date(2025, 11, 31)
         );
 
         // Year 2 should have interest income in the incomes array (taxable)
@@ -289,7 +293,9 @@ describe('Story: Savings Account Accumulation', () => {
             [], // No work income
             [livingExpenses],
             retiredAssumptions,
-            taxState
+            taxState,
+            undefined,
+            new Date(2025, 11, 31)
         );
 
         // Year 2 should have federal tax > 0

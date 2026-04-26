@@ -566,7 +566,7 @@ describe('Feedback Loop Prevention', () => {
 
             // With only work income of $100k, totalIncome should be exactly $100k
             // If taxes were counted as income, it would be higher
-            for (const year of simulation) {
+            for (const year of simulation.filter(y => !y.isEndOfYearProjection)) {
                 const expectedIncome = 100000; // Fixed salary, no other sources
                 const reportedTotal = year.cashflow.totalIncome;
 

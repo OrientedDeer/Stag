@@ -61,30 +61,30 @@ describe('FutureUtils', () => {
 
   describe('formatCurrency', () => {
     it('should format positive numbers correctly', () => {
-      expect(formatCurrency(1234.56)).toBe('$1,234.56');
+      expect(formatCurrency(1234.56)).toBe('$1,235');
     });
 
     it('should format zero correctly', () => {
-      expect(formatCurrency(0)).toBe('$0.00');
+      expect(formatCurrency(0)).toBe('$0');
     });
 
     it('should format negative numbers correctly', () => {
-      expect(formatCurrency(-500)).toBe('-$500.00');
+      expect(formatCurrency(-500)).toBe('-$500');
     });
 
     it('should round numbers with more than two decimal places', () => {
-      expect(formatCurrency(99.987)).toBe('$99.99');
+      expect(formatCurrency(99.987)).toBe('$100');
     });
 
     it('should handle large numbers with commas', () => {
-        expect(formatCurrency(1000000)).toBe('$1,000,000.00');
+        expect(formatCurrency(1000000)).toBe('$1,000,000');
     });
   });
 
   describe('formatCompactCurrency', () => {
     it('should format small numbers with full precision', () => {
-      expect(formatCompactCurrency(1234.56)).toBe('$1,234.56');
-      expect(formatCompactCurrency(99999.99)).toBe('$99,999.99');
+      expect(formatCompactCurrency(1234.56)).toBe('$1,235');
+      expect(formatCompactCurrency(99999.99)).toBe('$100,000');
     });
 
     it('should format numbers >= 100K with K suffix', () => {
@@ -105,19 +105,19 @@ describe('FutureUtils', () => {
     });
 
     it('should handle negative numbers', () => {
-      expect(formatCompactCurrency(-1234.56)).toBe('-$1,234.56');
+      expect(formatCompactCurrency(-1234.56)).toBe('-$1,235');
       expect(formatCompactCurrency(-1234567)).toBe('-$1.23M');
       expect(formatCompactCurrency(-1000000000)).toBe('-$1.00B');
     });
 
     it('should handle zero', () => {
-      expect(formatCompactCurrency(0)).toBe('$0.00');
+      expect(formatCompactCurrency(0)).toBe('$0');
     });
 
     it('should return full format when forceExact is true', () => {
-      expect(formatCompactCurrency(1000000, { forceExact: true })).toBe('$1,000,000.00');
-      expect(formatCompactCurrency(1234567890, { forceExact: true })).toBe('$1,234,567,890.00');
-      expect(formatCompactCurrency(123456, { forceExact: true })).toBe('$123,456.00');
+      expect(formatCompactCurrency(1000000, { forceExact: true })).toBe('$1,000,000');
+      expect(formatCompactCurrency(1234567890, { forceExact: true })).toBe('$1,234,567,890');
+      expect(formatCompactCurrency(123456, { forceExact: true })).toBe('$123,456');
     });
 
     it('should return compact format when forceExact is false', () => {

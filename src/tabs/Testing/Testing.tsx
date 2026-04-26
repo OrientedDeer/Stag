@@ -1089,7 +1089,7 @@ function SimulationDebugTab() {
                                         onClick={() => setSelectedYear(row.year)}
                                     >
                                         <td className="p-2 font-mono">
-                                            {row.isEndOfYearProjection ? `Dec ${row.year}` : row.year}
+                                            {row.isEndOfYearProjection ? `Rest of ${row.year}` : row.year}
                                         </td>
                                         <td className="p-2">{row.age}</td>
                                         <td className="p-2">

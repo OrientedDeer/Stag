@@ -175,39 +175,32 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
             {/* 2. SLIDER CONTROL (Updated to use RangeSlider) */}
             <div className="p-4 bg-gray-900 rounded-xl border border-gray-800 shadow-lg">
                 <h3 className="text-lg font-bold text-white mb-2">Year Details: {selectedYear}</h3>
-                <div className='flex items-center gap-6'>
-                    
-                    {/* Replaced invisible <input> with <RangeSlider> */}
-                    <div className="w-full">
-                        <RangeSlider
-                            value={selectedYear}
-                            min={startYear}
-                            max={endYear}
-                            onChange={(val) => setSelectedYear(val as number)}
-                            hideHeader={true} // Hides internal label to use your custom header above
-                        />
+                <RangeSlider
+                    value={selectedYear}
+                    min={startYear}
+                    max={endYear}
+                    onChange={(val) => setSelectedYear(val as number)}
+                    hideHeader={true}
+                />
+                <div className="flex flex-wrap gap-4 text-white mt-3 text-sm">
+                    <div>
+                        <span className="font-bold text-gray-400">Age:</span> {age}
                     </div>
-                    
-                    <div className="flex flex-wrap gap-4 text-white min-w-fit text-sm">
-                        <div>
-                            <span className="font-bold text-gray-400">Age:</span> {age}
-                        </div>
-                        <div>
-                            <span className="font-bold text-gray-400">Income:</span>
-                            <span className="text-emerald-400"> {formatCurrency(yearData.cashflow.totalIncome)}</span>
-                        </div>
-                        <div>
-                            <span className="font-bold text-gray-400">Taxes:</span>
-                            <span className="text-red-400"> {formatCurrency((yearData.taxDetails.fed || 0) + (yearData.taxDetails.state || 0) + (yearData.taxDetails.fica || 0))}</span>
-                        </div>
-                        <div>
-                            <span className="font-bold text-gray-400">Expenses:</span>
-                            <span className="text-orange-400"> {formatCurrency(yearData.cashflow.livingExpenses)}</span>
-                        </div>
-                        <div>
-                            <span className="font-bold text-gray-400">Net Worth:</span>
-                            <span className='text-green-400'> {formatCurrency(netWorth)}</span>
-                        </div>
+                    <div>
+                        <span className="font-bold text-gray-400">Income:</span>
+                        <span className="text-emerald-400"> {formatCurrency(yearData.cashflow.totalIncome)}</span>
+                    </div>
+                    <div>
+                        <span className="font-bold text-gray-400">Taxes:</span>
+                        <span className="text-red-400"> {formatCurrency((yearData.taxDetails.fed || 0) + (yearData.taxDetails.state || 0) + (yearData.taxDetails.fica || 0))}</span>
+                    </div>
+                    <div>
+                        <span className="font-bold text-gray-400">Expenses:</span>
+                        <span className="text-orange-400"> {formatCurrency(yearData.cashflow.livingExpenses)}</span>
+                    </div>
+                    <div>
+                        <span className="font-bold text-gray-400">Net Worth:</span>
+                        <span className='text-green-400'> {formatCurrency(netWorth)}</span>
                     </div>
                 </div>
             </div>

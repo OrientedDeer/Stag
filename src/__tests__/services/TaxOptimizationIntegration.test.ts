@@ -180,7 +180,9 @@ describe('Tax Optimization Integration Tests', () => {
             [futureSS],
             [livingExpenses],
             assumptions,
-            taxState
+            taxState,
+            undefined,
+            new Date(2025, 11, 31)
         );
 
         expect(simulation.length).toBeGreaterThan(0);
@@ -195,7 +197,9 @@ describe('Tax Optimization Integration Tests', () => {
             [futureSS],
             [livingExpenses],
             assumptions,
-            taxState
+            taxState,
+            undefined,
+            new Date(2025, 11, 31)
         );
 
         expect(simulation.length).toBeGreaterThan(0);
@@ -513,7 +517,9 @@ describe('Tax Optimization Integration Tests', () => {
                 [tradSS],
                 [tradExpenses],
                 assumptions,
-                taxState
+                taxState,
+                undefined,
+                new Date(2025, 11, 31)
             );
 
             expect(simulation.length).toBe(tradYearsToSimulate);
