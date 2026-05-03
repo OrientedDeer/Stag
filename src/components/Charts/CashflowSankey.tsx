@@ -210,11 +210,20 @@ export const CashflowSankey = ({
             const totalBucketSavings = Object.values(bucketAllocations).reduce((a, b) => a + b, 0);
             const totalWithdrawals = Object.values(withdrawals).reduce((a, b) => a + b, 0);
 
-            // LTCG is a pass-through: the brokerage gross withdrawal includes LTCG paid directly
-            // to the government. Using gross here while totalTaxes also includes LTCG would create
-            // a phantom "remaining" equal to LTCG. Use net withdrawals (gross - LTCG) instead.
-            const ltcgPassThrough = taxes.capitalGains || 0;
-            const netWithdrawals = totalWithdrawals - ltcgPassThrough;
+            // LTCG NOTE — do NOT subtract capitalGains here.
+            //
+            // The withdrawal planner may use 0% LTCG rate (when ordinary income is below the
+            // bracket threshold) and not gross up the brokerage withdrawal. Meanwhile,
+            // calculateTotalFederalTax computes a non-zero authoritative LTCG via bracket
+            // stacking. Subtracting auth LTCG from withdrawals here creates a false deficit
+            // equal to the LTCG tax (e.g. -$707 showing on the chart).
+            //
+            // The math balances when we don't subtract:
+            //   grossPay = income + totalWithdrawals
+            //   netPay   = grossPay - totalTaxes (which already includes LTCG)
+            // The deficit was sized so that gross withdrawal already covers the LTCG tax,
+            // so subtracting again double-counts.
+            const netWithdrawals = totalWithdrawals;
 
             // Roth conversions flow through Gross Pay → Net Pay for visualization (shows tax impact),
             // but they are NOT subtracted from remaining because they're internal transfers,

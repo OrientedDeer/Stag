@@ -468,11 +468,25 @@ function simulateOneYearWithNewEngine(
     // Note: totalGrossIncome includes reinvested dividends which are taxable but NOT cash.
     // The solver's spendable income correctly excludes these.
     const spendableIncome = yearPlan.income.spendable;
-    // LTCG is a pass-through: brokerage gross-up pays it directly to the government.
-    // Subtracting it here prevents double-counting: the gross withdrawal already includes LTCG,
-    // and totalTax also includes it, so without this correction trueUserSaved = LTCG (phantom).
-    const ltcgPassThrough = yearPlan.tax.capitalGainsLT;
-    const totalCashAvailable = spendableIncome + withdrawalState.totalWithdrawals - ltcgPassThrough;
+    //
+    // LTCG NOTE — do NOT subtract capitalGainsLT here.
+    //
+    // The withdrawal planner grosses up brokerage withdrawals using its estimated LTCG rate.
+    // The authoritative LTCG tax (yearPlan.tax.capitalGainsLT) is computed separately by the
+    // YearSolver's bracket-stacking calculation and is baked into totalTax / the deficit.
+    //
+    // These two values often differ:
+    //   - Planner rate = 0%, auth LTCG > 0:  gross == deficit (no gross-up), auth LTCG already
+    //     funded by the withdrawal. Subtracting auth LTCG here creates a false deficit equal to
+    //     the LTCG tax (e.g. -$707 showing as negative contributions).
+    //   - Planner rate > 0%, auth LTCG = 0:  gross > deficit by w.tax_planner. trueUserSaved
+    //     absorbs this overshoot, keeping the Sankey balanced. YearSolver already prevents the
+    //     overshoot from being allocated to accounts via its own Step-F actualLTCGTax subtraction.
+    //
+    // In both cases, the right formula is simply: cashAvailable = spendable + gross_withdrawals.
+    // The Sankey stays balanced because totalTax (outflow) and the gross withdrawal (inflow)
+    // are always consistent — they were sized together in the solver loop.
+    const totalCashAvailable = spendableIncome + withdrawalState.totalWithdrawals;
     const totalBucketAllocationsForSankey = totalSurplusAllocations + inflowResult.totalBucketAllocations;
     // Use solver's actual expenses (yearPlan.totalExpenses) which reflects GK budget trimming,
     // not the pre-trim totalLivingExpenses. Otherwise the Sankey equation is unbalanced when
