@@ -166,6 +166,7 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
                     withdrawals={yearData.cashflow.withdrawalDetail || {}}
                     rothConversion={yearData.rothConversion}
                     livingExpenses={yearData.cashflow.livingExpenses}
+                    cashflowDetail={yearData.cashflowDetail}
                     height={400}
                     onBalanceCheck={handleBalanceCheck}
                 />

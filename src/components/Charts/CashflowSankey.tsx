@@ -5,6 +5,7 @@ import { MortgageExpense, AnyExpense, CLASS_TO_CATEGORY } from '../Objects/Expen
 import { AnyAccount } from '../Objects/Accounts/models';
 import { AssumptionsContext } from '../Objects/Assumptions/AssumptionsContext';
 import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
+import { CashflowDetail } from '../../services/simulation/types';
 
 // Error Boundary to catch Nivo rendering errors
 class SankeyErrorBoundary extends Component<
@@ -87,6 +88,13 @@ interface CashflowSankeyProps {
         toAccounts: Record<string, number>;
     };
     livingExpenses?: number; // Actual living expenses from simulation (after spending cap adjustments)
+    /**
+     * Per-year breakdown produced by the simulation engine. When provided, the
+     * chart sources income lines, contribution splits, mortgage breakdown, and
+     * expense categories from this object instead of re-iterating the raw
+     * incomes/expenses (which can drift from sim values).
+     */
+    cashflowDetail?: CashflowDetail;
     height?: number; // Optional height prop
     extraLeftPadding?: number; // Extra left margin for longer labels
     extraRightPadding?: number; // Extra right margin for longer labels
@@ -115,6 +123,7 @@ export const CashflowSankey = ({
     withdrawals = {},
     rothConversion,
     livingExpenses: providedLivingExpenses,
+    cashflowDetail,
     height = 300,
     extraLeftPadding = 0,
     extraRightPadding = 0,
@@ -140,99 +149,127 @@ export const CashflowSankey = ({
             const links: any[] = [];
 
             // --- Aggregation ---
+            // Per-source income lines for chart nodes.
+            const workIncomeItems: Array<{ name: string; amount: number }> = [];
+            const otherIncomeItems: Array<{ name: string; amount: number }> = [];
+            const reinvestedIncomeItems: Array<{ name: string; amount: number; accountName: string }> = [];
+
             let employee401k = 0;
             let employeeRoth = 0;
             let totalInsurance = 0;
 
-            let totalEmployerMatch = 0;
             let totalEmployerMatchForRoth = 0;
             let totalEmployerMatchForTrad = 0;
 
             let totalPrincipal = 0;
             let totalMortgagePayment = 0;
-            let grossPayCalculated = 0;
 
-            // Track reinvested income (e.g., savings interest that stays in the account)
-            // These show in gross income for taxes but don't flow through as spendable cash
-            const reinvestedIncomeItems: Array<{name: string, amount: number, accountName: string}> = [];
+            // Expense category totals (excludes mortgage; mortgage is split into principal + interest+escrow).
+            const expenseCatTotals = new Map<string, number>();
 
-            incomes.forEach(inc => {
-                const amount = inc.getProratedAnnual ? inc.getProratedAnnual(inc.amount, year) : 0;
-
-                // Check if this is reinvested income (like savings interest)
-                if (inc instanceof PassiveIncome && inc.isReinvested && amount >= MIN_DISPLAY_THRESHOLD) {
-                    // Extract account name from the interest income id (format: "interest-{accountId}-{year}")
-                    // or use the income name which is "{Account Name} Interest"
-                    const accountName = inc.name.replace(' Interest', '');
-                    reinvestedIncomeItems.push({ name: inc.name, amount, accountName });
-                    // Still add to gross for tax visualization purposes
-                    grossPayCalculated += amount;
-                } else if (amount >= MIN_DISPLAY_THRESHOLD) {
-                    grossPayCalculated += amount;
-                }
-
-                if (inc instanceof WorkIncome) {
-                    let empMatch = 0;
-                    // Use stored values directly - these are from the simulation which already
-                    // computed the correct values via increment(). Don't call getEffective401k()
-                    // which would recalculate with potentially wrong inflation settings.
-                    employee401k += inc.getProratedAnnual(inc.preTax401k, year);
-                    totalInsurance += inc.getProratedAnnual(inc.insurance, year);
-                    employeeRoth += inc.getProratedAnnual(inc.roth401k, year);
-
-                    if (inc.matchAccountId) {
-                        empMatch = inc.getEffectiveAnnualEmployerMatch(year);
-                        totalEmployerMatch += empMatch;
-                    }
-
-                    // Check if employer match goes to Roth account
-                    if (inc.taxType === 'Roth 401k') {
-                        totalEmployerMatchForRoth += empMatch;
+            if (cashflowDetail) {
+                // --- Sim-provided values (preferred path) ---
+                // The simulation engine has already done the per-source classification, so
+                // re-deriving these here would just be an opportunity for drift.
+                for (const src of cashflowDetail.incomeBySource) {
+                    if (src.amount < MIN_DISPLAY_THRESHOLD) continue;
+                    if (src.kind === 'work') {
+                        workIncomeItems.push({ name: src.name, amount: src.amount });
+                    } else if (src.kind === 'reinvested') {
+                        reinvestedIncomeItems.push({
+                            name: src.name,
+                            amount: src.amount,
+                            accountName: src.accountName ?? src.name,
+                        });
                     } else {
-                        totalEmployerMatchForTrad += empMatch;
+                        otherIncomeItems.push({ name: src.name, amount: src.amount });
                     }
                 }
-            });
-
-            // Total reinvested (for remaining calculation)
-            const totalReinvested = reinvestedIncomeItems.reduce((sum, item) => sum + item.amount, 0);
-
-            expenses.forEach(exp => {
-                if (exp instanceof MortgageExpense) {
-                    const amort = exp.calculateAnnualAmortization(year);
-                    totalPrincipal += amort.totalPrincipal;
-                    totalMortgagePayment += amort.totalPayment;
+                employee401k = cashflowDetail.userPreTax401k;
+                employeeRoth = cashflowDetail.userRoth401k;
+                totalEmployerMatchForTrad = cashflowDetail.employerMatchPreTax;
+                totalEmployerMatchForRoth = cashflowDetail.employerMatchRoth;
+                totalInsurance = cashflowDetail.insurance;
+                totalPrincipal = cashflowDetail.mortgagePrincipal;
+                totalMortgagePayment = cashflowDetail.mortgagePrincipal + cashflowDetail.mortgageInterestEscrow;
+                for (const [cat, amt] of Object.entries(cashflowDetail.expensesByCategory)) {
+                    expenseCatTotals.set(cat, amt);
                 }
-            });
+            } else {
+                // --- Fallback: derive from raw incomes/expenses ---
+                // Used by the Dashboard's pre-simulation "current year" chart, which doesn't
+                // have a SimulationYear yet. Sim-driven consumers should pass cashflowDetail.
+                incomes.forEach(inc => {
+                    const amount = inc.getProratedAnnual ? inc.getProratedAnnual(inc.amount, year) : 0;
+                    if (amount < MIN_DISPLAY_THRESHOLD && !(inc instanceof WorkIncome)) return;
+
+                    if (inc instanceof WorkIncome) {
+                        if (amount >= MIN_DISPLAY_THRESHOLD) {
+                            workIncomeItems.push({ name: inc.name, amount });
+                        }
+                        employee401k += inc.getProratedAnnual(inc.preTax401k, year);
+                        totalInsurance += inc.getProratedAnnual(inc.insurance, year);
+                        employeeRoth += inc.getProratedAnnual(inc.roth401k, year);
+
+                        if (inc.matchAccountId) {
+                            const empMatch = inc.getEffectiveAnnualEmployerMatch(year);
+                            // Match destination is determined by the matchAccount's taxType,
+                            // not the income's taxType. Approximate using inc.taxType for the
+                            // fallback path since we lack the account lookup here.
+                            if (inc.taxType === 'Roth 401k') {
+                                totalEmployerMatchForRoth += empMatch;
+                            } else {
+                                totalEmployerMatchForTrad += empMatch;
+                            }
+                        }
+                    } else if (inc instanceof PassiveIncome && inc.isReinvested) {
+                        reinvestedIncomeItems.push({
+                            name: inc.name,
+                            amount,
+                            accountName: inc.name.replace(' Interest', ''),
+                        });
+                    } else {
+                        otherIncomeItems.push({ name: inc.name, amount });
+                    }
+                });
+
+                expenses.forEach(exp => {
+                    if (exp instanceof MortgageExpense) {
+                        const amort = exp.calculateAnnualAmortization(year);
+                        totalPrincipal += amort.totalPrincipal;
+                        totalMortgagePayment += amort.totalPayment;
+                        return;
+                    }
+                    const amount = exp.getAnnualAmount(year);
+                    if (amount <= 0) return;
+                    const category = CLASS_TO_CATEGORY[exp.constructor.name] || 'Other';
+                    expenseCatTotals.set(category, (expenseCatTotals.get(category) || 0) + amount);
+                });
+            }
+
+            const totalEmployerMatch = totalEmployerMatchForTrad + totalEmployerMatchForRoth;
+            const grossPayCalculated =
+                workIncomeItems.reduce((s, i) => s + i.amount, 0) +
+                otherIncomeItems.reduce((s, i) => s + i.amount, 0) +
+                reinvestedIncomeItems.reduce((s, i) => s + i.amount, 0);
+            const totalReinvested = reinvestedIncomeItems.reduce((s, i) => s + i.amount, 0);
 
             const mortgageInterestAndEscrow = totalMortgagePayment - totalPrincipal;
             const totalTaxes = taxes.fed + taxes.state + taxes.fica + (taxes.capitalGains || 0) + (taxes.withdrawalOrdinaryTax || 0) + (taxes.niit || 0);
             const totalBucketSavings = Object.values(bucketAllocations).reduce((a, b) => a + b, 0);
             const totalWithdrawals = Object.values(withdrawals).reduce((a, b) => a + b, 0);
 
-            // LTCG NOTE — do NOT subtract capitalGains here.
+            // Withdrawals flow into Gross Pay at their gross amount. LTCG tax is captured
+            // separately in the Taxes outflow — the gross withdrawal was sized to cover it,
+            // so subtracting it from cash-in here would double-count.
             //
-            // The withdrawal planner may use 0% LTCG rate (when ordinary income is below the
-            // bracket threshold) and not gross up the brokerage withdrawal. Meanwhile,
-            // calculateTotalFederalTax computes a non-zero authoritative LTCG via bracket
-            // stacking. Subtracting auth LTCG from withdrawals here creates a false deficit
-            // equal to the LTCG tax (e.g. -$707 showing on the chart).
-            //
-            // The math balances when we don't subtract:
-            //   grossPay = income + totalWithdrawals
-            //   netPay   = grossPay - totalTaxes (which already includes LTCG)
-            // The deficit was sized so that gross withdrawal already covers the LTCG tax,
-            // so subtracting again double-counts.
-            const netWithdrawals = totalWithdrawals;
-
-            // Roth conversions flow through Gross Pay → Net Pay for visualization (shows tax impact),
-            // but they are NOT subtracted from remaining because they're internal transfers,
-            // not spendable cash outflows.
+            // Roth conversions flow through Gross Pay → Net Pay for visualization (shows tax
+            // impact), but they are NOT subtracted from remaining because they're internal
+            // transfers, not spendable cash outflows.
             const rothConversionAmount = rothConversion?.amount || 0;
 
             // --- Waterfall Math ---
-            // Include net withdrawals (not gross) AND Roth conversions in gross pay for visual flow
-            const grossPayNodeValue = grossPayCalculated + totalEmployerMatch + netWithdrawals + rothConversionAmount;
+            const grossPayNodeValue = grossPayCalculated + totalEmployerMatch + totalWithdrawals + rothConversionAmount;
             const totalTradSavings = employee401k + totalEmployerMatchForTrad;
             const totalRothSavings = employeeRoth + totalEmployerMatchForRoth;
 
@@ -242,44 +279,17 @@ export const CashflowSankey = ({
                 - totalTaxes;
                 // Note: Roth Match flows through Net Pay
 
-            // --- Calculate expense categories first (needed for node ordering) ---
-            const expenseCatTotals = new Map<string, number>();
-            expenses.forEach(exp => {
-                const amount = exp.getAnnualAmount(year);
-                if (amount <= 0 || exp instanceof MortgageExpense) return;
-                const category = CLASS_TO_CATEGORY[exp.constructor.name] || 'Other';
-                expenseCatTotals.set(category, (expenseCatTotals.get(category) || 0) + amount);
-            });
+            // expenseCatTotals was already populated above (from cashflowDetail or fallback iteration).
+            const totalExpenses = providedLivingExpenses !== undefined
+                ? providedLivingExpenses - totalMortgagePayment  // Mortgage is shown as separate nodes
+                : Array.from(expenseCatTotals.values()).reduce((a, b) => a + b, 0);
 
-            const calculatedExpenses = Array.from(expenseCatTotals.values()).reduce((a, b) => a + b, 0);
-
-            // The simulation calculates discretionary cash = income + withdrawals - taxes - expenses - reinvested
-            // If there are bucket allocations, the simulation determined there was surplus AFTER expenses.
-            // The remaining after all outflows should be approximately zero (or small positive).
-            //
-            // The issue is that reinvested income flows:
-            // Income → Gross Pay → (taxes) → Net Pay → Reinvested savings
-            // And bucket allocations represent discretionary cash AFTER expenses.
-            //
-            // For the Sankey to balance, we calculate remaining as what's left after all outflows.
-            // If remaining is negative but there are bucket allocations, we have inconsistent data.
-            // In that case, we adjust to not show a false deficit.
-
-            // Use provided or calculated expenses
-            // IMPORTANT: providedLivingExpenses includes mortgage, but we show mortgage as separate nodes
-            // So we must subtract mortgage to avoid double-counting
-            let totalExpenses = providedLivingExpenses !== undefined
-                ? providedLivingExpenses - totalMortgagePayment  // Subtract mortgage since shown separately
-                : calculatedExpenses;
-
-            // Calculate what remaining would be
-            // The conversion flows: Convert → Gross Pay → (taxes) → Net Pay → To Roth
-            // We must subtract rothConversionAmount because it flows OUT of Net Pay to Roth accounts.
+            // Compute "remaining" by closing the balance equation against Net Pay.
+            // Inputs to this equation come from the simulation (via cashflowDetail),
+            // so it isn't recomputing sim values — it's just deriving the residual
+            // node so the diagram stays balanced. This naturally surfaces LTCG
+            // over-withdrawal residuals that the sim's `discretionary` doesn't capture.
             let remaining = netPayFlow - totalRothSavings - totalExpenses - mortgageInterestAndEscrow - totalPrincipal - totalBucketSavings - rothConversionAmount - totalReinvested;
-
-            // If there are bucket allocations but remaining is negative, the data is inconsistent.
-            // The simulation calculated surplus (hence bucket allocations), so there's no real deficit.
-            // The bucket allocations prove the simulation had money left over after expenses.
             if (remaining < -1 && totalBucketSavings > 0) {
                 remaining = 0;
             }
@@ -295,26 +305,8 @@ export const CashflowSankey = ({
             // =================================================================
 
             // --- Column 1: Income Sources (add in consistent order) ---
-            // First: Work income (sorted by name for stability)
-            const workIncomeItems: Array<{name: string, amount: number}> = [];
-            const otherIncomeItems: Array<{name: string, amount: number}> = [];
-
-            incomes.forEach(inc => {
-                const amount = inc.getProratedAnnual ? inc.getProratedAnnual(inc.amount, year) : 0;
-                if (amount >= MIN_DISPLAY_THRESHOLD) {
-                    // Skip reinvested income here - it's handled separately
-                    if (inc instanceof PassiveIncome && inc.isReinvested) {
-                        return; // Already tracked in reinvestedIncomeItems
-                    }
-                    if (inc instanceof WorkIncome) {
-                        workIncomeItems.push({ name: inc.name, amount });
-                    } else {
-                        otherIncomeItems.push({ name: inc.name, amount });
-                    }
-                }
-            });
-
-            // Sort for consistent ordering
+            // workIncomeItems / otherIncomeItems / reinvestedIncomeItems were populated above.
+            // Sort here for stable visual ordering.
             workIncomeItems.sort((a, b) => a.name.localeCompare(b.name));
             otherIncomeItems.sort((a, b) => a.name.localeCompare(b.name));
 
@@ -467,11 +459,8 @@ export const CashflowSankey = ({
                 links.push({ source: item.name, target: 'Gross Pay', value: item.amount });
             });
 
-            // Scale withdrawal links to net amounts (gross - LTCG pass-through, pro-rated).
-            // This keeps Gross Pay balanced: LTCG is captured in the Taxes outflow.
-            const withdrawalNetScale = totalWithdrawals > 0 ? netWithdrawals / totalWithdrawals : 1;
             withdrawalItems.forEach(([accountName, amount]) => {
-                links.push({ source: `Withdraw: ${accountName}`, target: 'Gross Pay', value: amount * withdrawalNetScale });
+                links.push({ source: `Withdraw: ${accountName}`, target: 'Gross Pay', value: amount });
             });
 
             // Roth conversion sources flow into Gross Pay (taxable income)
@@ -601,7 +590,7 @@ export const CashflowSankey = ({
                 imbalances: []
             };
         }
-    }, [incomes, expenses, year, taxes, bucketAllocations, accounts, withdrawals, rothConversion]);
+    }, [incomes, expenses, year, taxes, bucketAllocations, accounts, withdrawals, rothConversion, cashflowDetail, providedLivingExpenses]);
 
     // Call balance check callback when imbalances change
     useEffect(() => {

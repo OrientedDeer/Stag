@@ -25,6 +25,7 @@ import { evaluateAllMilestones, isActiveByMilestone, MilestoneContext } from "..
 import { InvestedAccount, SavedAccount } from "../Accounts/models";
 import { solveYear, YearSolverInput } from "../../../services/simulation/YearSolver";
 import { YearPlan } from "../../../services/simulation/types";
+import { buildCashflowDetail } from "../../../services/simulation/CashflowDetailBuilder";
 
 // =============================================================================
 // YearSolver-based simulation engine
@@ -520,6 +521,22 @@ function simulateOneYearWithNewEngine(
     const totalBucketAllocations = inflowResult.totalBucketAllocations + totalSurplusAllocations;
 
     // ------------------------------------------------------------------
+    // BUILD CASHFLOW DETAIL (for Sankey chart - avoids re-deriving
+    // per-source income, contribution splits, mortgage breakdown, and
+    // expense categories from scratch in the chart layer)
+    // ------------------------------------------------------------------
+    // Use allIncomes so reinvested interest (created in projectIncomes) is
+    // included. RMD-sourced PassiveIncomes are filtered inside the builder
+    // since they're surfaced as withdrawals, not income.
+    const cashflowDetail = buildCashflowDetail({
+        incomes: allIncomes,
+        expenses: nextExpenses,
+        accounts: nextAccounts,
+        insurance: totalInsuranceCost,
+        year,
+    });
+
+    // ------------------------------------------------------------------
     // RETURN SIMULATION YEAR
     // ------------------------------------------------------------------
     return {
@@ -541,6 +558,7 @@ function simulateOneYearWithNewEngine(
             withdrawals: withdrawalState.totalWithdrawals,
             withdrawalDetail: withdrawalState.withdrawalDetail,
         },
+        cashflowDetail,
         taxDetails: {
             fed: yearPlan.tax.federal + withdrawalState.withdrawalPenalties,
             state: yearPlan.tax.state,

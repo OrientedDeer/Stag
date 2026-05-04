@@ -4,6 +4,46 @@ import { AnyIncome } from "../../components/Objects/Income/models";
 import { WithdrawalResult, GuardrailTrigger } from "../WithdrawalStrategies";
 import { RMDCalculation } from "../../data/RMDData";
 
+/**
+ * Per-source income line for cashflow display.
+ * `kind` mirrors what classifyIncome would assign.
+ */
+export type CashflowIncomeKind = 'work' | 'ss' | 'pension' | 'passive' | 'reinvested' | 'rmd';
+
+export interface CashflowIncomeSource {
+    name: string;
+    amount: number;
+    kind: CashflowIncomeKind;
+    /** For reinvested passive income: the account that holds the reinvested cash. */
+    accountName?: string;
+}
+
+/**
+ * Detailed cashflow breakdown the simulation has already computed but
+ * historically wasn't surfaced. The Sankey chart uses these values directly
+ * instead of re-deriving them from raw incomes/expenses (which led to drift).
+ */
+export interface CashflowDetail {
+    /** Per-source income lines (post earnings test, post-classification). */
+    incomeBySource: CashflowIncomeSource[];
+    /** Pre-tax 401k contributions, summed across active work incomes. */
+    userPreTax401k: number;
+    /** Roth 401k contributions, summed across active work incomes. */
+    userRoth401k: number;
+    /** Employer match flowing into Traditional accounts. */
+    employerMatchPreTax: number;
+    /** Employer match flowing into Roth accounts (rare). */
+    employerMatchRoth: number;
+    /** Insurance payroll deduction (mirror of taxDetails.insurance). */
+    insurance: number;
+    /** Mortgage principal portion of total mortgage payment. */
+    mortgagePrincipal: number;
+    /** Mortgage interest + escrow portion of total mortgage payment. */
+    mortgageInterestEscrow: number;
+    /** Living expense totals by category (excludes mortgage; mortgage is split above). */
+    expensesByCategory: Record<string, number>;
+}
+
 // Define the shape of a single year's result
 export interface SimulationYear {
     year: number;
@@ -23,6 +63,8 @@ export interface SimulationYear {
         withdrawals: number; // Total withdrawn from accounts
         withdrawalDetail: Record<string, number>; // Per-account breakdown
     };
+    /** Detailed breakdown for the cashflow Sankey chart. */
+    cashflowDetail?: CashflowDetail;
     taxDetails: {
         fed: number;
         state: number;
