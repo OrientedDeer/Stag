@@ -143,7 +143,8 @@ function simulateOneYearWithNewEngine(
     returnOverride?: number,
     previousActiveMilestones: string[] = [],
     previousMilestoneReachYears: Map<string, number> = new Map(),
-    _baselineProjections?: BaselineProjections
+    baselineProjections?: BaselineProjections,
+    conversionMode: 'rate-match' | 'std-ded-only' = 'rate-match'
 ): SimulationYear {
     const logs: string[] = [];
     logs.push('[V2 Engine] Using new YearSolver-based simulation');
@@ -295,6 +296,12 @@ function simulateOneYearWithNewEngine(
         gkBudget: strategyWithdrawalResult?.amount,
         fixedExpenses,
         discretionaryExpenses,
+        // Per-year sub-sim baseline projections. Used by the conversion ceiling
+        // calculator so SS / pension / passive / Trad-balance at RMD come from a
+        // forward sub-simulation that does only std-ded-headroom conversions —
+        // rather than rough estimates or naive forward-compounding.
+        baselineProjections,
+        conversionMode,
     };
 
     const yearPlan = solveYear(solverInput);
@@ -433,6 +440,8 @@ function simulateOneYearWithNewEngine(
             rothConversionResult = {
                 amount: yearPlan.conversion.amount,
                 taxCost: yearPlan.conversion.taxAmount,
+                federalTaxCost: yearPlan.conversion.federalTaxCost,
+                stateTaxCost: yearPlan.conversion.stateTaxCost,
                 taxAfter: yearPlan.tax.federal + yearPlan.conversion.taxAmount,
                 fromAccounts: { [sourceAccount.name]: yearPlan.conversion.amount },
                 toAccounts: { [targetAccount.name]: yearPlan.conversion.netToRoth },
@@ -600,11 +609,12 @@ export function simulateOneYear(
     returnOverride?: number,
     previousActiveMilestones: string[] = [],
     previousMilestoneReachYears: Map<string, number> = new Map(),
-    baselineProjections?: BaselineProjections
+    baselineProjections?: BaselineProjections,
+    conversionMode: 'rate-match' | 'std-ded-only' = 'rate-match'
 ): SimulationYear {
     return simulateOneYearWithNewEngine(
         year, incomes, expenses, accounts, assumptions, taxState,
         previousSimulation, returnOverride, previousActiveMilestones,
-        previousMilestoneReachYears, baselineProjections
+        previousMilestoneReachYears, baselineProjections, conversionMode
     );
 }

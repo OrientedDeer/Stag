@@ -19,7 +19,7 @@ import {
     createLoadedScenarioFromSimulation
 } from '../../../services/ScenarioService';
 import { SimulationYear } from '../Assumptions/SimulationEngine';
-import { runSimulation } from '../Assumptions/useSimulation';
+import { runSimulationWithOptimization } from '../Assumptions/useSimulation';
 import { AnyAccount, reconstituteAccount } from '../Accounts/models';
 import { AnyIncome, reconstituteIncome } from '../Income/models';
 import { AnyExpense, reconstituteExpense } from '../Expense/models';
@@ -422,7 +422,7 @@ export const ScenarioProvider = ({ children }: { children: ReactNode }) => {
 
         // Run simulation (use 50 years to ensure full lifetime coverage)
         const yearsToRun = 50;
-        const simulation = runSimulation(
+        const simulation = runSimulationWithOptimization(
             yearsToRun,
             accounts,
             incomes,

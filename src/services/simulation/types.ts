@@ -48,7 +48,9 @@ export interface SimulationYear {
     // Auto Roth conversion tracking
     rothConversion?: {
         amount: number;                  // Total amount converted
-        taxCost: number;                 // Tax paid on conversion
+        taxCost: number;                 // Tax paid on conversion (legacy: fed-only in V1, fed+state in V2 — prefer federalTaxCost/stateTaxCost)
+        federalTaxCost: number;          // Federal-only tax increase from the conversion
+        stateTaxCost: number;            // State-only tax increase from the conversion
         taxAfter: number;               // Total federal tax after conversion
         fromAccounts: Record<string, number>;  // Amount from each Traditional account (by name)
         toAccounts: Record<string, number>;    // Amount to each Roth account (by name)
@@ -140,6 +142,8 @@ export interface BaselineProjections {
     ssAtRMD: number;
     /** Projected pension income at RMD age (with COLA) */
     pensionAtRMD: number;
+    /** Projected passive income at RMD age (rental, dividends, interest, etc. — excludes RMDs) */
+    passiveAtRMD: number;
     /** The year when RMDs start */
     rmdYear: number;
 }
@@ -240,8 +244,12 @@ export interface PlannedConversion {
     toAccountId: string;
     /** How the conversion tax is paid */
     taxSource: ConversionTaxSource;
-    /** Tax cost of conversion */
+    /** Total tax cost of conversion (federal + state + ACA subsidy lost) */
     taxAmount: number;
+    /** Federal-only portion of the conversion tax (ordinary + SS torpedo + LTCG bump + NIIT) */
+    federalTaxCost: number;
+    /** State-only portion of the conversion tax */
+    stateTaxCost: number;
     /** Net amount going to Roth (= amount when SURPLUS/BROKERAGE, < amount when WITHHOLD) */
     netToRoth: number;
     /** Reason/explanation */

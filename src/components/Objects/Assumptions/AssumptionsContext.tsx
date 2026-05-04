@@ -123,6 +123,11 @@ export interface AssumptionsState {
     autoRothConversions: boolean; // Automatically convert Traditional to Roth in low-tax years
     // Auto Roth conversion target (used when taxOptimizationEnabled is false)
     rothConversionTargetBracket: number; // Max effective rate for conversions (e.g., 0.22)
+    // Rate-match conversion: minimum percentage-point gap between current marginal
+    // rate and projected RMD-age marginal rate to justify converting that bracket.
+    // Higher = more conservative (skip conversions with smaller savings).
+    // 0.05 = "convert at 12% to dodge 22% only if savings ≥ 5pp."
+    rothConversionMinRateGap?: number;
     // Tax Optimization Mode
     taxOptimizationEnabled: boolean; // When enabled, uses smart withdrawal order and auto-calculated Roth conversions
     acaAware: boolean; // When true, limit Roth conversions to stay under ACA subsidy cliff (pre-65)
@@ -167,7 +172,8 @@ export const defaultAssumptions: AssumptionsState = {
     gkLowerGuardrail: 0.8,      // Boost when rate < target * 0.8
     gkAdjustmentPercent: 10,    // 10% adjustment (per actual GK rules)
     autoRothConversions: false, // Auto-convert Traditional to Roth in retirement
-    rothConversionTargetBracket: 0.22, // Convert up to 22% effective rate
+    rothConversionTargetBracket: 0, // 0 = std-ded floor (RMDs ≤ standard deduction = tax-free at RMD age). Set >0 (e.g. 0.12) to use a higher bracket-fill cap.
+    rothConversionMinRateGap: 0.05, // 5pp minimum savings to justify a non-free conversion (rate-match algorithm)
     taxOptimizationEnabled: false, // Disabled by default - use manual withdrawal order
     acaAware: true, // Limit Roth conversions to stay under ACA subsidy cliff (pre-65)
   },

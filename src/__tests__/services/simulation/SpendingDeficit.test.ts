@@ -43,7 +43,11 @@ function createAccounts(opts?: {
     rothBalance?: number;
     savingsBalance?: number;
 }) {
-    const tradBal = opts?.traditionalBalance ?? 1500000;
+    // Default Traditional balance is large enough that the conversion ceiling
+    // calculator (with the units-mismatch fix) projects RMDs into the 32%+ bracket,
+    // ensuring conversions still trigger and the spending-reservation path is exercised.
+    // Pre-fix ($1.5M was sufficient because the bug inflated apparent peak-RMD bracket.)
+    const tradBal = opts?.traditionalBalance ?? 3000000;
     const brokBal = opts?.brokerageBalance ?? 200000;
     const rothBal = opts?.rothBalance ?? 100000;
     const savBal = opts?.savingsBalance ?? 20000;

@@ -15,7 +15,7 @@ import { IncomeContext } from '../../components/Objects/Income/IncomeContext';
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
 import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
 import { WorkIncome, FutureSocialSecurityIncome, CurrentSocialSecurityIncome, PassiveIncome, FERSPensionIncome, CSRSPensionIncome } from '../../components/Objects/Income/models';
-import { runSimulation } from '../../components/Objects/Assumptions/useSimulation';
+import { runSimulationWithOptimization } from '../../components/Objects/Assumptions/useSimulation';
 import { getSimulationInputHash } from '../../services/simulationHash';
 import {
     getTaxParameters,
@@ -732,6 +732,8 @@ function SimulationDebugTab() {
     const [isLoading, setIsLoading] = useState(false);
     const [showDetailedView, setShowDetailedView] = useState(false);
     const [copyButtonText, setCopyButtonText] = useState('Copy as Text');
+    const [multiAgesInput, setMultiAgesInput] = useState('35, 45, 55, 67, 75');
+    const [multiCopyText, setMultiCopyText] = useState('Copy ages');
 
     const retirementAge = getRetirementAge(assumptions.milestones);
     const currentYear = new Date().getFullYear();
@@ -750,7 +752,7 @@ function SimulationDebugTab() {
     }, [storedInputHash, currentInputHash, simulation.length]);
 
     const executeSimulation = useCallback(() => {
-        return runSimulation(
+        return runSimulationWithOptimization(
             getLifeExpectancy(assumptions.milestones) - startAge,
             accounts,
             incomes,
@@ -1060,9 +1062,62 @@ function SimulationDebugTab() {
 
             {/* Year-by-Year Data Table */}
             <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-                <h3 className="text-lg font-bold text-white p-4 border-b border-gray-800">
-                    Simulation Data (Click row for details)
-                </h3>
+                <div className="flex items-center justify-between p-4 border-b border-gray-800 gap-3 flex-wrap">
+                    <h3 className="text-lg font-bold text-white">
+                        Simulation Data (Click row for details)
+                    </h3>
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="text"
+                            value={multiAgesInput}
+                            onChange={(e) => setMultiAgesInput(e.target.value)}
+                            placeholder="ages e.g. 35, 45, 55"
+                            className="px-2 py-1 rounded bg-gray-800 border border-gray-700 text-sm text-white font-mono w-48 focus:outline-none focus:border-blue-500"
+                        />
+                        <button
+                            onClick={() => {
+                                const ages = multiAgesInput
+                                    .split(/[,\s]+/)
+                                    .map(s => parseInt(s.trim(), 10))
+                                    .filter(n => Number.isFinite(n));
+                                if (ages.length === 0) {
+                                    setMultiCopyText('No ages');
+                                    setTimeout(() => setMultiCopyText('Copy ages'), 1500);
+                                    return;
+                                }
+                                const chunks: string[] = [];
+                                const missing: number[] = [];
+                                for (const age of ages) {
+                                    const row = analysis?.yearData.find(
+                                        y => y.age === age && !y.isEndOfYearProjection
+                                    );
+                                    const fullSimYear = row && simulation.find(s => s.year === row.year);
+                                    if (!row || !fullSimYear) {
+                                        missing.push(age);
+                                        continue;
+                                    }
+                                    chunks.push(generateYearSummaryText(fullSimYear, row.age, accounts));
+                                }
+                                if (chunks.length === 0) {
+                                    setMultiCopyText('No matches');
+                                    setTimeout(() => setMultiCopyText('Copy ages'), 1500);
+                                    return;
+                                }
+                                const header = missing.length > 0
+                                    ? `(missing ages: ${missing.join(', ')})\n\n`
+                                    : '';
+                                const text = header + chunks.join('\n\n========================================\n\n');
+                                navigator.clipboard.writeText(text).then(() => {
+                                    setMultiCopyText(`Copied ${chunks.length}!`);
+                                    setTimeout(() => setMultiCopyText('Copy ages'), 1500);
+                                });
+                            }}
+                            className="px-3 py-1 rounded-lg text-sm font-medium bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors whitespace-nowrap"
+                        >
+                            {multiCopyText}
+                        </button>
+                    </div>
+                </div>
                 <div className="overflow-x-auto max-h-96 overflow-y-auto">
                     <table className="w-full text-sm">
                         <thead className="bg-gray-800 sticky top-0">

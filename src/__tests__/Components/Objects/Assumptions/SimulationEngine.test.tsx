@@ -1267,7 +1267,7 @@ describe('Simulation Engine', () => {
 
             if (result.rothConversion && result.rothConversion.amount > 0) {
                 const hasConversionLog = result.logs.some(log =>
-                    log.includes('Roth Conversion')
+                    log.toLowerCase().includes('roth conversion')
                 );
                 expect(hasConversionLog).toBe(true);
             }
@@ -1435,15 +1435,14 @@ describe('Simulation Engine', () => {
             expect(result.rothConversion).toBeUndefined();
         });
 
-        it('should fill exactly the remaining space in the 12% bracket', () => {
-            // Scenario: Retired with some income already, conversion should fill to bracket top
-            // 2025 Single: 12% bracket ends at $48,475 taxable income
-            // Standard deduction: $15,750
-            // So bracket top gross income = $48,475 + $15,750 = $64,225
+        it('should fill the bracket below the projected peak RMD bracket', () => {
+            // Scenario: Retired, large Trad balance projects high peak RMD bracket.
+            // Smooth ceiling = one bracket below peak. With $3M Trad and 6 years to
+            // RMD, projected peak RMD lands in 24% bracket → ceiling = 22%.
+            // Conversion fills available 22% bracket space.
             //
             // IMPORTANT: Use a no-income-tax state (Texas) to test federal bracket logic
-            // without state tax interference. DC adds ~6% state tax which would exceed
-            // the 12% ceiling when combined with federal tax.
+            // without state tax interference.
 
             const noStateTaxState: TaxState = {
                 ...mockTaxState,
@@ -1503,14 +1502,15 @@ describe('Simulation Engine', () => {
                 noStateTaxState
             );
 
-            // With $3M balance and 7% growth, projected RMD exceeds ideal target
-            // So ceiling = 12% and conversions should happen
+            // With $3M balance and 7% growth, projected RMDs land in 24% bracket
+            // → smooth ceiling = 22% → conversion fills 22% bracket space.
             expect(result.rothConversion).toBeDefined();
             if (result.rothConversion) {
-                // Conversion should fill available 12% bracket space
+                // Conversion should be a meaningful chunk of the 22% bracket
                 expect(result.rothConversion.amount).toBeGreaterThan(5000);
-                // Upper bound: shouldn't exceed the Traditional balance available
-                expect(result.rothConversion.amount).toBeLessThan(200_000);
+                // Upper bound: bounded by 22% bracket top (≈$220k after std ded)
+                // plus some slack for inflation and torpedo effects
+                expect(result.rothConversion.amount).toBeLessThan(300_000);
             }
         });
 

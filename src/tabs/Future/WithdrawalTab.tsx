@@ -10,7 +10,7 @@ import { AnyAccount, ESPPAccount, SavedAccount, InvestedAccount } from '../../co
 import { formatCompactCurrency } from './tabs/FutureUtils';
 import { ToggleInput } from '../../components/Layout/InputFields/ToggleInput';
 import { getRMDStartAge } from '../../data/RMDData';
-import { runSimulation } from '../../components/Objects/Assumptions/useSimulation';
+import { runSimulationWithOptimization } from '../../components/Objects/Assumptions/useSimulation';
 import { SimulationYear } from '../../services/simulation/types';
 import { Phase, calculateDynamicConversionCeiling } from '../../services/simulation/TaxOptimizedWithdrawal';
 import { estimateFixedIncomeAtRMD, extractIncomeForRMDEstimate } from '../../services/simulation/helpers';
@@ -85,7 +85,7 @@ export default function WithdrawalTab() {
             const currentAge = currentYear - birthYear;
             const yearsToRun = Math.max(1, lifeExpectancy - currentAge);
 
-            const newSimulation = runSimulation(yearsToRun, accounts, incomes, expenses, assumptions, taxState);
+            const newSimulation = runSimulationWithOptimization(yearsToRun, accounts, incomes, expenses, assumptions, taxState);
             const inputHash = getSimulationInputHash(accounts, incomes, expenses, assumptions, taxState);
             dispatchSimulation({
                 type: 'SET_SIMULATION_WITH_HASH',
@@ -153,8 +153,8 @@ export default function WithdrawalTab() {
             };
 
             // Run both simulations
-            const simWithOpt = runSimulation(yearsToRun, accounts, incomes, expenses, assumptionsWithOpt, taxState);
-            const simWithoutOpt = runSimulation(yearsToRun, accounts, incomes, expenses, assumptionsWithoutOpt, taxState);
+            const simWithOpt = runSimulationWithOptimization(yearsToRun, accounts, incomes, expenses, assumptionsWithOpt, taxState);
+            const simWithoutOpt = runSimulationWithOptimization(yearsToRun, accounts, incomes, expenses, assumptionsWithoutOpt, taxState);
 
             // Calculate lifetime taxes for both
             const taxesWithOptimization = calculateLifetimeTaxes(simWithOpt);
@@ -183,10 +183,8 @@ export default function WithdrawalTab() {
 
         const currentYear = new Date().getFullYear();
         const birthYear = getBirthYear(state.milestones);
-        const retirementAge = getRetirementAge(state.milestones);
         const rmdAge = getRMDStartAge(birthYear);
         const currentAge = currentYear - birthYear;
-        const retirementYear = birthYear + retirementAge;
         const yearsUntilRMD = Math.max(0, rmdAge - currentAge);
 
         // Get current Traditional balance
@@ -197,38 +195,26 @@ export default function WithdrawalTab() {
             )
             .reduce((sum, acc) => sum + acc.amount, 0);
 
-        // Get Traditional balance at retirement from simulation
-        const retirementSimYear = simulation.find(s => s.year === retirementYear);
-        let traditionalAtRetirement: number;
-        if (retirementSimYear) {
-            traditionalAtRetirement = retirementSimYear.accounts
-                .filter(acc => 'taxType' in acc && (acc.taxType === 'Traditional 401k' || acc.taxType === 'Traditional IRA'))
-                .reduce((sum, acc) => sum + acc.amount, 0);
-        } else {
-            // Fallback: simple projection
-            const yearsToRetirement = Math.max(0, retirementAge - currentAge);
-            const growthRate = state.investments.returnRates.ror / 100;
-            traditionalAtRetirement = currentTraditionalBalance * Math.pow(1 + growthRate, yearsToRetirement);
-        }
-
-        // Get Traditional balance at RMD age from simulation (projected outcome)
+        // Projected Traditional balance at RMD age (the simulation's actual outcome).
         const rmdYear = birthYear + rmdAge;
         const rmdSimYear = simulation.find(s => s.year === rmdYear);
-        let projectedTraditionalAtRMD = traditionalAtRetirement;
-        if (rmdSimYear) {
-            projectedTraditionalAtRMD = rmdSimYear.accounts
+        const projectedBalance = rmdSimYear
+            ? rmdSimYear.accounts
                 .filter(acc => 'taxType' in acc && (acc.taxType === 'Traditional 401k' || acc.taxType === 'Traditional IRA'))
-                .reduce((sum, acc) => sum + acc.amount, 0);
-        }
+                .reduce((sum, acc) => sum + acc.amount, 0)
+            : currentTraditionalBalance;
 
-        // Calculate the ACTUAL target using the algorithm (not just the projected outcome)
+        // Aggressive-conversion threshold = the trad balance at RMD whose RMDs would
+        // exactly fill the user's chosen targetBracket. Above this threshold rate-match
+        // opens up to non-std-ded brackets; below it only std-ded conversions happen.
+        // This is a CEILING, not a goal — the algorithm correctly overshoots it (lower
+        // trad@RMD = lower RMD bracket = less tax).
+        const userTargetBracket = state.investments.rothConversionTargetBracket ?? 0.22;
         const growthRateForTarget = state.investments.returnRates.ror / 100;
         const taxParams = TaxService.getTaxParameters(currentYear, taxState.filingStatus, 'federal');
 
-        // Estimate fixed income at RMD age (Social Security + pensions)
         // Use simulation incomes (which have projectedPIA populated by IncomeProjection)
         // rather than IncomeContext incomes (where projectedPIA is always 0).
-        // Find a simulation year where projectedPIA has been calculated (Year 0 has raw context data)
         const simWithSS = [...simulation].reverse().find(s =>
             s.incomes?.some((i: any) =>
                 i.className === 'FutureSocialSecurityIncome' &&
@@ -240,8 +226,6 @@ export default function WithdrawalTab() {
             currentYear,
             state.macro.inflationAdjusted
         );
-
-        // Estimate fixed income at RMD age
         const fixedIncomeResult = estimateFixedIncomeAtRMD(
             extractedIncome.socialSecurityBenefits,
             extractedIncome.futureSS_PIA,
@@ -253,35 +237,32 @@ export default function WithdrawalTab() {
             extractedIncome.pensionCola
         );
 
-        // Try to use V2 engine's tax optimization target (more accurate)
-        // The V2 solver calculates this holistically during simulation
+        // Prefer V2 solver's stored target when available (calculated holistically
+        // during the simulation). Fall back to a direct compute using the user's
+        // chosen targetBracket so the threshold is consistent with the slider above.
         const v2Target = simulation.find(s => s.taxOptimizationTarget)?.taxOptimizationTarget;
-        let effectiveTarget: number;
-        let targetBracketFromV2: number | null = null;
-
+        let aggressiveThreshold: number = projectedBalance;
         if (v2Target) {
-            effectiveTarget = v2Target.targetTraditionalAtRMD;
-            targetBracketFromV2 = v2Target.targetBracketCeiling;
-        } else {
-            // Fallback when simulation hasn't run yet or target unavailable
-            effectiveTarget = projectedTraditionalAtRMD;
-            if (taxParams && yearsUntilRMD > 0) {
-                const ceilingResult = calculateDynamicConversionCeiling(
-                    currentTraditionalBalance,
-                    yearsUntilRMD,
-                    fixedIncomeResult.pensionAtRMD,
-                    fixedIncomeResult.ssAtRMD,
-                    extractedIncome.passiveIncome,
-                    0,
-                    0,
-                    0,
-                    growthRateForTarget,
-                    rmdAge,
-                    taxParams,
-                    taxState
-                );
-                effectiveTarget = ceilingResult.idealTargetBalance;
-            }
+            aggressiveThreshold = v2Target.targetTraditionalAtRMD;
+        } else if (taxParams && yearsUntilRMD > 0) {
+            const ceilingResult = calculateDynamicConversionCeiling(
+                currentTraditionalBalance,
+                yearsUntilRMD,
+                fixedIncomeResult.pensionAtRMD,
+                fixedIncomeResult.ssAtRMD,
+                extractedIncome.passiveIncome,
+                0, 0, 0,
+                growthRateForTarget,
+                rmdAge,
+                taxParams,
+                taxState,
+                null,
+                undefined,
+                undefined,
+                userTargetBracket,
+                state
+            );
+            aggressiveThreshold = ceilingResult.idealTargetBalance;
         }
 
         // Count conversions from simulation
@@ -304,7 +285,7 @@ export default function WithdrawalTab() {
         }
         const avgConversionAmount = conversionYearsCount > 0 ? totalConversions / conversionYearsCount : 0;
 
-        // Determine current phase based on account balances
+        // Phase indicator based on account depletion state (independent of conversion logic).
         const brokerageBalance = accounts
             .filter(acc => acc instanceof InvestedAccount && acc.taxType === 'Brokerage')
             .reduce((sum, acc) => sum + acc.amount, 0);
@@ -323,36 +304,21 @@ export default function WithdrawalTab() {
             phase = 'BROKERAGE_TRANSITION';
         }
 
-        // Estimate target bracket (use V2's calculated ceiling, or user override, or 22% default)
-        const targetBracket = targetBracketFromV2 ?? state.investments.rothConversionTargetBracket ?? 0.22;
-
-        // Simple status determination
-        const hasConversions = totalConversions > 0;
-        const status: 'on_track' | 'aggressive_needed' | 'unachievable' =
-            hasConversions ? 'on_track' : (yearsUntilRMD > 0 ? 'aggressive_needed' : 'on_track');
-
         return {
-            targetBalance: effectiveTarget,           // The algorithm's TARGET (what we're aiming for)
-            projectedBalance: projectedTraditionalAtRMD, // The simulation's OUTCOME (what we'll actually have)
-            targetAge: rmdAge,
-            targetBracket,
-            projectedRMDBracket: targetBracket, // Simplified - use target as projected
+            projectedBalance,             // Simulation outcome at RMD age
+            aggressiveThreshold,          // Ceiling above which rate-match opens up
+            userTargetBracket,            // User's chosen targetBracket setting (drives threshold)
             avgConversionPerYear: avgConversionAmount,
             maxConversionInPlan: maxConversionAmount,
             firstYearConversion: firstConversionAmount,
             currentTraditionalBalance,
-            traditionalAtRetirement,
-            totalConversionNeeded: totalConversions,
             totalConversions,
             conversionYearsCount,
-            retirementAge,
             rmdAge,
             yearsUntilRMD,
-            aboveTarget: currentTraditionalBalance > effectiveTarget,
-            status,
             phase,
         };
-    }, [taxOptimizationEnabled, state, accounts, expenses, simulation]);
+    }, [taxOptimizationEnabled, state, accounts, expenses, simulation, incomes, taxState]);
 
     // Filter to only withdrawal-eligible accounts (SavedAccount, InvestedAccount, ESPPAccount)
     const eligibleAccounts = accounts.filter(
@@ -450,6 +416,80 @@ export default function WithdrawalTab() {
                             setEnabled={setTaxOptimization}
                         />
                     </div>
+                    {taxOptimizationEnabled && (
+                        <div className="mt-4 pt-4 border-t border-gray-800">
+                            <label className="block">
+                                <div className="flex items-center justify-between mb-1">
+                                    <span className="text-sm font-medium text-gray-200">
+                                        Conversion aggressiveness
+                                    </span>
+                                    <span className="text-sm text-gray-400 tabular-nums">
+                                        {((state.investments.rothConversionMinRateGap ?? 0.05) * 100).toFixed(1)}pp gap
+                                    </span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min={0}
+                                    max={20}
+                                    step={1}
+                                    value={(state.investments.rothConversionMinRateGap ?? 0.05) * 100}
+                                    onChange={(e) => {
+                                        const newGap = Number(e.target.value) / 100;
+                                        const updated = {
+                                            ...state,
+                                            investments: { ...state.investments, rothConversionMinRateGap: newGap }
+                                        };
+                                        dispatch({
+                                            type: 'UPDATE_INVESTMENTS',
+                                            payload: { rothConversionMinRateGap: newGap }
+                                        });
+                                        recalculateSimulation(updated);
+                                    }}
+                                    className="w-full"
+                                />
+                            </label>
+                            <details className="mt-2 group">
+                                <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-300 select-none list-none flex items-center gap-1">
+                                    More info
+                                    <svg
+                                        className="w-3 h-3 transition-transform duration-200 group-open:rotate-180"
+                                        fill="currentColor"
+                                        viewBox="0 0 20 20"
+                                    >
+                                        <path
+                                            fillRule="evenodd"
+                                            d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                                            clipRule="evenodd"
+                                        />
+                                    </svg>
+                                </summary>
+                                <p className="text-xs text-gray-500 mt-2">
+                                    Minimum percentage-point savings between today's rate and projected RMD-age rate
+                                    required to convert. Lower = more aggressive (converts even when small savings).
+                                    Higher = more conservative (only converts on big savings). Default 5pp.
+                                </p>
+                                <p className="text-xs text-gray-500 mt-2">
+                                    Risks of a lower gap:
+                                </p>
+                                <ul className="text-xs text-gray-500 mt-1 ml-5 list-disc space-y-0.5">
+                                    <li>
+                                        <span className="text-gray-400">Sequence of returns:</span> a market
+                                        crash after a conversion locks in tax paid on dollars that may never
+                                        recover.
+                                    </li>
+                                    <li>
+                                        <span className="text-gray-400">Growth too high:</span> lower real
+                                        returns mean a smaller future RMD bracket than projected, so you save
+                                        less.
+                                    </li>
+                                    <li>
+                                        <span className="text-gray-400">Future tax brackets drop:</span> if
+                                        rates fall, today's conversion was overpriced.
+                                    </li>
+                                </ul>
+                            </details>
+                        </div>
+                    )}
                 </div>
 
                 {/* Tax Optimization Summary (when enabled) */}
@@ -466,7 +506,7 @@ export default function WithdrawalTab() {
                                 </div>
                             </div>
                         )}
-                        {/* Header with Status Badge */}
+                        {/* Header with Phase Badge */}
                         <div className="flex items-center justify-between mb-3">
                             <h3 className="font-semibold text-green-300 flex items-center gap-2">
                                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -474,52 +514,39 @@ export default function WithdrawalTab() {
                                 </svg>
                                 Tax Optimization Active
                             </h3>
-                            <div className="flex items-center gap-2">
-                                {/* Phase Indicator */}
-                                <span className={`px-2 py-0.5 text-xs rounded ${
-                                    optimizationSummary.phase === 'BROKERAGE_AVAILABLE' ? 'bg-blue-600' :
-                                    optimizationSummary.phase === 'BROKERAGE_TRANSITION' ? 'bg-yellow-600' :
-                                    optimizationSummary.phase === 'BROKERAGE_DEPLETED' ? 'bg-orange-600' :
-                                    'bg-red-600'
-                                }`}>
-                                    {optimizationSummary.phase === 'BROKERAGE_AVAILABLE' ? 'Accumulation' :
-                                     optimizationSummary.phase === 'BROKERAGE_TRANSITION' ? 'Transition' :
-                                     optimizationSummary.phase === 'BROKERAGE_DEPLETED' ? 'Roth Phase' :
-                                     'Traditional Only'}
-                                </span>
-                                {/* Status Badge */}
-                                <span className={`px-2 py-0.5 text-xs rounded ${
-                                    optimizationSummary.status === 'on_track' ? 'bg-green-600' :
-                                    optimizationSummary.status === 'aggressive_needed' ? 'bg-yellow-600' :
-                                    'bg-red-600'
-                                }`}>
-                                    {optimizationSummary.status === 'on_track' ? 'On Track' :
-                                     optimizationSummary.status === 'aggressive_needed' ? 'Aggressive Conversions' :
-                                     'May Not Reach Target'}
-                                </span>
-                            </div>
+                            <span className={`px-2 py-0.5 text-xs rounded ${
+                                optimizationSummary.phase === 'BROKERAGE_AVAILABLE' ? 'bg-blue-600' :
+                                optimizationSummary.phase === 'BROKERAGE_TRANSITION' ? 'bg-yellow-600' :
+                                optimizationSummary.phase === 'BROKERAGE_DEPLETED' ? 'bg-orange-600' :
+                                'bg-red-600'
+                            }`}>
+                                {optimizationSummary.phase === 'BROKERAGE_AVAILABLE' ? 'Accumulation' :
+                                 optimizationSummary.phase === 'BROKERAGE_TRANSITION' ? 'Transition' :
+                                 optimizationSummary.phase === 'BROKERAGE_DEPLETED' ? 'Roth Phase' :
+                                 'Traditional Only'}
+                            </span>
                         </div>
 
                         {/* Main Metrics Grid */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                             <div className="space-y-2">
                                 <div className="flex justify-between">
-                                    <span className="text-gray-400">Target Traditional at RMD:</span>
-                                    <span className="text-white font-semibold">{formatMoney(optimizationSummary.targetBalance)}</span>
+                                    <span className="text-gray-400">Projected Traditional at RMD:</span>
+                                    <span className="text-white font-semibold">{formatMoney(optimizationSummary.projectedBalance)}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-gray-400">Aggressive-conversion threshold:</span>
+                                    <span className="text-white">{formatMoney(optimizationSummary.aggressiveThreshold)}</span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-gray-400">Current Traditional:</span>
                                     <span className="text-white">{formatMoney(optimizationSummary.currentTraditionalBalance)}</span>
                                 </div>
-                                <div className="flex justify-between">
-                                    <span className="text-gray-400">Years Until RMD:</span>
-                                    <span className="text-white">{optimizationSummary.yearsUntilRMD} years (age {optimizationSummary.rmdAge})</span>
-                                </div>
                             </div>
                             <div className="space-y-2">
                                 <div className="flex justify-between">
-                                    <span className="text-gray-400">Conversion Ceiling:</span>
-                                    <span className="text-white">{(optimizationSummary.targetBracket * 100).toFixed(0)}% bracket</span>
+                                    <span className="text-gray-400">Years Until RMD:</span>
+                                    <span className="text-white">{optimizationSummary.yearsUntilRMD} years (age {optimizationSummary.rmdAge})</span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-gray-400">Avg. Conversion/Year:</span>
@@ -534,7 +561,16 @@ export default function WithdrawalTab() {
                             </div>
                         </div>
 
-                        {/* Conversion Recommendation */}
+                        {/* Threshold explainer */}
+                        <p className="text-xs text-gray-500 mt-3">
+                            The threshold is the trad balance at RMD whose RMDs would fill your chosen
+                            target bracket ({(optimizationSummary.userTargetBracket * 100).toFixed(0)}%).
+                            Above it, rate-match converts aggressively; below it, only standard-deduction
+                            headroom is converted. Landing below the threshold is good — it means RMDs
+                            land in a lower bracket.
+                        </p>
+
+                        {/* First Year Conversion */}
                         {optimizationSummary.firstYearConversion > 0 && (
                             <div className="mt-4 pt-4 border-t border-green-800/50">
                                 <div className="flex items-center justify-between">
@@ -544,19 +580,6 @@ export default function WithdrawalTab() {
                                     </div>
                                     <span className="text-lg font-bold text-green-400">{formatMoney(optimizationSummary.firstYearConversion)}</span>
                                 </div>
-                            </div>
-                        )}
-
-                        {/* Total Conversion Needed */}
-                        {optimizationSummary.aboveTarget && optimizationSummary.totalConversionNeeded > 0 && (
-                            <div className="mt-3 pt-3 border-t border-green-800/30">
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-gray-400">Total Conversion Needed to Reach Target:</span>
-                                    <span className="text-yellow-300 font-semibold">{formatMoney(optimizationSummary.totalConversionNeeded)}</span>
-                                </div>
-                                <p className="text-xs text-gray-500 mt-1">
-                                    Over {optimizationSummary.yearsUntilRMD} years = ~{formatMoney(optimizationSummary.totalConversionNeeded / Math.max(1, optimizationSummary.yearsUntilRMD))}/year
-                                </p>
                             </div>
                         )}
 
@@ -613,8 +636,10 @@ export default function WithdrawalTab() {
                         </div>
 
                         <p className="mt-4 text-xs text-gray-500">
-                            Targets RMDs + fixed income within the {(optimizationSummary.targetBracket * 100).toFixed(0)}% bracket.
-                            Conversion amounts vary by year based on income and bracket space. Withdrawals are automatically ordered to minimize taxes.
+                            Roth conversions are sized by rate-match: each year, fill brackets where today's
+                            rate is at least the configured gap below the projected RMD-age rate. Conversions
+                            taper naturally as the projected RMD bracket drops. Withdrawals are automatically
+                            ordered to minimize taxes.
                         </p>
                     </div>
                 )}

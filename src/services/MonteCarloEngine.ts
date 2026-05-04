@@ -40,7 +40,10 @@ function runSingleScenario(
         config.returnStdDev
     );
 
-    // Run the simulation with these returns
+    // Use single-pass simulation for Monte Carlo: MC's purpose is return-variance
+    // analysis, not conversion optimization. The iterative two-pass optimizer would
+    // multiply per-iteration cost 3-5×, which is meaningful at 1000+ scenarios for
+    // little gain — random returns dominate the conversion-plan signal anyway.
     const timeline = runSimulation(
         yearsToRun,
         accounts,

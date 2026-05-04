@@ -12,7 +12,7 @@
 import { TaxParameters, FilingStatus } from '../../data/TaxData';
 import * as TaxService from '../../components/Objects/Taxes/TaxService';
 import { TaxState } from '../../components/Objects/Taxes/TaxContext';
-import { AssumptionsState } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsState, getBirthYear } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { calculateEffectiveConversionTax, ACAOptions } from './helpers';
 import { BaselineProjections } from './types';
 
@@ -648,23 +648,38 @@ export function calculateIdealTargetBalance(
         return 0;
     }
 
-    // Simple bracket math approach:
-    // 1. Find the CEILING of the target bracket (threshold of NEXT bracket)
-    // 2. Add standard deduction to get gross income ceiling
-    // 3. Subtract taxable SS and pension to get RMD space
-    // 4. Multiply by RMD divisor
-
-    // Find the ceiling of the target bracket (threshold of the next bracket)
-    const sortedBrackets = [...taxParams.brackets].sort((a, b) => a.rate - b.rate);
-    const targetBracketIndex = sortedBrackets.findIndex(b => b.rate === targetBracket);
+    // Compute the ideal Trad balance at RMD age — the threshold below which we
+    // won't pay current tax to convert further. Two semantics depending on
+    // targetBracket:
+    //
+    //   targetBracket === 0 → "std-ded floor": balance below which projected
+    //     RMDs would all be sheltered by the standard deduction (zero taxable
+    //     income from RMDs). Below this floor, paying 12%+ now to convert
+    //     would be wasted because the dollars would come out tax-free.
+    //
+    //   targetBracket > 0 → "bracket fill": balance that produces RMDs filling
+    //     the named bracket at RMD age. Below this, the user is already on
+    //     track to land in or below that bracket; the cap is a risk-management
+    //     choice rather than a strict tax-optimization line.
 
     let bracketCeiling: number;
-    if (targetBracketIndex >= 0 && targetBracketIndex < sortedBrackets.length - 1) {
-        // Ceiling is the threshold of the NEXT bracket
-        bracketCeiling = sortedBrackets[targetBracketIndex + 1].threshold;
+    if (targetBracket <= 0) {
+        // Std-ded floor case: gross-income ceiling is just the standard deduction.
+        // bracketCeiling represents the *taxable* income ceiling, which is 0 here
+        // (we want zero taxable income from RMDs).
+        bracketCeiling = 0;
     } else {
-        // Target is highest bracket or not found - use a large number
-        bracketCeiling = 1_000_000;
+        // Find the ceiling of the target bracket (threshold of the next bracket)
+        const sortedBrackets = [...taxParams.brackets].sort((a, b) => a.rate - b.rate);
+        const targetBracketIndex = sortedBrackets.findIndex(b => b.rate === targetBracket);
+
+        if (targetBracketIndex >= 0 && targetBracketIndex < sortedBrackets.length - 1) {
+            // Ceiling is the threshold of the NEXT bracket
+            bracketCeiling = sortedBrackets[targetBracketIndex + 1].threshold;
+        } else {
+            // Target is highest bracket or not found - use a large number
+            bracketCeiling = 1_000_000;
+        }
     }
 
     // Gross income ceiling = bracket ceiling (taxable) + standard deduction
@@ -686,6 +701,178 @@ export function calculateIdealTargetBalance(
     // console.log('[calculateIdealTargetBalance] Intermediate values:', { rmdDivisor, bracketCeiling, grossCeiling, taxableSS, maxRMD, idealBalance });
 
     return idealBalance;
+}
+
+/**
+ * Result of rate-matched conversion calculation.
+ */
+export interface RateMatchedConversion {
+    /** Total dollars to convert this year */
+    optimalConversion: number;
+    /** Marginal rate of the last bracket converted into (e.g., 0.12 if conversion stopped after filling 12%) */
+    topConversionRate: number;
+    /** Projected future marginal rate after this conversion (used to compute the gap that stopped us) */
+    futureMarginalAtStop: number;
+    /** Why we stopped converting */
+    stopReason: 'gap-closed' | 'no-balance' | 'no-future-tax';
+}
+
+/**
+ * Compute the optimal Roth conversion for a single year using direct rate-match.
+ *
+ * The principle: a dollar is worth converting today only if today's marginal rate
+ * is meaningfully lower than the rate it'd be taxed at when withdrawn from Trad
+ * later (as RMD). For each chunk of conversion (std-ded headroom, then each
+ * federal bracket), compute:
+ *   - current_marginal_rate: rate of the bracket this chunk would be taxed at
+ *   - future_marginal_rate: rate the LAST RMD dollar would face if we converted
+ *     up through this chunk and stopped (depends on remaining Trad balance)
+ *
+ * Convert the chunk if (future − current) ≥ minimumRateGap. Stop otherwise.
+ *
+ * Compared to bracket-fill ceilings: this naturally adapts to the actual
+ * rate-arbitrage available. Heavy conversions when future is much higher than
+ * current; tapers off automatically as remaining Trad shrinks and future rate
+ * drops with it.
+ *
+ * Limitations (handled downstream by SS-torpedo / ACA / LTCG-bump logic):
+ *   - Doesn't model SS-taxability bumps mid-conversion
+ *   - Doesn't model LTCG bracket stacking
+ *   - Doesn't model ACA cliff
+ * The conversion amount returned here is the rate-arbitrage optimum; downstream
+ * coarseToFineSearch can reduce it further to avoid those discontinuities.
+ */
+export function computeRateMatchedConversion(
+    currentTraditionalBalance: number,
+    yearsUntilRMD: number,
+    pensionIncomeAtRMD: number,
+    ssAtRMD: number,
+    passiveIncomeAtRMD: number,
+    currentAGI: number,
+    growthRate: number,
+    currentTaxParams: TaxParameters,
+    rmdYearTaxParams: TaxParameters,
+    taxState: TaxState,
+    minimumRateGap: number = 0.05,
+    projectedTradAtRMD?: number
+): RateMatchedConversion {
+    if (currentTraditionalBalance <= 0 || yearsUntilRMD <= 0) {
+        return {
+            optimalConversion: 0,
+            topConversionRate: 0,
+            futureMarginalAtStop: 0,
+            stopReason: 'no-balance',
+        };
+    }
+
+    const PEAK_RMD_DIVISOR = 15;
+    const stdDed = currentTaxParams.standardDeduction;
+    const growthFactor = Math.pow(1 + growthRate, yearsUntilRMD);
+    // Baseline projected Traditional balance at RMD age. When the caller supplies a
+    // sub-sim-derived value, use it as a fixed target (independent of how much we
+    // convert this year). Fallback: naive forward-compound of today's balance —
+    // matches the legacy algebra so existing tests stay green.
+    const baselineProjectedTrad = projectedTradAtRMD ?? currentTraditionalBalance * growthFactor;
+
+    // Helper: project future marginal rate given dollars converted in the current year.
+    // balanceAtRMD = baseline projected balance MINUS the conversion compounded forward.
+    const futureMarginalAt = (convertedSoFar: number): number => {
+        const balanceAtRMD = Math.max(0, baselineProjectedTrad - convertedSoFar * growthFactor);
+        if (balanceAtRMD <= 0) return 0;
+        const projectedRMD = balanceAtRMD / PEAK_RMD_DIVISOR;
+        const projectedTaxableSS = TaxService.getTaxableSocialSecurityBenefits(
+            ssAtRMD,
+            projectedRMD + pensionIncomeAtRMD + passiveIncomeAtRMD,
+            0,
+            taxState.filingStatus
+        );
+        const projectedTaxableIncome =
+            projectedRMD + pensionIncomeAtRMD + passiveIncomeAtRMD + projectedTaxableSS - rmdYearTaxParams.standardDeduction;
+        return TaxService.getMarginalTaxRate(Math.max(0, projectedTaxableIncome), rmdYearTaxParams).rate;
+    };
+
+    let totalConverted = 0;
+    let topRate = 0;
+
+    // Chunk 0: std-ded headroom (effectively 0% rate). Conversion that just fills
+    // standard deduction produces no taxable income → no current tax → always
+    // worth doing if there's any future tax to dodge.
+    const stdDedHeadroom = Math.max(0, stdDed - currentAGI);
+    if (stdDedHeadroom > 0) {
+        const chunkSize = Math.min(stdDedHeadroom, currentTraditionalBalance - totalConverted);
+        if (chunkSize > 0) {
+            const futureMarginal = futureMarginalAt(totalConverted + chunkSize);
+            // For free conversions (current rate = 0), gap is just the future rate. Always convert
+            // if future rate is at least the threshold (otherwise we're paying nothing now to
+            // dodge nothing later).
+            if (futureMarginal >= minimumRateGap) {
+                totalConverted += chunkSize;
+                topRate = 0;
+            } else {
+                return {
+                    optimalConversion: totalConverted,
+                    topConversionRate: topRate,
+                    futureMarginalAtStop: futureMarginal,
+                    stopReason: futureMarginal === 0 ? 'no-future-tax' : 'gap-closed',
+                };
+            }
+        }
+    }
+
+    // Subsequent chunks: walk through federal brackets from current taxable position
+    // upward. Position in the bracket structure = currentAGI - stdDed + (totalConverted - stdDedHeadroom)
+    // — i.e., the post-stdDed taxable income after our conversions so far.
+    const sortedBrackets = [...currentTaxParams.brackets].sort((a, b) => a.threshold - b.threshold);
+
+    for (let i = 0; i < sortedBrackets.length; i++) {
+        if (currentTraditionalBalance - totalConverted <= 0) {
+            return {
+                optimalConversion: totalConverted,
+                topConversionRate: topRate,
+                futureMarginalAtStop: futureMarginalAt(currentTraditionalBalance),
+                stopReason: 'no-balance',
+            };
+        }
+
+        const bracket = sortedBrackets[i];
+        const nextBracket = sortedBrackets[i + 1];
+        const bracketTop = nextBracket ? nextBracket.threshold : Infinity;
+
+        // Current taxable position (post-stdDed) after conversions so far
+        const currentTaxablePos = Math.max(0, currentAGI + totalConverted - stdDed);
+
+        if (currentTaxablePos >= bracketTop) continue; // already past this bracket
+
+        const chunkStart = Math.max(currentTaxablePos, bracket.threshold);
+        const chunkSizeInBracket = bracketTop - chunkStart;
+        if (chunkSizeInBracket <= 0) continue;
+
+        const chunkSize = Math.min(chunkSizeInBracket, currentTraditionalBalance - totalConverted);
+        if (chunkSize <= 0) continue;
+
+        const currentMarginal = bracket.rate;
+        const futureMarginal = futureMarginalAt(totalConverted + chunkSize);
+
+        const gap = futureMarginal - currentMarginal;
+        if (gap < minimumRateGap) {
+            return {
+                optimalConversion: totalConverted,
+                topConversionRate: topRate,
+                futureMarginalAtStop: futureMarginal,
+                stopReason: 'gap-closed',
+            };
+        }
+
+        totalConverted += chunkSize;
+        topRate = currentMarginal;
+    }
+
+    return {
+        optimalConversion: totalConverted,
+        topConversionRate: topRate,
+        futureMarginalAtStop: futureMarginalAt(totalConverted),
+        stopReason: 'no-balance',
+    };
 }
 
 /**
@@ -774,16 +961,27 @@ export function calculateDynamicConversionCeiling(
     ssAtRMD: number,
     passiveIncomeAtRMD: number,
     currentAGI: number,
-    socialSecurityThisYear: number,
-    ltcgIncome: number,
+    _socialSecurityThisYear: number,
+    _ltcgIncome: number,
     growthRate: number,
     rmdStartAge: number,
     taxParams: TaxParameters,
     taxState: TaxState,
     _stateParams: TaxParameters | null = null,
-    acaOptions?: ACAOptions,
+    _acaOptions?: ACAOptions,
     baselineProjections?: BaselineProjections,
-    targetBracket: number = 0.12
+    targetBracket: number = 0.12,
+    /**
+     * Simulation assumptions. When provided, the peak-RMD bracket lookup uses
+     * tax parameters projected to the RMD year so that RMD-year nominal income
+     * is compared against RMD-year nominal brackets. Without this, the bracket
+     * comparison mixes units (income in RMD-year dollars vs brackets in
+     * current-year dollars), which inflates the apparent peak-RMD bracket at
+     * younger ages. Optional for backwards compatibility — callers that don't
+     * pass it get the legacy (unit-mismatched) behavior.
+     */
+    assumptions?: AssumptionsState,
+    conversionMode: 'rate-match' | 'std-ded-only' = 'rate-match'
 ): ConversionCeilingResult {
     // If already at RMD age, no conversions
     if (yearsUntilRMD <= 0) {
@@ -798,21 +996,47 @@ export function calculateDynamicConversionCeiling(
         };
     }
 
-    // Use baseline projections if available for fixed income at RMD
+    // Std-ded-only mode: fill the 0% federal bracket (standard-deduction headroom)
+    // and stop. Used by `runProjectionSubsim` to project a Traditional-balance
+    // trajectory that does only "free" conversions, which feeds the rate-match
+    // baseline for the main sim. Skip rate-match, peak-bracket lookup, ideal-target
+    // computation entirely — none of it is needed when the conversion is bounded
+    // by the standard deduction.
+    if (conversionMode === 'std-ded-only') {
+        const stdDedHeadroom = Math.max(0, taxParams.standardDeduction - currentAGI);
+        const cappedAmount = Math.min(stdDedHeadroom, currentTraditionalBalance);
+        return {
+            conversionCeiling: 0,
+            bracketSpacePerYear: cappedAmount,
+            projectedBalanceAtRMD: currentTraditionalBalance,
+            projectedRMDBracket: 0,
+            idealTargetBalance: 0,
+            peakRMD: 0,
+            peakRMDBracket: 0,
+        };
+    }
+
+    // Use baseline projections if available for fixed income at RMD.
+    // Pass 1 simulates the trajectory to RMD year so these reflect actual portfolio
+    // dynamics (brokerage growth → dividends, etc.); fall back to direct inputs
+    // (which use COLA-only projection or current-year proxies) when not available.
     const effectiveSsAtRMD = baselineProjections?.ssAtRMD ?? ssAtRMD;
     const effectivePensionAtRMD = baselineProjections?.pensionAtRMD ?? pensionIncomeAtRMD;
+    const effectivePassiveIncomeAtRMD = baselineProjections?.passiveAtRMD ?? passiveIncomeAtRMD;
 
     // =========================================================================
-    // STEP 1: Compute baseline projected balance with NO conversions
+    // STEP 1: Compute projected Trad balance at RMD age
     // =========================================================================
-    // Project balance forward with NO conversions to see worst-case RMD bracket.
-    // This avoids circular logic: we need to know where RMDs would land WITHOUT
-    // intervention to decide IF we should intervene.
+    // Prefer baselineProjections.traditionalBalanceAtRMD when available — this
+    // value comes from the iterative two-pass run and reflects the actual
+    // converging conversion trajectory, so peakRMDBracket reflects where RMDs
+    // really land (not "where they'd land if I never converted from this point").
+    //
+    // Without iteration, fall back to naive growth projection from current
+    // balance. This was the original behavior and produces conservative ceilings.
 
-    let baselineBalance = currentTraditionalBalance;
-    for (let year = 0; year < yearsUntilRMD; year++) {
-        baselineBalance = baselineBalance * (1 + growthRate);
-    }
+    const baselineBalance = baselineProjections?.traditionalBalanceAtRMD
+        ?? currentTraditionalBalance * Math.pow(1 + growthRate, yearsUntilRMD);
 
     // =========================================================================
     // STEP 2: Determine peak RMD bracket from baseline
@@ -821,71 +1045,88 @@ export function calculateDynamicConversionCeiling(
     const PEAK_RMD_DIVISOR = 15;  // Approximates age ~87 (mid-retirement)
     const peakRMD = baselineBalance / PEAK_RMD_DIVISOR;
 
+    // Look up tax parameters for the RMD year, not the current year. peakRMD,
+    // effectiveSsAtRMD, effectivePensionAtRMD, and passiveIncomeAtRMD are all
+    // expressed in RMD-year nominal dollars — they need to be compared against
+    // RMD-year inflation-projected brackets, otherwise the apparent peak-RMD
+    // bracket is inflated by (1 + inflation)^yearsUntilRMD.
+    //
+    // Use birthYear + rmdStartAge for the RMD year — that's the user's actual
+    // RMD year and is invariant across simulation years. (Avoid taxState.year +
+    // yearsUntilRMD: taxState.year is the user's configured tax year, not the
+    // current simulation year, so as yearsUntilRMD shrinks the apparent rmdYear
+    // would walk backwards toward the present.)
+    let peakBracketTaxParams = taxParams;
+    if (assumptions) {
+        const rmdYear = getBirthYear(assumptions.milestones) + rmdStartAge;
+        const rmdYearParams = TaxService.getTaxParameters(
+            rmdYear, taxState.filingStatus, 'federal', undefined, assumptions
+        );
+        if (rmdYearParams) {
+            peakBracketTaxParams = rmdYearParams;
+        }
+    }
+
     // Calculate taxable SS at peak RMD
     const peakTaxableSS = TaxService.getTaxableSocialSecurityBenefits(
         effectiveSsAtRMD,
-        effectivePensionAtRMD + peakRMD + passiveIncomeAtRMD,
+        effectivePensionAtRMD + peakRMD + effectivePassiveIncomeAtRMD,
         0,
         taxState.filingStatus
     );
-    const peakTaxableIncome = peakRMD + effectivePensionAtRMD + passiveIncomeAtRMD + peakTaxableSS - taxParams.standardDeduction;
-    const peakRMDBracket = TaxService.getMarginalTaxRate(Math.max(0, peakTaxableIncome), taxParams).rate;
+    const peakTaxableIncome = peakRMD + effectivePensionAtRMD + effectivePassiveIncomeAtRMD + peakTaxableSS - peakBracketTaxParams.standardDeduction;
+    const peakRMDBracket = TaxService.getMarginalTaxRate(Math.max(0, peakTaxableIncome), peakBracketTaxParams).rate;
 
     // =========================================================================
-    // STEP 3: Set ceiling from three-tier table
+    // STEP 3 + 4: Rate-matched conversion via direct bracket walk
     // =========================================================================
+    //
+    // Rather than computing a single "ceiling" rate and then filling brackets up
+    // to it, walk through the brackets dollar-chunk by dollar-chunk. For each
+    // chunk: compute current marginal (the bracket's rate) and project future
+    // marginal at the remaining Trad balance after the chunk. Convert if the gap
+    // is at least minimumRateGap (default 5pp). Stop otherwise.
+    //
+    // This naturally adapts: in early low-income years with lots of Trad, walk
+    // up through 22%/24% brackets because future is even higher. As Trad shrinks
+    // year by year, future marginal drops, gaps close, and the walk stops sooner.
+    // No discrete ceiling cliff, no iteration needed — convergence is per-year.
+    const minRateGap = assumptions?.investments?.rothConversionMinRateGap ?? 0.05;
+    const rateMatchResult = computeRateMatchedConversion(
+        currentTraditionalBalance,
+        yearsUntilRMD,
+        effectivePensionAtRMD,
+        effectiveSsAtRMD,
+        effectivePassiveIncomeAtRMD,
+        currentAGI,
+        growthRate,
+        taxParams,            // current-year params for the brackets we walk
+        peakBracketTaxParams, // RMD-year params for projecting future marginal
+        taxState,
+        minRateGap,
+        baselineBalance       // sub-sim-derived projection (decoupled from live trad balance)
+    );
 
-    // Three-tier ceiling: convert at least two brackets below projected RMD bracket
-    let ceiling: number;
-    if (peakRMDBracket <= 0.12) {
-        // RMDs will be in 12% or lower - only use standard deduction space
-        ceiling = 0;
-    } else if (peakRMDBracket <= 0.24) {
-        // RMDs will be in 22% or 24% - convert at 12%
-        ceiling = 0.12;
-    } else {
-        // RMDs will be in 32%+ - convert at 24%
-        ceiling = 0.24;
-    }
+    const ceiling = rateMatchResult.topConversionRate;
+    let bracketSpacePerYear = rateMatchResult.optimalConversion;
 
-    // =========================================================================
-    // STEP 4: Compute bracket space at the selected ceiling
-    // =========================================================================
-
-    let bracketSpacePerYear = 0;
-    if (ceiling > 0) {
-        // Use federal-only rates for ceiling comparison — the ceiling (e.g., 12%)
-        // refers to the federal bracket, not the combined federal+state rate.
-        // State tax is still fully accounted for in the actual conversion tax cost.
-        const conversionLimit = calculateEffectiveRateConversionLimit(
-            currentAGI,
-            socialSecurityThisYear,
-            ltcgIncome,
-            ceiling,
-            currentTraditionalBalance,
-            taxParams,
-            taxState,
-            taxState.year,
-            null, // federal-only: state tax should not reduce bracket space
-            acaOptions
-        );
-        bracketSpacePerYear = conversionLimit.maxConversion;
-    } else {
-        // Ceiling = 0 means only standard deduction space (0% bracket)
-        bracketSpacePerYear = Math.max(0, taxParams.standardDeduction - currentAGI);
-    }
+    // Subsequent SS-torpedo / ACA / LTCG-bump logic (downstream in YearSolver) may
+    // further reduce this; rate-match output is the rate-arbitrage optimum.
 
     // =========================================================================
     // Compute ideal target and projected balance for return
     // =========================================================================
 
+    // Use RMD-year tax params for the same reason as peakRMDBracket: the income
+    // inputs (pension/SS/passive at RMD) are in RMD-year nominal dollars, so the
+    // bracket ceiling needs to be too.
     const idealTargetBalance = calculateIdealTargetBalance(
         effectivePensionAtRMD,
         effectiveSsAtRMD,
-        passiveIncomeAtRMD,
+        effectivePassiveIncomeAtRMD,
         targetBracket,
         rmdStartAge,
-        taxParams
+        peakBracketTaxParams
     );
 
 
@@ -902,8 +1143,10 @@ export function calculateDynamicConversionCeiling(
         0,
         taxState.filingStatus
     );
-    const projectedTaxableIncome = projectedRMD + effectivePensionAtRMD + projectedTaxableSS - taxParams.standardDeduction;
-    const projectedRMDBracket = TaxService.getMarginalTaxRate(Math.max(0, projectedTaxableIncome), taxParams).rate;
+    // Same units fix as peakRMDBracket: projectedRMD/SS/pension are in RMD-year
+    // nominal dollars, so look up brackets in RMD-year params when available.
+    const projectedTaxableIncome = projectedRMD + effectivePensionAtRMD + projectedTaxableSS - peakBracketTaxParams.standardDeduction;
+    const projectedRMDBracket = TaxService.getMarginalTaxRate(Math.max(0, projectedTaxableIncome), peakBracketTaxParams).rate;
 
     // DEBUG: Log ceiling decision for high balances (DISABLED to reduce noise)
     if (false && currentTraditionalBalance > 1_500_000 && taxState.year >= 2042 && taxState.year <= 2043) {

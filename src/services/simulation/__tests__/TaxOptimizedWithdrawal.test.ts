@@ -16,6 +16,7 @@ import {
     calculateDynamicConversionCeiling,
     calculateConversionThisYear,
     calculateTargetTraditionalBalance,
+    computeRateMatchedConversion,
     getRMDDivisor,
     SEARCH_CONFIG,
     MAX_CONVERSION_BRACKET,
@@ -24,6 +25,7 @@ import {
 import { TaxParameters } from '../../../data/TaxData';
 import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import * as TaxService from '../../../components/Objects/Taxes/TaxService';
+import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
 
 // =============================================================================
 // Task 2: getDampingFactor() tests
@@ -1104,6 +1106,62 @@ describe('calculateIdealTargetBalance', () => {
             expect(resultWithStateTax).toBe(resultNoStateTax);
         });
     });
+
+    // =========================================================================
+    // targetBracket = 0 → std-ded floor semantics
+    // =========================================================================
+    describe('std-ded floor (targetBracket = 0)', () => {
+        const taxParams = TaxService.getTaxParameters(2026, 'Single', 'federal')!;
+
+        it('returns 0 when other RMD-year income alone exceeds the standard deduction', () => {
+            // High SS scenario: SS taxable portion (0.85 * SS) already eats the
+            // standard deduction, so there's no room for tax-free RMDs.
+            const ssAtRMD = 80_000;  // taxable SS = $68,000
+            const result = calculateIdealTargetBalance(
+                /* pension */ 0,
+                /* ss */ ssAtRMD,
+                /* passive */ 0,
+                /* targetBracket */ 0,  // std-ded floor
+                /* rmdStartAge */ 75,
+                taxParams
+            );
+            expect(result).toBe(0);
+        });
+
+        it('produces a positive floor when other income leaves room under the standard deduction', () => {
+            // Low/no SS scenario: standard deduction is unused by other income,
+            // so RMDs up to that amount come out tax-free.
+            const result = calculateIdealTargetBalance(
+                /* pension */ 0,
+                /* ss */ 0,
+                /* passive */ 0,
+                /* targetBracket */ 0,
+                /* rmdStartAge */ 75,
+                taxParams
+            );
+            // maxRMD = stdDed - 0 - 0 - 0 = stdDed; idealBalance = stdDed * RMD_divisor
+            const expectedRMD = taxParams.standardDeduction;
+            const expectedBalance = expectedRMD * 24.6; // RMD divisor at age 75
+            expect(result).toBeCloseTo(expectedBalance, 0);
+            expect(result).toBeGreaterThan(0);
+        });
+
+        it('std-ded floor (target=0) is strictly lower than 22% bracket fill (target=0.22)', () => {
+            const inputs = {
+                pension: 0,
+                ss: 30_000,
+                passive: 0,
+                rmdStartAge: 75,
+            };
+            const stdDedFloor = calculateIdealTargetBalance(
+                inputs.pension, inputs.ss, inputs.passive, 0, inputs.rmdStartAge, taxParams
+            );
+            const bracket22Fill = calculateIdealTargetBalance(
+                inputs.pension, inputs.ss, inputs.passive, 0.22, inputs.rmdStartAge, taxParams
+            );
+            expect(stdDedFloor).toBeLessThan(bracket22Fill);
+        });
+    });
 });
 
 // =============================================================================
@@ -1373,16 +1431,18 @@ describe('calculateDynamicConversionCeiling', () => {
                 null
             );
 
-            // Three-tier algorithm: RMDs in 12% → ceiling = 0 (standard deduction only)
+            // Rate-match algorithm: peak future RMD lands in 12% bracket. From 0%
+            // (std-ded) the gap is 12% > 5pp → convert std-ded chunk. From 10%,
+            // gap is 2% < 5pp → STOP. Last filled bracket = std-ded (rate 0).
             expect(result.conversionCeiling).toBe(0);
         });
     });
 
     // =========================================================================
-    // Test Group 3: Large Balance - RMDs in 22-24% Bracket → Ceiling = 12%
+    // Test Group 3: Large Balance - rate-match converts through bracket gaps
     // =========================================================================
-    describe('ceiling set to 12% for RMDs in 22-24%', () => {
-        it('returns ceiling = 12% when projected RMDs are in 22-24% bracket', () => {
+    describe('rate-match walks through brackets when gaps are large', () => {
+        it('converts through 12% bracket when peak future is in 24% bracket', () => {
             const taxParams = getSingleParams();
             // Large balance: $1M × 1.07^10 = $1.97M → RMD ~$131k → 24% bracket
             // Three-tier: RMDs in 22-24% → ceiling = 12%
@@ -1409,17 +1469,19 @@ describe('calculateDynamicConversionCeiling', () => {
                 null
             );
 
-            // Three-tier algorithm: RMDs in 22-24% → ceiling = 12%
+            // Rate-match: peak future = 24% bracket. From 0% std-ded (gap 24, convert),
+            // 10% (gap 14, convert), 12% (gap 12, convert), 22% (gap 2, < 5pp STOP).
+            // Last filled bracket = 12%.
             expect(result.conversionCeiling).toBe(0.12);
             expect(result.bracketSpacePerYear).toBeGreaterThan(0);
         });
     });
 
     // =========================================================================
-    // Test Group 4: Very Large Balance - RMDs in 32%+ → Ceiling = 24%
+    // Test Group 4: Very Large Balance - rate-match goes higher when gap allows
     // =========================================================================
-    describe('ceiling caps at 24% for extreme balances', () => {
-        it('caps at 24% even for very large balance with short timeframe', () => {
+    describe('rate-match for very high projected peak', () => {
+        it('converts into higher brackets when peak future is much higher', () => {
             const taxParams = getSingleParams();
             // Very large balance: $5M × 1.08^5 = $7.35M → RMD ~$490k → 37% bracket
             // Three-tier: RMDs in 32%+ → ceiling = 24% (max for new algorithm)
@@ -1446,8 +1508,12 @@ describe('calculateDynamicConversionCeiling', () => {
                 null
             );
 
-            // Three-tier algorithm caps ceiling at 24%
-            expect(result.conversionCeiling).toBe(0.24);
+            // Rate-match: peak lands in 35%/37% bracket. With 5pp gap requirement,
+            // walks through 24% (gap 11+, convert), 32% (gap 3-5, may stop or
+            // continue depending on exact rate). Last filled is somewhere in
+            // 24-32% range. Pre-fix three-tier capped at 24%; rate-match allows higher.
+            expect(result.conversionCeiling).toBeGreaterThanOrEqual(0.24);
+            expect(result.conversionCeiling).toBeLessThanOrEqual(0.35);
             expect(result.bracketSpacePerYear).toBeGreaterThan(0);
         });
     });
@@ -1467,6 +1533,7 @@ describe('calculateDynamicConversionCeiling', () => {
                 traditionalBalanceAtRMD: 800_000,
                 ssAtRMD: 35_000,      // Higher than input
                 pensionAtRMD: 10_000, // Different from input
+                passiveAtRMD: 0,
                 rmdYear: 2041
             };
 
@@ -1800,6 +1867,206 @@ describe('calculateDynamicConversionCeiling', () => {
 
             // MFJ has wider brackets, so may not need to raise ceiling as high
             expect(mfjResult.conversionCeiling).toBeLessThanOrEqual(singleResult.conversionCeiling);
+        });
+    });
+
+    // =========================================================================
+    // Invariance: same scenario projected to the same RMD year should produce
+    // the same ceiling regardless of when the projection is being done.
+    // Regression test for the units-mismatch bug where peakRMD income was
+    // expressed in RMD-year nominal dollars but compared against current-year
+    // tax brackets, inflating the apparent peak-RMD bracket at younger ages.
+    // =========================================================================
+    describe('RMD-year bracket invariance (units-mismatch regression)', () => {
+        const buildAssumptions = (): AssumptionsState => ({
+            ...defaultAssumptions,
+            milestones: createBuiltinMilestones(1990, 60, 90),
+            macro: {
+                ...defaultAssumptions.macro,
+                inflationRate: 3,
+                inflationAdjusted: true,
+            },
+        });
+
+        it('produces the same ceiling at age 35 vs age 55 for the same RMD-year target balance', () => {
+            const assumptions = buildAssumptions();
+            const filingStatus: 'Single' = 'Single';
+            const rmdStartAge = 75;
+            const rmdYear = 2065; // age 75 for someone born in 1990
+
+            // Build inputs as if the scenario projects to the SAME nominal balance and SAME
+            // nominal income at the same RMD year, just queried from two different "current"
+            // ages. With the bug, the ceiling depended on yearsUntilRMD; with the fix, it
+            // shouldn't.
+            const ssAtRMD = 80_000;        // RMD-year nominal $
+            const pensionAtRMD = 0;
+            const passiveAtRMD = 0;
+            const growthRate = 0.07;
+            const targetBalanceAtRMD = 5_000_000;  // RMD-year nominal $
+
+            // For the same final balance at RMD, current balance differs based on years out.
+            const yearsAtAge35 = 40;  // year = 2025
+            const yearsAtAge55 = 20;  // year = 2045
+
+            const balanceAtAge35 = targetBalanceAtRMD / Math.pow(1 + growthRate, yearsAtAge35);
+            const balanceAtAge55 = targetBalanceAtRMD / Math.pow(1 + growthRate, yearsAtAge55);
+
+            const taxStateAtAge35: TaxState = {
+                filingStatus, stateResidency: 'TX', deductionMethod: 'Standard',
+                fedOverride: null, ficaOverride: null, stateOverride: null,
+                year: rmdYear - yearsAtAge35,
+            };
+            const taxStateAtAge55: TaxState = { ...taxStateAtAge35, year: rmdYear - yearsAtAge55 };
+
+            const fedAtAge35 = TaxService.getTaxParameters(taxStateAtAge35.year, filingStatus, 'federal', undefined, assumptions)!;
+            const fedAtAge55 = TaxService.getTaxParameters(taxStateAtAge55.year, filingStatus, 'federal', undefined, assumptions)!;
+
+            const resultAt35 = calculateDynamicConversionCeiling(
+                balanceAtAge35, yearsAtAge35,
+                pensionAtRMD, ssAtRMD, passiveAtRMD,
+                0, 0, 0, growthRate, rmdStartAge,
+                fedAtAge35, taxStateAtAge35, null, undefined, undefined, 0.12, assumptions
+            );
+            const resultAt55 = calculateDynamicConversionCeiling(
+                balanceAtAge55, yearsAtAge55,
+                pensionAtRMD, ssAtRMD, passiveAtRMD,
+                0, 0, 0, growthRate, rmdStartAge,
+                fedAtAge55, taxStateAtAge55, null, undefined, undefined, 0.12, assumptions
+            );
+
+            // Same RMD-year balance and same RMD-year income → same peak-RMD bracket → same ceiling.
+            expect(resultAt35.conversionCeiling).toBe(resultAt55.conversionCeiling);
+            expect(resultAt35.peakRMDBracket).toBe(resultAt55.peakRMDBracket);
+        });
+
+        it('without assumptions parameter, falls back to legacy (current-year-bracket) behavior', () => {
+            // This test pins the legacy behavior so callers that don't pass assumptions get
+            // backwards-compatible results. The fix is opt-in via the assumptions parameter.
+            const filingStatus: 'Single' = 'Single';
+            const taxState: TaxState = {
+                filingStatus, stateResidency: 'TX', deductionMethod: 'Standard',
+                fedOverride: null, ficaOverride: null, stateOverride: null,
+                year: 2025,
+            };
+            const fedParams = TaxService.getTaxParameters(2025, filingStatus, 'federal')!;
+
+            const result = calculateDynamicConversionCeiling(
+                500_000, 30,
+                0, 30_000, 0,
+                50_000, 0, 0, 0.07, 75,
+                fedParams, taxState, null
+                // assumptions intentionally omitted
+            );
+
+            // Just verify it runs and returns a valid ceiling — exact value is whatever
+            // the smooth one-below logic produces from the naive growth projection.
+            // Possible ceiling values are bracket rates [0, 0.10, 0.12, 0.22, 0.24, 0.32, 0.35] or 0.
+            const validCeilings = [0, 0.10, 0.12, 0.22, 0.24, 0.32, 0.35];
+            expect(validCeilings.some(v => Math.abs(v - result.conversionCeiling) < 1e-6)).toBe(true);
+        });
+    });
+
+    // =========================================================================
+    // Test Group: std-ded-only conversion mode
+    // =========================================================================
+    // Used by `runProjectionSubsim` to project a Trad-balance trajectory that
+    // does only "fill 0% bracket" conversions. Skips rate-match and downstream
+    // logic; bracketSpacePerYear is the dollar headroom under the standard
+    // deduction.
+    describe('std-ded-only mode', () => {
+        it('returns std-ded headroom as bracketSpacePerYear when AGI is below standard deduction', () => {
+            const taxParams = getSingleParams();
+            const stdDed = taxParams.standardDeduction; // 2026 Single = $16,100
+            const inputs = createDefaultInputs({
+                currentTraditionalBalance: 500_000,
+                currentAGI: 5_000, // well below stdDed
+            });
+
+            const result = calculateDynamicConversionCeiling(
+                inputs.currentTraditionalBalance,
+                inputs.yearsUntilRMD,
+                inputs.pensionIncomeAtRMD,
+                inputs.ssAtRMD,
+                0,
+                inputs.currentAGI,
+                inputs.socialSecurityThisYear,
+                inputs.ltcgIncome,
+                inputs.growthRate,
+                inputs.rmdStartAge,
+                taxParams,
+                singleTaxState,
+                null,
+                undefined,
+                undefined,
+                0,
+                undefined,
+                'std-ded-only'
+            );
+
+            expect(result.conversionCeiling).toBe(0);
+            expect(result.bracketSpacePerYear).toBe(stdDed - inputs.currentAGI);
+            expect(result.idealTargetBalance).toBe(0);
+        });
+
+        it('returns 0 bracketSpacePerYear when AGI is at or above standard deduction', () => {
+            const taxParams = getSingleParams();
+            const stdDed = taxParams.standardDeduction;
+            const inputs = createDefaultInputs({ currentAGI: stdDed + 10_000 });
+
+            const result = calculateDynamicConversionCeiling(
+                inputs.currentTraditionalBalance,
+                inputs.yearsUntilRMD,
+                inputs.pensionIncomeAtRMD,
+                inputs.ssAtRMD,
+                0,
+                inputs.currentAGI,
+                inputs.socialSecurityThisYear,
+                inputs.ltcgIncome,
+                inputs.growthRate,
+                inputs.rmdStartAge,
+                taxParams,
+                singleTaxState,
+                null,
+                undefined,
+                undefined,
+                0,
+                undefined,
+                'std-ded-only'
+            );
+
+            expect(result.bracketSpacePerYear).toBe(0);
+        });
+
+        it('caps headroom by current Traditional balance when balance is small', () => {
+            const taxParams = getSingleParams();
+            const tinyBalance = 1_000;
+            const inputs = createDefaultInputs({
+                currentTraditionalBalance: tinyBalance,
+                currentAGI: 0, // full stdDed headroom available
+            });
+
+            const result = calculateDynamicConversionCeiling(
+                inputs.currentTraditionalBalance,
+                inputs.yearsUntilRMD,
+                inputs.pensionIncomeAtRMD,
+                inputs.ssAtRMD,
+                0,
+                inputs.currentAGI,
+                inputs.socialSecurityThisYear,
+                inputs.ltcgIncome,
+                inputs.growthRate,
+                inputs.rmdStartAge,
+                taxParams,
+                singleTaxState,
+                null,
+                undefined,
+                undefined,
+                0,
+                undefined,
+                'std-ded-only'
+            );
+
+            expect(result.bracketSpacePerYear).toBe(tinyBalance);
         });
     });
 });
@@ -2997,5 +3264,98 @@ describe('calculateTargetTraditionalBalance', () => {
             // min(20_000, 30_000, 40_000) = 20_000
             expect(result.conversionNeededThisYear).toBeCloseTo(20_000, 2);
         });
+    });
+});
+
+// =============================================================================
+// computeRateMatchedConversion() — direct rate-match algorithm
+// =============================================================================
+
+describe('computeRateMatchedConversion', () => {
+    const fedParams = TaxService.getTaxParameters(2026, 'Single', 'federal')!;
+    const taxState: TaxState = {
+        filingStatus: 'Single', stateResidency: 'TX', deductionMethod: 'Standard',
+        fedOverride: null, ficaOverride: null, stateOverride: null, year: 2026,
+    };
+
+    it('returns zero conversion when balance is zero', () => {
+        const result = computeRateMatchedConversion(
+            0, 20, 0, 30_000, 0, 0, 0.07, fedParams, fedParams, taxState, 0.05
+        );
+        expect(result.optimalConversion).toBe(0);
+        expect(result.stopReason).toBe('no-balance');
+    });
+
+    it('returns zero when there are no years until RMD', () => {
+        const result = computeRateMatchedConversion(
+            500_000, 0, 0, 30_000, 0, 0, 0.07, fedParams, fedParams, taxState, 0.05
+        );
+        expect(result.optimalConversion).toBe(0);
+    });
+
+    it('converts std-ded chunk only when peak future is in 12% bracket (gap < 5pp from 10%)', () => {
+        // Small balance, long horizon → peak future in 12% bracket
+        const result = computeRateMatchedConversion(
+            200_000, 20, 0, 25_000, 0, 0, 0.06, fedParams, fedParams, taxState, 0.05
+        );
+        // gap from 0% std-ded = 12% > 5pp → convert std-ded
+        // gap from 10% bracket = 2% < 5pp → STOP
+        expect(result.topConversionRate).toBe(0);
+        expect(result.optimalConversion).toBeCloseTo(fedParams.standardDeduction, -2);
+        expect(result.stopReason).toBe('gap-closed');
+    });
+
+    it('converts through 12% bracket when peak future is in 24% bracket', () => {
+        // Larger balance, peak in 24% bracket
+        const result = computeRateMatchedConversion(
+            1_500_000, 10, 0, 30_000, 0, 0, 0.07, fedParams, fedParams, taxState, 0.05
+        );
+        // 0% → gap=24, convert. 10% → gap=14, convert. 12% → gap=12, convert.
+        // 22% → gap=2 < 5pp → STOP. Last filled = 12%.
+        expect(result.topConversionRate).toBe(0.12);
+        expect(result.optimalConversion).toBeGreaterThan(50_000); // through 12% bracket
+        expect(result.stopReason).toBe('gap-closed');
+    });
+
+    it('converts into higher brackets when peak is much higher', () => {
+        // Very large balance + short horizon → peak deep in 32%+ bracket
+        const result = computeRateMatchedConversion(
+            5_000_000, 5, 0, 40_000, 0, 0, 0.08, fedParams, fedParams, taxState, 0.05
+        );
+        // Walk through 0,10,12,22,24, possibly 32. Stop somewhere with gap < 5pp.
+        expect(result.topConversionRate).toBeGreaterThanOrEqual(0.22);
+        expect(result.optimalConversion).toBeGreaterThan(100_000);
+    });
+
+    it('higher gap threshold leads to fewer conversions', () => {
+        // Same scenario, threshold 5pp vs 15pp. With 15pp, 22% bracket is rejected
+        // (gap from 22% to 24% = 2pp; gap from 12% to 24% = 12pp) — should stop earlier.
+        const tight = computeRateMatchedConversion(
+            1_500_000, 10, 0, 30_000, 0, 0, 0.07, fedParams, fedParams, taxState, 0.15
+        );
+        const loose = computeRateMatchedConversion(
+            1_500_000, 10, 0, 30_000, 0, 0, 0.07, fedParams, fedParams, taxState, 0.05
+        );
+        expect(tight.optimalConversion).toBeLessThanOrEqual(loose.optimalConversion);
+    });
+
+    it('caps conversion at available Traditional balance', () => {
+        const tinyBalance = 5_000;
+        const result = computeRateMatchedConversion(
+            tinyBalance, 10, 0, 30_000, 0, 0, 0.07, fedParams, fedParams, taxState, 0.05
+        );
+        expect(result.optimalConversion).toBeLessThanOrEqual(tinyBalance);
+    });
+
+    it('skips conversions entirely when no future tax (high-balance scenario unrealistic)', () => {
+        // Tiny balance + long horizon → projected RMD ≈ 0 → future marginal ≈ 0
+        // Then future_marginal - 0 = 0 < 5pp → stop immediately at std-ded chunk.
+        const result = computeRateMatchedConversion(
+            5_000, 30, 0, 0, 0, 0, 0.07, fedParams, fedParams, taxState, 0.05
+        );
+        // Even tiny balance × 1.07^30 = $38k → /15 = $2.5k RMD. With no SS, that's
+        // sheltered by std deduction → future marginal = 0 → no conversion worth it.
+        expect(result.optimalConversion).toBe(0);
+        expect(result.stopReason).toBe('no-future-tax');
     });
 });

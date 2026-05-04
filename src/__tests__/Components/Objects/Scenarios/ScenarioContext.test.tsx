@@ -35,6 +35,7 @@ vi.mock('../../../../services/ScenarioService', () => ({
 // Mock useSimulation
 vi.mock('../../../../components/Objects/Assumptions/useSimulation', () => ({
     runSimulation: vi.fn(() => []),
+    runSimulationWithOptimization: vi.fn(() => []),
 }));
 
 // Import mocked functions
@@ -51,7 +52,7 @@ import {
     createLoadedScenarioFromSimulation,
 } from '../../../../services/ScenarioService';
 
-import { runSimulation } from '../../../../components/Objects/Assumptions/useSimulation';
+import { runSimulationWithOptimization } from '../../../../components/Objects/Assumptions/useSimulation';
 
 // ============================================================================
 // Test Helpers
@@ -139,7 +140,7 @@ describe('ScenarioContext', () => {
         (calculateMilestones as Mock).mockReset();
         (compareScenarios as Mock).mockReset();
         (createLoadedScenarioFromSimulation as Mock).mockReset();
-        (runSimulation as Mock).mockReset();
+        (runSimulationWithOptimization as Mock).mockReset();
     });
 
     // ========================================================================
@@ -1532,7 +1533,7 @@ describe('ScenarioContext', () => {
                 const mockResult = createMockComparison(currentLoaded, savedLoaded);
 
                 (createLoadedScenarioFromSimulation as Mock).mockReturnValue(currentLoaded);
-                (runSimulation as Mock).mockReturnValue([]);
+                (runSimulationWithOptimization as Mock).mockReturnValue([]);
                 (calculateMilestones as Mock).mockReturnValue(createMockMilestones());
                 (compareScenarios as Mock).mockReturnValue(mockResult);
 
@@ -1629,7 +1630,7 @@ describe('ScenarioContext', () => {
                 const mockResult = createMockComparison(savedLoaded, currentLoaded);
 
                 (createLoadedScenarioFromSimulation as Mock).mockReturnValue(currentLoaded);
-                (runSimulation as Mock).mockReturnValue([]);
+                (runSimulationWithOptimization as Mock).mockReturnValue([]);
                 (calculateMilestones as Mock).mockReturnValue(createMockMilestones());
                 (compareScenarios as Mock).mockReturnValue(mockResult);
 
@@ -1658,7 +1659,7 @@ describe('ScenarioContext', () => {
                 });
 
                 // Verify baseline simulation was run
-                expect(runSimulation).toHaveBeenCalled();
+                expect(runSimulationWithOptimization).toHaveBeenCalled();
                 expect(calculateMilestones).toHaveBeenCalled();
                 // Verify current plan was created from simulation
                 expect(createLoadedScenarioFromSimulation).toHaveBeenCalledWith(
@@ -1679,7 +1680,7 @@ describe('ScenarioContext', () => {
                 const comparisonLoaded = createMockLoadedScenario('comparison-1', 'Comparison');
                 const mockResult = createMockComparison(baselineLoaded, comparisonLoaded);
 
-                (runSimulation as Mock).mockReturnValue([]);
+                (runSimulationWithOptimization as Mock).mockReturnValue([]);
                 (calculateMilestones as Mock).mockReturnValue(createMockMilestones());
                 (compareScenarios as Mock).mockReturnValue(mockResult);
 
@@ -1708,7 +1709,7 @@ describe('ScenarioContext', () => {
                 });
 
                 // Both scenarios should be simulated
-                expect(runSimulation).toHaveBeenCalledTimes(2);
+                expect(runSimulationWithOptimization).toHaveBeenCalledTimes(2);
                 expect(calculateMilestones).toHaveBeenCalledTimes(2);
                 expect(compareScenarios).toHaveBeenCalled();
                 expect(state!.comparisonResult).toBe(mockResult);
@@ -1718,7 +1719,7 @@ describe('ScenarioContext', () => {
                 const baselineScenario = createMockScenario('baseline-1', 'Baseline');
                 (loadScenariosFromStorage as Mock).mockReturnValue([baselineScenario]);
 
-                (runSimulation as Mock).mockReturnValue([]);
+                (runSimulationWithOptimization as Mock).mockReturnValue([]);
                 (calculateMilestones as Mock).mockReturnValue(createMockMilestones());
 
                 let state: ScenarioState;
@@ -1780,7 +1781,7 @@ describe('ScenarioContext', () => {
                 const mockResult = createMockComparison(currentLoaded, savedLoaded);
 
                 (createLoadedScenarioFromSimulation as Mock).mockReturnValue(currentLoaded);
-                (runSimulation as Mock).mockReturnValue([]);
+                (runSimulationWithOptimization as Mock).mockReturnValue([]);
                 (calculateMilestones as Mock).mockReturnValue(createMockMilestones());
                 (compareScenarios as Mock).mockReturnValue(mockResult);
 

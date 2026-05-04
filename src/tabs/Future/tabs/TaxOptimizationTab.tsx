@@ -1,23 +1,22 @@
 import React, { useState, useContext, useMemo } from 'react';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
-import { InvestedAccount } from '../../../components/Objects/Accounts/models';
-import { useAssumptions, getRetirementAge, getLifeExpectancy, getBirthYear } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { useAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxContext } from '../../../components/Objects/Taxes/TaxContext';
 import { formatCompactCurrency, formatCurrency } from './FutureUtils';
-import { CurrencyInput } from '../../../components/Layout/InputFields/CurrencyInput';
 import { Tooltip } from '../../../components/Layout/InputFields/Tooltip';
-import { NumberInput } from '../../../components/Layout/InputFields/NumberInput';
 import {
     analyzeTaxSituation,
     generateRecommendations,
     generateTaxProjections,
-    analyzeRothVsPreTax,
-    findOptimalRothAmount,
+    analyzeRothPreTaxAllocation,
+    analyzeConversionPlan,
     hasTraditionalRetirementBalance,
     TaxAnalysis,
     TaxRecommendation,
     TaxProjection,
-    RothAnalysis
+    RothPreTaxAllocation,
+    ConversionPlan,
+    AllocationVerdict,
 } from '../../../services/TaxOptimizationService';
 
 interface TaxOptimizationTabProps {
@@ -127,7 +126,12 @@ const TaxProjectionTable = ({ projections, forceExact }: {
                         <tr>
                             <th className="px-4 py-3 text-left text-gray-400">Year</th>
                             <th className="px-4 py-3 text-left text-gray-400">Age</th>
-                            <th className="px-4 py-3 text-right text-gray-400">Income</th>
+                            <th className="px-4 py-3 text-right text-gray-400">
+                                <span className="inline-flex items-center gap-1 justify-end">
+                                    Tax Base
+                                    <Tooltip text="Total taxable activity for the year: income (work, SS, pension, passive, RMDs) + Roth conversions + non-RMD Traditional withdrawals. The denominator for the effective rate." />
+                                </span>
+                            </th>
                             <th className="px-4 py-3 text-right text-gray-400">Effective</th>
                             <th className="px-4 py-3 text-right text-gray-400">Marginal</th>
                             <th className="px-4 py-3 text-right text-gray-400">Fed Bracket</th>
@@ -181,449 +185,265 @@ const TaxProjectionTable = ({ projections, forceExact }: {
 };
 
 /**
- * Tax Rate Sparkline — inline SVG showing federal bracket by age
+ * Compact diagnostic for the Roth vs Traditional 401(k) split.
+ * No inputs — reads the user's current contributions and gives a verdict.
  */
-const TaxRateSparkline = ({ projections, selectedAge, breakEvenRate }: {
-    projections: TaxProjection[];
-    selectedAge: number;
-    breakEvenRate: number;
-}) => {
-    if (projections.length < 2) return null;
-
-    const width = 300;
-    const height = 80;
-    const padding = { top: 4, bottom: 14, left: 0, right: 0 };
-    const plotWidth = width - padding.left - padding.right;
-    const plotHeight = height - padding.top - padding.bottom;
-
-    const ages = projections.map(p => p.age);
-    const rates = projections.map(p => p.federalBracket / 100);
-    const minAge = ages[0];
-    const maxAge = ages[ages.length - 1];
-    const maxRate = 0.37;
-
-    const xScale = (age: number) => padding.left + ((age - minAge) / (maxAge - minAge)) * plotWidth;
-    const yScale = (rate: number) => padding.top + plotHeight - (Math.min(rate, maxRate) / maxRate) * plotHeight;
-
-    // Build the rate polyline path
-    const linePath = rates.map((r, i) =>
-        `${i === 0 ? 'M' : 'L'} ${xScale(ages[i]).toFixed(1)} ${yScale(r).toFixed(1)}`
-    ).join(' ');
-
-    // Build shaded regions: green above break-even, red below
-    const breakEvenY = yScale(breakEvenRate);
-    const selectedIdx = ages.indexOf(selectedAge);
-    const selectedRate = selectedIdx >= 0 ? rates[selectedIdx] : rates[0];
+const RothPreTaxVerdict = ({ allocation }: { allocation: RothPreTaxAllocation }) => {
+    const verdictMeta = getVerdictMeta(allocation.verdict);
+    const currentPct = `${(allocation.currentRate * 100).toFixed(1)}%`;
+    const futurePct = `${(allocation.futureRate * 100).toFixed(1)}%`;
+    const rothPct = Math.round(allocation.rothFraction * 100);
+    const withdrawalLabel = allocation.futureRateBasis === 'rmd-year'
+        ? 'At first RMD'
+        : 'At retirement';
 
     return (
-        <div className="mt-3">
-            <div className="text-xs text-gray-500 mb-1">Federal Bracket by Age</div>
-            <svg width={width} height={height} className="w-full max-w-sm" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
-                {/* Break-even horizontal line */}
-                <line
-                    x1={padding.left} x2={width - padding.right}
-                    y1={breakEvenY} y2={breakEvenY}
-                    stroke="#6b7280" strokeDasharray="4 2" strokeWidth={1}
-                />
-                {/* Break-even label */}
-                <text x={width - padding.right - 2} y={breakEvenY - 3} textAnchor="end" className="fill-gray-500" fontSize="8">
-                    {(breakEvenRate * 100).toFixed(0)}%
-                </text>
-
-                {/* Rate line */}
-                <path d={linePath} fill="none" stroke="#60a5fa" strokeWidth={1.5} />
-
-                {/* Selected age marker */}
-                {selectedIdx >= 0 && (
-                    <circle
-                        cx={xScale(selectedAge)}
-                        cy={yScale(selectedRate)}
-                        r={4}
-                        className="fill-white stroke-blue-400"
-                        strokeWidth={1.5}
-                    />
-                )}
-
-                {/* Age labels */}
-                <text x={padding.left + 2} y={height - 2} fontSize="9" className="fill-gray-500">{minAge}</text>
-                <text x={width - padding.right - 2} y={height - 2} textAnchor="end" fontSize="9" className="fill-gray-500">{maxAge}</text>
-            </svg>
+        <div className={`rounded-xl p-4 border ${verdictMeta.bg}`}>
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                        <span className={`text-lg ${verdictMeta.color}`}>{verdictMeta.icon}</span>
+                        <h3 className={`font-semibold ${verdictMeta.color}`}>{verdictMeta.title}</h3>
+                    </div>
+                    <p className="text-sm text-gray-300">{verdictMeta.body(allocation)}</p>
+                </div>
+                <div className="text-right text-sm shrink-0">
+                    <div className="text-gray-400">
+                        Today <span className="text-white font-medium">{currentPct}</span>
+                        <span className="text-gray-500 mx-2">vs</span>
+                        {withdrawalLabel} <span className="text-white font-medium">{futurePct}</span>
+                        <span className="ml-1 inline-block align-middle">
+                            <Tooltip text="Federal + state marginal rate, excluding FICA. FICA is excluded because 401(k) contributions don't avoid it and RMDs aren't subject to it — only fed + state matters for the Roth vs Traditional decision. The 'Marginal Rate' card above includes FICA, which is why this number is lower." />
+                        </span>
+                    </div>
+                    <div className="text-xs text-gray-500 mt-0.5">
+                        Currently {rothPct}% Roth / {100 - rothPct}% Pre-Tax
+                    </div>
+                </div>
+            </div>
         </div>
     );
 };
 
+const VERDICT_META: Record<AllocationVerdict, {
+    title: string;
+    icon: string;
+    color: string;
+    bg: string;
+    body: (a: RothPreTaxAllocation) => string;
+}> = {
+    'optimal': {
+        title: 'Your 401(k) split is optimal',
+        icon: '✓',
+        color: 'text-green-400',
+        bg: 'bg-green-900/20 border-green-700/40',
+        body: (a) => a.rothFraction >= 0.5
+            ? `Roth wins by your numbers, and you're already on Roth. Keep going.`
+            : `Pre-Tax wins by your numbers, and you're already on Pre-Tax. Keep going.`
+    },
+    'should-be-roth': {
+        title: 'Switch to Roth contributions',
+        icon: '⚠',
+        color: 'text-yellow-300',
+        bg: 'bg-yellow-900/20 border-yellow-700/40',
+        body: (a) =>
+            `You're sending ${Math.round((1 - a.rothFraction) * 100)}% to Pre-Tax, but your future tax rate is higher than today's. Roth wins by ~${Math.round(a.rateGap * 100)}¢ per dollar contributed.`
+    },
+    'should-be-pretax': {
+        title: 'Switch to Pre-Tax contributions',
+        icon: '⚠',
+        color: 'text-yellow-300',
+        bg: 'bg-yellow-900/20 border-yellow-700/40',
+        body: (a) =>
+            `You're sending ${Math.round(a.rothFraction * 100)}% to Roth, but your future tax rate is lower than today's. Pre-Tax wins by ~${Math.round(-a.rateGap * 100)}¢ per dollar contributed.`
+    },
+    'lean-roth': {
+        title: 'Mostly Roth — consider going further',
+        icon: '↗',
+        color: 'text-blue-300',
+        bg: 'bg-blue-900/20 border-blue-700/40',
+        body: () => `Roth is the right call for your rate gap. You're partly there — moving the rest of your contributions to Roth captures more of the benefit.`
+    },
+    'lean-pretax': {
+        title: 'Mostly Pre-Tax — consider going further',
+        icon: '↗',
+        color: 'text-blue-300',
+        bg: 'bg-blue-900/20 border-blue-700/40',
+        body: () => `Pre-Tax is the right call for your rate gap. You're partly there — moving the rest of your contributions to Pre-Tax captures more of the benefit.`
+    },
+    'either-fine': {
+        title: 'Either choice is fine',
+        icon: 'ℹ',
+        color: 'text-gray-300',
+        bg: 'bg-gray-800/50 border-gray-700',
+        body: () => `Your rate today is roughly the same as at withdrawal, so the math is a wash. Pick the bucket that fits your other goals (estate planning, RMD risk, tax-rate uncertainty).`
+    }
+};
+
+const getVerdictMeta = (verdict: AllocationVerdict) => VERDICT_META[verdict];
+
 /**
- * Roth vs Pre-Tax Analysis Panel
- * Supports both new contribution decisions and conversion decisions with explicit controls.
+ * Conversion Plan diagnostic — shows the active schedule if auto-conversions are
+ * running, otherwise a teaser estimating the lifetime opportunity.
  */
-const RothAnalysisPanel = ({
-    taxState,
-    assumptions,
-    simulation,
-    projections,
-    forceExact
-}: {
-    taxState: any;
-    assumptions: any;
-    simulation: SimulationYear[];
-    projections: TaxProjection[];
+const ConversionPlanSummary = ({ plan, autoEnabled, forceExact }: {
+    plan: ConversionPlan;
+    autoEnabled: boolean;
     forceExact: boolean;
 }) => {
-    // Guard: if milestones not loaded yet, don't render
-    if (!assumptions?.milestones) {
+    const [expanded, setExpanded] = useState(false);
+    const [copied, setCopied] = useState(false);
+
+    const copyAsTSV = () => {
+        const headers = ['Year', 'Age', 'Converted', 'Tax Cost', 'Eff. Rate %', 'Marginal %'];
+        const rows = plan.schedule.map(e => [
+            e.year,
+            e.age,
+            Math.round(e.amount),
+            Math.round(e.taxCost),
+            e.amount > 0 ? ((e.taxCost / e.amount) * 100).toFixed(2) : '0',
+            (e.marginalRate * 100).toFixed(2),
+        ]);
+        const tsv = [headers, ...rows].map(r => r.join('\t')).join('\n');
+        navigator.clipboard.writeText(tsv).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+        });
+    };
+
+    if (plan.hasActiveSchedule) {
+        const displayCount = expanded ? plan.schedule.length : Math.min(5, plan.schedule.length);
+        return (
+            <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+                <div className="flex items-start justify-between mb-3">
+                    <h3 className="text-white font-semibold">Your Conversion Plan</h3>
+                    <button
+                        onClick={copyAsTSV}
+                        className="text-xs text-gray-400 hover:text-white px-2 py-1 border border-gray-700 hover:border-gray-500 rounded transition-colors"
+                        title="Copy the schedule as TSV — paste into a spreadsheet"
+                    >
+                        {copied ? 'Copied!' : 'Copy data'}
+                    </button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3 text-sm">
+                    <div>
+                        <div className="text-xs text-gray-400 uppercase tracking-wide">Total Converted</div>
+                        <div className="text-white font-semibold">
+                            {formatCompactCurrency(plan.totalConverted, { forceExact })}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                            Across {plan.schedule.length} year{plan.schedule.length === 1 ? '' : 's'}
+                            {plan.firstAge !== null && plan.lastAge !== null
+                                ? ` (ages ${plan.firstAge}–${plan.lastAge})`
+                                : ''}
+                        </div>
+                    </div>
+                    <div>
+                        <div className="text-xs text-gray-400 uppercase tracking-wide">Total Tax Cost</div>
+                        <div className="text-white font-semibold">
+                            {formatCompactCurrency(plan.totalTaxCost, { forceExact })}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                            ~{plan.totalConverted > 0 ? ((plan.totalTaxCost / plan.totalConverted) * 100).toFixed(1) : '0'}% effective (fed + state)
+                        </div>
+                    </div>
+                    <div>
+                        <div className="text-xs text-gray-400 uppercase tracking-wide flex items-center gap-1">
+                            Strategy
+                            <Tooltip text="Auto-conversions fill brackets up to your target ceiling each retirement year. Edit the target in Assumptions → Investments." />
+                        </div>
+                        <div className="text-white font-semibold">Auto (active)</div>
+                        <div className="text-xs text-gray-500">Adjust ceiling in Assumptions</div>
+                    </div>
+                </div>
+
+                <div className="overflow-x-auto rounded-lg border border-gray-700">
+                    <table className="w-full text-sm">
+                        <thead className="bg-gray-900/50">
+                            <tr>
+                                <th className="px-3 py-2 text-left text-gray-400">Year</th>
+                                <th className="px-3 py-2 text-left text-gray-400">Age</th>
+                                <th className="px-3 py-2 text-right text-gray-400">Converted</th>
+                                <th className="px-3 py-2 text-right text-gray-400">
+                                    <span className="inline-flex items-center gap-1">
+                                        Tax Cost
+                                        <Tooltip text="Combined federal + state tax increase from this year's conversion. FICA is excluded since conversions aren't FICA-taxed." />
+                                    </span>
+                                </th>
+                                <th className="px-3 py-2 text-right text-gray-400">
+                                    <span className="inline-flex items-center gap-1">
+                                        Eff. Rate
+                                        <Tooltip text="Tax cost ÷ amount converted (fed + state). Lower than Marginal because each conversion fills brackets from the standard deduction (0%) upward through 10%, 12%, etc., before reaching the top bracket." />
+                                    </span>
+                                </th>
+                                <th className="px-3 py-2 text-right text-gray-400">
+                                    <span className="inline-flex items-center gap-1">
+                                        Marginal
+                                        <Tooltip text="Combined fed + state bracket rate at the top of this year's conversion — the rate the last converted dollar was taxed at." />
+                                    </span>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-800">
+                            {plan.schedule.slice(0, displayCount).map((entry) => {
+                                const effRate = entry.amount > 0 ? (entry.taxCost / entry.amount) * 100 : 0;
+                                return (
+                                    <tr key={entry.year}>
+                                        <td className="px-3 py-2 text-gray-300">{entry.year}</td>
+                                        <td className="px-3 py-2 text-gray-300">{entry.age}</td>
+                                        <td className="px-3 py-2 text-right text-white">
+                                            {formatCompactCurrency(entry.amount, { forceExact })}
+                                        </td>
+                                        <td className="px-3 py-2 text-right text-red-400">
+                                            −{formatCompactCurrency(entry.taxCost, { forceExact })}
+                                        </td>
+                                        <td className="px-3 py-2 text-right text-gray-400">
+                                            {effRate.toFixed(1)}%
+                                        </td>
+                                        <td className="px-3 py-2 text-right text-gray-400">
+                                            {(entry.marginalRate * 100).toFixed(0)}%
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+                {plan.schedule.length > 5 && (
+                    <button
+                        onClick={() => setExpanded(!expanded)}
+                        className="text-sm text-emerald-400 hover:text-emerald-300 mt-2"
+                    >
+                        {expanded ? 'Show Less' : `Show All ${plan.schedule.length} Years`}
+                    </button>
+                )}
+            </div>
+        );
+    }
+
+    // Teaser: no active schedule
+    if (!plan.numLowTaxYears || plan.numLowTaxYears === 0 || !plan.estimatedLifetimeSavings || plan.estimatedLifetimeSavings <= 0) {
         return null;
     }
 
-    const [mode, setMode] = useState<'contribution' | 'conversion'>('contribution');
-    const startYear = new Date().getFullYear();
-    const startAge = startYear - getBirthYear(assumptions.milestones);
-    const retirementAge = getRetirementAge(assumptions.milestones);
-    const lifeExpectancy = getLifeExpectancy(assumptions.milestones);
-
-    const defaultGrowthYears = useMemo(() => {
-        return startAge < retirementAge
-            ? retirementAge - startAge
-            : Math.max(1, Math.floor((lifeExpectancy - startAge) / 2));
-    }, [startAge, retirementAge, lifeExpectancy]);
-
-    const [manualAmount, setManualAmount] = useState(10000);
-    const [autoAmount, setAutoAmount] = useState(true);
-    const [selectedAge, setSelectedAge] = useState(startAge);
-    const [growthYears, setGrowthYears] = useState(defaultGrowthYears);
-
-    // Update defaults when mode changes
-    const handleModeChange = (newMode: 'contribution' | 'conversion') => {
-        setMode(newMode);
-        setAutoAmount(true);
-    };
-
-    const handleAmountChange = (val: number) => {
-        setManualAmount(val);
-    };
-
-    // Recalculate default growth years when age changes
-    const effectiveGrowthYears = useMemo(() => {
-        if (selectedAge < retirementAge) {
-            return retirementAge - selectedAge;
-        }
-        return Math.max(1, Math.floor((lifeExpectancy - selectedAge) / 2));
-    }, [selectedAge, retirementAge, lifeExpectancy]);
-
-    // Update growth years when age changes (unless user has explicitly overridden)
-    const [userOverrodeGrowth, setUserOverrodeGrowth] = useState(false);
-    const displayGrowthYears = userOverrodeGrowth ? growthYears : effectiveGrowthYears;
-
-    const handleGrowthYearsChange = (val: number) => {
-        setGrowthYears(val);
-        setUserOverrodeGrowth(true);
-    };
-
-    const handleAgeChange = (newAge: number) => {
-        setSelectedAge(newAge);
-        setUserOverrodeGrowth(false);
-    };
-
-    // Build age options
-    const ageOptions = useMemo(() => {
-        return projections.map(proj => ({
-            age: proj.age,
-            year: proj.year,
-            isLowTax: proj.isLowTaxYear,
-            federalBracket: proj.federalBracket
-        }));
-    }, [projections]);
-
-    // Get taxable income, SS benefits, LTCG, and search max for selected year
-    const { selectedYear, taxableIncome, socialSecurityBenefits, ltcgIncome, searchMax } = useMemo(() => {
-        const yearNum = startYear + (selectedAge - startAge);
-        const simYear = simulation.find(s => s.year === yearNum);
-        if (!simYear) {
-            return { selectedYear: yearNum, taxableIncome: 0, socialSecurityBenefits: 0, ltcgIncome: 0, searchMax: 10000 };
-        }
-        const grossIncome = simYear.cashflow.totalIncome;
-        const preTaxDeductions = (simYear.taxDetails.preTax || 0);
-        // Max = disposable income + traditional balance (realistic conversion/contribution ceiling)
-        const traditionalBalance = simYear.accounts
-            .filter((acc): acc is InvestedAccount =>
-                acc instanceof InvestedAccount &&
-                (acc.taxType === 'Traditional 401k' || acc.taxType === 'Traditional IRA')
-            )
-            .reduce((sum, acc) => sum + acc.amount, 0);
-        const disposableIncome = Math.max(0, grossIncome - simYear.cashflow.totalExpense);
-        // Extract Social Security benefits from incomes
-        const ssBenefits = simYear.incomes
-            .filter(inc => (inc as any).className === 'SocialSecurityIncome')
-            .reduce((sum, inc) => sum + (inc.getAnnualAmount?.() ?? 0), 0);
-        // LTCG is typically from capital gains tax details or 0 if not available
-        const ltcg = simYear.taxDetails.capitalGains || 0;
-        return {
-            selectedYear: yearNum,
-            taxableIncome: Math.max(0, grossIncome - preTaxDeductions),
-            socialSecurityBenefits: ssBenefits,
-            ltcgIncome: ltcg,
-            searchMax: disposableIncome + traditionalBalance
-        };
-    }, [selectedAge, startAge, startYear, simulation]);
-
-    // Compute optimal amount independently (doesn't depend on user's chosen amount)
-    const optimal = useMemo(() => {
-        return findOptimalRothAmount(
-            mode, displayGrowthYears, taxableIncome,
-            socialSecurityBenefits, ltcgIncome,
-            taxState, selectedYear, assumptions, simulation, searchMax,
-            null  // stateParams - TODO: add state tax support
-        );
-    }, [mode, displayGrowthYears, taxableIncome, socialSecurityBenefits, ltcgIncome, taxState, selectedYear, assumptions, simulation, searchMax]);
-
-    // Derive display amount: auto tracks optimal, manual uses user's value
-    const displayAmount = autoAmount && optimal.optimalAmount
-        ? optimal.optimalAmount
-        : autoAmount
-        ? (mode === 'contribution' ? 1000 : 10000)
-        : manualAmount;
-
-    // Run analysis with the display amount
-    const analysis: RothAnalysis = useMemo(() => {
-        return analyzeRothVsPreTax(
-            displayAmount,
-            mode,
-            displayGrowthYears,
-            taxableIncome,
-            socialSecurityBenefits,
-            ltcgIncome,
-            taxState,
-            selectedYear,
-            assumptions,
-            simulation,
-            searchMax,
-            null  // stateParams - TODO: add state tax support
-        );
-    }, [displayAmount, mode, displayGrowthYears, taxableIncome, socialSecurityBenefits, ltcgIncome, taxState, selectedYear, assumptions, simulation, searchMax]);
-
-    const benefitColor = analysis.verdict === 'roth' ? 'text-green-400' : analysis.verdict === 'traditional' ? 'text-red-400' : 'text-gray-400';
-    const benefitLabel = analysis.verdict === 'roth' ? 'Roth wins' : analysis.verdict === 'traditional' ? 'Pre-Tax wins' : 'Break-even';
-    const heroBorderColor = analysis.verdict === 'roth' ? 'border-green-700/50' : analysis.verdict === 'traditional' ? 'border-red-700/50' : 'border-gray-700';
-
-    // Labels based on mode
-    const tradLabel = mode === 'contribution' ? 'Pre-Tax Path' : 'Keep in Pre-Tax';
-    const rothLabel = mode === 'contribution' ? 'Roth Path' : 'Convert to Roth';
-    const taxNowLabel = mode === 'contribution' ? 'Marginal rate' : 'Effective on conversion';
-
     return (
-        <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
-            {/* Header + Mode Toggle */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-                <h3 className="text-white font-semibold">Roth vs Pre-Tax Analysis</h3>
-                <div className="flex bg-gray-900/50 rounded-lg p-0.5 border border-gray-700">
-                    <button
-                        onClick={() => handleModeChange('contribution')}
-                        className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                            mode === 'contribution'
-                                ? 'bg-emerald-600 text-white'
-                                : 'text-gray-400 hover:text-white'
-                        }`}
-                    >
-                        New Contribution
-                    </button>
-                    <button
-                        onClick={() => handleModeChange('conversion')}
-                        className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                            mode === 'conversion'
-                                ? 'bg-emerald-600 text-white'
-                                : 'text-gray-400 hover:text-white'
-                        }`}
-                    >
-                        Conversion
-                    </button>
-                </div>
-            </div>
-
-            <p className="text-gray-400 text-sm mb-4">
-                {mode === 'contribution'
-                    ? 'Should your next savings dollars go into Roth or Pre-Tax?'
-                    : 'Should you convert existing Pre-Tax money to Roth?'}
+        <div className="bg-blue-900/20 rounded-xl p-4 border border-blue-700/50">
+            <h3 className="text-blue-300 font-semibold mb-2">Consider Roth Conversions</h3>
+            <p className="text-sm text-gray-300 mb-2">
+                You have {plan.numLowTaxYears} upcoming low-tax year{plan.numLowTaxYears === 1 ? '' : 's'} where converting Traditional balances to Roth could save approximately{' '}
+                <span className="text-white font-semibold">
+                    {formatCompactCurrency(plan.estimatedLifetimeSavings, { forceExact })}
+                </span>{' '}
+                in lifetime taxes.
             </p>
-
-            {/* Controls Row */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-                <div className="relative">
-                    <CurrencyInput
-                        label={autoAmount ? "Amount (auto)" : "Amount"}
-                        value={displayAmount}
-                        onChange={handleAmountChange}
-                        disabled={autoAmount}
-                    />
-                    <button
-                        onClick={() => {
-                            if (autoAmount) {
-                                setManualAmount(displayAmount);
-                            }
-                            setAutoAmount(!autoAmount);
-                        }}
-                        className={`absolute top-0 right-0 text-xs px-1.5 py-0.5 rounded transition-colors ${
-                            autoAmount
-                                ? 'text-emerald-400 hover:text-emerald-300'
-                                : 'text-gray-400 hover:text-white'
-                        }`}
-                        title={autoAmount ? 'Unlock to set manually' : 'Lock to auto-calculate optimal'}
-                    >
-                        {autoAmount ? 'unlock' : 'auto'}
-                    </button>
-                </div>
-                <div>
-                    <label className="block text-xs uppercase text-gray-400 font-semibold mb-1">
-                        Year / Age
-                    </label>
-                    <select
-                        value={selectedAge}
-                        onChange={(e) => handleAgeChange(Number(e.target.value))}
-                        className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    >
-                        {ageOptions.map(opt => (
-                            <option key={opt.age} value={opt.age}>
-                                {opt.age} ({opt.year}) {opt.isLowTax ? '⭐' : ''} - {opt.federalBracket.toFixed(0)}%
-                            </option>
-                        ))}
-                    </select>
-                </div>
-                <NumberInput
-                    label="Growth Years"
-                    value={displayGrowthYears}
-                    onChange={handleGrowthYearsChange}
-                    min={1}
-                    max={80}
-                    tooltip="Years until you withdraw this money"
-                />
-            </div>
-
-            {/* Optimal Amount Info */}
-            <div className="bg-gray-900/30 rounded-lg px-4 py-2.5 mb-4 text-sm text-gray-400">
-                {optimal.optimalVerdict === 'all-roth' && (
-                    <span>Roth is favorable at any amount for this year and growth period.</span>
-                )}
-                {optimal.optimalVerdict === 'all-traditional' && (
-                    <span>Pre-Tax is better at any amount — withdrawal tax is lower than current.</span>
-                )}
-                {optimal.optimalVerdict === 'optimal' && optimal.optimalAmount && (
-                    <span>
-                        Peak Roth benefit at{' '}
-                        <span className="text-white font-medium">{formatCompactCurrency(optimal.optimalAmount, { forceExact })}</span>
-                        {' — beyond this, each additional dollar favors '}
-                        {'Pre-Tax'}.
-                    </span>
-                )}
-            </div>
-
-            {/* Rate Comparison Hero */}
-            <div className={`rounded-lg border ${heroBorderColor} bg-gray-900/50 p-4 mb-4`}>
-                <div className="grid grid-cols-3 items-center text-center">
-                    <div>
-                        <div className="text-xs text-gray-400 mb-1">Tax Rate Now</div>
-                        <div className="text-2xl font-bold text-white">
-                            {(analysis.currentEffectiveRate * 100).toFixed(1)}%
-                        </div>
-                        <div className="text-xs text-gray-500 mt-0.5">{taxNowLabel}</div>
-                    </div>
-                    <div className="text-gray-500 text-xl">vs</div>
-                    <div>
-                        <div className="text-xs text-gray-400 mb-1">Tax at Withdrawal</div>
-                        <div className="text-2xl font-bold text-white">
-                            {(analysis.retirementMarginalRate * 100).toFixed(1)}%
-                        </div>
-                        <div className="text-xs text-gray-500 mt-0.5">Effective at age {selectedAge + displayGrowthYears}</div>
-                    </div>
-                </div>
-                <div className="text-center mt-3 text-sm text-gray-400">
-                    Break-even: <span className="text-white font-medium">{(analysis.breakEvenRate * 100).toFixed(1)}%</span>
-                    {' — '}
-                    {analysis.verdict === 'roth'
-                        ? <span className="text-green-400">Roth wins if future rate stays above {(analysis.breakEvenRate * 100).toFixed(1)}%</span>
-                        : analysis.verdict === 'traditional'
-                        ? <span className="text-red-400">Roth only wins if future rate exceeds {(analysis.breakEvenRate * 100).toFixed(1)}%</span>
-                        : <span className="text-gray-400">Future rate equals break-even</span>
-                    }
-                </div>
-            </div>
-
-            {/* Sparkline */}
-            <TaxRateSparkline
-                projections={projections}
-                selectedAge={selectedAge}
-                breakEvenRate={analysis.breakEvenRate}
-            />
-
-            {/* Side-by-side comparison */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 mt-4">
-                {/* Traditional / Pre-Tax Path */}
-                <div className="bg-gray-900/50 rounded-lg p-4 border border-gray-700">
-                    <h4 className="text-sm font-semibold text-orange-400 mb-3">{tradLabel}</h4>
-                    <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                            <span className="text-gray-400">Starting Amount:</span>
-                            <span className="text-white">{formatCompactCurrency(analysis.traditional.startingAmount, { forceExact })}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                            <span className="text-gray-400">
-                                {formatCompactCurrency(analysis.traditional.startingAmount, { forceExact })} x (1+{(analysis.growthRate * 100).toFixed(1)}%)^{displayGrowthYears}
-                            </span>
-                            <span className="text-white">{formatCompactCurrency(analysis.traditional.valueAtWithdrawal, { forceExact })}</span>
-                        </div>
-                        <div className="flex justify-between">
-                            <span className="text-gray-400">Tax at Withdrawal ({(analysis.retirementMarginalRate * 100).toFixed(1)}%):</span>
-                            <span className="text-red-400">-{formatCompactCurrency(analysis.traditional.taxAtWithdrawal, { forceExact })}</span>
-                        </div>
-                        <div className="flex justify-between border-t border-gray-700 pt-2 mt-2">
-                            <span className="text-gray-300 font-medium">After-Tax Value:</span>
-                            <span className="text-orange-400 font-bold">{formatCompactCurrency(analysis.traditional.afterTaxValue, { forceExact })}</span>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Roth Path */}
-                <div className="bg-gray-900/50 rounded-lg p-4 border border-gray-700">
-                    <h4 className="text-sm font-semibold text-blue-400 mb-3">{rothLabel}</h4>
-                    <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                            <span className="text-gray-400">Starting Amount:</span>
-                            <span className="text-white">{formatCompactCurrency(displayAmount, { forceExact })}</span>
-                        </div>
-                        <div className="flex justify-between">
-                            <span className="text-gray-400">Tax Now ({(analysis.currentEffectiveRate * 100).toFixed(1)}%):</span>
-                            <span className="text-red-400">-{formatCompactCurrency(displayAmount - analysis.roth.amountAfterTax, { forceExact })}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                            <span className="text-gray-400">
-                                {formatCompactCurrency(analysis.roth.amountAfterTax, { forceExact })} x (1+{(analysis.growthRate * 100).toFixed(1)}%)^{displayGrowthYears}
-                            </span>
-                            <span className="text-white">{formatCompactCurrency(analysis.roth.valueAtWithdrawal, { forceExact })}</span>
-                        </div>
-                        <div className="flex justify-between border-t border-gray-700 pt-2 mt-2">
-                            <span className="text-gray-300 font-medium">After-Tax Value:</span>
-                            <span className="text-blue-400 font-bold">{formatCompactCurrency(analysis.roth.afterTaxValue, { forceExact })}</span>
-                        </div>
-                        <div className="text-xs text-gray-400 text-right">(Tax-free withdrawals)</div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Result Summary */}
-            <div className={`p-4 rounded-lg border ${analysis.verdict === 'roth' ? 'bg-green-900/20 border-green-700/30' : analysis.verdict === 'traditional' ? 'bg-red-900/20 border-red-700/30' : 'bg-gray-900/50 border-gray-700'}`}>
-                <div className="flex justify-between items-center">
-                    <div>
-                        <div className="text-sm text-gray-400">Difference at Withdrawal</div>
-                        <div className={`text-2xl font-bold ${benefitColor}`}>
-                            {analysis.benefit >= 0 ? '+' : ''}{formatCompactCurrency(analysis.benefit, { forceExact })}
-                        </div>
-                    </div>
-                    <div className={`text-lg font-semibold ${benefitColor}`}>
-                        {benefitLabel}
-                    </div>
-                </div>
-                <p className="text-sm text-gray-400 mt-2">{analysis.reason}</p>
-            </div>
+            <p className="text-xs text-gray-400">
+                ⚠ Conversion tax is paid upfront and irreversible. If markets drop or you die early, that prepayment is wasted (sequence-of-returns risk). Auto-conversions are
+                {autoEnabled ? ' enabled' : ' disabled'} in your Assumptions.
+            </p>
         </div>
     );
 };
+
 
 /**
  * Main Tax Optimization Tab
@@ -648,7 +468,7 @@ export const TaxOptimizationTab = React.memo(({ simulationData }: TaxOptimizatio
     // Generate recommendations
     const recommendations: TaxRecommendation[] = useMemo(() => {
         if (!analysis) return [];
-        let recs = generateRecommendations(analysis, simulationData, assumptions, hasTraditional);
+        let recs = generateRecommendations(analysis, simulationData, assumptions, hasTraditional, taxState);
         if (!hsaEligible) {
             recs = recs.filter(rec => rec.id !== 'hsa-increase');
         }
@@ -656,11 +476,21 @@ export const TaxOptimizationTab = React.memo(({ simulationData }: TaxOptimizatio
             recs = recs.filter(rec => rec.id !== 'roth-conversion-window');
         }
         return recs;
-    }, [analysis, simulationData, assumptions, hasTraditional, hsaEligible]);
+    }, [analysis, simulationData, assumptions, hasTraditional, hsaEligible, taxState]);
 
     // Generate projections
     const projections: TaxProjection[] = useMemo(() => {
         return generateTaxProjections(simulationData, assumptions, taxState);
+    }, [simulationData, assumptions, taxState]);
+
+    // Roth/Pre-Tax allocation diagnostic (current 401(k) split)
+    const allocation = useMemo(() => {
+        return analyzeRothPreTaxAllocation(simulationData, assumptions, taxState);
+    }, [simulationData, assumptions, taxState]);
+
+    // Conversion plan diagnostic (active schedule or teaser)
+    const conversionPlan = useMemo(() => {
+        return analyzeConversionPlan(simulationData, assumptions, taxState);
     }, [simulationData, assumptions, taxState]);
 
     if (simulationData.length === 0 || !analysis) {
@@ -673,12 +503,12 @@ export const TaxOptimizationTab = React.memo(({ simulationData }: TaxOptimizatio
 
     return (
         <div className="flex flex-col w-full gap-6 p-4">
-            {/* Current Tax Situation */}
+            {/* Your Tax Snapshot */}
             <div>
                 <h2 className="text-white font-semibold mb-4">
-                    Current Tax Situation (Year {analysis.year})
+                    Your Tax Snapshot ({analysis.year})
                 </h2>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <StatCard
                         label="Effective Rate"
                         value={formatPercent(analysis.effectiveRate)}
@@ -689,23 +519,30 @@ export const TaxOptimizationTab = React.memo(({ simulationData }: TaxOptimizatio
                         label="Marginal Rate"
                         value={formatPercent(analysis.marginalRate.combined)}
                         sublabel={`Fed ${formatPercent(analysis.marginalRate.federal)} + State ${formatPercent(analysis.marginalRate.state)} + FICA ${formatPercent(analysis.marginalRate.fica)}`}
-                        tooltip="Tax rate on the next dollar of income"
-                    />
-                    <StatCard
-                        label="Federal Bracket"
-                        value={`${analysis.federalBracket.toFixed(0)}%`}
-                        sublabel={`${formatCompactCurrency(analysis.taxableIncome, { forceExact })} taxable`}
+                        tooltip="Tax rate on the next dollar of income — combines federal bracket, state, and FICA"
                     />
                     <StatCard
                         label="Bracket Headroom"
                         value={analysis.federalHeadroom === Infinity
                             ? 'Top Bracket'
                             : formatCompactCurrency(analysis.federalHeadroom, { forceExact })}
-                        sublabel="Until next bracket"
-                        tooltip="Additional income you can earn before entering the next tax bracket"
+                        sublabel="Until next federal bracket"
+                        tooltip="Additional income you can earn before entering the next federal tax bracket"
                     />
                 </div>
             </div>
+
+            {/* Recommendations — surfaced above the fold */}
+            {recommendations.length > 0 && (
+                <div>
+                    <h2 className="text-white font-semibold mb-4">What You Should Do</h2>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        {recommendations.map((rec) => (
+                            <RecommendationCard key={rec.id} rec={rec} />
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Contribution Status */}
             <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
@@ -766,25 +603,14 @@ export const TaxOptimizationTab = React.memo(({ simulationData }: TaxOptimizatio
                 </div>
             </div>
 
-            {/* Recommendations */}
-            {recommendations.length > 0 && (
-                <div>
-                    <h2 className="text-white font-semibold mb-4">Recommendations</h2>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        {recommendations.map((rec) => (
-                            <RecommendationCard key={rec.id} rec={rec} />
-                        ))}
-                    </div>
-                </div>
-            )}
+            {/* Roth/Pre-Tax allocation diagnostic — verdict only */}
+            {allocation && <RothPreTaxVerdict allocation={allocation} />}
 
-            {/* Roth vs Pre-Tax Analysis */}
-            {assumptions.display?.showExperimentalFeatures && (
-                <RothAnalysisPanel
-                    taxState={taxState}
-                    assumptions={assumptions}
-                    simulation={simulationData}
-                    projections={projections}
+            {/* Conversion plan — schedule or teaser */}
+            {conversionPlan && (
+                <ConversionPlanSummary
+                    plan={conversionPlan}
+                    autoEnabled={!!assumptions.investments?.autoRothConversions}
                     forceExact={forceExact}
                 />
             )}

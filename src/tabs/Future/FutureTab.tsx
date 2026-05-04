@@ -1,5 +1,5 @@
 import React, { useState, useContext, useMemo, useEffect, useCallback } from 'react';
-import { runSimulation } from '../../components/Objects/Assumptions/useSimulation';
+import { runSimulationWithOptimization } from '../../components/Objects/Assumptions/useSimulation';
 import { AssumptionsContext, getLifeExpectancy, getBirthYear } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { getSimulationInputHash } from '../../services/simulationHash';
 import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
@@ -204,7 +204,7 @@ export default function FutureTab() {
     const executeSimulation = useCallback(() => {
         const currentYear = new Date().getFullYear();
         const startAge = currentYear - getBirthYear(assumptions.milestones);
-        return runSimulation(
+        return runSimulationWithOptimization(
             getLifeExpectancy(assumptions.milestones) - startAge,
             accounts,
             incomes,

@@ -942,6 +942,8 @@ describe('getMedianRetirementTaxRate', () => {
             rothConversion: {
                 amount: 0,
                 taxCost: rothConversionTaxCost,
+                federalTaxCost: rothConversionTaxCost,
+                stateTaxCost: 0,
                 taxAfter: 0,
                 fromAccounts: {},
                 toAccounts: {},

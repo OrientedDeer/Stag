@@ -8,7 +8,7 @@
 import { SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
 import { AssumptionsState, getRetirementAge, getBirthYear } from '../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../components/Objects/Taxes/TaxContext';
-import { TaxParameters, FilingStatus } from '../data/TaxData';
+import { TaxParameters } from '../data/TaxData';
 import { AnyIncome, WorkIncome } from '../components/Objects/Income/models';
 import { InvestedAccount } from '../components/Objects/Accounts/models';
 import * as TaxService from '../components/Objects/Taxes/TaxService';
@@ -17,7 +17,7 @@ import {
     getHSALimit,
     calculateContributionTaxSavings
 } from '../data/ContributionLimits';
-import { calculateEffectiveConversionTax, ACAOptions } from './simulation/helpers';
+import { getRMDStartAge, getDistributionPeriod } from '../data/RMDData';
 
 // ============================================================================
 // Constants (exported for testing)
@@ -58,84 +58,15 @@ export const IMPACT_MEDIUM_401K_THRESHOLD = 500;
 export const IMPACT_HIGH_HSA_THRESHOLD = 1000;
 export const IMPACT_MEDIUM_HSA_THRESHOLD = 300;
 
-// ============================================================================
-// SS Torpedo Helper Functions
-// ============================================================================
+/** Minimum federal-bracket gap (in absolute terms) to flag RMD pressure */
+export const RMD_PRESSURE_MIN_GAP = 0.04;
 
-/**
- * Calculate the taxable portion of Social Security benefits.
- * Uses the IRS formula based on "combined income" (other income + 50% of SS).
- *
- * @param ssIncome - Total Social Security benefits
- * @param combinedIncome - Other income + 50% of SS benefits
- * @param threshold50 - Threshold where SS starts becoming 50% taxable
- * @param threshold85 - Threshold where SS starts becoming 85% taxable
- * @returns Taxable portion of SS benefits (capped at 85% of total)
- */
-export function calculateTaxableSS(
-    ssIncome: number,
-    combinedIncome: number,
-    threshold50: number,
-    threshold85: number
-): number {
-    if (combinedIncome <= threshold50 || ssIncome <= 0) return 0;
+/** Federal-bracket gap considered "high impact" pressure */
+export const RMD_PRESSURE_HIGH_GAP = 0.10;
 
-    if (combinedIncome <= threshold85) {
-        // 50% zone: 50% of excess over threshold50, capped at 50% of SS
-        const excess = combinedIncome - threshold50;
-        return Math.min(ssIncome * 0.5, excess * 0.5);
-    }
+/** Minimum traditional balance at RMD age to consider pressure analysis */
+export const RMD_PRESSURE_MIN_BALANCE = 50000;
 
-    // 85% zone: 50% of (threshold85 - threshold50) + 85% of excess over threshold85
-    // This is the IRS formula that transitions from 50% to 85% taxability
-    const baseAmount = (threshold85 - threshold50) * 0.5;
-    const excessOver85 = combinedIncome - threshold85;
-    const taxableFromExcess = excessOver85 * 0.85;
-
-    return Math.min(ssIncome * 0.85, baseAmount + taxableFromExcess);
-}
-
-/**
- * Calculate additional tax from SS torpedo effect.
- * Returns the ADDITIONAL tax burden from more SS becoming taxable,
- * not a multiplier on total tax.
- *
- * The SS torpedo occurs because Traditional withdrawals increase "combined income",
- * which can push more Social Security benefits into taxable territory.
- * Each $1 of withdrawal can cause $0.50 to $0.85 of SS to become taxable,
- * creating an effective marginal rate higher than the bracket rate.
- *
- * @param ssIncome - Total Social Security benefits
- * @param otherIncome - Income excluding SS (AGI - SS - deductions)
- * @param withdrawalAmount - Amount being withdrawn/converted
- * @param marginalRate - Current marginal tax bracket rate
- * @param filingStatus - Tax filing status
- * @returns Additional tax due to SS torpedo effect
- */
-export function calculateSSTorpedoAdditionalTax(
-    ssIncome: number,
-    otherIncome: number,
-    withdrawalAmount: number,
-    marginalRate: number,
-    filingStatus: FilingStatus
-): number {
-    if (ssIncome <= 0 || withdrawalAmount <= 0) return 0;
-
-    const threshold50 = filingStatus === 'Married Filing Jointly' ? 32000 : 25000;
-    const threshold85 = filingStatus === 'Married Filing Jointly' ? 44000 : 34000;
-
-    // Combined income for SS taxability test
-    const combinedIncomeBefore = otherIncome + (ssIncome * 0.5);
-    const combinedIncomeAfter = combinedIncomeBefore + withdrawalAmount;
-
-    // Calculate taxable SS before and after withdrawal
-    const taxableSSBefore = calculateTaxableSS(ssIncome, combinedIncomeBefore, threshold50, threshold85);
-    const taxableSSAfter = calculateTaxableSS(ssIncome, combinedIncomeAfter, threshold50, threshold85);
-
-    // Additional tax is marginal rate * increase in taxable SS
-    const additionalTaxableSS = taxableSSAfter - taxableSSBefore;
-    return additionalTaxableSS * marginalRate;
-}
 
 // ============================================================================
 // Types
@@ -191,46 +122,6 @@ export interface RothConversionOpportunity {
     bracketAfter: number;             // Bracket % after conversion
 }
 
-export interface RothAnalysis {
-    mode: 'contribution' | 'conversion';
-    amount: number;
-    currentEffectiveRate: number;
-    retirementMarginalRate: number;
-    breakEvenRate: number;
-    growthYears: number;
-    growthRate: number;
-
-    traditional: {
-        startingAmount: number;
-        valueAtWithdrawal: number;
-        taxAtWithdrawal: number;
-        afterTaxValue: number;
-    };
-    roth: {
-        amountAfterTax: number;
-        valueAtWithdrawal: number;
-        afterTaxValue: number;
-    };
-
-    benefit: number;
-    verdict: 'roth' | 'traditional' | 'even';
-    reason: string;
-
-    optimalAmount: number | null;  // Amount that maximizes Roth benefit, null if Roth never wins
-    optimalVerdict: 'all-roth' | 'all-traditional' | 'optimal';
-
-    // Detailed tax breakdown for conversion mode (undefined for contribution mode)
-    taxBreakdown?: {
-        federalOrdinaryTaxCost: number;
-        ssTorpedoCost: number;
-        ltcgBumpCost: number;
-        niitCost: number;
-        stateTaxCost: number;
-        acaSubsidyLost: number;
-    };
-    crossesACACliff?: boolean;
-}
-
 export interface TaxProjection {
     year: number;
     age: number;
@@ -240,6 +131,37 @@ export interface TaxProjection {
     federalBracket: number;
     isRetired: boolean;
     isLowTaxYear: boolean;  // Good for Roth conversions
+}
+
+export interface RMDPressureAnalysis {
+    /** True if there's a meaningful gap between current and RMD-age federal rates */
+    hasPressure: boolean;
+    /** Current combined fed+state ordinary marginal rate (excludes FICA — matches the rate that applies to deductible 401k contributions) */
+    currentOrdinaryRate: number;
+    /** Current federal marginal bracket rate */
+    currentFederalBracket: number;
+    /** RMD start age based on birth year */
+    rmdStartAge: number;
+    /** Calendar year when RMDs begin */
+    rmdStartYear: number;
+    /** Projected Traditional 401k + IRA balance at RMD start */
+    traditionalBalanceAtRMD: number;
+    /** Projected first-year RMD amount */
+    estimatedFirstRMD: number;
+    /** Projected combined fed+state ordinary marginal rate at RMD age */
+    rmdAgeOrdinaryRate: number;
+    /** Projected federal bracket at RMD age */
+    rmdAgeFederalBracket: number;
+    /** rmdAgeFederalBracket - currentFederalBracket */
+    federalBracketGap: number;
+    /** Latest working year where switching from Traditional to Roth still closes the gap (null if not computable) */
+    switchoverYear: number | null;
+    /** User's age in switchoverYear */
+    switchoverAge: number | null;
+    /** Estimated reduction in lifetime taxes if switching at switchoverYear */
+    estimatedTaxImpact: number | null;
+    /** Total Traditional 401k contributions that would be redirected to Roth */
+    redirectedContributions: number | null;
 }
 
 // ============================================================================
@@ -318,7 +240,8 @@ export function generateRecommendations(
     analysis: TaxAnalysis,
     simulation: SimulationYear[],
     assumptions: AssumptionsState,
-    hasTraditionalBalance: boolean = false
+    hasTraditionalBalance: boolean = false,
+    taxState?: TaxState
 ): TaxRecommendation[] {
     const recommendations: TaxRecommendation[] = [];
 
@@ -343,6 +266,13 @@ export function generateRecommendations(
         const retirementTaxRate = getMedianRetirementTaxRate(simulation, retirementYear);
         const recRoth = generateRothConversionRecommendation(windows, retirementTaxRate);
         if (recRoth) recommendations.push(recRoth);
+    }
+
+    // 5. RMD Tax Pressure → Roth 401k contribution recommendation
+    if (taxState) {
+        const pressure = analyzeRMDTaxPressure(simulation, assumptions, taxState);
+        const recPressure = generateRMDPressureRecommendation(pressure);
+        if (recPressure) recommendations.push(recPressure);
     }
 
     // Sort by estimated savings (high impact first)
@@ -482,430 +412,6 @@ export function findRothConversionWindows(
     return opportunities;
 }
 
-/**
- * Calculate the break-even future tax rate where Roth and Traditional produce identical after-tax values.
- *
- * For contributions: equals the current marginal rate (rate on next dollar).
- * For conversions: equals the effective rate including SS torpedo, LTCG bump,
- *                  NIIT, state tax, and ACA cliff effects.
- *
- * @param currentTaxableIncome - Current AGI excluding Social Security
- * @param amount - Amount to contribute/convert
- * @param mode - 'contribution' or 'conversion'
- * @param socialSecurityBenefits - Total SS benefits (0 if none)
- * @param ltcgIncome - Long-term capital gains income (0 if none)
- * @param taxState - Tax filing state
- * @param year - Tax year
- * @param assumptions - Simulation assumptions
- * @param stateParams - State tax parameters (null if no state tax)
- * @param acaOptions - ACA subsidy options (undefined if not applicable)
- */
-export function calculateBreakEvenRate(
-    currentTaxableIncome: number,
-    amount: number,
-    mode: 'contribution' | 'conversion',
-    socialSecurityBenefits: number,
-    ltcgIncome: number,
-    taxState: TaxState,
-    year: number,
-    assumptions: AssumptionsState,
-    stateParams: TaxParameters | null,
-    acaOptions?: ACAOptions
-): number {
-    const fedParams = TaxService.getTaxParameters(
-        year,
-        taxState.filingStatus,
-        'federal',
-        undefined,
-        assumptions
-    );
-
-    if (!fedParams) return FALLBACK_RETIREMENT_TAX_RATE;
-
-    if (mode === 'contribution') {
-        // For new contributions, break-even is the marginal rate (rate on the next dollar)
-        const actualTaxableIncome = Math.max(0, currentTaxableIncome - fedParams.standardDeduction);
-        const bracket = TaxService.getMarginalTaxRate(actualTaxableIncome, fedParams);
-        return bracket.rate;
-    } else {
-        // For conversions, use calculateEffectiveConversionTax for comprehensive tax calculation
-        const result = calculateEffectiveConversionTax(
-            currentTaxableIncome,
-            socialSecurityBenefits,
-            ltcgIncome,
-            amount,
-            taxState.filingStatus,
-            fedParams,
-            stateParams,
-            acaOptions
-        );
-        return result.effectiveRate;
-    }
-}
-
-/** Step size for optimal amount search */
-const OPTIMAL_SEARCH_STEP = 500;
-/** Minimum search max if computed max is too low */
-const OPTIMAL_SEARCH_MIN_MAX = 5000;
-
-/**
- * Find the optimal Roth amount by stepping through amounts and computing
- * total benefit at each level. Returns the amount with peak benefit.
- *
- * For each candidate amount X:
- *   - taxNow = incremental tax from converting/contributing X at current year
- *   - grownAmount = X * (1+r)^n
- *   - taxLater = incremental tax from withdrawing grownAmount at withdrawal year
- *   - benefit = taxLater - taxNow * (1+r)^n
- *     (equivalent to: Roth after-tax value - Traditional after-tax value)
- *
- * For conversion mode, uses calculateEffectiveConversionTax for taxNow (includes
- * SS torpedo, LTCG bump, NIIT, state tax, ACA cliff). For withdrawal year,
- * applies SS torpedo multiplier to account for increased SS taxability.
- *
- * Returns the X that maximizes benefit, or null if benefit is never positive.
- */
-export function findOptimalRothAmount(
-    mode: 'contribution' | 'conversion',
-    growthYears: number,
-    currentTaxableIncome: number,
-    socialSecurityBenefits: number,
-    ltcgIncome: number,
-    taxState: TaxState,
-    year: number,
-    assumptions: AssumptionsState,
-    simulation: SimulationYear[],
-    maxAmount: number,
-    stateParams: TaxParameters | null,
-    acaOptions?: ACAOptions
-): { optimalAmount: number | null; optimalVerdict: 'all-roth' | 'all-traditional' | 'optimal' } {
-    const birthYear = getBirthYear(assumptions.milestones);
-    const growthRate = (assumptions.investments?.returnRates?.ror ?? (FALLBACK_GROWTH_RATE * 100)) / 100;
-    const growthFactor = Math.pow(1 + growthRate, growthYears);
-
-    // Get current year tax params
-    const fedParamsNow = TaxService.getTaxParameters(
-        year, taxState.filingStatus, 'federal', undefined, assumptions
-    );
-    if (!fedParamsNow) return { optimalAmount: null, optimalVerdict: 'all-traditional' };
-
-    // Get withdrawal year tax params and base income
-    const withdrawalYear = year + growthYears;
-    const withdrawalSimYear = simulation.find(s => s.year === withdrawalYear)
-        || simulation[simulation.length - 1];
-    if (!withdrawalSimYear) return { optimalAmount: null, optimalVerdict: 'all-traditional' };
-
-    const simAge = withdrawalSimYear.year - birthYear;
-    const fedParamsWithdrawal = TaxService.getTaxParameters(
-        withdrawalSimYear.year, taxState.filingStatus, 'federal', undefined, assumptions
-    );
-    if (!fedParamsWithdrawal) return { optimalAmount: null, optimalVerdict: 'all-traditional' };
-
-    const grossIncomeWithdrawal = TaxService.getGrossIncome(withdrawalSimYear.incomes, withdrawalSimYear.year);
-    const preTaxWithdrawal = TaxService.getPreTaxExemptions(withdrawalSimYear.incomes, withdrawalSimYear.year, simAge);
-    const baseWithdrawalIncome = Math.max(0, grossIncomeWithdrawal - preTaxWithdrawal);
-
-    // Get SS benefits at withdrawal for torpedo calculation
-    const ssIncomeWithdrawal = TaxService.getSocialSecurityBenefits(withdrawalSimYear.incomes, withdrawalSimYear.year);
-    const otherIncomeWithdrawal = grossIncomeWithdrawal - ssIncomeWithdrawal - preTaxWithdrawal;
-
-    // Get marginal rate for SS torpedo calculation
-    const withdrawalBracket = TaxService.getMarginalTaxRate(baseWithdrawalIncome, fedParamsWithdrawal);
-    const withdrawalMarginalRate = withdrawalBracket.rate;
-
-    // Base tax amounts (no conversion/contribution)
-    const baseTaxWithdrawal = TaxService.calculateTax(baseWithdrawalIncome, 0, fedParamsWithdrawal);
-
-    // For contribution mode, current marginal rate is fixed
-    let fixedMarginalRate = 0;
-    if (mode === 'contribution') {
-        const actualTaxableNow = Math.max(0, currentTaxableIncome - fedParamsNow.standardDeduction);
-        const bracket = TaxService.getMarginalTaxRate(actualTaxableNow, fedParamsNow);
-        fixedMarginalRate = bracket.rate;
-    }
-
-    const searchMax = Math.max(OPTIMAL_SEARCH_MIN_MAX, maxAmount);
-    const step = Math.max(OPTIMAL_SEARCH_STEP, Math.floor(searchMax / 1000) * OPTIMAL_SEARCH_STEP);
-
-    let bestAmount = 0;
-    let bestBenefit = 0;
-    let everPositive = false;
-    let everNegative = false;
-
-    for (let x = step; x <= searchMax; x += step) {
-        // Tax cost now
-        let taxNow: number;
-        if (mode === 'contribution') {
-            taxNow = x * fixedMarginalRate;
-        } else {
-            // Use calculateEffectiveConversionTax for comprehensive tax calculation
-            const conversionResult = calculateEffectiveConversionTax(
-                currentTaxableIncome,
-                socialSecurityBenefits,
-                ltcgIncome,
-                x,
-                taxState.filingStatus,
-                fedParamsNow,
-                stateParams,
-                acaOptions
-            );
-            taxNow = conversionResult.taxIncrease;
-        }
-
-        // Tax cost at withdrawal (with SS torpedo adjustment)
-        const grownAmount = x * growthFactor;
-        const taxAfterWithdrawal = TaxService.calculateTax(baseWithdrawalIncome + grownAmount, 0, fedParamsWithdrawal);
-        const baseTaxLater = taxAfterWithdrawal - baseTaxWithdrawal;
-        // Add SS torpedo tax: additional tax from more SS becoming taxable
-        const ssTorpedoTax = calculateSSTorpedoAdditionalTax(
-            ssIncomeWithdrawal, otherIncomeWithdrawal, grownAmount,
-            withdrawalMarginalRate, taxState.filingStatus
-        );
-        const taxLater = baseTaxLater + ssTorpedoTax;
-
-        // Benefit: how much more you'd pay in Traditional vs Roth (positive = Roth wins)
-        // Roth after-tax = (x - taxNow) * growthFactor
-        // Trad after-tax = x * growthFactor - taxLater
-        // benefit = Roth - Trad = taxLater - taxNow * growthFactor
-        const benefit = taxLater - taxNow * growthFactor;
-
-        if (benefit > bestBenefit) {
-            bestBenefit = benefit;
-            bestAmount = x;
-        }
-        if (benefit > 0) everPositive = true;
-        if (benefit < 0) everNegative = true;
-    }
-
-    if (!everPositive) {
-        return { optimalAmount: null, optimalVerdict: 'all-traditional' };
-    }
-
-    // Only report 'all-roth' if benefit was positive at every tested amount
-    if (!everNegative) {
-        return { optimalAmount: null, optimalVerdict: 'all-roth' };
-    }
-
-    // Mixed: return the amount with peak benefit
-    return { optimalAmount: bestAmount, optimalVerdict: 'optimal' };
-}
-
-/**
- * Analyze Roth vs Pre-Tax decision for both new contributions and conversions.
- * Uses explicit growth years (user-controlled) rather than auto-calculated.
- *
- * For conversion mode, uses calculateEffectiveConversionTax for comprehensive
- * tax calculation including SS torpedo, LTCG bump, NIIT, state tax, and ACA cliff.
- *
- * For withdrawal year tax estimation, uses calculateSSTorpedoAdditionalTax to
- * correctly add the additional tax from SS becoming more taxable.
- *
- * @param amount - Amount to contribute/convert
- * @param mode - 'contribution' or 'conversion'
- * @param growthYears - Years until withdrawal
- * @param currentTaxableIncome - Current AGI excluding Social Security
- * @param socialSecurityBenefits - Total SS benefits (0 if none)
- * @param ltcgIncome - Long-term capital gains income (0 if none)
- * @param taxState - Tax filing state
- * @param year - Tax year
- * @param assumptions - Simulation assumptions
- * @param simulation - Simulation years for withdrawal projections
- * @param maxAmount - Maximum amount for optimal search
- * @param stateParams - State tax parameters (null if no state tax)
- * @param acaOptions - ACA subsidy options (undefined if not applicable)
- */
-export function analyzeRothVsPreTax(
-    amount: number,
-    mode: 'contribution' | 'conversion',
-    growthYears: number,
-    currentTaxableIncome: number,
-    socialSecurityBenefits: number,
-    ltcgIncome: number,
-    taxState: TaxState,
-    year: number,
-    assumptions: AssumptionsState,
-    simulation: SimulationYear[],
-    maxAmount: number,
-    stateParams: TaxParameters | null,
-    acaOptions?: ACAOptions
-): RothAnalysis {
-    const fedParams = TaxService.getTaxParameters(
-        year,
-        taxState.filingStatus,
-        'federal',
-        undefined,
-        assumptions
-    );
-
-    const birthYear = getBirthYear(assumptions.milestones);
-
-    // Growth rate from assumptions
-    const growthRate = (assumptions.investments?.returnRates?.ror ?? (FALLBACK_GROWTH_RATE * 100)) / 100;
-
-    // Calculate current tax cost based on mode
-    let immediateTaxCost: number;
-    let currentEffectiveRate: number;
-    let taxBreakdown: RothAnalysis['taxBreakdown'] = undefined;
-    let crossesACACliff: boolean | undefined = undefined;
-
-    if (mode === 'contribution') {
-        // For contributions, tax cost is the marginal rate on this amount
-        if (fedParams) {
-            const actualTaxableIncome = Math.max(0, currentTaxableIncome - fedParams.standardDeduction);
-            const bracket = TaxService.getMarginalTaxRate(actualTaxableIncome, fedParams);
-            currentEffectiveRate = bracket.rate;
-            immediateTaxCost = amount * currentEffectiveRate;
-        } else {
-            throw new Error(`Federal tax parameters unavailable for year ${year}. Cannot analyze Roth vs Pre-Tax.`);
-        }
-    } else {
-        // For conversions, use calculateEffectiveConversionTax for comprehensive tax calculation
-        if (fedParams) {
-            const conversionResult = calculateEffectiveConversionTax(
-                currentTaxableIncome,
-                socialSecurityBenefits,
-                ltcgIncome,
-                amount,
-                taxState.filingStatus,
-                fedParams,
-                stateParams,
-                acaOptions
-            );
-            immediateTaxCost = conversionResult.taxIncrease;
-            currentEffectiveRate = conversionResult.effectiveRate;
-            taxBreakdown = conversionResult.breakdown;
-            crossesACACliff = conversionResult.crossesACACliff;
-        } else {
-            throw new Error(`Federal tax parameters unavailable for year ${year}. Cannot analyze Roth vs Pre-Tax.`);
-        }
-    }
-
-    // Traditional path: full amount grows tax-deferred, taxed at withdrawal
-    const traditionalStart = amount;
-    const traditionalAtWithdrawal = traditionalStart * Math.pow(1 + growthRate, growthYears);
-
-    // Calculate actual tax on the withdrawal using bracket math at the withdrawal year.
-    // This correctly handles cases where income is below the standard deduction.
-    // Also adds SS torpedo tax to account for more SS becoming taxable.
-    const withdrawalYear = year + growthYears;
-    let traditionalTaxAtWithdrawal = traditionalAtWithdrawal * FALLBACK_RETIREMENT_TAX_RATE;
-
-    const withdrawalSimYear = simulation.find(s => s.year === withdrawalYear)
-        || simulation[simulation.length - 1];
-    if (withdrawalSimYear) {
-        const simAge = withdrawalSimYear.year - birthYear;
-        const simFedParams = TaxService.getTaxParameters(
-            withdrawalSimYear.year,
-            taxState.filingStatus,
-            'federal',
-            undefined,
-            assumptions
-        );
-        if (simFedParams) {
-            const grossIncome = TaxService.getGrossIncome(withdrawalSimYear.incomes, withdrawalSimYear.year);
-            const preTaxDeductions = TaxService.getPreTaxExemptions(withdrawalSimYear.incomes, withdrawalSimYear.year, simAge);
-            const ssIncomeWithdrawal = TaxService.getSocialSecurityBenefits(withdrawalSimYear.incomes, withdrawalSimYear.year);
-
-            // Base income before the Traditional withdrawal
-            const baseIncome = Math.max(0, grossIncome - preTaxDeductions);
-            const taxBefore = TaxService.calculateTax(baseIncome, 0, simFedParams);
-            const taxAfter = TaxService.calculateTax(baseIncome + traditionalAtWithdrawal, 0, simFedParams);
-            const baseTax = taxAfter - taxBefore;
-
-            // Calculate SS torpedo additional tax
-            const otherIncome = grossIncome - ssIncomeWithdrawal - preTaxDeductions;
-            const withdrawalBracket = TaxService.getMarginalTaxRate(baseIncome, simFedParams);
-            const ssTorpedoTax = calculateSSTorpedoAdditionalTax(
-                ssIncomeWithdrawal, otherIncome, traditionalAtWithdrawal,
-                withdrawalBracket.rate, taxState.filingStatus
-            );
-
-            // Total tax = base tax + SS torpedo tax
-            traditionalTaxAtWithdrawal = baseTax + ssTorpedoTax;
-        }
-    }
-
-    // Derive effective withdrawal rate for display
-    const retirementMarginalRate = traditionalAtWithdrawal > 0
-        ? traditionalTaxAtWithdrawal / traditionalAtWithdrawal
-        : FALLBACK_RETIREMENT_TAX_RATE;
-
-    // Break-even rate (pass through all parameters for conversion mode)
-    const breakEvenRate = calculateBreakEvenRate(
-        currentTaxableIncome, amount, mode,
-        socialSecurityBenefits, ltcgIncome,
-        taxState, year, assumptions,
-        stateParams, acaOptions
-    );
-
-    const traditionalAfterTax = traditionalAtWithdrawal - traditionalTaxAtWithdrawal;
-
-    // Roth path: pay tax now, remainder grows tax-free
-    const rothAfterTax = amount - immediateTaxCost;
-    const rothAtWithdrawal = rothAfterTax * Math.pow(1 + growthRate, growthYears);
-    const rothAfterTaxValue = rothAtWithdrawal; // Tax-free
-
-    // Benefit: positive = Roth wins
-    const benefit = rothAfterTaxValue - traditionalAfterTax;
-
-    // Verdict and reason
-    let verdict: 'roth' | 'traditional' | 'even';
-    let reason: string;
-    const modeLabel = mode === 'contribution' ? 'Choosing Roth' : `Converting at age ${year - birthYear}`;
-    const tradLabel = mode === 'contribution' ? 'pre-tax' : 'traditional';
-
-    if (Math.abs(benefit) < 1) {
-        verdict = 'even';
-        reason = 'Both options produce the same after-tax value.';
-    } else if (benefit > 0) {
-        verdict = 'roth';
-        reason = `${modeLabel} saves ${formatDollars(benefit)} because your current rate (${(currentEffectiveRate * 100).toFixed(1)}%) is lower than your projected withdrawal rate (${(retirementMarginalRate * 100).toFixed(1)}%).`;
-    } else {
-        verdict = 'traditional';
-        reason = `Keeping ${tradLabel} saves ${formatDollars(Math.abs(benefit))} because your current rate (${(currentEffectiveRate * 100).toFixed(1)}%) is higher than your projected withdrawal rate (${(retirementMarginalRate * 100).toFixed(1)}%).`;
-    }
-
-    // Calculate optimal amount (pass through all parameters)
-    const { optimalAmount, optimalVerdict } = findOptimalRothAmount(
-        mode, growthYears, currentTaxableIncome,
-        socialSecurityBenefits, ltcgIncome,
-        taxState, year, assumptions, simulation, maxAmount,
-        stateParams, acaOptions
-    );
-
-    return {
-        mode,
-        amount,
-        currentEffectiveRate,
-        retirementMarginalRate,
-        breakEvenRate,
-        growthYears,
-        growthRate,
-        traditional: {
-            startingAmount: traditionalStart,
-            valueAtWithdrawal: traditionalAtWithdrawal,
-            taxAtWithdrawal: traditionalTaxAtWithdrawal,
-            afterTaxValue: traditionalAfterTax
-        },
-        roth: {
-            amountAfterTax: rothAfterTax,
-            valueAtWithdrawal: rothAtWithdrawal,
-            afterTaxValue: rothAfterTaxValue
-        },
-        benefit,
-        verdict,
-        reason,
-        optimalAmount,
-        optimalVerdict,
-        taxBreakdown,
-        crossesACACliff
-    };
-}
-
-/** Format dollars for reason strings */
-function formatDollars(value: number): string {
-    return '$' + Math.round(value).toLocaleString();
-}
 
 /**
  * Generate tax projections for all years in simulation.
@@ -921,13 +427,44 @@ export function generateTaxProjections(
     for (const simYear of simulation) {
         const age = simYear.year - getBirthYear(assumptions.milestones);
 
-        const grossIncome = TaxService.getGrossIncome(simYear.incomes, simYear.year);
+        // Build a complete tax base for the year so the effective rate is meaningful.
+        // getGrossIncome() only counts income *objects* (work, SS, pension, passive,
+        // RMDs). It doesn't include Roth conversions or non-RMD Traditional withdrawals,
+        // both of which are taxed as ordinary income. Without these, retirement years
+        // with big conversions or spending withdrawals get tiny "income" but real tax,
+        // producing nonsensical effective rates (e.g. 500%).
+        const incomeFromObjects = TaxService.getGrossIncome(simYear.incomes, simYear.year);
+        const conversionAmount = simYear.rothConversion?.amount ?? 0;
+
+        // Traditional non-RMD withdrawals: cross-reference withdrawalDetail (keyed by
+        // account name) against the year's accounts to find Traditional 401(k)/IRA.
+        // RMDs are already counted via PassiveIncome objects in incomes, so subtract
+        // them here to avoid double-counting.
+        const traditionalAccountNames = new Set(
+            simYear.accounts
+                .filter((acc): acc is InvestedAccount =>
+                    acc instanceof InvestedAccount &&
+                    (acc.taxType === 'Traditional 401k' || acc.taxType === 'Traditional IRA')
+                )
+                .map(acc => acc.name)
+        );
+        let traditionalWithdrawals = 0;
+        for (const [name, amount] of Object.entries(simYear.cashflow.withdrawalDetail || {})) {
+            if (traditionalAccountNames.has(name)) {
+                traditionalWithdrawals += amount;
+            }
+        }
+        const rmdWithdrawn = simYear.rmdDetails?.totalWithdrawn ?? 0;
+        const traditionalNonRMDWithdrawals = Math.max(0, traditionalWithdrawals - rmdWithdrawn);
+
+        const grossIncome = incomeFromObjects + conversionAmount + traditionalNonRMDWithdrawals;
+
         const preTaxDeductions = TaxService.getPreTaxExemptions(simYear.incomes, simYear.year, age);
         const totalTax = simYear.taxDetails.fed + simYear.taxDetails.state + simYear.taxDetails.fica;
         const effectiveRate = grossIncome > 0 ? totalTax / grossIncome : 0;
 
         const marginal = TaxService.getCombinedMarginalRate(
-            grossIncome,
+            incomeFromObjects,
             preTaxDeductions,
             taxState,
             simYear.year,
@@ -952,6 +489,660 @@ export function generateTaxProjections(
     }
 
     return projections;
+}
+
+// ============================================================================
+// RMD Pressure Analysis
+// ============================================================================
+
+/**
+ * Sum projected Traditional 401k + IRA balance for a given simulation year.
+ */
+function getTraditionalBalance(simYear: SimulationYear): number {
+    return simYear.accounts
+        .filter((acc): acc is InvestedAccount =>
+            acc instanceof InvestedAccount &&
+            (acc.taxType === 'Traditional 401k' || acc.taxType === 'Traditional IRA')
+        )
+        .reduce((sum, acc) => sum + acc.amount, 0);
+}
+
+/**
+ * Sum Traditional 401k employee contributions for a working year (excludes employer match).
+ * Returns the dollars per year that would be redirected to Roth if the user switched elections.
+ */
+function getTraditional401kElection(simYear: SimulationYear, age: number): number {
+    return simYear.incomes
+        .filter((inc): inc is WorkIncome => inc instanceof WorkIncome)
+        .reduce((sum, inc) => {
+            const eff = inc.getEffective401k(simYear.year, age);
+            return sum + inc.getProratedAnnual(eff.preTax, simYear.year);
+        }, 0);
+}
+
+/**
+ * Find the bracket threshold that contains a given rate (federal). Returns the
+ * upper bound of the highest bracket whose rate is at or below targetRate.
+ * Used to compute the income ceiling that keeps you at or below targetRate.
+ */
+function getBracketCeilingForRate(
+    targetRate: number,
+    fedParams: { brackets: Array<{ threshold: number; rate: number }> }
+): number {
+    let ceiling = Infinity;
+    for (let i = 0; i < fedParams.brackets.length; i++) {
+        const bracket = fedParams.brackets[i];
+        if (bracket.rate > targetRate) {
+            // The PREVIOUS bracket's threshold is our ceiling — income up to this point
+            // is taxed at <= targetRate
+            ceiling = bracket.threshold;
+            break;
+        }
+    }
+    return ceiling;
+}
+
+/**
+ * Analyze whether the user is on track to face a higher marginal tax rate at RMD age
+ * than they pay today, suggesting they should redirect Traditional 401k contributions
+ * to Roth.
+ *
+ * Returns null if analysis isn't applicable (no traditional balance projected, no RMD
+ * year in simulation, etc.).
+ */
+export function analyzeRMDTaxPressure(
+    simulation: SimulationYear[],
+    assumptions: AssumptionsState,
+    taxState: TaxState
+): RMDPressureAnalysis | null {
+    if (simulation.length === 0 || !assumptions.milestones) return null;
+
+    const birthYear = getBirthYear(assumptions.milestones);
+    const rmdStartAge = getRMDStartAge(birthYear);
+    const rmdStartYear = birthYear + rmdStartAge;
+
+    // Find the simulation year corresponding to RMD start (or the first available year >= rmdStartAge)
+    const rmdSimYear = simulation.find(s => s.year >= rmdStartYear);
+    if (!rmdSimYear) return null;
+
+    const tradBalanceAtRMD = getTraditionalBalance(rmdSimYear);
+    if (tradBalanceAtRMD < RMD_PRESSURE_MIN_BALANCE) return null;
+
+    // Estimated first RMD: prefer the simulation's actual rmdDetails if present,
+    // otherwise derive from balance / distribution period
+    const estimatedFirstRMD = rmdSimYear.rmdDetails?.totalRMD
+        ?? (tradBalanceAtRMD / getDistributionPeriod(rmdStartAge));
+
+    // Current year (first sim year) marginal — exclude FICA so it's comparable to retirement
+    const currentSimYear = simulation[0];
+    const currentAge = currentSimYear.year - birthYear;
+    const currentGross = TaxService.getGrossIncome(currentSimYear.incomes, currentSimYear.year);
+    const currentPreTax = TaxService.getPreTaxExemptions(currentSimYear.incomes, currentSimYear.year, currentAge);
+    const currentMarginal = TaxService.getCombinedMarginalRate(
+        currentGross, currentPreTax, taxState, currentSimYear.year, assumptions, false
+    );
+
+    // RMD-age marginal — also exclude FICA (RMDs/SS aren't FICA-taxed)
+    const rmdAge = rmdSimYear.year - birthYear;
+    const rmdGross = TaxService.getGrossIncome(rmdSimYear.incomes, rmdSimYear.year);
+    const rmdPreTax = TaxService.getPreTaxExemptions(rmdSimYear.incomes, rmdSimYear.year, rmdAge);
+    const rmdMarginal = TaxService.getCombinedMarginalRate(
+        rmdGross, rmdPreTax, taxState, rmdSimYear.year, assumptions, false
+    );
+
+    const federalBracketGap = rmdMarginal.federal - currentMarginal.federal;
+    const hasPressure = federalBracketGap >= RMD_PRESSURE_MIN_GAP;
+
+    // Switchover year analysis (only meaningful if there's pressure)
+    let switchoverYear: number | null = null;
+    let switchoverAge: number | null = null;
+    let estimatedTaxImpact: number | null = null;
+    let redirectedContributions: number | null = null;
+
+    if (hasPressure) {
+        const result = findSwitchoverYear(
+            simulation, assumptions, taxState,
+            tradBalanceAtRMD, currentMarginal.federal, rmdSimYear, rmdStartAge
+        );
+        switchoverYear = result.year;
+        switchoverAge = result.age;
+        estimatedTaxImpact = result.estimatedTaxImpact;
+        redirectedContributions = result.redirectedContributions;
+    }
+
+    return {
+        hasPressure,
+        currentOrdinaryRate: currentMarginal.combined,
+        currentFederalBracket: currentMarginal.federal,
+        rmdStartAge,
+        rmdStartYear: rmdSimYear.year,
+        traditionalBalanceAtRMD: tradBalanceAtRMD,
+        estimatedFirstRMD,
+        rmdAgeOrdinaryRate: rmdMarginal.combined,
+        rmdAgeFederalBracket: rmdMarginal.federal,
+        federalBracketGap,
+        switchoverYear,
+        switchoverAge,
+        estimatedTaxImpact,
+        redirectedContributions
+    };
+}
+
+/**
+ * Find the latest working year where switching from Traditional to Roth would
+ * bring projected RMD-age federal marginal rate down to (or below) the current rate.
+ *
+ * Returns { year: null, ... } if no amount of switching closes the gap, or if there
+ * are no Traditional 401k contributions to redirect.
+ */
+function findSwitchoverYear(
+    simulation: SimulationYear[],
+    assumptions: AssumptionsState,
+    taxState: TaxState,
+    currentTradAtRMD: number,
+    currentFederalRate: number,
+    rmdSimYear: SimulationYear,
+    rmdStartAge: number
+): { year: number | null; age: number | null; estimatedTaxImpact: number | null; redirectedContributions: number | null } {
+    const birthYear = getBirthYear(assumptions.milestones);
+    const ror = (assumptions.investments?.returnRates?.ror ?? (FALLBACK_GROWTH_RATE * 100)) / 100;
+
+    // Collect Traditional 401k contributions per working year
+    const contributions: { year: number; age: number; amount: number; fvAtRMD: number }[] = [];
+    for (const simYear of simulation) {
+        const age = simYear.year - birthYear;
+        if (age >= rmdStartAge) break;
+        const tradContrib = getTraditional401kElection(simYear, age);
+        if (tradContrib > 0) {
+            const yearsToRMD = (birthYear + rmdStartAge) - simYear.year;
+            const fv = tradContrib * Math.pow(1 + ror, Math.max(0, yearsToRMD));
+            contributions.push({ year: simYear.year, age, amount: tradContrib, fvAtRMD: fv });
+        }
+    }
+    if (contributions.length === 0) {
+        return { year: null, age: null, estimatedTaxImpact: null, redirectedContributions: null };
+    }
+
+    // Compute target balance: balance such that resulting RMD income keeps marginal at currentFederalRate
+    const fedParams = TaxService.getTaxParameters(
+        rmdSimYear.year, taxState.filingStatus, 'federal', undefined, assumptions
+    );
+    if (!fedParams) {
+        return { year: null, age: null, estimatedTaxImpact: null, redirectedContributions: null };
+    }
+
+    const rmdAge = rmdSimYear.year - birthYear;
+    const rmdGross = TaxService.getGrossIncome(rmdSimYear.incomes, rmdSimYear.year);
+    const rmdPreTax = TaxService.getPreTaxExemptions(rmdSimYear.incomes, rmdSimYear.year, rmdAge);
+    const rmdTaxableIncome = Math.max(0, rmdGross - rmdPreTax - fedParams.standardDeduction);
+
+    // The current first-RMD is part of rmdTaxableIncome. Estimate non-RMD income.
+    const currentFirstRMD = rmdSimYear.rmdDetails?.totalRMD
+        ?? (currentTradAtRMD / getDistributionPeriod(rmdStartAge));
+    const nonRMDTaxableIncome = Math.max(0, rmdTaxableIncome - currentFirstRMD);
+
+    // Income ceiling that keeps marginal at currentFederalRate
+    const targetIncomeCeiling = getBracketCeilingForRate(currentFederalRate, fedParams);
+    if (targetIncomeCeiling === Infinity) {
+        // Already in top bracket — switching doesn't help
+        return { year: null, age: null, estimatedTaxImpact: null, redirectedContributions: null };
+    }
+
+    const targetRMD = Math.max(0, targetIncomeCeiling - nonRMDTaxableIncome);
+    const targetBalance = targetRMD * getDistributionPeriod(rmdStartAge);
+    const requiredReduction = currentTradAtRMD - targetBalance;
+
+    if (requiredReduction <= 0) {
+        // Already below target — no need to switch
+        return { year: null, age: null, estimatedTaxImpact: null, redirectedContributions: null };
+    }
+
+    // Total possible reduction = sum of all FV at RMD
+    const totalPossibleReduction = contributions.reduce((s, c) => s + c.fvAtRMD, 0);
+    if (totalPossibleReduction < requiredReduction) {
+        // Even switching all years isn't enough — recommend switching from current year
+        const total = contributions.reduce((s, c) => s + c.amount, 0);
+        return {
+            year: contributions[0].year,
+            age: contributions[0].age,
+            estimatedTaxImpact: estimateLifetimeTaxImpact(totalPossibleReduction, currentFederalRate, rmdSimYear, fedParams, nonRMDTaxableIncome, rmdStartAge),
+            redirectedContributions: total
+        };
+    }
+
+    // Find the largest k such that sum(fvAtRMD for years >= k) >= requiredReduction.
+    // Since contributions are ordered by year ascending, suffix sums decrease as we move forward.
+    // Iterate from the latest year back; once suffix sum >= requiredReduction, that's our answer.
+    let suffixSum = 0;
+    let switchoverIdx = 0;
+    for (let i = contributions.length - 1; i >= 0; i--) {
+        suffixSum += contributions[i].fvAtRMD;
+        if (suffixSum >= requiredReduction) {
+            switchoverIdx = i;
+            break;
+        }
+    }
+
+    const switchYear = contributions[switchoverIdx].year;
+    const switchAge = contributions[switchoverIdx].age;
+    const totalRedirected = contributions.slice(switchoverIdx).reduce((s, c) => s + c.amount, 0);
+    const reductionAtSwitch = contributions.slice(switchoverIdx).reduce((s, c) => s + c.fvAtRMD, 0);
+    const taxImpact = estimateLifetimeTaxImpact(
+        reductionAtSwitch, currentFederalRate, rmdSimYear, fedParams, nonRMDTaxableIncome, rmdStartAge
+    );
+
+    return {
+        year: switchYear,
+        age: switchAge,
+        estimatedTaxImpact: taxImpact,
+        redirectedContributions: totalRedirected
+    };
+}
+
+/**
+ * Rough estimate of lifetime tax savings from reducing the Traditional balance at RMD
+ * by `reduction`. Assumes the reduced RMDs would have been taxed at the higher of
+ * (currentFederalRate, marginal at the reduced RMD level).
+ *
+ * This is a single-year estimate scaled by remaining life expectancy at RMD age.
+ * Intentionally simple — the recommendation says "approximate".
+ */
+function estimateLifetimeTaxImpact(
+    reduction: number,
+    currentFederalRate: number,
+    rmdSimYear: SimulationYear,
+    fedParams: TaxParameters,
+    nonRMDTaxableIncome: number,
+    rmdStartAge: number
+): number {
+    // Marginal rate AT the current RMD income level
+    const grossIncome = nonRMDTaxableIncome + (rmdSimYear.rmdDetails?.totalRMD ?? 0);
+    const bracket = TaxService.getMarginalTaxRate(grossIncome, fedParams);
+    const rateGap = Math.max(0, bracket.rate - currentFederalRate);
+
+    // Per-year RMD reduction = reduction / distribution period
+    const distPeriod = getDistributionPeriod(rmdStartAge);
+    const annualRMDReduction = reduction / distPeriod;
+    const annualTaxSavings = annualRMDReduction * rateGap;
+
+    // Approximate remaining life: 90 - rmdStartAge (typical assumption)
+    const yearsOfRMDs = Math.max(1, 90 - rmdStartAge);
+    return annualTaxSavings * yearsOfRMDs;
+}
+
+/**
+ * Generate a recommendation flagging RMD tax pressure and suggesting Roth contributions.
+ */
+export function generateRMDPressureRecommendation(
+    pressure: RMDPressureAnalysis | null
+): TaxRecommendation | null {
+    if (!pressure || !pressure.hasPressure) return null;
+
+    const currentPct = (pressure.currentFederalBracket * 100).toFixed(0);
+    const rmdPct = (pressure.rmdAgeFederalBracket * 100).toFixed(0);
+    const impact: RecommendationImpact =
+        pressure.federalBracketGap >= RMD_PRESSURE_HIGH_GAP ? 'high' : 'medium';
+
+    const balanceStr = '$' + Math.round(pressure.traditionalBalanceAtRMD).toLocaleString();
+    const rmdStr = '$' + Math.round(pressure.estimatedFirstRMD).toLocaleString();
+
+    const actionItems: string[] = [
+        `At age ${pressure.rmdStartAge}, projected Traditional balance: ${balanceStr}`,
+        `Required minimum distribution: ~${rmdStr}/year (taxed as ordinary income)`,
+        `Current federal rate: ${currentPct}%  →  projected RMD-age rate: ${rmdPct}%`
+    ];
+
+    if (pressure.switchoverYear && pressure.switchoverAge) {
+        const yearsAway = pressure.switchoverYear - new Date().getFullYear();
+        const yearLabel = yearsAway <= 0
+            ? 'now'
+            : `starting in ${pressure.switchoverYear} (age ${pressure.switchoverAge})`;
+        actionItems.push(`Switch 401(k) elections from Traditional to Roth ${yearLabel}`);
+        if (pressure.redirectedContributions && pressure.redirectedContributions > 0) {
+            actionItems.push(`This redirects ~$${Math.round(pressure.redirectedContributions).toLocaleString()} of total Traditional contributions to Roth`);
+        }
+    } else {
+        actionItems.push(`Switch 401(k) elections from Traditional to Roth now`);
+    }
+
+    return {
+        id: 'rmd-tax-pressure',
+        title: 'Switch to Roth 401(k) Contributions',
+        description: `Your current marginal rate (${currentPct}%) is well below your projected ` +
+            `rate at RMD age (${rmdPct}%). Roth contributions today avoid that future tax.`,
+        category: 'contribution',
+        impact,
+        estimatedAnnualSavings: pressure.estimatedTaxImpact && pressure.estimatedTaxImpact > 0
+            ? Math.round(pressure.estimatedTaxImpact)
+            : 0,
+        actionItems
+    };
+}
+
+// ============================================================================
+// Roth/Pre-Tax Allocation Diagnostic (current contributions)
+// ============================================================================
+
+export type AllocationVerdict =
+    | 'optimal'           // Current split is correct given the rate gap
+    | 'should-be-roth'    // Currently mostly pre-tax but should be Roth
+    | 'should-be-pretax'  // Currently mostly Roth but should be pre-tax
+    | 'lean-roth'         // Already mostly Roth — fine, but consider going further
+    | 'lean-pretax'       // Already mostly pre-tax — fine, but consider going further
+    | 'either-fine';      // Rates are close enough that either choice works
+
+export interface RothPreTaxAllocation {
+    /** Current 401(k) employee contribution split for this year */
+    current401kSplit: { preTax: number; roth: number };
+    /** Total current 401(k) employee contributions */
+    totalContribution: number;
+    /** Roth fraction of current contributions (0..1) */
+    rothFraction: number;
+    /** Today's combined fed+state ordinary marginal rate (excludes FICA) */
+    currentRate: number;
+    /** Projected combined fed+state ordinary marginal rate at first RMD year (or median retirement if no RMDs) */
+    futureRate: number;
+    /** Whether the future rate is the actual first RMD year (vs a fallback) */
+    futureRateBasis: 'rmd-year' | 'median-retirement';
+    /** futureRate - currentRate */
+    rateGap: number;
+    verdict: AllocationVerdict;
+}
+
+/**
+ * Analyze the user's current Roth vs Pre-Tax 401(k) split and produce a verdict.
+ *
+ * Returns null when the diagnostic doesn't apply (no work income with 401(k)
+ * contributions in the current year).
+ *
+ * The comparison is "today's marginal rate on a deductible contribution" vs
+ * "the marginal rate that would apply when those Traditional dollars come back
+ * out as RMDs" — both fed+state, excluding FICA (FICA applies to wages but
+ * not to RMDs, and 401(k) contributions don't avoid FICA).
+ */
+export function analyzeRothPreTaxAllocation(
+    simulation: SimulationYear[],
+    assumptions: AssumptionsState,
+    taxState: TaxState
+): RothPreTaxAllocation | null {
+    if (simulation.length === 0 || !assumptions.milestones) return null;
+
+    const currentSimYear = simulation[0];
+    const birthYear = getBirthYear(assumptions.milestones);
+    const age = currentSimYear.year - birthYear;
+
+    // Sum current 401(k) employee contributions across all WorkIncomes
+    let preTax = 0;
+    let roth = 0;
+    for (const inc of currentSimYear.incomes) {
+        if (inc instanceof WorkIncome) {
+            const eff = inc.getEffective401k(currentSimYear.year, age);
+            preTax += inc.getProratedAnnual(eff.preTax, currentSimYear.year);
+            roth += inc.getProratedAnnual(eff.roth, currentSimYear.year);
+        }
+    }
+    const total = preTax + roth;
+    if (total <= 0) return null;
+
+    // Today's marginal rate (fed + state, no FICA — 401(k) contributions don't avoid FICA)
+    const currentGross = TaxService.getGrossIncome(currentSimYear.incomes, currentSimYear.year);
+    const currentPreTax = TaxService.getPreTaxExemptions(currentSimYear.incomes, currentSimYear.year, age);
+    const currentMarginal = TaxService.getCombinedMarginalRate(
+        currentGross, currentPreTax, taxState, currentSimYear.year, assumptions, false
+    );
+
+    // Future rate: prefer first RMD year. Fall back to median retirement rate.
+    const rmdStartAge = getRMDStartAge(birthYear);
+    const rmdSimYear = simulation.find(s => s.year - birthYear >= rmdStartAge);
+
+    let futureRate: number;
+    let futureRateBasis: RothPreTaxAllocation['futureRateBasis'];
+    if (rmdSimYear) {
+        const rmdAge = rmdSimYear.year - birthYear;
+        const rmdGross = TaxService.getGrossIncome(rmdSimYear.incomes, rmdSimYear.year);
+        const rmdPreTax = TaxService.getPreTaxExemptions(rmdSimYear.incomes, rmdSimYear.year, rmdAge);
+        const rmdMarginal = TaxService.getCombinedMarginalRate(
+            rmdGross, rmdPreTax, taxState, rmdSimYear.year, assumptions, false
+        );
+        futureRate = rmdMarginal.combined;
+        futureRateBasis = 'rmd-year';
+    } else {
+        const retirementAge = getRetirementAge(assumptions.milestones);
+        const retirementYear = birthYear + retirementAge;
+        futureRate = getMedianRetirementTaxRate(simulation, retirementYear);
+        futureRateBasis = 'median-retirement';
+    }
+
+    const rateGap = futureRate - currentMarginal.combined;
+    const rothFraction = roth / total;
+
+    let verdict: AllocationVerdict;
+    const SIGNIFICANT_GAP = 0.02; // 2 percentage points
+    if (Math.abs(rateGap) < SIGNIFICANT_GAP) {
+        verdict = 'either-fine';
+    } else if (rateGap > 0) {
+        // Future > today → Roth wins
+        if (rothFraction >= 0.95) verdict = 'optimal';
+        else if (rothFraction >= 0.5) verdict = 'lean-roth';
+        else verdict = 'should-be-roth';
+    } else {
+        // Today > future → Pre-Tax wins
+        if (rothFraction <= 0.05) verdict = 'optimal';
+        else if (rothFraction <= 0.5) verdict = 'lean-pretax';
+        else verdict = 'should-be-pretax';
+    }
+
+    return {
+        current401kSplit: { preTax, roth },
+        totalContribution: total,
+        rothFraction,
+        currentRate: currentMarginal.combined,
+        futureRate,
+        futureRateBasis,
+        rateGap,
+        verdict
+    };
+}
+
+// ============================================================================
+// Conversion Plan Diagnostic
+// ============================================================================
+
+export interface ConversionScheduleEntry {
+    year: number;
+    age: number;
+    amount: number;
+    /** Combined federal + state tax increase from the conversion. FICA excluded (conversions aren't FICA-taxed). */
+    taxCost: number;
+    /** Combined fed + state marginal rate at the top of the conversion */
+    marginalRate: number;
+    /** Federal-only tax cost (for debugging) */
+    federalTaxCost: number;
+    /** State-only tax cost (for debugging) */
+    stateTaxCost: number;
+    /** Traditional 401(k) + IRA balance at the start of this year (for debugging) */
+    traditionalBalanceStart: number;
+    /** What the V2 solver was targeting and any limiting factor (for debugging) */
+    limitingFactor: string | null;
+    /** Bracket space available this year, before conversion (for debugging) */
+    bracketSpaceAvailable: number | null;
+    /** Target bracket ceiling the solver was aiming to fill (0..1, e.g. 0.22 = 22%). Null if no V2 target */
+    targetBracketCeiling: number | null;
+    /** Target Traditional balance the solver is aiming for at RMD age */
+    targetBalanceAtRMD: number | null;
+    /** Projected Traditional balance at RMD age given the current trajectory (compare to target — same = on track) */
+    projectedBalanceAtRMD: number | null;
+}
+
+export interface ConversionPlan {
+    /** True if auto-conversions are active and producing a schedule */
+    hasActiveSchedule: boolean;
+    /** Schedule entries (only populated when hasActiveSchedule is true) */
+    schedule: ConversionScheduleEntry[];
+    /** Total dollars converted across all years */
+    totalConverted: number;
+    /** Total tax paid on conversions */
+    totalTaxCost: number;
+    /** First and last conversion ages (only when schedule is populated) */
+    firstAge: number | null;
+    lastAge: number | null;
+
+    /** Estimated lifetime tax savings if conversions WERE turned on (for the teaser) */
+    estimatedLifetimeSavings: number | null;
+    /** Number of upcoming low-tax years where conversions would help */
+    numLowTaxYears: number;
+}
+
+/**
+ * Inspect the simulation for Roth conversion activity and / or estimate the
+ * opportunity if conversions are not currently running.
+ *
+ * Returns null if the user has no Traditional balance (nothing to convert).
+ */
+export function analyzeConversionPlan(
+    simulation: SimulationYear[],
+    assumptions: AssumptionsState,
+    taxState: TaxState
+): ConversionPlan | null {
+    if (simulation.length === 0 || !assumptions.milestones) return null;
+
+    // Skip if no Traditional balance to work with
+    if (!hasTraditionalRetirementBalance(simulation)) return null;
+
+    const birthYear = getBirthYear(assumptions.milestones);
+
+    // Collect any actual Roth conversions from the simulation (auto or manual).
+    // Read federalTaxCost / stateTaxCost directly from the simulation rather than
+    // recomputing — the engine is the source of truth.
+    const schedule: ConversionScheduleEntry[] = [];
+    let totalConverted = 0;
+    let totalTaxCost = 0;
+    for (let i = 0; i < simulation.length; i++) {
+        const simYear = simulation[i];
+        const conv = simYear.rothConversion;
+        if (!conv || conv.amount <= 0) continue;
+
+        const age = simYear.year - birthYear;
+        const federalTaxCost = conv.federalTaxCost;
+        const stateTaxCost = conv.stateTaxCost;
+        const combinedTaxCost = federalTaxCost + stateTaxCost;
+
+        // Marginal rates: derived from bracket lookups against the year's taxable income
+        // INCLUDING the conversion. Conversions aren't stored as Income objects, so
+        // getGrossIncome doesn't account for them — we have to add conv.amount manually
+        // for the marginal lookup to reflect "the rate at the top of this year's conversion".
+        // (Bracket lookup is direct math — no duplication of tax-cost logic.)
+        const grossIncome = TaxService.getGrossIncome(simYear.incomes, simYear.year);
+        const preTaxDeductions = TaxService.getPreTaxExemptions(simYear.incomes, simYear.year, age);
+        const grossWithConversion = grossIncome + conv.amount;
+
+        let federalMarginal = 0;
+        const fedParams = TaxService.getTaxParameters(
+            simYear.year, taxState.filingStatus, 'federal', undefined, assumptions
+        );
+        if (fedParams) {
+            const fedTaxableIncome = Math.max(0, grossWithConversion - preTaxDeductions - fedParams.standardDeduction);
+            federalMarginal = TaxService.getMarginalTaxRate(fedTaxableIncome, fedParams).rate;
+        }
+
+        let stateMarginal = 0;
+        const stateParams = TaxService.getTaxParameters(
+            simYear.year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions
+        );
+        if (stateParams) {
+            const stateTaxableIncome = Math.max(0, grossWithConversion - preTaxDeductions - (stateParams.standardDeduction || 0));
+            stateMarginal = TaxService.getMarginalTaxRate(stateTaxableIncome, stateParams).rate;
+        }
+        const combinedMarginal = federalMarginal + stateMarginal;
+
+        // Debug: traditional balance at start of year (prior year's ending balance, or current if first year)
+        const priorYear = i > 0 ? simulation[i - 1] : null;
+        const traditionalBalanceStart = priorYear
+            ? getTraditionalBalance(priorYear)
+            : getTraditionalBalance(simYear);
+
+        // Debug: solver-reported bracket diagnostics
+        const target = simYear.taxOptimizationTarget;
+        const limitingFactor = target?.limitingFactor ?? null;
+        const bracketSpaceAvailable = target?.bracketSpaceThisYear ?? null;
+        const targetBracketCeiling = target?.targetBracketCeiling ?? null;
+        const targetBalanceAtRMD = target?.targetTraditionalAtRMD ?? null;
+        // realisticTarget on TaxOptimizationTarget = projected Traditional balance at RMD given the trajectory
+        const projectedBalanceAtRMD = target?.realisticTarget ?? null;
+
+        schedule.push({
+            year: simYear.year,
+            age,
+            amount: conv.amount,
+            taxCost: combinedTaxCost,
+            marginalRate: combinedMarginal,
+            federalTaxCost,
+            stateTaxCost,
+            traditionalBalanceStart,
+            limitingFactor,
+            bracketSpaceAvailable,
+            targetBracketCeiling,
+            targetBalanceAtRMD,
+            projectedBalanceAtRMD
+        });
+        totalConverted += conv.amount;
+        totalTaxCost += combinedTaxCost;
+    }
+    const hasActiveSchedule = schedule.length > 0;
+    const firstAge = hasActiveSchedule ? schedule[0].age : null;
+    const lastAge = hasActiveSchedule ? schedule[schedule.length - 1].age : null;
+
+    // If a schedule is already running, no need to estimate the teaser opportunity
+    if (hasActiveSchedule) {
+        return {
+            hasActiveSchedule,
+            schedule,
+            totalConverted,
+            totalTaxCost,
+            firstAge,
+            lastAge,
+            estimatedLifetimeSavings: null,
+            numLowTaxYears: 0
+        };
+    }
+
+    // No active schedule — estimate the opportunity for the teaser
+    const windows = findRothConversionWindows(simulation, assumptions);
+    if (windows.length === 0) {
+        return {
+            hasActiveSchedule: false,
+            schedule: [],
+            totalConverted: 0,
+            totalTaxCost: 0,
+            firstAge: null,
+            lastAge: null,
+            estimatedLifetimeSavings: 0,
+            numLowTaxYears: 0
+        };
+    }
+
+    // Estimate savings: for each window, the gap between the conversion-year rate
+    // and the projected retirement rate, applied to the optimal conversion amount.
+    // This is intentionally rough — we surface it as "approximately".
+    const retirementAge = getRetirementAge(assumptions.milestones);
+    const retirementYear = birthYear + retirementAge;
+    const retirementRate = getMedianRetirementTaxRate(simulation, retirementYear);
+
+    const estimatedLifetimeSavings = windows.reduce((sum, w) => {
+        const rateGap = Math.max(0, retirementRate - w.marginalRate);
+        return sum + w.optimalConversionAmount * rateGap;
+    }, 0);
+
+    return {
+        hasActiveSchedule: false,
+        schedule: [],
+        totalConverted: 0,
+        totalTaxCost: 0,
+        firstAge: null,
+        lastAge: null,
+        estimatedLifetimeSavings,
+        numLowTaxYears: windows.length
+    };
 }
 
 // ============================================================================

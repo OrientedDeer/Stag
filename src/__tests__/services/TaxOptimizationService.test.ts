@@ -16,6 +16,7 @@ import {
     getMedianRetirementTaxRate,
     findRothConversionWindows,
     generateTaxProjections,
+    analyzeConversionPlan,
     TaxAnalysis,
     // Helper functions
     get401kContributions,
@@ -118,6 +119,8 @@ function createMockSimulationYear(overrides: Partial<{
         rothConversion: overrides.rothConversionTaxCost !== undefined ? {
             amount: 10000,
             taxCost: overrides.rothConversionTaxCost,
+            federalTaxCost: overrides.rothConversionTaxCost,
+            stateTaxCost: 0,
             taxAfter: fedTax,
             fromAccounts: {},
             toAccounts: {},
@@ -1966,6 +1969,151 @@ describe('calculateContributionTaxSavings', () => {
             const result = calculateContributionTaxSavings(0, 23000, 0.37);
             expect(result.additionalContribution).toBe(23000);
             expect(result.taxSavings).toBe(8510); // 23000 * 0.37
+        });
+    });
+});
+
+// ============================================================================
+// analyzeConversionPlan Tests
+// ============================================================================
+// Regression tests for analyzer-side display bugs.
+// ============================================================================
+
+describe('analyzeConversionPlan', () => {
+    /**
+     * Build a minimal simulation containing a single conversion year.
+     * Used to verify analyzer display logic — the simulation values are
+     * stipulated, not produced by running the engine.
+     */
+    function buildSimulationWithConversion(opts: {
+        year: number;
+        otherIncome: number;          // pre-conversion taxable income source
+        conversionAmount: number;
+        federalTaxCost: number;
+        stateTaxCost: number;
+        traditionalBalance: number;
+    }): SimulationYear[] {
+        const {
+            year, otherIncome, conversionAmount,
+            federalTaxCost, stateTaxCost, traditionalBalance
+        } = opts;
+
+        const otherIncomeObj = otherIncome > 0
+            ? new PassiveIncome(
+                'rental-1', 'Rental', otherIncome, 'Annually',
+                'No', 'Rental', new Date(`${year}-01-01`)
+            )
+            : null;
+
+        const traditional = new InvestedAccount(
+            'trad-1', 'Traditional IRA', traditionalBalance,
+            0, 10, 0.07, 'Traditional IRA'
+        );
+
+        return [{
+            year,
+            incomes: otherIncomeObj ? [otherIncomeObj] : [],
+            expenses: [],
+            accounts: [traditional],
+            cashflow: {
+                totalIncome: otherIncome,
+                totalExpense: 0,
+                livingExpenses: 0,
+                discretionary: 0,
+                investedUser: 0,
+                investedMatch: 0,
+                totalInvested: 0,
+                bucketAllocations: 0,
+                bucketDetail: {},
+                withdrawals: 0,
+                withdrawalDetail: {},
+            },
+            taxDetails: {
+                fed: federalTaxCost,
+                state: stateTaxCost,
+                fica: 0,
+                preTax: 0,
+                insurance: 0,
+                postTax: 0,
+                capitalGains: 0,
+                withdrawalOrdinaryTax: 0,
+                niit: 0,
+            },
+            logs: [],
+            rothConversion: {
+                amount: conversionAmount,
+                taxCost: federalTaxCost + stateTaxCost,
+                federalTaxCost,
+                stateTaxCost,
+                taxAfter: federalTaxCost,
+                fromAccounts: { 'Traditional IRA': conversionAmount },
+                toAccounts: { 'Roth IRA': conversionAmount },
+                fromAccountIds: { 'trad-1': conversionAmount },
+                toAccountIds: { 'roth-1': conversionAmount },
+            },
+        }];
+    }
+
+    describe('marginal-rate display (regression: bug where marginal showed pre-conversion bracket)', () => {
+        // 2025 single brackets:
+        //   0 – 11,600    : 10%
+        //   11,600 – 47,150  : 12%
+        //   47,150 – 100,525 : 22%
+        // Standard deduction: $15,000
+        //
+        // Scenario: $10k other income, $80k conversion, Single TX (no state tax).
+        // Pre-conversion taxable = max(0, 10k - 15k) = $0  → marginal at $0 = 10%
+        // Post-conversion taxable = max(0, 90k - 15k) = $75k → marginal at $75k = 22%
+        //
+        // The displayed marginal must reflect the post-conversion bracket (22%) so it
+        // can never be lower than the effective rate.
+        it('reflects the post-conversion federal bracket, not the pre-conversion one', () => {
+            const taxState = createTestTaxState({ stateResidency: 'Texas' });
+            const assumptions = createTestAssumptions({ birthYear: 1980 });
+            const simulation = buildSimulationWithConversion({
+                year: 2025,
+                otherIncome: 10000,
+                conversionAmount: 80000,
+                federalTaxCost: 11587, // approximate ordinary tax on $75k taxable for single 2025
+                stateTaxCost: 0,
+                traditionalBalance: 500000,
+            });
+
+            const plan = analyzeConversionPlan(simulation, assumptions, taxState);
+
+            expect(plan).not.toBeNull();
+            expect(plan!.hasActiveSchedule).toBe(true);
+            expect(plan!.schedule).toHaveLength(1);
+
+            const entry = plan!.schedule[0];
+            expect(entry.amount).toBe(80000);
+
+            // Marginal must reflect the bracket the LAST converted dollar landed in.
+            // For this scenario, that's the 22% federal bracket (Texas has no state tax).
+            expect(entry.marginalRate).toBeCloseTo(0.22, 2);
+
+            // Sanity: effective rate ≤ marginal rate, since marginal is the rate at the
+            // top of the conversion and effective is the average across it.
+            const effectiveRate = entry.taxCost / entry.amount;
+            expect(effectiveRate).toBeLessThanOrEqual(entry.marginalRate + 0.001);
+        });
+
+        it('marginal stays in the single bracket when the conversion does not cross one', () => {
+            const taxState = createTestTaxState({ stateResidency: 'Texas' });
+            const assumptions = createTestAssumptions({ birthYear: 1980 });
+            // $10k other + $20k conversion = $30k gross. After $15k std ded → $15k taxable.
+            // $15k is in the 12% bracket → marginal should be 12%.
+            const simulation = buildSimulationWithConversion({
+                year: 2025,
+                otherIncome: 10000,
+                conversionAmount: 20000,
+                federalTaxCost: 1800,
+                stateTaxCost: 0,
+                traditionalBalance: 200000,
+            });
+
+            const plan = analyzeConversionPlan(simulation, assumptions, taxState);
+            expect(plan!.schedule[0].marginalRate).toBeCloseTo(0.12, 2);
         });
     });
 });

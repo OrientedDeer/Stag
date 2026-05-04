@@ -46,7 +46,147 @@ export function extractBaselineProjections(
             (inc as any).className === 'PensionIncome')
         .reduce((sum, inc) => sum + (inc.getAnnualAmount?.(rmdYear) ?? 0), 0);
 
-    return { traditionalBalanceAtRMD, ssAtRMD, pensionAtRMD, rmdYear };
+    // Get passive income at RMD year (rental, dividends, interest — excludes RMD-sourced).
+    // This matches the filter YearSolver uses for current-year passive, so the projection
+    // is consistent with what the ceiling calculator expects.
+    const passiveAtRMD = rmdYearData.incomes
+        .filter(inc =>
+            (inc as any).className === 'PassiveIncome' &&
+            (inc as any).sourceType !== 'RMD')
+        .reduce((sum, inc) => sum + (inc.getAnnualAmount?.(rmdYear) ?? 0), 0);
+
+    return { traditionalBalanceAtRMD, ssAtRMD, pensionAtRMD, passiveAtRMD, rmdYear };
+}
+
+/**
+ * Per-year forward projection sub-simulation.
+ *
+ * Runs from `currentSimYear` forward to the user's RMD year, doing only
+ * standard-deduction-headroom (0% bracket) Roth conversions. Returns the
+ * BaselineProjections snapshot at RMD year, which the main sim feeds into
+ * the rate-match algorithm so that "future marginal rate at RMD" is
+ * decoupled from the live, depleting Traditional balance.
+ *
+ * Capped at the RMD year per user direction — only `traditionalBalanceAtRMD`
+ * (and SS/pension/passive at RMD) feed back into the main sim, so projecting
+ * past that point is wasted work.
+ *
+ * Recursion guard: this sub-sim runs in 'std-ded-only' mode, which makes
+ * `calculateDynamicConversionCeiling` short-circuit and never re-enter
+ * `runProjectionSubsim`.
+ */
+function runProjectionSubsim(
+    currentSimYear: number,
+    currentAccounts: AnyAccount[],
+    currentIncomes: AnyIncome[],
+    currentExpenses: AnyExpense[],
+    timelineSoFar: SimulationYear[],
+    previousActiveMilestones: string[],
+    milestoneReachYears: Map<string, number>,
+    assumptions: AssumptionsState,
+    taxState: TaxState,
+    birthYear: number
+): BaselineProjections | undefined {
+    const rmdYear = birthYear + getRMDStartAge(birthYear);
+    const yearsToProject = rmdYear - currentSimYear;
+    if (yearsToProject <= 0) return undefined;
+
+    // Shallow-copy in-flight collections so the sub-sim doesn't mutate main-sim
+    // state (account `amount` etc. are mutated in place by simulateOneYear).
+    // Account/income/expense classes are reconstituted by their respective
+    // domain reconstitute functions; here we just copy the array references and
+    // rely on simulateOneYear to produce new instances per year.
+    const subTimeline: SimulationYear[] = [...timelineSoFar];
+    runSimulationLoop({
+        previousSimYear: currentSimYear,
+        yearsToRun: yearsToProject,
+        currentAccounts: [...currentAccounts],
+        currentIncomes: [...currentIncomes],
+        currentExpenses: [...currentExpenses],
+        timeline: subTimeline,
+        previousActiveMilestones: [...previousActiveMilestones],
+        milestoneReachYears: new Map(milestoneReachYears),
+        assumptions,
+        taxState,
+        conversionMode: 'std-ded-only',
+        // No baselineProvider — std-ded-only mode short-circuits rate-match,
+        // so a baseline projection would be unused. This also breaks any
+        // theoretical recursion.
+    });
+
+    return extractBaselineProjections(subTimeline, birthYear) ?? undefined;
+}
+
+/**
+ * Per-year loop body extracted from `runSimulation`. Lets the main sim and
+ * `runProjectionSubsim` share the same iteration logic without re-running
+ * year-0 setup (year-0 synthesis, partial-year payroll, EOY projection
+ * injection) on mid-trajectory state.
+ */
+function runSimulationLoop(args: {
+    previousSimYear: number;
+    yearsToRun: number;
+    currentAccounts: AnyAccount[];
+    currentIncomes: AnyIncome[];
+    currentExpenses: AnyExpense[];
+    timeline: SimulationYear[];
+    previousActiveMilestones: string[];
+    milestoneReachYears: Map<string, number>;
+    assumptions: AssumptionsState;
+    taxState: TaxState;
+    yearlyReturns?: number[];
+    conversionMode: 'rate-match' | 'std-ded-only';
+    baselineProvider?: (
+        simulationYear: number,
+        currentAccounts: AnyAccount[],
+        currentIncomes: AnyIncome[],
+        currentExpenses: AnyExpense[],
+        timeline: SimulationYear[],
+        previousActiveMilestones: string[],
+        milestoneReachYears: Map<string, number>,
+    ) => BaselineProjections | undefined;
+}): void {
+    let { currentAccounts, currentIncomes, currentExpenses, previousActiveMilestones } = args;
+    const { milestoneReachYears, timeline, assumptions, taxState, yearlyReturns,
+            previousSimYear, yearsToRun, conversionMode, baselineProvider } = args;
+
+    for (let i = 1; i <= yearsToRun; i++) {
+        const simulationYear = previousSimYear + i;
+        const returnOverride = yearlyReturns ? yearlyReturns[i - 1] : undefined;
+
+        const baseline = baselineProvider?.(
+            simulationYear, currentAccounts, currentIncomes, currentExpenses,
+            timeline, previousActiveMilestones, milestoneReachYears,
+        );
+
+        const result = simulateOneYear(
+            simulationYear,
+            currentIncomes,
+            currentExpenses,
+            currentAccounts,
+            assumptions,
+            taxState,
+            timeline,
+            returnOverride,
+            previousActiveMilestones,
+            milestoneReachYears,
+            baseline,
+            conversionMode
+        );
+
+        timeline.push(result);
+
+        currentIncomes = result.incomes;
+        currentExpenses = result.expenses;
+        currentAccounts = result.accounts;
+        previousActiveMilestones = result.activeMilestones || [];
+
+        result.milestoneEvents?.forEach(event => {
+            if (!milestoneReachYears.has(event.milestoneId)) {
+                milestoneReachYears.set(event.milestoneId, event.yearReached);
+            }
+        });
+    }
 }
 
 export const runSimulation = (
@@ -58,7 +198,8 @@ export const runSimulation = (
     taxState: TaxState,
     yearlyReturns?: number[],
     referenceDate?: Date,
-    baselineProjections?: BaselineProjections
+    conversionMode: 'rate-match' | 'std-ded-only' = 'rate-match',
+    useRollingBaseline: boolean = false
 ): SimulationYear[] => {
         
     // Calculate start year and current age from birth year
@@ -247,62 +388,68 @@ export const runSimulation = (
     }
 
     // --- STEP 2: RUN FUTURE SIMULATION ---
-    let currentIncomes = yearZero.incomes;
-    let currentExpenses = yearZero.expenses;
-    let currentAccounts: AnyAccount[] = adjustedAccounts;
-    let previousActiveMilestones: string[] = [];
-    let milestoneReachYears: Map<string, number> = new Map();
+    // Build the rolling baseline provider when in rate-match mode and rolling
+    // baselines are requested (used by `runSimulationWithOptimization`). Each
+    // year, the provider runs a forward sub-sim from the in-flight state to RMD
+    // year doing only std-ded-headroom conversions, then extracts baseline
+    // projections to feed into the rate-match conversion ceiling. This decouples
+    // "future marginal at RMD" from the live, depleting Trad balance.
+    const rmdYear = birthYear + getRMDStartAge(birthYear);
+    const baselineProvider = useRollingBaseline
+        && conversionMode === 'rate-match'
+        && assumptions.investments.taxOptimizationEnabled
+        ? (
+            simulationYear: number,
+            subAccounts: AnyAccount[],
+            subIncomes: AnyIncome[],
+            subExpenses: AnyExpense[],
+            subTimeline: SimulationYear[],
+            subActiveMilestones: string[],
+            subReachYears: Map<string, number>,
+        ) => {
+            if (simulationYear >= rmdYear) return undefined;
+            return runProjectionSubsim(
+                simulationYear - 1, // sub-sim starts AFTER previous year, ends at rmdYear
+                subAccounts, subIncomes, subExpenses,
+                subTimeline, subActiveMilestones, subReachYears,
+                assumptions, taxState, birthYear,
+            );
+        }
+        : undefined;
 
-    // CHANGED: Use effectiveYearsToRun instead of yearsToRun
-    for (let i = 1; i <= effectiveYearsToRun; i++) {
-        const simulationYear = startYear + i;
-
-        // Get return override for this year (if Monte Carlo mode)
-        // yearlyReturns[0] is for year 1, yearlyReturns[1] is for year 2, etc.
-        const returnOverride = yearlyReturns ? yearlyReturns[i - 1] : undefined;
-        const result = simulateOneYear(
-            simulationYear,
-            currentIncomes,
-            currentExpenses,
-            currentAccounts,
-            assumptions,
-            taxState,
-            timeline,  // Pass previous simulation history for SS calculation
-            returnOverride,
-            previousActiveMilestones,
-            milestoneReachYears,
-            baselineProjections
-        );
-
-        timeline.push(result);
-
-        currentIncomes = result.incomes;
-        currentExpenses = result.expenses;
-        currentAccounts = result.accounts;
-        previousActiveMilestones = result.activeMilestones || [];
-
-        // Track when each milestone was first reached
-        result.milestoneEvents?.forEach(event => {
-            if (!milestoneReachYears.has(event.milestoneId)) {
-                milestoneReachYears.set(event.milestoneId, event.yearReached);
-            }
-        });
-    }
+    runSimulationLoop({
+        previousSimYear: startYear,
+        yearsToRun: effectiveYearsToRun,
+        currentAccounts: adjustedAccounts,
+        currentIncomes: yearZero.incomes,
+        currentExpenses: yearZero.expenses,
+        timeline,
+        previousActiveMilestones: [],
+        milestoneReachYears: new Map(),
+        assumptions,
+        taxState,
+        yearlyReturns,
+        conversionMode,
+        baselineProvider,
+    });
 
     return timeline;
 };
 
 /**
- * Run simulation with two-pass optimization for accurate Roth conversion decisions.
+ * Run simulation with rolling per-year baseline sub-simulations for accurate
+ * Roth conversion decisions.
  *
- * Pass 1: Run WITHOUT Roth conversions to get accurate baseline projections
- *         (Traditional balance, SS, pension at RMD age with all contributions/COLA)
+ * For each year of the main run, before deciding the conversion ceiling, a
+ * forward sub-simulation projects from the in-flight state to RMD year doing
+ * only standard-deduction-headroom (0% bracket) conversions. The resulting
+ * `traditionalBalanceAtRMD` (and SS/pension/passive at RMD) feed into the
+ * rate-match algorithm, decoupling "future marginal rate at RMD" from the
+ * live, depleting Trad balance. This replaces the older two-pass approach
+ * that used a single zero-conversion baseline for the entire run.
  *
- * Pass 2: Run WITH conversions, using Pass 1 projections to make informed decisions
- *
- * This produces more accurate conversion recommendations because it uses actual
- * simulated values instead of naive projections that miss future contributions,
- * COLA adjustments, and pre-RMD withdrawals.
+ * When tax optimization is disabled, this falls through to a plain
+ * single-pass `runSimulation` with no baselines and no conversions.
  */
 export const runSimulationWithOptimization = (
     yearsToRun: number = 30,
@@ -314,37 +461,10 @@ export const runSimulationWithOptimization = (
     yearlyReturns?: number[],
     referenceDate?: Date
 ): SimulationYear[] => {
-    // Only do two-pass if tax optimization is enabled
-    if (!assumptions.investments.taxOptimizationEnabled) {
-        return runSimulation(
-            yearsToRun, accounts, incomes, expenses, assumptions, taxState,
-            yearlyReturns, referenceDate
-        );
-    }
-
-    const birthYear = getBirthYear(assumptions.milestones);
-
-    // PASS 1: Run WITHOUT Roth conversions to get baseline projections
-    const baselineAssumptions: AssumptionsState = {
-        ...assumptions,
-        investments: {
-            ...assumptions.investments,
-            taxOptimizationEnabled: false,  // Disable conversions for baseline
-            autoRothConversions: false,
-        }
-    };
-
-    const baselineSimulation = runSimulation(
-        yearsToRun, accounts, incomes, expenses, baselineAssumptions, taxState,
-        yearlyReturns, referenceDate
-    );
-
-    // EXTRACT baseline projections from Pass 1
-    const baselineProjections = extractBaselineProjections(baselineSimulation, birthYear);
-
-    // PASS 2: Run WITH conversions, using baseline projections
     return runSimulation(
         yearsToRun, accounts, incomes, expenses, assumptions, taxState,
-        yearlyReturns, referenceDate, baselineProjections ?? undefined
+        yearlyReturns, referenceDate,
+        /* conversionMode */ 'rate-match',
+        /* useRollingBaseline */ true,
     );
 };

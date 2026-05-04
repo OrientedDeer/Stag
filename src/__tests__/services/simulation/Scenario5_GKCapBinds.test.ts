@@ -252,10 +252,13 @@ describe('Scenario 5: Level 2 - Solver Tests', () => {
         };
     });
 
-    it('should solve in 1-2 iterations', () => {
+    it('should solve in a small number of iterations', () => {
         const yearPlan = solveRetirementYear(solverInput);
 
-        expect(yearPlan.iterations).toBeLessThanOrEqual(2);
+        // Pre-fix this scenario skipped conversion entirely (1-2 iterations).
+        // Post-fix the free-conversion path runs through bracket/SS-torpedo
+        // search, so a few more iterations are expected.
+        expect(yearPlan.iterations).toBeLessThanOrEqual(8);
         expect(yearPlan.converged).toBe(true);
     });
 
@@ -309,42 +312,46 @@ describe('Scenario 5: Level 2 - Solver Tests', () => {
         }
     });
 
-    it('should have total tax of $0', () => {
-        // Per spec: Total tax = $0
-        // SS at 0% taxable (below threshold), LTCG at 0% rate
+    it('should have low federal tax (free or small conversion fills standard deduction)', () => {
+        // Originally expected $0 tax. With the free-conversion exception + std-ded
+        // floor, the algorithm now does small conversions in low-income years
+        // (current marginal rate is effectively 0% under the standard deduction).
+        // A small amount of SS may become taxable via the SS torpedo as the
+        // conversion increases provisional income, producing a small tax.
+        // This is a positive-EV trade (paying ~10% on a few thousand to dodge
+        // higher RMD-age rates), so we accept it.
         const yearPlan = solveRetirementYear(solverInput);
 
-        expect(yearPlan.tax.federal).toBe(0);
-        expect(yearPlan.tax.state).toBe(0);
+        // Tax should still be small — current rate is effectively 0% before the
+        // SS-torpedo bump
+        expect(yearPlan.tax.federal).toBeLessThan(2000);
+        expect(yearPlan.tax.state).toBe(0); // Texas, no state tax
     });
 
-    it('should have SS at 0% taxable due to low provisional income', () => {
-        // Per spec: LTCG ($4,250) added to provisional income → SS still 0% taxable
-        // Provisional = other income + 0.5 × SS = $17k (withdrawal) + $12.5k = $29.5k
-        // But with no other ordinary income beyond SS, provisional is just 0.5 × SS = $12.5k
-        // $12.5k < $25k threshold → 0% taxable
+    it('should keep SS taxability low (provisional income stays modest after free conversion)', () => {
+        // With a small free conversion, provisional income may push slightly
+        // past the first SS threshold ($25k single), making a small portion
+        // of SS taxable. But total SS tax remains well below 85%-of-SS scenarios.
         const yearPlan = solveRetirementYear(solverInput);
 
-        // No federal tax means SS was not taxable
-        expect(yearPlan.tax.federal).toBe(0);
+        // Federal tax should remain small (< $2k) — most of SS still untaxed
+        expect(yearPlan.tax.federal).toBeLessThan(2000);
     });
 
-    it('should log conversion skip when projected balance below target', () => {
-        // Per spec: Conversion skip logged when projected balance at RMD is below target
+    it('should not skip conversion entirely when standard-deduction headroom exists', () => {
+        // Pre-fix behavior: skip entirely when projected ≤ target → log
+        // "below target". Post-fix: with std-ded headroom, free conversions
+        // are allowed even when below target, so the skip log does NOT fire.
         const yearPlan = solveRetirementYear(solverInput);
 
-        // Find decision that explains conversion was skipped due to projected balance below target
-        // The message now uses "Projected balance at RMD" instead of "Traditional balance"
-        // because we compare projected future balance, not current balance
         const skipDecision = yearPlan.decisions.find(
             d => d.category === 'conversion' &&
-                 d.description.toLowerCase().includes('projected balance') &&
+                 d.description.toLowerCase().includes('skipped') &&
                  d.description.toLowerCase().includes('below target')
         );
 
-        // Should have decision explaining why conversion was skipped
-        // Projected balance at RMD (~$168k from $120k × 1.05^7) < target (~$952k)
-        expect(skipDecision).toBeDefined();
+        // Should NOT have skipped — free conversion is allowed
+        expect(skipDecision).toBeUndefined();
     });
 
     it('should use $42k fixed expenses (not $38k GK cap)', () => {
@@ -435,15 +442,22 @@ describe('Scenario 5: Level 2 - Solver Tests', () => {
         expect(gkWarning!.description).toMatch(/fixed|guardrail|exceed/i);
     });
 
-    it('should have zero conversion (Traditional below target)', () => {
-        // Per spec: Traditional ($120k) < target ($416k) → no conversion
+    it('should do a small free conversion (filling std-ded headroom)', () => {
+        // Originally expected zero conversion because Trad ($120k) < the 22%
+        // target balance. Post-fix: target is the std-ded floor (effectively
+        // $0 here because SS exceeds the deduction), so conversion proceeds.
+        // The conversion ceiling is 0% (peak RMD lands in 12% bracket per
+        // three-tier mapping), so the conversion is capped at std-ded headroom.
+        // Result: a modest free or near-free conversion.
         const yearPlan = solveRetirementYear(solverInput);
 
-        // Conversion should be null or $0
+        // Conversion should now be non-null with a reasonable amount
+        expect(yearPlan.conversion).not.toBeNull();
         if (yearPlan.conversion) {
-            expect(yearPlan.conversion.amount).toBe(0);
-        } else {
-            expect(yearPlan.conversion).toBeNull();
+            expect(yearPlan.conversion.amount).toBeGreaterThan(0);
+            // Should be capped by std-ded headroom (current ordinary income is
+            // ~$0, std ded is ~$15k). Allowing some slack for SS-torpedo logic.
+            expect(yearPlan.conversion.amount).toBeLessThan(30000);
         }
     });
 });
