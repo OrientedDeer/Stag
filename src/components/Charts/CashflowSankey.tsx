@@ -2,7 +2,7 @@ import { useMemo, useContext, useCallback, Component, ReactNode, useState, useEf
 import { ResponsiveSankey } from '@nivo/sankey';
 import { WorkIncome, AnyIncome, PassiveIncome } from '../Objects/Income/models';
 import { MortgageExpense, AnyExpense, CLASS_TO_CATEGORY } from '../Objects/Expense/models';
-import { AnyAccount } from '../Objects/Accounts/models';
+import { AnyAccount, InvestedAccount } from '../Objects/Accounts/models';
 import { AssumptionsContext } from '../Objects/Assumptions/AssumptionsContext';
 import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
 import { CashflowDetail } from '../../services/simulation/types';
@@ -257,19 +257,40 @@ export const CashflowSankey = ({
             const mortgageInterestAndEscrow = totalMortgagePayment - totalPrincipal;
             const totalTaxes = taxes.fed + taxes.state + taxes.fica + (taxes.capitalGains || 0) + (taxes.withdrawalOrdinaryTax || 0) + (taxes.niit || 0);
             const totalBucketSavings = Object.values(bucketAllocations).reduce((a, b) => a + b, 0);
-            const totalWithdrawals = Object.values(withdrawals).reduce((a, b) => a + b, 0);
 
-            // Withdrawals flow into Gross Pay at their gross amount. LTCG tax is captured
-            // separately in the Taxes outflow — the gross withdrawal was sized to cover it,
-            // so subtracting it from cash-in here would double-count.
-            //
+            // Brokerage LTCG paid out of the gross-up never lands as user cash — the
+            // planner routes it directly to the government. Subtract from brokerage
+            // withdrawal entries so the cash inflow shown to the user is the net
+            // they actually received. (The LTCG tax outflow in the Taxes node still
+            // shows the auth LTCG separately for visibility.) When the planner uses
+            // a 0% LTCG rate, brokerageLTCGFromGross is 0 and this is a no-op.
+            const brokerageLTCGFromGross = cashflowDetail?.brokerageLTCGFromGross ?? 0;
+            const brokerageNames = new Set(
+                accounts
+                    .filter(acc => acc instanceof InvestedAccount && acc.taxType === 'Brokerage')
+                    .map(acc => acc.name)
+            );
+            const brokerageGrossTotal = Object.entries(withdrawals)
+                .filter(([name]) => brokerageNames.has(name))
+                .reduce((sum, [, amt]) => sum + amt, 0);
+            const withdrawalsNet: Record<string, number> = {};
+            for (const [name, gross] of Object.entries(withdrawals)) {
+                if (brokerageNames.has(name) && brokerageGrossTotal > 0) {
+                    const share = gross / brokerageGrossTotal;
+                    withdrawalsNet[name] = gross - brokerageLTCGFromGross * share;
+                } else {
+                    withdrawalsNet[name] = gross;
+                }
+            }
+            const netWithdrawals = Object.values(withdrawalsNet).reduce((a, b) => a + b, 0);
+
             // Roth conversions flow through Gross Pay → Net Pay for visualization (shows tax
             // impact), but they are NOT subtracted from remaining because they're internal
             // transfers, not spendable cash outflows.
             const rothConversionAmount = rothConversion?.amount || 0;
 
             // --- Waterfall Math ---
-            const grossPayNodeValue = grossPayCalculated + totalEmployerMatch + totalWithdrawals + rothConversionAmount;
+            const grossPayNodeValue = grossPayCalculated + totalEmployerMatch + netWithdrawals + rothConversionAmount;
             const totalTradSavings = employee401k + totalEmployerMatchForTrad;
             const totalRothSavings = employeeRoth + totalEmployerMatchForRoth;
 
@@ -331,8 +352,10 @@ export const CashflowSankey = ({
                 nodes.push({ id: item.name, color: '#06b6d4', label: item.name }); // Cyan color for reinvested
             });
 
-            // Withdrawals (sorted by account name for stability)
-            const withdrawalItems = Object.entries(withdrawals)
+            // Withdrawals (sorted by account name for stability). Use net amounts
+            // (gross - LTCG-from-gross-up share) so per-account inflow links to
+            // Gross Pay sum to the same gross-pay total used in the waterfall math.
+            const withdrawalItems = Object.entries(withdrawalsNet)
                 .filter(([_, amount]) => amount >= MIN_DISPLAY_THRESHOLD)
                 .sort(([a], [b]) => a.localeCompare(b));
 

@@ -1,6 +1,6 @@
 import { useContext, useEffect, useCallback, useState, useMemo } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
-import { AssumptionsContext, WithdrawalBucket, getBirthYear, getRetirementAge, getLifeExpectancy } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsContext, WithdrawalBucket, getBirthYear, getLifeExpectancy } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { AccountContext } from '../../components/Objects/Accounts/AccountContext';
 import { IncomeContext } from '../../components/Objects/Income/IncomeContext';
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';

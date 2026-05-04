@@ -466,37 +466,34 @@ function simulateOneYearWithNewEngine(
     const totalTax = yearPlan.tax.total;
 
     // ------------------------------------------------------------------
-    // SANKEY CASH ACCOUNTING (Fix A + Fix B)
+    // SANKEY CASH ACCOUNTING (Fix A + Fix B + Fix C)
     // ------------------------------------------------------------------
     // Fix A: Use solver's spendable income (excludes reinvested dividends which aren't cash)
     // Fix B: Subtract bucket allocations (counted separately in Sankey outflows)
+    // Fix C: Subtract the planner's LTCG tax baked into the brokerage gross-up.
     //
     // Sankey equation: inflows = outflows
-    //   inflows = spendableIncome + withdrawals
+    //   inflows = spendableIncome + withdrawals - brokerageLTCGFromGross
     //   outflows = expenses + taxes + invested + bucketAllocations + discretionary
     //
-    // Note: totalGrossIncome includes reinvested dividends which are taxable but NOT cash.
-    // The solver's spendable income correctly excludes these.
+    // The solver's spendable income correctly excludes reinvested dividends (taxable but not cash).
     const spendableIncome = yearPlan.income.spendable;
     //
-    // LTCG NOTE — do NOT subtract capitalGainsLT here.
+    // LTCG NOTE: planner's LTCG (sum of w.tax for brokerage/ESPP) is paid directly to the
+    // government from the brokerage gross-up — it never reaches user cash. Subtracting it
+    // here mirrors YearSolver Step F's `actualLTCGTax` subtraction in `cashIn`. Without this,
+    // a phantom surplus equal to the LTCG tax appears in `trueUserSaved` (showing up as
+    // "investedUser" during retirement years even when there's $0 income).
     //
-    // The withdrawal planner grosses up brokerage withdrawals using its estimated LTCG rate.
-    // The authoritative LTCG tax (yearPlan.tax.capitalGainsLT) is computed separately by the
-    // YearSolver's bracket-stacking calculation and is baked into totalTax / the deficit.
-    //
-    // These two values often differ:
-    //   - Planner rate = 0%, auth LTCG > 0:  gross == deficit (no gross-up), auth LTCG already
-    //     funded by the withdrawal. Subtracting auth LTCG here creates a false deficit equal to
-    //     the LTCG tax (e.g. -$707 showing as negative contributions).
-    //   - Planner rate > 0%, auth LTCG = 0:  gross > deficit by w.tax_planner. trueUserSaved
-    //     absorbs this overshoot, keeping the Sankey balanced. YearSolver already prevents the
-    //     overshoot from being allocated to accounts via its own Step-F actualLTCGTax subtraction.
-    //
-    // In both cases, the right formula is simply: cashAvailable = spendable + gross_withdrawals.
-    // The Sankey stays balanced because totalTax (outflow) and the gross withdrawal (inflow)
-    // are always consistent — they were sized together in the solver loop.
-    const totalCashAvailable = spendableIncome + withdrawalState.totalWithdrawals;
+    // When planner rate is 0% (low ordinary income) there's no gross-up, sum is 0, no
+    // change. Auth LTCG in that case is captured by `unfundedDeficit` instead.
+    const brokerageLTCGFromGross = yearPlan.withdrawals
+        .filter(w => w.capitalGains !== undefined)
+        .reduce((sum, w) => sum + w.tax, 0);
+    const totalCashAvailable =
+        spendableIncome
+        + withdrawalState.totalWithdrawals
+        - brokerageLTCGFromGross;
     const totalBucketAllocationsForSankey = totalSurplusAllocations + inflowResult.totalBucketAllocations;
     // Use solver's actual expenses (yearPlan.totalExpenses) which reflects GK budget trimming,
     // not the pre-trim totalLivingExpenses. Otherwise the Sankey equation is unbalanced when
@@ -534,6 +531,7 @@ function simulateOneYearWithNewEngine(
         accounts: nextAccounts,
         insurance: totalInsuranceCost,
         year,
+        brokerageLTCGFromGross,
     });
 
     // ------------------------------------------------------------------

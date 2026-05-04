@@ -42,6 +42,21 @@ export interface CashflowDetail {
     mortgageInterestEscrow: number;
     /** Living expense totals by category (excludes mortgage; mortgage is split above). */
     expensesByCategory: Record<string, number>;
+    /**
+     * Long-term capital gains tax that the planner withheld from a brokerage/ESPP
+     * gross-up. Conceptually this dollar amount never reached the user — the
+     * brokerage routes it directly to the government when sizing the gross-up.
+     *
+     * Equals `sum(w.tax)` over withdrawals with `capitalGains` set. The Sankey
+     * chart subtracts this from gross withdrawals on the inflow side so it
+     * doesn't appear as residual "remaining" cash; SimulationEngine subtracts it
+     * from `totalCashAvailable` when computing `trueUserSaved`, mirroring
+     * YearSolver Step F's `actualLTCGTax` subtraction in `cashIn`.
+     *
+     * Zero when planner LTCG rate is 0 (low ordinary income) since no gross-up
+     * was applied; auth LTCG in that case is captured by `unfundedDeficit`.
+     */
+    brokerageLTCGFromGross: number;
 }
 
 // Define the shape of a single year's result

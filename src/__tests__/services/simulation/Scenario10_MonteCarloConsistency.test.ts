@@ -724,16 +724,23 @@ describe('Scenario 10: Level 4 - Monte Carlo Simulation', () => {
             const cf = year.cashflow;
 
             // Per spec: Sankey must balance within $1
-            // Inflows = Income + Withdrawals
+            // Inflows = Income + Withdrawals (net of LTCG paid via brokerage gross-up)
             // Outflows = Expenses + Taxes + Investments + Bucket allocations + Surplus/Deficit
             //
             // The Sankey balance equation:
-            // inflows = totalIncome + withdrawals
+            // inflows = totalIncome + withdrawals - brokerageLTCGFromGross
             // outflows = totalExpense + totalInvested + bucketAllocations + discretionary (surplus)
             //
-            // Note: discretionary can be negative (unfunded deficit) which still balances
+            // brokerageLTCGFromGross is the planner's LTCG that was paid directly to the
+            // government from the brokerage gross-up — it never reaches user cash, so it
+            // shouldn't count as inflow. (Mirrors YearSolver Step F's actualLTCGTax subtraction
+            // in cashIn.) When planner LTCG rate is 0%, this is 0 and the equation reduces to
+            // the previous form.
+            //
+            // Note: discretionary can be negative (unfunded deficit) which still balances.
 
-            const inflows = cf.totalIncome + cf.withdrawals;
+            const ltcgFromGross = year.cashflowDetail?.brokerageLTCGFromGross ?? 0;
+            const inflows = cf.totalIncome + cf.withdrawals - ltcgFromGross;
             const outflows = cf.totalExpense + cf.totalInvested + cf.bucketAllocations + cf.discretionary;
 
             const imbalance = Math.abs(inflows - outflows);
@@ -917,7 +924,9 @@ describe('Scenario 10: Level 4 - Monte Carlo Simulation', () => {
             for (const year of data.timeline) {
                 const cf = year.cashflow;
 
-                const inflows = cf.totalIncome + cf.withdrawals;
+                // See worst-case test above for Sankey balance equation rationale.
+                const ltcgFromGross = year.cashflowDetail?.brokerageLTCGFromGross ?? 0;
+                const inflows = cf.totalIncome + cf.withdrawals - ltcgFromGross;
                 const outflows = cf.totalExpense + cf.totalInvested + cf.bucketAllocations + cf.discretionary;
 
                 const imbalance = Math.abs(inflows - outflows);

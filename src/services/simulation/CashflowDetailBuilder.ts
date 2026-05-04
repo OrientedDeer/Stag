@@ -32,6 +32,13 @@ interface BuildCashflowDetailInput {
     /** Total payroll insurance deduction for the year. */
     insurance: number;
     year: number;
+    /**
+     * Sum of `w.tax` over the year's brokerage/ESPP withdrawals — the planner's
+     * LTCG estimate that was baked into the gross-up. Routed straight to the
+     * government, never lands as user cash. Stored on CashflowDetail so the
+     * Sankey can subtract it from the gross withdrawal inflow.
+     */
+    brokerageLTCGFromGross: number;
 }
 
 /**
@@ -42,7 +49,7 @@ interface BuildCashflowDetailInput {
  * to re-derive it (and drift from the sim's actual values).
  */
 export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDetail {
-    const { incomes, expenses, accounts, insurance, year } = input;
+    const { incomes, expenses, accounts, insurance, year, brokerageLTCGFromGross } = input;
 
     const incomeBySource: CashflowIncomeSource[] = [];
     let userPreTax401k = 0;
@@ -141,5 +148,6 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
         mortgagePrincipal,
         mortgageInterestEscrow,
         expensesByCategory,
+        brokerageLTCGFromGross,
     };
 }
