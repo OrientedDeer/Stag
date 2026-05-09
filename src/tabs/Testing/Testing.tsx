@@ -68,7 +68,8 @@ import {
 } from '../../data/PensionData';
 import { SavedAccount, InvestedAccount, DebtAccount, DeficitDebtAccount, PropertyAccount, ESPPAccount, AnyAccount } from '../../components/Objects/Accounts/models';
 import { formatCompactCurrency } from '../Future/tabs/FutureUtils';
-import { SimulationYear, ConversionLimitingFactor } from '../../services/simulation/types';
+import { SimulationYear } from '../../services/simulation/types';
+import RothConversionDebugTab from './RothConversionDebug';
 
 // Helper to format currency
 const toCurrency = (num: number) =>
@@ -167,8 +168,10 @@ function generateYearSummaryText(simYear: SimulationYear, age: number, accountsC
 
     // TAXES
     lines.push('TAXES');
-    lines.push(`  Federal: ${fmt(simYear.taxDetails.fed)} | State: ${fmt(simYear.taxDetails.state)} | FICA: ${fmt(simYear.taxDetails.fica)}`);
-    lines.push(`  Cap Gains Tax: ${fmt(simYear.taxDetails.capitalGains)} | Withdrawal Tax: ${fmt(simYear.taxDetails.withdrawalOrdinaryTax)} | NIIT: ${fmt(simYear.taxDetails.niit)}`);
+    const penalty = simYear.taxDetails.earlyWithdrawalPenalty ?? 0;
+    const fedIncomeTax = Math.max(0, simYear.taxDetails.fed - penalty);
+    lines.push(`  Federal Income: ${fmt(fedIncomeTax)} | State: ${fmt(simYear.taxDetails.state)} | FICA: ${fmt(simYear.taxDetails.fica)}`);
+    lines.push(`  Cap Gains Tax: ${fmt(simYear.taxDetails.capitalGains)} | Withdrawal Tax: ${fmt(simYear.taxDetails.withdrawalOrdinaryTax)} | NIIT: ${fmt(simYear.taxDetails.niit)} | Early-Withdraw Penalty: ${fmt(penalty)}`);
     const totalTax = simYear.taxDetails.fed + simYear.taxDetails.state + simYear.taxDetails.fica +
         simYear.taxDetails.capitalGains + simYear.taxDetails.withdrawalOrdinaryTax + simYear.taxDetails.niit;
     lines.push(`  Total: ${fmt(totalTax)}`);
@@ -819,7 +822,7 @@ function SimulationDebugTab() {
             interestIncome: Array<{ name: string; amount: number }>;
             withdrawalDetail: Record<string, number>;
             bucketDetail: Record<string, number>;
-            taxDetails: { fed: number; state: number; fica: number; capitalGains: number; withdrawalOrdinaryTax: number };
+            taxDetails: { fed: number; state: number; fica: number; capitalGains: number; withdrawalOrdinaryTax: number; earlyWithdrawalPenalty?: number };
             logs: string[];
         }> = [];
 
@@ -974,6 +977,7 @@ function SimulationDebugTab() {
                     fica: simYear.taxDetails.fica,
                     capitalGains: simYear.taxDetails.capitalGains,
                     withdrawalOrdinaryTax: simYear.taxDetails.withdrawalOrdinaryTax || 0,
+                    earlyWithdrawalPenalty: simYear.taxDetails.earlyWithdrawalPenalty,
                 },
                 logs: simYear.logs || [],
             });
@@ -1342,11 +1346,22 @@ function SimulationDebugTab() {
                     {/* Tax Breakdown */}
                     <div className="mt-4 bg-gray-800 p-3 rounded-lg">
                         <h4 className="font-semibold text-gray-300 mb-2">Tax Breakdown</h4>
+                        {(() => {
+                            const fedRaw = selectedYearData.taxDetails.fed;
+                            const penalty = selectedYearData.taxDetails.earlyWithdrawalPenalty ?? 0;
+                            const fedIncomeTax = Math.max(0, fedRaw - penalty);
+                            return (
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                             <div>
-                                <span className="text-gray-400">Federal Tax:</span>
-                                <span className={`ml-2 font-mono ${selectedYearData.taxDetails.fed > 0 ? 'text-amber-400' : 'text-gray-500'}`}>
-                                    {toCurrencyShort(selectedYearData.taxDetails.fed)}
+                                <span className="text-gray-400">Federal Income Tax:</span>
+                                <span className={`ml-2 font-mono ${fedIncomeTax > 0 ? 'text-amber-400' : 'text-gray-500'}`}>
+                                    {toCurrencyShort(fedIncomeTax)}
+                                </span>
+                            </div>
+                            <div>
+                                <span className="text-gray-400">Early-Withdraw Penalty:</span>
+                                <span className={`ml-2 font-mono ${penalty > 0 ? 'text-yellow-400' : 'text-gray-500'}`}>
+                                    {toCurrencyShort(penalty)}
                                 </span>
                             </div>
                             <div>
@@ -1374,13 +1389,15 @@ function SimulationDebugTab() {
                                 </span>
                             </div>
                         </div>
+                            );
+                        })()}
                         <div className="mt-2 pt-2 border-t border-gray-700 text-xs text-gray-500">
-                            Note: Federal tax includes income tax + early withdrawal penalties.
                             Cap Gains Tax is from brokerage/ESPP withdrawals.
                             Withdrawal Tax is from Roth earnings (5-year rule), Traditional, or HSA non-medical.
-                            {selectedYearData.isRetired && selectedYearData.taxDetails.fed > 0 && selectedYearData.taxDetails.capitalGains === 0 && selectedYearData.taxDetails.withdrawalOrdinaryTax === 0 && (
+                            Early-Withdraw Penalty is the 10% penalty on Traditional pre-59½ and Roth conversion 5-year-rule withdrawals (also bundled into the engine's `taxDetails.fed`).
+                            {selectedYearData.isRetired && (selectedYearData.taxDetails.fed - (selectedYearData.taxDetails.earlyWithdrawalPenalty ?? 0)) > 0 && selectedYearData.taxDetails.capitalGains === 0 && selectedYearData.taxDetails.withdrawalOrdinaryTax === 0 && (
                                 <span className="text-amber-400 block mt-1">
-                                    Federal tax in retirement with $0 withdrawal taxes may indicate income above standard deduction.
+                                    Federal income tax in retirement with $0 withdrawal taxes may indicate ordinary income (Roth conversion, etc.) above the standard deduction.
                                 </span>
                             )}
                         </div>
@@ -2703,17 +2720,15 @@ function TaxBracketVisualizationTab() {
     const simulation = useMemo(() => rawSimulation.filter(y => !y.isEndOfYearProjection), [rawSimulation]);
     const { state: taxState } = useContext(TaxContext);
 
-    const currentYear = new Date().getFullYear();
     const birthYear = getBirthYear(assumptions.milestones);
 
-    // Selector state
-    const [filingStatus, setFilingStatus] = useState(taxState.filingStatus);
+    const filingStatus = taxState.filingStatus;
 
-    // Build bracket visualization data for each simulation year
+    // Build bracket data for each simulation year
     const bracketData = useMemo(() => {
         if (simulation.length === 0) return [];
 
-        return simulation.slice(0, 40).map((simYear) => {
+        return simulation.map((simYear) => {
             const year = simYear.year;
             const age = year - birthYear;
             const fedParams = getTaxParameters(year, filingStatus, 'federal', undefined, assumptions);
@@ -2731,63 +2746,58 @@ function TaxBracketVisualizationTab() {
             // Social Security adjustments
             const ssBenefits = getSocialSecurityBenefits(simYear.incomes, year);
             const agiExcludingSS = grossIncome - ssBenefits - totalPreTax;
-            // TODO: Verify all income types are included (LTCG, STCG, dividends, etc.)
             const taxableSS = getTaxableSocialSecurityBenefits(ssBenefits, agiExcludingSS, 0, filingStatus);
             const agi = grossIncome - ssBenefits + taxableSS - totalPreTax;
 
             const taxableIncome = Math.max(0, agi - fedParams.standardDeduction);
 
-            // Calculate how income fills each bracket
-            const bracketFill: Array<{
-                rate: number;
-                threshold: number;
-                nextThreshold: number;
-                bracketSize: number;
-                amountInBracket: number;
-                percentFilled: number;
-                taxFromBracket: number;
-            }> = [];
-
+            // Walk federal brackets to find marginal rate at this taxable income
             let remainingIncome = taxableIncome;
-            let totalTax = 0;
-
+            let marginalRate = 0;
             for (let i = 0; i < fedParams.brackets.length; i++) {
                 const bracket = fedParams.brackets[i];
                 const nextBracket = fedParams.brackets[i + 1];
                 const nextThreshold = nextBracket ? nextBracket.threshold : Infinity;
                 const bracketSize = nextThreshold - bracket.threshold;
                 const amountInBracket = Math.min(Math.max(0, remainingIncome), bracketSize);
-                const percentFilled = bracketSize === Infinity ? 0 : (amountInBracket / bracketSize) * 100;
-                const taxFromBracket = amountInBracket * bracket.rate;
-
-                bracketFill.push({
-                    rate: bracket.rate,
-                    threshold: bracket.threshold,
-                    nextThreshold,
-                    bracketSize,
-                    amountInBracket,
-                    percentFilled,
-                    taxFromBracket
-                });
-
-                totalTax += taxFromBracket;
+                if (amountInBracket > 0) marginalRate = bracket.rate;
                 remainingIncome -= amountInBracket;
+                if (remainingIncome <= 0) break;
             }
 
-            // Find current marginal bracket
-            const marginalBracket = bracketFill.find(b => b.amountInBracket > 0 && b.amountInBracket < b.bracketSize)
-                || bracketFill.filter(b => b.amountInBracket > 0).pop();
+            // Pull all tax components from the sim's taxDetails.
+            // Note: `fed` includes the 10% early-withdrawal penalty. Split it out for clarity.
+            const fedRaw = simYear.taxDetails?.fed ?? 0;
+            const penalty = simYear.taxDetails?.earlyWithdrawalPenalty ?? 0;
+            const fedIncomeTax = Math.max(0, fedRaw - penalty);
+            const stateTax = simYear.taxDetails?.state ?? 0;
+            const ficaTax = simYear.taxDetails?.fica ?? 0;
+            const ltcgTax = simYear.taxDetails?.capitalGains ?? 0;
+            const niitTax = simYear.taxDetails?.niit ?? 0;
+            const totalTax = fedRaw + stateTax + ficaTax + ltcgTax + niitTax;
+
+            // Effective-rate denominator: AGI-equivalent (matches what the IRS would
+            // call "total income"). AGI already absorbs Trad/RMD withdrawals via
+            // ordinary-income flow, taxable SS, Roth conversions; LTCG must be added
+            // since it sits below the AGI line in `agi` here.
+            const ltcgAmount = simYear.taxDetails?.longTermCapitalGains ?? 0;
+            const effectiveDenominator = Math.max(0, agi) + ltcgAmount;
 
             return {
                 year,
                 age,
-                grossIncome,
+                grossIncome: effectiveDenominator,
                 taxableIncome,
-                bracketFill,
+                fedIncomeTax,
+                penalty,
+                stateTax,
+                ficaTax,
+                ltcgTax,
+                niitTax,
                 totalTax,
-                effectiveRate: taxableIncome > 0 ? totalTax / taxableIncome : 0,
-                marginalRate: marginalBracket?.rate || 0,
-                standardDeduction: fedParams.standardDeduction
+                effectiveRate: effectiveDenominator > 0 ? totalTax / effectiveDenominator : 0,
+                marginalRate,
+                standardDeduction: fedParams.standardDeduction,
             };
         }).filter(Boolean);
     }, [simulation, birthYear, filingStatus, assumptions]);
@@ -2809,98 +2819,47 @@ function TaxBracketVisualizationTab() {
 
     return (
         <div className="space-y-6">
-            {/* Selector Controls */}
+            {/* Detailed breakdown by year */}
             <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
-                <DropdownInput
-                    label="Filing Status"
-                    value={filingStatus}
-                    onChange={(val) => setFilingStatus(val as typeof filingStatus)}
-                    options={[
-                        { value: 'Single', label: 'Single' },
-                        { value: 'Married Filing Jointly', label: 'Married Filing Jointly' },
-                        { value: 'Married Filing Separately', label: 'Married Filing Separately' }
-                    ]}
-                />
-            </div>
-
-            <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
-                <h3 className="text-lg font-semibold text-white mb-4">Tax Bracket Visualization</h3>
+                <h3 className="text-lg font-semibold text-white mb-2">Bracket Details by Year</h3>
                 <p className="text-gray-400 text-sm mb-4">
-                    Shows how your income fills federal tax brackets each year. Each bar represents one year of the simulation.
+                    Per-year tax breakdown from the simulation. Effective rate is total tax / gross income; marginal rate is the federal bracket the last dollar of taxable income lands in. Penalty is the 10% early-withdrawal penalty (split out from federal income tax for clarity).
                 </p>
-
-                {/* Legend */}
-                <div className="flex flex-wrap gap-3 mb-6">
-                    {Object.entries(bracketColors).map(([rate, color]) => (
-                        <div key={rate} className="flex items-center gap-1">
-                            <div className={`w-4 h-4 rounded ${color}`} />
-                            <span className="text-xs text-gray-300">{(parseFloat(rate) * 100).toFixed(0)}%</span>
-                        </div>
-                    ))}
-                </div>
-
-                {/* Year-by-year bracket visualization */}
-                <div className="space-y-2 max-h-125 overflow-y-auto pl-2">
-                    {bracketData.map((data: any) => (
-                        <div key={data.year} className="flex items-center gap-2 pr-2">
-                            {/* Year/Age label */}
-                            <div className="w-24 text-right text-xs text-gray-400 shrink-0">
-                                {data.year} (Age {data.age})
-                            </div>
-
-                            {/* Bracket bar */}
-                            <div className="flex-1 h-6 bg-gray-800 rounded overflow-hidden flex">
-                                {data.bracketFill.filter((b: any) => b.amountInBracket > 0).map((b: any, i: number) => {
-                                    const widthPercent = data.taxableIncome > 0
-                                        ? (b.amountInBracket / data.taxableIncome) * 100
-                                        : 0;
-                                    return (
-                                        <div
-                                            key={i}
-                                            className={`${bracketColors[b.rate] || 'bg-gray-600'} h-full`}
-                                            style={{ width: `${widthPercent}%` }}
-                                            title={`${(b.rate * 100).toFixed(0)}%: ${toCurrencyShort(b.amountInBracket)}`}
-                                        />
-                                    );
-                                })}
-                            </div>
-
-                            {/* Stats */}
-                            <div className="w-32 text-right text-xs shrink-0">
-                                <span className="text-gray-300">{toCurrencyShort(data.taxableIncome)}</span>
-                                <span className="text-gray-500 ml-1">@ {(data.marginalRate * 100).toFixed(0)}%</span>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            {/* Detailed breakdown for selected years */}
-            <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
-                <h3 className="text-lg font-semibold text-white mb-4">Bracket Details by Year</h3>
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                         <thead>
                             <tr className="border-b border-gray-700">
                                 <th className="text-left p-2 text-gray-400">Year</th>
                                 <th className="text-left p-2 text-gray-400">Age</th>
-                                <th className="text-right p-2 text-gray-400">Gross</th>
+                                <th className="text-right p-2 text-gray-400">AGI+LTCG</th>
                                 <th className="text-right p-2 text-gray-400">Std Ded</th>
                                 <th className="text-right p-2 text-gray-400">Taxable</th>
-                                <th className="text-right p-2 text-gray-400">Fed Tax</th>
+                                <th className="text-right p-2 text-gray-400">Fed</th>
+                                <th className="text-right p-2 text-gray-400">Penalty</th>
+                                <th className="text-right p-2 text-gray-400">State</th>
+                                <th className="text-right p-2 text-gray-400">FICA</th>
+                                <th className="text-right p-2 text-gray-400">LTCG</th>
+                                <th className="text-right p-2 text-gray-400">NIIT</th>
+                                <th className="text-right p-2 text-gray-400">Total</th>
                                 <th className="text-right p-2 text-gray-400">Effective</th>
                                 <th className="text-right p-2 text-gray-400">Marginal</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {bracketData.slice(0, 20).map((data: any) => (
+                            {bracketData.map((data: any) => (
                                 <tr key={data.year} className="border-b border-gray-800 hover:bg-gray-800/50">
                                     <td className="p-2 text-white">{data.year}</td>
                                     <td className="p-2 text-gray-300">{data.age}</td>
                                     <td className="p-2 text-right text-gray-300">{toCurrencyShort(data.grossIncome)}</td>
                                     <td className="p-2 text-right text-gray-400">{toCurrencyShort(data.standardDeduction)}</td>
                                     <td className="p-2 text-right text-white">{toCurrencyShort(data.taxableIncome)}</td>
-                                    <td className="p-2 text-right text-red-400">{toCurrencyShort(data.totalTax)}</td>
+                                    <td className="p-2 text-right text-red-400">{toCurrencyShort(data.fedIncomeTax)}</td>
+                                    <td className={`p-2 text-right ${data.penalty > 0 ? 'text-yellow-400' : 'text-gray-600'}`}>{data.penalty > 0 ? toCurrencyShort(data.penalty) : '—'}</td>
+                                    <td className="p-2 text-right text-red-300">{toCurrencyShort(data.stateTax)}</td>
+                                    <td className="p-2 text-right text-red-300">{toCurrencyShort(data.ficaTax)}</td>
+                                    <td className="p-2 text-right text-red-300">{toCurrencyShort(data.ltcgTax)}</td>
+                                    <td className="p-2 text-right text-red-300">{toCurrencyShort(data.niitTax)}</td>
+                                    <td className="p-2 text-right text-red-500 font-medium">{toCurrencyShort(data.totalTax)}</td>
                                     <td className="p-2 text-right text-amber-400">{(data.effectiveRate * 100).toFixed(1)}%</td>
                                     <td className="p-2 text-right text-orange-400">{(data.marginalRate * 100).toFixed(0)}%</td>
                                 </tr>
@@ -2936,47 +2895,29 @@ function TaxBracketVisualizationTab() {
                             </tr>
                         </thead>
                         <tbody>
-                            {(() => {
-                                const years: number[] = [];
-                                for (let y = currentYear; y <= currentYear + 30; y += 5) {
-                                    years.push(y);
-                                }
-                                // Also add specific simulation years
-                                if (bracketData.length > 0) {
-                                    [0, 10, 20, 30].forEach(offset => {
-                                        const d = bracketData[offset];
-                                        if (d && !years.includes(d.year)) {
-                                            years.push(d.year);
-                                        }
-                                    });
-                                }
-                                years.sort((a, b) => a - b);
-
-                                return years.slice(0, 10).map(year => {
-                                    const params = getTaxParameters(year, filingStatus, 'federal', undefined, assumptions);
-                                    if (!params) return null;
-
-                                    return (
-                                        <tr key={year} className="border-b border-gray-800 hover:bg-gray-800/50">
-                                            <td className="p-2 text-white font-medium">{year}</td>
-                                            <td className="p-2 text-right text-green-400">{toCurrencyShort(params.standardDeduction)}</td>
-                                            {params.brackets.map((bracket, i) => {
-                                                const nextBracket = params.brackets[i + 1];
-                                                return (
-                                                    <td key={i} className="p-2 text-right text-gray-300">
-                                                        {toCurrencyShort(bracket.threshold)}
-                                                        {nextBracket && (
-                                                            <span className="text-gray-500 text-xs ml-1">
-                                                                → {toCurrencyShort(nextBracket.threshold - 1)}
-                                                            </span>
-                                                        )}
-                                                    </td>
-                                                );
-                                            })}
-                                        </tr>
-                                    );
-                                });
-                            })()}
+                            {bracketData.map((data: any) => {
+                                const params = getTaxParameters(data.year, filingStatus, 'federal', undefined, assumptions);
+                                if (!params) return null;
+                                return (
+                                    <tr key={data.year} className="border-b border-gray-800 hover:bg-gray-800/50">
+                                        <td className="p-2 text-white font-medium">{data.year}</td>
+                                        <td className="p-2 text-right text-green-400">{toCurrencyShort(params.standardDeduction)}</td>
+                                        {params.brackets.map((bracket, i) => {
+                                            const nextBracket = params.brackets[i + 1];
+                                            return (
+                                                <td key={i} className="p-2 text-right text-gray-300">
+                                                    {toCurrencyShort(bracket.threshold)}
+                                                    {nextBracket && (
+                                                        <span className="text-gray-500 text-xs ml-1">
+                                                            → {toCurrencyShort(nextBracket.threshold - 1)}
+                                                        </span>
+                                                    )}
+                                                </td>
+                                            );
+                                        })}
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>
@@ -6015,7 +5956,8 @@ function TaxOptimizationDebugTab() {
     const { state: assumptions } = useContext(AssumptionsContext);
     const { accounts } = useContext(AccountContext);
     const { incomes: _incomes } = useContext(IncomeContext);
-    const { state: _taxState } = useContext(TaxContext);
+    const { state: taxState } = useContext(TaxContext);
+    const filingStatus = taxState.filingStatus;
     const { simulation: rawSimulation } = useContext(SimulationContext);
     const simulation = useMemo(() => rawSimulation.filter(y => !y.isEndOfYearProjection), [rawSimulation]);
 
@@ -6067,6 +6009,34 @@ function TaxOptimizationDebugTab() {
         []
     );
 
+    // Calculate lifetime taxes from simulation. Total matches the Year Inspector
+    // convention (Testing.tsx:174) and YearSolver.ts:1357: fed already includes
+    // ordinary federal income tax + early-withdrawal penalty; capitalGains, niit,
+    // and withdrawalOrdinaryTax are separate line items that all add into total.
+    const lifetimeTaxes = useMemo(() => {
+        const empty = { total: 0, federal: 0, state: 0, fica: 0, capitalGains: 0, withdrawalOrdinary: 0, niit: 0, penalty: 0 };
+        if (simulation.length === 0) return empty;
+        return simulation.reduce((acc, s) => {
+            const fed = s.taxDetails.fed;
+            const state = s.taxDetails.state;
+            const fica = s.taxDetails.fica;
+            const cg = s.taxDetails.capitalGains;
+            const wot = s.taxDetails.withdrawalOrdinaryTax ?? 0;
+            const niit = s.taxDetails.niit ?? 0;
+            const penalty = s.taxDetails.earlyWithdrawalPenalty ?? 0;
+            return {
+                total: acc.total + fed + state + fica + cg + wot + niit,
+                federal: acc.federal + fed,
+                state: acc.state + state,
+                fica: acc.fica + fica,
+                capitalGains: acc.capitalGains + cg,
+                withdrawalOrdinary: acc.withdrawalOrdinary + wot,
+                niit: acc.niit + niit,
+                penalty: acc.penalty + penalty,
+            };
+        }, empty);
+    }, [simulation]);
+
     // Extract Roth conversions from simulation
     const simulationConversions = useMemo(() => {
         if (simulation.length === 0) return [];
@@ -6080,17 +6050,8 @@ function TaxOptimizationDebugTab() {
             }));
     }, [simulation, birthYear]);
 
-    // Calculate lifetime taxes from simulation
-    const lifetimeTaxes = useMemo(() => {
-        if (simulation.length === 0) return { total: 0, federal: 0, state: 0, fica: 0, capitalGains: 0 };
-        return simulation.reduce((acc, s) => ({
-            total: acc.total + (s.taxDetails.fed + s.taxDetails.state + s.taxDetails.fica + s.taxDetails.capitalGains),
-            federal: acc.federal + s.taxDetails.fed,
-            state: acc.state + s.taxDetails.state,
-            fica: acc.fica + s.taxDetails.fica,
-            capitalGains: acc.capitalGains + s.taxDetails.capitalGains
-        }), { total: 0, federal: 0, state: 0, fica: 0, capitalGains: 0 });
-    }, [simulation]);
+
+
 
     // Year navigation state
     const startYear = simulation.length > 0 ? simulation[0].year : currentYear;
@@ -6111,6 +6072,39 @@ function TaxOptimizationDebugTab() {
             return sum + acc.amount;
         }, 0);
     }, [yearData]);
+
+    // AGI-equivalent for the selected year (for effective-rate denominator). Mirrors
+    // the Tax Brackets tab logic: gross income (cashflow + Roth conversion) minus
+    // pre-tax deductions, applying the SS taxability formula, plus LTCG (which sits
+    // below the AGI line in the calc but is part of total income for effective rate).
+    const selectedYearTax = useMemo(() => {
+        if (!yearData) return null;
+        const fedParams = getTaxParameters(selectedYear, filingStatus, 'federal', undefined, assumptions);
+        if (!fedParams) return null;
+
+        const rothConversionAmount = yearData.rothConversion?.amount ?? 0;
+        const grossIncome = yearData.cashflow.totalIncome + rothConversionAmount;
+        const preTaxDeductions = getPreTaxExemptions(yearData.incomes, selectedYear, selectedAge);
+        const aboveLineDeductions = getYesDeductions(yearData.expenses, selectedYear);
+        const totalPreTax = preTaxDeductions + aboveLineDeductions;
+        const ssBenefits = getSocialSecurityBenefits(yearData.incomes, selectedYear);
+        const agiExcludingSS = grossIncome - ssBenefits - totalPreTax;
+        const taxableSS = getTaxableSocialSecurityBenefits(ssBenefits, agiExcludingSS, 0, filingStatus);
+        const agi = grossIncome - ssBenefits + taxableSS - totalPreTax;
+        const ltcgAmount = yearData.taxDetails.longTermCapitalGains ?? 0;
+        const agiPlusLTCG = Math.max(0, agi) + ltcgAmount;
+
+        const fed = yearData.taxDetails.fed;
+        const state = yearData.taxDetails.state;
+        const fica = yearData.taxDetails.fica;
+        const cg = yearData.taxDetails.capitalGains;
+        const wot = yearData.taxDetails.withdrawalOrdinaryTax ?? 0;
+        const niit = yearData.taxDetails.niit ?? 0;
+        const penalty = yearData.taxDetails.earlyWithdrawalPenalty ?? 0;
+        const totalTax = fed + state + fica + cg + wot + niit;
+
+        return { agiPlusLTCG, fed, state, fica, cg, wot, niit, penalty, totalTax };
+    }, [yearData, selectedYear, selectedAge, filingStatus, assumptions]);
 
     // Get Traditional and Roth balances for selected year
     const selectedYearBalances = useMemo(() => {
@@ -6160,40 +6154,55 @@ function TaxOptimizationDebugTab() {
             )}
 
             {/* Selected Year Tax Details */}
-            {yearData && (
+            {yearData && selectedYearTax && (
                 <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
                     <h3 className="text-lg font-bold text-white mb-3">Tax Details for {selectedYear}</h3>
 
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                         <div className="bg-gray-800/50 rounded-lg p-3">
                             <div className="text-xs text-gray-400">Federal Tax</div>
-                            <div className="text-lg font-bold text-white">{toCurrencyShort(yearData.taxDetails.fed)}</div>
+                            <div className="text-lg font-bold text-white">{toCurrencyShort(selectedYearTax.fed)}</div>
+                            <div className="text-xs text-gray-500">incl. {toCurrencyShort(selectedYearTax.penalty)} penalty</div>
                         </div>
                         <div className="bg-gray-800/50 rounded-lg p-3">
                             <div className="text-xs text-gray-400">State Tax</div>
-                            <div className="text-lg font-bold text-white">{toCurrencyShort(yearData.taxDetails.state)}</div>
+                            <div className="text-lg font-bold text-white">{toCurrencyShort(selectedYearTax.state)}</div>
                         </div>
                         <div className="bg-gray-800/50 rounded-lg p-3">
                             <div className="text-xs text-gray-400">FICA</div>
-                            <div className="text-lg font-bold text-white">{toCurrencyShort(yearData.taxDetails.fica)}</div>
+                            <div className="text-lg font-bold text-white">{toCurrencyShort(selectedYearTax.fica)}</div>
                         </div>
                         <div className="bg-gray-800/50 rounded-lg p-3">
                             <div className="text-xs text-gray-400">Capital Gains Tax</div>
-                            <div className="text-lg font-bold text-white">{toCurrencyShort(yearData.taxDetails.capitalGains)}</div>
+                            <div className="text-lg font-bold text-white">{toCurrencyShort(selectedYearTax.cg)}</div>
                         </div>
                     </div>
 
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                         <div className="bg-gray-800/50 rounded-lg p-3">
+                            <div className="text-xs text-gray-400">Withdrawal Ordinary Tax</div>
+                            <div className="text-lg font-bold text-white">{toCurrencyShort(selectedYearTax.wot)}</div>
+                            <div className="text-xs text-gray-500">Roth earnings, Trad, HSA</div>
+                        </div>
+                        <div className="bg-gray-800/50 rounded-lg p-3">
+                            <div className="text-xs text-gray-400">NIIT</div>
+                            <div className="text-lg font-bold text-white">{toCurrencyShort(selectedYearTax.niit)}</div>
+                        </div>
+                        <div className="bg-gray-800/50 rounded-lg p-3">
                             <div className="text-xs text-gray-400">Total Tax</div>
-                            <div className="text-lg font-bold text-red-400">
-                                {toCurrencyShort(yearData.taxDetails.fed + yearData.taxDetails.state + yearData.taxDetails.fica + yearData.taxDetails.capitalGains)}
+                            <div className="text-lg font-bold text-red-400">{toCurrencyShort(selectedYearTax.totalTax)}</div>
+                            <div className="text-xs text-gray-500">
+                                {selectedYearTax.agiPlusLTCG > 0 ? `${((selectedYearTax.totalTax / selectedYearTax.agiPlusLTCG) * 100).toFixed(1)}% effective` : '—'}
                             </div>
                         </div>
                         <div className="bg-gray-800/50 rounded-lg p-3">
-                            <div className="text-xs text-gray-400">Gross Income</div>
-                            <div className="text-lg font-bold text-white">{toCurrencyShort(yearData.cashflow.totalIncome)}</div>
+                            <div className="text-xs text-gray-400">AGI + LTCG</div>
+                            <div className="text-lg font-bold text-white">{toCurrencyShort(selectedYearTax.agiPlusLTCG)}</div>
+                            <div className="text-xs text-gray-500">Effective-rate denom.</div>
                         </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
                         <div className="bg-gray-800/50 rounded-lg p-3">
                             <div className="text-xs text-gray-400">Living Expenses</div>
                             <div className="text-lg font-bold text-white">{toCurrencyShort(yearData.cashflow.livingExpenses)}</div>
@@ -6201,6 +6210,11 @@ function TaxOptimizationDebugTab() {
                         <div className="bg-gray-800/50 rounded-lg p-3">
                             <div className="text-xs text-gray-400">Withdrawals</div>
                             <div className="text-lg font-bold text-yellow-400">{toCurrencyShort(yearData.cashflow.withdrawals)}</div>
+                        </div>
+                        <div className="bg-gray-800/50 rounded-lg p-3">
+                            <div className="text-xs text-gray-400">Total Income (cashflow)</div>
+                            <div className="text-lg font-bold text-white">{toCurrencyShort(yearData.cashflow.totalIncome)}</div>
+                            <div className="text-xs text-gray-500">Pre-withdrawal income</div>
                         </div>
                     </div>
 
@@ -6265,10 +6279,14 @@ function TaxOptimizationDebugTab() {
             </div>
 
             {/* Section 1: Target Balance Calculation */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
-                <h3 className="text-lg font-bold text-white mb-3">Target Traditional Balance</h3>
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 opacity-40">
+                <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
+                    Target Traditional Balance
+                    <span className="px-2 py-0.5 text-xs rounded bg-gray-700 text-gray-300">TODO</span>
+                </h3>
                 <p className="text-sm text-gray-400 mb-4">
                     Calculates the ideal Traditional 401k/IRA balance at RMD age to keep RMDs within target bracket.
+                    <span className="block text-gray-500 italic mt-1">Pending reimplementation per TAX_OPTIMIZATION_SPEC.md — values shown are placeholders.</span>
                 </p>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
@@ -6309,10 +6327,14 @@ function TaxOptimizationDebugTab() {
             </div>
 
             {/* Section 2: Conversion Plan */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
-                <h3 className="text-lg font-bold text-white mb-3">Roth Conversion Plan</h3>
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 opacity-40">
+                <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
+                    Roth Conversion Plan
+                    <span className="px-2 py-0.5 text-xs rounded bg-gray-700 text-gray-300">TODO</span>
+                </h3>
                 <p className="text-sm text-gray-400 mb-4">
                     Multi-year schedule to convert excess Traditional balance to Roth.
+                    <span className="block text-gray-500 italic mt-1">Pending reimplementation per TAX_OPTIMIZATION_SPEC.md — values shown are placeholders.</span>
                 </p>
 
                 <div className="grid grid-cols-3 gap-4 mb-4">
@@ -6419,10 +6441,14 @@ function TaxOptimizationDebugTab() {
             )}
 
             {/* Section 4: Smart Withdrawal Order Test */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
-                <h3 className="text-lg font-bold text-white mb-3">Smart Withdrawal Order (Test)</h3>
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 opacity-40">
+                <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
+                    Smart Withdrawal Order (Test)
+                    <span className="px-2 py-0.5 text-xs rounded bg-gray-700 text-gray-300">TODO</span>
+                </h3>
                 <p className="text-sm text-gray-400 mb-4">
                     Simulated withdrawal order for a ${testDeficit.toLocaleString()} deficit at age {Math.max(currentAge, retirementAge)}.
+                    <span className="block text-gray-500 italic mt-1">Pending reimplementation per TAX_OPTIMIZATION_SPEC.md — values shown are placeholders.</span>
                 </p>
 
                 {smartOrder.length > 0 ? (
@@ -6471,7 +6497,7 @@ function TaxOptimizationDebugTab() {
                     Total taxes paid across the entire simulation (ages {currentAge} to {lifeExpectancy}).
                 </p>
 
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3">
                     <div className="bg-gray-800/50 rounded-lg p-3">
                         <div className="text-xs text-gray-400">Total Taxes</div>
                         <div className="text-lg font-bold text-red-400">{toCurrencyShort(lifetimeTaxes.total)}</div>
@@ -6479,6 +6505,7 @@ function TaxOptimizationDebugTab() {
                     <div className="bg-gray-800/50 rounded-lg p-3">
                         <div className="text-xs text-gray-400">Federal</div>
                         <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.federal)}</div>
+                        <div className="text-xs text-gray-500">incl. penalty</div>
                     </div>
                     <div className="bg-gray-800/50 rounded-lg p-3">
                         <div className="text-xs text-gray-400">State</div>
@@ -6488,9 +6515,25 @@ function TaxOptimizationDebugTab() {
                         <div className="text-xs text-gray-400">FICA</div>
                         <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.fica)}</div>
                     </div>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="bg-gray-800/50 rounded-lg p-3">
                         <div className="text-xs text-gray-400">Capital Gains</div>
                         <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.capitalGains)}</div>
+                    </div>
+                    <div className="bg-gray-800/50 rounded-lg p-3">
+                        <div className="text-xs text-gray-400">Withdrawal Ordinary</div>
+                        <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.withdrawalOrdinary)}</div>
+                        <div className="text-xs text-gray-500">Roth earnings, Trad, HSA</div>
+                    </div>
+                    <div className="bg-gray-800/50 rounded-lg p-3">
+                        <div className="text-xs text-gray-400">NIIT</div>
+                        <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.niit)}</div>
+                    </div>
+                    <div className="bg-gray-800/50 rounded-lg p-3">
+                        <div className="text-xs text-gray-400">Early-Withdraw Penalty</div>
+                        <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.penalty)}</div>
+                        <div className="text-xs text-gray-500">already in Federal</div>
                     </div>
                 </div>
             </div>
@@ -6518,429 +6561,6 @@ function TaxOptimizationDebugTab() {
                         <div className="text-xs text-gray-400">Savings/Cash</div>
                         <div className="text-lg font-bold text-white">
                             {toCurrencyShort(accounts.filter(a => a instanceof SavedAccount).reduce((s, a) => s + a.amount, 0))}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-// ============================================================================
-// ROTH CONVERSION DEBUG TAB
-// ============================================================================
-
-// Helper to format limiting factor for display
-function formatLimitingFactor(factor: ConversionLimitingFactor | undefined): { label: string; color: string } {
-    switch (factor) {
-        case 'BRACKET_CEILING':
-            return { label: 'Bracket Ceiling', color: 'text-yellow-400' };
-        case 'SS_TORPEDO':
-            return { label: 'SS Torpedo', color: 'text-red-400' };
-        case 'ACA_CLIFF':
-            return { label: 'ACA Cliff', color: 'text-orange-400' };
-        case 'BALANCE_BELOW_TARGET':
-            return { label: 'Below Target', color: 'text-green-400' };
-        case 'NO_BRACKET_SPACE':
-            return { label: 'No Bracket Space', color: 'text-red-400' };
-        case 'PACING':
-            return { label: 'Pacing/Damping', color: 'text-blue-400' };
-        case 'TRADITIONAL_DEPLETED':
-            return { label: 'Traditional Depleted', color: 'text-gray-400' };
-        case 'NOT_RETIRED':
-            return { label: 'Not Retired', color: 'text-gray-400' };
-        case 'AT_RMD_AGE':
-            return { label: 'At RMD Age', color: 'text-purple-400' };
-        default:
-            return { label: 'Unknown', color: 'text-gray-400' };
-    }
-}
-
-function RothConversionDebugTab() {
-    const { state: assumptions } = useContext(AssumptionsContext);
-    const { accounts } = useContext(AccountContext);
-    const { simulation } = useContext(SimulationContext);
-    const [selectedYear, setSelectedYear] = useState<number | null>(null);
-
-    const currentYear = new Date().getFullYear();
-    const birthYear = getBirthYear(assumptions.milestones);
-    const retirementAge = getRetirementAge(assumptions.milestones);
-    const currentAge = currentYear - birthYear;
-    const rmdStartAge = getRMDStartAge(birthYear);
-    const yearsUntilRMD = Math.max(0, rmdStartAge - currentAge);
-
-    // Current Traditional balance
-    const currentTraditionalBalance = useMemo(() =>
-        accounts
-            .filter(acc => acc instanceof InvestedAccount && (acc.taxType === 'Traditional 401k' || acc.taxType === 'Traditional IRA'))
-            .reduce((sum, acc) => sum + acc.amount, 0),
-        [accounts]
-    );
-
-    // Extract tax optimization targets from simulation (future years only)
-    const conversionData = useMemo(() => {
-        if (simulation.length === 0) return [];
-
-        return simulation
-            .filter(s => {
-                const age = s.year - birthYear;
-                return age >= retirementAge && s.taxOptimizationTarget;
-            })
-            .map(s => {
-                const age = s.year - birthYear;
-                const target = s.taxOptimizationTarget!;
-                return {
-                    year: s.year,
-                    age,
-                    traditionalBalance: target.currentTraditionalBalance ?? 0,
-                    targetBalance: target.targetTraditionalAtRMD,
-                    idealTarget: target.idealTarget ?? target.targetTraditionalAtRMD,
-                    realisticTarget: target.realisticTarget ?? target.targetTraditionalAtRMD,
-                    conversionNeeded: target.conversionNeededThisYear,
-                    bracketSpace: target.bracketSpaceThisYear,
-                    actualConversion: target.actualConversion ?? (s.rothConversion?.amount ?? 0),
-                    limitingFactor: target.limitingFactor,
-                    targetCeiling: target.targetBracketCeiling,
-                    yearsUntilRMD: target.yearsUntilRMD,
-                    onTrack: target.onTrack ?? false,
-                    constraintDetails: target.constraintDetails,
-                    ssAtRMD: target.ssAtRMD,
-                    pensionAtRMD: target.pensionAtRMD,
-                };
-            });
-    }, [simulation, birthYear, retirementAge]);
-
-    // Get first year's target for summary
-    const summaryData = useMemo(() => {
-        if (conversionData.length === 0) return null;
-        const first = conversionData[0];
-
-        // Check if on track - compare current trajectory to target
-        const isOnTrack = first.onTrack ||
-            first.traditionalBalance <= first.targetBalance ||
-            (first.conversionNeeded > 0 && first.conversionNeeded <= first.bracketSpace);
-
-        return {
-            currentBalance: first.traditionalBalance || currentTraditionalBalance,
-            targetBalance: first.targetBalance,
-            yearsToRMD: yearsUntilRMD,
-            isOnTrack,
-            idealTarget: first.idealTarget,
-            realisticTarget: first.realisticTarget,
-            targetCeiling: first.targetCeiling,
-        };
-    }, [conversionData, currentTraditionalBalance, yearsUntilRMD]);
-
-    // Selected year details
-    const selectedYearData = useMemo(() => {
-        if (!selectedYear) return null;
-        return conversionData.find(d => d.year === selectedYear) ?? null;
-    }, [selectedYear, conversionData]);
-
-    if (simulation.length === 0) {
-        return (
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-8 text-center">
-                <p className="text-gray-400">No simulation data available. Run a simulation first.</p>
-            </div>
-        );
-    }
-
-    if (conversionData.length === 0) {
-        return (
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-8 text-center">
-                <p className="text-gray-400">No retirement years with tax optimization data found.</p>
-                <p className="text-gray-500 text-sm mt-2">Tax optimization must be enabled and you must be retired for data to appear.</p>
-            </div>
-        );
-    }
-
-    return (
-        <div className="space-y-6">
-            {/* Section 1: Summary Stats Row */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
-                <h3 className="text-lg font-bold text-white mb-4">Roth Conversion Status</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-400">Current Traditional</div>
-                        <div className="text-lg font-bold text-yellow-400">
-                            {toCurrencyShort(summaryData?.currentBalance ?? currentTraditionalBalance)}
-                        </div>
-                    </div>
-                    <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-400">Target at RMD</div>
-                        <div className="text-lg font-bold text-green-400">
-                            {toCurrencyShort(summaryData?.targetBalance ?? 0)}
-                        </div>
-                    </div>
-                    <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-400">Years to RMD</div>
-                        <div className="text-lg font-bold text-white">
-                            {yearsUntilRMD} years
-                        </div>
-                    </div>
-                    <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-400">Status</div>
-                        <div className={`text-lg font-bold ${summaryData?.isOnTrack ? 'text-green-400' : 'text-yellow-400'}`}>
-                            {summaryData?.isOnTrack ? '✓ On Track' : '⚠️ Behind'}
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Section 2: Target Breakdown Card */}
-            {summaryData && (
-                <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
-                    <h3 className="text-lg font-bold text-white mb-3">Target Analysis</h3>
-                    <div className="space-y-3">
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="bg-gray-800/50 rounded-lg p-3">
-                                <div className="text-xs text-gray-400">Ideal Target (12% bracket RMDs)</div>
-                                <div className="text-white font-medium">
-                                    {toCurrencyShort(summaryData.idealTarget)}
-                                </div>
-                            </div>
-                            <div className="bg-gray-800/50 rounded-lg p-3">
-                                <div className="text-xs text-gray-400">Realistic Target (given constraints)</div>
-                                <div className={`font-medium ${summaryData.realisticTarget > summaryData.idealTarget ? 'text-yellow-400' : 'text-green-400'}`}>
-                                    {toCurrencyShort(summaryData.realisticTarget)}
-                                    {summaryData.realisticTarget > summaryData.idealTarget && (
-                                        <span className="ml-2 text-xs bg-yellow-600/30 px-2 py-0.5 rounded">BINDING</span>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                        <div className="bg-gray-800/50 rounded-lg p-3">
-                            <div className="text-xs text-gray-400">Effective Target Used</div>
-                            <div className="text-white font-medium">
-                                {toCurrencyShort(summaryData.targetBalance)}
-                            </div>
-                        </div>
-                        {summaryData.realisticTarget > summaryData.idealTarget && (
-                            <div className="bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-3">
-                                <div className="text-xs text-yellow-400 font-semibold mb-1">Why realistic &gt; ideal?</div>
-                                <ul className="text-sm text-yellow-300 space-y-1 list-disc list-inside">
-                                    <li>Bracket space limited by conversion ceiling ({(summaryData.targetCeiling * 100).toFixed(0)}%)</li>
-                                    <li>Growth rate may outpace conversion capacity</li>
-                                    <li>SS torpedo or ACA cliff may be reducing available space</li>
-                                </ul>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
-
-            {/* Section 3: Year-by-Year Conversion Table */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
-                <h3 className="text-lg font-bold text-white mb-3">Year-by-Year Conversion Plan</h3>
-                <p className="text-sm text-gray-400 mb-4">
-                    Click a row to see detailed constraint analysis for that year.
-                </p>
-                <div className="overflow-x-auto max-h-96 overflow-y-auto">
-                    <table className="w-full text-sm">
-                        <thead className="sticky top-0 bg-gray-900 z-10">
-                            <tr className="text-gray-400 border-b border-gray-700">
-                                <th className="text-left p-2">Year</th>
-                                <th className="text-left p-2">Age</th>
-                                <th className="text-right p-2">Trad Bal</th>
-                                <th className="text-right p-2">Target Gap</th>
-                                <th className="text-right p-2">Bracket Space</th>
-                                <th className="text-right p-2">Converted</th>
-                                <th className="text-left p-2">Limiting Factor</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {conversionData.map((row) => {
-                                const gap = row.traditionalBalance - row.targetBalance;
-                                const factorInfo = formatLimitingFactor(row.limitingFactor);
-                                const isSelected = selectedYear === row.year;
-                                return (
-                                    <tr
-                                        key={row.year}
-                                        onClick={() => setSelectedYear(isSelected ? null : row.year)}
-                                        className={`border-b border-gray-800 cursor-pointer transition-colors ${
-                                            isSelected ? 'bg-blue-900/30' : 'hover:bg-gray-800/50'
-                                        }`}
-                                    >
-                                        <td className="p-2 text-gray-300">{row.year}</td>
-                                        <td className="p-2 text-gray-400">{row.age}</td>
-                                        <td className="p-2 text-right font-mono text-white">
-                                            {toCurrencyShort(row.traditionalBalance)}
-                                        </td>
-                                        <td className={`p-2 text-right font-mono ${gap > 0 ? 'text-yellow-400' : 'text-green-400'}`}>
-                                            {gap > 0 ? toCurrencyShort(gap) : '—'}
-                                        </td>
-                                        <td className="p-2 text-right font-mono text-blue-400">
-                                            {toCurrencyShort(row.bracketSpace)}
-                                        </td>
-                                        <td className="p-2 text-right font-mono text-purple-400">
-                                            {row.actualConversion > 0 ? toCurrencyShort(row.actualConversion) : '—'}
-                                        </td>
-                                        <td className="p-2">
-                                            <span className={`text-xs ${factorInfo.color}`}>
-                                                {factorInfo.label}
-                                            </span>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            {/* Section 4: Constraint Analysis Panel */}
-            {selectedYearData && (
-                <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
-                    <h3 className="text-lg font-bold text-white mb-3">
-                        Constraint Analysis ({selectedYearData.year}, Age {selectedYearData.age})
-                    </h3>
-                    <div className="space-y-4">
-                        {/* Conversion details */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <div className="bg-gray-800/50 rounded-lg p-3">
-                                <div className="text-xs text-gray-400">Conversion Ceiling</div>
-                                <div className="text-white font-medium">
-                                    {(selectedYearData.targetCeiling * 100).toFixed(0)}%
-                                </div>
-                            </div>
-                            <div className="bg-gray-800/50 rounded-lg p-3">
-                                <div className="text-xs text-gray-400">Years Until RMD</div>
-                                <div className="text-white font-medium">
-                                    {selectedYearData.yearsUntilRMD}
-                                </div>
-                            </div>
-                            <div className="bg-gray-800/50 rounded-lg p-3">
-                                <div className="text-xs text-gray-400">SS at RMD</div>
-                                <div className="text-white font-medium">
-                                    {toCurrencyShort(selectedYearData.ssAtRMD)}
-                                </div>
-                            </div>
-                            <div className="bg-gray-800/50 rounded-lg p-3">
-                                <div className="text-xs text-gray-400">Pension at RMD</div>
-                                <div className="text-white font-medium">
-                                    {toCurrencyShort(selectedYearData.pensionAtRMD)}
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Constraint details if available */}
-                        {selectedYearData.constraintDetails && (
-                            <div className="bg-gray-800/50 rounded-lg p-4">
-                                <div className="text-sm text-gray-400 mb-3">Bracket Space Breakdown</div>
-                                <div className="space-y-2 text-sm">
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-400">Current AGI:</span>
-                                        <span className="text-white font-mono">
-                                            {toCurrencyShort(selectedYearData.constraintDetails.currentAGI)}
-                                        </span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-400">
-                                            {(selectedYearData.targetCeiling * 100).toFixed(0)}% bracket top:
-                                        </span>
-                                        <span className="text-white font-mono">
-                                            {toCurrencyShort(selectedYearData.constraintDetails.bracketTop)}
-                                        </span>
-                                    </div>
-                                    <div className="flex justify-between border-t border-gray-700 pt-2">
-                                        <span className="text-gray-400">Raw bracket space:</span>
-                                        <span className="text-blue-400 font-mono">
-                                            {toCurrencyShort(selectedYearData.constraintDetails.rawBracketSpace)}
-                                        </span>
-                                    </div>
-                                    {selectedYearData.constraintDetails.ssTorpedoTriggered && (
-                                        <div className="flex justify-between text-red-400">
-                                            <span>SS Torpedo reduction:</span>
-                                            <span className="font-mono">
-                                                -{toCurrencyShort(selectedYearData.constraintDetails.ssTorpedoReduction)}
-                                            </span>
-                                        </div>
-                                    )}
-                                    {selectedYearData.constraintDetails.acaCliffTriggered && (
-                                        <div className="flex justify-between text-orange-400">
-                                            <span>ACA Cliff reduction:</span>
-                                            <span className="font-mono">
-                                                -{toCurrencyShort(selectedYearData.constraintDetails.acaCliffReduction)}
-                                            </span>
-                                        </div>
-                                    )}
-                                    <div className="flex justify-between border-t border-gray-700 pt-2 font-semibold">
-                                        <span className="text-gray-300">Effective bracket space:</span>
-                                        <span className="text-green-400 font-mono">
-                                            {toCurrencyShort(selectedYearData.constraintDetails.effectiveBracketSpace)}
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Warning indicators */}
-                        {selectedYearData.constraintDetails?.ssTorpedoTriggered && (
-                            <div className="bg-red-900/20 border border-red-700/50 rounded-lg p-3">
-                                <div className="text-red-400 font-semibold text-sm">⚠️ SS Torpedo Active</div>
-                                <p className="text-red-300 text-xs mt-1">
-                                    Social Security taxation is causing the effective tax rate to spike beyond the nominal bracket.
-                                    This limits how much can be converted before exceeding the target effective rate.
-                                </p>
-                            </div>
-                        )}
-                        {selectedYearData.constraintDetails?.acaCliffTriggered && (
-                            <div className="bg-orange-900/20 border border-orange-700/50 rounded-lg p-3">
-                                <div className="text-orange-400 font-semibold text-sm">⚠️ ACA Cliff Avoidance Active</div>
-                                <p className="text-orange-300 text-xs mt-1">
-                                    Conversions are being limited to stay under the ACA subsidy cliff
-                                    ({selectedYearData.constraintDetails.acaCliffThreshold
-                                        ? toCurrencyShort(selectedYearData.constraintDetails.acaCliffThreshold)
-                                        : 'threshold'}).
-                                </p>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
-
-            {/* Section 5: Conversion Summary */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
-                <h3 className="text-lg font-bold text-white mb-3">Conversion Summary</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-400">Total Planned Conversions</div>
-                        <div className="text-lg font-bold text-purple-400">
-                            {toCurrencyShort(conversionData.reduce((sum, d) => sum + d.actualConversion, 0))}
-                        </div>
-                    </div>
-                    <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-400">Years with Conversions</div>
-                        <div className="text-lg font-bold text-white">
-                            {conversionData.filter(d => d.actualConversion > 0).length}
-                        </div>
-                    </div>
-                    <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-400">Average Annual Conversion</div>
-                        <div className="text-lg font-bold text-blue-400">
-                            {toCurrencyShort(
-                                conversionData.filter(d => d.actualConversion > 0).length > 0
-                                    ? conversionData.reduce((sum, d) => sum + d.actualConversion, 0) /
-                                      conversionData.filter(d => d.actualConversion > 0).length
-                                    : 0
-                            )}
-                        </div>
-                    </div>
-                    <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-400">Most Common Limit</div>
-                        <div className="text-sm font-bold">
-                            {(() => {
-                                const counts: Record<string, number> = {};
-                                conversionData.forEach(d => {
-                                    const factor = d.limitingFactor ?? 'UNKNOWN';
-                                    counts[factor] = (counts[factor] || 0) + 1;
-                                });
-                                const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-                                if (sorted.length === 0) return <span className="text-gray-400">—</span>;
-                                const [factor] = sorted[0];
-                                const info = formatLimitingFactor(factor as ConversionLimitingFactor);
-                                return <span className={info.color}>{info.label}</span>;
-                            })()}
                         </div>
                     </div>
                 </div>

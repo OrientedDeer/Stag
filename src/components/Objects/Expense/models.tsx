@@ -78,7 +78,7 @@ export abstract class BaseExpense implements Expense {
  * This consolidates the common pattern shared by: VacationExpense, SubscriptionExpense,
  * EmergencyExpense, TransportExpense, FoodExpense, and OtherExpense.
  */
-export abstract class SimpleExpense extends BaseExpense {
+abstract class SimpleExpense extends BaseExpense {
   constructor(
     id: string,
     name: string,

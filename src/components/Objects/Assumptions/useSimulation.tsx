@@ -85,7 +85,7 @@ function runProjectionSubsim(
     milestoneReachYears: Map<string, number>,
     assumptions: AssumptionsState,
     taxState: TaxState,
-    birthYear: number
+    birthYear: number,
 ): BaselineProjections | undefined {
     const rmdYear = birthYear + getRMDStartAge(birthYear);
     const yearsToProject = rmdYear - currentSimYear;
@@ -93,9 +93,6 @@ function runProjectionSubsim(
 
     // Shallow-copy in-flight collections so the sub-sim doesn't mutate main-sim
     // state (account `amount` etc. are mutated in place by simulateOneYear).
-    // Account/income/expense classes are reconstituted by their respective
-    // domain reconstitute functions; here we just copy the array references and
-    // rely on simulateOneYear to produce new instances per year.
     const subTimeline: SimulationYear[] = [...timelineSoFar];
     runSimulationLoop({
         previousSimYear: currentSimYear,
@@ -380,6 +377,8 @@ export const runSimulation = (
                 fed: yearZero.taxDetails.fed * remainingFraction,
                 state: yearZero.taxDetails.state * remainingFraction,
                 fica: yearZero.taxDetails.fica * remainingFraction,
+                earlyWithdrawalPenalty: (yearZero.taxDetails.earlyWithdrawalPenalty ?? 0) * remainingFraction,
+                longTermCapitalGains: (yearZero.taxDetails.longTermCapitalGains ?? 0) * remainingFraction,
             },
             isEndOfYearProjection: true,
             logs: [],

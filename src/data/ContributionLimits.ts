@@ -20,7 +20,7 @@ export interface YearlyContributionLimits {
   catchUpHSA: number;           // Additional amount for age 55+
 }
 
-export const CONTRIBUTION_LIMITS: Record<number, YearlyContributionLimits> = {
+const CONTRIBUTION_LIMITS: Record<number, YearlyContributionLimits> = {
   2024: {
     traditional401k: 23000,
     catchUp401k: 7500,

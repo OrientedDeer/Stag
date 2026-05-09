@@ -12,9 +12,7 @@ import { ToggleInput } from '../../components/Layout/InputFields/ToggleInput';
 import { getRMDStartAge } from '../../data/RMDData';
 import { runSimulationWithOptimization } from '../../components/Objects/Assumptions/useSimulation';
 import { SimulationYear } from '../../services/simulation/types';
-import { Phase, calculateDynamicConversionCeiling } from '../../services/simulation/TaxOptimizedWithdrawal';
-import { estimateFixedIncomeAtRMD, extractIncomeForRMDEstimate } from '../../services/simulation/helpers';
-import * as TaxService from '../../components/Objects/Taxes/TaxService';
+import { Phase } from '../../services/simulation/TaxOptimizedWithdrawal';
 import { getSimulationInputHash } from '../../services/simulationHash';
 
 // Helper to calculate lifetime taxes from simulation
@@ -204,67 +202,6 @@ export default function WithdrawalTab() {
                 .reduce((sum, acc) => sum + acc.amount, 0)
             : currentTraditionalBalance;
 
-        // Aggressive-conversion threshold = the trad balance at RMD whose RMDs would
-        // exactly fill the user's chosen targetBracket. Above this threshold rate-match
-        // opens up to non-std-ded brackets; below it only std-ded conversions happen.
-        // This is a CEILING, not a goal — the algorithm correctly overshoots it (lower
-        // trad@RMD = lower RMD bracket = less tax).
-        const userTargetBracket = state.investments.rothConversionTargetBracket ?? 0.22;
-        const growthRateForTarget = state.investments.returnRates.ror / 100;
-        const taxParams = TaxService.getTaxParameters(currentYear, taxState.filingStatus, 'federal');
-
-        // Use simulation incomes (which have projectedPIA populated by IncomeProjection)
-        // rather than IncomeContext incomes (where projectedPIA is always 0).
-        const simWithSS = [...simulation].reverse().find(s =>
-            s.incomes?.some((i: any) =>
-                i.className === 'FutureSocialSecurityIncome' &&
-                (i.projectedPIA > 0 || i.calculatedPIA > 0)
-            )
-        );
-        const extractedIncome = extractIncomeForRMDEstimate(
-            simWithSS?.incomes ?? incomes,
-            currentYear,
-            state.macro.inflationAdjusted
-        );
-        const fixedIncomeResult = estimateFixedIncomeAtRMD(
-            extractedIncome.socialSecurityBenefits,
-            extractedIncome.futureSS_PIA,
-            extractedIncome.pensionIncome,
-            currentAge,
-            rmdAge,
-            extractedIncome.ssClaimingAge,
-            extractedIncome.ssCola,
-            extractedIncome.pensionCola
-        );
-
-        // Prefer V2 solver's stored target when available (calculated holistically
-        // during the simulation). Fall back to a direct compute using the user's
-        // chosen targetBracket so the threshold is consistent with the slider above.
-        const v2Target = simulation.find(s => s.taxOptimizationTarget)?.taxOptimizationTarget;
-        let aggressiveThreshold: number = projectedBalance;
-        if (v2Target) {
-            aggressiveThreshold = v2Target.targetTraditionalAtRMD;
-        } else if (taxParams && yearsUntilRMD > 0) {
-            const ceilingResult = calculateDynamicConversionCeiling(
-                currentTraditionalBalance,
-                yearsUntilRMD,
-                fixedIncomeResult.pensionAtRMD,
-                fixedIncomeResult.ssAtRMD,
-                extractedIncome.passiveIncome,
-                0, 0, 0,
-                growthRateForTarget,
-                rmdAge,
-                taxParams,
-                taxState,
-                null,
-                undefined,
-                undefined,
-                userTargetBracket,
-                state
-            );
-            aggressiveThreshold = ceilingResult.idealTargetBalance;
-        }
-
         // Count conversions from simulation
         let totalConversions = 0;
         let conversionYearsCount = 0;
@@ -306,8 +243,6 @@ export default function WithdrawalTab() {
 
         return {
             projectedBalance,             // Simulation outcome at RMD age
-            aggressiveThreshold,          // Ceiling above which rate-match opens up
-            userTargetBracket,            // User's chosen targetBracket setting (drives threshold)
             avgConversionPerYear: avgConversionAmount,
             maxConversionInPlan: maxConversionAmount,
             firstYearConversion: firstConversionAmount,
@@ -318,7 +253,7 @@ export default function WithdrawalTab() {
             yearsUntilRMD,
             phase,
         };
-    }, [taxOptimizationEnabled, state, accounts, expenses, simulation, incomes, taxState]);
+    }, [taxOptimizationEnabled, state, accounts, expenses, simulation]);
 
     // Filter to only withdrawal-eligible accounts (SavedAccount, InvestedAccount, ESPPAccount)
     const eligibleAccounts = accounts.filter(
@@ -535,10 +470,6 @@ export default function WithdrawalTab() {
                                     <span className="text-white font-semibold">{formatMoney(optimizationSummary.projectedBalance)}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-gray-400">Aggressive-conversion threshold:</span>
-                                    <span className="text-white">{formatMoney(optimizationSummary.aggressiveThreshold)}</span>
-                                </div>
-                                <div className="flex justify-between">
                                     <span className="text-gray-400">Current Traditional:</span>
                                     <span className="text-white">{formatMoney(optimizationSummary.currentTraditionalBalance)}</span>
                                 </div>
@@ -560,15 +491,6 @@ export default function WithdrawalTab() {
                                 )}
                             </div>
                         </div>
-
-                        {/* Threshold explainer */}
-                        <p className="text-xs text-gray-500 mt-3">
-                            The threshold is the trad balance at RMD whose RMDs would fill your chosen
-                            target bracket ({(optimizationSummary.userTargetBracket * 100).toFixed(0)}%).
-                            Above it, rate-match converts aggressively; below it, only standard-deduction
-                            headroom is converted. Landing below the threshold is good — it means RMDs
-                            land in a lower bracket.
-                        </p>
 
                         {/* First Year Conversion */}
                         {optimizationSummary.firstYearConversion > 0 && (

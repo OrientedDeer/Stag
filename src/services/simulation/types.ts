@@ -81,7 +81,7 @@ export interface SimulationYear {
     /** Detailed breakdown for the cashflow Sankey chart. */
     cashflowDetail?: CashflowDetail;
     taxDetails: {
-        fed: number;
+        fed: number; // Federal income tax + early-withdrawal penalty (penalty is also broken out in earlyWithdrawalPenalty)
         state: number;
         fica: number;
         preTax: number;
@@ -90,6 +90,8 @@ export interface SimulationYear {
         capitalGains: number; // Capital gains tax on brokerage/ESPP withdrawals only
         withdrawalOrdinaryTax: number; // Tax on Roth earnings (5-year rule), Traditional, HSA non-medical
         niit: number; // Net Investment Income Tax (3.8%)
+        earlyWithdrawalPenalty?: number; // 10% early-withdrawal penalty (Traditional pre-59.5, Roth conversion 5-year rule). Already included in `fed`; surfaced separately for diagnostics.
+        longTermCapitalGains?: number; // LTCG amount realized this year (for AGI-equivalent denominator in effective-rate calcs). Surfaces WithdrawalState.longTermCapitalGains.
     };
     logs: string[];
     // Withdrawal strategy tracking (for multi-year calculations)
@@ -391,28 +393,48 @@ export type ConversionLimitingFactor =
     | 'BRACKET_CEILING'       // Hit target tax bracket ceiling
     | 'SS_TORPEDO'            // SS torpedo caused effective rate to spike
     | 'ACA_CLIFF'             // ACA cliff avoidance limited conversion
-    | 'BALANCE_BELOW_TARGET'  // Traditional balance already below target
     | 'NO_BRACKET_SPACE'      // Already in or above target bracket
-    | 'PACING'                // Damping/pacing formula limited conversion
     | 'TRADITIONAL_DEPLETED'  // No Traditional balance left to convert
     | 'NOT_RETIRED'           // Not retired yet, no conversions
     | 'AT_RMD_AGE'            // At or past RMD age, no conversions
     | 'SPENDING_DEFICIT';      // Bracket space shared with Traditional spending withdrawals
 
 /**
+ * One step in the rate-match walk (debug-only).
+ *
+ * The rate-match walk considers each bracket from std-ded headroom upward and
+ * decides whether to fill it. Each row records the inputs and decision so the
+ * Roth Debug page can reproduce the algorithm's reasoning.
+ */
+export interface RateMatchWalkRow {
+    /** Marginal rate of this chunk (0 for std-ded headroom, then bracket rates). */
+    currentRate: number;
+    /** Lower edge of this chunk's taxable-income window (post-stdDed). */
+    chunkStart: number;
+    /** Upper edge of this chunk's taxable-income window (post-stdDed). */
+    chunkEnd: number;
+    /** Dollars available in this chunk before the balance/cap clamp. */
+    chunkSize: number;
+    /** Projected RMD-year marginal rate if we convert up through this chunk. */
+    futureMarginal: number;
+    /** futureMarginal - currentRate (the rate gap). */
+    gap: number;
+    /** Decision: convert or stop. The first 'stop' row is the limiting factor. */
+    decision: 'convert' | 'stop';
+    /** Cumulative dollars converted including this chunk (only when decision='convert'). */
+    cumulative: number;
+}
+
+/**
  * Tax optimization target information (for UI display).
  * Calculated by the V2 solver to show the user what the engine is targeting.
  */
 export interface TaxOptimizationTarget {
-    /** Target Traditional balance at RMD age */
-    targetTraditionalAtRMD: number;
-    /** Conversion needed this year to stay on track */
-    conversionNeededThisYear: number;
     /** Years until RMD age */
     yearsUntilRMD: number;
     /** RMD start age */
     rmdStartAge: number;
-    /** Target bracket ceiling (e.g., 0.22 for 22%) */
+    /** Top conversion rate the rate-match walk reached this year (e.g., 0.22) */
     targetBracketCeiling: number;
     /** Bracket space available this year */
     bracketSpaceThisYear: number;
@@ -420,20 +442,18 @@ export interface TaxOptimizationTarget {
     ssAtRMD: number;
     /** Projected pension at RMD age */
     pensionAtRMD: number;
-    /** Ideal target balance (12% bracket) - may be unachievable */
-    idealTarget?: number;
-    /** Realistic target given constraints - what's actually achievable */
-    realisticTarget?: number;
+    /** Projected Traditional balance at RMD age given current conversion trajectory */
+    projectedBalanceAtRMD?: number;
     /** What's limiting conversions this year */
     limitingFactor?: ConversionLimitingFactor;
     /** Detailed constraint breakdown for debugging */
     constraintDetails?: ConversionConstraints;
     /** Current Traditional balance at start of year */
     currentTraditionalBalance?: number;
-    /** Whether we're on track to reach the target */
-    onTrack?: boolean;
     /** Actual conversion amount executed this year */
     actualConversion?: number;
+    /** Bracket-by-bracket trace of the rate-match walk (for the Roth Debug page) */
+    rateMatchWalk?: RateMatchWalkRow[];
 }
 
 /**

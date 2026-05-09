@@ -493,7 +493,6 @@ describe('Return Rate Override Integration', () => {
                 gkLowerGuardrail: 0.8,
                 gkAdjustmentPercent: 10,
                 autoRothConversions: false,
-                rothConversionTargetBracket: 0.22,
                 taxOptimizationEnabled: false,
                 acaAware: true,
             },

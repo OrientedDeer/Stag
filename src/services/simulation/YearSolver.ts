@@ -247,8 +247,6 @@ function planConversion(
             decisions,
             bracketSpaceForSpending: 0,
             taxOptimizationTarget: {
-                targetTraditionalAtRMD: 0,
-                conversionNeededThisYear: 0,
                 yearsUntilRMD: 0,
                 rmdStartAge: 73,
                 targetBracketCeiling: 0,
@@ -275,8 +273,6 @@ function planConversion(
             decisions,
             bracketSpaceForSpending: 0,
             taxOptimizationTarget: {
-                targetTraditionalAtRMD: 0,
-                conversionNeededThisYear: 0,
                 yearsUntilRMD: 0,
                 rmdStartAge: 73,
                 targetBracketCeiling: 0,
@@ -360,11 +356,6 @@ function planConversion(
         };
     }
 
-    // Default to 0 = std-ded floor (RMDs ≤ standard deduction → no taxable RMD income).
-    // Older saved scenarios that predate this default get the same conservative behavior
-    // as the new default rather than the legacy 0.22 (which over-blocks 0% conversions).
-    const configTargetBracket = input.assumptions.investments.rothConversionTargetBracket ?? 0;
-
     const ceilingResult = calculateDynamicConversionCeiling(
         traditionalBalance,
         yearsUntilRMD,
@@ -381,13 +372,9 @@ function planConversion(
         stateParams,
         acaOptions,
         input.baselineProjections, // Sub-sim projections — source of truth for SS/pension/passive/Trad@RMD
-        configTargetBracket,
         input.assumptions, // Enables RMD-year-aware bracket lookup for peakRMDBracket
         input.conversionMode ?? 'rate-match'
     );
-
-    // Use idealTargetBalance from the ceiling calculation (new three-tier system)
-    const idealTargetBalance = ceilingResult.idealTargetBalance;
 
     // Log ceiling decision so it's visible in the year inspector
     decisions.push({
@@ -399,32 +386,6 @@ function planConversion(
             `peak RMD ~$${Math.round(ceilingResult.peakRMD).toLocaleString()}/yr ` +
             `→ ${(ceilingResult.peakRMDBracket * 100).toFixed(0)}% bracket ` +
             `→ ceiling ${ceilingResult.conversionCeiling > 0 ? (ceilingResult.conversionCeiling * 100).toFixed(0) + '%' : 'none (0%)'}.`,
-    });
-
-    // PMT pacing has been removed. Previously the algorithm computed a per-year
-    // pacing amount = (projected − target) × annuity-factor to "spread conversions
-    // smoothly toward target." With iterative refinement, projected converges to
-    // target so PMT trends to zero — at which point it would block productive
-    // free conversions. Sizing is now controlled entirely by bracket-space and
-    // the per-year ceiling.
-    const projectedAtRMD = ceilingResult.projectedBalanceAtRMD;
-
-    // DEBUG: surface the inputs to idealTargetBalance so we can see year-over-year
-    // what's varying when something looks off. After iteration converges, the
-    // target should be invariant across simulation years.
-    const baselineProjUsed = input.baselineProjections;
-    decisions.push({
-        category: 'conversion',
-        description:
-            `[DEBUG INPUTS] baseline=${baselineProjUsed ? 'YES' : 'NO'} ` +
-            `(SS@RMD $${Math.round(baselineProjUsed?.ssAtRMD ?? fixedIncomeAtRMD.ssAtRMD).toLocaleString()}, ` +
-            `pension@RMD $${Math.round(baselineProjUsed?.pensionAtRMD ?? fixedIncomeAtRMD.pensionAtRMD).toLocaleString()}, ` +
-            `passive@RMD $${Math.round(baselineProjUsed?.passiveAtRMD ?? passiveIncome).toLocaleString()}, ` +
-            `tradBal@RMD-baseline $${Math.round(baselineProjUsed?.traditionalBalanceAtRMD ?? 0).toLocaleString()}). ` +
-            `currentTradBal $${Math.round(traditionalBalance).toLocaleString()}, ` +
-            `target $${Math.round(idealTargetBalance).toLocaleString()}, ` +
-            `projected@RMD $${Math.round(projectedAtRMD).toLocaleString()}, ` +
-            `targetBracket ${configTargetBracket > 0 ? (configTargetBracket * 100).toFixed(0) + '%' : 'std-ded floor'}.`,
     });
 
     // Build constraint details for debugging
@@ -456,55 +417,17 @@ function planConversion(
 
     // Build the tax optimization target info for UI display
     const taxOptimizationTarget: TaxOptimizationTarget = {
-        targetTraditionalAtRMD: idealTargetBalance,
-        conversionNeededThisYear: 0, // PMT pacing removed; sizing now governed by bracket space alone
         yearsUntilRMD,
         rmdStartAge,
         targetBracketCeiling: ceilingResult.conversionCeiling,
         bracketSpaceThisYear: ceilingResult.bracketSpacePerYear,
         ssAtRMD: fixedIncomeAtRMD.ssAtRMD,
         pensionAtRMD: fixedIncomeAtRMD.pensionAtRMD,
-        idealTarget: idealTargetBalance,
-        realisticTarget: ceilingResult.projectedBalanceAtRMD,
+        projectedBalanceAtRMD: ceilingResult.projectedBalanceAtRMD,
         currentTraditionalBalance: traditionalBalance,
-        // On track when projected RMD-year balance is at or below target
-        onTrack: ceilingResult.projectedBalanceAtRMD <= idealTargetBalance,
         constraintDetails,
+        rateMatchWalk: ceilingResult.rateMatchWalk,
     };
-
-    // If projected balance at RMD is below target, normally we'd skip — but
-    // free conversions (no current-year tax cost) are allowed to proceed
-    // because they can't waste money you'd otherwise pay at the same or lower
-    // rate. Only block when the conversion would actually cost something.
-    //
-    // "Free" here means the user has standard-deduction headroom: current
-    // ordinary income is below the deduction, so the first dollars of
-    // conversion produce no taxable income. (Note: this is a conservative
-    // proxy — adding conversion can also increase SS taxability via the
-    // torpedo, but the first dollar is essentially free if income is under
-    // the deduction. Bracket-space and SS-torpedo logic downstream will cap
-    // the actual converted amount appropriately.)
-    const projectedBalanceAtRMD = ceilingResult.projectedBalanceAtRMD;
-    const hasStdDedHeadroom = baseOrdinaryIncome < fedParams.standardDeduction;
-
-    if (projectedBalanceAtRMD <= idealTargetBalance && !hasStdDedHeadroom) {
-        decisions.push({
-            category: 'conversion',
-            amount: idealTargetBalance,
-            description: `Skipped Roth conversion: Projected balance at RMD ($${Math.round(projectedBalanceAtRMD).toLocaleString()}) below target ($${Math.round(idealTargetBalance).toLocaleString()}) and no standard-deduction headroom for free conversions.`,
-        });
-        taxOptimizationTarget.limitingFactor = 'BALANCE_BELOW_TARGET';
-        taxOptimizationTarget.actualConversion = 0;
-        return {
-            conversion: null,
-            conversionTax: 0,
-            taxSource: 'SURPLUS',
-            additionalOrdinaryIncome: 0,
-            decisions,
-            bracketSpaceForSpending: 0,
-            taxOptimizationTarget,
-        };
-    }
 
     // Calculate bracket space
     let bracketSpace = Math.max(0, ceilingResult.bracketSpacePerYear);
@@ -790,19 +713,11 @@ function planConversion(
     if (conversionAmount <= 0) {
         // Log why conversion was skipped — but don't overwrite limitingFactor if already set (e.g., by ACA cliff)
         if (!taxOptimizationTarget.limitingFactor) {
-            if (projectedBalanceAtRMD <= idealTargetBalance) {
-                decisions.push({
-                    category: 'conversion',
-                    description: `Skipped Roth conversion: Projected balance at RMD ($${Math.round(projectedBalanceAtRMD).toLocaleString()}) below target ($${Math.round(idealTargetBalance).toLocaleString()}). Future RMDs will fill 0% bracket.`,
-                });
-                taxOptimizationTarget.limitingFactor = 'BALANCE_BELOW_TARGET';
-            } else {
-                decisions.push({
-                    category: 'conversion',
-                    description: `Skipped Roth conversion: no bracket space available.`,
-                });
-                taxOptimizationTarget.limitingFactor = 'NO_BRACKET_SPACE';
-            }
+            decisions.push({
+                category: 'conversion',
+                description: `Skipped Roth conversion: no bracket space available.`,
+            });
+            taxOptimizationTarget.limitingFactor = 'NO_BRACKET_SPACE';
         }
         taxOptimizationTarget.actualConversion = 0;
         return {

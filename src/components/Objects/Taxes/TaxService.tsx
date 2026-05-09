@@ -86,10 +86,6 @@ export function getSALTCap(year: number, filingStatus: FilingStatus): number {
 	return isMFS ? SALT_CAP_TCJA_MFS : SALT_CAP_TCJA_JOINT;
 }
 
-// Legacy constants for backward compatibility
-export const SALT_CAP = 10000;
-export const SALT_CAP_MFS = 5000;
-
 export function getTaxParameters(
 	year: number,
 	filingStatus: FilingStatus,
@@ -374,40 +370,6 @@ const NIIT_THRESHOLDS: Record<FilingStatus, number> = {
 
 /** NIIT rate */
 const NIIT_RATE = 0.038;
-
-/**
- * Calculate Net Investment Income Tax (NIIT) as a standalone function.
- *
- * NIIT is 3.8% on the LESSER of:
- * - Net investment income (STCG + LTCG + dividends)
- * - MAGI exceeding threshold ($200k single, $250k MFJ, $125k MFS)
- *
- * Used by Option B post-hoc tax correction after withdrawals determine actual LTCG/STCG.
- *
- * @param magi - Modified Adjusted Gross Income (includes ordinary income, STCG, LTCG, taxable SS)
- * @param shortTermCapitalGains - Short-term capital gains realized
- * @param longTermCapitalGains - Long-term capital gains realized
- * @param filingStatus - Tax filing status
- * @returns NIIT amount
- */
-export function calculateNIIT(
-	magi: number,
-	shortTermCapitalGains: number,
-	longTermCapitalGains: number,
-	filingStatus: FilingStatus
-): number {
-	const niitThreshold = NIIT_THRESHOLDS[filingStatus];
-	const netInvestmentIncome = shortTermCapitalGains + longTermCapitalGains;
-
-	if (netInvestmentIncome <= 0) return 0;
-
-	const magiExcess = Math.max(0, magi - niitThreshold);
-	if (magiExcess <= 0) return 0;
-
-	// NIIT applies to the lesser of investment income or MAGI excess
-	const niitBase = Math.min(netInvestmentIncome, magiExcess);
-	return niitBase * NIIT_RATE;
-}
 
 /**
  * Unified federal tax calculation that handles all income types and their interactions.

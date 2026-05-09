@@ -36,7 +36,7 @@ describe('Capital Gains Tax', () => {
             const assumptions = {
                 demographics: {},
                 macro: { inflationRate: 3, healthcareInflation: 5, inflationAdjusted: false },
-                investments: { returnRates: { ror: 7 }, withdrawalRate: 4, withdrawalStrategy: 'Fixed Real' as const, gkUpperGuardrail: 1.2, gkLowerGuardrail: 0.8, gkAdjustmentPercent: 10, autoRothConversions: false, rothConversionTargetBracket: 0.22, taxOptimizationEnabled: false, acaAware: true },
+                investments: { returnRates: { ror: 7 }, withdrawalRate: 4, withdrawalStrategy: 'Fixed Real' as const, gkUpperGuardrail: 1.2, gkLowerGuardrail: 0.8, gkAdjustmentPercent: 10, autoRothConversions: false, taxOptimizationEnabled: false, acaAware: true },
                 income: { salaryGrowth: 3, qualifiesForSocialSecurity: true, socialSecurityFundingPercent: 100 },
                 expenses: { lifestyleCreep: 0, housingAppreciation: 3, rentInflation: 3 },
                 priorities: [],
@@ -66,7 +66,7 @@ describe('Capital Gains Tax', () => {
             const assumptions = {
                 demographics: {},
                 macro: { inflationRate: 3, healthcareInflation: 5, inflationAdjusted: false },
-                investments: { returnRates: { ror: 7 }, withdrawalRate: 4, withdrawalStrategy: 'Fixed Real' as const, gkUpperGuardrail: 1.2, gkLowerGuardrail: 0.8, gkAdjustmentPercent: 10, autoRothConversions: false, rothConversionTargetBracket: 0.22, taxOptimizationEnabled: false, acaAware: true },
+                investments: { returnRates: { ror: 7 }, withdrawalRate: 4, withdrawalStrategy: 'Fixed Real' as const, gkUpperGuardrail: 1.2, gkLowerGuardrail: 0.8, gkAdjustmentPercent: 10, autoRothConversions: false, taxOptimizationEnabled: false, acaAware: true },
                 income: { salaryGrowth: 3, qualifiesForSocialSecurity: true, socialSecurityFundingPercent: 100 },
                 expenses: { lifestyleCreep: 0, housingAppreciation: 3, rentInflation: 3 },
                 priorities: [],
@@ -94,7 +94,7 @@ describe('Capital Gains Tax', () => {
             const assumptions = {
                 demographics: {},
                 macro: { inflationRate: 3, healthcareInflation: 5, inflationAdjusted: false },
-                investments: { returnRates: { ror: 7 }, withdrawalRate: 4, withdrawalStrategy: 'Fixed Real' as const, gkUpperGuardrail: 1.2, gkLowerGuardrail: 0.8, gkAdjustmentPercent: 10, autoRothConversions: false, rothConversionTargetBracket: 0.22, taxOptimizationEnabled: false, acaAware: true },
+                investments: { returnRates: { ror: 7 }, withdrawalRate: 4, withdrawalStrategy: 'Fixed Real' as const, gkUpperGuardrail: 1.2, gkLowerGuardrail: 0.8, gkAdjustmentPercent: 10, autoRothConversions: false, taxOptimizationEnabled: false, acaAware: true },
                 income: { salaryGrowth: 3, qualifiesForSocialSecurity: true, socialSecurityFundingPercent: 100 },
                 expenses: { lifestyleCreep: 0, housingAppreciation: 3, rentInflation: 3 },
                 priorities: [],

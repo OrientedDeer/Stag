@@ -550,7 +550,7 @@ function getBracketCeilingForRate(
  * Returns null if analysis isn't applicable (no traditional balance projected, no RMD
  * year in simulation, etc.).
  */
-export function analyzeRMDTaxPressure(
+function analyzeRMDTaxPressure(
     simulation: SimulationYear[],
     assumptions: AssumptionsState,
     taxState: TaxState
@@ -773,7 +773,7 @@ function estimateLifetimeTaxImpact(
 /**
  * Generate a recommendation flagging RMD tax pressure and suggesting Roth contributions.
  */
-export function generateRMDPressureRecommendation(
+function generateRMDPressureRecommendation(
     pressure: RMDPressureAnalysis | null
 ): TaxRecommendation | null {
     if (!pressure || !pressure.hasPressure) return null;
@@ -968,9 +968,7 @@ export interface ConversionScheduleEntry {
     bracketSpaceAvailable: number | null;
     /** Target bracket ceiling the solver was aiming to fill (0..1, e.g. 0.22 = 22%). Null if no V2 target */
     targetBracketCeiling: number | null;
-    /** Target Traditional balance the solver is aiming for at RMD age */
-    targetBalanceAtRMD: number | null;
-    /** Projected Traditional balance at RMD age given the current trajectory (compare to target — same = on track) */
+    /** Projected Traditional balance at RMD age given the current trajectory */
     projectedBalanceAtRMD: number | null;
 }
 
@@ -1066,9 +1064,7 @@ export function analyzeConversionPlan(
         const limitingFactor = target?.limitingFactor ?? null;
         const bracketSpaceAvailable = target?.bracketSpaceThisYear ?? null;
         const targetBracketCeiling = target?.targetBracketCeiling ?? null;
-        const targetBalanceAtRMD = target?.targetTraditionalAtRMD ?? null;
-        // realisticTarget on TaxOptimizationTarget = projected Traditional balance at RMD given the trajectory
-        const projectedBalanceAtRMD = target?.realisticTarget ?? null;
+        const projectedBalanceAtRMD = target?.projectedBalanceAtRMD ?? null;
 
         schedule.push({
             year: simYear.year,
@@ -1082,7 +1078,6 @@ export function analyzeConversionPlan(
             limitingFactor,
             bracketSpaceAvailable,
             targetBracketCeiling,
-            targetBalanceAtRMD,
             projectedBalanceAtRMD
         });
         totalConverted += conv.amount;

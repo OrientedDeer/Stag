@@ -21,7 +21,7 @@ export type PensionSystem = 'FERS' | 'CSRS';
  *
  * For those born 1970 or later: MRA = 57
  */
-export const FERS_MRA_BY_BIRTH_YEAR: Record<number, number> = {
+const FERS_MRA_BY_BIRTH_YEAR: Record<number, number> = {
   1948: 55.167, // 55 years 2 months
   1949: 55.333, // 55 years 4 months
   1950: 55.5,   // 55 years 6 months

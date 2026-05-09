@@ -180,7 +180,6 @@ describe('Bug D: Gap Year Input→Output Tests', () => {
             console.log('Test 2a - Gap year, small balance:', {
                 conversionCeiling: result.conversionCeiling,
                 bracketSpacePerYear: result.bracketSpacePerYear,
-                idealTargetBalance: result.idealTargetBalance,
                 projectedBalanceAtRMD: result.projectedBalanceAtRMD,
                 expected: 'ceiling=0, bracketSpace=stdDeduction (~$16k)'
             });
@@ -216,7 +215,6 @@ describe('Bug D: Gap Year Input→Output Tests', () => {
                 conversionCeiling: result.conversionCeiling,
                 bracketSpacePerYear: result.bracketSpacePerYear,
                 projectedBalanceAtRMD: result.projectedBalanceAtRMD,
-                idealTargetBalance: result.idealTargetBalance,
                 expected: 'ceiling > 12%, bracketSpace > $100k'
             });
 
@@ -253,7 +251,6 @@ describe('Bug D: Gap Year Input→Output Tests', () => {
                 conversionCeiling: result.conversionCeiling,
                 bracketSpacePerYear: result.bracketSpacePerYear,
                 projectedBalanceAtRMD: result.projectedBalanceAtRMD,
-                idealTargetBalance: result.idealTargetBalance,
                 expected: 'ceiling >= 24%, bracketSpace ~$208k'
             });
 
@@ -586,77 +583,6 @@ describe('Bug C: fixedIncomeAtRMD consistency', () => {
         });
     });
 
-    describe('fallback path when baselineProjections is null', () => {
-        it('calculateDynamicConversionCeiling uses passed ssAtRMD when no baseline', () => {
-            const taxParams = getSingleParams();
-
-            // Test that the function uses the ssAtRMD parameter directly
-            // when baselineProjections is not provided
-
-            const ssAtRMD_low = 25000;
-            const ssAtRMD_high = 40000;
-
-            const resultLow = calculateDynamicConversionCeiling(
-                500_000, 15, 0, ssAtRMD_low, 0, 0, 0, 0, 0.06, 75,
-                taxParams, singleTaxState, null, undefined, undefined  // No baselineProjections
-            );
-
-            const resultHigh = calculateDynamicConversionCeiling(
-                500_000, 15, 0, ssAtRMD_high, 0, 0, 0, 0, 0.06, 75,
-                taxParams, singleTaxState, null, undefined, undefined  // No baselineProjections
-            );
-
-            console.log('Bug C Test - Fallback ssAtRMD impact:', {
-                ssAtRMD_low,
-                idealTargetLow: resultLow.idealTargetBalance,
-                ssAtRMD_high,
-                idealTargetHigh: resultHigh.idealTargetBalance,
-            });
-
-            // Higher SS at RMD means less bracket space for RMDs
-            // So ideal target balance should be LOWER with higher SS
-            expect(resultHigh.idealTargetBalance).toBeLessThan(resultLow.idealTargetBalance);
-        });
-
-        it('documents the inconsistency: same person, different ssAtRMD values', () => {
-            // This test documents Bug C's root cause:
-            // The fallback calculation in SimulationEngine uses current SS income
-            // instead of projected RMD-age income
-
-            // Scenario: Person receiving SS at $30k/year today
-            // At RMD age (10 years later with 2% COLA): $36,570/year
-
-            const currentSS = 30000;
-            const projectedSSAtRMD = 30000 * Math.pow(1.02, 10);  // $36,570
-
-            const taxParams = getSingleParams();
-
-            // What the fallback does (uses current SS)
-            const resultFallback = calculateDynamicConversionCeiling(
-                500_000, 10, 0, currentSS, 0, 0, currentSS, 0, 0.06, 75,
-                taxParams, singleTaxState, null, undefined, undefined
-            );
-
-            // What it SHOULD do (use projected SS at RMD)
-            const resultCorrect = calculateDynamicConversionCeiling(
-                500_000, 10, 0, projectedSSAtRMD, 0, 0, currentSS, 0, 0.06, 75,
-                taxParams, singleTaxState, null, undefined, undefined
-            );
-
-            console.log('Bug C Test - Fallback vs Correct ssAtRMD:', {
-                currentSS,
-                projectedSSAtRMD,
-                fallbackIdealTarget: resultFallback.idealTargetBalance,
-                correctIdealTarget: resultCorrect.idealTargetBalance,
-                difference: resultFallback.idealTargetBalance - resultCorrect.idealTargetBalance,
-            });
-
-            // The fallback uses lower SS, resulting in HIGHER ideal target
-            // (more bracket space assumed → larger acceptable Traditional balance)
-            // This is the Bug C effect: underestimating SS leads to over-targeting
-            expect(resultFallback.idealTargetBalance).toBeGreaterThan(resultCorrect.idealTargetBalance);
-        });
-    });
 });
 
 // =============================================================================

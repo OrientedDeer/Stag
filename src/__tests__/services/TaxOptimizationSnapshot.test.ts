@@ -179,7 +179,6 @@ describe.skip('Tax Optimization Snapshot Tests', () => {
                 ...defaultAssumptions.investments,
                 returnRates: { ror: 6 },
                                 taxOptimizationEnabled: taxOptEnabled,
-                rothConversionTargetBracket: 0.22,
             },
             withdrawalStrategy: [
                 { id: 'ws-savings', name: 'Savings', accountId: 'acc-savings' },
@@ -313,7 +312,6 @@ describe.skip('Tax Optimization Snapshot Tests', () => {
                 ...defaultAssumptions.investments,
                 returnRates: { ror: 5 },
                                 taxOptimizationEnabled: taxOptEnabled,
-                rothConversionTargetBracket: 0.22,
             },
             withdrawalStrategy: [
                 { id: 'ws-savings', name: 'Savings', accountId: 'acc-savings-trad' },
@@ -443,7 +441,6 @@ describe.skip('Tax Optimization Snapshot Tests', () => {
                     ...defaultAssumptions.investments,
                     returnRates: { ror: 5 },
                                         taxOptimizationEnabled: true,
-                    rothConversionTargetBracket: 0.22,
                 },
                 withdrawalStrategy: [
                     { id: 'ws-savings', name: 'Savings', accountId: 'acc-savings-high' },
@@ -485,7 +482,6 @@ describe.skip('Tax Optimization Snapshot Tests', () => {
                     ...defaultAssumptions.investments,
                     returnRates: { ror: 5 },
                                         taxOptimizationEnabled: true,
-                    rothConversionTargetBracket: 0.22,
                 },
                 withdrawalStrategy: [
                     { id: 'ws-savings', name: 'Savings', accountId: 'acc-savings-low' },

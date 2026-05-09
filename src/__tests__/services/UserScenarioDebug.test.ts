@@ -40,7 +40,6 @@ function createUserAssumptions(birthYear: number, retirementAge: number): Assump
             returnRates: { ror: 6 },
             taxOptimizationEnabled: true,
             autoRothConversions: true,
-            rothConversionTargetBracket: 0.22,
             withdrawalStrategy: 'Fixed Real',
             withdrawalRate: 4,
         },

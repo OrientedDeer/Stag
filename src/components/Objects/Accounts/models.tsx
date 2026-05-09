@@ -10,7 +10,7 @@ export interface Account {
 }
 
 // 2. Base Abstract Class
-export abstract class BaseAccount implements Account {
+abstract class BaseAccount implements Account {
   constructor(
     public id: string,
     public name: string,

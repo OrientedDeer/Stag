@@ -1,4 +1,4 @@
-import { AnyExpense, isExpenseActiveInCurrentMonth } from '../Expense/models';
+import { AnyExpense } from '../Expense/models';
 import { SimulationYear } from '../Assumptions/SimulationEngine';
 import { AnyAccount } from '../Accounts/models';
 import { MonthlySnapshot, Transaction, IncomeCategory, getFrequencyDivisor } from './BudgetContext';
@@ -56,13 +56,6 @@ export function getActiveExpenses(
 
         return true;
     });
-}
-
-/**
- * Get expenses that are currently active (for current month)
- */
-export function getCurrentlyActiveExpenses(expenses: AnyExpense[]): AnyExpense[] {
-    return expenses.filter(isExpenseActiveInCurrentMonth);
 }
 
 /**
@@ -350,13 +343,6 @@ export function navigateMonth(
 }
 
 /**
- * Generate a unique ID for months
- */
-export function generateMonthId(month: number, year: number): string {
-    return `MONTH-${year}-${month.toString().padStart(2, '0')}-${Date.now()}`;
-}
-
-/**
  * Format currency for display
  */
 export function formatCurrency(amount: number): string {
@@ -366,21 +352,6 @@ export function formatCurrency(amount: number): string {
         minimumFractionDigits: 0,
         maximumFractionDigits: 0,
     }).format(amount);
-}
-
-/**
- * Format percentage for display
- */
-export function formatPercent(value: number): string {
-    return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
-}
-
-/**
- * Get status color class based on variance
- */
-export function getStatusColor(isOnTrack: boolean, isUnder: boolean): string {
-    if (isOnTrack) return 'text-green-400';
-    return isUnder ? 'text-green-400' : 'text-yellow-400';
 }
 
 // ============================================================================
@@ -482,22 +453,6 @@ export function calculateNetCashFlow(transactions: Transaction[]): {
         spending,
         net: income - spending,
     };
-}
-
-/**
- * Get income transactions grouped by category
- */
-export function getIncomeTransactions(transactions: Transaction[]): Transaction[] {
-    return transactions.filter(t =>
-        t.amount > 0 && !t.isTransfer && !t.isReimbursement && t.incomeCategory
-    );
-}
-
-/**
- * Get reimbursement transactions
- */
-export function getReimbursementTransactions(transactions: Transaction[]): Transaction[] {
-    return transactions.filter(t => t.amount > 0 && t.isReimbursement && t.expenseId);
 }
 
 // ============================================================================

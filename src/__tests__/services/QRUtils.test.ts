@@ -608,7 +608,6 @@ describe('qrUtils', () => {
           gkLowerGuardrail: 0.7,
           gkAdjustmentPercent: 15,
           autoRothConversions: true,
-          rothConversionTargetBracket: 0.24,
         },
       };
 
@@ -621,7 +620,6 @@ describe('qrUtils', () => {
       expect(result.gkLowerGuardrail).toBe(0.7);
       expect(result.gkAdjustmentPercent).toBe(15);
       expect(result.autoRothConversions).toBe(true);
-      expect(result.rothConversionTargetBracket).toBe(0.24);
     });
 
     it('should flatten demographics fields', () => {
@@ -769,7 +767,6 @@ describe('qrUtils', () => {
       expect(investments.gkLowerGuardrail).toBe(0.8);
       expect(investments.gkAdjustmentPercent).toBe(10);
       expect(investments.autoRothConversions).toBe(false);
-      expect(investments.rothConversionTargetBracket).toBe(0.22);
     });
 
     it('should apply defaults for missing demographics fields except birthYear', () => {
@@ -872,7 +869,6 @@ describe('qrUtils', () => {
           gkLowerGuardrail: 0.8,
           gkAdjustmentPercent: 10,
           autoRothConversions: false,
-          rothConversionTargetBracket: 0.22,
         },
         demographics: {
           birthYear: 1985,
@@ -920,7 +916,6 @@ describe('qrUtils', () => {
           gkLowerGuardrail: 0.7,
           gkAdjustmentPercent: 15,
           autoRothConversions: true,
-          rothConversionTargetBracket: 0.24,
         },
         demographics: {
           birthYear: 1990,
@@ -1079,7 +1074,6 @@ describe('qrUtils', () => {
         gl: 0.75, // gkLowerGuardrail
         ga: 12, // gkAdjustmentPercent
         ar: true, // autoRothConversions
-        rb: 0.32, // rothConversionTargetBracket
         by: 1980, // birthYear
         ra: 60, // retirementAge
         le: 95, // lifeExpectancy
@@ -1115,7 +1109,6 @@ describe('qrUtils', () => {
       expect(investments.gkLowerGuardrail).toBe(0.75);
       expect(investments.gkAdjustmentPercent).toBe(12);
       expect(investments.autoRothConversions).toBe(true);
-      expect(investments.rothConversionTargetBracket).toBe(0.32);
 
       const demographics = result.demographics as Record<string, unknown>;
       expect(demographics.birthYear).toBe(1980);
@@ -1156,7 +1149,6 @@ describe('qrUtils', () => {
           gkLowerGuardrail: 0.75,
           gkAdjustmentPercent: 12,
           autoRothConversions: true,
-          rothConversionTargetBracket: 0.24,
         },
         demographics: {
           birthYear: 1988,
@@ -1209,7 +1201,6 @@ describe('qrUtils', () => {
           gkLowerGuardrail: 0.8,
           gkAdjustmentPercent: 10,
           autoRothConversions: false,
-          rothConversionTargetBracket: 0.22,
         },
         demographics: {
           birthYear: 1985, // This is the only non-default
@@ -1789,7 +1780,6 @@ describe('qrUtils', () => {
             gkLowerGuardrail: 0.8,
             gkAdjustmentPercent: 10,
             autoRothConversions: false,
-            rothConversionTargetBracket: 0.22,
           },
           demographics: {
             birthYear: 1985,
@@ -1901,7 +1891,6 @@ describe('qrUtils', () => {
             gkLowerGuardrail: 0.8,
             gkAdjustmentPercent: 10,
             autoRothConversions: false,
-            rothConversionTargetBracket: 0.22,
           },
           demographics: {
             birthYear: 1990,
