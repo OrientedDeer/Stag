@@ -501,12 +501,27 @@ export const runSimulationWithOptimization = (
         const birthYear = getBirthYear(assumptions.milestones);
         const retirementYear = birthYear + getRetirementAge(assumptions.milestones);
         const contexts = buildDPYearContexts(baselineTimeline, assumptions, taxState, retirementYear);
-        const currentTradBalance = accounts
-            .filter((a): a is InvestedAccount =>
-                a instanceof InvestedAccount &&
-                (a.taxType === 'Traditional 401k' || a.taxType === 'Traditional IRA'))
-            .reduce((sum, a) => sum + a.vestedAmount, 0);
-        const dpPlan: DPPlan = planConversionsViaDP({ contexts, currentTradBalance });
+
+        // Critical: the DP only solves retirement years onward, so its forward
+        // sweep needs the trad balance AT RETIREMENT, not today. Pulling
+        // accounts.vestedAmount here would feed today's balance into year 0
+        // of the contexts (= retirement year), missing pre-retirement growth
+        // and 401k contributions. Pull from the baseline timeline instead —
+        // that's already simulated through the full pre-retirement period.
+        const startSimYear = baselineTimeline.find(y => y.year === retirementYear)
+            ?? baselineTimeline.find(y => y.year > retirementYear)
+            ?? baselineTimeline[0];
+        const startingTradBalance = startSimYear
+            ? startSimYear.accounts
+                .filter((a): a is InvestedAccount =>
+                    a instanceof InvestedAccount &&
+                    (a.taxType === 'Traditional 401k' || a.taxType === 'Traditional IRA'))
+                .reduce((sum, a) => sum + a.vestedAmount, 0)
+            : 0;
+        const dpPlan: DPPlan = planConversionsViaDP({
+            contexts,
+            currentTradBalance: startingTradBalance,
+        });
 
         // Pass 3 — final sim with the DP plan. The DP strategy in YearSolver
         // looks up `input.dpConversionPlan` per year. conversionMode is moot

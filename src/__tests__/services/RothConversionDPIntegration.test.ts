@@ -158,6 +158,69 @@ describe('DP-precomputed Roth conversion strategy — end-to-end', () => {
         expect(anyDPLog).toBe(true);
     });
 
+    it('future-retirement case: DP starts from baseline retirement-year trad, not today', () => {
+        // Regression guard: the DP forward sweep originally started at
+        // accounts.vestedAmount (today's balance), but contexts only span
+        // retirement onward. So with retirement N years out, the DP missed
+        // pre-retirement growth + 401k contributions, saw a tiny trad,
+        // projected tiny RMDs, and picked $0 for every year.
+        //
+        // This setup has the user 11 years away from retirement with modest
+        // current trad ($88k) and large brokerage. Pre-retirement growth +
+        // contributions push trad to ~$700k by retirement. If the DP starts
+        // from today's $88k it'll see no future tax pressure; if it starts
+        // from baseline's retirement-year $700k, it will.
+        const futureRetirementBirth = 2001;
+        const retirementAt = 35;
+        const futureLifeExpectancy = 95;
+        const futureYears = 60;
+
+        const futureAssumptions: AssumptionsState = {
+            ...defaultAssumptions,
+            demographics: {},
+            milestones: createBuiltinMilestones(futureRetirementBirth, retirementAt, futureLifeExpectancy),
+            income: { ...defaultAssumptions.income, salaryGrowth: 0 },
+            macro: { ...defaultAssumptions.macro, inflationRate: 2.5, inflationAdjusted: true },
+            investments: {
+                ...defaultAssumptions.investments,
+                returnRates: { ror: 7 },
+                taxOptimizationEnabled: true,
+                autoRothConversions: true,
+                rothConversionStrategy: 'dp-precomputed',
+            },
+            withdrawalStrategy: [
+                { id: 'ws-savings', name: 'Savings', accountId: 'acc-savings' },
+                { id: 'ws-brokerage', name: 'Brokerage', accountId: 'acc-brokerage' },
+                { id: 'ws-roth', name: 'Roth IRA', accountId: 'acc-roth' },
+                { id: 'ws-trad', name: 'Traditional IRA', accountId: 'acc-traditional' },
+            ],
+        };
+        const futureAccounts = [
+            new InvestedAccount('acc-traditional', 'Traditional 401k', 88_000, 0, 5, 0.05, 'Traditional 401k', true, 0.2, 88_000),
+            new InvestedAccount('acc-roth', 'Roth IRA', 200_000, 0, 5, 0.05, 'Roth IRA', true, 0.2, 200_000),
+            new InvestedAccount('acc-brokerage', 'Brokerage', 700_000, 0, 5, 0.05, 'Brokerage', true, 0.2, 600_000),
+            new SavedAccount('acc-savings', 'Savings', 50_000, 4),
+        ];
+        const result = runSimulationWithOptimization(
+            futureYears,
+            futureAccounts,
+            buildIncomes(),
+            buildExpenses(),
+            futureAssumptions,
+            taxState,
+            undefined,
+            new Date('2025-06-15'),
+        );
+        // After fix, DP should fire conversions in retirement years given the
+        // ~$700k baseline trad balance at retirement. Before the fix this
+        // was zero because DP saw $88k today.
+        const totalConverted = result.reduce(
+            (sum, year) => sum + (year.rothConversion?.amount ?? 0),
+            0,
+        );
+        expect(totalConverted).toBeGreaterThan(20_000);
+    });
+
     it('rate-match path is unaffected (regression check)', () => {
         const assumptions = baseAssumptions('rate-match');
         const result = runSimulationWithOptimization(

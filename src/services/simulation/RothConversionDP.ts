@@ -473,7 +473,8 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
         `maxConversion=${fmt$(maxConversion)} (dC=${fmt$(dC)}), horizon=${horizonYears} years`,
     );
     summaryLogs.push(
-        `[DEBUG DP] start: currentTradBalance=${fmt$(currentTradBalance)}, ` +
+        `[DEBUG DP] start: currentTradBalance=${fmt$(currentTradBalance)} ` +
+        `(this is the trad balance at the FIRST context year — should be the retirement-year balance, not today's), ` +
         `firstYear=${contexts[0].year} (age ${contexts[0].age}), ` +
         `lastYear=${contexts[horizonYears - 1].year} (age ${contexts[horizonYears - 1].age})`,
     );
