@@ -121,6 +121,10 @@ export interface AssumptionsState {
     gkAdjustmentPercent: number;  // Default 10 (10% cut/increase per GK rules)
     // Auto Roth conversions during retirement
     autoRothConversions: boolean; // Automatically convert Traditional to Roth in low-tax years
+    // Which algorithm decides the per-year conversion amount when auto-conversions are on.
+    // 'rate-match' = bracket-walk that compares this year's marginal to projected RMD-age marginal.
+    // 'dp-precomputed' = experimental backward-induction DP solved once over the full horizon.
+    rothConversionStrategy?: 'rate-match' | 'dp-precomputed';
     // Rate-match conversion: minimum percentage-point gap between current marginal
     // rate and projected RMD-age marginal rate to justify converting that bracket.
     // Higher = more conservative (skip conversions with smaller savings).
@@ -170,6 +174,7 @@ export const defaultAssumptions: AssumptionsState = {
     gkLowerGuardrail: 0.8,      // Boost when rate < target * 0.8
     gkAdjustmentPercent: 10,    // 10% adjustment (per actual GK rules)
     autoRothConversions: false, // Auto-convert Traditional to Roth in retirement
+    rothConversionStrategy: 'rate-match', // 'rate-match' (default) | 'dp-precomputed' (experimental)
     rothConversionMinRateGap: 0.05, // 5pp minimum savings to justify a non-free conversion (rate-match algorithm)
     taxOptimizationEnabled: false, // Disabled by default - use manual withdrawal order
     acaAware: true, // Limit Roth conversions to stay under ACA subsidy cliff (pre-65)

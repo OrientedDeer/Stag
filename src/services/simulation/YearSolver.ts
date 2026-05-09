@@ -109,7 +109,7 @@ export interface YearSolverInput {
     conversionMode?: 'rate-match' | 'std-ded-only';
 }
 
-interface ConversionPlan {
+export interface ConversionPlan {
     conversion: PlannedConversion | null;
     conversionTax: number;
     taxSource: ConversionTaxSource;
@@ -117,6 +117,37 @@ interface ConversionPlan {
     decisions: DecisionLogEntry[];
     taxOptimizationTarget?: TaxOptimizationTarget;
     bracketSpaceForSpending: number;  // bracket space reserved for Traditional spending
+}
+
+/**
+ * A conversion-amount-deciding strategy. Implementations decide how much (if any)
+ * Traditional → Roth conversion to do for a single year, given the year's tax
+ * context. The rate-match implementation walks brackets per-year; future DP
+ * implementations precompute a per-year plan and look it up. Both must satisfy
+ * the same input/output contract.
+ */
+export type ConversionStrategy = (
+    input: YearSolverInput,
+    baseOrdinaryIncome: number,
+    socialSecurityBenefits: number,
+    fedParams: TaxParameters,
+    stateParams: TaxParameters | null,
+    surplus: number,
+    spendingDeficit: number,
+) => ConversionPlan;
+
+/**
+ * Pick the conversion strategy for the current run. 'dp-precomputed' is not yet
+ * implemented and falls back to rate-match.
+ */
+function selectConversionStrategy(
+    strategyName: 'rate-match' | 'dp-precomputed' | undefined,
+): ConversionStrategy {
+    if (strategyName === 'dp-precomputed') {
+        // TODO: dispatch to the DP-based strategy once RothConversionDP lands.
+        return planConversion;
+    }
+    return planConversion;
 }
 
 // =============================================================================
@@ -973,7 +1004,10 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     );
 
     // Step B: Plan Roth conversion FIRST
-    const conversionPlan = planConversion(
+    const conversionStrategy = selectConversionStrategy(
+        input.assumptions.investments.rothConversionStrategy,
+    );
+    const conversionPlan = conversionStrategy(
         input,
         baseOrdinaryIncome,
         socialSecurityBenefits,
