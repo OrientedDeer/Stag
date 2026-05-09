@@ -106,6 +106,37 @@ describe('DP-precomputed Roth conversion strategy — end-to-end', () => {
         expect(totalConverted).toBeGreaterThan(50_000);
     });
 
+    it('DP fills standard-deduction headroom in pre-SS retirement years', () => {
+        // Regression guard: an earlier bug had buildDPYearContexts include
+        // baseline conversions in nonSSOrdinaryIncomeExclRMD, which made the
+        // DP solve for "extra above baseline" while the final sim executed
+        // only the plan amount. Net: every year was $0. This test asserts the
+        // DP fills at least *some* of the available std-ded headroom in early
+        // pre-SS retirement years, where baseline ordinary income is low and
+        // a free conversion is unambiguously optimal.
+        const assumptions = baseAssumptions('dp-precomputed');
+        const result = runSimulationWithOptimization(
+            yearsToSimulate,
+            buildAccounts(),
+            buildIncomes(),
+            buildExpenses(),
+            assumptions,
+            taxState,
+            undefined,
+            new Date('2025-06-15'),
+        );
+        // Pre-SS years (age 40 → 66): SS hasn't started, ordinary income is low,
+        // 0% bracket headroom is high. DP should convert *something* in most of these.
+        const preSSYears = result.filter(y => {
+            const age = y.year - birthYear;
+            return age >= retirementAge && age < 67;
+        });
+        const yearsWithConversions = preSSYears.filter(
+            y => (y.rothConversion?.amount ?? 0) > 0,
+        );
+        expect(yearsWithConversions.length).toBeGreaterThan(preSSYears.length / 2);
+    });
+
     it('DP conversion entries are tagged with the DP-planned reason', () => {
         const assumptions = baseAssumptions('dp-precomputed');
         const result = runSimulationWithOptimization(

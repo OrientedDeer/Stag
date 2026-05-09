@@ -145,10 +145,12 @@ function runSimulationLoop(args: {
     ) => BaselineProjections | undefined;
     /** Pre-solved DP conversion plan; keyed by simulation year. */
     dpConversionPlan?: Map<number, number>;
+    /** Per-year DP solver debug strings; keyed by simulation year. */
+    dpDebugByYear?: Map<number, string[]>;
 }): void {
     let { currentAccounts, currentIncomes, currentExpenses, previousActiveMilestones } = args;
     const { milestoneReachYears, timeline, assumptions, taxState, yearlyReturns,
-            previousSimYear, yearsToRun, conversionMode, baselineProvider, dpConversionPlan } = args;
+            previousSimYear, yearsToRun, conversionMode, baselineProvider, dpConversionPlan, dpDebugByYear } = args;
 
     for (let i = 1; i <= yearsToRun; i++) {
         const simulationYear = previousSimYear + i;
@@ -173,6 +175,7 @@ function runSimulationLoop(args: {
             baseline,
             conversionMode,
             dpConversionPlan,
+            dpDebugByYear,
         );
 
         timeline.push(result);
@@ -202,6 +205,7 @@ export const runSimulation = (
     conversionMode: 'rate-match' | 'std-ded-only' = 'rate-match',
     useRollingBaseline: boolean = false,
     dpConversionPlan?: Map<number, number>,
+    dpDebugByYear?: Map<number, string[]>,
 ): SimulationYear[] => {
         
     // Calculate start year and current age from birth year
@@ -436,6 +440,7 @@ export const runSimulation = (
         conversionMode,
         baselineProvider,
         dpConversionPlan,
+        dpDebugByYear,
     });
 
     return timeline;
@@ -506,13 +511,21 @@ export const runSimulationWithOptimization = (
         // Pass 3 — final sim with the DP plan. The DP strategy in YearSolver
         // looks up `input.dpConversionPlan` per year. conversionMode is moot
         // for DP (it does not use the rate-match bracket walker).
-        return runSimulation(
+        const finalTimeline = runSimulation(
             yearsToRun, accounts, incomes, expenses, assumptions, taxState,
             yearlyReturns, referenceDate,
             /* conversionMode */ 'rate-match',
             /* useRollingBaseline */ false,
             /* dpConversionPlan */ dpPlan.conversionsByYear,
+            /* dpDebugByYear */ dpPlan.diagnostics.perYearDebug,
         );
+
+        // Append solver summary to year-0 logs so the user can see DP setup
+        // (grid, totals) in the year inspector for the simulation start year.
+        if (finalTimeline.length > 0) {
+            finalTimeline[0].logs.push(...dpPlan.diagnostics.summaryLogs);
+        }
+        return finalTimeline;
     }
 
     // Default: rate-match with rolling per-year sub-sim baselines.

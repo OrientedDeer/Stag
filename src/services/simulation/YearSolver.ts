@@ -112,6 +112,10 @@ export interface YearSolverInput {
     // `assumptions.investments.rothConversionStrategy === 'dp-precomputed'`. The
     // DP strategy looks up this year's amount and skips per-year bracket-walking.
     dpConversionPlan?: Map<number, number>;
+    // Per-year debug-log strings from the DP solver. planConversionDP appends
+    // them to its decisions so they surface in the year inspector. Only set
+    // when the DP strategy is in use.
+    dpDebugByYear?: Map<number, string[]>;
 }
 
 export interface ConversionPlan {
@@ -888,6 +892,12 @@ function planConversionDP(
     const traditionalBalance = getTotalTraditionalBalance(input.accounts);
     let bracketSpaceForSpending = 0;
 
+    // Surface DP solver's per-year debug into the year inspector.
+    const dpDebugLines = input.dpDebugByYear?.get(input.year) ?? [];
+    for (const line of dpDebugLines) {
+        decisions.push({ category: 'conversion', description: line });
+    }
+
     const skipReturn = (limitingFactor: ConversionLimitingFactor, description?: string): ConversionPlan => {
         if (description) {
             decisions.push({ category: 'conversion', description });
@@ -976,6 +986,17 @@ function planConversionDP(
     const availableTradForConversion = Math.max(0, traditionalBalance - bracketSpaceForSpending);
     const targetConversion = input.dpConversionPlan?.get(input.year) ?? 0;
     const conversionAmount = Math.max(0, Math.min(targetConversion, availableTradForConversion));
+
+    decisions.push({
+        category: 'conversion',
+        description:
+            `[DEBUG DP exec] year=${input.year}: plan-lookup=${'$' + Math.round(targetConversion).toLocaleString()}, ` +
+            `traditional=${'$' + Math.round(traditionalBalance).toLocaleString()}, ` +
+            `bracketSpaceForSpending=${'$' + Math.round(bracketSpaceForSpending).toLocaleString()}, ` +
+            `availableTrad=${'$' + Math.round(availableTradForConversion).toLocaleString()}, ` +
+            `clampedAmount=${'$' + Math.round(conversionAmount).toLocaleString()}, ` +
+            `dpPlanProvided=${input.dpConversionPlan ? 'yes' : 'no'}`,
+    });
 
     if (conversionAmount <= 0) {
         // Spending reservation may still be nonzero — preserve it via skipReturn.

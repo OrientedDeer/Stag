@@ -61,6 +61,13 @@ const CONVERSION_BUCKETS = 50;
 const BALANCE_HEADROOM_FACTOR = 1.3;
 const MIN_BALANCE_RANGE = 100_000;
 const MIN_CONVERSION_RANGE = 10_000;
+/**
+ * Caps the per-year conversion grid. Without a cap, dC = currentTradBalance / 50,
+ * so a $1.5M trad portfolio gets $30k buckets — too coarse to pick std-deduction
+ * headroom (~$29k) precisely, and the DP rounds many years to $0. $500k easily
+ * spans the top federal bracket from $0 income, so any optimum will land below it.
+ */
+const MAX_CONVERSION_CAP = 500_000;
 const ACA_SUBSIDY_LOSS_DEFAULT = 12_000;
 const TAX_HARD_CAP_BROKERAGE_MULTIPLIER = 1.2;
 
@@ -77,9 +84,14 @@ export interface DPYearContext {
     age: number;
 
     /**
-     * Ordinary income on this year's tax return EXCLUDING SS and EXCLUDING the
-     * RMD (which the DP re-derives from its own trad-balance state). Includes
-     * baseline std-ded conversion since that's a sunk cost in baseline.
+     * Ordinary income on this year's tax return EXCLUDING SS, EXCLUDING the
+     * RMD (DP re-derives RMD from its own trad-balance state), and EXCLUDING
+     * any Roth conversion (DP's `c` decision variable IS the total conversion
+     * for the year — see evaluateCell, where it's added to ordIncomeBase).
+     * Including baseline conversion here would force the DP to think only of
+     * "extra above baseline," and the final sim — which executes whatever
+     * amount the DP returns — would then never replay the baseline std-ded
+     * portion.
      */
     nonSSOrdinaryIncomeExclRMD: number;
     /** Gross SS benefits (taxable portion is computed inside calculateTotalFederalTax). */
@@ -121,10 +133,17 @@ export interface DPDiagnostics {
     tradBuckets: number;
     conversionBuckets: number;
     maxBalance: number;
+    dB: number;
+    dC: number;
+    maxConversion: number;
     horizonYears: number;
     elapsedMs: number;
     /** Per-year (year → recommended conversion amount). Same data as conversionsByYear, kept for chart rendering. */
     perYearAmounts: Array<{ year: number; age: number; amount: number; estimatedTradBalance: number }>;
+    /** Debug log lines summarizing solver setup, grid, and per-year forward-walk decisions. */
+    summaryLogs: string[];
+    /** Per-year debug strings keyed by simulation year. Consumed by planConversionDP and pushed into the year's decisions/logs. */
+    perYearDebug: Map<number, string[]>;
 }
 
 export interface DPPlan {
@@ -213,14 +232,14 @@ export function buildDPYearContexts(
         const baselineRMDAmount = simYear.rmdDetails?.totalRMD ?? 0;
         const tradNonRMDWithdrawals = Math.max(0, totalTradWithdrawals - baselineRMDAmount);
 
-        // getGrossIncome includes RMD (it's a PassiveIncome) but excludes
-        // conversions and non-RMD trad withdrawals. We want ordinary-on-return
-        // EXCLUDING RMD (DP re-derives RMD from its own balance state) and
-        // EXCLUDING SS (calculateTotalFederalTax handles SS taxability).
-        const baselineConversionAmount = simYear.rothConversion?.amount ?? 0;
+        // getGrossIncome includes RMD (PassiveIncome with sourceType='RMD') but
+        // excludes conversions and non-RMD trad withdrawals. We want
+        // ordinary-on-return EXCLUDING RMD, SS, AND conversion — so the DP's
+        // decision variable represents the total conversion for the year, not
+        // an "extra above baseline" delta.
         const nonSSOrdinaryIncomeExclRMD = Math.max(
             0,
-            grossIncome - ssBenefits - baselineRMDAmount + tradNonRMDWithdrawals + baselineConversionAmount,
+            grossIncome - ssBenefits - baselineRMDAmount + tradNonRMDWithdrawals,
         );
         const ltcgIncome = simYear.taxDetails.longTermCapitalGains ?? 0;
 
@@ -389,12 +408,14 @@ function determineMaxBalance(
 }
 
 /**
- * Pick the maximum per-year conversion considered. Cap at the trad balance at
- * the start (you can't convert more than you have) plus headroom for tax-free
- * growth before RMDs hit. Floor for grid resolution.
+ * Pick the maximum per-year conversion considered. Cap at MAX_CONVERSION_CAP
+ * (or trad balance, whichever is smaller) so dC stays fine enough to pick
+ * std-deduction headroom precisely on large portfolios. Floor for grid
+ * resolution on small portfolios.
  */
 function determineMaxConversion(currentTradBalance: number): number {
-    return Math.max(MIN_CONVERSION_RANGE, currentTradBalance);
+    const upper = Math.min(currentTradBalance, MAX_CONVERSION_CAP);
+    return Math.max(MIN_CONVERSION_RANGE, upper);
 }
 
 /**
@@ -426,9 +447,14 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
                 tradBuckets: TRAD_BUCKETS,
                 conversionBuckets: CONVERSION_BUCKETS,
                 maxBalance: 0,
+                dB: 0,
+                dC: 0,
+                maxConversion: 0,
                 horizonYears: 0,
                 elapsedMs: 0,
                 perYearAmounts: [],
+                summaryLogs: ['[DEBUG DP] Empty horizon — no contexts to solve.'],
+                perYearDebug: new Map(),
             },
         };
     }
@@ -437,6 +463,31 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
     const dB = maxBalance / TRAD_BUCKETS;
     const maxConversion = determineMaxConversion(currentTradBalance);
     const dC = maxConversion / CONVERSION_BUCKETS;
+    const summaryLogs: string[] = [];
+    const perYearDebug = new Map<number, string[]>();
+    const fmt$ = (n: number) => '$' + Math.round(n).toLocaleString();
+    summaryLogs.push(
+        `[DEBUG DP] solver: δ=${(delta * 100).toFixed(2)}%, df=${discountFactor.toFixed(4)}, ` +
+        `tradBuckets=${TRAD_BUCKETS}, convBuckets=${CONVERSION_BUCKETS}, ` +
+        `maxBalance=${fmt$(maxBalance)} (dB=${fmt$(dB)}), ` +
+        `maxConversion=${fmt$(maxConversion)} (dC=${fmt$(dC)}), horizon=${horizonYears} years`,
+    );
+    summaryLogs.push(
+        `[DEBUG DP] start: currentTradBalance=${fmt$(currentTradBalance)}, ` +
+        `firstYear=${contexts[0].year} (age ${contexts[0].age}), ` +
+        `lastYear=${contexts[horizonYears - 1].year} (age ${contexts[horizonYears - 1].age})`,
+    );
+    // Sample first 3 contexts so the user can see what the DP is seeing.
+    for (let i = 0; i < Math.min(3, horizonYears); i++) {
+        const c = contexts[i];
+        summaryLogs.push(
+            `[DEBUG DP] ctx[${i}] year=${c.year} age=${c.age}: ` +
+            `nonSSOrdExclRMD=${fmt$(c.nonSSOrdinaryIncomeExclRMD)}, ss=${fmt$(c.ssBenefits)}, ` +
+            `ltcg=${fmt$(c.ltcgIncome)}, brokerageSlack=${fmt$(c.brokerageSlack)}, ` +
+            `baselineTradWithdrawal=${fmt$(c.baselineTradWithdrawal)}, ` +
+            `rmdDivisor=${c.rmdDivisor.toFixed(2)}, growth=${(c.growthRate * 100).toFixed(2)}%`,
+        );
+    }
 
     // V[t] is a Float64Array of size TRAD_BUCKETS+1.
     // V[horizonYears] is the terminal value (all zeros — no future tax).
@@ -500,21 +551,43 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
         let bestC = 0;
         let bestCost = Infinity;
         let bestNext = trad;
+        let bestYearTax = 0;
+        let bestMarginal = 0;
+        let hardCapHits = 0;
+        let lastHardCapMarginal = 0;
+        // For the diagnostic table: cost @ c=0 vs cost @ a non-zero candidate.
+        let costAtZero = Infinity;
+        let yearTaxAtZero = 0;
+        let futureAtZero = 0;
+        let bestFuture = 0;
 
         for (let ci = 0; ci <= CONVERSION_BUCKETS; ci++) {
             const c = Math.min(ci * dC, cMax);
             const { yearTax, conversionMarginal, tradNext } =
                 evaluateCell(trad, c, ctx, taxBaseline);
 
-            if (!isWithinHardCap(conversionMarginal, ctx.brokerageSlack)) continue;
+            if (!isWithinHardCap(conversionMarginal, ctx.brokerageSlack)) {
+                hardCapHits++;
+                lastHardCapMarginal = conversionMarginal;
+                continue;
+            }
 
             const futureCost = interpV(Vnext, tradNext, dB, TRAD_BUCKETS);
             const totalCost = yearTax + discountFactor * futureCost;
+
+            if (ci === 0) {
+                costAtZero = totalCost;
+                yearTaxAtZero = yearTax;
+                futureAtZero = futureCost;
+            }
 
             if (totalCost < bestCost) {
                 bestCost = totalCost;
                 bestC = c;
                 bestNext = tradNext;
+                bestYearTax = yearTax;
+                bestMarginal = conversionMarginal;
+                bestFuture = futureCost;
             }
 
             if (c >= cMax) break;
@@ -528,10 +601,36 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
             estimatedTradBalance: trad,
         });
 
+        // Per-year debug emitted to the year inspector via planConversionDP.
+        const debugLines: string[] = [];
+        debugLines.push(
+            `[DEBUG DP solver] year=${ctx.year} age=${ctx.age}: ` +
+            `tradEntering=${fmt$(trad)}, rmdAtB=${fmt$(rmdAtB)}, cMax=${fmt$(cMax)}, ` +
+            `taxBaseline=${fmt$(taxBaseline)}, brokerageSlack=${fmt$(ctx.brokerageSlack)}`,
+        );
+        debugLines.push(
+            `[DEBUG DP solver] year=${ctx.year}: chose c=${fmt$(bestC)} ` +
+            `(yearTax=${fmt$(bestYearTax)}, marginal=${fmt$(bestMarginal)}, ` +
+            `discountedFuture=${fmt$(discountFactor * bestFuture)}, totalCost=${fmt$(bestCost)}, ` +
+            `tradNext=${fmt$(bestNext)})`,
+        );
+        debugLines.push(
+            `[DEBUG DP solver] year=${ctx.year}: c=0 totalCost=${fmt$(costAtZero)} ` +
+            `(yearTax=${fmt$(yearTaxAtZero)}, discountedFuture=${fmt$(discountFactor * futureAtZero)}); ` +
+            `hardCapRejections=${hardCapHits} (last marginal that failed cap=${fmt$(lastHardCapMarginal)})`,
+        );
+        perYearDebug.set(ctx.year, debugLines);
+
         trad = bestNext;
     }
 
     const elapsedMs = performance.now() - startedAt;
+    const totalConverted = Array.from(conversionsByYear.values()).reduce((s, a) => s + a, 0);
+    const yearsConverting = Array.from(conversionsByYear.values()).filter(a => a > 0).length;
+    summaryLogs.push(
+        `[DEBUG DP] result: totalConverted=${fmt$(totalConverted)} across ${yearsConverting}/${horizonYears} years, ` +
+        `elapsed=${elapsedMs.toFixed(1)}ms`,
+    );
 
     return {
         conversionsByYear,
@@ -540,9 +639,14 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
             tradBuckets: TRAD_BUCKETS,
             conversionBuckets: CONVERSION_BUCKETS,
             maxBalance,
+            dB,
+            dC,
+            maxConversion,
             horizonYears,
             elapsedMs,
             perYearAmounts,
+            summaryLogs,
+            perYearDebug,
         },
     };
 }
