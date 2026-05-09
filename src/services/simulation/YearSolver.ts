@@ -107,6 +107,11 @@ export interface YearSolverInput {
     // standard-deduction-headroom conversions while projecting the baseline
     // trajectory for the main sim's rate-match decisions.
     conversionMode?: 'rate-match' | 'std-ded-only';
+
+    // Precomputed conversion plan keyed by simulation year. Populated only when
+    // `assumptions.investments.rothConversionStrategy === 'dp-precomputed'`. The
+    // DP strategy looks up this year's amount and skips per-year bracket-walking.
+    dpConversionPlan?: Map<number, number>;
 }
 
 export interface ConversionPlan {
