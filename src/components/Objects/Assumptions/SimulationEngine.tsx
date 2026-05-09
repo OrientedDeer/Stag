@@ -145,7 +145,8 @@ function simulateOneYearWithNewEngine(
     previousActiveMilestones: string[] = [],
     previousMilestoneReachYears: Map<string, number> = new Map(),
     baselineProjections?: BaselineProjections,
-    conversionMode: 'rate-match' | 'std-ded-only' = 'rate-match'
+    conversionMode: 'rate-match' | 'std-ded-only' = 'rate-match',
+    dpConversionPlan?: Map<number, number>,
 ): SimulationYear {
     const logs: string[] = [];
     logs.push('[V2 Engine] Using new YearSolver-based simulation');
@@ -337,6 +338,7 @@ function simulateOneYearWithNewEngine(
         // rather than rough estimates or naive forward-compounding.
         baselineProjections,
         conversionMode,
+        dpConversionPlan,
     };
 
     const yearPlan = solveYear(solverInput);
@@ -662,11 +664,13 @@ export function simulateOneYear(
     previousActiveMilestones: string[] = [],
     previousMilestoneReachYears: Map<string, number> = new Map(),
     baselineProjections?: BaselineProjections,
-    conversionMode: 'rate-match' | 'std-ded-only' = 'rate-match'
+    conversionMode: 'rate-match' | 'std-ded-only' = 'rate-match',
+    dpConversionPlan?: Map<number, number>,
 ): SimulationYear {
     return simulateOneYearWithNewEngine(
         year, incomes, expenses, accounts, assumptions, taxState,
         previousSimulation, returnOverride, previousActiveMilestones,
-        previousMilestoneReachYears, baselineProjections, conversionMode
+        previousMilestoneReachYears, baselineProjections, conversionMode,
+        dpConversionPlan,
     );
 }

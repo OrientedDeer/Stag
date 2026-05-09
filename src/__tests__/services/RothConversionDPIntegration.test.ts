@@ -1,0 +1,149 @@
+/**
+ * End-to-end integration test for the DP-precomputed Roth conversion strategy.
+ *
+ * Runs the whole pipeline: full-horizon std-ded baseline → buildDPYearContexts →
+ * planConversionsViaDP → final main sim with DP plan plumbed through. Verifies
+ * the simulation completes without throwing and that the DP strategy actually
+ * fires at least one conversion in a clear-cut FIRE scenario where converting
+ * is unambiguously beneficial.
+ */
+import { describe, it, expect } from 'vitest';
+import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { InvestedAccount, SavedAccount } from '../../components/Objects/Accounts/models';
+import { FutureSocialSecurityIncome } from '../../components/Objects/Income/models';
+import { FoodExpense } from '../../components/Objects/Expense/models';
+import { runSimulationWithOptimization } from '../../components/Objects/Assumptions/useSimulation';
+
+describe('DP-precomputed Roth conversion strategy — end-to-end', () => {
+    const birthYear = 1985;
+    const retirementAge = 40; // FIRE: early retiree
+    const lifeExpectancy = 95;
+    const yearsToSimulate = 55;
+
+    const baseAssumptions = (
+        rothConversionStrategy: 'rate-match' | 'dp-precomputed',
+    ): AssumptionsState => ({
+        ...defaultAssumptions,
+        demographics: {},
+        milestones: createBuiltinMilestones(birthYear, retirementAge, lifeExpectancy),
+        income: { ...defaultAssumptions.income, salaryGrowth: 0 },
+        macro: { ...defaultAssumptions.macro, inflationRate: 2.5, inflationAdjusted: true },
+        investments: {
+            ...defaultAssumptions.investments,
+            returnRates: { ror: 6 },
+            taxOptimizationEnabled: true,
+            autoRothConversions: true,
+            rothConversionStrategy,
+        },
+        withdrawalStrategy: [
+            { id: 'ws-savings', name: 'Savings', accountId: 'acc-savings' },
+            { id: 'ws-brokerage', name: 'Brokerage', accountId: 'acc-brokerage' },
+            { id: 'ws-roth', name: 'Roth IRA', accountId: 'acc-roth' },
+            { id: 'ws-trad', name: 'Traditional IRA', accountId: 'acc-traditional' },
+        ],
+    });
+
+    const taxState: TaxState = {
+        filingStatus: 'Single',
+        stateResidency: 'Texas',
+        deductionMethod: 'Standard',
+        fedOverride: null,
+        ficaOverride: null,
+        stateOverride: null,
+        year: 2025,
+    };
+
+    const buildAccounts = () => [
+        new InvestedAccount('acc-traditional', 'Traditional IRA', 1_500_000, 0, 10, 0.05, 'Traditional IRA', true, 0.2, 1_500_000),
+        new InvestedAccount('acc-roth', 'Roth IRA', 100_000, 0, 10, 0.05, 'Roth IRA', true, 0.2, 100_000),
+        new InvestedAccount('acc-brokerage', 'Brokerage', 800_000, 0, 10, 0.05, 'Brokerage', true, 0.2, 600_000),
+        new SavedAccount('acc-savings', 'Savings', 100_000, 4),
+    ];
+
+    const buildIncomes = () => [
+        new FutureSocialSecurityIncome('inc-ss', 'Social Security', 67, 0, 0),
+    ];
+
+    const buildExpenses = () => [
+        new FoodExpense('exp-living', 'Living Expenses', 50_000, 'Annually', new Date('2025-01-01')),
+    ];
+
+    it('runs the DP path end-to-end without throwing', () => {
+        const assumptions = baseAssumptions('dp-precomputed');
+        const result = runSimulationWithOptimization(
+            yearsToSimulate,
+            buildAccounts(),
+            buildIncomes(),
+            buildExpenses(),
+            assumptions,
+            taxState,
+            undefined,
+            new Date('2025-06-15'),
+        );
+        expect(result.length).toBeGreaterThan(0);
+    });
+
+    it('DP path produces at least one auto-conversion across the horizon', () => {
+        const assumptions = baseAssumptions('dp-precomputed');
+        const result = runSimulationWithOptimization(
+            yearsToSimulate,
+            buildAccounts(),
+            buildIncomes(),
+            buildExpenses(),
+            assumptions,
+            taxState,
+            undefined,
+            new Date('2025-06-15'),
+        );
+        const totalConverted = result.reduce(
+            (sum, year) => sum + (year.rothConversion?.amount ?? 0),
+            0,
+        );
+        // FIRE retiree with $1.5M trad and modest income should see meaningful
+        // conversion activity from the DP strategy. Threshold is intentionally
+        // loose to avoid brittle assertions across small algorithm tweaks.
+        expect(totalConverted).toBeGreaterThan(50_000);
+    });
+
+    it('DP conversion entries are tagged with the DP-planned reason', () => {
+        const assumptions = baseAssumptions('dp-precomputed');
+        const result = runSimulationWithOptimization(
+            yearsToSimulate,
+            buildAccounts(),
+            buildIncomes(),
+            buildExpenses(),
+            assumptions,
+            taxState,
+            undefined,
+            new Date('2025-06-15'),
+        );
+        const conversionYears = result.filter(y => (y.rothConversion?.amount ?? 0) > 0);
+        expect(conversionYears.length).toBeGreaterThan(0);
+        // At least one year's logs should mention the DP strategy.
+        const anyDPLog = result.some(y =>
+            y.logs?.some(l => l.includes('DP-planned'))
+        );
+        expect(anyDPLog).toBe(true);
+    });
+
+    it('rate-match path is unaffected (regression check)', () => {
+        const assumptions = baseAssumptions('rate-match');
+        const result = runSimulationWithOptimization(
+            yearsToSimulate,
+            buildAccounts(),
+            buildIncomes(),
+            buildExpenses(),
+            assumptions,
+            taxState,
+            undefined,
+            new Date('2025-06-15'),
+        );
+        // No DP-planned log entries should appear in the rate-match path.
+        const anyDPLog = result.some(y =>
+            y.logs?.some(l => l.includes('DP-planned'))
+        );
+        expect(anyDPLog).toBe(false);
+        expect(result.length).toBeGreaterThan(0);
+    });
+});

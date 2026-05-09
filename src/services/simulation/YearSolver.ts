@@ -142,16 +142,15 @@ export type ConversionStrategy = (
 ) => ConversionPlan;
 
 /**
- * Pick the conversion strategy for the current run. 'dp-precomputed' is not yet
- * implemented and falls back to rate-match.
+ * Pick the conversion strategy for the current run. The DP path requires a
+ * precomputed plan to be on `input.dpConversionPlan` (built upstream by
+ * `runSimulationWithOptimization`); without it, the DP strategy returns a
+ * no-conversion plan for the year.
  */
 function selectConversionStrategy(
     strategyName: 'rate-match' | 'dp-precomputed' | undefined,
 ): ConversionStrategy {
-    if (strategyName === 'dp-precomputed') {
-        // TODO: dispatch to the DP-based strategy once RothConversionDP lands.
-        return planConversion;
-    }
+    if (strategyName === 'dp-precomputed') return planConversionDP;
     return planConversion;
 }
 
@@ -863,6 +862,157 @@ function planConversion(
         decisions,
         bracketSpaceForSpending,
         taxOptimizationTarget,
+    };
+}
+
+/**
+ * DP-precomputed conversion strategy. Reads `input.dpConversionPlan?.get(year)`
+ * (set upstream by `runSimulationWithOptimization`), clamps to available trad
+ * balance, then runs the same downstream tax-payment / account-selection logic
+ * as the rate-match path.
+ *
+ * Skip cases: not retired, optimization off, no DP plan, no traditional
+ * balance, no source/target account. Falls through with the no-conversion
+ * shape — same as rate-match's skip cases.
+ */
+function planConversionDP(
+    input: YearSolverInput,
+    baseOrdinaryIncome: number,
+    socialSecurityBenefits: number,
+    fedParams: TaxParameters,
+    stateParams: TaxParameters | null,
+    surplus: number,
+    _spendingDeficit: number,
+): ConversionPlan {
+    const decisions: DecisionLogEntry[] = [];
+    const traditionalBalance = getTotalTraditionalBalance(input.accounts);
+
+    const skipReturn = (limitingFactor: ConversionLimitingFactor, description?: string): ConversionPlan => {
+        if (description) {
+            decisions.push({ category: 'conversion', description });
+        }
+        return {
+            conversion: null,
+            conversionTax: 0,
+            taxSource: 'SURPLUS',
+            additionalOrdinaryIncome: 0,
+            decisions,
+            bracketSpaceForSpending: 0,
+            taxOptimizationTarget: {
+                yearsUntilRMD: Math.max(0, getRMDStartAge(input.year - input.currentAge) - input.currentAge),
+                rmdStartAge: getRMDStartAge(input.year - input.currentAge),
+                targetBracketCeiling: 0,
+                bracketSpaceThisYear: 0,
+                ssAtRMD: 0,
+                pensionAtRMD: 0,
+                currentTraditionalBalance: traditionalBalance,
+                limitingFactor,
+                actualConversion: 0,
+            },
+        };
+    };
+
+    if (!input.taxOptimizationEnabled || !input.isRetired) {
+        return skipReturn('NOT_RETIRED');
+    }
+    if (traditionalBalance <= 0) {
+        return skipReturn('TRADITIONAL_DEPLETED', 'Skipped Roth conversion: no Traditional balance available.');
+    }
+
+    // Look up the precomputed amount; clamp to actual trad available.
+    const targetConversion = input.dpConversionPlan?.get(input.year) ?? 0;
+    const conversionAmount = Math.max(0, Math.min(targetConversion, traditionalBalance));
+
+    if (conversionAmount <= 0) {
+        return skipReturn('NO_BRACKET_SPACE', `DP-precomputed conversion for year ${input.year}: $0 (no plan or zero amount).`);
+    }
+
+    const sourceAccount = getFirstTraditionalAccount(input.accounts);
+    const targetAccount = getFirstRothAccount(input.accounts);
+    if (!sourceAccount || !targetAccount) {
+        return skipReturn('TRADITIONAL_DEPLETED', 'Skipped DP conversion: no valid source or target account.');
+    }
+
+    // ACA options for the tax cost calc (same logic as rate-match path).
+    let acaOptions: ACAOptions | undefined;
+    if (input.acaAware && input.currentAge < 65) {
+        const acaCliff = input.taxState.filingStatus === 'Married Filing Jointly' ? 125000 : 62500;
+        acaOptions = {
+            currentAge: input.currentAge,
+            acaSubsidyAware: true,
+            acaCliffThreshold: acaCliff,
+            estimatedSubsidyLoss: 12000,
+        };
+    }
+
+    const conversionTaxResult = calculateEffectiveConversionTax(
+        baseOrdinaryIncome,
+        socialSecurityBenefits,
+        0,
+        conversionAmount,
+        input.taxState.filingStatus,
+        fedParams,
+        stateParams,
+        acaOptions,
+    );
+    const conversionTax = conversionTaxResult.taxIncrease;
+    const conversionFedTax = conversionTaxResult.breakdown.federalOrdinaryTaxCost
+        + conversionTaxResult.breakdown.ssTorpedoCost
+        + conversionTaxResult.breakdown.ltcgBumpCost
+        + conversionTaxResult.breakdown.niitCost;
+    const conversionStateTax = conversionTaxResult.breakdown.stateTaxCost;
+
+    // Tax payment source selection (same priority as rate-match).
+    const brokerageBalance = getTotalBrokerageBalance(input.accounts);
+    let taxSource: ConversionTaxSource;
+    if (surplus >= conversionTax) {
+        taxSource = 'SURPLUS';
+    } else if (brokerageBalance >= conversionTax) {
+        taxSource = 'BROKERAGE';
+    } else {
+        taxSource = 'WITHHOLD';
+    }
+
+    const conversion: PlannedConversion = {
+        amount: conversionAmount,
+        fromAccountId: sourceAccount.id,
+        toAccountId: targetAccount.id,
+        taxSource,
+        taxAmount: conversionTax,
+        federalTaxCost: conversionFedTax,
+        stateTaxCost: conversionStateTax,
+        netToRoth: conversionAmount,
+        reason: `DP-precomputed conversion of $${Math.round(conversionAmount).toLocaleString()}. Tax paid from ${taxSource.toLowerCase()}.`,
+    };
+
+    decisions.push({
+        category: 'conversion',
+        account: sourceAccount.name,
+        amount: conversionAmount,
+        description: `DP-planned: $${Math.round(conversionAmount).toLocaleString()} from ${sourceAccount.name} to Roth. Tax: $${Math.round(conversionTax).toLocaleString()} (${taxSource.toLowerCase()}).`,
+    });
+
+    const rmdStartAge = getRMDStartAge(input.year - input.currentAge);
+    return {
+        conversion,
+        conversionTax,
+        taxSource,
+        additionalOrdinaryIncome: conversionAmount,
+        decisions,
+        bracketSpaceForSpending: 0,
+        taxOptimizationTarget: {
+            yearsUntilRMD: Math.max(0, rmdStartAge - input.currentAge),
+            rmdStartAge,
+            targetBracketCeiling: 0,
+            bracketSpaceThisYear: conversionAmount,
+            ssAtRMD: 0,
+            pensionAtRMD: 0,
+            currentTraditionalBalance: traditionalBalance,
+            limitingFactor: conversionAmount >= traditionalBalance - 1
+                ? 'TRADITIONAL_DEPLETED'
+                : 'BRACKET_CEILING',
+            actualConversion: conversionAmount,
+        },
     };
 }
 

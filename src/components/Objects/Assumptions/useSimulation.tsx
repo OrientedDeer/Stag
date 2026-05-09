@@ -4,10 +4,11 @@ import { WorkIncome, getIncomeActiveMultiplier } from '../Income/models';
 import { AnyAccount, InvestedAccount } from '../Accounts/models';
 import { AnyIncome } from '../Income/models';
 import { AnyExpense } from '../Expense/models';
-import { AssumptionsState, getLifeExpectancy, getBirthYear } from './AssumptionsContext';
+import { AssumptionsState, getLifeExpectancy, getBirthYear, getRetirementAge } from './AssumptionsContext';
 import { TaxState } from '../Taxes/TaxContext';
 import { BaselineProjections } from '../../../services/simulation/types';
 import { getRMDStartAge } from '../../../data/RMDData';
+import { buildDPYearContexts, planConversionsViaDP, DPPlan } from '../../../services/simulation/RothConversionDP';
 
 /**
  * Extract baseline projections from a simulation run WITHOUT Roth conversions.
@@ -142,10 +143,12 @@ function runSimulationLoop(args: {
         previousActiveMilestones: string[],
         milestoneReachYears: Map<string, number>,
     ) => BaselineProjections | undefined;
+    /** Pre-solved DP conversion plan; keyed by simulation year. */
+    dpConversionPlan?: Map<number, number>;
 }): void {
     let { currentAccounts, currentIncomes, currentExpenses, previousActiveMilestones } = args;
     const { milestoneReachYears, timeline, assumptions, taxState, yearlyReturns,
-            previousSimYear, yearsToRun, conversionMode, baselineProvider } = args;
+            previousSimYear, yearsToRun, conversionMode, baselineProvider, dpConversionPlan } = args;
 
     for (let i = 1; i <= yearsToRun; i++) {
         const simulationYear = previousSimYear + i;
@@ -168,7 +171,8 @@ function runSimulationLoop(args: {
             previousActiveMilestones,
             milestoneReachYears,
             baseline,
-            conversionMode
+            conversionMode,
+            dpConversionPlan,
         );
 
         timeline.push(result);
@@ -196,7 +200,8 @@ export const runSimulation = (
     yearlyReturns?: number[],
     referenceDate?: Date,
     conversionMode: 'rate-match' | 'std-ded-only' = 'rate-match',
-    useRollingBaseline: boolean = false
+    useRollingBaseline: boolean = false,
+    dpConversionPlan?: Map<number, number>,
 ): SimulationYear[] => {
         
     // Calculate start year and current age from birth year
@@ -430,6 +435,7 @@ export const runSimulation = (
         yearlyReturns,
         conversionMode,
         baselineProvider,
+        dpConversionPlan,
     });
 
     return timeline;
@@ -458,8 +464,47 @@ export const runSimulationWithOptimization = (
     assumptions: AssumptionsState,
     taxState: TaxState,
     yearlyReturns?: number[],
-    referenceDate?: Date
+    referenceDate?: Date,
 ): SimulationYear[] => {
+    const strategy = assumptions.investments.rothConversionStrategy ?? 'rate-match';
+    const taxOptOn = assumptions.investments.taxOptimizationEnabled;
+
+    if (strategy === 'dp-precomputed' && taxOptOn) {
+        // Pass 1 — full-horizon std-ded-only baseline. Conversions limited to
+        // the always-free standard-deduction headroom; everything else
+        // (withdrawals, RMDs, taxes, income) reflects the deterministic plan.
+        const baselineTimeline = runSimulation(
+            yearsToRun, accounts, incomes, expenses, assumptions, taxState,
+            yearlyReturns, referenceDate,
+            /* conversionMode */ 'std-ded-only',
+            /* useRollingBaseline */ false,
+            /* dpConversionPlan */ undefined,
+        );
+
+        // Pass 2 — solve the DP over the baseline trajectory.
+        const birthYear = getBirthYear(assumptions.milestones);
+        const retirementYear = birthYear + getRetirementAge(assumptions.milestones);
+        const contexts = buildDPYearContexts(baselineTimeline, assumptions, taxState, retirementYear);
+        const currentTradBalance = accounts
+            .filter((a): a is InvestedAccount =>
+                a instanceof InvestedAccount &&
+                (a.taxType === 'Traditional 401k' || a.taxType === 'Traditional IRA'))
+            .reduce((sum, a) => sum + a.vestedAmount, 0);
+        const dpPlan: DPPlan = planConversionsViaDP({ contexts, currentTradBalance });
+
+        // Pass 3 — final sim with the DP plan. The DP strategy in YearSolver
+        // looks up `input.dpConversionPlan` per year. conversionMode is moot
+        // for DP (it does not use the rate-match bracket walker).
+        return runSimulation(
+            yearsToRun, accounts, incomes, expenses, assumptions, taxState,
+            yearlyReturns, referenceDate,
+            /* conversionMode */ 'rate-match',
+            /* useRollingBaseline */ false,
+            /* dpConversionPlan */ dpPlan.conversionsByYear,
+        );
+    }
+
+    // Default: rate-match with rolling per-year sub-sim baselines.
     return runSimulation(
         yearsToRun, accounts, incomes, expenses, assumptions, taxState,
         yearlyReturns, referenceDate,
