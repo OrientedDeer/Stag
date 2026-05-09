@@ -6,6 +6,7 @@ import { getTaxParameters } from '../../components/Objects/Taxes/TaxService';
 import { FilingStatus } from '../../data/TaxData';
 import { getRMDStartAge, getDistributionPeriod } from '../../data/RMDData';
 import { SimulationYear, RateMatchWalkRow, ConversionLimitingFactor } from '../../services/simulation/types';
+import { DP_BACKLOAD_DELTA } from '../../services/simulation/RothConversionDP';
 
 const fmtCurrency = (n: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n);
@@ -34,12 +35,20 @@ function limitingFactorLabel(factor: ConversionLimitingFactor | undefined): stri
     }
 }
 
-function headlineReason(year: SimulationYear): string {
+function headlineReason(year: SimulationYear, strategy: 'rate-match' | 'dp-precomputed'): string {
     const target = year.taxOptimizationTarget;
     if (!target) return 'no optimization target was computed';
     const factor = target.limitingFactor;
-    const stopRow = target.rateMatchWalk?.find(r => r.decision === 'stop');
 
+    if (strategy === 'dp-precomputed') {
+        if (factor === 'NOT_RETIRED') return 'not yet retired';
+        if (factor === 'AT_RMD_AGE') return 'past RMD start (DP plan ends at RMD age)';
+        if (factor === 'TRADITIONAL_DEPLETED') return 'the Traditional balance ran out';
+        if ((target.actualConversion ?? 0) === 0) return 'the DP solver picked $0 for this year — no further lifetime-tax win available';
+        return 'the DP solver picked this amount as part of its lifetime-tax-minimizing plan';
+    }
+
+    const stopRow = target.rateMatchWalk?.find(r => r.decision === 'stop');
     if (factor === 'BRACKET_CEILING' && stopRow) {
         return `the rate gap closed at the ${fmtPct(stopRow.currentRate)} bracket (gap ${fmtPP(stopRow.gap)} < threshold)`;
     }
@@ -188,6 +197,48 @@ function HeadlineSection({
                     <div className="text-gray-200 font-medium">{limitingFactorLabel(target.limitingFactor)}</div>
                 </div>
             </div>
+        </section>
+    );
+}
+
+function DPInfoSection() {
+    const deltaPct = (DP_BACKLOAD_DELTA * 100).toFixed(1);
+    return (
+        <section className="bg-gray-900 rounded-xl border border-gray-800 p-5">
+            <div className="flex items-baseline justify-between mb-2">
+                <div className="text-sm text-gray-400">Dynamic-programming algorithm</div>
+                <a
+                    href="#"
+                    onClick={e => e.preventDefault()}
+                    className="text-xs text-gray-600 font-mono"
+                    title="src/services/simulation/RothConversionDP.ts"
+                >
+                    RothConversionDP.ts
+                </a>
+            </div>
+            <p className="text-gray-200 text-sm leading-relaxed">
+                The DP solves a backward-induction over the full retirement horizon
+                with state <span className="font-mono">(year, traditional balance)</span>,
+                picking the per-year conversion that minimizes total lifetime tax
+                (federal + state + ACA-cliff penalty). It runs once per simulation
+                and the per-year amounts are looked up below.
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                <div>
+                    <div className="text-gray-500">Back-load preference δ</div>
+                    <div className="text-gray-200 font-mono">{deltaPct}% / yr</div>
+                </div>
+                <div>
+                    <div className="text-gray-500">Discount factor</div>
+                    <div className="text-gray-200 font-mono">{(1 / (1 + DP_BACKLOAD_DELTA)).toFixed(4)}</div>
+                </div>
+            </div>
+            <p className="text-xs text-gray-500 mt-3">
+                δ &gt; 0 makes future tax look slightly cheaper than present tax, biasing
+                the plan toward later conversions at the cost of some lifetime-tax
+                efficiency. δ = 0 is lifetime-optimal (mildly front-loaded). Tune in
+                <span className="font-mono"> RothConversionDP.ts</span>.
+            </p>
         </section>
     );
 }
@@ -461,6 +512,7 @@ export default function RothConversionDebugTab() {
     const rmdStartAge = getRMDStartAge(birthYear);
     const rmdYear = birthYear + rmdStartAge;
     const minRateGap = assumptions.investments?.rothConversionMinRateGap ?? 0.05;
+    const strategy = assumptions.investments?.rothConversionStrategy ?? 'rate-match';
 
     // Filter to relevant years (retirement → pre-RMD).
     const relevantYears = useMemo(
@@ -570,11 +622,17 @@ export default function RothConversionDebugTab() {
                             year={selectedYear.year}
                             age={age}
                             convertedAmount={convertedAmount}
-                            reason={headlineReason(selectedYear)}
+                            reason={headlineReason(selectedYear, strategy)}
                             target={target}
                         />
-                        <AggressivenessSection minRateGap={minRateGap} />
-                        <RateMatchWalkSection walk={target.rateMatchWalk ?? []} />
+                        {strategy === 'dp-precomputed' ? (
+                            <DPInfoSection />
+                        ) : (
+                            <>
+                                <AggressivenessSection minRateGap={minRateGap} />
+                                <RateMatchWalkSection walk={target.rateMatchWalk ?? []} />
+                            </>
+                        )}
                         <ConstraintAdjustmentsSection target={target} />
                         <TrajectorySection target={target} floor={floor} rmdYear={rmdYear} />
                         <ConceptReferenceSection />
