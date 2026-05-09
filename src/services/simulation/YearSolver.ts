@@ -882,10 +882,11 @@ function planConversionDP(
     fedParams: TaxParameters,
     stateParams: TaxParameters | null,
     surplus: number,
-    _spendingDeficit: number,
+    spendingDeficit: number,
 ): ConversionPlan {
     const decisions: DecisionLogEntry[] = [];
     const traditionalBalance = getTotalTraditionalBalance(input.accounts);
+    let bracketSpaceForSpending = 0;
 
     const skipReturn = (limitingFactor: ConversionLimitingFactor, description?: string): ConversionPlan => {
         if (description) {
@@ -897,7 +898,7 @@ function planConversionDP(
             taxSource: 'SURPLUS',
             additionalOrdinaryIncome: 0,
             decisions,
-            bracketSpaceForSpending: 0,
+            bracketSpaceForSpending,
             taxOptimizationTarget: {
                 yearsUntilRMD: Math.max(0, getRMDStartAge(input.year - input.currentAge) - input.currentAge),
                 rmdStartAge: getRMDStartAge(input.year - input.currentAge),
@@ -919,12 +920,69 @@ function planConversionDP(
         return skipReturn('TRADITIONAL_DEPLETED', 'Skipped Roth conversion: no Traditional balance available.');
     }
 
-    // Look up the precomputed amount; clamp to actual trad available.
+    // Spending-deficit reservation. Mirrors the rate-match logic in planConversion:
+    // when there's a Roth-bound spending deficit (brokerage can't cover it) and
+    // we're not penalized (age >= 59.5), reserve trad bracket space for direct
+    // Traditional withdrawal. This avoids the wasteful round-trip
+    // "convert → withdraw Roth for spending" pattern. Downstream in
+    // solveRetirementYear, a non-zero bracketSpaceForSpending puts trad first
+    // (capped at the reservation) in the withdrawal order.
+    //
+    // The rate-match version gates this on `marginal <= conversionCeiling`.
+    // DP doesn't compute a per-year ceiling, so we use a fixed 24% federal
+    // threshold — at-or-below 24%, prefer trad spending; above, accept the
+    // round-trip and let the user's withdrawal order handle it.
+    const penaltyApplies = input.currentAge < 59.5;
+    if (spendingDeficit > 0 && !penaltyApplies) {
+        const brokerageBalance = getTotalBrokerageBalance(input.accounts);
+        const brokerageGainRatio = getBrokerageGainRatio(input.accounts);
+        const ltcgRate = getLTCGRateForIncome(baseOrdinaryIncome, fedParams);
+        const brokerageCoverage = brokerageBalance * (1 - brokerageGainRatio * ltcgRate);
+        const rothBoundDeficit = Math.max(0, spendingDeficit - brokerageCoverage);
+
+        if (rothBoundDeficit > 0) {
+            const marginalResult = TaxService.getMarginalTaxRate(
+                Math.max(0, baseOrdinaryIncome - fedParams.standardDeduction),
+                fedParams,
+            );
+            const stateRate = stateParams
+                ? TaxService.getMarginalTaxRate(
+                    Math.max(0, baseOrdinaryIncome - stateParams.standardDeduction),
+                    stateParams,
+                  ).rate
+                : 0;
+
+            const DP_SPENDING_RESERVATION_CEILING = 0.24;
+            if (marginalResult.rate <= DP_SPENDING_RESERVATION_CEILING + 0.005) {
+                const totalEffectiveRate = marginalResult.rate + stateRate;
+                const grossForDeficit = rothBoundDeficit / Math.max(0.5, 1 - totalEffectiveRate);
+                bracketSpaceForSpending = Math.min(grossForDeficit, traditionalBalance);
+
+                decisions.push({
+                    category: 'conversion',
+                    amount: bracketSpaceForSpending,
+                    description: `Reserved $${Math.round(bracketSpaceForSpending).toLocaleString()} bracket space ` +
+                        `for Traditional spending (Roth-bound deficit $${Math.round(rothBoundDeficit).toLocaleString()} ` +
+                        `of $${Math.round(spendingDeficit).toLocaleString()} total, ` +
+                        `brokerage covers $${Math.round(brokerageCoverage).toLocaleString()}, ` +
+                        `marginal rate ${(marginalResult.rate * 100).toFixed(1)}%).`,
+                });
+            }
+        }
+    }
+
+    // Look up the precomputed conversion amount. Clamp to (traditional - reserved
+    // for spending) so the conversion doesn't compete with the spending withdrawal.
+    const availableTradForConversion = Math.max(0, traditionalBalance - bracketSpaceForSpending);
     const targetConversion = input.dpConversionPlan?.get(input.year) ?? 0;
-    const conversionAmount = Math.max(0, Math.min(targetConversion, traditionalBalance));
+    const conversionAmount = Math.max(0, Math.min(targetConversion, availableTradForConversion));
 
     if (conversionAmount <= 0) {
-        return skipReturn('NO_BRACKET_SPACE', `DP-precomputed conversion for year ${input.year}: $0 (no plan or zero amount).`);
+        // Spending reservation may still be nonzero — preserve it via skipReturn.
+        return skipReturn(
+            bracketSpaceForSpending > 0 ? 'SPENDING_DEFICIT' : 'NO_BRACKET_SPACE',
+            `DP-precomputed conversion for year ${input.year}: $0 (no plan or zero amount).`,
+        );
     }
 
     const sourceAccount = getFirstTraditionalAccount(input.accounts);
@@ -999,7 +1057,7 @@ function planConversionDP(
         taxSource,
         additionalOrdinaryIncome: conversionAmount,
         decisions,
-        bracketSpaceForSpending: 0,
+        bracketSpaceForSpending,
         taxOptimizationTarget: {
             yearsUntilRMD: Math.max(0, rmdStartAge - input.currentAge),
             rmdStartAge,
@@ -1008,7 +1066,7 @@ function planConversionDP(
             ssAtRMD: 0,
             pensionAtRMD: 0,
             currentTraditionalBalance: traditionalBalance,
-            limitingFactor: conversionAmount >= traditionalBalance - 1
+            limitingFactor: conversionAmount >= availableTradForConversion - 1
                 ? 'TRADITIONAL_DEPLETED'
                 : 'BRACKET_CEILING',
             actualConversion: conversionAmount,

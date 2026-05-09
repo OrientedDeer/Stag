@@ -473,8 +473,19 @@ export const runSimulationWithOptimization = (
         // Pass 1 — full-horizon std-ded-only baseline. Conversions limited to
         // the always-free standard-deduction headroom; everything else
         // (withdrawals, RMDs, taxes, income) reflects the deterministic plan.
+        //
+        // Override the strategy to 'rate-match' for the baseline pass —
+        // otherwise selectConversionStrategy dispatches to planConversionDP,
+        // which sees no dpConversionPlan and skips conversion entirely. We
+        // want std-ded-only conversions in the baseline (which is what
+        // conversionMode='std-ded-only' inside the rate-match path produces),
+        // not zero conversions.
+        const baselineAssumptions: AssumptionsState = {
+            ...assumptions,
+            investments: { ...assumptions.investments, rothConversionStrategy: 'rate-match' },
+        };
         const baselineTimeline = runSimulation(
-            yearsToRun, accounts, incomes, expenses, assumptions, taxState,
+            yearsToRun, accounts, incomes, expenses, baselineAssumptions, taxState,
             yearlyReturns, referenceDate,
             /* conversionMode */ 'std-ded-only',
             /* useRollingBaseline */ false,
