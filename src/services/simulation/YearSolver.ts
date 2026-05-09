@@ -770,11 +770,25 @@ function planConversion(
         };
     }
 
+    // Estimate LTCG that the year will realize. Brokerage gets sold for two
+    // reasons: covering this year's spending deficit, and covering the
+    // conversion tax (when taxSource is BROKERAGE). The LTCG bumps the
+    // conversion's tax cost (LTCG rate goes from 0% → 15% / 15% → 20% as
+    // ordinary income rises), so we want it reflected in the displayed
+    // conversionTax. Same formula the ACA-cliff binary-search uses above.
+    const ltcgGainRatio = getBrokerageGainRatio(input.accounts);
+    const ltcgRateAtIncome = getLTCGRateForIncome(baseOrdinaryIncome + conversionAmount, fedParams);
+    const estimatedLTCGForYear = estimateLTCGFromDeficit(
+        Math.max(0, spendingDeficit),
+        ltcgGainRatio,
+        ltcgRateAtIncome,
+    );
+
     // Calculate conversion tax
     const conversionTaxResult = calculateEffectiveConversionTax(
         baseOrdinaryIncome,
         socialSecurityBenefits,
-        0, // ltcgIncome
+        estimatedLTCGForYear,
         conversionAmount,
         input.taxState.filingStatus,
         fedParams,
@@ -1024,10 +1038,20 @@ function planConversionDP(
         };
     }
 
+    // Estimate this year's LTCG (mirrors the rate-match path) so the
+    // conversion's displayed Tax Cost reflects the LTCG bump.
+    const ltcgGainRatio = getBrokerageGainRatio(input.accounts);
+    const ltcgRateAtIncome = getLTCGRateForIncome(baseOrdinaryIncome + conversionAmount, fedParams);
+    const estimatedLTCGForYear = estimateLTCGFromDeficit(
+        Math.max(0, spendingDeficit),
+        ltcgGainRatio,
+        ltcgRateAtIncome,
+    );
+
     const conversionTaxResult = calculateEffectiveConversionTax(
         baseOrdinaryIncome,
         socialSecurityBenefits,
-        0,
+        estimatedLTCGForYear,
         conversionAmount,
         input.taxState.filingStatus,
         fedParams,
