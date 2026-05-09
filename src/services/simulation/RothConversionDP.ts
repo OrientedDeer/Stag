@@ -57,7 +57,7 @@ import { WorkIncome } from "../../components/Objects/Income/models";
 export const DP_BACKLOAD_DELTA = 0.015;
 
 const TRAD_BUCKETS = 100;
-const CONVERSION_BUCKETS = 50;
+const CONVERSION_BUCKETS = 200;
 const BALANCE_HEADROOM_FACTOR = 1.3;
 const MIN_BALANCE_RANGE = 100_000;
 const MIN_CONVERSION_RANGE = 10_000;
