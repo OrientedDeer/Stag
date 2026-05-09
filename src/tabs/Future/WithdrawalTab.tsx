@@ -353,6 +353,48 @@ export default function WithdrawalTab() {
                     </div>
                     {taxOptimizationEnabled && (
                         <div className="mt-4 pt-4 border-t border-gray-800">
+                            <label className="block mb-4">
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className="text-sm font-medium text-gray-200">
+                                        Conversion algorithm
+                                    </span>
+                                </div>
+                                <div className="flex gap-2">
+                                    {(['rate-match', 'dp-precomputed'] as const).map(option => {
+                                        const active = (state.investments.rothConversionStrategy ?? 'rate-match') === option;
+                                        const optionLabel = option === 'rate-match' ? 'Rate match' : 'Dynamic programming';
+                                        const optionDesc = option === 'rate-match'
+                                            ? 'Per-year bracket walk vs. projected RMD-age rate.'
+                                            : 'Backward-induction DP over the full horizon (experimental).';
+                                        return (
+                                            <button
+                                                key={option}
+                                                type="button"
+                                                onClick={() => {
+                                                    const updated = {
+                                                        ...state,
+                                                        investments: { ...state.investments, rothConversionStrategy: option }
+                                                    };
+                                                    dispatch({
+                                                        type: 'UPDATE_INVESTMENTS',
+                                                        payload: { rothConversionStrategy: option }
+                                                    });
+                                                    recalculateSimulation(updated);
+                                                }}
+                                                className={`flex-1 text-left px-3 py-2 rounded-md border transition-colors ${
+                                                    active
+                                                        ? 'bg-blue-900/30 border-blue-700/50 text-blue-200'
+                                                        : 'bg-gray-900/40 border-gray-800 text-gray-300 hover:border-gray-700'
+                                                }`}
+                                            >
+                                                <div className="text-sm font-medium">{optionLabel}</div>
+                                                <div className="text-xs text-gray-400 mt-0.5">{optionDesc}</div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </label>
+                            {(state.investments.rothConversionStrategy ?? 'rate-match') === 'rate-match' && (
                             <label className="block">
                                 <div className="flex items-center justify-between mb-1">
                                     <span className="text-sm font-medium text-gray-200">
@@ -383,6 +425,8 @@ export default function WithdrawalTab() {
                                     className="w-full"
                                 />
                             </label>
+                            )}
+                            {(state.investments.rothConversionStrategy ?? 'rate-match') === 'rate-match' && (
                             <details className="mt-2 group">
                                 <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-300 select-none list-none flex items-center gap-1">
                                     More info
@@ -423,6 +467,15 @@ export default function WithdrawalTab() {
                                     </li>
                                 </ul>
                             </details>
+                            )}
+                            {(state.investments.rothConversionStrategy ?? 'rate-match') === 'dp-precomputed' && (
+                            <p className="text-xs text-gray-500 mt-2">
+                                DP solves a backward-induction over the full retirement horizon, picking
+                                the per-year conversion that minimizes lifetime tax. The aggressiveness
+                                slider doesn't apply — DP does its own bracket comparison and includes a
+                                small back-load preference (δ = 1.5%/yr).
+                            </p>
+                            )}
                         </div>
                     )}
                 </div>
