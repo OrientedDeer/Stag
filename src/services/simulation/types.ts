@@ -128,8 +128,85 @@ export interface SimulationYear {
     milestoneEvents?: MilestoneReachEvent[];      // Milestones reached this year
     activeMilestones?: string[];                   // All milestone IDs reached so far
     taxOptimizationTarget?: TaxOptimizationTarget;
+    /**
+     * Per-year trace from the DP-precomputed conversion strategy. Populated only
+     * when `assumptions.investments.rothConversionStrategy === 'dp-precomputed'`
+     * and the year is within the DP horizon (retirement-onward, pre-RMD-end).
+     * Surfaces the structured math behind each year's conversion choice for the
+     * Roth debug screen.
+     */
+    dpTrace?: DPYearTrace;
+    /**
+     * Lifetime sum of (federal + state + FICA + capital gains) tax under the
+     * std-ded-only conversion baseline — i.e., what taxes would be if only
+     * the always-free standard-deduction-headroom conversions ran. Set on
+     * year 0 of the simulation result so the Withdrawal tab's comparison
+     * panel can display "your strategy vs free conversions only" without
+     * re-running an extra sim.
+     */
+    stdDedBaselineLifetimeTax?: number;
     // Marks a synthetic "projected end of current year" data point inserted between Year 0 and Year 1
     isEndOfYearProjection?: boolean;
+}
+
+/**
+ * Structured per-year trace of the DP-precomputed Roth conversion solver's
+ * decision-making. Mirrors the data emitted in the [DEBUG DP …] log lines but
+ * in numeric form so the Roth debug screen can render charts/tables instead of
+ * parsing text.
+ */
+export interface DPYearTrace {
+    year: number;
+    age: number;
+
+    // Decision outcome
+    chosenC: number;
+    yearTax: number;
+    conversionMarginal: number;
+    discountedFuture: number;
+    totalCost: number;
+
+    // State entering the year
+    tradEntering: number;
+    rothEntering: number;
+    rmdAtEntering: number;
+    cMax: number;
+    /** Tax at conversion=0, used for marginal-cost diagnostic. */
+    taxBaselineNoConv: number;
+
+    // State at end of year (under chosen plan)
+    tradNext: number;
+    rothNext: number;
+
+    // Waterfall: spendingNeed + yearTax − cashFromOrdinary = gap → sources
+    spendingNeed: number;
+    cashFromOrdinary: number;
+    gap: number;
+    fromBrokerage: number;
+    fromRoth: number;
+    tradSpending: number;
+    unmetNeed: number;
+    baselineBrokerageCap: number;
+
+    /** Cost-curve samples at the conversion values we evaluated. */
+    costCurve: Array<{
+        c: number;
+        yearTax: number;
+        discountedFuture: number;
+        totalCost: number;
+        tradNext: number;
+        rothNext: number;
+    }>;
+
+    // Baseline (std-ded sub-sim) reference values for this year — for divergence checks.
+    baselineTrad?: number;
+    baselineRoth?: number;
+    baselineBrokerage?: number;
+    baselineConversion?: number;
+
+    // Per-year grid scales (for sanity-checking V-table resolution).
+    dB: number;
+    dRoth: number;
 }
 
 // Internal withdrawal tracking state passed between simulation phases

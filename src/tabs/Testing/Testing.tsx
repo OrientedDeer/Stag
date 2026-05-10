@@ -1409,7 +1409,7 @@ function SimulationDebugTab() {
                     {selectedYearData.logs.length > 0 && (
                         <div className="mt-4 bg-gray-800 p-3 rounded-lg">
                             <h4 className="font-semibold text-gray-300 mb-2">Simulation Logs</h4>
-                            <div className="text-xs font-mono space-y-1 max-h-40 overflow-y-auto">
+                            <div className="text-xs font-mono space-y-1 max-h-96 overflow-y-auto">
                                 {selectedYearData.logs.map((log, idx) => (
                                     <div key={idx} className="text-gray-400">{log}</div>
                                 ))}

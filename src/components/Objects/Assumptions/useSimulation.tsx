@@ -474,33 +474,61 @@ export const runSimulationWithOptimization = (
     const strategy = assumptions.investments.rothConversionStrategy ?? 'rate-match';
     const taxOptOn = assumptions.investments.taxOptimizationEnabled;
 
+    // Always run a full-horizon std-ded-only baseline up front. Used for:
+    //   1. Live "your strategy vs free-conversions only" comparison in
+    //      WithdrawalTab — no extra sim needed at comparison time.
+    //   2. Context-building input for the DP solver (DP path only).
+    // Override strategy to rate-match so std-ded conversions actually fire —
+    // otherwise selectConversionStrategy dispatches to planConversionDP,
+    // which sees no dpConversionPlan and skips conversion entirely. We want
+    // std-ded-only conversions (what conversionMode='std-ded-only' inside
+    // the rate-match path produces), not zero conversions.
+    const baselineAssumptions: AssumptionsState = {
+        ...assumptions,
+        investments: { ...assumptions.investments, rothConversionStrategy: 'rate-match' },
+    };
+    const stdDedBaselineTimeline = runSimulation(
+        yearsToRun, accounts, incomes, expenses, baselineAssumptions, taxState,
+        yearlyReturns, referenceDate,
+        /* conversionMode */ 'std-ded-only',
+        /* useRollingBaseline */ false,
+        /* dpConversionPlan */ undefined,
+    );
+    const stdDedBaselineLifetimeTax = stdDedBaselineTimeline.reduce((total, year) => {
+        return total
+            + (year.taxDetails.fed ?? 0)
+            + (year.taxDetails.state ?? 0)
+            + (year.taxDetails.fica ?? 0)
+            + (year.taxDetails.capitalGains ?? 0);
+    }, 0);
+
     if (strategy === 'dp-precomputed' && taxOptOn) {
-        // Pass 1 — full-horizon std-ded-only baseline. Conversions limited to
-        // the always-free standard-deduction headroom; everything else
-        // (withdrawals, RMDs, taxes, income) reflects the deterministic plan.
-        //
-        // Override the strategy to 'rate-match' for the baseline pass —
-        // otherwise selectConversionStrategy dispatches to planConversionDP,
-        // which sees no dpConversionPlan and skips conversion entirely. We
-        // want std-ded-only conversions in the baseline (which is what
-        // conversionMode='std-ded-only' inside the rate-match path produces),
-        // not zero conversions.
-        const baselineAssumptions: AssumptionsState = {
-            ...assumptions,
-            investments: { ...assumptions.investments, rothConversionStrategy: 'rate-match' },
-        };
-        const baselineTimeline = runSimulation(
-            yearsToRun, accounts, incomes, expenses, baselineAssumptions, taxState,
-            yearlyReturns, referenceDate,
-            /* conversionMode */ 'std-ded-only',
-            /* useRollingBaseline */ false,
-            /* dpConversionPlan */ undefined,
-        );
+        // DP path: reuse the std-ded baseline above (already computed) for
+        // context building and the DP forward sweep.
+        const baselineTimeline = stdDedBaselineTimeline;
 
         // Pass 2 — solve the DP over the baseline trajectory.
         const birthYear = getBirthYear(assumptions.milestones);
         const retirementYear = birthYear + getRetirementAge(assumptions.milestones);
-        const contexts = buildDPYearContexts(baselineTimeline, assumptions, taxState, retirementYear);
+
+        // Brokerage balance entering retirementYear (= end of retirementYear − 1).
+        // buildDPYearContexts looks this up from baseline when available; this
+        // fallback handles the already-retired-today case where no prior baseline
+        // year exists. Mirrors the trad/roth fallback below.
+        const preRetirementSimYearForBrokerage = baselineTimeline.find(y => y.year === retirementYear - 1);
+        const startingBrokerageBalance = preRetirementSimYearForBrokerage
+            ? preRetirementSimYearForBrokerage.accounts
+                .filter((a): a is InvestedAccount =>
+                    a instanceof InvestedAccount && a.taxType === 'Brokerage')
+                .reduce((sum, a) => sum + a.vestedAmount, 0)
+            : accounts
+                .filter((a): a is InvestedAccount =>
+                    a instanceof InvestedAccount && a.taxType === 'Brokerage')
+                .reduce((sum, a) => sum + a.vestedAmount, 0);
+
+        const contexts = buildDPYearContexts(
+            baselineTimeline, assumptions, taxState, retirementYear, startingBrokerageBalance,
+        );
 
         // Critical: the DP only solves retirement years onward, so its forward
         // sweep needs the trad balance AT RETIREMENT, not today. Pulling
@@ -508,19 +536,45 @@ export const runSimulationWithOptimization = (
         // of the contexts (= retirement year), missing pre-retirement growth
         // and 401k contributions. Pull from the baseline timeline instead —
         // that's already simulated through the full pre-retirement period.
-        const startSimYear = baselineTimeline.find(y => y.year === retirementYear)
-            ?? baselineTimeline.find(y => y.year > retirementYear)
-            ?? baselineTimeline[0];
-        const startingTradBalance = startSimYear
-            ? startSimYear.accounts
+        //
+        // SimulationYear records END-of-year state, so we look up
+        // (retirementYear - 1) to get end-of-(year-before-retirement), which
+        // equals start-of-retirement-year — the correct t=0 state for the DP
+        // forward sweep. Looking up retirementYear directly produces an
+        // off-by-one (DP starts from end-of-retirement-year, double-counts
+        // year 0's flows). If the user retires in the very first sim year
+        // (no pre-retirement records), fall back to today's account balances.
+        const preRetirementSimYear = baselineTimeline.find(y => y.year === retirementYear - 1);
+        let startingTradBalance: number;
+        let startingRothBalance: number;
+        if (preRetirementSimYear) {
+            startingTradBalance = preRetirementSimYear.accounts
                 .filter((a): a is InvestedAccount =>
                     a instanceof InvestedAccount &&
                     (a.taxType === 'Traditional 401k' || a.taxType === 'Traditional IRA'))
-                .reduce((sum, a) => sum + a.vestedAmount, 0)
-            : 0;
+                .reduce((sum, a) => sum + a.vestedAmount, 0);
+            startingRothBalance = preRetirementSimYear.accounts
+                .filter((a): a is InvestedAccount =>
+                    a instanceof InvestedAccount && a.taxType === 'Roth IRA')
+                .reduce((sum, a) => sum + a.vestedAmount, 0);
+        } else {
+            // Already retired (or retiring in year 0): no prior baseline year
+            // exists. Use today's actual balances.
+            startingTradBalance = accounts
+                .filter((a): a is InvestedAccount =>
+                    a instanceof InvestedAccount &&
+                    (a.taxType === 'Traditional 401k' || a.taxType === 'Traditional IRA'))
+                .reduce((sum, a) => sum + a.vestedAmount, 0);
+            startingRothBalance = accounts
+                .filter((a): a is InvestedAccount =>
+                    a instanceof InvestedAccount && a.taxType === 'Roth IRA')
+                .reduce((sum, a) => sum + a.vestedAmount, 0);
+        }
         const dpPlan: DPPlan = planConversionsViaDP({
             contexts,
             currentTradBalance: startingTradBalance,
+            currentRothBalance: startingRothBalance,
+            backloadDelta: assumptions.investments.rothConversionDPBackloadDelta,
         });
 
         // Pass 3 — final sim with the DP plan. The DP strategy in YearSolver
@@ -540,14 +594,33 @@ export const runSimulationWithOptimization = (
         if (finalTimeline.length > 0) {
             finalTimeline[0].logs.push(...dpPlan.diagnostics.summaryLogs);
         }
+
+        // Attach structured per-year DP traces to their matching SimulationYear
+        // records so the Roth debug screen can render the cost-curve, waterfall,
+        // and balance-flow sections without re-parsing log text.
+        for (const year of finalTimeline) {
+            const trace = dpPlan.diagnostics.perYearTraces.get(year.year);
+            if (trace) year.dpTrace = trace;
+        }
+
+        // Stash the std-ded baseline lifetime tax on year 0 for the live
+        // Withdrawal-tab comparison panel.
+        if (finalTimeline.length > 0) {
+            finalTimeline[0].stdDedBaselineLifetimeTax = stdDedBaselineLifetimeTax;
+        }
+
         return finalTimeline;
     }
 
     // Default: rate-match with rolling per-year sub-sim baselines.
-    return runSimulation(
+    const finalTimeline = runSimulation(
         yearsToRun, accounts, incomes, expenses, assumptions, taxState,
         yearlyReturns, referenceDate,
         /* conversionMode */ 'rate-match',
         /* useRollingBaseline */ true,
     );
+    if (finalTimeline.length > 0) {
+        finalTimeline[0].stdDedBaselineLifetimeTax = stdDedBaselineLifetimeTax;
+    }
+    return finalTimeline;
 };

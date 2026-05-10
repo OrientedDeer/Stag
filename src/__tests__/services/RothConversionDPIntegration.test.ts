@@ -15,7 +15,9 @@ import { FutureSocialSecurityIncome } from '../../components/Objects/Income/mode
 import { FoodExpense } from '../../components/Objects/Expense/models';
 import { runSimulationWithOptimization } from '../../components/Objects/Assumptions/useSimulation';
 
-describe('DP-precomputed Roth conversion strategy — end-to-end', () => {
+// 2D-state DP: end-to-end runs (baseline + DP solve + final sim) take up
+// to ~30s with the current grid. Default vitest 5s timeout would flake.
+describe('DP-precomputed Roth conversion strategy — end-to-end', { timeout: 60_000 }, () => {
     const birthYear = 1985;
     const retirementAge = 40; // FIRE: early retiree
     const lifeExpectancy = 95;
@@ -106,14 +108,18 @@ describe('DP-precomputed Roth conversion strategy — end-to-end', () => {
         expect(totalConverted).toBeGreaterThan(50_000);
     });
 
-    it('DP fills standard-deduction headroom in pre-SS retirement years', () => {
+    it('DP performs meaningful conversions in pre-SS retirement years', () => {
         // Regression guard: an earlier bug had buildDPYearContexts include
         // baseline conversions in nonSSOrdinaryIncomeExclRMD, which made the
         // DP solve for "extra above baseline" while the final sim executed
-        // only the plan amount. Net: every year was $0. This test asserts the
-        // DP fills at least *some* of the available std-ded headroom in early
-        // pre-SS retirement years, where baseline ordinary income is low and
-        // a free conversion is unambiguously optimal.
+        // only the plan amount. Net: every year was $0. This test guards
+        // against that by asserting non-trivial pre-SS conversion activity.
+        //
+        // We don't assert "every year converts" — with a correct growth-rate
+        // model, DP often concentrates conversions into a few high-impact
+        // bracket-fill years rather than spreading thin std-ded fills across
+        // every year. So the regression check is on TOTAL pre-SS conversion
+        // dollars and the presence of at least a few active conversion years.
         const assumptions = baseAssumptions('dp-precomputed');
         const result = runSimulationWithOptimization(
             yearsToSimulate,
@@ -125,8 +131,7 @@ describe('DP-precomputed Roth conversion strategy — end-to-end', () => {
             undefined,
             new Date('2025-06-15'),
         );
-        // Pre-SS years (age 40 → 66): SS hasn't started, ordinary income is low,
-        // 0% bracket headroom is high. DP should convert *something* in most of these.
+        // Pre-SS years (age 40 → 66): SS hasn't started, ordinary income is low.
         const preSSYears = result.filter(y => {
             const age = y.year - birthYear;
             return age >= retirementAge && age < 67;
@@ -134,7 +139,12 @@ describe('DP-precomputed Roth conversion strategy — end-to-end', () => {
         const yearsWithConversions = preSSYears.filter(
             y => (y.rothConversion?.amount ?? 0) > 0,
         );
-        expect(yearsWithConversions.length).toBeGreaterThan(preSSYears.length / 2);
+        const totalPreSSConverted = preSSYears.reduce(
+            (sum, y) => sum + (y.rothConversion?.amount ?? 0),
+            0,
+        );
+        expect(yearsWithConversions.length).toBeGreaterThanOrEqual(3);
+        expect(totalPreSSConverted).toBeGreaterThan(100_000);
     });
 
     it('DP conversion entries are tagged with the DP-planned reason', () => {
@@ -239,5 +249,122 @@ describe('DP-precomputed Roth conversion strategy — end-to-end', () => {
         );
         expect(anyDPLog).toBe(false);
         expect(result.length).toBeGreaterThan(0);
+    });
+
+    it('does not over-front-load conversions in long FIRE horizon (3D regression guard)', () => {
+        // Reproduces the original 2D-state DP bug: with the user's age-25
+        // / retire-35 / 60-year FIRE setup, the 2D solver projected trad@RMD
+        // ≈ $20M (because it couldn't model Roth depletion → later
+        // trad-spending) and front-loaded $280k of conversions in year 1
+        // followed by ~$30k/yr afterward. The 3D solver should see that
+        // aggressive year-1 conversions deplete Roth and force trad-spending
+        // late in retirement, so it spreads conversions across the horizon
+        // — especially under the δ=1.5% back-load preference.
+        const futureRetirementBirth = 2001;
+        const retirementAt = 35;
+        const futureLifeExpectancy = 95;
+        const futureYears = 60;
+        const retirementYear = futureRetirementBirth + retirementAt;
+
+        const futureAssumptions: AssumptionsState = {
+            ...defaultAssumptions,
+            demographics: {},
+            milestones: createBuiltinMilestones(futureRetirementBirth, retirementAt, futureLifeExpectancy),
+            income: { ...defaultAssumptions.income, salaryGrowth: 0 },
+            macro: { ...defaultAssumptions.macro, inflationRate: 2.5, inflationAdjusted: true },
+            investments: {
+                ...defaultAssumptions.investments,
+                returnRates: { ror: 7 },
+                taxOptimizationEnabled: true,
+                autoRothConversions: true,
+                rothConversionStrategy: 'dp-precomputed',
+            },
+            withdrawalStrategy: [
+                { id: 'ws-savings', name: 'Savings', accountId: 'acc-savings' },
+                { id: 'ws-brokerage', name: 'Brokerage', accountId: 'acc-brokerage' },
+                { id: 'ws-roth', name: 'Roth IRA', accountId: 'acc-roth' },
+                { id: 'ws-trad', name: 'Traditional IRA', accountId: 'acc-traditional' },
+            ],
+        };
+        const futureAccounts = [
+            new InvestedAccount('acc-traditional', 'Traditional 401k', 88_000, 0, 5, 0.05, 'Traditional 401k', true, 0.2, 88_000),
+            new InvestedAccount('acc-roth', 'Roth IRA', 200_000, 0, 5, 0.05, 'Roth IRA', true, 0.2, 200_000),
+            new InvestedAccount('acc-brokerage', 'Brokerage', 700_000, 0, 5, 0.05, 'Brokerage', true, 0.2, 600_000),
+            new SavedAccount('acc-savings', 'Savings', 50_000, 4),
+        ];
+
+        const result = runSimulationWithOptimization(
+            futureYears,
+            futureAccounts,
+            buildIncomes(),
+            buildExpenses(),
+            futureAssumptions,
+            taxState,
+            undefined,
+            new Date('2025-06-15'),
+        );
+
+        const totalConverted = result.reduce(
+            (s, y) => s + (y.rothConversion?.amount ?? 0),
+            0,
+        );
+        // If DP picks $0 across the horizon, there's nothing to over-front-
+        // load and the bug doesn't apply. Other tests guard against that
+        // failure mode.
+        if (totalConverted === 0) return;
+
+        const yearOneConversion =
+            result.find(y => y.year === retirementYear)?.rothConversion?.amount ?? 0;
+        const firstThreeYears = result
+            .filter(y => y.year >= retirementYear && y.year < retirementYear + 3)
+            .reduce((s, y) => s + (y.rothConversion?.amount ?? 0), 0);
+
+        const yearOneShare = yearOneConversion / totalConverted;
+        const firstThreeShare = firstThreeYears / totalConverted;
+
+        // Year 1 should not dominate. Pre-fix: 70%+. Post-fix: should be a
+        // small fraction of total. 40% is intentionally loose to avoid
+        // false-fails on small algorithm tweaks while still catching the
+        // catastrophic regression.
+        expect(yearOneShare).toBeLessThan(0.4);
+        // First three years also shouldn't carry the bulk. Loose-ish bound
+        // since some early-retirement bracket-fill is legitimate.
+        expect(firstThreeShare).toBeLessThan(0.6);
+    });
+
+    it('DP lifetime tax stays within tolerance of rate-match', () => {
+        // Quality check: DP optimizes for lifetime tax with δ=1.5% back-load
+        // preference. With δ=0 it would strictly dominate rate-match (DP is
+        // the global optimum); with δ>0 it can pay slightly more lifetime
+        // tax in exchange for the SORR-friendly back-loaded plan. 10%
+        // tolerance catches major regressions (DP much worse than the
+        // heuristic it replaces) without false-failing on small δ-driven
+        // differences or per-strategy execution divergence.
+        const dpAssumptions = baseAssumptions('dp-precomputed');
+        const rateAssumptions = baseAssumptions('rate-match');
+
+        const dpResult = runSimulationWithOptimization(
+            yearsToSimulate, buildAccounts(), buildIncomes(), buildExpenses(),
+            dpAssumptions, taxState, undefined, new Date('2025-06-15'),
+        );
+        const rateResult = runSimulationWithOptimization(
+            yearsToSimulate, buildAccounts(), buildIncomes(), buildExpenses(),
+            rateAssumptions, taxState, undefined, new Date('2025-06-15'),
+        );
+
+        const sumLifetimeTax = (sim: typeof dpResult) =>
+            sim.reduce(
+                (s, y) =>
+                    s +
+                    (y.taxDetails.fed ?? 0) +
+                    (y.taxDetails.state ?? 0) +
+                    (y.taxDetails.fica ?? 0),
+                0,
+            );
+
+        const dpTax = sumLifetimeTax(dpResult);
+        const rateTax = sumLifetimeTax(rateResult);
+
+        expect(dpTax).toBeLessThan(rateTax * 1.10);
     });
 });

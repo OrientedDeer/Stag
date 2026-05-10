@@ -130,6 +130,13 @@ export interface AssumptionsState {
     // Higher = more conservative (skip conversions with smaller savings).
     // 0.05 = "convert at 12% to dodge 22% only if savings ≥ 5pp."
     rothConversionMinRateGap?: number;
+    // DP-precomputed conversion: per-year back-load preference (δ).
+    // V(t, b) = min over c of [tax(c) + (1 / (1 + δ)) × V(t+1, b')].
+    // δ > 0 makes future tax look slightly cheaper than present tax, biasing
+    // the optimal plan toward later conversions (SORR-friendly) at the cost of
+    // some lifetime-tax efficiency. 0 = lifetime-optimal (mildly front-loaded).
+    // 0.015 = 1.5%/yr (default). See RothConversionDP.ts for derivation.
+    rothConversionDPBackloadDelta?: number;
     // Tax Optimization Mode
     taxOptimizationEnabled: boolean; // When enabled, uses smart withdrawal order and auto-calculated Roth conversions
     acaAware: boolean; // When true, limit Roth conversions to stay under ACA subsidy cliff (pre-65)
@@ -176,6 +183,7 @@ export const defaultAssumptions: AssumptionsState = {
     autoRothConversions: false, // Auto-convert Traditional to Roth in retirement
     rothConversionStrategy: 'rate-match', // 'rate-match' (default) | 'dp-precomputed' (experimental)
     rothConversionMinRateGap: 0.05, // 5pp minimum savings to justify a non-free conversion (rate-match algorithm)
+    rothConversionDPBackloadDelta: 0.015, // 1.5%/yr default — DP-precomputed back-load preference
     taxOptimizationEnabled: false, // Disabled by default - use manual withdrawal order
     acaAware: true, // Limit Roth conversions to stay under ACA subsidy cliff (pre-65)
   },

@@ -9,31 +9,43 @@
  * on top. The result is a `Map<year, conversionAmount>` consumed by the
  * DP-precomputed conversion strategy in YearSolver.
  *
- * State: `(year, traditional_balance)`. Decision: this year's total
- * Traditional → Roth conversion amount (including any std-ded-headroom
- * portion that the baseline would do for free; the DP picks total).
+ * State (3D): `(year, traditional_balance, roth_balance)`. Decision:
+ * this year's total Traditional → Roth conversion amount (including any
+ * std-ded-headroom portion that the baseline would do for free — the
+ * DP picks total).
  *
- * Approximations (Option C):
- * - The baseline trajectory (from a std-ded-only sub-sim) supplies per-year
- *   exogenous context (SS, pension, LTCG, baseline trad-withdrawal-for-
- *   spending, brokerage_slack). DP varies trad balance only.
- * - When DP's conversion tax exceeds baseline brokerage slack, the
- *   overflow is charged to traditional (the "tax leak"). First-order
- *   correction for "convert aggressively → blow through brokerage → trad
- *   gets drained for spending" coupling without 3D state.
- * - Hard cap: never propose a conversion whose tax exceeds available
- *   brokerage × HARD_CAP factor (prevents pathological overspending).
+ * Cell evaluation: the year's spending need + this year's tax minus
+ * cash supplied by ordinary income forms a `gap`, which flows through
+ * the real-sim withdrawal order brokerage → roth → trad. Trad-spending
+ * is endogenous (depends on roth state and conversion size) and feeds
+ * back into ordinary income; we resolve via a small fixed-point
+ * iteration. `yearTax` is the year's actual tax; the V-table sums
+ * (yearTax + infeasibility-penalty × unmetNeed) across the horizon.
  *
- * Not yet modeled (intentional): real-sim withdrawal logic re-ordering
- * across plans, IRMAA (Medicare premium surcharges, not yet in codebase),
- * Monte-Carlo path divergence (handled at the call site by re-running
- * the DP per path).
+ * V-table: `V[t]` is a flat `Float64Array` of size
+ * `(TRAD_BUCKETS+1) × (ROTH_BUCKETS+1)`. Backward sweep is a triple
+ * loop over `(t, tradIdx, rothIdx)` with an inner conversion loop;
+ * future cost is looked up via bilinear interpolation in (trad, roth).
+ * Forward extract walks `(trad, roth)` jointly from
+ * `(currentTradBalance, currentRothBalance)`.
+ *
+ * Approximations:
+ * - Brokerage is exogenous (per-year baseline cap, not state). Plans
+ *   that drain brokerage harder than baseline see an inflated cap in
+ *   later years — accepted to keep state at 3D.
+ * - LTCG income comes from baseline; plans diverging materially in
+ *   brokerage usage under-count LTCG tax. Same trade-off.
+ * - 5-year Roth-conversion withdrawal rule: not modeled.
+ * - IRMAA: not in the codebase yet; will flow through automatically
+ *   once `calculateEffectiveConversionTax` learns about it.
+ * - Monte-Carlo path divergence: handled at the call site by re-running
+ *   the DP per path.
  */
 
 import { TaxParameters, FilingStatus } from "../../data/TaxData";
 import { TaxState } from "../../components/Objects/Taxes/TaxContext";
 import { AssumptionsState, getBirthYear } from "../../components/Objects/Assumptions/AssumptionsContext";
-import { SimulationYear } from "./types";
+import { SimulationYear, DPYearTrace } from "./types";
 import * as TaxService from "../../components/Objects/Taxes/TaxService";
 import { ACAOptions } from "./helpers";
 import { getDistributionPeriod, getRMDStartAge } from "../../data/RMDData";
@@ -57,6 +69,18 @@ import { WorkIncome } from "../../components/Objects/Income/models";
 export const DP_BACKLOAD_DELTA = 0.015;
 
 const TRAD_BUCKETS = 100;
+/**
+ * Roth-balance grid resolution for the 3D state extension. With
+ * `determineMaxRoth`'s upper bound of `(roth + trad) × growth^horizon × 1.3`,
+ * a typical 30-year retirement spans ~10× initial wealth, so 50 buckets
+ * gives ~$320k resolution on a $16M maxRoth — coarse but adequate for
+ * distinguishing "Roth depleted" from "Roth has cushion" (the dominant
+ * decision the roth dim drives). Halving from 100 to 50 also halves the
+ * 2D backward-sweep work, which dominates planConversionsViaDP runtime.
+ * Bump if optimization decisions look noisy in late-horizon years.
+ * Memory: (TRAD+1)*(ROTH+1)*horizon*8 = ~150 KB/year × 60yr ≈ 9 MB worst-case.
+ */
+const ROTH_BUCKETS = 50;
 const CONVERSION_BUCKETS = 200;
 const BALANCE_HEADROOM_FACTOR = 1.3;
 const MIN_BALANCE_RANGE = 100_000;
@@ -69,7 +93,16 @@ const MIN_CONVERSION_RANGE = 10_000;
  */
 const MAX_CONVERSION_CAP = 500_000;
 const ACA_SUBSIDY_LOSS_DEFAULT = 12_000;
-const TAX_HARD_CAP_BROKERAGE_MULTIPLIER = 1.2;
+/**
+ * Per-dollar penalty added to yearCost when a (year, trad, roth, conversion)
+ * cell can't fund the year's totalNeed (= spendingNeed + yearTax) from the
+ * waterfall. Without this, the DP would happily pick "drain trad to zero
+ * early so RMDs are 0 forever" because no future tax dominates a real
+ * lifetime — but that plan is bankrupt at age 70. Penalty makes infeasible
+ * plans strictly dominated. Tunable: $10/$1 unmet is heavy enough that the
+ * solver will choose any feasible alternative.
+ */
+const INFEASIBILITY_PENALTY_PER_DOLLAR = 10;
 
 // =============================================================================
 // TYPES
@@ -104,10 +137,43 @@ export interface DPYearContext {
     stateParams: TaxParameters | null;
     acaOptions?: ACAOptions;
 
-    /** Brokerage balance available to absorb additional tax beyond baseline. */
-    brokerageSlack: number;
-    /** Trad withdrawal for spending in baseline (excludes RMD; approximated as constant across DP plans). */
+    /** Trad withdrawal for spending in baseline (excludes RMD; approximated as constant across DP plans). Phase 2: still consumed by the (in-flight 2D) solver. Phase 3 replaces this with endogenous trad-spending in evaluateCell. */
     baselineTradWithdrawal: number;
+
+    /**
+     * Pre-tax spending need for the year — `cashflow.totalExpense − (fed + state + fica)`.
+     * Used by the 3D solver (Phase 3) as the cash demand the waterfall must cover.
+     * Tax is excluded because the DP recomputes its own per-plan year-tax; including
+     * baseline tax here would double-count.
+     */
+    spendingNeed: number;
+    /**
+     * Brokerage balance ENTERING the year (= end of prior year), used by
+     * evaluateCell as the cap on `fromBrokerage` in the spending waterfall.
+     * For the first context year (= retirementYear), this is
+     * end-of-(retirementYear − 1) — pulled from baseline if available, else
+     * from the `startingBrokerageBalance` passed into `buildDPYearContexts`.
+     *
+     * Approximation note: brokerage is exogenous in pure-3D state, so each
+     * year's cap reflects baseline's brokerage trajectory, not the chosen
+     * plan's. A DP plan that drains brokerage harder than baseline will
+     * under-state the constraint in later years (cap = baseline's larger
+     * entering balance, not plan's depleted reality). Accepted to keep
+     * state at 3D; revisit if plans diverge materially from baseline
+     * brokerage usage.
+     */
+    baselineBrokerageAvailable: number;
+    /** Net growth rate for Roth accounts (mirrors `growthRate` for trad). */
+    rothGrowthRate: number;
+
+    /** Diagnostic only: baseline (std-ded-only sub-sim) Roth/brokerage/trad for this year. Not consumed by the solver — printed in per-year debug to make DP-vs-reality divergence visible. */
+    baselineRothBalance?: number;
+    baselineBrokerageBalance?: number;
+    baselineTradBalance?: number;
+    /** Diagnostic only: baseline sub-sim's actual conversion amount this year. */
+    baselineConversionAmount?: number;
+    /** Diagnostic only — set on the FIRST context: baseline trad at (retirementYear − 1). Used to detect off-by-one between DP starting balance and where real-sim's trad actually is at retirement-year start. */
+    diagnosticPreRetirementBaselineTrad?: number;
 
     /** Net (RoR − weighted ER) growth rate for trad accounts. */
     growthRate: number;
@@ -121,6 +187,12 @@ export interface DPInputs {
     /** Current Traditional balance — the DP's starting trad-balance state. */
     currentTradBalance: number;
     /**
+     * Current Roth balance — the DP's starting roth-balance state for the
+     * 3D extension. Phase 1 plumbs this through but the solver does not yet
+     * branch on it (V-table is still 1D in trad). Phase 4 wires it in.
+     */
+    currentRothBalance: number;
+    /**
      * Per-year back-load preference. Defaults to DP_BACKLOAD_DELTA.
      * Exposed as a parameter so tests can pin δ = 0 for deterministic checks.
      */
@@ -131,9 +203,26 @@ export interface DPInputs {
 export interface DPDiagnostics {
     backloadDelta: number;
     tradBuckets: number;
+    rothBuckets: number;
     conversionBuckets: number;
+    /**
+     * Legacy max-of-horizon scalars (kept for backward compatibility with
+     * existing diagnostic consumers and tests). The 3D solver actually
+     * uses per-year scales `dBByYear` / `dRothByYear` below.
+     */
     maxBalance: number;
+    maxRoth: number;
     dB: number;
+    dRoth: number;
+    /**
+     * Per-year V-table grid scales. Index `t` is the bucket width at the
+     * START of year `t`; length is `horizonYears + 1`. Each year's grid
+     * adapts to that year's reachable (trad, roth) range so early years
+     * (where conversion decisions matter) get fine resolution and late
+     * years (where roth has compounded) get coarser buckets.
+     */
+    dBByYear: number[];
+    dRothByYear: number[];
     dC: number;
     maxConversion: number;
     horizonYears: number;
@@ -144,6 +233,12 @@ export interface DPDiagnostics {
     summaryLogs: string[];
     /** Per-year debug strings keyed by simulation year. Consumed by planConversionDP and pushed into the year's decisions/logs. */
     perYearDebug: Map<number, string[]>;
+    /**
+     * Structured per-year traces (numeric form of [DEBUG DP …] logs). Consumed
+     * by the Roth debug screen to render the cost curve, waterfall, and
+     * balance-flow visualizations.
+     */
+    perYearTraces: Map<number, DPYearTrace>;
 }
 
 export interface DPPlan {
@@ -156,12 +251,35 @@ export interface DPPlan {
 // =============================================================================
 
 /**
- * Sum brokerage balances for a SimulationYear.
+ * Sum brokerage balances for a SimulationYear. Diagnostic only.
  */
-function sumBrokerageBalance(simYear: SimulationYear): number {
+function sumBrokerageBalanceDiag(simYear: SimulationYear): number {
     return simYear.accounts
         .filter((acc): acc is InvestedAccount =>
             acc instanceof InvestedAccount && acc.taxType === 'Brokerage'
+        )
+        .reduce((sum, acc) => sum + acc.vestedAmount, 0);
+}
+
+/**
+ * Sum Roth balances for a SimulationYear. Diagnostic only.
+ */
+function sumRothBalanceDiag(simYear: SimulationYear): number {
+    return simYear.accounts
+        .filter((acc): acc is InvestedAccount =>
+            acc instanceof InvestedAccount && acc.taxType === 'Roth IRA'
+        )
+        .reduce((sum, acc) => sum + acc.vestedAmount, 0);
+}
+
+/**
+ * Sum traditional balances for a SimulationYear. Diagnostic only.
+ */
+function sumTradBalanceDiag(simYear: SimulationYear): number {
+    return simYear.accounts
+        .filter((acc): acc is InvestedAccount =>
+            acc instanceof InvestedAccount &&
+            (acc.taxType === 'Traditional 401k' || acc.taxType === 'Traditional IRA')
         )
         .reduce((sum, acc) => sum + acc.vestedAmount, 0);
 }
@@ -186,20 +304,60 @@ function sumTraditionalWithdrawals(simYear: SimulationYear): number {
 }
 
 /**
- * Pull the average net growth rate (RoR − ER) from the baseline accounts.
- * Used for the DP's trad-balance forward propagation.
+ * Compute the balance-weighted net growth rate for trad accounts in this
+ * baseline year. Mirrors InvestedAccount.increment (models.tsx:199-201) so
+ * DP's forward sweep tracks real-sim's actual trad evolution. Per-account
+ * formula: (customROR ?? globalROR) + inflationAdjustment − expenseRatio.
+ * Inflation is added when assumptions.macro.inflationAdjusted is true (the
+ * sim runs in nominal dollars). Weighted by vested balance across trad
+ * accounts.
  */
 function getNetGrowthRate(simYear: SimulationYear, assumptions: AssumptionsState): number {
     const tradAccounts = simYear.accounts.filter((acc): acc is InvestedAccount =>
         acc instanceof InvestedAccount &&
         (acc.taxType === 'Traditional 401k' || acc.taxType === 'Traditional IRA')
     );
+    const globalRoR = assumptions.investments.returnRates.ror ?? 7;
+    const inflationAdjustment = assumptions.macro.inflationAdjusted
+        ? assumptions.macro.inflationRate
+        : 0;
     const totalBalance = tradAccounts.reduce((s, a) => s + a.vestedAmount, 0);
-    const grossRoR = (assumptions.investments.returnRates.ror ?? 7) / 100;
-    if (totalBalance <= 0) return grossRoR;
-    const weightedER =
-        tradAccounts.reduce((s, a) => s + a.expenseRatio * a.vestedAmount, 0) / totalBalance;
-    return grossRoR - weightedER / 100;
+    if (totalBalance <= 0) {
+        return (globalRoR + inflationAdjustment) / 100;
+    }
+    const weightedRatePct = tradAccounts.reduce((sum, a) => {
+        const ror = a.customROR ?? globalRoR;
+        const accountRatePct = ror + inflationAdjustment - a.expenseRatio;
+        return sum + accountRatePct * a.vestedAmount;
+    }, 0) / totalBalance;
+    return weightedRatePct / 100;
+}
+
+/**
+ * Same formula as `getNetGrowthRate` but filtering for Roth accounts. Used
+ * by the 3D solver to project Roth-balance evolution year-over-year. When
+ * a baseline year has no Roth balance, falls back to the global RoR (DP
+ * may project a Roth balance even where baseline has none, e.g. via
+ * conversions earlier in the plan).
+ */
+function getRothGrowthRate(simYear: SimulationYear, assumptions: AssumptionsState): number {
+    const rothAccounts = simYear.accounts.filter((acc): acc is InvestedAccount =>
+        acc instanceof InvestedAccount && acc.taxType === 'Roth IRA'
+    );
+    const globalRoR = assumptions.investments.returnRates.ror ?? 7;
+    const inflationAdjustment = assumptions.macro.inflationAdjusted
+        ? assumptions.macro.inflationRate
+        : 0;
+    const totalBalance = rothAccounts.reduce((s, a) => s + a.vestedAmount, 0);
+    if (totalBalance <= 0) {
+        return (globalRoR + inflationAdjustment) / 100;
+    }
+    const weightedRatePct = rothAccounts.reduce((sum, a) => {
+        const ror = a.customROR ?? globalRoR;
+        const accountRatePct = ror + inflationAdjustment - a.expenseRatio;
+        return sum + accountRatePct * a.vestedAmount;
+    }, 0) / totalBalance;
+    return weightedRatePct / 100;
 }
 
 /**
@@ -214,32 +372,68 @@ export function buildDPYearContexts(
     assumptions: AssumptionsState,
     taxState: TaxState,
     retirementYear: number,
+    /**
+     * Brokerage balance entering the FIRST context year (= retirementYear).
+     * Falls back to baseline lookup at (retirementYear − 1) when that year
+     * is in the baseline; this param covers the already-retired-today case
+     * where no prior baseline year exists. Subsequent contexts always use
+     * baseline's prior-year ending balance.
+     */
+    startingBrokerageBalance: number,
 ): DPYearContext[] {
     const contexts: DPYearContext[] = [];
     const birthYear = getBirthYear(assumptions.milestones);
     const rmdStartAge = getRMDStartAge(birthYear);
 
+    // Diagnostic: capture the baseline sub-sim's trad balance at the year
+    // BEFORE retirement. If `currentTradBalance` (used by DP's forward sweep)
+    // matches this value, it means the lookup is grabbing the end-of-(year
+    // before retirement) record — which is the correct start-of-retirement
+    // state. If `currentTradBalance` matches baselineTrad@retirementYear
+    // (which is what the existing setup log compares), there's a one-year
+    // off-by-one (DP is starting from end-of-retirement-year-1 baseline).
+    const preRetirementSimYear = baseline.find(y => y.year === retirementYear - 1);
+    const preRetirementBaselineTrad = preRetirementSimYear
+        ? sumTradBalanceDiag(preRetirementSimYear)
+        : undefined;
+
+    // Track the previous sim year so each context can record the brokerage
+    // balance ENTERING that year (= prior year's end). For the first context
+    // (= retirementYear), prev = preRetirementSimYear; if that doesn't
+    // exist (retiring in year 0 of the sim), fall back to startingBrokerageBalance.
+    let prevSimYear: SimulationYear | undefined = preRetirementSimYear;
+
     for (const simYear of baseline) {
-        if (simYear.year < retirementYear) continue;
+        if (simYear.year < retirementYear) {
+            prevSimYear = simYear;
+            continue;
+        }
         const age = simYear.year - birthYear;
 
         const ssBenefits = TaxService.getSocialSecurityBenefits(simYear.incomes, simYear.year);
         const grossIncome = TaxService.getGrossIncome(simYear.incomes, simYear.year);
 
         // Traditional non-RMD withdrawals are taxed as ordinary income but aren't
-        // tracked as Income objects, so they're missing from getGrossIncome.
+        // tracked as Income objects. Phase 2: trad-spending becomes endogenous in
+        // the 3D solver (Phase 3's evaluateCell rewrite); we no longer add
+        // baseline trad-spending into nonSSOrdinaryIncomeExclRMD. Still computed
+        // to populate `baselineTradWithdrawal`, which the in-flight 2D solver
+        // uses until Phase 3 lands.
         const totalTradWithdrawals = sumTraditionalWithdrawals(simYear);
         const baselineRMDAmount = simYear.rmdDetails?.totalRMD ?? 0;
         const tradNonRMDWithdrawals = Math.max(0, totalTradWithdrawals - baselineRMDAmount);
 
         // getGrossIncome includes RMD (PassiveIncome with sourceType='RMD') but
         // excludes conversions and non-RMD trad withdrawals. We want
-        // ordinary-on-return EXCLUDING RMD, SS, AND conversion — so the DP's
-        // decision variable represents the total conversion for the year, not
-        // an "extra above baseline" delta.
+        // plan-INDEPENDENT ordinary-on-return — wages/pension/passive — EXCLUDING
+        // RMD, SS, conversion, AND baseline trad withdrawals. RMD, conversion,
+        // and trad-spending are added back inside evaluateCell using state-derived
+        // amounts (Phase 3 makes trad-spending endogenous; Phase 2 leaves a
+        // brief inconsistency where the 2D solver under-counts ordinary income
+        // in trad-spending years).
         const nonSSOrdinaryIncomeExclRMD = Math.max(
             0,
-            grossIncome - ssBenefits - baselineRMDAmount + tradNonRMDWithdrawals,
+            grossIncome - ssBenefits - baselineRMDAmount,
         );
         const ltcgIncome = simYear.taxDetails.longTermCapitalGains ?? 0;
 
@@ -264,9 +458,30 @@ export function buildDPYearContexts(
             };
         }
 
-        const brokerageSlack = sumBrokerageBalance(simYear);
         const growthRate = getNetGrowthRate(simYear, assumptions);
+        const rothGrowthRate = getRothGrowthRate(simYear, assumptions);
         const rmdDivisor = age >= rmdStartAge ? getDistributionPeriod(age) : 0;
+
+        // Pre-tax spending need: cashflow.totalExpense includes baseline taxes,
+        // which the DP recomputes per-plan. Strip them so we don't double-count.
+        // Early-withdrawal penalty is rolled into `fed` already.
+        const baselineTaxes =
+            (simYear.taxDetails.fed ?? 0)
+            + (simYear.taxDetails.state ?? 0)
+            + (simYear.taxDetails.fica ?? 0);
+        const spendingNeed = Math.max(
+            0,
+            (simYear.cashflow.totalExpense ?? 0) - baselineTaxes,
+        );
+
+        // Brokerage entering this year. For the first context (= retirementYear),
+        // prevSimYear is preRetirementSimYear (year retirementYear − 1) when
+        // available; otherwise fall back to the caller-supplied
+        // startingBrokerageBalance. For subsequent retirement years, prevSimYear
+        // is always populated from the prior loop iteration.
+        const baselineBrokerageAvailable = prevSimYear
+            ? sumBrokerageBalanceDiag(prevSimYear)
+            : startingBrokerageBalance;
 
         contexts.push({
             year: simYear.year,
@@ -278,11 +493,23 @@ export function buildDPYearContexts(
             fedParams,
             stateParams: stateParams ?? null,
             acaOptions,
-            brokerageSlack,
             baselineTradWithdrawal: tradNonRMDWithdrawals,
+            spendingNeed,
+            baselineBrokerageAvailable,
+            rothGrowthRate,
+            baselineRothBalance: sumRothBalanceDiag(simYear),
+            baselineBrokerageBalance: sumBrokerageBalanceDiag(simYear),
+            baselineTradBalance: sumTradBalanceDiag(simYear),
+            baselineConversionAmount: simYear.rothConversion?.amount ?? 0,
+            // Attach the pre-retirement diagnostic only to the FIRST context
+            // (i.e., when this is the first push for retirementYear).
+            diagnosticPreRetirementBaselineTrad:
+                contexts.length === 0 ? preRetirementBaselineTrad : undefined,
             growthRate,
             rmdDivisor,
         });
+
+        prevSimYear = simYear;
     }
 
     return contexts;
@@ -333,54 +560,174 @@ function computeYearTax(
 }
 
 /**
- * Single-cell evaluation: given (trad balance, conversion amount, year context),
- * return this year's absolute total tax (federal + state + ACA penalty), the
- * conversion's marginal tax cost (for hard-cap and leak correction), and the
- * resulting next-year trad balance after conversion / RMD / baseline withdrawal
- * / brokerage→trad tax leak.
+ * Single-cell evaluation (3D-ready): given (tradBalance, rothBalance,
+ * conversion, ctx), simulate the year's spending waterfall and tax in
+ * one shot.
  *
- * `taxBaseline` is `computeYearTax(ordinaryIncomeBase, ctx)` — i.e. tax with
- * conversion = 0. Pass it in so the inner conversion-loop doesn't recompute
- * it 50× per (year, balance).
+ * Tax routing mirrors the real sim's WITHHOLD path: the year's gap
+ * (spending need + this-year tax − cash from ordinary income) flows
+ * through the withdrawal order brokerage → roth → trad. The portion that
+ * ends up coming from trad (`tradSpending`) becomes ordinary income and
+ * feeds back into the tax calc. yearTax and tradSpending are coupled, so
+ * we resolve via a small fixed-point iteration. Most years converge in 0
+ * iterations because there's enough brokerage + Roth (or enough ordinary
+ * income from SS/RMD/pension) to keep tradSpending = 0 — the
+ * initial-guess yearTax is already exact.
+ *
+ * Returns:
+ * - `yearTax`: actual federal + state + ACA tax (no infeasibility penalty;
+ *   the solver applies that separately via `unmetNeed`).
+ * - `conversionMarginal`: yearTax − taxBaseline (diagnostic only).
+ * - `tradNext`, `rothNext`: end-of-year balances after flows + growth.
+ * - `tradSpending`, `fromRoth`, `fromBrokerage`: waterfall breakdown for
+ *   diagnostics.
+ * - `unmetNeed`: dollars of `totalNeed` the waterfall couldn't source
+ *   (means the plan ran out of money this year). Solver penalizes via
+ *   INFEASIBILITY_PENALTY_PER_DOLLAR.
+ *
+ * `taxBaseline` is `computeYearTax(ordinaryIncomeBase, ctx)` — i.e. tax
+ * with conversion = 0 and no trad-spending. Used only for the marginal
+ * diagnostic. Cached by the caller so the inner conversion-loop doesn't
+ * recompute it 200× per (year, trad, roth).
+ *
+ * Brokerage is exogenous (per-year baseline cap, not state) — see module
+ * header. LTCG is taken from baseline as well; if a DP plan draws much
+ * more from brokerage than baseline, this under-counts LTCG tax. Known
+ * limitation, accepted to keep state at 3D.
  */
 function evaluateCell(
     tradBalance: number,
+    rothBalance: number,
     conversion: number,
     ctx: DPYearContext,
     taxBaseline: number,
-): { yearTax: number; conversionMarginal: number; tradNext: number } {
+): {
+    yearTax: number;
+    conversionMarginal: number;
+    tradNext: number;
+    rothNext: number;
+    tradSpending: number;
+    fromRoth: number;
+    fromBrokerage: number;
+    unmetNeed: number;
+} {
     const rmd = ctx.rmdDivisor > 0 ? tradBalance / ctx.rmdDivisor : 0;
-    const ordIncomeBase = ctx.nonSSOrdinaryIncomeExclRMD + rmd;
-    const ordIncomeWithConversion = ordIncomeBase + conversion;
+    const ordIncomeExclTradSpend = ctx.nonSSOrdinaryIncomeExclRMD + rmd + conversion;
+    const tradAvailableForSpending = Math.max(0, tradBalance - conversion - rmd);
 
-    const yearTax = computeYearTax(ordIncomeWithConversion, ctx);
+    // Cash that ordinary income provides this year — wages/pension/passive
+    // (nonSSOrdExclRMD), full SS benefits, and RMD all land in the user's
+    // pocket and offset the spending+tax demand. Without this offset the
+    // waterfall would over-source by the full ordinary-income amount, which
+    // in late retirement years (SS+RMD) can be tens of thousands of dollars.
+    // Conversion is intentionally NOT in here: a conversion creates ordinary
+    // income for tax purposes but is a Trad→Roth transfer, not cash.
+    const cashFromOrdinary =
+        ctx.nonSSOrdinaryIncomeExclRMD + ctx.ssBenefits + rmd;
+
+    // Initial guess: tax assuming no trad-spending. This is exact when the
+    // waterfall can cover totalNeed from brokerage + roth alone (the common
+    // case in early retirement years).
+    let yearTax = computeYearTax(ordIncomeExclTradSpend, ctx);
+    let fromBrokerage = 0;
+    let fromRoth = 0;
+    let tradSpending = 0;
+
+    // Fixed-point: yearTax → totalNeed → waterfall → tradSpending →
+    // ordIncome → yearTax. Up to 5 iterations; in practice 1-2.
+    for (let iter = 0; iter < 5; iter++) {
+        // totalNeed is the cash gap the waterfall must source: spending
+        // demand (livingPlusPayroll + this year's tax) minus cash supplied
+        // by ordinary income. Clamped to ≥ 0 — surplus years have no gap.
+        const totalNeed = Math.max(
+            0,
+            ctx.spendingNeed + yearTax - cashFromOrdinary,
+        );
+        fromBrokerage = Math.min(totalNeed, ctx.baselineBrokerageAvailable);
+        const remainingAfterBrokerage = totalNeed - fromBrokerage;
+        fromRoth = Math.min(remainingAfterBrokerage, rothBalance);
+        const tradSpendingNeeded = Math.max(0, remainingAfterBrokerage - fromRoth);
+        tradSpending = Math.min(tradSpendingNeeded, tradAvailableForSpending);
+
+        // No trad-spending ⇒ initial yearTax guess was exact, done.
+        if (tradSpending === 0) break;
+
+        const ordIncome = ordIncomeExclTradSpend + tradSpending;
+        const newYearTax = computeYearTax(ordIncome, ctx);
+        if (Math.abs(newYearTax - yearTax) < 1) {
+            yearTax = newYearTax;
+            break;
+        }
+        yearTax = newYearTax;
+    }
+
+    const totalNeedFinal = Math.max(
+        0,
+        ctx.spendingNeed + yearTax - cashFromOrdinary,
+    );
+    const sourced = fromBrokerage + fromRoth + tradSpending;
+    const unmetNeed = Math.max(0, totalNeedFinal - sourced);
+
     const conversionMarginal = Math.max(0, yearTax - taxBaseline);
+    const tradNext = Math.max(0, tradBalance - conversion - rmd - tradSpending) * (1 + ctx.growthRate);
+    const rothNext = Math.max(0, rothBalance + conversion - fromRoth) * (1 + ctx.rothGrowthRate);
 
-    // Tax-leak correction: anything above brokerage slack drains trad.
-    const leak = Math.max(0, conversionMarginal - ctx.brokerageSlack);
-
-    const tradAfterFlows = tradBalance - conversion - rmd - ctx.baselineTradWithdrawal - leak;
-    const tradNext = Math.max(0, tradAfterFlows) * (1 + ctx.growthRate);
-
-    return { yearTax, conversionMarginal, tradNext };
+    return {
+        yearTax,
+        conversionMarginal,
+        tradNext,
+        rothNext,
+        tradSpending,
+        fromRoth,
+        fromBrokerage,
+        unmetNeed,
+    };
 }
 
 /**
- * Linear interpolation lookup into a value-function row at a non-bucket-aligned
- * balance. Edges clamp to the table's boundary values.
+ * Bilinear interpolation lookup into a 2D value-function table indexed by
+ * (tradIdx, rothIdx). The table is stored as a flat Float64Array with stride
+ * (ROTH_BUCKETS + 1) in the roth dimension — element at (tradIdx, rothIdx)
+ * lives at `V[tradIdx * (rothBuckets + 1) + rothIdx]`.
+ *
+ * Out-of-grid values clamp to the table boundary in each dimension. Returns
+ * the bilinear blend of the four enclosing corner samples weighted by the
+ * fractional position within the (trad, roth) cell.
  */
-function interpV(
-    Vrow: Float64Array,
-    balance: number,
+function interpV2D(
+    V: Float64Array,
+    tradBalance: number,
+    rothBalance: number,
     dB: number,
-    buckets: number,
+    dRoth: number,
+    tradBuckets: number,
+    rothBuckets: number,
 ): number {
-    if (balance <= 0) return Vrow[0];
-    const idx = balance / dB;
-    if (idx >= buckets) return Vrow[buckets];
-    const lo = idx | 0;
-    const frac = idx - lo;
-    return Vrow[lo] * (1 - frac) + Vrow[lo + 1] * frac;
+    let trad = tradBalance < 0 ? 0 : tradBalance;
+    let roth = rothBalance < 0 ? 0 : rothBalance;
+
+    let tIdx = trad / dB;
+    let rIdx = roth / dRoth;
+    if (tIdx > tradBuckets) tIdx = tradBuckets;
+    if (rIdx > rothBuckets) rIdx = rothBuckets;
+
+    const t0 = tIdx | 0;
+    const r0 = rIdx | 0;
+    const t1 = t0 < tradBuckets ? t0 + 1 : tradBuckets;
+    const r1 = r0 < rothBuckets ? r0 + 1 : rothBuckets;
+
+    const tFrac = tIdx - t0;
+    const rFrac = rIdx - r0;
+
+    const stride = rothBuckets + 1;
+    const v00 = V[t0 * stride + r0];
+    const v01 = V[t0 * stride + r1];
+    const v10 = V[t1 * stride + r0];
+    const v11 = V[t1 * stride + r1];
+
+    const v0 = v00 * (1 - rFrac) + v01 * rFrac;
+    const v1 = v10 * (1 - rFrac) + v11 * rFrac;
+    return v0 * (1 - tFrac) + v1 * tFrac;
 }
 
 // =============================================================================
@@ -388,23 +735,72 @@ function interpV(
 // =============================================================================
 
 /**
- * Pick the maximum trad balance the DP grid needs to span. We start from the
- * largest balance the baseline trajectory hits, then add headroom because
- * lower-conversion plans grow trad faster than baseline.
+ * Compute per-year grid scales (`dBByYear`, `dRothByYear`) for the V-table.
+ *
+ * A single uniform grid is the wrong shape for a long-horizon DP: realistic
+ * roth/trad values span ~$200k–$2M in year 1 but compound to tens of
+ * millions over a 40+ year horizon. With one `dRoth`, either early-year
+ * values fall inside a single bucket (interp manufactures fake costs from
+ * unreachable corners) or late-year values exceed the grid (clipped at
+ * boundary). Per-year scales adapt to each year's reachable range.
+ *
+ * Bounds are derived from two independent forward simulations:
+ * - **Trad-max trajectory** (no conversions, no spending): RMD + growth
+ *   only. Maximizes the trad balance reachable at year `t`.
+ * - **Roth-max trajectory** (convert MAX_CONVERSION_CAP/yr, no spending,
+ *   no withdrawals): drains trad into roth as fast as the inner-loop
+ *   conversion cap allows, then lets the roth pile compound. Maximizes
+ *   the roth balance reachable at year `t`.
+ *
+ * Both bounds get a 30% headroom factor and a `MIN_BALANCE_RANGE` floor
+ * so the grid stays usable for small portfolios. Returned arrays have
+ * length `horizonYears + 1` (index `t` covers V[t]'s start-of-year-`t`
+ * state space; index `horizonYears` is the terminal V-table).
  */
-function determineMaxBalance(
+function determineGridScales(
     contexts: DPYearContext[],
     currentTradBalance: number,
-): number {
-    let maxBaseline = currentTradBalance;
-    let trad = currentTradBalance;
-    for (const ctx of contexts) {
-        const rmd = ctx.rmdDivisor > 0 ? trad / ctx.rmdDivisor : 0;
-        // No-conversion forward: just rmd + baseline withdrawal + growth
-        trad = Math.max(0, trad - rmd - ctx.baselineTradWithdrawal) * (1 + ctx.growthRate);
-        if (trad > maxBaseline) maxBaseline = trad;
+    currentRothBalance: number,
+): { dBByYear: number[]; dRothByYear: number[] } {
+    const horizonYears = contexts.length;
+    const tradMaxByYear: number[] = new Array(horizonYears + 1);
+    const rothMaxByYear: number[] = new Array(horizonYears + 1);
+    tradMaxByYear[0] = currentTradBalance;
+    rothMaxByYear[0] = currentRothBalance;
+
+    // Trad-max trajectory: no conversions, no spending.
+    {
+        let trad = currentTradBalance;
+        for (let t = 0; t < horizonYears; t++) {
+            const ctx = contexts[t];
+            const rmd = ctx.rmdDivisor > 0 ? trad / ctx.rmdDivisor : 0;
+            trad = Math.max(0, trad - rmd) * (1 + ctx.growthRate);
+            tradMaxByYear[t + 1] = trad;
+        }
     }
-    return Math.max(MIN_BALANCE_RANGE, maxBaseline * BALANCE_HEADROOM_FACTOR);
+
+    // Roth-max trajectory: convert as fast as the per-year cap allows.
+    {
+        let trad = currentTradBalance;
+        let roth = currentRothBalance;
+        for (let t = 0; t < horizonYears; t++) {
+            const ctx = contexts[t];
+            const rmd = ctx.rmdDivisor > 0 ? trad / ctx.rmdDivisor : 0;
+            const conv = Math.min(MAX_CONVERSION_CAP, Math.max(0, trad - rmd));
+            trad = Math.max(0, trad - conv - rmd) * (1 + ctx.growthRate);
+            roth = (roth + conv) * (1 + ctx.rothGrowthRate);
+            rothMaxByYear[t + 1] = roth;
+        }
+    }
+
+    const dBByYear = tradMaxByYear.map(v =>
+        Math.max(MIN_BALANCE_RANGE, v * BALANCE_HEADROOM_FACTOR) / TRAD_BUCKETS
+    );
+    const dRothByYear = rothMaxByYear.map(v =>
+        Math.max(MIN_BALANCE_RANGE, v * BALANCE_HEADROOM_FACTOR) / ROTH_BUCKETS
+    );
+
+    return { dBByYear, dRothByYear };
 }
 
 /**
@@ -419,20 +815,11 @@ function determineMaxConversion(currentTradBalance: number): number {
 }
 
 /**
- * Hard-cap conversion choices whose tax exceeds available brokerage × multiplier.
- * Prevents the DP from proposing conversions the real sim physically cannot
- * fund (which would otherwise show up as huge tax-leaks in pathological years).
- */
-function isWithinHardCap(conversionMarginalTax: number, brokerageSlack: number): boolean {
-    return conversionMarginalTax <= brokerageSlack * TAX_HARD_CAP_BROKERAGE_MULTIPLIER;
-}
-
-/**
  * Run the DP backward sweep + forward extract, producing a per-year plan.
  */
 export function planConversionsViaDP(inputs: DPInputs): DPPlan {
     const startedAt = performance.now();
-    const { contexts, currentTradBalance } = inputs;
+    const { contexts, currentTradBalance, currentRothBalance } = inputs;
     const delta = inputs.backloadDelta ?? DP_BACKLOAD_DELTA;
     const discountFactor = 1 / (1 + delta);
 
@@ -445,9 +832,14 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
             diagnostics: {
                 backloadDelta: delta,
                 tradBuckets: TRAD_BUCKETS,
+                rothBuckets: ROTH_BUCKETS,
                 conversionBuckets: CONVERSION_BUCKETS,
                 maxBalance: 0,
+                maxRoth: 0,
                 dB: 0,
+                dRoth: 0,
+                dBByYear: [],
+                dRothByYear: [],
                 dC: 0,
                 maxConversion: 0,
                 horizonYears: 0,
@@ -455,26 +847,75 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
                 perYearAmounts: [],
                 summaryLogs: ['[DEBUG DP] Empty horizon — no contexts to solve.'],
                 perYearDebug: new Map(),
+                perYearTraces: new Map(),
             },
         };
     }
 
-    const maxBalance = determineMaxBalance(contexts, currentTradBalance);
-    const dB = maxBalance / TRAD_BUCKETS;
+    const { dBByYear, dRothByYear } = determineGridScales(
+        contexts, currentTradBalance, currentRothBalance,
+    );
+    // Legacy/representative scalars: max-of-horizon. Some diagnostics
+    // consumers (and tests) reference `dB`, `dRoth`, `maxBalance`,
+    // `maxRoth` as scalars; we surface the worst-case bucket width across
+    // the horizon for backward compatibility.
+    const dB = Math.max(...dBByYear);
+    const dRoth = Math.max(...dRothByYear);
+    const maxBalance = dB * TRAD_BUCKETS;
+    const maxRoth = dRoth * ROTH_BUCKETS;
     const maxConversion = determineMaxConversion(currentTradBalance);
     const dC = maxConversion / CONVERSION_BUCKETS;
     const summaryLogs: string[] = [];
     const perYearDebug = new Map<number, string[]>();
+    const perYearTraces = new Map<number, DPYearTrace>();
     const fmt$ = (n: number) => '$' + Math.round(n).toLocaleString();
+    const vTableMB =
+        ((TRAD_BUCKETS + 1) * (ROTH_BUCKETS + 1) * (horizonYears + 1) * 8) / (1024 * 1024);
     summaryLogs.push(
         `[DEBUG DP] solver: δ=${(delta * 100).toFixed(2)}%, df=${discountFactor.toFixed(4)}, ` +
-        `tradBuckets=${TRAD_BUCKETS}, convBuckets=${CONVERSION_BUCKETS}, ` +
-        `maxBalance=${fmt$(maxBalance)} (dB=${fmt$(dB)}), ` +
-        `maxConversion=${fmt$(maxConversion)} (dC=${fmt$(dC)}), horizon=${horizonYears} years`,
+        `tradBuckets=${TRAD_BUCKETS}, rothBuckets=${ROTH_BUCKETS}, convBuckets=${CONVERSION_BUCKETS}, ` +
+        `maxConversion=${fmt$(maxConversion)} (dC=${fmt$(dC)}), horizon=${horizonYears} years, ` +
+        `V-table 2D ≈ ${vTableMB.toFixed(2)} MB`,
+    );
+    // Per-year grid scales. Each year `t` has its own dB[t]/dRoth[t]
+    // sized to that year's reachable (trad, roth) range. Early years
+    // get fine resolution where conversion decisions matter; late years
+    // get looser buckets where roth has compounded but decisions are
+    // already locked in. Sample the first few years and a midpoint plus
+    // the last to see the shape — printing all 46+ years would be noise.
+    const sampleYears = Array.from(new Set([
+        0, 1, 5,
+        Math.floor(horizonYears / 2),
+        horizonYears - 1, horizonYears,
+    ].filter(t => t >= 0 && t <= horizonYears)));
+    const dBSamples = sampleYears
+        .map(t => `t=${t}:${fmt$(dBByYear[t])}`).join(', ');
+    const dRothSamples = sampleYears
+        .map(t => `t=${t}:${fmt$(dRothByYear[t])}`).join(', ');
+    summaryLogs.push(
+        `[DEBUG DP] per-year dB (trad bucket width): ${dBSamples}`,
     );
     summaryLogs.push(
-        `[DEBUG DP] start: currentTradBalance=${fmt$(currentTradBalance)} ` +
-        `(this is the trad balance at the FIRST context year — should be the retirement-year balance, not today's), ` +
+        `[DEBUG DP] per-year dRoth (roth bucket width): ${dRothSamples}`,
+    );
+    let baselineTradPeak = 0;
+    let baselineRothPeak = 0;
+    for (const c of contexts) {
+        if ((c.baselineTradBalance ?? 0) > baselineTradPeak) baselineTradPeak = c.baselineTradBalance ?? 0;
+        if ((c.baselineRothBalance ?? 0) > baselineRothPeak) baselineRothPeak = c.baselineRothBalance ?? 0;
+    }
+    summaryLogs.push(
+        `[DEBUG DP] grid-sizing rationale: ` +
+        `baselineTradPeak=${fmt$(baselineTradPeak)}, ` +
+        `baselineRothPeak=${fmt$(baselineRothPeak)}. ` +
+        `Per-year scales above adapt to each year's reachable range; ` +
+        `legacy max scalars: maxBalance=${fmt$(maxBalance)} (dB=${fmt$(dB)}), ` +
+        `maxRoth=${fmt$(maxRoth)} (dRoth=${fmt$(dRoth)}).`,
+    );
+    summaryLogs.push(
+        `[DEBUG DP] start: currentTradBalance=${fmt$(currentTradBalance)}, ` +
+        `currentRothBalance=${fmt$(currentRothBalance)} ` +
+        `(both at start of FIRST context year — should be retirement-year balances, not today's), ` +
         `firstYear=${contexts[0].year} (age ${contexts[0].age}), ` +
         `lastYear=${contexts[horizonYears - 1].year} (age ${contexts[horizonYears - 1].age})`,
     );
@@ -484,53 +925,76 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
         summaryLogs.push(
             `[DEBUG DP] ctx[${i}] year=${c.year} age=${c.age}: ` +
             `nonSSOrdExclRMD=${fmt$(c.nonSSOrdinaryIncomeExclRMD)}, ss=${fmt$(c.ssBenefits)}, ` +
-            `ltcg=${fmt$(c.ltcgIncome)}, brokerageSlack=${fmt$(c.brokerageSlack)}, ` +
+            `ltcg=${fmt$(c.ltcgIncome)}, ` +
             `baselineTradWithdrawal=${fmt$(c.baselineTradWithdrawal)}, ` +
             `rmdDivisor=${c.rmdDivisor.toFixed(2)}, growth=${(c.growthRate * 100).toFixed(2)}%`,
         );
     }
 
-    // V[t] is a Float64Array of size TRAD_BUCKETS+1.
-    // V[horizonYears] is the terminal value (all zeros — no future tax).
+    // V[t] is a flat Float64Array indexed by `tradIdx * (ROTH_BUCKETS+1) + rothIdx`,
+    // total size (TRAD_BUCKETS+1) × (ROTH_BUCKETS+1). V[horizonYears] is the terminal
+    // value (all zeros — no future tax).
+    const V_STRIDE = ROTH_BUCKETS + 1;
+    const V_SIZE = (TRAD_BUCKETS + 1) * V_STRIDE;
     const V: Float64Array[] = new Array(horizonYears + 1);
     for (let t = 0; t <= horizonYears; t++) {
-        V[t] = new Float64Array(TRAD_BUCKETS + 1);
+        V[t] = new Float64Array(V_SIZE);
     }
 
     // -----------------------------------------------------------------
-    // Backward sweep
+    // Backward sweep — 3D state (year, tradIdx, rothIdx).
+    //
+    // For each (t, tradIdx, rothIdx) cell, iterate over conversion buckets,
+    // evaluate the cell to get (yearTax, tradNext, rothNext, unmetNeed),
+    // then look up V[t+1] at (tradNext, rothNext) via bilinear interpolation
+    // in trad and roth. The minimum total-cost conversion wins.
+    //
+    // Phase 4 caveat: the inner conversion loop and `taxBaseline` only
+    // depend on (t, tradIdx) — recomputing them per rothIdx wastes work.
+    // We hoist them outside the rothIdx loop.
     // -----------------------------------------------------------------
     for (let t = horizonYears - 1; t >= 0; t--) {
         const ctx = contexts[t];
         const Vnext = V[t + 1];
         const Vt = V[t];
+        const dB_t = dBByYear[t];
+        const dRoth_t = dRothByYear[t];
+        const dB_next = dBByYear[t + 1];
+        const dRoth_next = dRothByYear[t + 1];
 
         for (let bi = 0; bi <= TRAD_BUCKETS; bi++) {
-            const b = bi * dB;
+            const b = bi * dB_t;
 
             const rmdAtB = ctx.rmdDivisor > 0 ? b / ctx.rmdDivisor : 0;
             const cMax = Math.max(0, b - rmdAtB);
-            // Compute baseline (no-conversion) tax once per (year, balance).
+            // Baseline (no-conversion, no-trad-spending) tax — only used for
+            // the marginal diagnostic. Doesn't depend on rothIdx.
             const taxBaseline = computeYearTax(ctx.nonSSOrdinaryIncomeExclRMD + rmdAtB, ctx);
 
-            let bestCost = Infinity;
+            for (let ri = 0; ri <= ROTH_BUCKETS; ri++) {
+                const r = ri * dRoth_t;
 
-            for (let ci = 0; ci <= CONVERSION_BUCKETS; ci++) {
-                const c = Math.min(ci * dC, cMax);
-                const { yearTax, conversionMarginal, tradNext } =
-                    evaluateCell(b, c, ctx, taxBaseline);
+                let bestCost = Infinity;
 
-                if (!isWithinHardCap(conversionMarginal, ctx.brokerageSlack)) continue;
+                for (let ci = 0; ci <= CONVERSION_BUCKETS; ci++) {
+                    const c = Math.min(ci * dC, cMax);
+                    const { yearTax, tradNext, rothNext, unmetNeed } =
+                        evaluateCell(b, r, c, ctx, taxBaseline);
 
-                const futureCost = interpV(Vnext, tradNext, dB, TRAD_BUCKETS);
-                const totalCost = yearTax + discountFactor * futureCost;
+                    const futureCost = interpV2D(
+                        Vnext, tradNext, rothNext,
+                        dB_next, dRoth_next, TRAD_BUCKETS, ROTH_BUCKETS,
+                    );
+                    const yearCost = yearTax + unmetNeed * INFEASIBILITY_PENALTY_PER_DOLLAR;
+                    const totalCost = yearCost + discountFactor * futureCost;
 
-                if (totalCost < bestCost) bestCost = totalCost;
+                    if (totalCost < bestCost) bestCost = totalCost;
 
-                if (c >= cMax) break;
+                    if (c >= cMax) break;
+                }
+
+                Vt[bi * V_STRIDE + ri] = bestCost === Infinity ? taxBaseline : bestCost;
             }
-
-            Vt[bi] = bestCost === Infinity ? taxBaseline : bestCost;
         }
     }
 
@@ -541,9 +1005,27 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
     const perYearAmounts: DPDiagnostics['perYearAmounts'] = [];
 
     let trad = currentTradBalance;
+    let roth = currentRothBalance;
+    // Snapshot for first-year debug: lets us see in the inspector whether the
+    // starting balances DP was handed match the baseline sub-sim's
+    // retirement-year balances (they should, per the a7eca53 fix).
+    const firstCtx = contexts[0];
+    const preRetirementBaselineTradVal = firstCtx.diagnosticPreRetirementBaselineTrad;
+    const startingDebug =
+        `[DEBUG DP setup] year=${firstCtx.year} (first context): ` +
+        `startingTrad=${fmt$(currentTradBalance)}, startingRoth=${fmt$(currentRothBalance)} ` +
+        `(both passed into planConversionsViaDP), ` +
+        `baselineTrad@firstYear=${fmt$(firstCtx.baselineTradBalance ?? 0)} (END of retirement year in baseline), ` +
+        `baselineTrad@(firstYear-1)=${preRetirementBaselineTradVal !== undefined ? fmt$(preRetirementBaselineTradVal) : 'n/a'} ` +
+        `(END of year BEFORE retirement = START of retirement year). ` +
+        `If startingTrad matches baselineTrad@(firstYear-1) ⇒ correct (start-of-retirement). ` +
+        `If startingTrad matches baselineTrad@firstYear ⇒ off-by-one (DP is starting from end-of-retirement-year baseline).`;
+
     for (let t = 0; t < horizonYears; t++) {
         const ctx = contexts[t];
         const Vnext = V[t + 1];
+        const dB_next = dBByYear[t + 1];
+        const dRoth_next = dRothByYear[t + 1];
 
         const rmdAtB = ctx.rmdDivisor > 0 ? trad / ctx.rmdDivisor : 0;
         const cMax = Math.max(0, trad - rmdAtB);
@@ -551,11 +1033,14 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
 
         let bestC = 0;
         let bestCost = Infinity;
-        let bestNext = trad;
+        let bestTradNext = trad;
+        let bestRothNext = roth;
         let bestYearTax = 0;
         let bestMarginal = 0;
-        let hardCapHits = 0;
-        let lastHardCapMarginal = 0;
+        let bestTradSpending = 0;
+        let bestFromRoth = 0;
+        let bestFromBrokerage = 0;
+        let bestUnmetNeed = 0;
         // For the diagnostic table: cost @ c=0 vs cost @ a non-zero candidate.
         let costAtZero = Infinity;
         let yearTaxAtZero = 0;
@@ -564,17 +1049,15 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
 
         for (let ci = 0; ci <= CONVERSION_BUCKETS; ci++) {
             const c = Math.min(ci * dC, cMax);
-            const { yearTax, conversionMarginal, tradNext } =
-                evaluateCell(trad, c, ctx, taxBaseline);
+            const { yearTax, conversionMarginal, tradNext, rothNext, tradSpending, fromRoth, fromBrokerage, unmetNeed } =
+                evaluateCell(trad, roth, c, ctx, taxBaseline);
 
-            if (!isWithinHardCap(conversionMarginal, ctx.brokerageSlack)) {
-                hardCapHits++;
-                lastHardCapMarginal = conversionMarginal;
-                continue;
-            }
-
-            const futureCost = interpV(Vnext, tradNext, dB, TRAD_BUCKETS);
-            const totalCost = yearTax + discountFactor * futureCost;
+            const futureCost = interpV2D(
+                Vnext, tradNext, rothNext,
+                dB_next, dRoth_next, TRAD_BUCKETS, ROTH_BUCKETS,
+            );
+            const yearCost = yearTax + unmetNeed * INFEASIBILITY_PENALTY_PER_DOLLAR;
+            const totalCost = yearCost + discountFactor * futureCost;
 
             if (ci === 0) {
                 costAtZero = totalCost;
@@ -585,10 +1068,15 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
             if (totalCost < bestCost) {
                 bestCost = totalCost;
                 bestC = c;
-                bestNext = tradNext;
+                bestTradNext = tradNext;
+                bestRothNext = rothNext;
                 bestYearTax = yearTax;
                 bestMarginal = conversionMarginal;
                 bestFuture = futureCost;
+                bestTradSpending = tradSpending;
+                bestFromRoth = fromRoth;
+                bestFromBrokerage = fromBrokerage;
+                bestUnmetNeed = unmetNeed;
             }
 
             if (c >= cMax) break;
@@ -604,25 +1092,166 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
 
         // Per-year debug emitted to the year inspector via planConversionDP.
         const debugLines: string[] = [];
+        if (t === 0) {
+            // Surface the setup info on the first conversion year so the user
+            // can spot starting-balance issues right in the inspector.
+            debugLines.push(startingDebug);
+        }
         debugLines.push(
             `[DEBUG DP solver] year=${ctx.year} age=${ctx.age}: ` +
             `tradEntering=${fmt$(trad)}, rmdAtB=${fmt$(rmdAtB)}, cMax=${fmt$(cMax)}, ` +
-            `taxBaseline=${fmt$(taxBaseline)}, brokerageSlack=${fmt$(ctx.brokerageSlack)}`,
+            `taxBaseline=${fmt$(taxBaseline)}`,
         );
         debugLines.push(
             `[DEBUG DP solver] year=${ctx.year}: chose c=${fmt$(bestC)} ` +
             `(yearTax=${fmt$(bestYearTax)}, marginal=${fmt$(bestMarginal)}, ` +
             `discountedFuture=${fmt$(discountFactor * bestFuture)}, totalCost=${fmt$(bestCost)}, ` +
-            `tradNext=${fmt$(bestNext)})`,
+            `tradNext=${fmt$(bestTradNext)}, rothNext=${fmt$(bestRothNext)})`,
         );
         debugLines.push(
             `[DEBUG DP solver] year=${ctx.year}: c=0 totalCost=${fmt$(costAtZero)} ` +
-            `(yearTax=${fmt$(yearTaxAtZero)}, discountedFuture=${fmt$(discountFactor * futureAtZero)}); ` +
-            `hardCapRejections=${hardCapHits} (last marginal that failed cap=${fmt$(lastHardCapMarginal)})`,
+            `(yearTax=${fmt$(yearTaxAtZero)}, discountedFuture=${fmt$(discountFactor * futureAtZero)})`,
+        );
+        // Cost-curve sample at FEDERAL BRACKET BOUNDARIES so each segment in
+        // the rate-analysis table represents a single bracket — marginals
+        // read 10% → 12% → 22% → 24% → 32% → 35% as expected, instead of
+        // averages across multi-bracket ranges. Always include 0, the std-ded
+        // boundary, the chosen c, and cMax.
+        //
+        // Conversion needed to land taxable ordinary income at federal bracket
+        // threshold T:  c = (stdDed + T) − existingOrdinaryAtCellEntry
+        // where existingOrdinary = nonSSOrdinaryIncomeExclRMD + rmd (excludes
+        // the conversion itself, which we're varying).
+        const stdDed = ctx.fedParams.standardDeduction;
+        const existingOrdinary = ctx.nonSSOrdinaryIncomeExclRMD + rmdAtB;
+        const stdDedBoundaryC = Math.max(0, stdDed - existingOrdinary);
+        const bracketSampleCs = ctx.fedParams.brackets.map(
+            b => Math.max(0, stdDed + b.threshold - existingOrdinary),
+        );
+        const sampleCs = [
+            0,
+            stdDedBoundaryC,
+            ...bracketSampleCs,
+            bestC,
+            cMax,
+        ]
+            .filter(c => c >= 0 && c <= cMax)
+            .sort((a, b) => a - b)
+            .filter((c, i, arr) => i === 0 || Math.abs(c - arr[i - 1]) > 0.5);
+        const curveParts: string[] = [];
+        const costCurve: DPYearTrace['costCurve'] = [];
+        for (const sampleC of sampleCs) {
+            const r = evaluateCell(trad, roth, sampleC, ctx, taxBaseline);
+            const fc = interpV2D(
+                Vnext, r.tradNext, r.rothNext,
+                dB_next, dRoth_next, TRAD_BUCKETS, ROTH_BUCKETS,
+            );
+            const yc = r.yearTax + r.unmetNeed * INFEASIBILITY_PENALTY_PER_DOLLAR;
+            const dFut = discountFactor * fc;
+            const total = yc + dFut;
+            curveParts.push(
+                `c=${fmt$(sampleC)}→total=${fmt$(total)}` +
+                ` (yearTax=${fmt$(r.yearTax)}, dFut=${fmt$(dFut)}, ` +
+                `tradNext=${fmt$(r.tradNext)}, rothNext=${fmt$(r.rothNext)})`,
+            );
+            costCurve.push({
+                c: sampleC,
+                yearTax: r.yearTax,
+                discountedFuture: dFut,
+                totalCost: total,
+                tradNext: r.tradNext,
+                rothNext: r.rothNext,
+            });
+        }
+        debugLines.push(
+            `[DEBUG DP curve] year=${ctx.year}: ${curveParts.join(' | ')}`,
+        );
+        // Waterfall breakdown for the chosen conversion. The 3D solver
+        // tracks the running roth balance forward, so `cap` reflects what
+        // DP's own plan has left in Roth this year — not a baseline proxy.
+        // gap = max(0, spendingNeed + yearTax − cashFromOrdinary); sourced
+        // brokerage → roth → trad in the real-sim withdrawal order.
+        const cashFromOrd =
+            ctx.nonSSOrdinaryIncomeExclRMD + ctx.ssBenefits + rmdAtB;
+        const gap = Math.max(0, ctx.spendingNeed + bestYearTax - cashFromOrd);
+        debugLines.push(
+            `[DEBUG DP waterfall] year=${ctx.year}: ` +
+            `spendingNeed=${fmt$(ctx.spendingNeed)} + yearTax=${fmt$(bestYearTax)} − ` +
+            `cashFromOrdinary=${fmt$(cashFromOrd)} = gap=${fmt$(gap)} → ` +
+            `fromBrokerage=${fmt$(bestFromBrokerage)} (cap=${fmt$(ctx.baselineBrokerageAvailable)}), ` +
+            `fromRoth=${fmt$(bestFromRoth)} (cap=${fmt$(roth)}), ` +
+            `tradSpending=${fmt$(bestTradSpending)}, unmetNeed=${fmt$(bestUnmetNeed)}`,
+        );
+        // Forward-sweep decomposition: shows exactly how DP is propagating
+        // trad and roth jointly under the chosen plan.
+        // tradAfterFlows = tradEntering − conversion − rmd − tradSpending
+        // tradNext = tradAfterFlows × (1 + growthRate)
+        // rothAfterFlows = rothEntering + conversion − fromRoth
+        // rothNext = max(0, rothAfterFlows) × (1 + rothGrowthRate)
+        const tradAfterFlows = trad - bestC - rmdAtB - bestTradSpending;
+        const rothAfterFlows = roth + bestC - bestFromRoth;
+        debugLines.push(
+            `[DEBUG DP forward] year=${ctx.year}: ` +
+            `tradEntering=${fmt$(trad)} − c=${fmt$(bestC)} − rmd=${fmt$(rmdAtB)} − ` +
+            `tradSpending=${fmt$(bestTradSpending)} ` +
+            `= ${fmt$(tradAfterFlows)} × (1 + ${(ctx.growthRate * 100).toFixed(2)}%) = tradNext=${fmt$(bestTradNext)}`,
+        );
+        debugLines.push(
+            `[DEBUG DP forward roth] year=${ctx.year}: ` +
+            `rothEntering=${fmt$(roth)} + c=${fmt$(bestC)} − fromRoth=${fmt$(bestFromRoth)} ` +
+            `= ${fmt$(rothAfterFlows)} × (1 + ${(ctx.rothGrowthRate * 100).toFixed(2)}%) = rothNext=${fmt$(bestRothNext)}`,
+        );
+        // Baseline trajectory snapshot (std-ded-only sub-sim). The 3D solver
+        // tracks both trad and roth jointly under DP's own plan, so divergence
+        // from baseline here is expected and informative — compare DP's
+        // tradEntering / rothEntering above with these baseline values to see
+        // how the chosen plan differs.
+        debugLines.push(
+            `[DEBUG DP baseline] year=${ctx.year}: ` +
+            `baselineTrad=${fmt$(ctx.baselineTradBalance ?? 0)}, ` +
+            `baselineRoth=${fmt$(ctx.baselineRothBalance ?? 0)}, ` +
+            `baselineBrokerage=${fmt$(ctx.baselineBrokerageBalance ?? 0)}, ` +
+            `baselineConversion=${fmt$(ctx.baselineConversionAmount ?? 0)}, ` +
+            `baselineTradWithdrawal=${fmt$(ctx.baselineTradWithdrawal)}`,
         );
         perYearDebug.set(ctx.year, debugLines);
 
-        trad = bestNext;
+        // Structured trace for the Roth debug screen.
+        const trace: DPYearTrace = {
+            year: ctx.year,
+            age: ctx.age,
+            chosenC: bestC,
+            yearTax: bestYearTax,
+            conversionMarginal: bestMarginal,
+            discountedFuture: discountFactor * bestFuture,
+            totalCost: bestCost,
+            tradEntering: trad,
+            rothEntering: roth,
+            rmdAtEntering: rmdAtB,
+            cMax,
+            taxBaselineNoConv: taxBaseline,
+            tradNext: bestTradNext,
+            rothNext: bestRothNext,
+            spendingNeed: ctx.spendingNeed,
+            cashFromOrdinary: cashFromOrd,
+            gap,
+            fromBrokerage: bestFromBrokerage,
+            fromRoth: bestFromRoth,
+            tradSpending: bestTradSpending,
+            unmetNeed: bestUnmetNeed,
+            baselineBrokerageCap: ctx.baselineBrokerageAvailable,
+            costCurve,
+            baselineTrad: ctx.baselineTradBalance,
+            baselineRoth: ctx.baselineRothBalance,
+            baselineBrokerage: ctx.baselineBrokerageBalance,
+            baselineConversion: ctx.baselineConversionAmount,
+            dB: dBByYear[t],
+            dRoth: dRothByYear[t],
+        };
+        perYearTraces.set(ctx.year, trace);
+
+        trad = bestTradNext;
+        roth = bestRothNext;
     }
 
     const elapsedMs = performance.now() - startedAt;
@@ -638,9 +1267,14 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
         diagnostics: {
             backloadDelta: delta,
             tradBuckets: TRAD_BUCKETS,
+            rothBuckets: ROTH_BUCKETS,
             conversionBuckets: CONVERSION_BUCKETS,
             maxBalance,
+            maxRoth,
             dB,
+            dRoth,
+            dBByYear,
+            dRothByYear,
             dC,
             maxConversion,
             horizonYears,
@@ -648,6 +1282,7 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
             perYearAmounts,
             summaryLogs,
             perYearDebug,
+            perYearTraces,
         },
     };
 }
