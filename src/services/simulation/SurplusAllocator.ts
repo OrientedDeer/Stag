@@ -70,9 +70,6 @@ export function allocateSurplus(
     let remaining = surplus;
     let deficitDebtPayment = 0;
 
-    // DEBUG: Log allocator input (disabled - uncomment to enable)
-    // console.log('ALLOCATOR input surplus:', surplus);
-
     if (surplus <= 0) {
         return { allocations, decisions, deficitDebtPayment: 0, unallocated: 0 };
     }
@@ -353,27 +350,6 @@ export function allocateSurplus(
         deficitDebtPayment,
         unallocated: remaining,
     };
-    // DEBUG: Log allocator output (disabled - uncomment to enable)
-    // console.log('ALLOCATOR output allocations:', JSON.stringify(result.allocations));
     return result;
 }
 
-/**
- * Get default surplus allocation settings.
- */
-export function getDefaultSurplusSettings(year: number): SurplusAllocationSettings {
-    // Roth IRA limits increase over time
-    // 2024: $7,000 (under 50), $8,000 (50+)
-    // Assume inflation adjustment of ~$500 every few years
-    const baseYear = 2024;
-    const baseLimit = 7000;
-    const yearsFromBase = Math.max(0, year - baseYear);
-    const inflationAdjustments = Math.floor(yearsFromBase / 3) * 500;
-
-    return {
-        emergencyFundTarget: 30000, // Default 6 months of expenses
-        rothIRAContributionEnabled: true,
-        rothIRALimit: baseLimit + inflationAdjustments,
-        rothIRAContributedThisYear: 0,
-    };
-}

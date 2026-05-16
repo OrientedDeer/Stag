@@ -1,7 +1,8 @@
-import React, { useState, useContext, useCallback } from 'react';
+import React, { useState, useContext, useCallback, useRef } from 'react';
 import { AssumptionsContext, getBirthYear, getRetirementAge } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxContext } from '../../../components/Objects/Taxes/TaxContext';
 import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider';
+import { useArrowKeyAdjust } from '../../../hooks/useKeyboardShortcuts';
 import { CashflowSankey, SankeyImbalance } from '../../../components/Charts/CashflowSankey';
 import { calculateNetWorth, formatCompactCurrency } from './FutureUtils';
 
@@ -14,6 +15,12 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
     const endYear = simulationData.length > 0 ? simulationData[simulationData.length - 1].year : startYear;
     const [selectedYear, setSelectedYear] = useState(startYear);
     const [sankeyImbalances, setSankeyImbalances] = useState<SankeyImbalance[]>([]);
+    const containerRef = useRef<HTMLDivElement>(null);
+    useArrowKeyAdjust(
+        selectedYear,
+        (v) => setSelectedYear(v as number),
+        { min: startYear, max: endYear, step: 1, containerRef }
+    );
 
     // Callback to receive Sankey balance check results
     const handleBalanceCheck = useCallback((imbalances: SankeyImbalance[]) => {
@@ -46,7 +53,7 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
     const withdrawalExceedsACA = acaAware && age >= retirementAge && age < 65 && !acaConversionLimited && nonConversionMAGI > acaCliff;
 
     return (
-         <div className="flex flex-col gap-4">
+         <div ref={containerRef} className="flex flex-col gap-4">
             {/* Info banners - min-h prevents chart from shifting when banners appear/disappear */}
             <div className="min-h-[52px] flex flex-col gap-2 justify-end">
             {gkTriggered === 'capital-preservation' && (

@@ -57,7 +57,7 @@ export interface WithdrawalPlanResult {
 /**
  * Classify an account's tax type for withdrawal ordering.
  */
-export function classifyAccount(account: AnyAccount): WithdrawalAccountType {
+function classifyAccount(account: AnyAccount): WithdrawalAccountType {
     if (account instanceof SavedAccount) return 'savings';
     if (account instanceof ESPPAccount) return 'espp';
     if (account instanceof InvestedAccount) {
@@ -78,7 +78,7 @@ export function classifyAccount(account: AnyAccount): WithdrawalAccountType {
 /**
  * Check if account type incurs early withdrawal penalty.
  */
-export function hasEarlyWithdrawalPenalty(
+function hasEarlyWithdrawalPenalty(
     accountType: WithdrawalAccountType,
     age: number,
     isEarnings: boolean = false
@@ -398,13 +398,14 @@ function grossUpRoth(
         remaining -= fromContrib;
     }
 
-    // 2. Conversions second - FIFO by year, 5-year rule for penalty
+    // 2. Conversions second - FIFO by year, 5-year rule for penalty.
+    // Caller passes a pre-sorted (oldest first) array; we mutate entry amounts
+    // in place so a shared pool can be drained across multiple withdrawals
+    // within the same year.
     if (remaining > 0 && grossUsed < maxGross && conversionHistory.length > 0) {
-        // Sort by year (oldest first)
-        const sortedConversions = [...conversionHistory].sort((a, b) => a.year - b.year);
-
-        for (const conv of sortedConversions) {
+        for (const conv of conversionHistory) {
             if (remaining <= 0 || grossUsed >= maxGross) break;
+            if (conv.amount <= 0) continue;
 
             const yearsHeld = currentYear - conv.year;
             const penaltyApplies = age < EARLY_WITHDRAWAL_AGE && yearsHeld < 5;
@@ -412,6 +413,7 @@ function grossUpRoth(
             const fromThisConv = Math.min(remaining, conv.amount, maxGross - grossUsed);
             fromConversions += fromThisConv;
             grossUsed += fromThisConv;
+            conv.amount -= fromThisConv;
 
             if (penaltyApplies) {
                 const penaltyOnConv = fromThisConv * EARLY_WITHDRAWAL_PENALTY_RATE;
@@ -535,13 +537,21 @@ export function planWithdrawals(
 
     const stateRate = getStateRate();
 
-    // DEBUG: Log withdrawal planning (disabled - uncomment to enable)
-    // console.log('\n--- WITHDRAWAL PLANNER ---');
-    // console.log('netNeeded:', netNeeded);
-    // console.log('accounts in order:');
-    // for (const s of accountOrder) {
-    //     console.log(`  ${s.accountName} (${s.accountType}): vestedBalance=$${s.vestedBalance.toFixed(2)}`);
-    // }
+    // IRS Pub 590-B: all Roth IRAs are treated as a single Roth IRA for ordering
+    // rules. Pool contribution basis and conversion history (FIFO across accounts)
+    // across every roth_ira snapshot. The pool is decremented in place as
+    // withdrawals are processed. Roth 401k accounts (pre-retirement only after
+    // the at-retirement rollover) keep per-account treatment.
+    const rothIRASnapshots = accountOrder.filter(s => s.accountType === 'roth_ira');
+    let remainingPoolBasis = rothIRASnapshots.reduce(
+        (sum, s) => sum + Math.max(0, s.rothContributions ?? 0),
+        0,
+    );
+    const pooledRothConversions: { year: number; amount: number }[] = rothIRASnapshots
+        .flatMap(s => s.conversionHistory ?? [])
+        .filter(c => c.amount > 0)
+        .map(c => ({ year: c.year, amount: c.amount }))
+        .sort((a, b) => a.year - b.year);
 
     // Process each account in order
     for (const snapshot of accountOrder) {
@@ -815,15 +825,29 @@ export function planWithdrawals(
 
             case 'roth_401k':
             case 'roth_ira': {
+                // Roth IRA: pool contribution basis and conversion history across all
+                // Roth IRAs (IRS Pub 590-B). Roth 401k: keep per-account treatment.
+                const isPooled = snapshot.accountType === 'roth_ira';
+                const contribAvailable = isPooled
+                    ? Math.max(0, Math.min(remainingPoolBasis, snapshot.vestedBalance) - acaAlreadyConsumed)
+                    : Math.max(0, (snapshot.rothContributions ?? 0) - acaAlreadyConsumed);
+                const conversionsForCall = isPooled
+                    ? pooledRothConversions
+                    : (snapshot.conversionHistory ? [...snapshot.conversionHistory].sort((a, b) => a.year - b.year) : []);
+
                 const result = grossUpRoth(
                     remainingNetNeeded,
-                    Math.max(0, (snapshot.rothContributions ?? 0) - acaAlreadyConsumed),
-                    snapshot.conversionHistory ?? [],
+                    contribAvailable,
+                    conversionsForCall,
                     year,
                     currentAge,
                     marginalRate,
                     effectiveVestedBalance
                 );
+
+                if (isPooled) {
+                    remainingPoolBasis = Math.max(0, remainingPoolBasis - result.fromContributions);
+                }
                 const grossToWithdraw = result.gross;
                 const netReceived = grossToWithdraw - result.tax - result.penalty;
 
@@ -1015,9 +1039,6 @@ export function planWithdrawals(
 
         withdrawals.push(withdrawal);
 
-        // DEBUG: Log each withdrawal (disabled - uncomment to enable)
-        // console.log(`  -> ${snapshot.accountName}: gross=$${withdrawal.gross.toFixed(2)}, net=$${withdrawal.net.toFixed(2)}, remainingNeeded=$${remainingNetNeeded.toFixed(2)}`);
-
         // Log the withdrawal
         decisions.push({
             category: 'withdrawal',
@@ -1026,10 +1047,6 @@ export function planWithdrawals(
             description: `Withdrew $${withdrawal.gross.toLocaleString()} from ${snapshot.accountName} (net: $${withdrawal.net.toLocaleString()}).`,
         });
     }
-
-    // DEBUG: Final state (disabled - uncomment to enable)
-    // console.log(`  RESULT: totalNet=$${totalNet.toFixed(2)}, remainingDeficit=$${Math.max(0, remainingNetNeeded).toFixed(2)}`);
-    // console.log('--- END WITHDRAWAL PLANNER ---\n');
 
     // Log if there's remaining deficit
     if (remainingNetNeeded > 0) {
@@ -1050,26 +1067,5 @@ export function planWithdrawals(
         totalSTCG,
         remainingDeficit: remainingNetNeeded < 0.01 ? 0 : remainingNetNeeded,
         decisions,
-    };
-}
-
-/**
- * Plan withdrawals for RMD satisfaction.
- * RMDs are gross = net (no tax withheld at withdrawal time).
- */
-export function planRMDWithdrawal(
-    rmdAmount: number,
-    accountId: string,
-    accountName: string
-): PlannedWithdrawal {
-    return {
-        source: 'traditional_ira', // or traditional_401k
-        accountId,
-        accountName,
-        gross: rmdAmount,
-        net: rmdAmount, // RMD is not net-of-tax - the tax is paid separately
-        penalty: 0,
-        tax: 0, // Tax is calculated on the income, not withheld from withdrawal
-        reason: 'Required Minimum Distribution',
     };
 }

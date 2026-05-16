@@ -14,7 +14,7 @@ import * as TaxService from '../../components/Objects/Taxes/TaxService';
 import { TaxState } from '../../components/Objects/Taxes/TaxContext';
 import { AssumptionsState, getBirthYear } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { calculateEffectiveConversionTax, ACAOptions } from './helpers';
-import { BaselineProjections } from './types';
+import { BaselineProjections, RateMatchWalkRow } from './types';
 
 // Re-export for convenience
 export type { TaxParameters, FilingStatus, TaxState };
@@ -79,37 +79,14 @@ export interface ConversionCeilingResult {
     /** What bracket RMDs will land in given projected balance */
     projectedRMDBracket: number;
 
-    /** What balance WOULD keep RMDs in 12% bracket (may be unachievable) */
-    idealTargetBalance: number;
-
     /** Peak mid-retirement RMD amount (balance / 15) used to select ceiling */
     peakRMD: number;
 
     /** Tax bracket the peak RMD lands in — this is what drives ceiling selection */
     peakRMDBracket: number;
-}
 
-/**
- * Result of target balance calculation
- */
-export interface TargetBalanceResult {
-    /** Balance that keeps RMDs in low brackets */
-    idealTarget: number;
-
-    /** What we can realistically achieve */
-    realisticTarget: number;
-
-    /** max(ideal, realistic) - the effective target to use */
-    effectiveTarget: number;
-
-    /** How much to convert this year to stay on track */
-    conversionNeededThisYear: number;
-
-    /** Are we above or below target? */
-    aboveTarget: boolean;
-
-    /** What's limiting this year's conversion (for debugging) */
-    limitingFactor?: 'BRACKET_CEILING' | 'SS_TORPEDO' | 'ACA_CLIFF' | 'BALANCE_BELOW_TARGET' | 'PACING' | 'NO_BRACKET_SPACE';
+    /** Bracket-by-bracket trace of the rate-match walk (for the Roth Debug page) */
+    rateMatchWalk?: RateMatchWalkRow[];
 }
 
 /**
@@ -170,7 +147,7 @@ export function getBracketProgression(taxParams: TaxParameters): number[] {
  * IRS Uniform Lifetime Table - RMD divisors by age (2024+)
  * Source: IRS Publication 590-B
  */
-export const RMD_DIVISORS: Record<number, number> = {
+const RMD_DIVISORS: Record<number, number> = {
     72: 27.4,
     73: 26.5,
     74: 25.5,
@@ -278,6 +255,12 @@ export function getAcaCliffThreshold(
  *
  * This properly handles SS torpedo, LTCG bump, NIIT, state tax, and ACA cliff.
  * Uses taxIncrease (which includes federal + state + ACA) not just taxAfter (federal only).
+ *
+ * Production reaches this through coarseToFineSearch; the export exists so unit
+ * tests can probe marginal-rate math directly (SS torpedo, ACA cliff, state
+ * stacking) without going through the opaque search wrapper.
+ *
+ * @public
  */
 export function getEffectiveConversionRate(
     conversionAmount: number,
@@ -553,6 +536,12 @@ export function coarseToFineSearch(
  * @param acaOptions - ACA subsidy awareness options (undefined if not applicable)
  * @param assumptions - Optional assumptions for inflation adjustments
  * @returns Result with maxConversion, effectiveRateAtMax, bracketAtMax, and edgeType
+ *
+ * Test-only entry point. Production calls coarseToFineSearch directly; this
+ * wrapper exists so Bug-C/D regression tests and the refactor-sanity suite
+ * can probe the search at a single point with a target effective rate.
+ *
+ * @public
  */
 export function calculateEffectiveRateConversionLimit(
     currentAGI: number,
@@ -615,95 +604,6 @@ export function calculateEffectiveRateConversionLimit(
 }
 
 /**
- * Calculate what Traditional balance at RMD age would keep RMDs in a target bracket.
- *
- * Uses effective rate calculation to properly account for:
- * - SS torpedo (RMD can push more SS into taxable territory)
- * - LTCG bump zone
- * - NIIT
- * - State tax
- *
- * Formula: IdealBalance = MaxRMDInBracket × RMDDivisor
- *
- * @param pensionIncomeAtRMD - Non-SS fixed income at RMD age (pensions, annuities)
- * @param ssAtRMD - Social Security benefits at RMD age
- * @param targetBracket - Target tax bracket rate (e.g., 0.12 for 12%)
- * @param rmdStartAge - Age when RMDs begin (typically 73 or 75)
- * @param taxParams - Federal tax parameters
- * @param taxState - Tax state (filing status, etc.)
- * @param stateParams - State tax parameters (null if no state tax)
- * @param year - Tax year for bracket calculations
- * @returns Ideal Traditional balance at RMD age
- */
-export function calculateIdealTargetBalance(
-    pensionIncomeAtRMD: number,
-    ssAtRMD: number,
-    passiveIncomeAtRMD: number,
-    targetBracket: number,
-    rmdStartAge: number,
-    taxParams: TaxParameters
-): number {
-    const rmdDivisor = getRMDDivisor(rmdStartAge);
-    if (rmdDivisor === 0) {
-        return 0;
-    }
-
-    // Compute the ideal Trad balance at RMD age — the threshold below which we
-    // won't pay current tax to convert further. Two semantics depending on
-    // targetBracket:
-    //
-    //   targetBracket === 0 → "std-ded floor": balance below which projected
-    //     RMDs would all be sheltered by the standard deduction (zero taxable
-    //     income from RMDs). Below this floor, paying 12%+ now to convert
-    //     would be wasted because the dollars would come out tax-free.
-    //
-    //   targetBracket > 0 → "bracket fill": balance that produces RMDs filling
-    //     the named bracket at RMD age. Below this, the user is already on
-    //     track to land in or below that bracket; the cap is a risk-management
-    //     choice rather than a strict tax-optimization line.
-
-    let bracketCeiling: number;
-    if (targetBracket <= 0) {
-        // Std-ded floor case: gross-income ceiling is just the standard deduction.
-        // bracketCeiling represents the *taxable* income ceiling, which is 0 here
-        // (we want zero taxable income from RMDs).
-        bracketCeiling = 0;
-    } else {
-        // Find the ceiling of the target bracket (threshold of the next bracket)
-        const sortedBrackets = [...taxParams.brackets].sort((a, b) => a.rate - b.rate);
-        const targetBracketIndex = sortedBrackets.findIndex(b => b.rate === targetBracket);
-
-        if (targetBracketIndex >= 0 && targetBracketIndex < sortedBrackets.length - 1) {
-            // Ceiling is the threshold of the NEXT bracket
-            bracketCeiling = sortedBrackets[targetBracketIndex + 1].threshold;
-        } else {
-            // Target is highest bracket or not found - use a large number
-            bracketCeiling = 1_000_000;
-        }
-    }
-
-    // Gross income ceiling = bracket ceiling (taxable) + standard deduction
-    const grossCeiling = bracketCeiling + taxParams.standardDeduction;
-
-    // Calculate taxable SS at RMD age
-    // At RMD age with significant income, typically 85% of SS is taxable
-    // Use conservative 85% estimate for simplicity
-    const taxableSS = ssAtRMD * 0.85;
-
-    // RMD space = gross ceiling - taxable SS - pension income - passive income
-    const maxRMD = Math.max(0, grossCeiling - taxableSS - pensionIncomeAtRMD - passiveIncomeAtRMD);
-
-    // Ideal balance = maxRMD × RMD divisor
-    const idealBalance = maxRMD * rmdDivisor;
-
-    // DEBUG: Trace target balance calculation (disabled - too noisy)
-    // console.log('[calculateIdealTargetBalance] Inputs:', { pensionIncomeAtRMD, ssAtRMD, passiveIncomeAtRMD, targetBracket, rmdStartAge, standardDeduction: taxParams.standardDeduction });
-    // console.log('[calculateIdealTargetBalance] Intermediate values:', { rmdDivisor, bracketCeiling, grossCeiling, taxableSS, maxRMD, idealBalance });
-
-    return idealBalance;
-}
-
-/**
  * Result of rate-matched conversion calculation.
  */
 export interface RateMatchedConversion {
@@ -715,6 +615,8 @@ export interface RateMatchedConversion {
     futureMarginalAtStop: number;
     /** Why we stopped converting */
     stopReason: 'gap-closed' | 'no-balance' | 'no-future-tax';
+    /** Bracket-by-bracket walk trace (for the Roth Debug page). */
+    walk: RateMatchWalkRow[];
 }
 
 /**
@@ -756,12 +658,15 @@ export function computeRateMatchedConversion(
     minimumRateGap: number = 0.05,
     projectedTradAtRMD?: number
 ): RateMatchedConversion {
+    const walk: RateMatchWalkRow[] = [];
+
     if (currentTraditionalBalance <= 0 || yearsUntilRMD <= 0) {
         return {
             optimalConversion: 0,
             topConversionRate: 0,
             futureMarginalAtStop: 0,
             stopReason: 'no-balance',
+            walk,
         };
     }
 
@@ -802,18 +707,40 @@ export function computeRateMatchedConversion(
         const chunkSize = Math.min(stdDedHeadroom, currentTraditionalBalance - totalConverted);
         if (chunkSize > 0) {
             const futureMarginal = futureMarginalAt(totalConverted + chunkSize);
+            const gap = futureMarginal; // currentRate is 0
             // For free conversions (current rate = 0), gap is just the future rate. Always convert
             // if future rate is at least the threshold (otherwise we're paying nothing now to
             // dodge nothing later).
             if (futureMarginal >= minimumRateGap) {
                 totalConverted += chunkSize;
                 topRate = 0;
+                walk.push({
+                    currentRate: 0,
+                    chunkStart: -stdDedHeadroom,
+                    chunkEnd: 0,
+                    chunkSize,
+                    futureMarginal,
+                    gap,
+                    decision: 'convert',
+                    cumulative: totalConverted,
+                });
             } else {
+                walk.push({
+                    currentRate: 0,
+                    chunkStart: -stdDedHeadroom,
+                    chunkEnd: 0,
+                    chunkSize,
+                    futureMarginal,
+                    gap,
+                    decision: 'stop',
+                    cumulative: totalConverted,
+                });
                 return {
                     optimalConversion: totalConverted,
                     topConversionRate: topRate,
                     futureMarginalAtStop: futureMarginal,
                     stopReason: futureMarginal === 0 ? 'no-future-tax' : 'gap-closed',
+                    walk,
                 };
             }
         }
@@ -831,6 +758,7 @@ export function computeRateMatchedConversion(
                 topConversionRate: topRate,
                 futureMarginalAtStop: futureMarginalAt(currentTraditionalBalance),
                 stopReason: 'no-balance',
+                walk,
             };
         }
 
@@ -855,16 +783,37 @@ export function computeRateMatchedConversion(
 
         const gap = futureMarginal - currentMarginal;
         if (gap < minimumRateGap) {
+            walk.push({
+                currentRate: currentMarginal,
+                chunkStart,
+                chunkEnd: chunkStart + chunkSize,
+                chunkSize,
+                futureMarginal,
+                gap,
+                decision: 'stop',
+                cumulative: totalConverted,
+            });
             return {
                 optimalConversion: totalConverted,
                 topConversionRate: topRate,
                 futureMarginalAtStop: futureMarginal,
                 stopReason: 'gap-closed',
+                walk,
             };
         }
 
         totalConverted += chunkSize;
         topRate = currentMarginal;
+        walk.push({
+            currentRate: currentMarginal,
+            chunkStart,
+            chunkEnd: chunkStart + chunkSize,
+            chunkSize,
+            futureMarginal,
+            gap,
+            decision: 'convert',
+            cumulative: totalConverted,
+        });
     }
 
     return {
@@ -872,6 +821,7 @@ export function computeRateMatchedConversion(
         topConversionRate: topRate,
         futureMarginalAtStop: futureMarginalAt(totalConverted),
         stopReason: 'no-balance',
+        walk,
     };
 }
 
@@ -970,7 +920,6 @@ export function calculateDynamicConversionCeiling(
     _stateParams: TaxParameters | null = null,
     _acaOptions?: ACAOptions,
     baselineProjections?: BaselineProjections,
-    targetBracket: number = 0.12,
     /**
      * Simulation assumptions. When provided, the peak-RMD bracket lookup uses
      * tax parameters projected to the RMD year so that RMD-year nominal income
@@ -990,7 +939,6 @@ export function calculateDynamicConversionCeiling(
             bracketSpacePerYear: 0,
             projectedBalanceAtRMD: currentTraditionalBalance,
             projectedRMDBracket: 0,
-            idealTargetBalance: 0,
             peakRMD: 0,
             peakRMDBracket: 0,
         };
@@ -1010,7 +958,6 @@ export function calculateDynamicConversionCeiling(
             bracketSpacePerYear: cappedAmount,
             projectedBalanceAtRMD: currentTraditionalBalance,
             projectedRMDBracket: 0,
-            idealTargetBalance: 0,
             peakRMD: 0,
             peakRMDBracket: 0,
         };
@@ -1114,21 +1061,8 @@ export function calculateDynamicConversionCeiling(
     // further reduce this; rate-match output is the rate-arbitrage optimum.
 
     // =========================================================================
-    // Compute ideal target and projected balance for return
+    // Compute projected balance for return
     // =========================================================================
-
-    // Use RMD-year tax params for the same reason as peakRMDBracket: the income
-    // inputs (pension/SS/passive at RMD) are in RMD-year nominal dollars, so the
-    // bracket ceiling needs to be too.
-    const idealTargetBalance = calculateIdealTargetBalance(
-        effectivePensionAtRMD,
-        effectiveSsAtRMD,
-        effectivePassiveIncomeAtRMD,
-        targetBracket,
-        rmdStartAge,
-        peakBracketTaxParams
-    );
-
 
     // Use baseline projection for projectedBalanceAtRMD if available
     const effectiveProjectedBalance = baselineProjections?.traditionalBalanceAtRMD
@@ -1157,160 +1091,9 @@ export function calculateDynamicConversionCeiling(
         bracketSpacePerYear,
         projectedBalanceAtRMD: effectiveProjectedBalance,
         projectedRMDBracket,
-        idealTargetBalance,
         peakRMD,
         peakRMDBracket,
+        rateMatchWalk: rateMatchResult.walk,
     };
 }
-
-// =============================================================================
-// PLACEHOLDER FUNCTIONS (to be implemented in subsequent tasks)
-// =============================================================================
-
-/**
- * Calculate the recommended Roth conversion amount for this year.
- *
- * Uses a three-way minimum to prevent over-conversion:
- * 1. simpleSpread - Linear spread of excess balance over remaining years
- * 2. bracketCap - This year's available bracket space (from effective rate calculation)
- * 3. dampedMax - Dynamic damping based on years until RMD
- *
- * Under-converting is self-correcting (next year adjusts); over-converting cannot be undone.
- *
- * @param currentBalance - Current Traditional IRA/401k balance
- * @param effectiveTarget - Target balance at RMD age (from calculateDynamicConversionCeiling)
- * @param yearsUntilRMD - Years remaining until RMD age
- * @param bracketSpaceThisYear - Available conversion space before exceeding ceiling rate
- * @param growthRate - Expected annual growth rate
- * @returns Recommended conversion amount for this year
- */
-export function calculateConversionThisYear(
-    currentBalance: number,
-    effectiveTarget: number,
-    yearsUntilRMD: number,
-    bracketSpaceThisYear: number,
-    growthRate: number
-): number {
-    // Early returns: no conversion needed or possible
-    if (currentBalance <= effectiveTarget) return 0;
-    if (yearsUntilRMD <= 0) return 0;
-
-    // Calculate excess balance that needs to be converted
-    const excess = currentBalance - effectiveTarget;
-
-    // Method 1: Growth-aware spread (FIXED - Bug 2)
-    // Solve annuity equation: Target = Balance × (1+g)^n - C × [(1+g)^n - 1] / g
-    // For C: C = [Balance × (1+g)^n - Target] × g / [(1+g)^n - 1]
-    let growthAwareSpread: number;
-
-    if (growthRate === 0 || growthRate < 0.001) {
-        // No growth - simple division
-        growthAwareSpread = excess / yearsUntilRMD;
-    } else {
-        const growthFactor = Math.pow(1 + growthRate, yearsUntilRMD);
-        const futureBalance = currentBalance * growthFactor;
-        const numerator = (futureBalance - effectiveTarget) * growthRate;
-        const denominator = growthFactor - 1;
-        growthAwareSpread = numerator / denominator;
-    }
-
-    // Method 2: Cap at this year's effective bracket space
-    // (Already accounts for SS torpedo via calculateEffectiveRateConversionLimit)
-    const bracketCap = bracketSpaceThisYear;
-
-    // Method 3: Dynamic damping based on years remaining
-    // More aggressive (higher %) when time is short, conservative when time is long
-    const dampingFactor = getDampingFactor(yearsUntilRMD);
-    const dampedMax = excess * dampingFactor;
-
-    // Use the MINIMUM of all three caps
-    // This prevents aggressive over-conversion
-    const conversionAmount = Math.min(growthAwareSpread, bracketCap, dampedMax);
-
-    // Floor at 0 (should never be negative, but safety first)
-    return Math.max(0, conversionAmount);
-}
-
-/**
- * Calculate both ideal and realistic Traditional balance targets.
- *
- * - **Ideal:** Balance that keeps RMDs + fixed income in 12% bracket
- * - **Realistic:** What we can achieve given conversion ceiling and years remaining
- * - Returns the higher of the two (can't go below realistic)
- *
- * @param currentBalance - Current Traditional IRA/401k balance
- * @param yearsUntilRMD - Years remaining until RMD age
- * @param ceilingResult - Result from calculateDynamicConversionCeiling
- * @param growthRate - Expected annual growth rate
- * @returns TargetBalanceResult with ideal, realistic, effective targets and conversion
- */
-export function calculateTargetTraditionalBalance(
-    currentBalance: number,
-    yearsUntilRMD: number,
-    ceilingResult: ConversionCeilingResult,
-    growthRate: number
-): TargetBalanceResult {
-    // 1. idealTarget = from 12% bracket calculation
-    const idealTarget = ceilingResult.idealTargetBalance;
-
-    // 2. realisticTarget = the lowest balance achievable if we convert at bracketSpacePerYear every year
-    // If we can't convert fast enough to reach idealTarget, we target what's actually achievable
-    const realisticTarget = projectBalanceAtRMD(
-        currentBalance,
-        yearsUntilRMD,
-        ceilingResult.bracketSpacePerYear,
-        growthRate
-    );
-
-    // 3. effectiveTarget = max(ideal, realistic)
-    // Can't target below what's realistically achievable
-    const effectiveTarget = Math.max(idealTarget, realisticTarget);
-
-
-    // 4. Determine if we're above target and need to convert
-    const aboveTarget = currentBalance > effectiveTarget;
-
-    // 5. Calculate conversion needed this year
-    let conversionNeededThisYear = 0;
-    let limitingFactor: TargetBalanceResult['limitingFactor'] = undefined;
-
-    if (aboveTarget) {
-        // Above target - convert to get down to target
-        conversionNeededThisYear = calculateConversionThisYear(
-            currentBalance,
-            effectiveTarget,
-            yearsUntilRMD,
-            ceilingResult.bracketSpacePerYear,
-            growthRate
-        );
-
-        // Determine what's limiting the conversion
-        if (ceilingResult.bracketSpacePerYear <= 0) {
-            limitingFactor = 'NO_BRACKET_SPACE';
-        } else if (conversionNeededThisYear >= ceilingResult.bracketSpacePerYear * 0.95) {
-            // Conversion is capped by bracket space
-            limitingFactor = 'BRACKET_CEILING';
-        } else {
-            // Conversion is limited by pacing/damping
-            limitingFactor = 'PACING';
-        }
-    } else {
-        // Below target: skip conversion entirely.
-        // Future RMDs will be small enough to fill the 0% bracket.
-        // Converting now at 10-12% is worse than RMDs at 0%.
-        conversionNeededThisYear = 0;
-        limitingFactor = 'BALANCE_BELOW_TARGET';
-    }
-
-    return {
-        idealTarget,
-        realisticTarget,
-        effectiveTarget,
-        conversionNeededThisYear,
-        aboveTarget,
-        limitingFactor
-    };
-}
-
-
 

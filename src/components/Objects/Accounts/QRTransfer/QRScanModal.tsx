@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { Scanner, type IDetectedBarcode } from '@yudiel/react-qr-scanner';
 import { decompressData, validatePayload, isCompactFormat, expandCompactBackup } from './qrUtils';
+import { useModalAccessibility } from '../../../../hooks/useModalAccessibility';
 
 interface ParsedData {
     version: number;
@@ -25,6 +26,7 @@ export default function QRScanModal({ isOpen, onClose, onImport }: QRScanModalPr
     const [errorMessage, setErrorMessage] = useState<string>('');
     const [parsedData, setParsedData] = useState<ParsedData | null>(null);
     const [rawJson, setRawJson] = useState<string>('');
+    const { modalRef, handleKeyDown } = useModalAccessibility(isOpen, onClose);
 
     const handleScan = useCallback((detectedCodes: IDetectedBarcode[]) => {
         if (detectedCodes.length === 0 || status !== 'scanning') return;
@@ -88,7 +90,13 @@ export default function QRScanModal({ isOpen, onClose, onImport }: QRScanModalPr
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-            <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl p-6 max-w-md w-full mx-4">
+            <div
+                ref={modalRef}
+                role="dialog"
+                aria-modal="true"
+                onKeyDown={handleKeyDown}
+                className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl p-6 max-w-md w-full mx-4"
+            >
                 {/* Header */}
                 <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-3">
                     <h3 className="text-xl font-bold text-white">Scan QR Code</h3>

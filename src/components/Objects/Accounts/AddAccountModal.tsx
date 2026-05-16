@@ -98,7 +98,8 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
         onClose();
     };
 
-    const handleAdd = () => {
+    const handleAdd = (e?: React.FormEvent) => {
+        e?.preventDefault();
         if (!selectedType || !form.name.trim()) return;
 
         let newAccount;
@@ -180,6 +181,7 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                 <h2 id="add-account-modal-title" className="text-xl font-bold text-white mb-4">
                     {getModalTitle()}
                 </h2>
+                <form onSubmit={handleAdd}>
                 <div className="space-y-4">
                     <div>
                         <NameInput
@@ -244,7 +246,7 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                                 label="Tax Type"
                                 value={form.taxType}
                                 onChange={(val) => updateForm('taxType', val as TaxType)}
-                                options={TaxTypeEnum as any}
+                                options={[...TaxTypeEnum]}
                                 tooltip="Tax treatment: Brokerage (taxable), Traditional (pre-tax, taxed on withdrawal), Roth (post-tax, tax-free growth)."
                             />
                             {(form.taxType === 'Roth 401k' || form.taxType === 'Traditional 401k') && (
@@ -404,13 +406,14 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
 
                 <div className="flex justify-end gap-3 mt-8">
                     <button
+                        type="button"
                         onClick={handleClose}
                         className="px-5 py-2.5 rounded-lg font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
                     >
                         Cancel
                     </button>
                     <button
-                        onClick={handleAdd}
+                        type="submit"
                         disabled={!form.name.trim()}
                         title={!form.name.trim() ? "Enter a name" : undefined}
                         className="px-5 py-2.5 rounded-lg font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -418,6 +421,7 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                         Add Account
                     </button>
                 </div>
+                </form>
             </div>
         </div>
     );

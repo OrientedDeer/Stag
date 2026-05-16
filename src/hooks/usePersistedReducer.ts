@@ -1,4 +1,4 @@
-import { useReducer, useMemo, useCallback, Reducer, Dispatch } from 'react';
+import { useReducer, useCallback, Reducer, Dispatch } from 'react';
 import { useDebouncedLocalStorage } from './useDebouncedLocalStorage';
 
 /**
@@ -94,48 +94,3 @@ export function usePersistedReducer<S, A>(
     return [state, dispatch];
 }
 
-/**
- * Creates a memoized context value that includes state and dispatch.
- * Use this to prevent unnecessary re-renders of context consumers.
- *
- * @example
- * const contextValue = useContextValue(state, dispatch, {
- *     exportData: handleExport,
- *     importData: handleImport
- * });
- */
-export function useContextValue<S, A, E extends Record<string, unknown>>(
-    state: S,
-    dispatch: Dispatch<A>,
-    extras?: E
-): S & { dispatch: Dispatch<A> } & E {
-    return useMemo(
-        () => ({
-            ...state,
-            dispatch,
-            ...extras
-        } as S & { dispatch: Dispatch<A> } & E),
-        // We intentionally spread extras into deps to detect changes in extra functions
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        [state, dispatch, ...(extras ? Object.values(extras) : [])]
-    );
-}
-
-/**
- * Helper to create a serializer for domain objects with class instances.
- * Adds className field to each item for reconstitution.
- */
-export function createClassSerializer<T extends { constructor: { name: string } }>(
-    itemsKey: string
-): (state: { [key: string]: T[] }) => string {
-    return (state) => {
-        const serializable = {
-            ...state,
-            [itemsKey]: (state as Record<string, T[]>)[itemsKey].map(item => ({
-                ...item,
-                className: item.constructor.name
-            }))
-        };
-        return JSON.stringify(serializable);
-    };
-}

@@ -328,14 +328,17 @@ export function calculateAIME(
   const sumTop35 = top35.reduce((sum, val) => sum + val, 0);
   const aime = sumTop35 / 420; // 35 years × 12 months = 420
 
-  // Step 5: Calculate PIA using bend points (with wage growth projection)
-  const pia = calculatePIA(aime, calculationYear, wageGrowthRate, inflationAdjusted);
+  // Step 5: Calculate PIA using bend points frozen at the worker's eligibility
+  // year (year they turn 62). SSA fixes bend points based on the NAW for that
+  // year — they don't move as we run projections in later years.
+  const eligibilityYear = (birthYear ?? calculationYear - (claimingAge - 62)) + 62;
+  const pia = calculatePIA(aime, eligibilityYear, wageGrowthRate, inflationAdjusted);
 
   // Step 6: Apply claiming age adjustment
   const adjustedBenefit = applyClaimingAdjustment(pia, claimingAge, birthYear);
 
-  // Get bend points used (with wage growth projection)
-  const bendPoints = getBendPoints(calculationYear, wageGrowthRate, inflationAdjusted);
+  // Get bend points used (frozen at eligibility year)
+  const bendPoints = getBendPoints(eligibilityYear, wageGrowthRate, inflationAdjusted);
 
   // Return detailed breakdown
   return {

@@ -3,6 +3,7 @@ import React, { useContext, useState } from 'react';
 import { AccountContext } from './AccountContext';
 import { CurrencyInput } from '../../Layout/InputFields/CurrencyInput';
 import { PropertyAccount } from './models';
+import { useModalAccessibility } from '../../../hooks/useModalAccessibility';
 
 interface EditHistoryModalProps {
     accountId: string;
@@ -13,6 +14,7 @@ interface EditHistoryModalProps {
 export const EditHistoryModal: React.FC<EditHistoryModalProps> = ({ accountId, isOpen, onClose }) => {
     const { accounts, amountHistory, dispatch } = useContext(AccountContext);
     const history = amountHistory[accountId] || [];
+    const { modalRef, handleKeyDown } = useModalAccessibility(isOpen, onClose);
 
     const account = accounts.find(acc => acc.id === accountId);
     const isMortgage = account instanceof PropertyAccount && account.ownershipType === 'Financed';
@@ -25,9 +27,24 @@ export const EditHistoryModal: React.FC<EditHistoryModalProps> = ({ accountId, i
 
     if (!isOpen) return null;
 
+    const handleAddEntry = (e?: React.FormEvent) => {
+        e?.preventDefault();
+        dispatch({
+            type: 'ADD_HISTORY_ENTRY',
+            payload: { id: accountId, date: newDate, num: newAmount }
+        });
+        setNewAmount(0);
+    };
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-            <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-2xl shadow-2xl max-h-[80vh] flex flex-col">
+            <div
+                ref={modalRef}
+                role="dialog"
+                aria-modal="true"
+                onKeyDown={handleKeyDown}
+                className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-2xl shadow-2xl max-h-[80vh] flex flex-col"
+            >
                 <div className="flex justify-between items-center mb-6 border-b border-gray-800 pb-3">
                     <h2 className="text-xl font-bold text-white">Edit Balance History</h2>
                     <button onClick={onClose} className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors">
@@ -72,11 +89,11 @@ export const EditHistoryModal: React.FC<EditHistoryModalProps> = ({ accountId, i
                     ))}
                 </div>
 
-                <div className="border-t border-gray-800 pt-5">
+                <form onSubmit={handleAddEntry} className="border-t border-gray-800 pt-5">
                     <h3 className="text-[10px] font-bold text-gray-400 uppercase mb-3">Add Manual Entry</h3>
                     <div className="flex items-end gap-4">
                          <div className="w-40">
-                            <input 
+                            <input
                                 type="date"
                                 value={newDate}
                                 onChange={(e) => setNewDate(e.target.value)}
@@ -84,30 +101,20 @@ export const EditHistoryModal: React.FC<EditHistoryModalProps> = ({ accountId, i
                             />
                         </div>
                         <div className="grow">
-                            <CurrencyInput 
+                            <CurrencyInput
                                 label={isMortgage ? "Valuation" : "Amount"}
                                 value={newAmount}
                                 onChange={setNewAmount}
                             />
                         </div>
-                        <button 
-                            onClick={() => {
-                                dispatch({ 
-                                    type: 'ADD_HISTORY_ENTRY', 
-                                    payload: { 
-                                        id: accountId, 
-                                        date: newDate, 
-                                        num: newAmount
-                                    }
-                                });
-                                setNewAmount(0);
-                            }}
+                        <button
+                            type="submit"
                             className="px-5 py-2.5 rounded-lg font-medium bg-green-600 text-white hover:bg-green-700 transition-colors"
                         >
                             Add
                         </button>
                     </div>
-                </div>
+                </form>
             </div>
         </div>
     );

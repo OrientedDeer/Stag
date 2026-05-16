@@ -253,5 +253,3 @@ export const ScenarioManager: React.FC = () => {
         </div>
     );
 };
-
-export default ScenarioManager;

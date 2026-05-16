@@ -1,6 +1,7 @@
 import { useMemo, useRef } from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { compressData, exceedsQRLimit, createCompactBackup } from './qrUtils';
+import { useModalAccessibility } from '../../../../hooks/useModalAccessibility';
 
 interface FullBackup {
     version: number;
@@ -20,6 +21,7 @@ interface QRGenerateModalProps {
 
 export default function QRGenerateModal({ isOpen, onClose, backupData }: QRGenerateModalProps) {
     const qrRef = useRef<HTMLDivElement>(null);
+    const { modalRef, handleKeyDown } = useModalAccessibility(isOpen, onClose);
 
     const { compressed, sizeKB, exceedsLimit } = useMemo(() => {
         // Convert to compact format before compressing
@@ -47,7 +49,13 @@ export default function QRGenerateModal({ isOpen, onClose, backupData }: QRGener
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 sm:p-4">
-            <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl p-4 sm:p-8 w-full max-w-[90vw] sm:max-w-xl md:max-w-2xl">
+            <div
+                ref={modalRef}
+                role="dialog"
+                aria-modal="true"
+                onKeyDown={handleKeyDown}
+                className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl p-4 sm:p-8 w-full max-w-[90vw] sm:max-w-xl md:max-w-2xl"
+            >
                 {/* Header */}
                 <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-3">
                     <h3 className="text-lg sm:text-xl font-bold text-white">Share via QR Code</h3>

@@ -76,7 +76,7 @@ export function assertNoNaNOrInfinity(year: SimulationYear): void {
  * Assert cashflow algebra holds (income - expenses = discretionary + invested + withdrawals)
  * Uses tolerance for floating point precision
  */
-export function assertCashflowAlgebra(year: SimulationYear, _tolerance: number = 5): void {
+function assertCashflowAlgebra(year: SimulationYear, _tolerance: number = 5): void {
     const cf = year.cashflow;
     const taxes = year.taxDetails;
 

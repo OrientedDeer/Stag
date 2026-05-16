@@ -27,7 +27,7 @@
  * - 2022 Average Wage Index = $63,795.13
  * - For earnings in 2000 ($40,000): IndexedEarnings = $40,000 × (63795.13 / 32154.82) = $79,323
  */
-export const WAGE_INDEX_FACTORS: Record<number, number> = {
+const WAGE_INDEX_FACTORS: Record<number, number> = {
   // Historical data from SSA (actual values)
   1951: 2951.92,
   1952: 3098.68,
@@ -123,7 +123,7 @@ export const WAGE_INDEX_FACTORS: Record<number, number> = {
  *     = $1,003.50 + $1,243.20 + $0
  *     = $2,246.70/month
  */
-export const BEND_POINTS: Record<number, { first: number; second: number }> = {
+const BEND_POINTS: Record<number, { first: number; second: number }> = {
   2000: { first: 531, second: 3202 },
   2001: { first: 561, second: 3381 },
   2002: { first: 592, second: 3567 },
@@ -167,7 +167,7 @@ export const BEND_POINTS: Record<number, { first: number; second: number }> = {
  * - Only $168,600 counts for Social Security tax
  * - Only $168,600 counts toward your benefit calculation
  */
-export const SS_WAGE_BASE: Record<number, number> = {
+const SS_WAGE_BASE: Record<number, number> = {
   2000: 76200,
   2001: 80400,
   2002: 84900,
@@ -214,7 +214,7 @@ export const SS_WAGE_BASE: Record<number, number> = {
  * 1955-1956: 66 years 2 months = 66.166...
  * 1943-1954: 66 years
  */
-export const FRA_BY_BIRTH_YEAR: Record<number, number> = {
+const FRA_BY_BIRTH_YEAR: Record<number, number> = {
   1937: 65,
   1938: 65.167, // 65 years 2 months
   1939: 65.333, // 65 years 4 months
@@ -447,7 +447,7 @@ export function getWageBase(
  *
  * Source: https://www.ssa.gov/oact/cola/rtea.html
  */
-export const EARNINGS_TEST_LIMITS: Record<number, { beforeFRA: number; yearOfFRA: number }> = {
+const EARNINGS_TEST_LIMITS: Record<number, { beforeFRA: number; yearOfFRA: number }> = {
   2020: { beforeFRA: 18240, yearOfFRA: 48600 },
   2021: { beforeFRA: 18960, yearOfFRA: 50520 },
   2022: { beforeFRA: 19560, yearOfFRA: 51960 },

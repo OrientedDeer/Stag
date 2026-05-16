@@ -66,7 +66,12 @@ export interface CategoryMapping {
 }
 
 /**
- * Fingerprint for identifying CSV formats
+ * Fingerprint for identifying CSV formats.
+ *
+ * Source of truth for this and the three CSV-import types below — they're
+ * persisted into BudgetState.importSettings.savedCSVFormats, so they belong
+ * with the rest of the persistence schema. CSVImportService.ts re-exports
+ * them so its callers see the same names.
  */
 export interface FormatFingerprint {
     headerHash: string;      // Hash of normalized, sorted headers
@@ -75,25 +80,34 @@ export interface FormatFingerprint {
 }
 
 /**
- * Saved CSV format mapping for a specific bank/source
+ * Column-index mapping for a parsed CSV. `transactionTypeColumn` is used by
+ * formats that put debit/credit in a separate sign column (e.g. Checking).
+ */
+export interface CSVMapping {
+    dateColumn: number;          // Column index for date
+    descriptionColumn: number;   // Column index for description
+    amountColumn?: number;       // Single amount column (negative = expense)
+    debitColumn?: number;        // OR separate debit column
+    creditColumn?: number;       // OR separate credit column
+    transactionTypeColumn?: number; // Column indicating Credit/Debit (e.g., Checking)
+}
+
+export interface CSVImportOptions {
+    dateFormat: string;          // "M/D/YYYY", "YYYY-MM-DD", etc.
+    negativeIsExpense: boolean;  // How to interpret negative amounts
+    hasHeaderRow: boolean;       // Does first row contain headers?
+    skipRows: number;            // Extra rows to skip after header
+}
+
+/**
+ * Saved CSV format mapping for a specific bank/source.
  */
 export interface SavedCSVMapping {
     id: string;
     name: string;                    // User-provided name, e.g., "Chase Checking"
     fingerprint: FormatFingerprint;
-    mapping: {
-        dateColumn: number;          // Column index for date
-        descriptionColumn: number;   // Column index for description
-        amountColumn?: number;       // Single amount column (negative = expense)
-        debitColumn?: number;        // OR separate debit column
-        creditColumn?: number;       // OR separate credit column
-    };
-    options: {
-        dateFormat: string;          // "M/D/YYYY", "YYYY-MM-DD", etc.
-        negativeIsExpense: boolean;  // How to interpret negative amounts
-        hasHeaderRow: boolean;       // Does first row contain headers?
-        skipRows: number;            // Extra rows to skip after header
-    };
+    mapping: CSVMapping;
+    options: CSVImportOptions;
     lastUsed: Date;
     importCount: number;             // Usage tracking
     createdAt: Date;
@@ -151,4 +165,5 @@ export interface BudgetState {
     // UI state
     selectedMonth: number; // 1-12
     selectedYear: number;
+    projectFuture?: boolean; // when true, future months count projected non-discretionary spending
 }

@@ -10,7 +10,7 @@ export interface Account {
 }
 
 // 2. Base Abstract Class
-export abstract class BaseAccount implements Account {
+abstract class BaseAccount implements Account {
   constructor(
     public id: string,
     public name: string,
@@ -370,14 +370,6 @@ export const ESPP_WITHDRAWAL_PREFERENCE_OPTIONS = [
   { value: 'qualifying_first' as const, label: 'Qualifying First' },
   { value: 'dont_sell_until_qualifying' as const, label: "Don't Sell Until Qualifying" },
 ];
-
-export type ESPPLotOrder = 'fifo' | 'disqualifying_first' | 'qualifying_first';
-
-export function getESPPLotOrder(preference: ESPPWithdrawalPreference): ESPPLotOrder {
-  if (preference === 'disqualifying_first') return 'disqualifying_first';
-  if (preference === 'qualifying_first' || preference === 'dont_sell_until_qualifying') return 'qualifying_first';
-  return 'fifo';
-}
 
 /**
  * ESPPAccount - Employee Stock Purchase Plan Account

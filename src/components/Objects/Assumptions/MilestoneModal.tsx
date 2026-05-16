@@ -92,7 +92,8 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose }) => {
         dispatch({ type: 'REMOVE_MILESTONE', payload: id });
     };
 
-    const handleSave = () => {
+    const handleSave = (e?: React.FormEvent) => {
+        e?.preventDefault();
         if (!form.name.trim() || form.conditions.length === 0) return;
 
         const milestone: CustomMilestone = {
@@ -278,7 +279,7 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose }) => {
                         </div>
                     </div>
                 ) : (
-                    <div className="space-y-4">
+                    <form onSubmit={handleSave} className="space-y-4">
                         {editingId && isBuiltinMilestone(editingId) ? (
                             <div>
                                 <span className="block text-xs sm:text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
@@ -383,6 +384,7 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose }) => {
                                                 </div>
                                                 {form.conditions.length > 1 && !isBuiltinEdit && (
                                                     <button
+                                                        type="button"
                                                         onClick={() => removeCondition(index)}
                                                         className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-gray-700 rounded transition-colors"
                                                         title="Remove condition"
@@ -421,6 +423,7 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose }) => {
 
                                     {!isBuiltinEdit && (
                                         <button
+                                            type="button"
                                             onClick={addCondition}
                                             className="w-full p-2 border border-dashed border-gray-600 rounded-lg text-gray-400 hover:text-white hover:border-gray-500 transition-colors text-sm"
                                         >
@@ -447,20 +450,21 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose }) => {
 
                         <div className="flex justify-between pt-4 border-t border-gray-800">
                             <button
+                                type="button"
                                 onClick={handleBack}
                                 className="px-4 py-2 rounded-lg font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
                             >
                                 Back
                             </button>
                             <button
-                                onClick={handleSave}
+                                type="submit"
                                 disabled={!form.name.trim() || form.conditions.length === 0}
                                 className="px-4 py-2 rounded-lg font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
                                 {editingId ? 'Save Changes' : 'Create Milestone'}
                             </button>
                         </div>
-                    </div>
+                    </form>
                 )}
             </div>
         </div>

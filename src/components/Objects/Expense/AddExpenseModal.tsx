@@ -160,7 +160,8 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 		setStep("details");
 	};
 
-	const handleAdd = () => {
+	const handleAdd = (e?: React.FormEvent) => {
+		e?.preventDefault();
 		if (!selectedType || !form.name.trim() || dateError) return;
 
 		const finalStartDate = form.startDate;
@@ -281,11 +282,13 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 						: `New ${selectedType.name.replace("Expense", "")}`}
 				</h2>
 
+				<form onSubmit={handleAdd}>
 				{step === "select" ? (
 					<div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
 						{expenseCategories.map((cat) => (
 							<button
 								key={cat.label}
+								type="button"
 								onClick={() => handleTypeSelect(cat.class)}
 								className="flex items-center justify-center p-2 h-12 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-xl border border-gray-700 transition-all font-medium text-md text-center"
 							>
@@ -493,6 +496,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 
 				<div className="flex justify-end gap-3 mt-8">
 					<button
+						type="button"
 						onClick={handleCancelOrBack}
 						className="px-5 py-2.5 rounded-lg font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
 					>
@@ -500,7 +504,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 					</button>
 					{step === "details" && (
 						<button
-							onClick={handleAdd}
+							type="submit"
 							disabled={!form.name.trim() || !!dateError}
 							title={!form.name.trim() ? "Enter a name" : dateError ? "Fix date error" : undefined}
 							className="px-5 py-2.5 rounded-lg font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -509,6 +513,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 						</button>
 					)}
 				</div>
+				</form>
 			</div>
 		</div>
 	);

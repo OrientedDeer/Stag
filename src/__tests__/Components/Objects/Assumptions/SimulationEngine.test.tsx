@@ -1620,8 +1620,8 @@ describe('Simulation Engine', () => {
                 // - Current balance vs effectiveTarget
                 // - Years until RMD
                 // - Bracket space available
-                // The corrected realisticTarget calculation may lead to higher conversions
-                // when the system determines the balance is above the achievable target
+                // The projectedBalanceAtRMD calculation may lead to higher conversions
+                // when the system determines the balance is above the ideal target
                 expect(result.rothConversion.amount).toBeGreaterThan(10000);
                 expect(result.rothConversion.amount).toBeLessThan(100000);
             }
@@ -1699,7 +1699,7 @@ describe('Simulation Engine', () => {
 
             if (result.rothConversion) {
                 // Growth-aware spread: expect reasonable conversion amount
-                // With the corrected realisticTarget calculation, conversions may be higher
+                // With the projectedBalanceAtRMD calculation, conversions may be higher
                 expect(result.rothConversion.amount).toBeGreaterThan(10000);
                 expect(result.rothConversion.amount).toBeLessThan(100000);
             }

@@ -145,7 +145,9 @@ function simulateOneYearWithNewEngine(
     previousActiveMilestones: string[] = [],
     previousMilestoneReachYears: Map<string, number> = new Map(),
     baselineProjections?: BaselineProjections,
-    conversionMode: 'rate-match' | 'std-ded-only' = 'rate-match'
+    conversionMode: 'rate-match' | 'std-ded-only' = 'rate-match',
+    dpConversionPlan?: Map<number, number>,
+    dpDebugByYear?: Map<number, string[]>,
 ): SimulationYear {
     const logs: string[] = [];
     logs.push('[V2 Engine] Using new YearSolver-based simulation');
@@ -181,6 +183,40 @@ function simulateOneYearWithNewEngine(
     });
 
     const previousMilestoneSet = new Set(previousActiveMilestones);
+
+    // ------------------------------------------------------------------
+    // ROTH 401K → ROTH IRA ROLLOVER AT RETIREMENT
+    // ------------------------------------------------------------------
+    // Per IRS Notice 2014-54 and §402A(d)(4), a Roth 401k rolled into a Roth
+    // IRA carries its contribution basis as Roth IRA regular contributions
+    // (immediately tappable, no penalty) and earnings as Roth IRA earnings.
+    // This eliminates the Roth 401k pro-rata distribution rule for retirees
+    // and aligns with how the WithdrawalPlanner already orders Roth dollars
+    // (contributions → conversions → earnings).
+    const justRetired = isRetired && !previousMilestoneSet.has(BUILTIN_MILESTONE_IDS.RETIRE);
+    if (justRetired) {
+        accounts = accounts.map(acc => {
+            if (acc instanceof InvestedAccount && acc.taxType === 'Roth 401k') {
+                logs.push(`💸 Rolled over Roth 401k "${acc.name}" → Roth IRA at retirement (balance $${Math.round(acc.amount).toLocaleString()}, contributions $${Math.round(acc.regularContributions).toLocaleString()})`);
+                return new InvestedAccount(
+                    acc.id,
+                    acc.name,
+                    acc.amount,
+                    acc.employerBalance,
+                    acc.tenureYears,
+                    acc.expenseRatio,
+                    'Roth IRA',
+                    acc.isContributionEligible,
+                    acc.vestedPerYear,
+                    acc.costBasis,
+                    acc.customROR,
+                    acc.conversionHistory,
+                    acc.lots,
+                );
+            }
+            return acc;
+        });
+    }
 
     // ------------------------------------------------------------------
     // FILTER INCOMES AND EXPENSES BY MILESTONE
@@ -303,6 +339,8 @@ function simulateOneYearWithNewEngine(
         // rather than rough estimates or naive forward-compounding.
         baselineProjections,
         conversionMode,
+        dpConversionPlan,
+        dpDebugByYear,
     };
 
     const yearPlan = solveYear(solverInput);
@@ -567,6 +605,8 @@ function simulateOneYearWithNewEngine(
             capitalGains: withdrawalState.capitalGainsTaxTotal,
             withdrawalOrdinaryTax: withdrawalState.withdrawalOrdinaryTaxTotal,
             niit: yearPlan.tax.niit,
+            earlyWithdrawalPenalty: withdrawalState.withdrawalPenalties,
+            longTermCapitalGains: withdrawalState.longTermCapitalGains,
         },
         logs,
         strategyWithdrawal: strategyWithdrawalResult,
@@ -626,11 +666,14 @@ export function simulateOneYear(
     previousActiveMilestones: string[] = [],
     previousMilestoneReachYears: Map<string, number> = new Map(),
     baselineProjections?: BaselineProjections,
-    conversionMode: 'rate-match' | 'std-ded-only' = 'rate-match'
+    conversionMode: 'rate-match' | 'std-ded-only' = 'rate-match',
+    dpConversionPlan?: Map<number, number>,
+    dpDebugByYear?: Map<number, string[]>,
 ): SimulationYear {
     return simulateOneYearWithNewEngine(
         year, incomes, expenses, accounts, assumptions, taxState,
         previousSimulation, returnOverride, previousActiveMilestones,
-        previousMilestoneReachYears, baselineProjections, conversionMode
+        previousMilestoneReachYears, baselineProjections, conversionMode,
+        dpConversionPlan, dpDebugByYear,
     );
 }

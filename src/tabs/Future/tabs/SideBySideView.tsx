@@ -231,5 +231,3 @@ export const SideBySideView: React.FC<SideBySideViewProps> = ({ comparison }) =>
         </div>
     );
 };
-
-export default SideBySideView;

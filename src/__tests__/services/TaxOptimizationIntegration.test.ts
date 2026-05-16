@@ -83,7 +83,6 @@ describe('Tax Optimization Integration Tests', () => {
             ...defaultAssumptions.investments,
             returnRates: { ror: 6 },
             taxOptimizationEnabled,
-            rothConversionTargetBracket: 0.22,
         },
         withdrawalStrategy: [
             { id: 'ws-savings', name: 'Savings', accountId: 'acc-savings' },
@@ -449,7 +448,6 @@ describe('Tax Optimization Integration Tests', () => {
                 ...defaultAssumptions.investments,
                 returnRates: { ror: 5 },
                 taxOptimizationEnabled: taxOptEnabled,
-                rothConversionTargetBracket: 0.22,
             },
             withdrawalStrategy: [
                 { id: 'ws-savings', name: 'Savings', accountId: 'acc-savings-trad' },
@@ -577,7 +575,6 @@ describe('Tax Optimization Integration Tests', () => {
                 ...defaultAssumptions.investments,
                 returnRates: { ror: 7 },
                 taxOptimizationEnabled: true,
-                rothConversionTargetBracket: 0.22,
                 withdrawalStrategy: 'Guyton Klinger',
                 withdrawalRate: 4,
             },

@@ -1,5 +1,6 @@
 import React, { useState, useContext, useEffect, useMemo } from "react";
 import { AccountContext } from "../../components/Objects/Accounts/AccountContext";
+import { useSubTabKeyboardNav } from "../../hooks/useKeyboardShortcuts";
 import {
     SavedAccount,
     InvestedAccount,
@@ -56,7 +57,7 @@ const AccountList = ({ type }: { type: any }) => {
                                     >
                                         <div
                                             {...provided.dragHandleProps}
-                                            className="absolute -left-3 top-2 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-2 text-green-200"
+                                            className="absolute -left-3 top-2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-2 text-green-200"
                                         >
                                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                                 <line x1="8" y1="6" x2="21" y2="6"></line>
@@ -100,7 +101,11 @@ export default function AccountTab() {
     const { accounts } = useContext(AccountContext);
 
     const [activeTab, setActiveTab] = useState<string>(() => {
-        return localStorage.getItem('account_active_tab') || 'Saved';
+        const saved = localStorage.getItem('account_active_tab');
+        // Guard against stale localStorage values (e.g. category renamed since)
+        return saved && (ACCOUNT_CATEGORIES as readonly string[]).includes(saved)
+            ? saved
+            : ACCOUNT_CATEGORIES[0];
     });
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [showESPPModal, setShowESPPModal] = useState(false);
@@ -168,6 +173,7 @@ export default function AccountTab() {
     }, [activeTab]);
 
     const tabs = ACCOUNT_CATEGORIES;
+    useSubTabKeyboardNav(tabs, activeTab, setActiveTab);
 
     const tabContent: Record<string, React.ReactNode> = {
         Cash: (
@@ -273,6 +279,8 @@ export default function AccountTab() {
                     {tabs.map((tab) => (
                         <button
                             key={tab}
+                            role="tab"
+                            aria-selected={activeTab === tab}
                             className={`flex-1 min-w-fit font-semibold px-4 py-3 transition-colors duration-200 whitespace-nowrap ${
                                 activeTab === tab
                                     ? "text-green-300 bg-gray-900 border-b-2 border-green-300"
@@ -284,7 +292,7 @@ export default function AccountTab() {
                         </button>
                     ))}
                 </div>
-                <div className="bg-[#09090b] border border-gray-800 rounded-xl min-h-100 mb-4">
+                <div data-sub-tab-content className="bg-[#09090b] border border-gray-800 rounded-xl min-h-100 mb-4">
                     {tabContent[activeTab]}
                 </div>
             </div>

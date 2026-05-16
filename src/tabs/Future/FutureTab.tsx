@@ -1,4 +1,5 @@
 import React, { useState, useContext, useMemo, useEffect, useCallback } from 'react';
+import { useSubTabKeyboardNav } from '../../hooks/useKeyboardShortcuts';
 import { runSimulationWithOptimization } from '../../components/Objects/Assumptions/useSimulation';
 import { AssumptionsContext, getLifeExpectancy, getBirthYear } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { getSimulationInputHash } from '../../services/simulationHash';
@@ -181,6 +182,8 @@ export default function FutureTab() {
     };
     const [isLoading, setIsLoading] = useState(false);
 
+    useSubTabKeyboardNav(all_tabs, activeTab, handleTabChange);
+
     const visible_tabs = all_tabs;
 
     // Compute current input hash for staleness detection
@@ -286,31 +289,31 @@ export default function FutureTab() {
     // This keeps Nivo charts mounted, preventing expensive re-initialization
     const renderTabContent = () => (
         <>
-            <div className={activeTab === 'Overview' ? '' : 'hidden'}>
+            <div data-sub-tab-content className={activeTab === 'Overview' ? '' : 'hidden'}>
                 <OverviewTab simulationData={simulation} />
             </div>
-            <div className={activeTab === 'Cashflow' ? '' : 'hidden'}>
+            <div data-sub-tab-content className={activeTab === 'Cashflow' ? '' : 'hidden'}>
                 <CashflowTab simulationData={simulationWithoutEOY} />
             </div>
-            <div className={activeTab === 'Assets' ? '' : 'hidden'}>
+            <div data-sub-tab-content className={activeTab === 'Assets' ? '' : 'hidden'}>
                 <AssetsTab simulationData={simulationWithoutEOY} />
             </div>
-            <div className={activeTab === 'Debt' ? '' : 'hidden'}>
+            <div data-sub-tab-content className={activeTab === 'Debt' ? '' : 'hidden'}>
                 <DebtTab simulationData={simulationWithoutEOY} />
             </div>
-            <div className={activeTab === 'Monte Carlo' ? '' : 'hidden'}>
+            <div data-sub-tab-content className={activeTab === 'Monte Carlo' ? '' : 'hidden'}>
                 <MonteCarloTab simulationData={simulationWithoutEOY} />
             </div>
-            <div className={activeTab === 'Tax' ? '' : 'hidden'}>
+            <div data-sub-tab-content className={activeTab === 'Tax' ? '' : 'hidden'}>
                 <TaxOptimizationTab simulationData={simulationWithoutEOY} />
             </div>
-            <div className={activeTab === 'Scenarios' ? '' : 'hidden'}>
+            <div data-sub-tab-content className={activeTab === 'Scenarios' ? '' : 'hidden'}>
                 <ScenarioComparisonTab simulationData={simulationWithoutEOY} />
             </div>
-            <div className={activeTab === 'Ratios' ? '' : 'hidden'}>
+            <div data-sub-tab-content className={activeTab === 'Ratios' ? '' : 'hidden'}>
                 <FinancialRatiosTab simulationData={simulationWithoutEOY} />
             </div>
-            <div className={activeTab === 'Data' ? '' : 'hidden'}>
+            <div data-sub-tab-content className={activeTab === 'Data' ? '' : 'hidden'}>
                 <DataTab simulationData={simulationWithoutEOY} birthYear={getBirthYear(assumptions.milestones)} />
             </div>
         </>
@@ -385,6 +388,8 @@ export default function FutureTab() {
                     {visible_tabs.map((tab) => (
                         <button
                             key={tab}
+                            role="tab"
+                            aria-selected={activeTab === tab}
                             className={`flex-1 min-w-fit font-semibold px-4 py-3 transition-colors duration-200 whitespace-nowrap ${activeTab === tab
                                 ? "text-green-300 bg-gray-800 border-b-2 border-green-300"
                                 : "text-gray-400 hover:bg-gray-800 hover:text-white"

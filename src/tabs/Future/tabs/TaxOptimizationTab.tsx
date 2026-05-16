@@ -292,39 +292,12 @@ const ConversionPlanSummary = ({ plan, autoEnabled, forceExact }: {
     forceExact: boolean;
 }) => {
     const [expanded, setExpanded] = useState(false);
-    const [copied, setCopied] = useState(false);
-
-    const copyAsTSV = () => {
-        const headers = ['Year', 'Age', 'Converted', 'Tax Cost', 'Eff. Rate %', 'Marginal %'];
-        const rows = plan.schedule.map(e => [
-            e.year,
-            e.age,
-            Math.round(e.amount),
-            Math.round(e.taxCost),
-            e.amount > 0 ? ((e.taxCost / e.amount) * 100).toFixed(2) : '0',
-            (e.marginalRate * 100).toFixed(2),
-        ]);
-        const tsv = [headers, ...rows].map(r => r.join('\t')).join('\n');
-        navigator.clipboard.writeText(tsv).then(() => {
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-        });
-    };
 
     if (plan.hasActiveSchedule) {
         const displayCount = expanded ? plan.schedule.length : Math.min(5, plan.schedule.length);
         return (
             <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
-                <div className="flex items-start justify-between mb-3">
-                    <h3 className="text-white font-semibold">Your Conversion Plan</h3>
-                    <button
-                        onClick={copyAsTSV}
-                        className="text-xs text-gray-400 hover:text-white px-2 py-1 border border-gray-700 hover:border-gray-500 rounded transition-colors"
-                        title="Copy the schedule as TSV — paste into a spreadsheet"
-                    >
-                        {copied ? 'Copied!' : 'Copy data'}
-                    </button>
-                </div>
+                <h3 className="text-white font-semibold mb-3">Your Conversion Plan</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3 text-sm">
                     <div>
                         <div className="text-xs text-gray-400 uppercase tracking-wide">Total Converted</div>
@@ -620,5 +593,3 @@ export const TaxOptimizationTab = React.memo(({ simulationData }: TaxOptimizatio
         </div>
     );
 });
-
-export default TaxOptimizationTab;

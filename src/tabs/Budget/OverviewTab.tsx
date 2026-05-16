@@ -1,66 +1,93 @@
-import { useContext, useMemo } from 'react';
+import { useCallback, useContext, useMemo } from 'react';
 import { ResponsiveBar } from '@nivo/bar';
 import { BudgetContext } from '../../components/Objects/Budget/BudgetContext';
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
 import {
     calculateBudgetSummary,
     formatCurrency,
+    getActiveExpenses,
+    getNonDiscretionaryMonthlyBudget,
     getUncategorizedCount,
     getUncategorizedSpending,
     MONTH_NAMES,
 } from '../../components/Objects/Budget/budgetUtils';
+import { ToggleInput } from '../../components/Layout/InputFields/ToggleInput';
 
 export default function OverviewTab() {
-    const { months, selectedMonth, selectedYear, importSettings, dispatch } = useContext(BudgetContext);
+    const { months, selectedMonth, selectedYear, importSettings, projectFuture, dispatch } = useContext(BudgetContext);
     const { expenses } = useContext(ExpenseContext);
+
+    const setProjectFuture = useCallback((enabled: boolean) => {
+        dispatch({ type: 'SET_PROJECT_FUTURE', payload: enabled });
+    }, [dispatch]);
+
+    // Determine whether a given month is in the future relative to today
+    const now = new Date();
+    const isMonthInFuture = useCallback((m: number, y: number) => {
+        return y > now.getFullYear() || (y === now.getFullYear() && m > now.getMonth() + 1);
+    }, [now]);
 
     const currentSnapshot = useMemo(() =>
         months.find(m => m.month === selectedMonth && m.year === selectedYear),
         [months, selectedMonth, selectedYear]
     );
 
-    const budgetSummary = useMemo(() =>
-        calculateBudgetSummary(expenses, currentSnapshot, selectedMonth, selectedYear),
-        [expenses, currentSnapshot, selectedMonth, selectedYear]
-    );
+    // Effective spend for a given month: actual snapshot if available; otherwise (if projecting
+    // and the month is in the future), the non-discretionary monthly budget.
+    const getEffectiveMonthSpend = useCallback((m: number, y: number) => {
+        const snap = months.find(s => s.month === m && s.year === y);
+        if (snap && (Object.keys(snap.spending).length > 0 || snap.transactions.length > 0)) {
+            return Object.values(snap.spending).reduce((s, v) => s + v, 0) + getUncategorizedSpending(snap);
+        }
+        if (projectFuture && isMonthInFuture(m, y)) {
+            return getNonDiscretionaryMonthlyBudget(expenses, m, y);
+        }
+        return 0;
+    }, [months, projectFuture, isMonthInFuture, expenses]);
 
-    // Calculate year-to-date stats (from first month with data to selected month)
+    const budgetSummary = useMemo(() => {
+        const base = calculateBudgetSummary(expenses, currentSnapshot, selectedMonth, selectedYear);
+        // Override totalSpent when projecting a future month with no data.
+        if (projectFuture && isMonthInFuture(selectedMonth, selectedYear) && base.totalSpent === 0) {
+            const projected = getNonDiscretionaryMonthlyBudget(expenses, selectedMonth, selectedYear);
+            const remaining = base.totalBudget - projected;
+            return {
+                ...base,
+                totalSpent: projected,
+                remaining,
+                isUnderBudget: remaining >= 0,
+                percentSpent: base.totalBudget > 0 ? (projected / base.totalBudget) * 100 : 0,
+            };
+        }
+        return base;
+    }, [expenses, currentSnapshot, selectedMonth, selectedYear, projectFuture, isMonthInFuture]);
+
+    // Calculate year-to-date stats (from first month with data to selected month).
+    // When projectFuture is on, future months in the range contribute their non-discretionary
+    // monthly budget as projected spend so the YTD doesn't look artificially low.
     const ytdStats = useMemo(() => {
-        // Find months with data in the selected year
         const monthsWithData = months
             .filter(m =>
                 m.year === selectedYear &&
                 (Object.keys(m.spending).length > 0 || m.transactions.length > 0)
             )
             .map(m => m.month);
-
-        // Find the earliest month with data
         const firstMonthWithData = monthsWithData.length > 0 ? Math.min(...monthsWithData) : selectedMonth;
 
         let totalBudget = 0;
         let totalSpent = 0;
 
-        // Calculate budget from first month with data to selected month
         for (let month = firstMonthWithData; month <= selectedMonth; month++) {
-            // Calculate expected budget for this month
             const monthBudget = expenses.reduce((sum, exp) => {
                 const startDate = exp.startDate || new Date(0);
                 const endDate = exp.endDate;
                 const targetDate = new Date(selectedYear, month - 1, 15);
-
                 if (startDate > targetDate) return sum;
                 if (endDate && endDate < targetDate) return sum;
-
                 return sum + exp.getMonthlyAmount();
             }, 0);
             totalBudget += monthBudget;
-
-            // Get actual spending for month (if it exists), including uncategorized
-            const snapshot = months.find(m => m.year === selectedYear && m.month === month);
-            if (snapshot) {
-                totalSpent += Object.values(snapshot.spending).reduce((s, v) => s + v, 0);
-                totalSpent += getUncategorizedSpending(snapshot);
-            }
+            totalSpent += getEffectiveMonthSpend(month, selectedYear);
         }
 
         return {
@@ -69,16 +96,14 @@ export default function OverviewTab() {
             remaining: totalBudget - totalSpent,
             isUnderBudget: totalSpent <= totalBudget,
         };
-    }, [months, expenses, selectedMonth, selectedYear]);
+    }, [months, expenses, selectedMonth, selectedYear, getEffectiveMonthSpend]);
 
     const hasData = currentSnapshot && (
         Object.keys(currentSnapshot.spending).length > 0 ||
         currentSnapshot.transactions.length > 0
     );
 
-    const now = new Date();
-    const isFutureMonth = selectedYear > now.getFullYear() ||
-        (selectedYear === now.getFullYear() && selectedMonth > now.getMonth() + 1);
+    const isFutureMonth = isMonthInFuture(selectedMonth, selectedYear);
 
     // Category spending data for bar chart (average of 6 months ending at selected month)
     const categoryData = useMemo(() => {
@@ -105,10 +130,23 @@ export default function OverviewTab() {
 
         monthsToCheck.forEach(({ month, year }) => {
             const snapshot = months.find(s => s.month === month && s.year === year);
-            if (snapshot) {
+            const hasSnapshotData = snapshot && (
+                Object.keys(snapshot.spending).length > 0 || snapshot.transactions.length > 0
+            );
+            if (hasSnapshotData && snapshot) {
                 expenses.forEach(exp => {
                     if (snapshot.spending[exp.id]) {
                         categoryTotals[exp.id].total += snapshot.spending[exp.id];
+                        categoryTotals[exp.id].monthsWithData++;
+                    }
+                });
+            } else if (projectFuture && isMonthInFuture(month, year)) {
+                // Future month with no data: fill in non-discretionary at budgeted amount
+                // so the average doesn't go blank when scrubbing past the data horizon.
+                // Discretionary categories are intentionally skipped (consistent with the toggle).
+                getActiveExpenses(expenses, month, year).forEach(exp => {
+                    if (!exp.isDiscretionary) {
+                        categoryTotals[exp.id].total += exp.getMonthlyAmount();
                         categoryTotals[exp.id].monthsWithData++;
                     }
                 });
@@ -129,7 +167,7 @@ export default function OverviewTab() {
             .slice(0, 8);
 
         return data;
-    }, [months, expenses, selectedMonth, selectedYear]);
+    }, [months, expenses, selectedMonth, selectedYear, projectFuture, isMonthInFuture]);
 
     // Compute the date range label for the chart
     const chartDateRange = useMemo(() => {
@@ -198,7 +236,12 @@ export default function OverviewTab() {
 
                 {/* Year to Date */}
                 <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-                    <h3 className="text-sm text-gray-400 mb-2">Year to Date</h3>
+                    <h3 className="text-sm text-gray-400 mb-2">
+                        Year to Date
+                        {projectFuture && isMonthInFuture(selectedMonth, selectedYear) && (
+                            <span className="text-xs text-gray-500 font-normal ml-2">(non-discretionary projected)</span>
+                        )}
+                    </h3>
                     <div className="text-2xl font-bold text-white">
                         {formatCurrency(ytdStats.totalSpent)}
                         <span className="text-gray-500 text-lg ml-1">/ {formatCurrency(ytdStats.totalBudget)}</span>
@@ -245,7 +288,17 @@ export default function OverviewTab() {
 
             {/* Year Progress */}
             <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-                <h3 className="text-sm text-gray-400 mb-3">Year Progress</h3>
+                <div className="flex items-start justify-between gap-4 mb-3">
+                    <h3 className="text-sm text-gray-400">Year Progress</h3>
+                    <div className="shrink-0">
+                        <ToggleInput
+                            label="Project non-discretionary"
+                            enabled={projectFuture ?? false}
+                            setEnabled={setProjectFuture}
+                            tooltip="When on, future months count their non-discretionary budget as projected spending. YTD and 'This Month' reflect the spending you're committed to even before it happens."
+                        />
+                    </div>
+                </div>
                 <div className="flex gap-1">
                     {MONTH_NAMES.map((name, idx) => {
                         const monthNum = idx + 1;
@@ -256,20 +309,22 @@ export default function OverviewTab() {
                             Object.keys(monthSnapshot.spending).length > 0 || monthSnapshot.transactions.length > 0
                         );
                         const isCurrentMonth = monthNum === selectedMonth;
-                        const isFuture = monthNum > new Date().getMonth() + 1 && selectedYear >= new Date().getFullYear();
+                        const isFuture = isMonthInFuture(monthNum, selectedYear);
+                        const isProjected = !hasMonthData && isFuture && projectFuture;
 
-                        // Calculate budget status for months with data
+                        // Compute monthly budget once (used for both real and projected scoring)
+                        const monthBudget = expenses.reduce((sum, exp) => {
+                            const startDate = exp.startDate || new Date(0);
+                            const endDate = exp.endDate;
+                            const targetDate = new Date(selectedYear, monthNum - 1, 15);
+                            if (startDate > targetDate) return sum;
+                            if (endDate && endDate < targetDate) return sum;
+                            return sum + exp.getMonthlyAmount();
+                        }, 0);
+
                         let budgetStatus: 'very-under' | 'under' | 'over' | 'very-over' | null = null;
                         let percentSpent = 0;
                         if (hasMonthData && monthSnapshot) {
-                            const monthBudget = expenses.reduce((sum, exp) => {
-                                const startDate = exp.startDate || new Date(0);
-                                const endDate = exp.endDate;
-                                const targetDate = new Date(selectedYear, monthNum - 1, 15);
-                                if (startDate > targetDate) return sum;
-                                if (endDate && endDate < targetDate) return sum;
-                                return sum + exp.getMonthlyAmount();
-                            }, 0);
                             const monthSpent = Object.values(monthSnapshot.spending).reduce((s, v) => s + v, 0) + getUncategorizedSpending(monthSnapshot);
                             percentSpent = monthBudget > 0 ? (monthSpent / monthBudget) * 100 : 0;
 
@@ -277,17 +332,28 @@ export default function OverviewTab() {
                             else if (percentSpent <= 100) budgetStatus = 'under';
                             else if (percentSpent <= 120) budgetStatus = 'over';
                             else budgetStatus = 'very-over';
+                        } else if (isProjected) {
+                            const projected = getNonDiscretionaryMonthlyBudget(expenses, monthNum, selectedYear);
+                            percentSpent = monthBudget > 0 ? (projected / monthBudget) * 100 : 0;
+                            if (percentSpent <= 80) budgetStatus = 'very-under';
+                            else if (percentSpent <= 100) budgetStatus = 'under';
+                            else if (percentSpent <= 120) budgetStatus = 'over';
+                            else budgetStatus = 'very-over';
                         }
 
                         const getButtonClasses = () => {
-                            if (hasMonthData) {
-                                switch (budgetStatus) {
-                                    case 'very-under': return 'bg-emerald-500 text-white hover:bg-emerald-400';
-                                    case 'under': return 'bg-green-600 text-white hover:bg-green-500';
-                                    case 'over': return 'bg-amber-500 text-white hover:bg-amber-400';
-                                    case 'very-over': return 'bg-red-500 text-white hover:bg-red-400';
-                                    default: return 'bg-green-600 text-white hover:bg-green-500';
-                                }
+                            if (hasMonthData || isProjected) {
+                                const base = (() => {
+                                    switch (budgetStatus) {
+                                        case 'very-under': return 'bg-emerald-500 text-white hover:bg-emerald-400';
+                                        case 'under': return 'bg-green-600 text-white hover:bg-green-500';
+                                        case 'over': return 'bg-amber-500 text-white hover:bg-amber-400';
+                                        case 'very-over': return 'bg-red-500 text-white hover:bg-red-400';
+                                        default: return 'bg-green-600 text-white hover:bg-green-500';
+                                    }
+                                })();
+                                // Slight dimming hint for projected (vs. actual) data.
+                                return isProjected ? `${base} opacity-70` : base;
                             }
                             return isFuture
                                 ? 'bg-gray-700 text-gray-500 hover:bg-gray-600'
@@ -297,6 +363,9 @@ export default function OverviewTab() {
                         const getTitle = () => {
                             if (hasMonthData) {
                                 return `${name}: ${percentSpent.toFixed(0)}% of budget spent`;
+                            }
+                            if (isProjected) {
+                                return `${name}: ${percentSpent.toFixed(0)}% projected (non-discretionary only)`;
                             }
                             return `${name}: ${isFuture ? 'Future' : 'No data'}`;
                         };

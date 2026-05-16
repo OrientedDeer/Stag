@@ -4,7 +4,6 @@ import { usePersistedReducer } from '../../../hooks/usePersistedReducer';
 // Re-export types and constants for backward compatibility
 export {
     INCOME_CATEGORIES,
-    TRANSACTION_FREQUENCIES,
     TRANSFER_CATEGORY_ID,
     getFrequencyDivisor,
 } from './BudgetTypes';
@@ -14,7 +13,6 @@ export type {
     TransactionFrequency,
     Transaction,
     CategoryMapping,
-    FormatFingerprint,
     SavedCSVMapping,
     MonthlySnapshot,
     BudgetState,
@@ -70,6 +68,7 @@ export type BudgetAction =
     | { type: 'UPDATE_CSV_FORMAT'; payload: { id: string; updates: Partial<SavedCSVMapping> } }
     | { type: 'DELETE_CSV_FORMAT'; payload: { id: string } }
     | { type: 'SET_AUTO_CREATE_RULES'; payload: boolean }
+    | { type: 'SET_PROJECT_FUTURE'; payload: boolean }
     | { type: 'SET_BULK_DATA'; payload: Partial<BudgetState> };
 
 function budgetReducer(state: BudgetState, action: BudgetAction): BudgetState {
@@ -395,6 +394,9 @@ function budgetReducer(state: BudgetState, action: BudgetAction): BudgetState {
                     autoCreateRules: action.payload,
                 },
             };
+
+        case 'SET_PROJECT_FUTURE':
+            return { ...state, projectFuture: action.payload };
 
         case 'SET_BULK_DATA':
             return { ...state, ...action.payload };

@@ -1,16 +1,15 @@
 /**
- * Format a Date object to YYYY-MM-DD for HTML date input fields
+ * Format a Date (or ISO string) to YYYY-MM-DD for HTML date input fields,
+ * using local time so date-only fields don't shift across timezones.
  */
-export function formatDateForInput(date: Date | undefined): string {
+export function formatDateForInput(date: Date | string | undefined): string {
     if (!date) return "";
-    try {
-        const y = date.getFullYear();
-        const m = String(date.getMonth() + 1).padStart(2, '0');
-        const d = String(date.getDate()).padStart(2, '0');
-        return `${y}-${m}-${d}`;
-    } catch {
-        return "";
-    }
+    const d = date instanceof Date ? date : new Date(date);
+    if (isNaN(d.getTime())) return "";
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
 }
 
 /**

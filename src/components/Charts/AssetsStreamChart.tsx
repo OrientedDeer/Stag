@@ -4,6 +4,7 @@ import { RangeSlider } from '../Layout/InputFields/RangeSlider';
 import { AssumptionsContext } from '../Objects/Assumptions/AssumptionsContext';
 import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
 import { ChartTooltipPortal } from './ChartTooltipPortal';
+import { useArrowKeyAdjust } from '../../hooks/useKeyboardShortcuts';
 
 const MIN_CHART_WIDTH = 300;
 
@@ -57,6 +58,11 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
   const minYear = data.length > 0 ? data[0].year : 2025;
   const maxYear = data.length > 0 ? data[data.length - 1].year : 2060;
   const [range, setRange] = useState<[number, number]>([minYear, Math.min(maxYear, minYear + 32)]);
+  useArrowKeyAdjust(
+      range,
+      (v) => setRange(v as [number, number]),
+      { min: minYear, max: maxYear, step: 1, containerRef }
+  );
 
   const filteredData = useMemo(() => {
     return data.filter(d => d.year >= range[0] && d.year <= range[1]);

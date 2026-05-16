@@ -13,7 +13,6 @@ function makeAssumptions(ror: number = 7) {
             withdrawalRate: 4,
             withdrawalStrategy: 'None' as const,
             autoRothConversions: false,
-            rothConversionTargetBracket: 0.22,
             gkUpperGuardrail: 20,
             gkLowerGuardrail: 20,
             gkAdjustmentPercent: 10,

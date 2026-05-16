@@ -10,6 +10,7 @@ import { calculateFederalTaxFromIncomes, calculateStateTax, calculateFicaTax } f
 import { WorkIncome } from '../../components/Objects/Income/models';
 import { formatCompactCurrency } from './tabs/FutureUtils';
 import { get401kLimit, getIRALimit, getHSALimit } from '../../data/ContributionLimits';
+import { getActiveExpenses } from '../../components/Objects/Budget/budgetUtils';
 
 // UI Components
 import { CurrencyInput } from '../../components/Layout/InputFields/CurrencyInput';
@@ -48,9 +49,14 @@ export default function PriorityTab() {
         incomes.reduce((sum, inc) => sum + (inc.getMonthlyAmount(year)), 0),
     [incomes, year]);
 
-    const totalMonthlyFixedExpenses = useMemo(() =>
-        expenses.reduce((sum, exp) => sum + (exp.getMonthlyAmount(year)), 0),
-    [expenses, year]);
+    // Use today's active expenses (raw monthly), not the year's prorated average.
+    // Otherwise a mid-year expense end/start would skew both the disposable-income
+    // calc and the MULTIPLE_OF_EXPENSES emergency-fund target.
+    const totalMonthlyFixedExpenses = useMemo(() => {
+        const today = new Date();
+        const activeToday = getActiveExpenses(expenses, today.getMonth() + 1, today.getFullYear());
+        return activeToday.reduce((sum, exp) => sum + exp.getMonthlyAmount(), 0);
+    }, [expenses]);
 
     // Tax calculations (monthly)
     const federalTax = useMemo(() => calculateFederalTaxFromIncomes(taxState, incomes, expenses, 0, year, state) / 12, [taxState, incomes, expenses, year, state]);

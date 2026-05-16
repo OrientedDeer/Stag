@@ -1,7 +1,8 @@
-import { useContext, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { BudgetContext } from '../../components/Objects/Budget/BudgetContext';
 import { formatMonthYear, navigateMonth } from '../../components/Objects/Budget/budgetUtils';
 import { useAutoReconcile } from '../../hooks/useAutoReconcile';
+import { useSubTabKeyboardNav } from '../../hooks/useKeyboardShortcuts';
 import SpendingTab from './SpendingTab';
 import OverviewTab from './OverviewTab';
 import HistoryTab from './HistoryTab';
@@ -43,6 +44,34 @@ export default function BudgetTab() {
             payload: { month: now.getMonth() + 1, year: now.getFullYear() }
         });
     };
+
+    // Plain ←/→ swap months. Shift+←/→ falls through to the sub-tab hook below.
+    // Held-key repeat is throttled so months don't fly past.
+    const lastArrowNavRef = useRef(0);
+    useEffect(() => {
+        const REPEAT_INTERVAL_MS = 250;
+        const handler = (e: KeyboardEvent) => {
+            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+            if (e.shiftKey) return; // sub-tab nav handles this
+            if (e.metaKey || e.ctrlKey || e.altKey) return;
+            const target = e.target as HTMLElement | null;
+            if (target) {
+                const tag = target.tagName;
+                if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+                if (target.isContentEditable) return;
+            }
+            const t = Date.now();
+            if (e.repeat && t - lastArrowNavRef.current < REPEAT_INTERVAL_MS) return;
+            lastArrowNavRef.current = t;
+            const direction = e.key === 'ArrowLeft' ? 'prev' : 'next';
+            const { month, year } = navigateMonth(selectedMonth, selectedYear, direction);
+            dispatch({ type: 'SET_SELECTED_MONTH', payload: { month, year } });
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, [selectedMonth, selectedYear, dispatch]);
+
+    useSubTabKeyboardNav(tabs, activeTab, handleTabChange);
 
     return (
         <div className="w-full flex bg-gray-950 justify-center pt-6 pb-24">
@@ -87,6 +116,8 @@ export default function BudgetTab() {
                     {tabs.map((tab) => (
                         <button
                             key={tab}
+                            role="tab"
+                            aria-selected={activeTab === tab}
                             className={`flex-1 min-w-fit font-semibold px-4 py-3 transition-colors duration-200 whitespace-nowrap ${
                                 activeTab === tab
                                     ? "text-green-300 bg-gray-800 border-b-2 border-green-300"
@@ -101,22 +132,22 @@ export default function BudgetTab() {
 
                 {/* Tab Content */}
                 <div className="bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl mb-4 p-6 overflow-visible">
-                    <div className={activeTab === 'Overview' ? '' : 'hidden'}>
+                    <div data-sub-tab-content className={activeTab === 'Overview' ? '' : 'hidden'}>
                         <OverviewTab />
                     </div>
-                    <div className={activeTab === 'Spending' ? '' : 'hidden'}>
+                    <div data-sub-tab-content className={activeTab === 'Spending' ? '' : 'hidden'}>
                         <SpendingTab />
                     </div>
-                    <div className={activeTab === 'Transactions' ? '' : 'hidden'}>
+                    <div data-sub-tab-content className={activeTab === 'Transactions' ? '' : 'hidden'}>
                         <TransactionsTab />
                     </div>
-                    <div className={activeTab === 'History' ? '' : 'hidden'}>
+                    <div data-sub-tab-content className={activeTab === 'History' ? '' : 'hidden'}>
                         <HistoryTab />
                     </div>
-                    <div className={activeTab === 'Trends' ? '' : 'hidden'}>
+                    <div data-sub-tab-content className={activeTab === 'Trends' ? '' : 'hidden'}>
                         <TrendsTab />
                     </div>
-                    <div className={activeTab === 'Settings' ? '' : 'hidden'}>
+                    <div data-sub-tab-content className={activeTab === 'Settings' ? '' : 'hidden'}>
                         <SettingsTab />
                     </div>
                 </div>

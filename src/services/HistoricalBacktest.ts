@@ -311,48 +311,6 @@ export function runHistoricalBacktest(config: BacktestConfig): BacktestSummary {
 }
 
 /**
- * Get safe withdrawal rate for a given success rate target
- * Uses binary search to find the withdrawal rate that achieves the target success rate
- */
-export function findSafeWithdrawalRate(
-  startingBalance: number,
-  retirementYears: number,
-  stockAllocation: number,
-  targetSuccessRate: number = 95,
-  inflationAdjustedWithdrawals: boolean = true
-): { withdrawalRate: number; annualWithdrawal: number } {
-  let low = 0;
-  let high = 0.15; // 15% max withdrawal rate
-  let bestRate = 0;
-
-  // Binary search for the highest withdrawal rate that achieves target success
-  for (let i = 0; i < 20; i++) {
-    const mid = (low + high) / 2;
-    const annualWithdrawal = startingBalance * mid;
-
-    const summary = runHistoricalBacktest({
-      retirementYears,
-      startingBalance,
-      annualWithdrawal,
-      stockAllocation,
-      inflationAdjustedWithdrawals,
-    });
-
-    if (summary.successRate >= targetSuccessRate) {
-      bestRate = mid;
-      low = mid;
-    } else {
-      high = mid;
-    }
-  }
-
-  return {
-    withdrawalRate: Math.round(bestRate * 1000) / 10, // As percentage with 1 decimal
-    annualWithdrawal: startingBalance * bestRate,
-  };
-}
-
-/**
  * Get the historical data range available for backtesting
  */
 export function getBacktestDataRange(): { firstYear: number; lastYear: number; yearsAvailable: number } {

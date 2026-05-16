@@ -43,7 +43,7 @@ const KEY_MAP: Record<string, string> = {
     salaryGrowth: 'sg', qualifiesForSocialSecurity: 'ss', socialSecurityFundingPercent: 'sp',
     lifestyleCreep: 'lc', housingAppreciation: 'ha', rentInflation: 'ri',
     ror: 'rr', withdrawalStrategy: 'ws', withdrawalRate: 'wr',
-    gkUpperGuardrail: 'gu', gkLowerGuardrail: 'gl', gkAdjustmentPercent: 'ga', autoRothConversions: 'ar', rothConversionTargetBracket: 'rb', taxOptimizedTargetBracket: 'tb',
+    gkUpperGuardrail: 'gu', gkLowerGuardrail: 'gl', gkAdjustmentPercent: 'ga', autoRothConversions: 'ar',
     retirementAge: 'ra', lifeExpectancy: 'le', birthYear: 'by', priorYearMode: 'pm',
     useCompactCurrency: 'cc', showExperimentalFeatures: 'ef', hsaEligible: 'he',
     // Priorities/Withdrawal
@@ -117,7 +117,6 @@ const ASSUMPTIONS_DEFAULTS: Record<string, unknown> = {
     gkLowerGuardrail: 0.8,
     gkAdjustmentPercent: 10,
     autoRothConversions: false,
-    rothConversionTargetBracket: 0.22,
     // Demographics
     retirementAge: 65,
     lifeExpectancy: 90,
@@ -271,7 +270,6 @@ export function expandAssumptions(flat: Record<string, unknown>): Record<string,
             gkLowerGuardrail: flat.gkLowerGuardrail ?? ASSUMPTIONS_DEFAULTS.gkLowerGuardrail,
             gkAdjustmentPercent: flat.gkAdjustmentPercent ?? ASSUMPTIONS_DEFAULTS.gkAdjustmentPercent,
             autoRothConversions: flat.autoRothConversions ?? ASSUMPTIONS_DEFAULTS.autoRothConversions,
-            rothConversionTargetBracket: flat.rothConversionTargetBracket ?? ASSUMPTIONS_DEFAULTS.rothConversionTargetBracket,
         },
         demographics: {
             birthYear: flat.birthYear, // No default - must be provided
@@ -547,7 +545,7 @@ export function validatePayload(data: unknown): data is {
  * With error correction level "M", max capacity is ~2331 bytes.
  * Using 2200 for safety margin.
  */
-export const MAX_QR_DATA_SIZE = 2200;
+const MAX_QR_DATA_SIZE = 2200;
 
 /**
  * Checks if the compressed data exceeds the safe QR code size limit.

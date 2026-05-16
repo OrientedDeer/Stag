@@ -182,5 +182,3 @@ export const ScenarioComparisonTab: React.FC<ScenarioComparisonTabProps> = ({ si
         </div>
     );
 };
-
-export default ScenarioComparisonTab;

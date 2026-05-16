@@ -139,29 +139,3 @@ describe('registerSheetBuilder', () => {
     });
 });
 
-// =============================================================================
-// Refactoring Notes for exportToExcel
-// =============================================================================
-
-describe('exportToExcel (not tested - browser dependency)', () => {
-    it.skip('NOTE: exportToExcel requires XLSX.writeFile which needs browser APIs', () => {
-        // To make this testable, consider refactoring to:
-        //
-        // 1. Extract workbook building into a separate function:
-        //    export function buildWorkbook(data: ExportData): XLSX.WorkBook
-        //
-        // 2. Keep exportToExcel as a thin wrapper:
-        //    export function exportToExcel(data: ExportData): void {
-        //        const workbook = buildWorkbook(data);
-        //        XLSX.writeFile(workbook, generateFilename());
-        //    }
-        //
-        // 3. Then we can test buildWorkbook without browser dependencies
-        //
-        // Alternative: Mock XLSX.writeFile in tests:
-        //    vi.mock('xlsx', () => ({
-        //        utils: { book_new: vi.fn(), book_append_sheet: vi.fn(), aoa_to_sheet: vi.fn() },
-        //        writeFile: vi.fn(),
-        //    }));
-    });
-});

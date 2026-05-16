@@ -7,7 +7,9 @@ import 'react-datasheet-grid/dist/style.css';
 import { BudgetContext, Transaction } from '../../components/Objects/Budget/BudgetContext';
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
 import { AccountContext } from '../../components/Objects/Accounts/AccountContext';
-import { InvestedAccount, SavedAccount } from '../../components/Objects/Accounts/models';
+import { IncomeContext } from '../../components/Objects/Income/IncomeContext';
+import { WorkIncome } from '../../components/Objects/Income/models';
+import { InvestedAccount, SavedAccount, AnyAccount } from '../../components/Objects/Accounts/models';
 import { useAssumptions, getBirthYear } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
 import { SimulationContext } from '../../components/Objects/Assumptions/SimulationContext';
@@ -15,10 +17,11 @@ import { get401kLimit, getIRALimit, getHSALimit } from '../../data/ContributionL
 import {
     getActiveExpenses,
     getExpenseMonthlyBudget,
-    calculateBudgetSummary,
     formatCurrency,
 } from '../../components/Objects/Budget/budgetUtils';
 import { currencyColumn, readOnlyTextColumn } from '../../components/Layout/DataSheetColumns';
+import { ToggleInput } from '../../components/Layout/InputFields/ToggleInput';
+import { Tooltip } from '../../components/Layout/InputFields/Tooltip';
 
 interface SpendingRow {
     id: string;
@@ -29,13 +32,26 @@ interface SpendingRow {
 }
 
 export default function SpendingTab() {
-    const { months, selectedMonth, selectedYear } = useContext(BudgetContext);
+    const { months, selectedMonth, selectedYear, projectFuture, dispatch: budgetDispatch } = useContext(BudgetContext);
     const { expenses } = useContext(ExpenseContext);
     const { accounts } = useContext(AccountContext);
+    const { incomes } = useContext(IncomeContext);
     const { assumptions } = useAssumptions();
     const { state: taxState } = useContext(TaxContext);
     const { simulation } = useContext(SimulationContext);
     const priorities = assumptions.priorities;
+
+    const setProjectFuture = useCallback((enabled: boolean) => {
+        budgetDispatch({ type: 'SET_PROJECT_FUTURE', payload: enabled });
+    }, [budgetDispatch]);
+
+    const today = useMemo(() => new Date(), []);
+    const currentRealMonth = today.getMonth() + 1;
+    const currentRealYear = today.getFullYear();
+    const isFutureMonth = selectedYear > currentRealYear ||
+        (selectedYear === currentRealYear && selectedMonth > currentRealMonth);
+    const isPastYear = selectedYear < currentRealYear;
+    const isCurrentYear = selectedYear === currentRealYear;
 
     // Calculate age from birth year
     const currentAge = selectedYear - getBirthYear(assumptions.milestones);
@@ -61,10 +77,14 @@ export default function SpendingTab() {
         [expenses, selectedMonth, selectedYear]
     );
 
-    const budgetSummary = useMemo(() =>
-        calculateBudgetSummary(expenses, currentSnapshot, selectedMonth, selectedYear),
-        [expenses, currentSnapshot, selectedMonth, selectedYear]
-    );
+    // Stable monthly-expenses denominator for emergency-fund targets.
+    // Always uses TODAY's active expenses (not the selected month/year) so the
+    // target reflects what you're actually paying now and doesn't shift as you
+    // scrub months or revisit historical years.
+    const currentMonthlyExpenses = useMemo(() => {
+        const activeToday = getActiveExpenses(expenses, currentRealMonth, currentRealYear);
+        return activeToday.reduce((sum, exp) => sum + exp.getMonthlyAmount(), 0);
+    }, [expenses, currentRealMonth, currentRealYear]);
 
     // Calculate annual contribution goals based on priority capType
     // For MAX priorities, use IRS limits; for FIXED, use capValue * 12
@@ -92,26 +112,35 @@ export default function SpendingTab() {
         } else if (priority.capType === 'FIXED') {
             return (priority.capValue || 0) * 12; // capValue is monthly
         } else if (priority.capType === 'MULTIPLE_OF_EXPENSES') {
-            // For emergency fund targets, this is the TARGET BALANCE (not annual contribution)
-            const monthlyExpenses = budgetSummary.totalBudget;
-            return monthlyExpenses * (priority.capValue || 0);
+            // Emergency-fund target = months × current monthly expenses (today's active set).
+            return currentMonthlyExpenses * (priority.capValue || 0);
         } else if (priority.capType === 'REMAINDER') {
             // REMAINDER: Use simulation's projected allocation for this account
             return simulatedBucketAllocations[priority.accountId!] || 0;
         }
         return 0;
-    }, [assumptions, selectedYear, currentAge, taxState.filingStatus, budgetSummary.totalBudget, simulatedBucketAllocations]);
+    }, [assumptions, selectedYear, currentAge, taxState.filingStatus, currentMonthlyExpenses, simulatedBucketAllocations]);
 
-    // Get all transactions for the current year up to the selected month (YTD)
+    // The "tracking horizon" is the month we treat as YTD-end:
+    // - past years: full year (month 12)
+    // - current year: up through selectedMonth (or current real month if user scrubs ahead)
+    // - future years: shouldn't show tracking, but use 12 as a fallback for display math
+    const trackingMonth = useMemo(() => {
+        if (isPastYear) return 12;
+        if (isCurrentYear) return Math.min(selectedMonth, currentRealMonth);
+        return 12;
+    }, [isPastYear, isCurrentYear, selectedMonth, currentRealMonth]);
+
+    // Get all transactions for the current year up to the tracking month (YTD)
     const ytdTransactions = useMemo(() => {
         const transactions: Transaction[] = [];
         months.forEach(m => {
-            if (m.year === selectedYear && m.month <= selectedMonth) {
+            if (m.year === selectedYear && m.month <= trackingMonth) {
                 transactions.push(...m.transactions);
             }
         });
         return transactions;
-    }, [months, selectedYear, selectedMonth]);
+    }, [months, selectedYear, trackingMonth]);
 
     // Get transactions for the current month only
     const currentMonthTransactions = useMemo(() => {
@@ -138,123 +167,244 @@ export default function SpendingTab() {
         return { ytd, monthly };
     }, [ytdTransactions, currentMonthTransactions]);
 
-    // Get starting balance for each account at the beginning of the year
-    // This is either the December balance of the previous year, or the account's current balance
+    // Get starting balance for each account at the beginning of the year.
+    // Order of preference: Dec balance of prev year > Jan balance of current year > account's current balance.
+    // We anchor on the real Jan 1 balance so "expected by now" doesn't drift with today's actual balance.
     const startingBalances = useMemo(() => {
         const balances: Record<string, number> = {};
-
-        // Look for December of previous year
         const decSnapshot = months.find(m => m.month === 12 && m.year === selectedYear - 1);
-        // Or January of current year as fallback
         const janSnapshot = months.find(m => m.month === 1 && m.year === selectedYear);
 
-        priorities.filter(p => p.accountId).forEach(p => {
-            const accountId = p.accountId!;
-            // Priority: Dec prev year > Jan current year > account's current balance
-            if (decSnapshot?.accountBalances[accountId] !== undefined) {
-                balances[accountId] = decSnapshot.accountBalances[accountId];
-            } else if (janSnapshot?.accountBalances[accountId] !== undefined) {
-                balances[accountId] = janSnapshot.accountBalances[accountId];
+        accounts.forEach(account => {
+            const id = account.id;
+            if (decSnapshot?.accountBalances[id] !== undefined) {
+                balances[id] = decSnapshot.accountBalances[id];
+            } else if (janSnapshot?.accountBalances[id] !== undefined) {
+                balances[id] = janSnapshot.accountBalances[id];
             } else {
-                // Fall back to account's current balance from context
-                const account = accounts.find(a => a.id === accountId);
-                balances[accountId] = account?.amount || 0;
+                balances[id] = account.amount || 0;
             }
         });
 
         return balances;
-    }, [months, selectedYear, priorities, accounts]);
+    }, [months, selectedYear, accounts]);
 
-    // Build contribution rows with appropriate tracking method per account type
-    const contributionRows = useMemo(() => {
-        return priorities
-            .filter(p => p.accountId)
-            .map((p, index) => {
-                const account = accounts.find(a => a.id === p.accountId);
-                const accountName = account?.name || 'Unknown Account';
-                const accountId = p.accountId!;
+    // Per-account annual growth rate (decimal), matching the simulation's BOY convention.
+    // SavedAccount: APR. InvestedAccount/ESPPAccount: ror (custom or global) + inflation − expense ratio.
+    const getAccountGrowthRate = useCallback((account: AnyAccount): number => {
+        if (account instanceof SavedAccount) {
+            return (account.apr || 0) / 100;
+        }
+        if (account instanceof InvestedAccount) {
+            const ror = account.customROR ?? assumptions.investments.returnRates.ror;
+            const inflation = assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0;
+            return (ror + inflation - (account.expenseRatio || 0)) / 100;
+        }
+        // Other account types (property, debt, ESPP) — no simple growth rate; treat as 0.
+        return 0;
+    }, [assumptions]);
 
-                // Calculate annual goal based on priority type
-                const annualTarget = getAnnualGoal(p, account);
+    // Plan-benchmark "expected balance by now": linearly interpolate from Jan 1 actual
+    // toward the planned EOY (BOY-timed: contributions added first, then grown a year).
+    // expectedByNow = start + ((start + annualContribution) × (1 + r) − start) × (m/12)
+    const computeExpectedByNow = useCallback(
+        (account: AnyAccount, annualContribution: number, monthOfYear: number): number => {
+            const start = startingBalances[account.id] ?? account.amount;
+            const r = getAccountGrowthRate(account);
+            const eoyPerPlan = (start + annualContribution) * (1 + r);
+            const fraction = Math.max(0, Math.min(1, monthOfYear / 12));
+            return start + (eoyPerPlan - start) * fraction;
+        },
+        [startingBalances, getAccountGrowthRate]
+    );
 
-                // MULTIPLE_OF_EXPENSES is a "reach this balance" goal, not "contribute per year"
-                const isBalanceTarget = p.capType === 'MULTIPLE_OF_EXPENSES';
+    // Annual contributions routed via payroll (not via priority buckets):
+    // - 401k preTax + roth + employer match → matchAccountId
+    // - ESPP purchases → esppAccountId
+    // Uses getEffective401k() so autoMax401k 'traditional' / 'roth' modes resolve to the
+    // IRS limit rather than the stored (often 0) custom value. Mirrors Dashboard.tsx.
+    const getPayrollContributionToAccount = useCallback((accountId: string): number => {
+        const ageInSelectedYear = selectedYear - getBirthYear(assumptions.milestones);
+        const inflationAdjusted = assumptions.macro.inflationAdjusted;
+        let total = 0;
+        incomes.forEach(inc => {
+            if (!(inc instanceof WorkIncome)) return;
+            if (inc.matchAccountId === accountId) {
+                const effective = inc.getEffective401k(selectedYear, ageInSelectedYear, inflationAdjusted);
+                total += inc.getProratedAnnual(effective.preTax, selectedYear);
+                total += inc.getProratedAnnual(effective.roth, selectedYear);
+                total += inc.getEffectiveAnnualEmployerMatch(selectedYear);
+            }
+            if (inc.esppAccountId === accountId) {
+                total += inc.getAnnualESPPContribution(selectedYear);
+            }
+        });
+        return total;
+    }, [incomes, selectedYear, assumptions]);
 
-                const monthlyTarget = isBalanceTarget ? 0 : annualTarget / 12;
-                const ytdTarget = isBalanceTarget ? annualTarget : monthlyTarget * selectedMonth;
+    // Build rows for both sections (split by balance-target vs contribution-target)
+    const { savingsTargetRows, contributionRows } = useMemo(() => {
+        const savings: SavingsTargetRow[] = [];
+        const contribs: ContributionRow[] = [];
 
-                // Determine tracking method based on account type:
-                // - InvestedAccount: Use transaction-based tracking (decouples from market gains)
-                // - SavedAccount: Use balance-based tracking (simple deposits/withdrawals + APR)
-                const isInvestedAccount = account instanceof InvestedAccount;
-                const isSavingsAccount = account instanceof SavedAccount;
+        priorities.filter(p => p.accountId).forEach((p, index) => {
+            const account = accounts.find(a => a.id === p.accountId);
+            const accountName = account?.name || 'Unknown Account';
+            const accountId = p.accountId!;
+            const annualTarget = getAnnualGoal(p, account);
+            const startingBalance = startingBalances[accountId] || 0;
+            const actualBalance = currentSnapshot?.accountBalances[accountId] ?? account?.amount ?? 0;
 
-                // Get starting balance
-                const startingBalance = startingBalances[accountId] || 0;
-
-                // Get actual balance from current month snapshot, or account's current balance
-                const actualBalance = currentSnapshot?.accountBalances[accountId] ?? account?.amount ?? 0;
-
-                // Calculate YTD actual contribution based on account type
-                let ytdActual: number;
-                if (isInvestedAccount) {
-                    // Transaction-based: Sum of tagged contribution transactions
-                    ytdActual = transactionContributions.ytd[accountId] || 0;
+            if (p.capType === 'MULTIPLE_OF_EXPENSES') {
+                // Balance target (e.g. emergency fund). Status is a strict comparison:
+                // you are either funded or in-progress; "overfunded" only kicks in at >=110%.
+                const progressPercent = annualTarget > 0
+                    ? (actualBalance / annualTarget) * 100
+                    : 0;
+                let status: 'fully-funded' | 'in-progress' | 'overfunded' = 'in-progress';
+                if (annualTarget <= 0) {
+                    status = 'in-progress';
+                } else if (actualBalance >= annualTarget * 1.10) {
+                    status = 'overfunded';
+                } else if (actualBalance >= annualTarget) {
+                    status = 'fully-funded';
                 } else {
-                    // Balance-based: Difference in balance (works for savings accounts)
-                    ytdActual = actualBalance - startingBalance;
+                    status = 'in-progress';
                 }
-
-                // Monthly actual from transactions
-                const monthlyActual = transactionContributions.monthly[accountId] || 0;
-
-                // Determine status based on progress
-                let status: 'ahead' | 'on-track' | 'behind' | 'overfunded' = 'on-track';
-                if (isBalanceTarget && annualTarget > 0) {
-                    // For balance targets: compare current balance to target
-                    const ratio = actualBalance / annualTarget;
-                    if (ratio > 1.05) status = 'overfunded';
-                    else if (ratio >= 0.95) status = 'on-track';
-                    else status = 'behind';
-                } else if (ytdTarget > 0) {
-                    const ratio = ytdActual / ytdTarget;
-                    // For contribution targets: ahead if > 105%, on-track if 95-105%, behind if < 95%
-                    if (ratio < 0.95) status = 'behind';
-                    else if (ratio > 1.05) status = 'ahead';
-                } else if (ytdActual > 0) {
-                    status = 'ahead';
-                }
-
-                return {
+                savings.push({
                     priority: index + 1,
                     accountId,
                     accountName,
                     bucketName: p.name,
-                    annualTarget,
-                    monthlyTarget,
-                    ytdTarget,
-                    ytdActual,
-                    monthlyActual,
+                    target: annualTarget,
                     actualBalance,
                     startingBalance,
+                    progressPercent,
                     status,
-                    isTransactionBased: isInvestedAccount,
-                    isSavingsAccount,
-                    isBalanceTarget, // For display - shows "Balance" vs "Contribution" tracking
-                    capType: p.capType,
-                };
+                });
+                return;
+            }
+
+            // Annual contribution targets (MAX / FIXED / REMAINDER)
+            const isInvestedAccount = account instanceof InvestedAccount;
+            const isSavingsAccount = account instanceof SavedAccount;
+
+            // YTD contributed
+            let ytdActual: number;
+            if (isInvestedAccount) {
+                ytdActual = transactionContributions.ytd[accountId] || 0;
+            } else {
+                // Balance-delta tracking for savings accounts.
+                // Floor at zero so withdrawals don't display as negative contributions.
+                ytdActual = Math.max(0, actualBalance - startingBalance);
+            }
+
+            // Plan-benchmark expected balance at the tracking month.
+            // Anchors on real Jan 1 balance, projects toward (start + annualTarget) × (1 + r),
+            // and linearly interpolates to the tracking month. Independent of today's actual.
+            const projectedBalance = account
+                ? computeExpectedByNow(account, annualTarget, trackingMonth)
+                : null;
+            const balanceVariance = projectedBalance !== null
+                ? actualBalance - projectedBalance
+                : null;
+
+            // Pacing — linear is the visual reference; status is more permissive.
+            const monthlyTarget = annualTarget / 12;
+            const ytdLinearTarget = monthlyTarget * trackingMonth;
+            const monthsRemaining = Math.max(0, 12 - trackingMonth);
+            const remainingNeeded = Math.max(0, annualTarget - ytdActual);
+            // "Unreachable" = even if user contributed 2x the linear monthly target
+            // every remaining month, they couldn't catch up. Tolerates lump-sum / front-loaders.
+            const isUnreachable = annualTarget > 0
+                && monthsRemaining > 0
+                && remainingNeeded > monthlyTarget * 2 * monthsRemaining;
+
+            let pacing: 'complete' | 'ahead' | 'on-track' | 'waiting' | 'behind' = 'on-track';
+            if (annualTarget <= 0) {
+                pacing = ytdActual > 0 ? 'complete' : 'on-track';
+            } else if (ytdActual <= 0) {
+                // Zero contributions = no signal. Don't judge ahead/behind until they start.
+                // Lump-sum / tax-time IRAs can stay here through Dec.
+                pacing = 'waiting';
+            } else if (ytdActual >= annualTarget * 0.95) {
+                pacing = 'complete';
+            } else if (monthsRemaining === 0) {
+                // End of year with some progress but short of goal → behind.
+                pacing = 'behind';
+            } else if (isUnreachable) {
+                pacing = 'behind';
+            } else if (ytdActual >= ytdLinearTarget) {
+                pacing = 'ahead';
+            } else {
+                pacing = 'on-track';
+            }
+
+            contribs.push({
+                priority: index + 1,
+                accountId,
+                accountName,
+                bucketName: p.name,
+                annualTarget,
+                ytdActual,
+                ytdLinearTarget,
+                actualBalance,
+                projectedBalance,
+                balanceVariance,
+                pacing,
+                isTransactionBased: isInvestedAccount,
+                isSavingsAccount,
+                capType: p.capType,
             });
-    }, [priorities, accounts, getAnnualGoal, transactionContributions, selectedMonth, startingBalances, currentSnapshot]);
+        });
+
+        return { savingsTargetRows: savings, contributionRows: contribs };
+    }, [priorities, accounts, getAnnualGoal, transactionContributions, trackingMonth, startingBalances, currentSnapshot, computeExpectedByNow]);
+
+    // "Other accounts" — accounts not in any priority bucket. Expected balance includes
+    // payroll-routed contributions (401k self + roth + employer match, ESPP purchases),
+    // so a 401k account that's not in priorities still shows a realistic expected balance.
+    const otherAccountRows = useMemo(() => {
+        const priorityAccountIds = new Set(priorities.map(p => p.accountId).filter(Boolean) as string[]);
+        return accounts
+            .filter(a => !priorityAccountIds.has(a.id))
+            .map(account => {
+                const actualBalance = currentSnapshot?.accountBalances[account.id] ?? account.amount;
+                const annualContribution = getPayrollContributionToAccount(account.id);
+                const projectedBalance = computeExpectedByNow(account, annualContribution, trackingMonth);
+                const variance = actualBalance - projectedBalance;
+                const variancePercent = projectedBalance !== 0
+                    ? (variance / projectedBalance) * 100
+                    : null;
+                return {
+                    accountId: account.id,
+                    accountName: account.name,
+                    actualBalance,
+                    projectedBalance,
+                    annualContribution,
+                    variance,
+                    variancePercent,
+                };
+            })
+            .filter(r => r.actualBalance > 0 || r.projectedBalance > 0);
+    }, [accounts, priorities, currentSnapshot, trackingMonth, computeExpectedByNow, getPayrollContributionToAccount]);
 
     const hasPriorityBuckets = priorities.filter(p => p.accountId).length > 0;
+    const showTracking = !isFutureMonth && hasPriorityBuckets;
 
-    // Create rows for the grid
+    // Create rows for the spending grid.
+    // When projectFuture is on AND we're on a future month, non-discretionary expenses
+    // show their budgeted amount as "actual" so the grid isn't all zeros.
     const rows: SpendingRow[] = useMemo(() => {
         return activeExpenses.map(expense => {
             const budget = getExpenseMonthlyBudget(expense);
-            const actual = currentSnapshot?.spending[expense.id] ?? null;
-            const difference = actual !== null ? budget - actual : budget;
+            let actual = currentSnapshot?.spending[expense.id] ?? null;
 
+            if (actual === null && isFutureMonth && projectFuture && !expense.isDiscretionary) {
+                actual = budget;
+            }
+
+            const difference = actual !== null ? budget - actual : budget;
             return {
                 id: expense.id,
                 category: expense.name,
@@ -263,7 +413,7 @@ export default function SpendingTab() {
                 difference,
             };
         });
-    }, [activeExpenses, currentSnapshot]);
+    }, [activeExpenses, currentSnapshot, isFutureMonth, projectFuture]);
 
     // Define columns - use keyColumn and cast to avoid type issues with nullable fields
     const columns = useMemo(() => [
@@ -311,11 +461,26 @@ export default function SpendingTab() {
         <div className="space-y-6">
             {/* Spending Grid */}
             <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
-                <div className="p-4 border-b border-gray-700">
-                    <h3 className="text-lg font-semibold text-white">Spending by Category</h3>
-                    <p className="text-sm text-gray-400 mt-1">
-                        Spending is automatically calculated from categorized transactions.
-                    </p>
+                <div className="p-4 border-b border-gray-700 flex items-start justify-between gap-4">
+                    <div>
+                        <h3 className="text-lg font-semibold text-white">Spending by Category</h3>
+                        <p className="text-sm text-gray-400 mt-1">
+                            Spending is automatically calculated from categorized transactions.
+                            {isFutureMonth && projectFuture && (
+                                <> Non-discretionary expenses are projected at budgeted amounts for this future month.</>
+                            )}
+                        </p>
+                    </div>
+                    {isFutureMonth && (
+                        <div className="shrink-0">
+                            <ToggleInput
+                                label="Project non-discretionary"
+                                enabled={projectFuture ?? false}
+                                setEnabled={setProjectFuture}
+                                tooltip="When viewing a future month, show non-discretionary expenses at their budgeted amount instead of $0."
+                            />
+                        </div>
+                    )}
                 </div>
                 <div className="budget-grid">
                     <DataSheetGrid
@@ -328,124 +493,223 @@ export default function SpendingTab() {
                 </div>
             </div>
 
-            {/* Contributions Section */}
-            {hasPriorityBuckets && selectedYear !== new Date().getFullYear() && (
-                <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
-                    <h3 className="text-lg font-semibold text-white mb-2">Contribution Tracking</h3>
-                    <p className="text-sm text-gray-400">
-                        Contribution tracking is available for the current year only. Navigate to {new Date().getFullYear()} to track your contributions against annual goals.
+            {/* Future-month notice for tracking sections */}
+            {hasPriorityBuckets && isFutureMonth && (
+                <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-4">
+                    <p className="text-sm text-blue-400">
+                        Contribution and account tracking is hidden for future months. Navigate to a past or current month to see your progress.
                     </p>
                 </div>
             )}
-            {hasPriorityBuckets && selectedYear === new Date().getFullYear() && (
+
+            {/* Savings Targets (balance-based goals) */}
+            {showTracking && savingsTargetRows.length > 0 && (
                 <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
                     <div className="p-4 border-b border-gray-700">
-                        <h3 className="text-lg font-semibold text-white">Contribution Tracking</h3>
+                        <h3 className="text-lg font-semibold text-white">Savings Targets</h3>
                         <p className="text-sm text-gray-400 mt-1">
-                            Track contributions to your paycheck allocator selections. Investment accounts use transaction-based tracking.
+                            Reach-this-balance goals (e.g. emergency fund). Target uses your current monthly expenses ({formatCurrency(currentMonthlyExpenses)}/mo).
                         </p>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full">
                             <thead className="bg-gray-900/50">
                                 <tr>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                                        #
-                                    </th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                                        Account
-                                    </th>
-                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
-                                        Current
-                                    </th>
-                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
-                                        YTD Actual
-                                    </th>
-                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
-                                        Goal
-                                    </th>
-                                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">
-                                        Progress
-                                    </th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">#</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Account</th>
+                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Current</th>
+                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Target</th>
+                                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Status</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-700">
-                                {contributionRows.map((row) => {
-                                    // Calculate progress percentage toward ANNUAL goal
-                                    // For balance targets, use actualBalance; for contribution targets, use ytdActual
-                                    const progressPercent = row.annualTarget > 0
-                                        ? ((row.isBalanceTarget ? row.actualBalance : row.ytdActual) / row.annualTarget) * 100
+                                {savingsTargetRows.map(row => {
+                                    const cappedProgress = Math.min(row.progressPercent, 100);
+                                    const surplus = row.actualBalance - row.target;
+                                    return (
+                                        <tr key={row.accountId} className="hover:bg-gray-700/30">
+                                            <td className="px-4 py-3 text-sm text-gray-400">{row.priority}</td>
+                                            <td className="px-4 py-3">
+                                                <div className="text-sm font-medium text-white">{row.accountName}</div>
+                                                <div className="text-xs text-gray-500">{row.bucketName}</div>
+                                            </td>
+                                            <td className="px-4 py-3 text-sm text-right text-white font-medium">
+                                                {formatCurrency(row.actualBalance)}
+                                            </td>
+                                            <td className="px-4 py-3 text-sm text-right text-gray-400">
+                                                {row.target > 0 ? formatCurrency(row.target) : '—'}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                {row.target > 0 ? (
+                                                    <div className="flex flex-col items-center gap-1">
+                                                        <div className="w-full bg-gray-700 rounded-full h-2">
+                                                            <div
+                                                                className={`h-full rounded-full transition-all ${
+                                                                    row.status === 'overfunded' ? 'bg-blue-500' :
+                                                                    row.status === 'fully-funded' ? 'bg-green-500' :
+                                                                    'bg-yellow-500'
+                                                                }`}
+                                                                style={{ width: `${cappedProgress}%` }}
+                                                            />
+                                                        </div>
+                                                        <span className={`text-xs ${
+                                                            row.status === 'overfunded' ? 'text-blue-400' :
+                                                            row.status === 'fully-funded' ? 'text-green-400' :
+                                                            'text-yellow-400'
+                                                        }`}>
+                                                            {row.status === 'overfunded'
+                                                                ? `Fully funded · +${formatCurrency(surplus)} over`
+                                                                : row.status === 'fully-funded'
+                                                                ? 'Fully funded'
+                                                                : `${row.progressPercent.toFixed(0)}% · ${formatCurrency(row.target - row.actualBalance)} to go`
+                                                            }
+                                                        </span>
+                                                    </div>
+                                                ) : (
+                                                    <div className="text-center text-xs text-gray-500">—</div>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {/* Annual Contributions */}
+            {showTracking && contributionRows.length > 0 && (
+                <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                    <div className="p-4 border-b border-gray-700">
+                        <h3 className="text-lg font-semibold text-white">
+                            Annual Contributions {isPastYear && <span className="text-sm font-normal text-gray-500">({selectedYear})</span>}
+                        </h3>
+                        <p className="text-sm text-gray-400 mt-1">
+                            Per-year contribution goals. {isCurrentYear && 'Pacing is informational — front-loading or lump-sum contributions are fine.'}
+                            {isPastYear && 'Showing full-year totals.'}
+                        </p>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full">
+                            <thead className="bg-gray-900/50">
+                                <tr>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">#</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Account</th>
+                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Balance</th>
+                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
+                                        {isPastYear ? 'Contributed' : 'YTD Contributed'}
+                                    </th>
+                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Annual Goal</th>
+                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
+                                        <span className="inline-flex items-center gap-1 justify-end">
+                                            {isPastYear ? 'Expected EOY' : 'Expected by now'}
+                                            <Tooltip text="Projected balance at the end of the tracking month, assuming on-plan contributions and growth. Mid-month, expect to be slightly behind until the month's paychecks land." />
+                                        </span>
+                                    </th>
+                                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Pacing</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-700">
+                                {contributionRows.map(row => {
+                                    const rawProgress = row.annualTarget > 0
+                                        ? (row.ytdActual / row.annualTarget) * 100
                                         : (row.ytdActual > 0 ? 100 : 0);
-                                    // Expected progress based on month (only for contribution targets, not balance targets)
-                                    const expectedProgressPercent = row.isBalanceTarget ? 100 : (selectedMonth / 12) * 100;
-                                    // For balance targets, show overfunded amount based on current balance vs target
-                                    const overfundedAmount = row.isBalanceTarget && row.actualBalance > row.annualTarget
-                                        ? row.actualBalance - row.annualTarget
+                                    const cappedProgress = Math.min(rawProgress, 100);
+                                    const overageAmount = row.annualTarget > 0
+                                        ? Math.max(0, row.ytdActual - row.annualTarget)
                                         : 0;
+                                    const remainingToGo = row.annualTarget > 0
+                                        ? Math.max(0, row.annualTarget - row.ytdActual)
+                                        : 0;
+                                    const expectedProgressPercent = isPastYear
+                                        ? 100
+                                        : (trackingMonth / 12) * 100;
+                                    const pacingColor =
+                                        row.pacing === 'complete' ? 'text-green-400' :
+                                        row.pacing === 'ahead' ? 'text-green-400' :
+                                        row.pacing === 'on-track' ? 'text-blue-400' :
+                                        row.pacing === 'waiting' ? 'text-gray-400' :
+                                        'text-yellow-400';
+                                    const barColor =
+                                        row.pacing === 'complete' ? 'bg-green-500' :
+                                        row.pacing === 'ahead' ? 'bg-green-500' :
+                                        row.pacing === 'on-track' ? 'bg-blue-500' :
+                                        row.pacing === 'waiting' ? 'bg-gray-500' :
+                                        'bg-yellow-500';
+                                    const pacingText =
+                                        row.pacing === 'complete' && overageAmount > 0
+                                            ? `Complete · +${formatCurrency(overageAmount)} over`
+                                        : row.pacing === 'complete'
+                                            ? 'Complete · 100%'
+                                        : row.pacing === 'ahead'
+                                            ? `Ahead · ${cappedProgress.toFixed(0)}%`
+                                        : row.pacing === 'on-track'
+                                            ? `On track · ${cappedProgress.toFixed(0)}% · ${formatCurrency(remainingToGo)} to go`
+                                        : row.pacing === 'waiting'
+                                            ? `Awaiting contribution · ${formatCurrency(remainingToGo)} planned`
+                                        : `Behind · ${cappedProgress.toFixed(0)}% · ${formatCurrency(remainingToGo)} to go`;
 
                                     return (
                                         <tr key={row.accountId} className="hover:bg-gray-700/30">
-                                            <td className="px-4 py-3 text-sm text-gray-400">
-                                                {row.priority}
-                                            </td>
+                                            <td className="px-4 py-3 text-sm text-gray-400">{row.priority}</td>
                                             <td className="px-4 py-3">
                                                 <div className="text-sm font-medium text-white">{row.accountName}</div>
                                                 <div className="text-xs text-gray-500">
                                                     {row.bucketName}
+                                                    {row.isTransactionBased && ' · transaction-based'}
+                                                    {row.isSavingsAccount && ' · balance-delta'}
                                                 </div>
                                             </td>
                                             <td className="px-4 py-3 text-sm text-right text-white font-medium">
                                                 {formatCurrency(row.actualBalance)}
                                             </td>
                                             <td className={`px-4 py-3 text-sm text-right font-medium ${
-                                                row.ytdActual > 0 ? 'text-green-400' : row.ytdActual < 0 ? 'text-red-400' : 'text-gray-400'
+                                                row.ytdActual > 0 ? 'text-green-400' : 'text-gray-400'
                                             }`}>
-                                                {row.ytdActual >= 0 ? '+' : ''}{formatCurrency(row.ytdActual)}
+                                                {row.ytdActual > 0 ? '+' : ''}{formatCurrency(row.ytdActual)}
                                             </td>
                                             <td className="px-4 py-3 text-sm text-right text-gray-400">
-                                                {row.annualTarget > 0 ? (
+                                                {row.annualTarget > 0 ? formatCurrency(row.annualTarget) : '—'}
+                                            </td>
+                                            <td className="px-4 py-3 text-sm text-right">
+                                                {row.projectedBalance !== null ? (
                                                     <div>
-                                                        {formatCurrency(row.annualTarget)}
-                                                        {!row.isBalanceTarget && (
-                                                            <div className="text-xs text-gray-500">/year</div>
+                                                        <div className="text-gray-300">{formatCurrency(row.projectedBalance)}</div>
+                                                        {row.balanceVariance !== null && (
+                                                            <div className={`text-xs ${
+                                                                row.balanceVariance >= 0 ? 'text-green-400' : 'text-red-400'
+                                                            }`}>
+                                                                {row.balanceVariance >= 0 ? '+' : ''}{formatCurrency(row.balanceVariance)}
+                                                            </div>
                                                         )}
                                                     </div>
-                                                ) : '—'}
+                                                ) : <span className="text-gray-500">—</span>}
                                             </td>
                                             <td className="px-4 py-3">
                                                 {row.annualTarget > 0 ? (
                                                     <div className="flex flex-col items-center gap-1">
                                                         <div className="w-full bg-gray-700 rounded-full h-2 relative">
-                                                            {/* Expected progress marker (only for contribution targets) */}
-                                                            {!row.isBalanceTarget && (
+                                                            {!isPastYear && (
                                                                 <div
-                                                                    className="absolute top-0 bottom-0 w-px bg-gray-600/40"
+                                                                    className="absolute top-0 bottom-0 w-px bg-gray-500/60"
                                                                     style={{ left: `${expectedProgressPercent}%` }}
+                                                                    title={`Linear pace: ${expectedProgressPercent.toFixed(0)}%`}
                                                                 />
                                                             )}
-                                                            {/* Actual progress */}
                                                             <div
-                                                                className={`h-full rounded-full transition-all ${
-                                                                    row.status === 'overfunded' ? 'bg-blue-500' :
-                                                                    progressPercent >= expectedProgressPercent ? 'bg-green-500' : 'bg-yellow-500'
-                                                                }`}
-                                                                style={{ width: `${Math.min(progressPercent, 100)}%` }}
+                                                                className={`h-full rounded-full transition-all ${barColor}`}
+                                                                style={{ width: `${cappedProgress}%` }}
                                                             />
                                                         </div>
-                                                        <span className={`text-xs ${
-                                                            row.status === 'overfunded' ? 'text-blue-400' :
-                                                            progressPercent >= expectedProgressPercent ? 'text-green-400' : 'text-yellow-400'
-                                                        }`}>
-                                                            {row.status === 'overfunded'
-                                                                ? `+${formatCurrency(overfundedAmount)} over`
-                                                                : `${progressPercent.toFixed(0)}%`
-                                                            }
+                                                        <span className={`text-xs ${pacingColor}`}>
+                                                            {pacingText}
                                                         </span>
                                                     </div>
                                                 ) : (
                                                     <div className="text-center">
-                                                        <span className="text-xs text-green-400">
-                                                            {row.ytdActual >= 0 ? 'Complete' : '—'}
+                                                        <span className="text-xs text-gray-500">
+                                                            {row.ytdActual > 0 ? formatCurrency(row.ytdActual) : '—'}
                                                         </span>
                                                     </div>
                                                 )}
@@ -459,6 +723,61 @@ export default function SpendingTab() {
                 </div>
             )}
 
+            {/* Other Accounts vs Plan */}
+            {!isFutureMonth && otherAccountRows.length > 0 && (
+                <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                    <div className="p-4 border-b border-gray-700">
+                        <h3 className="text-lg font-semibold text-white">Other Accounts vs Plan</h3>
+                        <p className="text-sm text-gray-400 mt-1">
+                            Accounts without a priority bucket. Expected balance includes payroll-routed contributions (401k, employer match, ESPP) plus market growth.
+                        </p>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full">
+                            <thead className="bg-gray-900/50">
+                                <tr>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Account</th>
+                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Current</th>
+                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Annual Plan</th>
+                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
+                                        <span className="inline-flex items-center gap-1 justify-end">
+                                            {isPastYear ? 'Expected EOY' : 'Expected by now'}
+                                            <Tooltip text="Projected balance at the end of the tracking month, assuming on-plan contributions and growth. Mid-month, expect to be slightly behind until the month's paychecks land." />
+                                        </span>
+                                    </th>
+                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Variance</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-700">
+                                {otherAccountRows.map(row => (
+                                    <tr key={row.accountId} className="hover:bg-gray-700/30">
+                                        <td className="px-4 py-3 text-sm font-medium text-white">{row.accountName}</td>
+                                        <td className="px-4 py-3 text-sm text-right text-white font-medium">
+                                            {formatCurrency(row.actualBalance)}
+                                        </td>
+                                        <td className="px-4 py-3 text-sm text-right text-gray-400">
+                                            {row.annualContribution > 0 ? formatCurrency(row.annualContribution) : '—'}
+                                        </td>
+                                        <td className="px-4 py-3 text-sm text-right text-gray-400">
+                                            {formatCurrency(row.projectedBalance)}
+                                        </td>
+                                        <td className="px-4 py-3 text-sm text-right">
+                                            <span className={row.variance >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                                {row.variance >= 0 ? '+' : ''}{formatCurrency(row.variance)}
+                                                {row.variancePercent !== null && (
+                                                    <span className="text-xs text-gray-500 ml-1">
+                                                        ({row.variancePercent >= 0 ? '+' : ''}{row.variancePercent.toFixed(1)}%)
+                                                    </span>
+                                                )}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
 
             {/* Legend */}
             <div className="flex gap-6 text-sm text-gray-400">
@@ -473,4 +792,33 @@ export default function SpendingTab() {
             </div>
         </div>
     );
+}
+
+interface SavingsTargetRow {
+    priority: number;
+    accountId: string;
+    accountName: string;
+    bucketName: string;
+    target: number;
+    actualBalance: number;
+    startingBalance: number;
+    progressPercent: number;
+    status: 'fully-funded' | 'in-progress' | 'overfunded';
+}
+
+interface ContributionRow {
+    priority: number;
+    accountId: string;
+    accountName: string;
+    bucketName: string;
+    annualTarget: number;
+    ytdActual: number;
+    ytdLinearTarget: number;
+    actualBalance: number;
+    projectedBalance: number | null;
+    balanceVariance: number | null;
+    pacing: 'complete' | 'ahead' | 'on-track' | 'waiting' | 'behind';
+    isTransactionBased: boolean;
+    isSavingsAccount: boolean;
+    capType: string;
 }

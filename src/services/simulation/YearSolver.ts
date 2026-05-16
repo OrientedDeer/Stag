@@ -107,9 +107,18 @@ export interface YearSolverInput {
     // standard-deduction-headroom conversions while projecting the baseline
     // trajectory for the main sim's rate-match decisions.
     conversionMode?: 'rate-match' | 'std-ded-only';
+
+    // Precomputed conversion plan keyed by simulation year. Populated only when
+    // `assumptions.investments.rothConversionStrategy === 'dp-precomputed'`. The
+    // DP strategy looks up this year's amount and skips per-year bracket-walking.
+    dpConversionPlan?: Map<number, number>;
+    // Per-year debug-log strings from the DP solver. planConversionDP appends
+    // them to its decisions so they surface in the year inspector. Only set
+    // when the DP strategy is in use.
+    dpDebugByYear?: Map<number, string[]>;
 }
 
-interface ConversionPlan {
+export interface ConversionPlan {
     conversion: PlannedConversion | null;
     conversionTax: number;
     taxSource: ConversionTaxSource;
@@ -117,6 +126,36 @@ interface ConversionPlan {
     decisions: DecisionLogEntry[];
     taxOptimizationTarget?: TaxOptimizationTarget;
     bracketSpaceForSpending: number;  // bracket space reserved for Traditional spending
+}
+
+/**
+ * A conversion-amount-deciding strategy. Implementations decide how much (if any)
+ * Traditional → Roth conversion to do for a single year, given the year's tax
+ * context. The rate-match implementation walks brackets per-year; future DP
+ * implementations precompute a per-year plan and look it up. Both must satisfy
+ * the same input/output contract.
+ */
+export type ConversionStrategy = (
+    input: YearSolverInput,
+    baseOrdinaryIncome: number,
+    socialSecurityBenefits: number,
+    fedParams: TaxParameters,
+    stateParams: TaxParameters | null,
+    surplus: number,
+    spendingDeficit: number,
+) => ConversionPlan;
+
+/**
+ * Pick the conversion strategy for the current run. The DP path requires a
+ * precomputed plan to be on `input.dpConversionPlan` (built upstream by
+ * `runSimulationWithOptimization`); without it, the DP strategy returns a
+ * no-conversion plan for the year.
+ */
+function selectConversionStrategy(
+    strategyName: 'rate-match' | 'dp-precomputed' | undefined,
+): ConversionStrategy {
+    if (strategyName === 'dp-precomputed') return planConversionDP;
+    return planConversion;
 }
 
 // =============================================================================
@@ -150,14 +189,6 @@ function getFirstRothAccount(accounts: AnyAccount[]): InvestedAccount | null {
         (a.taxType === 'Roth 401k' || a.taxType === 'Roth IRA')
     ) as InvestedAccount | null;
 }
-
-// Reserved for future cross-account tax payment feature
-function _getFirstBrokerageAccount(accounts: AnyAccount[]): InvestedAccount | null {
-    return accounts.find(a =>
-        a instanceof InvestedAccount && a.taxType === 'Brokerage'
-    ) as InvestedAccount | null;
-}
-void _getFirstBrokerageAccount; // Suppress unused warning
 
 /**
  * Get the weighted average gain ratio for brokerage accounts.
@@ -215,6 +246,117 @@ function estimateLTCGFromDeficit(deficit: number, gainRatio: number, ltcgRate: n
 // =============================================================================
 
 /**
+ * Build the inputs for and call calculateDynamicConversionCeiling. Extracted so
+ * both planConversion (rate-match) and planConversionDP can compute the same
+ * ceiling and bracket-space figures — DP uses them only for the spending
+ * reservation gate, rate-match uses them for conversion sizing too.
+ */
+function computeCeilingContext(
+    input: YearSolverInput,
+    baseOrdinaryIncome: number,
+    socialSecurityBenefits: number,
+    fedParams: TaxParameters,
+    stateParams: TaxParameters | null,
+): {
+    ceilingResult: ReturnType<typeof calculateDynamicConversionCeiling>;
+    rmdStartAge: number;
+    yearsUntilRMD: number;
+    fixedIncomeAtRMD: ReturnType<typeof estimateFixedIncomeAtRMD>;
+    passiveIncome: number;
+    growthRate: number;
+    acaOptions?: ACAOptions;
+    traditionalBalance: number;
+} {
+    const traditionalBalance = getTotalTraditionalBalance(input.accounts);
+    const birthYear = input.year - input.currentAge;
+    const rmdStartAge = getRMDStartAge(birthYear);
+    const yearsUntilRMD = Math.max(0, rmdStartAge - input.currentAge);
+
+    const pensionIncome = input.incomes
+        .filter(i => (i as any).className?.includes('Pension'))
+        .reduce((sum, i) => sum + i.getAnnualAmount(input.year), 0);
+
+    const passiveIncome = input.incomes
+        .filter(i => (i as any).className === 'PassiveIncome' && (i as any).sourceType !== 'RMD')
+        .reduce((sum, i) => sum + i.getAnnualAmount(input.year), 0);
+
+    const futureSS = input.incomes.find(i => (i as any).className === 'FutureSocialSecurityIncome') as
+        { calculatedPIA?: number; claimingAge?: number; name?: string; amount?: number; projectedPIA?: number } | undefined;
+    const futureSS_PIA = (futureSS?.projectedPIA && futureSS.projectedPIA > 0)
+        ? futureSS.projectedPIA
+        : (futureSS?.amount ? futureSS.amount / 12 : (futureSS?.calculatedPIA ?? 0));
+    const ssClaimingAge = futureSS?.claimingAge ?? 67;
+
+    const inflationAdjusted = input.assumptions.macro.inflationAdjusted;
+    const ssCola = inflationAdjusted ? 0.02 : 0;
+    const pensionCola = inflationAdjusted ? 0.02 : 0;
+
+    const fixedIncomeAtRMD = estimateFixedIncomeAtRMD(
+        socialSecurityBenefits,
+        futureSS_PIA,
+        pensionIncome,
+        input.currentAge,
+        rmdStartAge,
+        ssClaimingAge,
+        ssCola,
+        pensionCola
+    );
+
+    const grossRoR = input.assumptions.investments.returnRates.ror || (DEFAULT_GROWTH_RATE * 100);
+    const tradAccounts = input.accounts.filter(a =>
+        a instanceof InvestedAccount &&
+        (a.taxType === 'Traditional 401k' || a.taxType === 'Traditional IRA')
+    ) as InvestedAccount[];
+    const totalTradBalance = tradAccounts.reduce((sum, a) => sum + a.vestedAmount, 0);
+    const weightedER = totalTradBalance > 0
+        ? tradAccounts.reduce((sum, a) => sum + a.expenseRatio * a.vestedAmount, 0) / totalTradBalance
+        : 0;
+    const growthRate = (grossRoR - weightedER) / 100;
+
+    let acaOptions: ACAOptions | undefined;
+    if (input.acaAware && input.currentAge < 65) {
+        const acaCliff = input.taxState.filingStatus === 'Married Filing Jointly' ? 125000 : 62500;
+        acaOptions = {
+            currentAge: input.currentAge,
+            acaSubsidyAware: true,
+            acaCliffThreshold: acaCliff,
+            estimatedSubsidyLoss: 12000,
+        };
+    }
+
+    const ceilingResult = calculateDynamicConversionCeiling(
+        traditionalBalance,
+        yearsUntilRMD,
+        fixedIncomeAtRMD.pensionAtRMD,
+        fixedIncomeAtRMD.ssAtRMD,
+        passiveIncome,
+        baseOrdinaryIncome,
+        socialSecurityBenefits,
+        0,
+        growthRate,
+        rmdStartAge,
+        fedParams,
+        input.taxState,
+        stateParams,
+        acaOptions,
+        input.baselineProjections,
+        input.assumptions,
+        input.conversionMode ?? 'rate-match'
+    );
+
+    return {
+        ceilingResult,
+        rmdStartAge,
+        yearsUntilRMD,
+        fixedIncomeAtRMD,
+        passiveIncome,
+        growthRate,
+        acaOptions,
+        traditionalBalance,
+    };
+}
+
+/**
  * Plan Roth conversion for the year.
  *
  * Conversion is planned FIRST because it affects:
@@ -247,8 +389,6 @@ function planConversion(
             decisions,
             bracketSpaceForSpending: 0,
             taxOptimizationTarget: {
-                targetTraditionalAtRMD: 0,
-                conversionNeededThisYear: 0,
                 yearsUntilRMD: 0,
                 rmdStartAge: 73,
                 targetBracketCeiling: 0,
@@ -275,8 +415,6 @@ function planConversion(
             decisions,
             bracketSpaceForSpending: 0,
             taxOptimizationTarget: {
-                targetTraditionalAtRMD: 0,
-                conversionNeededThisYear: 0,
                 yearsUntilRMD: 0,
                 rmdStartAge: 73,
                 targetBracketCeiling: 0,
@@ -290,104 +428,13 @@ function planConversion(
         };
     }
 
-    // Get RMD start age
-    const birthYear = input.year - input.currentAge;
-    const rmdStartAge = getRMDStartAge(birthYear);
-    const yearsUntilRMD = Math.max(0, rmdStartAge - input.currentAge);
-
-    // Project SS and pension at RMD age
-    const pensionIncome = input.incomes
-        .filter(i => (i as any).className?.includes('Pension'))
-        .reduce((sum, i) => sum + i.getAnnualAmount(input.year), 0);
-
-    // Extract passive income (rental, dividends, interest, etc.)
-    // Exclude RMD-sourced PassiveIncome to avoid circular dependency
-    const passiveIncome = input.incomes
-        .filter(i => (i as any).className === 'PassiveIncome' && (i as any).sourceType !== 'RMD')
-        .reduce((sum, i) => sum + i.getAnnualAmount(input.year), 0);
-
-    // Extract annual SS benefit from FutureSocialSecurityIncome and convert to monthly PIA
-    // Use `amount` (annual) as the authoritative value since it's always kept in sync,
-    // whereas `calculatedPIA` may not reflect the full benefit in all scenarios
-    const futureSS = input.incomes.find(i => (i as any).className === 'FutureSocialSecurityIncome') as
-        { calculatedPIA?: number; claimingAge?: number; name?: string; amount?: number; projectedPIA?: number } | undefined;
-    // Prefer projectedPIA for planning (before claiming), then amount/12 (when claiming), then calculatedPIA
-    // Use > 0 check instead of ?? because projectedPIA defaults to 0 (not undefined)
-    const futureSS_PIA = (futureSS?.projectedPIA && futureSS.projectedPIA > 0)
-        ? futureSS.projectedPIA
-        : (futureSS?.amount ? futureSS.amount / 12 : (futureSS?.calculatedPIA ?? 0));
-    const ssClaimingAge = futureSS?.claimingAge ?? 67;
-
-    // inflationAdjusted=true means apply inflation/COLA effects
-    // inflationAdjusted=false means no inflation/COLA (real dollars)
-    const inflationAdjusted = input.assumptions.macro.inflationAdjusted;
-    const ssCola = inflationAdjusted ? 0.02 : 0;
-    const pensionCola = inflationAdjusted ? 0.02 : 0;
-
-    const fixedIncomeAtRMD = estimateFixedIncomeAtRMD(
-        socialSecurityBenefits,
-        futureSS_PIA,
-        pensionIncome,
-        input.currentAge,
+    const {
+        ceilingResult,
         rmdStartAge,
-        ssClaimingAge,
-        ssCola,
-        pensionCola
-    );
-
-    // Calculate dynamic ceiling first (needed for target balance calculation)
-    // Use net growth rate (RoR minus expense ratio) since we're projecting actual balance growth
-    const grossRoR = input.assumptions.investments.returnRates.ror || (DEFAULT_GROWTH_RATE * 100);
-    const tradAccounts = input.accounts.filter(a =>
-        a instanceof InvestedAccount &&
-        (a.taxType === 'Traditional 401k' || a.taxType === 'Traditional IRA')
-    ) as InvestedAccount[];
-    const totalTradBalance = tradAccounts.reduce((sum, a) => sum + a.vestedAmount, 0);
-    const weightedER = totalTradBalance > 0
-        ? tradAccounts.reduce((sum, a) => sum + a.expenseRatio * a.vestedAmount, 0) / totalTradBalance
-        : 0;
-    const growthRate = (grossRoR - weightedER) / 100;
-
-    // Use ACA options if enabled
-    let acaOptions: ACAOptions | undefined;
-    if (input.acaAware && input.currentAge < 65) {
-        const acaCliff = input.taxState.filingStatus === 'Married Filing Jointly' ? 125000 : 62500;
-        acaOptions = {
-            currentAge: input.currentAge,
-            acaSubsidyAware: true,
-            acaCliffThreshold: acaCliff,
-            estimatedSubsidyLoss: 12000, // Conservative estimate
-        };
-    }
-
-    // Default to 0 = std-ded floor (RMDs ≤ standard deduction → no taxable RMD income).
-    // Older saved scenarios that predate this default get the same conservative behavior
-    // as the new default rather than the legacy 0.22 (which over-blocks 0% conversions).
-    const configTargetBracket = input.assumptions.investments.rothConversionTargetBracket ?? 0;
-
-    const ceilingResult = calculateDynamicConversionCeiling(
-        traditionalBalance,
         yearsUntilRMD,
-        fixedIncomeAtRMD.pensionAtRMD,
-        fixedIncomeAtRMD.ssAtRMD,
-        passiveIncome, // Fallback only — baselineProjections.passiveAtRMD takes priority when available
-        baseOrdinaryIncome,
-        socialSecurityBenefits,
-        0, // ltcgIncome - not known yet
-        growthRate,
-        rmdStartAge,
-        fedParams,
-        input.taxState,
-        stateParams,
+        fixedIncomeAtRMD,
         acaOptions,
-        input.baselineProjections, // Sub-sim projections — source of truth for SS/pension/passive/Trad@RMD
-        configTargetBracket,
-        input.assumptions, // Enables RMD-year-aware bracket lookup for peakRMDBracket
-        input.conversionMode ?? 'rate-match'
-    );
-
-    // Use idealTargetBalance from the ceiling calculation (new three-tier system)
-    const idealTargetBalance = ceilingResult.idealTargetBalance;
+    } = computeCeilingContext(input, baseOrdinaryIncome, socialSecurityBenefits, fedParams, stateParams);
 
     // Log ceiling decision so it's visible in the year inspector
     decisions.push({
@@ -399,32 +446,6 @@ function planConversion(
             `peak RMD ~$${Math.round(ceilingResult.peakRMD).toLocaleString()}/yr ` +
             `→ ${(ceilingResult.peakRMDBracket * 100).toFixed(0)}% bracket ` +
             `→ ceiling ${ceilingResult.conversionCeiling > 0 ? (ceilingResult.conversionCeiling * 100).toFixed(0) + '%' : 'none (0%)'}.`,
-    });
-
-    // PMT pacing has been removed. Previously the algorithm computed a per-year
-    // pacing amount = (projected − target) × annuity-factor to "spread conversions
-    // smoothly toward target." With iterative refinement, projected converges to
-    // target so PMT trends to zero — at which point it would block productive
-    // free conversions. Sizing is now controlled entirely by bracket-space and
-    // the per-year ceiling.
-    const projectedAtRMD = ceilingResult.projectedBalanceAtRMD;
-
-    // DEBUG: surface the inputs to idealTargetBalance so we can see year-over-year
-    // what's varying when something looks off. After iteration converges, the
-    // target should be invariant across simulation years.
-    const baselineProjUsed = input.baselineProjections;
-    decisions.push({
-        category: 'conversion',
-        description:
-            `[DEBUG INPUTS] baseline=${baselineProjUsed ? 'YES' : 'NO'} ` +
-            `(SS@RMD $${Math.round(baselineProjUsed?.ssAtRMD ?? fixedIncomeAtRMD.ssAtRMD).toLocaleString()}, ` +
-            `pension@RMD $${Math.round(baselineProjUsed?.pensionAtRMD ?? fixedIncomeAtRMD.pensionAtRMD).toLocaleString()}, ` +
-            `passive@RMD $${Math.round(baselineProjUsed?.passiveAtRMD ?? passiveIncome).toLocaleString()}, ` +
-            `tradBal@RMD-baseline $${Math.round(baselineProjUsed?.traditionalBalanceAtRMD ?? 0).toLocaleString()}). ` +
-            `currentTradBal $${Math.round(traditionalBalance).toLocaleString()}, ` +
-            `target $${Math.round(idealTargetBalance).toLocaleString()}, ` +
-            `projected@RMD $${Math.round(projectedAtRMD).toLocaleString()}, ` +
-            `targetBracket ${configTargetBracket > 0 ? (configTargetBracket * 100).toFixed(0) + '%' : 'std-ded floor'}.`,
     });
 
     // Build constraint details for debugging
@@ -456,55 +477,17 @@ function planConversion(
 
     // Build the tax optimization target info for UI display
     const taxOptimizationTarget: TaxOptimizationTarget = {
-        targetTraditionalAtRMD: idealTargetBalance,
-        conversionNeededThisYear: 0, // PMT pacing removed; sizing now governed by bracket space alone
         yearsUntilRMD,
         rmdStartAge,
         targetBracketCeiling: ceilingResult.conversionCeiling,
         bracketSpaceThisYear: ceilingResult.bracketSpacePerYear,
         ssAtRMD: fixedIncomeAtRMD.ssAtRMD,
         pensionAtRMD: fixedIncomeAtRMD.pensionAtRMD,
-        idealTarget: idealTargetBalance,
-        realisticTarget: ceilingResult.projectedBalanceAtRMD,
+        projectedBalanceAtRMD: ceilingResult.projectedBalanceAtRMD,
         currentTraditionalBalance: traditionalBalance,
-        // On track when projected RMD-year balance is at or below target
-        onTrack: ceilingResult.projectedBalanceAtRMD <= idealTargetBalance,
         constraintDetails,
+        rateMatchWalk: ceilingResult.rateMatchWalk,
     };
-
-    // If projected balance at RMD is below target, normally we'd skip — but
-    // free conversions (no current-year tax cost) are allowed to proceed
-    // because they can't waste money you'd otherwise pay at the same or lower
-    // rate. Only block when the conversion would actually cost something.
-    //
-    // "Free" here means the user has standard-deduction headroom: current
-    // ordinary income is below the deduction, so the first dollars of
-    // conversion produce no taxable income. (Note: this is a conservative
-    // proxy — adding conversion can also increase SS taxability via the
-    // torpedo, but the first dollar is essentially free if income is under
-    // the deduction. Bracket-space and SS-torpedo logic downstream will cap
-    // the actual converted amount appropriately.)
-    const projectedBalanceAtRMD = ceilingResult.projectedBalanceAtRMD;
-    const hasStdDedHeadroom = baseOrdinaryIncome < fedParams.standardDeduction;
-
-    if (projectedBalanceAtRMD <= idealTargetBalance && !hasStdDedHeadroom) {
-        decisions.push({
-            category: 'conversion',
-            amount: idealTargetBalance,
-            description: `Skipped Roth conversion: Projected balance at RMD ($${Math.round(projectedBalanceAtRMD).toLocaleString()}) below target ($${Math.round(idealTargetBalance).toLocaleString()}) and no standard-deduction headroom for free conversions.`,
-        });
-        taxOptimizationTarget.limitingFactor = 'BALANCE_BELOW_TARGET';
-        taxOptimizationTarget.actualConversion = 0;
-        return {
-            conversion: null,
-            conversionTax: 0,
-            taxSource: 'SURPLUS',
-            additionalOrdinaryIncome: 0,
-            decisions,
-            bracketSpaceForSpending: 0,
-            taxOptimizationTarget,
-        };
-    }
 
     // Calculate bracket space
     let bracketSpace = Math.max(0, ceilingResult.bracketSpacePerYear);
@@ -790,19 +773,11 @@ function planConversion(
     if (conversionAmount <= 0) {
         // Log why conversion was skipped — but don't overwrite limitingFactor if already set (e.g., by ACA cliff)
         if (!taxOptimizationTarget.limitingFactor) {
-            if (projectedBalanceAtRMD <= idealTargetBalance) {
-                decisions.push({
-                    category: 'conversion',
-                    description: `Skipped Roth conversion: Projected balance at RMD ($${Math.round(projectedBalanceAtRMD).toLocaleString()}) below target ($${Math.round(idealTargetBalance).toLocaleString()}). Future RMDs will fill 0% bracket.`,
-                });
-                taxOptimizationTarget.limitingFactor = 'BALANCE_BELOW_TARGET';
-            } else {
-                decisions.push({
-                    category: 'conversion',
-                    description: `Skipped Roth conversion: no bracket space available.`,
-                });
-                taxOptimizationTarget.limitingFactor = 'NO_BRACKET_SPACE';
-            }
+            decisions.push({
+                category: 'conversion',
+                description: `Skipped Roth conversion: no bracket space available.`,
+            });
+            taxOptimizationTarget.limitingFactor = 'NO_BRACKET_SPACE';
         }
         taxOptimizationTarget.actualConversion = 0;
         return {
@@ -816,11 +791,25 @@ function planConversion(
         };
     }
 
+    // Estimate LTCG that the year will realize. Brokerage gets sold for two
+    // reasons: covering this year's spending deficit, and covering the
+    // conversion tax (when taxSource is BROKERAGE). The LTCG bumps the
+    // conversion's tax cost (LTCG rate goes from 0% → 15% / 15% → 20% as
+    // ordinary income rises), so we want it reflected in the displayed
+    // conversionTax. Same formula the ACA-cliff binary-search uses above.
+    const ltcgGainRatio = getBrokerageGainRatio(input.accounts);
+    const ltcgRateAtIncome = getLTCGRateForIncome(baseOrdinaryIncome + conversionAmount, fedParams);
+    const estimatedLTCGForYear = estimateLTCGFromDeficit(
+        Math.max(0, spendingDeficit),
+        ltcgGainRatio,
+        ltcgRateAtIncome,
+    );
+
     // Calculate conversion tax
     const conversionTaxResult = calculateEffectiveConversionTax(
         baseOrdinaryIncome,
         socialSecurityBenefits,
-        0, // ltcgIncome
+        estimatedLTCGForYear,
         conversionAmount,
         input.taxState.filingStatus,
         fedParams,
@@ -912,6 +901,272 @@ function planConversion(
         decisions,
         bracketSpaceForSpending,
         taxOptimizationTarget,
+    };
+}
+
+/**
+ * DP-precomputed conversion strategy. Reads `input.dpConversionPlan?.get(year)`
+ * (set upstream by `runSimulationWithOptimization`), clamps to available trad
+ * balance, then runs the same downstream tax-payment / account-selection logic
+ * as the rate-match path.
+ *
+ * Skip cases: not retired, optimization off, no DP plan, no traditional
+ * balance, no source/target account. Falls through with the no-conversion
+ * shape — same as rate-match's skip cases.
+ */
+function planConversionDP(
+    input: YearSolverInput,
+    baseOrdinaryIncome: number,
+    socialSecurityBenefits: number,
+    fedParams: TaxParameters,
+    stateParams: TaxParameters | null,
+    surplus: number,
+    spendingDeficit: number,
+): ConversionPlan {
+    const decisions: DecisionLogEntry[] = [];
+    const traditionalBalance = getTotalTraditionalBalance(input.accounts);
+    let bracketSpaceForSpending = 0;
+
+    // Surface DP solver's per-year debug into the year inspector.
+    const dpDebugLines = input.dpDebugByYear?.get(input.year) ?? [];
+    for (const line of dpDebugLines) {
+        decisions.push({ category: 'conversion', description: line });
+    }
+
+    const skipReturn = (limitingFactor: ConversionLimitingFactor, description?: string): ConversionPlan => {
+        if (description) {
+            decisions.push({ category: 'conversion', description });
+        }
+        return {
+            conversion: null,
+            conversionTax: 0,
+            taxSource: 'SURPLUS',
+            additionalOrdinaryIncome: 0,
+            decisions,
+            bracketSpaceForSpending,
+            taxOptimizationTarget: {
+                yearsUntilRMD: Math.max(0, getRMDStartAge(input.year - input.currentAge) - input.currentAge),
+                rmdStartAge: getRMDStartAge(input.year - input.currentAge),
+                targetBracketCeiling: 0,
+                bracketSpaceThisYear: 0,
+                ssAtRMD: 0,
+                pensionAtRMD: 0,
+                currentTraditionalBalance: traditionalBalance,
+                limitingFactor,
+                actualConversion: 0,
+            },
+        };
+    };
+
+    if (!input.taxOptimizationEnabled || !input.isRetired) {
+        return skipReturn('NOT_RETIRED');
+    }
+    if (traditionalBalance <= 0) {
+        return skipReturn('TRADITIONAL_DEPLETED', 'Skipped Roth conversion: no Traditional balance available.');
+    }
+
+    // Spending-deficit reservation. Mirrors planConversion: when there's a
+    // Roth-bound spending deficit (brokerage can't cover it) and we're not
+    // penalized (age >= 59.5), reserve trad bracket space for direct
+    // Traditional withdrawal — avoids the wasteful "convert → withdraw Roth
+    // for spending" round-trip. Downstream in solveRetirementYear, a non-zero
+    // bracketSpaceForSpending puts trad first (capped at the reservation).
+    //
+    // Gate uses the same conversion ceiling as rate-match (computed via
+    // computeCeilingContext). When ceiling=0% (future RMDs land in 12% or
+    // lower, no incentive to convert into a taxable bracket), reservation
+    // only fires if first-dollar marginal is also 0% — preventing the
+    // bracket-crossing $219k withdrawals at 22% marginal that the older
+    // hardcoded-24% gate produced.
+    const penaltyApplies = input.currentAge < 59.5;
+    if (spendingDeficit > 0 && !penaltyApplies) {
+        const { ceilingResult } = computeCeilingContext(
+            input, baseOrdinaryIncome, socialSecurityBenefits, fedParams, stateParams,
+        );
+        const conversionCeiling = ceilingResult.conversionCeiling;
+        const bracketSpacePerYear = Math.max(0, ceilingResult.bracketSpacePerYear);
+
+        const brokerageBalance = getTotalBrokerageBalance(input.accounts);
+        const brokerageGainRatio = getBrokerageGainRatio(input.accounts);
+        const ltcgRate = getLTCGRateForIncome(baseOrdinaryIncome, fedParams);
+        const brokerageCoverage = brokerageBalance * (1 - brokerageGainRatio * ltcgRate);
+        const rothBoundDeficit = Math.max(0, spendingDeficit - brokerageCoverage);
+
+        if (rothBoundDeficit > 0 && bracketSpacePerYear > 0) {
+            const marginalResult = TaxService.getMarginalTaxRate(
+                Math.max(0, baseOrdinaryIncome - fedParams.standardDeduction),
+                fedParams,
+            );
+            const stateRate = stateParams
+                ? TaxService.getMarginalTaxRate(
+                    Math.max(0, baseOrdinaryIncome - stateParams.standardDeduction),
+                    stateParams,
+                  ).rate
+                : 0;
+
+            const gateOk = marginalResult.rate <= conversionCeiling + 0.005;
+            if (gateOk) {
+                const totalEffectiveRate = marginalResult.rate + stateRate;
+                const grossForDeficit = rothBoundDeficit / Math.max(0.5, 1 - totalEffectiveRate);
+                bracketSpaceForSpending = Math.min(grossForDeficit, bracketSpacePerYear, traditionalBalance);
+
+                decisions.push({
+                    category: 'conversion',
+                    amount: bracketSpaceForSpending,
+                    description: `Reserved $${Math.round(bracketSpaceForSpending).toLocaleString()} bracket space ` +
+                        `for Traditional spending (Roth-bound deficit $${Math.round(rothBoundDeficit).toLocaleString()} ` +
+                        `of $${Math.round(spendingDeficit).toLocaleString()} total, ` +
+                        `brokerage covers $${Math.round(brokerageCoverage).toLocaleString()}, ` +
+                        `marginal rate ${(marginalResult.rate * 100).toFixed(1)}% ` +
+                        `vs ${(conversionCeiling * 100).toFixed(0)}% ceiling).`,
+                });
+            } else {
+                decisions.push({
+                    category: 'conversion',
+                    description: `[DEBUG DP exec] year=${input.year}: spending reservation skipped — ` +
+                        `marginal ${(marginalResult.rate * 100).toFixed(1)}% > ceiling ${(conversionCeiling * 100).toFixed(0)}%; ` +
+                        `Roth-bound deficit $${Math.round(rothBoundDeficit).toLocaleString()} stays Roth-funded.`,
+                });
+            }
+        }
+    }
+
+    // Look up the precomputed conversion amount. Clamp to (traditional - reserved
+    // for spending) so the conversion doesn't compete with the spending withdrawal.
+    const availableTradForConversion = Math.max(0, traditionalBalance - bracketSpaceForSpending);
+    const targetConversion = input.dpConversionPlan?.get(input.year) ?? 0;
+    const conversionAmount = Math.max(0, Math.min(targetConversion, availableTradForConversion));
+
+    // Log real-sim balances side-by-side with DP's projection so we can spot
+    // when DP's forward-sweep state diverges from reality.
+    const realRothBalance = input.accounts
+        .filter(a => a instanceof InvestedAccount && a.taxType === 'Roth IRA')
+        .reduce((sum, a) => sum + (a as InvestedAccount).vestedAmount, 0);
+    const realBrokerageBalance = getTotalBrokerageBalance(input.accounts);
+    decisions.push({
+        category: 'conversion',
+        description:
+            `[DEBUG DP exec] year=${input.year}: plan-lookup=${'$' + Math.round(targetConversion).toLocaleString()}, ` +
+            `traditional=${'$' + Math.round(traditionalBalance).toLocaleString()}, ` +
+            `bracketSpaceForSpending=${'$' + Math.round(bracketSpaceForSpending).toLocaleString()}, ` +
+            `availableTrad=${'$' + Math.round(availableTradForConversion).toLocaleString()}, ` +
+            `clampedAmount=${'$' + Math.round(conversionAmount).toLocaleString()}, ` +
+            `dpPlanProvided=${input.dpConversionPlan ? 'yes' : 'no'}`,
+    });
+    decisions.push({
+        category: 'conversion',
+        description:
+            `[DEBUG DP reality] year=${input.year}: ` +
+            `realTrad=${'$' + Math.round(traditionalBalance).toLocaleString()}, ` +
+            `realRoth=${'$' + Math.round(realRothBalance).toLocaleString()}, ` +
+            `realBrokerage=${'$' + Math.round(realBrokerageBalance).toLocaleString()} ` +
+            `— compare against [DEBUG DP solver] tradEntering and [DEBUG DP baseline] for divergence.`,
+    });
+
+    if (conversionAmount <= 0) {
+        // Spending reservation may still be nonzero — preserve it via skipReturn.
+        return skipReturn(
+            bracketSpaceForSpending > 0 ? 'SPENDING_DEFICIT' : 'NO_BRACKET_SPACE',
+            `DP-precomputed conversion for year ${input.year}: $0 (no plan or zero amount).`,
+        );
+    }
+
+    const sourceAccount = getFirstTraditionalAccount(input.accounts);
+    const targetAccount = getFirstRothAccount(input.accounts);
+    if (!sourceAccount || !targetAccount) {
+        return skipReturn('TRADITIONAL_DEPLETED', 'Skipped DP conversion: no valid source or target account.');
+    }
+
+    // ACA options for the tax cost calc (same logic as rate-match path).
+    let acaOptions: ACAOptions | undefined;
+    if (input.acaAware && input.currentAge < 65) {
+        const acaCliff = input.taxState.filingStatus === 'Married Filing Jointly' ? 125000 : 62500;
+        acaOptions = {
+            currentAge: input.currentAge,
+            acaSubsidyAware: true,
+            acaCliffThreshold: acaCliff,
+            estimatedSubsidyLoss: 12000,
+        };
+    }
+
+    // Estimate this year's LTCG (mirrors the rate-match path) so the
+    // conversion's displayed Tax Cost reflects the LTCG bump.
+    const ltcgGainRatio = getBrokerageGainRatio(input.accounts);
+    const ltcgRateAtIncome = getLTCGRateForIncome(baseOrdinaryIncome + conversionAmount, fedParams);
+    const estimatedLTCGForYear = estimateLTCGFromDeficit(
+        Math.max(0, spendingDeficit),
+        ltcgGainRatio,
+        ltcgRateAtIncome,
+    );
+
+    const conversionTaxResult = calculateEffectiveConversionTax(
+        baseOrdinaryIncome,
+        socialSecurityBenefits,
+        estimatedLTCGForYear,
+        conversionAmount,
+        input.taxState.filingStatus,
+        fedParams,
+        stateParams,
+        acaOptions,
+    );
+    const conversionTax = conversionTaxResult.taxIncrease;
+    const conversionFedTax = conversionTaxResult.breakdown.federalOrdinaryTaxCost
+        + conversionTaxResult.breakdown.ssTorpedoCost
+        + conversionTaxResult.breakdown.ltcgBumpCost
+        + conversionTaxResult.breakdown.niitCost;
+    const conversionStateTax = conversionTaxResult.breakdown.stateTaxCost;
+
+    // Tax payment source selection (same priority as rate-match).
+    const brokerageBalance = getTotalBrokerageBalance(input.accounts);
+    let taxSource: ConversionTaxSource;
+    if (surplus >= conversionTax) {
+        taxSource = 'SURPLUS';
+    } else if (brokerageBalance >= conversionTax) {
+        taxSource = 'BROKERAGE';
+    } else {
+        taxSource = 'WITHHOLD';
+    }
+
+    const conversion: PlannedConversion = {
+        amount: conversionAmount,
+        fromAccountId: sourceAccount.id,
+        toAccountId: targetAccount.id,
+        taxSource,
+        taxAmount: conversionTax,
+        federalTaxCost: conversionFedTax,
+        stateTaxCost: conversionStateTax,
+        netToRoth: conversionAmount,
+        reason: `DP-precomputed conversion of $${Math.round(conversionAmount).toLocaleString()}. Tax paid from ${taxSource.toLowerCase()}.`,
+    };
+
+    decisions.push({
+        category: 'conversion',
+        account: sourceAccount.name,
+        amount: conversionAmount,
+        description: `DP-planned: $${Math.round(conversionAmount).toLocaleString()} from ${sourceAccount.name} to Roth. Tax: $${Math.round(conversionTax).toLocaleString()} (${taxSource.toLowerCase()}).`,
+    });
+
+    const rmdStartAge = getRMDStartAge(input.year - input.currentAge);
+    return {
+        conversion,
+        conversionTax,
+        taxSource,
+        additionalOrdinaryIncome: conversionAmount,
+        decisions,
+        bracketSpaceForSpending,
+        taxOptimizationTarget: {
+            yearsUntilRMD: Math.max(0, rmdStartAge - input.currentAge),
+            rmdStartAge,
+            targetBracketCeiling: 0,
+            bracketSpaceThisYear: conversionAmount,
+            ssAtRMD: 0,
+            pensionAtRMD: 0,
+            currentTraditionalBalance: traditionalBalance,
+            limitingFactor: conversionAmount >= availableTradForConversion - 1
+                ? 'TRADITIONAL_DEPLETED'
+                : 'BRACKET_CEILING',
+            actualConversion: conversionAmount,
+        },
     };
 }
 
@@ -1058,7 +1313,10 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     );
 
     // Step B: Plan Roth conversion FIRST
-    const conversionPlan = planConversion(
+    const conversionStrategy = selectConversionStrategy(
+        input.assumptions.investments.rothConversionStrategy,
+    );
+    const conversionPlan = conversionStrategy(
         input,
         baseOrdinaryIncome,
         socialSecurityBenefits,

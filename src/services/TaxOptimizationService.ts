@@ -20,52 +20,52 @@ import {
 import { getRMDStartAge, getDistributionPeriod } from '../data/RMDData';
 
 // ============================================================================
-// Constants (exported for testing)
+// Constants
 // ============================================================================
 
 /** Minimum contribution gap to recommend 401k increase */
-export const MIN_401K_GAP_FOR_RECOMMENDATION = 1000;
+const MIN_401K_GAP_FOR_RECOMMENDATION = 1000;
 
 /** Minimum tax savings to recommend 401k increase */
-export const MIN_401K_SAVINGS_FOR_RECOMMENDATION = 100;
+const MIN_401K_SAVINGS_FOR_RECOMMENDATION = 100;
 
 /** Minimum contribution gap to recommend HSA increase */
-export const MIN_HSA_GAP_FOR_RECOMMENDATION = 500;
+const MIN_HSA_GAP_FOR_RECOMMENDATION = 500;
 
 /** Minimum tax savings to recommend HSA increase */
-export const MIN_HSA_SAVINGS_FOR_RECOMMENDATION = 50;
+const MIN_HSA_SAVINGS_FOR_RECOMMENDATION = 50;
 
 /** Bracket headroom threshold for bracket management recommendation */
-export const BRACKET_HEADROOM_THRESHOLD = 10000;
+const BRACKET_HEADROOM_THRESHOLD = 10000;
 
 /** Minimum conversion amount to consider for Roth recommendation */
-export const MIN_ROTH_CONVERSION_AMOUNT = 5000;
+const MIN_ROTH_CONVERSION_AMOUNT = 5000;
 
 /** Minimum target rate for Roth conversions (always fill at least to 22% bracket) */
-export const MIN_CONVERSION_TARGET_RATE = 0.22;
+const MIN_CONVERSION_TARGET_RATE = 0.22;
 
 /** Fallback retirement tax rate when simulation data unavailable */
-export const FALLBACK_RETIREMENT_TAX_RATE = 0.22;
+const FALLBACK_RETIREMENT_TAX_RATE = 0.22;
 
 /** Fallback annual growth rate for investment projections */
-export const FALLBACK_GROWTH_RATE = 0.07;
+const FALLBACK_GROWTH_RATE = 0.07;
 
 /** Impact thresholds for 401k recommendations */
-export const IMPACT_HIGH_401K_THRESHOLD = 2000;
-export const IMPACT_MEDIUM_401K_THRESHOLD = 500;
+const IMPACT_HIGH_401K_THRESHOLD = 2000;
+const IMPACT_MEDIUM_401K_THRESHOLD = 500;
 
 /** Impact thresholds for HSA recommendations */
-export const IMPACT_HIGH_HSA_THRESHOLD = 1000;
-export const IMPACT_MEDIUM_HSA_THRESHOLD = 300;
+const IMPACT_HIGH_HSA_THRESHOLD = 1000;
+const IMPACT_MEDIUM_HSA_THRESHOLD = 300;
 
 /** Minimum federal-bracket gap (in absolute terms) to flag RMD pressure */
-export const RMD_PRESSURE_MIN_GAP = 0.04;
+const RMD_PRESSURE_MIN_GAP = 0.04;
 
 /** Federal-bracket gap considered "high impact" pressure */
-export const RMD_PRESSURE_HIGH_GAP = 0.10;
+const RMD_PRESSURE_HIGH_GAP = 0.10;
 
 /** Minimum traditional balance at RMD age to consider pressure analysis */
-export const RMD_PRESSURE_MIN_BALANCE = 50000;
+const RMD_PRESSURE_MIN_BALANCE = 50000;
 
 
 // ============================================================================
@@ -550,7 +550,7 @@ function getBracketCeilingForRate(
  * Returns null if analysis isn't applicable (no traditional balance projected, no RMD
  * year in simulation, etc.).
  */
-export function analyzeRMDTaxPressure(
+function analyzeRMDTaxPressure(
     simulation: SimulationYear[],
     assumptions: AssumptionsState,
     taxState: TaxState
@@ -773,7 +773,7 @@ function estimateLifetimeTaxImpact(
 /**
  * Generate a recommendation flagging RMD tax pressure and suggesting Roth contributions.
  */
-export function generateRMDPressureRecommendation(
+function generateRMDPressureRecommendation(
     pressure: RMDPressureAnalysis | null
 ): TaxRecommendation | null {
     if (!pressure || !pressure.hasPressure) return null;
@@ -968,9 +968,7 @@ export interface ConversionScheduleEntry {
     bracketSpaceAvailable: number | null;
     /** Target bracket ceiling the solver was aiming to fill (0..1, e.g. 0.22 = 22%). Null if no V2 target */
     targetBracketCeiling: number | null;
-    /** Target Traditional balance the solver is aiming for at RMD age */
-    targetBalanceAtRMD: number | null;
-    /** Projected Traditional balance at RMD age given the current trajectory (compare to target — same = on track) */
+    /** Projected Traditional balance at RMD age given the current trajectory */
     projectedBalanceAtRMD: number | null;
 }
 
@@ -1066,9 +1064,7 @@ export function analyzeConversionPlan(
         const limitingFactor = target?.limitingFactor ?? null;
         const bracketSpaceAvailable = target?.bracketSpaceThisYear ?? null;
         const targetBracketCeiling = target?.targetBracketCeiling ?? null;
-        const targetBalanceAtRMD = target?.targetTraditionalAtRMD ?? null;
-        // realisticTarget on TaxOptimizationTarget = projected Traditional balance at RMD given the trajectory
-        const projectedBalanceAtRMD = target?.realisticTarget ?? null;
+        const projectedBalanceAtRMD = target?.projectedBalanceAtRMD ?? null;
 
         schedule.push({
             year: simYear.year,
@@ -1082,7 +1078,6 @@ export function analyzeConversionPlan(
             limitingFactor,
             bracketSpaceAvailable,
             targetBracketCeiling,
-            targetBalanceAtRMD,
             projectedBalanceAtRMD
         });
         totalConverted += conv.amount;

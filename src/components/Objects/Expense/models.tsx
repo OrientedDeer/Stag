@@ -78,7 +78,7 @@ export abstract class BaseExpense implements Expense {
  * This consolidates the common pattern shared by: VacationExpense, SubscriptionExpense,
  * EmergencyExpense, TransportExpense, FoodExpense, and OtherExpense.
  */
-export abstract class SimpleExpense extends BaseExpense {
+abstract class SimpleExpense extends BaseExpense {
   constructor(
     id: string,
     name: string,
@@ -93,48 +93,43 @@ export abstract class SimpleExpense extends BaseExpense {
   }
 
   /**
-   * Subclasses must implement this to create a new instance of themselves.
+   * Clone this instance as the same concrete subclass, with `amount` scaled
+   * by the given factor. Uses `this.constructor` so each subclass inherits the
+   * behavior without having to implement its own factory.
    */
-  protected abstract createInstance(
-    id: string,
-    name: string,
-    amount: number,
-    frequency: ExpenseFrequency,
-    startDate?: Date,
-    endDate?: Date,
-    startMilestoneId?: string,
-    endMilestoneId?: string,
-  ): AnyExpense;
-
-  increment(assumptions: AssumptionsState): AnyExpense {
-    const generalInflation = this.getGeneralInflation(assumptions);
-    const result = this.createInstance(
+  private cloneWithAmount(newAmount: number): AnyExpense {
+    type SimpleExpenseCtor = new (
+      id: string,
+      name: string,
+      amount: number,
+      frequency: ExpenseFrequency,
+      startDate?: Date,
+      endDate?: Date,
+      startMilestoneId?: string,
+      endMilestoneId?: string,
+    ) => AnyExpense;
+    const Ctor = this.constructor as SimpleExpenseCtor;
+    const result = new Ctor(
       this.id,
       this.name,
-      this.amount * (1 + generalInflation),
+      newAmount,
       this.frequency,
       this.startDate,
       this.endDate,
       this.startMilestoneId,
-      this.endMilestoneId
+      this.endMilestoneId,
     );
     result.isDiscretionary = this.isDiscretionary;
     return result;
   }
 
+  increment(assumptions: AssumptionsState): AnyExpense {
+    const generalInflation = this.getGeneralInflation(assumptions);
+    return this.cloneWithAmount(this.amount * (1 + generalInflation));
+  }
+
   adjustAmount(ratio: number): AnyExpense {
-    const result = this.createInstance(
-      this.id,
-      this.name,
-      this.amount * ratio,
-      this.frequency,
-      this.startDate,
-      this.endDate,
-      this.startMilestoneId,
-      this.endMilestoneId
-    );
-    result.isDiscretionary = this.isDiscretionary;
-    return result;
+    return this.cloneWithAmount(this.amount * ratio);
   }
 }
 
@@ -697,59 +692,15 @@ export class HealthcareExpense extends BaseExpense {
   }
 }
 
-export class VacationExpense extends SimpleExpense {
-  protected createInstance(
-    id: string, name: string, amount: number, frequency: ExpenseFrequency, startDate?: Date, endDate?: Date,
-    startMilestoneId?: string, endMilestoneId?: string
-  ): VacationExpense {
-    return new VacationExpense(id, name, amount, frequency, startDate, endDate, startMilestoneId, endMilestoneId);
-  }
-}
-
-export class SubscriptionExpense extends SimpleExpense {
-  protected createInstance(
-    id: string, name: string, amount: number, frequency: ExpenseFrequency, startDate?: Date, endDate?: Date,
-    startMilestoneId?: string, endMilestoneId?: string
-  ): SubscriptionExpense {
-    return new SubscriptionExpense(id, name, amount, frequency, startDate, endDate, startMilestoneId, endMilestoneId);
-  }
-}
-
-export class EmergencyExpense extends SimpleExpense {
-  protected createInstance(
-    id: string, name: string, amount: number, frequency: ExpenseFrequency, startDate?: Date, endDate?: Date,
-    startMilestoneId?: string, endMilestoneId?: string
-  ): EmergencyExpense {
-    return new EmergencyExpense(id, name, amount, frequency, startDate, endDate, startMilestoneId, endMilestoneId);
-  }
-}
-
-export class TransportExpense extends SimpleExpense {
-  protected createInstance(
-    id: string, name: string, amount: number, frequency: ExpenseFrequency, startDate?: Date, endDate?: Date,
-    startMilestoneId?: string, endMilestoneId?: string
-  ): TransportExpense {
-    return new TransportExpense(id, name, amount, frequency, startDate, endDate, startMilestoneId, endMilestoneId);
-  }
-}
-
-export class FoodExpense extends SimpleExpense {
-  protected createInstance(
-    id: string, name: string, amount: number, frequency: ExpenseFrequency, startDate?: Date, endDate?: Date,
-    startMilestoneId?: string, endMilestoneId?: string
-  ): FoodExpense {
-    return new FoodExpense(id, name, amount, frequency, startDate, endDate, startMilestoneId, endMilestoneId);
-  }
-}
-
-export class OtherExpense extends SimpleExpense {
-  protected createInstance(
-    id: string, name: string, amount: number, frequency: ExpenseFrequency, startDate?: Date, endDate?: Date,
-    startMilestoneId?: string, endMilestoneId?: string
-  ): OtherExpense {
-    return new OtherExpense(id, name, amount, frequency, startDate, endDate, startMilestoneId, endMilestoneId);
-  }
-}
+// Each of these is a SimpleExpense — they exist as named classes so production
+// code can pattern-match via `instanceof` and so saved data round-trips through
+// className. Inflation + adjustAmount behavior lives on the parent.
+export class VacationExpense extends SimpleExpense {}
+export class SubscriptionExpense extends SimpleExpense {}
+export class EmergencyExpense extends SimpleExpense {}
+export class TransportExpense extends SimpleExpense {}
+export class FoodExpense extends SimpleExpense {}
+export class OtherExpense extends SimpleExpense {}
 
 export class CharityExpense extends BaseExpense {
   constructor(
