@@ -119,21 +119,27 @@ export function useArrowKeyAdjust(
  * Wire Shift+← / Shift+→ to cycle through a list of sub-tabs (with wraparound).
  * Plain ←/→ remain free for within-tab use (e.g. month navigation in Budget).
  *
- * After a keyboard-driven tab change, focus moves into the new tab's content
- * — landing on the first visible focusable element inside <main> that isn't
- * a tab button. The flag gates this so mouse clicks calling setActiveTab
- * don't steal focus from wherever the user clicked.
+ * After ANY tab change (keyboard or mouse click), focus moves into the new
+ * tab's content — landing on the first visible focusable element. Without
+ * this, clicking a tab leaves focus on the tab button itself, and plain
+ * arrow keys end up scrolling the overflow-x-auto tab bar horizontally
+ * instead of doing something useful in the new tab.
+ *
+ * Initial mount is skipped via a previous-value ref so we don't steal focus
+ * on page load.
  */
 export function useSubTabKeyboardNav(
     tabs: readonly string[],
     activeTab: string,
     setActiveTab: (tab: string) => void
 ) {
-    const shouldFocusAfterChangeRef = useRef(false);
+    const prevActiveTabRef = useRef(activeTab);
 
     useEffect(() => {
-        if (!shouldFocusAfterChangeRef.current) return;
-        shouldFocusAfterChangeRef.current = false;
+        // Only fire when activeTab actually changes (skips initial mount and
+        // React strict-mode double-invoke, since both leave the ref unchanged).
+        if (prevActiveTabRef.current === activeTab) return;
+        prevActiveTabRef.current = activeTab;
         // Find the visible sub-tab content container.
         let container: HTMLElement | null = null;
         const candidates = document.querySelectorAll<HTMLElement>('[data-sub-tab-content]');
@@ -145,11 +151,6 @@ export function useSubTabKeyboardNav(
         }
         if (!container) container = document.getElementById('main-content');
         if (!container) return;
-
-        // Scroll the container to the top of the scroll area. This pushes any
-        // header/chart above the fold so the user's eye is drawn to the new
-        // content. Done BEFORE focusing so the focus ring lands in view.
-        container.scrollIntoView({ block: 'start', behavior: 'auto' });
 
         const isVisible = (el: HTMLElement): boolean => {
             if (el.offsetParent === null) return false;
@@ -190,7 +191,6 @@ export function useSubTabKeyboardNav(
             const nextIdx = e.key === 'ArrowLeft'
                 ? (idx - 1 + tabs.length) % tabs.length
                 : (idx + 1) % tabs.length;
-            shouldFocusAfterChangeRef.current = true;
             setActiveTab(tabs[nextIdx]);
         };
         window.addEventListener('keydown', handler);
