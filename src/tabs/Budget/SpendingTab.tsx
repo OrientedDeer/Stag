@@ -475,7 +475,7 @@ export default function SpendingTab() {
                         <div className="shrink-0">
                             <ToggleInput
                                 label="Project non-discretionary"
-                                enabled={projectFuture}
+                                enabled={projectFuture ?? false}
                                 setEnabled={setProjectFuture}
                                 tooltip="When viewing a future month, show non-discretionary expenses at their budgeted amount instead of $0."
                             />

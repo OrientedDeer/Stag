@@ -16,6 +16,7 @@ const sampleCSV: ParsedCSV = {
         ['1/1/2026', 'Coffee', '-4.50'],
         ['1/2/2026', 'Paycheck', '2500'],
     ],
+    hasHeaders: true,
 };
 
 const sampleMatchedFormat: SavedCSVMapping = {
