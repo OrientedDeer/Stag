@@ -20,14 +20,18 @@ export const ChartTooltipPortal = ({ children }: ChartTooltipPortalProps) => {
     useEffect(() => {
         setMounted(true);
 
-        const handleMouseMove = (e: MouseEvent) => {
+        // Pointer events cover both mouse and touch with one listener — fixes
+        // mobile, where mousemove never fires and the tooltip stayed null.
+        const handlePointerEvent = (e: PointerEvent) => {
             setMousePos({ x: e.clientX, y: e.clientY });
         };
 
-        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('pointermove', handlePointerEvent);
+        window.addEventListener('pointerdown', handlePointerEvent);
         return () => {
             setMounted(false);
-            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('pointermove', handlePointerEvent);
+            window.removeEventListener('pointerdown', handlePointerEvent);
         };
     }, []);
 
