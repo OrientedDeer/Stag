@@ -9,10 +9,6 @@ import {
   CSRSPensionIncome,
   PassiveIncome,
   WindfallIncome,
-  ContributionGrowthStrategy,
-  AutoMax401kOption,
-  ESPPContributionType,
-  PensionSystem,
   calculateSocialSecurityStartDate,
   IncomeFrequency
 } from './models';
@@ -20,15 +16,23 @@ import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput";
 import { NameInput } from "../../Layout/InputFields/NameInput";
 import { DropdownInput } from "../../Layout/InputFields/DropdownInput";
 import { NumberInput } from "../../Layout/InputFields/NumberInput";
-import { ToggleInput } from "../../Layout/InputFields/ToggleInput";
 import { AccountContext } from "../Accounts/AccountContext";
 import { InvestedAccount, ESPPAccount } from "../../Objects/Accounts/models";
-import { PercentageInput } from "../../Layout/InputFields/PercentageInput";
 import { TriggerSelector } from "../../Layout/InputFields/TriggerSelector";
 import { AssumptionsContext, BUILTIN_MILESTONE_IDS, getLifeExpectancy, getBirthYear } from "../Assumptions/AssumptionsContext";
 import { getClaimingAdjustment } from "../../../data/SocialSecurityData";
 import { useModalAccessibility } from "../../../hooks/useModalAccessibility";
-import { getFERSMRA, checkFERSEligibility, checkCSRSEligibility, calculateFERSBasicBenefit, calculateCSRSBasicBenefit } from "../../../data/PensionData";
+import { calculateFERSBasicBenefit, calculateCSRSBasicBenefit } from "../../../data/PensionData";
+import { IncomeTypeSelector } from "./IncomeTypeSelector";
+import { WorkIncomeFields } from "./WorkIncomeFields";
+import { FERSPensionFields } from "./FERSPensionFields";
+import { CSRSPensionFields } from "./CSRSPensionFields";
+import {
+    IncomeFormState,
+    PassiveSourceType,
+    EarnedIncomeOption,
+    getInitialFormState
+} from "./incomeFormTypes";
 
 const generateUniqueId = () =>
     `INC-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -36,86 +40,6 @@ const generateUniqueId = () =>
 interface AddIncomeModalProps {
     isOpen: boolean;
     onClose: () => void;
-}
-
-type PassiveSourceType = 'Dividend' | 'Rental' | 'Royalty' | 'Other';
-type EarnedIncomeOption = 'Yes' | 'No';
-
-interface IncomeFormState {
-    name: string;
-    amount: number;
-    frequency: IncomeFrequency;
-    startDate: Date | undefined;
-    endDate: Date | undefined;
-    startMilestoneId: string | undefined;
-    endMilestoneId: string | undefined;
-    earnedIncome: EarnedIncomeOption;
-    // Work income / 401k fields
-    preTax401k: number;
-    insurance: number;
-    roth401k: number;
-    employerMatchType: 'fixed' | 'percent';
-    employerMatch: number;
-    employerMatchPercent: number;
-    employerMatchMax: number;
-    matchAccountId: string;
-    contributionGrowthStrategy: ContributionGrowthStrategy;
-    hsaContribution: number;
-    autoMax401k: AutoMax401kOption;
-    pensionSystem: PensionSystem;
-    // ESPP fields
-    esppContributionType: ESPPContributionType;
-    esppContributionAmount: number;
-    esppDiscountPercent: number;
-    esppHasLookback: boolean;
-    esppAccountId: string;
-    // Social Security fields
-    claimingAge: number;
-    // Passive income fields
-    sourceType: PassiveSourceType;
-    // Pension fields
-    pensionYearsOfService: number;
-    pensionHigh3Salary: number;
-    pensionRetirementAge: number;
-    autoCalculateHigh3: boolean;
-    linkedIncomeId: string;
-}
-
-function getInitialFormState(): IncomeFormState {
-    return {
-        name: '',
-        amount: 0,
-        frequency: 'Monthly',
-        startDate: new Date(Date.UTC(new Date().getFullYear(), 0, 1)),
-        endDate: undefined,
-        startMilestoneId: undefined,
-        endMilestoneId: undefined,
-        earnedIncome: 'Yes',
-        preTax401k: 0,
-        insurance: 0,
-        roth401k: 0,
-        employerMatchType: 'fixed',
-        employerMatch: 0,
-        employerMatchPercent: 0,
-        employerMatchMax: 0,
-        matchAccountId: '',
-        contributionGrowthStrategy: 'FIXED',
-        hsaContribution: 0,
-        autoMax401k: 'custom',
-        pensionSystem: 'NONE',
-        esppContributionType: 'NONE',
-        esppContributionAmount: 0,
-        esppDiscountPercent: 15,
-        esppHasLookback: true,
-        esppAccountId: '',
-        claimingAge: 67,
-        sourceType: 'Dividend',
-        pensionYearsOfService: 20,
-        pensionHigh3Salary: 0,
-        pensionRetirementAge: 62,
-        autoCalculateHigh3: false,
-        linkedIncomeId: '',
-    };
 }
 
 const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
@@ -156,14 +80,12 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
         (acc) => acc instanceof InvestedAccount &&
                  acc.isContributionEligible === true &&
                  (acc.taxType === 'Roth 401k' || acc.taxType === 'Traditional 401k')
-    );
+    ) as InvestedAccount[];
 
-    // Get ESPP accounts for linking
-    const esppAccounts = accounts.filter(acc => acc instanceof ESPPAccount);
+    const esppAccounts = accounts.filter(acc => acc instanceof ESPPAccount) as ESPPAccount[];
 
-    // Get work incomes for linking to pension (for auto High-3 calculation)
     const { incomes } = useContext(IncomeContext);
-    const workIncomes = incomes.filter(inc => inc instanceof WorkIncome);
+    const workIncomes = incomes.filter(inc => inc instanceof WorkIncome) as WorkIncome[];
 
     useEffect(() => {
         if (selectedType === WorkIncome && contributionAccounts.length > 0 && !form.matchAccountId) {
@@ -213,7 +135,6 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
     const handleAdd = () => {
         if (!selectedType || !form.name.trim() || dateError) return;
 
-        // Use form dates/milestones directly - they're already the right types
         const finalStartDate = form.startDate;
         const finalEndDate = form.endDate;
         const finalStartMilestoneId = form.startMilestoneId;
@@ -321,16 +242,6 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
 
     if (!isOpen) return null;
 
-    const incomeCategories = [
-        { label: 'Work', class: WorkIncome },
-        { label: 'Current Social Security', class: CurrentSocialSecurityIncome },
-        { label: 'Future Social Security', class: FutureSocialSecurityIncome },
-        { label: 'FERS Pension', class: FERSPensionIncome },
-        { label: 'CSRS Pension', class: CSRSPensionIncome },
-        { label: 'Passive Income', class: PassiveIncome },
-        { label: 'Windfall', class: WindfallIncome }
-    ];
-
     return (
         <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
@@ -348,17 +259,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                 </h2>
 
                 {step === 'select' ? (
-                    <div className="grid grid-cols-2 gap-4">
-                        {incomeCategories.map((cat) => (
-                            <button
-                                key={cat.label}
-                                onClick={() => handleTypeSelect(cat.class)}
-                                className="flex items-center justify-center p-2 h-12 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-xl border border-gray-700 transition-all font-medium text-sm text-center"
-                            >
-                                {cat.label}
-                            </button>
-                        ))}
-                    </div>
+                    <IncomeTypeSelector onSelect={handleTypeSelect} />
                 ) : (
                     <div className="space-y-4">
                         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
@@ -413,141 +314,12 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                 <CurrencyInput label="Gross Amount" value={form.amount} onChange={(val) => updateForm('amount', val)} tooltip="Your gross income before any deductions (taxes, 401k, insurance, etc.). This is NOT your take-home pay." />
                             )}
                             {selectedType === WorkIncome && (
-                                <>
-                                    <DropdownInput
-                                        label="401k Contributions"
-                                        onChange={(val) => updateForm('autoMax401k', val as AutoMax401kOption)}
-                                        options={[
-                                            { value: 'disabled', label: 'None' },
-                                            { value: 'custom', label: 'Custom Amount' },
-                                            { value: 'traditional', label: 'Max Pre-Tax' },
-                                            { value: 'roth', label: 'Max Roth' }
-                                        ]}
-                                        value={form.autoMax401k}
-                                        tooltip="None: No 401k. Custom: Enter amounts manually. Max Pre-Tax: Auto-max traditional 401k. Max Roth: Auto-max Roth 401k."
-                                    />
-                                    {form.autoMax401k === 'custom' && (
-                                        <>
-                                            <CurrencyInput label="Pre-Tax 401k/403b" value={form.preTax401k} onChange={(val) => updateForm('preTax401k', val)} tooltip="Monthly contribution to traditional 401k/403b. Reduces taxable income now, taxed on withdrawal." />
-                                            <CurrencyInput label="Roth 401k" value={form.roth401k} onChange={(val) => updateForm('roth401k', val)} tooltip="Monthly contribution to Roth 401k. Taxed now, but grows and withdraws tax-free." />
-                                            {(form.preTax401k > 0 || form.roth401k > 0) && (
-                                                <DropdownInput
-                                                    label="Contribution Growth"
-                                                    onChange={(val) => updateForm('contributionGrowthStrategy', val as ContributionGrowthStrategy)}
-                                                    options={[
-                                                        { value: 'FIXED', label: 'Remain Fixed' },
-                                                        { value: 'GROW_WITH_SALARY', label: 'Grow with Salary' },
-                                                        { value: 'TRACK_ANNUAL_MAX', label: 'Track Annual Maximum' }
-                                                    ]}
-                                                    value={form.contributionGrowthStrategy}
-                                                    tooltip="Fixed: contributions stay the same. Grow with Salary: increase with raises. Track Max: always contribute IRS maximum."
-                                                />
-                                            )}
-                                        </>
-                                    )}
-                                    {form.autoMax401k !== 'disabled' && (
-                                        <>
-                                            <DropdownInput
-                                                label="Employer Match"
-                                                options={[{ value: 'fixed', label: 'Fixed Amount' }, { value: 'percent', label: '% of Earnings' }]}
-                                                value={form.employerMatchType}
-                                                onChange={(val) => updateForm('employerMatchType', val as 'fixed' | 'percent')}
-                                                tooltip="Fixed: a set dollar amount per year. % of Earnings: a percentage of salary up to an optional annual cap."
-                                            />
-                                            {form.employerMatchType === 'fixed' && (
-                                                <CurrencyInput label="Match Amount" value={form.employerMatch} onChange={(val) => updateForm('employerMatch', val)} tooltip="Annual amount your employer contributes to your 401k." />
-                                            )}
-                                            {form.employerMatchType === 'percent' && (
-                                                <>
-                                                    <NumberInput label="Match %" value={form.employerMatchPercent} onChange={(val) => updateForm('employerMatchPercent', val)} min={0} max={100} tooltip="Percentage of your salary your employer matches (e.g., 4 for 4%)." />
-                                                    <CurrencyInput label="Annual Cap" value={form.employerMatchMax} onChange={(val) => updateForm('employerMatchMax', val)} tooltip="Maximum annual employer match in dollars. This cap is fixed and does not adjust for inflation. Leave at 0 for no cap." />
-                                                </>
-                                            )}
-                                            {(form.employerMatchType === 'fixed' ? form.employerMatch > 0 : form.employerMatchPercent > 0) && (
-                                                <DropdownInput
-                                                    label="Match Account"
-                                                    onChange={(val) => updateForm('matchAccountId', val)}
-                                                    options={contributionAccounts.map(acc => ({ value: acc.id, label: acc.name }))}
-                                                    value={form.matchAccountId}
-                                                    tooltip="Which 401k account receives your employer's matching contributions."
-                                                />
-                                            )}
-                                        </>
-                                    )}
-                                    <CurrencyInput label="Insurance" value={form.insurance} onChange={(val) => updateForm('insurance', val)} tooltip="Monthly pre-tax deduction for health, dental, vision insurance." />
-                                    <CurrencyInput label="HSA Contribution" value={form.hsaContribution} onChange={(val) => updateForm('hsaContribution', val)} tooltip="Monthly HSA contribution. Triple tax advantage: pre-tax, grows tax-free, tax-free withdrawals for medical expenses." />
-                                    {/* ESPP Section */}
-                                    <DropdownInput
-                                        label="ESPP Contribution"
-                                        onChange={(val) => updateForm('esppContributionType', val as ESPPContributionType)}
-                                        options={[
-                                            { value: 'NONE', label: 'None' },
-                                            { value: 'PERCENTAGE', label: '% of Salary' },
-                                            { value: 'FIXED', label: 'Fixed Amount' }
-                                        ]}
-                                        value={form.esppContributionType}
-                                        tooltip="Employee Stock Purchase Plan. Contribute up to 15% of salary to buy company stock at a discount."
-                                    />
-                                    {form.esppContributionType !== 'NONE' && (
-                                        <>
-                                            {form.esppContributionType === 'PERCENTAGE' ? (
-                                                <PercentageInput
-                                                    label="Contribution"
-                                                    value={form.esppContributionAmount}
-                                                    onChange={(val) => updateForm('esppContributionAmount', val)}
-                                                    max={15}
-                                                    tooltip="Percentage of salary to contribute to ESPP. Most plans cap at 10-15%."
-                                                />
-                                            ) : (
-                                                <CurrencyInput
-                                                    label="Contribution Amount"
-                                                    value={form.esppContributionAmount}
-                                                    onChange={(val) => updateForm('esppContributionAmount', val)}
-                                                    tooltip="Fixed amount per pay period to contribute to ESPP."
-                                                />
-                                            )}
-                                            <PercentageInput
-                                                label="Discount"
-                                                value={form.esppDiscountPercent}
-                                                onChange={(val) => updateForm('esppDiscountPercent', val)}
-                                                max={15}
-                                                tooltip="ESPP discount off stock price. Typical is 15%."
-                                            />
-                                            <ToggleInput
-                                                label="Lookback"
-                                                enabled={form.esppHasLookback}
-                                                setEnabled={(val) => updateForm('esppHasLookback', val)}
-                                                tooltip="If enabled, discount applies to lower of grant or purchase date price, increasing effective discount."
-                                            />
-                                            {esppAccounts.length > 0 ? (
-                                                <DropdownInput
-                                                    label="ESPP Account"
-                                                    onChange={(val) => updateForm('esppAccountId', val)}
-                                                    options={esppAccounts.map(acc => ({ value: acc.id, label: acc.name }))}
-                                                    value={form.esppAccountId}
-                                                    tooltip="Account where ESPP shares will be deposited."
-                                                />
-                                            ) : (
-                                                <div className="col-span-full bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-3 text-xs text-yellow-300">
-                                                    <span className="font-semibold">No ESPP Account</span>
-                                                    <p className="text-yellow-400/80 mt-1">Create an ESPP account in the Accounts tab to track your ESPP purchases.</p>
-                                                </div>
-                                            )}
-                                        </>
-                                    )}
-                                    {/* Pension System Selection */}
-                                    <DropdownInput
-                                        label="Pension System"
-                                        onChange={(val) => updateForm('pensionSystem', val as PensionSystem)}
-                                        options={[
-                                            { value: 'NONE', label: 'None' },
-                                            { value: 'FERS', label: 'FERS (Federal)' },
-                                            { value: 'CSRS', label: 'CSRS (Federal)' }
-                                        ]}
-                                        value={form.pensionSystem}
-                                        tooltip="If this job is covered by a federal pension system, select it here. This helps track your High-3 salary for pension calculations."
-                                    />
-                                </>
+                                <WorkIncomeFields
+                                    form={form}
+                                    updateForm={updateForm}
+                                    contributionAccounts={contributionAccounts}
+                                    esppAccounts={esppAccounts}
+                                />
                             )}
                             {/* Hide date fields for auto-calculated income types */}
                             {selectedType !== FutureSocialSecurityIncome &&
@@ -588,16 +360,14 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                 </>
                             )}
                             {selectedType === CurrentSocialSecurityIncome && (
-                                <>
-                                    <div className="col-span-3 bg-gray-800/50 border border-gray-700 rounded-lg p-4 text-sm">
-                                        <div className="font-semibold text-gray-200 mb-2">Current Social Security Benefits</div>
-                                        <div className="text-gray-400 space-y-1">
-                                            <p className="wrap-break-word">• For disability (SSDI), survivor, or retirement benefits you're already receiving</p>
-                                            <p className="wrap-break-word">• Enter your current monthly benefit amount</p>
-                                            <p className="wrap-break-word">• Amount will automatically adjust with COLA (Cost of Living Adjustment)</p>
-                                        </div>
+                                <div className="col-span-3 bg-gray-800/50 border border-gray-700 rounded-lg p-4 text-sm">
+                                    <div className="font-semibold text-gray-200 mb-2">Current Social Security Benefits</div>
+                                    <div className="text-gray-400 space-y-1">
+                                        <p className="wrap-break-word">• For disability (SSDI), survivor, or retirement benefits you're already receiving</p>
+                                        <p className="wrap-break-word">• Enter your current monthly benefit amount</p>
+                                        <p className="wrap-break-word">• Amount will automatically adjust with COLA (Cost of Living Adjustment)</p>
                                     </div>
-                                </>
+                                </div>
                             )}
                             {selectedType === SocialSecurityIncome && (
                                 <>
@@ -617,7 +387,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                         <div className="flex justify-between items-center mt-1">
                                             <span className="text-gray-300">Benefits Start:</span>
                                             <span className="font-medium text-blue-200">
-                                                {getBirthYear(assumptions.milestones) + form.claimingAge}
+                                                {pensionBirthYear + form.claimingAge}
                                             </span>
                                         </div>
                                         <div className="text-xs text-gray-400 mt-2">
@@ -631,195 +401,23 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                 </>
                             )}
                             {selectedType === PassiveIncome && (
-                                <>
-                                    <DropdownInput label="Source Type" value={form.sourceType} onChange={(val) => updateForm('sourceType', val as PassiveSourceType)} options={["Dividend", "Rental", "Royalty", "Other"]} tooltip="Type of passive income. May affect tax treatment." />
-                                </>
+                                <DropdownInput label="Source Type" value={form.sourceType} onChange={(val) => updateForm('sourceType', val as PassiveSourceType)} options={["Dividend", "Rental", "Royalty", "Other"]} tooltip="Type of passive income. May affect tax treatment." />
                             )}
-                            {/* FERS Pension Fields */}
                             {selectedType === FERSPensionIncome && (
-                                <>
-                                    <NumberInput
-                                        label="Years of Service"
-                                        value={form.pensionYearsOfService}
-                                        onChange={(val) => updateForm('pensionYearsOfService', val)}
-                                        tooltip="Total years of creditable federal service under FERS"
-                                    />
-                                    {/* High-3 Salary - either auto-calculate from work income or manual entry */}
-                                    {workIncomes.length > 0 ? (
-                                        <>
-                                            <div className="col-span-2 flex flex-col gap-3">
-                                                <ToggleInput
-                                                    label="Auto High-3"
-                                                    enabled={form.autoCalculateHigh3}
-                                                    setEnabled={(val) => updateForm('autoCalculateHigh3', val)}
-                                                    tooltip="Calculate High-3 from projected salaries at retirement"
-                                                />
-                                                {form.autoCalculateHigh3 ? (
-                                                    <DropdownInput
-                                                        label="Link to Income"
-                                                        value={form.linkedIncomeId}
-                                                        onChange={(val) => updateForm('linkedIncomeId', val)}
-                                                        options={workIncomes.map(inc => ({ value: inc.id, label: inc.name }))}
-                                                        tooltip="High-3 will be calculated from your top 3 salary years at retirement"
-                                                    />
-                                                ) : (
-                                                    <CurrencyInput
-                                                        label="High-3 Salary"
-                                                        value={form.pensionHigh3Salary}
-                                                        onChange={(val) => updateForm('pensionHigh3Salary', val)}
-                                                        tooltip="Average of your highest 3 consecutive years of basic pay"
-                                                    />
-                                                )}
-                                            </div>
-                                        </>
-                                    ) : (
-                                        <CurrencyInput
-                                            label="High-3 Salary"
-                                            value={form.pensionHigh3Salary}
-                                            onChange={(val) => updateForm('pensionHigh3Salary', val)}
-                                            tooltip="Average of your highest 3 consecutive years of basic pay"
-                                        />
-                                    )}
-                                    <NumberInput
-                                        label="Retirement Age"
-                                        value={form.pensionRetirementAge}
-                                        onChange={(val) => updateForm('pensionRetirementAge', val)}
-                                        tooltip={`MRA is ${getFERSMRA(pensionBirthYear)} for your birth year. Age 62 with 5+ years or MRA with 30+ years for full benefits.`}
-                                    />
-                                    <div className="col-span-3 bg-green-900/20 border border-green-700/50 rounded-lg p-4 text-sm">
-                                        <div className="font-semibold text-green-200 mb-2">FERS Pension Estimate</div>
-                                        <div className="text-gray-300 space-y-1">
-                                            <div className="flex justify-between">
-                                                <span>Estimated Annual Benefit:</span>
-                                                <span className="font-bold text-green-300">
-                                                    {form.autoCalculateHigh3
-                                                        ? "Auto Calculated"
-                                                        : `$${calculateFERSBasicBenefit(form.pensionYearsOfService, form.pensionHigh3Salary, form.pensionRetirementAge).toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr`
-                                                    }
-                                                </span>
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span>High-3:</span>
-                                                <span className="text-green-200">
-                                                    {form.autoCalculateHigh3
-                                                        ? "Auto Calculated"
-                                                        : `$${form.pensionHigh3Salary.toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr`
-                                                    }
-                                                </span>
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span>Benefits Start:</span>
-                                                <span className="text-green-200">
-                                                    {getBirthYear(assumptions.milestones) + form.pensionRetirementAge}
-                                                </span>
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span>Eligibility:</span>
-                                                <span className={checkFERSEligibility(form.pensionRetirementAge, form.pensionYearsOfService, pensionBirthYear).eligible ? "text-green-300" : "text-yellow-300"}>
-                                                    {checkFERSEligibility(form.pensionRetirementAge, form.pensionYearsOfService, pensionBirthYear).message}
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div className="text-xs text-gray-400 mt-2">
-                                            Formula: {form.pensionRetirementAge >= 62 && form.pensionYearsOfService >= 20 ? "1.1%" : "1%"} x Years x High-3.
-                                            {form.autoCalculateHigh3 && " High-3 will be calculated from your top 3 salary years at retirement."}
-                                            {!form.autoCalculateHigh3 && " COLA is reduced (CPI-1% if inflation > 3%)."}
-                                        </div>
-                                    </div>
-                                </>
+                                <FERSPensionFields
+                                    form={form}
+                                    updateForm={updateForm}
+                                    workIncomes={workIncomes}
+                                    pensionBirthYear={pensionBirthYear}
+                                />
                             )}
-                            {/* CSRS Pension Fields */}
                             {selectedType === CSRSPensionIncome && (
-                                <>
-                                    <NumberInput
-                                        label="Years of Service"
-                                        value={form.pensionYearsOfService}
-                                        onChange={(val) => updateForm('pensionYearsOfService', val)}
-                                        tooltip="Total years of creditable federal service under CSRS"
-                                    />
-                                    {/* High-3 Salary - either auto-calculate from work income or manual entry */}
-                                    {workIncomes.length > 0 ? (
-                                        <>
-                                            <div className="col-span-2 flex flex-col gap-3">
-                                                <ToggleInput
-                                                    label="Auto High-3"
-                                                    enabled={form.autoCalculateHigh3}
-                                                    setEnabled={(val) => updateForm('autoCalculateHigh3', val)}
-                                                    tooltip="Calculate High-3 from projected salaries at retirement"
-                                                />
-                                                {form.autoCalculateHigh3 ? (
-                                                    <DropdownInput
-                                                        label="Link to Income"
-                                                        value={form.linkedIncomeId}
-                                                        onChange={(val) => updateForm('linkedIncomeId', val)}
-                                                        options={workIncomes.map(inc => ({ value: inc.id, label: inc.name }))}
-                                                        tooltip="High-3 will be calculated from your top 3 salary years at retirement"
-                                                    />
-                                                ) : (
-                                                    <CurrencyInput
-                                                        label="High-3 Salary"
-                                                        value={form.pensionHigh3Salary}
-                                                        onChange={(val) => updateForm('pensionHigh3Salary', val)}
-                                                        tooltip="Average of your highest 3 consecutive years of basic pay"
-                                                    />
-                                                )}
-                                            </div>
-                                        </>
-                                    ) : (
-                                        <CurrencyInput
-                                            label="High-3 Salary"
-                                            value={form.pensionHigh3Salary}
-                                            onChange={(val) => updateForm('pensionHigh3Salary', val)}
-                                            tooltip="Average of your highest 3 consecutive years of basic pay"
-                                        />
-                                    )}
-                                    <NumberInput
-                                        label="Retirement Age"
-                                        value={form.pensionRetirementAge}
-                                        onChange={(val) => updateForm('pensionRetirementAge', val)}
-                                        tooltip="Age 55 with 30+ years, age 60 with 20+ years, or age 62 with 5+ years for full benefits"
-                                    />
-                                    <div className="col-span-3 bg-green-900/20 border border-green-700/50 rounded-lg p-4 text-sm">
-                                        <div className="font-semibold text-green-200 mb-2">CSRS Pension Estimate</div>
-                                        <div className="text-gray-300 space-y-1">
-                                            <div className="flex justify-between">
-                                                <span>Estimated Annual Benefit:</span>
-                                                <span className="font-bold text-green-300">
-                                                    {form.autoCalculateHigh3
-                                                        ? "Auto Calculated"
-                                                        : `$${calculateCSRSBasicBenefit(form.pensionYearsOfService, form.pensionHigh3Salary).toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr`
-                                                    }
-                                                </span>
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span>High-3:</span>
-                                                <span className="text-green-200">
-                                                    {form.autoCalculateHigh3
-                                                        ? "Auto Calculated"
-                                                        : `$${form.pensionHigh3Salary.toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr`
-                                                    }
-                                                </span>
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span>Benefits Start:</span>
-                                                <span className="text-green-200">
-                                                    {getBirthYear(assumptions.milestones) + form.pensionRetirementAge}
-                                                </span>
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span>Eligibility:</span>
-                                                <span className={checkCSRSEligibility(form.pensionRetirementAge, form.pensionYearsOfService).eligible ? "text-green-300" : "text-yellow-300"}>
-                                                    {checkCSRSEligibility(form.pensionRetirementAge, form.pensionYearsOfService).message}
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div className="text-xs text-gray-400 mt-2">
-                                            Formula: 1.5%x5yr + 1.75%x5yr + 2%xremaining (max 80% of High-3).
-                                            {form.autoCalculateHigh3 && " High-3 will be calculated from your top 3 salary years at retirement."}
-                                            {!form.autoCalculateHigh3 && " Full COLA (CPI). No Social Security coverage."}
-                                        </div>
-                                    </div>
-                                </>
+                                <CSRSPensionFields
+                                    form={form}
+                                    updateForm={updateForm}
+                                    workIncomes={workIncomes}
+                                    pensionBirthYear={pensionBirthYear}
+                                />
                             )}
                             {selectedType !== SocialSecurityIncome &&
                              selectedType !== CurrentSocialSecurityIncome &&
@@ -840,7 +438,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                         <p className="wrap-break-word">- Benefit calculated from your 35 highest earning years</p>
                                         <p className="wrap-break-word">- Uses SSA wage indexing and bend points formula</p>
                                         <p className="wrap-break-word">- Claiming at {form.claimingAge}: {(getClaimingAdjustment(form.claimingAge) * 100).toFixed(1)}% of FRA benefit</p>
-                                        <p className="wrap-break-word">- Benefits start in {getBirthYear(assumptions.milestones) + form.claimingAge}</p>
+                                        <p className="wrap-break-word">- Benefits start in {pensionBirthYear + form.claimingAge}</p>
                                         <p className="wrap-break-word">- Benefits end at life expectancy (age {getLifeExpectancy(assumptions.milestones)})</p>
                                     </div>
                                 </div>
