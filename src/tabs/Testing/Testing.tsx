@@ -6613,6 +6613,8 @@ export default function Testing() {
                     {TESTING_TABS.map(tab => (
                         <button
                             key={tab}
+                            role="tab"
+                            aria-selected={activeTab === tab}
                             onClick={() => handleTabChange(tab)}
                             className={`flex-1 min-w-fit font-semibold px-4 py-3 transition-colors duration-200 whitespace-nowrap ${
                                 activeTab === tab
@@ -6626,23 +6628,25 @@ export default function Testing() {
                 </div>
 
                 {/* Tab Content */}
-                {activeTab === 'Simulation Debug' && <SimulationDebugTab />}
-                {activeTab === 'Tax Debug' && <TaxDebugTab />}
-                {activeTab === 'Tax Brackets' && <TaxBracketVisualizationTab />}
-                {activeTab === 'Social Security' && <SocialSecurityDebugTab />}
-                {activeTab === 'Pensions' && <PensionDebugTab />}
-                {activeTab === 'RMDs' && <RMDDebugTab />}
-                {activeTab === 'Roth Analysis' && <RothAnalysisDebugTab />}
-                {activeTab === 'Tax Opt' && <TaxOptimizationDebugTab />}
-                {activeTab === 'Roth Debug' && <RothConversionDebugTab />}
-                {activeTab === 'Ratios' && <RatiosDebugTab />}
-                {activeTab === 'Mortgage' && <MortgageTestingTab />}
-                {activeTab === 'QR Code' && <QRCodeDebugTab />}
-                {activeTab === 'Withdrawals' && <WithdrawalDebugTab />}
-                {activeTab === 'Accounts' && <AccountsDebugTab />}
-                {activeTab === 'Income & Expenses' && <IncomeExpensesDebugTab />}
-                {activeTab === 'Cash Flow' && <CashFlowDebugTab />}
-                {activeTab === 'Validation' && <ValidationDebugTab />}
+                <div data-sub-tab-content>
+                    {activeTab === 'Simulation Debug' && <SimulationDebugTab />}
+                    {activeTab === 'Tax Debug' && <TaxDebugTab />}
+                    {activeTab === 'Tax Brackets' && <TaxBracketVisualizationTab />}
+                    {activeTab === 'Social Security' && <SocialSecurityDebugTab />}
+                    {activeTab === 'Pensions' && <PensionDebugTab />}
+                    {activeTab === 'RMDs' && <RMDDebugTab />}
+                    {activeTab === 'Roth Analysis' && <RothAnalysisDebugTab />}
+                    {activeTab === 'Tax Opt' && <TaxOptimizationDebugTab />}
+                    {activeTab === 'Roth Debug' && <RothConversionDebugTab />}
+                    {activeTab === 'Ratios' && <RatiosDebugTab />}
+                    {activeTab === 'Mortgage' && <MortgageTestingTab />}
+                    {activeTab === 'QR Code' && <QRCodeDebugTab />}
+                    {activeTab === 'Withdrawals' && <WithdrawalDebugTab />}
+                    {activeTab === 'Accounts' && <AccountsDebugTab />}
+                    {activeTab === 'Income & Expenses' && <IncomeExpensesDebugTab />}
+                    {activeTab === 'Cash Flow' && <CashFlowDebugTab />}
+                    {activeTab === 'Validation' && <ValidationDebugTab />}
+                </div>
             </div>
         </div>
     );

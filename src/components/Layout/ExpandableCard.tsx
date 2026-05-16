@@ -1,4 +1,4 @@
-import { useState, ReactNode, ReactElement } from "react";
+import { useEffect, useRef, useState, ReactNode, ReactElement } from "react";
 import { ChevronIcon } from "./Icons/ChevronIcon.js";
 
 interface ExpandableCardProps {
@@ -34,11 +34,29 @@ export function ExpandableCard({
     ariaLabelType = "item"
 }: ExpandableCardProps): ReactElement {
     const [isExpanded, setIsExpanded] = useState(false);
+    const expandButtonRef = useRef<HTMLButtonElement>(null);
+    const collapseButtonRef = useRef<HTMLButtonElement>(null);
+    // Track the previous isExpanded so we only refocus when it ACTUALLY changes.
+    // A plain "first render" ref would mis-fire under React strict mode, which
+    // re-runs effects on mount — and refs persist across that re-run, so the
+    // second invocation would think mount was already past and steal focus.
+    const prevExpandedRef = useRef(isExpanded);
+
+    // The collapsed and expanded views render entirely different DOM, so the
+    // toggle button gets unmounted and recreated on every toggle — browser
+    // drops focus. Move focus to whichever toggle is now visible.
+    useEffect(() => {
+        if (prevExpandedRef.current === isExpanded) return;
+        prevExpandedRef.current = isExpanded;
+        const target = isExpanded ? collapseButtonRef.current : expandButtonRef.current;
+        target?.focus({ preventScroll: true });
+    }, [isExpanded]);
 
     if (!isExpanded) {
         return (
             <div className="w-full">
                 <button
+                    ref={expandButtonRef}
                     onClick={() => setIsExpanded(true)}
                     aria-expanded="false"
                     aria-label={`Expand ${name} ${ariaLabelType} details`}
@@ -75,6 +93,7 @@ export function ExpandableCard({
                 <div className="flex items-center gap-2 ml-auto">
                     {headerActions}
                     <button
+                        ref={collapseButtonRef}
                         onClick={() => setIsExpanded(false)}
                         aria-expanded="true"
                         aria-label={`Collapse ${name} ${ariaLabelType} details`}

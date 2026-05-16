@@ -1,14 +1,28 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type React from 'react';
 
+// Input types that don't accept text — arrows on them are navigation/toggle,
+// not cursor movement, so they shouldn't suppress global keyboard shortcuts.
+const NON_TYPING_INPUT_TYPES = new Set([
+    'range', 'checkbox', 'radio', 'button', 'submit', 'reset',
+    'file', 'color', 'image',
+]);
+
 /**
- * True when focus is in something that consumes keystrokes (input, textarea,
- * select, contenteditable). Global keyboard shortcuts should bail out here.
+ * True when focus is in something that consumes keystrokes for text input —
+ * `<textarea>`, `<select>`, contenteditable, and `<input>` types that accept
+ * text (text/email/password/number/date/etc.). Range sliders, checkboxes, and
+ * radios are NOT considered typing targets: their arrow keys are navigation,
+ * not text editing, so global Shift+arrow shortcuts can still fire from them.
  */
 function isTypingTarget(target: EventTarget | null): boolean {
     if (!target || !(target instanceof HTMLElement)) return false;
     const tag = target.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+    if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
+    if (tag === 'INPUT') {
+        const type = (target as HTMLInputElement).type;
+        return !NON_TYPING_INPUT_TYPES.has(type);
+    }
     if (target.isContentEditable) return true;
     return false;
 }
@@ -104,12 +118,66 @@ export function useArrowKeyAdjust(
 /**
  * Wire Shift+← / Shift+→ to cycle through a list of sub-tabs (with wraparound).
  * Plain ←/→ remain free for within-tab use (e.g. month navigation in Budget).
+ *
+ * After a keyboard-driven tab change, focus moves into the new tab's content
+ * — landing on the first visible focusable element inside <main> that isn't
+ * a tab button. The flag gates this so mouse clicks calling setActiveTab
+ * don't steal focus from wherever the user clicked.
  */
 export function useSubTabKeyboardNav(
     tabs: readonly string[],
     activeTab: string,
     setActiveTab: (tab: string) => void
 ) {
+    const shouldFocusAfterChangeRef = useRef(false);
+
+    useEffect(() => {
+        if (!shouldFocusAfterChangeRef.current) return;
+        shouldFocusAfterChangeRef.current = false;
+        // Find the visible sub-tab content container.
+        let container: HTMLElement | null = null;
+        const candidates = document.querySelectorAll<HTMLElement>('[data-sub-tab-content]');
+        for (const el of Array.from(candidates)) {
+            if (el.offsetParent !== null) {
+                container = el;
+                break;
+            }
+        }
+        if (!container) container = document.getElementById('main-content');
+        if (!container) return;
+
+        // Scroll the container to the top of the scroll area. This pushes any
+        // header/chart above the fold so the user's eye is drawn to the new
+        // content. Done BEFORE focusing so the focus ring lands in view.
+        container.scrollIntoView({ block: 'start', behavior: 'auto' });
+
+        const isVisible = (el: HTMLElement): boolean => {
+            if (el.offsetParent === null) return false;
+            const cs = window.getComputedStyle(el);
+            return cs.opacity !== '0' && cs.visibility !== 'hidden';
+        };
+
+        // Preferred target: the first ExpandableCard toggle (button[aria-expanded]).
+        // Matches the "first card" on Account/Income/Expense list pages.
+        const expandButtons = container.querySelectorAll<HTMLElement>('button[aria-expanded]');
+        for (const el of Array.from(expandButtons)) {
+            if (isVisible(el)) {
+                el.focus({ preventScroll: true });
+                return;
+            }
+        }
+
+        // Fallback: any real form control or link.
+        const focusables = container.querySelectorAll<HTMLElement>(
+            'button:not([role="tab"]), input, select, textarea, a[href]'
+        );
+        for (const el of Array.from(focusables)) {
+            if (!isVisible(el)) continue;
+            el.focus({ preventScroll: true });
+            return;
+        }
+    }, [activeTab]);
+
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
             if (!e.shiftKey) return;
@@ -122,6 +190,7 @@ export function useSubTabKeyboardNav(
             const nextIdx = e.key === 'ArrowLeft'
                 ? (idx - 1 + tabs.length) % tabs.length
                 : (idx + 1) % tabs.length;
+            shouldFocusAfterChangeRef.current = true;
             setActiveTab(tabs[nextIdx]);
         };
         window.addEventListener('keydown', handler);

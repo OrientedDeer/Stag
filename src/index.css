@@ -876,3 +876,42 @@
     --color-chart-Orange-99: #ed5800;
     --color-chart-Orange-100: #ea580c;
 }
+
+/* ----------------------------------------------------------------------------
+ * Keyboard focus indicators
+ *
+ * Many components in this codebase apply Tailwind's `focus:outline-none` to
+ * suppress the browser's default outline on click. That's fine for mouse focus
+ * but leaves keyboard users with no visible focus indicator. We restore a
+ * visible ring on keyboard focus only — `:focus-visible` matches when the
+ * browser heuristics say the focus came from the keyboard (Tab, programmatic
+ * focus, etc.), so mouse clicks still get the suppressed outline.
+ *
+ * Scoped to actual interactive controls (form fields, buttons, links, etc.)
+ * so the ring doesn't appear around charts, page containers, or other
+ * non-interactive elements that happened to receive focus.
+ *
+ * `!important` is used because `.focus\:outline-none:focus` from Tailwind has
+ * higher specificity than `:focus-visible` and would otherwise win.
+ * ---------------------------------------------------------------------------- */
+:is(
+    button,
+    input,
+    select,
+    textarea,
+    a,
+    [role="button"],
+    [role="link"],
+    [role="checkbox"],
+    [role="switch"],
+    [role="tab"],
+    [role="menuitem"],
+    [role="combobox"],
+    [role="option"],
+    [tabindex="0"]
+):focus-visible {
+    outline: 2px solid #10b981 !important; /* emerald-500 */
+    outline-offset: 2px !important;
+    border-radius: 4px;
+}
+

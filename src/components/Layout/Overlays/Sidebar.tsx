@@ -87,6 +87,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 					<Link
 						className={`${link} ${pathname === "/dashboard" && active} ${isOpen ? "pointer-events-none" : ""}`}
 						to="/dashboard"
+						aria-current={pathname === "/dashboard" ? "page" : undefined}
 						onClick={handleLinkClick}
 					>
 						<span className={`flex items-center gap-2 overflow-hidden whitespace-nowrap transition-all duration-300 ${isOpen ? "w-0 opacity-0" : "w-auto opacity-100"}`}>
@@ -112,6 +113,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 					<Link
 						className={`${link} ${pathname.startsWith("/budget") && active} ${isOpen ? "pointer-events-none" : ""}`}
 						to="/budget"
+						aria-current={pathname.startsWith("/budget") ? "page" : undefined}
 						onClick={handleLinkClick}
 					>
 						<span className={`flex items-center gap-2 overflow-hidden whitespace-nowrap transition-all duration-300 ${isOpen ? "w-0 opacity-0" : "w-auto opacity-100"}`}>
@@ -136,6 +138,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 					<Link
 						className={`${link} ${pathname === "/testing" && active} ${isOpen ? "pointer-events-none" : ""}`}
 						to="/testing"
+						aria-current={pathname === "/testing" ? "page" : undefined}
 						onClick={handleLinkClick}
 					>
 						<span className={`flex items-center gap-2 overflow-hidden whitespace-nowrap transition-all duration-300 ${isOpen ? "w-0 opacity-0" : "w-auto opacity-100"}`}>

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useKeyboardShortcuts } from '../../../hooks/useKeyboardShortcuts';
 import KeyboardShortcutsOverlay from './KeyboardShortcutsOverlay';
@@ -82,6 +82,16 @@ export default function GlobalKeyboardShortcuts() {
     }, [navigate, pathname]);
 
     useKeyboardShortcuts(shortcuts);
+
+    // On route change (and initial load), focus <main> so Tab starts inside
+    // the current page's content. Sidebar nav (Shift+↑/↓) intentionally does
+    // NOT focus the sidebar link — focus belongs in the page content, not in
+    // the nav rail. The active sidebar item still gets aria-current="page" so
+    // it's announced to screen readers and visually highlighted.
+    useEffect(() => {
+        const main = document.getElementById('main-content');
+        if (main) main.focus({ preventScroll: true });
+    }, [pathname]);
 
     return <KeyboardShortcutsOverlay open={helpOpen} onClose={closeHelp} />;
 }

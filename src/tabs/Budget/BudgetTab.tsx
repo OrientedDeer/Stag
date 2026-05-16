@@ -116,6 +116,8 @@ export default function BudgetTab() {
                     {tabs.map((tab) => (
                         <button
                             key={tab}
+                            role="tab"
+                            aria-selected={activeTab === tab}
                             className={`flex-1 min-w-fit font-semibold px-4 py-3 transition-colors duration-200 whitespace-nowrap ${
                                 activeTab === tab
                                     ? "text-green-300 bg-gray-800 border-b-2 border-green-300"
@@ -130,22 +132,22 @@ export default function BudgetTab() {
 
                 {/* Tab Content */}
                 <div className="bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl mb-4 p-6 overflow-visible">
-                    <div className={activeTab === 'Overview' ? '' : 'hidden'}>
+                    <div data-sub-tab-content className={activeTab === 'Overview' ? '' : 'hidden'}>
                         <OverviewTab />
                     </div>
-                    <div className={activeTab === 'Spending' ? '' : 'hidden'}>
+                    <div data-sub-tab-content className={activeTab === 'Spending' ? '' : 'hidden'}>
                         <SpendingTab />
                     </div>
-                    <div className={activeTab === 'Transactions' ? '' : 'hidden'}>
+                    <div data-sub-tab-content className={activeTab === 'Transactions' ? '' : 'hidden'}>
                         <TransactionsTab />
                     </div>
-                    <div className={activeTab === 'History' ? '' : 'hidden'}>
+                    <div data-sub-tab-content className={activeTab === 'History' ? '' : 'hidden'}>
                         <HistoryTab />
                     </div>
-                    <div className={activeTab === 'Trends' ? '' : 'hidden'}>
+                    <div data-sub-tab-content className={activeTab === 'Trends' ? '' : 'hidden'}>
                         <TrendsTab />
                     </div>
-                    <div className={activeTab === 'Settings' ? '' : 'hidden'}>
+                    <div data-sub-tab-content className={activeTab === 'Settings' ? '' : 'hidden'}>
                         <SettingsTab />
                     </div>
                 </div>

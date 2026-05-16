@@ -62,7 +62,7 @@ const IncomeList = () => {
 									>
 										<div
 											{...provided.dragHandleProps}
-											className="absolute -left-3 top-2 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-2 text-green-200"
+											className="absolute -left-3 top-2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-2 text-green-200"
 										>
 											<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
 												<line x1="8" y1="6" x2="21" y2="6"></line>

@@ -97,6 +97,7 @@ const SidebarCollapseLink: React.FC<SidebarCollapseLinkProps> = ({
 						<Link
 							key={sub.path}
 							to={sub.path}
+							aria-current={pathname === sub.path ? "page" : undefined}
 							className={`${subLinkBaseClass} ${
 								pathname === sub.path ? activeClass : ""
 							}`}
