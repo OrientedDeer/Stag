@@ -125,13 +125,6 @@ export function getSocialSecurityIncome(year: SimulationYear): FutureSocialSecur
 }
 
 /**
- * Get total income for a year (all sources)
- */
-export function getTotalIncome(year: SimulationYear): number {
-    return year.cashflow.totalIncome;
-}
-
-/**
  * Get total withdrawals for a year
  */
 export function getTotalWithdrawals(year: SimulationYear): number {
@@ -203,48 +196,4 @@ export function getYearsWhere(
     predicate: (year: SimulationYear) => boolean
 ): SimulationYear[] {
     return simulation.filter(predicate);
-}
-
-/**
- * Check if account balances are monotonically increasing (each year >= previous)
- */
-export function isMonotonicallyIncreasing(
-    simulation: SimulationYear[],
-    accountId: string
-): boolean {
-    let prevBalance = -Infinity;
-
-    for (const year of simulation) {
-        const account = getAccountById(year, accountId);
-        if (!account) continue;
-
-        if (account.amount < prevBalance) {
-            return false;
-        }
-        prevBalance = account.amount;
-    }
-
-    return true;
-}
-
-/**
- * Check if account balances are monotonically decreasing (each year <= previous)
- */
-export function isMonotonicallyDecreasing(
-    simulation: SimulationYear[],
-    accountId: string
-): boolean {
-    let prevBalance = Infinity;
-
-    for (const year of simulation) {
-        const account = getAccountById(year, accountId);
-        if (!account) continue;
-
-        if (account.amount > prevBalance) {
-            return false;
-        }
-        prevBalance = account.amount;
-    }
-
-    return true;
 }

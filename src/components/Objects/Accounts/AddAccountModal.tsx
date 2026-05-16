@@ -244,7 +244,7 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                                 label="Tax Type"
                                 value={form.taxType}
                                 onChange={(val) => updateForm('taxType', val as TaxType)}
-                                options={TaxTypeEnum as any}
+                                options={[...TaxTypeEnum]}
                                 tooltip="Tax treatment: Brokerage (taxable), Traditional (pre-tax, taxed on withdrawal), Roth (post-tax, tax-free growth)."
                             />
                             {(form.taxType === 'Roth 401k' || form.taxType === 'Traditional 401k') && (

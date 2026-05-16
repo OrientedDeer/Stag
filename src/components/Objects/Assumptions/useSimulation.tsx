@@ -43,8 +43,7 @@ export function extractBaselineProjections(
     const pensionAtRMD = rmdYearData.incomes
         .filter(inc =>
             (inc as any).className === 'FERSPensionIncome' ||
-            (inc as any).className === 'CSRSPensionIncome' ||
-            (inc as any).className === 'PensionIncome')
+            (inc as any).className === 'CSRSPensionIncome')
         .reduce((sum, inc) => sum + (inc.getAnnualAmount?.(rmdYear) ?? 0), 0);
 
     // Get passive income at RMD year (rental, dividends, interest — excludes RMD-sourced).

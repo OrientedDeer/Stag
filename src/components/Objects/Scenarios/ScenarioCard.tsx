@@ -418,5 +418,3 @@ export const ScenarioCard: React.FC<ScenarioCardProps> = ({
         </>
     );
 };
-
-export default ScenarioCard;

@@ -517,28 +517,6 @@ describe('Bug D: bracketSpacePerYear calculation', () => {
 describe('Bug C: fixedIncomeAtRMD consistency', () => {
 
     describe('extractBaselineProjections', () => {
-        // Note: This test is skipped because extractBaselineProjections uses
-        // TaxService.getSocialSecurityBenefits() which requires actual class instances
-        // (CurrentSocialSecurityIncome or FutureSocialSecurityIncome), not plain objects.
-        // The function is tested indirectly through integration tests.
-        it.skip('returns SS income at RMD year from simulation (requires real class instances)', () => {
-            // This test would need actual SocialSecurityIncome class instances
-            // to work with TaxService.getSocialSecurityBenefits()
-            const birthYear = 1965;
-            const rmdYear = 2040;
-            const ssAtRMDYear = 30000 * Math.pow(1.02, 10);
-
-            const mockSimulation: SimulationYear[] = [
-                createMockSimulationYear(2040, birthYear, 0, ssAtRMDYear),
-            ];
-
-            const result = extractBaselineProjections(mockSimulation, birthYear);
-
-            expect(result).not.toBeNull();
-            expect(result?.rmdYear).toBe(rmdYear);
-            expect(result?.ssAtRMD).toBeCloseTo(ssAtRMDYear, 0);
-        });
-
         it('returns pension income at RMD year with COLA', () => {
             const birthYear = 1965;
             const rmdYear = 2040;

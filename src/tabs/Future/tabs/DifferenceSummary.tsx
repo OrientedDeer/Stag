@@ -180,5 +180,3 @@ export const DifferenceSummary: React.FC<DifferenceSummaryProps> = ({ comparison
         </div>
     );
 };
-
-export default DifferenceSummary;

@@ -225,5 +225,3 @@ export const OverlaidChartView: React.FC<OverlaidChartViewProps> = ({ comparison
         </div>
     );
 };
-
-export default OverlaidChartView;

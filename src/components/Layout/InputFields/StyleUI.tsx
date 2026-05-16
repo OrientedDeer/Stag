@@ -32,7 +32,7 @@ interface DisplayGroupProps {
   tooltip?: string;
 }
 
-export const DisplayGroup: React.FC<DisplayGroupProps> = ({ label, children, className = '', tooltip }) => (
+const DisplayGroup: React.FC<DisplayGroupProps> = ({ label, children, className = '', tooltip }) => (
   <InputGroup label={label} className={className} tooltip={tooltip}>
     {children}
   </InputGroup>

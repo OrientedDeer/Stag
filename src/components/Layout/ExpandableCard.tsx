@@ -90,5 +90,3 @@ export function ExpandableCard({
         </div>
     );
 }
-
-export default ExpandableCard;

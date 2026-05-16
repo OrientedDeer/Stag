@@ -593,5 +593,3 @@ export const TaxOptimizationTab = React.memo(({ simulationData }: TaxOptimizatio
         </div>
     );
 });
-
-export default TaxOptimizationTab;

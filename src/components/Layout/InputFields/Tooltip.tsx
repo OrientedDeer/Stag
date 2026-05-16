@@ -77,8 +77,3 @@ export const Tooltip: React.FC<TooltipProps> = ({ text, children }) => {
         </span>
     );
 };
-
-// Question mark icon component for inline use
-export const HelpIcon: React.FC<{ tooltip: string }> = ({ tooltip }) => (
-    <Tooltip text={tooltip} />
-);

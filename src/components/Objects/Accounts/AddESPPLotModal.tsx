@@ -4,6 +4,7 @@ import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput";
 import { NumberInput } from "../../Layout/InputFields/NumberInput";
 import { StyledInput, StyledDisplay } from "../../Layout/InputFields/StyleUI";
 import { useModalAccessibility } from "../../../hooks/useModalAccessibility";
+import { formatDateForInput } from "../../../utils/formatters";
 
 const generateUniqueLotId = () =>
     `LOT-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -23,13 +24,6 @@ const AddESPPLotModal: React.FC<AddESPPLotModalProps> = ({
 }) => {
     const { modalRef, handleKeyDown } = useModalAccessibility(isOpen, onClose);
     const isEditing = !!existingLot;
-
-    // Format date for input (YYYY-MM-DD)
-    const formatDateForInput = (date: Date | string | undefined): string => {
-        if (!date) return "";
-        const d = date instanceof Date ? date : new Date(date);
-        return d.toISOString().split('T')[0];
-    };
 
     // Initialize state
     const [grantDate, setGrantDate] = useState(

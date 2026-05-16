@@ -255,6 +255,12 @@ export function getAcaCliffThreshold(
  *
  * This properly handles SS torpedo, LTCG bump, NIIT, state tax, and ACA cliff.
  * Uses taxIncrease (which includes federal + state + ACA) not just taxAfter (federal only).
+ *
+ * Production reaches this through coarseToFineSearch; the export exists so unit
+ * tests can probe marginal-rate math directly (SS torpedo, ACA cliff, state
+ * stacking) without going through the opaque search wrapper.
+ *
+ * @public
  */
 export function getEffectiveConversionRate(
     conversionAmount: number,
@@ -530,6 +536,12 @@ export function coarseToFineSearch(
  * @param acaOptions - ACA subsidy awareness options (undefined if not applicable)
  * @param assumptions - Optional assumptions for inflation adjustments
  * @returns Result with maxConversion, effectiveRateAtMax, bracketAtMax, and edgeType
+ *
+ * Test-only entry point. Production calls coarseToFineSearch directly; this
+ * wrapper exists so Bug-C/D regression tests and the refactor-sanity suite
+ * can probe the search at a single point with a target effective rate.
+ *
+ * @public
  */
 export function calculateEffectiveRateConversionLimit(
     currentAGI: number,

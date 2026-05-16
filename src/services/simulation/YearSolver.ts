@@ -190,14 +190,6 @@ function getFirstRothAccount(accounts: AnyAccount[]): InvestedAccount | null {
     ) as InvestedAccount | null;
 }
 
-// Reserved for future cross-account tax payment feature
-function _getFirstBrokerageAccount(accounts: AnyAccount[]): InvestedAccount | null {
-    return accounts.find(a =>
-        a instanceof InvestedAccount && a.taxType === 'Brokerage'
-    ) as InvestedAccount | null;
-}
-void _getFirstBrokerageAccount; // Suppress unused warning
-
 /**
  * Get the weighted average gain ratio for brokerage accounts.
  * Used for estimating LTCG from potential withdrawals.
