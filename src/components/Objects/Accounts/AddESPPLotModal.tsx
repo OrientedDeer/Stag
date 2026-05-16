@@ -77,7 +77,8 @@ const AddESPPLotModal: React.FC<AddESPPLotModalProps> = ({
         onClose();
     };
 
-    const handleSave = () => {
+    const handleSave = (e?: React.FormEvent) => {
+        e?.preventDefault();
         if (!grantDate || !purchaseDate || shares <= 0) return;
 
         const lot: ESPPLot = {
@@ -116,6 +117,7 @@ const AddESPPLotModal: React.FC<AddESPPLotModalProps> = ({
                     {isEditing ? 'Edit ESPP Lot' : 'Add ESPP Lot'}
                 </h2>
 
+                <form onSubmit={handleSave}>
                 <div className="space-y-4">
                     {/* Offering Period Section */}
                     <div>
@@ -228,13 +230,14 @@ const AddESPPLotModal: React.FC<AddESPPLotModalProps> = ({
 
                 <div className="flex justify-end gap-3 mt-8">
                     <button
+                        type="button"
                         onClick={handleClose}
                         className="px-5 py-2.5 rounded-lg font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
                     >
                         Cancel
                     </button>
                     <button
-                        onClick={handleSave}
+                        type="submit"
                         disabled={!isValid}
                         title={!isValid ? "Fill in all required fields" : undefined}
                         className="px-5 py-2.5 rounded-lg font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -242,6 +245,7 @@ const AddESPPLotModal: React.FC<AddESPPLotModalProps> = ({
                         {isEditing ? 'Save Changes' : 'Add Lot'}
                     </button>
                 </div>
+                </form>
             </div>
         </div>
     );

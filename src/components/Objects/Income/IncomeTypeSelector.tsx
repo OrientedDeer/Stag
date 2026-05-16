@@ -28,6 +28,7 @@ export const IncomeTypeSelector: React.FC<IncomeTypeSelectorProps> = ({ onSelect
         {INCOME_CATEGORIES.map((cat) => (
             <button
                 key={cat.label}
+                type="button"
                 onClick={() => onSelect(cat.class)}
                 className="flex items-center justify-center p-2 h-12 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-xl border border-gray-700 transition-all font-medium text-sm text-center"
             >

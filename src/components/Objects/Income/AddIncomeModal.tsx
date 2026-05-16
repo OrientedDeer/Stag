@@ -132,7 +132,8 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
         setStep('details');
     };
 
-    const handleAdd = () => {
+    const handleAdd = (e?: React.FormEvent) => {
+        e?.preventDefault();
         if (!selectedType || !form.name.trim() || dateError) return;
 
         const finalStartDate = form.startDate;
@@ -258,6 +259,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                   {step === 'select' ? 'Select Income Type' : `New ${selectedType.name.replace('Income', '')}`}
                 </h2>
 
+                <form onSubmit={handleAdd}>
                 {step === 'select' ? (
                     <IncomeTypeSelector onSelect={handleTypeSelect} />
                 ) : (
@@ -453,6 +455,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
 
                 <div className="flex justify-end gap-3 mt-8">
                     <button
+                        type="button"
                         onClick={handleCancelOrBack}
                         className="px-5 py-2.5 rounded-lg font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
                     >
@@ -460,7 +463,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                     </button>
                     {step === "details" && (
                         <button
-                            onClick={handleAdd}
+                            type="submit"
                             disabled={!form.name.trim() || !!dateError}
                             title={!form.name.trim() ? "Enter a name" : dateError ? "Fix date error" : undefined}
                             className="px-5 py-2.5 rounded-lg font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -469,6 +472,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                         </button>
                     )}
                 </div>
+                </form>
             </div>
         </div>
     );
