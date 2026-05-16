@@ -63,7 +63,7 @@ export function useCSVImportFlow({
                 if (match && match.confidence >= 0.9) {
                     const txns = applyMapping(
                         csv,
-                        match.mapping.mapping as CSVMapping,
+                        match.mapping.mapping,
                         match.mapping.options
                     );
                     const { categorized, autoCategorizedCount } = applyCategories(

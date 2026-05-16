@@ -3,10 +3,26 @@
  */
 
 import { Transaction, CategoryMapping, IncomeCategory } from '../components/Objects/Budget/BudgetContext';
+import type {
+    FormatFingerprint,
+    CSVMapping,
+    CSVImportOptions,
+    SavedCSVMapping,
+} from '../components/Objects/Budget/BudgetTypes';
 
 // ============================================================================
 // Types
 // ============================================================================
+
+// Persistence-bound types live in BudgetTypes.ts (they're stored in
+// BudgetState.importSettings.savedCSVFormats). Re-export them here so existing
+// `from '.../CSVImportService'` consumers don't have to switch paths.
+export type {
+    FormatFingerprint,
+    CSVMapping,
+    CSVImportOptions,
+    SavedCSVMapping,
+} from '../components/Objects/Budget/BudgetTypes';
 
 export interface ParsedCSV {
     headers: string[];
@@ -19,39 +35,6 @@ export interface ColumnDetection {
     type: 'date' | 'description' | 'amount' | 'debit' | 'credit' | 'balance' | 'transaction_type' | 'unknown';
     confidence: number; // 0-1
     detectedFormat?: string; // For dates: "M/D/YYYY", etc.
-}
-
-export interface FormatFingerprint {
-    headerHash: string;      // Hash of normalized, sorted headers
-    columnCount: number;     // Number of columns
-    headers: string[];       // Original header names
-}
-
-export interface CSVMapping {
-    dateColumn: number;          // Column index for date
-    descriptionColumn: number;   // Column index for description
-    amountColumn?: number;       // Single amount column (negative = expense)
-    debitColumn?: number;        // OR separate debit column
-    creditColumn?: number;       // OR separate credit column
-    transactionTypeColumn?: number; // Column that indicates Credit/Debit (e.g., Checking)
-}
-
-export interface CSVImportOptions {
-    dateFormat: string;          // "M/D/YYYY", "YYYY-MM-DD", etc.
-    negativeIsExpense: boolean;  // How to interpret negative amounts
-    hasHeaderRow: boolean;       // Does first row contain headers?
-    skipRows: number;            // Extra rows to skip after header
-}
-
-export interface SavedCSVMapping {
-    id: string;
-    name: string;                    // User-provided name, e.g., "Chase Checking"
-    fingerprint: FormatFingerprint;
-    mapping: CSVMapping;
-    options: CSVImportOptions;
-    lastUsed: Date;
-    importCount: number;             // Usage tracking
-    createdAt: Date;
 }
 
 export interface FormatMatch {
