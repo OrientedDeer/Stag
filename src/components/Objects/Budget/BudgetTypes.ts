@@ -151,4 +151,5 @@ export interface BudgetState {
     // UI state
     selectedMonth: number; // 1-12
     selectedYear: number;
+    projectFuture?: boolean; // when true, future months count projected non-discretionary spending
 }

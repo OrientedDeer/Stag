@@ -71,6 +71,21 @@ export function calculateTotalMonthlyBudget(
 }
 
 /**
+ * Sum of monthly non-discretionary expenses active in this month.
+ * Used to project "committed" spending into future months — discretionary is left out
+ * because it's not yet decided.
+ */
+export function getNonDiscretionaryMonthlyBudget(
+    expenses: AnyExpense[],
+    month: number,
+    year: number
+): number {
+    return getActiveExpenses(expenses, month, year)
+        .filter(exp => !exp.isDiscretionary)
+        .reduce((total, exp) => total + getExpenseMonthlyBudget(exp), 0);
+}
+
+/**
  * Calculate budget summary for a month
  */
 export interface BudgetSummary {

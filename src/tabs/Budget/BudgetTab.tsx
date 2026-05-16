@@ -1,4 +1,4 @@
-import { useContext, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { BudgetContext } from '../../components/Objects/Budget/BudgetContext';
 import { formatMonthYear, navigateMonth } from '../../components/Objects/Budget/budgetUtils';
 import { useAutoReconcile } from '../../hooks/useAutoReconcile';
@@ -43,6 +43,33 @@ export default function BudgetTab() {
             payload: { month: now.getMonth() + 1, year: now.getFullYear() }
         });
     };
+
+    // Arrow keys swap months. Skip when user is typing in an input or grid cell.
+    // Held-down key-repeat is throttled to 250ms so months don't fly past.
+    const lastArrowNavRef = useRef(0);
+    useEffect(() => {
+        const REPEAT_INTERVAL_MS = 250;
+        const handler = (e: KeyboardEvent) => {
+            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+            if (e.metaKey || e.ctrlKey || e.altKey) return;
+            const target = e.target as HTMLElement | null;
+            if (target) {
+                const tag = target.tagName;
+                if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+                if (target.isContentEditable) return;
+            }
+            // Initial press = immediate. Held repeats = throttled.
+            const t = Date.now();
+            if (e.repeat && t - lastArrowNavRef.current < REPEAT_INTERVAL_MS) return;
+            lastArrowNavRef.current = t;
+
+            const direction = e.key === 'ArrowLeft' ? 'prev' : 'next';
+            const { month, year } = navigateMonth(selectedMonth, selectedYear, direction);
+            dispatch({ type: 'SET_SELECTED_MONTH', payload: { month, year } });
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, [selectedMonth, selectedYear, dispatch]);
 
     return (
         <div className="w-full flex bg-gray-950 justify-center pt-6 pb-24">
