@@ -4,7 +4,8 @@
  * Displays key financial health ratios with benchmarks and trends.
  */
 
-import React, { useMemo, useState, useContext } from 'react';
+import React, { useMemo, useState, useContext, useRef } from 'react';
+import { useArrowKeyAdjust } from '../../../hooks/useKeyboardShortcuts';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import {
   calculateFinancialRatios,
@@ -172,6 +173,12 @@ export const FinancialRatiosTab: React.FC<FinancialRatiosTabProps> = React.memo(
     // Default to first year (current)
     const [selectedYear, setSelectedYear] = useState(startYear);
     const selectedYearIndex = years.indexOf(selectedYear);
+    const containerRef = useRef<HTMLDivElement>(null);
+    useArrowKeyAdjust(
+        selectedYear,
+        (v) => setSelectedYear(v as number),
+        { min: startYear, max: endYear, step: 1, containerRef }
+    );
 
     // Calculate ratios for selected year
     const ratios = useMemo(() => {
@@ -198,7 +205,7 @@ export const FinancialRatiosTab: React.FC<FinancialRatiosTabProps> = React.memo(
     }
 
     return (
-      <div className="p-4 md:p-6 space-y-8">
+      <div ref={containerRef} className="p-4 md:p-6 space-y-8">
         {/* Year slider */}
         <div className="p-4 bg-gray-900 rounded-xl border border-gray-800 shadow-lg">
           <h3 className="text-lg font-bold text-white mb-2">Year Details: {selectedYear}</h3>
@@ -426,5 +433,3 @@ export const FinancialRatiosTab: React.FC<FinancialRatiosTabProps> = React.memo(
     );
   }
 );
-
-export default FinancialRatiosTab;

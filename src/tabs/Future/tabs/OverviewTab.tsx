@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { useArrowKeyAdjust } from '../../../hooks/useKeyboardShortcuts';
 import { ChartTooltipPortal } from '../../../components/Charts/ChartTooltipPortal';
 import { ResponsiveLine } from '@nivo/line';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
@@ -85,6 +86,11 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
     // 2. State for Range Slider (Defaults to full range)
     const [range, setRange] = useState<[number, number] | null>(null);
     const activeRange = range ?? [minYear,  Math.min(maxYear, minYear + 32)];
+    useArrowKeyAdjust(
+        activeRange,
+        (v) => setRange(v as [number, number]),
+        { min: minYear, max: maxYear, step: 1, containerRef }
+    );
 
     // 3. Filter Data based on Slider
     const filteredData = useMemo(() => {

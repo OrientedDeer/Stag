@@ -25,6 +25,7 @@ import WithdrawalTab from "./tabs/Future/WithdrawalTab";
 import BudgetTab from "./tabs/Budget/BudgetTab";
 import { BudgetProvider } from "./components/Objects/Budget/BudgetContext";
 import { CloudBackupProvider } from "./components/Objects/CloudBackup/CloudBackupContext";
+import GlobalKeyboardShortcuts from "./components/Layout/Overlays/GlobalKeyboardShortcuts";
 
 export default function App() {
   const [isOpen, setIsOpen] = useState(false); // shared variable
@@ -40,6 +41,7 @@ export default function App() {
               <ScenarioProvider>
               <BudgetProvider>
               <CloudBackupProvider>
+              <GlobalKeyboardShortcuts />
               <div className="flex h-screen">
                 <Sidebar isOpen={isOpen} onClose={() => setIsOpen(true)}/>
                 <div className="flex flex-col flex-1 overflow-hidden">

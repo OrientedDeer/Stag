@@ -1,4 +1,5 @@
 import React, { useState, useContext, useMemo, useEffect, useCallback } from 'react';
+import { useSubTabKeyboardNav } from '../../hooks/useKeyboardShortcuts';
 import { runSimulationWithOptimization } from '../../components/Objects/Assumptions/useSimulation';
 import { AssumptionsContext, getLifeExpectancy, getBirthYear } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { getSimulationInputHash } from '../../services/simulationHash';
@@ -180,6 +181,8 @@ export default function FutureTab() {
         localStorage.setItem('stag_future_tab', tab);
     };
     const [isLoading, setIsLoading] = useState(false);
+
+    useSubTabKeyboardNav(all_tabs, activeTab, handleTabChange);
 
     const visible_tabs = all_tabs;
 

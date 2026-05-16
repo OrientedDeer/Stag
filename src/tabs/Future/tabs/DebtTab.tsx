@@ -1,9 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { DebtAccount } from '../../../components/Objects/Accounts/models';
 import { LoanExpense, MortgageExpense } from '../../../components/Objects/Expense/models';
 import { DebtStreamChart } from '../../../components/Charts/DebtStreamChart';
 import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider';
+import { useArrowKeyAdjust } from '../../../hooks/useKeyboardShortcuts';
 
 interface DebtTabProps {
     simulationData: SimulationYear[];
@@ -46,6 +47,12 @@ export const DebtTab: React.FC<DebtTabProps> = React.memo(({ simulationData }) =
     // Default range end: debtFreeYear + 2, or full range if no debt-free year
     const defaultEnd = debtFreeYear ? Math.min(maxYear, debtFreeYear + 2) : maxYear;
     const [range, setRange] = useState<[number, number]>([minYear, defaultEnd]);
+    const containerRef = useRef<HTMLDivElement>(null);
+    useArrowKeyAdjust(
+        range,
+        (v) => setRange(v as [number, number]),
+        { min: minYear, max: maxYear, step: 1, containerRef }
+    );
 
     // Update range if defaultEnd changes (e.g., debts added/removed)
     const [prevDefaultEnd, setPrevDefaultEnd] = useState(defaultEnd);
@@ -86,7 +93,7 @@ export const DebtTab: React.FC<DebtTabProps> = React.memo(({ simulationData }) =
     if (keys.length === 0) return <div className="p-4 text-white text-center">No debt to track. You're debt free!</div>;
 
     return (
-        <div className="p-4 text-white h-[500px] flex flex-col gap-4">
+        <div ref={containerRef} className="p-4 text-white h-[500px] flex flex-col gap-4">
             <div className="flex justify-between items-center px-2 gap-8">
                 <div className="grow">
                     <RangeSlider 

@@ -1,5 +1,6 @@
 import React, { useState, useContext, useEffect, useMemo } from "react";
 import { AccountContext } from "../../components/Objects/Accounts/AccountContext";
+import { useSubTabKeyboardNav } from "../../hooks/useKeyboardShortcuts";
 import {
     SavedAccount,
     InvestedAccount,
@@ -168,6 +169,7 @@ export default function AccountTab() {
     }, [activeTab]);
 
     const tabs = ACCOUNT_CATEGORIES;
+    useSubTabKeyboardNav(tabs, activeTab, setActiveTab);
 
     const tabContent: Record<string, React.ReactNode> = {
         Cash: (

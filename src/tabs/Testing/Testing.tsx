@@ -1,5 +1,6 @@
 import { useState, useMemo, useContext, useEffect, useCallback, useRef } from 'react';
 import jsQR from 'jsqr';
+import { useSubTabKeyboardNav } from '../../hooks/useKeyboardShortcuts';
 import { MortgageExpense, HealthcareExpense, CLASS_TO_CATEGORY } from '../../components/Objects/Expense/models';
 import { decompressData, isCompactFormat, expandCompactBackup, validatePayload } from '../../components/Objects/Accounts/QRTransfer/qrUtils';
 import { useFileManager } from '../../components/Objects/Accounts/useFileManager';
@@ -6589,6 +6590,8 @@ export default function Testing() {
         setActiveTab(tab);
         localStorage.setItem('stag_testing_tab', tab);
     };
+
+    useSubTabKeyboardNav(TESTING_TABS, activeTab, handleTabChange);
 
     if (!showExperimental) {
         return (
