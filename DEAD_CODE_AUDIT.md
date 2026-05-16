@@ -82,16 +82,6 @@ Current knip totals: **36 unused exports / 100 unused exported types**. Most of 
 
 ## 🤔 Decisions waiting on you
 
-### `Expense/models.tsx:927 case 'HousingExpense':`
-Class doesn't exist; the case maps legacy localStorage data to `RentExpense`. Delete only if you're willing to drop backward-compat for users with old saves. Otherwise leave it.
-
-### Duplicate `SavedCSVMapping` definition (surfaced during CSVImportModal refactor)
-Two structurally similar but not identical definitions exist:
-- `src/components/Objects/Budget/BudgetTypes.ts:80` — inline-typed `mapping` field missing `transactionTypeColumn`.
-- `src/services/CSVImportService.ts:46` — uses the full `CSVMapping` type (with `transactionTypeColumn`).
-
-TypeScript accepts the cross-import because the inline shape is a structural subset of `CSVMapping`. Unifying requires picking one source of truth and updating every consumer. Low blast radius (Budget consumers only), but not a 5-minute fix.
-
 ### Production `console.error` / `console.warn` calls
 CLAUDE.md forbids `console.log` specifically, leaving `error`/`warn` as a judgment call. Current sites (post-Pass-6 Sankey cleanup):
 - `useFileManager.ts:110` — catch handler for import/export failure
@@ -131,10 +121,8 @@ These are *opportunities*, not "to-do." Don't pick them up cold for the sake of 
 
 ## ⏸ Pure-churn skips
 
-- `DropdownInput.tsx` — 1-line shim re-exporting `CustomDropdown`. Removing requires renaming `<DropdownInput>` → `<CustomDropdown>` in 13 consumer files. The 1-line file is harmless.
-- `BudgetContext.tsx` re-exports `TRANSACTION_FREQUENCIES` + `FormatFingerprint` from `BudgetTypes.ts` for "backward compatibility" (explicit comment on line 4). Removing requires updating every consumer to import from `BudgetTypes` directly. Same shape as `DropdownInput`.
-
-Bundle these into one rename pass if you ever want them gone.
+- `DropdownInput.tsx` — 1-line shim re-exporting `CustomDropdown`. Removing requires renaming `<DropdownInput>` → `<CustomDropdown>` in **19** consumer files (up from 13 in the original audit; the AddIncomeModal + IncomeCard splits added 7 new ones). Still pure churn — the shim has zero cost and removal has only gotten more expensive.
+- `BudgetContext.tsx` re-exports the rest of `BudgetTypes` (`INCOME_CATEGORIES`, `TRANSFER_CATEGORY_ID`, `getFrequencyDivisor`, `Transaction`, `CategoryMapping`, `SavedCSVMapping`, `MonthlySnapshot`, `BudgetState`, `IncomeCategory`, `TransactionFrequency`) — these have real BudgetContext consumers. Removing would require updating every importer to point at `BudgetTypes` directly. Pure rename.
 
 ---
 
@@ -161,6 +149,7 @@ Don't act on these — they're documented so the next audit doesn't re-raise the
 - **IncomeCard split candidate** — landed (commit 41104aa). Audit's description ("Same card+modals+actions inline pattern as the AddIncomeModal") was misleading — there were no inline modals in IncomeCard, only inline sub-component functions. Real seams turned out to be: pure utilities, SSA file-upload flow, and missing FERS/CSRS pension subforms (which was also a silent-corruption bug, not just a refactor opportunity).
 - **`TaxService.tsx` path** — was at `src/components/Objects/Taxes/TaxService.tsx`, not `src/services/TaxService.tsx` as the audit had implied.
 - **`SimulationEngine.tsx` / `useSimulation.tsx` paths** — both live under `src/components/Objects/Assumptions/`, not `src/services/simulation/`.
+- **BudgetContext re-exports of `TRANSACTION_FREQUENCIES` and `FormatFingerprint`** — the audit framed these as needing "every consumer updated" if removed. Actually dead re-exports: `TRANSACTION_FREQUENCIES` had zero importers anywhere; `FormatFingerprint`'s one importer (`CSVImportService.ts`) was already importing it from `BudgetTypes.ts` directly. Both lines deleted with zero consumer changes. The *other* re-exports in the same block remain real consumer-facing surface.
 
 ---
 
@@ -169,7 +158,7 @@ Don't act on these — they're documented so the next audit doesn't re-raise the
 Both the dead-code phase and the audit-listed component splits are genuinely done. Everything that was a real concentrated win has landed across seven cleanup passes and the five major splits (AddIncomeModal, TransactionsTab, TaxService, CSVImportModal, IncomeCard). What's left is either:
 
 - Five remaining big files (`SimulationEngine`, `AccountCard`, `ExpenseCard`, `useSimulation`, `ScenarioContext`) where the refactor is more speculative — best done while you're already in the file for feature work.
-- Three judgment calls (HousingExpense legacy reconstitute, production `console.error` usage, duplicate `SavedCSVMapping` definition).
+- One judgment call (production `console.error` usage).
 - The remaining "Other refactor opportunities" entries (Roth-conversion helper extraction, raw-input sweep, assertions trim, MortgageExpense amortization helper, SimpleExpense full collapse).
 
 If the next ask is "keep cleaning," the remaining cards (AccountCard, ExpenseCard) are the closest to mechanical — both follow the same card+sub-components pattern the IncomeCard split established. The Assumptions-side `SimulationEngine` and `useSimulation` files are hot and should not be touched cold.

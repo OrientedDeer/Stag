@@ -4,7 +4,6 @@ import { usePersistedReducer } from '../../../hooks/usePersistedReducer';
 // Re-export types and constants for backward compatibility
 export {
     INCOME_CATEGORIES,
-    TRANSACTION_FREQUENCIES,
     TRANSFER_CATEGORY_ID,
     getFrequencyDivisor,
 } from './BudgetTypes';
@@ -14,7 +13,6 @@ export type {
     TransactionFrequency,
     Transaction,
     CategoryMapping,
-    FormatFingerprint,
     SavedCSVMapping,
     MonthlySnapshot,
     BudgetState,
