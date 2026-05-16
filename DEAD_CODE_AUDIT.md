@@ -1,6 +1,6 @@
 # Dead Code & Rewrite Audit
 
-Originally compiled from a knip pass plus four parallel sub-agent audits, then verified against the codebase. Six cleanup passes have landed (some by a parallel agent). This doc is updated to reflect current state.
+Originally compiled from a knip pass plus four parallel sub-agent audits, then verified against the codebase. Seven cleanup passes plus five major refactor splits have landed (work split across parallel agents). This doc is updated to reflect current state.
 
 Status legend:
 - ✅ Done — cleaned up
@@ -55,31 +55,28 @@ Status legend:
 - All 5 `console.error`/`console.warn` calls in the file removed. Errors still surface via the error boundary UI and the data fn's `error` return field.
 - `SankeyImbalance` re-exported from `CashflowSankey.tsx` for backward compat.
 
-### Landed by parallel agent (not part of this audit cycle but moves the cleanup forward)
-- `AddIncomeModal.tsx` split 878 → 477 lines (commit 7a5922e). Extracted `IncomeTypeSelector`, `WorkIncomeFields`, `FERSPensionFields`, `CSRSPensionFields`, `incomeFormTypes.ts` into the same directory.
+### Pass 7 — drop unused exports + delete commented-out debug logs (commit 36c0deb)
+- Un-exported `MIN_DISPLAY_THRESHOLD` (cashflowSankeyData.ts), `getESPPLotOrder` + `ESPPLotOrder` type (Accounts/models.tsx), `isTypingTarget` / `hasModifier` / `ShortcutMap` (useKeyboardShortcuts.ts). All used internally only.
+- Deleted 8 commented-out `// console.log` lines across WithdrawalPlanner.ts (3 DEBUG clusters) and SurplusAllocator.ts (2 DEBUG clusters). Per CLAUDE.md, no comments for removed code.
 
-Result: knip unused-exports went from 70 (pre-cleanup) → 40. Net code change across passes: roughly −2400 production lines + a new test file. All 3251 tests pass.
+### Major component splits (multi-PR refactor work, landed across parallel agents)
+- `AddIncomeModal.tsx` 878 → 477 lines (commit 7a5922e). Extracted `IncomeTypeSelector`, `WorkIncomeFields`, `FERSPensionFields`, `CSRSPensionFields`, `incomeFormTypes.ts`.
+- `TransactionsTab.tsx` 1510 → 360 lines (commit 9ac3242, parallel agent). Extracted `AddTransactionForm`, `ClearAllDialog`, `CollapsibleSection`, `Toolbar`, `TransactionRow`, plus `useBulkSelection` / `useCollapsedCategories` / `useTransactionEditor` hooks and a `utils.ts`. Stayed read-only against BudgetContext shape.
+- `TaxService.tsx` 1241 → 50 lines (commit 6511bbd, parallel agent). Now a barrel re-exporting from 12 focused domain files under `Taxes/taxService/`: parameters, incomeAggregation, socialSecurity, deductions, bracketTax, federalTax, stateTax, ficaTax, capitalGainsTax, withdrawalGrossUp, marginalRates, esppTax. Many consumers use namespace import — barrel preserves every old name.
+- `CSVImportModal.tsx` 706 → 144 lines (commit 7616706). Reorganized around a state-machine architecture: `csvImportReducer.ts` (14 actions, fully unit-tested at 26 tests), `useCSVImportFlow.ts` (side-effectful actions), 4 stage components (Upload / Mapping / Preview / Result) — wizard now scales additively.
+- `IncomeCard.tsx` 730 → 324 lines (commit 41104aa). Pulled the inline sub-components into `card/`, extracted `incomeCardUtils.ts` (pure helpers, 21 unit tests) and `useSSAEarningsImport.ts` (XML upload flow). Also fixed a **silent-corruption bug surfaced during refactor**: FERS/CSRS pensions previously fell through every `instanceof` branch and showed the generic Amount field, which would overwrite the simulation-computed `calculatedBenefit` when edited. Added dedicated `card/FERSPensionFields.tsx` + `card/CSRSPensionFields.tsx` and a hide-misleading-inputs gate.
+
+Result: knip unused-exports went from 70 (pre-cleanup) → 36. Net code change across passes: roughly −2400 production lines deleted plus ~3500 lines reorganized into focused modules + four new unit-test files. Full test count 3251 → 3298.
 
 ---
 
-## 🔜 Free wins still on the floor
+## 🔜 Knip baseline still flagging
 
-These are mechanical and isolated — pick them up any time.
-
-### Drop `export` from internal-only symbols
-- `cashflowSankeyData.ts:14` — `MIN_DISPLAY_THRESHOLD` was exported by me in Pass 6 but nothing else imports it. Drop the `export`.
-- `models.tsx:376` (Accounts) — `getESPPLotOrder` is exported but only declared, never called by anything (including internally). Either delete the function or confirm a planned consumer.
-- `useKeyboardShortcuts.ts:8,20,28` (parallel agent's new file) — `isTypingTarget`, `hasModifier`, `ShortcutMap` are used inside the file but no external importers. Un-export.
-
-### Commented-out debug noise
-- `WithdrawalPlanner.ts` lines 541, 542, 543, 545, 1051, 1063, 1064 — six commented-out `// console.log` lines.
-- `SurplusAllocator.ts` lines 74, 357 — two more.
-- CLAUDE.md's "no comments for removed code" rule says delete; total ~8 lines of cruft.
-
-### Knip baseline still flagging
 - 🚨 `@rollup/rollup-linux-x64-gnu` pinned in deps — platform-specific transitive. Removing may break Linux installs. Skip unless you understand the rollup install dance.
 - ✗ `husky` flagged as both unused devDep and unlisted binary — known knip quirk for prepare-script-only packages. Already in devDeps after Pass 2, correct as-is.
 - ✗ `lint-staged` flagged — knip false positive (invoked by `.husky/pre-commit`).
+
+Current knip totals: **36 unused exports / 100 unused exported types**. Most of the remaining "unused exported types" are interface props for components (consumed implicitly through JSX) and tagged-union helpers — false positives for the way knip counts. A targeted sweep would need a per-symbol audit.
 
 ---
 
@@ -87,6 +84,13 @@ These are mechanical and isolated — pick them up any time.
 
 ### `Expense/models.tsx:927 case 'HousingExpense':`
 Class doesn't exist; the case maps legacy localStorage data to `RentExpense`. Delete only if you're willing to drop backward-compat for users with old saves. Otherwise leave it.
+
+### Duplicate `SavedCSVMapping` definition (surfaced during CSVImportModal refactor)
+Two structurally similar but not identical definitions exist:
+- `src/components/Objects/Budget/BudgetTypes.ts:80` — inline-typed `mapping` field missing `transactionTypeColumn`.
+- `src/services/CSVImportService.ts:46` — uses the full `CSVMapping` type (with `transactionTypeColumn`).
+
+TypeScript accepts the cross-import because the inline shape is a structural subset of `CSVMapping`. Unifying requires picking one source of truth and updating every consumer. Low blast radius (Budget consumers only), but not a 5-minute fix.
 
 ### Production `console.error` / `console.warn` calls
 CLAUDE.md forbids `console.log` specifically, leaving `error`/`warn` as a judgment call. Current sites (post-Pass-6 Sankey cleanup):
@@ -109,20 +113,16 @@ These are *opportunities*, not "to-do." Don't pick them up cold for the sake of 
 
 ### Component splits — file sizes verified
 
-- `TransactionsTab.tsx` — 1510 lines. Candidates: `TransactionForm`, `TransactionFilter`, `TransactionGrid`. Also has 19 raw `<input>`/`<select>` that should become InputFields.
-- `TaxService.tsx` — 1241 lines. Candidates: `TaxBracketService`, `SALTCapService`, `TaxCalculationService`. **Hot** — touched by tax features; risky cold.
-- `IncomeCard.tsx` — 730 lines. Same card+modals+actions inline pattern as the (already-split) AddIncomeModal.
-- `CSVImportModal.tsx` — 706 lines. Parser / mapper / preview seams.
-- `SimulationEngine.tsx` — 679 lines. Audit suggested `YearPlanExecutor` / `WithdrawalStateManager` / `YearSimulator` — verify the seams against current code before acting. **Hot.**
-- `AccountCard.tsx` — 640 lines. Card+modals+actions; ESPP/Property/Debt variants suggest natural extraction points. *(Note: as of writing, a parallel agent has been pointed at this one.)*
-- `useSimulation.tsx` — 624 lines. ✗ Original audit said "extract `useSimulationCache`" — **no cache layer exists in this file** (hashing happens externally in consumers via `services/simulationHash.ts`). Real refactors that exist: the file has no React hook despite the `use` prefix, and `runSimulation` is 268 lines that could be split into sub-phases. Both are speculative reshuffles, not obvious wins.
+- `SimulationEngine.tsx` — 679 lines (path: `src/components/Objects/Assumptions/SimulationEngine.tsx`). Audit suggested `YearPlanExecutor` / `WithdrawalStateManager` / `YearSimulator` — verify the seams against current code before acting. **Hot.**
+- `AccountCard.tsx` — 640 lines. Card+modals+actions; ESPP/Property/Debt variants suggest natural extraction points.
+- `useSimulation.tsx` — 624 lines (path: `src/components/Objects/Assumptions/useSimulation.tsx`). ✗ Original audit said "extract `useSimulationCache`" — **no cache layer exists in this file** (hashing happens externally in consumers via `services/simulationHash.ts`). Real refactors that exist: the file has no React hook despite the `use` prefix, and `runSimulation` is 268 lines that could be split into sub-phases. Both are speculative reshuffles, not obvious wins.
 - `ScenarioContext.tsx` — 579 lines. Real React Context. Audit suggested "split state vs comparison logic." Bounded internal change; consumers (ScenarioManager, ScenarioCard, ScenarioComparisonTab) keep importing the same hook.
-- `ExpenseCard.tsx` — 515 lines. Same family as IncomeCard / AccountCard.
+- `ExpenseCard.tsx` — 515 lines. Same family as IncomeCard / AccountCard. The IncomeCard split (commit 41104aa) is the reference pattern: pure utils + flow hook + per-type sub-components in a sibling `card/` subfolder.
 
 ### Other refactor opportunities
 
 - **Extract shared Roth-conversion helpers** between `RothConversionDP` and `TaxOptimizedWithdrawal` (`getAcaCliffThreshold`, tax-impact math) into a common module. Both files stay — they're intentional alternate optimizers. **`RothConversionDP` is hot** — coordinate before touching.
-- **Raw-input sweep** on `SettingsTab.tsx` (4), `ScenarioCard.tsx` (7), `TransactionsTab.tsx` (19). The current raw inputs use `bg-gray-800` styling that differs from InputFields' `bg-gray-900`; converting needs more than a swap-replace.
+- **Raw-input sweep** on `SettingsTab.tsx` (4) and `ScenarioCard.tsx` (7). The current raw inputs use `bg-gray-800` styling that differs from InputFields' `bg-gray-900`; converting needs more than a swap-replace. (TransactionsTab's 19 raw inputs may also have been resolved as part of the 9ac3242 split — re-verify before acting.)
 - **`assertions.ts`** — ~600 lines, only ~8 helpers actively used. Aggressive trim needs per-helper call-site audit.
 - **`MortgageExpense`** (in `Expense/models.tsx`) — six methods share amortization-loop math: `calculatePrincipalAndInterest` (289), `calculateAnnualAmortization` (298), `calculatePayment` (361), `calculateDeductible` (382), `getPrincipalPayment` (397), `getBalanceAtDate` (411). Extract a shared `amortize(month, …)` helper; don't merge the methods themselves.
 - **`SimpleExpense` full discriminated-union collapse** — Pass 5 did the minimal version (one-liner subclasses sharing a parent). The full collapse to a single `GeneralExpense { type }` would touch 10+ files (AddExpenseModal dispatching, ExpenseCard `instanceof` checks, Dashboard category mapping, default data, ~30 test assertions). Worth doing only if the existing class hierarchy starts getting in the way.
@@ -152,18 +152,24 @@ Don't act on these — they're documented so the next audit doesn't re-raise the
 - **`TaxOptimizedWithdrawal.ts:projectBalanceAtRMD` duplicate** — called by `calculateDynamicConversionCeiling` at line 1057. Helper, not duplicate.
 - **`CloudBackupPanel.tsx` raw input** — it's `<input type="file">`. No styled file-input exists in `InputFields/`. False positive.
 - **CashflowSankey console-statement violations (5 sites)** — removed in Pass 6.
-- **AddIncomeModal split candidate** — landed by parallel agent (commit 7a5922e).
+- **AddIncomeModal split candidate** — landed (commit 7a5922e).
 - **CashflowSankey split candidate** — landed Pass 6.
 - **SimpleExpense 6 subclasses** — collapsed (lightweight version) in Pass 5.
+- **TransactionsTab split candidate** — landed (commit 9ac3242).
+- **TaxService split candidate** — landed (commit 6511bbd).
+- **CSVImportModal split candidate** — landed (commit 7616706).
+- **IncomeCard split candidate** — landed (commit 41104aa). Audit's description ("Same card+modals+actions inline pattern as the AddIncomeModal") was misleading — there were no inline modals in IncomeCard, only inline sub-component functions. Real seams turned out to be: pure utilities, SSA file-upload flow, and missing FERS/CSRS pension subforms (which was also a silent-corruption bug, not just a refactor opportunity).
+- **`TaxService.tsx` path** — was at `src/components/Objects/Taxes/TaxService.tsx`, not `src/services/TaxService.tsx` as the audit had implied.
+- **`SimulationEngine.tsx` / `useSimulation.tsx` paths** — both live under `src/components/Objects/Assumptions/`, not `src/services/simulation/`.
 
 ---
 
 ## Where this leaves us
 
-The dead-code phase is genuinely done. What's left is either:
+Both the dead-code phase and the audit-listed component splits are genuinely done. Everything that was a real concentrated win has landed across seven cleanup passes and the five major splits (AddIncomeModal, TransactionsTab, TaxService, CSVImportModal, IncomeCard). What's left is either:
 
-- A handful of one-line `export` cleanups + commented-debug deletes (~15 minutes of work, listed in "Free wins still on the floor").
-- Real refactors that are worth doing only when you're already in the file for feature work.
-- Two judgment calls (HousingExpense legacy reconstitute, production `console.error` usage).
+- Five remaining big files (`SimulationEngine`, `AccountCard`, `ExpenseCard`, `useSimulation`, `ScenarioContext`) where the refactor is more speculative — best done while you're already in the file for feature work.
+- Three judgment calls (HousingExpense legacy reconstitute, production `console.error` usage, duplicate `SavedCSVMapping` definition).
+- The remaining "Other refactor opportunities" entries (Roth-conversion helper extraction, raw-input sweep, assertions trim, MortgageExpense amortization helper, SimpleExpense full collapse).
 
-If the next ask is "keep cleaning," the only things left are the free wins above. Bigger work needs a feature-driven trigger.
+If the next ask is "keep cleaning," the remaining cards (AccountCard, ExpenseCard) are the closest to mechanical — both follow the same card+sub-components pattern the IncomeCard split established. The Assumptions-side `SimulationEngine` and `useSimulation` files are hot and should not be touched cold.
