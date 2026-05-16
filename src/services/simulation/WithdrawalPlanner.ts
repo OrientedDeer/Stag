@@ -537,14 +537,6 @@ export function planWithdrawals(
 
     const stateRate = getStateRate();
 
-    // DEBUG: Log withdrawal planning (disabled - uncomment to enable)
-    // console.log('\n--- WITHDRAWAL PLANNER ---');
-    // console.log('netNeeded:', netNeeded);
-    // console.log('accounts in order:');
-    // for (const s of accountOrder) {
-    //     console.log(`  ${s.accountName} (${s.accountType}): vestedBalance=$${s.vestedBalance.toFixed(2)}`);
-    // }
-
     // IRS Pub 590-B: all Roth IRAs are treated as a single Roth IRA for ordering
     // rules. Pool contribution basis and conversion history (FIFO across accounts)
     // across every roth_ira snapshot. The pool is decremented in place as
@@ -1047,9 +1039,6 @@ export function planWithdrawals(
 
         withdrawals.push(withdrawal);
 
-        // DEBUG: Log each withdrawal (disabled - uncomment to enable)
-        // console.log(`  -> ${snapshot.accountName}: gross=$${withdrawal.gross.toFixed(2)}, net=$${withdrawal.net.toFixed(2)}, remainingNeeded=$${remainingNetNeeded.toFixed(2)}`);
-
         // Log the withdrawal
         decisions.push({
             category: 'withdrawal',
@@ -1058,10 +1047,6 @@ export function planWithdrawals(
             description: `Withdrew $${withdrawal.gross.toLocaleString()} from ${snapshot.accountName} (net: $${withdrawal.net.toLocaleString()}).`,
         });
     }
-
-    // DEBUG: Final state (disabled - uncomment to enable)
-    // console.log(`  RESULT: totalNet=$${totalNet.toFixed(2)}, remainingDeficit=$${Math.max(0, remainingNetNeeded).toFixed(2)}`);
-    // console.log('--- END WITHDRAWAL PLANNER ---\n');
 
     // Log if there's remaining deficit
     if (remainingNetNeeded > 0) {

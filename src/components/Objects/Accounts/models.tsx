@@ -371,9 +371,9 @@ export const ESPP_WITHDRAWAL_PREFERENCE_OPTIONS = [
   { value: 'dont_sell_until_qualifying' as const, label: "Don't Sell Until Qualifying" },
 ];
 
-export type ESPPLotOrder = 'fifo' | 'disqualifying_first' | 'qualifying_first';
+type ESPPLotOrder = 'fifo' | 'disqualifying_first' | 'qualifying_first';
 
-export function getESPPLotOrder(preference: ESPPWithdrawalPreference): ESPPLotOrder {
+function getESPPLotOrder(preference: ESPPWithdrawalPreference): ESPPLotOrder {
   if (preference === 'disqualifying_first') return 'disqualifying_first';
   if (preference === 'qualifying_first' || preference === 'dont_sell_until_qualifying') return 'qualifying_first';
   return 'fifo';

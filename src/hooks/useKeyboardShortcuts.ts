@@ -5,7 +5,7 @@ import type React from 'react';
  * True when focus is in something that consumes keystrokes (input, textarea,
  * select, contenteditable). Global keyboard shortcuts should bail out here.
  */
-export function isTypingTarget(target: EventTarget | null): boolean {
+function isTypingTarget(target: EventTarget | null): boolean {
     if (!target || !(target instanceof HTMLElement)) return false;
     const tag = target.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
@@ -17,7 +17,7 @@ export function isTypingTarget(target: EventTarget | null): boolean {
  * True when Cmd/Ctrl/Alt are held. Shift is treated as part of the shortcut
  * key itself (e.g. "Shift+ArrowLeft") and is NOT considered a modifier here.
  */
-export function hasModifier(e: KeyboardEvent): boolean {
+function hasModifier(e: KeyboardEvent): boolean {
     return e.metaKey || e.ctrlKey || e.altKey;
 }
 
@@ -25,7 +25,7 @@ function shortcutKey(e: KeyboardEvent): string {
     return (e.shiftKey ? 'Shift+' : '') + e.key;
 }
 
-export type ShortcutMap = Record<string, (e: KeyboardEvent) => void>;
+type ShortcutMap = Record<string, (e: KeyboardEvent) => void>;
 
 interface UseKeyboardShortcutsOptions {
     enabled?: boolean;

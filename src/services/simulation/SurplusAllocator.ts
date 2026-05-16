@@ -70,9 +70,6 @@ export function allocateSurplus(
     let remaining = surplus;
     let deficitDebtPayment = 0;
 
-    // DEBUG: Log allocator input (disabled - uncomment to enable)
-    // console.log('ALLOCATOR input surplus:', surplus);
-
     if (surplus <= 0) {
         return { allocations, decisions, deficitDebtPayment: 0, unallocated: 0 };
     }
@@ -353,8 +350,6 @@ export function allocateSurplus(
         deficitDebtPayment,
         unallocated: remaining,
     };
-    // DEBUG: Log allocator output (disabled - uncomment to enable)
-    // console.log('ALLOCATOR output allocations:', JSON.stringify(result.allocations));
     return result;
 }
 

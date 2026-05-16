@@ -11,7 +11,7 @@ import { AnyAccount, InvestedAccount } from '../Objects/Accounts/models';
 import { CashflowDetail } from '../../services/simulation/types';
 
 // Minimum threshold for including a value in the chart (avoids $0 nodes)
-export const MIN_DISPLAY_THRESHOLD = 0.005;
+const MIN_DISPLAY_THRESHOLD = 0.005;
 
 export interface SankeyImbalance {
     nodeName: string;
