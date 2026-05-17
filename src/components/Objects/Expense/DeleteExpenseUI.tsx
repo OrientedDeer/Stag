@@ -1,6 +1,6 @@
 import React, { useContext, useState } from 'react';
-import { ExpenseContext } from './ExpenseContext';
-import { AccountContext } from '../Accounts/AccountContext';
+import { ExpenseContext, ExpenseDispatchContext } from './ExpenseContext';
+import { AccountDispatchContext } from '../Accounts/AccountContext';
 import { MortgageExpense, LoanExpense } from './models';
 import { ConfirmDialog } from '../../Layout/ConfirmDialog';
 
@@ -10,8 +10,9 @@ interface DeleteControlProps {
 }
 
 const DeleteExpenseControl: React.FC<DeleteControlProps> = ({ expenseId, expenseName }) => {
-    const { expenses, dispatch: expenseDispatch } = useContext(ExpenseContext);
-    const { dispatch: accountDispatch } = useContext(AccountContext);
+    const { expenses } = useContext(ExpenseContext);
+    const expenseDispatch = useContext(ExpenseDispatchContext);
+    const { dispatch: accountDispatch } = useContext(AccountDispatchContext);
     const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 
     const expense = expenses.find(exp => exp.id === expenseId);

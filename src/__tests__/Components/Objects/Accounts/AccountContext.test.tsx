@@ -5,6 +5,7 @@ import { useContext } from 'react';
 import {
   AccountProvider,
   AccountContext,
+  AccountDispatchContext,
 } from '../../../../components/Objects/Accounts/AccountContext';
 import { SavedAccount, InvestedAccount } from '../../../../components/Objects/Accounts/models';
 
@@ -125,7 +126,7 @@ describe('AccountContext', () => {
     let dispatch!: any;
 
     const TestComponent = () => {
-      ({ dispatch } = useContext(AccountContext));
+      ({ dispatch } = useContext(AccountDispatchContext));
       return null;
     };
 
@@ -161,7 +162,7 @@ describe('AccountContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ accounts, dispatch } = useContext(AccountContext));
+          ({ accounts } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
           return null;
         };
 
@@ -191,7 +192,7 @@ describe('AccountContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ amountHistory, dispatch } = useContext(AccountContext));
+          ({ amountHistory } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
           return null;
         };
 
@@ -221,7 +222,7 @@ describe('AccountContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ accounts, dispatch } = useContext(AccountContext));
+          ({ accounts } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
           return null;
         };
 
@@ -254,7 +255,7 @@ describe('AccountContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ amountHistory, dispatch } = useContext(AccountContext));
+          ({ amountHistory } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
           return null;
         };
 
@@ -286,7 +287,7 @@ describe('AccountContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ accounts, dispatch } = useContext(AccountContext));
+          ({ accounts } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
           return null;
         };
 
@@ -319,7 +320,7 @@ describe('AccountContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ accounts, dispatch } = useContext(AccountContext));
+          ({ accounts } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
           return null;
         };
 
@@ -350,7 +351,7 @@ describe('AccountContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ accounts, dispatch } = useContext(AccountContext));
+          ({ accounts } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
           return null;
         };
 
@@ -383,7 +384,7 @@ describe('AccountContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ amountHistory, dispatch } = useContext(AccountContext));
+          ({ amountHistory } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
           return null;
         };
 
@@ -420,7 +421,7 @@ describe('AccountContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ amountHistory, dispatch } = useContext(AccountContext));
+          ({ amountHistory } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
           return null;
         };
 
@@ -458,7 +459,7 @@ describe('AccountContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ accounts, dispatch } = useContext(AccountContext));
+          ({ accounts } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
           return null;
         };
 
@@ -497,7 +498,7 @@ describe('AccountContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ amountHistory, dispatch } = useContext(AccountContext));
+          ({ amountHistory } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
           return null;
         };
 
@@ -531,7 +532,7 @@ describe('AccountContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ amountHistory, dispatch } = useContext(AccountContext));
+          ({ amountHistory } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
           return null;
         };
 
@@ -566,7 +567,7 @@ describe('AccountContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ amountHistory, dispatch } = useContext(AccountContext));
+          ({ amountHistory } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
           return null;
         };
 
@@ -619,7 +620,7 @@ describe('AccountContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ amountHistory, dispatch } = useContext(AccountContext));
+          ({ amountHistory } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
           return null;
         };
 
@@ -668,7 +669,7 @@ describe('AccountContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ accounts, amountHistory, dispatch } = useContext(AccountContext));
+          ({ accounts, amountHistory } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
           return null;
         };
 
@@ -713,7 +714,7 @@ describe('AccountContext', () => {
       let dispatch!: any;
 
       const TestComponent = () => {
-        ({ exportData, dispatch } = useContext(AccountContext));
+        ({ exportData, dispatch } = useContext(AccountDispatchContext));
         return null;
       };
 
@@ -751,7 +752,7 @@ describe('AccountContext', () => {
       let amountHistory!: any;
 
       const TestComponent = () => {
-        ({ importData, accounts, amountHistory } = useContext(AccountContext));
+        ({ accounts, amountHistory } = useContext(AccountContext)); ({ importData } = useContext(AccountDispatchContext));
         return null;
       };
 
@@ -795,7 +796,7 @@ describe('AccountContext', () => {
       let importData: any;
 
       const TestComponent = () => {
-        ({ importData } = useContext(AccountContext));
+        ({ importData } = useContext(AccountDispatchContext));
         return null;
       };
 

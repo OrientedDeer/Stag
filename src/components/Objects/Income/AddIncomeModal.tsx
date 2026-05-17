@@ -1,5 +1,5 @@
 import React, { useState, useContext, useEffect } from "react";
-import { IncomeContext } from "./IncomeContext";
+import { IncomeContext, IncomeDispatchContext } from "./IncomeContext";
 import {
   WorkIncome,
   SocialSecurityIncome,
@@ -43,8 +43,9 @@ interface AddIncomeModalProps {
 }
 
 const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
-    const { dispatch } = useContext(IncomeContext);
+    const dispatch = useContext(IncomeDispatchContext);
     const { accounts } = useContext(AccountContext);
+    const { incomes } = useContext(IncomeContext);
     const { state: assumptions } = useContext(AssumptionsContext);
     const { modalRef, handleKeyDown } = useModalAccessibility(isOpen, onClose);
 
@@ -84,7 +85,6 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
 
     const esppAccounts = accounts.filter(acc => acc instanceof ESPPAccount) as ESPPAccount[];
 
-    const { incomes } = useContext(IncomeContext);
     const workIncomes = incomes.filter(inc => inc instanceof WorkIncome) as WorkIncome[];
 
     useEffect(() => {

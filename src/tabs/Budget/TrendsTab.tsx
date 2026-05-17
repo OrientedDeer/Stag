@@ -7,6 +7,73 @@ import {
     formatCurrency,
     getExpenseMonthlyBudget,
 } from '../../components/Objects/Budget/budgetUtils';
+
+const lineMargin = { top: 20, right: 20, bottom: 40, left: 60 };
+const lineXScale = { type: 'point' } as const;
+const lineYScale = { type: 'linear' as const, min: 0, max: 'auto' as const };
+const lineAxisBottom = { tickSize: 0, tickPadding: 10 };
+const spendingAxisLeft = {
+    tickSize: 0,
+    tickPadding: 10,
+    format: (v: number) => `$${(v / 1000).toFixed(0)}k`,
+};
+const categoryAxisLeft = {
+    tickSize: 0,
+    tickPadding: 10,
+    format: (v: number) => `$${v.toLocaleString()}`,
+};
+const spendingColors = ['#f87171', '#4ade80'];
+const categoryColors = { datum: 'color' } as const;
+const lineTheme = {
+    axis: {
+        ticks: { text: { fill: '#6b7280', fontSize: 11 } },
+    },
+    grid: { line: { stroke: '#374151' } },
+    legends: { text: { fill: '#9ca3af', fontSize: 11 } },
+    crosshair: { line: { stroke: '#86efac', strokeWidth: 1 } },
+};
+const categoryLineTheme = {
+    ...lineTheme,
+    legends: { text: { fill: '#9ca3af', fontSize: 10 } },
+};
+const pointColor = { theme: 'background' } as const;
+const pointBorderColor = { from: 'serieColor' } as const;
+const spendingLegends = [
+    {
+        anchor: 'top-right' as const,
+        direction: 'row' as const,
+        translateY: -20,
+        itemWidth: 80,
+        itemHeight: 20,
+        symbolSize: 10,
+        symbolShape: 'circle' as const,
+    },
+];
+const categoryLegends = [
+    {
+        anchor: 'top' as const,
+        direction: 'row' as const,
+        translateY: -20,
+        itemWidth: 100,
+        itemHeight: 20,
+        symbolSize: 8,
+        symbolShape: 'circle' as const,
+    },
+];
+type LineTooltipPoint = {
+    data: { x: unknown; y: unknown };
+    seriesId: string | number;
+    seriesColor: string;
+};
+const LineTooltip = ({ point }: { point: LineTooltipPoint }) => (
+    <div className="bg-gray-800 border border-gray-700 p-2 rounded shadow-xl text-xs">
+        <div className="font-semibold text-white">{point.data.x as string}</div>
+        <div style={{ color: point.seriesColor }}>
+            {point.seriesId}: {formatCurrency(point.data.y as number)}
+        </div>
+    </div>
+);
+
 export default function TrendsTab() {
     const { months } = useContext(BudgetContext);
     const { expenses } = useContext(ExpenseContext);
@@ -168,58 +235,27 @@ export default function TrendsTab() {
                 <div className="h-64">
                     <ResponsiveLine
                         data={lineChartData}
-                        margin={{ top: 20, right: 20, bottom: 40, left: 60 }}
-                        xScale={{ type: 'point' }}
-                        yScale={{ type: 'linear', min: 0, max: 'auto' }}
-                        axisBottom={{
-                            tickSize: 0,
-                            tickPadding: 10,
-                        }}
-                        axisLeft={{
-                            tickSize: 0,
-                            tickPadding: 10,
-                            format: (v) => `$${(v / 1000).toFixed(0)}k`,
-                        }}
+                        margin={lineMargin}
+                        xScale={lineXScale}
+                        yScale={lineYScale}
+                        axisBottom={lineAxisBottom}
+                        axisLeft={spendingAxisLeft}
                         enableGridX={false}
                         gridYValues={5}
-                        colors={['#f87171', '#4ade80']}
+                        colors={spendingColors}
                         lineWidth={3}
                         curve="monotoneX"
                         enablePoints={true}
                         pointSize={8}
-                        pointColor={{ theme: 'background' }}
+                        pointColor={pointColor}
                         pointBorderWidth={2}
-                        pointBorderColor={{ from: 'serieColor' }}
+                        pointBorderColor={pointBorderColor}
                         useMesh={true}
                         enableArea={true}
                         areaOpacity={0.1}
-                        legends={[
-                            {
-                                anchor: 'top-right',
-                                direction: 'row',
-                                translateY: -20,
-                                itemWidth: 80,
-                                itemHeight: 20,
-                                symbolSize: 10,
-                                symbolShape: 'circle',
-                            },
-                        ]}
-                        theme={{
-                            axis: {
-                                ticks: { text: { fill: '#6b7280', fontSize: 11 } },
-                            },
-                            grid: { line: { stroke: '#374151' } },
-                            legends: { text: { fill: '#9ca3af', fontSize: 11 } },
-                            crosshair: { line: { stroke: '#86efac', strokeWidth: 1 } },
-                        }}
-                        tooltip={({ point }) => (
-                            <div className="bg-gray-800 border border-gray-700 p-2 rounded shadow-xl text-xs">
-                                <div className="font-semibold text-white">{point.data.x as string}</div>
-                                <div style={{ color: point.seriesColor }}>
-                                    {point.seriesId}: {formatCurrency(point.data.y as number)}
-                                </div>
-                            </div>
-                        )}
+                        legends={spendingLegends}
+                        theme={lineTheme}
+                        tooltip={LineTooltip}
                     />
                 </div>
             </div>
@@ -231,56 +267,25 @@ export default function TrendsTab() {
                     <div className="h-64">
                         <ResponsiveLine
                             data={categoryTrendData}
-                            margin={{ top: 20, right: 20, bottom: 40, left: 60 }}
-                            xScale={{ type: 'point' }}
-                            yScale={{ type: 'linear', min: 0, max: 'auto' }}
-                            axisBottom={{
-                                tickSize: 0,
-                                tickPadding: 10,
-                            }}
-                            axisLeft={{
-                                tickSize: 0,
-                                tickPadding: 10,
-                                format: (v) => `$${v.toLocaleString()}`,
-                            }}
+                            margin={lineMargin}
+                            xScale={lineXScale}
+                            yScale={lineYScale}
+                            axisBottom={lineAxisBottom}
+                            axisLeft={categoryAxisLeft}
                             enableGridX={false}
                             gridYValues={5}
-                            colors={{ datum: 'color' }}
+                            colors={categoryColors}
                             lineWidth={2}
                             curve="linear"
                             enablePoints={true}
                             pointSize={6}
-                            pointColor={{ theme: 'background' }}
+                            pointColor={pointColor}
                             pointBorderWidth={2}
-                            pointBorderColor={{ from: 'serieColor' }}
+                            pointBorderColor={pointBorderColor}
                             useMesh={true}
-                            legends={[
-                                {
-                                    anchor: 'top',
-                                    direction: 'row',
-                                    translateY: -20,
-                                    itemWidth: 100,
-                                    itemHeight: 20,
-                                    symbolSize: 8,
-                                    symbolShape: 'circle',
-                                },
-                            ]}
-                            theme={{
-                                axis: {
-                                    ticks: { text: { fill: '#6b7280', fontSize: 11 } },
-                                },
-                                grid: { line: { stroke: '#374151' } },
-                                legends: { text: { fill: '#9ca3af', fontSize: 10 } },
-                                crosshair: { line: { stroke: '#86efac', strokeWidth: 1 } },
-                            }}
-                            tooltip={({ point }) => (
-                                <div className="bg-gray-800 border border-gray-700 p-2 rounded shadow-xl text-xs">
-                                    <div className="font-semibold text-white">{point.data.x as string}</div>
-                                    <div style={{ color: point.seriesColor }}>
-                                        {point.seriesId}: {formatCurrency(point.data.y as number)}
-                                    </div>
-                                </div>
-                            )}
+                            legends={categoryLegends}
+                            theme={categoryLineTheme}
+                            tooltip={LineTooltip}
                         />
                     </div>
                 </div>

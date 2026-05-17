@@ -1,4 +1,4 @@
-import { createContext, ReactNode, Dispatch, useMemo } from 'react';
+import { createContext, ReactNode, Dispatch } from 'react';
 import {
     AnyExpense,
     RentExpense,
@@ -87,14 +87,8 @@ function serializeExpenseState(state: ExpenseState): string {
   });
 }
 
-interface ExpenseContextProps extends ExpenseState {
-  dispatch: Dispatch<Action>;
-}
-
-export const ExpenseContext = createContext<ExpenseContextProps>({
-  expenses: [],
-  dispatch: () => null,
-});
+export const ExpenseContext = createContext<ExpenseState>({ expenses: [] });
+export const ExpenseDispatchContext = createContext<Dispatch<Action>>(() => null);
 
 export function ExpenseProvider({ children }: { children: ReactNode }): React.ReactElement {
   const [state, dispatch] = usePersistedReducer(expenseReducer, initialState, {
@@ -103,11 +97,11 @@ export function ExpenseProvider({ children }: { children: ReactNode }): React.Re
     serialize: serializeExpenseState,
   });
 
-  const contextValue = useMemo(() => ({ ...state, dispatch }), [state, dispatch]);
-
   return (
-    <ExpenseContext.Provider value={contextValue}>
-      {children}
-    </ExpenseContext.Provider>
+    <ExpenseDispatchContext.Provider value={dispatch}>
+      <ExpenseContext.Provider value={state}>
+        {children}
+      </ExpenseContext.Provider>
+    </ExpenseDispatchContext.Provider>
   );
 }

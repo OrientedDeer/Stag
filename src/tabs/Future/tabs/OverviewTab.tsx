@@ -289,9 +289,18 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                     trig === 'capital-preservation' ? '#ef4444' :
                     trig === 'prosperity' ? '#22c55e' :
                     '#f59e0b';
+                // Must match the yearLabel rawData assigns, since the chart's
+                // xScale is a point scale keyed on those strings — a numeric
+                // year here would resolve to undefined and the marker would
+                // render at translate(undefined, 0).
+                const valueLabel = y.isEndOfYearProjection
+                    ? `Dec ${y.year}`
+                    : (hasEOYPoint && y.year === baselineYear)
+                        ? 'Today'
+                        : String(y.year);
                 return {
                     axis: 'x' as const,
-                    value: y.year,
+                    value: valueLabel,
                     lineStyle: {
                         stroke,
                         strokeWidth: 2,
@@ -300,7 +309,7 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                     },
                 };
             });
-    }, [filteredData]);
+    }, [filteredData, hasEOYPoint, baselineYear]);
 
     // Check for uncovered deficit (expenses exceed all available income + withdrawals)
     const deficitInfo = useMemo(() => {

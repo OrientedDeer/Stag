@@ -5,6 +5,7 @@ import { useContext } from 'react';
 import {
   IncomeProvider,
   IncomeContext,
+  IncomeDispatchContext,
 } from '../../../../components/Objects/Income/IncomeContext';
 import {
   WorkIncome,
@@ -126,7 +127,7 @@ describe('IncomeContext', () => {
     let dispatch!: any;
 
     const TestComponent = () => {
-      ({ dispatch } = useContext(IncomeContext));
+      dispatch = useContext(IncomeDispatchContext);
       return null;
     };
 
@@ -162,7 +163,7 @@ describe('IncomeContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ incomes, dispatch } = useContext(IncomeContext));
+          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
           return null;
         };
 
@@ -192,7 +193,7 @@ describe('IncomeContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ incomes, dispatch } = useContext(IncomeContext));
+          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
           return null;
         };
 
@@ -220,7 +221,7 @@ describe('IncomeContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ incomes, dispatch } = useContext(IncomeContext));
+          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
           return null;
         };
 
@@ -255,7 +256,7 @@ describe('IncomeContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ incomes, dispatch } = useContext(IncomeContext));
+          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
           return null;
         };
 
@@ -287,7 +288,7 @@ describe('IncomeContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ incomes, dispatch } = useContext(IncomeContext));
+          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
           return null;
         };
 
@@ -318,7 +319,7 @@ describe('IncomeContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ incomes, dispatch } = useContext(IncomeContext));
+          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
           return null;
         };
 
@@ -349,7 +350,7 @@ describe('IncomeContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ incomes, dispatch } = useContext(IncomeContext));
+          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
           return null;
         };
 
@@ -382,7 +383,7 @@ describe('IncomeContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ incomes, dispatch } = useContext(IncomeContext));
+          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
           return null;
         };
 
@@ -419,7 +420,7 @@ describe('IncomeContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ incomes, dispatch } = useContext(IncomeContext));
+          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
           return null;
         };
 
@@ -456,7 +457,7 @@ describe('IncomeContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ incomes, dispatch } = useContext(IncomeContext));
+          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
           return null;
         };
 
@@ -495,7 +496,7 @@ describe('IncomeContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ incomes, dispatch } = useContext(IncomeContext));
+          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
           return null;
         };
 
@@ -696,7 +697,7 @@ describe('IncomeContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ incomes, dispatch } = useContext(IncomeContext));
+          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
           return null;
         };
 
@@ -734,7 +735,7 @@ describe('IncomeContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ incomes, dispatch } = useContext(IncomeContext));
+          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
           return null;
         };
 
@@ -772,7 +773,7 @@ describe('IncomeContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ incomes, dispatch } = useContext(IncomeContext));
+          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
           return null;
         };
 
@@ -812,7 +813,7 @@ describe('IncomeContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ incomes, dispatch } = useContext(IncomeContext));
+          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
           return null;
         };
 
@@ -849,7 +850,7 @@ describe('IncomeContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ incomes, dispatch } = useContext(IncomeContext));
+          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
           return null;
         };
 

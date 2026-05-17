@@ -1,4 +1,5 @@
-import { useContext, useMemo, useState } from 'react';
+import { useCallback, useContext, useMemo, useState } from 'react';
+import type { Transaction } from '../../components/Objects/Budget/BudgetTypes';
 import {
     BudgetContext,
     INCOME_CATEGORIES,
@@ -115,11 +116,6 @@ export default function TransactionsTab() {
         setShowAddForm(false);
     };
 
-    const handleUpdate = (id: string, updates: Parameters<typeof editor.update>[1]) => {
-        editor.update(id, updates);
-        setEditingId(null);
-    };
-
     const handleClearAllConfirm = () => {
         editor.clearAllForMonth();
         setShowClearConfirm(false);
@@ -131,28 +127,41 @@ export default function TransactionsTab() {
         setBulkCategory('');
     };
 
-    const renderRow = (id: string) => (transactionId: string) => {
-        const t = transactions.find(tx => tx.id === transactionId);
-        if (!t) return null;
-        return (
-            <TransactionRow
-                key={t.id}
-                transaction={t}
-                expenses={expenses}
-                activeExpenses={activeExpenses}
-                accounts={accounts}
-                priorities={priorities}
-                isEditing={editingId === t.id}
-                isSelected={bulk.selectedIds.has(t.id)}
-                onEdit={() => setEditingId(t.id)}
-                onUpdate={(updates) => handleUpdate(t.id, updates)}
-                onDelete={() => editor.remove(t.id)}
-                onCancel={() => setEditingId(null)}
-                onToggleSelect={() => bulk.toggle(t.id)}
-                showCategory={id === 'all'}
-            />
-        );
-    };
+    const handleRowEdit = useCallback((id: string) => setEditingId(id), []);
+    const handleRowCancel = useCallback(() => setEditingId(null), []);
+    const handleRowUpdate = useCallback((id: string, updates: Partial<Transaction>) => {
+        editor.update(id, updates);
+        setEditingId(null);
+    }, [editor.update]);
+
+    const handleToggleGroupBy = useCallback(() => setGroupByCategory(g => !g), []);
+    const handleToggleAutoCreateRules = useCallback(
+        () => dispatch({ type: 'SET_AUTO_CREATE_RULES', payload: !importSettings.autoCreateRules }),
+        [dispatch, importSettings.autoCreateRules],
+    );
+    const handleClearAllClick = useCallback(() => setShowClearConfirm(true), []);
+    const handleImportClick = useCallback(() => setShowImportModal(true), []);
+    const handleAddClick = useCallback(() => setShowAddForm(true), []);
+    const handleImportClose = useCallback(() => setShowImportModal(false), []);
+
+    const renderRow = (t: Transaction, showCategory: boolean) => (
+        <TransactionRow
+            key={t.id}
+            transaction={t}
+            expenses={expenses}
+            activeExpenses={activeExpenses}
+            accounts={accounts}
+            priorities={priorities}
+            isEditing={editingId === t.id}
+            isSelected={bulk.selectedIds.has(t.id)}
+            onEdit={handleRowEdit}
+            onUpdate={handleRowUpdate}
+            onDelete={editor.remove}
+            onCancel={handleRowCancel}
+            onToggleSelect={bulk.toggle}
+            showCategory={showCategory}
+        />
+    );
 
     return (
         <div className="space-y-6">
@@ -165,9 +174,9 @@ export default function TransactionsTab() {
                 totalSpending={totalSpending}
                 netCashFlow={netCashFlow}
                 groupByCategory={groupByCategory}
-                onToggleGroupBy={() => setGroupByCategory(!groupByCategory)}
+                onToggleGroupBy={handleToggleGroupBy}
                 autoCreateRules={importSettings.autoCreateRules}
-                onToggleAutoCreateRules={() => dispatch({ type: 'SET_AUTO_CREATE_RULES', payload: !importSettings.autoCreateRules })}
+                onToggleAutoCreateRules={handleToggleAutoCreateRules}
                 selectedIdsSize={bulk.selectedIds.size}
                 bulkCategory={bulkCategory}
                 setBulkCategory={setBulkCategory}
@@ -175,9 +184,9 @@ export default function TransactionsTab() {
                 onClearSelection={bulk.clear}
                 activeExpenses={activeExpenses}
                 hasAnyTransactions={transactions.length > 0}
-                onClearAll={() => setShowClearConfirm(true)}
-                onImport={() => setShowImportModal(true)}
-                onAdd={() => setShowAddForm(true)}
+                onClearAll={handleClearAllClick}
+                onImport={handleImportClick}
+                onAdd={handleAddClick}
             />
 
             {showAddForm && (
@@ -194,7 +203,7 @@ export default function TransactionsTab() {
 
             <CSVImportModal
                 isOpen={showImportModal}
-                onClose={() => setShowImportModal(false)}
+                onClose={handleImportClose}
             />
 
             {showClearConfirm && (
@@ -217,7 +226,7 @@ export default function TransactionsTab() {
             ) : !groupByCategory ? (
                 <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
                     <div className="divide-y divide-gray-700">
-                        {sortedTransactions.map(t => renderRow('all')(t.id))}
+                        {sortedTransactions.map(t => renderRow(t, true))}
                     </div>
                 </div>
             ) : (
@@ -235,7 +244,7 @@ export default function TransactionsTab() {
                             collapsed={collapse.collapsed.has('uncategorized')}
                             onToggle={() => collapse.toggle('uncategorized')}
                         >
-                            {groupedTransactions['uncategorized'].transactions.map(t => renderRow('uncategorized')(t.id))}
+                            {groupedTransactions['uncategorized'].transactions.map(t => renderRow(t, false))}
                         </CollapsibleSection>
                     )}
 
@@ -260,7 +269,7 @@ export default function TransactionsTab() {
                                             <span className="text-sm font-medium text-green-300">{cat}</span>
                                             <span className="text-sm text-green-400">{formatCurrency(group.total)}</span>
                                         </div>
-                                        {group.transactions.map(t => renderRow('income')(t.id))}
+                                        {group.transactions.map(t => renderRow(t, false))}
                                     </div>
                                 );
                             })}
@@ -281,7 +290,7 @@ export default function TransactionsTab() {
                             collapsed={collapse.collapsed.has('transfers')}
                             onToggle={() => collapse.toggle('transfers')}
                         >
-                            {groupedTransactions[TRANSFER_CATEGORY_ID].transactions.map(t => renderRow('transfers')(t.id))}
+                            {groupedTransactions[TRANSFER_CATEGORY_ID].transactions.map(t => renderRow(t, false))}
                         </CollapsibleSection>
                     )}
 
@@ -313,7 +322,7 @@ export default function TransactionsTab() {
                                 collapsed={collapse.collapsed.has(exp.id)}
                                 onToggle={() => collapse.toggle(exp.id)}
                             >
-                                {group.transactions.map(t => renderRow(exp.id)(t.id))}
+                                {group.transactions.map(t => renderRow(t, false))}
                             </CollapsibleSection>
                         );
                     })}
@@ -347,7 +356,7 @@ export default function TransactionsTab() {
                                                 </span>
                                             </div>
                                         </div>
-                                        {group.transactions.map(t => renderRow('contributions')(t.id))}
+                                        {group.transactions.map(t => renderRow(t, false))}
                                     </div>
                                 );
                             })}

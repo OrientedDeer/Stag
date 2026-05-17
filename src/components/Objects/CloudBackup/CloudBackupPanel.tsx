@@ -1,9 +1,9 @@
 import { useContext, useState, useRef, useEffect } from 'react';
 import { CloudBackupContext } from './CloudBackupContext';
 import { useFileManager } from '../Accounts/useFileManager';
-import { AccountContext } from '../Accounts/AccountContext';
-import { IncomeContext } from '../Income/IncomeContext';
-import { ExpenseContext } from '../Expense/ExpenseContext';
+import { AccountDispatchContext } from '../Accounts/AccountContext';
+import { IncomeDispatchContext } from '../Income/IncomeContext';
+import { ExpenseDispatchContext } from '../Expense/ExpenseContext';
 import { TaxContext } from '../../Objects/Taxes/TaxContext';
 import { AssumptionsContext, defaultAssumptions, createBuiltinMilestones } from '../Assumptions/AssumptionsContext';
 import { SimulationContext } from '../Assumptions/SimulationContext';
@@ -37,9 +37,9 @@ export default function CloudBackupPanel({ isOpen, onClose }: CloudBackupPanelPr
     } = useContext(CloudBackupContext);
 
     const { getBackupData, handleGlobalExport, handleGlobalImport } = useFileManager();
-    const { dispatch: accountDispatch } = useContext(AccountContext);
-    const { dispatch: incomeDispatch } = useContext(IncomeContext);
-    const { dispatch: expenseDispatch } = useContext(ExpenseContext);
+    const { dispatch: accountDispatch } = useContext(AccountDispatchContext);
+    const incomeDispatch = useContext(IncomeDispatchContext);
+    const expenseDispatch = useContext(ExpenseDispatchContext);
     const { dispatch: taxDispatch } = useContext(TaxContext);
     const { dispatch: assumptionsDispatch } = useContext(AssumptionsContext);
     const { dispatch: simulationDispatch } = useContext(SimulationContext);

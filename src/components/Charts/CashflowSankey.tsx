@@ -1,4 +1,4 @@
-import { useMemo, useContext, useCallback, useState, useEffect, useRef } from 'react';
+import { memo, useMemo, useContext, useCallback, useState, useEffect, useRef } from 'react';
 import { ResponsiveSankey } from '@nivo/sankey';
 import { AnyIncome } from '../Objects/Income/models';
 import { AnyExpense } from '../Objects/Expense/models';
@@ -44,7 +44,7 @@ interface CashflowSankeyProps {
     onBalanceCheck?: (imbalances: SankeyImbalance[]) => void;
 }
 
-export const CashflowSankey = ({
+const CashflowSankeyInner = ({
     incomes,
     expenses,
     year,
@@ -195,3 +195,9 @@ export const CashflowSankey = ({
         </SankeyErrorBoundary>
     );
 };
+
+// Memoize: during a CashflowTab drag, the selectedYear (and therefore the
+// year-derived props passed here) don't change, so the entire Sankey subtree
+// can bail out via shallow-equal prop check. Without this, every drag tick
+// would re-walk ~100+ fibers inside the Nivo Sankey tree.
+export const CashflowSankey = memo(CashflowSankeyInner);

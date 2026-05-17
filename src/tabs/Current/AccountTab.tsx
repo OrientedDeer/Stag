@@ -1,5 +1,5 @@
 import React, { useState, useContext, useEffect, useMemo } from "react";
-import { AccountContext } from "../../components/Objects/Accounts/AccountContext";
+import { AccountContext, AccountDispatchContext } from "../../components/Objects/Accounts/AccountContext";
 import { useSubTabKeyboardNav } from "../../hooks/useKeyboardShortcuts";
 import {
     SavedAccount,
@@ -18,7 +18,8 @@ import AddAccountModal from "../../components/Objects/Accounts/AddAccountModal";
 import { ObjectsIcicleChart, tailwindToCssVar, getDistributedColors } from "../../components/Charts/ObjectsIcicleChart";
 
 const AccountList = ({ type }: { type: any }) => {
-    const { accounts, dispatch } = useContext(AccountContext);
+    const { accounts } = useContext(AccountContext);
+    const { dispatch } = useContext(AccountDispatchContext);
 
     const filteredAccounts = accounts
         .map((acc, index) => ({ acc, originalIndex: index }))

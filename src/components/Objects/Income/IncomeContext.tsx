@@ -1,4 +1,4 @@
-import { createContext, ReactNode, Dispatch, useMemo } from 'react';
+import { createContext, ReactNode, Dispatch } from 'react';
 import { AnyIncome, reconstituteIncome } from './models';
 import { usePersistedReducer } from '../../../hooks/usePersistedReducer';
 
@@ -72,14 +72,8 @@ function serializeIncomeState(state: IncomeState): string {
   });
 }
 
-interface IncomeContextProps extends IncomeState {
-  dispatch: Dispatch<Action>;
-}
-
-export const IncomeContext = createContext<IncomeContextProps>({
-  incomes: [],
-  dispatch: () => null,
-});
+export const IncomeContext = createContext<IncomeState>({ incomes: [] });
+export const IncomeDispatchContext = createContext<Dispatch<Action>>(() => null);
 
 export function IncomeProvider({ children }: { children: ReactNode }): React.ReactElement {
   const [state, dispatch] = usePersistedReducer(incomeReducer, initialState, {
@@ -88,11 +82,11 @@ export function IncomeProvider({ children }: { children: ReactNode }): React.Rea
     serialize: serializeIncomeState,
   });
 
-  const contextValue = useMemo(() => ({ ...state, dispatch }), [state, dispatch]);
-
   return (
-    <IncomeContext.Provider value={contextValue}>
-      {children}
-    </IncomeContext.Provider>
+    <IncomeDispatchContext.Provider value={dispatch}>
+      <IncomeContext.Provider value={state}>
+        {children}
+      </IncomeContext.Provider>
+    </IncomeDispatchContext.Provider>
   );
 }

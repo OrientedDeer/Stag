@@ -13,6 +13,29 @@ import {
 } from '../../components/Objects/Budget/budgetUtils';
 import { ToggleInput } from '../../components/Layout/InputFields/ToggleInput';
 
+const chartKeys = ['average'];
+const chartMargin = { top: 5, right: 20, bottom: 25, left: 100 };
+const chartValueScale = { type: 'linear' } as const;
+const chartAxisBottom = {
+    tickSize: 0,
+    tickPadding: 5,
+    format: (v: number) => `$${v.toLocaleString()}`,
+};
+const chartAxisLeft = { tickSize: 0, tickPadding: 10 };
+const chartTheme = {
+    axis: {
+        ticks: { text: { fill: '#9ca3af', fontSize: 11 } },
+    },
+    grid: { line: { stroke: '#374151' } },
+};
+const getBarColor = ({ data }: { data: { color: string } }) => data.color;
+const BarTooltip = ({ data, value }: { data: { name: string }; value: number }) => (
+    <div className="bg-gray-800 border border-gray-700 p-2 rounded shadow-xl text-xs">
+        <div className="font-semibold text-white">{data.name}</div>
+        <div className="text-green-400">{formatCurrency(value)} / month avg</div>
+    </div>
+);
+
 export default function OverviewTab() {
     const { months, selectedMonth, selectedYear, importSettings, projectFuture, dispatch } = useContext(BudgetContext);
     const { expenses } = useContext(ExpenseContext);
@@ -412,37 +435,20 @@ export default function OverviewTab() {
                     <div className="h-48">
                         <ResponsiveBar
                             data={categoryData}
-                            keys={['average']}
+                            keys={chartKeys}
                             indexBy="name"
-                            margin={{ top: 5, right: 20, bottom: 25, left: 100 }}
+                            margin={chartMargin}
                             layout="horizontal"
-                            valueScale={{ type: 'linear' }}
-                            colors={({ data }) => data.color as string}
+                            valueScale={chartValueScale}
+                            colors={getBarColor}
                             borderRadius={4}
                             padding={0.3}
-                            axisBottom={{
-                                tickSize: 0,
-                                tickPadding: 5,
-                                format: (v) => `$${v.toLocaleString()}`,
-                            }}
-                            axisLeft={{
-                                tickSize: 0,
-                                tickPadding: 10,
-                            }}
+                            axisBottom={chartAxisBottom}
+                            axisLeft={chartAxisLeft}
                             enableGridY={false}
                             enableLabel={false}
-                            theme={{
-                                axis: {
-                                    ticks: { text: { fill: '#9ca3af', fontSize: 11 } },
-                                },
-                                grid: { line: { stroke: '#374151' } },
-                            }}
-                            tooltip={({ data, value }) => (
-                                <div className="bg-gray-800 border border-gray-700 p-2 rounded shadow-xl text-xs">
-                                    <div className="font-semibold text-white">{data.name}</div>
-                                    <div className="text-green-400">{formatCurrency(value)} / month avg</div>
-                                </div>
-                            )}
+                            theme={chartTheme}
+                            tooltip={BarTooltip}
                         />
                     </div>
                 </div>

@@ -20,10 +20,23 @@ interface MonteCarloTabProps {
 }
 
 /**
- * Extract deterministic net worth timeline from simulation data
+ * Extract deterministic net worth timeline from simulation data.
+ *
+ * Some sims emit two entries for the current year — a "Today" snapshot and a
+ * "Dec YYYY" end-of-year projection. Monte Carlo percentile lines are annual,
+ * so the fan chart's linear x-axis needs exactly one point per year. We keep
+ * the EOY entry where it exists since it represents the year-end value that
+ * lines up with MC's annual snapshots.
  */
 function extractDeterministicLine(simulationData: SimulationYear[]): YearlyPercentile[] {
-    return simulationData.map(year => ({
+    const byYear = new Map<number, SimulationYear>();
+    for (const year of simulationData) {
+        const existing = byYear.get(year.year);
+        if (!existing || year.isEndOfYearProjection) {
+            byYear.set(year.year, year);
+        }
+    }
+    return Array.from(byYear.values()).map(year => ({
         year: year.year,
         netWorth: calculateNetWorth(year.accounts),
     }));

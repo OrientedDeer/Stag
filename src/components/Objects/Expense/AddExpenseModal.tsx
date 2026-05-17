@@ -1,5 +1,5 @@
 import React, { useState, useContext } from "react";
-import { ExpenseContext } from "./ExpenseContext";
+import { ExpenseDispatchContext } from "./ExpenseContext";
 import {
 	RentExpense,
 	MortgageExpense,
@@ -14,7 +14,7 @@ import {
 	CharityExpense,
 	OtherExpense,
 } from "./models";
-import { AccountContext } from "../Accounts/AccountContext";
+import { AccountDispatchContext } from "../Accounts/AccountContext";
 import { DebtAccount, PropertyAccount } from "../../Objects/Accounts/models";
 import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput";
 import { PercentageInput } from "../../Layout/InputFields/PercentageInput";
@@ -105,8 +105,8 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 	isOpen,
 	onClose,
 }) => {
-	const { dispatch: expenseDispatch } = useContext(ExpenseContext);
-	const { dispatch: accountDispatch } = useContext(AccountContext);
+	const expenseDispatch = useContext(ExpenseDispatchContext);
+	const { dispatch: accountDispatch } = useContext(AccountDispatchContext);
 	const { state: assumptions } = useContext(AssumptionsContext);
 	const { modalRef, handleKeyDown } = useModalAccessibility(isOpen, onClose);
 	const [step, setStep] = useState<"select" | "details">("select");

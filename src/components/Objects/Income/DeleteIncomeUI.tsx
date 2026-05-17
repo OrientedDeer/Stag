@@ -1,5 +1,5 @@
 import React, { useContext, useState } from 'react';
-import { IncomeContext } from './IncomeContext';
+import { IncomeDispatchContext } from './IncomeContext';
 import { ConfirmDialog } from '../../Layout/ConfirmDialog';
 
 interface DeleteControlProps {
@@ -8,7 +8,7 @@ interface DeleteControlProps {
 }
 
 const DeleteIncomeControl: React.FC<DeleteControlProps> = ({ incomeId, incomeName }) => {
-    const { dispatch } = useContext(IncomeContext);
+    const dispatch = useContext(IncomeDispatchContext);
     const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 
     const handleDeleteClick = () => {

@@ -1,10 +1,17 @@
-import React, { useCallback, useId } from 'react';
+import React, { useCallback, useId, useState } from 'react';
 
 // --- Types ---
 interface RangeSliderProps {
   label?: string;
   value: number | [number, number];
+  /** Fires on release (mouseup / touchend / keyup / blur). */
   onChange: (val: any) => void;
+  /**
+   * Optional: fires on every drag tick with the in-flight value. Useful when
+   * a parent wants to update cheap UI (numbers, labels) live but defer
+   * expensive work (charts) to onChange.
+   */
+  onLiveChange?: (val: any) => void;
   min?: number;
   max?: number;
   step?: number;
@@ -21,6 +28,7 @@ export const RangeSlider: React.FC<RangeSliderProps> = ({
   label,
   value,
   onChange,
+  onLiveChange,
   min = 0,
   max = 100,
   step = 1,
@@ -28,8 +36,22 @@ export const RangeSlider: React.FC<RangeSliderProps> = ({
   className = "",
   hideHeader = false
 }) => {
-  const isDual = Array.isArray(value);
   const inputId = useId(); // Generates a unique ID for accessibility
+
+  // Buffer the in-flight drag value locally. We only call props.onChange on
+  // release — driving parent state on every mousemove kicks off a full
+  // downstream chart re-render per tick (~80ms on the charts tab), turning
+  // a smooth drag into 4-6 frames of jank per move.
+  const [pending, setPending] = useState<number | [number, number] | null>(null);
+  const displayValue: number | [number, number] = pending ?? value;
+  const isDual = Array.isArray(displayValue);
+
+  const commit = useCallback(() => {
+    if (pending === null) return;
+    const next = pending;
+    setPending(null);
+    onChange(next);
+  }, [pending, onChange]);
 
   const getPercent = useCallback(
     (val: number) => Math.round(((val - min) / (max - min)) * 100),
@@ -37,23 +59,29 @@ export const RangeSlider: React.FC<RangeSliderProps> = ({
   );
 
   const handleSingleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onChange(Number(e.target.value));
+    const next = Number(e.target.value);
+    setPending(next);
+    onLiveChange?.(next);
   };
 
   const handleMinChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!Array.isArray(value)) return;
-    const val = Math.min(Number(e.target.value), value[1] - step);
-    onChange([val, value[1]]);
+    if (!Array.isArray(displayValue)) return;
+    const val = Math.min(Number(e.target.value), displayValue[1] - step);
+    const next: [number, number] = [val, displayValue[1]];
+    setPending(next);
+    onLiveChange?.(next);
   };
 
   const handleMaxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!Array.isArray(value)) return;
-    const val = Math.max(Number(e.target.value), value[0] + step);
-    onChange([value[0], val]);
+    if (!Array.isArray(displayValue)) return;
+    const val = Math.max(Number(e.target.value), displayValue[0] + step);
+    const next: [number, number] = [displayValue[0], val];
+    setPending(next);
+    onLiveChange?.(next);
   };
 
-  const minPercent = isDual ? getPercent(value[0]) : 0;
-  const maxPercent = isDual ? getPercent(value[1]) : getPercent(value as number);
+  const minPercent = isDual ? getPercent(displayValue[0]) : 0;
+  const maxPercent = isDual ? getPercent(displayValue[1]) : getPercent(displayValue as number);
   const widthPercent = maxPercent - minPercent;
 
   return (
@@ -116,9 +144,9 @@ export const RangeSlider: React.FC<RangeSliderProps> = ({
           </label>
         )}
         <div className="font-mono text-sm text-emerald-400">
-          {isDual 
-            ? `${formatTooltip(value[0])} - ${formatTooltip(value[1])}`
-            : formatTooltip(value as number)
+          {isDual
+            ? `${formatTooltip((displayValue as [number, number])[0])} - ${formatTooltip((displayValue as [number, number])[1])}`
+            : formatTooltip(displayValue as number)
           }
         </div>
       </div>
@@ -152,8 +180,12 @@ export const RangeSlider: React.FC<RangeSliderProps> = ({
               min={min}
               max={max}
               step={step}
-              value={value[0]}
+              value={(displayValue as [number, number])[0]}
               onChange={handleMinChange}
+              onMouseUp={commit}
+              onTouchEnd={commit}
+              onKeyUp={commit}
+              onBlur={commit}
               className="custom-range-input absolute top-0 left-0 w-full h-full appearance-none bg-transparent pointer-events-none z-20"
               aria-label={`${label} minimum`} // Explicit label for dual slider handles
             />
@@ -162,8 +194,12 @@ export const RangeSlider: React.FC<RangeSliderProps> = ({
               min={min}
               max={max}
               step={step}
-              value={value[1]}
+              value={(displayValue as [number, number])[1]}
               onChange={handleMaxChange}
+              onMouseUp={commit}
+              onTouchEnd={commit}
+              onKeyUp={commit}
+              onBlur={commit}
               className="custom-range-input absolute top-0 left-0 w-full h-full appearance-none bg-transparent pointer-events-none z-20"
               aria-label={`${label} maximum`} // Explicit label for dual slider handles
             />
@@ -175,8 +211,12 @@ export const RangeSlider: React.FC<RangeSliderProps> = ({
             min={min}
             max={max}
             step={step}
-            value={value as number}
+            value={displayValue as number}
             onChange={handleSingleChange}
+            onMouseUp={commit}
+            onTouchEnd={commit}
+            onKeyUp={commit}
+            onBlur={commit}
             className="custom-range-input absolute top-0 left-0 w-full h-full appearance-none bg-transparent z-20 cursor-pointer"
           />
         )}

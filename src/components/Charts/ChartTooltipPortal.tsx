@@ -1,67 +1,80 @@
 import { createPortal } from 'react-dom';
-import { ReactNode, useEffect, useState, useRef } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 
 interface ChartTooltipPortalProps {
     children: ReactNode;
 }
 
 /**
- * Wraps chart tooltip content and renders it via a portal to document.body.
- * This ensures tooltips appear above all other elements (like sidebars)
- * by escaping any stacking context issues.
+ * Wraps chart tooltip content and renders it via a portal to document.body
+ * so tooltips escape stacking-context issues (sidebars, etc).
  *
- * Tracks mouse position to position the tooltip near the cursor.
+ * Mouse position is updated imperatively via ref + rAF — using React state
+ * here meant every pointermove triggered a re-render of the portal and its
+ * children (the tooltip body), which on the charts tab produced hundreds of
+ * 80ms commits while hovering a chart. The position math here is cheap; the
+ * cost was forcing React through the reconciliation pipeline 60+ times/sec.
  */
 export const ChartTooltipPortal = ({ children }: ChartTooltipPortalProps) => {
-    const [mounted, setMounted] = useState(false);
-    const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
     const tooltipRef = useRef<HTMLDivElement>(null);
+    // One render after mount so the portal div exists and the ref is bound.
+    // After that, we never call setState again — pointer-driven position
+    // updates happen directly via ref.
+    const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
         setMounted(true);
 
-        // Pointer events cover both mouse and touch with one listener — fixes
-        // mobile, where mousemove never fires and the tooltip stayed null.
+        let rafId: number | null = null;
+        let pendingX = 0;
+        let pendingY = 0;
+
+        const applyPosition = () => {
+            rafId = null;
+            const el = tooltipRef.current;
+            if (!el) return;
+            const w = el.offsetWidth || 300;
+            const h = el.offsetHeight || 200;
+            let left = pendingX + 15;
+            let top = pendingY + 15;
+            if (left + w > window.innerWidth - 10) left = pendingX - w - 15;
+            if (top + h > window.innerHeight - 10) top = pendingY - h - 15;
+            if (left < 10) left = 10;
+            if (top < 10) top = 10;
+            el.style.left = `${left}px`;
+            el.style.top = `${top}px`;
+            el.style.visibility = 'visible';
+        };
+
         const handlePointerEvent = (e: PointerEvent) => {
-            setMousePos({ x: e.clientX, y: e.clientY });
+            pendingX = e.clientX;
+            pendingY = e.clientY;
+            if (rafId === null) {
+                rafId = requestAnimationFrame(applyPosition);
+            }
         };
 
         window.addEventListener('pointermove', handlePointerEvent);
         window.addEventListener('pointerdown', handlePointerEvent);
         return () => {
-            setMounted(false);
+            if (rafId !== null) cancelAnimationFrame(rafId);
             window.removeEventListener('pointermove', handlePointerEvent);
             window.removeEventListener('pointerdown', handlePointerEvent);
         };
     }, []);
 
-    // Don't render until we have both mounted and received a mouse position
-    if (!mounted || !mousePos) return null;
-
-    // Calculate position to keep tooltip in viewport
-    const tooltipWidth = tooltipRef.current?.offsetWidth || 300;
-    const tooltipHeight = tooltipRef.current?.offsetHeight || 200;
-
-    let left = mousePos.x + 15; // 15px offset from cursor
-    let top = mousePos.y + 15;
-
-    // Keep tooltip in viewport
-    if (left + tooltipWidth > window.innerWidth - 10) {
-        left = mousePos.x - tooltipWidth - 15;
-    }
-    if (top + tooltipHeight > window.innerHeight - 10) {
-        top = mousePos.y - tooltipHeight - 15;
-    }
-    if (left < 10) left = 10;
-    if (top < 10) top = 10;
+    if (!mounted) return null;
 
     return createPortal(
         <div
             ref={tooltipRef}
             style={{
                 position: 'fixed',
-                left: `${left}px`,
-                top: `${top}px`,
+                left: 0,
+                top: 0,
+                // Hidden until the first pointermove writes a real position;
+                // avoids a 1-frame flash at (0,0).
+                visibility: 'hidden',
                 zIndex: 9999,
                 pointerEvents: 'none',
             }}

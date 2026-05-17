@@ -5,6 +5,7 @@ import { useContext } from 'react';
 import {
   ExpenseProvider,
   ExpenseContext,
+  ExpenseDispatchContext,
 } from '../../../../components/Objects/Expense/ExpenseContext';
 import { RentExpense, FoodExpense, OtherExpense } from '../../../../components/Objects/Expense/models';
 
@@ -107,7 +108,7 @@ describe('ExpenseContext', () => {
     let dispatch!: any;
 
     const TestComponent = () => {
-      ({ dispatch } = useContext(ExpenseContext));
+      dispatch = useContext(ExpenseDispatchContext);
       return null;
     };
 
@@ -143,7 +144,7 @@ describe('ExpenseContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ expenses, dispatch } = useContext(ExpenseContext));
+          ({ expenses } = useContext(ExpenseContext)); dispatch = useContext(ExpenseDispatchContext);
           return null;
         };
 
@@ -173,7 +174,7 @@ describe('ExpenseContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ expenses, dispatch } = useContext(ExpenseContext));
+          ({ expenses } = useContext(ExpenseContext)); dispatch = useContext(ExpenseDispatchContext);
           return null;
         };
 
@@ -201,7 +202,7 @@ describe('ExpenseContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ expenses, dispatch } = useContext(ExpenseContext));
+          ({ expenses } = useContext(ExpenseContext)); dispatch = useContext(ExpenseDispatchContext);
           return null;
         };
 
@@ -236,7 +237,7 @@ describe('ExpenseContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ expenses, dispatch } = useContext(ExpenseContext));
+          ({ expenses } = useContext(ExpenseContext)); dispatch = useContext(ExpenseDispatchContext);
           return null;
         };
 
@@ -268,7 +269,7 @@ describe('ExpenseContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ expenses, dispatch } = useContext(ExpenseContext));
+          ({ expenses } = useContext(ExpenseContext)); dispatch = useContext(ExpenseDispatchContext);
           return null;
         };
 
@@ -299,7 +300,7 @@ describe('ExpenseContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ expenses, dispatch } = useContext(ExpenseContext));
+          ({ expenses } = useContext(ExpenseContext)); dispatch = useContext(ExpenseDispatchContext);
           return null;
         };
 
@@ -333,7 +334,7 @@ describe('ExpenseContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ expenses, dispatch } = useContext(ExpenseContext));
+          ({ expenses } = useContext(ExpenseContext)); dispatch = useContext(ExpenseDispatchContext);
           return null;
         };
 
@@ -365,7 +366,7 @@ describe('ExpenseContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ expenses, dispatch } = useContext(ExpenseContext));
+          ({ expenses } = useContext(ExpenseContext)); dispatch = useContext(ExpenseDispatchContext);
           return null;
         };
 
@@ -398,7 +399,7 @@ describe('ExpenseContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ expenses, dispatch } = useContext(ExpenseContext));
+          ({ expenses } = useContext(ExpenseContext)); dispatch = useContext(ExpenseDispatchContext);
           return null;
         };
 
@@ -435,7 +436,7 @@ describe('ExpenseContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ expenses, dispatch } = useContext(ExpenseContext));
+          ({ expenses } = useContext(ExpenseContext)); dispatch = useContext(ExpenseDispatchContext);
           return null;
         };
 
@@ -472,7 +473,7 @@ describe('ExpenseContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ expenses, dispatch } = useContext(ExpenseContext));
+          ({ expenses } = useContext(ExpenseContext)); dispatch = useContext(ExpenseDispatchContext);
           return null;
         };
 
@@ -511,7 +512,7 @@ describe('ExpenseContext', () => {
         let dispatch!: any;
 
         const TestComponent = () => {
-          ({ expenses, dispatch } = useContext(ExpenseContext));
+          ({ expenses } = useContext(ExpenseContext)); dispatch = useContext(ExpenseDispatchContext);
           return null;
         };
 

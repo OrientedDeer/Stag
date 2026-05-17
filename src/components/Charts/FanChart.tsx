@@ -44,6 +44,17 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
     const isNarrow = containerWidth !== null && containerWidth < MIN_CHART_WIDTH;
     const isMeasured = containerWidth !== null;
 
+    // MC scenarios can include both a "Today" snapshot and an end-of-year
+    // projection for the current year, producing two entries at the same year
+    // value. Nivo's linear x-scale uses x as the point key, so duplicates
+    // trigger a "two children with the same key" warning. Collapse to one
+    // point per year, keeping the last entry (EOY where present).
+    const dedupePoints = <T extends { x: number; y: number }>(points: T[]): T[] => {
+        const byX = new Map<number, T>();
+        for (const p of points) byX.set(p.x, p);
+        return Array.from(byX.values());
+    };
+
     const chartData = useMemo(() => {
         const lines = [];
 
@@ -52,10 +63,10 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
             lines.push({
                 id: 'Median (50th)',
                 color: '#10b981',
-                data: percentiles.p50.map(p => ({
+                data: dedupePoints(percentiles.p50.map(p => ({
                     x: p.year,
                     y: p.netWorth,
-                })),
+                }))),
             });
         }
 
@@ -64,10 +75,10 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
             lines.push({
                 id: '25th Percentile',
                 color: '#6ee7b7',
-                data: percentiles.p25.map(p => ({
+                data: dedupePoints(percentiles.p25.map(p => ({
                     x: p.year,
                     y: p.netWorth,
-                })),
+                }))),
             });
         }
 
@@ -76,10 +87,10 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
             lines.push({
                 id: '75th Percentile',
                 color: '#6ee7b7',
-                data: percentiles.p75.map(p => ({
+                data: dedupePoints(percentiles.p75.map(p => ({
                     x: p.year,
                     y: p.netWorth,
-                })),
+                }))),
             });
         }
 
@@ -88,10 +99,10 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
             lines.push({
                 id: '10th Percentile',
                 color: '#a7f3d0',
-                data: percentiles.p10.map(p => ({
+                data: dedupePoints(percentiles.p10.map(p => ({
                     x: p.year,
                     y: p.netWorth,
-                })),
+                }))),
             });
         }
 
@@ -100,10 +111,10 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
             lines.push({
                 id: '90th Percentile',
                 color: '#a7f3d0',
-                data: percentiles.p90.map(p => ({
+                data: dedupePoints(percentiles.p90.map(p => ({
                     x: p.year,
                     y: p.netWorth,
-                })),
+                }))),
             });
         }
 
@@ -112,10 +123,10 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
             lines.push({
                 id: 'Deterministic',
                 color: '#f59e0b',
-                data: deterministicLine.map(p => ({
+                data: dedupePoints(deterministicLine.map(p => ({
                     x: p.year,
                     y: p.netWorth,
-                })),
+                }))),
             });
         }
 
@@ -124,10 +135,10 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
             lines.push({
                 id: 'Best Run',
                 color: '#3b82f6',
-                data: bestCase.timeline.map(year => ({
+                data: dedupePoints(bestCase.timeline.map(year => ({
                     x: year.year,
                     y: calculateNetWorth(year.accounts),
-                })),
+                }))),
             });
         }
 
@@ -136,32 +147,39 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
             lines.push({
                 id: 'Worst Run',
                 color: '#ef4444',
-                data: worstCase.timeline.map(year => ({
+                data: dedupePoints(worstCase.timeline.map(year => ({
                     x: year.year,
                     y: calculateNetWorth(year.accounts),
-                })),
+                }))),
             });
         }
 
         return lines;
     }, [percentiles, deterministicLine, bestCase, worstCase]);
 
-    // Calculate area fill data for the bands
+    // Calculate area fill data for the bands. Collapse duplicate-year rows
+    // (Today + EOY for the current year) so paths don't double back on
+    // themselves at the same x.
     const areaData = useMemo(() => {
         if (percentiles.p10.length === 0) return null;
 
-        // Create fill between percentiles using custom layer
+        const dedupeBand = (rows: { x: number; y0: number; y1: number }[]) => {
+            const byX = new Map<number, { x: number; y0: number; y1: number }>();
+            for (const r of rows) byX.set(r.x, r);
+            return Array.from(byX.values());
+        };
+
         return {
-            p10_p90: percentiles.p10.map((p10, i) => ({
+            p10_p90: dedupeBand(percentiles.p10.map((p10, i) => ({
                 x: p10.year,
                 y0: p10.netWorth,
                 y1: percentiles.p90[i]?.netWorth ?? p10.netWorth,
-            })),
-            p25_p75: percentiles.p25.map((p25, i) => ({
+            }))),
+            p25_p75: dedupeBand(percentiles.p25.map((p25, i) => ({
                 x: p25.year,
                 y0: p25.netWorth,
                 y1: percentiles.p75[i]?.netWorth ?? p25.netWorth,
-            })),
+            }))),
         };
     }, [percentiles]);
 
@@ -197,7 +215,7 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
     const xTickValues = useMemo(() => {
         if (percentiles.p50.length === 0) return undefined;
 
-        const years = percentiles.p50.map(p => p.year);
+        const years = Array.from(new Set(percentiles.p50.map(p => p.year)));
         const range = years.length;
         const mobile = (containerWidth ?? 800) < 640;
 
@@ -211,11 +229,8 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
             else if (range > 20) step = 2;
         }
 
-        // Filter years at regular intervals
         return years.filter((year, i) => {
-            // Always include first and last
             if (i === 0 || i === years.length - 1) return true;
-            // Include years at step intervals
             return (year - years[0]) % step === 0;
         });
     }, [percentiles.p50, containerWidth]);

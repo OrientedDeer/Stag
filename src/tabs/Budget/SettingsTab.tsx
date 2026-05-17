@@ -1,6 +1,13 @@
 import { useContext, useState, useCallback } from 'react';
+import { List, type RowComponentProps } from 'react-window';
 import { BudgetContext, CategoryMapping } from '../../components/Objects/Budget/BudgetContext';
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
+import { AnyExpense } from '../../components/Objects/Expense/models';
+
+const RULE_ROW_HEIGHT = 36;
+const RULE_EDIT_ROW_HEIGHT = 52;
+const RULE_LIST_MAX_HEIGHT = 480;
+const RULE_GRID_COLS = 'grid grid-cols-[1fr_1fr_80px] items-center';
 
 export default function SettingsTab() {
     const { importSettings, dispatch } = useContext(BudgetContext);
@@ -46,6 +53,9 @@ export default function SettingsTab() {
     const handleDeleteRule = useCallback((id: string) => {
         dispatch({ type: 'DELETE_CATEGORY_MAPPING', payload: { id } });
     }, [dispatch]);
+
+    const handleEditStart = useCallback((id: string) => setEditingId(id), []);
+    const handleEditCancel = useCallback(() => setEditingId(null), []);
 
     const handleDeleteFormat = useCallback((id: string) => {
         dispatch({ type: 'DELETE_CSV_FORMAT', payload: { id } });
@@ -182,63 +192,27 @@ export default function SettingsTab() {
                         </p>
                     </div>
                 ) : (
-                    <div className="bg-gray-900 rounded-lg overflow-hidden">
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr className="border-b border-gray-800">
-                                    <th className="text-left text-xs text-gray-500 font-medium px-3 py-2">Pattern</th>
-                                    <th className="text-left text-xs text-gray-500 font-medium px-3 py-2">Category</th>
-                                    <th className="text-right text-xs text-gray-500 font-medium px-3 py-2 w-20">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-800">
-                                {rules.map(rule => {
-                                    const expense = expenses.find(e => e.id === rule.expenseId);
-                                    const isEditing = editingId === rule.id;
-
-                                    return (
-                                        <tr key={rule.id} className="hover:bg-gray-800/50">
-                                            {isEditing ? (
-                                                <td colSpan={3} className="px-3 py-2">
-                                                    <EditRuleForm
-                                                        rule={rule}
-                                                        expenses={expenses}
-                                                        onSave={(updates) => handleUpdateRule(rule.id, updates)}
-                                                        onCancel={() => setEditingId(null)}
-                                                    />
-                                                </td>
-                                            ) : (
-                                                <>
-                                                    <td className="px-3 py-1.5">
-                                                        <code className="text-green-400 text-xs">{rule.pattern}</code>
-                                                        {rule.isRegex && (
-                                                            <span className="text-[10px] text-gray-600 ml-1">regex</span>
-                                                        )}
-                                                    </td>
-                                                    <td className="px-3 py-1.5 text-gray-400">
-                                                        {expense?.name || 'Unknown'}
-                                                    </td>
-                                                    <td className="px-3 py-1.5 text-right">
-                                                        <button
-                                                            onClick={() => setEditingId(rule.id)}
-                                                            className="text-gray-600 hover:text-gray-300 text-xs mr-2"
-                                                        >
-                                                            Edit
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleDeleteRule(rule.id)}
-                                                            className="text-gray-600 hover:text-red-400 text-xs"
-                                                        >
-                                                            ×
-                                                        </button>
-                                                    </td>
-                                                </>
-                                            )}
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
+                    <div className="bg-gray-900 rounded-lg overflow-hidden text-sm">
+                        <div className={`${RULE_GRID_COLS} border-b border-gray-800`}>
+                            <div className="text-left text-xs text-gray-500 font-medium px-3 py-2">Pattern</div>
+                            <div className="text-left text-xs text-gray-500 font-medium px-3 py-2">Category</div>
+                            <div className="text-right text-xs text-gray-500 font-medium px-3 py-2">Actions</div>
+                        </div>
+                        <List
+                            rowComponent={RuleListRow}
+                            rowCount={rules.length}
+                            rowHeight={getRuleRowHeight}
+                            rowProps={{
+                                rules,
+                                expenses,
+                                editingId,
+                                onEdit: handleEditStart,
+                                onCancel: handleEditCancel,
+                                onUpdate: handleUpdateRule,
+                                onDelete: handleDeleteRule,
+                            }}
+                            style={{ height: Math.min(getRulesTotalHeight(rules, editingId), RULE_LIST_MAX_HEIGHT) }}
+                        />
                     </div>
                 )}
                 </>}
@@ -329,6 +303,85 @@ export default function SettingsTab() {
     );
 }
 
+interface RuleRowExtraProps {
+    rules: CategoryMapping[];
+    expenses: AnyExpense[];
+    editingId: string | null;
+    onEdit: (id: string) => void;
+    onCancel: () => void;
+    onUpdate: (id: string, updates: Partial<CategoryMapping>) => void;
+    onDelete: (id: string) => void;
+}
+
+function getRuleRowHeight(index: number, { rules, editingId }: RuleRowExtraProps): number {
+    return rules[index]?.id === editingId ? RULE_EDIT_ROW_HEIGHT : RULE_ROW_HEIGHT;
+}
+
+function getRulesTotalHeight(rules: CategoryMapping[], editingId: string | null): number {
+    const editing = editingId && rules.some(r => r.id === editingId);
+    return rules.length * RULE_ROW_HEIGHT + (editing ? RULE_EDIT_ROW_HEIGHT - RULE_ROW_HEIGHT : 0);
+}
+
+function RuleListRow({
+    index,
+    style,
+    rules,
+    expenses,
+    editingId,
+    onEdit,
+    onCancel,
+    onUpdate,
+    onDelete,
+}: RowComponentProps<RuleRowExtraProps>) {
+    const rule = rules[index];
+    if (!rule) return null;
+
+    const isEditing = rule.id === editingId;
+    const expense = expenses.find(e => e.id === rule.expenseId);
+    const borderClass = index < rules.length - 1 ? 'border-b border-gray-800' : '';
+
+    if (isEditing) {
+        return (
+            <div style={style} className={`hover:bg-gray-800/50 px-3 py-2 ${borderClass}`}>
+                <EditRuleForm
+                    rule={rule}
+                    expenses={expenses}
+                    onSave={(updates) => onUpdate(rule.id, updates)}
+                    onCancel={onCancel}
+                />
+            </div>
+        );
+    }
+
+    return (
+        <div style={style} className={`${RULE_GRID_COLS} hover:bg-gray-800/50 ${borderClass}`}>
+            <div className="px-3 py-1.5 min-w-0 truncate">
+                <code className="text-green-400 text-xs">{rule.pattern}</code>
+                {rule.isRegex && (
+                    <span className="text-[10px] text-gray-600 ml-1">regex</span>
+                )}
+            </div>
+            <div className="px-3 py-1.5 text-gray-400 min-w-0 truncate">
+                {expense?.name || 'Unknown'}
+            </div>
+            <div className="px-3 py-1.5 text-right">
+                <button
+                    onClick={() => onEdit(rule.id)}
+                    className="text-gray-600 hover:text-gray-300 text-xs mr-2"
+                >
+                    Edit
+                </button>
+                <button
+                    onClick={() => onDelete(rule.id)}
+                    className="text-gray-600 hover:text-red-400 text-xs"
+                >
+                    ×
+                </button>
+            </div>
+        </div>
+    );
+}
+
 // Edit rule inline form
 function EditRuleForm({
     rule,
@@ -337,7 +390,7 @@ function EditRuleForm({
     onCancel,
 }: {
     rule: CategoryMapping;
-    expenses: any[];
+    expenses: AnyExpense[];
     onSave: (updates: Partial<CategoryMapping>) => void;
     onCancel: () => void;
 }) {

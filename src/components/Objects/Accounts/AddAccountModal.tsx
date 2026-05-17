@@ -1,5 +1,5 @@
 import React, { useState, useContext } from "react";
-import { AccountContext } from "./AccountContext";
+import { AccountDispatchContext } from "./AccountContext";
 import {
     SavedAccount,
     InvestedAccount,
@@ -11,7 +11,7 @@ import {
     ESPPWithdrawalPreference,
     ESPP_WITHDRAWAL_PREFERENCE_OPTIONS
 } from './models';
-import { ExpenseContext } from "../Expense/ExpenseContext";
+import { ExpenseDispatchContext } from "../Expense/ExpenseContext";
 import { LoanExpense, MortgageExpense } from "../Expense/models";
 import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput";
 import { NameInput } from "../../Layout/InputFields/NameInput";
@@ -82,8 +82,8 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
     selectedType,
     onClose,
 }) => {
-    const { dispatch: accountDispatch } = useContext(AccountContext);
-    const { dispatch: expenseDispatch } = useContext(ExpenseContext);
+    const { dispatch: accountDispatch } = useContext(AccountDispatchContext);
+    const expenseDispatch = useContext(ExpenseDispatchContext);
     const { modalRef, handleKeyDown } = useModalAccessibility(isOpen, onClose);
     const [form, setForm] = useState<AccountFormState>(INITIAL_FORM_STATE);
 

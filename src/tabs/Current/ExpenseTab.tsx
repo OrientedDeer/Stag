@@ -1,5 +1,5 @@
 import { useState, useContext, useMemo } from 'react';
-import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
+import { ExpenseContext, ExpenseDispatchContext } from '../../components/Objects/Expense/ExpenseContext';
 import {
     BaseExpense,
     AnyExpense,
@@ -15,7 +15,8 @@ import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea
 import { ObjectsIcicleChart, tailwindToCssVar, getDistributedColors } from '../../components/Charts/ObjectsIcicleChart';
 
 const ExpenseList = ({ type }: { type: any }) => {
-  const { expenses, dispatch } = useContext(ExpenseContext);
+  const { expenses } = useContext(ExpenseContext);
+  const dispatch = useContext(ExpenseDispatchContext);
   
   // Track original index to update the master list correctly
   const filteredExpenses = expenses

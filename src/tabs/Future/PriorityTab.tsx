@@ -58,10 +58,14 @@ export default function PriorityTab() {
         return activeToday.reduce((sum, exp) => sum + exp.getMonthlyAmount(), 0);
     }, [expenses]);
 
-    // Tax calculations (monthly)
-    const federalTax = useMemo(() => calculateFederalTaxFromIncomes(taxState, incomes, expenses, 0, year, state) / 12, [taxState, incomes, expenses, year, state]);
-    const stateTax = useMemo(() => calculateStateTax(taxState, incomes, expenses, year, state) / 12, [taxState, incomes, expenses, year, state]);
-    const ficaTax = useMemo(() => calculateFicaTax(taxState, incomes, year, state) / 12, [taxState, incomes, year, state]);
+    // Tax calculations (monthly). Tax fns only read `state.macro` (inflation)
+    // and `state.milestones` (age). Narrowing the deps avoids recomputing on
+    // unrelated assumption updates like priority reorders.
+    /* eslint-disable react-hooks/exhaustive-deps */
+    const federalTax = useMemo(() => calculateFederalTaxFromIncomes(taxState, incomes, expenses, 0, year, state) / 12, [taxState, incomes, expenses, year, state.macro, state.milestones]);
+    const stateTax = useMemo(() => calculateStateTax(taxState, incomes, expenses, year, state) / 12, [taxState, incomes, expenses, year, state.macro, state.milestones]);
+    const ficaTax = useMemo(() => calculateFicaTax(taxState, incomes, year, state) / 12, [taxState, incomes, year, state.macro, state.milestones]);
+    /* eslint-enable react-hooks/exhaustive-deps */
     const monthlyTaxes = federalTax + stateTax + ficaTax;
 
     // Paycheck deductions (401k, insurance, HSA)

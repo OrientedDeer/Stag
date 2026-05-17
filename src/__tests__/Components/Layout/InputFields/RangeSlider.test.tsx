@@ -15,13 +15,15 @@ describe('RangeSlider Component', () => {
         expect(inputs).toHaveLength(1);
     });
 
-    it('calls onChange for a single slider', () => {
+    it('calls onChange for a single slider on release', () => {
         const handleChange = vi.fn();
         render(<RangeSlider label="Volume" value={50} onChange={handleChange} />);
 
         const slider = screen.getByRole('slider');
         fireEvent.change(slider, { target: { value: '75' } });
-
+        // Pending state buffers until release — drag ticks don't fire onChange.
+        expect(handleChange).not.toHaveBeenCalled();
+        fireEvent.mouseUp(slider);
         expect(handleChange).toHaveBeenCalledWith(75);
     });
 
@@ -35,23 +37,25 @@ describe('RangeSlider Component', () => {
         expect(inputs).toHaveLength(2);
     });
 
-    it('calls onChange for the min handle of a dual slider', () => {
+    it('calls onChange for the min handle of a dual slider on release', () => {
         const handleChange = vi.fn();
         render(<RangeSlider label="Price Range" value={[10, 90]} onChange={handleChange} />);
 
         const [minSlider] = screen.getAllByRole('slider');
         fireEvent.change(minSlider, { target: { value: '25' } });
-
+        expect(handleChange).not.toHaveBeenCalled();
+        fireEvent.mouseUp(minSlider);
         expect(handleChange).toHaveBeenCalledWith([25, 90]);
     });
 
-    it('calls onChange for the max handle of a dual slider', () => {
+    it('calls onChange for the max handle of a dual slider on release', () => {
         const handleChange = vi.fn();
         render(<RangeSlider label="Price Range" value={[10, 90]} onChange={handleChange} />);
 
         const [, maxSlider] = screen.getAllByRole('slider');
         fireEvent.change(maxSlider, { target: { value: '75' } });
-
+        expect(handleChange).not.toHaveBeenCalled();
+        fireEvent.mouseUp(maxSlider);
         expect(handleChange).toHaveBeenCalledWith([10, 75]);
     });
 

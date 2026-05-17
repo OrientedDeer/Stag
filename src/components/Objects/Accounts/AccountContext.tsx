@@ -1,4 +1,4 @@
-import { createContext, ReactNode, Dispatch, useMemo, useCallback } from 'react';
+import { createContext, ReactNode, Dispatch, useCallback, useRef } from 'react';
 import { AnyAccount, reconstituteAccount } from './models';
 import { usePersistedReducer } from '../../../hooks/usePersistedReducer';
 
@@ -149,15 +149,18 @@ function serializeAccountState(state: AccountState): string {
   });
 }
 
-interface AccountContextProps extends AccountState {
+interface AccountDispatch {
   dispatch: Dispatch<Action>;
   exportData: () => void;
   importData: (jsonData: string) => void;
 }
 
-export const AccountContext = createContext<AccountContextProps>({
+export const AccountContext = createContext<AccountState>({
   accounts: [],
   amountHistory: {},
+});
+
+export const AccountDispatchContext = createContext<AccountDispatch>({
   dispatch: () => null,
   exportData: () => {},
   importData: () => {},
@@ -170,11 +173,15 @@ export function AccountProvider({ children }: { children: ReactNode }): React.Re
     serialize: serializeAccountState,
   });
 
+  // Keep latest state in a ref so exportData can read it without re-creating.
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
   const exportData = useCallback(() => {
     const data = {
       version: CURRENT_SCHEMA_VERSION,
-      accounts: state.accounts.map(acc => ({ ...acc, className: acc.constructor.name })),
-      amountHistory: state.amountHistory,
+      accounts: stateRef.current.accounts.map(acc => ({ ...acc, className: acc.constructor.name })),
+      amountHistory: stateRef.current.amountHistory,
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -182,7 +189,7 @@ export function AccountProvider({ children }: { children: ReactNode }): React.Re
     a.href = url;
     a.download = `stag_backup_${new Date().toISOString().split('T')[0]}.json`;
     a.click();
-  }, [state.accounts, state.amountHistory]);
+  }, []);
 
   const importData = useCallback((json: string) => {
     try {
@@ -201,14 +208,13 @@ export function AccountProvider({ children }: { children: ReactNode }): React.Re
     }
   }, []);
 
-  const contextValue = useMemo(
-    () => ({ ...state, dispatch, exportData, importData }),
-    [state, dispatch, exportData, importData]
-  );
+  const dispatchValue = useRef<AccountDispatch>({ dispatch, exportData, importData });
 
   return (
-    <AccountContext.Provider value={contextValue}>
-      {children}
-    </AccountContext.Provider>
+    <AccountDispatchContext.Provider value={dispatchValue.current}>
+      <AccountContext.Provider value={state}>
+        {children}
+      </AccountContext.Provider>
+    </AccountDispatchContext.Provider>
   );
 }

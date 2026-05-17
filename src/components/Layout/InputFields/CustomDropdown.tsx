@@ -25,7 +25,7 @@ const ChevronIcon = ({ open }: { open: boolean }) => (
     </svg>
 );
 
-export const CustomDropdown: React.FC<CustomDropdownProps> = ({
+const CustomDropdownInner: React.FC<CustomDropdownProps> = ({
     label,
     value,
     onChange,
@@ -117,3 +117,5 @@ export const CustomDropdown: React.FC<CustomDropdownProps> = ({
         </InputGroup>
     );
 };
+
+export const CustomDropdown = React.memo(CustomDropdownInner);

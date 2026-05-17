@@ -1,5 +1,5 @@
 import { useState, useContext, useMemo } from "react";
-import { IncomeContext } from "../../components/Objects/Income/IncomeContext";
+import { IncomeContext, IncomeDispatchContext } from "../../components/Objects/Income/IncomeContext";
 import {
 	AnyIncome,
 	CLASS_TO_CATEGORY,
@@ -19,7 +19,8 @@ import { ObjectsIcicleChart, tailwindToCssVar, getDistributedColors } from "../.
 
 // Updated IncomeList to handle the base class or specific filtering
 const IncomeList = () => {
-	const { incomes, dispatch } = useContext(IncomeContext);
+	const { incomes } = useContext(IncomeContext);
+	const dispatch = useContext(IncomeDispatchContext);
 
 	// We don't filter by type anymore so it shows everything in one list
 	const listIncomes = incomes.map((inc, index) => ({

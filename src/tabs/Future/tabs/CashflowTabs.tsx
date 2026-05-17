@@ -1,10 +1,20 @@
-import React, { useState, useContext, useCallback, useRef } from 'react';
+import React, { useState, useContext, useCallback, useRef, lazy, Suspense } from 'react';
 import { AssumptionsContext, getBirthYear, getRetirementAge } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxContext } from '../../../components/Objects/Taxes/TaxContext';
 import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider';
 import { useArrowKeyAdjust } from '../../../hooks/useKeyboardShortcuts';
-import { CashflowSankey, SankeyImbalance } from '../../../components/Charts/CashflowSankey';
+import type { SankeyImbalance } from '../../../components/Charts/CashflowSankey';
 import { calculateNetWorth, formatCompactCurrency } from './FutureUtils';
+
+const CashflowSankey = lazy(() =>
+    import('../../../components/Charts/CashflowSankey').then(m => ({ default: m.CashflowSankey }))
+);
+
+// Stable references for empty fallbacks. Used as Sankey props so React.memo's
+// shallow-equal check sees the same identity across drag-tick re-renders of
+// CashflowTab — otherwise `expr || {}` would mint a fresh object each render
+// and defeat the memo bailout.
+const EMPTY_RECORD: Record<string, number> = Object.freeze({});
 
 export const CashflowTab = React.memo(({ simulationData }: { simulationData: any[] }) => {
     const { state: assumptions } = useContext(AssumptionsContext);
@@ -13,12 +23,17 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
     const formatCurrency = (value: number) => formatCompactCurrency(value || 0, { forceExact });
     const startYear = simulationData.length > 0 ? simulationData[0].year : new Date().getFullYear();
     const endYear = simulationData.length > 0 ? simulationData[simulationData.length - 1].year : startYear;
+    // Two states: `selectedYear` commits on release and drives the Sankey
+    // (expensive to re-render). `previewYear` updates on every drag tick and
+    // drives the cheap year-detail readouts so the numbers feel responsive
+    // mid-drag without re-rendering the chart.
     const [selectedYear, setSelectedYear] = useState(startYear);
+    const [previewYear, setPreviewYear] = useState(startYear);
     const [sankeyImbalances, setSankeyImbalances] = useState<SankeyImbalance[]>([]);
     const containerRef = useRef<HTMLDivElement>(null);
     useArrowKeyAdjust(
         selectedYear,
-        (v) => setSelectedYear(v as number),
+        (v) => { setSelectedYear(v as number); setPreviewYear(v as number); },
         { min: startYear, max: endYear, step: 1, containerRef }
     );
 
@@ -26,11 +41,13 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
     const handleBalanceCheck = useCallback((imbalances: SankeyImbalance[]) => {
         setSankeyImbalances(imbalances);
     }, []);
-	
-    const selectedYearIndex = simulationData.findIndex(s => s.year === selectedYear);
-    const yearData = simulationData[selectedYearIndex];
 
-    const age = selectedYear - getBirthYear(assumptions.milestones);
+    const sankeyYearIndex = simulationData.findIndex(s => s.year === selectedYear);
+    const sankeyYearData = simulationData[sankeyYearIndex];
+    const previewYearIndex = simulationData.findIndex(s => s.year === previewYear);
+    const yearData = simulationData[previewYearIndex] ?? sankeyYearData;
+
+    const age = previewYear - getBirthYear(assumptions.milestones);
     const netWorth = yearData ? calculateNetWorth(yearData.accounts) : 0;
 
     if (!yearData) return <div>No data</div>;
@@ -159,35 +176,47 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
             )}
             </div>
 
-            {/* 1. SANKEY CHART */}
+            {/* 1. SANKEY CHART — uses committed year so dragging doesn't re-render it per tick */}
             <div className="overflow-visible">
-                <CashflowSankey
-                    incomes={yearData.incomes}
-                    expenses={yearData.expenses}
-                    year={yearData.year}
-                    taxes={yearData.taxDetails}
-                    bucketAllocations={yearData.cashflow.bucketDetail || {}}
-                    extraLeftPadding={50}
-                    extraRightPadding={20}
-                    accounts={yearData.accounts}
-                    withdrawals={yearData.cashflow.withdrawalDetail || {}}
-                    rothConversion={yearData.rothConversion}
-                    livingExpenses={yearData.cashflow.livingExpenses}
-                    cashflowDetail={yearData.cashflowDetail}
-                    height={400}
-                    onBalanceCheck={handleBalanceCheck}
-                />
+                <Suspense fallback={<div className="h-[400px] animate-pulse bg-gray-900/50 rounded-xl" />}>
+                    {sankeyYearData && (
+                        <CashflowSankey
+                            incomes={sankeyYearData.incomes}
+                            expenses={sankeyYearData.expenses}
+                            year={sankeyYearData.year}
+                            taxes={sankeyYearData.taxDetails}
+                            bucketAllocations={sankeyYearData.cashflow.bucketDetail || EMPTY_RECORD}
+                            extraLeftPadding={50}
+                            extraRightPadding={20}
+                            accounts={sankeyYearData.accounts}
+                            withdrawals={sankeyYearData.cashflow.withdrawalDetail || EMPTY_RECORD}
+                            rothConversion={sankeyYearData.rothConversion}
+                            livingExpenses={sankeyYearData.cashflow.livingExpenses}
+                            cashflowDetail={sankeyYearData.cashflowDetail}
+                            height={400}
+                            onBalanceCheck={handleBalanceCheck}
+                        />
+                    )}
+                </Suspense>
             </div>
 
 
             {/* 2. SLIDER CONTROL (Updated to use RangeSlider) */}
             <div className="p-4 bg-gray-900 rounded-xl border border-gray-800 shadow-lg">
-                <h3 className="text-lg font-bold text-white mb-2">Year Details: {selectedYear}</h3>
+                <div className="flex items-baseline gap-3 mb-2">
+                    <h3 className="text-lg font-bold text-white">Year Details: {previewYear}</h3>
+                    {previewYear !== selectedYear && (
+                        <span className="text-xs text-yellow-500">
+                            chart shows {selectedYear} — release to update
+                        </span>
+                    )}
+                </div>
                 <RangeSlider
                     value={selectedYear}
                     min={startYear}
                     max={endYear}
                     onChange={(val) => setSelectedYear(val as number)}
+                    onLiveChange={(val) => setPreviewYear(val as number)}
                     hideHeader={true}
                 />
                 <div className="flex flex-wrap gap-4 text-white mt-3 text-sm">

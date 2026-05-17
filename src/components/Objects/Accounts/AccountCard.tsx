@@ -1,7 +1,7 @@
-import { useContext, useState, ReactElement } from "react";
+import { memo, useContext, useState, ReactElement } from "react";
 import { AnyAccount, SavedAccount, InvestedAccount, ESPPAccount, PropertyAccount, DebtAccount, ACCOUNT_COLORS_BACKGROUND, TaxTypeEnum, ESPPLot, ESPPWithdrawalPreference, ESPP_WITHDRAWAL_PREFERENCE_OPTIONS } from "./models.js";
-import { AccountContext, AllAccountKeys } from "./AccountContext.js";
-import { ExpenseContext, AllExpenseKeys } from "../Expense/ExpenseContext.js";
+import { AccountDispatchContext, AllAccountKeys } from "./AccountContext.js";
+import { ExpenseContext, ExpenseDispatchContext, AllExpenseKeys } from "../Expense/ExpenseContext.js";
 import { StyledSelect, StyledDisplay } from "../../Layout/InputFields/StyleUI.js";
 import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput.js";
 import { PercentageInput } from "../../Layout/InputFields/PercentageInput.js";
@@ -34,8 +34,9 @@ function getAccountIconBg(account: AnyAccount): string {
 }
 
 function AccountCard({ account }: { account: AnyAccount }): ReactElement {
-    const { dispatch: accountDispatch } = useContext(AccountContext);
-    const { expenses, dispatch: expenseDispatch } = useContext(ExpenseContext);
+    const { dispatch: accountDispatch } = useContext(AccountDispatchContext);
+    const { expenses } = useContext(ExpenseContext);
+    const expenseDispatch = useContext(ExpenseDispatchContext);
     const { state: assumptions } = useContext(AssumptionsContext);
     const forceExact = assumptions.display?.useCompactCurrency === false;
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -637,4 +638,4 @@ function ESPPLotRow({ lot, index, account, onEdit, onDelete }: ESPPLotRowProps):
     );
 }
 
-export default AccountCard;
+export default memo(AccountCard);

@@ -1,4 +1,4 @@
-import { useContext, useEffect, useCallback, useState, useMemo, ReactElement } from 'react';
+import { memo, useContext, useEffect, useCallback, useState, useMemo, ReactElement } from 'react';
 import {
     AnyIncome,
     WorkIncome,
@@ -10,7 +10,7 @@ import {
     PassiveIncome,
     IncomeFrequency,
 } from './models';
-import { IncomeContext, AllIncomeKeys } from './IncomeContext';
+import { IncomeContext, IncomeDispatchContext, AllIncomeKeys } from './IncomeContext';
 import { StyledSelect } from '../../Layout/InputFields/StyleUI';
 import { CurrencyInput } from '../../Layout/InputFields/CurrencyInput';
 import DeleteIncomeControl from './DeleteIncomeUI';
@@ -37,7 +37,8 @@ import { FERSPensionFields } from './card/FERSPensionFields';
 import { CSRSPensionFields } from './card/CSRSPensionFields';
 
 function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
-    const { dispatch, incomes } = useContext(IncomeContext);
+    const { incomes } = useContext(IncomeContext);
+    const dispatch = useContext(IncomeDispatchContext);
     const { accounts } = useContext(AccountContext);
     const { state: assumptions, dispatch: assumptionsDispatch } = useContext(AssumptionsContext);
     const forceExact = assumptions.display?.useCompactCurrency === false;
@@ -321,4 +322,4 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
     );
 }
 
-export default IncomeCard;
+export default memo(IncomeCard);

@@ -1,4 +1,4 @@
-import { useContext } from "react";
+import { useContext, useMemo, useCallback } from "react";
 import { IncomeContext } from "../../components/Objects/Income/IncomeContext";
 import { ExpenseContext } from "../../components/Objects/Expense/ExpenseContext";
 import { TaxContext } from "../../components/Objects/Taxes/TaxContext";
@@ -29,36 +29,133 @@ export default function TaxesTab() {
     const { state, dispatch } = useContext(TaxContext);
     const { state: assumptions } = useContext(AssumptionsContext);
 
-    const taxYear = state.year;
+    const {
+        filingStatus,
+        stateResidency,
+        deductionMethod,
+        fedOverride,
+        ficaOverride,
+        stateOverride,
+        year: taxYear,
+    } = state;
 
-    const stateTax = calculateStateTax(state, incomes, expenses, taxYear, assumptions);
-    const federalTax = calculateFederalTaxFromIncomes(state, incomes, expenses, 0, taxYear, assumptions);
-    const ficaTax = calculateFicaTax(state, incomes, taxYear, assumptions);
-    const annualGross = getGrossIncome(incomes, taxYear);
-    
-    const stateItemized = getItemizedDeductions(expenses, taxYear);
+    const stateTax = useMemo(
+        () => calculateStateTax(state, incomes, expenses, taxYear, assumptions),
+        // calculateStateTax reads state.{filingStatus, stateResidency, deductionMethod, stateOverride}
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [filingStatus, stateResidency, deductionMethod, stateOverride, incomes, expenses, taxYear, assumptions]
+    );
+    const federalTax = useMemo(
+        () => calculateFederalTaxFromIncomes(state, incomes, expenses, 0, taxYear, assumptions),
+        // reads state.{filingStatus, fedOverride, deductionMethod}
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [filingStatus, fedOverride, deductionMethod, incomes, expenses, taxYear, assumptions]
+    );
+    const ficaTax = useMemo(
+        () => calculateFicaTax(state, incomes, taxYear, assumptions),
+        // reads state.{filingStatus, ficaOverride}
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [filingStatus, ficaOverride, incomes, taxYear, assumptions]
+    );
+    const annualGross = useMemo(() => getGrossIncome(incomes, taxYear), [incomes, taxYear]);
+
+    const stateItemized = useMemo(
+        () => getItemizedDeductions(expenses, taxYear),
+        [expenses, taxYear]
+    );
     const federalItemizedTotal = stateItemized + stateTax;
-    const stateParams = TAX_DATABASE.states[state.stateResidency]?.[taxYear]?.[state.filingStatus];
+    const stateParams = TAX_DATABASE.states[stateResidency]?.[taxYear]?.[filingStatus];
     const stateStandardDeduction = stateParams.standardDeduction;
-    const fedParams = TAX_DATABASE.federal[taxYear][state.filingStatus];
+    const fedParams = TAX_DATABASE.federal[taxYear][filingStatus];
     const fedStandardDeduction = fedParams.standardDeduction;
 
-    // Determine effective deduction method when Auto is selected
     const effectiveDeductionMethod: 'Standard' | 'Itemized' =
-        state.deductionMethod === "Auto"
+        deductionMethod === "Auto"
             ? (federalItemizedTotal > fedStandardDeduction ? "Itemized" : "Standard")
-            : state.deductionMethod;
+            : deductionMethod;
 
     const fedAppliedMainDeduction =
         effectiveDeductionMethod === "Standard" ? fedStandardDeduction : federalItemizedTotal;
-    // Calculate age for auto-max 401k feature
+
     const age = taxYear - getBirthYear(assumptions.milestones);
-    const incomePreTaxDeductions = getPreTaxExemptions(incomes, taxYear, age);
-    const incomePostTaxDeductions = getPostTaxExemptions(incomes, taxYear, age);
-    const expenseAboveLineDeductions = getYesDeductions(expenses, taxYear);
-    const postTaxEmployerMatch = getPostTaxEmployerMatch(incomes, taxYear);
+    const incomePreTaxDeductions = useMemo(
+        () => getPreTaxExemptions(incomes, taxYear, age),
+        [incomes, taxYear, age]
+    );
+    const incomePostTaxDeductions = useMemo(
+        () => getPostTaxExemptions(incomes, taxYear, age),
+        [incomes, taxYear, age]
+    );
+    const expenseAboveLineDeductions = useMemo(
+        () => getYesDeductions(expenses, taxYear),
+        [expenses, taxYear]
+    );
+    const postTaxEmployerMatch = useMemo(
+        () => getPostTaxEmployerMatch(incomes, taxYear),
+        [incomes, taxYear]
+    );
+    const earnedIncome = useMemo(() => getEarnedIncome(incomes, taxYear), [incomes, taxYear]);
     const totalPreTaxDeductions = incomePreTaxDeductions + expenseAboveLineDeductions;
     const netPaycheck = annualGross - incomePreTaxDeductions - (federalTax + stateTax + ficaTax) - incomePostTaxDeductions - postTaxEmployerMatch;
+
+    const onYearChange = useCallback(
+        (val: string) => dispatch({ type: "SET_YEAR", payload: Number(val) }),
+        [dispatch]
+    );
+    const onStatusChange = useCallback(
+        (val: string) => dispatch({ type: "SET_STATUS", payload: val as FilingStatus }),
+        [dispatch]
+    );
+    const onStateChange = useCallback(
+        (val: string) => dispatch({ type: "SET_STATE", payload: val }),
+        [dispatch]
+    );
+    const onDeductionMethodChange = useCallback(
+        (val: string) => dispatch({ type: "SET_DEDUCTION_METHOD", payload: val as DeductionMethod }),
+        [dispatch]
+    );
+    const onFedOverrideChange = useCallback(
+        (val: number) => dispatch({ type: 'SET_FED_OVERRIDE', payload: val === 0 ? null : val }),
+        [dispatch]
+    );
+    const onFicaOverrideChange = useCallback(
+        (val: number) => dispatch({ type: 'SET_FICA_OVERRIDE', payload: val === 0 ? null : val }),
+        [dispatch]
+    );
+    const onStateOverrideChange = useCallback(
+        (val: number) => dispatch({ type: 'SET_STATE_OVERRIDE', payload: val === 0 ? null : val }),
+        [dispatch]
+    );
+    const onClearOverrides = useCallback(() => {
+        dispatch({ type: 'SET_FED_OVERRIDE', payload: null });
+        dispatch({ type: 'SET_FICA_OVERRIDE', payload: null });
+        dispatch({ type: 'SET_STATE_OVERRIDE', payload: null });
+    }, [dispatch]);
+
+    const yearOptions = useMemo(
+        () => Object.keys(TAX_DATABASE.federal).map(y => ({ value: y, label: y })).reverse(),
+        []
+    );
+    const filingStatusOptions = useMemo(
+        () => [
+            { value: 'Single', label: 'Single' },
+            { value: 'Married Filing Jointly', label: 'Married Filing Jointly' },
+            { value: 'Married Filing Separately', label: 'Married Filing Separately' },
+        ],
+        []
+    );
+    const stateOptions = useMemo(
+        () => Object.keys(TAX_DATABASE.states).map(s => ({ value: s, label: s })),
+        []
+    );
+    const deductionOptions = useMemo(
+        () => [
+            { value: 'Auto', label: 'Auto (Recommended)' },
+            { value: 'Standard', label: 'Standard' },
+            { value: 'Itemized', label: 'Itemized' },
+        ],
+        []
+    );
 
     return (
         <div className="w-full min-h-full flex bg-gray-950 justify-center pt-6 pb-24">
@@ -78,9 +175,9 @@ export default function TaxesTab() {
                                 <div>
                                     <DropdownInput
                                         label="Year"
-                                        onChange={(val) => dispatch({ type: "SET_YEAR", payload: Number(val) })}
-                                        options={Object.keys(TAX_DATABASE.federal).map(y => ({ value: y, label: y })).reverse()}
-                                        value={state.year.toString()}
+                                        onChange={onYearChange}
+                                        options={yearOptions}
+                                        value={taxYear.toString()}
                                     />
                                 </div>
                                 
@@ -88,13 +185,9 @@ export default function TaxesTab() {
                                 <div>
                                     <DropdownInput
                                         label="Filing Status"
-                                        onChange={(val) => dispatch({ type: "SET_STATUS", payload: val as FilingStatus })}
-                                        options={[
-                                            { value: 'Single', label: 'Single' },
-                                            { value: 'Married Filing Jointly', label: 'Married Filing Jointly' },
-                                            { value: 'Married Filing Separately', label: 'Married Filing Separately' }
-                                        ]}
-                                        value={state.filingStatus}
+                                        onChange={onStatusChange}
+                                        options={filingStatusOptions}
+                                        value={filingStatus}
                                     />
                                 </div>
 
@@ -102,9 +195,9 @@ export default function TaxesTab() {
                                 <div>
                                     <DropdownInput
                                         label="State Residency"
-                                        onChange={(val) => dispatch({ type: "SET_STATE", payload: val })}
-                                        options={Object.keys(TAX_DATABASE.states).map(s => ({ value: s, label: s }))}
-                                        value={state.stateResidency}
+                                        onChange={onStateChange}
+                                        options={stateOptions}
+                                        value={stateResidency}
                                     />
                                 </div>
 
@@ -112,20 +205,16 @@ export default function TaxesTab() {
                                 <div>
                                     <DropdownInput
                                         label="Deduction Method"
-                                        onChange={(val) => dispatch({ type: "SET_DEDUCTION_METHOD", payload: val as DeductionMethod })}
-                                        options={[
-                                            { value: 'Auto', label: 'Auto (Recommended)' },
-                                            { value: 'Standard', label: 'Standard' },
-                                            { value: 'Itemized', label: 'Itemized' }
-                                        ]}
-                                        value={state.deductionMethod}
+                                        onChange={onDeductionMethodChange}
+                                        options={deductionOptions}
+                                        value={deductionMethod}
                                     />
-                                    {state.deductionMethod === "Auto" && (
+                                    {deductionMethod === "Auto" && (
                                         <p className="text-[11px] text-blue-400 mt-2 italic leading-tight">
                                             Using {effectiveDeductionMethod.toLowerCase()} deduction (${effectiveDeductionMethod === "Standard" ? fedStandardDeduction.toLocaleString() : federalItemizedTotal.toLocaleString()}) for lowest tax.
                                         </p>
                                     )}
-                                    {federalItemizedTotal > fedStandardDeduction && state.deductionMethod === "Standard" && (
+                                    {federalItemizedTotal > fedStandardDeduction && deductionMethod === "Standard" && (
                                         <p className="text-[11px] text-yellow-500 mt-2 italic leading-tight">
                                             Tip: Your itemized deductions (${federalItemizedTotal.toLocaleString()}) are higher than the standard deduction.
                                         </p>
@@ -138,36 +227,32 @@ export default function TaxesTab() {
                                     
                                     <div className="space-y-4">
                                         <div>
-                                            <CurrencyInput 
+                                            <CurrencyInput
                                                 label="Federal Tax"
-                                                value={state.fedOverride ?? 0}
-                                                onChange={(val) => dispatch({ type: 'SET_FED_OVERRIDE', payload: val === 0 ? null : val })}
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <CurrencyInput 
-                                                label="FICA Tax"
-                                                value={state.ficaOverride ?? 0}
-                                                onChange={(val) => dispatch({ type: 'SET_FICA_OVERRIDE', payload: val === 0 ? null : val })}
+                                                value={fedOverride ?? 0}
+                                                onChange={onFedOverrideChange}
                                             />
                                         </div>
 
                                         <div>
                                             <CurrencyInput
-                                                label={state.stateResidency+" Tax"} 
-                                                value={state.stateOverride ?? 0}
-                                                onChange={(val) => dispatch({ type: 'SET_STATE_OVERRIDE', payload: val === 0 ? null : val })}
+                                                label="FICA Tax"
+                                                value={ficaOverride ?? 0}
+                                                onChange={onFicaOverrideChange}
                                             />
                                         </div>
 
-                                        {(state.fedOverride !== null || state.ficaOverride !== null || state.stateOverride !== null) && (
-                                            <button 
-                                                onClick={() => {
-                                                    dispatch({ type: 'SET_FED_OVERRIDE', payload: null });
-                                                    dispatch({ type: 'SET_FICA_OVERRIDE', payload: null });
-                                                    dispatch({ type: 'SET_STATE_OVERRIDE', payload: null });
-                                                }}
+                                        <div>
+                                            <CurrencyInput
+                                                label={stateResidency+" Tax"}
+                                                value={stateOverride ?? 0}
+                                                onChange={onStateOverrideChange}
+                                            />
+                                        </div>
+
+                                        {(fedOverride !== null || ficaOverride !== null || stateOverride !== null) && (
+                                            <button
+                                                onClick={onClearOverrides}
                                                 className="w-full text-[10px] font-bold text-red-500 hover:text-red-400 transition-colors uppercase py-1 border border-red-900/50 rounded-md hover:bg-red-900/10"
                                             >
                                                 Clear Overrides
@@ -204,7 +289,7 @@ export default function TaxesTab() {
                                 </div>
                                 
                                 <div className="flex justify-end text-gray-300 text-xs italic items-right ">
-                                    <span className="font-mono -mt-5">Earned Income (${getEarnedIncome(incomes, taxYear).toLocaleString()})</span>
+                                    <span className="font-mono -mt-5">Earned Income (${earnedIncome.toLocaleString()})</span>
                                 </div>
 
                                 {incomePreTaxDeductions > 0 && (
@@ -215,7 +300,7 @@ export default function TaxesTab() {
                                 )}
                                 {(effectiveDeductionMethod === "Itemized" && federalItemizedTotal > 0) && (
                                     <div className="flex justify-between text-blue-400 text-sm italic items-center">
-                                        <span>Itemized Deductions (Federal/State){state.deductionMethod === "Auto" && " - Auto"}</span>
+                                        <span>Itemized Deductions (Federal/State){deductionMethod === "Auto" && " - Auto"}</span>
                                         <div>
                                             <span className="font-mono">-${federalItemizedTotal.toLocaleString()}/</span>
                                             <span className="font-mono">-${stateItemized.toLocaleString()}</span>
@@ -224,7 +309,7 @@ export default function TaxesTab() {
                                 )}
                                 {(effectiveDeductionMethod === "Standard") && (
                                     <div className="flex justify-between text-blue-400 text-sm italic items-center">
-                                        <span>Standard Deduction (Federal/State){state.deductionMethod === "Auto" && " - Auto"}</span>
+                                        <span>Standard Deduction (Federal/State){deductionMethod === "Auto" && " - Auto"}</span>
                                         <div>
                                             <span className="font-mono">-${fedStandardDeduction.toLocaleString()}/</span>
                                             <span className="font-mono">-${stateStandardDeduction.toLocaleString()}</span>
@@ -241,19 +326,19 @@ export default function TaxesTab() {
                                 <div className="pt-2 border-b border-gray-800" />
 
                                 <div className="flex justify-between text-red-400 items-center">
-                                    <span className="text-lg">Federal Income Tax {state.fedOverride !== null && "(Manual)"}</span>
+                                    <span className="text-lg">Federal Income Tax {fedOverride !== null && "(Manual)"}</span>
                                     <span className="font-mono text-lg">-${federalTax.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                                 </div>
 
                                 <div className="flex justify-between text-red-400 items-center">
-                                    <span className="text-lg">FICA (SS & Medicare) {state.ficaOverride !== null && "(Manual)"}</span>
+                                    <span className="text-lg">FICA (SS & Medicare) {ficaOverride !== null && "(Manual)"}</span>
                                     <span className="font-mono text-lg">-${ficaTax.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                                 </div>
 
                                 <div className="flex justify-between text-red-400 items-center">
-                                    <span className="text-lg">{state.stateResidency} State Tax {state.stateOverride !== null && "(Manual)"}</span>
+                                    <span className="text-lg">{stateResidency} State Tax {stateOverride !== null && "(Manual)"}</span>
                                     <span className="font-mono text-lg">
-                                        {stateParams || state.stateOverride !== null
+                                        {stateParams || stateOverride !== null
                                             ? `-$${stateTax.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
                                             : "$0"}
                                     </span>

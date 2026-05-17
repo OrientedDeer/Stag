@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { TRANSFER_CATEGORY_ID } from '../../../components/Objects/Budget/BudgetContext';
 import { AnyExpense } from '../../../components/Objects/Expense/models';
 import {
@@ -35,7 +36,7 @@ interface ToolbarProps {
  * actions + the main CTAs on the right. Pure presentational — state lives
  * in the parent / hooks.
  */
-export function Toolbar({
+function ToolbarInner({
     selectedMonth,
     selectedYear,
     totalTransactions,
@@ -174,3 +175,5 @@ export function Toolbar({
         </div>
     );
 }
+
+export const Toolbar = memo(ToolbarInner);

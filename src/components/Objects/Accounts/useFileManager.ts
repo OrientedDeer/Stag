@@ -1,7 +1,7 @@
 import { useContext } from 'react';
-import { AccountContext } from './AccountContext';
-import { IncomeContext } from '../Income/IncomeContext';
-import { ExpenseContext } from '../Expense/ExpenseContext';
+import { AccountContext, AccountDispatchContext } from './AccountContext';
+import { IncomeContext, IncomeDispatchContext } from '../Income/IncomeContext';
+import { ExpenseContext, ExpenseDispatchContext } from '../Expense/ExpenseContext';
 import { TaxContext } from '../../Objects/Taxes/TaxContext';
 import { AssumptionsContext, AssumptionsState, defaultAssumptions } from '../Assumptions/AssumptionsContext';
 import { AnyAccount, reconstituteAccount } from './models';
@@ -24,9 +24,12 @@ export interface FullBackup {
 }
 
 export const useFileManager = () => {
-    const { accounts, amountHistory, dispatch: accountDispatch } = useContext(AccountContext);
-    const { incomes, dispatch: incomeDispatch } = useContext(IncomeContext);
-    const { expenses, dispatch: expenseDispatch } = useContext(ExpenseContext);
+    const { accounts, amountHistory } = useContext(AccountContext);
+    const { dispatch: accountDispatch } = useContext(AccountDispatchContext);
+    const { incomes } = useContext(IncomeContext);
+    const incomeDispatch = useContext(IncomeDispatchContext);
+    const { expenses } = useContext(ExpenseContext);
+    const expenseDispatch = useContext(ExpenseDispatchContext);
     const { state, dispatch: taxesDispatch } = useContext(TaxContext);
     const { state: assumptions, dispatch: assumptionsDispatch } = useContext(AssumptionsContext);
     const { importKey, incrementImportKey } = useContext(ImportKeyContext);

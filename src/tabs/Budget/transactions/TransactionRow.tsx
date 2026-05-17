@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import {
     Transaction,
     TRANSFER_CATEGORY_ID,
@@ -19,17 +19,17 @@ interface TransactionRowProps {
     priorities: PriorityBucket[];
     isEditing: boolean;
     isSelected: boolean;
-    onEdit: () => void;
-    onUpdate: (updates: Partial<Transaction>) => void;
-    onDelete: () => void;
+    onEdit: (id: string) => void;
+    onUpdate: (id: string, updates: Partial<Transaction>) => void;
+    onDelete: (id: string) => void;
     onCancel: () => void;
-    onToggleSelect: () => void;
+    onToggleSelect: (id: string) => void;
     showCategory?: boolean;
 }
 
 type EditCreditType = 'income' | 'reimbursement' | 'transfer' | 'contribution';
 
-export function TransactionRow({
+function TransactionRowInner({
     transaction,
     expenses,
     activeExpenses,
@@ -77,7 +77,7 @@ export function TransactionRow({
 
         if (isCredit) {
             if (editCreditType === 'transfer') {
-                onUpdate({
+                onUpdate(transaction.id, {
                     date: new Date(editDate + 'T00:00:00'),
                     description: editDescription,
                     amount: Math.abs(amount),
@@ -89,7 +89,7 @@ export function TransactionRow({
                     isPossibleCredit: false,
                 });
             } else if (editCreditType === 'contribution') {
-                onUpdate({
+                onUpdate(transaction.id, {
                     date: new Date(editDate + 'T00:00:00'),
                     description: editDescription,
                     amount: Math.abs(amount),
@@ -101,7 +101,7 @@ export function TransactionRow({
                     isPossibleCredit: false,
                 });
             } else if (editCreditType === 'reimbursement') {
-                onUpdate({
+                onUpdate(transaction.id, {
                     date: new Date(editDate + 'T00:00:00'),
                     description: editDescription,
                     amount: Math.abs(amount),
@@ -113,7 +113,7 @@ export function TransactionRow({
                     isPossibleCredit: false,
                 });
             } else {
-                onUpdate({
+                onUpdate(transaction.id, {
                     date: new Date(editDate + 'T00:00:00'),
                     description: editDescription,
                     amount: Math.abs(amount),
@@ -130,7 +130,7 @@ export function TransactionRow({
             const isContribution = editExpenseId.startsWith(CONTRIBUTION_PREFIX);
             const targetAccountId = isContribution ? editExpenseId.replace(CONTRIBUTION_PREFIX, '') : undefined;
 
-            onUpdate({
+            onUpdate(transaction.id, {
                 date: new Date(editDate + 'T00:00:00'),
                 description: editDescription,
                 amount: -Math.abs(amount),
@@ -302,7 +302,7 @@ export function TransactionRow({
                     <input
                         type="checkbox"
                         checked={isSelected}
-                        onChange={onToggleSelect}
+                        onChange={() => onToggleSelect(transaction.id)}
                         onKeyDown={(e) => {
                             if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                                 e.preventDefault();
@@ -313,7 +313,7 @@ export function TransactionRow({
                                 next?.focus();
                             } else if (e.key === 'Enter') {
                                 e.preventDefault();
-                                onToggleSelect();
+                                onToggleSelect(transaction.id);
                             }
                         }}
                         data-transaction-select
@@ -361,13 +361,13 @@ export function TransactionRow({
                     {isPositiveAmount ? '+' : ''}{formatCurrency(Math.abs(transaction.amount))}
                 </div>
                 <button
-                    onClick={onEdit}
+                    onClick={() => onEdit(transaction.id)}
                     className="text-gray-500 hover:text-gray-300 text-xs"
                 >
                     Edit
                 </button>
                 <button
-                    onClick={onDelete}
+                    onClick={() => onDelete(transaction.id)}
                     className="text-gray-500 hover:text-red-400 text-xs"
                 >
                     Delete
@@ -376,3 +376,5 @@ export function TransactionRow({
         </div>
     );
 }
+
+export const TransactionRow = memo(TransactionRowInner);

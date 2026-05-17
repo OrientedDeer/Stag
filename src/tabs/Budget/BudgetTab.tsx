@@ -132,23 +132,13 @@ export default function BudgetTab() {
 
                 {/* Tab Content */}
                 <div className="bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl mb-4 p-6 overflow-visible">
-                    <div data-sub-tab-content className={activeTab === 'Overview' ? '' : 'hidden'}>
-                        <OverviewTab />
-                    </div>
-                    <div data-sub-tab-content className={activeTab === 'Spending' ? '' : 'hidden'}>
-                        <SpendingTab />
-                    </div>
-                    <div data-sub-tab-content className={activeTab === 'Transactions' ? '' : 'hidden'}>
-                        <TransactionsTab />
-                    </div>
-                    <div data-sub-tab-content className={activeTab === 'History' ? '' : 'hidden'}>
-                        <HistoryTab />
-                    </div>
-                    <div data-sub-tab-content className={activeTab === 'Trends' ? '' : 'hidden'}>
-                        <TrendsTab />
-                    </div>
-                    <div data-sub-tab-content className={activeTab === 'Settings' ? '' : 'hidden'}>
-                        <SettingsTab />
+                    <div data-sub-tab-content>
+                        {activeTab === 'Overview' && <OverviewTab />}
+                        {activeTab === 'Spending' && <SpendingTab />}
+                        {activeTab === 'Transactions' && <TransactionsTab />}
+                        {activeTab === 'History' && <HistoryTab />}
+                        {activeTab === 'Trends' && <TrendsTab />}
+                        {activeTab === 'Settings' && <SettingsTab />}
                     </div>
                 </div>
             </div>

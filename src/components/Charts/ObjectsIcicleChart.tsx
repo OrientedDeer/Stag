@@ -1,7 +1,10 @@
-import { useRef, useState, useEffect } from 'react';
+import { memo, useCallback, useRef, useState, useEffect } from 'react';
 import { ResponsiveIcicle } from "@nivo/icicle";
 
 const MIN_CHART_WIDTH = 300;
+const CHART_MARGIN = { top: 20, right: 20, bottom: 20, left: 20 };
+const CHART_THEME = { tooltip: { container: { zIndex: 9999 } } };
+const colorAccessor = (node: any) => node.data.color;
 
 // --- Types ---
 interface ObjectsIcicleChartProps {
@@ -34,13 +37,48 @@ function getDistributedColors<T extends string>(palette: T[], count: number): T[
 
 
 // --- Component ---
-export const ObjectsIcicleChart = ({
+export const ObjectsIcicleChart = memo(({
     data,
     valueFormat = ">-$0,.0f",
     height = 192
 }: ObjectsIcicleChartProps) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [containerWidth, setContainerWidth] = useState<number | null>(null);
+
+    const label = useCallback((node: any) => truncateLabel(node.id), []);
+
+    const tooltip = useCallback((node: any) => {
+        const { id, value, data: nodeData } = node;
+        const customData = nodeData as any;
+
+        // Use netWorth if available (for account root node), otherwise use value
+        const displayValue = customData.netWorth !== undefined ? customData.netWorth : value;
+
+        // Calculate percentage of total assets (sum of all absolute values in chart)
+        // Using netWorth would be wrong when debt exists (e.g., $500k assets - $400k debt = $100k networth
+        // would show a $250k account as 250% instead of 50%)
+        const totalAssets = data.totalAssets || data.value || value || 1;
+        const percentage = (value / totalAssets) * 100;
+
+        // Don't show percentage for root node (it's always 100%)
+        const isRoot = id === data.id;
+
+        return (
+            <div className="bg-gray-900 p-2 rounded border border-gray-700 shadow-xl z-50 text-xs min-w-max">
+                <div className="font-bold text-gray-200 mb-1">{id}</div>
+                <div className="flex items-baseline gap-2">
+                    <span className="text-green-400 font-mono">
+                        ${displayValue.toLocaleString(undefined, { maximumFractionDigits: 0, minimumFractionDigits: 0 })}
+                    </span>
+                    {!isRoot && (
+                        <span className="text-gray-400">
+                            ({percentage.toFixed(1)}%)
+                        </span>
+                    )}
+                </div>
+            </div>
+        );
+    }, [data]);
 
     // Track container width to prevent negative SVG dimensions
     useEffect(() => {
@@ -83,18 +121,16 @@ export const ObjectsIcicleChart = ({
         <div ref={containerRef} className="w-full bg-gray-900" style={{ height: `${height}px` }}>
             <ResponsiveIcicle
                 data={data}
-                // Tell Nivo to use the 'color' key we added to the data objects
-                colors={(node: any) => node.data.color}
+                colors={colorAccessor}
                 inheritColorFromParent={false}
 
-                margin={{ top: 20, right: 20, bottom: 20, left: 20 }}
+                margin={CHART_MARGIN}
                 valueFormat={valueFormat}
                 borderRadius={8}
-                theme={{ tooltip: { container: { zIndex: 9999 } } }}
+                theme={CHART_THEME}
 
-                // Layout & Labels
                 enableLabels={true}
-                label={(node: any) => truncateLabel(node.id)}
+                label={label}
                 labelSkipWidth={24}
                 labelSkipHeight={12}
                 labelTextColor="#ffffff"
@@ -103,43 +139,11 @@ export const ObjectsIcicleChart = ({
                 labelPaddingY={10}
                 labelAlign='center'
 
-                // Tooltip - unified and generic
-                tooltip={(node) => {
-                    const { id, value, data: nodeData } = node;
-                    const customData = nodeData as any;
-
-                    // Use netWorth if available (for account root node), otherwise use value
-                    const displayValue = customData.netWorth !== undefined ? customData.netWorth : value;
-
-                    // Calculate percentage of total assets (sum of all absolute values in chart)
-                    // Using netWorth would be wrong when debt exists (e.g., $500k assets - $400k debt = $100k networth
-                    // would show a $250k account as 250% instead of 50%)
-                    const totalAssets = data.totalAssets || data.value || value || 1;
-                    const percentage = (value / totalAssets) * 100;
-
-                    // Don't show percentage for root node (it's always 100%)
-                    const isRoot = id === data.id;
-
-                    return (
-                        <div className="bg-gray-900 p-2 rounded border border-gray-700 shadow-xl z-50 text-xs min-w-max">
-                            <div className="font-bold text-gray-200 mb-1">{id}</div>
-                            <div className="flex items-baseline gap-2">
-                                <span className="text-green-400 font-mono">
-                                    ${displayValue.toLocaleString(undefined, { maximumFractionDigits: 0, minimumFractionDigits: 0 })}
-                                </span>
-                                {!isRoot && (
-                                    <span className="text-gray-400">
-                                        ({percentage.toFixed(1)}%)
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-                    );
-                }}
+                tooltip={tooltip}
             />
         </div>
     );
-};
+});
 
 // Export helper functions for use in tab files
 export { tailwindToCssVar, getDistributedColors };

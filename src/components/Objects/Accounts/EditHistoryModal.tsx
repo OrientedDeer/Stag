@@ -1,6 +1,6 @@
 // src/components/Accounts/EditHistoryModal.tsx
 import React, { useContext, useState } from 'react';
-import { AccountContext } from './AccountContext';
+import { AccountContext, AccountDispatchContext } from './AccountContext';
 import { CurrencyInput } from '../../Layout/InputFields/CurrencyInput';
 import { PropertyAccount } from './models';
 import { useModalAccessibility } from '../../../hooks/useModalAccessibility';
@@ -12,7 +12,8 @@ interface EditHistoryModalProps {
 }
 
 export const EditHistoryModal: React.FC<EditHistoryModalProps> = ({ accountId, isOpen, onClose }) => {
-    const { accounts, amountHistory, dispatch } = useContext(AccountContext);
+    const { accounts, amountHistory } = useContext(AccountContext);
+    const { dispatch } = useContext(AccountDispatchContext);
     const history = amountHistory[accountId] || [];
     const { modalRef, handleKeyDown } = useModalAccessibility(isOpen, onClose);
 

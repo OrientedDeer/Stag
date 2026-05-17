@@ -1,4 +1,4 @@
-import { useContext, useState, useEffect, useCallback, ReactElement } from "react";
+import { memo, useContext, useState, useEffect, useCallback, ReactElement } from "react";
 import {
     AnyExpense,
     RentExpense,
@@ -15,8 +15,8 @@ import {
     SubscriptionExpense,
     EXPENSE_COLORS_BACKGROUND
 } from './models.js';
-import { ExpenseContext, AllExpenseKeys } from "./ExpenseContext.js";
-import { AccountContext } from "../Accounts/AccountContext.js";
+import { ExpenseDispatchContext, AllExpenseKeys } from "./ExpenseContext.js";
+import { AccountContext, AccountDispatchContext } from "../Accounts/AccountContext.js";
 import { StyledDisplay, StyledSelect } from "../../Layout/InputFields/StyleUI.js";
 import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput.js";
 import DeleteExpenseControl from './DeleteExpenseUI.js';
@@ -64,8 +64,9 @@ function getExpenseIconBg(expense: AnyExpense): string {
 }
 
 function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
-    const { dispatch: expenseDispatch } = useContext(ExpenseContext);
-    const { accounts, dispatch: accountDispatch } = useContext(AccountContext);
+    const expenseDispatch = useContext(ExpenseDispatchContext);
+    const { accounts } = useContext(AccountContext);
+    const { dispatch: accountDispatch } = useContext(AccountDispatchContext);
     const { state: assumptions } = useContext(AssumptionsContext);
     const forceExact = assumptions.display?.useCompactCurrency === false;
     const [dateError, setDateError] = useState<string | undefined>();
@@ -512,4 +513,4 @@ function CharityFields({ expense, onFieldUpdate }: CharityFieldsProps): ReactEle
     );
 }
 
-export default ExpenseCard;
+export default memo(ExpenseCard);
