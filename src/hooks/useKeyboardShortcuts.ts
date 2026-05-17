@@ -170,7 +170,7 @@ export function useSubTabKeyboardNav(
 
         // Fallback: any real form control or link.
         const focusables = container.querySelectorAll<HTMLElement>(
-            'button:not([role="tab"]), input, select, textarea, a[href]'
+            'button:not([role="tab"]):not([aria-label="Help"]), input, select, textarea, a[href]'
         );
         for (const el of Array.from(focusables)) {
             if (!isVisible(el)) continue;
