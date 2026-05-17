@@ -1,4 +1,4 @@
-import { useContext, useEffect, useCallback, useState, useMemo } from 'react';
+import { useContext, useEffect, useCallback, useState, useMemo, useRef } from 'react';
 import { DropResult } from '@hello-pangea/dnd';
 import { AssumptionsContext, AssumptionsState, WithdrawalBucket, getBirthYear, getLifeExpectancy } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { AccountContext } from '../../components/Objects/Accounts/AccountContext';
@@ -77,6 +77,10 @@ export default function WithdrawalTab() {
     // updated assumptions), so we don't need `state` in the dep array.
     const recalculateSimulation = useCallback((assumptionsOverride: AssumptionsState) => {
         setIsRecalculating(true);
+        // Yield to the event loop so the "recalculating" spinner can paint
+        // before the synchronous simulation (~50-200ms) blocks the main
+        // thread. Without this, React batches setIsRecalculating(true) with
+        // the dispatch below and the spinner never appears.
         setTimeout(() => {
             const birthYear = getBirthYear(assumptionsOverride.milestones);
             const lifeExpectancy = getLifeExpectancy(assumptionsOverride.milestones);
@@ -94,11 +98,19 @@ export default function WithdrawalTab() {
         }, 50);
     }, [accounts, incomes, expenses, taxState, dispatchSimulation]);
 
+    // Track current state in a ref so onUpdateInvestments doesn't need
+    // `state` in its dep array. Without this, the callback identity flips on
+    // every state change, defeating memo() on TaxOptimizationControls and
+    // re-rendering its sliders on each keystroke elsewhere on the tab.
+    const stateRef = useRef(state);
+    useEffect(() => { stateRef.current = state; }, [state]);
+
     const onUpdateInvestments = useCallback((payload: Partial<AssumptionsState['investments']>) => {
-        const updated = { ...state, investments: { ...state.investments, ...payload } };
+        const current = stateRef.current;
+        const updated = { ...current, investments: { ...current.investments, ...payload } };
         dispatch({ type: 'UPDATE_INVESTMENTS', payload });
         recalculateSimulation(updated);
-    }, [state, dispatch, recalculateSimulation]);
+    }, [dispatch, recalculateSimulation]);
 
     const formatMoney = useCallback((amount: number) =>
         formatCompactCurrency(amount, { forceExact }), [forceExact]);

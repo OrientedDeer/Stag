@@ -1,7 +1,7 @@
 import { memo, useCallback } from 'react';
 import { AssumptionsState } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { ToggleInput } from '../../../components/Layout/InputFields/ToggleInput';
-import { PendingSlider } from './PendingSlider';
+import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider';
 
 type InvestmentsPatch = Partial<AssumptionsState['investments']>;
 
@@ -86,14 +86,14 @@ function TaxOptimizationControlsInner({
                         </div>
                     </label>
                     {strategy === 'rate-match' && (
-                    <PendingSlider
+                    <RangeSlider
                         label="Conversion aggressiveness"
-                        committedValue={minRateGapPct}
+                        value={minRateGapPct}
                         min={0}
                         max={20}
                         step={1}
-                        formatValue={formatRateGap}
-                        onCommit={commitMinRateGap}
+                        formatTooltip={formatRateGap}
+                        onChange={commitMinRateGap}
                     />
                     )}
                     {strategy === 'rate-match' && (
@@ -139,14 +139,14 @@ function TaxOptimizationControlsInner({
                     </details>
                     )}
                     {strategy === 'dp-precomputed' && (
-                    <PendingSlider
+                    <RangeSlider
                         label="DP back-load preference (δ)"
-                        committedValue={backloadDeltaPct}
+                        value={backloadDeltaPct}
                         min={0}
                         max={10}
                         step={0.5}
-                        formatValue={formatBackloadDelta}
-                        onCommit={commitBackloadDelta}
+                        formatTooltip={formatBackloadDelta}
+                        onChange={commitBackloadDelta}
                     />
                     )}
                     {strategy === 'dp-precomputed' && (
