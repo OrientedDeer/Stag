@@ -12,7 +12,6 @@ interface PassphraseModalProps {
 export default function PassphraseModal({ isOpen, onClose, onSubmit, mode, loading }: PassphraseModalProps) {
     const { modalRef, handleKeyDown } = useModalAccessibility(isOpen, onClose);
     const [passphrase, setPassphrase] = useState('');
-    const [confirmPassphrase, setConfirmPassphrase] = useState('');
     const [showPassphrase, setShowPassphrase] = useState(false);
     const [error, setError] = useState('');
 
@@ -24,13 +23,10 @@ export default function PassphraseModal({ isOpen, onClose, onSubmit, mode, loadi
         ? 'Enter a passphrase to encrypt your data before uploading. You will need this passphrase to restore your backup.'
         : 'Enter the passphrase you used when creating this backup.';
 
-    const handleSubmit = () => {
+    const handleSubmit = (e?: React.FormEvent) => {
+        e?.preventDefault();
         if (!passphrase) {
             setError('Passphrase is required.');
-            return;
-        }
-        if (isBackup && passphrase !== confirmPassphrase) {
-            setError('Passphrases do not match.');
             return;
         }
         setError('');
@@ -39,7 +35,6 @@ export default function PassphraseModal({ isOpen, onClose, onSubmit, mode, loadi
 
     const handleClose = () => {
         setPassphrase('');
-        setConfirmPassphrase('');
         setError('');
         onClose();
     };
@@ -81,7 +76,7 @@ export default function PassphraseModal({ isOpen, onClose, onSubmit, mode, loadi
                 </div>
 
                 {/* Passphrase input */}
-                <div className="space-y-3">
+                <form onSubmit={handleSubmit} className="space-y-3">
                     <div>
                         <label className="block text-sm text-gray-300 mb-1">Passphrase</label>
                         <div className="relative">
@@ -89,7 +84,6 @@ export default function PassphraseModal({ isOpen, onClose, onSubmit, mode, loadi
                                 type={showPassphrase ? 'text' : 'password'}
                                 value={passphrase}
                                 onChange={e => setPassphrase(e.target.value)}
-                                onKeyDown={e => { if (e.key === 'Enter' && !isBackup) handleSubmit(); }}
                                 placeholder="Enter a strong passphrase"
                                 className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-green-500 pr-10"
                                 autoFocus
@@ -115,31 +109,16 @@ export default function PassphraseModal({ isOpen, onClose, onSubmit, mode, loadi
                         </div>
                     </div>
 
-                    {isBackup && (
-                        <div>
-                            <label className="block text-sm text-gray-300 mb-1">Confirm passphrase</label>
-                            <input
-                                type={showPassphrase ? 'text' : 'password'}
-                                value={confirmPassphrase}
-                                onChange={e => setConfirmPassphrase(e.target.value)}
-                                onKeyDown={e => { if (e.key === 'Enter') handleSubmit(); }}
-                                placeholder="Re-enter passphrase"
-                                className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-green-500"
-                                disabled={loading}
-                            />
-                        </div>
-                    )}
-
                     {error && (
                         <div className="bg-red-900/20 border border-red-800 rounded-lg p-2">
                             <p className="text-red-400 text-sm">{error}</p>
                         </div>
                     )}
-                </div>
 
                 {/* Buttons */}
                 <div className="flex gap-3 justify-end mt-5">
                     <button
+                        type="button"
                         onClick={handleClose}
                         className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
                         disabled={loading}
@@ -147,7 +126,7 @@ export default function PassphraseModal({ isOpen, onClose, onSubmit, mode, loadi
                         Cancel
                     </button>
                     <button
-                        onClick={handleSubmit}
+                        type="submit"
                         disabled={loading || !passphrase}
                         className="px-4 py-2 bg-green-600 hover:bg-green-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors flex items-center gap-2"
                     >
@@ -160,6 +139,7 @@ export default function PassphraseModal({ isOpen, onClose, onSubmit, mode, loadi
                         {loading ? (isBackup ? 'Encrypting...' : 'Decrypting...') : (isBackup ? 'Encrypt & Upload' : 'Download & Decrypt')}
                     </button>
                 </div>
+                </form>
             </div>
         </div>
     );
