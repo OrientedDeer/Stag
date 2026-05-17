@@ -39,3 +39,6 @@ coverage/
 
 # Personal research notes
 NOTES.md
+
+# React DevTools profile dumps
+docs/profiling-data.*.json
