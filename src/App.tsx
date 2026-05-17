@@ -26,6 +26,7 @@ import BudgetTab from "./tabs/Budget/BudgetTab";
 import { BudgetProvider } from "./components/Objects/Budget/BudgetContext";
 import { CloudBackupProvider } from "./components/Objects/CloudBackup/CloudBackupContext";
 import GlobalKeyboardShortcuts from "./components/Layout/Overlays/GlobalKeyboardShortcuts";
+import { PerformanceProfiler } from "./components/Layout/PerformanceProfiler";
 
 export default function App() {
   const [isOpen, setIsOpen] = useState(false); // shared variable
@@ -49,24 +50,24 @@ export default function App() {
 
                   <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto custom-scrollbar focus:outline-none">
                     <Routes>
-                      <Route index element={<Dashboard />} />
-                      <Route path="/dashboard" element={<Dashboard />} />
+                      <Route index element={<PerformanceProfiler id="Dashboard"><Dashboard /></PerformanceProfiler>} />
+                      <Route path="/dashboard" element={<PerformanceProfiler id="Dashboard"><Dashboard /></PerformanceProfiler>} />
 
-                      <Route path="/current" element={<AccountTab />} />
-                      <Route path="/current/accounts" element={<AccountTab />} />
-                      <Route path="/current/income" element={<IncomeTab />} />
-                      <Route path="/current/expense" element={<ExpenseTab />} />
-                      <Route path="/current/taxes" element={<TaxesTab />} />
+                      <Route path="/current" element={<PerformanceProfiler id="Current/Accounts"><AccountTab /></PerformanceProfiler>} />
+                      <Route path="/current/accounts" element={<PerformanceProfiler id="Current/Accounts"><AccountTab /></PerformanceProfiler>} />
+                      <Route path="/current/income" element={<PerformanceProfiler id="Current/Income"><IncomeTab /></PerformanceProfiler>} />
+                      <Route path="/current/expense" element={<PerformanceProfiler id="Current/Expense"><ExpenseTab /></PerformanceProfiler>} />
+                      <Route path="/current/taxes" element={<PerformanceProfiler id="Current/Taxes"><TaxesTab /></PerformanceProfiler>} />
 
-                      <Route path="/budget" element={<BudgetTab />} />
-                      <Route path="/budget/*" element={<BudgetTab />} />
+                      <Route path="/budget" element={<PerformanceProfiler id="Budget"><BudgetTab /></PerformanceProfiler>} />
+                      <Route path="/budget/*" element={<PerformanceProfiler id="Budget"><BudgetTab /></PerformanceProfiler>} />
 
-                      <Route path="/future" element={<FutureTab />} />
-                      <Route path="/future/assumptions" element={<AssumptionTab />} />
-                      <Route path="/future/allocation" element={<PriorityTab />} />
-                      <Route path="/future/withdrawal" element={<WithdrawalTab />} />
-                      <Route path="/future/charts" element={<FutureTab />} />
-                      <Route path="/testing" element={<Testing />} />
+                      <Route path="/future" element={<PerformanceProfiler id="Future"><FutureTab /></PerformanceProfiler>} />
+                      <Route path="/future/assumptions" element={<PerformanceProfiler id="Future/Assumptions"><AssumptionTab /></PerformanceProfiler>} />
+                      <Route path="/future/allocation" element={<PerformanceProfiler id="Future/Allocation"><PriorityTab /></PerformanceProfiler>} />
+                      <Route path="/future/withdrawal" element={<PerformanceProfiler id="Future/Withdrawal"><WithdrawalTab /></PerformanceProfiler>} />
+                      <Route path="/future/charts" element={<PerformanceProfiler id="Future/Charts"><FutureTab /></PerformanceProfiler>} />
+                      <Route path="/testing" element={<PerformanceProfiler id="Testing"><Testing /></PerformanceProfiler>} />
                     </Routes>
                   </main>
                 </div>
