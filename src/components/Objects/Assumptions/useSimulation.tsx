@@ -1,9 +1,9 @@
 import { simulateOneYear, SimulationYear } from './SimulationEngine';
 import * as TaxService from '../../Objects/Taxes/TaxService';
 import { WorkIncome, getIncomeActiveMultiplier } from '../Income/models';
-import { AnyAccount, InvestedAccount } from '../Accounts/models';
+import { AnyAccount, InvestedAccount, SavedAccount, DebtAccount, DeficitDebtAccount } from '../Accounts/models';
 import { AnyIncome } from '../Income/models';
-import { AnyExpense } from '../Expense/models';
+import { AnyExpense, MortgageExpense } from '../Expense/models';
 import { AssumptionsState, getLifeExpectancy, getBirthYear, getRetirementAge } from './AssumptionsContext';
 import { TaxState } from '../Taxes/TaxContext';
 import { BaselineProjections } from '../../../services/simulation/types';
@@ -205,6 +205,17 @@ export const runSimulation = (
     useRollingBaseline: boolean = false,
     dpConversionPlan?: Map<number, number>,
     dpDebugByYear?: Map<number, string[]>,
+    /** accountId → extra dollars to add to the synthetic EOY projection row.
+     *  Populated by callers from `computeEOYBudgetContributions` so that
+     *  non-payroll priority contributions (Brokerage / IRA / HSA / Savings)
+     *  show up in the Projected Dec point. */
+    eoyContributionAdditions?: Record<string, number>,
+    /** DebtAccount id → principal $ to subtract from the synthetic EOY row,
+     *  so loan balances reflect amortization through year-end. */
+    eoyDebtReductions?: Record<string, number>,
+    /** MortgageExpense id → principal $ to subtract from its loan_balance on
+     *  the synthetic EOY row (mortgages don't live on a DebtAccount). */
+    eoyMortgageReductions?: Record<string, number>,
 ): SimulationYear[] => {
         
     // Calculate start year and current age from birth year
@@ -361,15 +372,71 @@ export const runSimulation = (
 
             return acc;
         });
+
+        // Layer on budget-tracked priority contributions (Brokerage / IRA / HSA /
+        // Savings). Without this, the Projected Dec point only reflects payroll
+        // and ignores everything the user is actively budgeting toward.
+        if (eoyContributionAdditions) {
+            adjustedAccounts = adjustedAccounts.map(acc => {
+                const extra = eoyContributionAdditions[acc.id] || 0;
+                if (extra <= 0) return acc;
+                if (acc instanceof InvestedAccount) {
+                    return new InvestedAccount(
+                        acc.id, acc.name, acc.amount + extra, acc.employerBalance,
+                        acc.tenureYears, acc.expenseRatio, acc.taxType,
+                        acc.isContributionEligible, acc.vestedPerYear, acc.costBasis + extra, acc.customROR,
+                        acc.conversionHistory
+                    );
+                }
+                if (acc instanceof SavedAccount) {
+                    return new SavedAccount(acc.id, acc.name, acc.amount + extra, acc.apr);
+                }
+                return acc;
+            });
+        }
+
+        // Layer on expected debt principal pay-down for the remainder of the
+        // year so mortgage / loan balances at the Projected Dec point reflect
+        // amortization through year-end rather than today's balance.
+        if (eoyDebtReductions) {
+            adjustedAccounts = adjustedAccounts.map(acc => {
+                if (!(acc instanceof DebtAccount) || acc instanceof DeficitDebtAccount) return acc;
+                const reduction = eoyDebtReductions[acc.id] || 0;
+                if (reduction <= 0) return acc;
+                const nextAmount = Math.max(0, acc.amount - reduction);
+                return new DebtAccount(acc.id, acc.name, nextAmount, acc.linkedAccountId, acc.apr);
+            });
+        }
     }
 
     // --- STEP 1.75: INSERT END-OF-YEAR PROJECTION ---
     // Insert a synthetic data point representing projected balances at December 31 of the current year.
     // This prevents the "big jump" confusion between Year 0 (today) and Year 1 (end of next year).
     if (remainingFraction > 0 && !assumptions.demographics.priorYearMode) {
+        // Layer on expected mortgage principal pay-down so MortgageExpense.loan_balance
+        // on the synthetic EOY row reflects amortization through year-end.
+        let adjustedExpenses = yearZero.expenses;
+        if (eoyMortgageReductions) {
+            adjustedExpenses = yearZero.expenses.map(exp => {
+                if (!(exp instanceof MortgageExpense)) return exp;
+                const reduction = eoyMortgageReductions[exp.id] || 0;
+                if (reduction <= 0) return exp;
+                const nextBalance = Math.max(0, exp.loan_balance - reduction);
+                return new MortgageExpense(
+                    exp.id, exp.name, exp.frequency,
+                    exp.valuation, nextBalance, exp.starting_loan_balance,
+                    exp.apr, exp.term_length, exp.property_taxes, exp.valuation_deduction,
+                    exp.maintenance, exp.utilities, exp.home_owners_insurance, exp.pmi, exp.hoa_fee,
+                    exp.is_tax_deductible, exp.tax_deductible, exp.linkedAccountId,
+                    exp.startDate, exp.payment, exp.extra_payment, exp.endDate,
+                    exp.startMilestoneId, exp.endMilestoneId,
+                );
+            });
+        }
         const eoyYear: SimulationYear = {
             ...yearZero,
             accounts: adjustedAccounts,
+            expenses: adjustedExpenses,
             cashflow: {
                 ...yearZero.cashflow,
                 totalIncome: yearZero.cashflow.totalIncome * remainingFraction,
@@ -469,6 +536,9 @@ export const runSimulationWithOptimization = (
     taxState: TaxState,
     yearlyReturns?: number[],
     referenceDate?: Date,
+    eoyContributionAdditions?: Record<string, number>,
+    eoyDebtReductions?: Record<string, number>,
+    eoyMortgageReductions?: Record<string, number>,
 ): SimulationYear[] => {
     const strategy = assumptions.investments.rothConversionStrategy ?? 'rate-match';
     const taxOptOn = assumptions.investments.taxOptimizationEnabled;
@@ -492,6 +562,10 @@ export const runSimulationWithOptimization = (
         /* conversionMode */ 'std-ded-only',
         /* useRollingBaseline */ false,
         /* dpConversionPlan */ undefined,
+        /* dpDebugByYear */ undefined,
+        eoyContributionAdditions,
+        eoyDebtReductions,
+        eoyMortgageReductions,
     );
     const stdDedBaselineLifetimeTax = stdDedBaselineTimeline.reduce((total, year) => {
         return total
@@ -586,6 +660,9 @@ export const runSimulationWithOptimization = (
             /* useRollingBaseline */ false,
             /* dpConversionPlan */ dpPlan.conversionsByYear,
             /* dpDebugByYear */ dpPlan.diagnostics.perYearDebug,
+            eoyContributionAdditions,
+            eoyDebtReductions,
+            eoyMortgageReductions,
         );
 
         // Append solver summary to year-0 logs so the user can see DP setup
@@ -617,6 +694,11 @@ export const runSimulationWithOptimization = (
         yearlyReturns, referenceDate,
         /* conversionMode */ 'rate-match',
         /* useRollingBaseline */ true,
+        /* dpConversionPlan */ undefined,
+        /* dpDebugByYear */ undefined,
+        eoyContributionAdditions,
+        eoyDebtReductions,
+        eoyMortgageReductions,
     );
     if (finalTimeline.length > 0) {
         finalTimeline[0].stdDedBaselineLifetimeTax = stdDedBaselineLifetimeTax;

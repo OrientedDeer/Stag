@@ -6,6 +6,8 @@ import { IncomeContext } from '../../components/Objects/Income/IncomeContext';
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
 import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
 import { SimulationContext } from '../../components/Objects/Assumptions/SimulationContext';
+import { BudgetContext } from '../../components/Objects/Budget/BudgetContext';
+import { computeEOYBudgetContributions } from '../../services/eoyContributionProjection';
 import { AnyAccount, ESPPAccount, SavedAccount, InvestedAccount } from '../../components/Objects/Accounts/models';
 import { formatCompactCurrency } from './tabs/FutureUtils';
 import { getRMDStartAge } from '../../data/RMDData';
@@ -70,6 +72,7 @@ export default function WithdrawalTab() {
     const taxOptimizationEnabled = state.investments.taxOptimizationEnabled;
 
     const { simulation, dispatch: dispatchSimulation } = useContext(SimulationContext);
+    const { months: budgetMonths } = useContext(BudgetContext);
     const [isRecalculating, setIsRecalculating] = useState(false);
 
     // Re-run simulation and update SimulationContext so summary fields refresh.
@@ -84,11 +87,20 @@ export default function WithdrawalTab() {
         setTimeout(() => {
             const birthYear = getBirthYear(assumptionsOverride.milestones);
             const lifeExpectancy = getLifeExpectancy(assumptionsOverride.milestones);
-            const currentYear = new Date().getFullYear();
+            const today = new Date();
+            const currentYear = today.getFullYear();
             const currentAge = currentYear - birthYear;
             const yearsToRun = Math.max(1, lifeExpectancy - currentAge);
+            const startYear = assumptionsOverride.demographics.priorYearMode ? currentYear - 1 : currentYear;
+            const remainderGoals = (simulation.find(s => s.year === startYear + 1)?.cashflow.bucketDetail
+                ?? simulation.find(s => s.year === startYear)?.cashflow.bucketDetail
+                ?? {});
+            const { additions, debtReductions, mortgageReductions } = computeEOYBudgetContributions(
+                assumptionsOverride.priorities, accounts, incomes, expenses, budgetMonths,
+                assumptionsOverride, taxState, startYear, today, remainderGoals,
+            );
 
-            const newSimulation = runSimulationWithOptimization(yearsToRun, accounts, incomes, expenses, assumptionsOverride, taxState);
+            const newSimulation = runSimulationWithOptimization(yearsToRun, accounts, incomes, expenses, assumptionsOverride, taxState, undefined, undefined, additions, debtReductions, mortgageReductions);
             const inputHash = getSimulationInputHash(accounts, incomes, expenses, assumptionsOverride, taxState);
             dispatchSimulation({
                 type: 'SET_SIMULATION_WITH_HASH',
@@ -96,7 +108,7 @@ export default function WithdrawalTab() {
             });
             setIsRecalculating(false);
         }, 50);
-    }, [accounts, incomes, expenses, taxState, dispatchSimulation]);
+    }, [accounts, incomes, expenses, taxState, dispatchSimulation, budgetMonths, simulation]);
 
     // Track current state in a ref so onUpdateInvestments doesn't need
     // `state` in its dep array. Without this, the callback identity flips on

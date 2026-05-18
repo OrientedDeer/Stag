@@ -10,6 +10,8 @@ import { AccountContext } from '../../components/Objects/Accounts/AccountContext
 import { IncomeContext } from '../../components/Objects/Income/IncomeContext';
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
 import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
+import { BudgetContext } from '../../components/Objects/Budget/BudgetContext';
+import { computeEOYBudgetContributions } from '../../services/eoyContributionProjection';
 import { calculateMilestones, formatAge, MilestonesSummary } from '../../services/MilestoneCalculator';
 import { LoadingSpinner, LoadingOverlay } from '../../components/Layout/LoadingSpinner';
 import { AlertBanner } from '../../components/Layout/AlertBanner';
@@ -170,6 +172,7 @@ export default function FutureTab() {
     const { incomes } = useContext(IncomeContext);
     const { expenses } = useContext(ExpenseContext);
     const { state: taxState } = useContext(TaxContext);
+    const { months: budgetMonths } = useContext(BudgetContext);
     const [activeTab, setActiveTab] = useState(() => {
         const saved = localStorage.getItem('stag_future_tab');
         return saved && all_tabs.includes(saved) ? saved : 'Overview';
@@ -205,17 +208,31 @@ export default function FutureTab() {
     }, [assumptions.priorities]);
 
     const executeSimulation = useCallback(() => {
-        const currentYear = new Date().getFullYear();
+        const today = new Date();
+        const currentYear = today.getFullYear();
+        const startYear = assumptions.demographics.priorYearMode ? currentYear - 1 : currentYear;
         const startAge = currentYear - getBirthYear(assumptions.milestones);
+        const remainderGoals = (simulation.find(s => s.year === startYear + 1)?.cashflow.bucketDetail
+            ?? simulation.find(s => s.year === startYear)?.cashflow.bucketDetail
+            ?? {});
+        const { additions, debtReductions, mortgageReductions } = computeEOYBudgetContributions(
+            assumptions.priorities, accounts, incomes, expenses, budgetMonths,
+            assumptions, taxState, startYear, today, remainderGoals,
+        );
         return runSimulationWithOptimization(
             getLifeExpectancy(assumptions.milestones) - startAge,
             accounts,
             incomes,
             expenses,
             assumptions,
-            taxState
+            taxState,
+            undefined,
+            undefined,
+            additions,
+            debtReductions,
+            mortgageReductions,
         );
-    }, [assumptions, accounts, incomes, expenses, taxState]);
+    }, [assumptions, accounts, incomes, expenses, taxState, budgetMonths, simulation]);
 
     const handleRecalculate = useCallback(() => {
         setIsLoading(true);

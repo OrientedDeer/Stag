@@ -15,7 +15,9 @@ import { AccountContext } from '../../components/Objects/Accounts/AccountContext
 import { IncomeContext } from '../../components/Objects/Income/IncomeContext';
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
 import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
-import { WorkIncome, FutureSocialSecurityIncome, CurrentSocialSecurityIncome, PassiveIncome, FERSPensionIncome, CSRSPensionIncome } from '../../components/Objects/Income/models';
+import { BudgetContext } from '../../components/Objects/Budget/BudgetContext';
+import { computeEOYBudgetContributions } from '../../services/eoyContributionProjection';
+import { WorkIncome, FutureSocialSecurityIncome, CurrentSocialSecurityIncome, PassiveIncome, FERSPensionIncome, CSRSPensionIncome, getIncomeActiveMultiplier } from '../../components/Objects/Income/models';
 import { runSimulationWithOptimization } from '../../components/Objects/Assumptions/useSimulation';
 import { getSimulationInputHash } from '../../services/simulationHash';
 import {
@@ -732,6 +734,7 @@ function SimulationDebugTab() {
     const { incomes } = useContext(IncomeContext);
     const { expenses } = useContext(ExpenseContext);
     const { state: taxState } = useContext(TaxContext);
+    const { months: budgetMonths } = useContext(BudgetContext);
     const [selectedYear, setSelectedYear] = useState<number | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [showDetailedView, setShowDetailedView] = useState(false);
@@ -756,15 +759,29 @@ function SimulationDebugTab() {
     }, [storedInputHash, currentInputHash, simulation.length]);
 
     const executeSimulation = useCallback(() => {
+        const today = new Date();
+        const startYear = assumptions.demographics.priorYearMode ? today.getFullYear() - 1 : today.getFullYear();
+        const remainderGoals = (simulation.find(s => s.year === startYear + 1)?.cashflow.bucketDetail
+            ?? simulation.find(s => s.year === startYear)?.cashflow.bucketDetail
+            ?? {});
+        const { additions, debtReductions, mortgageReductions } = computeEOYBudgetContributions(
+            assumptions.priorities, accounts, incomes, expenses, budgetMonths,
+            assumptions, taxState, startYear, today, remainderGoals,
+        );
         return runSimulationWithOptimization(
             getLifeExpectancy(assumptions.milestones) - startAge,
             accounts,
             incomes,
             expenses,
             assumptions,
-            taxState
+            taxState,
+            undefined,
+            undefined,
+            additions,
+            debtReductions,
+            mortgageReductions,
         );
-    }, [assumptions, accounts, incomes, expenses, taxState]);
+    }, [assumptions, accounts, incomes, expenses, taxState, budgetMonths, startAge, simulation]);
 
     const handleRecalculate = useCallback(() => {
         setIsLoading(true);
@@ -5739,6 +5756,543 @@ function CashFlowDebugTab() {
 // ============================================================================
 // VALIDATION DEBUG TAB
 // ============================================================================
+// ============================================================================
+// EOY PROJECTION DEBUG TAB
+// ============================================================================
+// Explains how the "Projected Dec 20XX" point on the Overview chart is built.
+// Mirrors the logic in useSimulation.tsx STEP 1.5 / 1.75: partial-year payroll
+// contributions are added to investment accounts, and Year 0 cashflow/taxes
+// are scaled by the remaining fraction of the calendar year.
+// ============================================================================
+function EOYProjectionDebugTab() {
+    const { simulation } = useContext(SimulationContext);
+    const { state: assumptions } = useContext(AssumptionsContext);
+    const { accounts } = useContext(AccountContext);
+    const { incomes } = useContext(IncomeContext);
+    const { expenses } = useContext(ExpenseContext);
+    const { state: taxState } = useContext(TaxContext);
+    const { months: budgetMonths } = useContext(BudgetContext);
+
+    const today = new Date();
+    const currentMonth = today.getMonth();        // 0=Jan, 11=Dec
+    const currentYear = today.getFullYear();
+    const startYear = assumptions.demographics.priorYearMode ? currentYear - 1 : currentYear;
+    const startAge = startYear - getBirthYear(assumptions.milestones);
+    const remainingFraction = (11 - currentMonth) / 12;
+    const priorYearMode = assumptions.demographics.priorYearMode;
+    const eoySkipped = priorYearMode || remainingFraction <= 0;
+
+    // Compute budget-driven EOY contribution additions (same call the live sim uses)
+    const budgetProjection = useMemo(() => {
+        const remainderGoals = (simulation.find(s => s.year === startYear + 1)?.cashflow.bucketDetail
+            ?? simulation.find(s => s.year === startYear)?.cashflow.bucketDetail
+            ?? {});
+        return computeEOYBudgetContributions(
+            assumptions.priorities, accounts, incomes, expenses, budgetMonths,
+            assumptions, taxState, startYear, today, remainderGoals,
+        );
+    }, [assumptions, accounts, incomes, expenses, budgetMonths, taxState, startYear, today, simulation]);
+
+    // Locate Year 0 and the synthetic EOY row in the live simulation
+    const yearZero = simulation.find(y => !y.isEndOfYearProjection && y.year === startYear);
+    const eoyYear = simulation.find(y => y.isEndOfYearProjection);
+
+    // Per-WorkIncome partial-year payroll breakdown (mirrors useSimulation STEP 1.5)
+    const payrollRows = useMemo(() => {
+        if (eoySkipped) return [];
+        const rows: Array<{
+            id: string;
+            name: string;
+            matchAccountId: string;
+            matchAccountName: string;
+            preTax401k: number;
+            roth401k: number;
+            employerMatchAnnual: number;
+            activeMultiplier: number;
+            effectiveFraction: number;
+            userContrib: number;
+            employerContrib: number;
+        }> = [];
+        incomes.forEach(inc => {
+            if (!(inc instanceof WorkIncome) || !inc.matchAccountId) return;
+            const activeMultiplier = getIncomeActiveMultiplier(inc, startYear);
+            const effectiveFraction = Math.min(remainingFraction, activeMultiplier);
+            if (effectiveFraction <= 0) return;
+            const effective = inc.autoMax401k !== 'custom'
+                ? inc.getEffective401k(startYear, startAge)
+                : { preTax: inc.preTax401k, roth: inc.roth401k };
+            const employerMatchAnnual = inc.getEffectiveAnnualEmployerMatch();
+            const userContrib = (effective.preTax + effective.roth) * effectiveFraction;
+            const employerContrib = employerMatchAnnual * effectiveFraction;
+            const matchAcc = accounts.find(a => a.id === inc.matchAccountId);
+            rows.push({
+                id: inc.id,
+                name: inc.name,
+                matchAccountId: inc.matchAccountId,
+                matchAccountName: matchAcc?.name ?? '(unknown)',
+                preTax401k: effective.preTax,
+                roth401k: effective.roth,
+                employerMatchAnnual,
+                activeMultiplier,
+                effectiveFraction,
+                userContrib,
+                employerContrib,
+            });
+        });
+        return rows;
+    }, [incomes, accounts, startYear, startAge, remainingFraction, eoySkipped]);
+
+    // Sum partial contributions per InvestedAccount id
+    const partialPerAccount = useMemo(() => {
+        const out: Record<string, { user: number; employer: number }> = {};
+        payrollRows.forEach(r => {
+            const cur = out[r.matchAccountId] || { user: 0, employer: 0 };
+            out[r.matchAccountId] = { user: cur.user + r.userContrib, employer: cur.employer + r.employerContrib };
+        });
+        return out;
+    }, [payrollRows]);
+
+    // Per-account: today's balance, partial contribution, budget contribution, debt reduction, projected EOY balance
+    const accountRows = useMemo(() => {
+        return accounts.map(acc => {
+            const partial = (acc instanceof InvestedAccount) ? partialPerAccount[acc.id] : undefined;
+            const userAdd = partial?.user ?? 0;
+            const employerAdd = partial?.employer ?? 0;
+            const budgetAdd = budgetProjection.additions[acc.id] || 0;
+            const debtReduce = budgetProjection.debtReductions[acc.id] || 0;
+            const projected = acc.amount + userAdd + employerAdd + budgetAdd - debtReduce;
+            let category: string;
+            if (acc instanceof InvestedAccount) category = 'Invested';
+            else if (acc instanceof SavedAccount) category = 'Saved';
+            else if (acc instanceof PropertyAccount) category = 'Property';
+            else if (acc instanceof DebtAccount) category = 'Debt';
+            else if (acc instanceof DeficitDebtAccount) category = 'Debt';
+            else category = 'Other';
+            return {
+                id: acc.id,
+                name: acc.name,
+                category,
+                today: acc.amount,
+                userAdd,
+                employerAdd,
+                budgetAdd,
+                debtReduce,
+                projected,
+            };
+        });
+    }, [accounts, partialPerAccount, budgetProjection]);
+
+    // Category roll-up matching what Overview chart shows
+    const categoryTotals = useMemo(() => {
+        const cats = { Invested: { today: 0, eoy: 0 }, Saved: { today: 0, eoy: 0 }, Property: { today: 0, eoy: 0 }, Debt: { today: 0, eoy: 0 } };
+        accountRows.forEach(r => {
+            if (r.category === 'Invested') { cats.Invested.today += r.today; cats.Invested.eoy += r.projected; }
+            else if (r.category === 'Saved') { cats.Saved.today += r.today; cats.Saved.eoy += r.projected; }
+            else if (r.category === 'Property') { cats.Property.today += r.today; cats.Property.eoy += r.projected; }
+            else if (r.category === 'Debt') { cats.Debt.today += r.today; cats.Debt.eoy += r.projected; }
+        });
+        return cats;
+    }, [accountRows]);
+
+    // Mortgage balances live on MortgageExpense, not DebtAccount. For EOY,
+    // each mortgage's projected balance = current loan_balance − projected
+    // principal pay-down for the rest of the year (from budgetProjection).
+    const mortgageDebt = useMemo(() => {
+        let today = 0;
+        let eoy = 0;
+        const items: Array<{ name: string; today: number; eoy: number }> = [];
+        (yearZero?.expenses ?? []).forEach(exp => {
+            if (exp instanceof MortgageExpense) {
+                const reduction = budgetProjection.mortgageReductions[exp.id] || 0;
+                const eoyBal = Math.max(0, exp.loan_balance - reduction);
+                today += exp.loan_balance;
+                eoy += eoyBal;
+                items.push({ name: exp.name, today: exp.loan_balance, eoy: eoyBal });
+            }
+        });
+        return { today, eoy, items };
+    }, [yearZero, budgetProjection]);
+
+    const todayNetWorth = categoryTotals.Invested.today + categoryTotals.Saved.today + categoryTotals.Property.today - categoryTotals.Debt.today - mortgageDebt.today;
+    const eoyNetWorth = categoryTotals.Invested.eoy + categoryTotals.Saved.eoy + categoryTotals.Property.eoy - categoryTotals.Debt.eoy - mortgageDebt.eoy;
+
+    // Cashflow / tax scaling for the synthetic EOY row
+    const cashflowRows = yearZero && eoyYear ? [
+        { label: 'Gross income', y0: yearZero.cashflow.totalIncome, eoy: eoyYear.cashflow.totalIncome },
+        { label: 'Total expense (incl. taxes)', y0: yearZero.cashflow.totalExpense, eoy: eoyYear.cashflow.totalExpense },
+        { label: 'Living expenses', y0: yearZero.cashflow.livingExpenses, eoy: eoyYear.cashflow.livingExpenses },
+        { label: 'Discretionary', y0: yearZero.cashflow.discretionary, eoy: eoyYear.cashflow.discretionary },
+        { label: 'Invested (user payroll)', y0: yearZero.cashflow.investedUser, eoy: eoyYear.cashflow.investedUser },
+        { label: 'Invested (employer match)', y0: yearZero.cashflow.investedMatch, eoy: eoyYear.cashflow.investedMatch },
+    ] : [];
+    const taxRows = yearZero && eoyYear ? [
+        { label: 'Federal tax', y0: yearZero.taxDetails.fed, eoy: eoyYear.taxDetails.fed },
+        { label: 'State tax', y0: yearZero.taxDetails.state, eoy: eoyYear.taxDetails.state },
+        { label: 'FICA', y0: yearZero.taxDetails.fica, eoy: eoyYear.taxDetails.fica },
+    ] : [];
+
+    return (
+        <div className="space-y-6">
+            {/* Overview / explainer */}
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                <h3 className="text-lg font-bold text-white mb-3">What is "Projected Dec {startYear}"?</h3>
+                <div className="text-sm text-gray-300 space-y-2 leading-relaxed">
+                    <p>
+                        The Overview chart shows two points for the current calendar year:
+                        <span className="text-blue-400"> "Today"</span> (your actual balances right now)
+                        and <span className="text-emerald-400">"Projected Dec {startYear}"</span> (a synthetic
+                        end-of-year snapshot). This avoids the visual "big jump" between today's balances
+                        and the first full future year.
+                    </p>
+                    <p>The synthetic EOY row is built in <code className="bg-gray-800 px-1 rounded text-xs">useSimulation.tsx</code> STEP&nbsp;1.5 / 1.75:</p>
+                    <ol className="list-decimal list-inside pl-2 space-y-1 text-gray-400">
+                        <li>Compute <code className="bg-gray-800 px-1 rounded text-xs">remainingFraction = (11 − currentMonth) / 12</code> — the share of the calendar year still ahead.</li>
+                        <li>For each <code className="bg-gray-800 px-1 rounded text-xs">WorkIncome</code> with a linked match account, add <code className="bg-gray-800 px-1 rounded text-xs">(preTax401k + roth401k + employerMatch) × min(remainingFraction, activeMultiplier)</code> to that account's balance.</li>
+                        <li>For each non-payroll <code className="bg-gray-800 px-1 rounded text-xs">priority</code> with an annual goal (Brokerage / IRA / HSA / Savings), add <code className="bg-gray-800 px-1 rounded text-xs">max(0, annualGoal − ytdActual)</code> using YTD from the budget. MULTIPLE_OF_EXPENSES instead uses <code className="bg-gray-800 px-1 rounded text-xs">max(0, target − currentBalance)</code>.</li>
+                        <li>For each debt liability (DebtAccount + LoanExpense, or MortgageExpense), subtract <code className="bg-gray-800 px-1 rounded text-xs">annualPrincipal × remainingFraction</code> from the balance so loan / mortgage payoff through year-end shows up on the synthetic point.</li>
+                        <li>Scale Year-0 cashflow and tax line items by <code className="bg-gray-800 px-1 rounded text-xs">remainingFraction</code>.</li>
+                        <li>Investment growth between today and Dec 31 is <span className="text-yellow-300">not</span> applied — Property / Debt balances are carried forward unchanged.</li>
+                    </ol>
+                    {priorYearMode && (
+                        <p className="bg-yellow-900/30 border border-yellow-700/50 rounded p-2 text-yellow-300 text-xs">
+                            Prior-Year Mode is on, so the EOY row is skipped entirely. The chart only shows the
+                            normal year-by-year sim points.
+                        </p>
+                    )}
+                    {!priorYearMode && remainingFraction <= 0 && (
+                        <p className="bg-yellow-900/30 border border-yellow-700/50 rounded p-2 text-yellow-300 text-xs">
+                            It's December — <code className="bg-gray-800 px-1 rounded text-xs">remainingFraction</code> is 0, so no EOY row is inserted.
+                        </p>
+                    )}
+                </div>
+            </div>
+
+            {/* Date inputs */}
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                <h3 className="text-lg font-bold text-white mb-3">Date Inputs</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                    <div>
+                        <div className="text-gray-500 text-xs">Today</div>
+                        <div className="text-white font-mono">{today.toISOString().slice(0, 10)}</div>
+                    </div>
+                    <div>
+                        <div className="text-gray-500 text-xs">Current month (0–11)</div>
+                        <div className="text-white font-mono">{currentMonth}</div>
+                    </div>
+                    <div>
+                        <div className="text-gray-500 text-xs">remainingFraction</div>
+                        <div className="text-emerald-400 font-mono">{remainingFraction.toFixed(4)} ({((11 - currentMonth))}/12)</div>
+                    </div>
+                    <div>
+                        <div className="text-gray-500 text-xs">Simulation start year</div>
+                        <div className="text-white font-mono">{startYear}</div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Per-WorkIncome partial payroll */}
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                <h3 className="text-lg font-bold text-white mb-1">Partial-Year Payroll Contributions</h3>
+                <p className="text-xs text-gray-500 mb-3">Mirrors STEP&nbsp;1.5: only <code className="bg-gray-800 px-1 rounded">WorkIncome</code>s with a linked <code className="bg-gray-800 px-1 rounded">matchAccountId</code> appear here.</p>
+                {eoySkipped ? (
+                    <p className="text-sm text-gray-500">EOY row is skipped — no partial contributions computed.</p>
+                ) : payrollRows.length === 0 ? (
+                    <p className="text-sm text-gray-500">No active WorkIncome with a linked match account.</p>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="text-gray-400 border-b border-gray-700">
+                                    <th className="text-left p-2">Income</th>
+                                    <th className="text-left p-2">→ Account</th>
+                                    <th className="text-right p-2">Annual pre-tax 401k</th>
+                                    <th className="text-right p-2">Annual Roth 401k</th>
+                                    <th className="text-right p-2">Annual match</th>
+                                    <th className="text-right p-2">activeMult</th>
+                                    <th className="text-right p-2">effective fraction</th>
+                                    <th className="text-right p-2">User add</th>
+                                    <th className="text-right p-2">Employer add</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {payrollRows.map(r => (
+                                    <tr key={r.id} className="border-b border-gray-800 hover:bg-gray-800/50">
+                                        <td className="p-2 text-gray-300">{r.name}</td>
+                                        <td className="p-2 text-gray-400">{r.matchAccountName}</td>
+                                        <td className="p-2 text-right text-gray-300">{toCurrencyShort(r.preTax401k)}</td>
+                                        <td className="p-2 text-right text-gray-300">{toCurrencyShort(r.roth401k)}</td>
+                                        <td className="p-2 text-right text-gray-300">{toCurrencyShort(r.employerMatchAnnual)}</td>
+                                        <td className="p-2 text-right text-gray-400 font-mono">{r.activeMultiplier.toFixed(3)}</td>
+                                        <td className="p-2 text-right text-emerald-400 font-mono">{r.effectiveFraction.toFixed(3)}</td>
+                                        <td className="p-2 text-right text-white">{toCurrencyShort(r.userContrib)}</td>
+                                        <td className="p-2 text-right text-white">{toCurrencyShort(r.employerContrib)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+
+            {/* Budget-tracked priority contributions */}
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                <h3 className="text-lg font-bold text-white mb-1">Budget-Tracked Priority Contributions</h3>
+                <p className="text-xs text-gray-500 mb-3">
+                    For each non-payroll priority with an annual goal: remaining = <span className="text-emerald-400">max(0, annualGoal − ytdActual)</span>. YTD comes from budget transactions tagged with <code className="bg-gray-800 px-1 rounded">targetAccountId</code> for the current year.
+                    {' '}<span className="text-sky-300">MULTIPLE_OF_EXPENSES</span> priorities are balance targets — the gap to the target is added, or skipped if already met.
+                </p>
+                {budgetProjection.rows.length === 0 ? (
+                    <p className="text-sm text-gray-500">No priorities configured.</p>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="text-gray-400 border-b border-gray-700">
+                                    <th className="text-left p-2">Priority</th>
+                                    <th className="text-left p-2">Account</th>
+                                    <th className="text-left p-2">Cap</th>
+                                    <th className="text-right p-2">Annual goal / target</th>
+                                    <th className="text-right p-2">YTD / current bal</th>
+                                    <th className="text-right p-2">Expected remaining</th>
+                                    <th className="text-left p-2">Source</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {budgetProjection.rows.map((r, i) => {
+                                    const skipColor = r.skipped ? 'text-gray-600 italic' : 'text-gray-300';
+                                    const isBalanceTarget = r.source === 'balance-target';
+                                    const midValue = isBalanceTarget ? r.currentBalance : r.ytdActual;
+                                    const midColor = isBalanceTarget ? 'text-sky-300' : 'text-gray-400';
+                                    return (
+                                        <tr key={`${r.accountId}-${i}`} className="border-b border-gray-800 hover:bg-gray-800/50">
+                                            <td className={`p-2 ${skipColor}`}>{r.priorityName}</td>
+                                            <td className={`p-2 ${skipColor}`}>{r.accountName}</td>
+                                            <td className="p-2 text-gray-500 font-mono text-xs">{r.capType}</td>
+                                            <td className="p-2 text-right text-gray-300">{r.annualGoal > 0 ? toCurrencyShort(r.annualGoal) : '—'}</td>
+                                            <td className={`p-2 text-right ${midColor}`}>{midValue !== undefined && midValue > 0 ? toCurrencyShort(midValue) : '—'}</td>
+                                            <td className={`p-2 text-right ${r.expectedRemaining > 0 ? 'text-emerald-400' : 'text-gray-600'}`}>
+                                                {r.expectedRemaining > 0 ? toCurrencyShort(r.expectedRemaining) : '—'}
+                                            </td>
+                                            <td className="p-2 text-xs">
+                                                {r.skipped ? (
+                                                    <span className="text-gray-500">skipped: {r.skipped}</span>
+                                                ) : r.source === 'budget-ytd' ? (
+                                                    <span className="text-emerald-400">budget YTD</span>
+                                                ) : r.source === 'balance-target' ? (
+                                                    <span className="text-sky-300">balance target</span>
+                                                ) : (
+                                                    <span className="text-yellow-300">fraction</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+
+            {/* Per-account: Today → Projected EOY */}
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                <h3 className="text-lg font-bold text-white mb-1">Per-Account: Today → Projected Dec {startYear}</h3>
+                <p className="text-xs text-gray-500 mb-3">User / Employer = payroll partial-year contributions. Budget = projected non-payroll priority contributions. − Debt = projected principal pay-down on DebtAccount-style liabilities (car loans / credit cards). Property / unmatched accounts carry through unchanged.</p>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                        <thead>
+                            <tr className="text-gray-400 border-b border-gray-700">
+                                <th className="text-left p-2">Account</th>
+                                <th className="text-left p-2">Category</th>
+                                <th className="text-right p-2">Today</th>
+                                <th className="text-right p-2">+ User</th>
+                                <th className="text-right p-2">+ Employer</th>
+                                <th className="text-right p-2">+ Budget</th>
+                                <th className="text-right p-2">− Debt</th>
+                                <th className="text-right p-2">Projected EOY</th>
+                                <th className="text-right p-2">Δ</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {accountRows.map(r => {
+                                const delta = r.projected - r.today;
+                                return (
+                                    <tr key={r.id} className="border-b border-gray-800 hover:bg-gray-800/50">
+                                        <td className="p-2 text-gray-300">{r.name}</td>
+                                        <td className="p-2 text-gray-500">{r.category}</td>
+                                        <td className="p-2 text-right text-gray-300">{toCurrencyShort(r.today)}</td>
+                                        <td className="p-2 text-right text-gray-400">{r.userAdd > 0 ? toCurrencyShort(r.userAdd) : '—'}</td>
+                                        <td className="p-2 text-right text-gray-400">{r.employerAdd > 0 ? toCurrencyShort(r.employerAdd) : '—'}</td>
+                                        <td className="p-2 text-right text-gray-400">{r.budgetAdd > 0 ? toCurrencyShort(r.budgetAdd) : '—'}</td>
+                                        <td className="p-2 text-right text-red-400">{r.debtReduce > 0 ? toCurrencyShort(r.debtReduce) : '—'}</td>
+                                        <td className="p-2 text-right text-white">{toCurrencyShort(r.projected)}</td>
+                                        <td className={`p-2 text-right font-mono ${delta > 0 ? 'text-emerald-400' : delta < 0 ? 'text-red-400' : 'text-gray-600'}`}>
+                                            {delta === 0 ? '—' : (delta > 0 ? '+' : '') + toCurrencyShort(delta)}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {/* Debt principal pay-down */}
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                <h3 className="text-lg font-bold text-white mb-1">Debt Principal Pay-Down</h3>
+                <p className="text-xs text-gray-500 mb-3">
+                    For each liability (DebtAccount linked to a LoanExpense, or MortgageExpense), use the linked amortization's <code className="bg-gray-800 px-1 rounded">totalPrincipal</code> for {startYear}, then scale by <code className="bg-gray-800 px-1 rounded">remainingFraction</code> ({remainingFraction.toFixed(3)}). DeficitDebtAccounts are skipped.
+                </p>
+                {budgetProjection.debtRows.length === 0 ? (
+                    <p className="text-sm text-gray-500">No debt liabilities found.</p>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="text-gray-400 border-b border-gray-700">
+                                    <th className="text-left p-2">Debt</th>
+                                    <th className="text-left p-2">Type</th>
+                                    <th className="text-left p-2">Linked expense</th>
+                                    <th className="text-right p-2">Current balance</th>
+                                    <th className="text-right p-2">Annual principal</th>
+                                    <th className="text-right p-2">Expected reduction</th>
+                                    <th className="text-right p-2">Projected EOY</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {budgetProjection.debtRows.map((r, i) => {
+                                    const skipColor = r.skipped ? 'text-gray-600 italic' : 'text-gray-300';
+                                    const eoyBal = Math.max(0, r.currentBalance - r.expectedReduction);
+                                    return (
+                                        <tr key={`${r.targetId}-${i}`} className="border-b border-gray-800 hover:bg-gray-800/50">
+                                            <td className={`p-2 ${skipColor}`}>{r.name}</td>
+                                            <td className="p-2 text-gray-500 font-mono text-xs">{r.targetType === 'mortgage-expense' ? 'mortgage' : 'account'}</td>
+                                            <td className={`p-2 ${skipColor}`}>{r.linkedExpenseName || (r.skipped ? `(skipped: ${r.skipped})` : '—')}</td>
+                                            <td className="p-2 text-right text-gray-300">{r.currentBalance > 0 ? toCurrencyShort(r.currentBalance) : '—'}</td>
+                                            <td className="p-2 text-right text-gray-400">{r.annualPrincipal > 0 ? toCurrencyShort(r.annualPrincipal) : '—'}</td>
+                                            <td className={`p-2 text-right ${r.expectedReduction > 0 ? 'text-red-400' : 'text-gray-600'}`}>
+                                                {r.expectedReduction > 0 ? toCurrencyShort(r.expectedReduction) : '—'}
+                                            </td>
+                                            <td className="p-2 text-right text-white">{r.skipped ? '—' : toCurrencyShort(eoyBal)}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+
+            {/* Category roll-up (matches Overview chart series) */}
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                <h3 className="text-lg font-bold text-white mb-1">Overview Chart Series — Today vs Projected Dec {startYear}</h3>
+                <p className="text-xs text-gray-500 mb-3">These are the values plotted at the "Today" and "Dec {startYear}" x-positions on the Overview chart.</p>
+                <table className="w-full text-sm">
+                    <thead>
+                        <tr className="text-gray-400 border-b border-gray-700">
+                            <th className="text-left p-2">Series</th>
+                            <th className="text-right p-2">Today</th>
+                            <th className="text-right p-2">Projected Dec {startYear}</th>
+                            <th className="text-right p-2">Δ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {(['Invested', 'Saved', 'Property'] as const).map(k => {
+                            const t = categoryTotals[k].today;
+                            const e = categoryTotals[k].eoy;
+                            const d = e - t;
+                            const color = k === 'Invested' ? 'text-emerald-400' : k === 'Saved' ? 'text-blue-400' : 'text-amber-400';
+                            return (
+                                <tr key={k} className="border-b border-gray-800">
+                                    <td className={`p-2 font-medium ${color}`}>{k}</td>
+                                    <td className="p-2 text-right text-gray-300">{toCurrencyShort(t)}</td>
+                                    <td className="p-2 text-right text-white">{toCurrencyShort(e)}</td>
+                                    <td className={`p-2 text-right font-mono ${d > 0 ? 'text-emerald-400' : d < 0 ? 'text-red-400' : 'text-gray-600'}`}>
+                                        {d === 0 ? '—' : (d > 0 ? '+' : '') + toCurrencyShort(d)}
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                        {/* Debt row: combines DebtAccount + MortgageExpense (chart plots this negative) */}
+                        <tr className="border-b border-gray-800">
+                            <td className="p-2 font-medium text-red-400">Debt</td>
+                            <td className="p-2 text-right text-gray-300">{toCurrencyShort(-(categoryTotals.Debt.today + mortgageDebt.today))}</td>
+                            <td className="p-2 text-right text-white">{toCurrencyShort(-(categoryTotals.Debt.eoy + mortgageDebt.eoy))}</td>
+                            <td className="p-2 text-right text-gray-600">—</td>
+                        </tr>
+                        <tr>
+                            <td className="p-2 font-bold text-white">Net Worth</td>
+                            <td className="p-2 text-right text-gray-200 font-bold">{toCurrencyShort(todayNetWorth)}</td>
+                            <td className="p-2 text-right text-white font-bold">{toCurrencyShort(eoyNetWorth)}</td>
+                            <td className={`p-2 text-right font-mono font-bold ${eoyNetWorth - todayNetWorth > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {(eoyNetWorth - todayNetWorth) >= 0 ? '+' : ''}{toCurrencyShort(eoyNetWorth - todayNetWorth)}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+                {mortgageDebt.items.length > 0 && (
+                    <div className="mt-3 text-xs text-gray-500">
+                        Mortgage balances projected with amortization: {mortgageDebt.items.map(m => `${m.name} ${toCurrencyShort(m.today)} → ${toCurrencyShort(m.eoy)}`).join(', ')}.
+                    </div>
+                )}
+            </div>
+
+            {/* Cashflow / tax scaling */}
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                <h3 className="text-lg font-bold text-white mb-1">Cashflow &amp; Tax Scaling</h3>
+                <p className="text-xs text-gray-500 mb-3">
+                    The EOY row scales Year 0 cashflow/tax line items by <code className="bg-gray-800 px-1 rounded">remainingFraction</code> ({remainingFraction.toFixed(3)}) so the Sankey / Cashflow views reflect only the rest of the year.
+                </p>
+                {!eoyYear ? (
+                    <p className="text-sm text-gray-500">No EOY row present in the current simulation.</p>
+                ) : (
+                    <>
+                        <table className="w-full text-sm mb-4">
+                            <thead>
+                                <tr className="text-gray-400 border-b border-gray-700">
+                                    <th className="text-left p-2">Cashflow</th>
+                                    <th className="text-right p-2">Year 0 (annual)</th>
+                                    <th className="text-right p-2">× fraction</th>
+                                    <th className="text-right p-2">EOY value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {cashflowRows.map(r => (
+                                    <tr key={r.label} className="border-b border-gray-800">
+                                        <td className="p-2 text-gray-300">{r.label}</td>
+                                        <td className="p-2 text-right text-gray-400">{toCurrencyShort(r.y0)}</td>
+                                        <td className="p-2 text-right text-gray-500 font-mono">{toCurrencyShort(r.y0 * remainingFraction)}</td>
+                                        <td className="p-2 text-right text-white">{toCurrencyShort(r.eoy)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="text-gray-400 border-b border-gray-700">
+                                    <th className="text-left p-2">Tax</th>
+                                    <th className="text-right p-2">Year 0 (annual)</th>
+                                    <th className="text-right p-2">× fraction</th>
+                                    <th className="text-right p-2">EOY value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {taxRows.map(r => (
+                                    <tr key={r.label} className="border-b border-gray-800">
+                                        <td className="p-2 text-gray-300">{r.label}</td>
+                                        <td className="p-2 text-right text-gray-400">{toCurrencyShort(r.y0)}</td>
+                                        <td className="p-2 text-right text-gray-500 font-mono">{toCurrencyShort(r.y0 * remainingFraction)}</td>
+                                        <td className="p-2 text-right text-white">{toCurrencyShort(r.eoy)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </>
+                )}
+            </div>
+        </div>
+    );
+}
+
 function ValidationDebugTab() {
     const { simulation } = useContext(SimulationContext);
     const { state: assumptions } = useContext(AssumptionsContext);
@@ -6573,7 +7127,7 @@ function TaxOptimizationDebugTab() {
 // ============================================================================
 // MAIN TESTING COMPONENT WITH TABS
 // ============================================================================
-const TESTING_TABS = ['Simulation Debug', 'Tax Debug', 'Tax Brackets', 'Social Security', 'Pensions', 'RMDs', 'Roth Analysis', 'Tax Opt', 'Roth Debug', 'Ratios', 'Mortgage', 'QR Code', 'Withdrawals', 'Accounts', 'Income & Expenses', 'Cash Flow', 'Validation'];
+const TESTING_TABS = ['Simulation Debug', 'Tax Debug', 'Tax Brackets', 'Social Security', 'Pensions', 'RMDs', 'Roth Analysis', 'Tax Opt', 'Roth Debug', 'Ratios', 'Mortgage', 'QR Code', 'Withdrawals', 'Accounts', 'Income & Expenses', 'Cash Flow', 'EOY Projection', 'Validation'];
 
 export default function Testing() {
     const { state: assumptionsState } = useContext(AssumptionsContext);
@@ -6645,6 +7199,7 @@ export default function Testing() {
                     {activeTab === 'Accounts' && <AccountsDebugTab />}
                     {activeTab === 'Income & Expenses' && <IncomeExpensesDebugTab />}
                     {activeTab === 'Cash Flow' && <CashFlowDebugTab />}
+                    {activeTab === 'EOY Projection' && <EOYProjectionDebugTab />}
                     {activeTab === 'Validation' && <ValidationDebugTab />}
                 </div>
             </div>
