@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useContext, useState } from 'react';
 import { useModalAccessibility } from '../../../hooks/useModalAccessibility';
+import { CloudBackupContext } from './CloudBackupContext';
 
 interface PassphraseModalProps {
     isOpen: boolean;
@@ -11,9 +12,12 @@ interface PassphraseModalProps {
 
 export default function PassphraseModal({ isOpen, onClose, onSubmit, mode, loading }: PassphraseModalProps) {
     const { modalRef, handleKeyDown } = useModalAccessibility(isOpen, onClose);
+    const { userEmail, linkedEmail } = useContext(CloudBackupContext);
     const [passphrase, setPassphrase] = useState('');
     const [showPassphrase, setShowPassphrase] = useState(false);
     const [error, setError] = useState('');
+
+    const usernameHint = userEmail || linkedEmail || 'stag-cloud-backup';
 
     if (!isOpen) return null;
 
@@ -77,11 +81,27 @@ export default function PassphraseModal({ isOpen, onClose, onSubmit, mode, loadi
 
                 {/* Passphrase input */}
                 <form onSubmit={handleSubmit} className="space-y-3">
+                    {/* Hidden username hint so password managers can associate this passphrase
+                        with the signed-in cloud account. Visually hidden but kept in the
+                        accessibility tree-free path so Chrome's autofill heuristics see it. */}
+                    <input
+                        type="text"
+                        name="username"
+                        autoComplete="username"
+                        value={usernameHint}
+                        readOnly
+                        tabIndex={-1}
+                        aria-hidden="true"
+                        style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }}
+                    />
                     <div>
-                        <label className="block text-sm text-gray-300 mb-1">Passphrase</label>
+                        <label htmlFor="cloud-backup-passphrase" className="block text-sm text-gray-300 mb-1">Passphrase</label>
                         <div className="relative">
                             <input
+                                id="cloud-backup-passphrase"
+                                name="passphrase"
                                 type={showPassphrase ? 'text' : 'password'}
+                                autoComplete={isBackup ? 'new-password' : 'current-password'}
                                 value={passphrase}
                                 onChange={e => setPassphrase(e.target.value)}
                                 placeholder="Enter a strong passphrase"

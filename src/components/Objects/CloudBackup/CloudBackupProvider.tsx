@@ -1,4 +1,4 @@
-import { createContext, useCallback, useEffect, useRef, useState, ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, ReactNode } from 'react';
 import { getCloudConfig, isCloudBackupEnabled, CloudConfig } from '../../../services/cloud/cloudConfig';
 import {
     AuthTokens,
@@ -17,77 +17,44 @@ import {
     deleteBackup,
     BackupMetadata,
 } from '../../../services/cloud/CloudBackupService';
-
-export interface CloudBackupState {
-    enabled: boolean;
-    isAuthenticated: boolean;
-    userEmail: string | null;
-    lastBackupTimestamp: string | null;
-    backupInProgress: boolean;
-    restoreInProgress: boolean;
-    checkingAuth: boolean;
-    lastError: string | null;
-}
-
-interface CloudBackupContextValue extends CloudBackupState {
-    signIn: (provider: 'google' | 'github') => Promise<void>;
-    signOut: () => void;
-    backup: (plaintext: string, passphrase: string) => Promise<void>;
-    restore: (passphrase: string) => Promise<string>;
-    deleteCloudData: () => Promise<void>;
-    checkBackupStatus: () => Promise<BackupMetadata>;
-    clearError: () => void;
-}
-
-const BACKUP_META_KEY = 'cloud_backup_meta';
-
-function loadPersistedMeta(): { lastBackupTimestamp: string | null } {
-    try {
-        const raw = localStorage.getItem(BACKUP_META_KEY);
-        if (raw) return JSON.parse(raw);
-    } catch { /* ignore */ }
-    return { lastBackupTimestamp: null };
-}
-
-function persistMeta(timestamp: string | null): void {
-    localStorage.setItem(BACKUP_META_KEY, JSON.stringify({ lastBackupTimestamp: timestamp }));
-}
-
-const defaultContextValue: CloudBackupContextValue = {
-    enabled: false,
-    isAuthenticated: false,
-    userEmail: null,
-    lastBackupTimestamp: null,
-    backupInProgress: false,
-    restoreInProgress: false,
-    checkingAuth: false,
-    lastError: null,
-    signIn: async () => {},
-    signOut: () => {},
-    backup: async () => {},
-    restore: async () => '',
-    deleteCloudData: async () => {},
-    checkBackupStatus: async () => ({ exists: false, timestamp: null, size: null }),
-    clearError: () => {},
-};
-
-export const CloudBackupContext = createContext<CloudBackupContextValue>(defaultContextValue);
+import {
+    CloudBackupContext,
+    CloudBackupContextValue,
+    CloudBackupState,
+    PersistedMeta,
+    loadPersistedMeta,
+    persistMeta,
+    sha256Hex,
+} from './CloudBackupContext';
 
 export function CloudBackupProvider({ children }: { children: ReactNode }) {
     const configRef = useRef<CloudConfig | null>(null);
     const tokensRef = useRef<AuthTokens | null>(null);
     const callbackHandled = useRef(false);
 
-    const [state, setState] = useState<CloudBackupState>(() => ({
-        enabled: isCloudBackupEnabled(),
-        isAuthenticated: false,
-        userEmail: null,
-        lastBackupTimestamp: loadPersistedMeta().lastBackupTimestamp,
-        backupInProgress: false,
-        restoreInProgress: false,
-        checkingAuth: true,
-        lastError: null,
-    }));
+    const [state, setState] = useState<CloudBackupState>(() => {
+        const meta = loadPersistedMeta();
+        return {
+            enabled: isCloudBackupEnabled(),
+            isAuthenticated: false,
+            userEmail: null,
+            lastBackupTimestamp: meta.lastBackupTimestamp,
+            backupInProgress: false,
+            restoreInProgress: false,
+            checkingAuth: true,
+            lastError: null,
+            linkedEmail: meta.linkedEmail,
+            lastBackupHash: meta.lastBackupHash,
+            currentDataHash: null,
+            justSignedIn: false,
+        };
+    });
+
+    const metaRef = useRef<PersistedMeta>(loadPersistedMeta());
+    const writeMeta = useCallback((patch: Partial<PersistedMeta>) => {
+        metaRef.current = { ...metaRef.current, ...patch };
+        persistMeta(metaRef.current);
+    }, []);
 
     // Initialize config
     useEffect(() => {
@@ -112,11 +79,14 @@ export function CloudBackupProvider({ children }: { children: ReactNode }) {
                 if (tokens) {
                     tokensRef.current = tokens;
                     const userInfo = decodeUserInfo(tokens.idToken);
+                    writeMeta({ linkedEmail: userInfo.email });
                     setState(s => ({
                         ...s,
                         isAuthenticated: true,
                         userEmail: userInfo.email,
+                        linkedEmail: userInfo.email,
                         checkingAuth: false,
+                        justSignedIn: true,
                     }));
                     return;
                 }
@@ -128,10 +98,12 @@ export function CloudBackupProvider({ children }: { children: ReactNode }) {
                         const tokens = await refreshAccessToken(config, refreshToken);
                         tokensRef.current = tokens;
                         const userInfo = decodeUserInfo(tokens.idToken);
+                        writeMeta({ linkedEmail: userInfo.email });
                         setState(s => ({
                             ...s,
                             isAuthenticated: true,
                             userEmail: userInfo.email,
+                            linkedEmail: userInfo.email,
                             checkingAuth: false,
                         }));
                         return;
@@ -150,7 +122,7 @@ export function CloudBackupProvider({ children }: { children: ReactNode }) {
                 }));
             }
         })();
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [writeMeta]);
 
     // Ensure access token is fresh before API calls
     const getValidAccessToken = useCallback(async (): Promise<string> => {
@@ -178,12 +150,12 @@ export function CloudBackupProvider({ children }: { children: ReactNode }) {
         const config = configRef.current;
         tokensRef.current = null;
         clearStoredTokens();
-        persistMeta(null);
+        // Keep linkedEmail and lastBackupHash so we can prompt the user to sign back in
+        // and restore on next open. Backup timestamp is intentionally preserved.
         setState(s => ({
             ...s,
             isAuthenticated: false,
             userEmail: null,
-            lastBackupTimestamp: null,
             lastError: null,
         }));
 
@@ -206,14 +178,21 @@ export function CloudBackupProvider({ children }: { children: ReactNode }) {
         try {
             const accessToken = await getValidAccessToken();
             const { timestamp } = await uploadBackup(config.apiEndpoint, accessToken, plaintext, passphrase);
-            persistMeta(timestamp);
-            setState(s => ({ ...s, backupInProgress: false, lastBackupTimestamp: timestamp }));
+            const hash = await sha256Hex(plaintext);
+            writeMeta({ lastBackupTimestamp: timestamp, lastBackupHash: hash });
+            setState(s => ({
+                ...s,
+                backupInProgress: false,
+                lastBackupTimestamp: timestamp,
+                lastBackupHash: hash,
+                currentDataHash: hash,
+            }));
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Backup failed';
             setState(s => ({ ...s, backupInProgress: false, lastError: message }));
             throw error;
         }
-    }, [getValidAccessToken]);
+    }, [getValidAccessToken, writeMeta]);
 
     const restore = useCallback(async (passphrase: string): Promise<string> => {
         const config = configRef.current;
@@ -223,14 +202,23 @@ export function CloudBackupProvider({ children }: { children: ReactNode }) {
         try {
             const accessToken = await getValidAccessToken();
             const plaintext = await downloadBackup(config.apiEndpoint, accessToken, passphrase);
-            setState(s => ({ ...s, restoreInProgress: false }));
+            // After restore, local data matches the cloud payload - record its hash so
+            // we don't immediately flag the data as dirty.
+            const hash = await sha256Hex(plaintext);
+            writeMeta({ lastBackupHash: hash });
+            setState(s => ({
+                ...s,
+                restoreInProgress: false,
+                lastBackupHash: hash,
+                currentDataHash: hash,
+            }));
             return plaintext;
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Restore failed';
             setState(s => ({ ...s, restoreInProgress: false, lastError: message }));
             throw error;
         }
-    }, [getValidAccessToken]);
+    }, [getValidAccessToken, writeMeta]);
 
     const deleteCloudData = useCallback(async () => {
         const config = configRef.current;
@@ -240,14 +228,19 @@ export function CloudBackupProvider({ children }: { children: ReactNode }) {
         try {
             const accessToken = await getValidAccessToken();
             await deleteBackup(config.apiEndpoint, accessToken);
-            persistMeta(null);
-            setState(s => ({ ...s, lastBackupTimestamp: null }));
+            writeMeta({ lastBackupTimestamp: null, lastBackupHash: null, linkedEmail: null });
+            setState(s => ({
+                ...s,
+                lastBackupTimestamp: null,
+                lastBackupHash: null,
+                linkedEmail: null,
+            }));
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Delete failed';
             setState(s => ({ ...s, lastError: message }));
             throw error;
         }
-    }, [getValidAccessToken]);
+    }, [getValidAccessToken, writeMeta]);
 
     const checkBackupStatus = useCallback(async (): Promise<BackupMetadata> => {
         const config = configRef.current;
@@ -257,17 +250,30 @@ export function CloudBackupProvider({ children }: { children: ReactNode }) {
             const accessToken = await getValidAccessToken();
             const metadata = await getBackupMetadata(config.apiEndpoint, accessToken);
             if (metadata.exists && metadata.timestamp) {
-                persistMeta(metadata.timestamp);
+                writeMeta({ lastBackupTimestamp: metadata.timestamp });
                 setState(s => ({ ...s, lastBackupTimestamp: metadata.timestamp }));
             }
             return metadata;
         } catch {
             return { exists: false, timestamp: null, size: null };
         }
-    }, [getValidAccessToken]);
+    }, [getValidAccessToken, writeMeta]);
 
     const clearError = useCallback(() => {
         setState(s => ({ ...s, lastError: null }));
+    }, []);
+
+    const updateCurrentDataHash = useCallback((hash: string) => {
+        setState(s => (s.currentDataHash === hash ? s : { ...s, currentDataHash: hash }));
+    }, []);
+
+    const clearLinkedEmail = useCallback(() => {
+        writeMeta({ linkedEmail: null, lastBackupHash: null });
+        setState(s => ({ ...s, linkedEmail: null, lastBackupHash: null }));
+    }, [writeMeta]);
+
+    const clearJustSignedIn = useCallback(() => {
+        setState(s => (s.justSignedIn ? { ...s, justSignedIn: false } : s));
     }, []);
 
     const contextValue: CloudBackupContextValue = {
@@ -279,6 +285,9 @@ export function CloudBackupProvider({ children }: { children: ReactNode }) {
         deleteCloudData,
         checkBackupStatus,
         clearError,
+        updateCurrentDataHash,
+        clearLinkedEmail,
+        clearJustSignedIn,
     };
 
     return (

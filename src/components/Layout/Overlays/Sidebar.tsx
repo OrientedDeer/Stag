@@ -3,6 +3,7 @@ import { useContext, useState } from "react";
 import { AssumptionsContext } from "../../Objects/Assumptions/AssumptionsContext";
 import { CloudBackupContext } from "../../Objects/CloudBackup/CloudBackupContext";
 import CloudBackupPanel from "../../Objects/CloudBackup/CloudBackupPanel";
+import BackupReminder from "../../Objects/CloudBackup/BackupReminder";
 import SidebarCollapseLink from './SidebarCollapseLink'; // Make sure the path is correct
 type SidebarProps = {
   isOpen: boolean;
@@ -155,6 +156,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
 				{/* Data Management Footer */}
 				<div className={`border-t border-gray-700 p-2 overflow-hidden transition-all duration-300 ${isOpen ? "w-0 opacity-0" : "w-auto opacity-100"}`}>
+					<BackupReminder collapsed={isOpen} />
 					<button
 						onClick={() => setDataPanelOpen(!dataPanelOpen)}
 						className={`flex items-center gap-2 w-full p-2 rounded text-sm transition-colors ${

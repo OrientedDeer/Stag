@@ -24,7 +24,8 @@ import PriorityTab from "./tabs/Future/PriorityTab";
 import WithdrawalTab from "./tabs/Future/WithdrawalTab";
 import BudgetTab from "./tabs/Budget/BudgetTab";
 import { BudgetProvider } from "./components/Objects/Budget/BudgetContext";
-import { CloudBackupProvider } from "./components/Objects/CloudBackup/CloudBackupContext";
+import { CloudBackupProvider } from "./components/Objects/CloudBackup/CloudBackupProvider";
+import CloudBackupSync from "./components/Objects/CloudBackup/CloudBackupSync";
 import GlobalKeyboardShortcuts from "./components/Layout/Overlays/GlobalKeyboardShortcuts";
 import { PerformanceProfiler } from "./components/Layout/PerformanceProfiler";
 
@@ -47,6 +48,7 @@ export default function App() {
                 <Sidebar isOpen={isOpen} onClose={() => setIsOpen(true)}/>
                 <div className="flex flex-col flex-1 overflow-hidden">
                   <TopBar setIsOpen={setIsOpen} title="Menu"/>
+                  <CloudBackupSync />
 
                   <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto custom-scrollbar focus:outline-none">
                     <Routes>
