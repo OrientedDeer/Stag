@@ -42,3 +42,6 @@ NOTES.md
 
 # React DevTools profile dumps
 docs/profiling-data.*.json
+
+# SimpleFin / bank exports (real financial data)
+docs/*.csv
