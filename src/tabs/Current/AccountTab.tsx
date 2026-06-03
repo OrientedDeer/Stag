@@ -15,6 +15,7 @@ import {
 import AccountCard from "../../components/Objects/Accounts/AccountCard";
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import AddAccountModal from "../../components/Objects/Accounts/AddAccountModal";
+import ImportBalancesModal from "./ImportBalancesModal";
 import { ObjectsIcicleChart, tailwindToCssVar, getDistributedColors } from "../../components/Charts/ObjectsIcicleChart";
 
 const AccountList = ({ type }: { type: any }) => {
@@ -110,6 +111,7 @@ export default function AccountTab() {
     });
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [showESPPModal, setShowESPPModal] = useState(false);
+    const [showImportModal, setShowImportModal] = useState(false);
 
     // Data wrangling for icicle chart
     const hierarchicalData = useMemo(() => {
@@ -266,7 +268,17 @@ export default function AccountTab() {
                         <h2 className="text-xl font-bold text-white">
                             Account Amounts
                         </h2>
+                        <button
+                            onClick={() => setShowImportModal(true)}
+                            className="text-sm font-semibold text-green-300 border border-green-700/60 rounded-lg px-3 py-1.5 hover:bg-green-900/30 transition-colors"
+                        >
+                            Import balances
+                        </button>
                     </div>
+                    <ImportBalancesModal
+                        isOpen={showImportModal}
+                        onClose={() => setShowImportModal(false)}
+                    />
 
                     {accounts.length > 0 && (
                         <ObjectsIcicleChart
