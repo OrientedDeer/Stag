@@ -139,12 +139,13 @@ describe('useFileManager', () => {
       const blobContent = capturedParts[0];
       if (blobContent) {
         const backup = JSON.parse(blobContent as string);
-        expect(backup).toHaveProperty('version', 1);
+        expect(backup).toHaveProperty('version', 2);
         expect(backup).toHaveProperty('accounts');
         expect(backup).toHaveProperty('incomes');
         expect(backup).toHaveProperty('expenses');
         expect(backup).toHaveProperty('taxSettings');
         expect(backup).toHaveProperty('assumptions');
+        expect(backup).toHaveProperty('balanceAccountMap');
       }
 
       createElementSpy.mockRestore();
@@ -580,6 +581,31 @@ describe('useFileManager', () => {
 
       createElementSpy.mockRestore();
       (window as any).Blob = originalBlob;
+    });
+
+    it('should carry the SimpleFIN account map through the backup blob', () => {
+      // Seed a SimpleFIN -> Stag account mapping in localStorage.
+      const map = { 'Primary Savings (1111)': ['acct-1'], '401(k)': ['acct-2', 'acct-3'] };
+      localStorageMock.setItem('stag_balance_account_map', JSON.stringify(map));
+
+      const { result } = renderHook(() => useFileManager(), {
+        wrapper: AllProvidersWrapper,
+      });
+
+      // The map should be embedded in the backup blob...
+      const backup = result.current.getBackupData();
+      expect(backup.balanceAccountMap).toEqual(map);
+
+      // ...and restored to localStorage when a blob is imported, even if the
+      // local map was cleared in the meantime.
+      localStorageMock.clear();
+      act(() => {
+        result.current.handleGlobalImport(JSON.stringify(backup));
+      });
+      expect(localStorageMock.setItem).toHaveBeenCalledWith(
+        'stag_balance_account_map',
+        JSON.stringify(map)
+      );
     });
   });
 });

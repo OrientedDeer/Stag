@@ -11,6 +11,7 @@ import { AnyExpense, reconstituteExpense } from '../Expense/models';
 import { TaxState, defaultTaxState } from '../../Objects/Taxes/TaxContext';
 import { ImportKeyContext } from './ImportKeyContext';
 import { BudgetContext, BudgetState } from '../Budget/BudgetContext';
+import { loadAccountMap, saveAccountMap } from '../../../services/simplefinBalances';
 
 export interface FullBackup {
     version: number;
@@ -21,6 +22,10 @@ export interface FullBackup {
     taxSettings: TaxState;
     assumptions: AssumptionsState;
     budget?: BudgetState; // Optional for backwards compatibility
+    // SimpleFIN -> Stag account mapping (csvAccount -> appAccountId[]). Lives in
+    // localStorage during normal use; carried in the blob so headless stag-feed
+    // can read it. Optional for backwards compatibility with v1 backups.
+    balanceAccountMap?: Record<string, string[]>;
 }
 
 export const useFileManager = () => {
@@ -42,7 +47,7 @@ export const useFileManager = () => {
         const budgetState: BudgetState = { months, importSettings, selectedMonth, selectedYear };
 
         const fullBackup: FullBackup = {
-            version: 1,
+            version: 2,
             accounts: accounts.map(a => ({ ...a, className: a.constructor.name })),
             amountHistory,
             incomes: incomes.map(i => ({ ...i, className: i.constructor.name })),
@@ -50,6 +55,7 @@ export const useFileManager = () => {
             taxSettings: state as TaxState,
             assumptions: assumptions as AssumptionsState,
             budget: budgetState,
+            balanceAccountMap: loadAccountMap(),
         };
 
         const blob = new Blob([JSON.stringify(fullBackup, null, 2)], { type: 'application/json' });
@@ -105,6 +111,10 @@ export const useFileManager = () => {
             if (data.budget) {
                 budgetDispatch({ type: 'SET_BULK_DATA', payload: data.budget });
             }
+            // Restore the SimpleFIN account mapping if present (v2+ backups)
+            if (data.balanceAccountMap) {
+                saveAccountMap(data.balanceAccountMap);
+            }
             // Increment shared importKey to force chart remounts after import
             incrementImportKey();
             // Force page reload to ensure all components update
@@ -120,7 +130,7 @@ export const useFileManager = () => {
         const budgetState: BudgetState = { months, importSettings, selectedMonth, selectedYear };
 
         return {
-            version: 1,
+            version: 2,
             accounts: accounts.map(a => ({ ...a, className: a.constructor.name })),
             amountHistory,
             incomes: incomes.map(i => ({ ...i, className: i.constructor.name })),
@@ -128,6 +138,7 @@ export const useFileManager = () => {
             taxSettings: state as TaxState,
             assumptions: assumptions as AssumptionsState,
             budget: budgetState,
+            balanceAccountMap: loadAccountMap(),
         };
     };
 
