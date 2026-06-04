@@ -1,5 +1,5 @@
 /**
- * Debug test for reported scenario:
+ * Debug test for a reported scenario:
  * - $841k Traditional 401k
  * - $581k Brokerage
  * - $213k Roth IRA

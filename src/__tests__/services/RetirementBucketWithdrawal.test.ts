@@ -60,9 +60,9 @@ describe('Retirement Bucket Withdrawal Bug', () => {
             stateOfResidence: 'Virginia'
         };
 
-        // Accounts - for the scenario where small savings accounts get depleted
-        // This forces brokerage withdrawal to cover the deficit
-        const savings = new SavedAccount('acc-savings', 'Savings', 0, 4.0);  // Empty - balance emptied to force brokerage withdrawal
+        // Accounts - small savings accounts get depleted, which
+        // forces brokerage withdrawal to cover the deficit
+        const savings = new SavedAccount('acc-savings', 'Savings', 0, 4.0);  // Empty to force brokerage withdrawal
         const capitalOne = new SavedAccount('acc-capone', 'Checking', 600, 4.0);  // Small balance
         const group = new SavedAccount('acc-group', 'Group', 1100, 4.0);  // Small balance
         const brokerage = new InvestedAccount(

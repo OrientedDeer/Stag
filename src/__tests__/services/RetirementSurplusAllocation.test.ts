@@ -57,7 +57,7 @@ describe('Fixed Real Withdrawal Strategy', () => {
         };
 
         // Accounts - total portfolio ~$1.7M, so 4% = ~$68k
-        const ally = new SavedAccount('acc-ally', 'Savings', 55000, 4.0);
+        const savings = new SavedAccount('acc-savings', 'Savings', 55000, 4.0);
         const capitalOne = new SavedAccount('acc-capone', 'Checking', 600, 4.0);
         const group = new SavedAccount('acc-group', 'Group', 1100, 4.0);
         const brokerage = new InvestedAccount(
@@ -73,15 +73,15 @@ describe('Fixed Real Withdrawal Strategy', () => {
             0, 8, 0, 'Roth IRA', false, 1.0
         );
 
-        const accounts = [ally, capitalOne, group, brokerage, trad401k, rothIRA];
+        const accounts = [savings, capitalOne, group, brokerage, trad401k, rothIRA];
 
         // Interest income (reinvested - doesn't add to spendable cash)
-        const allyInterest = new PassiveIncome(
+        const savingsInterest = new PassiveIncome(
             'inc-interest', 'Savings Interest', 1782, 'Annually',
             'No', 'Interest', new Date('2040-01-01'), undefined, true
         );
 
-        const incomes = [allyInterest];
+        const incomes = [savingsInterest];
 
         // Living expenses: $57k (less than 4% target of $68k)
         const expense = new FoodExpense(
