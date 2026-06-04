@@ -190,7 +190,7 @@ export const MappingStage: React.FC<MappingStageProps> = ({
                                     { value: '__NONE__', label: 'None (use amount sign)' },
                                     ...columnOptions,
                                 ]}
-                                tooltip="Optional: Column that says Credit or Debit (e.g., Checking)"
+                                tooltip="Optional: Column that says Credit or Debit (e.g., Capital One)"
                             />
                         </>
                     )}

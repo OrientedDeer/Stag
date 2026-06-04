@@ -81,7 +81,7 @@ export interface FormatFingerprint {
 
 /**
  * Column-index mapping for a parsed CSV. `transactionTypeColumn` is used by
- * formats that put debit/credit in a separate sign column (e.g. Checking).
+ * formats that put debit/credit in a separate sign column (e.g. Capital One).
  */
 export interface CSVMapping {
     dateColumn: number;          // Column index for date
@@ -89,7 +89,7 @@ export interface CSVMapping {
     amountColumn?: number;       // Single amount column (negative = expense)
     debitColumn?: number;        // OR separate debit column
     creditColumn?: number;       // OR separate credit column
-    transactionTypeColumn?: number; // Column indicating Credit/Debit (e.g., Checking)
+    transactionTypeColumn?: number; // Column indicating Credit/Debit (e.g., Capital One)
 }
 
 export interface CSVImportOptions {
