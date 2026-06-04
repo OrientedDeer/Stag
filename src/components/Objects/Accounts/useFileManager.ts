@@ -21,7 +21,9 @@ export interface FullBackup {
     expenses: any[];
     taxSettings: TaxState;
     assumptions: AssumptionsState;
-    budget?: BudgetState; // Optional for backwards compatibility
+    // View state (selectedMonth/selectedYear) is intentionally excluded — it's UI
+    // state, not data, so it must not be backed up or count toward dirty-detection.
+    budget?: Omit<BudgetState, 'selectedMonth' | 'selectedYear'>; // Optional for backwards compatibility
     // SimpleFIN -> Stag account mapping (csvAccount -> appAccountId[]). Lives in
     // localStorage during normal use; carried in the blob so headless stag-feed
     // can read it. Optional for backwards compatibility with v1 backups.
@@ -42,9 +44,10 @@ export const useFileManager = () => {
     const { dispatch: budgetDispatch } = budgetContext;
 
     const handleGlobalExport = () => {
-        // Extract budget state (excluding dispatch and helper functions)
-        const { months, importSettings, selectedMonth, selectedYear } = budgetContext;
-        const budgetState: BudgetState = { months, importSettings, selectedMonth, selectedYear };
+        // Extract budget data (excluding dispatch/helpers). selectedMonth/selectedYear
+        // are UI view state, not data — omit them so switching months doesn't dirty the backup.
+        const { months, importSettings } = budgetContext;
+        const budgetState = { months, importSettings };
 
         const fullBackup: FullBackup = {
             version: 2,
@@ -126,8 +129,9 @@ export const useFileManager = () => {
     };
 
     const getBackupData = (): FullBackup => {
-        const { months, importSettings, selectedMonth, selectedYear } = budgetContext;
-        const budgetState: BudgetState = { months, importSettings, selectedMonth, selectedYear };
+        // selectedMonth/selectedYear are UI view state — omit so month switches don't dirty the backup.
+        const { months, importSettings } = budgetContext;
+        const budgetState = { months, importSettings };
 
         return {
             version: 2,

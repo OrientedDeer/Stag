@@ -1,13 +1,7 @@
 import { useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { CloudBackupContext } from './CloudBackupContext';
+import { CloudBackupContext, normalizeForDirtyCheck, sha256Hex, loadPersistedMeta, cloudIsNewerThanLocal } from './CloudBackupContext';
 import { useFileManager } from '../Accounts/useFileManager';
 import PassphraseModal from './PassphraseModal';
-
-async function sha256Hex(text: string): Promise<string> {
-    const buf = new TextEncoder().encode(text);
-    const hash = await crypto.subtle.digest('SHA-256', buf);
-    return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
-}
 
 const DISMISS_KEY = 'cloud_backup_sync_dismissed';
 
@@ -37,13 +31,15 @@ export default function CloudBackupSync() {
         try { return sessionStorage.getItem(DISMISS_KEY) === '1'; } catch { return false; }
     });
 
-    // Serialize current backup payload. We only do this work when cloud backup is
-    // active for this dataset, so the cost is paid only by users who opted in.
+    // Serialize the current backup payload for dirty-detection. normalizeForDirtyCheck
+    // strips presentation-only fields (e.g. display prefs) so toggling them doesn't
+    // look like a data change. We only do this work when cloud backup is active for
+    // this dataset, so the cost is paid only by users who opted in.
     const serialized = useMemo(() => {
         if (!enabled) return null;
         if (!isAuthenticated && !linkedEmail) return null;
         try {
-            return JSON.stringify(getBackupData());
+            return normalizeForDirtyCheck(getBackupData());
         } catch {
             return null;
         }
@@ -62,15 +58,20 @@ export default function CloudBackupSync() {
         return () => { cancelled = true; clearTimeout(timer); };
     }, [serialized, updateCurrentDataHash]);
 
-    // After OAuth callback completes, if a cloud backup exists, prompt to restore.
+    // After OAuth callback completes, prompt to restore ONLY if the cloud holds a
+    // backup this device hasn't already synced to (e.g. one pushed from another
+    // device). Signing in when local data already matches the cloud shouldn't nag.
     // Ref guard ensures we only run this once per session — clearing justSignedIn
     // would otherwise re-trigger the effect's cleanup and abort the in-flight check.
     useEffect(() => {
         if (!justSignedIn || restorePromptHandledRef.current) return;
         restorePromptHandledRef.current = true;
         clearJustSignedIn();
+        // Snapshot what this device last synced to BEFORE checkBackupStatus runs — it
+        // writes the server's timestamp/rev into local meta as a side effect.
+        const local = loadPersistedMeta();
         checkBackupStatus().then(meta => {
-            if (meta.exists) setRestorePromptOpen(true);
+            if (cloudIsNewerThanLocal(meta, local)) setRestorePromptOpen(true);
         }).catch(() => {});
     }, [justSignedIn, clearJustSignedIn, checkBackupStatus]);
 

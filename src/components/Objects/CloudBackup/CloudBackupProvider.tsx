@@ -6,6 +6,9 @@ import {
     disableAutoSelect,
     decodeUserInfo,
     getIdTokenExpiry,
+    loadStoredIdToken,
+    saveStoredIdToken,
+    clearStoredIdToken,
 } from '../../../services/cloud/AuthService';
 import {
     uploadBackup,
@@ -21,7 +24,7 @@ import {
     PersistedMeta,
     loadPersistedMeta,
     persistMeta,
-    sha256Hex,
+    hashBackupForDirtyCheck,
 } from './CloudBackupContext';
 
 interface PendingAuth {
@@ -71,7 +74,10 @@ export function CloudBackupProvider({ children }: { children: ReactNode }) {
     // silent auto-select). Resolves any pending token wait; otherwise treats it
     // as a fresh interactive sign-in (which triggers the restore prompt).
     const onCredential = useCallback((idToken: string) => {
-        idTokenRef.current = { token: idToken, expiresAt: getIdTokenExpiry(idToken) };
+        const expiresAt = getIdTokenExpiry(idToken);
+        idTokenRef.current = { token: idToken, expiresAt };
+        // Persist so a refresh rehydrates the session instead of re-prompting.
+        saveStoredIdToken({ token: idToken, expiresAt });
         const userInfo = decodeUserInfo(idToken);
         writeMeta({ linkedEmail: userInfo.email });
 
@@ -99,13 +105,36 @@ export function CloudBackupProvider({ children }: { children: ReactNode }) {
             setState(s => ({ ...s, checkingAuth: false }));
             return;
         }
+        // Rehydrate a still-valid ID token persisted from an earlier load in this
+        // tab so a refresh doesn't force a fresh sign-in. Same 60s safety margin as
+        // getValidIdToken. An expired/missing token is cleared and we fall through to
+        // the normal prompt path.
+        const stored = loadStoredIdToken();
+        const hasValidStored = !!stored && Date.now() < stored.expiresAt - 60_000;
+        if (stored && !hasValidStored) clearStoredIdToken();
+        if (hasValidStored && stored) {
+            idTokenRef.current = stored;
+            const userInfo = decodeUserInfo(stored.token);
+            setState(s => ({
+                ...s,
+                isAuthenticated: true,
+                userEmail: userInfo.email,
+                linkedEmail: userInfo.email,
+                checkingAuth: false,
+                // Rehydration is NOT a fresh sign-in — must not trigger the restore prompt.
+                justSignedIn: false,
+            }));
+        }
+
         (async () => {
             try {
                 await initGoogleAuth(config.clientId, onCredential);
-                // Attempt silent auto-select for returning users. If it doesn't
-                // sign them in, onCredential simply never fires and they stay
+                // If we already rehydrated a valid token, skip the prompt — we're
+                // signed in and future re-prompts still work via getValidIdToken.
+                // Otherwise attempt silent auto-select for returning users; if it
+                // doesn't sign them in, onCredential never fires and they stay
                 // signed out — the UI offers a Sign in button.
-                promptSignIn();
+                if (!hasValidStored) promptSignIn();
             } catch (error) {
                 setState(s => ({
                     ...s,
@@ -143,6 +172,7 @@ export function CloudBackupProvider({ children }: { children: ReactNode }) {
 
     const signOut = useCallback(() => {
         idTokenRef.current = null;
+        clearStoredIdToken();
         disableAutoSelect();
         // Keep linkedEmail, lastBackupHash, and rev so we can prompt to sign back
         // in and restore on next open. Backup timestamp is intentionally preserved.
@@ -165,7 +195,7 @@ export function CloudBackupProvider({ children }: { children: ReactNode }) {
                 config.apiEndpoint, idToken, plaintext, passphrase, revRef.current
             );
             revRef.current = rev;
-            const hash = await sha256Hex(plaintext);
+            const hash = await hashBackupForDirtyCheck(plaintext);
             writeMeta({ lastBackupTimestamp: timestamp, lastBackupHash: hash, lastRev: rev });
             setState(s => ({
                 ...s,
@@ -192,7 +222,7 @@ export function CloudBackupProvider({ children }: { children: ReactNode }) {
             revRef.current = rev;
             // After restore, local data matches the cloud payload - record its hash
             // so we don't immediately flag the data as dirty.
-            const hash = await sha256Hex(plaintext);
+            const hash = await hashBackupForDirtyCheck(plaintext);
             writeMeta({ lastBackupHash: hash, lastRev: rev });
             setState(s => ({
                 ...s,

@@ -608,4 +608,24 @@ describe('useFileManager', () => {
       );
     });
   });
+
+  describe('budget view state', () => {
+    // Regression: switching months in the Budget tab is a view change, not a data
+    // change, so the backup payload (which drives dirty-detection) must not include
+    // selectedMonth/selectedYear — otherwise the "Unsaved changes" banner fires on
+    // every month switch.
+    it('excludes selectedMonth/selectedYear from the backup budget data', () => {
+      const { result } = renderHook(() => useFileManager(), {
+        wrapper: AllProvidersWrapper,
+      });
+
+      const backup = result.current.getBackupData();
+      expect(backup.budget).toBeDefined();
+      expect(backup.budget).not.toHaveProperty('selectedMonth');
+      expect(backup.budget).not.toHaveProperty('selectedYear');
+      // The actual budget data is still carried.
+      expect(backup.budget).toHaveProperty('months');
+      expect(backup.budget).toHaveProperty('importSettings');
+    });
+  });
 });

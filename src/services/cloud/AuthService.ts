@@ -118,6 +118,47 @@ export function disableAutoSelect(): void {
     window.google?.accounts.id.disableAutoSelect();
 }
 
+// --- Session-persisted ID token ---
+
+// We persist a still-valid ID token so a page refresh doesn't force a fresh Google
+// sign-in (GIS One Tap's silent re-issue is unreliable due to cooldown/FedCM gating).
+// sessionStorage is chosen over localStorage deliberately: for a finance app holding
+// a bearer credential, the token should not outlive the tab or be shared across
+// tabs/windows. It survives refreshes within the tab and auto-clears on tab close.
+const ID_TOKEN_KEY = 'stag.cloud.idToken';
+
+export interface StoredIdToken {
+    token: string;
+    expiresAt: number; // ms since epoch
+}
+
+/** Read the persisted ID token, or null if absent/unreadable. Never throws. */
+export function loadStoredIdToken(): StoredIdToken | null {
+    try {
+        const raw = sessionStorage.getItem(ID_TOKEN_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (typeof parsed?.token === 'string' && typeof parsed?.expiresAt === 'number') {
+            return { token: parsed.token, expiresAt: parsed.expiresAt };
+        }
+    } catch { /* sessionStorage blocked (private mode) or malformed — treat as none */ }
+    return null;
+}
+
+/** Persist the ID token. Best-effort: a storage failure just means no persistence. */
+export function saveStoredIdToken(value: StoredIdToken): void {
+    try {
+        sessionStorage.setItem(ID_TOKEN_KEY, JSON.stringify(value));
+    } catch { /* private mode / quota — non-fatal */ }
+}
+
+/** Remove the persisted ID token (used on sign-out / when expired). Never throws. */
+export function clearStoredIdToken(): void {
+    try {
+        sessionStorage.removeItem(ID_TOKEN_KEY);
+    } catch { /* ignore */ }
+}
+
 // --- JWT helpers (the backend verifies signatures; the browser only reads claims) ---
 
 function decodeJwtPayload(jwt: string): Record<string, unknown> {
@@ -140,7 +181,10 @@ export function decodeUserInfo(idToken: string): UserInfo {
 
 /**
  * Expiry of an ID token in ms since epoch (0 if unreadable). GIS ID tokens are
- * short-lived (~1 hour); callers re-prompt when expired rather than refreshing.
+ * short-lived (~1 hour). While valid, a token is persisted to sessionStorage (see
+ * loadStoredIdToken) and rehydrated across page reloads within the tab, so a refresh
+ * doesn't force re-auth. Once expired the caller re-prompts — GIS issues a brand-new
+ * token; there is no refresh-token flow.
  */
 export function getIdTokenExpiry(idToken: string): number {
     try {
