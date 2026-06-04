@@ -46,7 +46,7 @@ describe('CashflowSankey', () => {
 
     describe('RMD Year with Traditional Withdrawals', () => {
         it('should NOT show deficit when Traditional withdrawals cover expenses', () => {
-            // This replicates a scenario at age 75 in 2076
+            // Replicates a retiree scenario at age 75 in 2076
             // Key issue: The chart was showing a "Deficit" node that matched
             // the Traditional withdrawal amount, incorrectly treating the
             // withdrawal as a deficit source instead of an income source.
@@ -112,8 +112,7 @@ describe('CashflowSankey', () => {
                 'Trad 401k': 85031
             };
 
-            // Bucket allocations - example surplus value
-            // This is the surplus going to savings from the simulation
+            // Bucket allocations - example surplus going to savings
             const bucketAllocations = {
                 'acc-brokerage': 76116  // example surplus value
             };

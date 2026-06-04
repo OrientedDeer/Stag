@@ -1924,7 +1924,7 @@ describe('Simulation Engine', () => {
     describe('RMD with Tax Optimization OFF', () => {
         it('should fully cover deficit when RMDs are processed at age 75', () => {
             // Setup: Age 75 person (born 2001, year 2076)
-            // This replicates a scenario with RMDs and no tax optimization
+            // Exercises RMDs with no tax optimization
             const birthYear = 2001;
             const retirementAge = 65;  // Already retired
 

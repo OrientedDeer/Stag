@@ -151,9 +151,9 @@ describe('SS Benefit Verification', () => {
     });
 
     it('should calculate correct AIME for known earnings history', () => {
-        // User's actual scenario: 19 years of $150k income
-        // Birth year 2001 means age 60 in 2061 (index year)
-        const birthYear = 2001;
+        // Example scenario: 19 years of $150k income
+        // Birth year 1985 means index year 2045
+        const birthYear = 1985;
         const claimingAge = 67;
 
         // Create earnings history: $150k/year for 19 years (2024-2042)
