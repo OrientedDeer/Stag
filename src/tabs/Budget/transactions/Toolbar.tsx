@@ -17,6 +17,9 @@ interface ToolbarProps {
     netCashFlow: number;
     groupByCategory: boolean;
     onToggleGroupBy: () => void;
+    allSectionsExpanded: boolean;
+    onExpandAll: () => void;
+    onCollapseAll: () => void;
     autoCreateRules: boolean;
     onToggleAutoCreateRules: () => void;
     selectedIdsSize: number;
@@ -46,6 +49,9 @@ function ToolbarInner({
     netCashFlow,
     groupByCategory,
     onToggleGroupBy,
+    allSectionsExpanded,
+    onExpandAll,
+    onCollapseAll,
     autoCreateRules,
     onToggleAutoCreateRules,
     selectedIdsSize,
@@ -102,6 +108,23 @@ function ToolbarInner({
                     </button>
                     <span>Group by category</span>
                 </div>
+                {groupByCategory && hasAnyTransactions && (
+                    <button
+                        type="button"
+                        onClick={allSectionsExpanded ? onCollapseAll : onExpandAll}
+                        className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-white transition-colors mr-2"
+                        title={allSectionsExpanded ? 'Collapse all sections' : 'Expand all sections'}
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                            {allSectionsExpanded ? (
+                                <path d="M18 15l-6-6-6 6" />
+                            ) : (
+                                <path d="M6 9l6 6 6-6" />
+                            )}
+                        </svg>
+                        {allSectionsExpanded ? 'Collapse all' : 'Expand all'}
+                    </button>
+                )}
                 <div className="w-px h-6 bg-gray-700" />
                 <div className="flex items-center gap-2 text-sm text-gray-400 mr-2">
                     <button
