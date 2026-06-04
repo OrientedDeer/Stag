@@ -17,7 +17,7 @@ export interface CloudBackupState {
 }
 
 export interface CloudBackupContextValue extends CloudBackupState {
-    signIn: (provider: 'google' | 'github') => Promise<void>;
+    signIn: () => Promise<void>;
     signOut: () => void;
     backup: (plaintext: string, passphrase: string) => Promise<void>;
     restore: (passphrase: string) => Promise<string>;
@@ -35,6 +35,8 @@ export interface PersistedMeta {
     lastBackupTimestamp: string | null;
     linkedEmail: string | null;
     lastBackupHash: string | null;
+    // Last-seen CouchDB _rev of the cloud blob, for optimistic-locking writes.
+    lastRev: string | null;
 }
 
 export function loadPersistedMeta(): PersistedMeta {
@@ -46,10 +48,11 @@ export function loadPersistedMeta(): PersistedMeta {
                 lastBackupTimestamp: parsed.lastBackupTimestamp ?? null,
                 linkedEmail: parsed.linkedEmail ?? null,
                 lastBackupHash: parsed.lastBackupHash ?? null,
+                lastRev: parsed.lastRev ?? null,
             };
         }
     } catch { /* ignore */ }
-    return { lastBackupTimestamp: null, linkedEmail: null, lastBackupHash: null };
+    return { lastBackupTimestamp: null, linkedEmail: null, lastBackupHash: null, lastRev: null };
 }
 
 export function persistMeta(meta: PersistedMeta): void {
@@ -80,7 +83,7 @@ const defaultContextValue: CloudBackupContextValue = {
     backup: async () => {},
     restore: async () => '',
     deleteCloudData: async () => {},
-    checkBackupStatus: async () => ({ exists: false, timestamp: null, size: null }),
+    checkBackupStatus: async () => ({ exists: false, timestamp: null, size: null, rev: null }),
     clearError: () => {},
     updateCurrentDataHash: () => {},
     clearLinkedEmail: () => {},

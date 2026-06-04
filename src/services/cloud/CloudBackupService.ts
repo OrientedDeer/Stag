@@ -1,6 +1,12 @@
 /**
- * Cloud backup service. Handles pre-signed URL fetching and encrypted blob upload/download.
- * Uses fetch() only - no AWS SDK needed in the browser.
+ * Cloud backup service. Encrypts client-side and stores the ciphertext blob
+ * directly via the backend's /backup endpoint (CouchDB-backed). The server only
+ * ever holds ciphertext it cannot read.
+ *
+ * Concurrency: the browser and the headless stag-feed process both write the
+ * same per-user document, so writes carry the last-seen `rev` (CouchDB `_rev`,
+ * opaque to us). The backend rejects a stale write with 409; callers must then
+ * re-download and retry rather than clobber.
  */
 
 import { EncryptedBackup, encrypt, decrypt } from '../encryption/CryptoService';
@@ -9,24 +15,41 @@ export interface BackupMetadata {
     exists: boolean;
     timestamp: string | null;
     size: number | null;
+    rev: string | null;
+}
+
+export interface DownloadResult {
+    plaintext: string;
+    rev: string | null;
+}
+
+export class BackupConflictError extends Error {
+    constructor() {
+        super('Cloud copy changed since your last sync. Restore first, then back up.');
+        this.name = 'BackupConflictError';
+    }
+}
+
+const MAX_BACKUP_SIZE = 5 * 1024 * 1024; // 5 MB
+
+function authHeaders(idToken: string): Record<string, string> {
+    return { Authorization: `Bearer ${idToken}` };
 }
 
 /**
- * Request a pre-signed POST URL from the API, then upload the encrypted backup to S3.
- * Server enforces a 5 MB content-length-range condition on the pre-signed POST.
+ * Encrypt and upload the backup blob. Sends the last-seen `rev` for optimistic
+ * locking; throws BackupConflictError on a 409 (someone wrote since we read).
  */
 export async function uploadBackup(
     apiEndpoint: string,
-    accessToken: string,
+    idToken: string,
     plaintext: string,
-    passphrase: string
-): Promise<{ timestamp: string }> {
-    // Encrypt on the client side
+    passphrase: string,
+    rev: string | null
+): Promise<{ timestamp: string; rev: string | null }> {
     const envelope = await encrypt(plaintext, passphrase);
     const blob = JSON.stringify(envelope);
 
-    // Enforce 5 MB size limit before uploading
-    const MAX_BACKUP_SIZE = 5 * 1024 * 1024; // 5 MB
     const blobSize = new Blob([blob]).size;
     if (blobSize > MAX_BACKUP_SIZE) {
         const sizeMB = (blobSize / (1024 * 1024)).toFixed(2);
@@ -36,113 +59,88 @@ export async function uploadBackup(
         );
     }
 
-    // Get pre-signed POST URL and fields from Lambda
     const response = await fetch(`${apiEndpoint}/backup`, {
         method: 'POST',
         headers: {
-            Authorization: `Bearer ${accessToken}`,
+            ...authHeaders(idToken),
             'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ blob, rev }),
     });
 
+    if (response.status === 409) {
+        throw new BackupConflictError();
+    }
     if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Failed to get upload URL: ${response.status} ${errorText}`);
+        throw new Error(`Upload failed: ${response.status} ${errorText}`);
     }
 
-    const { uploadUrl, fields } = await response.json();
-
-    // Upload encrypted blob to S3 via pre-signed POST (multipart form)
-    const formData = new FormData();
-    for (const [k, v] of Object.entries(fields as Record<string, string>)) {
-        formData.append(k, v);
-    }
-    formData.append('file', new Blob([blob], { type: 'application/octet-stream' }));
-
-    const uploadResponse = await fetch(uploadUrl, {
-        method: 'POST',
-        body: formData,
-    });
-
-    // S3 pre-signed POST returns 204 on success
-    if (!uploadResponse.ok && uploadResponse.status !== 204) {
-        throw new Error(`Upload failed: ${uploadResponse.status}`);
-    }
-
-    return { timestamp: envelope.timestamp };
+    const data = await response.json();
+    return { timestamp: data.timestamp ?? envelope.timestamp, rev: data.rev ?? null };
 }
 
 /**
- * Download and decrypt the backup from S3 via pre-signed GET URL.
+ * Download and decrypt the backup. Returns the plaintext and the blob's current
+ * `rev` so the caller can send it back on the next write.
  */
 export async function downloadBackup(
     apiEndpoint: string,
-    accessToken: string,
+    idToken: string,
     passphrase: string
-): Promise<string> {
-    // Get pre-signed GET URL from Lambda
+): Promise<DownloadResult> {
     const response = await fetch(`${apiEndpoint}/backup`, {
         method: 'GET',
-        headers: {
-            Authorization: `Bearer ${accessToken}`,
-        },
+        headers: authHeaders(idToken),
     });
 
+    if (response.status === 404) {
+        throw new Error('No cloud backup found.');
+    }
     if (!response.ok) {
-        if (response.status === 404) {
-            throw new Error('No cloud backup found.');
-        }
         const errorText = await response.text();
-        throw new Error(`Failed to get download URL: ${response.status} ${errorText}`);
+        throw new Error(`Download failed: ${response.status} ${errorText}`);
     }
 
-    const { downloadUrl, metadata } = await response.json();
-
-    if (!metadata?.exists) {
+    const data = await response.json();
+    if (!data?.blob) {
         throw new Error('No cloud backup found.');
     }
 
-    // Download encrypted blob from S3
-    const downloadResponse = await fetch(downloadUrl);
-
-    if (!downloadResponse.ok) {
-        throw new Error(`Download failed: ${downloadResponse.status}`);
-    }
-
-    const envelopeJson = await downloadResponse.text();
-    const envelope: EncryptedBackup = JSON.parse(envelopeJson);
-
-    // Decrypt on the client side
-    return decrypt(envelope, passphrase);
+    const envelope: EncryptedBackup = JSON.parse(data.blob);
+    const plaintext = await decrypt(envelope, passphrase);
+    return { plaintext, rev: data.rev ?? null };
 }
 
 /**
- * Check if a backup exists and get its metadata.
+ * Check whether a backup exists and read its metadata (including current rev).
  */
 export async function getBackupMetadata(
     apiEndpoint: string,
-    accessToken: string
+    idToken: string
 ): Promise<BackupMetadata> {
     const response = await fetch(`${apiEndpoint}/backup`, {
         method: 'GET',
-        headers: {
-            Authorization: `Bearer ${accessToken}`,
-        },
+        headers: authHeaders(idToken),
     });
 
+    if (response.status === 404) {
+        return { exists: false, timestamp: null, size: null, rev: null };
+    }
     if (!response.ok) {
-        if (response.status === 404) {
-            return { exists: false, timestamp: null, size: null };
-        }
         throw new Error(`Failed to check backup: ${response.status}`);
     }
 
-    const { metadata } = await response.json();
+    const data = await response.json();
+    if (!data?.blob) {
+        return { exists: false, timestamp: null, size: null, rev: data?.rev ?? null };
+    }
 
     return {
-        exists: metadata?.exists ?? false,
-        timestamp: metadata?.timestamp ?? null,
-        size: metadata?.size ?? null,
+        exists: true,
+        timestamp: data.timestamp ?? null,
+        size: data.size ?? null,
+        rev: data.rev ?? null,
     };
 }
 
@@ -151,16 +149,14 @@ export async function getBackupMetadata(
  */
 export async function deleteBackup(
     apiEndpoint: string,
-    accessToken: string
+    idToken: string
 ): Promise<void> {
     const response = await fetch(`${apiEndpoint}/backup`, {
         method: 'DELETE',
-        headers: {
-            Authorization: `Bearer ${accessToken}`,
-        },
+        headers: authHeaders(idToken),
     });
 
-    if (!response.ok) {
+    if (!response.ok && response.status !== 404) {
         const errorText = await response.text();
         throw new Error(`Failed to delete backup: ${response.status} ${errorText}`);
     }

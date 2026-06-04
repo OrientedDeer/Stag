@@ -121,16 +121,10 @@ export default function CloudBackupSync() {
                         This data is linked to <span className="text-white font-medium">{linkedEmail}</span>. Sign in to restore the latest cloud backup.
                     </p>
                     <button
-                        onClick={() => signIn('google')}
+                        onClick={() => signIn()}
                         className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-medium transition-colors"
                     >
                         Sign in with Google
-                    </button>
-                    <button
-                        onClick={() => signIn('github')}
-                        className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded text-xs font-medium transition-colors"
-                    >
-                        GitHub
                     </button>
                     <button
                         onClick={handleDismiss}
