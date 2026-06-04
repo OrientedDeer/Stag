@@ -15,11 +15,11 @@ describe('parseBalancesCSV', () => {
 
         expect(errors).toHaveLength(0);
         expect(rows).toHaveLength(2);
-        const ally = rows.find((r) => r.account === 'Savings Account (1111)');
-        expect(ally?.balance).toBe(1000.00);
-        expect(ally?.org).toBe('First Bank');
-        const chase = rows.find((r) => r.account === 'Rewards Card (2222)');
-        expect(chase?.balance).toBe(-500.00); // negatives preserved
+        const savings = rows.find((r) => r.account === 'Savings Account (1111)');
+        expect(savings?.balance).toBe(1000.0);
+        expect(savings?.org).toBe('First Bank');
+        const card = rows.find((r) => r.account === 'Rewards Card (2222)');
+        expect(card?.balance).toBe(-500.0); // negatives preserved
     });
 
     it('collapses multiple snapshots to the newest by FetchedAt', () => {
@@ -43,7 +43,7 @@ describe('parseBalancesCSV', () => {
         const { rows } = parseBalancesCSV(csv);
         expect(rows).toHaveLength(1);
         expect(rows[0].account).toBe('ACME CORP PROFIT SHARING 401(K) PLAN (3333)');
-        expect(rows[0].balance).toBe(50000.00);
+        expect(rows[0].balance).toBe(50000.0);
     });
 
     it('reports an error when required columns are missing', () => {
