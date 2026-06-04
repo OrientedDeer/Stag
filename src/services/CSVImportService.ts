@@ -2,8 +2,10 @@
  * CSVImportService - Handles CSV parsing, column detection, and format matching
  */
 
-import { Transaction, CategoryMapping, IncomeCategory } from '../components/Objects/Budget/BudgetContext';
 import type {
+    Transaction,
+    CategoryMapping,
+    IncomeCategory,
     FormatFingerprint,
     CSVMapping,
     CSVImportOptions,
@@ -63,7 +65,7 @@ const DATE_PATTERNS: { regex: RegExp; format: string }[] = [
     { regex: /^[A-Za-z]{3}\s+\d{1,2},?\s+\d{4}$/, format: 'MMM D, YYYY' }, // "Jan 15, 2025"
 ];
 
-const AMOUNT_PATTERN = /^[\$\-\(\)\d,\.]+$/;
+const AMOUNT_PATTERN = /^[$\-()\d,.]+$/;
 
 // ============================================================================
 // Income Detection Patterns
