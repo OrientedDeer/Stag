@@ -45,3 +45,6 @@ docs/profiling-data.*.json
 
 # SimpleFin / bank exports (real financial data)
 docs/*.csv
+
+# Local Claude Code settings (machine-specific paths/commands)
+.claude/settings.local.json
