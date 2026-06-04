@@ -855,7 +855,7 @@ export function createSuggestedMapping(detections: ColumnDetection[]): {
         mapping.descriptionColumn = descCol.columnIndex;
     }
 
-    // Find transaction type column (e.g., Checking "Transaction Type")
+    // Find transaction type column (e.g., Capital One "Transaction Type")
     const transTypeCol = detections.find(d => d.type === 'transaction_type' && d.confidence > 0.5);
     if (transTypeCol) {
         mapping.transactionTypeColumn = transTypeCol.columnIndex;
