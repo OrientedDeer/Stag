@@ -38,7 +38,7 @@ const sampleMatchedFormat: SavedCSVMapping = {
 const sampleMatchedDebitCreditFormat: SavedCSVMapping = {
     ...sampleMatchedFormat,
     id: 'fmt-2',
-    name: 'Checking',
+    name: 'Capital One',
     mapping: { dateColumn: 0, descriptionColumn: 1, debitColumn: 2, creditColumn: 3 },
 };
 

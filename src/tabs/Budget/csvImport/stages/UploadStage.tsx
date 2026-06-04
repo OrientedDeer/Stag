@@ -94,7 +94,7 @@ export const UploadStage: React.FC<UploadStageProps> = ({
                     <p className="text-lg font-medium">Drop CSV file here or click to browse</p>
                 </div>
                 <p className="text-gray-500 text-sm mt-2">
-                    Supported: Chase, Checking, Bank of America, or any CSV
+                    Supported: Chase, Capital One, Bank of America, or any CSV
                 </p>
             </div>
 
