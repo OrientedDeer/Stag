@@ -175,6 +175,9 @@ export default function TransactionsTab() {
                 netCashFlow={netCashFlow}
                 groupByCategory={groupByCategory}
                 onToggleGroupBy={handleToggleGroupBy}
+                allSectionsExpanded={collapse.allExpanded}
+                onExpandAll={collapse.expandAll}
+                onCollapseAll={collapse.collapseAll}
                 autoCreateRules={importSettings.autoCreateRules}
                 onToggleAutoCreateRules={handleToggleAutoCreateRules}
                 selectedIdsSize={bulk.selectedIds.size}

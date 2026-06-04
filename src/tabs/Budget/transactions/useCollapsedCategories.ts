@@ -46,5 +46,23 @@ export function useCollapsedCategories(
         });
     }, []);
 
-    return { collapsed, toggle };
+    const expandAll = useCallback(() => setCollapsed(new Set()), []);
+
+    const collapseAll = useCallback(() => {
+        // Same id universe the auto-collapse effect uses: the fixed sections plus
+        // every expense category. Ids for sections that aren't currently rendered
+        // are harmless (their `collapsed.has(...)` is simply never read).
+        setCollapsed(new Set([
+            'uncategorized',
+            'income',
+            'transfers',
+            'contributions',
+            ...expenses.map(e => e.id),
+        ]));
+    }, [expenses]);
+
+    // Nothing collapsed -> everything is expanded.
+    const allExpanded = collapsed.size === 0;
+
+    return { collapsed, toggle, expandAll, collapseAll, allExpanded };
 }
