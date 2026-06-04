@@ -738,7 +738,7 @@ describe('extractIncomeForRMDEstimate', () => {
         });
 
         it('handles mixed class instances (reconstituted-scenario pattern)', () => {
-            // Mimics the reconstituted-scenario: work income + future SS + passive
+            // Mimics a reconstituted scenario: work income + future SS + passive
             const salary = new WorkIncome(
                 'inc-1', 'Salary', 120000, 'Annually', 'Yes',
                 10000, 17, 0, 4000, 'acc-1', 'Traditional 401k', 'GROW_WITH_SALARY',
