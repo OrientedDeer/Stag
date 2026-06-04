@@ -15,6 +15,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
+    "feed:example": "vite-node stagfeed/example.ts",
+    "feed:check": "tsc -p stagfeed/tsconfig.json",
     "coverage": "vitest run --coverage",
     "knip": "knip",
     "knip:prod": "knip --production",
@@ -72,6 +74,7 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
     "vite": "^7.2.4",
+    "vite-node": "^6.0.0",
     "vitest": "^4.0.16"
   }
 }
