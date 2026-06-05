@@ -1,7 +1,7 @@
 // Excel Export Service for Stag Financial Planning
 // Version 1.0 - Sheet Registry Pattern for extensibility
 
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
 import { MonteCarloSummary, MonteCarloConfig } from './MonteCarloTypes';
 import { AnyAccount, InvestedAccount, SavedAccount, PropertyAccount, DebtAccount, DeficitDebtAccount } from '../components/Objects/Accounts/models';
@@ -27,9 +27,26 @@ export interface ExportData {
 
 interface SheetBuilder {
     name: string;
-    build: (data: ExportData) => XLSX.WorkSheet | null;
+    build: (data: ExportData) => SheetContent | null;
     required: boolean;
     condition?: (data: ExportData) => boolean;
+}
+
+// A number-format directive applied to a rectangular block of cells after the
+// rows have been written. Row/column indices are 0-based and inclusive.
+interface CellFormat {
+    columns: number[];
+    numFmt: string;
+    startRow: number;
+    endRow: number;
+}
+
+// Decoupled representation of a worksheet: the raw rows plus the number formats
+// to apply. Builders return this rather than a live worksheet so they stay
+// independent of the workbook (and trivially unit-testable).
+interface SheetContent {
+    rows: unknown[][];
+    formats: CellFormat[];
 }
 
 // ============================================================================
@@ -75,51 +92,33 @@ const CURRENCY_FORMAT = '"$"#,##0.00';
 const PERCENT_FORMAT = '0.0"%"';
 
 /**
- * Apply currency formatting to specific columns in a worksheet.
- * @param ws - The worksheet to format
- * @param currencyColumns - Array of column indices (0-based) that should be currency formatted
- * @param percentColumns - Array of column indices (0-based) that should be percent formatted
+ * Build number-format directives for a worksheet.
+ * @param currencyColumns - Column indices (0-based) that should be currency formatted
+ * @param percentColumns - Column indices (0-based) that should be percent formatted
  * @param startRow - First data row (0-based, after headers/metadata)
  * @param endRow - Last data row (0-based, inclusive)
  */
-function applyNumberFormats(
-    ws: XLSX.WorkSheet,
+function numberFormats(
     currencyColumns: number[],
     percentColumns: number[],
     startRow: number,
     endRow: number
-): void {
-    const colToLetter = (col: number): string => {
-        let letter = '';
-        let temp = col;
-        while (temp >= 0) {
-            letter = String.fromCharCode((temp % 26) + 65) + letter;
-            temp = Math.floor(temp / 26) - 1;
-        }
-        return letter;
-    };
-
-    for (let row = startRow; row <= endRow; row++) {
-        for (const col of currencyColumns) {
-            const cellRef = colToLetter(col) + (row + 1); // Excel is 1-indexed
-            if (ws[cellRef] && typeof ws[cellRef].v === 'number') {
-                ws[cellRef].z = CURRENCY_FORMAT;
-            }
-        }
-        for (const col of percentColumns) {
-            const cellRef = colToLetter(col) + (row + 1);
-            if (ws[cellRef] && typeof ws[cellRef].v === 'number') {
-                ws[cellRef].z = PERCENT_FORMAT;
-            }
-        }
+): CellFormat[] {
+    const formats: CellFormat[] = [];
+    if (currencyColumns.length > 0) {
+        formats.push({ columns: currencyColumns, numFmt: CURRENCY_FORMAT, startRow, endRow });
     }
+    if (percentColumns.length > 0) {
+        formats.push({ columns: percentColumns, numFmt: PERCENT_FORMAT, startRow, endRow });
+    }
+    return formats;
 }
 
 // ============================================================================
 // Sheet Builders
 // ============================================================================
 
-function buildSummarySheet(data: ExportData): XLSX.WorkSheet {
+function buildSummarySheet(data: ExportData): SheetContent {
     const { simulation, assumptions } = data;
 
     const rows: unknown[][] = [];
@@ -158,14 +157,12 @@ function buildSummarySheet(data: ExportData): XLSX.WorkSheet {
         ]);
     }
 
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-    // Apply formatting: columns 2,3,5,6,7 are currency; column 4 is percent
+    // Columns 2,3,5,6,7 are currency; column 4 is percent.
     // Data starts at row 2 (0-indexed: row 0=metadata, row 1=headers)
-    applyNumberFormats(ws, [2, 3, 5, 6, 7], [4], 2, rows.length - 1);
-    return ws;
+    return { rows, formats: numberFormats([2, 3, 5, 6, 7], [4], 2, rows.length - 1) };
 }
 
-function buildAccountsSheet(data: ExportData): XLSX.WorkSheet {
+function buildAccountsSheet(data: ExportData): SheetContent {
     const { simulation, assumptions } = data;
 
     // Collect all unique account names
@@ -214,14 +211,12 @@ function buildAccountsSheet(data: ExportData): XLSX.WorkSheet {
         ]);
     }
 
-    const ws = XLSX.utils.aoa_to_sheet(rows);
     // All columns from index 2 onwards are currency (accounts + totals)
     const currencyCols = Array.from({ length: accountNames.length + 3 }, (_, i) => i + 2);
-    applyNumberFormats(ws, currencyCols, [], 2, rows.length - 1);
-    return ws;
+    return { rows, formats: numberFormats(currencyCols, [], 2, rows.length - 1) };
 }
 
-function buildIncomeSheet(data: ExportData): XLSX.WorkSheet {
+function buildIncomeSheet(data: ExportData): SheetContent {
     const { simulation, assumptions } = data;
 
     // Collect all unique income names
@@ -257,14 +252,12 @@ function buildIncomeSheet(data: ExportData): XLSX.WorkSheet {
         ]);
     }
 
-    const ws = XLSX.utils.aoa_to_sheet(rows);
     // All columns from index 2 onwards are currency (incomes + total)
     const currencyCols = Array.from({ length: incomeNames.length + 1 }, (_, i) => i + 2);
-    applyNumberFormats(ws, currencyCols, [], 2, rows.length - 1);
-    return ws;
+    return { rows, formats: numberFormats(currencyCols, [], 2, rows.length - 1) };
 }
 
-function buildExpenseSheet(data: ExportData): XLSX.WorkSheet {
+function buildExpenseSheet(data: ExportData): SheetContent {
     const { simulation, assumptions } = data;
 
     // Collect all unique expense names
@@ -300,14 +293,12 @@ function buildExpenseSheet(data: ExportData): XLSX.WorkSheet {
         ]);
     }
 
-    const ws = XLSX.utils.aoa_to_sheet(rows);
     // All columns from index 2 onwards are currency (expenses + total)
     const currencyCols = Array.from({ length: expenseNames.length + 1 }, (_, i) => i + 2);
-    applyNumberFormats(ws, currencyCols, [], 2, rows.length - 1);
-    return ws;
+    return { rows, formats: numberFormats(currencyCols, [], 2, rows.length - 1) };
 }
 
-function buildTaxSheet(data: ExportData): XLSX.WorkSheet {
+function buildTaxSheet(data: ExportData): SheetContent {
     const { simulation, assumptions } = data;
 
     const rows: unknown[][] = [];
@@ -334,13 +325,11 @@ function buildTaxSheet(data: ExportData): XLSX.WorkSheet {
         ]);
     }
 
-    const ws = XLSX.utils.aoa_to_sheet(rows);
     // Columns 2-8 are all currency
-    applyNumberFormats(ws, [2, 3, 4, 5, 6, 7, 8], [], 2, rows.length - 1);
-    return ws;
+    return { rows, formats: numberFormats([2, 3, 4, 5, 6, 7, 8], [], 2, rows.length - 1) };
 }
 
-function buildCashflowSheet(data: ExportData): XLSX.WorkSheet {
+function buildCashflowSheet(data: ExportData): SheetContent {
     const { simulation, assumptions } = data;
 
     const rows: unknown[][] = [];
@@ -369,13 +358,11 @@ function buildCashflowSheet(data: ExportData): XLSX.WorkSheet {
         ]);
     }
 
-    const ws = XLSX.utils.aoa_to_sheet(rows);
     // Columns 2-8 are all currency
-    applyNumberFormats(ws, [2, 3, 4, 5, 6, 7, 8], [], 2, rows.length - 1);
-    return ws;
+    return { rows, formats: numberFormats([2, 3, 4, 5, 6, 7, 8], [], 2, rows.length - 1) };
 }
 
-function buildWithdrawalSheet(data: ExportData): XLSX.WorkSheet {
+function buildWithdrawalSheet(data: ExportData): SheetContent {
     const { simulation, assumptions } = data;
 
     // Collect unique account names from withdrawal details
@@ -436,15 +423,13 @@ function buildWithdrawalSheet(data: ExportData): XLSX.WorkSheet {
         rows.push(['No retirement withdrawals in simulation period']);
     }
 
-    const ws = XLSX.utils.aoa_to_sheet(rows);
     // Columns 3-4 are percent (Target Rate, Actual Rate)
     // Columns 5 onwards are currency (account withdrawals + totals)
     const currencyCols = Array.from({ length: sortedAccountNames.length + 4 }, (_, i) => i + 5);
-    applyNumberFormats(ws, currencyCols, [3, 4], 2, rows.length - 1);
-    return ws;
+    return { rows, formats: numberFormats(currencyCols, [3, 4], 2, rows.length - 1) };
 }
 
-function buildMonteCarloSheet(data: ExportData): XLSX.WorkSheet | null {
+function buildMonteCarloSheet(data: ExportData): SheetContent | null {
     const { monteCarloSummary, monteCarloConfig } = data;
 
     if (!monteCarloSummary) return null;
@@ -494,17 +479,15 @@ function buildMonteCarloSheet(data: ExportData): XLSX.WorkSheet | null {
         }
     }
 
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-
     // Apply currency format to percentile data (columns 1-5: P10, P25, P50, P75, P90)
-    if (percentileStartRow >= 0) {
-        applyNumberFormats(ws, [1, 2, 3, 4, 5], [], percentileStartRow, rows.length - 1);
-    }
+    const formats = percentileStartRow >= 0
+        ? numberFormats([1, 2, 3, 4, 5], [], percentileStartRow, rows.length - 1)
+        : [];
 
-    return ws;
+    return { rows, formats };
 }
 
-function buildCurrentStateSheet(data: ExportData): XLSX.WorkSheet {
+function buildCurrentStateSheet(data: ExportData): SheetContent {
     const { assumptions, taxState, currentAccounts, currentIncomes, currentExpenses } = data;
 
     const rows: unknown[][] = [];
@@ -599,20 +582,19 @@ function buildCurrentStateSheet(data: ExportData): XLSX.WorkSheet {
     }
     const expensesEndRow = rows.length - 1;
 
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-
     // Apply currency formatting to column 2 (Balance/Amount) in each table
+    const formats: CellFormat[] = [];
     if (currentAccounts.length > 0) {
-        applyNumberFormats(ws, [2], [], accountsStartRow, accountsEndRow);
+        formats.push(...numberFormats([2], [], accountsStartRow, accountsEndRow));
     }
     if (currentIncomes.length > 0) {
-        applyNumberFormats(ws, [2], [], incomesStartRow, incomesEndRow);
+        formats.push(...numberFormats([2], [], incomesStartRow, incomesEndRow));
     }
     if (currentExpenses.length > 0) {
-        applyNumberFormats(ws, [2], [], expensesStartRow, expensesEndRow);
+        formats.push(...numberFormats([2], [], expensesStartRow, expensesEndRow));
     }
 
-    return ws;
+    return { rows, formats };
 }
 
 // ============================================================================
@@ -635,8 +617,25 @@ const sheetBuilders: SheetBuilder[] = [
 // Main Export Function
 // ============================================================================
 
-export function exportToExcel(data: ExportData): void {
-    const workbook = XLSX.utils.book_new();
+// Write a builder's rows into a new worksheet and apply its number formats.
+function materializeSheet(workbook: ExcelJS.Workbook, name: string, content: SheetContent): void {
+    const ws = workbook.addWorksheet(name);
+    ws.addRows(content.rows as ExcelJS.CellValue[][]);
+
+    for (const format of content.formats) {
+        for (let row = format.startRow; row <= format.endRow; row++) {
+            for (const col of format.columns) {
+                const cell = ws.getCell(row + 1, col + 1); // ExcelJS is 1-indexed
+                if (typeof cell.value === 'number') {
+                    cell.numFmt = format.numFmt;
+                }
+            }
+        }
+    }
+}
+
+export async function exportToExcel(data: ExportData): Promise<void> {
+    const workbook = new ExcelJS.Workbook();
 
     for (const builder of sheetBuilders) {
         // Skip conditional sheets that don't meet their condition
@@ -644,18 +643,27 @@ export function exportToExcel(data: ExportData): void {
             continue;
         }
 
-        const sheet = builder.build(data);
+        const content = builder.build(data);
 
-        if (sheet) {
-            XLSX.utils.book_append_sheet(workbook, sheet, builder.name);
+        if (content) {
+            materializeSheet(workbook, builder.name, content);
         } else if (builder.required) {
             console.warn(`Required sheet "${builder.name}" returned null`);
         }
     }
 
-    // Generate and download the file
+    // Generate the file and trigger a browser download
     const filename = generateFilename();
-    XLSX.writeFile(workbook, filename);
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
 }
 
 // ============================================================================

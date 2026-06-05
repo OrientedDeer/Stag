@@ -222,7 +222,7 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, bir
         link.click();
     };
 
-    const handleExportExcel = () => {
+    const handleExportExcel = async () => {
         if (simulationData.length === 0) return;
 
         const exportData: ExportData = {
@@ -236,7 +236,7 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, bir
             monteCarloConfig: monteCarloState.config || undefined,
         };
 
-        exportToExcel(exportData);
+        await exportToExcel(exportData);
     };
 
     return (
@@ -253,7 +253,7 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, bir
                     <button onClick={handleExportCSV} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm font-bold rounded-lg border border-gray-600">
                         CSV
                     </button>
-                    <button onClick={handleExportExcel} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-lg shadow-lg">
+                    <button onClick={() => { void handleExportExcel(); }} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-lg shadow-lg">
                         Excel
                     </button>
                 </div>
