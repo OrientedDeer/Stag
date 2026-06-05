@@ -993,5 +993,33 @@ describe('budgetUtils', () => {
       const result = calculateCategoryTotalsFromTransactions([]);
       expect(Object.keys(result)).toHaveLength(0);
     });
+
+    it('should not treat true income with a stale expenseId as a reimbursement', () => {
+      // Regression: an income transaction that also carried an expenseId (e.g. from a
+      // category rule matching its description) was counted as a reimbursement, driving
+      // the category's net spending negative.
+      const transactions: Transaction[] = [
+        { id: 't1', date: new Date(2024, 1, 3), description: 'Misc purchase', amount: -1000, expenseId: 'misc' },
+        { id: 't2', date: new Date(2024, 1, 15), description: 'Paycheck', amount: 4907, expenseId: 'misc', incomeCategory: 'Salary' },
+      ];
+
+      const result = calculateCategoryTotalsFromTransactions(transactions);
+
+      // Only the real expense counts; the income is ignored, not a reimbursement.
+      expect(result['misc'].gross).toBe(1000);
+      expect(result['misc'].reimbursements).toBe(0);
+    });
+
+    it('should still count genuine reimbursements (positive, no incomeCategory)', () => {
+      const transactions: Transaction[] = [
+        { id: 't1', date: new Date(2024, 1, 3), description: 'Misc purchase', amount: -1000, expenseId: 'misc' },
+        { id: 't2', date: new Date(2024, 1, 10), description: 'Refund', amount: 300, expenseId: 'misc', isReimbursement: true },
+      ];
+
+      const result = calculateCategoryTotalsFromTransactions(transactions);
+
+      expect(result['misc'].gross).toBe(1000);
+      expect(result['misc'].reimbursements).toBe(300);
+    });
   });
 });

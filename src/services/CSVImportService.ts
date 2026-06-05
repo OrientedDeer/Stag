@@ -809,6 +809,14 @@ export function applyCategories(
     let autoCategorizedCount = 0;
 
     const categorized = transactions.map(txn => {
+        // Don't auto-categorize transactions that already belong elsewhere: transfers,
+        // contributions, and true income. Tagging income with an expenseId creates a
+        // contradictory state that the reconcile reads as a (negative) reimbursement.
+        const isCategorizable = !txn.isTransfer
+            && !txn.targetAccountId
+            && !(txn.amount > 0 && !txn.isReimbursement && txn.incomeCategory);
+        if (!isCategorizable) return txn;
+
         for (const rule of rules) {
             const matches = rule.isRegex
                 ? new RegExp(rule.pattern, 'i').test(txn.description)

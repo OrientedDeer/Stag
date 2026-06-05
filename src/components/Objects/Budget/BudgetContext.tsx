@@ -344,12 +344,21 @@ function budgetReducer(state: BudgetState, action: BudgetAction): BudgetState {
                 return true;
             };
 
+            // Don't categorize transactions that already belong elsewhere: transfers,
+            // contributions, and true income. Tagging income with an expenseId creates a
+            // contradictory state that the reconcile reads as a (negative) reimbursement.
+            const isCategorizable = (t: Transaction): boolean =>
+                !t.expenseId
+                && !t.isTransfer
+                && !t.targetAccountId
+                && !(t.amount > 0 && !t.isReimbursement && t.incomeCategory);
+
             return {
                 ...state,
                 months: state.months.map(month => ({
                     ...month,
                     transactions: month.transactions.map(t =>
-                        !t.expenseId && matchesRule(t.description) && isActiveForMonth(month.month, month.year)
+                        isCategorizable(t) && matchesRule(t.description) && isActiveForMonth(month.month, month.year)
                             ? { ...t, expenseId: rule.expenseId }
                             : t
                     ),

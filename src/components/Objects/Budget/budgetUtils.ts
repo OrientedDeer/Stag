@@ -394,6 +394,9 @@ export function getNetSpendingByCategory(transactions: Transaction[]): Record<st
         if (t.isTransfer) return;
         if (t.targetAccountId) return; // Exclude contributions (transfers to accounts)
         if (!t.expenseId) return;
+        // True income that also carries a (stale) expenseId is not a reimbursement —
+        // exclude it so it can't drive a category's net spending negative.
+        if (t.amount > 0 && !t.isReimbursement && t.incomeCategory) return;
 
         if (!result[t.expenseId]) {
             result[t.expenseId] = { expenseId: t.expenseId, gross: 0, reimbursements: 0, net: 0 };
@@ -494,6 +497,9 @@ export function calculateCategoryTotalsFromTransactions(
 
     transactions.forEach(t => {
         if (t.isTransfer || t.targetAccountId || !t.expenseId) return;
+        // True income that also carries a (stale) expenseId is not a reimbursement —
+        // exclude it so it can't drive a category's net spending negative.
+        if (t.amount > 0 && !t.isReimbursement && t.incomeCategory) return;
 
         if (!categoryTotals[t.expenseId]) {
             categoryTotals[t.expenseId] = { gross: 0, reimbursements: 0 };
