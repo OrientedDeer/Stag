@@ -1,0 +1,53 @@
+name: stag
+
+services:
+  couchdb:
+    image: couchdb:3
+    container_name: stag-couchdb
+    restart: unless-stopped
+    environment:
+      COUCHDB_USER: ${COUCHDB_USER:?set COUCHDB_USER in .env}
+      COUCHDB_PASSWORD: ${COUCHDB_PASSWORD:?set COUCHDB_PASSWORD in .env}
+    volumes:
+      - ./couchdb/data:/opt/couchdb/data
+      - ./couchdb/config:/opt/couchdb/etc/local.d
+
+  backend:
+    build: ./backend
+    container_name: stag-backend
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+      COUCHDB_URL: http://couchdb:5984
+      COUCHDB_USER: ${COUCHDB_USER:?}
+      COUCHDB_PASSWORD: ${COUCHDB_PASSWORD:?}
+      BACKUP_DB: stag_backups
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
+      MAX_BLOB_BYTES: ${MAX_BLOB_BYTES:-5242880}
+    depends_on:
+      - couchdb
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_GOOGLE_CLIENT_ID: "270234365642-38b9jb9p6pt464isj39l7d1155cm5cnd.apps.googleusercontent.com"
+        VITE_CLOUD_API_ENDPOINT: "https://api.orienteddeer-stag.com"
+        VITE_BASE_PATH: "/"
+    container_name: stag-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: stag-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    depends_on:
+      - backend
+      - frontend
+    profiles: ["tunnel"]
