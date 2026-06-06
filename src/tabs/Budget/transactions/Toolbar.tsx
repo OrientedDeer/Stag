@@ -74,17 +74,17 @@ function ToolbarInner({
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                     {totalIncome > 0 && (
                         <span className="text-green-400">
-                            Income: {formatCurrency(totalIncome)}
+                            Income: {formatCurrency(totalIncome, { cents: true })}
                         </span>
                     )}
                     {totalSpending > 0 && (
                         <span className="text-gray-400">
-                            Spending: {formatCurrency(totalSpending)} (net)
+                            Spending: {formatCurrency(totalSpending, { cents: true })} (net)
                         </span>
                     )}
                     {(totalIncome > 0 || totalSpending > 0) && (
                         <span className={netCashFlow >= 0 ? 'text-green-400' : 'text-red-400'}>
-                            Net: {netCashFlow >= 0 ? '+' : ''}{formatCurrency(netCashFlow)}
+                            Net: {netCashFlow >= 0 ? '+' : ''}{formatCurrency(netCashFlow, { cents: true })}
                         </span>
                     )}
                 </div>

@@ -358,14 +358,18 @@ export function navigateMonth(
 }
 
 /**
- * Format currency for display
+ * Format currency for display.
+ *
+ * Defaults to whole dollars (no cents). Pass `{ cents: true }` to keep two
+ * decimal places — used on the Transactions tab where exact amounts matter.
  */
-export function formatCurrency(amount: number): string {
+export function formatCurrency(amount: number, options?: { cents?: boolean }): string {
+    const fractionDigits = options?.cents ? 2 : 0;
     return new Intl.NumberFormat('en-US', {
         style: 'currency',
         currency: 'USD',
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
+        minimumFractionDigits: fractionDigits,
+        maximumFractionDigits: fractionDigits,
     }).format(amount);
 }
 

@@ -358,7 +358,7 @@ function TransactionRowInner({
                     )}
                 </div>
                 <div className={`text-sm font-medium ${isPositiveAmount ? 'text-green-400' : 'text-white'}`}>
-                    {isPositiveAmount ? '+' : ''}{formatCurrency(Math.abs(transaction.amount))}
+                    {isPositiveAmount ? '+' : ''}{formatCurrency(Math.abs(transaction.amount), { cents: true })}
                 </div>
                 <button
                     onClick={() => onEdit(transaction.id)}

@@ -17,6 +17,7 @@ import {
   getCategorySpending,
   getAccountBalances,
   calculateCategoryTotalsFromTransactions,
+  formatCurrency,
 } from '../../../../components/Objects/Budget/budgetUtils';
 import { Transaction, MonthlySnapshot } from '../../../../components/Objects/Budget/BudgetContext';
 import { OtherExpense } from '../../../../components/Objects/Expense/models';
@@ -927,6 +928,19 @@ describe('budgetUtils', () => {
       const result = getAccountBalances([savings], undefined, undefined, 6, 2024, []);
 
       expect(result[0].isMarketDriven).toBe(false);
+    });
+  });
+
+  describe('formatCurrency', () => {
+    it('should round to whole dollars by default', () => {
+      expect(formatCurrency(1234.56)).toBe('$1,235');
+      expect(formatCurrency(43.07)).toBe('$43');
+    });
+
+    it('should keep two decimals when cents option is set', () => {
+      expect(formatCurrency(1234.56, { cents: true })).toBe('$1,234.56');
+      expect(formatCurrency(43.07, { cents: true })).toBe('$43.07');
+      expect(formatCurrency(43, { cents: true })).toBe('$43.00');
     });
   });
 
