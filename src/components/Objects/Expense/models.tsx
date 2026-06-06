@@ -35,6 +35,7 @@ export interface Expense {
   goalType?: GoalType;        // marks a long-term goal ("Longer term" cadence)
   intervalYears?: number;     // recurrence (years) for a 'recurring' goal
   goalTargetDate?: Date;      // funding deadline for a 'targetDate' goal
+  goalAccountId?: string;     // linked sinking-fund SavedAccount
 }
 
 // 2. Base Abstract Class
@@ -63,6 +64,7 @@ export abstract class BaseExpense implements Expense {
   public goalType?: GoalType;
   public intervalYears?: number;   // for 'recurring' goals
   public goalTargetDate?: Date;    // for 'targetDate' goals
+  public goalAccountId?: string;   // linked sinking-fund SavedAccount
 
   /**
    * Copy cross-cutting metadata not passed through constructors onto a freshly
@@ -76,6 +78,7 @@ export abstract class BaseExpense implements Expense {
     target.goalType = this.goalType;
     target.intervalYears = this.intervalYears;
     target.goalTargetDate = this.goalTargetDate;
+    target.goalAccountId = this.goalAccountId;
     return target;
   }
 
@@ -996,6 +999,7 @@ export function reconstituteExpense(data: unknown): AnyExpense | null {
         data.goalType === 'recurring' || data.goalType === 'targetDate' ? data.goalType : undefined;
     const intervalYears = data.intervalYears != null ? Number(data.intervalYears) : undefined;
     const goalTargetDate = parseDate(data.goalTargetDate);
+    const goalAccountId = data.goalAccountId ? String(data.goalAccountId) : undefined;
 
     let expense: AnyExpense | null = null;
 
@@ -1091,6 +1095,7 @@ export function reconstituteExpense(data: unknown): AnyExpense | null {
         expense.goalType = goalType;
         expense.intervalYears = intervalYears;
         expense.goalTargetDate = goalTargetDate;
+        expense.goalAccountId = goalAccountId;
     }
 
     return expense;

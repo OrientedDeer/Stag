@@ -13,9 +13,10 @@ import {
 	FoodExpense,
 	CharityExpense,
 	OtherExpense,
+	getGoalMonthlySetAside,
 } from "./models";
 import { AccountDispatchContext } from "../Accounts/AccountContext";
-import { DebtAccount, PropertyAccount } from "../../Objects/Accounts/models";
+import { DebtAccount, PropertyAccount, SavedAccount } from "../../Objects/Accounts/models";
 import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput";
 import { PercentageInput } from "../../Layout/InputFields/PercentageInput";
 import { DropdownInput } from "../../Layout/InputFields/DropdownInput";
@@ -143,7 +144,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 }) => {
 	const expenseDispatch = useContext(ExpenseDispatchContext);
 	const { dispatch: accountDispatch } = useContext(AccountDispatchContext);
-	const { state: assumptions } = useContext(AssumptionsContext);
+	const { state: assumptions, dispatch: assumptionsDispatch } = useContext(AssumptionsContext);
 	const { modalRef, handleKeyDown } = useModalAccessibility(isOpen, onClose);
 	const [step, setStep] = useState<"select" | "details">("select");
 	const [selectedType, setSelectedType] = useState<any>(null);
@@ -288,6 +289,27 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 					// of the active budget/list afterward (becomes a "past" item).
 					newExpense.endDate = form.goalTargetDate;
 				}
+				// Create a linked sinking-fund SavedAccount and a FIXED savings
+				// priority that funds it with the monthly set-aside. The account is
+				// reserved (not in any withdrawal order); the simulation debits it
+				// for the lump in the goal's due year.
+				const fundAccountId = 'ACC' + id.substring(3);
+				accountDispatch({
+					type: "ADD_ACCOUNT",
+					payload: new SavedAccount(fundAccountId, `${form.name.trim()} (fund)`, 0),
+				});
+				assumptionsDispatch({
+					type: "ADD_PRIORITY",
+					payload: {
+						id: 'PRI' + id.substring(3),
+						name: `${form.name.trim()} fund`,
+						type: 'SAVINGS',
+						accountId: fundAccountId,
+						capType: 'FIXED',
+						capValue: getGoalMonthlySetAside(newExpense), // FIXED capValue is monthly
+					},
+				});
+				newExpense.goalAccountId = fundAccountId;
 			} else if (form.frequency === 'Annually') {
 				// Annual cadence metadata is only meaningful for yearly expenses.
 				newExpense.dueMonth = form.dueMonth;

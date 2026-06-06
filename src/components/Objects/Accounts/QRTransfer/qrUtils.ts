@@ -21,7 +21,7 @@ const KEY_MAP: Record<string, string> = {
     // Income/Expense
     frequency: 'f', startDate: 's', endDate: 'E', annualGrowthRate: 'w',
     earned_income: 'I', isDiscretionary: 'D', dueMonth: 'dm', annualMode: 'am',
-    goalType: 'gy', intervalYears: 'iy', goalTargetDate: 'gv',
+    goalType: 'gy', intervalYears: 'iy', goalTargetDate: 'gv', goalAccountId: 'gI',
     // Work income
     preTax401k: 'k', roth401k: 'K', insurance: 'u', employerMatch: 'M',
     matchAccountId: 'A', contributionGrowthStrategy: 'G', hsaContribution: 'H', autoMax401k: 'X',
