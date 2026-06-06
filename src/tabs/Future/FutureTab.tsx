@@ -285,6 +285,12 @@ export default function FutureTab() {
         [assumptions, simulation]
     );
 
+    // Filter out end-of-year projection points for tabs that don't need them
+    const simulationWithoutEOY = useMemo(() =>
+        simulation.filter(y => !y.isEndOfYearProjection),
+        [simulation]
+    );
+
     if (simulation.length === 0) {
         return (
             <div className="p-4 text-white bg-gray-950 text-center">
@@ -295,12 +301,6 @@ export default function FutureTab() {
             </div>
         );
     }
-
-    // Filter out end-of-year projection points for tabs that don't need them
-    const simulationWithoutEOY = useMemo(() =>
-        simulation.filter(y => !y.isEndOfYearProjection),
-        [simulation]
-    );
 
     // Tab content with CSS visibility to avoid unmounting charts
     // This keeps Nivo charts mounted, preventing expensive re-initialization
