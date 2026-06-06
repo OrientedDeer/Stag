@@ -116,7 +116,7 @@ export default function TrendsTab() {
                 if (startDate > targetDate) return sum;
                 if (endDate && endDate < targetDate) return sum;
 
-                return sum + getExpenseMonthlyBudget(exp);
+                return sum + getExpenseMonthlyBudget(exp, month);
             }, 0);
 
             return {

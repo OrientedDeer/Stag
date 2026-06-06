@@ -397,7 +397,7 @@ export default function SpendingTab() {
     // show their budgeted amount as "actual" so the grid isn't all zeros.
     const rows: SpendingRow[] = useMemo(() => {
         return activeExpenses.map(expense => {
-            const budget = getExpenseMonthlyBudget(expense);
+            const budget = getExpenseMonthlyBudget(expense, selectedMonth);
             let actual = currentSnapshot?.spending[expense.id] ?? null;
 
             if (actual === null && isFutureMonth && projectFuture && !expense.isDiscretionary) {
@@ -413,7 +413,7 @@ export default function SpendingTab() {
                 difference,
             };
         });
-    }, [activeExpenses, currentSnapshot, isFutureMonth, projectFuture]);
+    }, [activeExpenses, currentSnapshot, isFutureMonth, projectFuture, selectedMonth]);
 
     // Define columns - use keyColumn and cast to avoid type issues with nullable fields
     const columns = useMemo(() => [

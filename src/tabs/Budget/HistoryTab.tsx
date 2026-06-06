@@ -42,7 +42,7 @@ export default function HistoryTab() {
                 if (startDate > targetDate) return sum;
                 if (endDate && endDate < targetDate) return sum;
 
-                return sum + getExpenseMonthlyBudget(exp);
+                return sum + getExpenseMonthlyBudget(exp, monthNum);
             }, 0);
 
             // Calculate total spent

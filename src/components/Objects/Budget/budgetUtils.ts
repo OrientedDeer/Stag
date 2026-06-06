@@ -28,10 +28,21 @@ export function formatMonthYear(month: number, year: number): string {
 }
 
 /**
- * Get the monthly budget amount for an expense
- * Handles conversion from different frequencies (weekly, monthly, annually)
+ * Get the budgeted amount for an expense in a specific month (1-12).
+ *
+ * Weekly/Monthly expenses spread evenly. Annually expenses depend on their
+ * `annualMode`:
+ * - 'sinkingFund' → amount/12 every month (save up for it).
+ * - 'lump' (default) → the full amount only in its `dueMonth`, $0 otherwise.
+ *   When `dueMonth` is unset (e.g. data created before this feature) we fall
+ *   back to the expense's start-date month, which is far less surprising than
+ *   dumping everything into January.
  */
-export function getExpenseMonthlyBudget(expense: AnyExpense): number {
+export function getExpenseMonthlyBudget(expense: AnyExpense, month: number): number {
+    if (expense.frequency === 'Annually' && expense.annualMode !== 'sinkingFund') {
+        const dueMonth = expense.dueMonth ?? ((expense.startDate?.getMonth() ?? 0) + 1);
+        return month === dueMonth ? expense.getAnnualAmount() : 0;
+    }
     return expense.getMonthlyAmount();
 }
 
@@ -67,7 +78,7 @@ export function calculateTotalMonthlyBudget(
     year: number
 ): number {
     const activeExpenses = getActiveExpenses(expenses, month, year);
-    return activeExpenses.reduce((total, expense) => total + getExpenseMonthlyBudget(expense), 0);
+    return activeExpenses.reduce((total, expense) => total + getExpenseMonthlyBudget(expense, month), 0);
 }
 
 /**
@@ -82,7 +93,7 @@ export function getNonDiscretionaryMonthlyBudget(
 ): number {
     return getActiveExpenses(expenses, month, year)
         .filter(exp => !exp.isDiscretionary)
-        .reduce((total, exp) => total + getExpenseMonthlyBudget(exp), 0);
+        .reduce((total, exp) => total + getExpenseMonthlyBudget(exp, month), 0);
 }
 
 /**
@@ -271,7 +282,7 @@ export function getCategorySpending(
     const activeExpenses = getActiveExpenses(expenses, month, year);
 
     return activeExpenses.map(expense => {
-        const budget = getExpenseMonthlyBudget(expense);
+        const budget = getExpenseMonthlyBudget(expense, month);
         const actual = snapshot?.spending[expense.id] || 0;
         const difference = budget - actual;
 

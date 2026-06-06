@@ -90,13 +90,33 @@ describe('budgetUtils', () => {
   });
 
   describe('getExpenseMonthlyBudget', () => {
-    it('should convert annual expense $12,000 to $1,000/month', () => {
-      const expense = new OtherExpense(
-        'e1', 'Annual Expense', 12000, 'Annually'
-      );
+    it('lump annual expense charges the full amount only in its due month', () => {
+      const expense = new OtherExpense('e1', 'Annual Expense', 12000, 'Annually');
+      expense.annualMode = 'lump';
+      expense.dueMonth = 6;
 
-      // $12,000 annual / 12 = $1,000/month
-      expect(getExpenseMonthlyBudget(expense)).toBe(1000);
+      expect(getExpenseMonthlyBudget(expense, 6)).toBe(12000);
+      expect(getExpenseMonthlyBudget(expense, 5)).toBe(0);
+      expect(getExpenseMonthlyBudget(expense, 12)).toBe(0);
+    });
+
+    it('lump annual with no due month falls back to its start-date month', () => {
+      const expense = new OtherExpense(
+        'e1b', 'Annual Expense', 12000, 'Annually', new Date(2024, 2, 1) // March
+      );
+      expense.annualMode = 'lump';
+
+      expect(getExpenseMonthlyBudget(expense, 3)).toBe(12000);
+      expect(getExpenseMonthlyBudget(expense, 1)).toBe(0);
+    });
+
+    it('sinking-fund annual expense spreads evenly across all months', () => {
+      const expense = new OtherExpense('e1c', 'Annual Expense', 12000, 'Annually');
+      expense.annualMode = 'sinkingFund';
+
+      // $12,000 annual / 12 = $1,000 every month
+      expect(getExpenseMonthlyBudget(expense, 1)).toBe(1000);
+      expect(getExpenseMonthlyBudget(expense, 7)).toBe(1000);
     });
 
     it('should convert weekly expense $100 to $433.33/month', () => {
@@ -104,8 +124,8 @@ describe('budgetUtils', () => {
         'e2', 'Weekly Expense', 100, 'Weekly'
       );
 
-      // $100/week * 52 weeks / 12 months = $433.33...
-      expect(getExpenseMonthlyBudget(expense)).toBeCloseTo(433.33, 2);
+      // $100/week * 52 weeks / 12 months = $433.33... (same every month)
+      expect(getExpenseMonthlyBudget(expense, 1)).toBeCloseTo(433.33, 2);
     });
 
     it('should keep monthly expense $500 at $500/month', () => {
@@ -113,7 +133,7 @@ describe('budgetUtils', () => {
         'e3', 'Monthly Expense', 500, 'Monthly'
       );
 
-      expect(getExpenseMonthlyBudget(expense)).toBe(500);
+      expect(getExpenseMonthlyBudget(expense, 1)).toBe(500);
     });
   });
 
@@ -250,9 +270,12 @@ describe('budgetUtils', () => {
 
       const expenses = [monthlyExpense, weeklyExpense, annualExpense];
 
-      // $600 (monthly) + $100*52/12 (weekly = 433.33) + $1200/12 (annual = 100) = $1133.33
-      const total = calculateTotalMonthlyBudget(expenses, 6, 2024);
-      expect(total).toBeCloseTo(1133.33, 2);
+      // The annual expense defaults to 'lump' and falls back to its start month
+      // (January), so it only lands in January's budget.
+      // January: $600 (monthly) + $433.33 (weekly) + $1200 (annual lump) = $2233.33
+      expect(calculateTotalMonthlyBudget(expenses, 1, 2024)).toBeCloseTo(2233.33, 2);
+      // June: $600 (monthly) + $433.33 (weekly) + $0 (annual not due) = $1033.33
+      expect(calculateTotalMonthlyBudget(expenses, 6, 2024)).toBeCloseTo(1033.33, 2);
     });
   });
 
