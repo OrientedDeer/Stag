@@ -1,7 +1,6 @@
 import { useState, useContext, useMemo } from 'react';
 import { ExpenseContext, ExpenseDispatchContext } from '../../components/Objects/Expense/ExpenseContext';
 import {
-    BaseExpense,
     AnyExpense,
     LoanExpense,
     CLASS_TO_CATEGORY,
@@ -14,14 +13,23 @@ import AddExpenseModal from '../../components/Objects/Expense/AddExpenseModal';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { ObjectsIcicleChart, tailwindToCssVar, getDistributedColors } from '../../components/Charts/ObjectsIcicleChart';
 
-const ExpenseList = ({ type }: { type: any }) => {
+// Cadence groups for the expense list. Weekly + Monthly roll up into
+// "Monthly"; "Annually" expenses form "Annual". "Longer term" (multi-year
+// goals) arrives in a later phase. Each group renders as its own draggable
+// section so reordering stays within a cadence.
+const CADENCE_GROUPS: { title: string; match: (exp: AnyExpense) => boolean }[] = [
+  { title: 'Monthly', match: (exp) => exp.frequency !== 'Annually' },
+  { title: 'Annual', match: (exp) => exp.frequency === 'Annually' },
+];
+
+const ExpenseList = ({ title, match }: { title: string; match: (exp: AnyExpense) => boolean }) => {
   const { expenses } = useContext(ExpenseContext);
   const dispatch = useContext(ExpenseDispatchContext);
-  
+
   // Track original index to update the master list correctly
   const filteredExpenses = expenses
     .map((exp, index) => ({ exp, originalIndex: index }))
-    .filter(({ exp }) => exp instanceof type);
+    .filter(({ exp }) => match(exp));
 
   const onDragEnd = (result: DropResult) => {
     if (!result.destination) return;
@@ -39,12 +47,16 @@ const ExpenseList = ({ type }: { type: any }) => {
   if (filteredExpenses.length === 0) return null;
 
   return (
+    <div className="mb-6">
+      <h3 className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-3">
+        {title} <span className="text-gray-600">· {filteredExpenses.length}</span>
+      </h3>
     <DragDropContext onDragEnd={onDragEnd}>
-      <Droppable droppableId="expenses-list">
+      <Droppable droppableId={`expenses-list-${title}`}>
         {(provided) => (
-          <div 
-            {...provided.droppableProps} 
-            ref={provided.innerRef} 
+          <div
+            {...provided.droppableProps}
+            ref={provided.innerRef}
             className="flex flex-col" // Added horizontal padding for handle gutter
           >
             {filteredExpenses.map(({ exp }, index) => (
@@ -81,6 +93,7 @@ const ExpenseList = ({ type }: { type: any }) => {
         )}
       </Droppable>
     </DragDropContext>
+    </div>
   );
 };
 
@@ -150,11 +163,13 @@ const TabsContent = () => {
                     )}
                 </div>
 
-                {/* List Section */}
+                {/* List Section — grouped by cadence */}
                 <div className="p-4">
-                    <ExpenseList type={BaseExpense} />
-                    
-                    <button 
+                    {CADENCE_GROUPS.map((group) => (
+                        <ExpenseList key={group.title} title={group.title} match={group.match} />
+                    ))}
+
+                    <button
                         onClick={() => setIsModalOpen(true)}
                         className="bg-green-600 p-4 rounded-xl text-white font-bold mt-4 hover:bg-green-700 transition-colors"
                     >
