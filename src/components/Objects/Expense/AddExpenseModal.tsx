@@ -284,6 +284,9 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 					newExpense.intervalYears = form.intervalYears;
 				} else {
 					newExpense.goalTargetDate = form.goalTargetDate;
+					// A one-time goal completes at its target date, so it drops out
+					// of the active budget/list afterward (becomes a "past" item).
+					newExpense.endDate = form.goalTargetDate;
 				}
 			} else if (form.frequency === 'Annually') {
 				// Annual cadence metadata is only meaningful for yearly expenses.

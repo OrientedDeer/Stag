@@ -102,10 +102,17 @@ export abstract class BaseExpense implements Expense {
   // --- REFACTORED MAIN METHODS ---
 
   getAnnualAmount(year?: number): number {
+    // Long-term goals are funded as a savings set-aside, not spent as a
+    // recurring expense — so `amount` (the total cost) must not be read as an
+    // annual outflow. The budget shows the set-aside via getExpenseMonthlyBudget,
+    // and the simulation handles accrue-and-lump separately; here a goal
+    // contributes 0 to ordinary expense totals.
+    if (this.goalType) return 0;
     return this.getProratedAnnual(this.amount, year);
   }
 
   getMonthlyAmount(year?: number): number {
+    if (this.goalType) return 0;
     return this.getProratedMonthly(this.amount, year);
   }
 

@@ -1,4 +1,4 @@
-import { AnyExpense } from '../Expense/models';
+import { AnyExpense, isLongTermGoal, getGoalMonthlySetAside } from '../Expense/models';
 import { SimulationYear } from '../Assumptions/SimulationEngine';
 import { AnyAccount } from '../Accounts/models';
 import { MonthlySnapshot, Transaction, IncomeCategory, getFrequencyDivisor } from './BudgetContext';
@@ -39,6 +39,11 @@ export function formatMonthYear(month: number, year: number): string {
  *   dumping everything into January.
  */
 export function getExpenseMonthlyBudget(expense: AnyExpense, month: number): number {
+    // Long-term goals budget a steady monthly set-aside (sinking fund) over their
+    // horizon, regardless of frequency.
+    if (isLongTermGoal(expense)) {
+        return getGoalMonthlySetAside(expense);
+    }
     if (expense.frequency === 'Annually' && expense.annualMode !== 'sinkingFund') {
         const dueMonth = expense.dueMonth ?? ((expense.startDate?.getMonth() ?? 0) + 1);
         return month === dueMonth ? expense.getAnnualAmount() : 0;
