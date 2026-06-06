@@ -2,7 +2,7 @@
 // Thin orchestrator - delegates to focused service modules.
 
 import { AnyAccount } from "../../Objects/Accounts/models";
-import { AnyExpense, MortgageExpense, LoanExpense } from "../Expense/models";
+import { AnyExpense, MortgageExpense, LoanExpense, isLongTermGoal, isGoalDueInYear } from "../Expense/models";
 import { AnyIncome, WorkIncome, PassiveIncome } from "../../Objects/Income/models";
 import { AssumptionsState, getBirthYear, BUILTIN_MILESTONE_IDS } from "./AssumptionsContext";
 import { TaxState } from "../../Objects/Taxes/TaxContext";
@@ -466,6 +466,21 @@ function simulateOneYearWithNewEngine(
         inflowResult.esppLots, yearPlan.deficitDebtPayment, existingDeficitDebt,
         assumptions, year, returnOverride, logs
     );
+
+    // ------------------------------------------------------------------
+    // LONG-TERM GOAL PURCHASES
+    // In a goal's due year, spend the lump from its reserved sinking-fund
+    // account. Net worth dips by what's available in the fund; recurring goals
+    // keep accruing toward the next cycle afterward.
+    // ------------------------------------------------------------------
+    for (const exp of expenses) {
+        if (!isLongTermGoal(exp) || !exp.goalAccountId || !isGoalDueInYear(exp, year)) continue;
+        const fund = nextAccounts.find(a => a.id === exp.goalAccountId);
+        if (!fund) continue;
+        const spent = Math.min(fund.amount, exp.amount);
+        fund.amount -= spent;
+        logs.push(`🎯 Goal "${exp.name}" came due: spent $${Math.round(spent).toLocaleString()} from its fund (balance now $${Math.round(fund.amount).toLocaleString()})`);
+    }
 
     // ------------------------------------------------------------------
     // BUILD ROTH CONVERSION RESULT (for output compatibility)

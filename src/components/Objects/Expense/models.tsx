@@ -896,6 +896,24 @@ export function getGoalMonthlySetAside(expense: AnyExpense): number {
 }
 
 /**
+ * Whether a goal's lump comes due in the given calendar year.
+ * - targetDate: the year of the target date.
+ * - recurring: anchor year (start date) + k*intervalYears for k >= 1, so the
+ *   first purchase is one full interval after you start saving.
+ */
+export function isGoalDueInYear(expense: AnyExpense, year: number): boolean {
+  if (expense.goalType === 'targetDate' && expense.goalTargetDate) {
+    return new Date(expense.goalTargetDate).getFullYear() === year;
+  }
+  if (expense.goalType === 'recurring' && expense.intervalYears && expense.intervalYears > 0) {
+    const anchorYear = (expense.startDate ? new Date(expense.startDate) : new Date()).getFullYear();
+    const diff = year - anchorYear;
+    return diff > 0 && diff % expense.intervalYears === 0;
+  }
+  return false;
+}
+
+/**
  * The next date a goal's lump comes due, or null if none.
  * - targetDate: the goal date itself (one-time).
  * - recurring: the first anchor+k*interval strictly after `asOf` (anchor =
