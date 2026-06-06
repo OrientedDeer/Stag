@@ -35,6 +35,7 @@ interface AddExpenseModalProps {
 	isOpen: boolean;
 	onClose: () => void;
 	defaultFrequency?: ExpenseFrequency; // pre-select frequency (e.g. from the active cadence tab)
+	goalMode?: boolean;                  // create a long-term goal (Longer-term tab)
 }
 
 type TaxDeductibleOption = "Yes" | "No" | "Itemized";
@@ -52,6 +53,13 @@ const ANNUAL_MODE_OPTIONS: { value: AnnualMode; label: string }[] = [
 	{ value: "sinkingFund", label: "Save monthly" },
 ];
 
+type GoalType = "recurring" | "targetDate";
+
+const GOAL_TYPE_OPTIONS: { value: GoalType; label: string }[] = [
+	{ value: "recurring", label: "Recurring every N years" },
+	{ value: "targetDate", label: "Save by date" },
+];
+
 interface ExpenseFormState {
 	name: string;
 	amount: number;
@@ -59,6 +67,10 @@ interface ExpenseFormState {
 	// Annual-cadence fields (only used when frequency === 'Annually')
 	dueMonth: number;
 	annualMode: AnnualMode;
+	// Long-term goal fields (only used in goalMode)
+	goalType: GoalType;
+	intervalYears: number;
+	goalTargetDate: Date | undefined;
 	// Mortgage fields
 	valuation: number;
 	loanBalance: number;
@@ -95,6 +107,9 @@ function getInitialFormState(frequency: ExpenseFrequency = 'Monthly'): ExpenseFo
 		frequency,
 		dueMonth: new Date().getMonth() + 1,
 		annualMode: 'lump',
+		goalType: 'recurring',
+		intervalYears: 10,
+		goalTargetDate: undefined,
 		valuation: 0,
 		loanBalance: 0,
 		startingLoanBalance: 0,
@@ -124,6 +139,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 	isOpen,
 	onClose,
 	defaultFrequency,
+	goalMode = false,
 }) => {
 	const expenseDispatch = useContext(ExpenseDispatchContext);
 	const { dispatch: accountDispatch } = useContext(AccountDispatchContext);
@@ -261,8 +277,16 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 		// Set discretionary flag
 		if (newExpense) {
 			newExpense.isDiscretionary = form.isDiscretionary;
-			// Annual cadence metadata is only meaningful for yearly expenses.
-			if (form.frequency === 'Annually') {
+			if (goalMode) {
+				// Long-term goal: amount is the total cost; frequency is ignored.
+				newExpense.goalType = form.goalType;
+				if (form.goalType === 'recurring') {
+					newExpense.intervalYears = form.intervalYears;
+				} else {
+					newExpense.goalTargetDate = form.goalTargetDate;
+				}
+			} else if (form.frequency === 'Annually') {
+				// Annual cadence metadata is only meaningful for yearly expenses.
 				newExpense.dueMonth = form.dueMonth;
 				newExpense.annualMode = form.annualMode;
 			}
@@ -333,19 +357,55 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 									onChange={(val) => updateForm('name', val)}
 								/>
 							</div>
-							<div className="col-span-2 lg:col-span-1">
-								<DropdownInput
-									label="Frequency"
-									id={`${id}-frequency`}
-									value={form.frequency}
-									onChange={(val) => updateForm('frequency', val as ExpenseFrequency)}
-									options={["Weekly", "Monthly", "Annually"]}
-								/>
-							</div>
+							{!goalMode && (
+								<div className="col-span-2 lg:col-span-1">
+									<DropdownInput
+										label="Frequency"
+										id={`${id}-frequency`}
+										value={form.frequency}
+										onChange={(val) => updateForm('frequency', val as ExpenseFrequency)}
+										options={["Weekly", "Monthly", "Annually"]}
+									/>
+								</div>
+							)}
 						</div>
 
+						{/* Long-term goal: type + horizon */}
+						{goalMode && (
+							<div className="grid grid-cols-2 gap-4">
+								<DropdownInput
+									label="Goal Type"
+									id={`${id}-goal-type`}
+									value={form.goalType}
+									onChange={(val) => updateForm('goalType', val as GoalType)}
+									options={GOAL_TYPE_OPTIONS}
+									tooltip="Recurring: a big-ticket item replaced every N years (e.g. roof). Save by date: a one-time goal funded by a target date."
+								/>
+								{form.goalType === 'recurring' ? (
+									<NumberInput
+										id={`${id}-interval-years`}
+										label="Every (years)"
+										value={form.intervalYears}
+										onChange={(val) => updateForm('intervalYears', val)}
+										tooltip="How often this expense recurs, in years."
+									/>
+								) : (
+									<TriggerSelector
+										id={`${id}-goal-target`}
+										label="Target Date"
+										date={form.goalTargetDate}
+										milestoneId={undefined}
+										milestones={[]}
+										onDateChange={(date) => updateForm('goalTargetDate', date)}
+										onMilestoneChange={() => {}}
+										tooltip="When you need the money by."
+									/>
+								)}
+							</div>
+						)}
+
 						{/* Annual cadence: due month + how to budget it */}
-						{form.frequency === 'Annually' && (
+						{!goalMode && form.frequency === 'Annually' && (
 							<div className="grid grid-cols-2 gap-4">
 								<DropdownInput
 									label="Due Month"

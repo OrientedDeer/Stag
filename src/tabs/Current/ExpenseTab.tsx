@@ -9,7 +9,8 @@ import {
     CATEGORY_PALETTES,
     EXPENSE_CATEGORIES,
     isExpenseActiveInCurrentMonth,
-    isExpenseDone
+    isExpenseDone,
+    isLongTermGoal
 } from '../../components/Objects/Expense/models';
 import ExpenseCard from '../../components/Objects/Expense/ExpenseCard';
 import AddExpenseModal from '../../components/Objects/Expense/AddExpenseModal';
@@ -20,9 +21,10 @@ import { ObjectsIcicleChart, tailwindToCssVar, getDistributedColors } from '../.
 // Monthly roll up into "Monthly"; "Annually" expenses form "Annual". "Longer
 // term" (multi-year goals) arrives in a later phase. `defaultFrequency` pre-sets
 // the Add Expense modal so a new expense lands on the tab you're viewing.
-const CADENCE_TABS: { label: string; defaultFrequency: ExpenseFrequency; match: (exp: AnyExpense) => boolean }[] = [
-  { label: 'Monthly', defaultFrequency: 'Monthly', match: (exp) => exp.frequency !== 'Annually' },
-  { label: 'Annual', defaultFrequency: 'Annually', match: (exp) => exp.frequency === 'Annually' },
+const CADENCE_TABS: { label: string; defaultFrequency: ExpenseFrequency; goal?: boolean; match: (exp: AnyExpense) => boolean }[] = [
+  { label: 'Monthly', defaultFrequency: 'Monthly', match: (exp) => !isLongTermGoal(exp) && exp.frequency !== 'Annually' },
+  { label: 'Annual', defaultFrequency: 'Annually', match: (exp) => !isLongTermGoal(exp) && exp.frequency === 'Annually' },
+  { label: 'Longer term', defaultFrequency: 'Monthly', goal: true, match: (exp) => isLongTermGoal(exp) },
 ];
 
 interface ExpenseListProps {
@@ -236,16 +238,17 @@ const TabsContent = () => {
                             onClick={() => setIsModalOpen(true)}
                             className="bg-green-600 p-4 rounded-xl text-white font-bold mt-4 hover:bg-green-700 transition-colors"
                         >
-                            + Add Expense
+                            {activeTabDef.goal ? '+ Add Goal' : '+ Add Expense'}
                         </button>
 
                         {/* key forces a remount when the tab changes so the modal
-                            re-initializes its form with the new defaultFrequency */}
+                            re-initializes its form with the new default frequency/mode */}
                         <AddExpenseModal
                             key={activeTab}
                             isOpen={isModalOpen}
                             onClose={() => setIsModalOpen(false)}
                             defaultFrequency={activeTabDef.defaultFrequency}
+                            goalMode={activeTabDef.goal}
                         />
                     </div>
                 </div>
