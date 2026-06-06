@@ -239,7 +239,10 @@ const TabsContent = () => {
                             + Add Expense
                         </button>
 
+                        {/* key forces a remount when the tab changes so the modal
+                            re-initializes its form with the new defaultFrequency */}
                         <AddExpenseModal
+                            key={activeTab}
                             isOpen={isModalOpen}
                             onClose={() => setIsModalOpen(false)}
                             defaultFrequency={activeTabDef.defaultFrequency}
