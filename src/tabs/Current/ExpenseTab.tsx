@@ -1,7 +1,9 @@
-import { useState, useContext, useMemo } from 'react';
+import { useState, useContext, useMemo, useEffect } from 'react';
+import { useSubTabKeyboardNav } from '../../hooks/useKeyboardShortcuts';
 import { ExpenseContext, ExpenseDispatchContext } from '../../components/Objects/Expense/ExpenseContext';
 import {
     AnyExpense,
+    ExpenseFrequency,
     LoanExpense,
     CLASS_TO_CATEGORY,
     CATEGORY_PALETTES,
@@ -14,13 +16,13 @@ import AddExpenseModal from '../../components/Objects/Expense/AddExpenseModal';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { ObjectsIcicleChart, tailwindToCssVar, getDistributedColors } from '../../components/Charts/ObjectsIcicleChart';
 
-// Cadence groups for the expense list. Weekly + Monthly roll up into
-// "Monthly"; "Annually" expenses form "Annual". "Longer term" (multi-year
-// goals) arrives in a later phase. Each group renders as its own draggable
-// section so reordering stays within a cadence.
-const CADENCE_GROUPS: { title: string; match: (exp: AnyExpense) => boolean }[] = [
-  { title: 'Monthly', match: (exp) => exp.frequency !== 'Annually' },
-  { title: 'Annual', match: (exp) => exp.frequency === 'Annually' },
+// Cadence sub-tabs for the expense list, mirroring the Accounts page. Weekly +
+// Monthly roll up into "Monthly"; "Annually" expenses form "Annual". "Longer
+// term" (multi-year goals) arrives in a later phase. `defaultFrequency` pre-sets
+// the Add Expense modal so a new expense lands on the tab you're viewing.
+const CADENCE_TABS: { label: string; defaultFrequency: ExpenseFrequency; match: (exp: AnyExpense) => boolean }[] = [
+  { label: 'Monthly', defaultFrequency: 'Monthly', match: (exp) => exp.frequency !== 'Annually' },
+  { label: 'Annual', defaultFrequency: 'Annually', match: (exp) => exp.frequency === 'Annually' },
 ];
 
 interface ExpenseListProps {
@@ -55,6 +57,8 @@ const ExpenseList = ({ title, match, collapsible = false, dimmed = false }: Expe
 
   if (filteredExpenses.length === 0) return null;
 
+  // Inside a cadence tab the title is redundant with the tab label, so an empty
+  // title renders no header. The collapsible "past" section always shows its toggle.
   const header = collapsible ? (
     <button
       type="button"
@@ -64,11 +68,11 @@ const ExpenseList = ({ title, match, collapsible = false, dimmed = false }: Expe
       <span className={`transition-transform ${open ? 'rotate-90' : ''}`}>▸</span>
       {open ? 'Hide' : 'Show'} {title} <span className="text-gray-600">· {filteredExpenses.length}</span>
     </button>
-  ) : (
+  ) : title ? (
     <h3 className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-3">
       {title} <span className="text-gray-600">· {filteredExpenses.length}</span>
     </h3>
-  );
+  ) : null;
 
   return (
     <div className="mb-6">
@@ -126,6 +130,18 @@ const ExpenseList = ({ title, match, collapsible = false, dimmed = false }: Expe
 const TabsContent = () => {
     const { expenses } = useContext(ExpenseContext);
     const [isModalOpen, setIsModalOpen] = useState(false);
+
+    const tabs = CADENCE_TABS.map((t) => t.label);
+    const [activeTab, setActiveTab] = useState<string>(() => {
+        const saved = localStorage.getItem('expense_active_tab');
+        return saved && tabs.includes(saved) ? saved : tabs[0];
+    });
+    useEffect(() => {
+        localStorage.setItem('expense_active_tab', activeTab);
+    }, [activeTab]);
+    useSubTabKeyboardNav(tabs, activeTab, setActiveTab);
+
+    const activeTabDef = CADENCE_TABS.find((t) => t.label === activeTab) ?? CADENCE_TABS[0];
 
     // Data wrangling for icicle chart
     const hierarchicalData = useMemo(() => {
@@ -189,33 +205,55 @@ const TabsContent = () => {
                     )}
                 </div>
 
-                {/* List Section — active expenses grouped by cadence, done ones tucked away */}
-                <div className="p-4">
-                    {CADENCE_GROUPS.map((group) => (
-                        <ExpenseList
-                            key={group.title}
-                            title={group.title}
-                            match={(exp) => group.match(exp) && !isExpenseDone(exp)}
-                        />
+                {/* Cadence sub-tabs (mirrors the Accounts page) */}
+                <div className="bg-gray-900 rounded-lg mb-1 flex border border-gray-800 overflow-x-auto custom-scrollbar">
+                    {tabs.map((tab) => (
+                        <button
+                            key={tab}
+                            role="tab"
+                            aria-selected={activeTab === tab}
+                            className={`flex-1 min-w-fit font-semibold px-4 py-3 transition-colors duration-200 whitespace-nowrap ${
+                                activeTab === tab
+                                    ? "text-green-300 bg-gray-900 border-b-2 border-green-300"
+                                    : "text-gray-400 hover:bg-gray-900 hover:text-white"
+                            }`}
+                            onClick={() => setActiveTab(tab)}
+                        >
+                            {tab}
+                        </button>
                     ))}
+                </div>
 
+                {/* Active tab: that cadence's expenses (done ones excluded) */}
+                <div data-sub-tab-content className="bg-[#09090b] border border-gray-800 rounded-xl min-h-100 mb-4">
+                    <div className="p-4">
+                        <ExpenseList
+                            title=""
+                            match={(exp) => activeTabDef.match(exp) && !isExpenseDone(exp)}
+                        />
+
+                        <button
+                            onClick={() => setIsModalOpen(true)}
+                            className="bg-green-600 p-4 rounded-xl text-white font-bold mt-4 hover:bg-green-700 transition-colors"
+                        >
+                            + Add Expense
+                        </button>
+
+                        <AddExpenseModal
+                            isOpen={isModalOpen}
+                            onClose={() => setIsModalOpen(false)}
+                            defaultFrequency={activeTabDef.defaultFrequency}
+                        />
+                    </div>
+                </div>
+
+                {/* Past (done) expenses — shared across cadences, collapsed by default */}
+                <div className="px-4">
                     <ExpenseList
                         title="past expenses"
                         match={isExpenseDone}
                         collapsible
                         dimmed
-                    />
-
-                    <button
-                        onClick={() => setIsModalOpen(true)}
-                        className="bg-green-600 p-4 rounded-xl text-white font-bold mt-4 hover:bg-green-700 transition-colors"
-                    >
-                        + Add Expense
-                    </button>
-
-                    <AddExpenseModal 
-                        isOpen={isModalOpen} 
-                        onClose={() => setIsModalOpen(false)} 
                     />
                 </div>
             </div>

@@ -29,12 +29,14 @@ import { AssumptionsContext, BUILTIN_MILESTONE_IDS } from "../Assumptions/Assump
 const generateUniqueId = () =>
 	`EXS-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
+type ExpenseFrequency = "Weekly" | "Monthly" | "Annually";
+
 interface AddExpenseModalProps {
 	isOpen: boolean;
 	onClose: () => void;
+	defaultFrequency?: ExpenseFrequency; // pre-select frequency (e.g. from the active cadence tab)
 }
 
-type ExpenseFrequency = "Weekly" | "Monthly" | "Annually";
 type TaxDeductibleOption = "Yes" | "No" | "Itemized";
 type InterestType = "Compounding" | "Simple";
 
@@ -86,11 +88,11 @@ interface ExpenseFormState {
 	isDiscretionary: boolean;
 }
 
-function getInitialFormState(): ExpenseFormState {
+function getInitialFormState(frequency: ExpenseFrequency = 'Monthly'): ExpenseFormState {
 	return {
 		name: '',
 		amount: 0,
-		frequency: 'Monthly',
+		frequency,
 		dueMonth: new Date().getMonth() + 1,
 		annualMode: 'lump',
 		valuation: 0,
@@ -121,6 +123,7 @@ function getInitialFormState(): ExpenseFormState {
 const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 	isOpen,
 	onClose,
+	defaultFrequency,
 }) => {
 	const expenseDispatch = useContext(ExpenseDispatchContext);
 	const { dispatch: accountDispatch } = useContext(AccountDispatchContext);
@@ -128,7 +131,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 	const { modalRef, handleKeyDown } = useModalAccessibility(isOpen, onClose);
 	const [step, setStep] = useState<"select" | "details">("select");
 	const [selectedType, setSelectedType] = useState<any>(null);
-	const [form, setForm] = useState<ExpenseFormState>(getInitialFormState);
+	const [form, setForm] = useState<ExpenseFormState>(() => getInitialFormState(defaultFrequency));
 	const [dateError, setDateError] = useState<string | undefined>();
 
 	function updateForm<K extends keyof ExpenseFormState>(field: K, value: ExpenseFormState[K]): void {
@@ -149,7 +152,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 	const handleClose = () => {
 		setStep("select");
 		setSelectedType(null);
-		setForm(getInitialFormState());
+		setForm(getInitialFormState(defaultFrequency));
 		setDateError(undefined);
 		onClose();
 	};
