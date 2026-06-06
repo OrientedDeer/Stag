@@ -20,7 +20,7 @@ const KEY_MAP: Record<string, string> = {
     purchasePrice: 'pp', shares: 'sh', totalCost: 'tc', discountAmount: 'da',
     // Income/Expense
     frequency: 'f', startDate: 's', endDate: 'E', annualGrowthRate: 'w',
-    earned_income: 'I', isDiscretionary: 'D',
+    earned_income: 'I', isDiscretionary: 'D', dueMonth: 'dm', annualMode: 'am',
     // Work income
     preTax401k: 'k', roth401k: 'K', insurance: 'u', employerMatch: 'M',
     matchAccountId: 'A', contributionGrowthStrategy: 'G', hsaContribution: 'H', autoMax401k: 'X',
@@ -92,6 +92,7 @@ const DEFAULTS: Record<string, Record<string, unknown>> = {
         annualGrowthRate: 0.03,
         is_tax_deductible: false,
         tax_deductible: false,
+        annualMode: 'lump',
     },
 };
 

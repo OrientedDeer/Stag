@@ -1746,6 +1746,7 @@ describe('qrUtils', () => {
             annualGrowthRate: 0.03,
             is_tax_deductible: false,
             tax_deductible: false,
+            annualMode: 'lump',
           },
         ],
         taxSettings: {
@@ -1857,6 +1858,7 @@ describe('qrUtils', () => {
             annualGrowthRate: 0.03,
             is_tax_deductible: true, // non-default
             tax_deductible: false,
+            annualMode: 'lump',
           },
         ],
         taxSettings: {

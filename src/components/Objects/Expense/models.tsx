@@ -3,6 +3,15 @@ import { parseDate, parseDateRequired, hasClassName } from "../modelUtils";
 
 export type ExpenseFrequency = 'Weekly' | 'Monthly' | 'Annually';
 
+/**
+ * How an `Annually` expense is spread across the budget's monthly view:
+ * - 'lump'        – the full amount is budgeted only in its `dueMonth`.
+ * - 'sinkingFund' – amount/12 is budgeted every month (save up for it).
+ * Only meaningful when `frequency === 'Annually'`. Ignored by the simulation
+ * engine, which is year-granular.
+ */
+export type AnnualBudgetMode = 'lump' | 'sinkingFund';
+
 export interface Expense {
   id: string;
   name: string;
@@ -11,6 +20,8 @@ export interface Expense {
   startDate?: Date;
   endDate?: Date;
   isDiscretionary?: boolean; // If true, can be cut during Guyton-Klinger guardrail triggers
+  dueMonth?: number;          // 1-12; month an `Annually` expense is actually due
+  annualMode?: AnnualBudgetMode; // how an `Annually` expense spreads across the budget
 }
 
 // 2. Base Abstract Class
@@ -26,6 +37,26 @@ export abstract class BaseExpense implements Expense {
     public startMilestoneId?: string,  // Start expense when this milestone is reached
     public endMilestoneId?: string,    // End expense when this milestone is reached
   ) { }
+
+  // Cross-cutting cadence metadata for `Annually` expenses. Declared as plain
+  // fields (not constructor params) so they don't have to thread through every
+  // subclass constructor; set after construction and copied on clone via
+  // `copyMetaTo`, exactly like `isDiscretionary`.
+  public dueMonth?: number;
+  public annualMode: AnnualBudgetMode = 'lump';
+
+  /**
+   * Copy cross-cutting metadata not passed through constructors onto a freshly
+   * cloned expense (used by increment/adjustAmount). Returns the target for
+   * convenient `return this.copyMetaTo(clone)`.
+   */
+  protected copyMetaTo<T extends BaseExpense>(target: T): T {
+    target.isDiscretionary = this.isDiscretionary;
+    target.dueMonth = this.dueMonth;
+    target.annualMode = this.annualMode;
+    return target;
+  }
+
   getProratedAnnual(value: number, year?: number): number {
     let annual = 0;
     switch (this.frequency) {
@@ -119,8 +150,7 @@ abstract class SimpleExpense extends BaseExpense {
       this.startMilestoneId,
       this.endMilestoneId,
     );
-    result.isDiscretionary = this.isDiscretionary;
-    return result;
+    return this.copyMetaTo(result);
   }
 
   increment(assumptions: AssumptionsState): AnyExpense {
@@ -161,8 +191,7 @@ export class RentExpense extends BaseExpense {
       this.id, this.name, newPayment, newUtilities, this.frequency, this.startDate, this.endDate,
       this.startMilestoneId, this.endMilestoneId
     );
-    result.isDiscretionary = this.isDiscretionary;
-    return result;
+    return this.copyMetaTo(result);
   }
 
   adjustAmount(ratio: number): RentExpense {
@@ -170,8 +199,7 @@ export class RentExpense extends BaseExpense {
       this.id, this.name, this.payment * ratio, this.utilities * ratio, this.frequency, this.startDate, this.endDate,
       this.startMilestoneId, this.endMilestoneId
     );
-    result.isDiscretionary = this.isDiscretionary;
-    return result;
+    return this.copyMetaTo(result);
   }
 }
 
@@ -275,7 +303,7 @@ export class MortgageExpense extends BaseExpense {
     );
 
     nextYearMortgage.tax_deductible = totalInterestPaid;
-    nextYearMortgage.isDiscretionary = this.isDiscretionary;
+    this.copyMetaTo(nextYearMortgage);
 
     return nextYearMortgage;
   }
@@ -508,8 +536,7 @@ export class LoanExpense extends BaseExpense {
       this.startMilestoneId,
       this.endMilestoneId
     );
-    result.isDiscretionary = this.isDiscretionary;
-    return result;
+    return this.copyMetaTo(result);
   }
 
   calculateAnnualAmortization(year: number): { totalInterest: number, totalPrincipal: number, totalPayment: number } {
@@ -639,8 +666,7 @@ export class DependentExpense extends BaseExpense {
       this.is_tax_deductible, this.tax_deductible, this.startDate, this.endDate,
       this.startMilestoneId, this.endMilestoneId
     );
-    result.isDiscretionary = this.isDiscretionary;
-    return result;
+    return this.copyMetaTo(result);
   }
 
   adjustAmount(ratio: number): DependentExpense {
@@ -649,8 +675,7 @@ export class DependentExpense extends BaseExpense {
       this.is_tax_deductible, this.tax_deductible, this.startDate, this.endDate,
       this.startMilestoneId, this.endMilestoneId
     );
-    result.isDiscretionary = this.isDiscretionary;
-    return result;
+    return this.copyMetaTo(result);
   }
 }
 
@@ -677,8 +702,7 @@ export class HealthcareExpense extends BaseExpense {
       this.is_tax_deductible, this.tax_deductible, this.startDate, this.endDate,
       this.startMilestoneId, this.endMilestoneId
     );
-    result.isDiscretionary = this.isDiscretionary;
-    return result;
+    return this.copyMetaTo(result);
   }
 
   adjustAmount(ratio: number): HealthcareExpense {
@@ -687,8 +711,7 @@ export class HealthcareExpense extends BaseExpense {
       this.is_tax_deductible, this.tax_deductible, this.startDate, this.endDate,
       this.startMilestoneId, this.endMilestoneId
     );
-    result.isDiscretionary = this.isDiscretionary;
-    return result;
+    return this.copyMetaTo(result);
   }
 }
 
@@ -726,8 +749,7 @@ export class CharityExpense extends BaseExpense {
       this.is_tax_deductible, this.tax_deductible, this.startDate, this.endDate,
       this.startMilestoneId, this.endMilestoneId
     );
-    result.isDiscretionary = this.isDiscretionary;
-    return result;
+    return this.copyMetaTo(result);
   }
 
   adjustAmount(ratio: number): CharityExpense {
@@ -736,8 +758,7 @@ export class CharityExpense extends BaseExpense {
       this.is_tax_deductible, this.tax_deductible, this.startDate, this.endDate,
       this.startMilestoneId, this.endMilestoneId
     );
-    result.isDiscretionary = this.isDiscretionary;
-    return result;
+    return this.copyMetaTo(result);
   }
 }
 
@@ -871,6 +892,8 @@ export function reconstituteExpense(data: unknown): AnyExpense | null {
     const isDiscretionary = (data.isDiscretionary as boolean) ?? false;
     const startMilestoneId = data.startMilestoneId ? String(data.startMilestoneId) : undefined;
     const endMilestoneId = data.endMilestoneId ? String(data.endMilestoneId) : undefined;
+    const dueMonth = data.dueMonth != null ? Number(data.dueMonth) : undefined;
+    const annualMode: AnnualBudgetMode = data.annualMode === 'sinkingFund' ? 'sinkingFund' : 'lump';
 
     let expense: AnyExpense | null = null;
 
@@ -961,6 +984,8 @@ export function reconstituteExpense(data: unknown): AnyExpense | null {
 
     if (expense) {
         expense.isDiscretionary = isDiscretionary;
+        expense.dueMonth = dueMonth;
+        expense.annualMode = annualMode;
     }
 
     return expense;
