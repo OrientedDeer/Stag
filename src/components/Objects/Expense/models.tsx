@@ -815,6 +815,21 @@ export function isExpenseActiveInCurrentMonth(expense: AnyExpense): boolean {
   return true;
 };
 
+/**
+ * An expense is "done" when it no longer applies going forward:
+ * - its end date is in the past, or
+ * - it's a loan whose balance has been paid off.
+ * Done expenses are hidden from the active list by default (but kept for the
+ * record). Mortgages are intentionally excluded — even with the loan paid off
+ * they carry ongoing escrow costs (taxes, insurance, HOA).
+ */
+export function isExpenseDone(expense: AnyExpense): boolean {
+  const now = new Date();
+  if (expense.endDate && new Date(expense.endDate) < now) return true;
+  if (expense instanceof LoanExpense && expense.amount <= 0) return true;
+  return false;
+}
+
 export const EXPENSE_CATEGORIES = [
   'Rent',
   'Mortgage',

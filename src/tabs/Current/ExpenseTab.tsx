@@ -6,7 +6,8 @@ import {
     CLASS_TO_CATEGORY,
     CATEGORY_PALETTES,
     EXPENSE_CATEGORIES,
-    isExpenseActiveInCurrentMonth
+    isExpenseActiveInCurrentMonth,
+    isExpenseDone
 } from '../../components/Objects/Expense/models';
 import ExpenseCard from '../../components/Objects/Expense/ExpenseCard';
 import AddExpenseModal from '../../components/Objects/Expense/AddExpenseModal';
@@ -22,9 +23,17 @@ const CADENCE_GROUPS: { title: string; match: (exp: AnyExpense) => boolean }[] =
   { title: 'Annual', match: (exp) => exp.frequency === 'Annually' },
 ];
 
-const ExpenseList = ({ title, match }: { title: string; match: (exp: AnyExpense) => boolean }) => {
+interface ExpenseListProps {
+  title: string;
+  match: (exp: AnyExpense) => boolean;
+  collapsible?: boolean; // render header as a toggle, body collapsed by default
+  dimmed?: boolean;      // visually de-emphasize cards (used for past/done expenses)
+}
+
+const ExpenseList = ({ title, match, collapsible = false, dimmed = false }: ExpenseListProps) => {
   const { expenses } = useContext(ExpenseContext);
   const dispatch = useContext(ExpenseDispatchContext);
+  const [open, setOpen] = useState(!collapsible);
 
   // Track original index to update the master list correctly
   const filteredExpenses = expenses
@@ -46,53 +55,70 @@ const ExpenseList = ({ title, match }: { title: string; match: (exp: AnyExpense)
 
   if (filteredExpenses.length === 0) return null;
 
+  const header = collapsible ? (
+    <button
+      type="button"
+      onClick={() => setOpen((v) => !v)}
+      className="flex items-center gap-2 text-gray-400 hover:text-white text-xs font-bold uppercase tracking-widest mb-3 transition-colors"
+    >
+      <span className={`transition-transform ${open ? 'rotate-90' : ''}`}>▸</span>
+      {open ? 'Hide' : 'Show'} {title} <span className="text-gray-600">· {filteredExpenses.length}</span>
+    </button>
+  ) : (
+    <h3 className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-3">
+      {title} <span className="text-gray-600">· {filteredExpenses.length}</span>
+    </h3>
+  );
+
   return (
     <div className="mb-6">
-      <h3 className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-3">
-        {title} <span className="text-gray-600">· {filteredExpenses.length}</span>
-      </h3>
-    <DragDropContext onDragEnd={onDragEnd}>
-      <Droppable droppableId={`expenses-list-${title}`}>
-        {(provided) => (
-          <div
-            {...provided.droppableProps}
-            ref={provided.innerRef}
-            className="flex flex-col" // Added horizontal padding for handle gutter
-          >
-            {filteredExpenses.map(({ exp }, index) => (
-              <Draggable key={exp.id} draggableId={exp.id} index={index}>
-                {(provided, snapshot) => (
-                  <div
-                    ref={provided.innerRef}
-                    {...provided.draggableProps}
-                    className={`relative group pb-6 ${snapshot.isDragging ? 'z-50' : ''}`}
-                  >
-                    {/* Drag Handle inside the gutter */}
-                    <div
-                      {...provided.dragHandleProps}
-                      className="absolute -left-3 top-2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-2 text-green-200"
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <line x1="8" y1="6" x2="21" y2="6"></line>
-                        <line x1="8" y1="12" x2="21" y2="12"></line>
-                        <line x1="8" y1="18" x2="21" y2="18"></line>
-                        <line x1="3" y1="6" x2="3.01" y2="6"></line>
-                        <line x1="3" y1="12" x2="3.01" y2="12"></line>
-                        <line x1="3" y1="18" x2="3.01" y2="18"></line>
-                      </svg>
-                    </div>
-                    <div className="ml-4">
-                      <ExpenseCard expense={exp} />
-                    </div>
-                  </div>
-                )}
-              </Draggable>
-            ))}
-            {provided.placeholder}
-          </div>
-        )}
-      </Droppable>
-    </DragDropContext>
+      {header}
+      {open && (
+        <div className={dimmed ? 'opacity-60' : ''}>
+          <DragDropContext onDragEnd={onDragEnd}>
+            <Droppable droppableId={`expenses-list-${title}`}>
+              {(provided) => (
+                <div
+                  {...provided.droppableProps}
+                  ref={provided.innerRef}
+                  className="flex flex-col" // Added horizontal padding for handle gutter
+                >
+                  {filteredExpenses.map(({ exp }, index) => (
+                    <Draggable key={exp.id} draggableId={exp.id} index={index}>
+                      {(provided, snapshot) => (
+                        <div
+                          ref={provided.innerRef}
+                          {...provided.draggableProps}
+                          className={`relative group pb-6 ${snapshot.isDragging ? 'z-50' : ''}`}
+                        >
+                          {/* Drag Handle inside the gutter */}
+                          <div
+                            {...provided.dragHandleProps}
+                            className="absolute -left-3 top-2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-2 text-green-200"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <line x1="8" y1="6" x2="21" y2="6"></line>
+                              <line x1="8" y1="12" x2="21" y2="12"></line>
+                              <line x1="8" y1="18" x2="21" y2="18"></line>
+                              <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                              <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                              <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                            </svg>
+                          </div>
+                          <div className="ml-4">
+                            <ExpenseCard expense={exp} />
+                          </div>
+                        </div>
+                      )}
+                    </Draggable>
+                  ))}
+                  {provided.placeholder}
+                </div>
+              )}
+            </Droppable>
+          </DragDropContext>
+        </div>
+      )}
     </div>
   );
 };
@@ -163,11 +189,22 @@ const TabsContent = () => {
                     )}
                 </div>
 
-                {/* List Section — grouped by cadence */}
+                {/* List Section — active expenses grouped by cadence, done ones tucked away */}
                 <div className="p-4">
                     {CADENCE_GROUPS.map((group) => (
-                        <ExpenseList key={group.title} title={group.title} match={group.match} />
+                        <ExpenseList
+                            key={group.title}
+                            title={group.title}
+                            match={(exp) => group.match(exp) && !isExpenseDone(exp)}
+                        />
                     ))}
+
+                    <ExpenseList
+                        title="past expenses"
+                        match={isExpenseDone}
+                        collapsible
+                        dimmed
+                    />
 
                     <button
                         onClick={() => setIsModalOpen(true)}
