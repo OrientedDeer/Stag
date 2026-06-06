@@ -54,7 +54,19 @@ export const NetWorthCard = () => {
 
         const sortedDates = Array.from(allDates).sort();
 
-        const dataPoints = sortedDates.map(date => {
+        // Collapse to one point per calendar month: the latest entry in each month.
+        // Daily updates make the recent stretch a blob of overlapping dots, so we
+        // keep only each month's most recent value (for the current month, that's
+        // the most recent overall). Months with no entries simply have no point.
+        const lastDateByMonth = new Map<string, string>();
+        sortedDates.forEach(date => {
+            // date is "YYYY-MM-DD"; key on the "YYYY-MM" prefix. Ascending order
+            // means the last write per month wins.
+            lastDateByMonth.set(date.slice(0, 7), date);
+        });
+        const monthlyDates = Array.from(lastDateByMonth.values());
+
+        const dataPoints = monthlyDates.map(date => {
             let historicalNetWorth = 0;
 
             accounts.forEach(acc => {
