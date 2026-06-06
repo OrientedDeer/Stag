@@ -31,6 +31,17 @@ import { AlertBanner } from "../../Layout/AlertBanner.js";
 import { ExpandableCard } from "../../Layout/ExpandableCard.js";
 import { getFrequencyAbbrev } from "../../../utils/formatters.js";
 
+// Annual-cadence option labels (shared shape with AddExpenseModal). Month is
+// stored 1-12; the select uses names. Mode is stored 'lump'|'sinkingFund'.
+const MONTH_NAMES = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+];
+const ANNUAL_MODE_LABELS: Record<'lump' | 'sinkingFund', string> = {
+    lump: "Pay in due month",
+    sinkingFund: "Save monthly",
+};
+
 function getExpenseDescriptor(expense: AnyExpense): string {
     if (expense instanceof RentExpense) return "RENT";
     if (expense instanceof MortgageExpense) return "MORTGAGE";
@@ -230,8 +241,29 @@ function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
                     label="Frequency"
                     value={expense.frequency}
                     onChange={(e) => handleFieldUpdate("frequency", e.target.value)}
-                    options={["Daily", "Weekly", "Monthly", "Annually"]}
+                    options={["Weekly", "Monthly", "Annually"]}
                 />
+
+                {expense.frequency === "Annually" && (
+                    <>
+                        <StyledSelect
+                            id={`${expense.id}-due-month`}
+                            label="Due Month"
+                            value={MONTH_NAMES[(expense.dueMonth ?? 1) - 1]}
+                            onChange={(e) => handleFieldUpdate("dueMonth", MONTH_NAMES.indexOf(e.target.value) + 1)}
+                            tooltip="The month this yearly expense is actually paid."
+                            options={MONTH_NAMES}
+                        />
+                        <StyledSelect
+                            id={`${expense.id}-annual-mode`}
+                            label="How to Budget"
+                            value={ANNUAL_MODE_LABELS[expense.annualMode ?? "lump"]}
+                            onChange={(e) => handleFieldUpdate("annualMode", e.target.value === ANNUAL_MODE_LABELS.sinkingFund ? "sinkingFund" : "lump")}
+                            tooltip="Pay in due month: the full amount is budgeted in its due month. Save monthly: set aside 1/12 each month toward it."
+                            options={[ANNUAL_MODE_LABELS.lump, ANNUAL_MODE_LABELS.sinkingFund]}
+                        />
+                    </>
+                )}
 
                 <TriggerSelector
                     id={`${expense.id}-start`}

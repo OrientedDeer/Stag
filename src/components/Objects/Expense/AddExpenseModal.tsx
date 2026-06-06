@@ -38,10 +38,25 @@ type ExpenseFrequency = "Weekly" | "Monthly" | "Annually";
 type TaxDeductibleOption = "Yes" | "No" | "Itemized";
 type InterestType = "Compounding" | "Simple";
 
+type AnnualMode = "lump" | "sinkingFund";
+
+const MONTH_OPTIONS = [
+	"January", "February", "March", "April", "May", "June",
+	"July", "August", "September", "October", "November", "December",
+].map((label, i) => ({ value: String(i + 1), label }));
+
+const ANNUAL_MODE_OPTIONS: { value: AnnualMode; label: string }[] = [
+	{ value: "lump", label: "Pay in due month" },
+	{ value: "sinkingFund", label: "Save monthly" },
+];
+
 interface ExpenseFormState {
 	name: string;
 	amount: number;
 	frequency: ExpenseFrequency;
+	// Annual-cadence fields (only used when frequency === 'Annually')
+	dueMonth: number;
+	annualMode: AnnualMode;
 	// Mortgage fields
 	valuation: number;
 	loanBalance: number;
@@ -76,6 +91,8 @@ function getInitialFormState(): ExpenseFormState {
 		name: '',
 		amount: 0,
 		frequency: 'Monthly',
+		dueMonth: new Date().getMonth() + 1,
+		annualMode: 'lump',
 		valuation: 0,
 		loanBalance: 0,
 		startingLoanBalance: 0,
@@ -241,6 +258,11 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 		// Set discretionary flag
 		if (newExpense) {
 			newExpense.isDiscretionary = form.isDiscretionary;
+			// Annual cadence metadata is only meaningful for yearly expenses.
+			if (form.frequency === 'Annually') {
+				newExpense.dueMonth = form.dueMonth;
+				newExpense.annualMode = form.annualMode;
+			}
 		}
 
 		expenseDispatch({ type: "ADD_EXPENSE", payload: newExpense });
@@ -314,10 +336,32 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 									id={`${id}-frequency`}
 									value={form.frequency}
 									onChange={(val) => updateForm('frequency', val as ExpenseFrequency)}
-									options={["Daily", "Weekly", "Monthly", "Annually"]}
+									options={["Weekly", "Monthly", "Annually"]}
 								/>
 							</div>
 						</div>
+
+						{/* Annual cadence: due month + how to budget it */}
+						{form.frequency === 'Annually' && (
+							<div className="grid grid-cols-2 gap-4">
+								<DropdownInput
+									label="Due Month"
+									id={`${id}-due-month`}
+									value={String(form.dueMonth)}
+									onChange={(val) => updateForm('dueMonth', Number(val))}
+									options={MONTH_OPTIONS}
+									tooltip="The month this yearly expense is actually paid."
+								/>
+								<DropdownInput
+									label="How to Budget"
+									id={`${id}-annual-mode`}
+									value={form.annualMode}
+									onChange={(val) => updateForm('annualMode', val as AnnualMode)}
+									options={ANNUAL_MODE_OPTIONS}
+									tooltip="Pay in due month: the full amount is budgeted in its due month. Save monthly: set aside 1/12 each month toward it."
+								/>
+							</div>
+						)}
 
 						{/* Start and End Triggers */}
 						<div className="grid grid-cols-2 gap-4">
