@@ -25,7 +25,20 @@ import { NameInput } from "../../Layout/InputFields/NameInput";
 import { ToggleInput } from "../../Layout/InputFields/ToggleInput";
 import { TriggerSelector } from "../../Layout/InputFields/TriggerSelector";
 import { useModalAccessibility } from "../../../hooks/useModalAccessibility";
-import { AssumptionsContext, BUILTIN_MILESTONE_IDS } from "../Assumptions/AssumptionsContext";
+import { AssumptionsContext, BUILTIN_MILESTONE_IDS, getBirthYear } from "../Assumptions/AssumptionsContext";
+import { CustomMilestone } from "../../../services/simulation/types";
+
+// Resolve a milestone to a concrete calendar date so a goal's target can be
+// expressed as "by retirement" etc. but stored as a real date.
+function resolveMilestoneToDate(milestoneId: string | undefined, milestones: CustomMilestone[]): Date | undefined {
+	const m = milestoneId ? milestones.find(x => x.id === milestoneId) : undefined;
+	if (!m) return undefined;
+	const yearCond = m.conditions.find(c => c.type === 'YEAR');
+	if (yearCond) return new Date(yearCond.value, 0, 1);
+	const ageCond = m.conditions.find(c => c.type === 'AGE');
+	if (ageCond) return new Date(getBirthYear(milestones) + ageCond.value, 0, 1);
+	return undefined;
+}
 
 const generateUniqueId = () =>
 	`EXS-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -72,6 +85,7 @@ interface ExpenseFormState {
 	goalType: GoalType;
 	intervalYears: number;
 	goalTargetDate: Date | undefined;
+	goalTargetMilestoneId: string | undefined; // transient: lets the target be picked as a milestone
 	// Mortgage fields
 	valuation: number;
 	loanBalance: number;
@@ -111,6 +125,7 @@ function getInitialFormState(frequency: ExpenseFrequency = 'Monthly'): ExpenseFo
 		goalType: 'recurring',
 		intervalYears: 10,
 		goalTargetDate: undefined,
+		goalTargetMilestoneId: undefined,
 		valuation: 0,
 		loanBalance: 0,
 		startingLoanBalance: 0,
@@ -419,11 +434,17 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 										id={`${id}-goal-target`}
 										label="Target Date"
 										date={form.goalTargetDate}
-										milestoneId={undefined}
-										milestones={[]}
-										onDateChange={(date) => updateForm('goalTargetDate', date)}
-										onMilestoneChange={() => {}}
-										tooltip="When you need the money by."
+										milestoneId={form.goalTargetMilestoneId}
+										milestones={assumptions.milestones || []}
+										onDateChange={(date) => {
+											updateForm('goalTargetDate', date);
+											updateForm('goalTargetMilestoneId', undefined);
+										}}
+										onMilestoneChange={(milestoneId) => {
+											updateForm('goalTargetMilestoneId', milestoneId);
+											updateForm('goalTargetDate', resolveMilestoneToDate(milestoneId, assumptions.milestones || []));
+										}}
+										tooltip="When you need the money by (a date or a milestone)."
 									/>
 								)}
 							</div>
@@ -464,8 +485,11 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 									validateDates(date, form.endDate);
 								}}
 								onMilestoneChange={(milestoneId) => updateForm('startMilestoneId', milestoneId)}
-								tooltip="When this expense begins"
+								tooltip={goalMode ? "When you start saving for this goal" : "When this expense begins"}
 							/>
+							{/* A save-by-date goal's Target Date above already is the end, and
+							    recurring goals have no end, so hide the generic End trigger. */}
+							{!goalMode && (
 							<TriggerSelector
 								id={`${id}-end`}
 								label="End"
@@ -479,6 +503,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 								onMilestoneChange={(milestoneId) => updateForm('endMilestoneId', milestoneId)}
 								tooltip="When this expense ends"
 							/>
+							)}
 							{dateError && (
 								<div className="col-span-full text-red-400 text-xs">
 									{dateError}
