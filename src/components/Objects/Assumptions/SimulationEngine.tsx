@@ -247,7 +247,15 @@ function simulateOneYearWithNewEngine(
     // ------------------------------------------------------------------
     // LIFESTYLE CREEP (same as old engine)
     // ------------------------------------------------------------------
-    let nextExpenses = milestoneFilteredExpenses.map(exp => exp.increment(assumptions));
+    let nextExpenses = milestoneFilteredExpenses.map(exp => {
+        const next = exp.increment(assumptions);
+        // A goal's `amount` is its total cost, funded by a nominal fixed monthly
+        // set-aside (and the budget computes that set-aside from the un-inflated
+        // amount). Inflating the cost here would make the lump outgrow the fund
+        // and silently underfund the purchase, so keep it static.
+        if (isLongTermGoal(exp)) next.amount = exp.amount;
+        return next;
+    });
     nextExpenses = applyLifestyleCreep(nextExpenses, milestoneFilteredIncomes, assumptions, year, isRetired, logs);
 
     // ------------------------------------------------------------------
@@ -313,6 +321,41 @@ function simulateOneYearWithNewEngine(
     const discretionaryExpenses = calculateTotalDiscretionary(nextExpenses, year);
     const fixedExpenses = totalLivingExpenses - discretionaryExpenses;
 
+    // A goal's sinking-fund priority should only run while the goal is actively
+    // saving: from its start year onward, and — for one-time (targetDate) goals —
+    // only up to the purchase year. Outside that window funding would pile into an
+    // account the goal doesn't need yet (before start) or into a drained, reserved
+    // account forever (after a one-time purchase). We neutralize those priorities
+    // (cap them to $0) rather than removing them: dropping the bucket entirely can
+    // leave the list empty and trip the surplus allocator's smart-default, which
+    // would refill the reserved SavedAccount anyway. Capping at 0 lets the surplus
+    // flow to the remaining priorities/remainder instead, and mirrors the budget's
+    // fundingStartMonth so the "expected balance" benchmark matches the sim.
+    // Recurring goals keep funding past each purchase — they refill toward the
+    // next cycle.
+    const inactiveGoalFundIds = new Set(
+        expenses
+            .filter(e => isLongTermGoal(e) && e.goalAccountId)
+            .filter(e => {
+                const goalStartYear = (e.startDate ? new Date(e.startDate) : new Date()).getFullYear();
+                if (year < goalStartYear) return true; // not saving yet
+                if (e.goalType === 'targetDate' && e.goalTargetDate
+                    && new Date(e.goalTargetDate).getFullYear() < year) return true; // already purchased
+                return false;
+            })
+            .map(e => e.goalAccountId!)
+    );
+    const effectiveAssumptions = inactiveGoalFundIds.size > 0
+        ? {
+            ...assumptions,
+            priorities: (assumptions.priorities || []).map(p =>
+                p.accountId && inactiveGoalFundIds.has(p.accountId)
+                    ? { ...p, capType: 'FIXED' as const, capValue: 0 }
+                    : p
+            ),
+        }
+        : assumptions;
+
     const solverInput: YearSolverInput = {
         year,
         currentAge,
@@ -324,7 +367,7 @@ function simulateOneYearWithNewEngine(
         accounts,
         withdrawalOrder: assumptions.withdrawalStrategy.map(w => ({ accountId: w.accountId })),
         taxState,
-        assumptions,
+        assumptions: effectiveAssumptions,
         strategyResult: strategyWithdrawalResult,
         taxOptimizationEnabled: assumptions.investments.taxOptimizationEnabled,
         acaAware: currentAge < 65 && (assumptions.investments.acaAware !== false),

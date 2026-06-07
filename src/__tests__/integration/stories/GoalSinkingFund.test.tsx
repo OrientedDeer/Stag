@@ -85,3 +85,69 @@ describe('Story: Long-Term Goal Sinking Fund', () => {
         }
     });
 });
+
+/**
+ * Story: One-Time Goal (target date)
+ *
+ * A `targetDate` goal is funded by a monthly set-aside until its target year,
+ * when the lump is spent. Unlike a recurring goal, it must NOT keep being funded
+ * afterward — otherwise its savings priority would divert cashflow into a
+ * drained, reserved account forever. This is the regression guard for that stop.
+ */
+describe('Story: One-Time Goal (target date)', () => {
+    const startYear = new Date().getFullYear();
+    const targetYear = startYear + 2;
+    const goalCost = 36000; // ~$12k/yr of funding fully drains the fund in the target year
+
+    const taxState: TaxState = {
+        filingStatus: 'Single', stateResidency: 'DC', deductionMethod: 'Standard',
+        fedOverride: null, ficaOverride: null, stateOverride: null, year: startYear,
+    };
+
+    const assumptions: AssumptionsState = {
+        ...defaultAssumptions,
+        demographics: {},
+        milestones: createBuiltinMilestones(1990, 65, 90),
+        income: { ...defaultAssumptions.income, salaryGrowth: 0 },
+        macro: { ...defaultAssumptions.macro, inflationRate: 0, inflationAdjusted: false },
+        investments: { ...defaultAssumptions.investments, returnRates: { ror: 0 }, autoRothConversions: false },
+        withdrawalStrategy: [],
+        priorities: [
+            { id: 'pri-car', name: 'Car fund', type: 'SAVINGS', accountId: 'acc-car-fund', capType: 'FIXED', capValue: 1000 },
+        ],
+    };
+
+    const carFund = new SavedAccount('acc-car-fund', 'Car (fund)', 0, 0);
+    // Dates are built with new Date(y, 0, 1) (local midnight) rather than an ISO
+    // string so getFullYear() can't slip to the prior year in negative-offset
+    // timezones — the goal due-year math is year-based.
+    const income = new WorkIncome(
+        'inc-work', 'Salary', 90000, 'Annually', 'Yes',
+        0, 0, 0, 0, '', null, 'FIXED',
+        new Date(startYear, 0, 1), new Date(startYear + 40, 11, 31)
+    );
+    const living = new FoodExpense('exp-living', 'Living', 20000, 'Annually', new Date(startYear, 0, 1));
+
+    // Mirror how the modal creates a one-time goal: endDate = target date.
+    const carGoal = new OtherExpense('exp-car', 'Car', goalCost, 'Monthly', new Date(startYear, 0, 1));
+    carGoal.goalType = 'targetDate';
+    carGoal.goalTargetDate = new Date(targetYear, 0, 1);
+    carGoal.endDate = new Date(targetYear, 0, 1);
+    carGoal.goalAccountId = 'acc-car-fund';
+
+    it('funds the goal, buys it in the target year, then stops funding', () => {
+        const sim = runSimulation(8, [carFund], [income], [living, carGoal], assumptions, taxState)
+            .filter(s => !s.isEndOfYearProjection);
+        const fundAt = (y: number) =>
+            sim.find(s => s.year === y)?.accounts.find(a => a.id === 'acc-car-fund')?.amount ?? 0;
+
+        // The set-aside accrues into the fund before the purchase...
+        expect(fundAt(startYear + 1)).toBeGreaterThan(5000);
+        // ...the lump is actually spent in the target year...
+        expect(sim.some(s => s.logs.some(l => l.includes('came due')))).toBe(true);
+        // ...and afterward the fund is NOT refilled: a one-time goal's priority
+        // stops, so the balance stays drained instead of growing ~$12k/yr again.
+        expect(fundAt(targetYear + 1)).toBeLessThan(1000);
+        expect(fundAt(targetYear + 3)).toBeLessThan(1000);
+    });
+});
