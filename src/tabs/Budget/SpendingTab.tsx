@@ -10,6 +10,7 @@ import { AccountContext } from '../../components/Objects/Accounts/AccountContext
 import { IncomeContext } from '../../components/Objects/Income/IncomeContext';
 import { WorkIncome } from '../../components/Objects/Income/models';
 import { InvestedAccount, SavedAccount, AnyAccount } from '../../components/Objects/Accounts/models';
+import { isLongTermGoal } from '../../components/Objects/Expense/models';
 import { useAssumptions, getBirthYear } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
 import { SimulationContext } from '../../components/Objects/Assumptions/SimulationContext';
@@ -204,16 +205,36 @@ export default function SpendingTab() {
         return 0;
     }, [assumptions]);
 
+    // Month (1-12) within the selected year that funding begins, per account.
+    // For a long-term goal we honor its start date so a mid-year goal's expected
+    // balance ramps from that month rather than from January. Started in a prior
+    // year → 1 (full year); starts later this year → its month; future year → 13
+    // (not funding yet). Non-goal accounts default to 1 (unchanged behavior).
+    const fundingStartMonth = useMemo(() => {
+        const map: Record<string, number> = {};
+        expenses.forEach(exp => {
+            if (!isLongTermGoal(exp) || !exp.goalAccountId || !exp.startDate) return;
+            const sd = new Date(exp.startDate);
+            map[exp.goalAccountId] = sd.getFullYear() < selectedYear ? 1
+                : sd.getFullYear() === selectedYear ? sd.getMonth() + 1
+                : 13;
+        });
+        return map;
+    }, [expenses, selectedYear]);
+
     // Plan-benchmark "expected balance by now": linearly interpolate from Jan 1 actual
     // toward the planned EOY (BOY-timed: contributions added first, then grown a year).
-    // expectedByNow = start + ((start + annualContribution) × (1 + r) − start) × (m/12)
+    // Starting-balance growth ramps over the whole year (time held); the planned
+    // contribution ramps only over the months funding has been active (startMonth..).
+    // With startMonth = 1 this is identical to the original Jan-based formula.
     const computeExpectedByNow = useCallback(
-        (account: AnyAccount, annualContribution: number, monthOfYear: number): number => {
+        (account: AnyAccount, annualContribution: number, monthOfYear: number, startMonth = 1): number => {
             const start = startingBalances[account.id] ?? account.amount;
             const r = getAccountGrowthRate(account);
-            const eoyPerPlan = (start + annualContribution) * (1 + r);
-            const fraction = Math.max(0, Math.min(1, monthOfYear / 12));
-            return start + (eoyPerPlan - start) * fraction;
+            const m = Math.max(0, Math.min(12, monthOfYear));
+            const timeFraction = m / 12; // growth on the starting balance
+            const contribFraction = Math.max(0, Math.min(12, m - (startMonth - 1))) / 12;
+            return start + (start * r) * timeFraction + (annualContribution * (1 + r)) * contribFraction;
         },
         [startingBalances, getAccountGrowthRate]
     );
@@ -299,11 +320,17 @@ export default function SpendingTab() {
                 ytdActual = Math.max(0, actualBalance - startingBalance);
             }
 
+            // Funding may start mid-year (e.g. a goal created in July); count
+            // only the months it's actually been active so the expected balance
+            // and pacing target ramp from the start month, not January.
+            const startMonth = fundingStartMonth[accountId] ?? 1;
+            const monthsActive = Math.max(0, trackingMonth - (startMonth - 1));
+
             // Plan-benchmark expected balance at the tracking month.
             // Anchors on real Jan 1 balance, projects toward (start + annualTarget) × (1 + r),
-            // and linearly interpolates to the tracking month. Independent of today's actual.
+            // and ramps the contribution from the funding start month. Independent of today's actual.
             const projectedBalance = account
-                ? computeExpectedByNow(account, annualTarget, trackingMonth)
+                ? computeExpectedByNow(account, annualTarget, trackingMonth, startMonth)
                 : null;
             const balanceVariance = projectedBalance !== null
                 ? actualBalance - projectedBalance
@@ -311,7 +338,7 @@ export default function SpendingTab() {
 
             // Pacing — linear is the visual reference; status is more permissive.
             const monthlyTarget = annualTarget / 12;
-            const ytdLinearTarget = monthlyTarget * trackingMonth;
+            const ytdLinearTarget = monthlyTarget * monthsActive;
             const monthsRemaining = Math.max(0, 12 - trackingMonth);
             const remainingNeeded = Math.max(0, annualTarget - ytdActual);
             // "Unreachable" = even if user contributed 2x the linear monthly target
@@ -359,7 +386,7 @@ export default function SpendingTab() {
         });
 
         return { savingsTargetRows: savings, contributionRows: contribs };
-    }, [priorities, accounts, getAnnualGoal, transactionContributions, trackingMonth, startingBalances, currentSnapshot, computeExpectedByNow]);
+    }, [priorities, accounts, getAnnualGoal, transactionContributions, trackingMonth, startingBalances, currentSnapshot, computeExpectedByNow, fundingStartMonth]);
 
     // "Other accounts" — accounts not in any priority bucket. Expected balance includes
     // payroll-routed contributions (401k self + roth + employer match, ESPP purchases),
