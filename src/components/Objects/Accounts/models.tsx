@@ -503,13 +503,16 @@ export class ESPPAccount extends BaseAccount {
           shortTermGains += gainBeyondDiscount;
         }
       } else {
-        // Qualifying: ordinary income is lesser of grant discount or actual gain
-        // Per IRS rules for §423 ESPP qualifying dispositions:
-        // Grant discount = 15% of FMV at grant (the statutory maximum)
-        // This is capped at actual discount received to never exceed real benefit
-        const statutoryDiscount = lot.fmvAtGrant * 0.15;
-        const actualDiscount = lot.fmvAtGrant - lot.purchasePrice;
-        const grantDiscountPerShare = Math.min(statutoryDiscount, actualDiscount);
+        // Qualifying: ordinary income is the lesser of (a) the actual gain, or (b) the
+        // discount measured at grant = FMV at grant × the plan's discount rate. Per IRS
+        // rules for §423 ESPP qualifying dispositions the rate is the plan's own discount
+        // (capped at the 15% statutory maximum) — not a flat 15%, since plans commonly
+        // offer less. Recover the plan rate from the lot's stored per-share discount.
+        const discountBase = lot.purchasePrice + lot.discountAmount;
+        const planDiscountRate = discountBase > 0
+          ? Math.min(lot.discountAmount / discountBase, 0.15)
+          : 0;
+        const grantDiscountPerShare = lot.fmvAtGrant * planDiscountRate;
         const grantDiscount = grantDiscountPerShare * sharesToUse;
         const actualGain = (salePrice - lot.purchasePrice) * sharesToUse;
 

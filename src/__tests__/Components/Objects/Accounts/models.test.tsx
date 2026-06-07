@@ -807,6 +807,32 @@ describe('Account Models', () => {
             expect(result.longTermGains).toBe(0);
         });
 
+        it('qualifying disposition uses the plan discount rate, not a hardcoded 15% (#9)', () => {
+            // 10% plan with lookback where the stock fell between grant and purchase.
+            // The §423 ordinary-income component must use the plan's 10% × grant FMV,
+            // not the 15% statutory maximum.
+            const lot = createTestLot({
+                grantDate: new Date('2022-01-01'),
+                purchaseDate: new Date('2022-06-30'),
+                fmvAtGrant: 100,
+                fmvAtPurchase: 80,
+                purchasePrice: 72,   // lookback base 80 × (1 - 10%)
+                discountAmount: 8,   // 80 - 72
+                shares: 100,
+                totalCost: 7200,
+            });
+            const acc = new ESPPAccount('espp-1', 'Company ESPP', 15000, [lot]);
+
+            // Sale well past the qualifying holding period (2yr grant / 1yr purchase).
+            const result = acc.calculateSaleTax(50, 150, new Date('2025-01-01'));
+
+            // grant discount = 100 × 10% = $10/share → ordinary = 10 × 50 = $500 (not $750 at 15%).
+            expect(result.ordinaryIncome).toBe(500);
+            // Remainder is long-term: (150 - 72 - 10) × 50 = $3400.
+            expect(result.longTermGains).toBe(3400);
+            expect(result.shortTermGains).toBe(0);
+        });
+
         it('should remove sold shares using FIFO', () => {
             const oldLot = createTestLot({ id: 'old', shares: 50, purchaseDate: new Date('2023-01-01') });
             const newLot = createTestLot({ id: 'new', shares: 50, purchaseDate: new Date('2024-01-01') });
