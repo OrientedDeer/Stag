@@ -913,27 +913,6 @@ export function isGoalDueInYear(expense: AnyExpense, year: number): boolean {
   return false;
 }
 
-/**
- * The next date a goal's lump comes due, or null if none.
- * - targetDate: the goal date itself (one-time).
- * - recurring: the first anchor+k*interval strictly after `asOf` (anchor =
- *   start date, or now if unset).
- */
-export function getGoalNextDueDate(expense: AnyExpense, asOf: Date = new Date()): Date | null {
-  if (expense.goalType === 'targetDate' && expense.goalTargetDate) {
-    return new Date(expense.goalTargetDate);
-  }
-  if (expense.goalType === 'recurring' && expense.intervalYears && expense.intervalYears > 0) {
-    const anchor = expense.startDate ? new Date(expense.startDate) : new Date();
-    const due = new Date(anchor);
-    while (due <= asOf) {
-      due.setFullYear(due.getFullYear() + expense.intervalYears);
-    }
-    return due;
-  }
-  return null;
-}
-
 export const EXPENSE_CATEGORIES = [
   'Rent',
   'Mortgage',
