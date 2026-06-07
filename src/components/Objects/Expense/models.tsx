@@ -264,13 +264,18 @@ export class MortgageExpense extends BaseExpense {
   ) {
     const r = apr / 100 / 12;
     const n = term_length * 12;
-    const fixed_amortization = starting_loan_balance * ((r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1));
+    // Guard against 0% APR: the standard amortization formula is 0/0 = NaN when r === 0,
+    // which would poison the entire payment. Fall back to straight-line principal / n.
+    const fixed_amortization = r === 0
+      ? (n > 0 ? starting_loan_balance / n : 0)
+      : starting_loan_balance * ((r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1));
 
     const interest_payment = loan_balance * r;
     const principal_payment = (loan_balance > 0 ? fixed_amortization : 0) - interest_payment;
 
     const property_tax_payment = (valuation - valuation_deduction) * property_taxes / 100 / 12;
-    const pmi_payment = (loan_balance/valuation)<=.8 ? valuation * pmi / 100 / 12: 0;
+    // PMI applies while loan-to-value is ABOVE 80% (low equity) and drops off once LTV <= 80%.
+    const pmi_payment = (loan_balance/valuation) > .8 ? valuation * pmi / 100 / 12 : 0;
     const repair_payment = maintenance / 100 / 12 * valuation;
     const home_owners_insurance_payment = home_owners_insurance / 100 / 12 * valuation;
 
@@ -537,8 +542,11 @@ export class LoanExpense extends BaseExpense {
     for (let i = 0; i < 12; i++) {
       if (balance <= 0) break;
 
+      // Accrue interest on the outstanding balance for both Simple and Compounding loans.
+      // (Previously 'Simple' loans skipped this branch and accrued zero interest, so the
+      // entire payment went to principal and the loan effectively cost nothing.)
       let interest = 0;
-      if (this.interest_type === 'Compounding' && this.apr > 0) {
+      if (this.apr > 0) {
         interest = balance * monthlyRate;
       }
 

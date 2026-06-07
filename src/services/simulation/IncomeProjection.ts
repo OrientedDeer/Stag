@@ -110,7 +110,8 @@ export function projectIncomes(
                             inc.retirementAge, inc.birthYear, actualBenefit,
                             inc.fersSupplement, inc.estimatedSSAt62,
                             inc.startDate, inc.end_date,
-                            inc.autoCalculateHigh3, inc.linkedIncomeId
+                            inc.autoCalculateHigh3, inc.linkedIncomeId,
+                            inc.startMilestoneId, inc.endMilestoneId
                         );
                     }
                 }
@@ -164,7 +165,8 @@ export function projectIncomes(
                             inc.id, inc.name, inc.yearsOfService, high3,
                             inc.retirementAge, actualBenefit,
                             inc.startDate, inc.end_date,
-                            inc.autoCalculateHigh3, inc.linkedIncomeId
+                            inc.autoCalculateHigh3, inc.linkedIncomeId,
+                            inc.startMilestoneId, inc.endMilestoneId
                         );
                     }
                 }
@@ -291,7 +293,10 @@ export function projectIncomes(
                         monthlyReduced,
                         inc.calculationYear,
                         inc.startDate,
-                        inc.end_date
+                        inc.end_date,
+                        inc.startMilestoneId,
+                        inc.endMilestoneId,
+                        inc.projectedPIA
                     );
                 }
             }

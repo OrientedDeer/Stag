@@ -64,7 +64,9 @@ export function calculateTotalFederalTax(
     // STEP 1: Provisional income for SS taxability
     // IRS formula: Provisional Income = AGI (excluding SS) + tax-exempt interest + 50% of SS
     // Both STCG and LTCG count toward provisional income.
-    const provisionalIncome = ordinaryIncome + shortTermCapitalGains + longTermCapitalGains + (socialSecurityBenefits * 0.5);
+    // Pre-tax deductions (401k, HSA, etc.) reduce AGI, so they must also reduce the
+    // AGI-excluding-SS portion of provisional income before adding half of SS benefits.
+    const provisionalIncome = Math.max(0, ordinaryIncome + shortTermCapitalGains + longTermCapitalGains - preTaxDeductions) + (socialSecurityBenefits * 0.5);
 
     // STEP 2: Taxable portion of Social Security
     // TODO: Verify all income types are included (LTCG, STCG, dividends, etc.)
