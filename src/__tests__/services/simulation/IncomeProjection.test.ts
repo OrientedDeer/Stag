@@ -364,6 +364,45 @@ describe('IncomeProjection', () => {
                 expect(logs.some(l => l.includes('FERS Pension started'))).toBe(true);
             });
 
+            it('should auto-calculate High-3 even after the linked work income has ended (retired)', () => {
+                // Regression: in the real engine, SimulationEngine filters the linked
+                // WorkIncome out of `incomes` once isRetired is true, so by the retirement
+                // year projectIncomes no longer sees it. The High-3 must still be computed
+                // from previousSimulation salary history alone, otherwise the pension stays $0.
+                const fersPension = new FERSPensionIncome(
+                    'fers1', 'FERS Pension', 30, 0, 65, 1960, 0, 0, 0,
+                    undefined, undefined,
+                    true, 'work1' // autoCalculateHigh3=true, linkedIncomeId='work1'
+                );
+
+                // Salary history from the working years; the linked income is gone this year.
+                const previousSimulation: SimulationYear[] = [];
+                for (let i = 0; i < 5; i++) {
+                    const yearSalary = 90000 + i * 2500;
+                    previousSimulation.push(createSimulationYear(2020 + i, [
+                        createWorkIncome('work1', 'Fed Job', yearSalary)
+                    ]));
+                }
+
+                const assumptions = createTestAssumptions({ birthYear: 1960, retirementAge: 65 });
+                const logs: string[] = [];
+
+                const result = projectIncomes(
+                    2025,
+                    [fersPension], // NOTE: no 'work1' here — already filtered out at retirement
+                    [],
+                    assumptions,
+                    previousSimulation,
+                    65, // currentAge = retirementAge
+                    true, // isRetired
+                    logs
+                );
+
+                const updatedFers = result.nextIncomes.find(inc => inc.id === 'fers1') as FERSPensionIncome;
+                expect(updatedFers.high3Salary).toBeGreaterThan(0);
+                expect(updatedFers.calculatedBenefit).toBeGreaterThan(0);
+            });
+
             it('should apply FERS multiplier (1% or 1.1%)', () => {
                 // 1.1% multiplier applies when retiring at 62+ with 20+ years of service
                 const workIncome = createWorkIncome('work1', 'Fed Job', 100000, { pensionSystem: 'FERS' });
@@ -494,6 +533,40 @@ describe('IncomeProjection', () => {
                 expect(updatedCsrs.high3Salary).toBeGreaterThan(0);
                 expect(updatedCsrs.calculatedBenefit).toBeGreaterThan(0);
                 expect(logs.some(l => l.includes('CSRS Pension started'))).toBe(true);
+            });
+
+            it('should auto-calculate High-3 even after the linked work income has ended (retired)', () => {
+                // Regression: same filtering bug as FERS — the linked WorkIncome is removed
+                // from `incomes` at retirement, so High-3 must come from previousSimulation.
+                const csrsPension = new CSRSPensionIncome(
+                    'csrs1', 'CSRS Pension', 30, 0, 65, 0,
+                    undefined, undefined,
+                    true, 'work1'
+                );
+
+                const previousSimulation: SimulationYear[] = [
+                    createSimulationYear(2022, [createWorkIncome('work1', 'Fed Job', 95000)]),
+                    createSimulationYear(2023, [createWorkIncome('work1', 'Fed Job', 97500)]),
+                    createSimulationYear(2024, [createWorkIncome('work1', 'Fed Job', 100000)]),
+                ];
+
+                const assumptions = createTestAssumptions({ birthYear: 1960, retirementAge: 65 });
+                const logs: string[] = [];
+
+                const result = projectIncomes(
+                    2025,
+                    [csrsPension], // NOTE: no 'work1' here — already filtered out at retirement
+                    [],
+                    assumptions,
+                    previousSimulation,
+                    65,
+                    true,
+                    logs
+                );
+
+                const updatedCsrs = result.nextIncomes.find(inc => inc.id === 'csrs1') as CSRSPensionIncome;
+                expect(updatedCsrs.high3Salary).toBeGreaterThan(0);
+                expect(updatedCsrs.calculatedBenefit).toBeGreaterThan(0);
             });
 
             it('should apply tiered CSRS multipliers', () => {

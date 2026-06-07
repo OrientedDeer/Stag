@@ -77,43 +77,48 @@ export function projectIncomes(
         // Handle FERS Pension
         if (inc instanceof FERSPensionIncome) {
             if (inc.autoCalculateHigh3 && inc.linkedIncomeId) {
+                // Build salary history from prior simulation years. The linked WorkIncome is
+                // filtered out of `incomes` once the user retires, so the High-3 calculation
+                // must NOT depend on it still being present in the current year's incomes.
+                const salaryHistory: number[] = previousSimulation
+                    .map(simYear => {
+                        const prevLinked = simYear.incomes.find(i => i.id === inc.linkedIncomeId);
+                        if (prevLinked instanceof WorkIncome) {
+                            return prevLinked.getAnnualAmount(simYear.year);
+                        }
+                        return 0;
+                    })
+                    .filter(s => s > 0);
+
+                // If the linked income is still active this year, include its salary too.
                 const linkedIncome = incomes.find(i => i.id === inc.linkedIncomeId);
                 if (linkedIncome instanceof WorkIncome) {
                     const currentSalary = linkedIncome.getAnnualAmount(year);
-                    const salaryHistory: number[] = previousSimulation
-                        .map(simYear => {
-                            const prevLinked = simYear.incomes.find(i => i.id === inc.linkedIncomeId);
-                            if (prevLinked instanceof WorkIncome) {
-                                return prevLinked.getAnnualAmount(simYear.year);
-                            }
-                            return 0;
-                        })
-                        .filter(s => s > 0);
-                    salaryHistory.push(currentSalary);
+                    if (currentSalary > 0) salaryHistory.push(currentSalary);
+                }
 
-                    if (currentAge === inc.retirementAge && inc.calculatedBenefit === 0) {
-                        const high3 = calculateHigh3(salaryHistory);
-                        const baseBenefit = (inc.retirementAge >= 62 && inc.yearsOfService >= 20 ? 0.011 : 0.01)
-                            * inc.yearsOfService * high3;
-                        const eligibility = checkFERSEligibility(inc.retirementAge, inc.yearsOfService, inc.birthYear);
-                        const reductionFactor = 1 - (eligibility.reductionPercent / 100);
-                        const actualBenefit = baseBenefit * reductionFactor;
+                if (currentAge === inc.retirementAge && inc.calculatedBenefit === 0 && salaryHistory.length > 0) {
+                    const high3 = calculateHigh3(salaryHistory);
+                    const baseBenefit = (inc.retirementAge >= 62 && inc.yearsOfService >= 20 ? 0.011 : 0.01)
+                        * inc.yearsOfService * high3;
+                    const eligibility = checkFERSEligibility(inc.retirementAge, inc.yearsOfService, inc.birthYear);
+                    const reductionFactor = 1 - (eligibility.reductionPercent / 100);
+                    const actualBenefit = baseBenefit * reductionFactor;
 
-                        logs.push(`[PENSION] FERS Pension started: High-3 calculated as $${high3.toLocaleString()}/yr from ${salaryHistory.length} years of salary history`);
-                        if (eligibility.reductionPercent > 0) {
-                            logs.push(`   Base benefit: $${baseBenefit.toLocaleString()}/yr, reduced by ${eligibility.reductionPercent}% (${eligibility.message})`);
-                        }
-                        logs.push(`   Annual benefit: $${actualBenefit.toLocaleString()}/yr`);
-
-                        return new FERSPensionIncome(
-                            inc.id, inc.name, inc.yearsOfService, high3,
-                            inc.retirementAge, inc.birthYear, actualBenefit,
-                            inc.fersSupplement, inc.estimatedSSAt62,
-                            inc.startDate, inc.end_date,
-                            inc.autoCalculateHigh3, inc.linkedIncomeId,
-                            inc.startMilestoneId, inc.endMilestoneId
-                        );
+                    logs.push(`[PENSION] FERS Pension started: High-3 calculated as $${high3.toLocaleString()}/yr from ${salaryHistory.length} years of salary history`);
+                    if (eligibility.reductionPercent > 0) {
+                        logs.push(`   Base benefit: $${baseBenefit.toLocaleString()}/yr, reduced by ${eligibility.reductionPercent}% (${eligibility.message})`);
                     }
+                    logs.push(`   Annual benefit: $${actualBenefit.toLocaleString()}/yr`);
+
+                    return new FERSPensionIncome(
+                        inc.id, inc.name, inc.yearsOfService, high3,
+                        inc.retirementAge, inc.birthYear, actualBenefit,
+                        inc.fersSupplement, inc.estimatedSSAt62,
+                        inc.startDate, inc.end_date,
+                        inc.autoCalculateHigh3, inc.linkedIncomeId,
+                        inc.startMilestoneId, inc.endMilestoneId
+                    );
                 }
             }
             return inc.increment(assumptions, year, currentAge);
@@ -122,53 +127,58 @@ export function projectIncomes(
         // Handle CSRS Pension
         if (inc instanceof CSRSPensionIncome) {
             if (inc.autoCalculateHigh3 && inc.linkedIncomeId) {
+                // Build salary history from prior simulation years. The linked WorkIncome is
+                // filtered out of `incomes` once the user retires, so the High-3 calculation
+                // must NOT depend on it still being present in the current year's incomes.
+                const salaryHistory: number[] = previousSimulation
+                    .map(simYear => {
+                        const prevLinked = simYear.incomes.find(i => i.id === inc.linkedIncomeId);
+                        if (prevLinked instanceof WorkIncome) {
+                            return prevLinked.getAnnualAmount(simYear.year);
+                        }
+                        return 0;
+                    })
+                    .filter(s => s > 0);
+
+                // If the linked income is still active this year, include its salary too.
                 const linkedIncome = incomes.find(i => i.id === inc.linkedIncomeId);
                 if (linkedIncome instanceof WorkIncome) {
                     const currentSalary = linkedIncome.getAnnualAmount(year);
-                    const salaryHistory: number[] = previousSimulation
-                        .map(simYear => {
-                            const prevLinked = simYear.incomes.find(i => i.id === inc.linkedIncomeId);
-                            if (prevLinked instanceof WorkIncome) {
-                                return prevLinked.getAnnualAmount(simYear.year);
-                            }
-                            return 0;
-                        })
-                        .filter(s => s > 0);
-                    salaryHistory.push(currentSalary);
+                    if (currentSalary > 0) salaryHistory.push(currentSalary);
+                }
 
-                    if (currentAge === inc.retirementAge && inc.calculatedBenefit === 0) {
-                        const high3 = calculateHigh3(salaryHistory);
-                        let baseBenefit = 0;
-                        const first5 = Math.min(inc.yearsOfService, 5);
-                        baseBenefit += first5 * high3 * 0.015;
-                        if (inc.yearsOfService > 5) {
-                            const next5 = Math.min(inc.yearsOfService - 5, 5);
-                            baseBenefit += next5 * high3 * 0.0175;
-                        }
-                        if (inc.yearsOfService > 10) {
-                            const remaining = inc.yearsOfService - 10;
-                            baseBenefit += remaining * high3 * 0.02;
-                        }
-                        baseBenefit = Math.min(baseBenefit, high3 * 0.80);
-
-                        const eligibility = checkCSRSEligibility(inc.retirementAge, inc.yearsOfService);
-                        const reductionFactor = 1 - (eligibility.reductionPercent / 100);
-                        const actualBenefit = baseBenefit * reductionFactor;
-
-                        logs.push(`[PENSION] CSRS Pension started: High-3 calculated as $${high3.toLocaleString()}/yr from ${salaryHistory.length} years of salary history`);
-                        if (eligibility.reductionPercent > 0) {
-                            logs.push(`   Base benefit: $${baseBenefit.toLocaleString()}/yr, reduced by ${eligibility.reductionPercent}% (${eligibility.message})`);
-                        }
-                        logs.push(`   Annual benefit: $${actualBenefit.toLocaleString()}/yr`);
-
-                        return new CSRSPensionIncome(
-                            inc.id, inc.name, inc.yearsOfService, high3,
-                            inc.retirementAge, actualBenefit,
-                            inc.startDate, inc.end_date,
-                            inc.autoCalculateHigh3, inc.linkedIncomeId,
-                            inc.startMilestoneId, inc.endMilestoneId
-                        );
+                if (currentAge === inc.retirementAge && inc.calculatedBenefit === 0 && salaryHistory.length > 0) {
+                    const high3 = calculateHigh3(salaryHistory);
+                    let baseBenefit = 0;
+                    const first5 = Math.min(inc.yearsOfService, 5);
+                    baseBenefit += first5 * high3 * 0.015;
+                    if (inc.yearsOfService > 5) {
+                        const next5 = Math.min(inc.yearsOfService - 5, 5);
+                        baseBenefit += next5 * high3 * 0.0175;
                     }
+                    if (inc.yearsOfService > 10) {
+                        const remaining = inc.yearsOfService - 10;
+                        baseBenefit += remaining * high3 * 0.02;
+                    }
+                    baseBenefit = Math.min(baseBenefit, high3 * 0.80);
+
+                    const eligibility = checkCSRSEligibility(inc.retirementAge, inc.yearsOfService);
+                    const reductionFactor = 1 - (eligibility.reductionPercent / 100);
+                    const actualBenefit = baseBenefit * reductionFactor;
+
+                    logs.push(`[PENSION] CSRS Pension started: High-3 calculated as $${high3.toLocaleString()}/yr from ${salaryHistory.length} years of salary history`);
+                    if (eligibility.reductionPercent > 0) {
+                        logs.push(`   Base benefit: $${baseBenefit.toLocaleString()}/yr, reduced by ${eligibility.reductionPercent}% (${eligibility.message})`);
+                    }
+                    logs.push(`   Annual benefit: $${actualBenefit.toLocaleString()}/yr`);
+
+                    return new CSRSPensionIncome(
+                        inc.id, inc.name, inc.yearsOfService, high3,
+                        inc.retirementAge, actualBenefit,
+                        inc.startDate, inc.end_date,
+                        inc.autoCalculateHigh3, inc.linkedIncomeId,
+                        inc.startMilestoneId, inc.endMilestoneId
+                    );
                 }
             }
             return inc.increment(assumptions);
