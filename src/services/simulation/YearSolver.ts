@@ -315,11 +315,15 @@ function computeCeilingContext(
 
     let acaOptions: ACAOptions | undefined;
     if (input.acaAware && input.currentAge < 65) {
-        const acaCliff = input.taxState.filingStatus === 'Married Filing Jointly' ? 125000 : 62500;
+        // Use the shared 400% FPL cliff (by year + filing status) rather than hardcoded
+        // values, matching RothConversionDP. The old constants ($125k MFJ / $62.5k single)
+        // diverged from the real thresholds (~$81.8k / $60.2k for 2024).
+        const acaFiling: 'single' | 'married_filing_jointly' =
+            input.taxState.filingStatus === 'Married Filing Jointly' ? 'married_filing_jointly' : 'single';
         acaOptions = {
             currentAge: input.currentAge,
             acaSubsidyAware: true,
-            acaCliffThreshold: acaCliff,
+            acaCliffThreshold: getAcaCliffThreshold(acaFiling, input.year),
             estimatedSubsidyLoss: 12000,
         };
     }
@@ -1080,11 +1084,15 @@ function planConversionDP(
     // ACA options for the tax cost calc (same logic as rate-match path).
     let acaOptions: ACAOptions | undefined;
     if (input.acaAware && input.currentAge < 65) {
-        const acaCliff = input.taxState.filingStatus === 'Married Filing Jointly' ? 125000 : 62500;
+        // Use the shared 400% FPL cliff (by year + filing status) rather than hardcoded
+        // values, matching RothConversionDP. The old constants ($125k MFJ / $62.5k single)
+        // diverged from the real thresholds (~$81.8k / $60.2k for 2024).
+        const acaFiling: 'single' | 'married_filing_jointly' =
+            input.taxState.filingStatus === 'Married Filing Jointly' ? 'married_filing_jointly' : 'single';
         acaOptions = {
             currentAge: input.currentAge,
             acaSubsidyAware: true,
-            acaCliffThreshold: acaCliff,
+            acaCliffThreshold: getAcaCliffThreshold(acaFiling, input.year),
             estimatedSubsidyLoss: 12000,
         };
     }
