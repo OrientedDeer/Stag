@@ -35,7 +35,7 @@ interface SpendingRow {
 export default function SpendingTab() {
     const { months, selectedMonth, selectedYear, projectFuture, dispatch: budgetDispatch } = useContext(BudgetContext);
     const { expenses } = useContext(ExpenseContext);
-    const { accounts } = useContext(AccountContext);
+    const { accounts, amountHistory } = useContext(AccountContext);
     const { incomes } = useContext(IncomeContext);
     const { assumptions } = useAssumptions();
     const { state: taxState } = useContext(TaxContext);
@@ -168,8 +168,28 @@ export default function SpendingTab() {
         return { ytd, monthly };
     }, [ytdTransactions, currentMonthTransactions]);
 
+    // Historic balance for an account from amountHistory: the latest recorded
+    // entry on or before `asOf` (an ISO YYYY-MM-DD upper bound). Lets the budget
+    // show the real balance for a past month instead of today's live balance.
+    const historicBalance = useCallback((accountId: string, asOf: string): number | null => {
+        const hist = amountHistory[accountId];
+        if (!hist || hist.length === 0) return null;
+        let best: number | null = null;
+        let bestDate = '';
+        for (const e of hist) {
+            if (e.date <= asOf && e.date >= bestDate) { best = e.num; bestDate = e.date; }
+        }
+        return best;
+    }, [amountHistory]);
+
+    // ISO upper bounds (lexical): end of the selected month, and end of the
+    // prior December (= the selected year's starting point).
+    const selectedMonthEnd = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-31`;
+    const priorYearEnd = `${selectedYear - 1}-12-31`;
+
     // Get starting balance for each account at the beginning of the year.
-    // Order of preference: Dec balance of prev year > Jan balance of current year > account's current balance.
+    // Order of preference: Dec balance of prev year > Jan balance of current year >
+    // recorded history at year start > account's current balance.
     // We anchor on the real Jan 1 balance so "expected by now" doesn't drift with today's actual balance.
     const startingBalances = useMemo(() => {
         const balances: Record<string, number> = {};
@@ -183,12 +203,12 @@ export default function SpendingTab() {
             } else if (janSnapshot?.accountBalances[id] !== undefined) {
                 balances[id] = janSnapshot.accountBalances[id];
             } else {
-                balances[id] = account.amount || 0;
+                balances[id] = historicBalance(id, priorYearEnd) ?? account.amount ?? 0;
             }
         });
 
         return balances;
-    }, [months, selectedYear, accounts]);
+    }, [months, selectedYear, accounts, historicBalance, priorYearEnd]);
 
     // Per-account annual growth rate (decimal), matching the simulation's BOY convention.
     // SavedAccount: APR. InvestedAccount/ESPPAccount: ror (custom or global) + inflation − expense ratio.
@@ -274,7 +294,9 @@ export default function SpendingTab() {
             const accountId = p.accountId!;
             const annualTarget = getAnnualGoal(p, account);
             const startingBalance = startingBalances[accountId] || 0;
-            const actualBalance = currentSnapshot?.accountBalances[accountId] ?? account?.amount ?? 0;
+            const actualBalance = currentSnapshot?.accountBalances[accountId]
+                ?? historicBalance(accountId, selectedMonthEnd)
+                ?? account?.amount ?? 0;
 
             if (p.capType === 'MULTIPLE_OF_EXPENSES') {
                 // Balance target (e.g. emergency fund). Status is a strict comparison:
@@ -386,7 +408,7 @@ export default function SpendingTab() {
         });
 
         return { savingsTargetRows: savings, contributionRows: contribs };
-    }, [priorities, accounts, getAnnualGoal, transactionContributions, trackingMonth, startingBalances, currentSnapshot, computeExpectedByNow, fundingStartMonth]);
+    }, [priorities, accounts, getAnnualGoal, transactionContributions, trackingMonth, startingBalances, currentSnapshot, computeExpectedByNow, fundingStartMonth, historicBalance, selectedMonthEnd]);
 
     // "Other accounts" — accounts not in any priority bucket. Expected balance includes
     // payroll-routed contributions (401k self + roth + employer match, ESPP purchases),
@@ -396,7 +418,9 @@ export default function SpendingTab() {
         return accounts
             .filter(a => !priorityAccountIds.has(a.id))
             .map(account => {
-                const actualBalance = currentSnapshot?.accountBalances[account.id] ?? account.amount;
+                const actualBalance = currentSnapshot?.accountBalances[account.id]
+                    ?? historicBalance(account.id, selectedMonthEnd)
+                    ?? account.amount;
                 const annualContribution = getPayrollContributionToAccount(account.id);
                 const projectedBalance = computeExpectedByNow(account, annualContribution, trackingMonth);
                 const variance = actualBalance - projectedBalance;
@@ -414,7 +438,7 @@ export default function SpendingTab() {
                 };
             })
             .filter(r => r.actualBalance > 0 || r.projectedBalance > 0);
-    }, [accounts, priorities, currentSnapshot, trackingMonth, computeExpectedByNow, getPayrollContributionToAccount]);
+    }, [accounts, priorities, currentSnapshot, trackingMonth, computeExpectedByNow, getPayrollContributionToAccount, historicBalance, selectedMonthEnd]);
 
     const hasPriorityBuckets = priorities.filter(p => p.accountId).length > 0;
     const showTracking = !isFutureMonth && hasPriorityBuckets;
