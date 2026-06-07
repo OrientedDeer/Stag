@@ -20,6 +20,7 @@ import { PercentageInput } from "../../Layout/InputFields/PercentageInput";
 import { ToggleInput } from "../../Layout/InputFields/ToggleInput";
 import { NumberInput } from "../../Layout/InputFields/NumberInput";
 import { useModalAccessibility } from "../../../hooks/useModalAccessibility";
+import { Button } from "../../Layout/Primitives";
 
 const generateUniqueAccId = () =>
     `ACC-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -405,21 +406,21 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                 </div>
 
                 <div className="flex justify-end gap-3 mt-8">
-                    <button
+                    <Button
                         type="button"
                         onClick={handleClose}
-                        className="px-5 py-2.5 rounded-lg font-medium text-content-muted hover:text-white hover:bg-surface-overlay transition-colors"
+                        variant="ghost" size="lg"
                     >
                         Cancel
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                         type="submit"
                         disabled={!form.name.trim()}
                         title={!form.name.trim() ? "Enter a name" : undefined}
-                        className="px-5 py-2.5 rounded-lg font-medium bg-positive-solid text-white hover:bg-positive-strong disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        variant="positive" size="lg"
                     >
                         Add Account
-                    </button>
+                    </Button>
                 </div>
                 </form>
             </div>

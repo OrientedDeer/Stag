@@ -37,7 +37,7 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
     id: "elite",
     label: "Elite Dangerous",
     font: "'Orbitron', 'Chakra Petch', ui-sans-serif, system-ui, sans-serif",
-    flags: { glow: true, scanlines: false, angular: true },
+    flags: { glow: true, scanlines: true, angular: true },
     chartRamp: "amber",
   },
 };

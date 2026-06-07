@@ -14,6 +14,7 @@ import { exportToExcel, ExportData } from '../../../services/ExcelExportService'
 import { captureChart, collectReportData, generatePDFReport } from '../../../services/PDFReportService';
 import { calculateNetWorth, formatCompactCurrency, formatCurrency } from './FutureUtils';
 
+import { Button } from "../../../components/Layout/Primitives";
 interface DataTabProps {
     simulationData: SimulationYear[];
     birthYear: number;
@@ -254,9 +255,9 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, bir
                     <button onClick={handleExportCSV} className="px-4 py-2 bg-surface-input hover:bg-surface-hover text-content-emphasis text-sm font-bold rounded-lg border border-border-strong">
                         CSV
                     </button>
-                    <button onClick={() => { void handleExportExcel(); }} className="px-4 py-2 bg-positive-solid hover:bg-positive-strong text-white text-sm font-bold rounded-lg shadow-lg">
+                    <Button onClick={() => { void handleExportExcel(); }} variant="positive" className="font-bold shadow-lg">
                         Excel
-                    </button>
+                    </Button>
                 </div>
             </div>
 

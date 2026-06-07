@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { SavedScenario } from '../../../services/ScenarioTypes';
 import { ConfirmDialog } from '../../Layout/ConfirmDialog';
 import { getRetirementAge, getLifeExpectancy, BUILTIN_MILESTONE_IDS } from '../Assumptions/AssumptionsContext';
+import { Button } from "../../Layout/Primitives";
 
 interface ScenarioCardProps {
     scenario: SavedScenario;
@@ -182,18 +183,18 @@ const ScenarioAssumptionsModal: React.FC<{
                 </div>
 
                 <div className="p-4 border-t border-border-default flex justify-end gap-2">
-                    <button
+                    <Button
                         onClick={onClose}
-                        className="px-4 py-2 bg-surface-input hover:bg-surface-hover text-white rounded-lg text-sm"
+                        variant="secondary"
                     >
                         Cancel
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                         onClick={handleSave}
-                        className="px-4 py-2 bg-positive-solid hover:bg-positive-soft text-white rounded-lg text-sm font-medium"
+                        variant="positive"
                     >
                         Save Changes
-                    </button>
+                    </Button>
                 </div>
             </div>
         </div>

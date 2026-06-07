@@ -11,6 +11,7 @@ import { BudgetContext } from '../Budget/BudgetContext';
 import PassphraseModal from './PassphraseModal';
 import QRGenerateModal from '../Accounts/QRTransfer/QRGenerateModal';
 import QRScanModal from '../Accounts/QRTransfer/QRScanModal';
+import { Button } from "../../Layout/Primitives";
 
 interface CloudBackupPanelProps {
     isOpen: boolean;
@@ -314,10 +315,10 @@ export default function CloudBackupPanel({ isOpen, onClose }: CloudBackupPanelPr
                                 )}
 
                                 {/* Cloud actions */}
-                                <button
+                                <Button
                                     onClick={() => setPassphraseMode('backup')}
                                     disabled={backupInProgress || restoreInProgress}
-                                    className="w-full px-3 py-2 bg-positive-solid hover:bg-positive-soft disabled:bg-surface-hover disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                                    variant="positive" size="none" className="w-full px-3 py-2 disabled:bg-surface-hover text-sm flex items-center justify-center gap-2"
                                 >
                                     {backupInProgress ? (
                                         <>
@@ -335,7 +336,7 @@ export default function CloudBackupPanel({ isOpen, onClose }: CloudBackupPanelPr
                                             Back Up to Cloud
                                         </>
                                     )}
-                                </button>
+                                </Button>
 
                                 {lastBackupTimestamp && (
                                     <button

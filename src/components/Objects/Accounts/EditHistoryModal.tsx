@@ -5,6 +5,7 @@ import { CurrencyInput } from '../../Layout/InputFields/CurrencyInput';
 import { PropertyAccount } from './models';
 import { useModalAccessibility } from '../../../hooks/useModalAccessibility';
 import { formatDateForInput } from '../../../utils/formatters';
+import { Button } from "../../Layout/Primitives";
 
 interface EditHistoryModalProps {
     accountId: string;
@@ -49,9 +50,9 @@ export const EditHistoryModal: React.FC<EditHistoryModalProps> = ({ accountId, i
             >
                 <div className="flex justify-between items-center mb-6 border-b border-border-subtle pb-3">
                     <h2 className="text-xl font-bold text-white">Edit Balance History</h2>
-                    <button onClick={onClose} className="p-2 rounded-lg text-content-muted hover:text-white hover:bg-surface-overlay transition-colors">
+                    <Button onClick={onClose} variant="ghost" size="none" className="p-2">
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                    </button>
+                    </Button>
                 </div>
 
                 <div className="overflow-y-auto grow space-y-3 pr-2 mb-6">
@@ -109,12 +110,12 @@ export const EditHistoryModal: React.FC<EditHistoryModalProps> = ({ accountId, i
                                 onChange={setNewAmount}
                             />
                         </div>
-                        <button
+                        <Button
                             type="submit"
-                            className="px-5 py-2.5 rounded-lg font-medium bg-positive-solid text-white hover:bg-positive-strong transition-colors"
+                            variant="positive" size="lg"
                         >
                             Add
-                        </button>
+                        </Button>
                     </div>
                 </form>
             </div>

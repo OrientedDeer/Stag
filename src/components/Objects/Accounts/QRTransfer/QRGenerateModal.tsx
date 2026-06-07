@@ -2,6 +2,7 @@ import { useMemo, useRef } from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { compressData, exceedsQRLimit, createCompactBackup } from './qrUtils';
 import { useModalAccessibility } from '../../../../hooks/useModalAccessibility';
+import { Button } from "../../../Layout/Primitives";
 
 interface FullBackup {
     version: number;
@@ -111,19 +112,19 @@ export default function QRGenerateModal({ isOpen, onClose, backupData }: QRGener
                 {/* Buttons */}
                 <div className="flex gap-3 justify-end">
                     {!exceedsLimit && (
-                        <button
+                        <Button
                             onClick={handleDownload}
-                            className="px-4 py-2 bg-surface-input hover:bg-surface-hover text-white rounded-lg font-medium transition-colors"
+                            variant="secondary"
                         >
                             Download Image
-                        </button>
+                        </Button>
                     )}
-                    <button
+                    <Button
                         onClick={onClose}
-                        className="px-4 py-2 bg-positive-solid hover:bg-positive-soft text-white rounded-lg font-medium transition-colors"
+                        variant="positive"
                     >
                         Close
-                    </button>
+                    </Button>
                 </div>
             </div>
         </div>

@@ -9,6 +9,7 @@ import { OverlaidChartView } from './OverlaidChartView';
 import { DifferenceSummary } from './DifferenceSummary';
 import { LoadingSpinner } from '../../../components/Layout/LoadingSpinner';
 
+import { Button } from "../../../components/Layout/Primitives";
 type ComparisonView = 'side-by-side' | 'overlaid' | 'differences';
 
 interface ScenarioComparisonTabProps {
@@ -89,12 +90,12 @@ export const ScenarioComparisonTab: React.FC<ScenarioComparisonTabProps> = ({ si
 
                         <div className="flex gap-2">
                             {comparisonResult && (
-                                <button
+                                <Button
                                     onClick={clearComparison}
-                                    className="px-4 py-2 bg-surface-input hover:bg-surface-hover text-white rounded-lg text-sm transition-colors"
+                                    variant="secondary"
                                 >
                                     Clear
-                                </button>
+                                </Button>
                             )}
                             <button
                                 onClick={handleRunComparison}

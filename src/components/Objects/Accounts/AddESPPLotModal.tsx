@@ -5,6 +5,7 @@ import { NumberInput } from "../../Layout/InputFields/NumberInput";
 import { StyledInput, StyledDisplay } from "../../Layout/InputFields/StyleUI";
 import { useModalAccessibility } from "../../../hooks/useModalAccessibility";
 import { formatDateForInput } from "../../../utils/formatters";
+import { Button } from "../../Layout/Primitives";
 
 const generateUniqueLotId = () =>
     `LOT-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -229,21 +230,21 @@ const AddESPPLotModal: React.FC<AddESPPLotModalProps> = ({
                 </div>
 
                 <div className="flex justify-end gap-3 mt-8">
-                    <button
+                    <Button
                         type="button"
                         onClick={handleClose}
-                        className="px-5 py-2.5 rounded-lg font-medium text-content-muted hover:text-white hover:bg-surface-overlay transition-colors"
+                        variant="ghost" size="lg"
                     >
                         Cancel
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                         type="submit"
                         disabled={!isValid}
                         title={!isValid ? "Fill in all required fields" : undefined}
-                        className="px-5 py-2.5 rounded-lg font-medium bg-positive-solid text-white hover:bg-positive-strong disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        variant="positive" size="lg"
                     >
                         {isEditing ? 'Save Changes' : 'Add Lot'}
-                    </button>
+                    </Button>
                 </div>
                 </form>
             </div>

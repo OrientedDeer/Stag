@@ -4,6 +4,7 @@ import { formatEarningsSummary } from '../../../../services/SSAImportService';
 import type { EarningsRecord } from '../../../../services/SocialSecurityCalculator';
 import type { FutureSocialSecurityIncome } from '../models';
 import type { AllIncomeKeys } from '../IncomeContext';
+import { Button } from "../../../Layout/Primitives";
 
 interface FutureSocialSecurityFieldsProps {
     income: FutureSocialSecurityIncome;
@@ -50,12 +51,12 @@ export function FutureSocialSecurityFields({
                     SSA Earnings History
                 </label>
                 <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-                    <button
+                    <Button
                         onClick={() => ssaFileInputRef.current?.click()}
-                        className="px-4 py-2 bg-accent hover:bg-accent-soft text-white rounded-lg text-sm font-medium transition-colors"
+                        variant="primary"
                     >
                         Import SSA Data
-                    </button>
+                    </Button>
                     <input
                         type="file"
                         ref={ssaFileInputRef}

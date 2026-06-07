@@ -73,7 +73,7 @@ import { SavedAccount, InvestedAccount, DebtAccount, DeficitDebtAccount, Propert
 import { formatCompactCurrency } from '../Future/tabs/FutureUtils';
 import { SimulationYear } from '../../services/simulation/types';
 import RothConversionDebugTab from './RothConversionDebug';
-import { Panel } from "../../components/Layout/Primitives";
+import { Panel, Button } from "../../components/Layout/Primitives";
 
 // Helper to format currency
 const toCurrency = (num: number) =>
@@ -4570,12 +4570,12 @@ function QRCodeDebugTab() {
                                     {debugInfo && <p className="text-content-subtle text-xs mt-2">{debugInfo}</p>}
                                 </div>
                             </div>
-                            <button
+                            <Button
                                 onClick={handleReset}
-                                className="mt-4 px-4 py-2 bg-surface-input hover:bg-surface-hover text-white rounded-lg font-medium transition-colors"
+                                variant="secondary" className="mt-4"
                             >
                                 Try Again
-                            </button>
+                            </Button>
                         </div>
                         {previewUrl && (
                             <div className="bg-surface-overlay rounded-lg p-4">
@@ -4609,18 +4609,18 @@ function QRCodeDebugTab() {
                         </div>
 
                         <div className="flex gap-3">
-                            <button
+                            <Button
                                 onClick={handleReset}
-                                className="px-4 py-2 bg-surface-input hover:bg-surface-hover text-white rounded-lg font-medium transition-colors"
+                                variant="secondary"
                             >
                                 Cancel
-                            </button>
-                            <button
+                            </Button>
+                            <Button
                                 onClick={handleImport}
-                                className="px-4 py-2 bg-positive-solid hover:bg-positive-soft text-white rounded-lg font-medium transition-colors"
+                                variant="positive"
                             >
                                 Import Data
-                            </button>
+                            </Button>
                         </div>
                     </div>
                 )}

@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { Scanner, type IDetectedBarcode } from '@yudiel/react-qr-scanner';
 import { decompressData, validatePayload, isCompactFormat, expandCompactBackup } from './qrUtils';
 import { useModalAccessibility } from '../../../../hooks/useModalAccessibility';
+import { Button } from "../../../Layout/Primitives";
 
 interface ParsedData {
     version: number;
@@ -166,45 +167,45 @@ export default function QRScanModal({ isOpen, onClose, onImport }: QRScanModalPr
                 {/* Buttons */}
                 <div className="flex gap-3 justify-end mt-4">
                     {status === 'scanning' && (
-                        <button
+                        <Button
                             onClick={handleClose}
-                            className="px-4 py-2 bg-surface-input hover:bg-surface-hover text-white rounded-lg font-medium transition-colors"
+                            variant="secondary"
                         >
                             Cancel
-                        </button>
+                        </Button>
                     )}
 
                     {status === 'error' && (
                         <>
-                            <button
+                            <Button
                                 onClick={handleClose}
-                                className="px-4 py-2 bg-surface-input hover:bg-surface-hover text-white rounded-lg font-medium transition-colors"
+                                variant="secondary"
                             >
                                 Cancel
-                            </button>
-                            <button
+                            </Button>
+                            <Button
                                 onClick={handleRetry}
-                                className="px-4 py-2 bg-positive-solid hover:bg-positive-soft text-white rounded-lg font-medium transition-colors"
+                                variant="positive"
                             >
                                 Try Again
-                            </button>
+                            </Button>
                         </>
                     )}
 
                     {status === 'success' && (
                         <>
-                            <button
+                            <Button
                                 onClick={handleClose}
-                                className="px-4 py-2 bg-surface-input hover:bg-surface-hover text-white rounded-lg font-medium transition-colors"
+                                variant="secondary"
                             >
                                 Cancel
-                            </button>
-                            <button
+                            </Button>
+                            <Button
                                 onClick={handleImportClick}
-                                className="px-4 py-2 bg-positive-solid hover:bg-positive-soft text-white rounded-lg font-medium transition-colors"
+                                variant="positive"
                             >
                                 Import Data
-                            </button>
+                            </Button>
                         </>
                     )}
                 </div>

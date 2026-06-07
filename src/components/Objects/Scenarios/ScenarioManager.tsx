@@ -7,6 +7,7 @@ import { ExpenseContext } from '../Expense/ExpenseContext';
 import { TaxContext } from '../Taxes/TaxContext';
 import { useAssumptions } from '../Assumptions/AssumptionsContext';
 import { AlertBanner } from '../../Layout/AlertBanner';
+import { Button } from "../../Layout/Primitives";
 
 /**
  * Manager component for listing, saving, and importing scenarios
@@ -104,18 +105,18 @@ export const ScenarioManager: React.FC = () => {
                 </div>
 
                 <div className="flex gap-2">
-                    <button
+                    <Button
                         onClick={() => setShowSaveForm(true)}
-                        className="px-4 py-2 bg-positive-solid hover:bg-positive-soft text-white rounded-lg text-sm font-medium transition-colors"
+                        variant="positive"
                     >
                         Save Current
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                         onClick={handleImportClick}
-                        className="px-4 py-2 bg-surface-input hover:bg-surface-hover text-white rounded-lg text-sm font-medium transition-colors"
+                        variant="secondary"
                     >
                         Import
-                    </button>
+                    </Button>
                     <input
                         ref={fileInputRef}
                         type="file"
@@ -173,23 +174,23 @@ export const ScenarioManager: React.FC = () => {
                         )}
 
                         <div className="flex gap-2 justify-end">
-                            <button
+                            <Button
                                 onClick={() => {
                                     setShowSaveForm(false);
                                     setScenarioName('');
                                     setScenarioDescription('');
                                     setSaveError(null);
                                 }}
-                                className="px-4 py-2 bg-surface-input hover:bg-surface-hover text-white rounded-lg text-sm transition-colors"
+                                variant="secondary"
                             >
                                 Cancel
-                            </button>
-                            <button
+                            </Button>
+                            <Button
                                 onClick={handleSave}
-                                className="px-4 py-2 bg-positive-solid hover:bg-positive-soft text-white rounded-lg text-sm font-medium transition-colors"
+                                variant="positive"
                             >
                                 Save Scenario
-                            </button>
+                            </Button>
                         </div>
                     </div>
                 </div>

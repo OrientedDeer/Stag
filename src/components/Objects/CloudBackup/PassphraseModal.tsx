@@ -1,6 +1,7 @@
 import { useContext, useState } from 'react';
 import { useModalAccessibility } from '../../../hooks/useModalAccessibility';
 import { CloudBackupContext } from './CloudBackupContext';
+import { Button } from "../../Layout/Primitives";
 
 interface PassphraseModalProps {
     isOpen: boolean;
@@ -137,18 +138,18 @@ export default function PassphraseModal({ isOpen, onClose, onSubmit, mode, loadi
 
                 {/* Buttons */}
                 <div className="flex gap-3 justify-end mt-5">
-                    <button
+                    <Button
                         type="button"
                         onClick={handleClose}
-                        className="px-4 py-2 bg-surface-input hover:bg-surface-hover text-white rounded-lg font-medium transition-colors"
+                        variant="secondary"
                         disabled={loading}
                     >
                         Cancel
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                         type="submit"
                         disabled={loading || !passphrase}
-                        className="px-4 py-2 bg-positive-solid hover:bg-positive-soft disabled:bg-surface-hover disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+                        variant="positive" className="disabled:bg-surface-hover flex items-center gap-2"
                     >
                         {loading && (
                             <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -157,7 +158,7 @@ export default function PassphraseModal({ isOpen, onClose, onSubmit, mode, loadi
                             </svg>
                         )}
                         {loading ? (isBackup ? 'Encrypting...' : 'Decrypting...') : (isBackup ? 'Encrypt & Upload' : 'Download & Decrypt')}
-                    </button>
+                    </Button>
                 </div>
                 </form>
             </div>

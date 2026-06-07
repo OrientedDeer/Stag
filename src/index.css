@@ -123,6 +123,8 @@
   --c-accent-soft:     #3b82f6; /* blue-500 */
   --c-accent-hover:    #1d4ed8; /* blue-700 */
   --c-accent-contrast: #ffffff;
+  --c-grid-accent:     #86efac; /* spreadsheet selection (green-300) */
+  --c-focus-ring:      #10b981; /* keyboard focus outline (emerald-500) */
 
   --c-info:            #60a5fa; /* blue-400 (informational) */
   --c-info-bright:     #93c5fd; /* blue-300 */
@@ -203,6 +205,8 @@
   --c-accent-soft:     #ff8a1f;
   --c-accent-hover:    #ff9233;
   --c-accent-contrast: #1a0e00;
+  --c-grid-accent:     #ff9d3c; /* spreadsheet selection -> amber */
+  --c-focus-ring:      #ff9d3c; /* keyboard focus outline -> amber */
 
   --c-info:            #ffa94d; /* full orange HUD: info is amber too */
   --c-info-bright:     #ffc078;
@@ -230,8 +234,8 @@
   --c-warning-strong:  #a08400;
   --c-warning-tint:    #2e2200;
 
-  /* categorical (elite = HUD-cohesive but distinguishable: amber, cyan,
-     periwinkle, magenta, lime, sky — a judgment call, easy to retune) */
+  /* categorical (elite = ED-cohesive warm + cyan: amber, cyan, tan/bronze,
+     coral, khaki-gold, pale-cyan — no magenta/purple/lime. Easy to retune.) */
   --c-cat-orange:         #ff9d3c;
   --c-cat-orange-bright:  #ffc89a;
   --c-cat-orange-soft:    #ff7a14;
@@ -242,19 +246,23 @@
   --c-cat-cyan-bright:    #a0e8f5;
   --c-cat-cyan-soft:      #1f9ec8;
   --c-cat-cyan-tint:      #08323a;
-  --c-cat-purple:         #9db4ff;
-  --c-cat-purple-bright:  #c9b8ff;
-  --c-cat-purple-soft:    #6f86e0;
-  --c-cat-purple-solid:   #5a6fd0;
-  --c-cat-purple-strong:  #404f9a;
-  --c-cat-purple-tint:    #0e1430;
-  --c-cat-fuchsia:        #ff6ec7;
-  --c-cat-fuchsia-bright: #ffb0e0;
-  --c-cat-fuchsia-soft:   #e84db0;
-  --c-cat-fuchsia-solid:  #c43a96;
-  --c-cat-fuchsia-tint:   #2e0820;
-  --c-cat-lime:           #cfe84b;
-  --c-cat-sky-bright:     #9fd8ff;
+  /* (was periwinkle) -> tan/bronze */
+  --c-cat-purple:         #d8b27a;
+  --c-cat-purple-bright:  #ecd0a6;
+  --c-cat-purple-soft:    #b8915a;
+  --c-cat-purple-solid:   #97713e;
+  --c-cat-purple-strong:  #6e5228;
+  --c-cat-purple-tint:    #1c1408;
+  /* (was magenta) -> coral / warm red */
+  --c-cat-fuchsia:        #ff8a5c;
+  --c-cat-fuchsia-bright: #ffb799;
+  --c-cat-fuchsia-soft:   #e8683a;
+  --c-cat-fuchsia-solid:  #c44a20;
+  --c-cat-fuchsia-tint:   #2e0d04;
+  /* (was lime) -> khaki-gold */
+  --c-cat-lime:           #c9b34a;
+  /* (was sky blue) -> pale cyan */
+  --c-cat-sky-bright:     #9fd0dc;
 
   /* --- raw-palette overrides: reskin components not yet migrated --- */
   --color-gray-950: #0a0705;
@@ -327,35 +335,39 @@
   --color-chart-Yellow-50: #e0bf00; --color-chart-Yellow-75: #c9a400; --color-chart-Yellow-100: #a08400;
   --color-chart-Cyan-1: #a0e8f5; --color-chart-Cyan-25: #4bd0e9;
   --color-chart-Cyan-50: #2db7d8; --color-chart-Cyan-75: #1f9ec8; --color-chart-Cyan-100: #0f7a9c;
-  --color-chart-Blue-1: #9db4ff; --color-chart-Blue-25: #6f86e0;
-  --color-chart-Blue-50: #5a6fd0; --color-chart-Blue-75: #4a5ab8; --color-chart-Blue-100: #404f9a;
-  --color-chart-Green-1: #ffd97a; --color-chart-Green-25: #e8a800;
-  --color-chart-Green-50: #d99500; --color-chart-Green-75: #b87a00; --color-chart-Green-100: #7a5410;
+  /* Blue (was periwinkle) -> steel/teal cyan */
+  --color-chart-Blue-1: #9fd0d8; --color-chart-Blue-25: #6fb0bc;
+  --color-chart-Blue-50: #4a96a4; --color-chart-Blue-75: #357d8a; --color-chart-Blue-100: #265c66;
+  /* Green -> khaki / olive gold (distinct from Yellow's bright gold) */
+  --color-chart-Green-1: #e0d27a; --color-chart-Green-25: #c9b34a;
+  --color-chart-Green-50: #b09a2e; --color-chart-Green-75: #8a7820; --color-chart-Green-100: #6a5c14;
   --color-chart-Red-1: #ff8a5c; --color-chart-Red-25: #ff5a1f;
   --color-chart-Red-50: #e84810; --color-chart-Red-75: #c43a10; --color-chart-Red-100: #9a2c08;
-  --color-chart-Fuchsia-1: #ffb0e0; --color-chart-Fuchsia-25: #ff6ec7;
-  --color-chart-Fuchsia-50: #e84db0; --color-chart-Fuchsia-75: #c43a96; --color-chart-Fuchsia-100: #a02e7a;
+  /* Fuchsia (was magenta) -> cream -> tan -> brown */
+  --color-chart-Fuchsia-1: #ffe8c8; --color-chart-Fuchsia-25: #e8c89a;
+  --color-chart-Fuchsia-50: #d4b07a; --color-chart-Fuchsia-75: #b8925a; --color-chart-Fuchsia-100: #96723e;
 
-  /* canonical series palette + money -> HUD-distinguishable */
-  --color-chart-series-1: #ff9d3c;
-  --color-chart-series-2: #ffc030;
-  --color-chart-series-3: #ff6ec7;
-  --color-chart-series-4: #ffd900;
-  --color-chart-series-5: #9db4ff;
-  --color-chart-series-6: #4bd0e9;
-  --color-chart-series-7: #ff5a1f;
-  --color-chart-series-8: #c9b8ff;
-  --color-chart-series-9: #cfe84b;
-  --color-chart-series-10: #a0e8f5;
-  --color-chart-series-11: #ff7100;
-  --color-chart-series-12: #b8956a;
+  /* canonical series palette + money -> ED-cohesive (warm + cyan, no
+     magenta/purple/lime), ordered most-distinct-first for low-series charts. */
+  --color-chart-series-1: #ff9d3c;  /* amber */
+  --color-chart-series-2: #4bd0e9;  /* cyan */
+  --color-chart-series-3: #ffc030;  /* gold */
+  --color-chart-series-4: #ff5a1f;  /* red-orange */
+  --color-chart-series-5: #ffe3b0;  /* cream */
+  --color-chart-series-6: #ff7100;  /* ED orange */
+  --color-chart-series-7: #2f9aa8;  /* teal */
+  --color-chart-series-8: #c9a45a;  /* tan/bronze */
+  --color-chart-series-9: #c9b34a;  /* khaki-gold */
+  --color-chart-series-10: #ff8a5c; /* coral */
+  --color-chart-series-11: #8fd0dc; /* pale cyan */
+  --color-chart-series-12: #b08040; /* brown */
   --color-chart-money: #ffc030;
 }
 
 /* Custom scrollbar styling for dark theme */
 .custom-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: #374151 #1f2937; /* thumb track - gray-700 gray-800 */
+  scrollbar-color: var(--c-border-default) var(--c-surface-overlay); /* thumb track */
 }
 
 .custom-scrollbar::-webkit-scrollbar {
@@ -364,17 +376,17 @@
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: #1f2937; /* gray-800 */
+  background: var(--c-surface-overlay);
   border-radius: 4px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #374151; /* gray-700 */
+  background: var(--c-border-default);
   border-radius: 4px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #4b5563; /* gray-600 */
+  background: var(--c-border-strong);
 }
 
 @layer base {
@@ -406,16 +418,63 @@
     box-shadow: 0 0 6px -1px var(--c-accent);
   }
 
-  /* Elite HUD: panel chrome — amber top accent + faint glow. Applied via the
-     Panel primitive's .stag-panel class, so the whole app's panels get the HUD
-     frame from one rule (Layer 3 reskin lever). */
+  /* Elite HUD: panel chrome — angular corner brackets + faint glow. Brackets
+     are drawn with background-image (8 thin lines, 2 per corner) so panel
+     content/overflow is never clipped and no positioning is needed. One rule
+     reskins every .stag-panel (Layer 3 lever). */
   [data-theme="elite"] .stag-panel {
-    box-shadow: inset 0 2px 0 -1px var(--c-accent), 0 0 14px -8px var(--c-accent);
+    --hud-bracket: color-mix(in oklab, var(--c-accent) 60%, transparent);
+    background-image:
+      linear-gradient(var(--hud-bracket), var(--hud-bracket)),
+      linear-gradient(var(--hud-bracket), var(--hud-bracket)),
+      linear-gradient(var(--hud-bracket), var(--hud-bracket)),
+      linear-gradient(var(--hud-bracket), var(--hud-bracket)),
+      linear-gradient(var(--hud-bracket), var(--hud-bracket)),
+      linear-gradient(var(--hud-bracket), var(--hud-bracket)),
+      linear-gradient(var(--hud-bracket), var(--hud-bracket)),
+      linear-gradient(var(--hud-bracket), var(--hud-bracket));
+    background-repeat: no-repeat;
+    background-size:
+      13px 1.5px, 1.5px 13px, 13px 1.5px, 1.5px 13px,
+      13px 1.5px, 1.5px 13px, 13px 1.5px, 1.5px 13px;
+    background-position:
+      top left, top left, top right, top right,
+      bottom left, bottom left, bottom right, bottom right;
+    box-shadow: 0 0 16px -9px var(--c-accent);
   }
   /* Elite HUD: section labels read like a cockpit readout. */
   [data-theme="elite"] .stag-section-header {
     color: var(--c-accent);
     text-shadow: 0 0 6px color-mix(in oklab, var(--c-accent) 40%, transparent);
+  }
+  /* Elite HUD: action buttons get a faint glow + crisp edge. */
+  [data-theme="elite"][data-glow="true"] .stag-button {
+    box-shadow: 0 0 10px -4px currentColor;
+  }
+
+  /* Elite HUD: faint hexagon motif behind the app (cockpit tech texture). */
+  [data-theme="elite"] #root {
+    background-image: url("data:image/svg+xml,%3Csvg%20width='28'%20height='49'%20viewBox='0%200%2028%2049'%20xmlns='http://www.w3.org/2000/svg'%3E%3Cpath%20d='M13.99%209.25l13%207.5v15l-13%207.5L1%2031.75v-15l12.99-7.5zM3%2017.9v12.7l10.99%206.34%2011-6.35V17.9l-11-6.34L3%2017.9zM0%2015l12.98-7.5V0h-2v6.35L0%2012.69v2.3zm0%2018.5L12.98%2041v8h-2v-6.85L0%2035.81v-2.3zM15%200v7.5L27.99%2015H28v-2.31h-.01L17%206.35V0h-2zm0%2049v-8l12.99-7.5H28v2.31h-.01L17%2042.15V49h-2z'%20fill='%23ff8a1f'%20fill-opacity='0.05'%20fill-rule='evenodd'/%3E%3C/svg%3E");
+  }
+
+  /* Elite HUD: scanline + vignette overlay for a cockpit-screen feel.
+     Fixed, pointer-events:none so it never blocks interaction; toggled by the
+     `scanlines` flag (ThemeProvider sets data-scanlines on <html>). */
+  [data-theme="elite"][data-scanlines="true"]::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9000;
+    background:
+      repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 0.06) 0px,
+        rgba(0, 0, 0, 0.06) 1px,
+        transparent 1px,
+        transparent 3px
+      ),
+      radial-gradient(125% 125% at 50% 50%, transparent 58%, rgba(20, 8, 0, 0.32) 100%);
   }
 
   input[type="number"]::-webkit-inner-spin-button,
@@ -424,97 +483,100 @@
     margin: 0;
   }
 
-  /* DataSheetGrid dark theme overrides - matches app color palette */
+  /* DataSheetGrid theme overrides - token-driven so the grid follows the theme
+     (greys -> surface/content/border tokens; selection -> --c-grid-accent,
+     green in default / amber in Elite). */
   .budget-grid .dsg-container {
-    --dsg-selection-border-color: #86efac; /* green-300 */
-    --dsg-selection-background-color: rgba(134, 239, 172, 0.15);
-    --dsg-selection-disabled-border-color: #4b5563; /* gray-600 */
-    --dsg-selection-disabled-background-color: rgba(75, 85, 99, 0.1);
-    --dsg-border-color: #1f2937; /* gray-800 */
-    --dsg-header-text-color: #9ca3af; /* gray-400 */
-    --dsg-header-active-text-color: #f9fafb; /* gray-50 */
-    --dsg-cell-background-color: #111827; /* gray-900 */
-    --dsg-cell-disabled-background-color: #030712; /* gray-950 */
-    background: #111827 !important; /* gray-900 */
-    color: #f9fafb !important;
+    --dsg-selection-border-color: var(--c-grid-accent);
+    --dsg-selection-background-color: color-mix(in oklab, var(--c-grid-accent) 15%, transparent);
+    --dsg-selection-disabled-border-color: var(--c-border-strong);
+    --dsg-selection-disabled-background-color: color-mix(in oklab, var(--c-border-strong) 10%, transparent);
+    --dsg-border-color: var(--c-border-subtle);
+    --dsg-header-text-color: var(--c-content-muted);
+    --dsg-header-active-text-color: var(--c-content-strong);
+    --dsg-cell-background-color: var(--c-surface-raised);
+    --dsg-cell-disabled-background-color: var(--c-surface-base);
+    background: var(--c-surface-raised) !important;
+    color: var(--c-content-strong) !important;
   }
 
-  /* Selection rectangle - the green highlight */
+  /* Selection rectangle - the highlight */
   .budget-grid .dsg-selection-rect {
-    border-color: #86efac !important; /* green-300 */
-    background-color: rgba(134, 239, 172, 0.15) !important;
+    border-color: var(--c-grid-accent) !important;
+    background-color: color-mix(in oklab, var(--c-grid-accent) 15%, transparent) !important;
   }
 
   /* Active cell (starting cell of selection) - match selection highlight */
   .budget-grid .dsg-active-cell {
-    background-color: rgba(134, 239, 172, 0.15) !important;
+    background-color: color-mix(in oklab, var(--c-grid-accent) 15%, transparent) !important;
   }
 
   .budget-grid .dsg-selection-col-marker,
   .budget-grid .dsg-selection-row-marker {
-    background: #86efac !important; /* green-300 */
+    background: var(--c-grid-accent) !important;
   }
 
   .budget-grid .dsg-row {
-    background: #111827 !important; /* gray-900 */
+    background: var(--c-surface-raised) !important;
   }
 
 
   .budget-grid .dsg-cell {
-    background: #111827 !important; /* gray-900 */
-    color: #f9fafb !important;
-    border-color: #1f2937 !important; /* gray-800 */
-    box-shadow: 1px 1px #1f2937 !important;
+    background: var(--c-surface-raised) !important;
+    color: var(--c-content-strong) !important;
+    border-color: var(--c-border-subtle) !important;
+    box-shadow: 1px 1px var(--c-border-subtle) !important;
   }
 
   .budget-grid .dsg-row-header {
-    background: #030712 !important; /* gray-950 */
+    background: var(--c-surface-base) !important;
   }
 
   .budget-grid .dsg-row-header .dsg-cell {
-    background: #030712 !important; /* gray-950 */
-    color: #9ca3af !important; /* gray-400 */
+    background: var(--c-surface-base) !important;
+    color: var(--c-content-muted) !important;
     font-weight: 600;
   }
 
   .budget-grid .dsg-cell-disabled {
-    background: #030712 !important; /* gray-950 */
-    color: #6b7280 !important; /* gray-500 */
+    background: var(--c-surface-base) !important;
+    color: var(--c-content-subtle) !important;
   }
 
-  /* Row status colors for accounts tab */
+  /* Row status colors for accounts tab (ahead=positive, behind=warning,
+     market-driven=accent) */
   .budget-grid .row-ahead .dsg-cell {
-    background: rgba(34, 197, 94, 0.15) !important; /* green-500/15 */
+    background: color-mix(in oklab, var(--c-positive-soft) 15%, transparent) !important;
   }
   .budget-grid .row-ahead .dsg-cell-disabled {
-    background: rgba(34, 197, 94, 0.1) !important; /* green-500/10 */
+    background: color-mix(in oklab, var(--c-positive-soft) 10%, transparent) !important;
   }
 
   .budget-grid .row-behind .dsg-cell {
-    background: rgba(234, 179, 8, 0.15) !important; /* yellow-500/15 */
+    background: color-mix(in oklab, var(--c-warning-soft) 15%, transparent) !important;
   }
   .budget-grid .row-behind .dsg-cell-disabled {
-    background: rgba(234, 179, 8, 0.1) !important; /* yellow-500/10 */
+    background: color-mix(in oklab, var(--c-warning-soft) 10%, transparent) !important;
   }
 
   .budget-grid .row-market-driven .dsg-cell {
-    background: rgba(59, 130, 246, 0.15) !important; /* blue-500/15 */
+    background: color-mix(in oklab, var(--c-accent-soft) 15%, transparent) !important;
   }
   .budget-grid .row-market-driven .dsg-cell-disabled {
-    background: rgba(59, 130, 246, 0.1) !important; /* blue-500/10 */
+    background: color-mix(in oklab, var(--c-accent-soft) 10%, transparent) !important;
   }
 
   .budget-grid .dsg-input {
-    background-color: #1f2937 !important; /* gray-800 */
-    color: #f9fafb !important;
-    border: 1px solid #374151 !important; /* gray-700 */
-    caret-color: #f9fafb;
+    background-color: var(--c-surface-overlay) !important;
+    color: var(--c-content-strong) !important;
+    border: 1px solid var(--c-border-default) !important;
+    caret-color: var(--c-content-strong);
   }
 
   .budget-grid .dsg-input:focus {
-    border-color: #86efac !important; /* green-300 */
+    border-color: var(--c-grid-accent) !important;
     outline: none !important;
-    box-shadow: 0 0 0 2px rgba(134, 239, 172, 0.15) !important;
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--c-grid-accent) 15%, transparent) !important;
   }
 
   /* Chart colors for Nivo SVG - must be in :root for SVG access */
@@ -1310,7 +1372,7 @@
     [role="option"],
     [tabindex="0"]
 ):focus-visible {
-    outline: 2px solid #10b981 !important; /* emerald-500 */
+    outline: 2px solid var(--c-focus-ring) !important;
     outline-offset: 2px !important;
     border-radius: 4px;
 }
@@ -1335,7 +1397,7 @@
     [role="option"],
     [tabindex="0"]
 ):focus {
-    outline: 2px solid #10b981 !important;
+    outline: 2px solid var(--c-focus-ring) !important;
     outline-offset: 2px !important;
     border-radius: 4px;
 }

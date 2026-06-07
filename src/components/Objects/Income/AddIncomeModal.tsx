@@ -33,6 +33,7 @@ import {
     EarnedIncomeOption,
     getInitialFormState
 } from "./incomeFormTypes";
+import { Button } from "../../Layout/Primitives";
 
 const generateUniqueId = () =>
     `INC-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -454,22 +455,22 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                 )}
 
                 <div className="flex justify-end gap-3 mt-8">
-                    <button
+                    <Button
                         type="button"
                         onClick={handleCancelOrBack}
-                        className="px-5 py-2.5 rounded-lg font-medium text-content-muted hover:text-white hover:bg-surface-overlay transition-colors"
+                        variant="ghost" size="lg"
                     >
                         {step === "details" ? "Back" : "Cancel"}
-                    </button>
+                    </Button>
                     {step === "details" && (
-                        <button
+                        <Button
                             type="submit"
                             disabled={!form.name.trim() || !!dateError}
                             title={!form.name.trim() ? "Enter a name" : dateError ? "Fix date error" : undefined}
-                            className="px-5 py-2.5 rounded-lg font-medium bg-positive-solid text-white hover:bg-positive-strong disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            variant="positive" size="lg"
                         >
                             Add Income
-                        </button>
+                        </Button>
                     )}
                 </div>
                 </form>

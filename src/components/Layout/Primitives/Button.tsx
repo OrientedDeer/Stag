@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes } from "react";
+import type { ComponentPropsWithRef } from "react";
 
 /**
  * Button — themeable action button (Layer 3 primitive).
@@ -12,25 +12,25 @@ type Variant =
   | "warning"
   | "secondary"
   | "ghost";
-type Size = "sm" | "md" | "lg";
+type Size = "sm" | "md" | "lg" | "none";
 
 const VARIANTS: Record<Variant, string> = {
   primary: "bg-accent hover:bg-accent-hover text-accent-contrast",
   positive: "bg-positive-solid hover:bg-positive-strong text-white",
   negative: "bg-negative-solid hover:bg-negative-strong text-white",
   warning: "bg-warning-solid hover:bg-warning-strong text-white",
-  secondary:
-    "bg-surface-overlay hover:bg-surface-input text-content-default border border-border-default",
-  ghost: "text-content-muted hover:bg-surface-overlay hover:text-content-default",
+  secondary: "bg-surface-input hover:bg-surface-hover text-white",
+  ghost: "text-content-muted hover:text-white hover:bg-surface-overlay",
 };
 
 const SIZES: Record<Size, string> = {
   sm: "px-3 py-1.5 text-sm",
   md: "px-4 py-2 text-sm",
   lg: "px-5 py-2.5",
+  none: "", // caller controls padding/text via className
 };
 
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+interface ButtonProps extends ComponentPropsWithRef<"button"> {
   variant?: Variant;
   size?: Size;
 }

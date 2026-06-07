@@ -18,7 +18,7 @@ import { DropdownInput } from '../../components/Layout/InputFields/DropdownInput
 import { NameInput } from '../../components/Layout/InputFields/NameInput';
 import { NumberInput } from '../../components/Layout/InputFields/NumberInput';
 import { ChevronIcon } from '../../components/Layout/Icons/ChevronIcon';
-import { Panel } from "../../components/Layout/Primitives";
+import { Panel, Button } from "../../components/Layout/Primitives";
 
 export default function PriorityTab() {
     const { state, dispatch } = useContext(AssumptionsContext);
@@ -610,18 +610,18 @@ export default function PriorityTab() {
                                                                         )}
                                                                     </div>
                                                                     <div className="flex gap-2 justify-end pt-2">
-                                                                        <button
+                                                                        <Button
                                                                             onClick={handleCancelEdit}
-                                                                            className="px-3 py-1.5 text-sm bg-surface-input hover:bg-surface-hover text-white rounded-lg transition-colors"
+                                                                            variant="secondary" size="sm"
                                                                         >
                                                                             Cancel
-                                                                        </button>
-                                                                        <button
+                                                                        </Button>
+                                                                        <Button
                                                                             onClick={handleSaveEdit}
-                                                                            className="px-3 py-1.5 text-sm bg-positive-solid hover:bg-positive-soft text-white rounded-lg transition-colors"
+                                                                            variant="positive" size="sm"
                                                                         >
                                                                             Save
-                                                                        </button>
+                                                                        </Button>
                                                                     </div>
                                                                 </div>
                                                             ) : (
@@ -777,19 +777,19 @@ export default function PriorityTab() {
                                     )}
                                 </div>
                                 <div className="flex gap-2 justify-end pt-2">
-                                    <button
+                                    <Button
                                         onClick={() => setShowAddForm(false)}
-                                        className="px-3 py-1.5 text-sm bg-surface-input hover:bg-surface-hover text-white rounded-lg transition-colors"
+                                        variant="secondary" size="sm"
                                     >
                                         Cancel
-                                    </button>
-                                    <button
+                                    </Button>
+                                    <Button
                                         onClick={handleAdd}
                                         disabled={!newAccount}
-                                        className="px-3 py-1.5 text-sm bg-positive-solid hover:bg-positive-soft disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+                                        variant="positive" size="sm"
                                     >
                                         Add
-                                    </button>
+                                    </Button>
                                 </div>
                             </div>
                         ) : (
