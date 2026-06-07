@@ -4,7 +4,7 @@ import { ChevronIcon } from "./Icons/ChevronIcon.js";
 interface ExpandableCardProps {
     /** Display name shown in both collapsed and expanded views */
     name: string;
-    /** Background color class for the icon (e.g., "bg-blue-500") */
+    /** Background color class for the icon (e.g., "bg-accent-soft") */
     iconBg: string;
     /** Single character or short text shown in the icon circle */
     iconLabel: string;
@@ -60,7 +60,7 @@ export function ExpandableCard({
                     onClick={() => setIsExpanded(true)}
                     aria-expanded="false"
                     aria-label={`Expand ${name} ${ariaLabelType} details`}
-                    className="flex items-center gap-4 p-4 bg-[#18181b] rounded-xl border border-gray-800 cursor-pointer hover:border-gray-600 transition-colors w-full text-left"
+                    className="flex items-center gap-4 p-4 bg-[var(--c-surface-raised)] rounded-xl border border-border-subtle cursor-pointer hover:border-border-strong transition-colors w-full text-left"
                 >
                     <div
                         className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg ${iconBg} text-md font-bold text-white shrink-0`}
@@ -71,7 +71,7 @@ export function ExpandableCard({
                     <div className="font-semibold text-white truncate flex-1">
                         {name}
                     </div>
-                    <div className="text-gray-300 text-sm whitespace-nowrap">
+                    <div className="text-content-default text-sm whitespace-nowrap">
                         {displayValue}{frequencySuffix}
                     </div>
                     <ChevronIcon expanded={false} className="w-5 h-5" />
@@ -97,7 +97,7 @@ export function ExpandableCard({
                         onClick={() => setIsExpanded(false)}
                         aria-expanded="true"
                         aria-label={`Collapse ${name} ${ariaLabelType} details`}
-                        className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+                        className="p-2 hover:bg-surface-overlay rounded-lg transition-colors"
                     >
                         <ChevronIcon expanded={true} className="w-5 h-5" />
                     </button>

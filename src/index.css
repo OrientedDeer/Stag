@@ -1,4 +1,356 @@
+/* Sci-fi display font for the Elite Dangerous theme (Layer 2 supplies it via
+   --app-font; only this theme uses it, but the file is small and cached).
+   Must precede the Tailwind import so it stays ahead of all generated rules. */
+@import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&display=swap");
 @import "tailwindcss";
+
+/* =====================================================================
+   THEME SYSTEM — Layer 1 (design tokens)
+   See docs/THEMING_PLAN.md for the full architecture.
+
+   - Semantic tokens are registered with `@theme inline` so utilities like
+     `bg-surface-base` / `text-content-muted` emit `var(--c-*)` directly.
+   - Each theme is a block of `--c-*` assignments under a `[data-theme]`
+     selector. The default block reproduces today's exact look.
+   - The `elite` block ALSO overrides the raw Tailwind palette
+     (`--color-gray-*`, etc.) so components not yet migrated to semantic
+     tokens still get reskinned. Those overrides become redundant — and
+     can be deleted — as the migration completes.
+   ===================================================================== */
+@theme inline {
+  /* surfaces */
+  --color-surface-base:    var(--c-surface-base);
+  --color-surface-raised:  var(--c-surface-raised);
+  --color-surface-overlay: var(--c-surface-overlay);
+  --color-surface-input:   var(--c-surface-input);
+  --color-surface-hover:   var(--c-surface-hover);
+  --color-surface-muted:   var(--c-surface-muted);
+  /* text / content (ordered bright -> dim) */
+  --color-content-strong:   var(--c-content-strong);
+  --color-content-bright:   var(--c-content-bright);
+  --color-content-emphasis: var(--c-content-emphasis);
+  --color-content-default:  var(--c-content-default);
+  --color-content-muted:    var(--c-content-muted);
+  --color-content-subtle:   var(--c-content-subtle);
+  --color-content-faint:    var(--c-content-faint);
+  /* borders */
+  --color-border-subtle:   var(--c-border-subtle);
+  --color-border-default:  var(--c-border-default);
+  --color-border-strong:   var(--c-border-strong);
+  --color-border-faint:    var(--c-border-faint);
+  --color-border-muted:    var(--c-border-muted);
+  /* accents / semantic — each family: base (text/icon), -bright (lighter
+     text), -solid (filled bg), -tint (translucent alert bg), -edge (border) */
+  --color-accent:          var(--c-accent);
+  --color-accent-soft:     var(--c-accent-soft);
+  --color-accent-hover:    var(--c-accent-hover);
+  --color-accent-contrast: var(--c-accent-contrast);
+  --color-info:            var(--c-info);
+  --color-info-bright:     var(--c-info-bright);
+  --color-info-strong:     var(--c-info-strong);
+  --color-info-tint:       var(--c-info-tint);
+  --color-positive:        var(--c-positive);
+  --color-positive-bright: var(--c-positive-bright);
+  --color-positive-soft:   var(--c-positive-soft);
+  --color-positive-solid:  var(--c-positive-solid);
+  --color-positive-strong: var(--c-positive-strong);
+  --color-positive-tint:   var(--c-positive-tint);
+  --color-negative:        var(--c-negative);
+  --color-negative-bright: var(--c-negative-bright);
+  --color-negative-soft:   var(--c-negative-soft);
+  --color-negative-solid:  var(--c-negative-solid);
+  --color-negative-strong: var(--c-negative-strong);
+  --color-negative-tint:   var(--c-negative-tint);
+  --color-warning:         var(--c-warning);
+  --color-warning-bright:  var(--c-warning-bright);
+  --color-warning-soft:    var(--c-warning-soft);
+  --color-warning-solid:   var(--c-warning-solid);
+  --color-warning-strong:  var(--c-warning-strong);
+  --color-warning-tint:    var(--c-warning-tint);
+
+  /* categorical palette (scenarios, chart-adjacent series) — distinct hues,
+     not semantic state. Only the tiers actually used are registered. */
+  --color-cat-orange:         var(--c-cat-orange);
+  --color-cat-orange-bright:  var(--c-cat-orange-bright);
+  --color-cat-orange-soft:    var(--c-cat-orange-soft);
+  --color-cat-orange-solid:   var(--c-cat-orange-solid);
+  --color-cat-orange-strong:  var(--c-cat-orange-strong);
+  --color-cat-orange-tint:    var(--c-cat-orange-tint);
+  --color-cat-cyan:           var(--c-cat-cyan);
+  --color-cat-cyan-bright:    var(--c-cat-cyan-bright);
+  --color-cat-cyan-soft:      var(--c-cat-cyan-soft);
+  --color-cat-cyan-tint:      var(--c-cat-cyan-tint);
+  --color-cat-purple:         var(--c-cat-purple);
+  --color-cat-purple-bright:  var(--c-cat-purple-bright);
+  --color-cat-purple-soft:    var(--c-cat-purple-soft);
+  --color-cat-purple-solid:   var(--c-cat-purple-solid);
+  --color-cat-purple-strong:  var(--c-cat-purple-strong);
+  --color-cat-purple-tint:    var(--c-cat-purple-tint);
+  --color-cat-fuchsia:        var(--c-cat-fuchsia);
+  --color-cat-fuchsia-bright: var(--c-cat-fuchsia-bright);
+  --color-cat-fuchsia-soft:   var(--c-cat-fuchsia-soft);
+  --color-cat-fuchsia-solid:  var(--c-cat-fuchsia-solid);
+  --color-cat-fuchsia-tint:   var(--c-cat-fuchsia-tint);
+  --color-cat-lime:           var(--c-cat-lime);
+  --color-cat-sky-bright:     var(--c-cat-sky-bright);
+}
+
+/* ---- Default theme (current look — visually identical to today) ---- */
+:root,
+[data-theme="default"] {
+  --c-surface-base:    #030712; /* gray-950 */
+  --c-surface-raised:  #111827; /* gray-900 */
+  --c-surface-overlay: #1f2937; /* gray-800 */
+  --c-surface-input:   #374151; /* gray-700 */
+  --c-surface-hover:   #4b5563; /* gray-600 */
+  --c-surface-muted:   #6b7280; /* gray-500 */
+
+  --c-content-strong:   #f9fafb; /* gray-50 */
+  --c-content-bright:   #f3f4f6; /* gray-100 */
+  --c-content-emphasis: #e5e7eb; /* gray-200 */
+  --c-content-default:  #d1d5db; /* gray-300 */
+  --c-content-muted:    #9ca3af; /* gray-400 */
+  --c-content-subtle:   #6b7280; /* gray-500 */
+  --c-content-faint:    #4b5563; /* gray-600 */
+
+  --c-border-subtle:   #1f2937; /* gray-800 */
+  --c-border-default:  #374151; /* gray-700 */
+  --c-border-strong:   #4b5563; /* gray-600 */
+  --c-border-faint:    #6b7280; /* gray-500 */
+  --c-border-muted:    #9ca3af; /* gray-400 */
+
+  --c-accent:          #2563eb; /* blue-600 (solid action) */
+  --c-accent-soft:     #3b82f6; /* blue-500 */
+  --c-accent-hover:    #1d4ed8; /* blue-700 */
+  --c-accent-contrast: #ffffff;
+
+  --c-info:            #60a5fa; /* blue-400 (informational) */
+  --c-info-bright:     #93c5fd; /* blue-300 */
+  --c-info-strong:     #1d4ed8; /* blue-700 (alert border) */
+  --c-info-tint:       #1e3a8a; /* blue-900 (alert bg) */
+
+  --c-positive:        #4ade80; /* green-400 (gains, text/icon) */
+  --c-positive-bright: #86efac; /* green-300 */
+  --c-positive-soft:   #22c55e; /* green-500 */
+  --c-positive-solid:  #16a34a; /* green-600 (button base) */
+  --c-positive-strong: #15803d; /* green-700 (button hover / border) */
+  --c-positive-tint:   #14532d; /* green-900 (alert bg) */
+
+  --c-negative:        #f87171; /* red-400 (losses) */
+  --c-negative-bright: #fca5a5; /* red-300 */
+  --c-negative-soft:   #ef4444; /* red-500 */
+  --c-negative-solid:  #dc2626; /* red-600 */
+  --c-negative-strong: #b91c1c; /* red-700 */
+  --c-negative-tint:   #7f1d1d; /* red-900 */
+
+  --c-warning:         #facc15; /* yellow-400 */
+  --c-warning-bright:  #fde047; /* yellow-300 */
+  --c-warning-soft:    #eab308; /* yellow-500 */
+  --c-warning-solid:   #ca8a04; /* yellow-600 */
+  --c-warning-strong:  #a16207; /* yellow-700 */
+  --c-warning-tint:    #713f12; /* yellow-900 */
+
+  /* categorical (default = real Tailwind hues) */
+  --c-cat-orange:         #fb923c; /* orange-400 */
+  --c-cat-orange-bright:  #fdba74; /* orange-300 */
+  --c-cat-orange-soft:    #f97316; /* orange-500 */
+  --c-cat-orange-solid:   #ea580c; /* orange-600 */
+  --c-cat-orange-strong:  #c2410c; /* orange-700 */
+  --c-cat-orange-tint:    #7c2d12; /* orange-900 */
+  --c-cat-cyan:           #22d3ee; /* cyan-400 */
+  --c-cat-cyan-bright:    #67e8f9; /* cyan-300 */
+  --c-cat-cyan-soft:      #06b6d4; /* cyan-500 */
+  --c-cat-cyan-tint:      #164e63; /* cyan-900 */
+  --c-cat-purple:         #c084fc; /* purple-400 */
+  --c-cat-purple-bright:  #d8b4fe; /* purple-300 */
+  --c-cat-purple-soft:    #a855f7; /* purple-500 */
+  --c-cat-purple-solid:   #9333ea; /* purple-600 */
+  --c-cat-purple-strong:  #7e22ce; /* purple-700 */
+  --c-cat-purple-tint:    #581c87; /* purple-900 */
+  --c-cat-fuchsia:        #e879f9; /* fuchsia-400 */
+  --c-cat-fuchsia-bright: #f0abfc; /* fuchsia-300 */
+  --c-cat-fuchsia-soft:   #d946ef; /* fuchsia-500 */
+  --c-cat-fuchsia-solid:  #c026d3; /* fuchsia-600 */
+  --c-cat-fuchsia-tint:   #701a75; /* fuchsia-900 */
+  --c-cat-lime:           #a3e635; /* lime-400 */
+  --c-cat-sky-bright:     #7dd3fc; /* sky-300 */
+}
+
+/* ---- Elite Dangerous theme (full orange HUD) ---- */
+[data-theme="elite"] {
+  --c-surface-base:    #0a0705;
+  --c-surface-raised:  #140f09;
+  --c-surface-overlay: #1d160d;
+  --c-surface-input:   #2a2012;
+  --c-surface-hover:   #3a2c18;
+  --c-surface-muted:   #5a4422;
+
+  --c-content-strong:   #ffdaa6;
+  --c-content-bright:   #ffd09a;
+  --c-content-emphasis: #f7c187;
+  --c-content-default:  #ffb152;
+  --c-content-muted:    #cf8a2c;
+  --c-content-subtle:   #8f6320;
+  --c-content-faint:    #9a6e22; /* readable dim amber (raw gray-600 was near-invisible) */
+
+  --c-border-subtle:   #3a2a12;
+  --c-border-default:  #5e4117;
+  --c-border-strong:   #8a601c;
+  --c-border-faint:    #7a571c;
+  --c-border-muted:    #a07320;
+
+  --c-accent:          #ff7100; /* ED amber */
+  --c-accent-soft:     #ff8a1f;
+  --c-accent-hover:    #ff9233;
+  --c-accent-contrast: #1a0e00;
+
+  --c-info:            #ffa94d; /* full orange HUD: info is amber too */
+  --c-info-bright:     #ffc078;
+  --c-info-strong:     #8a4a10;
+  --c-info-tint:       #2a1400;
+
+  --c-positive:        #ffc030; /* gains = gold-amber */
+  --c-positive-bright: #ffd97a;
+  --c-positive-soft:   #e8a800;
+  --c-positive-solid:  #d99500;
+  --c-positive-strong: #b87a00;
+  --c-positive-tint:   #2a1d00;
+
+  --c-negative:        #ff5a1f; /* losses = orange-red (still distinct) */
+  --c-negative-bright: #ff8a5c;
+  --c-negative-soft:   #e84810;
+  --c-negative-solid:  #c43a10;
+  --c-negative-strong: #9a2c08;
+  --c-negative-tint:   #2e0d00;
+
+  --c-warning:         #ffd900;
+  --c-warning-bright:  #ffe34d;
+  --c-warning-soft:    #e0bf00;
+  --c-warning-solid:   #c9a400;
+  --c-warning-strong:  #a08400;
+  --c-warning-tint:    #2e2200;
+
+  /* categorical (elite = HUD-cohesive but distinguishable: amber, cyan,
+     periwinkle, magenta, lime, sky — a judgment call, easy to retune) */
+  --c-cat-orange:         #ff9d3c;
+  --c-cat-orange-bright:  #ffc89a;
+  --c-cat-orange-soft:    #ff7a14;
+  --c-cat-orange-solid:   #e85f00;
+  --c-cat-orange-strong:  #b84a00;
+  --c-cat-orange-tint:    #2e1500;
+  --c-cat-cyan:           #4bd0e9;
+  --c-cat-cyan-bright:    #a0e8f5;
+  --c-cat-cyan-soft:      #1f9ec8;
+  --c-cat-cyan-tint:      #08323a;
+  --c-cat-purple:         #9db4ff;
+  --c-cat-purple-bright:  #c9b8ff;
+  --c-cat-purple-soft:    #6f86e0;
+  --c-cat-purple-solid:   #5a6fd0;
+  --c-cat-purple-strong:  #404f9a;
+  --c-cat-purple-tint:    #0e1430;
+  --c-cat-fuchsia:        #ff6ec7;
+  --c-cat-fuchsia-bright: #ffb0e0;
+  --c-cat-fuchsia-soft:   #e84db0;
+  --c-cat-fuchsia-solid:  #c43a96;
+  --c-cat-fuchsia-tint:   #2e0820;
+  --c-cat-lime:           #cfe84b;
+  --c-cat-sky-bright:     #9fd8ff;
+
+  /* --- raw-palette overrides: reskin components not yet migrated --- */
+  --color-gray-950: #0a0705;
+  --color-gray-900: #140f09;
+  --color-gray-800: #1d160d;
+  --color-gray-700: #2a2012;
+  --color-gray-600: #3a2c18;
+  --color-gray-500: #8f6320;
+  --color-gray-400: #cf8a2c;
+  --color-gray-300: #ffb152;
+  --color-gray-200: #ffce8f;
+  --color-gray-100: #ffdaa6;
+  --color-gray-50:  #fff0db;
+
+  --color-blue-900: #2a1400;
+  --color-blue-800: #3a1d00;
+  --color-blue-700: #5e3300;
+  --color-blue-600: #ff7100;
+  --color-blue-500: #ff8a1f;
+  --color-blue-400: #ffa94d;
+  --color-blue-300: #ffc078;
+  --color-blue-200: #ffd9a6;
+
+  --color-green-900: #2a1d00;
+  --color-green-600: #b87a00;
+  --color-green-500: #d99500;
+  --color-green-400: #ffc030;
+  --color-green-300: #ffd97a;
+
+  --color-red-900: #2e0d00;
+  --color-red-800: #4a1500;
+  --color-red-400: #ff5a1f;
+  --color-red-300: #ff8a5c;
+
+  --color-yellow-900: #2e2200;
+  --color-yellow-400: #ffd900;
+  --color-yellow-300: #ffe34d;
+  --color-amber-400:  #ffb000;
+
+  /* emerald (success/positive variant) -> gold-amber, full scale for
+     not-yet-migrated (Budget/Expense) components */
+  --color-emerald-900: #2a1d00;
+  --color-emerald-700: #7a5410;
+  --color-emerald-600: #d99500;
+  --color-emerald-500: #e0a800;
+  --color-emerald-400: #ffc030;
+  --color-emerald-300: #ffd97a;
+  --color-emerald-200: #ffe7a8;
+
+  /* --- categorical-color stopgap: keep the HUD all-amber (with a touch of
+     cyan, as ED does) until the categorical/chart token pass. Tints kept
+     dark so translucent backgrounds read correctly. --- */
+  --color-orange-900: #2e1500; --color-orange-700: #8a4510;
+  --color-orange-500: #ff7a14; --color-orange-400: #ff9d3c; --color-orange-300: #ffb866;
+  --color-purple-900: #2a1d00; --color-purple-700: #7a5410;
+  --color-purple-500: #d99500; --color-purple-400: #ffc030; --color-purple-300: #ffd97a;
+  --color-fuchsia-900: #2e0d00; --color-fuchsia-700: #8a2a08;
+  --color-fuchsia-500: #ff5a1f; --color-fuchsia-400: #ff8a5c; --color-fuchsia-300: #ffb199;
+  --color-lime-500: #d99500; --color-lime-400: #ffc030; --color-lime-300: #ffd97a;
+  --color-sky-500: #1f9ec8; --color-sky-400: #4bd0e9; --color-sky-300: #7fdcef;
+  /* cyan retained as a real secondary HUD hue (ED uses amber + cyan) */
+  --color-cyan-500: #1f9ec8; --color-cyan-400: #4bd0e9; --color-cyan-300: #7fdcef;
+
+  /* --- Nivo chart ramps -> HUD palette (amber/cyan-centric, distinguishable).
+     Overrides the layered :root chart vars; this block is unlayered so it wins
+     in elite. Series kept distinct so multi-series charts stay readable. --- */
+  --color-chart-Orange-1: #ffc078; --color-chart-Orange-25: #ffa94d;
+  --color-chart-Orange-50: #ff8a1f; --color-chart-Orange-75: #ff7100; --color-chart-Orange-100: #e85f00;
+  --color-chart-Yellow-1: #ffe34d; --color-chart-Yellow-25: #ffd900;
+  --color-chart-Yellow-50: #e0bf00; --color-chart-Yellow-75: #c9a400; --color-chart-Yellow-100: #a08400;
+  --color-chart-Cyan-1: #a0e8f5; --color-chart-Cyan-25: #4bd0e9;
+  --color-chart-Cyan-50: #2db7d8; --color-chart-Cyan-75: #1f9ec8; --color-chart-Cyan-100: #0f7a9c;
+  --color-chart-Blue-1: #9db4ff; --color-chart-Blue-25: #6f86e0;
+  --color-chart-Blue-50: #5a6fd0; --color-chart-Blue-75: #4a5ab8; --color-chart-Blue-100: #404f9a;
+  --color-chart-Green-1: #ffd97a; --color-chart-Green-25: #e8a800;
+  --color-chart-Green-50: #d99500; --color-chart-Green-75: #b87a00; --color-chart-Green-100: #7a5410;
+  --color-chart-Red-1: #ff8a5c; --color-chart-Red-25: #ff5a1f;
+  --color-chart-Red-50: #e84810; --color-chart-Red-75: #c43a10; --color-chart-Red-100: #9a2c08;
+  --color-chart-Fuchsia-1: #ffb0e0; --color-chart-Fuchsia-25: #ff6ec7;
+  --color-chart-Fuchsia-50: #e84db0; --color-chart-Fuchsia-75: #c43a96; --color-chart-Fuchsia-100: #a02e7a;
+
+  /* canonical series palette + money -> HUD-distinguishable */
+  --color-chart-series-1: #ff9d3c;
+  --color-chart-series-2: #ffc030;
+  --color-chart-series-3: #ff6ec7;
+  --color-chart-series-4: #ffd900;
+  --color-chart-series-5: #9db4ff;
+  --color-chart-series-6: #4bd0e9;
+  --color-chart-series-7: #ff5a1f;
+  --color-chart-series-8: #c9b8ff;
+  --color-chart-series-9: #cfe84b;
+  --color-chart-series-10: #a0e8f5;
+  --color-chart-series-11: #ff7100;
+  --color-chart-series-12: #b8956a;
+  --color-chart-money: #ffc030;
+}
 
 /* Custom scrollbar styling for dark theme */
 .custom-scrollbar {
@@ -27,12 +379,43 @@
 
 @layer base {
   html, body, #root {
-    background-color: #030712; /* gray-950 */
+    background-color: var(--c-surface-base); /* themeable; default = gray-950 */
   }
 
   html, body {
     overflow: hidden;
     height: 100%;
+    /* `--app-font` is set per-theme by ThemeProvider; falls back to the
+       default sans stack when a theme specifies no font. */
+    font-family: var(--app-font, ui-sans-serif, system-ui, -apple-system,
+      "Segoe UI", Roboto, Helvetica, Arial, sans-serif);
+  }
+
+  /* Elite HUD: square off rounded corners for an angular cockpit look. */
+  [data-theme="elite"] .rounded,
+  [data-theme="elite"] .rounded-md,
+  [data-theme="elite"] .rounded-lg,
+  [data-theme="elite"] .rounded-xl,
+  [data-theme="elite"] .rounded-2xl {
+    border-radius: 2px;
+  }
+
+  /* Elite HUD: subtle amber glow on accent borders. */
+  [data-theme="elite"][data-glow="true"] .border-accent,
+  [data-theme="elite"][data-glow="true"] .border-border-strong {
+    box-shadow: 0 0 6px -1px var(--c-accent);
+  }
+
+  /* Elite HUD: panel chrome — amber top accent + faint glow. Applied via the
+     Panel primitive's .stag-panel class, so the whole app's panels get the HUD
+     frame from one rule (Layer 3 reskin lever). */
+  [data-theme="elite"] .stag-panel {
+    box-shadow: inset 0 2px 0 -1px var(--c-accent), 0 0 14px -8px var(--c-accent);
+  }
+  /* Elite HUD: section labels read like a cockpit readout. */
+  [data-theme="elite"] .stag-section-header {
+    color: var(--c-accent);
+    text-shadow: 0 0 6px color-mix(in oklab, var(--c-accent) 40%, transparent);
   }
 
   input[type="number"]::-webkit-inner-spin-button,
@@ -171,6 +554,23 @@
     --color-chart-Orange-50: #f68922;
     --color-chart-Orange-75: #f17000;
     --color-chart-Orange-100: #ea580c;
+
+    /* Canonical categorical SERIES palette (12 distinct slots) + the primary
+       "money" series color. Consumed as var() strings from chartColors.ts so
+       every chart's series colours theme. Default = distinct multi-hue set. */
+    --color-chart-series-1: #60a5fa;
+    --color-chart-series-2: #34d399;
+    --color-chart-series-3: #f472b6;
+    --color-chart-series-4: #fbbf24;
+    --color-chart-series-5: #a78bfa;
+    --color-chart-series-6: #2dd4bf;
+    --color-chart-series-7: #fb7185;
+    --color-chart-series-8: #c084fc;
+    --color-chart-series-9: #a3e635;
+    --color-chart-series-10: #22d3ee;
+    --color-chart-series-11: #f97316;
+    --color-chart-series-12: #94a3b8;
+    --color-chart-money: #10b981;
   }
 }
 

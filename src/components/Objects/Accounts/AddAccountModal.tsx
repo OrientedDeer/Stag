@@ -175,7 +175,7 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="add-account-modal-title"
-                className="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto text-white w-full max-w-lg"
+                className="bg-surface-raised border border-border-subtle rounded-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto text-white w-full max-w-lg"
                 onKeyDown={handleKeyDown}
             >
                 <h2 id="add-account-modal-title" className="text-xl font-bold text-white mb-4">
@@ -380,7 +380,7 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                                     tooltip="Override global return rate assumptions with a custom rate for this ESPP."
                                 />
                             </div>
-                            <div className="col-span-full text-sm text-gray-400">
+                            <div className="col-span-full text-sm text-content-muted">
                                 ESPP purchases are configured in the associated Work Income. Link this account to an income source with ESPP enabled.
                             </div>
                         </div>
@@ -408,7 +408,7 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                     <button
                         type="button"
                         onClick={handleClose}
-                        className="px-5 py-2.5 rounded-lg font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+                        className="px-5 py-2.5 rounded-lg font-medium text-content-muted hover:text-white hover:bg-surface-overlay transition-colors"
                     >
                         Cancel
                     </button>
@@ -416,7 +416,7 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                         type="submit"
                         disabled={!form.name.trim()}
                         title={!form.name.trim() ? "Enter a name" : undefined}
-                        className="px-5 py-2.5 rounded-lg font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        className="px-5 py-2.5 rounded-lg font-medium bg-positive-solid text-white hover:bg-positive-strong disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                         Add Account
                     </button>

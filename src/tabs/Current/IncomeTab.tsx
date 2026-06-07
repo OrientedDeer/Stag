@@ -16,6 +16,7 @@ import {
 } from "@hello-pangea/dnd";
 import AddIncomeModal from "../../components/Objects/Income/AddIncomeModal";
 import { ObjectsIcicleChart, tailwindToCssVar, getDistributedColors } from "../../components/Charts/ObjectsIcicleChart";
+import { Panel } from "../../components/Layout/Primitives";
 
 // Updated IncomeList to handle the base class or specific filtering
 const IncomeList = () => {
@@ -63,7 +64,7 @@ const IncomeList = () => {
 									>
 										<div
 											{...provided.dragHandleProps}
-											className="absolute -left-3 top-2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-2 text-green-200"
+											className="absolute -left-3 top-2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-2 text-positive-bright"
 										>
 											<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
 												<line x1="8" y1="6" x2="21" y2="6"></line>
@@ -133,17 +134,17 @@ const TabsContent = () => {
 
 		return {
 			id: "Total Incomes",
-			color: "#10b981", // Root node color
+			color: "var(--color-chart-money)", // Root node color
 			children: categoryChildren
 		};
 	}, [incomes]);
 
 	return (
-		<div className="w-full min-h-full flex bg-gray-950 justify-center pt-6 pb-24">
+		<div className="w-full min-h-full flex bg-surface-base justify-center pt-6 pb-24">
 			<div className="w-full px-4 sm:px-8 max-w-screen-2xl">
 				{/* Chart Section */}
-				<div className="space-y-4 mb-4 p-4 bg-gray-900 rounded-xl border border-gray-800">
-					<h2 className="text-xl font-bold text-white mb-4 border-b border-gray-700 pb-2">
+				<Panel className="space-y-4 mb-4">
+					<h2 className="text-xl font-bold text-white mb-4 border-b border-border-default pb-2">
 						Income Breakdown
 					</h2>
 					{incomes.length > 0 && (
@@ -152,7 +153,7 @@ const TabsContent = () => {
 							valueFormat=">+$0,.0f"
 						/>
 					)}
-				</div>
+				</Panel>
 
 				{/* Single List Section */}
 				<div className="p-4">
@@ -160,7 +161,7 @@ const TabsContent = () => {
 
 					<button
 						onClick={() => setIsModalOpen(true)}
-						className="bg-green-600 p-4 rounded-xl text-white font-bold mt-4 hover:bg-green-700 transition-colors"
+						className="bg-positive-solid p-4 rounded-xl text-white font-bold mt-4 hover:bg-positive-strong transition-colors"
 					>
 						+ Add Income
 					</button>

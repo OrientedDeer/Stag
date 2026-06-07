@@ -5,6 +5,7 @@ import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider'
 import { useArrowKeyAdjust } from '../../../hooks/useKeyboardShortcuts';
 import type { SankeyImbalance } from '../../../components/Charts/CashflowSankey';
 import { calculateNetWorth, formatCompactCurrency } from './FutureUtils';
+import { Panel } from "../../../components/Layout/Primitives";
 
 const CashflowSankey = lazy(() =>
     import('../../../components/Charts/CashflowSankey').then(m => ({ default: m.CashflowSankey }))
@@ -74,34 +75,34 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
             {/* Info banners - min-h prevents chart from shifting when banners appear/disappear */}
             <div className="min-h-[52px] flex flex-col gap-2 justify-end">
             {gkTriggered === 'capital-preservation' && (
-                <div className="p-3 bg-amber-900/20 border border-amber-700/50 rounded-lg text-sm">
+                <div className="p-3 bg-warning-tint/20 border border-warning-strong/50 rounded-lg text-sm">
                     <div className="flex items-start gap-2">
-                        <span className="text-amber-400 font-semibold">Capital Preservation Rule:</span>
-                        <span className="text-gray-300">
+                        <span className="text-warning font-semibold">Capital Preservation Rule:</span>
+                        <span className="text-content-default">
                             Portfolio dropped below the guardrail threshold. Discretionary expenses were
-                            <span className="text-amber-300"> reduced by ${gkActualAdjustment?.toLocaleString(undefined, { maximumFractionDigits: 0 }) ?? '?'}</span> to protect your portfolio.
+                            <span className="text-warning-bright"> reduced by ${gkActualAdjustment?.toLocaleString(undefined, { maximumFractionDigits: 0 }) ?? '?'}</span> to protect your portfolio.
                         </span>
                     </div>
                 </div>
             )}
             {gkTriggered === 'prosperity' && (
-                <div className="p-3 bg-green-900/20 border border-green-700/50 rounded-lg text-sm">
+                <div className="p-3 bg-positive-tint/20 border border-positive-strong/50 rounded-lg text-sm">
                     <div className="flex items-start gap-2">
-                        <span className="text-green-400 font-semibold">Prosperity Rule:</span>
-                        <span className="text-gray-300">
+                        <span className="text-positive font-semibold">Prosperity Rule:</span>
+                        <span className="text-content-default">
                             Portfolio exceeded the upper guardrail threshold. Discretionary expenses were
-                            <span className="text-green-300"> increased by ${gkActualAdjustment?.toLocaleString(undefined, { maximumFractionDigits: 0 }) ?? '?'}</span> to enjoy your gains.
+                            <span className="text-positive-bright"> increased by ${gkActualAdjustment?.toLocaleString(undefined, { maximumFractionDigits: 0 }) ?? '?'}</span> to enjoy your gains.
                         </span>
                     </div>
                 </div>
             )}
             {gkTriggered === 'none' && yearData.strategyAdjustment && (
-                <div className="p-3 bg-blue-900/20 border border-blue-700/50 rounded-lg text-sm">
+                <div className="p-3 bg-info-tint/20 border border-info-strong/50 rounded-lg text-sm">
                     <div className="flex items-start gap-2">
-                        <span className="text-blue-400 font-semibold">Spending Cap:</span>
-                        <span className="text-gray-300">
+                        <span className="text-info font-semibold">Spending Cap:</span>
+                        <span className="text-content-default">
                             Your withdrawal strategy budget is less than your expenses. Discretionary spending was
-                            <span className="text-blue-300"> reduced by ${gkActualAdjustment?.toLocaleString(undefined, { maximumFractionDigits: 0 }) ?? '?'}</span> to stay within budget.
+                            <span className="text-info-bright"> reduced by ${gkActualAdjustment?.toLocaleString(undefined, { maximumFractionDigits: 0 }) ?? '?'}</span> to stay within budget.
                         </span>
                     </div>
                 </div>
@@ -109,13 +110,13 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
 
             {/* Roth Conversion Note */}
             {hasRothConversion && (
-                <div className="p-3 bg-blue-900/20 border border-blue-700/50 rounded-lg text-sm">
+                <div className="p-3 bg-info-tint/20 border border-info-strong/50 rounded-lg text-sm">
                     <div className="flex items-start gap-2">
-                        <span className="text-blue-400 font-semibold">🔄 Roth Conversion:</span>
-                        <span className="text-gray-300">
+                        <span className="text-info font-semibold">🔄 Roth Conversion:</span>
+                        <span className="text-content-default">
                             {formatCurrency(conversionAmount)} converted from Traditional → Roth.
-                            This is a <span className="text-blue-300">transfer</span>, not cash — it flows through Gross Pay to show the
-                            <span className="text-amber-400"> {formatCurrency(conversionTax)} tax</span> owed.
+                            This is a <span className="text-info-bright">transfer</span>, not cash — it flows through Gross Pay to show the
+                            <span className="text-warning"> {formatCurrency(conversionTax)} tax</span> owed.
                             The tax is paid from your withdrawal accounts.
                         </span>
                     </div>
@@ -131,14 +132,14 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
                 const gainPct = hasBrokerageWithdrawal && details?.brokerageGainRatio != null && details.brokerageGainRatio >= 0.005
                     ? Math.round(details.brokerageGainRatio * 100) : null;
                 return (
-                    <div className="p-3 bg-yellow-900/30 border border-yellow-700/50 rounded-lg text-sm">
+                    <div className="p-3 bg-warning-tint/30 border border-warning-strong/50 rounded-lg text-sm">
                         <div className="flex items-start gap-2">
-                            <span className="text-yellow-300 font-semibold">ACA Cliff:</span>
-                            <span className="text-gray-300">
+                            <span className="text-warning-bright font-semibold">ACA Cliff:</span>
+                            <span className="text-content-default">
                                 Roth conversions limited to keep MAGI under the ACA subsidy cliff
                                 ({formatCurrency(details?.acaCliffThreshold || 0)}).
-                                {gainPct != null && <> Brokerage is <span className="text-yellow-200">{gainPct}% gains</span> — withdrawals add capital gains to MAGI, eating into conversion room.</>}
-                                {' '}Disable <span className="text-yellow-200">ACA-Aware Conversions</span> in Advanced Settings if you have non-ACA health coverage.
+                                {gainPct != null && <> Brokerage is <span className="text-warning-bright">{gainPct}% gains</span> — withdrawals add capital gains to MAGI, eating into conversion room.</>}
+                                {' '}Disable <span className="text-warning-bright">ACA-Aware Conversions</span> in Advanced Settings if you have non-ACA health coverage.
                             </span>
                         </div>
                     </div>
@@ -147,10 +148,10 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
 
             {/* ACA Cliff Warning — Withdrawals exceed cliff */}
             {withdrawalExceedsACA && (
-                <div className="p-3 bg-yellow-900/30 border border-yellow-700/50 rounded-lg text-sm">
+                <div className="p-3 bg-warning-tint/30 border border-warning-strong/50 rounded-lg text-sm">
                     <div className="flex items-start gap-2">
-                        <span className="text-yellow-300 font-semibold">ACA Cliff:</span>
-                        <span className="text-gray-300">
+                        <span className="text-warning-bright font-semibold">ACA Cliff:</span>
+                        <span className="text-content-default">
                             Income from withdrawals alone ({formatCurrency(nonConversionMAGI)}) exceeds the ACA subsidy cliff
                             ({formatCurrency(acaCliff)}). You may lose ACA premium subsidies regardless of Roth conversion strategy.
                         </span>
@@ -160,15 +161,15 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
 
             {/* Sankey Imbalance Error (Development Debug Aid) */}
             {sankeyImbalances.length > 0 && (
-                <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg text-sm">
+                <div className="p-3 bg-negative-tint/20 border border-negative-strong rounded-lg text-sm">
                     <div className="flex flex-col gap-1">
-                        <span className="text-red-400 font-semibold">⚠️ Sankey Imbalance Detected:</span>
+                        <span className="text-negative font-semibold">⚠️ Sankey Imbalance Detected:</span>
                         {sankeyImbalances.map((imbalance, idx) => (
-                            <span key={idx} className="text-gray-300 ml-4">
-                                <span className="text-red-300">{imbalance.nodeName}</span> has{' '}
-                                <span className="text-green-400">{formatCurrency(imbalance.inflows)}</span> inflows but{' '}
-                                <span className="text-amber-400">{formatCurrency(imbalance.outflows)}</span> outflows{' '}
-                                (difference: <span className="text-red-400">{formatCurrency(imbalance.difference)}</span>)
+                            <span key={idx} className="text-content-default ml-4">
+                                <span className="text-negative-bright">{imbalance.nodeName}</span> has{' '}
+                                <span className="text-positive">{formatCurrency(imbalance.inflows)}</span> inflows but{' '}
+                                <span className="text-warning">{formatCurrency(imbalance.outflows)}</span> outflows{' '}
+                                (difference: <span className="text-negative">{formatCurrency(imbalance.difference)}</span>)
                             </span>
                         ))}
                     </div>
@@ -178,7 +179,7 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
 
             {/* 1. SANKEY CHART — uses committed year so dragging doesn't re-render it per tick */}
             <div className="overflow-visible">
-                <Suspense fallback={<div className="h-[400px] animate-pulse bg-gray-900/50 rounded-xl" />}>
+                <Suspense fallback={<div className="h-[400px] animate-pulse bg-surface-raised/50 rounded-xl" />}>
                     {sankeyYearData && (
                         <CashflowSankey
                             incomes={sankeyYearData.incomes}
@@ -202,11 +203,11 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
 
 
             {/* 2. SLIDER CONTROL (Updated to use RangeSlider) */}
-            <div className="p-4 bg-gray-900 rounded-xl border border-gray-800 shadow-lg">
+            <Panel className="shadow-lg">
                 <div className="flex items-baseline gap-3 mb-2">
                     <h3 className="text-lg font-bold text-white">Year Details: {previewYear}</h3>
                     {previewYear !== selectedYear && (
-                        <span className="text-xs text-yellow-500">
+                        <span className="text-xs text-warning-soft">
                             chart shows {selectedYear} — release to update
                         </span>
                     )}
@@ -221,26 +222,26 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
                 />
                 <div className="flex flex-wrap gap-4 text-white mt-3 text-sm">
                     <div>
-                        <span className="font-bold text-gray-400">Age:</span> {age}
+                        <span className="font-bold text-content-muted">Age:</span> {age}
                     </div>
                     <div>
-                        <span className="font-bold text-gray-400">Income:</span>
-                        <span className="text-emerald-400"> {formatCurrency(yearData.cashflow.totalIncome)}</span>
+                        <span className="font-bold text-content-muted">Income:</span>
+                        <span className="text-positive"> {formatCurrency(yearData.cashflow.totalIncome)}</span>
                     </div>
                     <div>
-                        <span className="font-bold text-gray-400">Taxes:</span>
-                        <span className="text-red-400"> {formatCurrency((yearData.taxDetails.fed || 0) + (yearData.taxDetails.state || 0) + (yearData.taxDetails.fica || 0))}</span>
+                        <span className="font-bold text-content-muted">Taxes:</span>
+                        <span className="text-negative"> {formatCurrency((yearData.taxDetails.fed || 0) + (yearData.taxDetails.state || 0) + (yearData.taxDetails.fica || 0))}</span>
                     </div>
                     <div>
-                        <span className="font-bold text-gray-400">Expenses:</span>
-                        <span className="text-orange-400"> {formatCurrency(yearData.cashflow.livingExpenses)}</span>
+                        <span className="font-bold text-content-muted">Expenses:</span>
+                        <span className="text-cat-orange"> {formatCurrency(yearData.cashflow.livingExpenses)}</span>
                     </div>
                     <div>
-                        <span className="font-bold text-gray-400">Net Worth:</span>
-                        <span className='text-green-400'> {formatCurrency(netWorth)}</span>
+                        <span className="font-bold text-content-muted">Net Worth:</span>
+                        <span className='text-positive'> {formatCurrency(netWorth)}</span>
                     </div>
                 </div>
-            </div>
+            </Panel>
         </div>
     );
 });

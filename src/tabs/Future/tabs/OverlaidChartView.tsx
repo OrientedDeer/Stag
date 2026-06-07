@@ -1,4 +1,6 @@
 import React, { useMemo, useContext } from 'react';
+import { CHART_SERIES } from '../../../components/Charts/chartColors';
+import { useChartTheme } from '../../../components/Charts/useChartTheme';
 import { ResponsiveLine } from '@nivo/line';
 import { ScenarioComparison } from '../../../services/ScenarioTypes';
 import { formatCompactCurrency } from './FutureUtils';
@@ -15,14 +17,14 @@ const ChartTooltip = ({ point }: { point: { seriesId: string | number; data: { x
     const { state: assumptions } = useContext(AssumptionsContext);
     const forceExact = assumptions.display?.useCompactCurrency === false;
     const isBaseline = point.seriesId as string === 'baseline';
-    const color = isBaseline ? '#3b82f6' : '#f97316';
+    const color = isBaseline ? 'var(--c-accent-soft)' : 'var(--c-cat-orange-soft)';
     const label = isBaseline ? 'Baseline' : 'Comparison';
 
     return (
-        <div className="bg-gray-800 border border-gray-700 px-3 py-2 rounded shadow-xl text-sm">
+        <div className="bg-surface-overlay border border-border-default px-3 py-2 rounded shadow-xl text-sm">
             <div className="flex items-center gap-2 mb-1">
                 <div className="w-3 h-3 rounded" style={{ backgroundColor: color }} />
-                <span className="text-gray-300">{label}</span>
+                <span className="text-content-default">{label}</span>
             </div>
             <div className="text-white font-semibold">
                 {point.data.xFormatted}: {formatCompactCurrency(point.data.y as number, { forceExact })}
@@ -35,6 +37,7 @@ const ChartTooltip = ({ point }: { point: { seriesId: string | number; data: { x
  * Overlaid chart view showing both scenario trajectories
  */
 export const OverlaidChartView: React.FC<OverlaidChartViewProps> = ({ comparison }) => {
+    const { theme: themeKey, resolve } = useChartTheme();
     const { state: assumptions } = useContext(AssumptionsContext);
     const forceExact = assumptions.display?.useCompactCurrency === false;
     const { baseline, comparison: comp, differences } = comparison;
@@ -44,7 +47,7 @@ export const OverlaidChartView: React.FC<OverlaidChartViewProps> = ({ comparison
         return [
             {
                 id: 'baseline',
-                color: '#3b82f6', // Blue
+                color: 'var(--c-accent-soft)', // Blue
                 data: differences.netWorthByYear.map(y => ({
                     x: y.year,
                     y: y.baseline
@@ -52,7 +55,7 @@ export const OverlaidChartView: React.FC<OverlaidChartViewProps> = ({ comparison
             },
             {
                 id: 'comparison',
-                color: '#f97316', // Orange
+                color: 'var(--c-cat-orange-soft)', // Orange
                 data: differences.netWorthByYear.map(y => ({
                     x: y.year,
                     y: y.comparison
@@ -81,21 +84,22 @@ export const OverlaidChartView: React.FC<OverlaidChartViewProps> = ({ comparison
             {/* Legend */}
             <div className="flex gap-6 justify-center">
                 <div className="flex items-center gap-2">
-                    <div className="w-4 h-1 bg-blue-500 rounded" />
-                    <span className="text-gray-300 text-sm">{baseline.metadata.name}</span>
+                    <div className="w-4 h-1 bg-accent-soft rounded" />
+                    <span className="text-content-default text-sm">{baseline.metadata.name}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                    <div className="w-4 h-1 bg-orange-500 rounded" />
-                    <span className="text-gray-300 text-sm">{comp.metadata.name}</span>
+                    <div className="w-4 h-1 bg-cat-orange-soft rounded" />
+                    <span className="text-content-default text-sm">{comp.metadata.name}</span>
                 </div>
             </div>
 
             {/* Chart */}
-            <div className="bg-gray-800/50 rounded-xl border border-gray-700 p-4">
+            <div className="bg-surface-overlay/50 rounded-xl border border-border-default p-4">
                 <h3 className="text-white font-semibold mb-4">Net Worth Over Time</h3>
 
                 <div className="h-96 w-full">
                     <ResponsiveLine
+                        key={themeKey}
                         data={chartData}
                         margin={{ top: 20, right: 30, bottom: 50, left: 80 }}
                         xScale={{ type: 'point' }}
@@ -127,7 +131,7 @@ export const OverlaidChartView: React.FC<OverlaidChartViewProps> = ({ comparison
                         }}
                         enableGridX={false}
                         enableGridY={true}
-                        colors={['#3b82f6', '#f97316']}
+                        colors={[resolve(CHART_SERIES[0]), resolve(CHART_SERIES[10])]}
                         lineWidth={2}
                         enablePoints={false}
                         useMesh={true}
@@ -135,18 +139,18 @@ export const OverlaidChartView: React.FC<OverlaidChartViewProps> = ({ comparison
                         curve="monotoneX"
                         theme={{
                             axis: {
-                                ticks: { text: { fill: '#9ca3af', fontSize: 11 } },
-                                legend: { text: { fill: '#9ca3af', fontSize: 12 } }
+                                ticks: { text: { fill: 'var(--c-content-muted)', fontSize: 11 } },
+                                legend: { text: { fill: 'var(--c-content-muted)', fontSize: 12 } }
                             },
-                            grid: { line: { stroke: '#374151', strokeWidth: 1 } },
+                            grid: { line: { stroke: 'var(--c-border-default)', strokeWidth: 1 } },
                             crosshair: { line: { stroke: '#fff', strokeWidth: 1, strokeOpacity: 0.5 } }
                         }}
                         sliceTooltip={({ slice }) => (
-                            <div className="bg-gray-800 border border-gray-700 px-4 py-3 rounded shadow-xl">
-                                <div className="text-gray-400 text-sm mb-2">Year {slice.points[0].data.x}</div>
+                            <div className="bg-surface-overlay border border-border-default px-4 py-3 rounded shadow-xl">
+                                <div className="text-content-muted text-sm mb-2">Year {slice.points[0].data.x}</div>
                                 {slice.points.map(point => {
                                     const isBaseline = point.seriesId as string === 'baseline';
-                                    const color = isBaseline ? '#3b82f6' : '#f97316';
+                                    const color = isBaseline ? 'var(--c-accent-soft)' : 'var(--c-cat-orange-soft)';
                                     const label = isBaseline ? baseline.metadata.name : comp.metadata.name;
 
                                     return (
@@ -155,7 +159,7 @@ export const OverlaidChartView: React.FC<OverlaidChartViewProps> = ({ comparison
                                                 className="w-3 h-3 rounded"
                                                 style={{ backgroundColor: color }}
                                             />
-                                            <span className="text-gray-300 text-sm">{label}:</span>
+                                            <span className="text-content-default text-sm">{label}:</span>
                                             <span className="text-white font-semibold text-sm">
                                                 {formatCompactCurrency(point.data.y as number, { forceExact })}
                                             </span>
@@ -163,12 +167,12 @@ export const OverlaidChartView: React.FC<OverlaidChartViewProps> = ({ comparison
                                     );
                                 })}
                                 {slice.points.length === 2 && (
-                                    <div className="border-t border-gray-700 mt-2 pt-2">
-                                        <span className="text-gray-400 text-sm">Difference: </span>
+                                    <div className="border-t border-border-default mt-2 pt-2">
+                                        <span className="text-content-muted text-sm">Difference: </span>
                                         <span className={`font-semibold text-sm ${
                                             (slice.points[1].data.y as number) >= (slice.points[0].data.y as number)
-                                                ? 'text-green-400'
-                                                : 'text-red-400'
+                                                ? 'text-positive'
+                                                : 'text-negative'
                                         }`}>
                                             {formatCompactCurrency((slice.points[1].data.y as number) - (slice.points[0].data.y as number), { forceExact })}
                                         </span>
@@ -183,41 +187,41 @@ export const OverlaidChartView: React.FC<OverlaidChartViewProps> = ({ comparison
 
             {/* Summary stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-gray-800/50 rounded-xl border border-gray-700 p-4">
-                    <div className="text-xs text-gray-400 uppercase mb-1">Starting Net Worth</div>
+                <div className="bg-surface-overlay/50 rounded-xl border border-border-default p-4">
+                    <div className="text-xs text-content-muted uppercase mb-1">Starting Net Worth</div>
                     <div className="flex items-baseline gap-2">
-                        <span className="text-blue-400 font-semibold">
+                        <span className="text-info font-semibold">
                             {formatCompactCurrency(differences.netWorthByYear[0]?.baseline ?? 0, { forceExact })}
                         </span>
-                        <span className="text-gray-400">vs</span>
-                        <span className="text-orange-400 font-semibold">
+                        <span className="text-content-muted">vs</span>
+                        <span className="text-cat-orange font-semibold">
                             {formatCompactCurrency(differences.netWorthByYear[0]?.comparison ?? 0, { forceExact })}
                         </span>
                     </div>
                 </div>
 
-                <div className="bg-gray-800/50 rounded-xl border border-gray-700 p-4">
-                    <div className="text-xs text-gray-400 uppercase mb-1">Ending Net Worth</div>
+                <div className="bg-surface-overlay/50 rounded-xl border border-border-default p-4">
+                    <div className="text-xs text-content-muted uppercase mb-1">Ending Net Worth</div>
                     <div className="flex items-baseline gap-2">
-                        <span className="text-blue-400 font-semibold">
+                        <span className="text-info font-semibold">
                             {formatCompactCurrency(differences.netWorthByYear[differences.netWorthByYear.length - 1]?.baseline ?? 0, { forceExact })}
                         </span>
-                        <span className="text-gray-400">vs</span>
-                        <span className="text-orange-400 font-semibold">
+                        <span className="text-content-muted">vs</span>
+                        <span className="text-cat-orange font-semibold">
                             {formatCompactCurrency(differences.netWorthByYear[differences.netWorthByYear.length - 1]?.comparison ?? 0, { forceExact })}
                         </span>
                     </div>
                 </div>
 
-                <div className="bg-gray-800/50 rounded-xl border border-gray-700 p-4">
-                    <div className="text-xs text-gray-400 uppercase mb-1">Final Difference</div>
+                <div className="bg-surface-overlay/50 rounded-xl border border-border-default p-4">
+                    <div className="text-xs text-content-muted uppercase mb-1">Final Difference</div>
                     <div className={`text-xl font-bold ${
-                        differences.legacyValueDelta >= 0 ? 'text-green-400' : 'text-red-400'
+                        differences.legacyValueDelta >= 0 ? 'text-positive' : 'text-negative'
                     }`}>
                         {differences.legacyValueDelta >= 0 ? '+' : ''}
                         {formatCompactCurrency(differences.legacyValueDelta, { forceExact })}
                     </div>
-                    <div className="text-xs text-gray-400">
+                    <div className="text-xs text-content-muted">
                         ({differences.legacyValueDeltaPercent.toFixed(1)}%)
                     </div>
                 </div>

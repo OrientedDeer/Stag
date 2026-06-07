@@ -20,6 +20,7 @@ import { formatCompactCurrency } from './FutureUtils';
 import { Tooltip } from '../../../components/Layout/InputFields/Tooltip';
 import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider';
 import { AssumptionsContext, getBirthYear, getRetirementAge, getLifeExpectancy } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { Panel } from "../../../components/Layout/Primitives";
 
 interface FinancialRatiosTabProps {
   simulationData: SimulationYear[];
@@ -50,9 +51,9 @@ const RatioCard: React.FC<{
   return (
     <div className={`rounded-xl p-4 border ${getRatingBgColor(ratio.rating)}`}>
       <div className="flex items-start justify-between mb-2">
-        <div className="text-gray-300 text-sm font-medium">{title}</div>
+        <div className="text-content-default text-sm font-medium">{title}</div>
         <Tooltip text={ratio.description}>
-          <span className="text-gray-400 cursor-help">?</span>
+          <span className="text-content-muted cursor-help">?</span>
         </Tooltip>
       </div>
       <div className={`text-2xl font-bold ${getRatingColor(ratio.rating)}`}>
@@ -62,7 +63,7 @@ const RatioCard: React.FC<{
         <span className={`text-xs font-medium ${getRatingColor(ratio.rating)}`}>
           {getRatingLabel(ratio.rating)}
         </span>
-        <span className="text-xs text-gray-400">{ratio.benchmark}</span>
+        <span className="text-xs text-content-muted">{ratio.benchmark}</span>
       </div>
     </div>
   );
@@ -75,7 +76,7 @@ const SectionHeader: React.FC<{ title: string; description: string }> = ({
 }) => (
   <div className="mb-4">
     <h3 className="text-lg font-semibold text-white">{title}</h3>
-    <p className="text-sm text-gray-400">{description}</p>
+    <p className="text-sm text-content-muted">{description}</p>
   </div>
 );
 
@@ -112,18 +113,18 @@ const HealthScore: React.FC<{ ratios: FinancialRatios }> = ({ ratios }) => {
   const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
   const percentage = (avgScore / 5) * 100;
 
-  let color = 'text-red-400';
+  let color = 'text-negative';
   let label = 'Needs Attention';
-  if (percentage >= 80) { color = 'text-green-400'; label = 'Excellent'; }
-  else if (percentage >= 60) { color = 'text-blue-400'; label = 'Good'; }
-  else if (percentage >= 40) { color = 'text-yellow-400'; label = 'Fair'; }
+  if (percentage >= 80) { color = 'text-positive'; label = 'Excellent'; }
+  else if (percentage >= 60) { color = 'text-info'; label = 'Good'; }
+  else if (percentage >= 40) { color = 'text-warning'; label = 'Fair'; }
 
   return (
-    <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700 mb-6">
+    <div className="bg-surface-overlay/50 rounded-xl p-6 border border-border-default mb-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-white">Financial Health Score</h2>
-          <p className="text-gray-400 text-sm mt-1">
+          <p className="text-content-muted text-sm mt-1">
             Based on 5 key financial ratios
           </p>
         </div>
@@ -136,12 +137,12 @@ const HealthScore: React.FC<{ ratios: FinancialRatios }> = ({ ratios }) => {
       </div>
 
       {/* Score bar */}
-      <div className="mt-4 h-2 bg-gray-700 rounded-full overflow-hidden">
+      <div className="mt-4 h-2 bg-surface-input rounded-full overflow-hidden">
         <div
           className={`h-full transition-all duration-500 ${
-            percentage >= 80 ? 'bg-green-500' :
-            percentage >= 60 ? 'bg-blue-500' :
-            percentage >= 40 ? 'bg-yellow-500' : 'bg-red-500'
+            percentage >= 80 ? 'bg-positive-soft' :
+            percentage >= 60 ? 'bg-accent-soft' :
+            percentage >= 40 ? 'bg-warning-soft' : 'bg-negative-soft'
           }`}
           style={{ width: `${percentage}%` }}
         />
@@ -198,7 +199,7 @@ export const FinancialRatiosTab: React.FC<FinancialRatiosTabProps> = React.memo(
 
     if (!ratios || simulationData.length === 0) {
       return (
-        <div className="p-6 text-center text-gray-400">
+        <div className="p-6 text-center text-content-muted">
           <p>No simulation data available. Add accounts, income, and expenses to see financial ratios.</p>
         </div>
       );
@@ -207,7 +208,7 @@ export const FinancialRatiosTab: React.FC<FinancialRatiosTabProps> = React.memo(
     return (
       <div ref={containerRef} className="p-4 md:p-6 space-y-8">
         {/* Year slider */}
-        <div className="p-4 bg-gray-900 rounded-xl border border-gray-800 shadow-lg">
+        <Panel className="shadow-lg">
           <h3 className="text-lg font-bold text-white mb-2">Year Details: {selectedYear}</h3>
           <div className="w-full">
             <RangeSlider
@@ -218,7 +219,7 @@ export const FinancialRatiosTab: React.FC<FinancialRatiosTabProps> = React.memo(
               hideHeader={true}
             />
           </div>
-        </div>
+        </Panel>
 
         {/* Overall Health Score */}
         <HealthScore ratios={ratios} />
@@ -347,36 +348,36 @@ export const FinancialRatiosTab: React.FC<FinancialRatiosTabProps> = React.memo(
               title="Ratio Trends"
               description="How your key metrics change over time"
             />
-            <div className="bg-gray-800/50 rounded-xl border border-gray-700 overflow-hidden">
+            <div className="bg-surface-overlay/50 rounded-xl border border-border-default overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-700">
-                    <th className="text-left p-3 text-gray-400 font-medium">Year</th>
-                    <th className="text-right p-3 text-gray-400 font-medium">Savings Rate</th>
-                    <th className="text-right p-3 text-gray-400 font-medium">Debt/Income</th>
-                    <th className="text-right p-3 text-gray-400 font-medium">Net Worth</th>
-                    <th className="text-right p-3 text-gray-400 font-medium">Emergency Fund</th>
+                  <tr className="border-b border-border-default">
+                    <th className="text-left p-3 text-content-muted font-medium">Year</th>
+                    <th className="text-right p-3 text-content-muted font-medium">Savings Rate</th>
+                    <th className="text-right p-3 text-content-muted font-medium">Debt/Income</th>
+                    <th className="text-right p-3 text-content-muted font-medium">Net Worth</th>
+                    <th className="text-right p-3 text-content-muted font-medium">Emergency Fund</th>
                   </tr>
                 </thead>
                 <tbody>
                   {trends.slice(0, 10).map((trend) => (
                     <tr
                       key={trend.year}
-                      className={`border-b border-gray-700/50 ${
-                        trend.year === selectedYear ? 'bg-gray-700/30' : ''
+                      className={`border-b border-border-default/50 ${
+                        trend.year === selectedYear ? 'bg-surface-input/30' : ''
                       }`}
                     >
                       <td className="p-3 text-white font-medium">{trend.year}</td>
-                      <td className="p-3 text-right text-gray-300">
+                      <td className="p-3 text-right text-content-default">
                         {(trend.savingsRate * 100).toFixed(1)}%
                       </td>
-                      <td className="p-3 text-right text-gray-300">
+                      <td className="p-3 text-right text-content-default">
                         {(trend.debtToIncome * 100).toFixed(1)}%
                       </td>
-                      <td className="p-3 text-right text-gray-300">
+                      <td className="p-3 text-right text-content-default">
                         {formatCompactCurrency(trend.netWorth, { forceExact })}
                       </td>
-                      <td className="p-3 text-right text-gray-300">
+                      <td className="p-3 text-right text-content-default">
                         {trend.emergencyFundMonths.toFixed(1)} mo
                       </td>
                     </tr>
@@ -384,7 +385,7 @@ export const FinancialRatiosTab: React.FC<FinancialRatiosTabProps> = React.memo(
                 </tbody>
               </table>
               {trends.length > 10 && (
-                <div className="p-3 text-center text-gray-400 text-sm">
+                <div className="p-3 text-center text-content-muted text-sm">
                   Showing first 10 years of {trends.length} total
                 </div>
               )}
@@ -393,36 +394,36 @@ export const FinancialRatiosTab: React.FC<FinancialRatiosTabProps> = React.memo(
         )}
 
         {/* Help Section */}
-        <section className="bg-gray-800/30 rounded-xl p-4 border border-gray-700">
-          <h3 className="text-sm font-semibold text-gray-300 mb-2">Understanding These Ratios</h3>
-          <div className="text-xs text-gray-400 space-y-2">
+        <section className="bg-surface-overlay/30 rounded-xl p-4 border border-border-default">
+          <h3 className="text-sm font-semibold text-content-default mb-2">Understanding These Ratios</h3>
+          <div className="text-xs text-content-muted space-y-2">
             {ratios.isRetired ? (
               <>
                 <p>
-                  <strong className="text-gray-300">Withdrawal Rate:</strong> Percentage of your portfolio
+                  <strong className="text-content-default">Withdrawal Rate:</strong> Percentage of your portfolio
                   withdrawn annually. Scales with life expectancy — higher rates are fine with fewer years remaining.
                 </p>
                 <p>
-                  <strong className="text-gray-300">Portfolio Years:</strong> How many years of expenses
+                  <strong className="text-content-default">Portfolio Years:</strong> How many years of expenses
                   your current net worth can sustain at current spending levels.
                 </p>
               </>
             ) : (
               <>
                 <p>
-                  <strong className="text-gray-300">Savings Rate:</strong> The percentage of your income
+                  <strong className="text-content-default">Savings Rate:</strong> The percentage of your income
                   that goes toward savings and investments. 20%+ is considered healthy.
                 </p>
                 <p>
-                  <strong className="text-gray-300">Emergency Fund:</strong> How many months of expenses
+                  <strong className="text-content-default">Emergency Fund:</strong> How many months of expenses
                   your liquid savings can cover. 6+ months provides good security.
                 </p>
                 <p>
-                  <strong className="text-gray-300">Debt-to-Income:</strong> Your total debt relative to
+                  <strong className="text-content-default">Debt-to-Income:</strong> Your total debt relative to
                   annual income. Lenders typically prefer under 36%.
                 </p>
                 <p>
-                  <strong className="text-gray-300">Net Worth to Income:</strong> A common rule of thumb
+                  <strong className="text-content-default">Net Worth to Income:</strong> A common rule of thumb
                   is to have 1x income saved by 30, 3x by 40, 6x by 50, and 10x+ by retirement.
                 </p>
               </>

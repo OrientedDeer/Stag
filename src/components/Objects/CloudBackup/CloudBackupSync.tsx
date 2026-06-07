@@ -114,29 +114,29 @@ export default function CloudBackupSync() {
     return (
         <>
             {showPrompt && (
-                <div className="bg-blue-900/20 border-b border-blue-700/50 px-4 py-2 flex items-center gap-3">
-                    <svg className="w-4 h-4 text-blue-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <div className="bg-info-tint/20 border-b border-info-strong/50 px-4 py-2 flex items-center gap-3">
+                    <svg className="w-4 h-4 text-info shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
                     </svg>
-                    <p className="text-blue-300 text-sm flex-1">
+                    <p className="text-info-bright text-sm flex-1">
                         This data is linked to <span className="text-white font-medium">{linkedEmail}</span>. Sign in to restore the latest cloud backup.
                     </p>
                     <button
                         onClick={() => signIn()}
-                        className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-medium transition-colors"
+                        className="px-3 py-1 bg-accent hover:bg-accent-soft text-white rounded text-xs font-medium transition-colors"
                     >
                         Sign in with Google
                     </button>
                     <button
                         onClick={handleDismiss}
-                        className="text-blue-300 hover:text-white text-xs px-2"
+                        className="text-info-bright hover:text-white text-xs px-2"
                         title="Hide until next visit"
                     >
                         Not now
                     </button>
                     <button
                         onClick={handleForget}
-                        className="text-blue-300/70 hover:text-white text-xs px-2"
+                        className="text-info-bright/70 hover:text-white text-xs px-2"
                         title="Stop reminding me about this dataset"
                     >
                         Forget

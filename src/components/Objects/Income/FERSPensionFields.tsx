@@ -67,12 +67,12 @@ export const FERSPensionFields: React.FC<FERSPensionFieldsProps> = ({
             onChange={(val) => updateForm('pensionRetirementAge', val)}
             tooltip={`MRA is ${getFERSMRA(pensionBirthYear)} for your birth year. Age 62 with 5+ years or MRA with 30+ years for full benefits.`}
         />
-        <div className="col-span-3 bg-green-900/20 border border-green-700/50 rounded-lg p-4 text-sm">
-            <div className="font-semibold text-green-200 mb-2">FERS Pension Estimate</div>
-            <div className="text-gray-300 space-y-1">
+        <div className="col-span-3 bg-positive-tint/20 border border-positive-strong/50 rounded-lg p-4 text-sm">
+            <div className="font-semibold text-positive-bright mb-2">FERS Pension Estimate</div>
+            <div className="text-content-default space-y-1">
                 <div className="flex justify-between">
                     <span>Estimated Annual Benefit:</span>
-                    <span className="font-bold text-green-300">
+                    <span className="font-bold text-positive-bright">
                         {form.autoCalculateHigh3
                             ? "Auto Calculated"
                             : `$${calculateFERSBasicBenefit(form.pensionYearsOfService, form.pensionHigh3Salary, form.pensionRetirementAge).toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr`
@@ -81,7 +81,7 @@ export const FERSPensionFields: React.FC<FERSPensionFieldsProps> = ({
                 </div>
                 <div className="flex justify-between">
                     <span>High-3:</span>
-                    <span className="text-green-200">
+                    <span className="text-positive-bright">
                         {form.autoCalculateHigh3
                             ? "Auto Calculated"
                             : `$${form.pensionHigh3Salary.toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr`
@@ -90,18 +90,18 @@ export const FERSPensionFields: React.FC<FERSPensionFieldsProps> = ({
                 </div>
                 <div className="flex justify-between">
                     <span>Benefits Start:</span>
-                    <span className="text-green-200">
+                    <span className="text-positive-bright">
                         {pensionBirthYear + form.pensionRetirementAge}
                     </span>
                 </div>
                 <div className="flex justify-between">
                     <span>Eligibility:</span>
-                    <span className={checkFERSEligibility(form.pensionRetirementAge, form.pensionYearsOfService, pensionBirthYear).eligible ? "text-green-300" : "text-yellow-300"}>
+                    <span className={checkFERSEligibility(form.pensionRetirementAge, form.pensionYearsOfService, pensionBirthYear).eligible ? "text-positive-bright" : "text-warning-bright"}>
                         {checkFERSEligibility(form.pensionRetirementAge, form.pensionYearsOfService, pensionBirthYear).message}
                     </span>
                 </div>
             </div>
-            <div className="text-xs text-gray-400 mt-2">
+            <div className="text-xs text-content-muted mt-2">
                 Formula: {form.pensionRetirementAge >= 62 && form.pensionYearsOfService >= 20 ? "1.1%" : "1%"} x Years x High-3.
                 {form.autoCalculateHigh3 && " High-3 will be calculated from your top 3 salary years at retirement."}
                 {!form.autoCalculateHigh3 && " COLA is reduced (CPI-1% if inflation > 3%)."}

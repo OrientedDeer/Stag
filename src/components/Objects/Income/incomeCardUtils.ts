@@ -43,7 +43,7 @@ export function getIncomeIconBg(income: AnyIncome): string {
     if (income instanceof CSRSPensionIncome) return INCOME_COLORS_BACKGROUND['Pension'];
     if (income instanceof PassiveIncome) return INCOME_COLORS_BACKGROUND['Passive'];
     if (income instanceof WindfallIncome) return INCOME_COLORS_BACKGROUND['Windfall'];
-    return 'bg-gray-500';
+    return 'bg-surface-muted';
 }
 
 /**

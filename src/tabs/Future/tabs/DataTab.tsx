@@ -1,4 +1,5 @@
 import React, { useMemo, useContext, useState, useCallback } from 'react';
+import { CHART_MONEY } from '../../../components/Charts/chartColors';
 import { ResponsiveLine } from '@nivo/line';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { DebtAccount } from '../../../components/Objects/Accounts/models';
@@ -242,50 +243,50 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, bir
     return (
         <div className="p-4 text-white flex flex-col h-full">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 shrink-0 gap-2">
-                <div className="text-gray-400 text-sm">
+                <div className="text-content-muted text-sm">
                     <p className="italic">Export includes detailed breakdowns for every account and expense.</p>
-                    <p className="text-xs text-gray-500 mt-1">Note: JSON/CSV exports are read-only. To backup and restore data, use Export on the Accounts page.</p>
+                    <p className="text-xs text-content-subtle mt-1">Note: JSON/CSV exports are read-only. To backup and restore data, use Export on the Accounts page.</p>
                 </div>
                 <div className="flex gap-3">
-                    <button onClick={handleExportJSON} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm font-bold rounded-lg border border-gray-600">
+                    <button onClick={handleExportJSON} className="px-4 py-2 bg-surface-input hover:bg-surface-hover text-content-emphasis text-sm font-bold rounded-lg border border-border-strong">
                         JSON
                     </button>
-                    <button onClick={handleExportCSV} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm font-bold rounded-lg border border-gray-600">
+                    <button onClick={handleExportCSV} className="px-4 py-2 bg-surface-input hover:bg-surface-hover text-content-emphasis text-sm font-bold rounded-lg border border-border-strong">
                         CSV
                     </button>
-                    <button onClick={() => { void handleExportExcel(); }} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-lg shadow-lg">
+                    <button onClick={() => { void handleExportExcel(); }} className="px-4 py-2 bg-positive-solid hover:bg-positive-strong text-white text-sm font-bold rounded-lg shadow-lg">
                         Excel
                     </button>
                 </div>
             </div>
 
-            <div className="grow overflow-auto custom-scrollbar border border-gray-800 rounded-lg">
+            <div className="grow overflow-auto custom-scrollbar border border-border-subtle rounded-lg">
                 <table className="w-full text-left border-collapse relative">
-                    <thead className="sticky top-0 bg-gray-900 z-10 shadow-sm">
+                    <thead className="sticky top-0 bg-surface-raised z-10 shadow-sm">
                         <tr>
-                            <th className="p-3 border-b border-gray-700 text-gray-400 font-semibold text-sm">Year</th>
-                            <th className="p-3 border-b border-gray-700 text-gray-400 font-semibold text-sm">Age</th>
-                            <th className="p-3 border-b border-gray-700 text-gray-400 font-semibold text-sm text-right">Gross Income</th>
-                            <th className="p-3 border-b border-gray-700 text-gray-400 font-semibold text-sm text-right">Eff. Tax %</th>
-                            <th className="p-3 border-b border-gray-700 text-gray-400 font-semibold text-sm text-right">Total Taxes</th>
-                            <th className="p-3 border-b border-gray-700 text-gray-400 font-semibold text-sm text-right">Expenses</th>
-                            <th className="p-3 border-b border-gray-700 text-gray-400 font-semibold text-sm text-right">Debt Load</th>
-                            <th className="p-3 border-b border-gray-700 text-gray-400 font-semibold text-sm text-right">Invested</th>
-                            <th className="p-3 border-b border-gray-700 text-gray-200 font-bold text-sm text-right bg-gray-800">Net Worth</th>
+                            <th className="p-3 border-b border-border-default text-content-muted font-semibold text-sm">Year</th>
+                            <th className="p-3 border-b border-border-default text-content-muted font-semibold text-sm">Age</th>
+                            <th className="p-3 border-b border-border-default text-content-muted font-semibold text-sm text-right">Gross Income</th>
+                            <th className="p-3 border-b border-border-default text-content-muted font-semibold text-sm text-right">Eff. Tax %</th>
+                            <th className="p-3 border-b border-border-default text-content-muted font-semibold text-sm text-right">Total Taxes</th>
+                            <th className="p-3 border-b border-border-default text-content-muted font-semibold text-sm text-right">Expenses</th>
+                            <th className="p-3 border-b border-border-default text-content-muted font-semibold text-sm text-right">Debt Load</th>
+                            <th className="p-3 border-b border-border-default text-content-muted font-semibold text-sm text-right">Invested</th>
+                            <th className="p-3 border-b border-border-default text-content-emphasis font-bold text-sm text-right bg-surface-overlay">Net Worth</th>
                         </tr>
                     </thead>
                     <tbody>
                         {tableData.map((row) => (
-                            <tr key={row.year} className="hover:bg-gray-800/50 transition-colors border-b border-gray-800/50">
-                                <td className="p-3 text-sm text-gray-300">{row.year}</td>
-                                <td className="p-3 text-sm text-gray-400">{row.age}</td>
-                                <td className="p-3 text-sm text-right font-mono text-emerald-400">{formatCompactCurrency(row.grossIncome, { forceExact })}</td>
-                                <td className="p-3 text-sm text-right font-mono text-gray-400">{row.effectiveTaxRate.toFixed(1)}%</td>
-                                <td className="p-3 text-sm text-right font-mono text-red-400">{formatCompactCurrency(row.totalTaxes, { forceExact })}</td>
-                                <td className="p-3 text-sm text-right font-mono text-orange-300">{formatCompactCurrency(row.livingExpenses, { forceExact })}</td>
-                                <td className="p-3 text-sm text-right font-mono text-red-500">{row.totalDebt > 0 ? formatCompactCurrency(row.totalDebt, { forceExact }) : '-'}</td>
-                                <td className="p-3 text-sm text-right font-mono text-blue-400">{formatCompactCurrency(row.totalSaved, { forceExact })}</td>
-                                <td className="p-3 text-sm text-right font-mono font-bold text-white bg-gray-800/30">{formatCompactCurrency(row.netWorth, { forceExact })}</td>
+                            <tr key={row.year} className="hover:bg-surface-overlay/50 transition-colors border-b border-border-subtle/50">
+                                <td className="p-3 text-sm text-content-default">{row.year}</td>
+                                <td className="p-3 text-sm text-content-muted">{row.age}</td>
+                                <td className="p-3 text-sm text-right font-mono text-positive">{formatCompactCurrency(row.grossIncome, { forceExact })}</td>
+                                <td className="p-3 text-sm text-right font-mono text-content-muted">{row.effectiveTaxRate.toFixed(1)}%</td>
+                                <td className="p-3 text-sm text-right font-mono text-negative">{formatCompactCurrency(row.totalTaxes, { forceExact })}</td>
+                                <td className="p-3 text-sm text-right font-mono text-cat-orange-bright">{formatCompactCurrency(row.livingExpenses, { forceExact })}</td>
+                                <td className="p-3 text-sm text-right font-mono text-negative-soft">{row.totalDebt > 0 ? formatCompactCurrency(row.totalDebt, { forceExact }) : '-'}</td>
+                                <td className="p-3 text-sm text-right font-mono text-info">{formatCompactCurrency(row.totalSaved, { forceExact })}</td>
+                                <td className="p-3 text-sm text-right font-mono font-bold text-white bg-surface-overlay/30">{formatCompactCurrency(row.netWorth, { forceExact })}</td>
                             </tr>
                         ))}
                     </tbody>
@@ -299,7 +300,7 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, bir
                     left: '-9999px',
                     width: '800px',
                     height: '400px',
-                    backgroundColor: '#1a202c',
+                    backgroundColor: 'var(--c-surface-raised)',
                     padding: '20px',
                 }}
             >
@@ -335,22 +336,22 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, bir
                                 legendPosition: 'middle',
                                 format: (v: number) => formatCurrency(v),
                             }}
-                            colors={['#10b981']}
+                            colors={[CHART_MONEY]}
                             lineWidth={3}
                             enablePoints={true}
                             pointSize={6}
-                            pointColor="#10b981"
+                            pointColor="var(--color-chart-money)"
                             enableGridX={false}
                             enableArea={true}
                             areaOpacity={0.15}
                             theme={{
-                                background: '#1a202c',
-                                text: { fontSize: 12, fill: '#e2e8f0' },
+                                background: 'var(--c-surface-raised)',
+                                text: { fontSize: 12, fill: 'var(--c-content-emphasis)' },
                                 axis: {
-                                    legend: { text: { fill: '#e2e8f0', fontSize: 14 } },
-                                    ticks: { text: { fill: '#a0aec0', fontSize: 11 } },
+                                    legend: { text: { fill: 'var(--c-content-emphasis)', fontSize: 14 } },
+                                    ticks: { text: { fill: 'var(--c-content-muted)', fontSize: 11 } },
                                 },
-                                grid: { line: { stroke: '#374151', strokeWidth: 1 } },
+                                grid: { line: { stroke: 'var(--c-border-default)', strokeWidth: 1 } },
                             }}
                         />
                     )}

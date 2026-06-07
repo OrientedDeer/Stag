@@ -14,7 +14,7 @@ export const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({ size = 'md', cla
 
     return (
         <div
-            className={`${sizeClasses[size]} border-gray-700 border-t-green-500 rounded-full animate-spin ${className}`}
+            className={`${sizeClasses[size]} border-border-default border-t-positive-soft rounded-full animate-spin ${className}`}
             role="status"
             aria-label="Loading"
         />
@@ -27,9 +27,9 @@ interface LoadingOverlayProps {
 
 export const LoadingOverlay: React.FC<LoadingOverlayProps> = ({ message = 'Loading...' }) => {
     return (
-        <div className="absolute inset-0 bg-gray-900/80 backdrop-blur-sm flex flex-col items-center justify-center z-10 rounded-2xl">
+        <div className="absolute inset-0 bg-surface-raised/80 backdrop-blur-sm flex flex-col items-center justify-center z-10 rounded-2xl">
             <LoadingSpinner size="lg" />
-            <p className="mt-4 text-gray-300 text-sm font-medium">{message}</p>
+            <p className="mt-4 text-content-default text-sm font-medium">{message}</p>
         </div>
     );
 };

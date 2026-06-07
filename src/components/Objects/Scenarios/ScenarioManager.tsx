@@ -98,7 +98,7 @@ export const ScenarioManager: React.FC = () => {
             <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
                 <div>
                     <h3 className="text-white font-semibold">Saved Scenarios</h3>
-                    <p className="text-sm text-gray-400">
+                    <p className="text-sm text-content-muted">
                         Save your current plan to compare different financial strategies
                     </p>
                 </div>
@@ -106,13 +106,13 @@ export const ScenarioManager: React.FC = () => {
                 <div className="flex gap-2">
                     <button
                         onClick={() => setShowSaveForm(true)}
-                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition-colors"
+                        className="px-4 py-2 bg-positive-solid hover:bg-positive-soft text-white rounded-lg text-sm font-medium transition-colors"
                     >
                         Save Current
                     </button>
                     <button
                         onClick={handleImportClick}
-                        className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
+                        className="px-4 py-2 bg-surface-input hover:bg-surface-hover text-white rounded-lg text-sm font-medium transition-colors"
                     >
                         Import
                     </button>
@@ -135,12 +135,12 @@ export const ScenarioManager: React.FC = () => {
 
             {/* Save form */}
             {showSaveForm && (
-                <div className="bg-gray-800/50 rounded-xl border border-gray-700 p-4">
+                <div className="bg-surface-overlay/50 rounded-xl border border-border-default p-4">
                     <h4 className="text-white font-medium mb-3">Save Current Plan as Scenario</h4>
 
                     <div className="space-y-3">
                         <div>
-                            <label className="block text-sm text-gray-400 mb-1">
+                            <label className="block text-sm text-content-muted mb-1">
                                 Scenario Name *
                             </label>
                             <input
@@ -151,12 +151,12 @@ export const ScenarioManager: React.FC = () => {
                                     setSaveError(null);
                                 }}
                                 placeholder="e.g., Retire at 55, Max 401k"
-                                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:border-emerald-500 focus:outline-none"
+                                className="w-full bg-surface-raised border border-border-default rounded-lg px-3 py-2 text-white placeholder-content-subtle focus:border-positive-soft focus:outline-none"
                             />
                         </div>
 
                         <div>
-                            <label className="block text-sm text-gray-400 mb-1">
+                            <label className="block text-sm text-content-muted mb-1">
                                 Description (optional)
                             </label>
                             <textarea
@@ -164,12 +164,12 @@ export const ScenarioManager: React.FC = () => {
                                 onChange={(e) => setScenarioDescription(e.target.value)}
                                 placeholder="Brief description of this scenario..."
                                 rows={2}
-                                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:border-emerald-500 focus:outline-none resize-none"
+                                className="w-full bg-surface-raised border border-border-default rounded-lg px-3 py-2 text-white placeholder-content-subtle focus:border-positive-soft focus:outline-none resize-none"
                             />
                         </div>
 
                         {saveError && (
-                            <p className="text-red-400 text-sm">{saveError}</p>
+                            <p className="text-negative text-sm">{saveError}</p>
                         )}
 
                         <div className="flex gap-2 justify-end">
@@ -180,13 +180,13 @@ export const ScenarioManager: React.FC = () => {
                                     setScenarioDescription('');
                                     setSaveError(null);
                                 }}
-                                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm transition-colors"
+                                className="px-4 py-2 bg-surface-input hover:bg-surface-hover text-white rounded-lg text-sm transition-colors"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={handleSave}
-                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition-colors"
+                                className="px-4 py-2 bg-positive-solid hover:bg-positive-soft text-white rounded-lg text-sm font-medium transition-colors"
                             >
                                 Save Scenario
                             </button>
@@ -197,9 +197,9 @@ export const ScenarioManager: React.FC = () => {
 
             {/* Scenarios list */}
             {state.scenarios.length === 0 ? (
-                <div className="bg-gray-800/30 rounded-xl border border-gray-700 border-dashed p-8 text-center">
-                    <div className="text-gray-400 mb-2">No saved scenarios yet</div>
-                    <p className="text-sm text-gray-400">
+                <div className="bg-surface-overlay/30 rounded-xl border border-border-default border-dashed p-8 text-center">
+                    <div className="text-content-muted mb-2">No saved scenarios yet</div>
+                    <p className="text-sm text-content-muted">
                         Save your current plan to create your first scenario for comparison
                     </p>
                 </div>
@@ -224,27 +224,27 @@ export const ScenarioManager: React.FC = () => {
 
             {/* Current selection summary */}
             {(state.selectedBaseline || state.selectedComparison) && (
-                <div className="bg-gray-800/30 rounded-xl border border-gray-700 p-4">
+                <div className="bg-surface-overlay/30 rounded-xl border border-border-default p-4">
                     <div className="flex flex-wrap gap-4 items-center text-sm">
                         <div className="flex items-center gap-2">
-                            <span className="text-gray-400">Baseline:</span>
+                            <span className="text-content-muted">Baseline:</span>
                             {state.selectedBaseline ? (
-                                <span className="text-blue-400 font-medium">
+                                <span className="text-info font-medium">
                                     {state.scenarios.find(s => s.metadata.id === state.selectedBaseline)?.metadata.name || 'Unknown'}
                                 </span>
                             ) : (
-                                <span className="text-gray-400 italic">Not selected</span>
+                                <span className="text-content-muted italic">Not selected</span>
                             )}
                         </div>
-                        <div className="text-gray-400">vs</div>
+                        <div className="text-content-muted">vs</div>
                         <div className="flex items-center gap-2">
-                            <span className="text-gray-400">Compare:</span>
+                            <span className="text-content-muted">Compare:</span>
                             {state.selectedComparison ? (
-                                <span className="text-orange-400 font-medium">
+                                <span className="text-cat-orange font-medium">
                                     {state.scenarios.find(s => s.metadata.id === state.selectedComparison)?.metadata.name || 'Unknown'}
                                 </span>
                             ) : (
-                                <span className="text-gray-400 italic">Not selected</span>
+                                <span className="text-content-muted italic">Not selected</span>
                             )}
                         </div>
                     </div>

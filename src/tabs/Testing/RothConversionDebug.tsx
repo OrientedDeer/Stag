@@ -7,6 +7,7 @@ import { FilingStatus } from '../../data/TaxData';
 import { getRMDStartAge, getDistributionPeriod } from '../../data/RMDData';
 import { SimulationYear, RateMatchWalkRow, ConversionLimitingFactor, DPYearTrace } from '../../services/simulation/types';
 import { DP_BACKLOAD_DELTA } from '../../services/simulation/RothConversionDP';
+import { Panel } from "../../components/Layout/Primitives";
 
 const fmtCurrency = (n: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n);
@@ -128,15 +129,15 @@ function YearSparkline({
     const selected = years.find(p => p.year === selectedYear);
     return (
         <div className="px-2">
-            <div className="text-xs text-gray-500 mb-1">Traditional balance over time</div>
+            <div className="text-xs text-content-subtle mb-1">Traditional balance over time</div>
             <svg width={w} height={h} className="overflow-visible">
-                <path d={path} stroke="#a78bfa" strokeWidth={1.5} fill="none" />
+                <path d={path} stroke="var(--c-cat-purple)" strokeWidth={1.5} fill="none" />
                 {selected && (
                     <circle
                         cx={xScale(selected.year)}
                         cy={yScale(selected.balance)}
                         r={3.5}
-                        fill="#f472b6"
+                        fill="var(--c-cat-fuchsia)"
                     />
                 )}
                 {/* Click overlay */}
@@ -173,28 +174,28 @@ function HeadlineSection({
     target: NonNullable<SimulationYear['taxOptimizationTarget']>;
 }) {
     return (
-        <section className="bg-gray-900 rounded-xl border border-gray-800 p-5">
-            <div className="text-sm text-gray-400 mb-1">Headline</div>
-            <p className="text-gray-100 text-base leading-relaxed">
+        <section className="bg-surface-raised rounded-xl border border-border-subtle p-5">
+            <div className="text-sm text-content-muted mb-1">Headline</div>
+            <p className="text-content-bright text-base leading-relaxed">
                 In <span className="font-semibold text-white">{year}</span> (age <span className="font-semibold text-white">{age}</span>),
-                the engine converted <span className="font-bold text-fuchsia-400">{fmtCurrency(convertedAmount)}</span> because {reason}.
+                the engine converted <span className="font-bold text-cat-fuchsia">{fmtCurrency(convertedAmount)}</span> because {reason}.
             </p>
             <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                 <div>
-                    <div className="text-gray-500">Trad balance (start)</div>
-                    <div className="text-gray-200 font-medium">{fmtCurrencyShort(target.currentTraditionalBalance ?? 0)}</div>
+                    <div className="text-content-subtle">Trad balance (start)</div>
+                    <div className="text-content-emphasis font-medium">{fmtCurrencyShort(target.currentTraditionalBalance ?? 0)}</div>
                 </div>
                 <div>
-                    <div className="text-gray-500">AGI before conversion</div>
-                    <div className="text-gray-200 font-medium">{fmtCurrencyShort(target.constraintDetails?.currentAGI ?? 0)}</div>
+                    <div className="text-content-subtle">AGI before conversion</div>
+                    <div className="text-content-emphasis font-medium">{fmtCurrencyShort(target.constraintDetails?.currentAGI ?? 0)}</div>
                 </div>
                 <div>
-                    <div className="text-gray-500">Reached bracket</div>
-                    <div className="text-gray-200 font-medium">{fmtPct(target.targetBracketCeiling)}</div>
+                    <div className="text-content-subtle">Reached bracket</div>
+                    <div className="text-content-emphasis font-medium">{fmtPct(target.targetBracketCeiling)}</div>
                 </div>
                 <div>
-                    <div className="text-gray-500">Limiting factor</div>
-                    <div className="text-gray-200 font-medium">{limitingFactorLabel(target.limitingFactor)}</div>
+                    <div className="text-content-subtle">Limiting factor</div>
+                    <div className="text-content-emphasis font-medium">{limitingFactorLabel(target.limitingFactor)}</div>
                 </div>
             </div>
         </section>
@@ -243,40 +244,40 @@ function DPPlanSummarySection({ traces, birthYear }: { traces: DPYearTrace[]; bi
     ];
 
     return (
-        <section className="bg-gray-900 rounded-xl border border-gray-800 p-5">
-            <div className="text-sm text-gray-400 mb-3">DP plan: macro view</div>
+        <section className="bg-surface-raised rounded-xl border border-border-subtle p-5">
+            <div className="text-sm text-content-muted mb-3">DP plan: macro view</div>
 
             {/* Headline metrics */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                <div className="bg-gray-800/60 rounded-lg p-3">
-                    <div className="text-xs text-gray-500">Total converted</div>
-                    <div className="text-xl font-bold text-fuchsia-400">{fmtCurrencyShort(totalConverted)}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">
+                <div className="bg-surface-overlay/60 rounded-lg p-3">
+                    <div className="text-xs text-content-subtle">Total converted</div>
+                    <div className="text-xl font-bold text-cat-fuchsia">{fmtCurrencyShort(totalConverted)}</div>
+                    <div className="text-xs text-content-subtle mt-0.5">
                         {yearsConverting} of {sorted.length} years
                     </div>
                 </div>
-                <div className="bg-gray-800/60 rounded-lg p-3">
-                    <div className="text-xs text-gray-500">Conversion tax paid</div>
-                    <div className="text-xl font-bold text-gray-100">{fmtCurrencyShort(totalConversionTax)}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">marginal over baseline</div>
+                <div className="bg-surface-overlay/60 rounded-lg p-3">
+                    <div className="text-xs text-content-subtle">Conversion tax paid</div>
+                    <div className="text-xl font-bold text-content-bright">{fmtCurrencyShort(totalConversionTax)}</div>
+                    <div className="text-xs text-content-subtle mt-0.5">marginal over baseline</div>
                 </div>
-                <div className="bg-gray-800/60 rounded-lg p-3">
-                    <div className="text-xs text-gray-500">Effective rate</div>
-                    <div className="text-xl font-bold text-gray-100">{(effectiveTaxRate * 100).toFixed(1)}%</div>
-                    <div className="text-xs text-gray-500 mt-0.5">tax / converted</div>
+                <div className="bg-surface-overlay/60 rounded-lg p-3">
+                    <div className="text-xs text-content-subtle">Effective rate</div>
+                    <div className="text-xl font-bold text-content-bright">{(effectiveTaxRate * 100).toFixed(1)}%</div>
+                    <div className="text-xs text-content-subtle mt-0.5">tax / converted</div>
                 </div>
-                <div className="bg-gray-800/60 rounded-lg p-3">
-                    <div className="text-xs text-gray-500">Horizon</div>
-                    <div className="text-xl font-bold text-gray-100">{sorted.length} yr</div>
-                    <div className="text-xs text-gray-500 mt-0.5">{minYear}–{maxYear}</div>
+                <div className="bg-surface-overlay/60 rounded-lg p-3">
+                    <div className="text-xs text-content-subtle">Horizon</div>
+                    <div className="text-xl font-bold text-content-bright">{sorted.length} yr</div>
+                    <div className="text-xs text-content-subtle mt-0.5">{minYear}–{maxYear}</div>
                 </div>
             </div>
 
             {/* Conversion sparkline */}
             <div className="mb-4">
-                <div className="text-xs text-gray-500 mb-1">Conversions by year (ages {minYear - birthYear}–{maxYear - birthYear})</div>
-                <svg width={w} height={h + 18} className="text-gray-400">
-                    <line x1={0} y1={h} x2={w} y2={h} stroke="#374151" strokeWidth={1} />
+                <div className="text-xs text-content-subtle mb-1">Conversions by year (ages {minYear - birthYear}–{maxYear - birthYear})</div>
+                <svg width={w} height={h + 18} className="text-content-muted">
+                    <line x1={0} y1={h} x2={w} y2={h} stroke="var(--c-border-default)" strokeWidth={1} />
                     {sorted.map(t => {
                         const x = ((t.year - minYear) / yearRange) * (w - barW);
                         const barH = (t.chosenC / maxChosen) * h;
@@ -288,7 +289,7 @@ function DPPlanSummarySection({ traces, birthYear }: { traces: DPYearTrace[]; bi
                                 y={h - barH}
                                 width={barW}
                                 height={barH}
-                                fill={isPeak ? '#f472b6' : (t.chosenC > NONTRIVIAL ? '#a78bfa' : '#4b5563')}
+                                fill={isPeak ? 'var(--c-cat-fuchsia)' : (t.chosenC > NONTRIVIAL ? 'var(--c-cat-purple)' : 'var(--c-border-strong)')}
                             >
                                 <title>
                                     {`${t.year} (age ${t.age}): ${fmtCurrencyShort(t.chosenC)}`}
@@ -305,23 +306,23 @@ function DPPlanSummarySection({ traces, birthYear }: { traces: DPYearTrace[]; bi
 
             {/* Lifecycle markers */}
             {firstConv && peakConv && lastConv && (
-                <div className="text-sm text-gray-300 mb-4 space-y-1">
+                <div className="text-sm text-content-default mb-4 space-y-1">
                     <div>
-                        <span className="text-gray-500">First nontrivial conversion: </span>
-                        <span className="font-mono text-gray-200">{fmtCurrencyShort(firstConv.chosenC)}</span>{' '}
-                        <span className="text-gray-500">in {firstConv.year} (age {firstConv.age})</span>
+                        <span className="text-content-subtle">First nontrivial conversion: </span>
+                        <span className="font-mono text-content-emphasis">{fmtCurrencyShort(firstConv.chosenC)}</span>{' '}
+                        <span className="text-content-subtle">in {firstConv.year} (age {firstConv.age})</span>
                     </div>
                     <div>
-                        <span className="text-gray-500">Peak: </span>
-                        <span className="font-mono text-fuchsia-400">{fmtCurrencyShort(peakConv.chosenC)}</span>{' '}
-                        <span className="text-gray-500">in {peakConv.year} (age {peakConv.age})</span>
+                        <span className="text-content-subtle">Peak: </span>
+                        <span className="font-mono text-cat-fuchsia">{fmtCurrencyShort(peakConv.chosenC)}</span>{' '}
+                        <span className="text-content-subtle">in {peakConv.year} (age {peakConv.age})</span>
                     </div>
                     <div>
-                        <span className="text-gray-500">Last nontrivial: </span>
-                        <span className="font-mono text-gray-200">{fmtCurrencyShort(lastConv.chosenC)}</span>{' '}
-                        <span className="text-gray-500">in {lastConv.year} (age {lastConv.age})</span>
+                        <span className="text-content-subtle">Last nontrivial: </span>
+                        <span className="font-mono text-content-emphasis">{fmtCurrencyShort(lastConv.chosenC)}</span>{' '}
+                        <span className="text-content-subtle">in {lastConv.year} (age {lastConv.age})</span>
                         {lastConv.year < last.year && (
-                            <span className="text-gray-500"> — plan winds down for the remaining {last.year - lastConv.year} year(s)</span>
+                            <span className="text-content-subtle"> — plan winds down for the remaining {last.year - lastConv.year} year(s)</span>
                         )}
                     </div>
                 </div>
@@ -329,12 +330,12 @@ function DPPlanSummarySection({ traces, birthYear }: { traces: DPYearTrace[]; bi
 
             {/* End-of-horizon comparison */}
             <div>
-                <div className="text-xs text-gray-500 mb-2">
+                <div className="text-xs text-content-subtle mb-2">
                     End of horizon (year {last.year}, age {last.age})
                 </div>
                 <table className="w-full text-sm">
                     <thead>
-                        <tr className="text-gray-500 text-xs border-b border-gray-800">
+                        <tr className="text-content-subtle text-xs border-b border-border-subtle">
                             <th className="text-left py-2 font-normal">Balance</th>
                             <th className="text-right py-2 font-normal">DP plan</th>
                             <th className="text-right py-2 font-normal">Baseline</th>
@@ -345,12 +346,12 @@ function DPPlanSummarySection({ traces, birthYear }: { traces: DPYearTrace[]; bi
                         {terminalRows.map(row => {
                             const delta = row.dp - row.baseline;
                             const better = (row.dir === 'lower' ? delta < 0 : delta > 0);
-                            const color = delta === 0 ? 'text-gray-500' : (better ? 'text-green-400' : 'text-yellow-400');
+                            const color = delta === 0 ? 'text-content-subtle' : (better ? 'text-positive' : 'text-warning');
                             return (
-                                <tr key={row.label} className="border-b border-gray-800/50">
-                                    <td className="py-2 text-gray-300">{row.label}</td>
-                                    <td className="py-2 text-right font-mono text-gray-200">{fmtCurrencyShort(row.dp)}</td>
-                                    <td className="py-2 text-right font-mono text-gray-400">{fmtCurrencyShort(row.baseline)}</td>
+                                <tr key={row.label} className="border-b border-border-subtle/50">
+                                    <td className="py-2 text-content-default">{row.label}</td>
+                                    <td className="py-2 text-right font-mono text-content-emphasis">{fmtCurrencyShort(row.dp)}</td>
+                                    <td className="py-2 text-right font-mono text-content-muted">{fmtCurrencyShort(row.baseline)}</td>
                                     <td className={`py-2 text-right font-mono ${color}`}>
                                         {(delta >= 0 ? '+' : '') + fmtCurrencyShort(delta)}
                                     </td>
@@ -359,7 +360,7 @@ function DPPlanSummarySection({ traces, birthYear }: { traces: DPYearTrace[]; bi
                         })}
                     </tbody>
                 </table>
-                <p className="text-xs text-gray-500 mt-3 leading-relaxed">
+                <p className="text-xs text-content-subtle mt-3 leading-relaxed">
                     Baseline = std-ded-headroom-only sub-sim. Negative trad-Δ + positive roth-Δ = DP shifted wealth
                     into tax-free; the "conversion tax paid" cell above is what it cost to do so.
                 </p>
@@ -402,42 +403,42 @@ function DPHeadlineSection({ trace }: { trace: DPYearTrace }) {
     }
 
     return (
-        <section className="bg-gray-900 rounded-xl border border-gray-800 p-5">
-            <div className="text-sm text-gray-400 mb-1">DP decision (year {trace.year}, age {trace.age})</div>
-            <p className="text-gray-100 text-base leading-relaxed">
-                Picked <span className="font-bold text-fuchsia-400">{fmtCurrency(trace.chosenC)}</span> because {pickReason}.
-                Total lifetime cost from this state: <span className="font-mono text-gray-200">{fmtCurrencyShort(trace.totalCost)}</span>.
+        <section className="bg-surface-raised rounded-xl border border-border-subtle p-5">
+            <div className="text-sm text-content-muted mb-1">DP decision (year {trace.year}, age {trace.age})</div>
+            <p className="text-content-bright text-base leading-relaxed">
+                Picked <span className="font-bold text-cat-fuchsia">{fmtCurrency(trace.chosenC)}</span> because {pickReason}.
+                Total lifetime cost from this state: <span className="font-mono text-content-emphasis">{fmtCurrencyShort(trace.totalCost)}</span>.
             </p>
             <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                 <div>
-                    <div className="text-gray-500">Effective rate (avg)</div>
-                    <div className="text-gray-200 font-mono">
+                    <div className="text-content-subtle">Effective rate (avg)</div>
+                    <div className="text-content-emphasis font-mono">
                         {trace.chosenC > 0 ? `${(effectiveRate * 100).toFixed(1)}%` : '—'}
                     </div>
                 </div>
                 <div>
-                    <div className="text-gray-500">Marginal rate (last $)</div>
-                    <div className="text-gray-200 font-mono">
+                    <div className="text-content-subtle">Marginal rate (last $)</div>
+                    <div className="text-content-emphasis font-mono">
                         {marginalRate !== null ? `${(marginalRate * 100).toFixed(1)}%` : '—'}
                     </div>
                 </div>
                 <div>
-                    <div className="text-gray-500">This year's tax</div>
-                    <div className="text-gray-200 font-mono">{fmtCurrencyShort(trace.yearTax)}</div>
+                    <div className="text-content-subtle">This year's tax</div>
+                    <div className="text-content-emphasis font-mono">{fmtCurrencyShort(trace.yearTax)}</div>
                 </div>
                 <div>
-                    <div className="text-gray-500">Discounted future</div>
-                    <div className="text-gray-200 font-mono">{fmtCurrencyShort(trace.discountedFuture)}</div>
+                    <div className="text-content-subtle">Discounted future</div>
+                    <div className="text-content-emphasis font-mono">{fmtCurrencyShort(trace.discountedFuture)}</div>
                 </div>
                 <div>
-                    <div className="text-gray-500">vs c=$0 (saved)</div>
-                    <div className={`font-mono ${savedVsZero > 0 ? 'text-green-400' : 'text-gray-500'}`}>
+                    <div className="text-content-subtle">vs c=$0 (saved)</div>
+                    <div className={`font-mono ${savedVsZero > 0 ? 'text-positive' : 'text-content-subtle'}`}>
                         {savedVsZero > 0 ? `+${fmtCurrencyShort(savedVsZero)}` : '—'}
                     </div>
                 </div>
                 <div>
-                    <div className="text-gray-500">vs c=cMax (saved)</div>
-                    <div className={`font-mono ${savedVsMax > 0 ? 'text-green-400' : 'text-gray-500'}`}>
+                    <div className="text-content-subtle">vs c=cMax (saved)</div>
+                    <div className={`font-mono ${savedVsMax > 0 ? 'text-positive' : 'text-content-subtle'}`}>
                         {savedVsMax > 0 ? `+${fmtCurrencyShort(savedVsMax)}` : '—'}
                     </div>
                 </div>
@@ -469,28 +470,28 @@ function DPCostCurveSection({ trace }: { trace: DPYearTrace }) {
     const barW = Math.max(8, (innerW - barGap * (barCount - 1)) / barCount);
 
     return (
-        <section className="bg-gray-900 rounded-xl border border-gray-800 p-5">
-            <div className="text-sm text-gray-400 mb-2">
+        <section className="bg-surface-raised rounded-xl border border-border-subtle p-5">
+            <div className="text-sm text-content-muted mb-2">
                 Cost-curve: total lifetime cost vs conversion size
             </div>
 
             {/* SVG stacked-bar chart */}
             <div className="overflow-x-auto">
-                <svg width={w} height={h} className="text-gray-400">
+                <svg width={w} height={h} className="text-content-muted">
                     {/* y axis label */}
                     <text x={4} y={padT + 8} fontSize={10} fill="currentColor">Cost</text>
                     {/* x axis label */}
                     <text x={padL + innerW / 2 - 30} y={h - 4} fontSize={10} fill="currentColor">conversion (c)</text>
                     {/* axes */}
-                    <line x1={padL} y1={padT} x2={padL} y2={padT + innerH} stroke="#374151" strokeWidth={1} />
-                    <line x1={padL} y1={padT + innerH} x2={padL + innerW} y2={padT + innerH} stroke="#374151" strokeWidth={1} />
+                    <line x1={padL} y1={padT} x2={padL} y2={padT + innerH} stroke="var(--c-border-default)" strokeWidth={1} />
+                    <line x1={padL} y1={padT + innerH} x2={padL + innerW} y2={padT + innerH} stroke="var(--c-border-default)" strokeWidth={1} />
                     {/* y ticks (max + half) */}
                     {[0, 0.5, 1].map(frac => {
                         const y = padT + innerH * (1 - frac);
                         const v = stackMax * frac;
                         return (
                             <g key={frac}>
-                                <line x1={padL - 3} y1={y} x2={padL} y2={y} stroke="#374151" />
+                                <line x1={padL - 3} y1={y} x2={padL} y2={y} stroke="var(--c-border-default)" />
                                 <text x={padL - 6} y={y + 3} textAnchor="end" fontSize={9} fill="currentColor">
                                     {fmtCurrencyShort(v)}
                                 </text>
@@ -509,20 +510,20 @@ function DPCostCurveSection({ trace }: { trace: DPYearTrace }) {
                                 {/* discounted future on top */}
                                 <rect
                                     x={x} y={dFutY} width={barW} height={dFutH}
-                                    fill={isChosen ? '#a78bfa' : '#4b5563'}
+                                    fill={isChosen ? 'var(--c-cat-purple)' : 'var(--c-border-strong)'}
                                     opacity={0.85}
                                 />
                                 {/* yearTax on bottom */}
                                 <rect
                                     x={x} y={yTaxY} width={barW} height={yTaxH}
-                                    fill={isChosen ? '#f472b6' : '#9ca3af'}
+                                    fill={isChosen ? 'var(--c-cat-fuchsia)' : 'var(--c-content-muted)'}
                                 />
                                 {/* chosen marker */}
                                 {isChosen && (
                                     <text
                                         x={x + barW / 2} y={dFutY - 4}
                                         textAnchor="middle" fontSize={10}
-                                        fill="#f472b6" fontWeight="bold"
+                                        fill="var(--c-cat-fuchsia)" fontWeight="bold"
                                     >
                                         ★
                                     </text>
@@ -531,7 +532,7 @@ function DPCostCurveSection({ trace }: { trace: DPYearTrace }) {
                                 <text
                                     x={x + barW / 2} y={padT + innerH + 14}
                                     textAnchor="middle" fontSize={9}
-                                    fill={isChosen ? '#f472b6' : 'currentColor'}
+                                    fill={isChosen ? 'var(--c-cat-fuchsia)' : 'currentColor'}
                                 >
                                     {fmtCurrencyShort(s.c)}
                                 </text>
@@ -540,16 +541,16 @@ function DPCostCurveSection({ trace }: { trace: DPYearTrace }) {
                     })}
                 </svg>
             </div>
-            <div className="text-xs text-gray-500 mt-1 mb-3 flex gap-4">
-                <span><span className="inline-block w-3 h-3 align-middle mr-1" style={{ background: '#9ca3af' }} /> yearTax</span>
-                <span><span className="inline-block w-3 h-3 align-middle mr-1" style={{ background: '#4b5563' }} /> discounted future</span>
-                <span className="text-fuchsia-400">★ chosen</span>
+            <div className="text-xs text-content-subtle mt-1 mb-3 flex gap-4">
+                <span><span className="inline-block w-3 h-3 align-middle mr-1" style={{ background: 'var(--c-content-muted)' }} /> yearTax</span>
+                <span><span className="inline-block w-3 h-3 align-middle mr-1" style={{ background: 'var(--c-border-strong)' }} /> discounted future</span>
+                <span className="text-cat-fuchsia">★ chosen</span>
             </div>
 
             {/* Detail table */}
             <table className="w-full text-sm">
                 <thead>
-                    <tr className="text-gray-500 text-xs border-b border-gray-800">
+                    <tr className="text-content-subtle text-xs border-b border-border-subtle">
                         <th className="text-left py-2 font-normal">c</th>
                         <th className="text-right py-2 font-normal">yearTax</th>
                         <th className="text-right py-2 font-normal">discounted future</th>
@@ -564,24 +565,24 @@ function DPCostCurveSection({ trace }: { trace: DPYearTrace }) {
                         return (
                             <tr
                                 key={i}
-                                className={`border-b border-gray-800/50 ${isChosen ? 'bg-fuchsia-900/30' : ''}`}
+                                className={`border-b border-border-subtle/50 ${isChosen ? 'bg-cat-fuchsia-tint/30' : ''}`}
                             >
-                                <td className={`py-2 ${isChosen ? 'text-fuchsia-300 font-semibold' : 'text-gray-300'}`}>
+                                <td className={`py-2 ${isChosen ? 'text-cat-fuchsia-bright font-semibold' : 'text-content-default'}`}>
                                     {isChosen ? '★ ' : ''}{fmtCurrencyShort(s.c)}
                                 </td>
-                                <td className="py-2 text-right font-mono text-gray-300">{fmtCurrencyShort(s.yearTax)}</td>
-                                <td className="py-2 text-right font-mono text-gray-300">{fmtCurrencyShort(s.discountedFuture)}</td>
-                                <td className={`py-2 text-right font-mono ${isChosen ? 'text-fuchsia-300 font-semibold' : 'text-gray-300'}`}>
+                                <td className="py-2 text-right font-mono text-content-default">{fmtCurrencyShort(s.yearTax)}</td>
+                                <td className="py-2 text-right font-mono text-content-default">{fmtCurrencyShort(s.discountedFuture)}</td>
+                                <td className={`py-2 text-right font-mono ${isChosen ? 'text-cat-fuchsia-bright font-semibold' : 'text-content-default'}`}>
                                     {fmtCurrencyShort(s.totalCost)}
                                 </td>
-                                <td className="py-2 text-right font-mono text-gray-400">{fmtCurrencyShort(s.tradNext)}</td>
-                                <td className="py-2 text-right font-mono text-gray-400">{fmtCurrencyShort(s.rothNext)}</td>
+                                <td className="py-2 text-right font-mono text-content-muted">{fmtCurrencyShort(s.tradNext)}</td>
+                                <td className="py-2 text-right font-mono text-content-muted">{fmtCurrencyShort(s.rothNext)}</td>
                             </tr>
                         );
                     })}
                 </tbody>
             </table>
-            <p className="text-xs text-gray-500 mt-3 leading-relaxed">
+            <p className="text-xs text-content-subtle mt-3 leading-relaxed">
                 For each candidate <span className="font-mono">c</span>, DP evaluates this year's tax plus the
                 discounted optimal future cost from <span className="font-mono">(tradNext, rothNext)</span>. The
                 lowest <span className="font-mono">total</span> wins.
@@ -623,19 +624,19 @@ function DPRateAnalysisSection({ trace }: { trace: DPYearTrace }) {
     if (segments.length === 0) return null;
 
     return (
-        <section className="bg-gray-900 rounded-xl border border-gray-800 p-5">
-            <div className="text-sm text-gray-400 mb-2">
+        <section className="bg-surface-raised rounded-xl border border-border-subtle p-5">
+            <div className="text-sm text-content-muted mb-2">
                 Why DP stopped at {fmtCurrencyShort(trace.chosenC)}: the marginal trade-off
             </div>
-            <p className="text-xs text-gray-500 mb-3 leading-relaxed">
-                For each conversion segment, DP compares <span className="text-gray-300">today's marginal tax rate</span>{' '}
-                (federal + state, on the next dollar) against the <span className="text-gray-300">PV of future tax it
+            <p className="text-xs text-content-subtle mb-3 leading-relaxed">
+                For each conversion segment, DP compares <span className="text-content-default">today's marginal tax rate</span>{' '}
+                (federal + state, on the next dollar) against the <span className="text-content-default">PV of future tax it
                 avoids</span> (V-table-derived, per $ converted). Conversion is worthwhile while future-saved &gt; today's tax.
                 DP stops where the trade-off flips negative.
             </p>
             <table className="w-full text-sm">
                 <thead>
-                    <tr className="text-gray-500 text-xs border-b border-gray-800">
+                    <tr className="text-content-subtle text-xs border-b border-border-subtle">
                         <th className="text-left py-2 font-normal">conversion segment</th>
                         <th className="text-right py-2 font-normal">marginal tax (today)</th>
                         <th className="text-right py-2 font-normal">future PV saved per $</th>
@@ -647,34 +648,34 @@ function DPRateAnalysisSection({ trace }: { trace: DPYearTrace }) {
                     {segments.map((s, i) => (
                         <tr
                             key={i}
-                            className={`border-b border-gray-800/50 ${s.endsAtChosen ? 'bg-fuchsia-900/30' : ''}`}
+                            className={`border-b border-border-subtle/50 ${s.endsAtChosen ? 'bg-cat-fuchsia-tint/30' : ''}`}
                         >
-                            <td className="py-2 text-gray-300 font-mono">
+                            <td className="py-2 text-content-default font-mono">
                                 {fmtCurrencyShort(s.from)} → {fmtCurrencyShort(s.to)}
-                                {s.endsAtChosen && <span className="text-fuchsia-400 ml-2" title="DP stopping point">★</span>}
+                                {s.endsAtChosen && <span className="text-cat-fuchsia ml-2" title="DP stopping point">★</span>}
                             </td>
-                            <td className="py-2 text-right font-mono text-gray-300">
+                            <td className="py-2 text-right font-mono text-content-default">
                                 {(s.marginalTax * 100).toFixed(1)}%
                             </td>
-                            <td className="py-2 text-right font-mono text-gray-300">
+                            <td className="py-2 text-right font-mono text-content-default">
                                 {(s.futureSavedRate * 100).toFixed(1)}%
                             </td>
-                            <td className={`py-2 text-right font-mono ${s.net > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            <td className={`py-2 text-right font-mono ${s.net > 0 ? 'text-positive' : 'text-negative'}`}>
                                 {(s.net >= 0 ? '+' : '') + (s.net * 100).toFixed(1)}%
                             </td>
                             <td className="py-2 pl-3 text-xs">
                                 {s.net > 0 ? (
-                                    <span className="text-green-400">✓ convert</span>
+                                    <span className="text-positive">✓ convert</span>
                                 ) : (
-                                    <span className="text-red-400">✗ stop</span>
+                                    <span className="text-negative">✗ stop</span>
                                 )}
                             </td>
                         </tr>
                     ))}
                 </tbody>
             </table>
-            <p className="text-xs text-gray-500 mt-3 leading-relaxed">
-                <span className="text-gray-400">How to use this</span>: if the "future PV saved per $" looks
+            <p className="text-xs text-content-subtle mt-3 leading-relaxed">
+                <span className="text-content-muted">How to use this</span>: if the "future PV saved per $" looks
                 unrealistic for your scenario (e.g., DP claims it's avoiding 35% PV when you don't expect
                 future tax rates that high), the V-table projection may be over-confident. The most common
                 cause is large projected Trad balances at RMD age driving the future-rate estimate up.
@@ -688,34 +689,34 @@ function DPStateFlowSection({ trace }: { trace: DPYearTrace }) {
     const tradAfterFlows = trace.tradEntering - trace.chosenC - trace.rmdAtEntering - trace.tradSpending;
     const rothAfterFlows = trace.rothEntering + trace.chosenC - trace.fromRoth;
     return (
-        <section className="bg-gray-900 rounded-xl border border-gray-800 p-5">
-            <div className="text-sm text-gray-400 mb-3">Balance evolution under chosen plan</div>
+        <section className="bg-surface-raised rounded-xl border border-border-subtle p-5">
+            <div className="text-sm text-content-muted mb-3">Balance evolution under chosen plan</div>
             <div className="space-y-3 text-sm font-mono leading-relaxed">
-                <div className="text-gray-300">
-                    <span className="text-cyan-400">trad:</span>{' '}
+                <div className="text-content-default">
+                    <span className="text-cat-cyan">trad:</span>{' '}
                     {fmtCurrencyShort(trace.tradEntering)}
-                    <span className="text-gray-500"> − conversion </span>{fmtCurrencyShort(trace.chosenC)}
-                    <span className="text-gray-500"> − rmd </span>{fmtCurrencyShort(trace.rmdAtEntering)}
-                    <span className="text-gray-500"> − tradSpending </span>{fmtCurrencyShort(trace.tradSpending)}
-                    <span className="text-gray-500"> = </span>
+                    <span className="text-content-subtle"> − conversion </span>{fmtCurrencyShort(trace.chosenC)}
+                    <span className="text-content-subtle"> − rmd </span>{fmtCurrencyShort(trace.rmdAtEntering)}
+                    <span className="text-content-subtle"> − tradSpending </span>{fmtCurrencyShort(trace.tradSpending)}
+                    <span className="text-content-subtle"> = </span>
                     {fmtCurrencyShort(tradAfterFlows)}
-                    <span className="text-gray-500"> × </span>(1 + growth)
-                    <span className="text-gray-500"> = </span>
-                    <span className="text-gray-100 font-semibold">{fmtCurrencyShort(trace.tradNext)}</span>
+                    <span className="text-content-subtle"> × </span>(1 + growth)
+                    <span className="text-content-subtle"> = </span>
+                    <span className="text-content-bright font-semibold">{fmtCurrencyShort(trace.tradNext)}</span>
                 </div>
-                <div className="text-gray-300">
-                    <span className="text-emerald-400">roth:</span>{' '}
+                <div className="text-content-default">
+                    <span className="text-positive">roth:</span>{' '}
                     {fmtCurrencyShort(trace.rothEntering)}
-                    <span className="text-gray-500"> + conversion </span>{fmtCurrencyShort(trace.chosenC)}
-                    <span className="text-gray-500"> − fromRoth </span>{fmtCurrencyShort(trace.fromRoth)}
-                    <span className="text-gray-500"> = </span>
+                    <span className="text-content-subtle"> + conversion </span>{fmtCurrencyShort(trace.chosenC)}
+                    <span className="text-content-subtle"> − fromRoth </span>{fmtCurrencyShort(trace.fromRoth)}
+                    <span className="text-content-subtle"> = </span>
                     {fmtCurrencyShort(rothAfterFlows)}
-                    <span className="text-gray-500"> × </span>(1 + roth growth)
-                    <span className="text-gray-500"> = </span>
-                    <span className="text-gray-100 font-semibold">{fmtCurrencyShort(trace.rothNext)}</span>
+                    <span className="text-content-subtle"> × </span>(1 + roth growth)
+                    <span className="text-content-subtle"> = </span>
+                    <span className="text-content-bright font-semibold">{fmtCurrencyShort(trace.rothNext)}</span>
                 </div>
             </div>
-            <p className="text-xs text-gray-500 mt-3">
+            <p className="text-xs text-content-subtle mt-3">
                 These are DP's <em>projected</em> balances under the chosen plan. They drive the lookup into V[t+1] for the
                 future-cost component above.
             </p>
@@ -726,20 +727,20 @@ function DPStateFlowSection({ trace }: { trace: DPYearTrace }) {
 function DPWaterfallSection({ trace }: { trace: DPYearTrace }) {
     const totalCash = trace.fromBrokerage + trace.fromRoth + trace.tradSpending;
     const sources = [
-        { label: 'brokerage', amount: trace.fromBrokerage, cap: trace.baselineBrokerageCap, color: 'bg-blue-500' },
-        { label: 'roth', amount: trace.fromRoth, cap: trace.rothEntering, color: 'bg-emerald-500' },
-        { label: 'trad-spending', amount: trace.tradSpending, cap: Math.max(0, trace.tradEntering - trace.chosenC - trace.rmdAtEntering), color: 'bg-cyan-500' },
+        { label: 'brokerage', amount: trace.fromBrokerage, cap: trace.baselineBrokerageCap, color: 'bg-accent-soft' },
+        { label: 'roth', amount: trace.fromRoth, cap: trace.rothEntering, color: 'bg-positive-soft' },
+        { label: 'trad-spending', amount: trace.tradSpending, cap: Math.max(0, trace.tradEntering - trace.chosenC - trace.rmdAtEntering), color: 'bg-cat-cyan-soft' },
     ];
 
     return (
-        <section className="bg-gray-900 rounded-xl border border-gray-800 p-5">
-            <div className="text-sm text-gray-400 mb-3">Spending waterfall</div>
+        <section className="bg-surface-raised rounded-xl border border-border-subtle p-5">
+            <div className="text-sm text-content-muted mb-3">Spending waterfall</div>
             <div className="text-sm font-mono mb-3">
-                <span className="text-gray-300">spendingNeed </span>{fmtCurrencyShort(trace.spendingNeed)}
-                <span className="text-gray-500"> + yearTax </span>{fmtCurrencyShort(trace.yearTax)}
-                <span className="text-gray-500"> − cashFromOrdinary </span>{fmtCurrencyShort(trace.cashFromOrdinary)}
-                <span className="text-gray-500"> = gap </span>
-                <span className="text-gray-100 font-semibold">{fmtCurrencyShort(trace.gap)}</span>
+                <span className="text-content-default">spendingNeed </span>{fmtCurrencyShort(trace.spendingNeed)}
+                <span className="text-content-subtle"> + yearTax </span>{fmtCurrencyShort(trace.yearTax)}
+                <span className="text-content-subtle"> − cashFromOrdinary </span>{fmtCurrencyShort(trace.cashFromOrdinary)}
+                <span className="text-content-subtle"> = gap </span>
+                <span className="text-content-bright font-semibold">{fmtCurrencyShort(trace.gap)}</span>
             </div>
             <div className="space-y-2">
                 {sources.map(src => {
@@ -748,28 +749,28 @@ function DPWaterfallSection({ trace }: { trace: DPYearTrace }) {
                     return (
                         <div key={src.label} className="text-xs">
                             <div className="flex items-baseline justify-between mb-1">
-                                <div className="text-gray-300">
-                                    <span className="text-gray-500">from</span>{' '}
+                                <div className="text-content-default">
+                                    <span className="text-content-subtle">from</span>{' '}
                                     <span className="font-medium">{src.label}</span>:{' '}
                                     <span className="font-mono">{fmtCurrencyShort(src.amount)}</span>
                                 </div>
-                                <div className="text-gray-500 font-mono">cap {fmtCurrencyShort(src.cap)}</div>
+                                <div className="text-content-subtle font-mono">cap {fmtCurrencyShort(src.cap)}</div>
                             </div>
-                            <div className="h-2 bg-gray-800 rounded relative overflow-hidden">
+                            <div className="h-2 bg-surface-overlay rounded relative overflow-hidden">
                                 <div className={`absolute top-0 left-0 h-full ${src.color}`} style={{ width: `${pct * 100}%` }} />
-                                <div className="absolute top-0 h-full border-r border-gray-500" style={{ left: `${capPct * 100}%` }} />
+                                <div className="absolute top-0 h-full border-r border-border-faint" style={{ left: `${capPct * 100}%` }} />
                             </div>
                         </div>
                     );
                 })}
             </div>
             {trace.unmetNeed > 0.5 && (
-                <div className="mt-3 text-xs bg-red-900/20 border border-red-800 rounded-lg p-3 text-red-400">
+                <div className="mt-3 text-xs bg-negative-tint/20 border border-negative-strong rounded-lg p-3 text-negative">
                     <span className="font-semibold">unmetNeed = {fmtCurrencyShort(trace.unmetNeed)}.</span>{' '}
                     The waterfall couldn't cover the full gap; DP is paying a {fmtCurrencyShort(trace.unmetNeed * 10)} infeasibility penalty for this cell.
                 </div>
             )}
-            <p className="text-xs text-gray-500 mt-3">
+            <p className="text-xs text-content-subtle mt-3">
                 Sources fire in order: <span className="font-mono">brokerage → roth → trad</span>. Cash from
                 ordinary income (wages/SS/pension/RMD) offsets the gap before any account is touched.
                 Sourced this year: <span className="font-mono">{fmtCurrencyShort(totalCash)}</span>.
@@ -789,18 +790,18 @@ function DPBaselineComparisonSection({ trace }: { trace: DPYearTrace }) {
     ];
 
     return (
-        <section className="bg-gray-900 rounded-xl border border-gray-800 p-5">
-            <div className="text-sm text-gray-400 mb-2">Comparison to std-ded baseline</div>
-            <p className="text-xs text-gray-500 mb-3 leading-relaxed">
+        <section className="bg-surface-raised rounded-xl border border-border-subtle p-5">
+            <div className="text-sm text-content-muted mb-2">Comparison to std-ded baseline</div>
+            <p className="text-xs text-content-subtle mb-3 leading-relaxed">
                 The std-ded baseline is a reference plan that converts only the standard-deduction headroom each year
                 (i.e., conversions that incur ~$0 federal tax). It's the "do almost nothing aggressive" trajectory.
                 Comparing DP's plan to baseline at this year shows the cumulative effect of every conversion DP has
-                done so far. <span className="text-gray-300">Lower DP-trad and higher DP-roth = DP has shifted more
+                done so far. <span className="text-content-default">Lower DP-trad and higher DP-roth = DP has shifted more
                 wealth into tax-free.</span>
             </p>
             <table className="w-full text-sm">
                 <thead>
-                    <tr className="text-gray-500 text-xs border-b border-gray-800">
+                    <tr className="text-content-subtle text-xs border-b border-border-subtle">
                         <th className="text-left py-2 font-normal">Metric</th>
                         <th className="text-right py-2 font-normal">DP plan</th>
                         <th className="text-right py-2 font-normal">Baseline</th>
@@ -815,12 +816,12 @@ function DPBaselineComparisonSection({ trace }: { trace: DPYearTrace }) {
                         // for that row, yellow otherwise. (Lower trad is better;
                         // higher roth/conversion is more aggressive.)
                         const better = (row.deltaIsBetter === 'lower' ? delta < 0 : delta > 0);
-                        const color = delta === 0 ? 'text-gray-500' : (better ? 'text-green-400' : 'text-yellow-400');
+                        const color = delta === 0 ? 'text-content-subtle' : (better ? 'text-positive' : 'text-warning');
                         return (
-                            <tr key={row.label} className="border-b border-gray-800/50">
-                                <td className="py-2 text-gray-300">{row.label}</td>
-                                <td className="py-2 text-right font-mono text-gray-200">{fmtCurrencyShort(row.dp)}</td>
-                                <td className="py-2 text-right font-mono text-gray-400">
+                            <tr key={row.label} className="border-b border-border-subtle/50">
+                                <td className="py-2 text-content-default">{row.label}</td>
+                                <td className="py-2 text-right font-mono text-content-emphasis">{fmtCurrencyShort(row.dp)}</td>
+                                <td className="py-2 text-right font-mono text-content-muted">
                                     {row.baseline !== undefined ? fmtCurrencyShort(baseline) : '—'}
                                 </td>
                                 <td className={`py-2 text-right font-mono ${color}`}>
@@ -838,19 +839,19 @@ function DPBaselineComparisonSection({ trace }: { trace: DPYearTrace }) {
 function DPInfoSection({ delta }: { delta: number }) {
     const deltaPct = (delta * 100).toFixed(1);
     return (
-        <section className="bg-gray-900 rounded-xl border border-gray-800 p-5">
+        <section className="bg-surface-raised rounded-xl border border-border-subtle p-5">
             <div className="flex items-baseline justify-between mb-2">
-                <div className="text-sm text-gray-400">Dynamic-programming algorithm</div>
+                <div className="text-sm text-content-muted">Dynamic-programming algorithm</div>
                 <a
                     href="#"
                     onClick={e => e.preventDefault()}
-                    className="text-xs text-gray-600 font-mono"
+                    className="text-xs text-content-faint font-mono"
                     title="src/services/simulation/RothConversionDP.ts"
                 >
                     RothConversionDP.ts
                 </a>
             </div>
-            <p className="text-gray-200 text-sm leading-relaxed">
+            <p className="text-content-emphasis text-sm leading-relaxed">
                 The DP solves a backward-induction over the full retirement horizon
                 with state <span className="font-mono">(year, traditional balance, roth balance)</span>,
                 picking the per-year conversion that minimizes total lifetime tax
@@ -859,15 +860,15 @@ function DPInfoSection({ delta }: { delta: number }) {
             </p>
             <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
                 <div>
-                    <div className="text-gray-500">Back-load preference δ</div>
-                    <div className="text-gray-200 font-mono">{deltaPct}% / yr</div>
+                    <div className="text-content-subtle">Back-load preference δ</div>
+                    <div className="text-content-emphasis font-mono">{deltaPct}% / yr</div>
                 </div>
                 <div>
-                    <div className="text-gray-500">Discount factor</div>
-                    <div className="text-gray-200 font-mono">{(1 / (1 + delta)).toFixed(4)}</div>
+                    <div className="text-content-subtle">Discount factor</div>
+                    <div className="text-content-emphasis font-mono">{(1 / (1 + delta)).toFixed(4)}</div>
                 </div>
             </div>
-            <p className="text-xs text-gray-500 mt-3">
+            <p className="text-xs text-content-subtle mt-3">
                 δ &gt; 0 makes future tax look slightly cheaper than present tax, biasing
                 the plan toward later conversions at the cost of some lifetime-tax
                 efficiency. δ = 0 is lifetime-optimal (mildly front-loaded). Adjust on
@@ -879,15 +880,15 @@ function DPInfoSection({ delta }: { delta: number }) {
 
 function AggressivenessSection({ minRateGap }: { minRateGap: number }) {
     return (
-        <section className="bg-gray-900 rounded-xl border border-gray-800 p-5">
-            <div className="text-sm text-gray-400 mb-1">Your aggressiveness setting</div>
-            <p className="text-gray-200 text-sm leading-relaxed">
+        <section className="bg-surface-raised rounded-xl border border-border-subtle p-5">
+            <div className="text-sm text-content-muted mb-1">Your aggressiveness setting</div>
+            <p className="text-content-emphasis text-sm leading-relaxed">
                 <span className="font-semibold text-white">Min rate gap = {fmtPP(minRateGap)}.</span>{' '}
                 You're willing to convert a dollar at rate <span className="font-mono">X</span> today only if it
                 would otherwise be taxed at <span className="font-mono">X+{fmtPP(minRateGap)}</span> or higher
                 at RMD age.
             </p>
-            <p className="text-gray-500 text-xs mt-2">
+            <p className="text-content-subtle text-xs mt-2">
                 Lower the gap to do more conversions; raise it to be choosier.
                 Adjust on the Withdrawal tab.
             </p>
@@ -898,22 +899,22 @@ function AggressivenessSection({ minRateGap }: { minRateGap: number }) {
 function RateMatchWalkSection({ walk }: { walk: RateMatchWalkRow[] }) {
     if (walk.length === 0) {
         return (
-            <section className="bg-gray-900 rounded-xl border border-gray-800 p-5">
-                <div className="text-sm text-gray-400 mb-1">Rate-match walk</div>
-                <p className="text-gray-500 text-sm">
+            <section className="bg-surface-raised rounded-xl border border-border-subtle p-5">
+                <div className="text-sm text-content-muted mb-1">Rate-match walk</div>
+                <p className="text-content-subtle text-sm">
                     No walk this year — the engine returned early before considering any bracket.
                 </p>
             </section>
         );
     }
     return (
-        <section className="bg-gray-900 rounded-xl border border-gray-800 p-5">
+        <section className="bg-surface-raised rounded-xl border border-border-subtle p-5">
             <div className="flex items-baseline justify-between mb-2">
-                <div className="text-sm text-gray-400">Rate-match walk</div>
+                <div className="text-sm text-content-muted">Rate-match walk</div>
                 <a
                     href="#"
                     onClick={e => e.preventDefault()}
-                    className="text-xs text-gray-600 font-mono"
+                    className="text-xs text-content-faint font-mono"
                     title="src/services/simulation/TaxOptimizedWithdrawal.ts"
                 >
                     TaxOptimizedWithdrawal.ts
@@ -921,7 +922,7 @@ function RateMatchWalkSection({ walk }: { walk: RateMatchWalkRow[] }) {
             </div>
             <table className="w-full text-sm">
                 <thead>
-                    <tr className="text-gray-500 text-xs border-b border-gray-800">
+                    <tr className="text-content-subtle text-xs border-b border-border-subtle">
                         <th className="text-left py-2 font-normal">Bracket</th>
                         <th className="text-right py-2 font-normal">Today</th>
                         <th className="text-right py-2 font-normal">RMD-age</th>
@@ -940,20 +941,20 @@ function RateMatchWalkSection({ walk }: { walk: RateMatchWalkRow[] }) {
                         return (
                             <tr
                                 key={i}
-                                className={`border-b border-gray-800/50 ${isStop ? 'bg-yellow-900/10' : ''}`}
+                                className={`border-b border-border-subtle/50 ${isStop ? 'bg-warning-tint/10' : ''}`}
                             >
-                                <td className="py-2 text-gray-300">{bracketLabel}</td>
-                                <td className="py-2 text-right font-mono text-gray-300">{fmtPct(row.currentRate)}</td>
-                                <td className="py-2 text-right font-mono text-gray-300">{fmtPct(row.futureMarginal)}</td>
-                                <td className="py-2 text-right font-mono text-gray-300">{fmtPP(row.gap)}</td>
+                                <td className="py-2 text-content-default">{bracketLabel}</td>
+                                <td className="py-2 text-right font-mono text-content-default">{fmtPct(row.currentRate)}</td>
+                                <td className="py-2 text-right font-mono text-content-default">{fmtPct(row.futureMarginal)}</td>
+                                <td className="py-2 text-right font-mono text-content-default">{fmtPP(row.gap)}</td>
                                 <td className="py-2 pl-3">
                                     {isStop ? (
-                                        <span className="text-yellow-400">✗ stop</span>
+                                        <span className="text-warning">✗ stop</span>
                                     ) : (
-                                        <span className="text-green-400">✓ convert</span>
+                                        <span className="text-positive">✓ convert</span>
                                     )}
                                 </td>
-                                <td className="py-2 text-right font-mono text-gray-300">
+                                <td className="py-2 text-right font-mono text-content-default">
                                     {row.decision === 'convert' ? fmtCurrencyShort(row.cumulative) : '—'}
                                 </td>
                             </tr>
@@ -961,7 +962,7 @@ function RateMatchWalkSection({ walk }: { walk: RateMatchWalkRow[] }) {
                     })}
                 </tbody>
             </table>
-            <p className="text-xs text-gray-500 mt-3">
+            <p className="text-xs text-content-subtle mt-3">
                 For each bracket, the engine compares today's marginal rate to the rate the same dollar
                 would face as an RMD years from now. If the gap is below your threshold, it stops.
             </p>
@@ -999,21 +1000,21 @@ function ConstraintAdjustmentsSection({
 
     if (adjustments.length === 0) {
         return (
-            <section className="bg-gray-900 rounded-xl border border-gray-800 p-5">
-                <div className="text-sm text-gray-400 mb-1">Constraint adjustments</div>
-                <p className="text-gray-500 text-sm">No constraints fired this year.</p>
+            <section className="bg-surface-raised rounded-xl border border-border-subtle p-5">
+                <div className="text-sm text-content-muted mb-1">Constraint adjustments</div>
+                <p className="text-content-subtle text-sm">No constraints fired this year.</p>
             </section>
         );
     }
 
     return (
-        <section className="bg-gray-900 rounded-xl border border-gray-800 p-5">
-            <div className="text-sm text-gray-400 mb-2">Constraint adjustments</div>
+        <section className="bg-surface-raised rounded-xl border border-border-subtle p-5">
+            <div className="text-sm text-content-muted mb-2">Constraint adjustments</div>
             <ul className="space-y-2">
                 {adjustments.map((a, i) => (
                     <li key={i} className="text-sm">
-                        <span className="text-orange-400 font-medium">{a.label}:</span>{' '}
-                        <span className="text-gray-300">{a.detail}</span>
+                        <span className="text-cat-orange font-medium">{a.label}:</span>{' '}
+                        <span className="text-content-default">{a.detail}</span>
                     </li>
                 ))}
             </ul>
@@ -1036,44 +1037,44 @@ function TrajectorySection({
     if (floor === null) {
         status = {
             label: 'Floor unavailable',
-            color: 'text-gray-400',
+            color: 'text-content-muted',
             detail: 'Could not compute the zero-tax floor for the RMD year.',
         };
     } else if (projected <= floor.floor) {
         status = {
             label: 'Below zero-tax floor',
-            color: 'text-green-400',
+            color: 'text-positive',
             detail: 'Your first RMD year will owe no federal tax on the RMD itself.',
         };
     } else {
         const excess = projected - floor.floor;
         status = {
             label: `${fmtCurrencyShort(excess)} above floor`,
-            color: 'text-yellow-400',
+            color: 'text-warning',
             detail: `First RMD year: roughly ${fmtCurrencyShort(excess / floor.rmdDivisor)} of the RMD will land in a taxable bracket.`,
         };
     }
 
     return (
-        <section className="bg-gray-900 rounded-xl border border-gray-800 p-5">
-            <div className="text-sm text-gray-400 mb-3">Trajectory check (at RMD year {rmdYear})</div>
+        <section className="bg-surface-raised rounded-xl border border-border-subtle p-5">
+            <div className="text-sm text-content-muted mb-3">Trajectory check (at RMD year {rmdYear})</div>
             <div className="grid grid-cols-2 gap-3 mb-3">
-                <div className="bg-gray-800/60 rounded-lg p-3">
-                    <div className="text-xs text-gray-500">Projected Trad @ RMD</div>
-                    <div className="text-xl font-bold text-gray-100">{fmtCurrencyShort(projected)}</div>
-                    <div className="text-xs text-gray-500 mt-1">Where the current trajectory lands.</div>
+                <div className="bg-surface-overlay/60 rounded-lg p-3">
+                    <div className="text-xs text-content-subtle">Projected Trad @ RMD</div>
+                    <div className="text-xl font-bold text-content-bright">{fmtCurrencyShort(projected)}</div>
+                    <div className="text-xs text-content-subtle mt-1">Where the current trajectory lands.</div>
                 </div>
-                <div className="bg-gray-800/60 rounded-lg p-3">
-                    <div className="text-xs text-gray-500">Zero-tax floor</div>
-                    <div className="text-xl font-bold text-gray-100">{floor !== null ? fmtCurrencyShort(floor.floor) : '—'}</div>
-                    <div className="text-xs text-gray-500 mt-1">Trad balance at which RMD owes $0 federal.</div>
+                <div className="bg-surface-overlay/60 rounded-lg p-3">
+                    <div className="text-xs text-content-subtle">Zero-tax floor</div>
+                    <div className="text-xl font-bold text-content-bright">{floor !== null ? fmtCurrencyShort(floor.floor) : '—'}</div>
+                    <div className="text-xs text-content-subtle mt-1">Trad balance at which RMD owes $0 federal.</div>
                 </div>
             </div>
             <div className={`text-sm font-medium ${status.color}`}>{status.label}</div>
-            <div className="text-xs text-gray-400 mt-1">{status.detail}</div>
+            <div className="text-xs text-content-muted mt-1">{status.detail}</div>
             {floor && (
-                <div className="mt-4 text-xs text-gray-500 leading-relaxed">
-                    <div className="text-gray-400 mb-1">Floor formula:</div>
+                <div className="mt-4 text-xs text-content-subtle leading-relaxed">
+                    <div className="text-content-muted mb-1">Floor formula:</div>
                     <div className="font-mono">
                         max RMD = {fmtCurrencyShort(floor.stdDeduction)} (std ded) − {fmtCurrencyShort(floor.taxableSS)} (85% × SS) − {fmtCurrencyShort(floor.pension)} (pension) = {fmtCurrencyShort(floor.maxRMD)}
                     </div>
@@ -1115,18 +1116,18 @@ function ConceptReferenceSection() {
         },
     ];
     return (
-        <section className="bg-gray-900 rounded-xl border border-gray-800 p-5">
-            <div className="text-sm text-gray-400 mb-2">Concept reference</div>
+        <section className="bg-surface-raised rounded-xl border border-border-subtle p-5">
+            <div className="text-sm text-content-muted mb-2">Concept reference</div>
             <details className="group">
-                <summary className="cursor-pointer text-sm text-gray-500 hover:text-gray-300 select-none">
+                <summary className="cursor-pointer text-sm text-content-subtle hover:text-content-default select-none">
                     Expand all concepts ({concepts.length})
                 </summary>
                 <div className="mt-3 space-y-3">
                     {concepts.map(c => (
-                        <details key={c.title} className="bg-gray-800/40 rounded p-3">
-                            <summary className="cursor-pointer text-sm text-gray-200 font-medium select-none">{c.title}</summary>
-                            <p className="text-xs text-gray-400 mt-2 leading-relaxed">{c.body}</p>
-                            <p className="text-xs text-gray-600 font-mono mt-2">{c.ref}</p>
+                        <details key={c.title} className="bg-surface-overlay/40 rounded p-3">
+                            <summary className="cursor-pointer text-sm text-content-emphasis font-medium select-none">{c.title}</summary>
+                            <p className="text-xs text-content-muted mt-2 leading-relaxed">{c.body}</p>
+                            <p className="text-xs text-content-faint font-mono mt-2">{c.ref}</p>
                         </details>
                     ))}
                 </div>
@@ -1201,12 +1202,12 @@ export default function RothConversionDebugTab() {
 
     if (relevantYears.length === 0) {
         return (
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-8 text-center">
-                <p className="text-gray-300 font-medium">No retirement-onward years in the simulation.</p>
-                <p className="text-gray-500 text-sm mt-2">
+            <Panel padding="none" className="p-8 text-center">
+                <p className="text-content-default font-medium">No retirement-onward years in the simulation.</p>
+                <p className="text-content-subtle text-sm mt-2">
                     Run a simulation that reaches retirement age to inspect Roth conversions.
                 </p>
-            </div>
+            </Panel>
         );
     }
 
@@ -1216,7 +1217,7 @@ export default function RothConversionDebugTab() {
     return (
         <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4 items-stretch">
             {/* Left rail: year picker + sparkline */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-3 flex flex-col gap-3 min-h-0">
+            <Panel padding="sm" className="flex flex-col gap-3 min-h-0">
                 <YearSparkline
                     years={sparkData}
                     selectedYear={effectiveSelected ?? -1}
@@ -1225,7 +1226,7 @@ export default function RothConversionDebugTab() {
                 <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
                     <table className="w-full text-xs">
                         <thead>
-                            <tr className="text-gray-500 border-b border-gray-800 sticky top-0 bg-gray-900">
+                            <tr className="text-content-subtle border-b border-border-subtle sticky top-0 bg-surface-raised">
                                 <th className="text-left py-2 font-normal">Year</th>
                                 <th className="text-right py-2 font-normal">Age</th>
                                 <th className="text-right py-2 font-normal">Conv.</th>
@@ -1241,14 +1242,14 @@ export default function RothConversionDebugTab() {
                                     <tr
                                         key={y.year}
                                         onClick={() => setSelectedYearNumber(y.year)}
-                                        className={`cursor-pointer border-b border-gray-800/40 ${isSel ? 'bg-fuchsia-900/30' : 'hover:bg-gray-800/40'}`}
+                                        className={`cursor-pointer border-b border-border-subtle/40 ${isSel ? 'bg-cat-fuchsia-tint/30' : 'hover:bg-surface-overlay/40'}`}
                                     >
-                                        <td className="py-1 text-gray-300">{y.year}</td>
-                                        <td className="py-1 text-right text-gray-400">{y.year - birthYear}</td>
-                                        <td className={`py-1 text-right font-mono ${conv > 0 ? 'text-fuchsia-400' : 'text-gray-600'}`}>
+                                        <td className="py-1 text-content-default">{y.year}</td>
+                                        <td className="py-1 text-right text-content-muted">{y.year - birthYear}</td>
+                                        <td className={`py-1 text-right font-mono ${conv > 0 ? 'text-cat-fuchsia' : 'text-content-faint'}`}>
                                             {conv > 0 ? fmtCurrencyShort(conv) : '—'}
                                         </td>
-                                        <td className="py-1 pl-2 text-gray-500 truncate max-w-[80px]" title={limitingFactorLabel(factor)}>
+                                        <td className="py-1 pl-2 text-content-subtle truncate max-w-[80px]" title={limitingFactorLabel(factor)}>
                                             {limitingFactorLabel(factor)}
                                         </td>
                                     </tr>
@@ -1257,7 +1258,7 @@ export default function RothConversionDebugTab() {
                         </tbody>
                     </table>
                 </div>
-            </div>
+            </Panel>
 
             {/* Right pane: drill-down sections */}
             <div className="space-y-4">
@@ -1296,9 +1297,9 @@ export default function RothConversionDebugTab() {
                         <ConceptReferenceSection />
                     </>
                 ) : (
-                    <div className="bg-gray-900 rounded-xl border border-gray-800 p-8 text-center">
-                        <p className="text-gray-400">Select a year from the left to inspect.</p>
-                    </div>
+                    <Panel padding="none" className="p-8 text-center">
+                        <p className="text-content-muted">Select a year from the left to inspect.</p>
+                    </Panel>
                 )}
             </div>
         </div>

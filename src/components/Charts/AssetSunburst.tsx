@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { ResponsiveSunburst } from '@nivo/sunburst';
 import { AnyAccount, SavedAccount, InvestedAccount, ESPPAccount, PropertyAccount, DebtAccount } from '../Objects/Accounts/models';
 import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
+import { useChartTheme } from './useChartTheme';
 
 interface AssetSunburstProps {
   accounts: AnyAccount[];
@@ -18,13 +19,14 @@ const getAccountCategory = (acc: AnyAccount): string => {
 };
 
 const accountCategoryColors: Record<string, string> = {
-  'Cash': '#a855f7',
-  'Invested': '#3b82f6',
-  'Property': '#f59e0b',
-  'Other': '#6b7280',
+  'Cash': 'var(--c-cat-purple-soft)',
+  'Invested': 'var(--c-accent-soft)',
+  'Property': 'var(--c-warning-soft)',
+  'Other': 'var(--c-content-subtle)',
 };
 
 export const AssetSunburst = ({ accounts, importKey, forceExact }: AssetSunburstProps) => {
+  const { theme: themeKey, resolve } = useChartTheme();
   const [assetDrilldown, setAssetDrilldown] = useState<string | null>(null);
 
   const assetSunburstData = useMemo(() => {
@@ -48,7 +50,7 @@ export const AssetSunburst = ({ accounts, importKey, forceExact }: AssetSunburst
     const children = Array.from(categoryMap.entries())
       .map(([category, items]) => ({
         name: category,
-        color: accountCategoryColors[category] || '#6b7280',
+        color: accountCategoryColors[category] || 'var(--c-content-subtle)',
         children: items,
       }))
       .filter(c => c.children.length > 0)
@@ -84,13 +86,13 @@ export const AssetSunburst = ({ accounts, importKey, forceExact }: AssetSunburst
   );
 
   return (
-    <div className="bg-[#18181b] rounded-xl border border-gray-800 p-4">
+    <div className="bg-[var(--c-surface-raised)] rounded-xl border border-border-subtle p-4">
       <div className="flex items-center justify-between mb-2">
-        <h2 className="text-sm font-bold text-gray-200">
+        <h2 className="text-sm font-bold text-content-emphasis">
           {assetDrilldown ? (
             <>
-              <button onClick={() => setAssetDrilldown(null)} className="text-gray-500 hover:text-gray-300 transition-colors">Assets</button>
-              <span className="text-gray-600 mx-1">/</span>
+              <button onClick={() => setAssetDrilldown(null)} className="text-content-subtle hover:text-content-default transition-colors">Assets</button>
+              <span className="text-content-faint mx-1">/</span>
               {assetDrilldown}
             </>
           ) : 'Asset Breakdown'}
@@ -98,10 +100,10 @@ export const AssetSunburst = ({ accounts, importKey, forceExact }: AssetSunburst
         {!assetDrilldown && (
           <div className="flex flex-wrap gap-2 justify-end">
             {assetSunburstData.children.map(cat => (
-              <div key={cat.name} className="flex items-center gap-1 text-xs text-gray-400">
+              <div key={cat.name} className="flex items-center gap-1 text-xs text-content-muted">
                 <span
                   className="w-2 h-2 rounded-full"
-                  style={{ backgroundColor: (cat as any).color || '#6b7280' }}
+                  style={{ backgroundColor: (cat as any).color || 'var(--c-content-subtle)' }}
                 />
                 {cat.name}
               </div>
@@ -111,12 +113,12 @@ export const AssetSunburst = ({ accounts, importKey, forceExact }: AssetSunburst
       </div>
       <div className="h-64 relative">
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-          <span className="text-sm font-bold text-gray-200">
+          <span className="text-sm font-bold text-content-emphasis">
             {formatCompactCurrency(activeTotal, { forceExact })}
           </span>
         </div>
         <ResponsiveSunburst
-          key={`asset-sunburst-${importKey}`}
+          key={`asset-sunburst-${importKey}-${themeKey}`}
           data={activeAssetData}
           margin={{ top: 4, right: 4, bottom: 4, left: 4 }}
           id="name"
@@ -130,11 +132,8 @@ export const AssetSunburst = ({ accounts, importKey, forceExact }: AssetSunburst
               current = current.parent;
             }
             const catColor = (current.data as any)?.color;
-            if (catColor) {
-              if (node.depth > 1) return catColor + 'cc';
-              return catColor;
-            }
-            return '#6b7280';
+            // resolve var()->concrete color (childColor modifier + d3 need it)
+            return resolve(catColor || 'var(--c-content-subtle)');
           }}
           childColor={{ from: 'color', modifiers: [['brighter', 0.3]] }}
           enableArcLabels={true}
@@ -147,9 +146,9 @@ export const AssetSunburst = ({ accounts, importKey, forceExact }: AssetSunburst
             }
           }}
           tooltip={({ id, value }) => (
-            <div className="bg-gray-900 px-3 py-2 rounded-lg border border-gray-700 shadow-lg">
+            <div className="bg-surface-raised px-3 py-2 rounded-lg border border-border-default shadow-lg">
               <p className="text-sm font-semibold text-white">{String(id)}</p>
-              <p className="text-sm text-gray-300">{formatCompactCurrency(value, { forceExact })}</p>
+              <p className="text-sm text-content-default">{formatCompactCurrency(value, { forceExact })}</p>
             </div>
           )}
           theme={{

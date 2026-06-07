@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useArrowKeyAdjust } from '../../../hooks/useKeyboardShortcuts';
 import { ChartTooltipPortal } from '../../../components/Charts/ChartTooltipPortal';
 import { ResponsiveLine } from '@nivo/line';
+import { useChartTheme } from '../../../components/Charts/useChartTheme';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { SavedAccount, InvestedAccount, PropertyAccount, DebtAccount, DeficitDebtAccount } from '../../../components/Objects/Accounts/models';
 import { formatCompactCurrency } from './FutureUtils';
@@ -56,6 +57,7 @@ function checkEarningsTest(
 
 export const OverviewTab = React.memo(({ simulationData }: { simulationData: SimulationYear[] }) => {
     const { assumptions } = useAssumptions();
+    const { theme: themeKey, resolve } = useChartTheme();
     const forceExact = assumptions.display?.useCompactCurrency === false;
     const containerRef = useRef<HTMLDivElement>(null);
     const [containerWidth, setContainerWidth] = useState<number | null>(null);
@@ -207,33 +209,33 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
 
         return (
             <ChartTooltipPortal>
-            <div className="bg-gray-800 p-3 rounded border border-gray-700 shadow-xl text-xs min-w-37.5">
-                <div className="font-bold text-white mb-2 pb-1 border-b border-gray-600">
+            <div className="bg-surface-overlay p-3 rounded border border-border-default shadow-xl text-xs min-w-37.5">
+                <div className="font-bold text-white mb-2 pb-1 border-b border-border-strong">
                     {data.yearLabel === 'Today' ? `Today (${data.year})` : data.isEOY ? `Projected Dec ${data.year}` : `Year: ${data.year}`}
                 </div>
                 <div className="flex flex-col gap-1">
                     <div className="flex justify-between gap-4">
-                        <span className="text-gray-400">Invested:</span>
-                        <span className="text-emerald-400 font-mono">{formatCompactCurrency(data.Invested, { forceExact })}</span>
+                        <span className="text-content-muted">Invested:</span>
+                        <span className="text-positive font-mono">{formatCompactCurrency(data.Invested, { forceExact })}</span>
                     </div>
                     <div className="flex justify-between gap-4">
-                        <span className="text-gray-400">Saved:</span>
-                        <span className="text-blue-400 font-mono">{formatCompactCurrency(data.Saved, { forceExact })}</span>
+                        <span className="text-content-muted">Saved:</span>
+                        <span className="text-info font-mono">{formatCompactCurrency(data.Saved, { forceExact })}</span>
                     </div>
                     <div className="flex justify-between gap-4">
-                        <span className="text-gray-400">Property:</span>
-                        <span className="text-amber-400 font-mono">{formatCompactCurrency(data.Property, { forceExact })}</span>
+                        <span className="text-content-muted">Property:</span>
+                        <span className="text-warning font-mono">{formatCompactCurrency(data.Property, { forceExact })}</span>
                     </div>
                     <div className="flex justify-between gap-4">
-                        <span className="text-gray-400">Debt:</span>
-                        <span className="text-red-400 font-mono">{formatCompactCurrency(data.Debt, { forceExact })}</span>
+                        <span className="text-content-muted">Debt:</span>
+                        <span className="text-negative font-mono">{formatCompactCurrency(data.Debt, { forceExact })}</span>
                     </div>
                     
-                    <div className="border-t border-gray-600 my-1"></div>
+                    <div className="border-t border-border-strong my-1"></div>
                     
                     <div className="flex justify-between gap-4">
                         <span className="text-white font-bold">Net Worth:</span>
-                        <span className={`font-mono font-bold ${totalNetWorth >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        <span className={`font-mono font-bold ${totalNetWorth >= 0 ? 'text-positive' : 'text-negative'}`}>
                             {formatCompactCurrency(totalNetWorth, { forceExact })}
                         </span>
                     </div>
@@ -286,9 +288,9 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
             .map(y => {
                 const trig = y.strategyAdjustment?.guardrailTriggered;
                 const stroke =
-                    trig === 'capital-preservation' ? '#ef4444' :
-                    trig === 'prosperity' ? '#22c55e' :
-                    '#f59e0b';
+                    trig === 'capital-preservation' ? 'var(--c-negative-soft)' :
+                    trig === 'prosperity' ? 'var(--c-positive-soft)' :
+                    'var(--c-warning-soft)';
                 // Must match the yearLabel rawData assigns, since the chart's
                 // xScale is a point scale keyed on those strings — a numeric
                 // year here would resolve to undefined and the marker would
@@ -360,7 +362,7 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                             You've indicated you qualify for Social Security, but no Social Security income has been added.
                             Add a "Future Social Security" income in the Income tab to include projected benefits in your plan.
                         </p>
-                        <p className="text-gray-400 text-xs mt-2">
+                        <p className="text-content-muted text-xs mt-2">
                             If you don't expect to receive Social Security benefits, turn off "Qualifies for Social Security" in the Assumptions tab.
                         </p>
                     </div>
@@ -376,7 +378,7 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                             (earning ${earningsTestCheck.earnedIncome?.toLocaleString()}/year).
                             Your benefits are being reduced until you reach Full Retirement Age ({earningsTestCheck.fra}).
                         </p>
-                        <p className="text-gray-400 text-xs mt-2">
+                        <p className="text-content-muted text-xs mt-2">
                             <strong>Note:</strong> This simulation uses a simplified earnings test calculation.
                             Withheld benefits are actually recalculated by SSA and added back to your monthly benefit
                             at Full Retirement Age, but that adjustment is not yet implemented in this tool.
@@ -390,10 +392,10 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                 <AlertBanner severity="warning" title="Withdrawal Strategy Warning">
                     <div className="text-sm space-y-2">
                         <p>
-                            In <span className="text-amber-300 font-semibold">{strategyWarnings.length} year(s)</span> of your simulation,
+                            In <span className="text-warning-bright font-semibold">{strategyWarnings.length} year(s)</span> of your simulation,
                             your spending exceeds the strategy budget and cannot be fully covered by cutting discretionary expenses.
                         </p>
-                        <div className="text-gray-400 text-xs space-y-1">
+                        <div className="text-content-muted text-xs space-y-1">
                             <p><strong>Consider:</strong></p>
                             <ul className="list-disc list-inside pl-2">
                                 <li>Marking more expenses as discretionary</li>
@@ -411,24 +413,24 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                     <div className="flex items-center gap-3 flex-wrap">
                         <span className="font-medium">Spending Adjustments:</span>
                         {gkTriggerCount.capitalPreservation > 0 && (
-                            <span className="text-red-300 inline-flex items-center gap-1">
-                                <span className="inline-block w-3 border-t-2 border-dashed border-red-400" />
+                            <span className="text-negative-bright inline-flex items-center gap-1">
+                                <span className="inline-block w-3 border-t-2 border-dashed border-negative" />
                                 {gkTriggerCount.capitalPreservation} GK cut(s)
                             </span>
                         )}
                         {gkTriggerCount.prosperity > 0 && (
-                            <span className="text-green-300 inline-flex items-center gap-1">
-                                <span className="inline-block w-3 border-t-2 border-dashed border-green-400" />
+                            <span className="text-positive-bright inline-flex items-center gap-1">
+                                <span className="inline-block w-3 border-t-2 border-dashed border-positive" />
                                 {gkTriggerCount.prosperity} GK boost(s)
                             </span>
                         )}
                         {gkTriggerCount.budgetCap > 0 && (
-                            <span className="text-amber-300 inline-flex items-center gap-1">
-                                <span className="inline-block w-3 border-t-2 border-dashed border-amber-400" />
+                            <span className="text-warning-bright inline-flex items-center gap-1">
+                                <span className="inline-block w-3 border-t-2 border-dashed border-warning" />
                                 {gkTriggerCount.budgetCap} budget cap(s)
                             </span>
                         )}
-                        <span className="text-gray-400 text-xs">— marked on chart</span>
+                        <span className="text-content-muted text-xs">— marked on chart</span>
                     </div>
                 </AlertBanner>
             )}
@@ -438,11 +440,11 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                 <AlertBanner severity="error" title="Plan Has Uncovered Deficit">
                     <div className="text-sm space-y-2">
                         <p>
-                            Starting in <span className="text-red-300 font-semibold">{deficitInfo.firstYear}</span>,
+                            Starting in <span className="text-negative-bright font-semibold">{deficitInfo.firstYear}</span>,
                             your expenses exceed all available income and withdrawable savings,
                             reaching up to {formatCompactCurrency(deficitInfo.maxAmount, { forceExact })} in uncovered shortfall.
                         </p>
-                        <div className="text-gray-400 text-xs space-y-1">
+                        <div className="text-content-muted text-xs space-y-1">
                             <p><strong>Consider adjusting:</strong></p>
                             <ul className="list-disc list-inside pl-2">
                                 <li>Increasing retirement age or savings rate</li>
@@ -459,14 +461,15 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
             <div ref={containerRef} className="h-100 w-full text-white">
                 {!isMeasured ? (
                     <div className="h-full flex items-center justify-center">
-                        <p className="text-gray-400 text-sm">Loading chart...</p>
+                        <p className="text-content-muted text-sm">Loading chart...</p>
                     </div>
                 ) : isNarrow ? (
-                    <div className="h-full flex items-center justify-center border-2 border-dashed border-gray-700 rounded-xl">
-                        <p className="text-gray-400 text-sm text-center px-4">Expand window to view chart</p>
+                    <div className="h-full flex items-center justify-center border-2 border-dashed border-border-default rounded-xl">
+                        <p className="text-content-muted text-sm text-center px-4">Expand window to view chart</p>
                     </div>
                 ) : (
                 <ResponsiveLine
+                    key={themeKey}
                     data={lineData}
                     margin={{ top: 20, right: 30, bottom: 50, left: 90 }}
                     xScale={{ type: 'point' }}
@@ -499,11 +502,11 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                         format: " >-$,.0f",
                     }}
                     colors={({ id }) => {
-                        if (id === 'Debt') return '#ef4444';
-                        if (id === 'Invested') return '#10b981';
-                        if (id === 'Saved') return '#3b82f6';
-                        if (id === 'Property') return '#f59e0b';
-                        return '#888888';
+                        if (id === 'Debt') return resolve('var(--c-negative-soft)');
+                        if (id === 'Invested') return resolve('var(--color-chart-money)');
+                        if (id === 'Saved') return resolve('var(--c-accent-soft)');
+                        if (id === 'Property') return resolve('var(--c-warning-soft)');
+                        return resolve('var(--c-content-subtle)');
                     }}
                     lineWidth={3}
                     enablePoints={false}
@@ -517,13 +520,13 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                     layers={['grid', 'axes', 'areas', 'lines', 'crosshair', 'markers', 'slices', 'points', 'mesh', 'legends']}
                     theme={{
                         "background": "transparent",
-                        "text": { "fontSize": 12, "fill": "#9ca3af" },
+                        "text": { "fontSize": 12, "fill": "var(--c-content-muted)" },
                         "axis": {
-                            "legend": { "text": { "fill": "#9ca3af" } },
-                            "ticks": { "text": { "fill": "#9ca3af" } }
+                            "legend": { "text": { "fill": "var(--c-content-muted)" } },
+                            "ticks": { "text": { "fill": "var(--c-content-muted)" } }
                         },
-                        "grid": { "line": { "stroke": "#374151", "strokeWidth": 1, "strokeDasharray": "4 4" } },
-                        "crosshair": { "line": { "stroke": "#9ca3af", "strokeWidth": 1, "strokeOpacity": 0.35 } },
+                        "grid": { "line": { "stroke": "var(--c-border-default)", "strokeWidth": 1, "strokeDasharray": "4 4" } },
+                        "crosshair": { "line": { "stroke": "var(--c-content-muted)", "strokeWidth": 1, "strokeOpacity": 0.35 } },
                         "tooltip": { "container": { "zIndex": 9999 } }
                     }}
                 />

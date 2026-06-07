@@ -269,21 +269,21 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
         otherIncomeItems.sort((a, b) => a.name.localeCompare(b.name));
 
         workIncomeItems.forEach(item => {
-            nodes.push({ id: item.name, color: '#10b981', label: item.name });
+            nodes.push({ id: item.name, color: 'var(--color-chart-money)', label: item.name });
         });
 
         if (totalEmployerMatch >= MIN_DISPLAY_THRESHOLD) {
-            nodes.push({ id: 'Employer Contributions', color: '#10b981', label: 'Employer Contrib.' });
+            nodes.push({ id: 'Employer Contributions', color: 'var(--color-chart-money)', label: 'Employer Contrib.' });
         }
 
         otherIncomeItems.forEach(item => {
-            nodes.push({ id: item.name, color: '#10b981', label: item.name });
+            nodes.push({ id: item.name, color: 'var(--color-chart-money)', label: item.name });
         });
 
         // Reinvested income sources (e.g., "Savings Interest")
         // These flow through Gross Pay for tax purposes but go directly to savings
         reinvestedIncomeItems.forEach(item => {
-            nodes.push({ id: item.name, color: '#06b6d4', label: item.name });
+            nodes.push({ id: item.name, color: 'var(--c-cat-cyan-soft)', label: item.name });
         });
 
         // Withdrawals (sorted by account name for stability). Use net amounts
@@ -294,7 +294,7 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
             .sort(([a], [b]) => a.localeCompare(b));
 
         withdrawalItems.forEach(([accountName]) => {
-            nodes.push({ id: `Withdraw: ${accountName}`, color: '#8b5cf6', label: `From ${accountName}` });
+            nodes.push({ id: `Withdraw: ${accountName}`, color: 'var(--c-cat-purple-soft)', label: `From ${accountName}` });
         });
 
         // Roth conversion sources (Traditional accounts being converted - flows into Gross Pay)
@@ -305,42 +305,42 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
             : [];
 
         conversionSourceItems.forEach(([accountName]) => {
-            nodes.push({ id: `Convert: ${accountName}`, color: '#ec4899', label: `Convert ${accountName}` });
+            nodes.push({ id: `Convert: ${accountName}`, color: 'var(--c-cat-fuchsia-soft)', label: `Convert ${accountName}` });
         });
 
         // Deficit node (if needed, flows into Net Pay to cover expenses)
         if (remaining < -1) {
-            nodes.push({ id: 'Deficit', color: '#ef4444', label: 'Deficit' });
+            nodes.push({ id: 'Deficit', color: 'var(--c-negative-soft)', label: 'Deficit' });
         }
 
         // --- Column 2: Gross Pay ---
-        nodes.push({ id: 'Gross Pay', color: '#3b82f6', label: 'Gross Pay' });
+        nodes.push({ id: 'Gross Pay', color: 'var(--c-accent-soft)', label: 'Gross Pay' });
 
         // --- Column 3: Deductions from Gross Pay (consistent order) ---
-        if (totalTradSavings >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: '401k Savings', color: '#10b981', label: '401k Savings' });
-        if (totalInsurance >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Benefits', color: '#6366f1', label: 'Benefits' });
+        if (totalTradSavings >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: '401k Savings', color: 'var(--color-chart-money)', label: '401k Savings' });
+        if (totalInsurance >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Benefits', color: 'var(--c-cat-purple-soft)', label: 'Benefits' });
         if (totalTaxes >= MIN_DISPLAY_THRESHOLD) {
-            nodes.push({ id: 'Taxes', color: '#f59e0b', label: 'Taxes' });
-            if (taxes.fed >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Federal Tax', color: '#f59e0b', label: 'Federal Tax' });
-            if (taxes.state >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'State Tax', color: '#fbbf24', label: 'State Tax' });
-            if (taxes.fica >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'FICA Tax', color: '#d97706', label: 'FICA Tax' });
-            if ((taxes.capitalGains || 0) >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Cap Gains Tax', color: '#ca8a04', label: 'Cap Gains Tax' });
-            if ((taxes.niit || 0) >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'NIIT', color: '#b45309', label: 'NIIT' });
-            if ((taxes.withdrawalOrdinaryTax || 0) >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Withdrawal Tax', color: '#a855f7', label: 'Withdrawal Tax' });
+            nodes.push({ id: 'Taxes', color: 'var(--c-warning-soft)', label: 'Taxes' });
+            if (taxes.fed >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Federal Tax', color: 'var(--c-warning-soft)', label: 'Federal Tax' });
+            if (taxes.state >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'State Tax', color: 'var(--c-warning)', label: 'State Tax' });
+            if (taxes.fica >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'FICA Tax', color: 'var(--c-warning-solid)', label: 'FICA Tax' });
+            if ((taxes.capitalGains || 0) >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Cap Gains Tax', color: 'var(--c-warning-solid)', label: 'Cap Gains Tax' });
+            if ((taxes.niit || 0) >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'NIIT', color: 'var(--c-warning-strong)', label: 'NIIT' });
+            if ((taxes.withdrawalOrdinaryTax || 0) >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Withdrawal Tax', color: 'var(--c-cat-purple-soft)', label: 'Withdrawal Tax' });
         }
 
         // --- Column 4: Net Pay ---
-        nodes.push({ id: 'Net Pay', color: '#3b82f6', label: 'Net Pay' });
+        nodes.push({ id: 'Net Pay', color: 'var(--c-accent-soft)', label: 'Net Pay' });
 
         // --- Column 5: Outflows from Net Pay ---
         // Order: Savings first (stable), then expenses (may change), then remaining
 
         // Post-tax savings (Roth)
-        if (totalRothSavings >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Roth Savings', color: '#10b981', label: 'Roth Savings' });
+        if (totalRothSavings >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Roth Savings', color: 'var(--color-chart-money)', label: 'Roth Savings' });
 
         // Mortgage (principal is savings, interest is expense)
-        if (totalPrincipal >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Principal Payments', color: '#10b981', label: 'Principal Payments' });
-        if (mortgageInterestAndEscrow >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Mortgage Payments', color: '#ef4444', label: 'Mortgage Payments' });
+        if (totalPrincipal >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Principal Payments', color: 'var(--color-chart-money)', label: 'Principal Payments' });
+        if (mortgageInterestAndEscrow >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Mortgage Payments', color: 'var(--c-negative-soft)', label: 'Mortgage Payments' });
 
         // Priority bucket savings (sorted for stability)
         const bucketItems = Object.entries(bucketAllocations)
@@ -352,7 +352,7 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
             .sort((a, b) => a.name.localeCompare(b.name));
 
         bucketItems.forEach(item => {
-            nodes.push({ id: `Save: ${item.name}`, color: '#10b981', label: item.name });
+            nodes.push({ id: `Save: ${item.name}`, color: 'var(--color-chart-money)', label: item.name });
         });
 
         // Expenses (sorted by category for stability - added AFTER savings)
@@ -361,7 +361,7 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([cat]) => cat);
         sortedExpenseCategories.forEach(cat => {
-            nodes.push({ id: cat, color: '#ef4444', label: cat });
+            nodes.push({ id: cat, color: 'var(--c-negative-soft)', label: cat });
         });
 
         // Roth conversion destinations (flows out of Net Pay to Roth accounts)
@@ -379,18 +379,18 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
             : [];
 
         conversionDestItems.forEach(([accountName]) => {
-            nodes.push({ id: `To Roth: ${accountName}`, color: '#10b981', label: `To ${accountName}` });
+            nodes.push({ id: `To Roth: ${accountName}`, color: 'var(--color-chart-money)', label: `To ${accountName}` });
         });
 
         // Reinvested income destinations (e.g., "Reinvested: Savings")
         // This shows interest flowing back into the savings account
         reinvestedIncomeItems.forEach(item => {
-            nodes.push({ id: `Reinvested: ${item.accountName}`, color: '#06b6d4', label: `→ ${item.accountName}` });
+            nodes.push({ id: `Reinvested: ${item.accountName}`, color: 'var(--c-cat-cyan-soft)', label: `→ ${item.accountName}` });
         });
 
         // Remaining (always last)
         if (remaining > 1) {
-            nodes.push({ id: 'Remaining', color: '#10b981', label: 'Remaining' });
+            nodes.push({ id: 'Remaining', color: 'var(--color-chart-money)', label: 'Remaining' });
         }
 
         // =================================================================

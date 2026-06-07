@@ -25,6 +25,7 @@ import WithdrawalTab from "./tabs/Future/WithdrawalTab";
 import BudgetTab from "./tabs/Budget/BudgetTab";
 import { BudgetProvider } from "./components/Objects/Budget/BudgetContext";
 import { CloudBackupProvider } from "./components/Objects/CloudBackup/CloudBackupProvider";
+import { ThemeProvider } from "./components/Objects/Theme/ThemeContext";
 import CloudBackupSync from "./components/Objects/CloudBackup/CloudBackupSync";
 import GlobalKeyboardShortcuts from "./components/Layout/Overlays/GlobalKeyboardShortcuts";
 import { PerformanceProfiler } from "./components/Layout/PerformanceProfiler";
@@ -32,6 +33,7 @@ import { PerformanceProfiler } from "./components/Layout/PerformanceProfiler";
 export default function App() {
   const [isOpen, setIsOpen] = useState(false); // shared variable
   return (
+    <ThemeProvider>
     <ImportKeyProvider>
     <SimulationProvider>
       <AccountProvider>
@@ -85,5 +87,6 @@ export default function App() {
       </AccountProvider>
     </SimulationProvider>
     </ImportKeyProvider>
+    </ThemeProvider>
   );
 }

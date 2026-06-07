@@ -16,7 +16,7 @@ interface CustomDropdownProps {
 
 const ChevronIcon = ({ open }: { open: boolean }) => (
     <svg
-        className={`w-4 h-4 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}
+        className={`w-4 h-4 text-content-muted transition-transform ${open ? 'rotate-180' : ''}`}
         fill="none"
         viewBox="0 0 24 24"
         stroke="currentColor"
@@ -89,7 +89,7 @@ const CustomDropdownInner: React.FC<CustomDropdownProps> = ({
                         {dropdownPosition && (
                             <Portal>
                                 <Listbox.Options
-                                    className="fixed z-[9999] bg-gray-900 border border-gray-700 rounded-md shadow-lg max-h-60 overflow-auto focus:outline-none"
+                                    className="fixed z-[9999] bg-surface-raised border border-border-default rounded-md shadow-lg max-h-60 overflow-auto focus:outline-none"
                                     style={{
                                         top: dropdownPosition.top,
                                         left: dropdownPosition.left,
@@ -102,7 +102,7 @@ const CustomDropdownInner: React.FC<CustomDropdownProps> = ({
                                         key={opt.value}
                                         value={opt.value}
                                         className={({ active, selected }) =>
-                                            `px-3 py-2 cursor-pointer ${active ? 'bg-gray-800' : ''} ${selected ? 'text-green-400' : 'text-white'}`
+                                            `px-3 py-2 cursor-pointer ${active ? 'bg-surface-overlay' : ''} ${selected ? 'text-positive' : 'text-white'}`
                                         }
                                     >
                                         {opt.label}

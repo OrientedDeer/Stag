@@ -30,7 +30,7 @@ const CashflowSankey = lazy(() =>
 );
 
 const ChartSkeleton = ({ heightClass }: { heightClass: string }) => (
-  <div className={`bg-[#18181b] rounded-xl border border-gray-800 p-4 ${heightClass} animate-pulse`} />
+  <div className={`bg-[var(--c-surface-raised)] rounded-xl border border-border-subtle p-4 ${heightClass} animate-pulse`} />
 );
 
 export default function Dashboard() {
@@ -146,10 +146,10 @@ export default function Dashboard() {
   };
 
   return (
-    <div className='w-full min-h-full flex bg-gray-950 justify-center pt-6 pb-24'>
+    <div className='w-full min-h-full flex bg-surface-base justify-center pt-6 pb-24'>
       <div className="w-full px-4 sm:px-8 max-w-screen-2xl">
         <div className="flex flex-col gap-4 p-4 max-w-screen-2xl mx-auto w-full">
-          <div className="flex justify-between items-end border-b border-gray-800 pb-4">
+          <div className="flex justify-between items-end border-b border-border-subtle pb-4">
             <h1 className="text-3xl font-bold text-white">Dashboard</h1>
           </div>
 
@@ -166,14 +166,14 @@ export default function Dashboard() {
           {/* Setup Warning Card */}
           {!isSetupComplete && (
             <AlertBanner severity="warning" title="Finish Setting Up">
-              <p className="text-amber-100/70 mb-4 text-sm">
+              <p className="text-warning-bright/70 mb-4 text-sm">
                 To see your financial projections and cash flow chart, please add data to the following sections:
               </p>
               <div className="flex flex-wrap gap-3">
                 {!hasAccounts && (
                   <Link
                     to="/current/accounts"
-                    className="px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/50 rounded-xl text-amber-200 text-sm font-semibold transition-all"
+                    className="px-4 py-2 bg-warning-soft/10 hover:bg-warning-soft/20 border border-warning-soft/50 rounded-xl text-warning-bright text-sm font-semibold transition-all"
                   >
                     + Add Accounts or Import
                   </Link>
@@ -181,7 +181,7 @@ export default function Dashboard() {
                 {!hasIncomes && (
                   <Link
                     to="/current/income"
-                    className="px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/50 rounded-xl text-amber-200 text-sm font-semibold transition-all"
+                    className="px-4 py-2 bg-warning-soft/10 hover:bg-warning-soft/20 border border-warning-soft/50 rounded-xl text-warning-bright text-sm font-semibold transition-all"
                   >
                     + Add Income
                   </Link>
@@ -189,7 +189,7 @@ export default function Dashboard() {
                 {!hasExpenses && (
                   <Link
                     to="/current/expense"
-                    className="px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/50 rounded-xl text-amber-200 text-sm font-semibold transition-all"
+                    className="px-4 py-2 bg-warning-soft/10 hover:bg-warning-soft/20 border border-warning-soft/50 rounded-xl text-warning-bright text-sm font-semibold transition-all"
                   >
                     + Add Expenses
                   </Link>
@@ -198,13 +198,13 @@ export default function Dashboard() {
                   <>
                     <button
                       onClick={loadDefaultData}
-                      className="px-4 py-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/50 rounded-xl text-blue-200 text-sm font-semibold transition-all"
+                      className="px-4 py-2 bg-info-tint/10 hover:bg-info-tint/20 border border-info-strong/50 rounded-xl text-info-bright text-sm font-semibold transition-all"
                     >
                       + Add Default Data
                     </button>
                     <button
                       onClick={handleImportClick}
-                      className="px-4 py-2 bg-green-500/10 hover:bg-green-500/20 border border-green-500/50 rounded-xl text-green-200 text-sm font-semibold transition-all"
+                      className="px-4 py-2 bg-positive-soft/10 hover:bg-positive-soft/20 border border-positive-soft/50 rounded-xl text-positive-bright text-sm font-semibold transition-all"
                     >
                       Import Data
                     </button>
@@ -244,27 +244,27 @@ export default function Dashboard() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {/* Summary Metric Cards */}
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-[#18181b] rounded-xl border border-gray-800 p-3 text-center">
-                        <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Gross Income</p>
-                        <p className="text-lg font-bold text-emerald-400">{formatCompactCurrency(dashboardMetrics.grossIncome, { forceExact })}</p>
-                        <p className="text-xs text-gray-500">per year</p>
+                      <div className="bg-[var(--c-surface-raised)] rounded-xl border border-border-subtle p-3 text-center">
+                        <p className="text-xs text-content-muted uppercase tracking-wide mb-1">Gross Income</p>
+                        <p className="text-lg font-bold text-positive">{formatCompactCurrency(dashboardMetrics.grossIncome, { forceExact })}</p>
+                        <p className="text-xs text-content-subtle">per year</p>
                       </div>
-                      <div className="bg-[#18181b] rounded-xl border border-gray-800 p-3 text-center">
-                        <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Total Taxes</p>
-                        <p className="text-lg font-bold text-red-400">{formatCompactCurrency(dashboardMetrics.totalTaxes, { forceExact })}</p>
-                        <p className="text-xs text-gray-500">per year</p>
+                      <div className="bg-[var(--c-surface-raised)] rounded-xl border border-border-subtle p-3 text-center">
+                        <p className="text-xs text-content-muted uppercase tracking-wide mb-1">Total Taxes</p>
+                        <p className="text-lg font-bold text-negative">{formatCompactCurrency(dashboardMetrics.totalTaxes, { forceExact })}</p>
+                        <p className="text-xs text-content-subtle">per year</p>
                       </div>
-                      <div className="bg-[#18181b] rounded-xl border border-gray-800 p-3 text-center">
-                        <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Savings Rate</p>
-                        <p className={`text-lg font-bold ${dashboardMetrics.savingsRate >= 0 ? 'text-blue-400' : 'text-orange-400'}`}>
+                      <div className="bg-[var(--c-surface-raised)] rounded-xl border border-border-subtle p-3 text-center">
+                        <p className="text-xs text-content-muted uppercase tracking-wide mb-1">Savings Rate</p>
+                        <p className={`text-lg font-bold ${dashboardMetrics.savingsRate >= 0 ? 'text-info' : 'text-cat-orange'}`}>
                           {dashboardMetrics.savingsRate.toFixed(1)}%
                         </p>
-                        <p className="text-xs text-gray-500">of gross income</p>
+                        <p className="text-xs text-content-subtle">of gross income</p>
                       </div>
-                      <div className="bg-[#18181b] rounded-xl border border-gray-800 p-3 text-center">
-                        <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Expenses</p>
-                        <p className="text-lg font-bold text-orange-400">{formatCompactCurrency(dashboardMetrics.monthlyExpenses, { forceExact })}</p>
-                        <p className="text-xs text-gray-500">per month</p>
+                      <div className="bg-[var(--c-surface-raised)] rounded-xl border border-border-subtle p-3 text-center">
+                        <p className="text-xs text-content-muted uppercase tracking-wide mb-1">Expenses</p>
+                        <p className="text-lg font-bold text-cat-orange">{formatCompactCurrency(dashboardMetrics.monthlyExpenses, { forceExact })}</p>
+                        <p className="text-xs text-content-subtle">per month</p>
                       </div>
                     </div>
 
@@ -328,11 +328,11 @@ export default function Dashboard() {
             </div>
 
             {/* Cash Flow Chart - full width */}
-            <div className="bg-[#18181b] rounded-2xl border border-gray-800 p-6 shadow-xl">
-              <h2 className="text-xl font-bold text-gray-200 mb-6">Yearly Cash Flow</h2>
+            <div className="bg-[var(--c-surface-raised)] rounded-2xl border border-border-subtle p-6 shadow-xl">
+              <h2 className="text-xl font-bold text-content-emphasis mb-6">Yearly Cash Flow</h2>
               <div className="min-h-75 flex flex-col justify-center">
                 {hasIncomes ? (
-                  <Suspense fallback={<div className="h-[300px] animate-pulse bg-gray-900/50 rounded-xl" />}>
+                  <Suspense fallback={<div className="h-[300px] animate-pulse bg-surface-raised/50 rounded-xl" />}>
                     <CashflowSankey
                       key={`sankey-${importKey}`}
                       incomes={incomes}
@@ -343,12 +343,12 @@ export default function Dashboard() {
                     />
                   </Suspense>
                 ) : (
-                  <div className='flex flex-col items-center justify-center text-center p-12 border-2 border-dashed border-gray-800 rounded-2xl'>
-                    <div className="text-gray-400 text-lg mb-2">No income data available</div>
-                    <p className="text-gray-400 text-sm max-w-xs">
+                  <div className='flex flex-col items-center justify-center text-center p-12 border-2 border-dashed border-border-subtle rounded-2xl'>
+                    <div className="text-content-muted text-lg mb-2">No income data available</div>
+                    <p className="text-content-muted text-sm max-w-xs">
                       The Sankey chart requires income data to visualize your cash flow.
                     </p>
-                    <Link to="/current/income" className="mt-4 text-blue-400 hover:text-blue-300 font-medium transition-colors">
+                    <Link to="/current/income" className="mt-4 text-info hover:text-info-bright font-medium transition-colors">
                       Add Income Now →
                     </Link>
                   </div>

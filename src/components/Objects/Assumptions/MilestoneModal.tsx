@@ -199,10 +199,10 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose }) => {
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="milestone-modal-title"
-                className="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto text-white w-full max-w-2xl"
+                className="bg-surface-raised border border-border-subtle rounded-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto text-white w-full max-w-2xl"
                 onKeyDown={handleKeyDown}
             >
-                <h2 id="milestone-modal-title" className="text-xl font-bold mb-4 border-b border-gray-800 pb-3">
+                <h2 id="milestone-modal-title" className="text-xl font-bold mb-4 border-b border-border-subtle pb-3">
                     {view === 'list' ? 'Milestones' : editingId ? 'Edit Milestone' : 'New Milestone'}
                 </h2>
 
@@ -210,8 +210,8 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose }) => {
                     <div className="space-y-4">
                         {milestones.length === 0 ? (
                             <div className="text-center py-8">
-                                <p className="text-gray-400 mb-4">No milestones defined yet.</p>
-                                <p className="text-gray-500 text-sm">
+                                <p className="text-content-muted mb-4">No milestones defined yet.</p>
+                                <p className="text-content-subtle text-sm">
                                     Milestones let you trigger income or expense changes based on financial goals like reaching Coast FIRE or becoming debt-free.
                                 </p>
                             </div>
@@ -220,11 +220,11 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose }) => {
                                 {milestones.map(milestone => (
                                     <div
                                         key={milestone.id}
-                                        className="flex items-center justify-between p-3 bg-gray-800 rounded-lg border border-gray-700"
+                                        className="flex items-center justify-between p-3 bg-surface-overlay rounded-lg border border-border-default"
                                     >
                                         <div className="flex-1">
                                             <div className="font-medium text-white">{milestone.name}</div>
-                                            <div className="text-xs text-gray-400 mt-1">
+                                            <div className="text-xs text-content-muted mt-1">
                                                 {milestone.conditions.map((cond, i) => (
                                                     <span key={i}>
                                                         {i > 0 && ' AND '}
@@ -236,7 +236,7 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose }) => {
                                         <div className="flex gap-2 ml-4">
                                             <button
                                                 onClick={() => handleEdit(milestone)}
-                                                className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+                                                className="p-1.5 text-content-muted hover:text-white hover:bg-surface-input rounded transition-colors"
                                                 title="Edit milestone"
                                             >
                                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -246,7 +246,7 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose }) => {
                                             {!isBuiltinMilestone(milestone.id) && (
                                                 <button
                                                     onClick={() => handleDelete(milestone.id)}
-                                                    className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-gray-700 rounded transition-colors"
+                                                    className="p-1.5 text-content-muted hover:text-negative hover:bg-surface-input rounded transition-colors"
                                                     title="Delete milestone"
                                                 >
                                                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -260,16 +260,16 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose }) => {
                             </div>
                         )}
 
-                        <div className="flex justify-between pt-4 border-t border-gray-800">
+                        <div className="flex justify-between pt-4 border-t border-border-subtle">
                             <button
                                 onClick={handleClose}
-                                className="px-4 py-2 rounded-lg font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+                                className="px-4 py-2 rounded-lg font-medium text-content-muted hover:text-white hover:bg-surface-overlay transition-colors"
                             >
                                 Close
                             </button>
                             <button
                                 onClick={handleAdd}
-                                className="px-4 py-2 rounded-lg font-medium bg-green-600 text-white hover:bg-green-700 transition-colors flex items-center gap-2"
+                                className="px-4 py-2 rounded-lg font-medium bg-positive-solid text-white hover:bg-positive-strong transition-colors flex items-center gap-2"
                             >
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -282,13 +282,13 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose }) => {
                     <form onSubmit={handleSave} className="space-y-4">
                         {editingId && isBuiltinMilestone(editingId) ? (
                             <div>
-                                <span className="block text-xs sm:text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
+                                <span className="block text-xs sm:text-sm text-content-muted font-medium mb-0.5 uppercase tracking-wide">
                                     Milestone Name
                                 </span>
-                                <div className="bg-gray-900 border border-gray-700 rounded-md px-3 py-2">
+                                <div className="bg-surface-raised border border-border-default rounded-md px-3 py-2">
                                     <div className="text-white text-md font-semibold flex items-center gap-2">
                                         {form.name}
-                                        <span className="text-xs text-gray-500 font-normal">(built-in)</span>
+                                        <span className="text-xs text-content-subtle font-normal">(built-in)</span>
                                     </div>
                                 </div>
                             </div>
@@ -305,16 +305,16 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose }) => {
                         <div className="space-y-3">
                             {(!isBuiltinEdit || !lockedConditionType) && (
                                 <div className="flex items-center justify-between">
-                                    <span className="text-sm font-medium text-gray-300">Conditions</span>
-                                    {!isBuiltinEdit && <span className="text-xs text-gray-500">All conditions must be met (AND logic)</span>}
+                                    <span className="text-sm font-medium text-content-default">Conditions</span>
+                                    {!isBuiltinEdit && <span className="text-xs text-content-subtle">All conditions must be met (AND logic)</span>}
                                 </div>
                             )}
 
                             {/* Simplified view for built-in milestones */}
                             {isBuiltinEdit && lockedConditionType ? (
-                                <div className="p-3 bg-gray-800 rounded-lg border border-gray-700">
+                                <div className="p-3 bg-surface-overlay rounded-lg border border-border-default">
                                     <div className="flex items-center gap-3">
-                                        <span className="text-gray-400 text-sm">
+                                        <span className="text-content-muted text-sm">
                                             {lockedConditionType === 'YEAR' ? 'Year' : 'Age'} =
                                         </span>
                                         <div className="w-24">
@@ -330,7 +330,7 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose }) => {
                                 /* Full condition editor for custom milestones */
                                 <>
                                     {form.conditions.map((condition, index) => (
-                                        <div key={index} className="p-3 bg-gray-800 rounded-lg border border-gray-700 space-y-2">
+                                        <div key={index} className="p-3 bg-surface-overlay rounded-lg border border-border-default space-y-2">
                                             <div className="flex items-center gap-2">
                                                 <div className="flex-1 grid grid-cols-[1fr_70px_minmax(120px,1fr)_1fr] gap-2 items-end">
                                                     {/* Left side: what we're measuring */}
@@ -386,7 +386,7 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose }) => {
                                                     <button
                                                         type="button"
                                                         onClick={() => removeCondition(index)}
-                                                        className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-gray-700 rounded transition-colors"
+                                                        className="p-1.5 text-content-muted hover:text-negative hover:bg-surface-input rounded transition-colors"
                                                         title="Remove condition"
                                                     >
                                                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -408,14 +408,14 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose }) => {
                                                         onChange={(val) => updateCondition(index, 'referenceMilestoneId', val || undefined)}
                                                     />
                                                     {getReferenceMilestones().length === 0 && (
-                                                        <p className="text-xs text-yellow-400 mt-1">
+                                                        <p className="text-xs text-warning mt-1">
                                                             Create other milestones first to use "+ Milestone"
                                                         </p>
                                                     )}
                                                 </div>
                                             )}
                                             {/* Preview of what this condition means */}
-                                            <p className="text-xs text-gray-500 pl-1">
+                                            <p className="text-xs text-content-subtle pl-1">
                                                 {formatConditionDisplay(condition)}
                                             </p>
                                         </div>
@@ -425,7 +425,7 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose }) => {
                                         <button
                                             type="button"
                                             onClick={addCondition}
-                                            className="w-full p-2 border border-dashed border-gray-600 rounded-lg text-gray-400 hover:text-white hover:border-gray-500 transition-colors text-sm"
+                                            className="w-full p-2 border border-dashed border-border-strong rounded-lg text-content-muted hover:text-white hover:border-border-faint transition-colors text-sm"
                                         >
                                             + Add Another Condition
                                         </button>
@@ -436,30 +436,30 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose }) => {
 
                         {/* Example milestones info - only show for custom milestones */}
                         {!isBuiltinEdit && (
-                            <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-3 text-xs">
-                                <div className="font-semibold text-blue-200 mb-2">Example Milestones</div>
-                                <ul className="text-gray-400 space-y-1">
-                                    <li><span className="text-gray-300">FI (4% Rule):</span> Net Worth {">="} 25 × Expenses</li>
-                                    <li><span className="text-gray-300">FI (w/ taxes):</span> Net Worth {">="} 25 × Expenses (w/ tax)</li>
-                                    <li><span className="text-gray-300">Coast FIRE:</span> Net Worth {">="} $750,000 (Fixed)</li>
-                                    <li><span className="text-gray-300">Debt Free:</span> Total Debt {"<="} $0 (Fixed)</li>
+                            <div className="bg-info-tint/20 border border-info-strong/50 rounded-lg p-3 text-xs">
+                                <div className="font-semibold text-info-bright mb-2">Example Milestones</div>
+                                <ul className="text-content-muted space-y-1">
+                                    <li><span className="text-content-default">FI (4% Rule):</span> Net Worth {">="} 25 × Expenses</li>
+                                    <li><span className="text-content-default">FI (w/ taxes):</span> Net Worth {">="} 25 × Expenses (w/ tax)</li>
+                                    <li><span className="text-content-default">Coast FIRE:</span> Net Worth {">="} $750,000 (Fixed)</li>
+                                    <li><span className="text-content-default">Debt Free:</span> Total Debt {"<="} $0 (Fixed)</li>
                                 </ul>
-                                <p className="text-gray-500 mt-2">"× Expenses" uses living expenses only. "× Expenses (w/ tax)" grosses up by ~15% for taxes.</p>
+                                <p className="text-content-subtle mt-2">"× Expenses" uses living expenses only. "× Expenses (w/ tax)" grosses up by ~15% for taxes.</p>
                             </div>
                         )}
 
-                        <div className="flex justify-between pt-4 border-t border-gray-800">
+                        <div className="flex justify-between pt-4 border-t border-border-subtle">
                             <button
                                 type="button"
                                 onClick={handleBack}
-                                className="px-4 py-2 rounded-lg font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+                                className="px-4 py-2 rounded-lg font-medium text-content-muted hover:text-white hover:bg-surface-overlay transition-colors"
                             >
                                 Back
                             </button>
                             <button
                                 type="submit"
                                 disabled={!form.name.trim() || form.conditions.length === 0}
-                                className="px-4 py-2 rounded-lg font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                className="px-4 py-2 rounded-lg font-medium bg-positive-solid text-white hover:bg-positive-strong disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
                                 {editingId ? 'Save Changes' : 'Create Milestone'}
                             </button>

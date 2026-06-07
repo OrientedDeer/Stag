@@ -18,6 +18,7 @@ import { DropdownInput } from '../../components/Layout/InputFields/DropdownInput
 import { NameInput } from '../../components/Layout/InputFields/NameInput';
 import { NumberInput } from '../../components/Layout/InputFields/NumberInput';
 import { ChevronIcon } from '../../components/Layout/Icons/ChevronIcon';
+import { Panel } from "../../components/Layout/Primitives";
 
 export default function PriorityTab() {
     const { state, dispatch } = useContext(AssumptionsContext);
@@ -371,15 +372,15 @@ export default function PriorityTab() {
     // ========== RENDER ==========
 
     return (
-        <div className="w-full min-h-full flex bg-gray-950 justify-center pt-6 pb-24 text-white">
+        <div className="w-full min-h-full flex bg-surface-base justify-center pt-6 pb-24 text-white">
             <div className="w-full px-4 sm:px-8 max-w-4xl">
 
                 {/* Header */}
-                <div className="flex items-center justify-between mb-6 border-b border-gray-800 pb-2">
+                <div className="flex items-center justify-between mb-6 border-b border-border-subtle pb-2">
                     <h2 className="text-2xl font-bold">Paycheck Allocator</h2>
                     <button
                         onClick={() => setShowHelp(!showHelp)}
-                        className="text-xs text-gray-400 hover:text-white flex items-center gap-1 transition-colors"
+                        className="text-xs text-content-muted hover:text-white flex items-center gap-1 transition-colors"
                     >
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -390,16 +391,16 @@ export default function PriorityTab() {
 
                 {/* Help Section */}
                 {showHelp && (
-                    <div className="mb-6 bg-blue-900/20 border border-blue-800/50 rounded-xl p-4 text-sm">
-                        <h3 className="font-semibold text-blue-300 mb-2">How the Paycheck Allocator Works</h3>
-                        <p className="text-gray-300 mb-3">
+                    <div className="mb-6 bg-info-tint/20 border border-info-strong/50 rounded-xl p-4 text-sm">
+                        <h3 className="font-semibold text-info-bright mb-2">How the Paycheck Allocator Works</h3>
+                        <p className="text-content-default mb-3">
                             This page shows where your money goes each month. After taxes, deductions, and expenses are taken out,
                             you decide how to allocate the rest through your <strong>priorities</strong>.
                         </p>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                             <div className="space-y-2">
-                                <h4 className="font-semibold text-gray-200">Priority Types:</h4>
-                                <ul className="text-gray-400 space-y-1">
+                                <h4 className="font-semibold text-content-emphasis">Priority Types:</h4>
+                                <ul className="text-content-muted space-y-1">
                                     <li><span className="text-white">Max Out</span> - Fill to IRS annual limit (IRA, HSA)</li>
                                     <li><span className="text-white">Fixed</span> - Contribute set amount monthly</li>
                                     <li><span className="text-white">Emergency Fund</span> - Build to X months of expenses</li>
@@ -407,8 +408,8 @@ export default function PriorityTab() {
                                 </ul>
                             </div>
                             <div className="space-y-2">
-                                <h4 className="font-semibold text-gray-200">Tips:</h4>
-                                <ul className="text-gray-400 space-y-1">
+                                <h4 className="font-semibold text-content-emphasis">Tips:</h4>
+                                <ul className="text-content-muted space-y-1">
                                     <li>Drag priorities to reorder - higher = funded first</li>
                                     <li>Add a "Remainder" bucket so unallocated money is saved</li>
                                     <li>401k contributions are managed on the Income page (payroll deductions)</li>
@@ -423,19 +424,19 @@ export default function PriorityTab() {
                     <button
                         onClick={() => setShowPaycheckDetails(!showPaycheckDetails)}
                         aria-expanded={showPaycheckDetails}
-                        className="w-full flex items-center justify-between p-4 bg-[#18181b] rounded-xl border border-gray-800 hover:border-gray-700 transition-colors"
+                        className="w-full flex items-center justify-between p-4 bg-[var(--c-surface-raised)] rounded-xl border border-border-subtle hover:border-border-default transition-colors"
                     >
-                        <div className="flex items-center gap-2 text-sm text-gray-400">
+                        <div className="flex items-center gap-2 text-sm text-content-muted">
                             <span className="uppercase tracking-wide font-semibold">Monthly Take-Home</span>
                         </div>
                         <div className="flex items-center gap-4">
                             <div className="flex items-center gap-2 text-sm">
-                                <span className="text-green-400 font-mono">{formatMoney(totalMonthlyIncome)}</span>
-                                <span className="text-gray-500">gross</span>
-                                <span className="text-gray-600">→</span>
-                                <span className="text-red-400 font-mono">-{formatMoney(totalWithheld)}</span>
-                                <span className="text-gray-500">withheld</span>
-                                <span className="text-gray-600">→</span>
+                                <span className="text-positive font-mono">{formatMoney(totalMonthlyIncome)}</span>
+                                <span className="text-content-subtle">gross</span>
+                                <span className="text-content-faint">→</span>
+                                <span className="text-negative font-mono">-{formatMoney(totalWithheld)}</span>
+                                <span className="text-content-subtle">withheld</span>
+                                <span className="text-content-faint">→</span>
                                 <span className="text-white font-bold font-mono">{formatMoney(takeHome)}</span>
                             </div>
                             <ChevronIcon expanded={showPaycheckDetails} className="w-5 h-5" />
@@ -443,58 +444,58 @@ export default function PriorityTab() {
                     </button>
 
                     {showPaycheckDetails && (
-                        <div className="mt-2 p-4 bg-gray-900/50 rounded-xl border border-gray-800 space-y-2 text-sm">
-                            <div className="text-xs text-gray-500 uppercase tracking-wide mb-2">Withholding Breakdown</div>
+                        <Panel className="mt-2 bg-surface-raised/50 space-y-2 text-sm">
+                            <div className="text-xs text-content-subtle uppercase tracking-wide mb-2">Withholding Breakdown</div>
                             <div className="grid grid-cols-2 gap-x-8 gap-y-1">
                                 <div className="flex justify-between">
-                                    <span className="text-gray-400">Federal Tax</span>
-                                    <span className="text-red-300 font-mono">-{formatMoney(federalTax)}</span>
+                                    <span className="text-content-muted">Federal Tax</span>
+                                    <span className="text-negative-bright font-mono">-{formatMoney(federalTax)}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-gray-400">State Tax</span>
-                                    <span className="text-red-300 font-mono">-{formatMoney(stateTax)}</span>
+                                    <span className="text-content-muted">State Tax</span>
+                                    <span className="text-negative-bright font-mono">-{formatMoney(stateTax)}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-gray-400">FICA (SS + Medicare)</span>
-                                    <span className="text-red-300 font-mono">-{formatMoney(ficaTax)}</span>
+                                    <span className="text-content-muted">FICA (SS + Medicare)</span>
+                                    <span className="text-negative-bright font-mono">-{formatMoney(ficaTax)}</span>
                                 </div>
                                 {deductionBreakdown.pretax401k > 0 && (
                                     <div className="flex justify-between">
-                                        <span className="text-gray-400">Pre-tax 401k</span>
-                                        <span className="text-blue-300 font-mono">-{formatMoney(deductionBreakdown.pretax401k)}</span>
+                                        <span className="text-content-muted">Pre-tax 401k</span>
+                                        <span className="text-info-bright font-mono">-{formatMoney(deductionBreakdown.pretax401k)}</span>
                                     </div>
                                 )}
                                 {deductionBreakdown.roth401k > 0 && (
                                     <div className="flex justify-between">
-                                        <span className="text-gray-400">Roth 401k</span>
-                                        <span className="text-blue-300 font-mono">-{formatMoney(deductionBreakdown.roth401k)}</span>
+                                        <span className="text-content-muted">Roth 401k</span>
+                                        <span className="text-info-bright font-mono">-{formatMoney(deductionBreakdown.roth401k)}</span>
                                     </div>
                                 )}
                                 {deductionBreakdown.insurance > 0 && (
                                     <div className="flex justify-between">
-                                        <span className="text-gray-400">Health Insurance</span>
-                                        <span className="text-blue-300 font-mono">-{formatMoney(deductionBreakdown.insurance)}</span>
+                                        <span className="text-content-muted">Health Insurance</span>
+                                        <span className="text-info-bright font-mono">-{formatMoney(deductionBreakdown.insurance)}</span>
                                     </div>
                                 )}
                                 {deductionBreakdown.hsa > 0 && (
                                     <div className="flex justify-between">
-                                        <span className="text-gray-400">HSA</span>
-                                        <span className="text-blue-300 font-mono">-{formatMoney(deductionBreakdown.hsa)}</span>
+                                        <span className="text-content-muted">HSA</span>
+                                        <span className="text-info-bright font-mono">-{formatMoney(deductionBreakdown.hsa)}</span>
                                     </div>
                                 )}
                             </div>
-                            <div className="border-t border-gray-700 pt-2 mt-2 flex justify-between font-semibold">
-                                <span className="text-gray-300">Total Withheld</span>
-                                <span className="text-red-400 font-mono">-{formatMoney(totalWithheld)}</span>
+                            <div className="border-t border-border-default pt-2 mt-2 flex justify-between font-semibold">
+                                <span className="text-content-default">Total Withheld</span>
+                                <span className="text-negative font-mono">-{formatMoney(totalWithheld)}</span>
                             </div>
-                        </div>
+                        </Panel>
                     )}
                 </div>
 
                 {/* Main Allocation Section */}
                 <div className="mb-2">
                     <h3 className="text-lg font-semibold text-white mb-4">
-                        Allocate Your <span className="text-green-400">{formatMoney(takeHome)}</span>
+                        Allocate Your <span className="text-positive">{formatMoney(takeHome)}</span>
                     </h3>
 
                     {/* Expenses Summary (Collapsible) */}
@@ -503,37 +504,37 @@ export default function PriorityTab() {
                             <button
                                 onClick={() => setShowExpenseDetails(!showExpenseDetails)}
                                 aria-expanded={showExpenseDetails}
-                                className="w-full flex items-center justify-between p-3 bg-gray-900/50 rounded-xl border border-gray-800 hover:border-gray-700 transition-colors"
+                                className="w-full flex items-center justify-between p-3 bg-surface-raised/50 rounded-xl border border-border-subtle hover:border-border-default transition-colors"
                             >
-                                <span className="text-gray-300 font-medium">Committed Expenses</span>
+                                <span className="text-content-default font-medium">Committed Expenses</span>
                                 <div className="flex items-center gap-3">
-                                    <span className="text-red-300 font-mono">-{formatMoney(totalMonthlyFixedExpenses)}</span>
+                                    <span className="text-negative-bright font-mono">-{formatMoney(totalMonthlyFixedExpenses)}</span>
                                     <ChevronIcon expanded={showExpenseDetails} className="w-5 h-5" />
                                 </div>
                             </button>
 
                             {showExpenseDetails && (
-                                <div className="mt-2 p-3 bg-gray-900/30 rounded-xl border border-gray-800 space-y-1 text-sm">
+                                <Panel padding="sm" className="mt-2 bg-surface-raised/30 space-y-1 text-sm">
                                     {expenses.map(exp => (
                                         <div key={exp.id} className="flex justify-between py-1">
-                                            <span className="text-gray-400">{exp.name}</span>
-                                            <span className="text-red-300 font-mono">-{formatMoney(exp.getMonthlyAmount(year))}</span>
+                                            <span className="text-content-muted">{exp.name}</span>
+                                            <span className="text-negative-bright font-mono">-{formatMoney(exp.getMonthlyAmount(year))}</span>
                                         </div>
                                     ))}
-                                </div>
+                                </Panel>
                             )}
                         </div>
                     )}
 
                     {/* Available for Priorities */}
                     <div className="flex justify-between items-center mb-4 px-1">
-                        <span className="text-sm text-gray-400">Available for priorities</span>
-                        <span className="text-green-400 font-mono font-semibold">{formatMoney(disposableAfterExpenses)}</span>
+                        <span className="text-sm text-content-muted">Available for priorities</span>
+                        <span className="text-positive font-mono font-semibold">{formatMoney(disposableAfterExpenses)}</span>
                     </div>
 
                     {/* Priorities Section */}
-                    <div className="bg-[#18181b] rounded-xl border border-gray-800 p-4">
-                        <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Your Priorities</h4>
+                    <div className="bg-[var(--c-surface-raised)] rounded-xl border border-border-subtle p-4">
+                        <h4 className="text-sm font-semibold text-content-muted uppercase tracking-wide mb-3">Your Priorities</h4>
 
                         <DragDropContext onDragEnd={onDragEnd}>
                             <Droppable droppableId="priorities-list">
@@ -550,8 +551,8 @@ export default function PriorityTab() {
                                                     >
                                                         <div className={`rounded-lg border px-3 py-2 ${
                                                             snapshot.isDragging
-                                                            ? 'bg-gray-800 border-green-500 shadow-2xl'
-                                                            : 'bg-gray-900 border-gray-700 hover:border-gray-600'
+                                                            ? 'bg-surface-overlay border-positive-soft shadow-2xl'
+                                                            : 'bg-surface-raised border-border-default hover:border-border-strong'
                                                         }`}>
                                                             {editingId === item.id ? (
                                                                 /* Edit Mode */
@@ -611,13 +612,13 @@ export default function PriorityTab() {
                                                                     <div className="flex gap-2 justify-end pt-2">
                                                                         <button
                                                                             onClick={handleCancelEdit}
-                                                                            className="px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                                                                            className="px-3 py-1.5 text-sm bg-surface-input hover:bg-surface-hover text-white rounded-lg transition-colors"
                                                                         >
                                                                             Cancel
                                                                         </button>
                                                                         <button
                                                                             onClick={handleSaveEdit}
-                                                                            className="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-500 text-white rounded-lg transition-colors"
+                                                                            className="px-3 py-1.5 text-sm bg-positive-solid hover:bg-positive-soft text-white rounded-lg transition-colors"
                                                                         >
                                                                             Save
                                                                         </button>
@@ -626,7 +627,7 @@ export default function PriorityTab() {
                                                             ) : (
                                                                 /* View Mode */
                                                                 <div className="flex items-center">
-                                                                    <div {...provided.dragHandleProps} className="mr-3 cursor-grab text-gray-500 hover:text-white shrink-0">
+                                                                    <div {...provided.dragHandleProps} className="mr-3 cursor-grab text-content-subtle hover:text-white shrink-0">
                                                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                                                             <line x1="8" y1="6" x2="21" y2="6"></line>
                                                                             <line x1="8" y1="12" x2="21" y2="12"></line>
@@ -638,14 +639,14 @@ export default function PriorityTab() {
                                                                     </div>
 
                                                                     <div className="flex-1 min-w-0">
-                                                                        <div className="font-medium text-gray-200 truncate">{item.name}</div>
-                                                                        <div className="text-xs text-blue-400 truncate">{item.displayInfo}</div>
+                                                                        <div className="font-medium text-content-emphasis truncate">{item.name}</div>
+                                                                        <div className="text-xs text-info truncate">{item.displayInfo}</div>
                                                                         {priorityWarnings[item.id] && (
                                                                             <div className="flex items-center gap-1 mt-0.5">
-                                                                                <svg className="w-3 h-3 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                                <svg className="w-3 h-3 text-warning" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                                                                                 </svg>
-                                                                                <span className="text-xs text-amber-400">
+                                                                                <span className="text-xs text-warning">
                                                                                     {priorityWarnings[item.id].message}
                                                                                 </span>
                                                                             </div>
@@ -653,8 +654,8 @@ export default function PriorityTab() {
                                                                     </div>
 
                                                                     <div className="flex flex-col items-end shrink-0 mx-3">
-                                                                        <span className="text-blue-300 font-mono text-sm">-{formatMoney(item.actualDed)}</span>
-                                                                        <span className={`text-xs ${item.remainingAfter < 0 ? 'text-red-400' : 'text-gray-500'}`}>
+                                                                        <span className="text-info-bright font-mono text-sm">-{formatMoney(item.actualDed)}</span>
+                                                                        <span className={`text-xs ${item.remainingAfter < 0 ? 'text-negative' : 'text-content-subtle'}`}>
                                                                             {formatMoney(item.remainingAfter)} left
                                                                         </span>
                                                                     </div>
@@ -662,7 +663,7 @@ export default function PriorityTab() {
                                                                     <div className="flex gap-1 shrink-0">
                                                                         <button
                                                                             onClick={() => handleStartEdit(item)}
-                                                                            className="text-gray-500 hover:text-blue-400 p-1.5 hover:bg-blue-500/10 rounded transition-colors"
+                                                                            className="text-content-subtle hover:text-info p-1.5 hover:bg-info-tint/10 rounded transition-colors"
                                                                             title="Edit"
                                                                         >
                                                                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -672,7 +673,7 @@ export default function PriorityTab() {
                                                                         </button>
                                                                         <button
                                                                             onClick={() => dispatch({type: 'REMOVE_PRIORITY', payload: item.id})}
-                                                                            className="text-gray-500 hover:text-red-400 p-1.5 hover:bg-red-500/10 rounded transition-colors"
+                                                                            className="text-content-subtle hover:text-negative p-1.5 hover:bg-negative-soft/10 rounded transition-colors"
                                                                             title="Delete"
                                                                         >
                                                                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -695,20 +696,20 @@ export default function PriorityTab() {
 
                         {/* Empty State */}
                         {waterfallItems.length === 0 && !showAddForm && (
-                            <div className="text-center py-6 text-gray-500">
+                            <div className="text-center py-6 text-content-subtle">
                                 <p className="mb-2">No priorities set up yet</p>
-                                <p className="text-xs text-gray-600">Add priorities to control where your money goes</p>
+                                <p className="text-xs text-content-faint">Add priorities to control where your money goes</p>
                             </div>
                         )}
 
                         {/* Inline Add Form */}
                         {showAddForm ? (
-                            <div className="mt-3 p-4 bg-gray-900 rounded-lg border border-gray-700 space-y-3">
+                            <div className="mt-3 p-4 bg-surface-raised rounded-lg border border-border-default space-y-3">
                                 <div className="flex justify-between items-center mb-2">
-                                    <span className="text-sm font-semibold text-gray-300">Add Priority</span>
+                                    <span className="text-sm font-semibold text-content-default">Add Priority</span>
                                     <button
                                         onClick={() => setShowAddForm(false)}
-                                        className="text-gray-500 hover:text-white"
+                                        className="text-content-subtle hover:text-white"
                                     >
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                             <path d="M18 6L6 18M6 6l12 12"></path>
@@ -760,7 +761,7 @@ export default function PriorityTab() {
                                                 disabled={newAccountHasLimit}
                                             />
                                             {newAccountHasLimit && (
-                                                <p className="text-xs text-emerald-400 mt-1">
+                                                <p className="text-xs text-positive mt-1">
                                                     Auto-set to {year} IRS limit
                                                 </p>
                                             )}
@@ -778,14 +779,14 @@ export default function PriorityTab() {
                                 <div className="flex gap-2 justify-end pt-2">
                                     <button
                                         onClick={() => setShowAddForm(false)}
-                                        className="px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                                        className="px-3 py-1.5 text-sm bg-surface-input hover:bg-surface-hover text-white rounded-lg transition-colors"
                                     >
                                         Cancel
                                     </button>
                                     <button
                                         onClick={handleAdd}
                                         disabled={!newAccount}
-                                        className="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+                                        className="px-3 py-1.5 text-sm bg-positive-solid hover:bg-positive-soft disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
                                     >
                                         Add
                                     </button>
@@ -794,7 +795,7 @@ export default function PriorityTab() {
                         ) : (
                             <button
                                 onClick={() => setShowAddForm(true)}
-                                className="mt-3 w-full py-2.5 border-2 border-dashed border-gray-700 hover:border-gray-600 rounded-lg text-gray-400 hover:text-white transition-colors flex items-center justify-center gap-2"
+                                className="mt-3 w-full py-2.5 border-2 border-dashed border-border-default hover:border-border-strong rounded-lg text-content-muted hover:text-white transition-colors flex items-center justify-center gap-2"
                             >
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                     <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -808,19 +809,19 @@ export default function PriorityTab() {
                     {/* Unallocated */}
                     <div className={`mt-4 px-4 py-3 rounded-xl border flex justify-between items-center ${
                         finalRemaining > 0
-                            ? 'border-amber-700/50 bg-amber-900/10'
+                            ? 'border-warning-strong/50 bg-warning-tint/10'
                             : finalRemaining === 0
-                                ? 'border-green-700/50 bg-green-900/10'
-                                : 'border-red-700/50 bg-red-900/10'
+                                ? 'border-positive-strong/50 bg-positive-tint/10'
+                                : 'border-negative-strong/50 bg-negative-tint/10'
                     }`}>
                         <div>
-                            <span className="text-gray-300 font-medium">Unallocated</span>
+                            <span className="text-content-default font-medium">Unallocated</span>
                             {finalRemaining > 0 && (
-                                <p className="text-xs text-amber-400 mt-0.5">Consider adding a "Remainder" priority</p>
+                                <p className="text-xs text-warning mt-0.5">Consider adding a "Remainder" priority</p>
                             )}
                         </div>
                         <span className={`font-mono text-lg font-bold ${
-                            finalRemaining > 0 ? 'text-amber-400' : finalRemaining === 0 ? 'text-green-400' : 'text-red-400'
+                            finalRemaining > 0 ? 'text-warning' : finalRemaining === 0 ? 'text-positive' : 'text-negative'
                         }`}>
                             {formatMoney(finalRemaining)}
                             {finalRemaining === 0 && ' ✓'}

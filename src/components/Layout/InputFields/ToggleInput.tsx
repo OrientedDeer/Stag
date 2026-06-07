@@ -14,7 +14,7 @@ export const ToggleInput: React.FC<ToggleInputProps> = ({ label, enabled, setEna
 
   return (
     <div className="flex items-center justify-between gap-3">
-      <label htmlFor={id} className="text-sm text-gray-400 font-medium uppercase tracking-wide flex items-center gap-1.5 whitespace-nowrap truncate sm:whitespace-normal sm:overflow-visible">
+      <label htmlFor={id} className="text-sm text-content-muted font-medium uppercase tracking-wide flex items-center gap-1.5 whitespace-nowrap truncate sm:whitespace-normal sm:overflow-visible">
         {label}
         {tooltip && <Tooltip text={tooltip} />}
       </label>
@@ -22,7 +22,7 @@ export const ToggleInput: React.FC<ToggleInputProps> = ({ label, enabled, setEna
         id={id}
         onClick={toggle}
         className={`relative inline-flex items-center h-6 rounded-full w-11 shrink-0 transition-colors duration-300 focus:outline-none ${
-          enabled ? 'bg-green-600' : 'bg-gray-700'
+          enabled ? 'bg-positive-solid' : 'bg-surface-input'
         }`}
       >
         <span

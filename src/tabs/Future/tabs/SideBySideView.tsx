@@ -16,12 +16,12 @@ const StatRow: React.FC<{
     comparisonValue: string | number;
     highlight?: 'baseline' | 'comparison' | null;
 }> = ({ label, baselineValue, comparisonValue, highlight }) => {
-    const baselineClass = highlight === 'baseline' ? 'text-green-400' : 'text-white';
-    const comparisonClass = highlight === 'comparison' ? 'text-green-400' : 'text-white';
+    const baselineClass = highlight === 'baseline' ? 'text-positive' : 'text-white';
+    const comparisonClass = highlight === 'comparison' ? 'text-positive' : 'text-white';
 
     return (
-        <div className="grid grid-cols-3 gap-4 py-2 border-b border-gray-700 last:border-0">
-            <div className="text-gray-400 text-sm">{label}</div>
+        <div className="grid grid-cols-3 gap-4 py-2 border-b border-border-default last:border-0">
+            <div className="text-content-muted text-sm">{label}</div>
             <div className={`text-center font-medium ${baselineClass}`}>{baselineValue}</div>
             <div className={`text-center font-medium ${comparisonClass}`}>{comparisonValue}</div>
         </div>
@@ -37,9 +37,9 @@ const MilestoneSummaryPanel: React.FC<{
     milestones: MilestonesSummary;
     forceExact?: boolean;
 }> = ({ title, color, milestones, forceExact = false }) => {
-    const borderColor = color === 'blue' ? 'border-blue-500' : 'border-orange-500';
-    const headerBg = color === 'blue' ? 'bg-blue-500/20' : 'bg-orange-500/20';
-    const headerText = color === 'blue' ? 'text-blue-400' : 'text-orange-400';
+    const borderColor = color === 'blue' ? 'border-accent-soft' : 'border-cat-orange-soft';
+    const headerBg = color === 'blue' ? 'bg-info-tint/20' : 'bg-cat-orange-soft/20';
+    const headerText = color === 'blue' ? 'text-info' : 'text-cat-orange';
 
     return (
         <div className={`rounded-xl border-2 ${borderColor} overflow-hidden`}>
@@ -48,26 +48,26 @@ const MilestoneSummaryPanel: React.FC<{
             </div>
             <div className="p-4 space-y-3">
                 <div>
-                    <div className="text-xs text-gray-400 uppercase">Retirement</div>
+                    <div className="text-xs text-content-muted uppercase">Retirement</div>
                     <div className="text-xl font-bold text-white">
                         Age {milestones.retirementAge} ({milestones.retirementYear})
                     </div>
                 </div>
                 <div>
-                    <div className="text-xs text-gray-400 uppercase">Legacy Value</div>
+                    <div className="text-xs text-content-muted uppercase">Legacy Value</div>
                     <div className="text-xl font-bold text-white">
                         {formatCompactCurrency(milestones.legacyValue, { forceExact })}
                     </div>
                 </div>
                 <div>
-                    <div className="text-xs text-gray-400 uppercase">Peak Net Worth</div>
+                    <div className="text-xs text-content-muted uppercase">Peak Net Worth</div>
                     <div className="text-lg font-semibold text-white">
                         {formatCompactCurrency(milestones.peakNetWorth, { forceExact })}
                     </div>
-                    <div className="text-xs text-gray-400">in {milestones.peakYear}</div>
+                    <div className="text-xs text-content-muted">in {milestones.peakYear}</div>
                 </div>
                 <div>
-                    <div className="text-xs text-gray-400 uppercase">Simulation Period</div>
+                    <div className="text-xs text-content-muted uppercase">Simulation Period</div>
                     <div className="text-lg font-semibold text-white">
                         {milestones.yearsOfData} years
                     </div>
@@ -115,18 +115,18 @@ export const SideBySideView: React.FC<SideBySideViewProps> = ({ comparison }) =>
             </div>
 
             {/* Comparison table */}
-            <div className="bg-gray-800/50 rounded-xl border border-gray-700 overflow-hidden">
-                <div className="p-4 border-b border-gray-700">
+            <div className="bg-surface-overlay/50 rounded-xl border border-border-default overflow-hidden">
+                <div className="p-4 border-b border-border-default">
                     <h3 className="text-white font-semibold">Key Metrics Comparison</h3>
                 </div>
 
                 {/* Header */}
-                <div className="grid grid-cols-3 gap-4 px-4 py-3 bg-gray-900/50">
-                    <div className="text-gray-400 text-sm font-medium">Metric</div>
-                    <div className="text-center text-blue-400 text-sm font-medium">
+                <div className="grid grid-cols-3 gap-4 px-4 py-3 bg-surface-raised/50">
+                    <div className="text-content-muted text-sm font-medium">Metric</div>
+                    <div className="text-center text-info text-sm font-medium">
                         {baseline.metadata.name}
                     </div>
-                    <div className="text-center text-orange-400 text-sm font-medium">
+                    <div className="text-center text-cat-orange text-sm font-medium">
                         {comp.metadata.name}
                     </div>
                 </div>
@@ -164,38 +164,38 @@ export const SideBySideView: React.FC<SideBySideViewProps> = ({ comparison }) =>
             </div>
 
             {/* Year-by-year preview (first 10 and last 5 years) */}
-            <div className="bg-gray-800/50 rounded-xl border border-gray-700 overflow-hidden">
-                <div className="p-4 border-b border-gray-700">
+            <div className="bg-surface-overlay/50 rounded-xl border border-border-default overflow-hidden">
+                <div className="p-4 border-b border-border-default">
                     <h3 className="text-white font-semibold">Net Worth by Year</h3>
-                    <p className="text-sm text-gray-400">Green values indicate higher net worth</p>
+                    <p className="text-sm text-content-muted">Green values indicate higher net worth</p>
                 </div>
 
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                        <thead className="bg-gray-900/50">
+                        <thead className="bg-surface-raised/50">
                             <tr>
-                                <th className="px-4 py-2 text-left text-gray-400">Year</th>
-                                <th className="px-4 py-2 text-right text-blue-400">
+                                <th className="px-4 py-2 text-left text-content-muted">Year</th>
+                                <th className="px-4 py-2 text-right text-info">
                                     {baseline.metadata.name}
                                 </th>
-                                <th className="px-4 py-2 text-right text-orange-400">
+                                <th className="px-4 py-2 text-right text-cat-orange">
                                     {comp.metadata.name}
                                 </th>
-                                <th className="px-4 py-2 text-right text-gray-400">Difference</th>
+                                <th className="px-4 py-2 text-right text-content-muted">Difference</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-800">
+                        <tbody className="divide-y divide-border-subtle">
                             {differences.netWorthByYear.slice(0, 10).map(year => (
                                 <tr key={year.year}>
-                                    <td className="px-4 py-2 text-gray-300">{year.year}</td>
-                                    <td className={`px-4 py-2 text-right ${year.delta <= 0 ? 'text-green-400' : 'text-white'}`}>
+                                    <td className="px-4 py-2 text-content-default">{year.year}</td>
+                                    <td className={`px-4 py-2 text-right ${year.delta <= 0 ? 'text-positive' : 'text-white'}`}>
                                         {formatCompactCurrency(year.baseline, { forceExact })}
                                     </td>
-                                    <td className={`px-4 py-2 text-right ${year.delta >= 0 ? 'text-green-400' : 'text-white'}`}>
+                                    <td className={`px-4 py-2 text-right ${year.delta >= 0 ? 'text-positive' : 'text-white'}`}>
                                         {formatCompactCurrency(year.comparison, { forceExact })}
                                     </td>
                                     <td className={`px-4 py-2 text-right ${
-                                        year.delta > 0 ? 'text-green-400' : year.delta < 0 ? 'text-red-400' : 'text-gray-400'
+                                        year.delta > 0 ? 'text-positive' : year.delta < 0 ? 'text-negative' : 'text-content-muted'
                                     }`}>
                                         {year.delta > 0 ? '+' : ''}{formatCompactCurrency(year.delta, { forceExact })}
                                     </td>
@@ -203,22 +203,22 @@ export const SideBySideView: React.FC<SideBySideViewProps> = ({ comparison }) =>
                             ))}
                             {differences.netWorthByYear.length > 15 && (
                                 <tr>
-                                    <td colSpan={4} className="px-4 py-2 text-center text-gray-400">
+                                    <td colSpan={4} className="px-4 py-2 text-center text-content-muted">
                                         ... {differences.netWorthByYear.length - 15} more years ...
                                     </td>
                                 </tr>
                             )}
                             {differences.netWorthByYear.slice(-5).map(year => (
                                 <tr key={`end-${year.year}`}>
-                                    <td className="px-4 py-2 text-gray-300">{year.year}</td>
-                                    <td className={`px-4 py-2 text-right ${year.delta <= 0 ? 'text-green-400' : 'text-white'}`}>
+                                    <td className="px-4 py-2 text-content-default">{year.year}</td>
+                                    <td className={`px-4 py-2 text-right ${year.delta <= 0 ? 'text-positive' : 'text-white'}`}>
                                         {formatCompactCurrency(year.baseline, { forceExact })}
                                     </td>
-                                    <td className={`px-4 py-2 text-right ${year.delta >= 0 ? 'text-green-400' : 'text-white'}`}>
+                                    <td className={`px-4 py-2 text-right ${year.delta >= 0 ? 'text-positive' : 'text-white'}`}>
                                         {formatCompactCurrency(year.comparison, { forceExact })}
                                     </td>
                                     <td className={`px-4 py-2 text-right ${
-                                        year.delta > 0 ? 'text-green-400' : year.delta < 0 ? 'text-red-400' : 'text-gray-400'
+                                        year.delta > 0 ? 'text-positive' : year.delta < 0 ? 'text-negative' : 'text-content-muted'
                                     }`}>
                                         {year.delta > 0 ? '+' : ''}{formatCompactCurrency(year.delta, { forceExact })}
                                     </td>

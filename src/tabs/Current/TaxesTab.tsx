@@ -19,6 +19,7 @@ import {
 import { CurrencyInput } from "../../components/Layout/InputFields/CurrencyInput";
 import { DropdownInput } from "../../components/Layout/InputFields/DropdownInput";
 import { DeductionMethod } from "../../components/Objects/Taxes/TaxContext";
+import { Panel } from "../../components/Layout/Primitives";
 
 // Suggestion: Create a 'useTax' hook in TaxContext.tsx that handles the null check
 // and throws an error if the provider is missing.
@@ -158,17 +159,17 @@ export default function TaxesTab() {
     );
 
     return (
-        <div className="w-full min-h-full flex bg-gray-950 justify-center pt-6 pb-24">
+        <div className="w-full min-h-full flex bg-surface-base justify-center pt-6 pb-24">
             <div className="w-full px-4 sm:px-8 max-w-screen-2xl">
-                <h2 className="text-2xl font-bold text-white mb-6 border-b border-gray-800 pb-2">
+                <h2 className="text-2xl font-bold text-white mb-6 border-b border-border-subtle pb-2">
                     Tax Estimate
                 </h2>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     {/* Settings Sidebar */}
                     <div className="lg:col-span-1 space-y-6">
-                        <div className="bg-gray-900 border border-gray-800 p-6 rounded-2xl shadow-xl h-fit">
-                            <h2 className="text-xl font-semibold text-gray-300 mb-6">Tax Settings</h2>
+                        <Panel padding="lg" className="shadow-xl h-fit">
+                            <h2 className="text-xl font-semibold text-content-default mb-6">Tax Settings</h2>
 
                             <div className="space-y-5">
                                 {/* Year Selection */}
@@ -210,20 +211,20 @@ export default function TaxesTab() {
                                         value={deductionMethod}
                                     />
                                     {deductionMethod === "Auto" && (
-                                        <p className="text-[11px] text-blue-400 mt-2 italic leading-tight">
+                                        <p className="text-[11px] text-info mt-2 italic leading-tight">
                                             Using {effectiveDeductionMethod.toLowerCase()} deduction (${effectiveDeductionMethod === "Standard" ? fedStandardDeduction.toLocaleString() : federalItemizedTotal.toLocaleString()}) for lowest tax.
                                         </p>
                                     )}
                                     {federalItemizedTotal > fedStandardDeduction && deductionMethod === "Standard" && (
-                                        <p className="text-[11px] text-yellow-500 mt-2 italic leading-tight">
+                                        <p className="text-[11px] text-warning-soft mt-2 italic leading-tight">
                                             Tip: Your itemized deductions (${federalItemizedTotal.toLocaleString()}) are higher than the standard deduction.
                                         </p>
                                     )}
                                 </div>
 
                                 {/* Manual Overrides Section */}
-                                <div className="pt-6 border-t border-gray-800 space-y-4">
-                                    <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Manual Overrides</h3>
+                                <div className="pt-6 border-t border-border-subtle space-y-4">
+                                    <h3 className="text-xs font-semibold text-content-muted uppercase tracking-wider">Manual Overrides</h3>
                                     
                                     <div className="space-y-4">
                                         <div>
@@ -253,7 +254,7 @@ export default function TaxesTab() {
                                         {(fedOverride !== null || ficaOverride !== null || stateOverride !== null) && (
                                             <button
                                                 onClick={onClearOverrides}
-                                                className="w-full text-[10px] font-bold text-red-500 hover:text-red-400 transition-colors uppercase py-1 border border-red-900/50 rounded-md hover:bg-red-900/10"
+                                                className="w-full text-[10px] font-bold text-negative-soft hover:text-negative transition-colors uppercase py-1 border border-negative-tint/50 rounded-md hover:bg-negative-tint/10"
                                             >
                                                 Clear Overrides
                                             </button>
@@ -261,45 +262,45 @@ export default function TaxesTab() {
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                        </Panel>
                     </div>
 
                     {/* Main Results Section */}
                     <div className="lg:col-span-2 space-y-6">
-                        <div className="bg-gray-900 border border-gray-800 p-8 rounded-2xl shadow-2xl">
+                        <Panel padding="none" className="p-8 shadow-2xl">
                             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mb-8">
                                 <div>
-                                    <p className="text-gray-400 text-sm mb-1 font-medium">Estimated Net Pay (Annual)</p>
-                                    <h2 className="text-6xl font-black text-green-400 tracking-tight">
+                                    <p className="text-content-muted text-sm mb-1 font-medium">Estimated Net Pay (Annual)</p>
+                                    <h2 className="text-6xl font-black text-positive tracking-tight">
                                         ${netPaycheck.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                     </h2>
                                 </div>
-                                <div className="text-left sm:text-right border-l sm:border-l-0 sm:border-r border-gray-800 pl-4 sm:pl-0 sm:pr-4">
-                                    <p className="text-gray-400 text-xs font-bold uppercase mb-1">Effective Rate</p>
+                                <div className="text-left sm:text-right border-l sm:border-l-0 sm:border-r border-border-subtle pl-4 sm:pl-0 sm:pr-4">
+                                    <p className="text-content-muted text-xs font-bold uppercase mb-1">Effective Rate</p>
                                     <p className="text-2xl font-bold text-white">
                                          {annualGross > 0 ? (((federalTax + stateTax + ficaTax) / annualGross) * 100).toFixed(1) : 0}%
                                     </p>
                                 </div>
                             </div>
 
-                            <div className="space-y-4 border-t border-gray-800 pt-6">
-                                <div className="flex justify-between text-gray-300 items-center">
+                            <div className="space-y-4 border-t border-border-subtle pt-6">
+                                <div className="flex justify-between text-content-default items-center">
                                     <span className="text-lg">Gross Annual Income</span>
                                     <span className="font-mono text-xl">${annualGross.toLocaleString()}</span>
                                 </div>
                                 
-                                <div className="flex justify-end text-gray-300 text-xs italic items-right ">
+                                <div className="flex justify-end text-content-default text-xs italic items-right ">
                                     <span className="font-mono -mt-5">Earned Income (${earnedIncome.toLocaleString()})</span>
                                 </div>
 
                                 {incomePreTaxDeductions > 0 && (
-                                    <div className="flex justify-between text-blue-400 text-sm italic items-center">
+                                    <div className="flex justify-between text-info text-sm italic items-center">
                                         <span>Pre-Tax Deductions (401k)</span>
                                         <span className="font-mono">-${totalPreTaxDeductions.toLocaleString()}</span>
                                     </div>
                                 )}
                                 {(effectiveDeductionMethod === "Itemized" && federalItemizedTotal > 0) && (
-                                    <div className="flex justify-between text-blue-400 text-sm italic items-center">
+                                    <div className="flex justify-between text-info text-sm italic items-center">
                                         <span>Itemized Deductions (Federal/State){deductionMethod === "Auto" && " - Auto"}</span>
                                         <div>
                                             <span className="font-mono">-${federalItemizedTotal.toLocaleString()}/</span>
@@ -308,7 +309,7 @@ export default function TaxesTab() {
                                     </div>
                                 )}
                                 {(effectiveDeductionMethod === "Standard") && (
-                                    <div className="flex justify-between text-blue-400 text-sm italic items-center">
+                                    <div className="flex justify-between text-info text-sm italic items-center">
                                         <span>Standard Deduction (Federal/State){deductionMethod === "Auto" && " - Auto"}</span>
                                         <div>
                                             <span className="font-mono">-${fedStandardDeduction.toLocaleString()}/</span>
@@ -317,25 +318,25 @@ export default function TaxesTab() {
                                     </div>
                                 )}
                                 
-                                <div className="flex justify-between text-gray-400 text-sm font-semibold items-center border-t border-gray-800/50 pt-2 mt-2">
+                                <div className="flex justify-between text-content-muted text-sm font-semibold items-center border-t border-border-subtle/50 pt-2 mt-2">
                                     <span>Adjusted Gross Income (AGI)</span>
                                     <span className="font-mono">${(Math.max(0, annualGross - totalPreTaxDeductions)).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                                 </div>
 
                                 {/* ... Tax Breakdown ... */}
-                                <div className="pt-2 border-b border-gray-800" />
+                                <div className="pt-2 border-b border-border-subtle" />
 
-                                <div className="flex justify-between text-red-400 items-center">
+                                <div className="flex justify-between text-negative items-center">
                                     <span className="text-lg">Federal Income Tax {fedOverride !== null && "(Manual)"}</span>
                                     <span className="font-mono text-lg">-${federalTax.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                                 </div>
 
-                                <div className="flex justify-between text-red-400 items-center">
+                                <div className="flex justify-between text-negative items-center">
                                     <span className="text-lg">FICA (SS & Medicare) {ficaOverride !== null && "(Manual)"}</span>
                                     <span className="font-mono text-lg">-${ficaTax.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                                 </div>
 
-                                <div className="flex justify-between text-red-400 items-center">
+                                <div className="flex justify-between text-negative items-center">
                                     <span className="text-lg">{stateResidency} State Tax {stateOverride !== null && "(Manual)"}</span>
                                     <span className="font-mono text-lg">
                                         {stateParams || stateOverride !== null
@@ -344,32 +345,32 @@ export default function TaxesTab() {
                                     </span>
                                 </div>
 
-                                <div className="flex justify-between text-red-300 font-semibold items-center border-t border-red-900/40 pt-3 mt-1">
+                                <div className="flex justify-between text-negative-bright font-semibold items-center border-t border-negative-tint/40 pt-3 mt-1">
                                     <span className="text-lg">Total Taxes</span>
                                     <span className="font-mono text-lg">-${(federalTax + ficaTax + stateTax).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                                 </div>
 
                                 {/* NEW: Roth Deduction Display */}
                                 {incomePostTaxDeductions > 0 && (
-                                    <div className="flex justify-between text-green-500 text-sm italic items-center pt-2">
+                                    <div className="flex justify-between text-positive-soft text-sm italic items-center pt-2">
                                         <span>Post-Tax Deductions (Roth)</span>
                                         <span className="font-mono">-${incomePostTaxDeductions.toLocaleString()}</span>
                                     </div>
                                 )}
 
-                                <div className="flex justify-between border-t border-gray-700 pt-6 mt-6 items-center">
+                                <div className="flex justify-between border-t border-border-default pt-6 mt-6 items-center">
                                     <span className="text-3xl font-bold text-white">Net Take Home</span>
-                                    <span className="text-3xl font-black text-green-400 font-mono">
+                                    <span className="text-3xl font-black text-positive font-mono">
                                         ${netPaycheck.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                     </span>
                                 </div>
                             </div>
-                        </div>
+                        </Panel>
 
                         {/* Footer Notes */}
-                        <div className="bg-blue-900/10 border border-blue-800/30 p-5 rounded-2xl text-sm leading-relaxed">
-                            <p className="text-blue-200">
-                                <strong className="text-blue-100 uppercase text-[11px] tracking-widest mr-2">Tax Logic:</strong>
+                        <div className="bg-info-tint/10 border border-info-strong/30 p-5 rounded-2xl text-sm leading-relaxed">
+                            <p className="text-info-bright">
+                                <strong className="text-info-bright uppercase text-[11px] tracking-widest mr-2">Tax Logic:</strong>
                                 Total reduction in taxable income is <span className="text-white font-mono font-bold">${(totalPreTaxDeductions + fedAppliedMainDeduction).toLocaleString()}</span>. 
                             </p>
                         </div>

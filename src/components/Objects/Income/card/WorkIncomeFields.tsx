@@ -164,7 +164,7 @@ export function WorkIncomeFields({
                     {contributionWarnings.map((warning, idx) => (
                         <AlertBanner key={idx} severity="warning" size="sm" className="mb-2">
                             <span className="font-medium">{warning.message}</span>
-                            <span className="text-gray-300 ml-2">
+                            <span className="text-content-default ml-2">
                                 (Annual:{' '}
                                 {formatCompactCurrency(warning.annual, { forceExact: true })} /
                                 Limit: {formatCompactCurrency(warning.limit, { forceExact: true })})

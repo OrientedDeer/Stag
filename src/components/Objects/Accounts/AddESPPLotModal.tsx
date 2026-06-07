@@ -110,7 +110,7 @@ const AddESPPLotModal: React.FC<AddESPPLotModalProps> = ({
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="add-espp-lot-modal-title"
-                className="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto text-white w-full max-w-lg"
+                className="bg-surface-raised border border-border-subtle rounded-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto text-white w-full max-w-lg"
                 onKeyDown={handleKeyDown}
             >
                 <h2 id="add-espp-lot-modal-title" className="text-xl font-bold text-white mb-4">
@@ -121,7 +121,7 @@ const AddESPPLotModal: React.FC<AddESPPLotModalProps> = ({
                 <div className="space-y-4">
                     {/* Offering Period Section */}
                     <div>
-                        <h3 className="text-sm font-semibold text-gray-400 mb-2 uppercase tracking-wide">
+                        <h3 className="text-sm font-semibold text-content-muted mb-2 uppercase tracking-wide">
                             Offering Period
                         </h3>
                         <div className="grid grid-cols-2 gap-4">
@@ -146,7 +146,7 @@ const AddESPPLotModal: React.FC<AddESPPLotModalProps> = ({
 
                     {/* Share Details Section */}
                     <div>
-                        <h3 className="text-sm font-semibold text-gray-400 mb-2 uppercase tracking-wide">
+                        <h3 className="text-sm font-semibold text-content-muted mb-2 uppercase tracking-wide">
                             Share Details
                         </h3>
                         <div className="grid grid-cols-2 gap-4">
@@ -170,7 +170,7 @@ const AddESPPLotModal: React.FC<AddESPPLotModalProps> = ({
 
                     {/* FMV Section */}
                     <div>
-                        <h3 className="text-sm font-semibold text-gray-400 mb-2 uppercase tracking-wide">
+                        <h3 className="text-sm font-semibold text-content-muted mb-2 uppercase tracking-wide">
                             Fair Market Values (for tax calculation)
                         </h3>
                         <div className="grid grid-cols-2 gap-4">
@@ -192,8 +192,8 @@ const AddESPPLotModal: React.FC<AddESPPLotModalProps> = ({
                     </div>
 
                     {/* Calculated Values Section */}
-                    <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
-                        <h3 className="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wide">
+                    <div className="bg-surface-overlay/50 border border-border-default rounded-lg p-4">
+                        <h3 className="text-sm font-semibold text-content-muted mb-3 uppercase tracking-wide">
                             Calculated Values
                         </h3>
                         <div className="grid grid-cols-2 gap-4">
@@ -214,12 +214,12 @@ const AddESPPLotModal: React.FC<AddESPPLotModalProps> = ({
                                     tooltip="Qualifying = 2 years from grant + 1 year from purchase (better tax treatment)"
                                 />
                                 {dispositionStatus === "Qualifying" && (
-                                    <div className="text-green-400 text-xs mt-1">
+                                    <div className="text-positive text-xs mt-1">
                                         This lot qualifies for preferential tax treatment
                                     </div>
                                 )}
                                 {dispositionStatus === "Disqualifying" && (
-                                    <div className="text-yellow-400 text-xs mt-1">
+                                    <div className="text-warning text-xs mt-1">
                                         This lot is a disqualifying disposition (full discount taxed as ordinary income)
                                     </div>
                                 )}
@@ -232,7 +232,7 @@ const AddESPPLotModal: React.FC<AddESPPLotModalProps> = ({
                     <button
                         type="button"
                         onClick={handleClose}
-                        className="px-5 py-2.5 rounded-lg font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+                        className="px-5 py-2.5 rounded-lg font-medium text-content-muted hover:text-white hover:bg-surface-overlay transition-colors"
                     >
                         Cancel
                     </button>
@@ -240,7 +240,7 @@ const AddESPPLotModal: React.FC<AddESPPLotModalProps> = ({
                         type="submit"
                         disabled={!isValid}
                         title={!isValid ? "Fill in all required fields" : undefined}
-                        className="px-5 py-2.5 rounded-lg font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        className="px-5 py-2.5 rounded-lg font-medium bg-positive-solid text-white hover:bg-positive-strong disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                         {isEditing ? 'Save Changes' : 'Add Lot'}
                     </button>

@@ -31,34 +31,34 @@ function calculateLifetimeTaxes(simulation: SimulationYear[]): number {
 
 // Helper to get tax treatment badge for an account
 const getTaxBadge = (account: AnyAccount | undefined): { label: string; color: string } => {
-    if (!account) return { label: 'Unknown', color: 'bg-gray-600' };
+    if (!account) return { label: 'Unknown', color: 'bg-surface-hover' };
 
     if (account instanceof SavedAccount) {
-        return { label: 'Tax-Free', color: 'bg-green-600' };
+        return { label: 'Tax-Free', color: 'bg-positive-solid' };
     }
 
     if (account instanceof InvestedAccount) {
         switch (account.taxType) {
             case 'Roth 401k':
             case 'Roth IRA':
-                return { label: 'Tax-Free', color: 'bg-green-600' };
+                return { label: 'Tax-Free', color: 'bg-positive-solid' };
             case 'HSA':
-                return { label: 'Tax-Free (HSA)', color: 'bg-green-600' };
+                return { label: 'Tax-Free (HSA)', color: 'bg-positive-solid' };
             case 'Traditional 401k':
             case 'Traditional IRA':
-                return { label: 'Taxable', color: 'bg-yellow-600' };
+                return { label: 'Taxable', color: 'bg-warning-solid' };
             case 'Brokerage':
-                return { label: 'Cap Gains', color: 'bg-blue-600' };
+                return { label: 'Cap Gains', color: 'bg-accent' };
             default:
-                return { label: 'Taxable', color: 'bg-yellow-600' };
+                return { label: 'Taxable', color: 'bg-warning-solid' };
         }
     }
 
     if (account instanceof ESPPAccount) {
-        return { label: 'ESPP (Mixed)', color: 'bg-purple-600' };
+        return { label: 'ESPP (Mixed)', color: 'bg-cat-purple-solid' };
     }
 
-    return { label: 'Unknown', color: 'bg-gray-600' };
+    return { label: 'Unknown', color: 'bg-surface-hover' };
 };
 
 export default function WithdrawalTab() {
@@ -284,13 +284,13 @@ export default function WithdrawalTab() {
     const toggleHelp = useCallback(() => setShowHelp(h => !h), []);
 
     return (
-        <div className="w-full min-h-full flex bg-gray-950 justify-center pt-6 pb-24 text-white">
+        <div className="w-full min-h-full flex bg-surface-base justify-center pt-6 pb-24 text-white">
             <div className="w-full px-4 sm:px-8 max-w-4xl">
-                <div className="flex items-center justify-between mb-2 border-b border-gray-800 pb-2">
+                <div className="flex items-center justify-between mb-2 border-b border-border-subtle pb-2">
                     <h2 className="text-2xl font-bold">Withdrawal Order</h2>
                     <button
                         onClick={toggleHelp}
-                        className="text-xs text-gray-400 hover:text-white flex items-center gap-1 transition-colors"
+                        className="text-xs text-content-muted hover:text-white flex items-center gap-1 transition-colors"
                     >
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />

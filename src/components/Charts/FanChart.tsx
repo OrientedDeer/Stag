@@ -1,6 +1,7 @@
 import { useMemo, useContext, useRef, useState, useEffect } from 'react';
 import { ResponsiveLine } from '@nivo/line';
 import { PercentileData, YearlyPercentile, ScenarioResult } from '../../services/MonteCarloTypes';
+import { useChartTheme } from './useChartTheme';
 import { AssumptionsContext } from '../Objects/Assumptions/AssumptionsContext';
 import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
 import { calculateNetWorth } from '../../tabs/Future/tabs/FutureUtils';
@@ -20,6 +21,7 @@ interface FanChartProps {
  * Shows probability bands (10th-90th, 25th-75th percentiles) with median line
  */
 export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, height = 400 }: FanChartProps) => {
+    const { theme: themeKey, resolve } = useChartTheme();
     const { state: assumptions } = useContext(AssumptionsContext);
     const forceExact = assumptions.display?.useCompactCurrency === false;
     const containerRef = useRef<HTMLDivElement>(null);
@@ -62,7 +64,7 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
         if (percentiles.p50.length > 0) {
             lines.push({
                 id: 'Median (50th)',
-                color: '#10b981',
+                color: 'var(--color-chart-money)',
                 data: dedupePoints(percentiles.p50.map(p => ({
                     x: p.year,
                     y: p.netWorth,
@@ -74,7 +76,7 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
         if (percentiles.p25.length > 0) {
             lines.push({
                 id: '25th Percentile',
-                color: '#6ee7b7',
+                color: 'var(--c-positive-bright)',
                 data: dedupePoints(percentiles.p25.map(p => ({
                     x: p.year,
                     y: p.netWorth,
@@ -86,7 +88,7 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
         if (percentiles.p75.length > 0) {
             lines.push({
                 id: '75th Percentile',
-                color: '#6ee7b7',
+                color: 'var(--c-positive-bright)',
                 data: dedupePoints(percentiles.p75.map(p => ({
                     x: p.year,
                     y: p.netWorth,
@@ -98,7 +100,7 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
         if (percentiles.p10.length > 0) {
             lines.push({
                 id: '10th Percentile',
-                color: '#a7f3d0',
+                color: 'var(--c-positive-bright)',
                 data: dedupePoints(percentiles.p10.map(p => ({
                     x: p.year,
                     y: p.netWorth,
@@ -110,7 +112,7 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
         if (percentiles.p90.length > 0) {
             lines.push({
                 id: '90th Percentile',
-                color: '#a7f3d0',
+                color: 'var(--c-positive-bright)',
                 data: dedupePoints(percentiles.p90.map(p => ({
                     x: p.year,
                     y: p.netWorth,
@@ -122,7 +124,7 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
         if (deterministicLine && deterministicLine.length > 0) {
             lines.push({
                 id: 'Deterministic',
-                color: '#f59e0b',
+                color: 'var(--c-warning-soft)',
                 data: dedupePoints(deterministicLine.map(p => ({
                     x: p.year,
                     y: p.netWorth,
@@ -134,7 +136,7 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
         if (bestCase && bestCase.timeline.length > 0) {
             lines.push({
                 id: 'Best Run',
-                color: '#3b82f6',
+                color: 'var(--c-accent-soft)',
                 data: dedupePoints(bestCase.timeline.map(year => ({
                     x: year.year,
                     y: calculateNetWorth(year.accounts),
@@ -146,7 +148,7 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
         if (worstCase && worstCase.timeline.length > 0) {
             lines.push({
                 id: 'Worst Run',
-                color: '#ef4444',
+                color: 'var(--c-negative-soft)',
                 data: dedupePoints(worstCase.timeline.map(year => ({
                     x: year.year,
                     y: calculateNetWorth(year.accounts),
@@ -262,13 +264,13 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
                 {/* Outer band (10th-90th) */}
                 <path
                     d={createPath(areaData.p10_p90)}
-                    fill="#10b981"
+                    fill="var(--color-chart-money)"
                     fillOpacity={0.1}
                 />
                 {/* Inner band (25th-75th) */}
                 <path
                     d={createPath(areaData.p25_p75)}
-                    fill="#10b981"
+                    fill="var(--color-chart-money)"
                     fillOpacity={0.15}
                 />
             </g>
@@ -277,8 +279,8 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
 
     if (chartData.length === 0 || chartData[0].data.length === 0) {
         return (
-            <div ref={containerRef} className="flex items-center justify-center h-64 border-2 border-dashed border-gray-700 rounded-xl">
-                <p className="text-gray-400">Run simulation to see results</p>
+            <div ref={containerRef} className="flex items-center justify-center h-64 border-2 border-dashed border-border-default rounded-xl">
+                <p className="text-content-muted">Run simulation to see results</p>
             </div>
         );
     }
@@ -287,15 +289,15 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
     if (!isMeasured) {
         return (
             <div ref={containerRef} style={{ height }} className="flex items-center justify-center">
-                <p className="text-gray-400 text-sm">Loading chart...</p>
+                <p className="text-content-muted text-sm">Loading chart...</p>
             </div>
         );
     }
 
     if (isNarrow) {
         return (
-            <div ref={containerRef} style={{ height }} className="flex items-center justify-center border-2 border-dashed border-gray-700 rounded-xl">
-                <p className="text-gray-400 text-sm text-center px-4">Expand window to view chart</p>
+            <div ref={containerRef} style={{ height }} className="flex items-center justify-center border-2 border-dashed border-border-default rounded-xl">
+                <p className="text-content-muted text-sm text-center px-4">Expand window to view chart</p>
             </div>
         );
     }
@@ -303,6 +305,7 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
     return (
         <div ref={containerRef} style={{ height }}>
             <ResponsiveLine
+                key={themeKey}
                 data={chartData}
                 margin={{ top: 20, right: 110, bottom: 50, left: 80 }}
                 xScale={{ type: 'linear', min: 'auto', max: 'auto' }}
@@ -335,7 +338,7 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
                 }}
                 enableGridX={false}
                 enableGridY={true}
-                colors={(d) => d.color}
+                colors={(d) => resolve(d.color)}
                 lineWidth={2}
                 enablePoints={false}
                 useMesh={true}
@@ -377,23 +380,23 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
                 ]}
                 theme={{
                     axis: {
-                        ticks: { text: { fill: '#9ca3af', fontSize: 11 } },
-                        legend: { text: { fill: '#9ca3af', fontSize: 12 } },
+                        ticks: { text: { fill: 'var(--c-content-muted)', fontSize: 11 } },
+                        legend: { text: { fill: 'var(--c-content-muted)', fontSize: 12 } },
                     },
-                    grid: { line: { stroke: '#374151', strokeWidth: 1 } },
-                    crosshair: { line: { stroke: '#10b981', strokeWidth: 1 } },
-                    legends: { text: { fill: '#9ca3af', fontSize: 11 } },
+                    grid: { line: { stroke: 'var(--c-border-default)', strokeWidth: 1 } },
+                    crosshair: { line: { stroke: 'var(--color-chart-money)', strokeWidth: 1 } },
+                    legends: { text: { fill: 'var(--c-content-muted)', fontSize: 11 } },
                     tooltip: { container: { zIndex: 9999 } },
                 }}
                 tooltip={({ point }) => (
-                    <div className="bg-gray-800 border border-gray-700 px-3 py-2 rounded shadow-xl text-sm max-w-[300px]">
-                        <div className="font-medium text-gray-300 truncate">{point.seriesId}</div>
-                        <div className="text-gray-400">
+                    <div className="bg-surface-overlay border border-border-default px-3 py-2 rounded shadow-xl text-sm max-w-[300px]">
+                        <div className="font-medium text-content-default truncate">{point.seriesId}</div>
+                        <div className="text-content-muted">
                             Year: <span className="text-white">{point.data.x as number}</span>
                         </div>
-                        <div className="text-gray-400">
+                        <div className="text-content-muted">
                             Net Worth:{' '}
-                            <span className="text-green-400 font-mono">
+                            <span className="text-positive font-mono">
                                 {formatCompactCurrency(point.data.y as number, { forceExact })}
                             </span>
                         </div>

@@ -17,6 +17,7 @@ import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea
 import AddAccountModal from "../../components/Objects/Accounts/AddAccountModal";
 import ImportBalancesModal from "./ImportBalancesModal";
 import { ObjectsIcicleChart, tailwindToCssVar, getDistributedColors } from "../../components/Charts/ObjectsIcicleChart";
+import { Panel } from "../../components/Layout/Primitives";
 
 const AccountList = ({ type }: { type: any }) => {
     const { accounts } = useContext(AccountContext);
@@ -59,7 +60,7 @@ const AccountList = ({ type }: { type: any }) => {
                                     >
                                         <div
                                             {...provided.dragHandleProps}
-                                            className="absolute -left-3 top-2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-2 text-green-200"
+                                            className="absolute -left-3 top-2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-2 text-positive-bright"
                                         >
                                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                                 <line x1="8" y1="6" x2="21" y2="6"></line>
@@ -164,7 +165,7 @@ export default function AccountTab() {
 
         return {
             id: "Net Worth",
-            color: "#10b981", // Root node color
+            color: "var(--color-chart-money)", // Root node color
             children: categoryChildren,
             netWorth: totalNetWorth,
             totalAssets: totalAssets  // For percentage calculations (avoids issues when debt exists)
@@ -184,7 +185,7 @@ export default function AccountTab() {
                 <AccountList type={SavedAccount} />
                 <button
                     onClick={() => setIsModalOpen(true)}
-                    className="bg-green-600 p-4 rounded-xl text-white font-bold mt-4 hover:bg-green-700 transition-colors"
+                    className="bg-positive-solid p-4 rounded-xl text-white font-bold mt-4 hover:bg-positive-strong transition-colors"
                 >
                     + Add Cash
                 </button>
@@ -202,13 +203,13 @@ export default function AccountTab() {
                 <div className="flex gap-2 mt-4">
                     <button
                         onClick={() => setIsModalOpen(true)}
-                        className="bg-green-600 p-4 rounded-xl text-white font-bold hover:bg-green-700 transition-colors"
+                        className="bg-positive-solid p-4 rounded-xl text-white font-bold hover:bg-positive-strong transition-colors"
                     >
                         + Add Investment
                     </button>
                     <button
                         onClick={() => setShowESPPModal(true)}
-                        className="bg-emerald-700 p-4 rounded-xl text-white font-bold hover:bg-emerald-600 transition-colors"
+                        className="bg-positive-strong p-4 rounded-xl text-white font-bold hover:bg-positive-solid transition-colors"
                     >
                         + Add ESPP
                     </button>
@@ -230,7 +231,7 @@ export default function AccountTab() {
                 <AccountList type={PropertyAccount} />
                 <button
                     onClick={() => setIsModalOpen(true)}
-                    className="bg-green-600 p-4 rounded-xl text-white font-bold mt-4 hover:bg-green-700 transition-colors"
+                    className="bg-positive-solid p-4 rounded-xl text-white font-bold mt-4 hover:bg-positive-strong transition-colors"
                 >
                     + Add Property
                 </button>
@@ -246,7 +247,7 @@ export default function AccountTab() {
                 <AccountList type={DebtAccount} />
                 <button
                     onClick={() => setIsModalOpen(true)}
-                    className="bg-green-600 p-4 rounded-xl text-white font-bold mt-4 hover:bg-green-700 transition-colors"
+                    className="bg-positive-solid p-4 rounded-xl text-white font-bold mt-4 hover:bg-positive-strong transition-colors"
                 >
                     + Add Debt
                 </button>
@@ -260,17 +261,17 @@ export default function AccountTab() {
     };
 
     return (
-        <div className="w-full min-h-full flex bg-gray-950 justify-center pt-6 pb-24">
+        <div className="w-full min-h-full flex bg-surface-base justify-center pt-6 pb-24">
             <div className="w-full px-4 sm:px-8 max-w-screen-2xl">
 
-                <div className="space-y-4 mb-4 p-4 bg-gray-900 rounded-xl border border-gray-800">
-                    <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
+                <Panel className="space-y-4 mb-4">
+                    <div className="flex justify-between items-center mb-4 border-b border-border-default pb-2">
                         <h2 className="text-xl font-bold text-white">
                             Account Amounts
                         </h2>
                         <button
                             onClick={() => setShowImportModal(true)}
-                            className="text-sm font-semibold text-green-300 border border-green-700/60 rounded-lg px-3 py-1.5 hover:bg-green-900/30 transition-colors"
+                            className="text-sm font-semibold text-positive-bright border border-positive-strong/60 rounded-lg px-3 py-1.5 hover:bg-positive-tint/30 transition-colors"
                         >
                             Import balances
                         </button>
@@ -286,9 +287,9 @@ export default function AccountTab() {
                             valueFormat=">-$0,.0f"
                         />
                     )}
-                </div>
+                </Panel>
 
-                <div className="bg-gray-900 rounded-lg mb-1 flex border border-gray-800 overflow-x-auto custom-scrollbar">
+                <Panel padding="none" className="rounded-lg mb-1 flex overflow-x-auto custom-scrollbar">
                     {tabs.map((tab) => (
                         <button
                             key={tab}
@@ -296,16 +297,16 @@ export default function AccountTab() {
                             aria-selected={activeTab === tab}
                             className={`flex-1 min-w-fit font-semibold px-4 py-3 transition-colors duration-200 whitespace-nowrap ${
                                 activeTab === tab
-                                    ? "text-green-300 bg-gray-900 border-b-2 border-green-300"
-                                    : "text-gray-400 hover:bg-gray-900 hover:text-white"
+                                    ? "text-positive-bright bg-surface-raised border-b-2 border-positive-bright"
+                                    : "text-content-muted hover:bg-surface-raised hover:text-white"
                             }`}
                             onClick={() => setActiveTab(tab)}
                         >
                             {tab}
                         </button>
                     ))}
-                </div>
-                <div data-sub-tab-content className="bg-[#09090b] border border-gray-800 rounded-xl min-h-100 mb-4">
+                </Panel>
+                <div data-sub-tab-content className="bg-[#09090b] border border-border-subtle rounded-xl min-h-100 mb-4">
                     {tabContent[activeTab]}
                 </div>
             </div>

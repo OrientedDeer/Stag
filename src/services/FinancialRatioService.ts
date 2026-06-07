@@ -583,11 +583,11 @@ export function calculateRatioTrends(simulation: SimulationYear[]): RatioTrend[]
  */
 export function getRatingColor(rating: RatingLevel): string {
   switch (rating) {
-    case 'excellent': return 'text-green-400';
-    case 'good': return 'text-blue-400';
-    case 'fair': return 'text-yellow-400';
-    case 'poor': return 'text-orange-400';
-    case 'critical': return 'text-red-400';
+    case 'excellent': return 'text-positive';
+    case 'good': return 'text-info';
+    case 'fair': return 'text-warning';
+    case 'poor': return 'text-cat-orange';
+    case 'critical': return 'text-negative';
   }
 }
 
@@ -596,11 +596,11 @@ export function getRatingColor(rating: RatingLevel): string {
  */
 export function getRatingBgColor(rating: RatingLevel): string {
   switch (rating) {
-    case 'excellent': return 'bg-green-500/20 border-green-500/30';
-    case 'good': return 'bg-blue-500/20 border-blue-500/30';
-    case 'fair': return 'bg-yellow-500/20 border-yellow-500/30';
-    case 'poor': return 'bg-orange-500/20 border-orange-500/30';
-    case 'critical': return 'bg-red-500/20 border-red-500/30';
+    case 'excellent': return 'bg-positive-soft/20 border-positive-soft/30';
+    case 'good': return 'bg-info-tint/20 border-info-strong/30';
+    case 'fair': return 'bg-warning-soft/20 border-warning-soft/30';
+    case 'poor': return 'bg-cat-orange-soft/20 border-cat-orange-soft/30';
+    case 'critical': return 'bg-negative-soft/20 border-negative-soft/30';
   }
 }
 

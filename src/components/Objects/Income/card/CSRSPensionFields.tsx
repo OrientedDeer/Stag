@@ -79,12 +79,12 @@ export function CSRSPensionFields({
                 tooltip="Age 55 with 30+ years, age 60 with 20+ years, or age 62 with 5+ years for full benefits"
             />
 
-            <div className="col-span-full bg-green-900/20 border border-green-700/50 rounded-lg p-4 text-sm">
-                <div className="font-semibold text-green-200 mb-2">CSRS Pension Estimate</div>
-                <div className="text-gray-300 space-y-1">
+            <div className="col-span-full bg-positive-tint/20 border border-positive-strong/50 rounded-lg p-4 text-sm">
+                <div className="font-semibold text-positive-bright mb-2">CSRS Pension Estimate</div>
+                <div className="text-content-default space-y-1">
                     <div className="flex justify-between">
                         <span>Estimated Annual Benefit:</span>
-                        <span className="font-bold text-green-300">
+                        <span className="font-bold text-positive-bright">
                             {income.autoCalculateHigh3
                                 ? 'Auto Calculated'
                                 : `$${calculateCSRSBasicBenefit(
@@ -95,7 +95,7 @@ export function CSRSPensionFields({
                     </div>
                     <div className="flex justify-between">
                         <span>High-3:</span>
-                        <span className="text-green-200">
+                        <span className="text-positive-bright">
                             {income.autoCalculateHigh3
                                 ? 'Auto Calculated'
                                 : `$${income.high3Salary.toLocaleString(undefined, {
@@ -105,7 +105,7 @@ export function CSRSPensionFields({
                     </div>
                     <div className="flex justify-between">
                         <span>Benefits Start:</span>
-                        <span className="text-green-200">{birthYear + income.retirementAge}</span>
+                        <span className="text-positive-bright">{birthYear + income.retirementAge}</span>
                     </div>
                     <div className="flex justify-between">
                         <span>Eligibility:</span>
@@ -113,8 +113,8 @@ export function CSRSPensionFields({
                             className={
                                 checkCSRSEligibility(income.retirementAge, income.yearsOfService)
                                     .eligible
-                                    ? 'text-green-300'
-                                    : 'text-yellow-300'
+                                    ? 'text-positive-bright'
+                                    : 'text-warning-bright'
                             }
                         >
                             {
@@ -124,7 +124,7 @@ export function CSRSPensionFields({
                         </span>
                     </div>
                 </div>
-                <div className="text-xs text-gray-400 mt-2">
+                <div className="text-xs text-content-muted mt-2">
                     Formula: 1.5%x5yr + 1.75%x5yr + 2%xremaining (max 80% of High-3).
                     {income.autoCalculateHigh3
                         ? ' High-3 will be calculated from your top 3 salary years at retirement.'

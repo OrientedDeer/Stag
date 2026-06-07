@@ -252,10 +252,10 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="add-income-modal-title"
-                className="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto text-white w-full max-w-lg"
+                className="bg-surface-raised border border-border-subtle rounded-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto text-white w-full max-w-lg"
                 onKeyDown={handleKeyDown}
             >
-                <h2 id="add-income-modal-title" className="text-xl font-bold mb-6 border-b border-gray-800 pb-3">
+                <h2 id="add-income-modal-title" className="text-xl font-bold mb-6 border-b border-border-subtle pb-3">
                   {step === 'select' ? 'Select Income Type' : `New ${selectedType.name.replace('Income', '')}`}
                 </h2>
 
@@ -355,16 +355,16 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                         tooltip="When this income ends"
                                     />
                                     {dateError && (
-                                        <div className="col-span-full text-red-400 text-xs">
+                                        <div className="col-span-full text-negative text-xs">
                                             {dateError}
                                         </div>
                                     )}
                                 </>
                             )}
                             {selectedType === CurrentSocialSecurityIncome && (
-                                <div className="col-span-3 bg-gray-800/50 border border-gray-700 rounded-lg p-4 text-sm">
-                                    <div className="font-semibold text-gray-200 mb-2">Current Social Security Benefits</div>
-                                    <div className="text-gray-400 space-y-1">
+                                <div className="col-span-3 bg-surface-overlay/50 border border-border-default rounded-lg p-4 text-sm">
+                                    <div className="font-semibold text-content-emphasis mb-2">Current Social Security Benefits</div>
+                                    <div className="text-content-muted space-y-1">
                                         <p className="wrap-break-word">• For disability (SSDI), survivor, or retirement benefits you're already receiving</p>
                                         <p className="wrap-break-word">• Enter your current monthly benefit amount</p>
                                         <p className="wrap-break-word">• Amount will automatically adjust with COLA (Cost of Living Adjustment)</p>
@@ -379,20 +379,20 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                         onChange={(val) => updateForm('claimingAge', val)}
                                         onBlur={handleClaimingAgeBlur}
                                     />
-                                    <div className="col-span-2 bg-blue-900/20 border border-blue-700/50 rounded-lg p-3 text-sm">
+                                    <div className="col-span-2 bg-info-tint/20 border border-info-strong/50 rounded-lg p-3 text-sm">
                                         <div className="flex justify-between items-center">
-                                            <span className="text-gray-300">Benefit Adjustment:</span>
-                                            <span className="font-bold text-blue-300">
+                                            <span className="text-content-default">Benefit Adjustment:</span>
+                                            <span className="font-bold text-info-bright">
                                                 {(SocialSecurityIncome.calculateBenefitAdjustment(form.claimingAge) * 100).toFixed(1)}% of FRA
                                             </span>
                                         </div>
                                         <div className="flex justify-between items-center mt-1">
-                                            <span className="text-gray-300">Benefits Start:</span>
-                                            <span className="font-medium text-blue-200">
+                                            <span className="text-content-default">Benefits Start:</span>
+                                            <span className="font-medium text-info-bright">
                                                 {pensionBirthYear + form.claimingAge}
                                             </span>
                                         </div>
-                                        <div className="text-xs text-gray-400 mt-2">
+                                        <div className="text-xs text-content-muted mt-2">
                                             {form.claimingAge < 67
                                                 ? "Early claiming reduces benefits but you receive them longer."
                                                 : form.claimingAge > 67
@@ -434,9 +434,9 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                         {/* Info boxes for Future Social Security - outside grid to avoid stretching */}
                         {selectedType === FutureSocialSecurityIncome && (
                             <div className="space-y-3 mt-4 max-w-2xl">
-                                <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-4">
-                                    <div className="text-sm font-semibold text-blue-200 mb-2">Automatic Calculation</div>
-                                    <div className="text-xs text-gray-300 space-y-1">
+                                <div className="bg-info-tint/20 border border-info-strong/50 rounded-lg p-4">
+                                    <div className="text-sm font-semibold text-info-bright mb-2">Automatic Calculation</div>
+                                    <div className="text-xs text-content-default space-y-1">
                                         <p className="wrap-break-word">- Benefit calculated from your 35 highest earning years</p>
                                         <p className="wrap-break-word">- Uses SSA wage indexing and bend points formula</p>
                                         <p className="wrap-break-word">- Claiming at {form.claimingAge}: {(getClaimingAdjustment(form.claimingAge) * 100).toFixed(1)}% of FRA benefit</p>
@@ -444,7 +444,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                         <p className="wrap-break-word">- Benefits end at life expectancy (age {getLifeExpectancy(assumptions.milestones)})</p>
                                     </div>
                                 </div>
-                                <div className="text-sm text-gray-400 wrap-break-word">
+                                <div className="text-sm text-content-muted wrap-break-word">
                                     Future retirement benefits will be automatically calculated during simulation based on your work income history.
                                     No need to enter an amount - it will be computed using the official SSA formula.
                                 </div>
@@ -457,7 +457,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                     <button
                         type="button"
                         onClick={handleCancelOrBack}
-                        className="px-5 py-2.5 rounded-lg font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+                        className="px-5 py-2.5 rounded-lg font-medium text-content-muted hover:text-white hover:bg-surface-overlay transition-colors"
                     >
                         {step === "details" ? "Back" : "Cancel"}
                     </button>
@@ -466,7 +466,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                             type="submit"
                             disabled={!form.name.trim() || !!dateError}
                             title={!form.name.trim() ? "Enter a name" : dateError ? "Fix date error" : undefined}
-                            className="px-5 py-2.5 rounded-lg font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            className="px-5 py-2.5 rounded-lg font-medium bg-positive-solid text-white hover:bg-positive-strong disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                             Add Income
                         </button>

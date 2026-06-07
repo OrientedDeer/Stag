@@ -14,28 +14,28 @@ interface AlertBannerProps {
 
 const severityStyles: Record<AlertSeverity, { bg: string; border: string; text: string; icon: string }> = {
     warning: {
-        bg: 'bg-amber-900/30',
-        border: 'border-amber-600/50',
-        text: 'text-amber-200',
-        icon: 'text-amber-400',
+        bg: 'bg-warning-tint/30',
+        border: 'border-warning-solid/50',
+        text: 'text-warning-bright',
+        icon: 'text-warning',
     },
     info: {
-        bg: 'bg-blue-900/30',
-        border: 'border-blue-600/50',
-        text: 'text-blue-200',
-        icon: 'text-blue-400',
+        bg: 'bg-info-tint/30',
+        border: 'border-info-strong/50',
+        text: 'text-info-bright',
+        icon: 'text-info',
     },
     error: {
-        bg: 'bg-red-900/30',
-        border: 'border-red-600/50',
-        text: 'text-red-200',
-        icon: 'text-red-400',
+        bg: 'bg-negative-tint/30',
+        border: 'border-negative-solid/50',
+        text: 'text-negative-bright',
+        icon: 'text-negative',
     },
     success: {
-        bg: 'bg-emerald-900/30',
-        border: 'border-emerald-600/50',
-        text: 'text-emerald-200',
-        icon: 'text-emerald-400',
+        bg: 'bg-positive-tint/30',
+        border: 'border-positive-solid/50',
+        text: 'text-positive-bright',
+        icon: 'text-positive',
     },
 };
 

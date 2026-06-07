@@ -12,16 +12,16 @@ interface InputGroupProps {
 
 export const InputGroup: React.FC<InputGroupProps> = ({ label, children, className = '', id, error, tooltip }) => (
   <div className="flex flex-col">
-    <div className={`bg-gray-900 border rounded-md px-3 py-2 flex flex-col justify-center focus-within:ring-1 transition-all ${error ? 'border-red-500 focus-within:ring-red-400' : 'border-gray-700 focus-within:ring-green-300'} ${className}`}>
+    <div className={`bg-surface-raised border rounded-md px-3 py-2 flex flex-col justify-center focus-within:ring-1 transition-all ${error ? 'border-negative-soft focus-within:ring-negative' : 'border-border-default focus-within:ring-positive-bright'} ${className}`}>
       {label && (
-        <label htmlFor={id} className="text-xs sm:text-sm text-gray-400 font-medium mb-0.5 uppercase tracking-wide leading-tight flex items-center gap-1.5" title={label}>
+        <label htmlFor={id} className="text-xs sm:text-sm text-content-muted font-medium mb-0.5 uppercase tracking-wide leading-tight flex items-center gap-1.5" title={label}>
           {label}
           {tooltip && <Tooltip text={tooltip} />}
         </label>
       )}
       {children}
     </div>
-    {error && <span className="text-red-400 text-xs mt-1">{error}</span>}
+    {error && <span className="text-negative text-xs mt-1">{error}</span>}
   </div>
 );
 
@@ -52,7 +52,7 @@ export const StyledInput: React.FC<StyledInputProps> = ({ label, id: providedId,
     <InputGroup label={label} className={className} id={id} error={error} tooltip={tooltip}>
       <input
         id={id}
-        className="bg-transparent border-none outline-none text-white text-md font-semibold placeholder-gray-600 w-full p-0 m-0 disabled:opacity-50"
+        className="bg-transparent border-none outline-none text-white text-md font-semibold placeholder-content-faint w-full p-0 m-0 disabled:opacity-50"
         {...props}
       />
     </InputGroup>
@@ -77,7 +77,7 @@ export const StyledSelect: React.FC<StyledSelectProps> = ({ label, options, id: 
         {...props}
       >
         {options.map((opt) => (
-          <option key={opt} value={opt} className="bg-gray-950 text-white">
+          <option key={opt} value={opt} className="bg-surface-base text-white">
             {opt}
           </option>
         ))}

@@ -73,18 +73,18 @@ export function ESPPFields({ income, onFieldUpdate, esppAccounts }: ESPPFieldsPr
                             tooltip="Account where ESPP shares will be deposited."
                         />
                     ) : (
-                        <div className="col-span-full bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-3 text-xs text-yellow-300">
+                        <div className="col-span-full bg-warning-tint/30 border border-warning-strong/50 rounded-lg p-3 text-xs text-warning-bright">
                             <span className="font-semibold">No ESPP Account</span>
-                            <p className="text-yellow-400/80 mt-1">
+                            <p className="text-warning/80 mt-1">
                                 Create an ESPP account in the Accounts tab to track your ESPP
                                 purchases.
                             </p>
                         </div>
                     )}
                     {esppAccounts.length > 0 && !income.esppAccountId && (
-                        <div className="col-span-full bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-3 text-xs text-yellow-300">
+                        <div className="col-span-full bg-warning-tint/30 border border-warning-strong/50 rounded-lg p-3 text-xs text-warning-bright">
                             <span className="font-semibold">ESPP Account Not Linked</span>
-                            <p className="text-yellow-400/80 mt-1">
+                            <p className="text-warning/80 mt-1">
                                 Select an ESPP account above to track your purchases.
                             </p>
                         </div>

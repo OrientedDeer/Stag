@@ -46,7 +46,7 @@ export default function BackupReminder({ collapsed = false }: BackupReminderProp
                 onClick={() => setModalOpen(true)}
                 title={tooltip}
                 aria-label={tooltip}
-                className={`group flex items-center gap-2 w-full mb-1 px-2 py-1.5 rounded text-xs transition-colors bg-yellow-900/30 hover:bg-yellow-900/50 border border-yellow-700/50 text-yellow-300 ${collapsed ? 'justify-center' : ''}`}
+                className={`group flex items-center gap-2 w-full mb-1 px-2 py-1.5 rounded text-xs transition-colors bg-warning-tint/30 hover:bg-warning-tint/50 border border-warning-strong/50 text-warning-bright ${collapsed ? 'justify-center' : ''}`}
             >
                 <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M5 19h14a2 2 0 001.84-2.75L13.74 4a2 2 0 00-3.48 0l-7.1 12.25A2 2 0 005 19z" />

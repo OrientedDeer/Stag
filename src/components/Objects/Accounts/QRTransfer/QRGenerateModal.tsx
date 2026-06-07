@@ -54,14 +54,14 @@ export default function QRGenerateModal({ isOpen, onClose, backupData }: QRGener
                 role="dialog"
                 aria-modal="true"
                 onKeyDown={handleKeyDown}
-                className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl p-4 sm:p-8 w-full max-w-[90vw] sm:max-w-xl md:max-w-2xl"
+                className="bg-surface-raised border border-border-default rounded-2xl shadow-2xl p-4 sm:p-8 w-full max-w-[90vw] sm:max-w-xl md:max-w-2xl"
             >
                 {/* Header */}
-                <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-3">
+                <div className="flex justify-between items-center mb-4 border-b border-border-default pb-3">
                     <h3 className="text-lg sm:text-xl font-bold text-white">Share via QR Code</h3>
                     <button
                         onClick={onClose}
-                        className="text-gray-400 hover:text-white transition-colors"
+                        className="text-content-muted hover:text-white transition-colors"
                     >
                         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -70,14 +70,14 @@ export default function QRGenerateModal({ isOpen, onClose, backupData }: QRGener
                 </div>
 
                 {exceedsLimit ? (
-                    <div className="bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-4 mb-4">
+                    <div className="bg-warning-tint/30 border border-warning-strong/50 rounded-lg p-4 mb-4">
                         <div className="flex items-start gap-3">
-                            <svg className="w-6 h-6 text-yellow-300 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg className="w-6 h-6 text-warning-bright shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                             </svg>
                             <div>
-                                <h4 className="text-yellow-300 font-semibold">Data Too Large for QR Code</h4>
-                                <p className="text-yellow-300/80 text-sm mt-1">
+                                <h4 className="text-warning-bright font-semibold">Data Too Large for QR Code</h4>
+                                <p className="text-warning-bright/80 text-sm mt-1">
                                     Your data is {sizeKB} KB (compressed), which exceeds the QR code limit.
                                     Please use the "Export Backup" button to save your data as a file instead.
                                 </p>
@@ -97,12 +97,12 @@ export default function QRGenerateModal({ isOpen, onClose, backupData }: QRGener
                         </div>
 
                         {/* Data Size */}
-                        <p className="text-gray-400 text-sm text-center mb-2">
+                        <p className="text-content-muted text-sm text-center mb-2">
                             Data size: {sizeKB} KB (compressed)
                         </p>
 
                         {/* Instructions */}
-                        <p className="text-gray-300 text-sm text-center mb-4">
+                        <p className="text-content-default text-sm text-center mb-4">
                             Point another device's camera at this QR code to transfer your data.
                         </p>
                     </>
@@ -113,14 +113,14 @@ export default function QRGenerateModal({ isOpen, onClose, backupData }: QRGener
                     {!exceedsLimit && (
                         <button
                             onClick={handleDownload}
-                            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
+                            className="px-4 py-2 bg-surface-input hover:bg-surface-hover text-white rounded-lg font-medium transition-colors"
                         >
                             Download Image
                         </button>
                     )}
                     <button
                         onClick={onClose}
-                        className="px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg font-medium transition-colors"
+                        className="px-4 py-2 bg-positive-solid hover:bg-positive-soft text-white rounded-lg font-medium transition-colors"
                     >
                         Close
                     </button>

@@ -30,7 +30,7 @@ function getAccountIconBg(account: AnyAccount): string {
     if (account instanceof ESPPAccount || account instanceof InvestedAccount) return ACCOUNT_COLORS_BACKGROUND["Invested"];
     if (account instanceof PropertyAccount) return ACCOUNT_COLORS_BACKGROUND["Property"];
     if (account instanceof DebtAccount) return ACCOUNT_COLORS_BACKGROUND["Debt"];
-    return "bg-gray-500";
+    return "bg-surface-muted";
 }
 
 function AccountCard({ account }: { account: AnyAccount }): ReactElement {
@@ -109,7 +109,7 @@ function AccountCard({ account }: { account: AnyAccount }): ReactElement {
         <>
             <button
                 onClick={() => setIsHistoryOpen(true)}
-                className="text-gray-400 hover:text-white transition-colors p-1"
+                className="text-content-muted hover:text-white transition-colors p-1"
                 aria-label={`Edit ${account.name} balance history`}
             >
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
@@ -134,7 +134,7 @@ function AccountCard({ account }: { account: AnyAccount }): ReactElement {
                 headerActions={headerActions}
                 ariaLabelType="account"
             >
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 bg-[#18181b] p-6 rounded-xl border border-gray-800">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 bg-[var(--c-surface-raised)] p-6 rounded-xl border border-border-subtle">
                     <CurrencyInput
                         id={`${account.id}-amount`}
                         label="Current Amount"
@@ -385,9 +385,9 @@ function PropertyAccountFields({ account, onFieldUpdate, linkedAccountName }: Pr
                         onChange={(val) => onFieldUpdate("startingLoanBalance", val)}
                     />
                     {!linkedAccountName && (
-                        <div className="col-span-full bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-3 text-xs text-yellow-300">
+                        <div className="col-span-full bg-warning-tint/30 border border-warning-strong/50 rounded-lg p-3 text-xs text-warning-bright">
                             <span className="font-semibold">Warning: Missing mortgage expense</span>
-                            <p className="text-yellow-400/80 mt-1">Mortgage payments won't be tracked. Try deleting and re-adding this property.</p>
+                            <p className="text-warning/80 mt-1">Mortgage payments won't be tracked. Try deleting and re-adding this property.</p>
                         </div>
                     )}
                 </>
@@ -412,9 +412,9 @@ function DebtAccountFields({ account, onFieldUpdate, linkedAccountName }: DebtAc
                 onChange={(val) => onFieldUpdate("apr", val)}
             />
             {!linkedAccountName && (
-                <div className="col-span-full bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-3 text-xs text-yellow-300">
+                <div className="col-span-full bg-warning-tint/30 border border-warning-strong/50 rounded-lg p-3 text-xs text-warning-bright">
                     <span className="font-semibold">Warning: Missing loan expense</span>
-                    <p className="text-yellow-400/80 mt-1">Loan payments won't be tracked. Try deleting and re-adding this debt.</p>
+                    <p className="text-warning/80 mt-1">Loan payments won't be tracked. Try deleting and re-adding this debt.</p>
                 </div>
             )}
         </>
@@ -488,7 +488,7 @@ function ESPPAccountFields({ account, onFieldUpdate, onAddLot, onEditLot, onDele
             <ESPPHoldingsSummary account={account} />
             <ESPPLotsList account={account} onAddLot={onAddLot} onEditLot={onEditLot} onDeleteLot={onDeleteLot} />
 
-            <div className="col-span-full text-sm text-gray-400">
+            <div className="col-span-full text-sm text-content-muted">
                 ESPP purchases are configured in the associated Work Income. Link this account to an income source with ESPP enabled to track future purchases.
             </div>
         </>
@@ -498,26 +498,26 @@ function ESPPAccountFields({ account, onFieldUpdate, onAddLot, onEditLot, onDele
 function ESPPHoldingsSummary({ account }: { account: ESPPAccount }): ReactElement {
     const counts = account.getLotCounts();
     return (
-        <div className="col-span-full bg-gray-800/50 border border-gray-700 rounded-lg p-4">
+        <div className="col-span-full bg-surface-overlay/50 border border-border-default rounded-lg p-4">
             <h4 className="text-sm font-semibold text-white mb-3">ESPP Holdings Summary</h4>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                 <div>
-                    <div className="text-gray-400">Total Lots</div>
+                    <div className="text-content-muted">Total Lots</div>
                     <div className="text-white font-medium">{account.lots.length}</div>
                 </div>
                 <div>
-                    <div className="text-gray-400">Total Shares</div>
+                    <div className="text-content-muted">Total Shares</div>
                     <div className="text-white font-medium">{account.totalShares.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
                 </div>
                 <div>
-                    <div className="text-gray-400">Cost Basis</div>
+                    <div className="text-content-muted">Cost Basis</div>
                     <div className="text-white font-medium">
                         {account.totalCostBasis.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
                     </div>
                 </div>
                 <div>
-                    <div className="text-gray-400">Unrealized Gain</div>
-                    <div className={`font-medium ${account.unrealizedGains >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    <div className="text-content-muted">Unrealized Gain</div>
+                    <div className={`font-medium ${account.unrealizedGains >= 0 ? 'text-positive' : 'text-negative'}`}>
                         {account.unrealizedGains.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
                         {account.totalCostBasis > 0 && (
                             <span className="text-xs ml-1">
@@ -527,7 +527,7 @@ function ESPPHoldingsSummary({ account }: { account: ESPPAccount }): ReactElemen
                     </div>
                 </div>
                 <div className="col-span-2">
-                    <div className="text-gray-400">Lot Status</div>
+                    <div className="text-content-muted">Lot Status</div>
                     <div className="text-white font-medium">
                         {counts.qualifying} qualifying, {counts.disqualifying} disqualifying
                     </div>
@@ -546,19 +546,19 @@ interface ESPPLotsListProps {
 
 function ESPPLotsList({ account, onAddLot, onEditLot, onDeleteLot }: ESPPLotsListProps): ReactElement {
     return (
-        <div className="col-span-full bg-gray-800/50 border border-gray-700 rounded-lg p-4">
+        <div className="col-span-full bg-surface-overlay/50 border border-border-default rounded-lg p-4">
             <div className="flex items-center justify-between mb-3">
                 <h4 className="text-sm font-semibold text-white">Individual Lots</h4>
                 <button
                     onClick={onAddLot}
-                    className="text-xs px-3 py-1.5 rounded-lg bg-green-600/20 text-green-400 hover:bg-green-600/30 transition-colors"
+                    className="text-xs px-3 py-1.5 rounded-lg bg-positive-solid/20 text-positive hover:bg-positive-solid/30 transition-colors"
                 >
                     + Add Lot
                 </button>
             </div>
 
             {account.lots.length === 0 ? (
-                <div className="text-gray-400 text-sm text-center py-4">
+                <div className="text-content-muted text-sm text-center py-4">
                     No lots yet. Add lots manually or link to a Work Income with ESPP enabled.
                 </div>
             ) : (
@@ -593,20 +593,20 @@ function ESPPLotRow({ lot, index, account, onEdit, onDelete }: ESPPLotRowProps):
     const purchaseDate = new Date(lot.purchaseDate);
 
     return (
-        <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-3">
+        <div className="bg-surface-raised/50 border border-border-default rounded-lg p-3">
             <div className="flex items-start justify-between">
                 <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                         <span className="text-white font-medium">Lot {index + 1}</span>
-                        <span className="text-gray-400">|</span>
-                        <span className="text-gray-300">{lot.shares.toLocaleString(undefined, { maximumFractionDigits: 2 })} shares</span>
-                        <span className="text-gray-400">@</span>
-                        <span className="text-gray-300">${lot.purchasePrice.toFixed(2)}/sh</span>
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${isQualifying ? 'bg-green-900/50 text-green-400' : 'bg-yellow-900/50 text-yellow-400'}`}>
+                        <span className="text-content-muted">|</span>
+                        <span className="text-content-default">{lot.shares.toLocaleString(undefined, { maximumFractionDigits: 2 })} shares</span>
+                        <span className="text-content-muted">@</span>
+                        <span className="text-content-default">${lot.purchasePrice.toFixed(2)}/sh</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${isQualifying ? 'bg-positive-tint/50 text-positive' : 'bg-warning-tint/50 text-warning'}`}>
                             {isQualifying ? 'Qualifying' : 'Disqualifying'}
                         </span>
                     </div>
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-content-subtle">
                         Grant: {grantDate.toLocaleDateString()} | Purchase: {purchaseDate.toLocaleDateString()} |
                         FMV@Grant: ${lot.fmvAtGrant.toFixed(2)} | FMV@Purchase: ${lot.fmvAtPurchase.toFixed(2)} |
                         Basis: {lot.totalCost.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
@@ -615,7 +615,7 @@ function ESPPLotRow({ lot, index, account, onEdit, onDelete }: ESPPLotRowProps):
                 <div className="flex gap-1 ml-2">
                     <button
                         onClick={onEdit}
-                        className="text-gray-400 hover:text-white p-1 transition-colors"
+                        className="text-content-muted hover:text-white p-1 transition-colors"
                         aria-label="Edit lot"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -625,7 +625,7 @@ function ESPPLotRow({ lot, index, account, onEdit, onDelete }: ESPPLotRowProps):
                     </button>
                     <button
                         onClick={onDelete}
-                        className="text-gray-400 hover:text-red-400 p-1 transition-colors"
+                        className="text-content-muted hover:text-negative p-1 transition-colors"
                         aria-label="Delete lot"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">

@@ -80,12 +80,12 @@ export function FERSPensionFields({
                 tooltip={`MRA is ${getFERSMRA(birthYear)} for your birth year. Age 62 with 5+ years or MRA with 30+ years for full benefits.`}
             />
 
-            <div className="col-span-full bg-green-900/20 border border-green-700/50 rounded-lg p-4 text-sm">
-                <div className="font-semibold text-green-200 mb-2">FERS Pension Estimate</div>
-                <div className="text-gray-300 space-y-1">
+            <div className="col-span-full bg-positive-tint/20 border border-positive-strong/50 rounded-lg p-4 text-sm">
+                <div className="font-semibold text-positive-bright mb-2">FERS Pension Estimate</div>
+                <div className="text-content-default space-y-1">
                     <div className="flex justify-between">
                         <span>Estimated Annual Benefit:</span>
-                        <span className="font-bold text-green-300">
+                        <span className="font-bold text-positive-bright">
                             {income.autoCalculateHigh3
                                 ? 'Auto Calculated'
                                 : `$${calculateFERSBasicBenefit(
@@ -97,7 +97,7 @@ export function FERSPensionFields({
                     </div>
                     <div className="flex justify-between">
                         <span>High-3:</span>
-                        <span className="text-green-200">
+                        <span className="text-positive-bright">
                             {income.autoCalculateHigh3
                                 ? 'Auto Calculated'
                                 : `$${income.high3Salary.toLocaleString(undefined, {
@@ -107,7 +107,7 @@ export function FERSPensionFields({
                     </div>
                     <div className="flex justify-between">
                         <span>Benefits Start:</span>
-                        <span className="text-green-200">{birthYear + income.retirementAge}</span>
+                        <span className="text-positive-bright">{birthYear + income.retirementAge}</span>
                     </div>
                     <div className="flex justify-between">
                         <span>Eligibility:</span>
@@ -118,8 +118,8 @@ export function FERSPensionFields({
                                     income.yearsOfService,
                                     birthYear
                                 ).eligible
-                                    ? 'text-green-300'
-                                    : 'text-yellow-300'
+                                    ? 'text-positive-bright'
+                                    : 'text-warning-bright'
                             }
                         >
                             {
@@ -132,7 +132,7 @@ export function FERSPensionFields({
                         </span>
                     </div>
                 </div>
-                <div className="text-xs text-gray-400 mt-2">
+                <div className="text-xs text-content-muted mt-2">
                     Formula:{' '}
                     {income.retirementAge >= 62 && income.yearsOfService >= 20 ? '1.1%' : '1%'} x
                     Years x High-3.

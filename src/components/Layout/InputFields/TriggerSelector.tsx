@@ -133,7 +133,7 @@ export function TriggerSelector({
 
     return (
         <div className="relative">
-            <span id={labelId} className="block text-sm font-medium text-gray-400 mb-1" title={tooltip}>
+            <span id={labelId} className="block text-sm font-medium text-content-muted mb-1" title={tooltip}>
                 {label}
             </span>
             <button
@@ -144,9 +144,9 @@ export function TriggerSelector({
                 onClick={() => setIsOpen(!isOpen)}
                 className={`
                     w-full text-left px-3 py-2 rounded-lg border transition-colors
-                    bg-gray-800 hover:bg-gray-750
-                    ${isOpen ? 'border-blue-500 ring-1 ring-blue-500' : 'border-gray-700 hover:border-gray-600'}
-                    ${mode === 'milestone' ? 'text-blue-400' : 'text-gray-300'}
+                    bg-surface-overlay hover:bg-surface-input
+                    ${isOpen ? 'border-accent-soft ring-1 ring-accent-soft' : 'border-border-default hover:border-border-strong'}
+                    ${mode === 'milestone' ? 'text-info' : 'text-content-default'}
                 `}
             >
                 <div className="flex items-center justify-between">
@@ -154,7 +154,7 @@ export function TriggerSelector({
                         {getDisplayText()}
                     </span>
                     <svg
-                        className={`w-4 h-4 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                        className={`w-4 h-4 text-content-subtle transition-transform ${isOpen ? 'rotate-180' : ''}`}
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -167,17 +167,17 @@ export function TriggerSelector({
             {isOpen && (
                 <div
                     ref={popupRef}
-                    className="absolute z-50 mt-1 w-64 bg-gray-900 border border-gray-700 rounded-lg shadow-xl"
+                    className="absolute z-50 mt-1 w-64 bg-surface-raised border border-border-default rounded-lg shadow-xl"
                 >
                     {/* Mode tabs */}
-                    <div className="flex border-b border-gray-700">
+                    <div className="flex border-b border-border-default">
                         <button
                             type="button"
                             onClick={() => handleModeChange('milestone')}
                             className={`flex-1 px-3 py-2 text-xs font-medium transition-colors
                                 ${mode === 'milestone'
-                                    ? 'bg-gray-800 text-white border-b-2 border-blue-500'
-                                    : 'text-gray-400 hover:text-gray-300 hover:bg-gray-800/50'
+                                    ? 'bg-surface-overlay text-white border-b-2 border-accent-soft'
+                                    : 'text-content-muted hover:text-content-default hover:bg-surface-overlay/50'
                                 }`}
                         >
                             Milestone
@@ -187,8 +187,8 @@ export function TriggerSelector({
                             onClick={() => handleModeChange('date')}
                             className={`flex-1 px-3 py-2 text-xs font-medium transition-colors
                                 ${mode === 'date'
-                                    ? 'bg-gray-800 text-white border-b-2 border-blue-500'
-                                    : 'text-gray-400 hover:text-gray-300 hover:bg-gray-800/50'
+                                    ? 'bg-surface-overlay text-white border-b-2 border-accent-soft'
+                                    : 'text-content-muted hover:text-content-default hover:bg-surface-overlay/50'
                                 }`}
                         >
                             Fixed Date
@@ -203,14 +203,14 @@ export function TriggerSelector({
                                 type="date"
                                 value={formatDateForInput(date)}
                                 onChange={(e) => handleDateInput(e.target.value)}
-                                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-300 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                className="w-full px-3 py-2 bg-surface-overlay border border-border-default rounded-lg text-content-default text-sm focus:border-accent-soft focus:ring-1 focus:ring-accent-soft"
                             />
                         )}
 
                         {mode === 'milestone' && (
                             <>
                                 {milestones.length === 0 ? (
-                                    <p className="text-xs text-gray-500 text-center py-2">
+                                    <p className="text-xs text-content-subtle text-center py-2">
                                         No milestones defined. Create milestones in Assumptions tab.
                                     </p>
                                 ) : (
@@ -225,8 +225,8 @@ export function TriggerSelector({
                                                 }}
                                                 className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors
                                                     ${milestoneId === m.id
-                                                        ? 'bg-blue-600 text-white'
-                                                        : 'text-gray-300 hover:bg-gray-800'
+                                                        ? 'bg-accent text-white'
+                                                        : 'text-content-default hover:bg-surface-overlay'
                                                     }`}
                                             >
                                                 <div className="flex items-center gap-2">
@@ -247,11 +247,11 @@ export function TriggerSelector({
                     </div>
 
                     {/* Done button */}
-                    <div className="border-t border-gray-700 p-2">
+                    <div className="border-t border-border-default p-2">
                         <button
                             type="button"
                             onClick={() => setIsOpen(false)}
-                            className="w-full px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs rounded-md transition-colors"
+                            className="w-full px-3 py-1.5 bg-surface-overlay hover:bg-surface-input text-content-default text-xs rounded-md transition-colors"
                         >
                             Done
                         </button>

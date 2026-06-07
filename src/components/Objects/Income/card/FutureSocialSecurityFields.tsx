@@ -35,24 +35,24 @@ export function FutureSocialSecurityFields({
             />
             {income.calculatedPIA > 0 && (
                 <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-400 mb-1">
+                    <label className="block text-sm font-medium text-content-muted mb-1">
                         Calculation Details
                     </label>
-                    <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg px-3 py-2 text-xs text-gray-300">
+                    <div className="bg-info-tint/20 border border-info-strong/50 rounded-lg px-3 py-2 text-xs text-content-default">
                         <div>- AIME calculation based on 35 highest earning years</div>
                         <div>- Calculated in year: {income.calculationYear || 'Pending'}</div>
                         <div>- Benefits auto-adjusted for COLA each year</div>
                     </div>
                 </div>
             )}
-            <div className="col-span-full mt-2 pt-4 border-t border-gray-700">
-                <label className="block text-sm font-medium text-gray-400 mb-2">
+            <div className="col-span-full mt-2 pt-4 border-t border-border-default">
+                <label className="block text-sm font-medium text-content-muted mb-2">
                     SSA Earnings History
                 </label>
                 <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
                     <button
                         onClick={() => ssaFileInputRef.current?.click()}
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors"
+                        className="px-4 py-2 bg-accent hover:bg-accent-soft text-white rounded-lg text-sm font-medium transition-colors"
                     >
                         Import SSA Data
                     </button>
@@ -65,18 +65,18 @@ export function FutureSocialSecurityFields({
                     />
                     {priorEarnings && priorEarnings.length > 0 ? (
                         <div className="flex items-center gap-2">
-                            <span className="text-green-400 text-sm">
+                            <span className="text-positive text-sm">
                                 {formatEarningsSummary(priorEarnings)}
                             </span>
                             <button
                                 onClick={onClearPriorEarnings}
-                                className="text-xs text-gray-400 hover:text-red-400 transition-colors"
+                                className="text-xs text-content-muted hover:text-negative transition-colors"
                             >
                                 Clear
                             </button>
                         </div>
                     ) : (
-                        <span className="text-gray-400 text-xs">
+                        <span className="text-content-muted text-xs">
                             Download your statement from ssa.gov/myaccount
                         </span>
                     )}

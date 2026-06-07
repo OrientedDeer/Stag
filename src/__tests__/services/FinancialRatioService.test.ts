@@ -295,19 +295,19 @@ describe('FinancialRatioService', () => {
 
   describe('Rating helpers', () => {
     it('should return correct colors for ratings', () => {
-      expect(getRatingColor('excellent')).toBe('text-green-400');
-      expect(getRatingColor('good')).toBe('text-blue-400');
-      expect(getRatingColor('fair')).toBe('text-yellow-400');
-      expect(getRatingColor('poor')).toBe('text-orange-400');
-      expect(getRatingColor('critical')).toBe('text-red-400');
+      expect(getRatingColor('excellent')).toBe('text-positive');
+      expect(getRatingColor('good')).toBe('text-info');
+      expect(getRatingColor('fair')).toBe('text-warning');
+      expect(getRatingColor('poor')).toBe('text-cat-orange');
+      expect(getRatingColor('critical')).toBe('text-negative');
     });
 
     it('should return correct background colors for ratings', () => {
-      expect(getRatingBgColor('excellent')).toContain('green');
-      expect(getRatingBgColor('good')).toContain('blue');
-      expect(getRatingBgColor('fair')).toContain('yellow');
+      expect(getRatingBgColor('excellent')).toContain('positive');
+      expect(getRatingBgColor('good')).toContain('info');
+      expect(getRatingBgColor('fair')).toContain('warning');
       expect(getRatingBgColor('poor')).toContain('orange');
-      expect(getRatingBgColor('critical')).toContain('red');
+      expect(getRatingBgColor('critical')).toContain('negative');
     });
 
     it('should return correct labels for ratings', () => {

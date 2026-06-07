@@ -82,7 +82,7 @@ const styles = StyleSheet.create({
         color: '#1a365d',
         marginBottom: 8,
         paddingBottom: 4,
-        borderBottom: '1 solid #e2e8f0',
+        borderBottom: '1 solid var(--c-content-emphasis)',
     },
     metricsRow: {
         flexDirection: 'row',
@@ -142,8 +142,8 @@ const styles = StyleSheet.create({
         right: 40,
         textAlign: 'center',
         fontSize: 8,
-        color: '#a0aec0',
-        borderTop: '1 solid #e2e8f0',
+        color: 'var(--c-content-muted)',
+        borderTop: '1 solid var(--c-content-emphasis)',
         paddingTop: 8,
     },
     monteCarloSection: {
@@ -250,7 +250,7 @@ export async function captureChart(elementId: string): Promise<string | null> {
 
     try {
         const canvas = await html2canvas(element, {
-            backgroundColor: '#1a202c', // Dark background to match app theme
+            backgroundColor: 'var(--c-surface-raised)', // Dark background to match app theme
             scale: 2, // Higher resolution
             logging: false,
             useCORS: true,

@@ -84,7 +84,7 @@ export const DebtTab: React.FC<DebtTabProps> = React.memo(({ simulationData }) =
     }, [simulationData, range, keys]);
 
     const colors = useMemo(() => {
-        const palette = ['#f87171', '#fb923c', '#facc15', '#a3a3a3', '#ef4444', '#f97316'];
+        const palette = ['var(--c-negative)', 'var(--c-cat-orange)', 'var(--c-warning)', 'var(--c-content-muted)', 'var(--c-negative-soft)', 'var(--c-cat-orange-soft)'];
         const map: Record<string, string> = {};
         keys.forEach((key, i) => map[key] = palette[i % palette.length]);
         return map;
@@ -105,7 +105,7 @@ export const DebtTab: React.FC<DebtTabProps> = React.memo(({ simulationData }) =
                     />
                 </div>
                 <h3 className="text-lg font-bold whitespace-nowrap shrink-0"> {/* Added these classes */}
-                    Debt Free Year: {debtFreeYear ? <span className='text-green-400'>{debtFreeYear}</span> : 'Beyond Simulation'}
+                    Debt Free Year: {debtFreeYear ? <span className='text-positive'>{debtFreeYear}</span> : 'Beyond Simulation'}
                 </h3>
             </div>
             

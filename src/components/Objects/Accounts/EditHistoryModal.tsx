@@ -45,20 +45,20 @@ export const EditHistoryModal: React.FC<EditHistoryModalProps> = ({ accountId, i
                 role="dialog"
                 aria-modal="true"
                 onKeyDown={handleKeyDown}
-                className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-2xl shadow-2xl max-h-[80vh] flex flex-col"
+                className="bg-surface-raised border border-border-subtle rounded-2xl p-6 w-full max-w-2xl shadow-2xl max-h-[80vh] flex flex-col"
             >
-                <div className="flex justify-between items-center mb-6 border-b border-gray-800 pb-3">
+                <div className="flex justify-between items-center mb-6 border-b border-border-subtle pb-3">
                     <h2 className="text-xl font-bold text-white">Edit Balance History</h2>
-                    <button onClick={onClose} className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors">
+                    <button onClick={onClose} className="p-2 rounded-lg text-content-muted hover:text-white hover:bg-surface-overlay transition-colors">
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                     </button>
                 </div>
 
                 <div className="overflow-y-auto grow space-y-3 pr-2 mb-6">
                     {history.map((entry, index) => (
-                        <div key={index} className="flex items-center gap-4 bg-gray-800/40 p-3 rounded-lg border border-gray-700/50">
+                        <div key={index} className="flex items-center gap-4 bg-surface-overlay/40 p-3 rounded-lg border border-border-default/50">
                             <div className="w-40">
-                                <label className="block text-[10px] text-gray-400 uppercase font-bold mb-1">Date</label>
+                                <label className="block text-[10px] text-content-muted uppercase font-bold mb-1">Date</label>
                                 <input 
                                     type="date"
                                     value={entry.date}
@@ -66,7 +66,7 @@ export const EditHistoryModal: React.FC<EditHistoryModalProps> = ({ accountId, i
                                         type: 'UPDATE_HISTORY_ENTRY',
                                         payload: { ...entry, id: accountId, index, date: e.target.value, num: entry.num }
                                     })}
-                                    className="bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-xs text-white w-full outline-none focus:border-blue-500"
+                                    className="bg-surface-raised border border-border-default rounded px-2 py-1.5 text-xs text-white w-full outline-none focus:border-accent-soft"
                                 />
                             </div>
                             <div className="grow">
@@ -81,7 +81,7 @@ export const EditHistoryModal: React.FC<EditHistoryModalProps> = ({ accountId, i
                             </div>
                             <button
                                 onClick={() => dispatch({ type: 'DELETE_HISTORY_ENTRY', payload: { id: accountId, index }})}
-                                className={`p-1 rounded-full text-red-400 hover:text-red-300 transition-colors ${!canDeleteEntry ? 'opacity-30 cursor-not-allowed' : ''}`}
+                                className={`p-1 rounded-full text-negative hover:text-negative-bright transition-colors ${!canDeleteEntry ? 'opacity-30 cursor-not-allowed' : ''}`}
                                 disabled={!canDeleteEntry}
                                 title={!canDeleteEntry ? 'Cannot delete the only entry' : 'Delete entry'}
                             >
@@ -91,15 +91,15 @@ export const EditHistoryModal: React.FC<EditHistoryModalProps> = ({ accountId, i
                     ))}
                 </div>
 
-                <form onSubmit={handleAddEntry} className="border-t border-gray-800 pt-5">
-                    <h3 className="text-[10px] font-bold text-gray-400 uppercase mb-3">Add Manual Entry</h3>
+                <form onSubmit={handleAddEntry} className="border-t border-border-subtle pt-5">
+                    <h3 className="text-[10px] font-bold text-content-muted uppercase mb-3">Add Manual Entry</h3>
                     <div className="flex items-end gap-4">
                          <div className="w-40">
                             <input
                                 type="date"
                                 value={newDate}
                                 onChange={(e) => setNewDate(e.target.value)}
-                                className="bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm text-white w-full h-[42px]"
+                                className="bg-surface-overlay border border-border-default rounded px-2 py-2 text-sm text-white w-full h-[42px]"
                             />
                         </div>
                         <div className="grow">
@@ -111,7 +111,7 @@ export const EditHistoryModal: React.FC<EditHistoryModalProps> = ({ accountId, i
                         </div>
                         <button
                             type="submit"
-                            className="px-5 py-2.5 rounded-lg font-medium bg-green-600 text-white hover:bg-green-700 transition-colors"
+                            className="px-5 py-2.5 rounded-lg font-medium bg-positive-solid text-white hover:bg-positive-strong transition-colors"
                         >
                             Add
                         </button>

@@ -67,12 +67,12 @@ export const CSRSPensionFields: React.FC<CSRSPensionFieldsProps> = ({
             onChange={(val) => updateForm('pensionRetirementAge', val)}
             tooltip="Age 55 with 30+ years, age 60 with 20+ years, or age 62 with 5+ years for full benefits"
         />
-        <div className="col-span-3 bg-green-900/20 border border-green-700/50 rounded-lg p-4 text-sm">
-            <div className="font-semibold text-green-200 mb-2">CSRS Pension Estimate</div>
-            <div className="text-gray-300 space-y-1">
+        <div className="col-span-3 bg-positive-tint/20 border border-positive-strong/50 rounded-lg p-4 text-sm">
+            <div className="font-semibold text-positive-bright mb-2">CSRS Pension Estimate</div>
+            <div className="text-content-default space-y-1">
                 <div className="flex justify-between">
                     <span>Estimated Annual Benefit:</span>
-                    <span className="font-bold text-green-300">
+                    <span className="font-bold text-positive-bright">
                         {form.autoCalculateHigh3
                             ? "Auto Calculated"
                             : `$${calculateCSRSBasicBenefit(form.pensionYearsOfService, form.pensionHigh3Salary).toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr`
@@ -81,7 +81,7 @@ export const CSRSPensionFields: React.FC<CSRSPensionFieldsProps> = ({
                 </div>
                 <div className="flex justify-between">
                     <span>High-3:</span>
-                    <span className="text-green-200">
+                    <span className="text-positive-bright">
                         {form.autoCalculateHigh3
                             ? "Auto Calculated"
                             : `$${form.pensionHigh3Salary.toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr`
@@ -90,18 +90,18 @@ export const CSRSPensionFields: React.FC<CSRSPensionFieldsProps> = ({
                 </div>
                 <div className="flex justify-between">
                     <span>Benefits Start:</span>
-                    <span className="text-green-200">
+                    <span className="text-positive-bright">
                         {pensionBirthYear + form.pensionRetirementAge}
                     </span>
                 </div>
                 <div className="flex justify-between">
                     <span>Eligibility:</span>
-                    <span className={checkCSRSEligibility(form.pensionRetirementAge, form.pensionYearsOfService).eligible ? "text-green-300" : "text-yellow-300"}>
+                    <span className={checkCSRSEligibility(form.pensionRetirementAge, form.pensionYearsOfService).eligible ? "text-positive-bright" : "text-warning-bright"}>
                         {checkCSRSEligibility(form.pensionRetirementAge, form.pensionYearsOfService).message}
                     </span>
                 </div>
             </div>
-            <div className="text-xs text-gray-400 mt-2">
+            <div className="text-xs text-content-muted mt-2">
                 Formula: 1.5%x5yr + 1.75%x5yr + 2%xremaining (max 80% of High-3).
                 {form.autoCalculateHigh3 && " High-3 will be calculated from your top 3 salary years at retirement."}
                 {!form.autoCalculateHigh3 && " Full COLA (CPI). No Social Security coverage."}

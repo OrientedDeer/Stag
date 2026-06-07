@@ -73,6 +73,7 @@ import { SavedAccount, InvestedAccount, DebtAccount, DeficitDebtAccount, Propert
 import { formatCompactCurrency } from '../Future/tabs/FutureUtils';
 import { SimulationYear } from '../../services/simulation/types';
 import RothConversionDebugTab from './RothConversionDebug';
+import { Panel } from "../../components/Layout/Primitives";
 
 // Helper to format currency
 const toCurrency = (num: number) =>
@@ -258,13 +259,13 @@ function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYear
     const SectionHeader = ({ title, section, count }: { title: string; section: string; count?: number }) => (
         <button
             onClick={() => toggleSection(section)}
-            className="w-full flex items-center justify-between p-3 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors"
+            className="w-full flex items-center justify-between p-3 bg-surface-overlay hover:bg-surface-input rounded-lg transition-colors"
         >
             <span className="font-semibold text-white flex items-center gap-2">
                 {title}
-                {count !== undefined && <span className="text-xs bg-gray-600 px-2 py-0.5 rounded">{count}</span>}
+                {count !== undefined && <span className="text-xs bg-surface-hover px-2 py-0.5 rounded">{count}</span>}
             </span>
-            <span className="text-gray-400">{expandedSections[section] ? '▼' : '▶'}</span>
+            <span className="text-content-muted">{expandedSections[section] ? '▼' : '▶'}</span>
         </button>
     );
 
@@ -378,10 +379,10 @@ function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYear
             <div>
                 <SectionHeader title="Account Balances (End of Year)" section="accounts" count={accountDetails.length} />
                 {expandedSections.accounts && (
-                    <div className="mt-2 bg-gray-900 rounded-lg p-3 overflow-x-auto">
+                    <div className="mt-2 bg-surface-raised rounded-lg p-3 overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead>
-                                <tr className="text-gray-400 border-b border-gray-700">
+                                <tr className="text-content-muted border-b border-border-default">
                                     <th className="text-left p-2">Account</th>
                                     <th className="text-left p-2">Type</th>
                                     <th className="text-right p-2">Balance</th>
@@ -392,28 +393,28 @@ function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYear
                             </thead>
                             <tbody>
                                 {accountDetails.map(acc => (
-                                    <tr key={acc.id} className="border-b border-gray-800 hover:bg-gray-800/50">
+                                    <tr key={acc.id} className="border-b border-border-subtle hover:bg-surface-overlay/50">
                                         <td className="p-2 text-white">{acc.name}</td>
-                                        <td className="p-2 text-gray-400 text-xs">{acc.type}</td>
-                                        <td className={`p-2 text-right font-mono ${acc.amount < 0 ? 'text-red-400' : 'text-green-400'}`}>
+                                        <td className="p-2 text-content-muted text-xs">{acc.type}</td>
+                                        <td className={`p-2 text-right font-mono ${acc.amount < 0 ? 'text-negative' : 'text-positive'}`}>
                                             {toCurrencyShort(acc.amount)}
                                         </td>
-                                        <td className="p-2 text-right font-mono text-gray-400">
+                                        <td className="p-2 text-right font-mono text-content-muted">
                                             {acc.costBasis !== undefined ? toCurrencyShort(acc.costBasis) : '-'}
                                         </td>
-                                        <td className={`p-2 text-right font-mono ${(acc.unrealizedGains || 0) > 0 ? 'text-lime-400' : 'text-gray-500'}`}>
+                                        <td className={`p-2 text-right font-mono ${(acc.unrealizedGains || 0) > 0 ? 'text-cat-lime' : 'text-content-subtle'}`}>
                                             {acc.unrealizedGains !== undefined ? toCurrencyShort(acc.unrealizedGains) : '-'}
                                         </td>
-                                        <td className="p-2 text-right font-mono text-gray-500 text-xs">
+                                        <td className="p-2 text-right font-mono text-content-subtle text-xs">
                                             {acc.apr !== undefined ? `${acc.apr}%` : acc.lotCount !== undefined ? `${acc.lotCount} lots` : '-'}
                                         </td>
                                     </tr>
                                 ))}
                             </tbody>
-                            <tfoot className="border-t border-gray-600">
+                            <tfoot className="border-t border-border-strong">
                                 <tr className="font-semibold">
                                     <td className="p-2 text-white" colSpan={2}>Total</td>
-                                    <td className="p-2 text-right font-mono text-blue-400">
+                                    <td className="p-2 text-right font-mono text-info">
                                         {toCurrencyShort(accountDetails.reduce((s, a) => s + a.amount, 0))}
                                     </td>
                                     <td colSpan={3}></td>
@@ -428,18 +429,18 @@ function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYear
             <div>
                 <SectionHeader title="Income Sources" section="income" count={incomeDetails.length} />
                 {expandedSections.income && (
-                    <div className="mt-2 bg-gray-900 rounded-lg p-3 space-y-3">
+                    <div className="mt-2 bg-surface-raised rounded-lg p-3 space-y-3">
                         {Object.entries(incomeByCategory).map(([category, items]) => (
                             <div key={category}>
-                                <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">{category}</div>
+                                <div className="text-xs text-content-muted uppercase tracking-wider mb-1">{category}</div>
                                 <div className="space-y-1">
                                     {items.map((inc, idx) => (
-                                        <div key={idx} className="flex justify-between items-start bg-gray-800/50 rounded p-2">
+                                        <div key={idx} className="flex justify-between items-start bg-surface-overlay/50 rounded p-2">
                                             <div>
                                                 <span className="text-white">{inc.name}</span>
-                                                <span className="text-gray-500 text-xs ml-2">({inc.frequency})</span>
+                                                <span className="text-content-subtle text-xs ml-2">({inc.frequency})</span>
                                                 {Object.keys(inc.additionalInfo).length > 0 && (
-                                                    <div className="text-xs text-gray-500 mt-1">
+                                                    <div className="text-xs text-content-subtle mt-1">
                                                         {Object.entries(inc.additionalInfo).map(([k, v]) => (
                                                             <span key={k} className="mr-3">
                                                                 {k}: {typeof v === 'number' ? toCurrencyShort(v) : v}
@@ -448,15 +449,15 @@ function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYear
                                                     </div>
                                                 )}
                                             </div>
-                                            <span className="font-mono text-green-400">{toCurrencyShort(inc.amount)}</span>
+                                            <span className="font-mono text-positive">{toCurrencyShort(inc.amount)}</span>
                                         </div>
                                     ))}
                                 </div>
                             </div>
                         ))}
-                        <div className="flex justify-between border-t border-gray-700 pt-2 font-semibold">
+                        <div className="flex justify-between border-t border-border-default pt-2 font-semibold">
                             <span className="text-white">Total Income</span>
-                            <span className="font-mono text-green-400">{toCurrencyShort(simYear.cashflow.totalIncome)}</span>
+                            <span className="font-mono text-positive">{toCurrencyShort(simYear.cashflow.totalIncome)}</span>
                         </div>
                     </div>
                 )}
@@ -466,14 +467,14 @@ function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYear
             <div>
                 <SectionHeader title="Withdrawals" section="withdrawals" count={withdrawalBreakdown.length} />
                 {expandedSections.withdrawals && (
-                    <div className="mt-2 bg-gray-900 rounded-lg p-3">
+                    <div className="mt-2 bg-surface-raised rounded-lg p-3">
                         {withdrawalBreakdown.length === 0 ? (
-                            <div className="text-gray-500 text-sm">No withdrawals this year</div>
+                            <div className="text-content-subtle text-sm">No withdrawals this year</div>
                         ) : (
                             <>
                                 <table className="w-full text-sm">
                                     <thead>
-                                        <tr className="text-gray-400 border-b border-gray-700">
+                                        <tr className="text-content-muted border-b border-border-default">
                                             <th className="text-left p-2">Account</th>
                                             <th className="text-left p-2">Type</th>
                                             <th className="text-right p-2">Amount</th>
@@ -482,20 +483,20 @@ function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYear
                                     </thead>
                                     <tbody>
                                         {withdrawalBreakdown.map((w, idx) => (
-                                            <tr key={idx} className="border-b border-gray-800 hover:bg-gray-800/50">
+                                            <tr key={idx} className="border-b border-border-subtle hover:bg-surface-overlay/50">
                                                 <td className="p-2 text-white">{w.name}</td>
-                                                <td className="p-2 text-gray-400 text-xs">{w.type}</td>
-                                                <td className="p-2 text-right font-mono text-purple-400">{toCurrencyShort(w.amount)}</td>
+                                                <td className="p-2 text-content-muted text-xs">{w.type}</td>
+                                                <td className="p-2 text-right font-mono text-cat-purple">{toCurrencyShort(w.amount)}</td>
                                                 <td className="p-2 text-center">
-                                                    {w.isTaxable ? <span className="text-yellow-400">●</span> : <span className="text-gray-600">○</span>}
+                                                    {w.isTaxable ? <span className="text-warning">●</span> : <span className="text-content-faint">○</span>}
                                                 </td>
                                             </tr>
                                         ))}
                                     </tbody>
-                                    <tfoot className="border-t border-gray-600">
+                                    <tfoot className="border-t border-border-strong">
                                         <tr className="font-semibold">
                                             <td className="p-2 text-white" colSpan={2}>Total Withdrawals</td>
-                                            <td className="p-2 text-right font-mono text-purple-400">
+                                            <td className="p-2 text-right font-mono text-cat-purple">
                                                 {toCurrencyShort(simYear.cashflow.withdrawals)}
                                             </td>
                                             <td></td>
@@ -503,20 +504,20 @@ function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYear
                                     </tfoot>
                                 </table>
                                 {simYear.taxDetails.capitalGains > 0 && (
-                                    <div className="mt-2 p-2 bg-gray-800 rounded text-sm">
-                                        <div className="text-gray-400 text-xs uppercase mb-1">Capital Gains from Brokerage/ESPP</div>
+                                    <div className="mt-2 p-2 bg-surface-overlay rounded text-sm">
+                                        <div className="text-content-muted text-xs uppercase mb-1">Capital Gains from Brokerage/ESPP</div>
                                         <div className="flex justify-between">
-                                            <span className="text-gray-300">Capital Gains Tax Paid</span>
-                                            <span className="font-mono text-amber-400">{toCurrencyShort(simYear.taxDetails.capitalGains)}</span>
+                                            <span className="text-content-default">Capital Gains Tax Paid</span>
+                                            <span className="font-mono text-warning">{toCurrencyShort(simYear.taxDetails.capitalGains)}</span>
                                         </div>
                                     </div>
                                 )}
                                 {simYear.taxDetails.withdrawalOrdinaryTax > 0 && (
-                                    <div className="mt-2 p-2 bg-gray-800 rounded text-sm">
-                                        <div className="text-gray-400 text-xs uppercase mb-1">Withdrawal Ordinary Tax</div>
+                                    <div className="mt-2 p-2 bg-surface-overlay rounded text-sm">
+                                        <div className="text-content-muted text-xs uppercase mb-1">Withdrawal Ordinary Tax</div>
                                         <div className="flex justify-between">
-                                            <span className="text-gray-300">Tax on Roth Earnings / Traditional / HSA</span>
-                                            <span className="font-mono text-purple-400">{toCurrencyShort(simYear.taxDetails.withdrawalOrdinaryTax)}</span>
+                                            <span className="text-content-default">Tax on Roth Earnings / Traditional / HSA</span>
+                                            <span className="font-mono text-cat-purple">{toCurrencyShort(simYear.taxDetails.withdrawalOrdinaryTax)}</span>
                                         </div>
                                     </div>
                                 )}
@@ -530,33 +531,33 @@ function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYear
             <div>
                 <SectionHeader title="Contributions & Inflows" section="inflows" />
                 {expandedSections.inflows && (
-                    <div className="mt-2 bg-gray-900 rounded-lg p-3 space-y-2">
+                    <div className="mt-2 bg-surface-raised rounded-lg p-3 space-y-2">
                         <div className="grid grid-cols-2 gap-4">
-                            <div className="bg-gray-800/50 rounded p-2">
-                                <div className="text-xs text-gray-400">User Contributions</div>
-                                <div className="font-mono text-blue-400">{toCurrencyShort(simYear.cashflow.investedUser)}</div>
+                            <div className="bg-surface-overlay/50 rounded p-2">
+                                <div className="text-xs text-content-muted">User Contributions</div>
+                                <div className="font-mono text-info">{toCurrencyShort(simYear.cashflow.investedUser)}</div>
                             </div>
-                            <div className="bg-gray-800/50 rounded p-2">
-                                <div className="text-xs text-gray-400">Employer Match</div>
-                                <div className="font-mono text-cyan-400">{toCurrencyShort(simYear.cashflow.investedMatch)}</div>
+                            <div className="bg-surface-overlay/50 rounded p-2">
+                                <div className="text-xs text-content-muted">Employer Match</div>
+                                <div className="font-mono text-cat-cyan">{toCurrencyShort(simYear.cashflow.investedMatch)}</div>
                             </div>
                         </div>
                         {bucketDetails.length > 0 && (
                             <div>
-                                <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">Priority Bucket Allocations</div>
+                                <div className="text-xs text-content-muted uppercase tracking-wider mb-1">Priority Bucket Allocations</div>
                                 <div className="space-y-1">
                                     {bucketDetails.map((b, idx) => (
-                                        <div key={idx} className="flex justify-between bg-gray-800/50 rounded p-2">
-                                            <span className="text-gray-300">{b.name}</span>
-                                            <span className="font-mono text-green-400">{toCurrencyShort(b.amount)}</span>
+                                        <div key={idx} className="flex justify-between bg-surface-overlay/50 rounded p-2">
+                                            <span className="text-content-default">{b.name}</span>
+                                            <span className="font-mono text-positive">{toCurrencyShort(b.amount)}</span>
                                         </div>
                                     ))}
                                 </div>
                             </div>
                         )}
-                        <div className="flex justify-between border-t border-gray-700 pt-2 font-semibold">
+                        <div className="flex justify-between border-t border-border-default pt-2 font-semibold">
                             <span className="text-white">Total Invested</span>
-                            <span className="font-mono text-blue-400">{toCurrencyShort(simYear.cashflow.totalInvested)}</span>
+                            <span className="font-mono text-info">{toCurrencyShort(simYear.cashflow.totalInvested)}</span>
                         </div>
                     </div>
                 )}
@@ -566,52 +567,52 @@ function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYear
             <div>
                 <SectionHeader title="Tax Breakdown" section="taxes" />
                 {expandedSections.taxes && (
-                    <div className="mt-2 bg-gray-900 rounded-lg p-3">
+                    <div className="mt-2 bg-surface-raised rounded-lg p-3">
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-                            <div className="bg-gray-800/50 rounded p-2">
-                                <div className="text-xs text-gray-400">Federal Tax</div>
-                                <div className="font-mono text-amber-400">{toCurrencyShort(simYear.taxDetails.fed)}</div>
+                            <div className="bg-surface-overlay/50 rounded p-2">
+                                <div className="text-xs text-content-muted">Federal Tax</div>
+                                <div className="font-mono text-warning">{toCurrencyShort(simYear.taxDetails.fed)}</div>
                             </div>
-                            <div className="bg-gray-800/50 rounded p-2">
-                                <div className="text-xs text-gray-400">State Tax</div>
-                                <div className="font-mono text-amber-400">{toCurrencyShort(simYear.taxDetails.state)}</div>
+                            <div className="bg-surface-overlay/50 rounded p-2">
+                                <div className="text-xs text-content-muted">State Tax</div>
+                                <div className="font-mono text-warning">{toCurrencyShort(simYear.taxDetails.state)}</div>
                             </div>
-                            <div className="bg-gray-800/50 rounded p-2">
-                                <div className="text-xs text-gray-400">FICA</div>
-                                <div className="font-mono text-amber-400">{toCurrencyShort(simYear.taxDetails.fica)}</div>
+                            <div className="bg-surface-overlay/50 rounded p-2">
+                                <div className="text-xs text-content-muted">FICA</div>
+                                <div className="font-mono text-warning">{toCurrencyShort(simYear.taxDetails.fica)}</div>
                             </div>
-                            <div className="bg-gray-800/50 rounded p-2">
-                                <div className="text-xs text-gray-400">Total Tax</div>
-                                <div className="font-mono text-red-400 font-bold">{toCurrencyShort(totalTax)}</div>
+                            <div className="bg-surface-overlay/50 rounded p-2">
+                                <div className="text-xs text-content-muted">Total Tax</div>
+                                <div className="font-mono text-negative font-bold">{toCurrencyShort(totalTax)}</div>
                             </div>
                         </div>
                         <div className="space-y-1 text-sm">
                             <div className="flex justify-between">
-                                <span className="text-gray-400">Pre-Tax Deductions (401k, HSA)</span>
-                                <span className="font-mono text-gray-300">{toCurrencyShort(simYear.taxDetails.preTax)}</span>
+                                <span className="text-content-muted">Pre-Tax Deductions (401k, HSA)</span>
+                                <span className="font-mono text-content-default">{toCurrencyShort(simYear.taxDetails.preTax)}</span>
                             </div>
                             <div className="flex justify-between">
-                                <span className="text-gray-400">Insurance Costs</span>
-                                <span className="font-mono text-gray-300">{toCurrencyShort(simYear.taxDetails.insurance)}</span>
+                                <span className="text-content-muted">Insurance Costs</span>
+                                <span className="font-mono text-content-default">{toCurrencyShort(simYear.taxDetails.insurance)}</span>
                             </div>
                             <div className="flex justify-between">
-                                <span className="text-gray-400">Post-Tax Deductions</span>
-                                <span className="font-mono text-gray-300">{toCurrencyShort(simYear.taxDetails.postTax)}</span>
+                                <span className="text-content-muted">Post-Tax Deductions</span>
+                                <span className="font-mono text-content-default">{toCurrencyShort(simYear.taxDetails.postTax)}</span>
                             </div>
                             {simYear.taxDetails.capitalGains > 0 && (
-                                <div className="flex justify-between text-lime-400">
+                                <div className="flex justify-between text-cat-lime">
                                     <span>Capital Gains Tax (Brokerage/ESPP)</span>
                                     <span className="font-mono">{toCurrencyShort(simYear.taxDetails.capitalGains)}</span>
                                 </div>
                             )}
                             {simYear.taxDetails.withdrawalOrdinaryTax > 0 && (
-                                <div className="flex justify-between text-purple-400">
+                                <div className="flex justify-between text-cat-purple">
                                     <span>Withdrawal Tax (Roth Earnings/Traditional)</span>
                                     <span className="font-mono">{toCurrencyShort(simYear.taxDetails.withdrawalOrdinaryTax)}</span>
                                 </div>
                             )}
                             {simYear.taxDetails.niit > 0 && (
-                                <div className="flex justify-between text-orange-400">
+                                <div className="flex justify-between text-cat-orange">
                                     <span>NIIT (3.8% Net Investment Income Tax)</span>
                                     <span className="font-mono">{toCurrencyShort(simYear.taxDetails.niit)}</span>
                                 </div>
@@ -626,22 +627,22 @@ function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYear
                 <div>
                     <SectionHeader title="Roth Conversion" section="rothConversion" />
                     {expandedSections.rothConversion && (
-                        <div className="mt-2 bg-gray-900 rounded-lg p-3">
+                        <div className="mt-2 bg-surface-raised rounded-lg p-3">
                             <div className="grid grid-cols-3 gap-3 mb-3">
-                                <div className="bg-purple-900/30 border border-purple-700/50 rounded p-2">
-                                    <div className="text-xs text-purple-300">Amount Converted</div>
-                                    <div className="font-mono text-purple-400 font-bold">
+                                <div className="bg-cat-purple-tint/30 border border-cat-purple-strong/50 rounded p-2">
+                                    <div className="text-xs text-cat-purple-bright">Amount Converted</div>
+                                    <div className="font-mono text-cat-purple font-bold">
                                         {toCurrencyShort(simYear.rothConversion.amount)}
                                     </div>
                                 </div>
-                                <div className="bg-red-900/30 border border-red-700/50 rounded p-2">
-                                    <div className="text-xs text-red-300">Tax Cost</div>
-                                    <div className="font-mono text-red-400">
+                                <div className="bg-negative-tint/30 border border-negative-strong/50 rounded p-2">
+                                    <div className="text-xs text-negative-bright">Tax Cost</div>
+                                    <div className="font-mono text-negative">
                                         {toCurrencyShort(simYear.rothConversion.taxCost)}
                                     </div>
                                 </div>
-                                <div className="bg-gray-800/50 rounded p-2">
-                                    <div className="text-xs text-gray-400">Effective Rate</div>
+                                <div className="bg-surface-overlay/50 rounded p-2">
+                                    <div className="text-xs text-content-muted">Effective Rate</div>
                                     <div className="font-mono text-white">
                                         {((simYear.rothConversion.taxCost / simYear.rothConversion.amount) * 100).toFixed(1)}%
                                     </div>
@@ -649,23 +650,23 @@ function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYear
                             </div>
                             {Object.keys(simYear.rothConversion.fromAccounts).length > 0 && (
                                 <div className="space-y-2 text-sm">
-                                    <div className="text-xs text-gray-400 uppercase">Transfer Details</div>
+                                    <div className="text-xs text-content-muted uppercase">Transfer Details</div>
                                     <div className="grid grid-cols-2 gap-2">
                                         <div>
-                                            <div className="text-gray-500 text-xs mb-1">From (Traditional)</div>
+                                            <div className="text-content-subtle text-xs mb-1">From (Traditional)</div>
                                             {Object.entries(simYear.rothConversion.fromAccounts).map(([name, amt]) => (
-                                                <div key={name} className="flex justify-between bg-gray-800/50 rounded p-1 px-2">
-                                                    <span className="text-gray-300 truncate">{name}</span>
-                                                    <span className="font-mono text-red-400">-{toCurrencyShort(amt)}</span>
+                                                <div key={name} className="flex justify-between bg-surface-overlay/50 rounded p-1 px-2">
+                                                    <span className="text-content-default truncate">{name}</span>
+                                                    <span className="font-mono text-negative">-{toCurrencyShort(amt)}</span>
                                                 </div>
                                             ))}
                                         </div>
                                         <div>
-                                            <div className="text-gray-500 text-xs mb-1">To (Roth)</div>
+                                            <div className="text-content-subtle text-xs mb-1">To (Roth)</div>
                                             {Object.entries(simYear.rothConversion.toAccounts).map(([name, amt]) => (
-                                                <div key={name} className="flex justify-between bg-gray-800/50 rounded p-1 px-2">
-                                                    <span className="text-gray-300 truncate">{name}</span>
-                                                    <span className="font-mono text-green-400">+{toCurrencyShort(amt)}</span>
+                                                <div key={name} className="flex justify-between bg-surface-overlay/50 rounded p-1 px-2">
+                                                    <span className="text-content-default truncate">{name}</span>
+                                                    <span className="font-mono text-positive">+{toCurrencyShort(amt)}</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -682,36 +683,36 @@ function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYear
                 <div>
                     <button
                         onClick={() => toggleSection('rmd')}
-                        className="w-full flex items-center justify-between p-3 bg-orange-900/30 hover:bg-orange-900/40 border border-orange-700/50 rounded-lg transition-colors"
+                        className="w-full flex items-center justify-between p-3 bg-cat-orange-tint/30 hover:bg-cat-orange-tint/40 border border-cat-orange-strong/50 rounded-lg transition-colors"
                     >
-                        <span className="font-semibold text-orange-300">Required Minimum Distributions</span>
-                        <span className="text-orange-400">{expandedSections['rmd'] ? '▼' : '▶'}</span>
+                        <span className="font-semibold text-cat-orange-bright">Required Minimum Distributions</span>
+                        <span className="text-cat-orange">{expandedSections['rmd'] ? '▼' : '▶'}</span>
                     </button>
                     {expandedSections['rmd'] && (
-                        <div className="mt-2 bg-gray-900 rounded-lg p-3">
+                        <div className="mt-2 bg-surface-raised rounded-lg p-3">
                             <div className="grid grid-cols-3 gap-3 mb-3">
-                                <div className="bg-gray-800/50 rounded p-2">
-                                    <div className="text-xs text-gray-400">Required RMD</div>
-                                    <div className="font-mono text-orange-400">{toCurrencyShort(simYear.rmdDetails.totalRMD)}</div>
+                                <div className="bg-surface-overlay/50 rounded p-2">
+                                    <div className="text-xs text-content-muted">Required RMD</div>
+                                    <div className="font-mono text-cat-orange">{toCurrencyShort(simYear.rmdDetails.totalRMD)}</div>
                                 </div>
-                                <div className="bg-gray-800/50 rounded p-2">
-                                    <div className="text-xs text-gray-400">Actually Withdrawn</div>
+                                <div className="bg-surface-overlay/50 rounded p-2">
+                                    <div className="text-xs text-content-muted">Actually Withdrawn</div>
                                     <div className="font-mono text-white">{toCurrencyShort(simYear.rmdDetails.totalWithdrawn)}</div>
                                 </div>
                                 {simYear.rmdDetails.shortfall > 0 && (
-                                    <div className="bg-red-900/30 border border-red-700/50 rounded p-2">
-                                        <div className="text-xs text-red-300">Shortfall (25% penalty)</div>
-                                        <div className="font-mono text-red-400">{toCurrencyShort(simYear.rmdDetails.penalty)}</div>
+                                    <div className="bg-negative-tint/30 border border-negative-strong/50 rounded p-2">
+                                        <div className="text-xs text-negative-bright">Shortfall (25% penalty)</div>
+                                        <div className="font-mono text-negative">{toCurrencyShort(simYear.rmdDetails.penalty)}</div>
                                     </div>
                                 )}
                             </div>
                             {simYear.rmdDetails.accountBreakdown.length > 0 && (
                                 <div className="text-sm">
-                                    <div className="text-xs text-gray-400 uppercase mb-1">Per-Account Breakdown</div>
+                                    <div className="text-xs text-content-muted uppercase mb-1">Per-Account Breakdown</div>
                                     {simYear.rmdDetails.accountBreakdown.map((rmd, idx) => (
-                                        <div key={idx} className="flex justify-between bg-gray-800/50 rounded p-2 mb-1">
-                                            <span className="text-gray-300">{rmd.accountName}</span>
-                                            <span className="font-mono text-orange-400">{toCurrencyShort(rmd.rmdAmount)}</span>
+                                        <div key={idx} className="flex justify-between bg-surface-overlay/50 rounded p-2 mb-1">
+                                            <span className="text-content-default">{rmd.accountName}</span>
+                                            <span className="font-mono text-cat-orange">{toCurrencyShort(rmd.rmdAmount)}</span>
                                         </div>
                                     ))}
                                 </div>
@@ -1006,7 +1007,7 @@ function SimulationDebugTab() {
 
     if (simulation.length === 0 || isLoading) {
         return (
-            <div className="text-center py-8 text-gray-400">
+            <div className="text-center py-8 text-content-muted">
                 {isLoading ? 'Running simulation...' : 'No simulation data. Waiting for data...'}
             </div>
         );
@@ -1019,62 +1020,62 @@ function SimulationDebugTab() {
     return (
         <div className="space-y-6">
             {/* Current Configuration */}
-            <div className="bg-gray-900 p-4 rounded-xl border border-gray-800">
+            <Panel>
                 <h3 className="text-lg font-bold text-white mb-3">Current Configuration</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                     <div>
-                        <span className="text-gray-400">Start Age:</span>
+                        <span className="text-content-muted">Start Age:</span>
                         <span className="ml-2 text-white">{startAge}</span>
                     </div>
                     <div>
-                        <span className="text-gray-400">Retirement Age:</span>
+                        <span className="text-content-muted">Retirement Age:</span>
                         <span className="ml-2 text-white">{retirementAge}</span>
                     </div>
                     <div>
-                        <span className="text-gray-400">Accounts:</span>
+                        <span className="text-content-muted">Accounts:</span>
                         <span className="ml-2 text-white">{accounts.length}</span>
                     </div>
                     <div>
-                        <span className="text-gray-400">Withdrawal Strategy:</span>
+                        <span className="text-content-muted">Withdrawal Strategy:</span>
                         <span className="ml-2 text-white">{assumptions.withdrawalStrategy?.length || 0} buckets</span>
                     </div>
                 </div>
                 {assumptions.withdrawalStrategy && assumptions.withdrawalStrategy.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-gray-800">
-                        <span className="text-gray-400 text-sm">Withdrawal Order: </span>
+                    <div className="mt-3 pt-3 border-t border-border-subtle">
+                        <span className="text-content-muted text-sm">Withdrawal Order: </span>
                         {assumptions.withdrawalStrategy.map((bucket, idx) => {
                             const acc = accounts.find(a => a.id === bucket.accountId);
                             return (
-                                <span key={bucket.accountId} className="text-xs bg-gray-800 px-2 py-1 rounded mr-2">
+                                <span key={bucket.accountId} className="text-xs bg-surface-overlay px-2 py-1 rounded mr-2">
                                     {idx + 1}. {acc?.name || 'Unknown'}
                                 </span>
                             );
                         })}
                     </div>
                 )}
-            </div>
+            </Panel>
 
             {/* Issues Summary */}
             {analysis && analysis.issues.length > 0 && (
-                <div className="bg-red-900/20 p-4 rounded-xl border border-red-800">
-                    <h3 className="text-lg font-bold text-red-400 mb-3">
+                <div className="bg-negative-tint/20 p-4 rounded-xl border border-negative-strong">
+                    <h3 className="text-lg font-bold text-negative mb-3">
                         Issues Found ({analysis.issues.length})
                     </h3>
                     <div className="max-h-60 overflow-y-auto space-y-2">
                         {analysis.issues.map((issue, idx) => (
                             <div
                                 key={idx}
-                                className={`text-sm p-2 rounded cursor-pointer hover:bg-gray-800 ${
-                                    issue.severity === 'error' ? 'bg-red-900/30 text-red-300' :
-                                    issue.severity === 'warning' ? 'bg-yellow-900/30 text-yellow-300' :
-                                    'bg-blue-900/30 text-blue-300'
+                                className={`text-sm p-2 rounded cursor-pointer hover:bg-surface-overlay ${
+                                    issue.severity === 'error' ? 'bg-negative-tint/30 text-negative-bright' :
+                                    issue.severity === 'warning' ? 'bg-warning-tint/30 text-warning-bright' :
+                                    'bg-info-tint/30 text-info-bright'
                                 }`}
                                 onClick={() => setSelectedYear(issue.year)}
                             >
                                 <span className="font-mono">{issue.year} (Age {issue.age})</span>
-                                <span className="mx-2 text-gray-500">|</span>
+                                <span className="mx-2 text-content-subtle">|</span>
                                 <span className="font-semibold">{issue.type}</span>
-                                <span className="mx-2 text-gray-500">|</span>
+                                <span className="mx-2 text-content-subtle">|</span>
                                 <span>{issue.message}</span>
                             </div>
                         ))}
@@ -1083,8 +1084,8 @@ function SimulationDebugTab() {
             )}
 
             {/* Year-by-Year Data Table */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-                <div className="flex items-center justify-between p-4 border-b border-gray-800 gap-3 flex-wrap">
+            <Panel padding="none" className="overflow-hidden">
+                <div className="flex items-center justify-between p-4 border-b border-border-subtle gap-3 flex-wrap">
                     <h3 className="text-lg font-bold text-white">
                         Simulation Data (Click row for details)
                     </h3>
@@ -1094,7 +1095,7 @@ function SimulationDebugTab() {
                             value={multiAgesInput}
                             onChange={(e) => setMultiAgesInput(e.target.value)}
                             placeholder="ages e.g. 35, 45, 55"
-                            className="px-2 py-1 rounded bg-gray-800 border border-gray-700 text-sm text-white font-mono w-48 focus:outline-none focus:border-blue-500"
+                            className="px-2 py-1 rounded bg-surface-overlay border border-border-default text-sm text-white font-mono w-48 focus:outline-none focus:border-accent-soft"
                         />
                         <button
                             onClick={() => {
@@ -1134,7 +1135,7 @@ function SimulationDebugTab() {
                                     setTimeout(() => setMultiCopyText('Copy ages'), 1500);
                                 });
                             }}
-                            className="px-3 py-1 rounded-lg text-sm font-medium bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors whitespace-nowrap"
+                            className="px-3 py-1 rounded-lg text-sm font-medium bg-surface-input text-content-default hover:bg-surface-hover transition-colors whitespace-nowrap"
                         >
                             {multiCopyText}
                         </button>
@@ -1142,16 +1143,16 @@ function SimulationDebugTab() {
                 </div>
                 <div className="overflow-x-auto max-h-96 overflow-y-auto">
                     <table className="w-full text-sm">
-                        <thead className="bg-gray-800 sticky top-0">
+                        <thead className="bg-surface-overlay sticky top-0">
                             <tr>
-                                <th className="p-2 text-left text-gray-400">Year</th>
-                                <th className="p-2 text-left text-gray-400">Age</th>
-                                <th className="p-2 text-left text-gray-400">Phase</th>
-                                <th className="p-2 text-right text-gray-400">Income</th>
-                                <th className="p-2 text-right text-gray-400">Expenses</th>
-                                <th className="p-2 text-right text-gray-400">Withdrawals</th>
-                                <th className="p-2 text-right text-gray-400">Discretionary</th>
-                                <th className="p-2 text-right text-gray-400">Net Worth</th>
+                                <th className="p-2 text-left text-content-muted">Year</th>
+                                <th className="p-2 text-left text-content-muted">Age</th>
+                                <th className="p-2 text-left text-content-muted">Phase</th>
+                                <th className="p-2 text-right text-content-muted">Income</th>
+                                <th className="p-2 text-right text-content-muted">Expenses</th>
+                                <th className="p-2 text-right text-content-muted">Withdrawals</th>
+                                <th className="p-2 text-right text-content-muted">Discretionary</th>
+                                <th className="p-2 text-right text-content-muted">Net Worth</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1160,9 +1161,9 @@ function SimulationDebugTab() {
                                 return (
                                     <tr
                                         key={`${row.year}-${row.isEndOfYearProjection ? 'eoy' : 'main'}`}
-                                        className={`border-t border-gray-800 cursor-pointer hover:bg-gray-800 ${
-                                            selectedYear === row.year ? 'bg-blue-900/30' : ''
-                                        } ${hasIssue ? 'bg-red-900/10' : ''} ${row.isEndOfYearProjection ? 'opacity-60 italic' : ''}`}
+                                        className={`border-t border-border-subtle cursor-pointer hover:bg-surface-overlay ${
+                                            selectedYear === row.year ? 'bg-info-tint/30' : ''
+                                        } ${hasIssue ? 'bg-negative-tint/10' : ''} ${row.isEndOfYearProjection ? 'opacity-60 italic' : ''}`}
                                         onClick={() => setSelectedYear(row.year)}
                                     >
                                         <td className="p-2 font-mono">
@@ -1171,31 +1172,31 @@ function SimulationDebugTab() {
                                         <td className="p-2">{row.age}</td>
                                         <td className="p-2">
                                             <span className={`px-2 py-0.5 rounded text-xs ${
-                                                row.isRetired ? 'bg-amber-900/50 text-amber-300' : 'bg-green-900/50 text-green-300'
+                                                row.isRetired ? 'bg-warning-tint/50 text-warning-bright' : 'bg-positive-tint/50 text-positive-bright'
                                             }`}>
                                                 {row.isRetired ? 'Retired' : 'Working'}
                                             </span>
                                         </td>
-                                        <td className="p-2 text-right font-mono text-green-400">{toCurrencyShort(row.totalIncome)}</td>
-                                        <td className="p-2 text-right font-mono text-red-400">{toCurrencyShort(row.totalExpenses)}</td>
-                                        <td className="p-2 text-right font-mono text-purple-400">
+                                        <td className="p-2 text-right font-mono text-positive">{toCurrencyShort(row.totalIncome)}</td>
+                                        <td className="p-2 text-right font-mono text-negative">{toCurrencyShort(row.totalExpenses)}</td>
+                                        <td className="p-2 text-right font-mono text-cat-purple">
                                             {row.totalWithdrawals > 0 ? toCurrencyShort(row.totalWithdrawals) : '-'}
                                         </td>
-                                        <td className={`p-2 text-right font-mono ${row.discretionary < 0 ? 'text-red-500 font-bold' : 'text-gray-400'}`}>
+                                        <td className={`p-2 text-right font-mono ${row.discretionary < 0 ? 'text-negative-soft font-bold' : 'text-content-muted'}`}>
                                             {toCurrencyShort(row.discretionary)}
                                         </td>
-                                        <td className="p-2 text-right font-mono text-blue-400">{toCurrencyShort(row.netWorth)}</td>
+                                        <td className="p-2 text-right font-mono text-info">{toCurrencyShort(row.netWorth)}</td>
                                     </tr>
                                 );
                             })}
                         </tbody>
                     </table>
                 </div>
-            </div>
+            </Panel>
 
             {/* Selected Year Details */}
             {selectedYearData && (
-                <div className="bg-gray-900 p-4 rounded-xl border border-gray-800">
+                <Panel>
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="text-lg font-bold text-white">
                             Year {selectedYearData.year} Details (Age {selectedYearData.age})
@@ -1211,7 +1212,7 @@ function SimulationDebugTab() {
                                         setTimeout(() => setCopyButtonText('Copy as Text'), 1500);
                                     });
                                 }}
-                                className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors bg-gray-700 text-gray-300 hover:bg-gray-600"
+                                className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors bg-surface-input text-content-default hover:bg-surface-hover"
                             >
                                 {copyButtonText}
                             </button>
@@ -1219,8 +1220,8 @@ function SimulationDebugTab() {
                                 onClick={() => setShowDetailedView(!showDetailedView)}
                                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                                     showDetailedView
-                                        ? 'bg-blue-600 text-white'
-                                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                        ? 'bg-accent text-white'
+                                        : 'bg-surface-input text-content-default hover:bg-surface-hover'
                                 }`}
                             >
                                 {showDetailedView ? '◉ Detailed View' : '○ Basic View'}
@@ -1246,12 +1247,12 @@ function SimulationDebugTab() {
                     <>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {/* Account Balances */}
-                        <div className="bg-gray-800 p-3 rounded-lg">
-                            <h4 className="font-semibold text-gray-300 mb-2">Account Balances</h4>
+                        <div className="bg-surface-overlay p-3 rounded-lg">
+                            <h4 className="font-semibold text-content-default mb-2">Account Balances</h4>
                             <div className="space-y-1 text-sm">
                                 {Object.entries(selectedYearData.accountBalances).map(([name, bal]) => (
                                     <div key={name} className="flex justify-between">
-                                        <span className="text-gray-400">{name}</span>
+                                        <span className="text-content-muted">{name}</span>
                                         <span className="font-mono text-white">{toCurrencyShort(bal)}</span>
                                     </div>
                                 ))}
@@ -1259,24 +1260,24 @@ function SimulationDebugTab() {
                         </div>
 
                         {/* Work Income Details */}
-                        <div className="bg-gray-800 p-3 rounded-lg">
-                            <h4 className="font-semibold text-gray-300 mb-2">Work Income</h4>
+                        <div className="bg-surface-overlay p-3 rounded-lg">
+                            <h4 className="font-semibold text-content-default mb-2">Work Income</h4>
                             {selectedYearData.workIncomes.length === 0 ? (
-                                <span className="text-gray-500 text-sm">No work income</span>
+                                <span className="text-content-subtle text-sm">No work income</span>
                             ) : (
                                 <div className="space-y-2 text-sm">
                                     {selectedYearData.workIncomes.map(wi => (
-                                        <div key={wi.name} className="border-b border-gray-700 pb-2">
+                                        <div key={wi.name} className="border-b border-border-default pb-2">
                                             <div className="font-semibold text-white">{wi.name}</div>
-                                            <div className="flex justify-between text-gray-400">
+                                            <div className="flex justify-between text-content-muted">
                                                 <span>Salary:</span>
                                                 <span className="font-mono">{toCurrencyShort(wi.amount)}</span>
                                             </div>
-                                            <div className={`flex justify-between ${wi.contrib401k > 0 && selectedYearData.isRetired ? 'text-red-400' : 'text-gray-400'}`}>
+                                            <div className={`flex justify-between ${wi.contrib401k > 0 && selectedYearData.isRetired ? 'text-negative' : 'text-content-muted'}`}>
                                                 <span>401k Contrib:</span>
                                                 <span className="font-mono">{toCurrencyShort(wi.contrib401k)}</span>
                                             </div>
-                                            <div className={`flex justify-between ${wi.employerMatch > 0 && selectedYearData.isRetired ? 'text-red-400' : 'text-gray-400'}`}>
+                                            <div className={`flex justify-between ${wi.employerMatch > 0 && selectedYearData.isRetired ? 'text-negative' : 'text-content-muted'}`}>
                                                 <span>Employer Match:</span>
                                                 <span className="font-mono">{toCurrencyShort(wi.employerMatch)}</span>
                                             </div>
@@ -1287,34 +1288,34 @@ function SimulationDebugTab() {
                         </div>
 
                         {/* Other Income (Social Security + Interest) */}
-                        <div className="bg-gray-800 p-3 rounded-lg">
-                            <h4 className="font-semibold text-gray-300 mb-2">Other Income</h4>
+                        <div className="bg-surface-overlay p-3 rounded-lg">
+                            <h4 className="font-semibold text-content-default mb-2">Other Income</h4>
                             <div className="space-y-2 text-sm">
                                 {/* Social Security */}
-                                <div className="flex justify-between text-gray-400">
+                                <div className="flex justify-between text-content-muted">
                                     <span>Social Security:</span>
-                                    <span className={`font-mono ${selectedYearData.socialSecurityIncome > 0 ? 'text-cyan-400' : 'text-gray-500'}`}>
+                                    <span className={`font-mono ${selectedYearData.socialSecurityIncome > 0 ? 'text-cat-cyan' : 'text-content-subtle'}`}>
                                         {selectedYearData.socialSecurityIncome > 0 ? toCurrencyShort(selectedYearData.socialSecurityIncome) : '-'}
                                     </span>
                                 </div>
                                 {/* Interest Income */}
                                 {selectedYearData.interestIncome.length === 0 ? (
-                                    <div className="flex justify-between text-gray-400">
+                                    <div className="flex justify-between text-content-muted">
                                         <span>Interest Income:</span>
-                                        <span className="font-mono text-gray-500">-</span>
+                                        <span className="font-mono text-content-subtle">-</span>
                                     </div>
                                 ) : (
                                     <>
-                                        <div className="text-gray-400 mt-2">Interest Income:</div>
+                                        <div className="text-content-muted mt-2">Interest Income:</div>
                                         {selectedYearData.interestIncome.map(ii => (
                                             <div key={ii.name} className="flex justify-between pl-2">
-                                                <span className="text-gray-500">{ii.name}</span>
-                                                <span className="font-mono text-yellow-400">{toCurrencyShort(ii.amount)}</span>
+                                                <span className="text-content-subtle">{ii.name}</span>
+                                                <span className="font-mono text-warning">{toCurrencyShort(ii.amount)}</span>
                                             </div>
                                         ))}
-                                        <div className="flex justify-between border-t border-gray-700 pt-1 mt-1">
-                                            <span className="text-gray-400">Total Interest:</span>
-                                            <span className="font-mono text-yellow-400">
+                                        <div className="flex justify-between border-t border-border-default pt-1 mt-1">
+                                            <span className="text-content-muted">Total Interest:</span>
+                                            <span className="font-mono text-warning">
                                                 {toCurrencyShort(selectedYearData.interestIncome.reduce((sum, ii) => sum + ii.amount, 0))}
                                             </span>
                                         </div>
@@ -1324,16 +1325,16 @@ function SimulationDebugTab() {
                         </div>
 
                         {/* Withdrawals */}
-                        <div className="bg-gray-800 p-3 rounded-lg">
-                            <h4 className="font-semibold text-gray-300 mb-2">Withdrawals</h4>
+                        <div className="bg-surface-overlay p-3 rounded-lg">
+                            <h4 className="font-semibold text-content-default mb-2">Withdrawals</h4>
                             {Object.keys(selectedYearData.withdrawalDetail).length === 0 ? (
-                                <span className="text-gray-500 text-sm">No withdrawals</span>
+                                <span className="text-content-subtle text-sm">No withdrawals</span>
                             ) : (
                                 <div className="space-y-1 text-sm">
                                     {Object.entries(selectedYearData.withdrawalDetail).map(([name, amt]) => (
                                         <div key={name} className="flex justify-between">
-                                            <span className="text-gray-400">{name}</span>
-                                            <span className="font-mono text-purple-400">{toCurrencyShort(amt)}</span>
+                                            <span className="text-content-muted">{name}</span>
+                                            <span className="font-mono text-cat-purple">{toCurrencyShort(amt)}</span>
                                         </div>
                                     ))}
                                 </div>
@@ -1341,18 +1342,18 @@ function SimulationDebugTab() {
                         </div>
 
                         {/* Bucket Allocations */}
-                        <div className="bg-gray-800 p-3 rounded-lg">
-                            <h4 className="font-semibold text-gray-300 mb-2">Priority Buckets</h4>
+                        <div className="bg-surface-overlay p-3 rounded-lg">
+                            <h4 className="font-semibold text-content-default mb-2">Priority Buckets</h4>
                             {Object.keys(selectedYearData.bucketDetail).length === 0 ? (
-                                <span className="text-gray-500 text-sm">No allocations</span>
+                                <span className="text-content-subtle text-sm">No allocations</span>
                             ) : (
                                 <div className="space-y-1 text-sm">
                                     {Object.entries(selectedYearData.bucketDetail).map(([id, amt]) => {
                                         const acc = accounts.find(a => a.id === id);
                                         return (
                                             <div key={id} className="flex justify-between">
-                                                <span className="text-gray-400">{acc?.name || id}</span>
-                                                <span className="font-mono text-green-400">{toCurrencyShort(amt)}</span>
+                                                <span className="text-content-muted">{acc?.name || id}</span>
+                                                <span className="font-mono text-positive">{toCurrencyShort(amt)}</span>
                                             </div>
                                         );
                                     })}
@@ -1362,8 +1363,8 @@ function SimulationDebugTab() {
                     </div>
 
                     {/* Tax Breakdown */}
-                    <div className="mt-4 bg-gray-800 p-3 rounded-lg">
-                        <h4 className="font-semibold text-gray-300 mb-2">Tax Breakdown</h4>
+                    <div className="mt-4 bg-surface-overlay p-3 rounded-lg">
+                        <h4 className="font-semibold text-content-default mb-2">Tax Breakdown</h4>
                         {(() => {
                             const fedRaw = selectedYearData.taxDetails.fed;
                             const penalty = selectedYearData.taxDetails.earlyWithdrawalPenalty ?? 0;
@@ -1371,50 +1372,50 @@ function SimulationDebugTab() {
                             return (
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                             <div>
-                                <span className="text-gray-400">Federal Income Tax:</span>
-                                <span className={`ml-2 font-mono ${fedIncomeTax > 0 ? 'text-amber-400' : 'text-gray-500'}`}>
+                                <span className="text-content-muted">Federal Income Tax:</span>
+                                <span className={`ml-2 font-mono ${fedIncomeTax > 0 ? 'text-warning' : 'text-content-subtle'}`}>
                                     {toCurrencyShort(fedIncomeTax)}
                                 </span>
                             </div>
                             <div>
-                                <span className="text-gray-400">Early-Withdraw Penalty:</span>
-                                <span className={`ml-2 font-mono ${penalty > 0 ? 'text-yellow-400' : 'text-gray-500'}`}>
+                                <span className="text-content-muted">Early-Withdraw Penalty:</span>
+                                <span className={`ml-2 font-mono ${penalty > 0 ? 'text-warning' : 'text-content-subtle'}`}>
                                     {toCurrencyShort(penalty)}
                                 </span>
                             </div>
                             <div>
-                                <span className="text-gray-400">State Tax:</span>
-                                <span className={`ml-2 font-mono ${selectedYearData.taxDetails.state > 0 ? 'text-amber-400' : 'text-gray-500'}`}>
+                                <span className="text-content-muted">State Tax:</span>
+                                <span className={`ml-2 font-mono ${selectedYearData.taxDetails.state > 0 ? 'text-warning' : 'text-content-subtle'}`}>
                                     {toCurrencyShort(selectedYearData.taxDetails.state)}
                                 </span>
                             </div>
                             <div>
-                                <span className="text-gray-400">FICA:</span>
-                                <span className={`ml-2 font-mono ${selectedYearData.taxDetails.fica > 0 ? 'text-amber-400' : 'text-gray-500'}`}>
+                                <span className="text-content-muted">FICA:</span>
+                                <span className={`ml-2 font-mono ${selectedYearData.taxDetails.fica > 0 ? 'text-warning' : 'text-content-subtle'}`}>
                                     {toCurrencyShort(selectedYearData.taxDetails.fica)}
                                 </span>
                             </div>
                             <div>
-                                <span className="text-gray-400">Cap Gains Tax:</span>
-                                <span className={`ml-2 font-mono ${selectedYearData.taxDetails.capitalGains > 0 ? 'text-lime-400' : 'text-gray-500'}`}>
+                                <span className="text-content-muted">Cap Gains Tax:</span>
+                                <span className={`ml-2 font-mono ${selectedYearData.taxDetails.capitalGains > 0 ? 'text-cat-lime' : 'text-content-subtle'}`}>
                                     {toCurrencyShort(selectedYearData.taxDetails.capitalGains)}
                                 </span>
                             </div>
                             <div>
-                                <span className="text-gray-400">Withdrawal Tax:</span>
-                                <span className={`ml-2 font-mono ${selectedYearData.taxDetails.withdrawalOrdinaryTax > 0 ? 'text-purple-400' : 'text-gray-500'}`}>
+                                <span className="text-content-muted">Withdrawal Tax:</span>
+                                <span className={`ml-2 font-mono ${selectedYearData.taxDetails.withdrawalOrdinaryTax > 0 ? 'text-cat-purple' : 'text-content-subtle'}`}>
                                     {toCurrencyShort(selectedYearData.taxDetails.withdrawalOrdinaryTax)}
                                 </span>
                             </div>
                         </div>
                             );
                         })()}
-                        <div className="mt-2 pt-2 border-t border-gray-700 text-xs text-gray-500">
+                        <div className="mt-2 pt-2 border-t border-border-default text-xs text-content-subtle">
                             Cap Gains Tax is from brokerage/ESPP withdrawals.
                             Withdrawal Tax is from Roth earnings (5-year rule), Traditional, or HSA non-medical.
                             Early-Withdraw Penalty is the 10% penalty on Traditional pre-59½ and Roth conversion 5-year-rule withdrawals (also bundled into the engine's `taxDetails.fed`).
                             {selectedYearData.isRetired && (selectedYearData.taxDetails.fed - (selectedYearData.taxDetails.earlyWithdrawalPenalty ?? 0)) > 0 && selectedYearData.taxDetails.capitalGains === 0 && selectedYearData.taxDetails.withdrawalOrdinaryTax === 0 && (
-                                <span className="text-amber-400 block mt-1">
+                                <span className="text-warning block mt-1">
                                     Federal income tax in retirement with $0 withdrawal taxes may indicate ordinary income (Roth conversion, etc.) above the standard deduction.
                                 </span>
                             )}
@@ -1425,16 +1426,16 @@ function SimulationDebugTab() {
 
                     {/* Logs (shown in both views) */}
                     {selectedYearData.logs.length > 0 && (
-                        <div className="mt-4 bg-gray-800 p-3 rounded-lg">
-                            <h4 className="font-semibold text-gray-300 mb-2">Simulation Logs</h4>
+                        <div className="mt-4 bg-surface-overlay p-3 rounded-lg">
+                            <h4 className="font-semibold text-content-default mb-2">Simulation Logs</h4>
                             <div className="text-xs font-mono space-y-1 max-h-96 overflow-y-auto">
                                 {selectedYearData.logs.map((log, idx) => (
-                                    <div key={idx} className="text-gray-400">{log}</div>
+                                    <div key={idx} className="text-content-muted">{log}</div>
                                 ))}
                             </div>
                         </div>
                     )}
-                </div>
+                </Panel>
             )}
         </div>
     );
@@ -1552,7 +1553,7 @@ function MortgageTestingTab() {
             </h3>
 
             {/* --- Inputs Grid --- */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 bg-gray-900 p-6 rounded-xl border border-gray-800 shadow-lg">
+                <Panel padding="lg" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 shadow-lg">
                     <CurrencyInput label="Home Valuation" value={valuation} onChange={setValuation} />
                     <CurrencyInput label="Starting Loan" value={startingLoan} onChange={setStartingLoan} />
                     <PercentageInput label="Interest Rate" value={apr} onChange={setApr} />
@@ -1567,36 +1568,36 @@ function MortgageTestingTab() {
                     <CurrencyInput label="Monthly HOA" value={hoa} onChange={setHoa} />
                     <CurrencyInput label="Monthly Utilities" value={utilities} onChange={setUtilities} />
                     <CurrencyInput label="Extra Payment / Mo" value={extraPayment} onChange={setExtraPayment} />
-                </div>
+                </Panel>
 
                 {/* --- Results Table --- */}
-                <div className="rounded-xl border border-gray-800 overflow-hidden shadow-2xl overflow-x-auto">
+                <div className="rounded-xl border border-border-subtle overflow-hidden shadow-2xl overflow-x-auto">
                     <table className="w-full text-left border-collapse text-sm">
-                        <thead className="bg-gray-900 text-gray-400 text-xs uppercase tracking-wider font-semibold">
+                        <thead className="bg-surface-raised text-content-muted text-xs uppercase tracking-wider font-semibold">
                             <tr>
-                                <th className="p-4 border-b border-gray-800">Year</th>
-                                <th className="p-4 border-b border-gray-800 text-right">Valuation</th>
-                                <th className="p-4 border-b border-gray-800 text-right text-red-400">Interest</th>
-                                <th className="p-4 border-b border-gray-800 text-right text-emerald-400">Principal</th>
-                                <th className="p-4 border-b border-gray-800 text-right text-orange-400">Taxes</th>
-                                <th className="p-4 border-b border-gray-800 text-right text-yellow-400">Ins/Maint</th>
-                                <th className="p-4 border-b border-gray-800 text-right">PMI/HOA</th>
-                                <th className="p-4 border-b border-gray-800 text-right font-bold text-white">Total Outflow</th>
-                                <th className="p-4 border-b border-gray-800 text-right text-blue-400">Remaining Bal</th>
+                                <th className="p-4 border-b border-border-subtle">Year</th>
+                                <th className="p-4 border-b border-border-subtle text-right">Valuation</th>
+                                <th className="p-4 border-b border-border-subtle text-right text-negative">Interest</th>
+                                <th className="p-4 border-b border-border-subtle text-right text-positive">Principal</th>
+                                <th className="p-4 border-b border-border-subtle text-right text-cat-orange">Taxes</th>
+                                <th className="p-4 border-b border-border-subtle text-right text-warning">Ins/Maint</th>
+                                <th className="p-4 border-b border-border-subtle text-right">PMI/HOA</th>
+                                <th className="p-4 border-b border-border-subtle text-right font-bold text-white">Total Outflow</th>
+                                <th className="p-4 border-b border-border-subtle text-right text-info">Remaining Bal</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-800 bg-gray-950">
+                        <tbody className="divide-y divide-border-subtle bg-surface-base">
                             {simulationData.map((row) => (
-                                <tr key={row.year} className="hover:bg-gray-900/40 transition-colors">
-                                    <td className="p-4 font-mono text-gray-500">{row.year}</td>
-                                    <td className="p-4 text-right font-mono text-gray-300">{toCurrency(row.valuation)}</td>
-                                    <td className="p-4 text-right font-mono text-red-500/80">{toCurrency(row.interestPaid)}</td>
-                                    <td className="p-4 text-right font-mono text-emerald-500/80">{toCurrency(row.principalPaid)}</td>
-                                    <td className="p-4 text-right font-mono text-orange-500/80">{toCurrency(row.propertyTax)}</td>
-                                    <td className="p-4 text-right font-mono text-yellow-500/80">{toCurrency(row.insurance + row.repairs)}</td>
-                                    <td className="p-4 text-right font-mono text-gray-400">{toCurrency(row.pmi + row.hoa)}</td>
-                                    <td className="p-4 text-right font-mono font-bold text-gray-200 bg-gray-900/20">{toCurrency(row.totalCost)}</td>
-                                    <td className="p-4 text-right font-mono text-blue-400 font-semibold">{toCurrency(row.endBalance)}</td>
+                                <tr key={row.year} className="hover:bg-surface-raised/40 transition-colors">
+                                    <td className="p-4 font-mono text-content-subtle">{row.year}</td>
+                                    <td className="p-4 text-right font-mono text-content-default">{toCurrency(row.valuation)}</td>
+                                    <td className="p-4 text-right font-mono text-negative-soft/80">{toCurrency(row.interestPaid)}</td>
+                                    <td className="p-4 text-right font-mono text-positive-soft/80">{toCurrency(row.principalPaid)}</td>
+                                    <td className="p-4 text-right font-mono text-cat-orange-soft/80">{toCurrency(row.propertyTax)}</td>
+                                    <td className="p-4 text-right font-mono text-warning-soft/80">{toCurrency(row.insurance + row.repairs)}</td>
+                                    <td className="p-4 text-right font-mono text-content-muted">{toCurrency(row.pmi + row.hoa)}</td>
+                                    <td className="p-4 text-right font-mono font-bold text-content-emphasis bg-surface-raised/20">{toCurrency(row.totalCost)}</td>
+                                    <td className="p-4 text-right font-mono text-info font-semibold">{toCurrency(row.endBalance)}</td>
                                 </tr>
                             ))}
                         </tbody>
@@ -1755,7 +1756,7 @@ function TaxDebugTab() {
 
     if (simulation.length === 0) {
         return (
-            <div className="text-center py-8 text-gray-400">
+            <div className="text-center py-8 text-content-muted">
                 No simulation data. Run a simulation first.
             </div>
         );
@@ -1768,7 +1769,7 @@ function TaxDebugTab() {
     return (
         <div className="space-y-6">
             {/* Filing Status Override */}
-            <div className="bg-gray-900 p-6 rounded-xl border border-gray-800">
+            <Panel padding="lg">
                 <DropdownInput
                     label="Filing Status"
                     value={filingStatus}
@@ -1780,109 +1781,109 @@ function TaxDebugTab() {
                         { value: 'Head of Household', label: 'Head of Household' }
                     ]}
                 />
-            </div>
+            </Panel>
 
             {/* Summary Header */}
-            <div className="bg-gray-900 p-4 rounded-xl border border-gray-800">
+            <Panel>
                 <h3 className="text-lg font-bold text-white mb-3">Tax Configuration</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                     <div>
-                        <span className="text-gray-400">Filing Status:</span>
+                        <span className="text-content-muted">Filing Status:</span>
                         <span className="ml-2 text-white">{filingStatus}</span>
                     </div>
                     <div>
-                        <span className="text-gray-400">State:</span>
+                        <span className="text-content-muted">State:</span>
                         <span className="ml-2 text-white">{taxState.stateResidency}</span>
                     </div>
                     <div>
-                        <span className="text-gray-400">Deduction Method:</span>
+                        <span className="text-content-muted">Deduction Method:</span>
                         <span className="ml-2 text-white">{taxState.deductionMethod}</span>
                     </div>
                     <div>
-                        <span className="text-gray-400">Current Year:</span>
+                        <span className="text-content-muted">Current Year:</span>
                         <span className="ml-2 text-white">{currentYear}</span>
                     </div>
                 </div>
-            </div>
+            </Panel>
 
             {/* Year-by-Year Tax Table */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-                <h3 className="text-lg font-bold text-white p-4 border-b border-gray-800">
+            <Panel padding="none" className="overflow-hidden">
+                <h3 className="text-lg font-bold text-white p-4 border-b border-border-subtle">
                     Tax Breakdown by Year (Click for details)
                 </h3>
                 <div className="overflow-x-auto max-h-96 overflow-y-auto">
                     <table className="w-full text-sm">
-                        <thead className="bg-gray-800 sticky top-0">
+                        <thead className="bg-surface-overlay sticky top-0">
                             <tr>
-                                <th className="p-2 text-left text-gray-400">Year</th>
-                                <th className="p-2 text-left text-gray-400">Age</th>
-                                <th className="p-2 text-right text-gray-400">Gross Income</th>
-                                <th className="p-2 text-right text-gray-400">Taxable</th>
-                                <th className="p-2 text-right text-gray-400">Federal</th>
-                                <th className="p-2 text-right text-gray-400">State</th>
-                                <th className="p-2 text-right text-gray-400">FICA</th>
-                                <th className="p-2 text-right text-gray-400">Cap Gains</th>
-                                <th className="p-2 text-right text-gray-400">Total</th>
-                                <th className="p-2 text-right text-gray-400">Eff. Rate</th>
-                                <th className="p-2 text-right text-gray-400">Marginal</th>
+                                <th className="p-2 text-left text-content-muted">Year</th>
+                                <th className="p-2 text-left text-content-muted">Age</th>
+                                <th className="p-2 text-right text-content-muted">Gross Income</th>
+                                <th className="p-2 text-right text-content-muted">Taxable</th>
+                                <th className="p-2 text-right text-content-muted">Federal</th>
+                                <th className="p-2 text-right text-content-muted">State</th>
+                                <th className="p-2 text-right text-content-muted">FICA</th>
+                                <th className="p-2 text-right text-content-muted">Cap Gains</th>
+                                <th className="p-2 text-right text-content-muted">Total</th>
+                                <th className="p-2 text-right text-content-muted">Eff. Rate</th>
+                                <th className="p-2 text-right text-content-muted">Marginal</th>
                             </tr>
                         </thead>
                         <tbody>
                             {taxData.map(row => row && (
                                 <tr
                                     key={row.year}
-                                    className={`border-t border-gray-800 cursor-pointer hover:bg-gray-800 ${
-                                        selectedYear === row.year ? 'bg-blue-900/30' : ''
+                                    className={`border-t border-border-subtle cursor-pointer hover:bg-surface-overlay ${
+                                        selectedYear === row.year ? 'bg-info-tint/30' : ''
                                     }`}
                                     onClick={() => setSelectedYear(row.year)}
                                 >
                                     <td className="p-2 font-mono">{row.year}</td>
                                     <td className="p-2">{row.age}</td>
-                                    <td className="p-2 text-right font-mono text-green-400">{toCurrencyShort(row.grossIncome)}</td>
-                                    <td className="p-2 text-right font-mono text-gray-300">{toCurrencyShort(row.taxableIncome)}</td>
-                                    <td className="p-2 text-right font-mono text-amber-400">{toCurrencyShort(row.federalTax)}</td>
-                                    <td className="p-2 text-right font-mono text-yellow-400">{toCurrencyShort(row.stateTax)}</td>
-                                    <td className="p-2 text-right font-mono text-orange-400">{toCurrencyShort(row.totalFica)}</td>
-                                    <td className="p-2 text-right font-mono text-lime-400">{toCurrencyShort(row.capitalGainsTax)}</td>
-                                    <td className="p-2 text-right font-mono text-red-400 font-semibold">{toCurrencyShort(row.totalTax)}</td>
-                                    <td className="p-2 text-right font-mono text-gray-400">{(row.effectiveRate * 100).toFixed(1)}%</td>
-                                    <td className="p-2 text-right font-mono text-gray-400">{(row.marginalInfo.rate * 100).toFixed(0)}%</td>
+                                    <td className="p-2 text-right font-mono text-positive">{toCurrencyShort(row.grossIncome)}</td>
+                                    <td className="p-2 text-right font-mono text-content-default">{toCurrencyShort(row.taxableIncome)}</td>
+                                    <td className="p-2 text-right font-mono text-warning">{toCurrencyShort(row.federalTax)}</td>
+                                    <td className="p-2 text-right font-mono text-warning">{toCurrencyShort(row.stateTax)}</td>
+                                    <td className="p-2 text-right font-mono text-cat-orange">{toCurrencyShort(row.totalFica)}</td>
+                                    <td className="p-2 text-right font-mono text-cat-lime">{toCurrencyShort(row.capitalGainsTax)}</td>
+                                    <td className="p-2 text-right font-mono text-negative font-semibold">{toCurrencyShort(row.totalTax)}</td>
+                                    <td className="p-2 text-right font-mono text-content-muted">{(row.effectiveRate * 100).toFixed(1)}%</td>
+                                    <td className="p-2 text-right font-mono text-content-muted">{(row.marginalInfo.rate * 100).toFixed(0)}%</td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
                 </div>
-            </div>
+            </Panel>
 
             {/* Selected Year Details */}
             {selectedData && (
-                <div className="bg-gray-900 p-4 rounded-xl border border-gray-800">
+                <Panel>
                     <h3 className="text-lg font-bold text-white mb-4">
                         Year {selectedData.year} Details (Age {selectedData.age})
                     </h3>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {/* Income Breakdown */}
-                        <div className="bg-gray-800 p-3 rounded-lg">
-                            <h4 className="font-semibold text-gray-300 mb-2">Income</h4>
+                        <div className="bg-surface-overlay p-3 rounded-lg">
+                            <h4 className="font-semibold text-content-default mb-2">Income</h4>
                             <div className="space-y-1 text-sm">
                                 <div className="flex justify-between">
-                                    <span className="text-gray-400">Gross Income:</span>
-                                    <span className="font-mono text-green-400">{toCurrencyShort(selectedData.grossIncome)}</span>
+                                    <span className="text-content-muted">Gross Income:</span>
+                                    <span className="font-mono text-positive">{toCurrencyShort(selectedData.grossIncome)}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-gray-400">Earned Income:</span>
+                                    <span className="text-content-muted">Earned Income:</span>
                                     <span className="font-mono text-white">{toCurrencyShort(selectedData.earnedIncome)}</span>
                                 </div>
                                 {selectedData.ssBenefits > 0 && (
                                     <>
                                         <div className="flex justify-between">
-                                            <span className="text-gray-400">SS Benefits:</span>
-                                            <span className="font-mono text-cyan-400">{toCurrencyShort(selectedData.ssBenefits)}</span>
+                                            <span className="text-content-muted">SS Benefits:</span>
+                                            <span className="font-mono text-cat-cyan">{toCurrencyShort(selectedData.ssBenefits)}</span>
                                         </div>
                                         <div className="flex justify-between">
-                                            <span className="text-gray-400">Taxable SS ({((selectedData.taxableSS / selectedData.ssBenefits) * 100).toFixed(0)}%):</span>
-                                            <span className="font-mono text-cyan-300">{toCurrencyShort(selectedData.taxableSS)}</span>
+                                            <span className="text-content-muted">Taxable SS ({((selectedData.taxableSS / selectedData.ssBenefits) * 100).toFixed(0)}%):</span>
+                                            <span className="font-mono text-cat-cyan-bright">{toCurrencyShort(selectedData.taxableSS)}</span>
                                         </div>
                                     </>
                                 )}
@@ -1890,130 +1891,130 @@ function TaxDebugTab() {
                         </div>
 
                         {/* Deductions */}
-                        <div className="bg-gray-800 p-3 rounded-lg">
-                            <h4 className="font-semibold text-gray-300 mb-2">Deductions</h4>
+                        <div className="bg-surface-overlay p-3 rounded-lg">
+                            <h4 className="font-semibold text-content-default mb-2">Deductions</h4>
                             <div className="space-y-1 text-sm">
                                 <div className="flex justify-between">
-                                    <span className="text-gray-400">Pre-Tax (401k, etc):</span>
+                                    <span className="text-content-muted">Pre-Tax (401k, etc):</span>
                                     <span className="font-mono text-white">{toCurrencyShort(selectedData.preTaxDeductions)}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-gray-400">Above-Line:</span>
+                                    <span className="text-content-muted">Above-Line:</span>
                                     <span className="font-mono text-white">{toCurrencyShort(selectedData.aboveLineDeductions)}</span>
                                 </div>
-                                <div className="flex justify-between border-t border-gray-700 pt-1">
-                                    <span className="text-gray-400">AGI:</span>
+                                <div className="flex justify-between border-t border-border-default pt-1">
+                                    <span className="text-content-muted">AGI:</span>
                                     <span className="font-mono text-white">{toCurrencyShort(selectedData.agi)}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-gray-400">Standard Ded:</span>
-                                    <span className={`font-mono ${!selectedData.usingItemized ? 'text-emerald-400' : 'text-gray-500'}`}>
+                                    <span className="text-content-muted">Standard Ded:</span>
+                                    <span className={`font-mono ${!selectedData.usingItemized ? 'text-positive' : 'text-content-subtle'}`}>
                                         {toCurrencyShort(selectedData.standardDeduction)}
                                     </span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-gray-400">Itemized Ded:</span>
-                                    <span className={`font-mono ${selectedData.usingItemized ? 'text-emerald-400' : 'text-gray-500'}`}>
+                                    <span className="text-content-muted">Itemized Ded:</span>
+                                    <span className={`font-mono ${selectedData.usingItemized ? 'text-positive' : 'text-content-subtle'}`}>
                                         {toCurrencyShort(selectedData.itemizedDeductions)}
                                     </span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-gray-400">SALT Cap:</span>
-                                    <span className="font-mono text-gray-400">{toCurrencyShort(selectedData.saltCap)}</span>
+                                    <span className="text-content-muted">SALT Cap:</span>
+                                    <span className="font-mono text-content-muted">{toCurrencyShort(selectedData.saltCap)}</span>
                                 </div>
-                                <div className="flex justify-between border-t border-gray-700 pt-1">
-                                    <span className="text-gray-300 font-medium">Taxable Income:</span>
+                                <div className="flex justify-between border-t border-border-default pt-1">
+                                    <span className="text-content-default font-medium">Taxable Income:</span>
                                     <span className="font-mono text-white font-semibold">{toCurrencyShort(selectedData.taxableIncome)}</span>
                                 </div>
                             </div>
                         </div>
 
                         {/* Federal Tax Brackets */}
-                        <div className="bg-gray-800 p-3 rounded-lg">
-                            <h4 className="font-semibold text-gray-300 mb-2">Federal Brackets</h4>
+                        <div className="bg-surface-overlay p-3 rounded-lg">
+                            <h4 className="font-semibold text-content-default mb-2">Federal Brackets</h4>
                             <div className="space-y-1 text-sm">
                                 {selectedData.bracketBreakdown.map((bracket, i) => (
                                     <div key={i} className="flex justify-between">
-                                        <span className="text-gray-400">{(bracket.rate * 100).toFixed(0)}% on {toCurrencyShort(bracket.amount)}:</span>
-                                        <span className="font-mono text-amber-400">{toCurrencyShort(bracket.tax)}</span>
+                                        <span className="text-content-muted">{(bracket.rate * 100).toFixed(0)}% on {toCurrencyShort(bracket.amount)}:</span>
+                                        <span className="font-mono text-warning">{toCurrencyShort(bracket.tax)}</span>
                                     </div>
                                 ))}
-                                <div className="flex justify-between border-t border-gray-700 pt-1">
-                                    <span className="text-gray-300 font-medium">Total Federal:</span>
-                                    <span className="font-mono text-amber-400 font-semibold">{toCurrencyShort(selectedData.federalTax)}</span>
+                                <div className="flex justify-between border-t border-border-default pt-1">
+                                    <span className="text-content-default font-medium">Total Federal:</span>
+                                    <span className="font-mono text-warning font-semibold">{toCurrencyShort(selectedData.federalTax)}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-gray-400">Effective Rate:</span>
-                                    <span className="font-mono text-gray-300">{(selectedData.effectiveRate * 100).toFixed(2)}%</span>
+                                    <span className="text-content-muted">Effective Rate:</span>
+                                    <span className="font-mono text-content-default">{(selectedData.effectiveRate * 100).toFixed(2)}%</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-gray-400">Marginal Rate:</span>
-                                    <span className="font-mono text-gray-300">{(selectedData.marginalInfo.rate * 100).toFixed(0)}%</span>
+                                    <span className="text-content-muted">Marginal Rate:</span>
+                                    <span className="font-mono text-content-default">{(selectedData.marginalInfo.rate * 100).toFixed(0)}%</span>
                                 </div>
                                 {selectedData.marginalInfo.headroom < Infinity && (
                                     <div className="flex justify-between">
-                                        <span className="text-gray-400">Headroom:</span>
-                                        <span className="font-mono text-gray-300">{toCurrencyShort(selectedData.marginalInfo.headroom)}</span>
+                                        <span className="text-content-muted">Headroom:</span>
+                                        <span className="font-mono text-content-default">{toCurrencyShort(selectedData.marginalInfo.headroom)}</span>
                                     </div>
                                 )}
                             </div>
                         </div>
 
                         {/* State Tax */}
-                        <div className="bg-gray-800 p-3 rounded-lg">
-                            <h4 className="font-semibold text-gray-300 mb-2">State Tax ({taxState.stateResidency})</h4>
+                        <div className="bg-surface-overlay p-3 rounded-lg">
+                            <h4 className="font-semibold text-content-default mb-2">State Tax ({taxState.stateResidency})</h4>
                             <div className="space-y-1 text-sm">
                                 <div className="flex justify-between">
-                                    <span className="text-gray-400">Standard Ded:</span>
+                                    <span className="text-content-muted">Standard Ded:</span>
                                     <span className="font-mono text-white">{toCurrencyShort(selectedData.stateStandardDeduction)}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-gray-400">Taxable Income:</span>
+                                    <span className="text-content-muted">Taxable Income:</span>
                                     <span className="font-mono text-white">{toCurrencyShort(selectedData.stateTaxableIncome)}</span>
                                 </div>
-                                <div className="flex justify-between border-t border-gray-700 pt-1">
-                                    <span className="text-gray-300 font-medium">State Tax:</span>
-                                    <span className="font-mono text-yellow-400 font-semibold">{toCurrencyShort(selectedData.stateTax)}</span>
+                                <div className="flex justify-between border-t border-border-default pt-1">
+                                    <span className="text-content-default font-medium">State Tax:</span>
+                                    <span className="font-mono text-warning font-semibold">{toCurrencyShort(selectedData.stateTax)}</span>
                                 </div>
                             </div>
                         </div>
 
                         {/* FICA */}
-                        <div className="bg-gray-800 p-3 rounded-lg">
-                            <h4 className="font-semibold text-gray-300 mb-2">FICA / Payroll</h4>
+                        <div className="bg-surface-overlay p-3 rounded-lg">
+                            <h4 className="font-semibold text-content-default mb-2">FICA / Payroll</h4>
                             <div className="space-y-1 text-sm">
                                 <div className="flex justify-between">
-                                    <span className="text-gray-400">FICA Taxable:</span>
+                                    <span className="text-content-muted">FICA Taxable:</span>
                                     <span className="font-mono text-white">{toCurrencyShort(selectedData.ficaTaxableBase)}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-gray-400">SS Wage Base:</span>
-                                    <span className="font-mono text-gray-400">{toCurrencyShort(selectedData.ssWageBase)}</span>
+                                    <span className="text-content-muted">SS Wage Base:</span>
+                                    <span className="font-mono text-content-muted">{toCurrencyShort(selectedData.ssWageBase)}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-gray-400">Social Security (6.2%):</span>
-                                    <span className="font-mono text-orange-400">{toCurrencyShort(selectedData.ssTax)}</span>
+                                    <span className="text-content-muted">Social Security (6.2%):</span>
+                                    <span className="font-mono text-cat-orange">{toCurrencyShort(selectedData.ssTax)}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-gray-400">Medicare (1.45%):</span>
-                                    <span className="font-mono text-orange-400">{toCurrencyShort(selectedData.medicareTax)}</span>
+                                    <span className="text-content-muted">Medicare (1.45%):</span>
+                                    <span className="font-mono text-cat-orange">{toCurrencyShort(selectedData.medicareTax)}</span>
                                 </div>
-                                <div className="flex justify-between border-t border-gray-700 pt-1">
-                                    <span className="text-gray-300 font-medium">Total FICA:</span>
-                                    <span className="font-mono text-orange-400 font-semibold">{toCurrencyShort(selectedData.totalFica)}</span>
+                                <div className="flex justify-between border-t border-border-default pt-1">
+                                    <span className="text-content-default font-medium">Total FICA:</span>
+                                    <span className="font-mono text-cat-orange font-semibold">{toCurrencyShort(selectedData.totalFica)}</span>
                                 </div>
                             </div>
                         </div>
 
                         {/* Capital Gains */}
-                        <div className="bg-gray-800 p-3 rounded-lg">
-                            <h4 className="font-semibold text-gray-300 mb-2">Capital Gains</h4>
+                        <div className="bg-surface-overlay p-3 rounded-lg">
+                            <h4 className="font-semibold text-content-default mb-2">Capital Gains</h4>
                             <div className="space-y-1 text-sm">
                                 <div className="flex justify-between">
-                                    <span className="text-gray-400">Cap Gains Tax:</span>
-                                    <span className="font-mono text-lime-400">{toCurrencyShort(selectedData.capitalGainsTax)}</span>
+                                    <span className="text-content-muted">Cap Gains Tax:</span>
+                                    <span className="font-mono text-cat-lime">{toCurrencyShort(selectedData.capitalGainsTax)}</span>
                                 </div>
-                                <div className="text-xs text-gray-500 mt-2">
+                                <div className="text-xs text-content-subtle mt-2">
                                     From brokerage account withdrawals. Taxed at preferential long-term rates (0/15/20%).
                                 </div>
                             </div>
@@ -2021,16 +2022,16 @@ function TaxDebugTab() {
                     </div>
 
                     {/* Total Summary */}
-                    <div className="mt-4 p-3 bg-gray-800 rounded-lg">
+                    <div className="mt-4 p-3 bg-surface-overlay rounded-lg">
                         <div className="flex justify-between items-center">
                             <span className="text-lg font-semibold text-white">Total Tax Burden</span>
-                            <span className="text-xl font-mono text-red-400 font-bold">{toCurrencyShort(selectedData.totalTax)}</span>
+                            <span className="text-xl font-mono text-negative font-bold">{toCurrencyShort(selectedData.totalTax)}</span>
                         </div>
-                        <div className="text-sm text-gray-400 mt-1">
+                        <div className="text-sm text-content-muted mt-1">
                             {((selectedData.totalTax / selectedData.grossIncome) * 100).toFixed(1)}% of gross income
                         </div>
                     </div>
-                </div>
+                </Panel>
             )}
         </div>
     );
@@ -2136,7 +2137,7 @@ function SocialSecurityDebugTab() {
     return (
         <div className="space-y-6">
             {/* Inputs Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 bg-gray-900 p-6 rounded-xl border border-gray-800">
+            <Panel padding="lg" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                 <NumberInput
                     label="Birth Year"
                     value={birthYearOverride}
@@ -2170,118 +2171,118 @@ function SocialSecurityDebugTab() {
                         label: a === fra ? `${a} (FRA)` : a.toString()
                     }))}
                 />
-            </div>
+            </Panel>
 
             {/* Configuration */}
-            <div className="bg-gray-900 p-4 rounded-xl border border-gray-800">
+            <Panel>
                 <h3 className="text-lg font-bold text-white mb-3">Social Security Configuration</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                     <div>
-                        <span className="text-gray-400">Birth Year:</span>
+                        <span className="text-content-muted">Birth Year:</span>
                         <span className="ml-2 text-white">{birthYear}</span>
                     </div>
                     <div>
-                        <span className="text-gray-400">Full Retirement Age:</span>
+                        <span className="text-content-muted">Full Retirement Age:</span>
                         <span className="ml-2 text-white">{fra}</span>
                     </div>
                     <div>
-                        <span className="text-gray-400">Years of Earnings:</span>
+                        <span className="text-content-muted">Years of Earnings:</span>
                         <span className="ml-2 text-white">{earningsHistory.length}</span>
                         {priorYearsWorked > 0 && (
-                            <span className="ml-1 text-xs text-cyan-400">({priorYearsWorked} prior)</span>
+                            <span className="ml-1 text-xs text-cat-cyan">({priorYearsWorked} prior)</span>
                         )}
                     </div>
                     <div>
-                        <span className="text-gray-400">SS Income Objects:</span>
+                        <span className="text-content-muted">SS Income Objects:</span>
                         <span className="ml-2 text-white">{ssIncomes.length}</span>
                     </div>
                 </div>
                 {ssIncomes.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-gray-800">
-                        <span className="text-gray-400 text-sm">Current SS Incomes: </span>
+                    <div className="mt-3 pt-3 border-t border-border-subtle">
+                        <span className="text-content-muted text-sm">Current SS Incomes: </span>
                         {ssIncomes.map((inc, idx) => (
-                            <span key={idx} className="text-xs bg-cyan-900/50 px-2 py-1 rounded mr-2">
+                            <span key={idx} className="text-xs bg-cat-cyan-tint/50 px-2 py-1 rounded mr-2">
                                 {inc.name}: {toCurrencyShort(inc.amount)}/mo
                             </span>
                         ))}
                     </div>
                 )}
-            </div>
+            </Panel>
 
             {/* Bend Points Info */}
-            <div className="bg-gray-900 p-4 rounded-xl border border-gray-800">
+            <Panel>
                 <h3 className="text-lg font-bold text-white mb-3">PIA Bend Points (Year {birthYear + 62})</h3>
                 <div className="grid grid-cols-3 gap-4 text-sm">
-                    <div className="bg-gray-800 p-3 rounded-lg">
-                        <div className="text-cyan-400 font-semibold">First Bend Point</div>
+                    <div className="bg-surface-overlay p-3 rounded-lg">
+                        <div className="text-cat-cyan font-semibold">First Bend Point</div>
                         <div className="text-2xl font-mono text-white">{toCurrencyShort(bendPoints.first)}</div>
-                        <div className="text-xs text-gray-400">90% of AIME up to this amount</div>
+                        <div className="text-xs text-content-muted">90% of AIME up to this amount</div>
                     </div>
-                    <div className="bg-gray-800 p-3 rounded-lg">
-                        <div className="text-cyan-400 font-semibold">Second Bend Point</div>
+                    <div className="bg-surface-overlay p-3 rounded-lg">
+                        <div className="text-cat-cyan font-semibold">Second Bend Point</div>
                         <div className="text-2xl font-mono text-white">{toCurrencyShort(bendPoints.second)}</div>
-                        <div className="text-xs text-gray-400">32% of AIME between bend points</div>
+                        <div className="text-xs text-content-muted">32% of AIME between bend points</div>
                     </div>
-                    <div className="bg-gray-800 p-3 rounded-lg">
-                        <div className="text-cyan-400 font-semibold">Above Second</div>
+                    <div className="bg-surface-overlay p-3 rounded-lg">
+                        <div className="text-cat-cyan font-semibold">Above Second</div>
                         <div className="text-2xl font-mono text-white">15%</div>
-                        <div className="text-xs text-gray-400">of AIME above second bend point</div>
+                        <div className="text-xs text-content-muted">of AIME above second bend point</div>
                     </div>
                 </div>
-            </div>
+            </Panel>
 
             {/* Claiming Age Comparison */}
             {claimingAnalysis && (
-                <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-                    <h3 className="text-lg font-bold text-white p-4 border-b border-gray-800">
+                <Panel padding="none" className="overflow-hidden">
+                    <h3 className="text-lg font-bold text-white p-4 border-b border-border-subtle">
                         Benefit by Claiming Age
                     </h3>
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
-                            <thead className="bg-gray-800">
+                            <thead className="bg-surface-overlay">
                                 <tr>
-                                    <th className="p-2 text-left text-gray-400">Claiming Age</th>
-                                    <th className="p-2 text-right text-gray-400">AIME</th>
-                                    <th className="p-2 text-right text-gray-400">PIA (at FRA)</th>
-                                    <th className="p-2 text-right text-gray-400">Adjustment</th>
-                                    <th className="p-2 text-right text-gray-400">Monthly Benefit</th>
-                                    <th className="p-2 text-right text-gray-400">Annual Benefit</th>
+                                    <th className="p-2 text-left text-content-muted">Claiming Age</th>
+                                    <th className="p-2 text-right text-content-muted">AIME</th>
+                                    <th className="p-2 text-right text-content-muted">PIA (at FRA)</th>
+                                    <th className="p-2 text-right text-content-muted">Adjustment</th>
+                                    <th className="p-2 text-right text-content-muted">Monthly Benefit</th>
+                                    <th className="p-2 text-right text-content-muted">Annual Benefit</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {claimingAnalysis.map(row => (
                                     <tr
                                         key={row.age}
-                                        className={`border-t border-gray-800 cursor-pointer hover:bg-gray-800 ${
-                                            row.age === highlightClaimingAge ? 'bg-purple-900/30 ring-1 ring-purple-500' :
-                                            row.age === fra ? 'bg-cyan-900/20' : ''
+                                        className={`border-t border-border-subtle cursor-pointer hover:bg-surface-overlay ${
+                                            row.age === highlightClaimingAge ? 'bg-cat-purple-tint/30 ring-1 ring-cat-purple-soft' :
+                                            row.age === fra ? 'bg-cat-cyan-tint/20' : ''
                                         }`}
                                         onClick={() => setHighlightClaimingAge(row.age)}
                                     >
                                         <td className="p-2 font-mono">
                                             {row.age}
                                             {row.age === highlightClaimingAge && (
-                                                <span className="ml-2 text-xs bg-purple-900/50 px-1 rounded text-purple-400">Selected</span>
+                                                <span className="ml-2 text-xs bg-cat-purple-tint/50 px-1 rounded text-cat-purple">Selected</span>
                                             )}
                                             {row.age === fra && row.age !== highlightClaimingAge && (
-                                                <span className="ml-2 text-xs bg-cyan-900/50 px-1 rounded text-cyan-400">FRA</span>
+                                                <span className="ml-2 text-xs bg-cat-cyan-tint/50 px-1 rounded text-cat-cyan">FRA</span>
                                             )}
                                             {row.age === 70 && row.age !== highlightClaimingAge && (
-                                                <span className="ml-2 text-xs bg-green-900/50 px-1 rounded text-green-400">MAX</span>
+                                                <span className="ml-2 text-xs bg-positive-tint/50 px-1 rounded text-positive">MAX</span>
                                             )}
                                         </td>
                                         <td className="p-2 text-right font-mono text-white">{toCurrencyShort(row.aime)}</td>
-                                        <td className="p-2 text-right font-mono text-gray-400">{toCurrencyShort(row.pia)}</td>
+                                        <td className="p-2 text-right font-mono text-content-muted">{toCurrencyShort(row.pia)}</td>
                                         <td className={`p-2 text-right font-mono ${
-                                            row.adjustmentFactor < 1 ? 'text-red-400' :
-                                            row.adjustmentFactor > 1 ? 'text-green-400' : 'text-white'
+                                            row.adjustmentFactor < 1 ? 'text-negative' :
+                                            row.adjustmentFactor > 1 ? 'text-positive' : 'text-white'
                                         }`}>
                                             {(row.adjustmentFactor * 100).toFixed(1)}%
                                         </td>
-                                        <td className="p-2 text-right font-mono text-cyan-400 font-semibold">
+                                        <td className="p-2 text-right font-mono text-cat-cyan font-semibold">
                                             {toCurrencyShort(row.adjustedBenefit)}
                                         </td>
-                                        <td className="p-2 text-right font-mono text-cyan-300">
+                                        <td className="p-2 text-right font-mono text-cat-cyan-bright">
                                             {toCurrencyShort(row.annualBenefit)}
                                         </td>
                                     </tr>
@@ -2289,23 +2290,23 @@ function SocialSecurityDebugTab() {
                             </tbody>
                         </table>
                     </div>
-                </div>
+                </Panel>
             )}
 
             {/* Earnings History */}
             {earningsHistory.length > 0 && (
-                <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-                    <h3 className="text-lg font-bold text-white p-4 border-b border-gray-800">
+                <Panel padding="none" className="overflow-hidden">
+                    <h3 className="text-lg font-bold text-white p-4 border-b border-border-subtle">
                         Earnings History (from Simulation)
                     </h3>
                     <div className="overflow-x-auto max-h-64 overflow-y-auto">
                         <table className="w-full text-sm">
-                            <thead className="bg-gray-800 sticky top-0">
+                            <thead className="bg-surface-overlay sticky top-0">
                                 <tr>
-                                    <th className="p-2 text-left text-gray-400">Year</th>
-                                    <th className="p-2 text-right text-gray-400">Earnings</th>
-                                    <th className="p-2 text-right text-gray-400">SS Wage Base</th>
-                                    <th className="p-2 text-right text-gray-400">Status</th>
+                                    <th className="p-2 text-left text-content-muted">Year</th>
+                                    <th className="p-2 text-right text-content-muted">Earnings</th>
+                                    <th className="p-2 text-right text-content-muted">SS Wage Base</th>
+                                    <th className="p-2 text-right text-content-muted">Status</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -2313,19 +2314,19 @@ function SocialSecurityDebugTab() {
                                     const wageBase = getWageBase(record.year, 0.025, assumptions.macro.inflationAdjusted);
                                     const atMax = record.amount >= wageBase * 0.99;
                                     return (
-                                        <tr key={record.year} className="border-t border-gray-800">
+                                        <tr key={record.year} className="border-t border-border-subtle">
                                             <td className="p-2 font-mono">{record.year}</td>
-                                            <td className="p-2 text-right font-mono text-green-400">
+                                            <td className="p-2 text-right font-mono text-positive">
                                                 {toCurrencyShort(record.amount)}
                                             </td>
-                                            <td className="p-2 text-right font-mono text-gray-400">
+                                            <td className="p-2 text-right font-mono text-content-muted">
                                                 {toCurrencyShort(wageBase)}
                                             </td>
                                             <td className="p-2 text-right">
                                                 {atMax ? (
-                                                    <span className="text-xs bg-green-900/50 px-2 py-0.5 rounded text-green-400">At Max</span>
+                                                    <span className="text-xs bg-positive-tint/50 px-2 py-0.5 rounded text-positive">At Max</span>
                                                 ) : (
-                                                    <span className="text-xs text-gray-500">
+                                                    <span className="text-xs text-content-subtle">
                                                         {((record.amount / wageBase) * 100).toFixed(0)}% of max
                                                     </span>
                                                 )}
@@ -2336,62 +2337,62 @@ function SocialSecurityDebugTab() {
                             </tbody>
                         </table>
                     </div>
-                    <div className="p-3 border-t border-gray-800 text-xs text-gray-500">
+                    <div className="p-3 border-t border-border-subtle text-xs text-content-subtle">
                         Top 35 years of indexed earnings are used to calculate AIME. Earnings after age 60 are not indexed.
                     </div>
-                </div>
+                </Panel>
             )}
 
             {/* Detailed PIA Breakdown */}
             {detailedBreakdown && (
-                <div className="bg-gray-900 p-4 rounded-xl border border-gray-800">
+                <Panel>
                     <h3 className="text-lg font-bold text-white mb-3">PIA Calculation Breakdown</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="bg-gray-800 p-3 rounded-lg">
-                            <h4 className="font-semibold text-gray-300 mb-2">AIME Calculation</h4>
+                        <div className="bg-surface-overlay p-3 rounded-lg">
+                            <h4 className="font-semibold text-content-default mb-2">AIME Calculation</h4>
                             <div className="space-y-1 text-sm">
                                 <div className="flex justify-between">
-                                    <span className="text-gray-400">Index Year (Age 60):</span>
+                                    <span className="text-content-muted">Index Year (Age 60):</span>
                                     <span className="font-mono text-white">{detailedBreakdown.indexYear}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-gray-400">Top 35 Earnings Sum:</span>
+                                    <span className="text-content-muted">Top 35 Earnings Sum:</span>
                                     <span className="font-mono text-white">
                                         {toCurrencyShort(detailedBreakdown.indexedEarnings.reduce((a, b) => a + b, 0))}
                                     </span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-gray-400">÷ 420 months:</span>
-                                    <span className="font-mono text-cyan-400 font-semibold">
+                                    <span className="text-content-muted">÷ 420 months:</span>
+                                    <span className="font-mono text-cat-cyan font-semibold">
                                         {toCurrencyShort(detailedBreakdown.aime)}/mo
                                     </span>
                                 </div>
                             </div>
                         </div>
-                        <div className="bg-gray-800 p-3 rounded-lg">
-                            <h4 className="font-semibold text-gray-300 mb-2">PIA Formula</h4>
+                        <div className="bg-surface-overlay p-3 rounded-lg">
+                            <h4 className="font-semibold text-content-default mb-2">PIA Formula</h4>
                             <div className="space-y-1 text-sm font-mono">
-                                <div className="text-gray-400">
+                                <div className="text-content-muted">
                                     90% × min({toCurrencyShort(detailedBreakdown.aime)}, {toCurrencyShort(detailedBreakdown.bendPoints.first)})
                                 </div>
-                                <div className="text-gray-400">
+                                <div className="text-content-muted">
                                     + 32% × amount between ${detailedBreakdown.bendPoints.first} and ${detailedBreakdown.bendPoints.second}
                                 </div>
-                                <div className="text-gray-400">
+                                <div className="text-content-muted">
                                     + 15% × amount above ${detailedBreakdown.bendPoints.second}
                                 </div>
-                                <div className="flex justify-between border-t border-gray-700 pt-1 mt-2">
-                                    <span className="text-gray-300">= PIA:</span>
-                                    <span className="text-cyan-400 font-semibold">{toCurrencyShort(detailedBreakdown.pia)}/mo</span>
+                                <div className="flex justify-between border-t border-border-default pt-1 mt-2">
+                                    <span className="text-content-default">= PIA:</span>
+                                    <span className="text-cat-cyan font-semibold">{toCurrencyShort(detailedBreakdown.pia)}/mo</span>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
+                </Panel>
             )}
 
             {simulation.length === 0 && (
-                <div className="text-center py-8 text-gray-400">
+                <div className="text-center py-8 text-content-muted">
                     No simulation data. Run a simulation to calculate Social Security benefits.
                 </div>
             )}
@@ -2513,7 +2514,7 @@ function RMDDebugTab() {
     return (
         <div className="space-y-6">
             {/* Inputs Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 bg-gray-900 p-6 rounded-xl border border-gray-800">
+            <Panel padding="lg" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <NumberInput
                     label="Birth Year"
                     value={birthYearOverride}
@@ -2538,43 +2539,43 @@ function RMDDebugTab() {
                     onChange={setFocusAge}
                     tooltip="Age to highlight in the table"
                 />
-            </div>
+            </Panel>
 
             {/* What-If RMD Projection */}
             {whatIfProjection && whatIfProjection.length > 0 && (
-                <div className="bg-linear-to-r from-amber-900/30 to-orange-900/30 p-4 rounded-xl border border-amber-700/50">
-                    <h3 className="text-lg font-bold text-amber-300 mb-3">
+                <div className="bg-linear-to-r from-warning-tint/30 to-cat-orange-tint/30 p-4 rounded-xl border border-warning-strong/50">
+                    <h3 className="text-lg font-bold text-warning-bright mb-3">
                         What-If RMD Projection ({toCurrencyShort(additionalBalance)} starting balance, {growthRate}% growth)
                     </h3>
                     <div className="overflow-x-auto max-h-64 overflow-y-auto">
                         <table className="w-full text-sm">
-                            <thead className="bg-amber-900/30 sticky top-0">
+                            <thead className="bg-warning-tint/30 sticky top-0">
                                 <tr>
-                                    <th className="p-2 text-left text-amber-300">Age</th>
-                                    <th className="p-2 text-right text-amber-300">Balance (BOY)</th>
-                                    <th className="p-2 text-right text-amber-300">Dist. Period</th>
-                                    <th className="p-2 text-right text-amber-300">RMD Amount</th>
-                                    <th className="p-2 text-right text-amber-300">% of Balance</th>
+                                    <th className="p-2 text-left text-warning-bright">Age</th>
+                                    <th className="p-2 text-right text-warning-bright">Balance (BOY)</th>
+                                    <th className="p-2 text-right text-warning-bright">Dist. Period</th>
+                                    <th className="p-2 text-right text-warning-bright">RMD Amount</th>
+                                    <th className="p-2 text-right text-warning-bright">% of Balance</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {whatIfProjection.map(row => (
                                     <tr
                                         key={row.age}
-                                        className={`border-t border-amber-800/30 ${
-                                            row.age === focusAge ? 'bg-amber-900/40 ring-1 ring-amber-500' : ''
+                                        className={`border-t border-warning-strong/30 ${
+                                            row.age === focusAge ? 'bg-warning-tint/40 ring-1 ring-warning-soft' : ''
                                         }`}
                                     >
                                         <td className="p-2 font-mono">
                                             {row.age}
                                             {row.age === rmdStartAge && (
-                                                <span className="ml-2 text-xs bg-amber-900/50 px-1 rounded text-amber-400">Start</span>
+                                                <span className="ml-2 text-xs bg-warning-tint/50 px-1 rounded text-warning">Start</span>
                                             )}
                                         </td>
                                         <td className="p-2 text-right font-mono text-white">{toCurrencyShort(row.balance)}</td>
-                                        <td className="p-2 text-right font-mono text-gray-400">{row.distributionPeriod.toFixed(1)}</td>
-                                        <td className="p-2 text-right font-mono text-amber-400 font-semibold">{toCurrencyShort(row.rmdAmount)}</td>
-                                        <td className="p-2 text-right font-mono text-gray-400">{row.percentOfBalance.toFixed(1)}%</td>
+                                        <td className="p-2 text-right font-mono text-content-muted">{row.distributionPeriod.toFixed(1)}</td>
+                                        <td className="p-2 text-right font-mono text-warning font-semibold">{toCurrencyShort(row.rmdAmount)}</td>
+                                        <td className="p-2 text-right font-mono text-content-muted">{row.percentOfBalance.toFixed(1)}%</td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -2584,67 +2585,67 @@ function RMDDebugTab() {
             )}
 
             {/* Configuration */}
-            <div className="bg-gray-900 p-4 rounded-xl border border-gray-800">
+            <Panel>
                 <h3 className="text-lg font-bold text-white mb-3">RMD Configuration</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                     <div>
-                        <span className="text-gray-400">Birth Year:</span>
+                        <span className="text-content-muted">Birth Year:</span>
                         <span className="ml-2 text-white">{birthYear}</span>
                     </div>
                     <div>
-                        <span className="text-gray-400">RMD Start Age:</span>
+                        <span className="text-content-muted">RMD Start Age:</span>
                         <span className="ml-2 text-white">{rmdStartAge}</span>
                     </div>
                     <div>
-                        <span className="text-gray-400">RMD-Eligible Accounts:</span>
+                        <span className="text-content-muted">RMD-Eligible Accounts:</span>
                         <span className="ml-2 text-white">{rmdAccounts.length}</span>
                     </div>
                     <div>
-                        <span className="text-gray-400">Current Age:</span>
+                        <span className="text-content-muted">Current Age:</span>
                         <span className="ml-2 text-white">{startAge}</span>
                     </div>
                 </div>
                 {rmdAccounts.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-gray-800">
-                        <span className="text-gray-400 text-sm">Traditional Accounts: </span>
+                    <div className="mt-3 pt-3 border-t border-border-subtle">
+                        <span className="text-content-muted text-sm">Traditional Accounts: </span>
                         {rmdAccounts.map((acc, idx) => (
-                            <span key={idx} className="text-xs bg-amber-900/50 px-2 py-1 rounded mr-2">
+                            <span key={idx} className="text-xs bg-warning-tint/50 px-2 py-1 rounded mr-2">
                                 {acc.name}: {toCurrencyShort(acc.amount)}
                             </span>
                         ))}
                     </div>
                 )}
-            </div>
+            </Panel>
 
             {/* RMD Start Age Rules */}
-            <div className="bg-gray-900 p-4 rounded-xl border border-gray-800">
+            <Panel>
                 <h3 className="text-lg font-bold text-white mb-3">SECURE Act 2.0 RMD Rules</h3>
                 <div className="grid grid-cols-3 gap-4 text-sm">
-                    <div className={`bg-gray-800 p-3 rounded-lg ${birthYear <= 1950 ? 'ring-2 ring-amber-500' : ''}`}>
-                        <div className="text-amber-400 font-semibold">Born 1950 or earlier</div>
+                    <div className={`bg-surface-overlay p-3 rounded-lg ${birthYear <= 1950 ? 'ring-2 ring-warning-soft' : ''}`}>
+                        <div className="text-warning font-semibold">Born 1950 or earlier</div>
                         <div className="text-2xl font-mono text-white">Age 72</div>
                     </div>
-                    <div className={`bg-gray-800 p-3 rounded-lg ${birthYear > 1950 && birthYear <= 1959 ? 'ring-2 ring-amber-500' : ''}`}>
-                        <div className="text-amber-400 font-semibold">Born 1951-1959</div>
+                    <div className={`bg-surface-overlay p-3 rounded-lg ${birthYear > 1950 && birthYear <= 1959 ? 'ring-2 ring-warning-soft' : ''}`}>
+                        <div className="text-warning font-semibold">Born 1951-1959</div>
                         <div className="text-2xl font-mono text-white">Age 73</div>
                     </div>
-                    <div className={`bg-gray-800 p-3 rounded-lg ${birthYear >= 1960 ? 'ring-2 ring-amber-500' : ''}`}>
-                        <div className="text-amber-400 font-semibold">Born 1960 or later</div>
+                    <div className={`bg-surface-overlay p-3 rounded-lg ${birthYear >= 1960 ? 'ring-2 ring-warning-soft' : ''}`}>
+                        <div className="text-warning font-semibold">Born 1960 or later</div>
                         <div className="text-2xl font-mono text-white">Age 75</div>
                     </div>
                 </div>
-            </div>
+            </Panel>
 
             {/* RMD Table by Year - from Simulation */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-                <h3 className="text-lg font-bold text-white p-4 border-b border-gray-800">
+            <Panel padding="none" className="overflow-hidden">
+                <h3 className="text-lg font-bold text-white p-4 border-b border-border-subtle">
                     RMD by Year (From Your Simulation)
-                    <span className="ml-2 text-xs font-normal text-gray-500">
+                    <span className="ml-2 text-xs font-normal text-content-subtle">
                         Based on your Traditional 401k/IRA accounts
                     </span>
                 </h3>
                 {rmdData.length === 0 || rmdAccounts.length === 0 ? (
-                    <div className="p-6 text-center text-gray-500">
+                    <div className="p-6 text-center text-content-subtle">
                         {simulation.length === 0 ? (
                             <p>No simulation data. Run a simulation first to see RMD projections for your accounts.</p>
                         ) : rmdAccounts.length === 0 ? (
@@ -2657,41 +2658,41 @@ function RMDDebugTab() {
                 ) : (
                     <div className="overflow-x-auto max-h-96 overflow-y-auto">
                         <table className="w-full text-sm">
-                            <thead className="bg-gray-800 sticky top-0">
+                            <thead className="bg-surface-overlay sticky top-0">
                                 <tr>
-                                    <th className="p-2 text-left text-gray-400">Year</th>
-                                    <th className="p-2 text-left text-gray-400">Age</th>
-                                    <th className="p-2 text-right text-gray-400">Distribution Period</th>
-                                    <th className="p-2 text-right text-gray-400">Traditional Balance</th>
-                                    <th className="p-2 text-right text-gray-400">Required RMD</th>
-                                    <th className="p-2 text-right text-gray-400">% of Balance</th>
+                                    <th className="p-2 text-left text-content-muted">Year</th>
+                                    <th className="p-2 text-left text-content-muted">Age</th>
+                                    <th className="p-2 text-right text-content-muted">Distribution Period</th>
+                                    <th className="p-2 text-right text-content-muted">Traditional Balance</th>
+                                    <th className="p-2 text-right text-content-muted">Required RMD</th>
+                                    <th className="p-2 text-right text-content-muted">% of Balance</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {rmdData.map(row => (
                                     <tr
                                         key={row.year}
-                                        className={`border-t border-gray-800 ${
-                                            row.age === row.rmdStartAge ? 'bg-amber-900/20' : ''
+                                        className={`border-t border-border-subtle ${
+                                            row.age === row.rmdStartAge ? 'bg-warning-tint/20' : ''
                                         } ${!row.required ? 'opacity-50' : ''}`}
                                     >
                                         <td className="p-2 font-mono">{row.year}</td>
                                         <td className="p-2">
                                             {row.age}
                                             {row.age === row.rmdStartAge && (
-                                                <span className="ml-2 text-xs bg-amber-900/50 px-1 rounded text-amber-400">RMD Starts</span>
+                                                <span className="ml-2 text-xs bg-warning-tint/50 px-1 rounded text-warning">RMD Starts</span>
                                             )}
                                         </td>
-                                        <td className="p-2 text-right font-mono text-gray-400">
+                                        <td className="p-2 text-right font-mono text-content-muted">
                                             {row.required ? row.distributionPeriod.toFixed(1) : '-'}
                                         </td>
                                         <td className="p-2 text-right font-mono text-white">
                                             {toCurrencyShort(row.totalTraditionalBalance)}
                                         </td>
-                                        <td className="p-2 text-right font-mono text-amber-400 font-semibold">
+                                        <td className="p-2 text-right font-mono text-warning font-semibold">
                                             {row.required ? toCurrencyShort(row.totalRMD) : '-'}
                                         </td>
-                                        <td className="p-2 text-right font-mono text-gray-400">
+                                        <td className="p-2 text-right font-mono text-content-muted">
                                             {row.required && row.totalTraditionalBalance > 0
                                                 ? `${((row.totalRMD / row.totalTraditionalBalance) * 100).toFixed(1)}%`
                                                 : '-'}
@@ -2702,29 +2703,29 @@ function RMDDebugTab() {
                         </table>
                     </div>
                 )}
-            </div>
+            </Panel>
 
             {/* Distribution Period Table */}
-            <div className="bg-gray-900 p-4 rounded-xl border border-gray-800">
+            <Panel>
                 <h3 className="text-lg font-bold text-white mb-3">IRS Uniform Lifetime Table (Excerpt)</h3>
                 <div className="grid grid-cols-4 md:grid-cols-6 gap-2 text-sm">
                     {[73, 75, 80, 85, 90, 95].map(age => (
-                        <div key={age} className={`bg-gray-800 p-2 rounded text-center ${
-                            startAge === age ? 'ring-2 ring-amber-500' : ''
+                        <div key={age} className={`bg-surface-overlay p-2 rounded text-center ${
+                            startAge === age ? 'ring-2 ring-warning-soft' : ''
                         }`}>
-                            <div className="text-gray-400 text-xs">Age {age}</div>
+                            <div className="text-content-muted text-xs">Age {age}</div>
                             <div className="font-mono text-white">{getDistributionPeriod(age).toFixed(1)}</div>
-                            <div className="text-xs text-amber-400">
+                            <div className="text-xs text-warning">
                                 {(100 / getDistributionPeriod(age)).toFixed(1)}%
                             </div>
                         </div>
                     ))}
                 </div>
-                <div className="mt-3 text-xs text-gray-500">
+                <div className="mt-3 text-xs text-content-subtle">
                     Distribution Period = Life expectancy factor. RMD = Prior Year Balance ÷ Distribution Period.
                     The percentage shown is the effective withdrawal rate for that age.
                 </div>
-            </div>
+            </Panel>
         </div>
     );
 }
@@ -2822,77 +2823,77 @@ function TaxBracketVisualizationTab() {
 
     // Bracket colors
     const bracketColors: Record<number, string> = {
-        0.10: 'bg-green-600',
-        0.12: 'bg-green-500',
-        0.22: 'bg-yellow-500',
-        0.24: 'bg-orange-500',
-        0.32: 'bg-red-500',
-        0.35: 'bg-red-600',
-        0.37: 'bg-red-700'
+        0.10: 'bg-positive-solid',
+        0.12: 'bg-positive-soft',
+        0.22: 'bg-warning-soft',
+        0.24: 'bg-cat-orange-soft',
+        0.32: 'bg-negative-soft',
+        0.35: 'bg-negative-solid',
+        0.37: 'bg-negative-strong'
     };
 
     if (simulation.length === 0) {
-        return <div className="text-gray-400 text-center py-8">No simulation data. Run a simulation first.</div>;
+        return <div className="text-content-muted text-center py-8">No simulation data. Run a simulation first.</div>;
     }
 
     return (
         <div className="space-y-6">
             {/* Detailed breakdown by year */}
-            <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
+            <Panel className="rounded-lg">
                 <h3 className="text-lg font-semibold text-white mb-2">Bracket Details by Year</h3>
-                <p className="text-gray-400 text-sm mb-4">
+                <p className="text-content-muted text-sm mb-4">
                     Per-year tax breakdown from the simulation. Effective rate is total tax / gross income; marginal rate is the federal bracket the last dollar of taxable income lands in. Penalty is the 10% early-withdrawal penalty (split out from federal income tax for clarity).
                 </p>
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                         <thead>
-                            <tr className="border-b border-gray-700">
-                                <th className="text-left p-2 text-gray-400">Year</th>
-                                <th className="text-left p-2 text-gray-400">Age</th>
-                                <th className="text-right p-2 text-gray-400">AGI+LTCG</th>
-                                <th className="text-right p-2 text-gray-400">Std Ded</th>
-                                <th className="text-right p-2 text-gray-400">Taxable</th>
-                                <th className="text-right p-2 text-gray-400">Fed</th>
-                                <th className="text-right p-2 text-gray-400">Penalty</th>
-                                <th className="text-right p-2 text-gray-400">State</th>
-                                <th className="text-right p-2 text-gray-400">FICA</th>
-                                <th className="text-right p-2 text-gray-400">LTCG</th>
-                                <th className="text-right p-2 text-gray-400">NIIT</th>
-                                <th className="text-right p-2 text-gray-400">Total</th>
-                                <th className="text-right p-2 text-gray-400">Effective</th>
-                                <th className="text-right p-2 text-gray-400">Marginal</th>
+                            <tr className="border-b border-border-default">
+                                <th className="text-left p-2 text-content-muted">Year</th>
+                                <th className="text-left p-2 text-content-muted">Age</th>
+                                <th className="text-right p-2 text-content-muted">AGI+LTCG</th>
+                                <th className="text-right p-2 text-content-muted">Std Ded</th>
+                                <th className="text-right p-2 text-content-muted">Taxable</th>
+                                <th className="text-right p-2 text-content-muted">Fed</th>
+                                <th className="text-right p-2 text-content-muted">Penalty</th>
+                                <th className="text-right p-2 text-content-muted">State</th>
+                                <th className="text-right p-2 text-content-muted">FICA</th>
+                                <th className="text-right p-2 text-content-muted">LTCG</th>
+                                <th className="text-right p-2 text-content-muted">NIIT</th>
+                                <th className="text-right p-2 text-content-muted">Total</th>
+                                <th className="text-right p-2 text-content-muted">Effective</th>
+                                <th className="text-right p-2 text-content-muted">Marginal</th>
                             </tr>
                         </thead>
                         <tbody>
                             {bracketData.map((data: any) => (
-                                <tr key={data.year} className="border-b border-gray-800 hover:bg-gray-800/50">
+                                <tr key={data.year} className="border-b border-border-subtle hover:bg-surface-overlay/50">
                                     <td className="p-2 text-white">{data.year}</td>
-                                    <td className="p-2 text-gray-300">{data.age}</td>
-                                    <td className="p-2 text-right text-gray-300">{toCurrencyShort(data.grossIncome)}</td>
-                                    <td className="p-2 text-right text-gray-400">{toCurrencyShort(data.standardDeduction)}</td>
+                                    <td className="p-2 text-content-default">{data.age}</td>
+                                    <td className="p-2 text-right text-content-default">{toCurrencyShort(data.grossIncome)}</td>
+                                    <td className="p-2 text-right text-content-muted">{toCurrencyShort(data.standardDeduction)}</td>
                                     <td className="p-2 text-right text-white">{toCurrencyShort(data.taxableIncome)}</td>
-                                    <td className="p-2 text-right text-red-400">{toCurrencyShort(data.fedIncomeTax)}</td>
-                                    <td className={`p-2 text-right ${data.penalty > 0 ? 'text-yellow-400' : 'text-gray-600'}`}>{data.penalty > 0 ? toCurrencyShort(data.penalty) : '—'}</td>
-                                    <td className="p-2 text-right text-red-300">{toCurrencyShort(data.stateTax)}</td>
-                                    <td className="p-2 text-right text-red-300">{toCurrencyShort(data.ficaTax)}</td>
-                                    <td className="p-2 text-right text-red-300">{toCurrencyShort(data.ltcgTax)}</td>
-                                    <td className="p-2 text-right text-red-300">{toCurrencyShort(data.niitTax)}</td>
-                                    <td className="p-2 text-right text-red-500 font-medium">{toCurrencyShort(data.totalTax)}</td>
-                                    <td className="p-2 text-right text-amber-400">{(data.effectiveRate * 100).toFixed(1)}%</td>
-                                    <td className="p-2 text-right text-orange-400">{(data.marginalRate * 100).toFixed(0)}%</td>
+                                    <td className="p-2 text-right text-negative">{toCurrencyShort(data.fedIncomeTax)}</td>
+                                    <td className={`p-2 text-right ${data.penalty > 0 ? 'text-warning' : 'text-content-faint'}`}>{data.penalty > 0 ? toCurrencyShort(data.penalty) : '—'}</td>
+                                    <td className="p-2 text-right text-negative-bright">{toCurrencyShort(data.stateTax)}</td>
+                                    <td className="p-2 text-right text-negative-bright">{toCurrencyShort(data.ficaTax)}</td>
+                                    <td className="p-2 text-right text-negative-bright">{toCurrencyShort(data.ltcgTax)}</td>
+                                    <td className="p-2 text-right text-negative-bright">{toCurrencyShort(data.niitTax)}</td>
+                                    <td className="p-2 text-right text-negative-soft font-medium">{toCurrencyShort(data.totalTax)}</td>
+                                    <td className="p-2 text-right text-warning">{(data.effectiveRate * 100).toFixed(1)}%</td>
+                                    <td className="p-2 text-right text-cat-orange">{(data.marginalRate * 100).toFixed(0)}%</td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
                 </div>
-            </div>
+            </Panel>
 
             {/* Bracket thresholds over time */}
-            <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
+            <Panel className="rounded-lg">
                 <h3 className="text-lg font-semibold text-white mb-2">
                     Federal Bracket Thresholds Over Time ({filingStatus})
                 </h3>
-                <p className="text-gray-400 text-sm mb-4">
+                <p className="text-content-muted text-sm mb-4">
                     {assumptions.macro.inflationAdjusted
                         ? `Shows how tax bracket thresholds inflate based on ${assumptions.macro.inflationRate}% assumed inflation rate.`
                         : 'Inflation adjustment is disabled. Bracket thresholds remain at current year values.'}
@@ -2900,12 +2901,12 @@ function TaxBracketVisualizationTab() {
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                         <thead>
-                            <tr className="border-b border-gray-700">
-                                <th className="text-left p-2 text-gray-400">Year</th>
-                                <th className="text-right p-2 text-gray-400">Std Ded</th>
+                            <tr className="border-b border-border-default">
+                                <th className="text-left p-2 text-content-muted">Year</th>
+                                <th className="text-right p-2 text-content-muted">Std Ded</th>
                                 {[10, 12, 22, 24, 32, 35, 37].map(rate => (
                                     <th key={rate} className="text-right p-2">
-                                        <span className={`px-2 py-0.5 rounded text-xs ${bracketColors[rate / 100] || 'bg-gray-600'} text-white`}>
+                                        <span className={`px-2 py-0.5 rounded text-xs ${bracketColors[rate / 100] || 'bg-surface-hover'} text-white`}>
                                             {rate}%
                                         </span>
                                     </th>
@@ -2917,16 +2918,16 @@ function TaxBracketVisualizationTab() {
                                 const params = getTaxParameters(data.year, filingStatus, 'federal', undefined, assumptions);
                                 if (!params) return null;
                                 return (
-                                    <tr key={data.year} className="border-b border-gray-800 hover:bg-gray-800/50">
+                                    <tr key={data.year} className="border-b border-border-subtle hover:bg-surface-overlay/50">
                                         <td className="p-2 text-white font-medium">{data.year}</td>
-                                        <td className="p-2 text-right text-green-400">{toCurrencyShort(params.standardDeduction)}</td>
+                                        <td className="p-2 text-right text-positive">{toCurrencyShort(params.standardDeduction)}</td>
                                         {params.brackets.map((bracket, i) => {
                                             const nextBracket = params.brackets[i + 1];
                                             return (
-                                                <td key={i} className="p-2 text-right text-gray-300">
+                                                <td key={i} className="p-2 text-right text-content-default">
                                                     {toCurrencyShort(bracket.threshold)}
                                                     {nextBracket && (
-                                                        <span className="text-gray-500 text-xs ml-1">
+                                                        <span className="text-content-subtle text-xs ml-1">
                                                             → {toCurrencyShort(nextBracket.threshold - 1)}
                                                         </span>
                                                     )}
@@ -2939,7 +2940,7 @@ function TaxBracketVisualizationTab() {
                         </tbody>
                     </table>
                 </div>
-            </div>
+            </Panel>
 
         </div>
     );
@@ -3214,7 +3215,7 @@ function PensionDebugTab() {
 
     if (!hasPensions && workIncomes.length === 0) {
         return (
-            <div className="text-gray-400 text-center py-8">
+            <div className="text-content-muted text-center py-8">
                 <p>No pension or work income data to analyze.</p>
                 <p className="text-sm mt-2">Add a FERS or CSRS pension to see detailed calculations.</p>
             </div>
@@ -3224,21 +3225,21 @@ function PensionDebugTab() {
     return (
         <div className="space-y-6">
             {/* FERS vs CSRS Comparison */}
-            <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
+            <Panel className="rounded-lg">
                 <h3 className="text-lg font-semibold text-white mb-4">Pension System Comparison</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="bg-gray-800 p-4 rounded-lg">
-                        <h4 className="font-semibold text-cyan-400 mb-2">FERS</h4>
-                        <ul className="text-sm text-gray-300 space-y-1">
+                    <div className="bg-surface-overlay p-4 rounded-lg">
+                        <h4 className="font-semibold text-cat-cyan mb-2">FERS</h4>
+                        <ul className="text-sm text-content-default space-y-1">
                             <li>• {PENSION_SYSTEM_COMPARISON.FERS.basicBenefitFormula}</li>
                             <li>• COLA: {PENSION_SYSTEM_COMPARISON.FERS.cola}</li>
                             <li>• Social Security: {PENSION_SYSTEM_COMPARISON.FERS.socialSecurity}</li>
                             <li>• Supplement: {PENSION_SYSTEM_COMPARISON.FERS.supplement}</li>
                         </ul>
                     </div>
-                    <div className="bg-gray-800 p-4 rounded-lg">
-                        <h4 className="font-semibold text-amber-400 mb-2">CSRS</h4>
-                        <ul className="text-sm text-gray-300 space-y-1">
+                    <div className="bg-surface-overlay p-4 rounded-lg">
+                        <h4 className="font-semibold text-warning mb-2">CSRS</h4>
+                        <ul className="text-sm text-content-default space-y-1">
                             <li>• {PENSION_SYSTEM_COMPARISON.CSRS.basicBenefitFormula}</li>
                             <li>• COLA: {PENSION_SYSTEM_COMPARISON.CSRS.cola}</li>
                             <li>• Social Security: {PENSION_SYSTEM_COMPARISON.CSRS.socialSecurity}</li>
@@ -3246,12 +3247,12 @@ function PensionDebugTab() {
                         </ul>
                     </div>
                 </div>
-            </div>
+            </Panel>
 
             {/* Retirement Age Explorer */}
-            <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
+            <Panel className="rounded-lg">
                 <h3 className="text-lg font-semibold text-white mb-4">Retirement Age Explorer</h3>
-                <p className="text-sm text-gray-400 mb-4">
+                <p className="text-sm text-content-muted mb-4">
                     Explore how different retirement ages affect your pension benefit. Adjust the sliders to see the impact.
                 </p>
 
@@ -3286,30 +3287,30 @@ function PensionDebugTab() {
 
                 {/* Selected Age Summary */}
                 {selectedAgeData && (
-                    <div className={`p-4 rounded-lg mb-6 ${selectedAgeData.eligible ? 'bg-green-900/20 border border-green-700/50' : 'bg-yellow-900/20 border border-yellow-700/50'}`}>
+                    <div className={`p-4 rounded-lg mb-6 ${selectedAgeData.eligible ? 'bg-positive-tint/20 border border-positive-strong/50' : 'bg-warning-tint/20 border border-warning-strong/50'}`}>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <div>
-                                <div className="text-gray-400 text-xs">Retire at Age</div>
+                                <div className="text-content-muted text-xs">Retire at Age</div>
                                 <div className="text-2xl font-bold text-white">{selectedAgeData.age}</div>
-                                <div className="text-xs text-gray-500">Year {birthYear + selectedAgeData.age}</div>
+                                <div className="text-xs text-content-subtle">Year {birthYear + selectedAgeData.age}</div>
                             </div>
                             <div>
-                                <div className="text-gray-400 text-xs">Years of Service</div>
+                                <div className="text-content-muted text-xs">Years of Service</div>
                                 <div className="text-2xl font-bold text-white">{selectedAgeData.yearsOfService}</div>
                             </div>
                             <div>
-                                <div className="text-gray-400 text-xs">Annual Benefit</div>
-                                <div className="text-2xl font-bold text-green-400">{toCurrencyShort(selectedAgeData.annualBenefit)}</div>
-                                <div className="text-xs text-gray-400">{toCurrencyShort(selectedAgeData.monthlyBenefit)}/mo</div>
+                                <div className="text-content-muted text-xs">Annual Benefit</div>
+                                <div className="text-2xl font-bold text-positive">{toCurrencyShort(selectedAgeData.annualBenefit)}</div>
+                                <div className="text-xs text-content-muted">{toCurrencyShort(selectedAgeData.monthlyBenefit)}/mo</div>
                             </div>
                             <div>
-                                <div className="text-gray-400 text-xs">Reduction</div>
-                                <div className={`text-2xl font-bold ${selectedAgeData.reductionPercent > 0 ? 'text-red-400' : 'text-green-400'}`}>
+                                <div className="text-content-muted text-xs">Reduction</div>
+                                <div className={`text-2xl font-bold ${selectedAgeData.reductionPercent > 0 ? 'text-negative' : 'text-positive'}`}>
                                     {selectedAgeData.reductionPercent > 0 ? `-${selectedAgeData.reductionPercent.toFixed(1)}%` : 'None'}
                                 </div>
                             </div>
                         </div>
-                        <div className={`mt-3 text-sm ${selectedAgeData.eligible ? 'text-green-400' : 'text-yellow-400'}`}>
+                        <div className={`mt-3 text-sm ${selectedAgeData.eligible ? 'text-positive' : 'text-warning'}`}>
                             {selectedAgeData.message}
                         </div>
                     </div>
@@ -3319,46 +3320,46 @@ function PensionDebugTab() {
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                         <thead>
-                            <tr className="border-b border-gray-700">
-                                <th className="text-left p-2 text-gray-400">Age</th>
-                                <th className="text-center p-2 text-gray-400">YOS</th>
-                                <th className="text-right p-2 text-gray-400">High-3</th>
-                                <th className="text-right p-2 text-gray-400">Reduction</th>
-                                <th className="text-right p-2 text-gray-400">Annual</th>
-                                <th className="text-right p-2 text-gray-400">Monthly</th>
-                                <th className="text-right p-2 text-gray-400">Lifetime*</th>
-                                <th className="text-left p-2 text-gray-400">Status</th>
+                            <tr className="border-b border-border-default">
+                                <th className="text-left p-2 text-content-muted">Age</th>
+                                <th className="text-center p-2 text-content-muted">YOS</th>
+                                <th className="text-right p-2 text-content-muted">High-3</th>
+                                <th className="text-right p-2 text-content-muted">Reduction</th>
+                                <th className="text-right p-2 text-content-muted">Annual</th>
+                                <th className="text-right p-2 text-content-muted">Monthly</th>
+                                <th className="text-right p-2 text-content-muted">Lifetime*</th>
+                                <th className="text-left p-2 text-content-muted">Status</th>
                             </tr>
                         </thead>
                         <tbody>
                             {explorerData.map((row) => (
                                 <tr
                                     key={row.age}
-                                    className={`border-b border-gray-800 cursor-pointer transition-colors ${
+                                    className={`border-b border-border-subtle cursor-pointer transition-colors ${
                                         row.isSelected
-                                            ? 'bg-blue-900/30 border-blue-700'
+                                            ? 'bg-info-tint/30 border-info-strong'
                                             : row.age === mra
-                                            ? 'bg-cyan-900/10'
-                                            : 'hover:bg-gray-800/50'
+                                            ? 'bg-cat-cyan-tint/10'
+                                            : 'hover:bg-surface-overlay/50'
                                     }`}
                                     onClick={() => setExplorerRetirementAge(row.age)}
                                 >
                                     <td className="p-2 text-white font-medium">
                                         {row.age}
-                                        {row.age === mra && <span className="ml-1 text-xs text-cyan-400">(MRA)</span>}
-                                        {row.age === 62 && <span className="ml-1 text-xs text-green-400">(62)</span>}
+                                        {row.age === mra && <span className="ml-1 text-xs text-cat-cyan">(MRA)</span>}
+                                        {row.age === 62 && <span className="ml-1 text-xs text-positive">(62)</span>}
                                     </td>
-                                    <td className="p-2 text-center text-gray-300">{row.yearsOfService}</td>
-                                    <td className="p-2 text-right text-gray-300">{toCurrencyShort(row.high3)}</td>
-                                    <td className={`p-2 text-right ${row.reductionPercent > 0 ? 'text-red-400' : 'text-green-400'}`}>
+                                    <td className="p-2 text-center text-content-default">{row.yearsOfService}</td>
+                                    <td className="p-2 text-right text-content-default">{toCurrencyShort(row.high3)}</td>
+                                    <td className={`p-2 text-right ${row.reductionPercent > 0 ? 'text-negative' : 'text-positive'}`}>
                                         {row.reductionPercent > 0 ? `-${row.reductionPercent.toFixed(1)}%` : '0%'}
                                     </td>
                                     <td className="p-2 text-right text-white font-semibold">{toCurrencyShort(row.annualBenefit)}</td>
-                                    <td className="p-2 text-right text-gray-300">{toCurrencyShort(row.monthlyBenefit)}</td>
-                                    <td className="p-2 text-right text-gray-400">{toCurrencyShort(row.lifetimeBenefit)}</td>
+                                    <td className="p-2 text-right text-content-default">{toCurrencyShort(row.monthlyBenefit)}</td>
+                                    <td className="p-2 text-right text-content-muted">{toCurrencyShort(row.lifetimeBenefit)}</td>
                                     <td className="p-2">
                                         <span className={`px-2 py-0.5 rounded text-xs ${
-                                            row.eligible ? 'bg-green-900/50 text-green-400' : 'bg-yellow-900/50 text-yellow-400'
+                                            row.eligible ? 'bg-positive-tint/50 text-positive' : 'bg-warning-tint/50 text-warning'
                                         }`}>
                                             {row.eligible ? 'Eligible' : 'Reduced'}
                                         </span>
@@ -3368,7 +3369,7 @@ function PensionDebugTab() {
                         </tbody>
                     </table>
                 </div>
-                <p className="text-xs text-gray-500 mt-2">
+                <p className="text-xs text-content-subtle mt-2">
                     * Lifetime benefit assumes life expectancy of {getLifeExpectancy(assumptions.milestones)}.
                     {assumptions.macro.inflationAdjusted
                         ? ' Values shown in today\'s dollars (real). COLA growth excluded as it roughly offsets inflation.'
@@ -3376,76 +3377,76 @@ function PensionDebugTab() {
                     }
                     {' '}Click a row to select that retirement age.
                 </p>
-            </div>
+            </Panel>
 
             {/* FERS Pensions */}
             {fersDetails.map((detail, idx) => (
-                <div key={idx} className="bg-gray-900 p-4 rounded-lg border border-gray-800">
-                    <h3 className="text-lg font-semibold text-cyan-400 mb-4">
+                <div key={idx} className="bg-surface-raised p-4 rounded-lg border border-border-subtle">
+                    <h3 className="text-lg font-semibold text-cat-cyan mb-4">
                         FERS Pension: {detail.pension.name}
                     </h3>
 
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                        <div className="bg-gray-800 p-3 rounded">
-                            <div className="text-gray-400 text-xs">Years of Service</div>
+                        <div className="bg-surface-overlay p-3 rounded">
+                            <div className="text-content-muted text-xs">Years of Service</div>
                             <div className="text-xl font-bold text-white">{detail.pension.yearsOfService}</div>
                         </div>
-                        <div className="bg-gray-800 p-3 rounded">
-                            <div className="text-gray-400 text-xs">High-3 Salary</div>
+                        <div className="bg-surface-overlay p-3 rounded">
+                            <div className="text-content-muted text-xs">High-3 Salary</div>
                             <div className="text-xl font-bold text-white">{toCurrencyShort(detail.pension.high3Salary)}</div>
                         </div>
-                        <div className="bg-gray-800 p-3 rounded">
-                            <div className="text-gray-400 text-xs">Retirement Age</div>
+                        <div className="bg-surface-overlay p-3 rounded">
+                            <div className="text-content-muted text-xs">Retirement Age</div>
                             <div className="text-xl font-bold text-white">{detail.pension.retirementAge}</div>
                         </div>
-                        <div className="bg-gray-800 p-3 rounded">
-                            <div className="text-gray-400 text-xs">MRA (Birth {birthYear})</div>
+                        <div className="bg-surface-overlay p-3 rounded">
+                            <div className="text-content-muted text-xs">MRA (Birth {birthYear})</div>
                             <div className="text-xl font-bold text-white">{detail.mra}</div>
                         </div>
                     </div>
 
                     {/* Benefit Calculation Breakdown */}
-                    <div className="bg-gray-800 p-4 rounded mb-4">
+                    <div className="bg-surface-overlay p-4 rounded mb-4">
                         <h4 className="font-semibold text-white mb-3">Benefit Calculation</h4>
                         <div className="space-y-2 text-sm">
                             <div className="flex justify-between">
-                                <span className="text-gray-400">Multiplier ({detail.pension.retirementAge >= 62 && detail.pension.yearsOfService >= 20 ? '1.1%' : '1.0%'})</span>
-                                <span className="text-gray-300">{detail.pension.retirementAge >= 62 && detail.pension.yearsOfService >= 20 ? '1.1%' : '1.0%'} per year</span>
+                                <span className="text-content-muted">Multiplier ({detail.pension.retirementAge >= 62 && detail.pension.yearsOfService >= 20 ? '1.1%' : '1.0%'})</span>
+                                <span className="text-content-default">{detail.pension.retirementAge >= 62 && detail.pension.yearsOfService >= 20 ? '1.1%' : '1.0%'} per year</span>
                             </div>
                             <div className="flex justify-between">
-                                <span className="text-gray-400">Base Benefit ({detail.pension.yearsOfService} years × High-3)</span>
+                                <span className="text-content-muted">Base Benefit ({detail.pension.yearsOfService} years × High-3)</span>
                                 <span className="text-white font-semibold">{toCurrency(detail.baseBenefit)}/year</span>
                             </div>
                             {detail.eligibility.reductionPercent > 0 && (
-                                <div className="flex justify-between text-red-400">
+                                <div className="flex justify-between text-negative">
                                     <span>MRA+10 Early Reduction</span>
                                     <span>-{detail.eligibility.reductionPercent}%</span>
                                 </div>
                             )}
-                            <div className="flex justify-between border-t border-gray-700 pt-2">
-                                <span className="text-green-400 font-semibold">Final Annual Benefit</span>
-                                <span className="text-green-400 font-bold">{toCurrency(detail.reducedBenefit)}/year</span>
+                            <div className="flex justify-between border-t border-border-default pt-2">
+                                <span className="text-positive font-semibold">Final Annual Benefit</span>
+                                <span className="text-positive font-bold">{toCurrency(detail.reducedBenefit)}/year</span>
                             </div>
                             <div className="flex justify-between">
-                                <span className="text-gray-400">Monthly</span>
-                                <span className="text-gray-300">{toCurrency(detail.reducedBenefit / 12)}/month</span>
+                                <span className="text-content-muted">Monthly</span>
+                                <span className="text-content-default">{toCurrency(detail.reducedBenefit / 12)}/month</span>
                             </div>
                         </div>
                     </div>
 
                     {/* Eligibility */}
-                    <div className={`p-3 rounded mb-4 ${detail.eligibility.eligible ? 'bg-green-900/30 border border-green-700' : 'bg-red-900/30 border border-red-700'}`}>
-                        <div className={`font-semibold ${detail.eligibility.eligible ? 'text-green-400' : 'text-red-400'}`}>
+                    <div className={`p-3 rounded mb-4 ${detail.eligibility.eligible ? 'bg-positive-tint/30 border border-positive-strong' : 'bg-negative-tint/30 border border-negative-strong'}`}>
+                        <div className={`font-semibold ${detail.eligibility.eligible ? 'text-positive' : 'text-negative'}`}>
                             {detail.eligibility.message}
                         </div>
                     </div>
 
                     {/* COLA Projection */}
-                    <div className="bg-gray-800 p-4 rounded">
+                    <div className="bg-surface-overlay p-4 rounded">
                         <h4 className="font-semibold text-white mb-3">
                             Benefit Projection {assumptions.macro.inflationAdjusted ? '(Today\'s Dollars)' : `(Nominal with ${assumptions.macro.inflationRate}% COLA)`}
                         </h4>
-                        <div className="text-xs text-gray-400 mb-2">
+                        <div className="text-xs text-content-muted mb-2">
                             {assumptions.macro.inflationAdjusted
                                 ? "Values shown in today's dollars. COLA growth excluded as it roughly offsets inflation."
                                 : "FERS COLA: None before age 62. After 62: Full if CPI ≤ 2%, 2% if 2-3%, CPI-1% if > 3%"
@@ -3454,22 +3455,22 @@ function PensionDebugTab() {
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm">
                                 <thead>
-                                    <tr className="border-b border-gray-700">
-                                        <th className="text-left p-2 text-gray-400">Age</th>
-                                        <th className="text-left p-2 text-gray-400">Year</th>
-                                        <th className="text-right p-2 text-gray-400">COLA</th>
-                                        <th className="text-right p-2 text-gray-400">Annual Benefit</th>
-                                        <th className="text-right p-2 text-gray-400">Monthly</th>
+                                    <tr className="border-b border-border-default">
+                                        <th className="text-left p-2 text-content-muted">Age</th>
+                                        <th className="text-left p-2 text-content-muted">Year</th>
+                                        <th className="text-right p-2 text-content-muted">COLA</th>
+                                        <th className="text-right p-2 text-content-muted">Annual Benefit</th>
+                                        <th className="text-right p-2 text-content-muted">Monthly</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {detail.colaProjection.slice(0, 15).map((row: any) => (
-                                        <tr key={row.age} className={`border-b border-gray-800 ${row.age === 62 ? 'bg-cyan-900/20' : ''}`}>
+                                        <tr key={row.age} className={`border-b border-border-subtle ${row.age === 62 ? 'bg-cat-cyan-tint/20' : ''}`}>
                                             <td className="p-2 text-white">{row.age}</td>
-                                            <td className="p-2 text-gray-300">{row.year}</td>
-                                            <td className="p-2 text-right text-cyan-400">{row.cola.toFixed(1)}%</td>
+                                            <td className="p-2 text-content-default">{row.year}</td>
+                                            <td className="p-2 text-right text-cat-cyan">{row.cola.toFixed(1)}%</td>
                                             <td className="p-2 text-right text-white">{toCurrencyShort(row.benefit)}</td>
-                                            <td className="p-2 text-right text-gray-300">{toCurrencyShort(row.benefit / 12)}</td>
+                                            <td className="p-2 text-right text-content-default">{toCurrencyShort(row.benefit / 12)}</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -3481,80 +3482,80 @@ function PensionDebugTab() {
 
             {/* CSRS Pensions */}
             {csrsDetails.map((detail, idx) => (
-                <div key={idx} className="bg-gray-900 p-4 rounded-lg border border-gray-800">
-                    <h3 className="text-lg font-semibold text-amber-400 mb-4">
+                <div key={idx} className="bg-surface-raised p-4 rounded-lg border border-border-subtle">
+                    <h3 className="text-lg font-semibold text-warning mb-4">
                         CSRS Pension: {detail.pension.name}
                     </h3>
 
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-                        <div className="bg-gray-800 p-3 rounded">
-                            <div className="text-gray-400 text-xs">Years of Service</div>
+                        <div className="bg-surface-overlay p-3 rounded">
+                            <div className="text-content-muted text-xs">Years of Service</div>
                             <div className="text-xl font-bold text-white">{detail.pension.yearsOfService}</div>
                         </div>
-                        <div className="bg-gray-800 p-3 rounded">
-                            <div className="text-gray-400 text-xs">High-3 Salary</div>
+                        <div className="bg-surface-overlay p-3 rounded">
+                            <div className="text-content-muted text-xs">High-3 Salary</div>
                             <div className="text-xl font-bold text-white">{toCurrencyShort(detail.pension.high3Salary)}</div>
                         </div>
-                        <div className="bg-gray-800 p-3 rounded">
-                            <div className="text-gray-400 text-xs">Retirement Age</div>
+                        <div className="bg-surface-overlay p-3 rounded">
+                            <div className="text-content-muted text-xs">Retirement Age</div>
                             <div className="text-xl font-bold text-white">{detail.pension.retirementAge}</div>
                         </div>
                     </div>
 
                     {/* Benefit Calculation Breakdown */}
-                    <div className="bg-gray-800 p-4 rounded mb-4">
+                    <div className="bg-surface-overlay p-4 rounded mb-4">
                         <h4 className="font-semibold text-white mb-3">CSRS Benefit Calculation</h4>
                         <div className="space-y-2 text-sm">
                             <div className="flex justify-between">
-                                <span className="text-gray-400">First 5 years @ 1.5%</span>
-                                <span className="text-gray-300">{toCurrency(Math.min(detail.pension.yearsOfService, 5) * detail.pension.high3Salary * 0.015)}</span>
+                                <span className="text-content-muted">First 5 years @ 1.5%</span>
+                                <span className="text-content-default">{toCurrency(Math.min(detail.pension.yearsOfService, 5) * detail.pension.high3Salary * 0.015)}</span>
                             </div>
                             {detail.pension.yearsOfService > 5 && (
                                 <div className="flex justify-between">
-                                    <span className="text-gray-400">Years 6-10 @ 1.75%</span>
-                                    <span className="text-gray-300">{toCurrency(Math.min(detail.pension.yearsOfService - 5, 5) * detail.pension.high3Salary * 0.0175)}</span>
+                                    <span className="text-content-muted">Years 6-10 @ 1.75%</span>
+                                    <span className="text-content-default">{toCurrency(Math.min(detail.pension.yearsOfService - 5, 5) * detail.pension.high3Salary * 0.0175)}</span>
                                 </div>
                             )}
                             {detail.pension.yearsOfService > 10 && (
                                 <div className="flex justify-between">
-                                    <span className="text-gray-400">Years 11+ @ 2.0%</span>
-                                    <span className="text-gray-300">{toCurrency((detail.pension.yearsOfService - 10) * detail.pension.high3Salary * 0.02)}</span>
+                                    <span className="text-content-muted">Years 11+ @ 2.0%</span>
+                                    <span className="text-content-default">{toCurrency((detail.pension.yearsOfService - 10) * detail.pension.high3Salary * 0.02)}</span>
                                 </div>
                             )}
                             <div className="flex justify-between">
-                                <span className="text-gray-400">Base Benefit</span>
+                                <span className="text-content-muted">Base Benefit</span>
                                 <span className="text-white font-semibold">{toCurrency(detail.baseBenefit)}/year</span>
                             </div>
-                            <div className="flex justify-between text-xs text-gray-500">
+                            <div className="flex justify-between text-xs text-content-subtle">
                                 <span>Max (80% of High-3)</span>
                                 <span>{toCurrency(detail.pension.high3Salary * 0.8)}</span>
                             </div>
                             {detail.eligibility.reductionPercent > 0 && (
-                                <div className="flex justify-between text-red-400">
+                                <div className="flex justify-between text-negative">
                                     <span>Early Retirement Reduction</span>
                                     <span>-{detail.eligibility.reductionPercent}%</span>
                                 </div>
                             )}
-                            <div className="flex justify-between border-t border-gray-700 pt-2">
-                                <span className="text-green-400 font-semibold">Final Annual Benefit</span>
-                                <span className="text-green-400 font-bold">{toCurrency(detail.reducedBenefit)}/year</span>
+                            <div className="flex justify-between border-t border-border-default pt-2">
+                                <span className="text-positive font-semibold">Final Annual Benefit</span>
+                                <span className="text-positive font-bold">{toCurrency(detail.reducedBenefit)}/year</span>
                             </div>
                         </div>
                     </div>
 
                     {/* Eligibility */}
-                    <div className={`p-3 rounded mb-4 ${detail.eligibility.eligible ? 'bg-green-900/30 border border-green-700' : 'bg-red-900/30 border border-red-700'}`}>
-                        <div className={`font-semibold ${detail.eligibility.eligible ? 'text-green-400' : 'text-red-400'}`}>
+                    <div className={`p-3 rounded mb-4 ${detail.eligibility.eligible ? 'bg-positive-tint/30 border border-positive-strong' : 'bg-negative-tint/30 border border-negative-strong'}`}>
+                        <div className={`font-semibold ${detail.eligibility.eligible ? 'text-positive' : 'text-negative'}`}>
                             {detail.eligibility.message}
                         </div>
                     </div>
 
                     {/* COLA Projection */}
-                    <div className="bg-gray-800 p-4 rounded">
+                    <div className="bg-surface-overlay p-4 rounded">
                         <h4 className="font-semibold text-white mb-3">
                             Benefit Projection {assumptions.macro.inflationAdjusted ? '(Today\'s Dollars)' : `(Nominal with ${assumptions.macro.inflationRate}% COLA)`}
                         </h4>
-                        <div className="text-xs text-gray-400 mb-2">
+                        <div className="text-xs text-content-muted mb-2">
                             {assumptions.macro.inflationAdjusted
                                 ? "Values shown in today's dollars. COLA growth excluded as it roughly offsets inflation."
                                 : "CSRS receives full CPI COLA regardless of age."
@@ -3563,22 +3564,22 @@ function PensionDebugTab() {
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm">
                                 <thead>
-                                    <tr className="border-b border-gray-700">
-                                        <th className="text-left p-2 text-gray-400">Age</th>
-                                        <th className="text-left p-2 text-gray-400">Year</th>
-                                        <th className="text-right p-2 text-gray-400">COLA</th>
-                                        <th className="text-right p-2 text-gray-400">Annual Benefit</th>
-                                        <th className="text-right p-2 text-gray-400">Monthly</th>
+                                    <tr className="border-b border-border-default">
+                                        <th className="text-left p-2 text-content-muted">Age</th>
+                                        <th className="text-left p-2 text-content-muted">Year</th>
+                                        <th className="text-right p-2 text-content-muted">COLA</th>
+                                        <th className="text-right p-2 text-content-muted">Annual Benefit</th>
+                                        <th className="text-right p-2 text-content-muted">Monthly</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {detail.colaProjection.slice(0, 15).map((row: any) => (
-                                        <tr key={row.age} className="border-b border-gray-800">
+                                        <tr key={row.age} className="border-b border-border-subtle">
                                             <td className="p-2 text-white">{row.age}</td>
-                                            <td className="p-2 text-gray-300">{row.year}</td>
-                                            <td className="p-2 text-right text-amber-400">{row.cola.toFixed(1)}%</td>
+                                            <td className="p-2 text-content-default">{row.year}</td>
+                                            <td className="p-2 text-right text-warning">{row.cola.toFixed(1)}%</td>
                                             <td className="p-2 text-right text-white">{toCurrencyShort(row.benefit)}</td>
-                                            <td className="p-2 text-right text-gray-300">{toCurrencyShort(row.benefit / 12)}</td>
+                                            <td className="p-2 text-right text-content-default">{toCurrencyShort(row.benefit / 12)}</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -3590,38 +3591,38 @@ function PensionDebugTab() {
 
             {/* High-3 Tracking from Work Income */}
             {high3Tracking && high3Tracking.high3History.length > 0 && (
-                <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
+                <Panel className="rounded-lg">
                     <h3 className="text-lg font-semibold text-white mb-4">High-3 Salary Tracking (From Simulation)</h3>
-                    <p className="text-sm text-gray-400 mb-4">
+                    <p className="text-sm text-content-muted mb-4">
                         Your High-3 is the average of your highest 3 consecutive years of salary.
                     </p>
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead>
-                                <tr className="border-b border-gray-700">
-                                    <th className="text-left p-2 text-gray-400">Year</th>
-                                    <th className="text-left p-2 text-gray-400">Age</th>
-                                    <th className="text-right p-2 text-gray-400">Year -2</th>
-                                    <th className="text-right p-2 text-gray-400">Year -1</th>
-                                    <th className="text-right p-2 text-gray-400">Current</th>
-                                    <th className="text-right p-2 text-gray-400">High-3 Avg</th>
+                                <tr className="border-b border-border-default">
+                                    <th className="text-left p-2 text-content-muted">Year</th>
+                                    <th className="text-left p-2 text-content-muted">Age</th>
+                                    <th className="text-right p-2 text-content-muted">Year -2</th>
+                                    <th className="text-right p-2 text-content-muted">Year -1</th>
+                                    <th className="text-right p-2 text-content-muted">Current</th>
+                                    <th className="text-right p-2 text-content-muted">High-3 Avg</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {high3Tracking.high3History.map((row: any) => (
-                                    <tr key={row.year} className="border-b border-gray-800 hover:bg-gray-800/50">
+                                    <tr key={row.year} className="border-b border-border-subtle hover:bg-surface-overlay/50">
                                         <td className="p-2 text-white">{row.year}</td>
-                                        <td className="p-2 text-gray-300">{row.age}</td>
-                                        <td className="p-2 text-right text-gray-400">{toCurrencyShort(row.salaries[0])}</td>
-                                        <td className="p-2 text-right text-gray-400">{toCurrencyShort(row.salaries[1])}</td>
-                                        <td className="p-2 text-right text-gray-300">{toCurrencyShort(row.salaries[2])}</td>
-                                        <td className="p-2 text-right text-green-400 font-semibold">{toCurrencyShort(row.high3)}</td>
+                                        <td className="p-2 text-content-default">{row.age}</td>
+                                        <td className="p-2 text-right text-content-muted">{toCurrencyShort(row.salaries[0])}</td>
+                                        <td className="p-2 text-right text-content-muted">{toCurrencyShort(row.salaries[1])}</td>
+                                        <td className="p-2 text-right text-content-default">{toCurrencyShort(row.salaries[2])}</td>
+                                        <td className="p-2 text-right text-positive font-semibold">{toCurrencyShort(row.high3)}</td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
                     </div>
-                </div>
+                </Panel>
             )}
         </div>
     );
@@ -3644,14 +3645,14 @@ function RothRecommendationSummary({ currentRate, retirementRate, currentFedRate
     const verdict = diff > 0.02 ? 'pretax' : diff < -0.02 ? 'roth' : 'close';
 
     const bannerStyles = {
-        pretax: 'bg-blue-900/30 border-blue-700/50',
-        roth: 'bg-green-900/30 border-green-700/50',
-        close: 'bg-yellow-900/30 border-yellow-700/50'
+        pretax: 'bg-info-tint/30 border-info-strong/50',
+        roth: 'bg-positive-tint/30 border-positive-strong/50',
+        close: 'bg-warning-tint/30 border-warning-strong/50'
     };
     const textStyles = {
-        pretax: 'text-blue-300',
-        roth: 'text-green-300',
-        close: 'text-yellow-300'
+        pretax: 'text-info-bright',
+        roth: 'text-positive-bright',
+        close: 'text-warning-bright'
     };
     const verdictText = {
         pretax: 'Pre-Tax Wins',
@@ -3670,20 +3671,20 @@ function RothRecommendationSummary({ currentRate, retirementRate, currentFedRate
                 <h3 className={`text-2xl font-bold ${textStyles[verdict]} text-center`}>{verdictText[verdict]}</h3>
             </div>
             <div className="grid grid-cols-2 gap-4">
-                <div className="bg-gray-800 p-4 rounded-lg text-center">
-                    <span className="text-gray-400 text-sm">Current Marginal Rate</span>
+                <div className="bg-surface-overlay p-4 rounded-lg text-center">
+                    <span className="text-content-muted text-sm">Current Marginal Rate</span>
                     <p className="text-white text-2xl font-bold">{(currentRate * 100).toFixed(1)}%</p>
-                    <p className="text-gray-400 text-xs mt-1">Fed: {(currentFedRate * 100).toFixed(1)}% | State: {(currentStateRate * 100).toFixed(1)}%</p>
-                    <p className="text-gray-500 text-xs">FICA excluded (applies to both paths)</p>
+                    <p className="text-content-muted text-xs mt-1">Fed: {(currentFedRate * 100).toFixed(1)}% | State: {(currentStateRate * 100).toFixed(1)}%</p>
+                    <p className="text-content-subtle text-xs">FICA excluded (applies to both paths)</p>
                 </div>
-                <div className="bg-gray-800 p-4 rounded-lg text-center">
-                    <span className="text-gray-400 text-sm">Projected Retirement Rate</span>
+                <div className="bg-surface-overlay p-4 rounded-lg text-center">
+                    <span className="text-content-muted text-sm">Projected Retirement Rate</span>
                     <p className="text-white text-2xl font-bold">{(retirementRate * 100).toFixed(1)}%</p>
-                    <p className="text-gray-400 text-xs mt-1">Fed: {(retirementFedRate * 100).toFixed(1)}% | State: {(retirementStateRate * 100).toFixed(1)}%</p>
-                    <p className="text-gray-500 text-xs">Median effective rate in retirement</p>
+                    <p className="text-content-muted text-xs mt-1">Fed: {(retirementFedRate * 100).toFixed(1)}% | State: {(retirementStateRate * 100).toFixed(1)}%</p>
+                    <p className="text-content-subtle text-xs">Median effective rate in retirement</p>
                 </div>
             </div>
-            <p className="text-gray-300 text-sm">{explanations[verdict]}</p>
+            <p className="text-content-default text-sm">{explanations[verdict]}</p>
         </div>
     );
 }
@@ -3702,41 +3703,41 @@ interface TimelineRow {
 
 function TaxRateTimeline({ timelineData }: { timelineData: TimelineRow[] }) {
     const phaseColors: Record<PhaseType, string> = {
-        'Working': 'text-blue-400',
-        'Gap': 'text-green-400',
-        'SS/Pension': 'text-amber-400',
-        'RMD': 'text-purple-400'
+        'Working': 'text-info',
+        'Gap': 'text-positive',
+        'SS/Pension': 'text-warning',
+        'RMD': 'text-cat-purple'
     };
 
     return (
-        <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
+        <Panel className="rounded-lg">
             <h3 className="text-lg font-semibold text-white mb-4">Tax Rate Timeline</h3>
-            <p className="text-gray-400 text-sm mb-4">Year-by-year marginal and effective rates. Green "Gap" years are prime conversion windows.</p>
+            <p className="text-content-muted text-sm mb-4">Year-by-year marginal and effective rates. Green "Gap" years are prime conversion windows.</p>
             <div className="overflow-x-auto max-h-96 overflow-y-auto">
                 <table className="w-full text-sm">
-                    <thead className="sticky top-0 bg-gray-900">
-                        <tr className="border-b border-gray-700">
-                            <th className="text-left p-2 text-gray-400">Year</th>
-                            <th className="text-left p-2 text-gray-400">Age</th>
-                            <th className="text-left p-2 text-gray-400">Phase</th>
-                            <th className="text-right p-2 text-gray-400">Gross Income</th>
-                            <th className="text-right p-2 text-gray-400">Taxable Income</th>
-                            <th className="text-right p-2 text-gray-400">Fed Marginal</th>
-                            <th className="text-right p-2 text-gray-400">Effective Rate</th>
+                    <thead className="sticky top-0 bg-surface-raised">
+                        <tr className="border-b border-border-default">
+                            <th className="text-left p-2 text-content-muted">Year</th>
+                            <th className="text-left p-2 text-content-muted">Age</th>
+                            <th className="text-left p-2 text-content-muted">Phase</th>
+                            <th className="text-right p-2 text-content-muted">Gross Income</th>
+                            <th className="text-right p-2 text-content-muted">Taxable Income</th>
+                            <th className="text-right p-2 text-content-muted">Fed Marginal</th>
+                            <th className="text-right p-2 text-content-muted">Effective Rate</th>
                         </tr>
                     </thead>
                     <tbody>
                         {timelineData.map(row => (
-                            <tr key={row.year} className={`border-b border-gray-800 hover:bg-gray-800/50 ${row.phase === 'Gap' ? 'bg-green-900/10' : ''}`}>
+                            <tr key={row.year} className={`border-b border-border-subtle hover:bg-surface-overlay/50 ${row.phase === 'Gap' ? 'bg-positive-tint/10' : ''}`}>
                                 <td className="p-2 text-white">{row.year}</td>
-                                <td className="p-2 text-gray-300">{row.age}</td>
+                                <td className="p-2 text-content-default">{row.age}</td>
                                 <td className={`p-2 font-semibold ${phaseColors[row.phase]}`}>{row.phase}</td>
-                                <td className="p-2 text-right text-gray-300">{toCurrencyShort(row.grossIncome)}</td>
-                                <td className="p-2 text-right text-gray-300">{toCurrencyShort(row.taxableIncome)}</td>
+                                <td className="p-2 text-right text-content-default">{toCurrencyShort(row.grossIncome)}</td>
+                                <td className="p-2 text-right text-content-default">{toCurrencyShort(row.taxableIncome)}</td>
                                 <td className="p-2 text-right text-white font-semibold">{(row.federalMarginalRate * 100).toFixed(0)}%</td>
                                 <td className={`p-2 text-right font-semibold ${
-                                    row.effectiveRate > 0.3 ? 'text-red-400' :
-                                    row.effectiveRate > 0.15 ? 'text-amber-400' : 'text-green-400'
+                                    row.effectiveRate > 0.3 ? 'text-negative' :
+                                    row.effectiveRate > 0.15 ? 'text-warning' : 'text-positive'
                                 }`}>
                                     {(row.effectiveRate * 100).toFixed(1)}%
                                 </td>
@@ -3745,7 +3746,7 @@ function TaxRateTimeline({ timelineData }: { timelineData: TimelineRow[] }) {
                     </tbody>
                 </table>
             </div>
-        </div>
+        </Panel>
     );
 }
 
@@ -3774,10 +3775,10 @@ function BracketHeadroomAnalysis({ headroomData, targetRate, setTargetRate }: {
 
     if (headroomData.length === 0) {
         return (
-            <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
+            <Panel className="rounded-lg">
                 <h3 className="text-lg font-semibold text-white mb-4">Bracket Headroom Analysis</h3>
-                <p className="text-gray-400 text-center py-4">No retirement years in simulation or no Traditional account balances.</p>
-            </div>
+                <p className="text-content-muted text-center py-4">No retirement years in simulation or no Traditional account balances.</p>
+            </Panel>
         );
     }
 
@@ -3785,9 +3786,9 @@ function BracketHeadroomAnalysis({ headroomData, targetRate, setTargetRate }: {
     const bracketRates = headroomData[0]?.bracketHeadrooms.map(b => b.rate) || [];
 
     return (
-        <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
+        <Panel className="rounded-lg">
             <h3 className="text-lg font-semibold text-white mb-4">Bracket Headroom Analysis</h3>
-            <p className="text-gray-400 text-sm mb-4">Room available in each federal bracket during retirement. Shows how much you can convert and stay within the target bracket.</p>
+            <p className="text-content-muted text-sm mb-4">Room available in each federal bracket during retirement. Shows how much you can convert and stay within the target bracket.</p>
             <div className="mb-4 max-w-xs">
                 <DropdownInput
                     label="Target Bracket"
@@ -3799,37 +3800,37 @@ function BracketHeadroomAnalysis({ headroomData, targetRate, setTargetRate }: {
             </div>
             <div className="overflow-x-auto max-h-96 overflow-y-auto">
                 <table className="w-full text-sm">
-                    <thead className="sticky top-0 bg-gray-900">
-                        <tr className="border-b border-gray-700">
-                            <th className="text-left p-2 text-gray-400">Year</th>
-                            <th className="text-left p-2 text-gray-400">Age</th>
-                            <th className="text-right p-2 text-gray-400">Taxable Inc</th>
+                    <thead className="sticky top-0 bg-surface-raised">
+                        <tr className="border-b border-border-default">
+                            <th className="text-left p-2 text-content-muted">Year</th>
+                            <th className="text-left p-2 text-content-muted">Age</th>
+                            <th className="text-right p-2 text-content-muted">Taxable Inc</th>
                             {bracketRates.map(rate => (
-                                <th key={rate} className="text-right p-2 text-gray-400">{(rate * 100).toFixed(0)}% Room</th>
+                                <th key={rate} className="text-right p-2 text-content-muted">{(rate * 100).toFixed(0)}% Room</th>
                             ))}
-                            <th className="text-right p-2 text-gray-400">Total Room</th>
-                            <th className="text-right p-2 text-gray-400">Trad. Balance</th>
+                            <th className="text-right p-2 text-content-muted">Total Room</th>
+                            <th className="text-right p-2 text-content-muted">Trad. Balance</th>
                         </tr>
                     </thead>
                     <tbody>
                         {headroomData.map(row => (
-                            <tr key={row.year} className="border-b border-gray-800 hover:bg-gray-800/50">
+                            <tr key={row.year} className="border-b border-border-subtle hover:bg-surface-overlay/50">
                                 <td className="p-2 text-white">{row.year}</td>
-                                <td className="p-2 text-gray-300">{row.age}</td>
-                                <td className="p-2 text-right text-gray-300">{toCurrencyShort(row.taxableIncome)}</td>
+                                <td className="p-2 text-content-default">{row.age}</td>
+                                <td className="p-2 text-right text-content-default">{toCurrencyShort(row.taxableIncome)}</td>
                                 {row.bracketHeadrooms.map(bh => (
-                                    <td key={bh.rate} className={`p-2 text-right ${bh.headroom > 0 ? 'text-green-400' : 'text-gray-600'}`}>
+                                    <td key={bh.rate} className={`p-2 text-right ${bh.headroom > 0 ? 'text-positive' : 'text-content-faint'}`}>
                                         {bh.headroom > 0 ? toCurrencyShort(bh.headroom) : '-'}
                                     </td>
                                 ))}
-                                <td className="p-2 text-right text-green-400 font-semibold">{toCurrencyShort(row.totalHeadroom)}</td>
-                                <td className="p-2 text-right text-blue-400">{toCurrencyShort(row.traditionalBalance)}</td>
+                                <td className="p-2 text-right text-positive font-semibold">{toCurrencyShort(row.totalHeadroom)}</td>
+                                <td className="p-2 text-right text-info">{toCurrencyShort(row.traditionalBalance)}</td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
             </div>
-        </div>
+        </Panel>
     );
 }
 
@@ -3851,50 +3852,50 @@ function ConversionWindowsAnalysis({ windows, windowSummary }: {
 }) {
     if (windows.length === 0) {
         return (
-            <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
+            <Panel className="rounded-lg">
                 <h3 className="text-lg font-semibold text-white mb-4">Conversion Windows</h3>
-                <p className="text-gray-400 text-center py-4">No low-tax conversion windows found. This may mean your retirement income already fills higher brackets, or you have no Traditional account balance.</p>
-            </div>
+                <p className="text-content-muted text-center py-4">No low-tax conversion windows found. This may mean your retirement income already fills higher brackets, or you have no Traditional account balance.</p>
+            </Panel>
         );
     }
 
     return (
-        <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
+        <Panel className="rounded-lg">
             <h3 className="text-lg font-semibold text-white mb-4">Conversion Windows</h3>
-            <p className="text-gray-400 text-sm mb-4">Years where Roth conversions can be done at rates below your retirement rate. Effective rate includes the SS "tax torpedo" effect.</p>
+            <p className="text-content-muted text-sm mb-4">Years where Roth conversions can be done at rates below your retirement rate. Effective rate includes the SS "tax torpedo" effect.</p>
 
             {windowSummary && (
-                <div className="bg-gray-800 p-3 rounded-lg mb-4 flex flex-wrap gap-4 text-sm">
-                    <span className="text-white">Window: Ages <span className="text-green-400 font-semibold">{windowSummary.firstAge}-{windowSummary.lastAge}</span> ({windowSummary.totalYears} years)</span>
-                    <span className="text-white">Total Headroom: <span className="text-green-400 font-semibold">{toCurrencyShort(windowSummary.totalHeadroom)}</span></span>
-                    <span className="text-white">Total Tax Cost: <span className="text-red-400 font-semibold">{toCurrencyShort(windowSummary.totalTaxCost)}</span></span>
-                    <span className="text-white">Avg Rate: <span className="text-amber-400 font-semibold">{(windowSummary.avgRate * 100).toFixed(1)}%</span></span>
+                <div className="bg-surface-overlay p-3 rounded-lg mb-4 flex flex-wrap gap-4 text-sm">
+                    <span className="text-white">Window: Ages <span className="text-positive font-semibold">{windowSummary.firstAge}-{windowSummary.lastAge}</span> ({windowSummary.totalYears} years)</span>
+                    <span className="text-white">Total Headroom: <span className="text-positive font-semibold">{toCurrencyShort(windowSummary.totalHeadroom)}</span></span>
+                    <span className="text-white">Total Tax Cost: <span className="text-negative font-semibold">{toCurrencyShort(windowSummary.totalTaxCost)}</span></span>
+                    <span className="text-white">Avg Rate: <span className="text-warning font-semibold">{(windowSummary.avgRate * 100).toFixed(1)}%</span></span>
                 </div>
             )}
 
             <div className="overflow-x-auto max-h-80 overflow-y-auto">
                 <table className="w-full text-sm">
-                    <thead className="sticky top-0 bg-gray-900">
-                        <tr className="border-b border-gray-700">
-                            <th className="text-left p-2 text-gray-400">Year</th>
-                            <th className="text-left p-2 text-gray-400">Age</th>
-                            <th className="text-right p-2 text-gray-400">Bracket Room</th>
-                            <th className="text-right p-2 text-gray-400">Trad. Available</th>
-                            <th className="text-right p-2 text-gray-400">Optimal Conv</th>
-                            <th className="text-right p-2 text-gray-400">Tax Cost</th>
-                            <th className="text-right p-2 text-gray-400">Effective Rate</th>
+                    <thead className="sticky top-0 bg-surface-raised">
+                        <tr className="border-b border-border-default">
+                            <th className="text-left p-2 text-content-muted">Year</th>
+                            <th className="text-left p-2 text-content-muted">Age</th>
+                            <th className="text-right p-2 text-content-muted">Bracket Room</th>
+                            <th className="text-right p-2 text-content-muted">Trad. Available</th>
+                            <th className="text-right p-2 text-content-muted">Optimal Conv</th>
+                            <th className="text-right p-2 text-content-muted">Tax Cost</th>
+                            <th className="text-right p-2 text-content-muted">Effective Rate</th>
                         </tr>
                     </thead>
                     <tbody>
                         {windows.map(row => (
-                            <tr key={row.year} className={`border-b border-gray-800 hover:bg-gray-800/50 ${row.hasTorpedo ? 'bg-yellow-900/10' : ''}`}>
+                            <tr key={row.year} className={`border-b border-border-subtle hover:bg-surface-overlay/50 ${row.hasTorpedo ? 'bg-warning-tint/10' : ''}`}>
                                 <td className="p-2 text-white">{row.year}</td>
-                                <td className="p-2 text-gray-300">{row.age}</td>
-                                <td className="p-2 text-right text-green-400">{toCurrencyShort(row.bracketHeadroom)}</td>
-                                <td className="p-2 text-right text-blue-400">{toCurrencyShort(row.traditionalAvailable)}</td>
+                                <td className="p-2 text-content-default">{row.age}</td>
+                                <td className="p-2 text-right text-positive">{toCurrencyShort(row.bracketHeadroom)}</td>
+                                <td className="p-2 text-right text-info">{toCurrencyShort(row.traditionalAvailable)}</td>
                                 <td className="p-2 text-right text-white font-semibold">{toCurrencyShort(row.optimalConversion)}</td>
-                                <td className="p-2 text-right text-red-400">{toCurrencyShort(row.taxCost)}</td>
-                                <td className={`p-2 text-right font-semibold ${row.hasTorpedo ? 'text-yellow-400' : 'text-green-400'}`}>
+                                <td className="p-2 text-right text-negative">{toCurrencyShort(row.taxCost)}</td>
+                                <td className={`p-2 text-right font-semibold ${row.hasTorpedo ? 'text-warning' : 'text-positive'}`}>
                                     {(row.effectiveRate * 100).toFixed(1)}%{row.hasTorpedo ? '*' : ''}
                                 </td>
                             </tr>
@@ -3903,11 +3904,11 @@ function ConversionWindowsAnalysis({ windows, windowSummary }: {
                 </table>
             </div>
             {windows.some(w => w.hasTorpedo) && (
-                <p className="text-yellow-400/80 text-xs mt-2">
+                <p className="text-warning/80 text-xs mt-2">
                     * Effective rate exceeds bracket rate due to SS "tax torpedo" — conversions push Social Security benefits into taxable territory, increasing total tax beyond the marginal bracket rate.
                 </p>
             )}
-        </div>
+        </Panel>
     );
 }
 
@@ -3932,75 +3933,75 @@ interface ContributionComparison {
 function RothVsPreTaxComparison({ comparisons }: { comparisons: ContributionComparison[] }) {
     if (comparisons.length === 0) {
         return (
-            <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
+            <Panel className="rounded-lg">
                 <h3 className="text-lg font-semibold text-white mb-4">Roth vs Pre-Tax Contribution Comparison</h3>
-                <p className="text-gray-400 text-center py-4">No active work income with 401k contributions found.</p>
-            </div>
+                <p className="text-content-muted text-center py-4">No active work income with 401k contributions found.</p>
+            </Panel>
         );
     }
 
     return (
-        <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
+        <Panel className="rounded-lg">
             <h3 className="text-lg font-semibold text-white mb-4">Roth vs Pre-Tax Contribution Comparison</h3>
-            <p className="text-gray-400 text-sm mb-4">Compares the after-tax terminal wealth of contributing the full 401k limit as all pre-tax vs all Roth.</p>
+            <p className="text-content-muted text-sm mb-4">Compares the after-tax terminal wealth of contributing the full 401k limit as all pre-tax vs all Roth.</p>
 
             {comparisons.map((comp, idx) => (
                 <div key={idx} className="mb-6 last:mb-0">
-                    <div className="bg-gray-800 p-3 rounded-lg mb-3">
+                    <div className="bg-surface-overlay p-3 rounded-lg mb-3">
                         <div className="flex flex-wrap gap-4 text-sm">
                             <span className="text-white font-semibold">{comp.jobName}</span>
-                            <span className="text-gray-400">Current: {toCurrencyShort(comp.currentPreTax)} pre-tax / {toCurrencyShort(comp.currentRoth)} Roth</span>
-                            <span className="text-gray-400">Limit: {toCurrencyShort(comp.limit)}</span>
-                            <span className="text-gray-400">{comp.yearsToRetirement} yrs to retirement</span>
+                            <span className="text-content-muted">Current: {toCurrencyShort(comp.currentPreTax)} pre-tax / {toCurrencyShort(comp.currentRoth)} Roth</span>
+                            <span className="text-content-muted">Limit: {toCurrencyShort(comp.limit)}</span>
+                            <span className="text-content-muted">{comp.yearsToRetirement} yrs to retirement</span>
                         </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 mb-3">
-                        <div className={`p-4 rounded-lg border ${comp.winner === 'pretax' ? 'border-blue-700/50 bg-blue-900/20' : 'border-gray-700 bg-gray-800'}`}>
-                            <h4 className="text-blue-400 font-semibold mb-2">All Pre-Tax</h4>
+                        <div className={`p-4 rounded-lg border ${comp.winner === 'pretax' ? 'border-info-strong/50 bg-info-tint/20' : 'border-border-default bg-surface-overlay'}`}>
+                            <h4 className="text-info font-semibold mb-2">All Pre-Tax</h4>
                             <div className="space-y-1 text-sm">
-                                <div className="flex justify-between"><span className="text-gray-400">Contribution</span><span className="text-white">{toCurrencyShort(comp.limit)}</span></div>
-                                <div className="flex justify-between"><span className="text-gray-400">Tax saved today</span><span className="text-green-400">{toCurrencyShort(comp.limit * comp.currentMarginalRate)}</span></div>
-                                <div className="flex justify-between"><span className="text-gray-400">Future value</span><span className="text-white">{toCurrencyShort(comp.preTaxPath.futureValue)}</span></div>
-                                <div className="flex justify-between"><span className="text-gray-400">Tax at withdrawal</span><span className="text-red-400">-{toCurrencyShort(comp.preTaxPath.taxAtWithdrawal)}</span></div>
-                                <div className="flex justify-between"><span className="text-gray-400">Reinvested savings</span><span className="text-green-400">+{toCurrencyShort(comp.preTaxPath.reinvestedSavings)}</span></div>
-                                <div className="flex justify-between border-t border-gray-600 pt-1 mt-1"><span className="text-white font-semibold">After-tax total</span><span className="text-white font-semibold">{toCurrencyShort(comp.preTaxPath.total)}</span></div>
+                                <div className="flex justify-between"><span className="text-content-muted">Contribution</span><span className="text-white">{toCurrencyShort(comp.limit)}</span></div>
+                                <div className="flex justify-between"><span className="text-content-muted">Tax saved today</span><span className="text-positive">{toCurrencyShort(comp.limit * comp.currentMarginalRate)}</span></div>
+                                <div className="flex justify-between"><span className="text-content-muted">Future value</span><span className="text-white">{toCurrencyShort(comp.preTaxPath.futureValue)}</span></div>
+                                <div className="flex justify-between"><span className="text-content-muted">Tax at withdrawal</span><span className="text-negative">-{toCurrencyShort(comp.preTaxPath.taxAtWithdrawal)}</span></div>
+                                <div className="flex justify-between"><span className="text-content-muted">Reinvested savings</span><span className="text-positive">+{toCurrencyShort(comp.preTaxPath.reinvestedSavings)}</span></div>
+                                <div className="flex justify-between border-t border-border-strong pt-1 mt-1"><span className="text-white font-semibold">After-tax total</span><span className="text-white font-semibold">{toCurrencyShort(comp.preTaxPath.total)}</span></div>
                             </div>
                         </div>
-                        <div className={`p-4 rounded-lg border ${comp.winner === 'roth' ? 'border-green-700/50 bg-green-900/20' : 'border-gray-700 bg-gray-800'}`}>
-                            <h4 className="text-green-400 font-semibold mb-2">All Roth</h4>
+                        <div className={`p-4 rounded-lg border ${comp.winner === 'roth' ? 'border-positive-strong/50 bg-positive-tint/20' : 'border-border-default bg-surface-overlay'}`}>
+                            <h4 className="text-positive font-semibold mb-2">All Roth</h4>
                             <div className="space-y-1 text-sm">
-                                <div className="flex justify-between"><span className="text-gray-400">Contribution</span><span className="text-white">{toCurrencyShort(comp.limit)}</span></div>
-                                <div className="flex justify-between"><span className="text-gray-400">Tax paid today</span><span className="text-red-400">-{toCurrencyShort(comp.limit * comp.currentMarginalRate)}</span></div>
-                                <div className="flex justify-between"><span className="text-gray-400">Future value</span><span className="text-white">{toCurrencyShort(comp.rothPath.futureValue)}</span></div>
-                                <div className="flex justify-between"><span className="text-gray-400">Tax at withdrawal</span><span className="text-green-400">$0</span></div>
-                                <div className="flex justify-between"><span className="text-gray-400">&nbsp;</span><span>&nbsp;</span></div>
-                                <div className="flex justify-between border-t border-gray-600 pt-1 mt-1"><span className="text-white font-semibold">After-tax total</span><span className="text-white font-semibold">{toCurrencyShort(comp.rothPath.total)}</span></div>
+                                <div className="flex justify-between"><span className="text-content-muted">Contribution</span><span className="text-white">{toCurrencyShort(comp.limit)}</span></div>
+                                <div className="flex justify-between"><span className="text-content-muted">Tax paid today</span><span className="text-negative">-{toCurrencyShort(comp.limit * comp.currentMarginalRate)}</span></div>
+                                <div className="flex justify-between"><span className="text-content-muted">Future value</span><span className="text-white">{toCurrencyShort(comp.rothPath.futureValue)}</span></div>
+                                <div className="flex justify-between"><span className="text-content-muted">Tax at withdrawal</span><span className="text-positive">$0</span></div>
+                                <div className="flex justify-between"><span className="text-content-muted">&nbsp;</span><span>&nbsp;</span></div>
+                                <div className="flex justify-between border-t border-border-strong pt-1 mt-1"><span className="text-white font-semibold">After-tax total</span><span className="text-white font-semibold">{toCurrencyShort(comp.rothPath.total)}</span></div>
                             </div>
                         </div>
                     </div>
 
-                    <div className={`p-3 rounded-lg border ${comp.winner === 'pretax' ? 'bg-blue-900/20 border-blue-700/50' : 'bg-green-900/20 border-green-700/50'}`}>
+                    <div className={`p-3 rounded-lg border ${comp.winner === 'pretax' ? 'bg-info-tint/20 border-info-strong/50' : 'bg-positive-tint/20 border-positive-strong/50'}`}>
                         <div className="flex flex-wrap justify-between items-center gap-2">
-                            <span className={`font-semibold ${comp.winner === 'pretax' ? 'text-blue-300' : 'text-green-300'}`}>
+                            <span className={`font-semibold ${comp.winner === 'pretax' ? 'text-info-bright' : 'text-positive-bright'}`}>
                                 {comp.winner === 'pretax' ? 'Pre-Tax' : 'Roth'} wins by {toCurrencyShort(comp.advantage)} ({((comp.advantage / Math.min(comp.preTaxPath.total, comp.rothPath.total)) * 100).toFixed(1)}% better)
                             </span>
-                            <span className="text-gray-400 text-sm">Breakeven retirement rate: {(comp.breakEvenRate * 100).toFixed(1)}%</span>
+                            <span className="text-content-muted text-sm">Breakeven retirement rate: {(comp.breakEvenRate * 100).toFixed(1)}%</span>
                         </div>
                     </div>
 
                     {comp.optimalSplit && (
-                        <div className="mt-3 bg-gray-800 p-3 rounded-lg border border-gray-700">
-                            <h4 className="text-amber-400 font-semibold text-sm mb-1">Optimal Split</h4>
-                            <p className="text-gray-300 text-sm">
+                        <div className="mt-3 bg-surface-overlay p-3 rounded-lg border border-border-default">
+                            <h4 className="text-warning font-semibold text-sm mb-1">Optimal Split</h4>
+                            <p className="text-content-default text-sm">
                                 Pre-tax: {toCurrencyShort(comp.optimalSplit.preTax)} | Roth: {toCurrencyShort(comp.optimalSplit.roth)}
                             </p>
-                            <p className="text-gray-400 text-xs mt-1">{comp.optimalSplit.explanation}</p>
+                            <p className="text-content-muted text-xs mt-1">{comp.optimalSplit.explanation}</p>
                         </div>
                     )}
                 </div>
             ))}
-        </div>
+        </Panel>
     );
 }
 
@@ -4339,20 +4340,20 @@ function RothAnalysisDebugTab() {
     }, [simulation, incomes, taxState, assumptions, currentYear, currentAge, retirementAge, ror, rateComparison]);
 
     if (simulation.length === 0) {
-        return <div className="text-gray-400 text-center py-8">No simulation data. Run a simulation first.</div>;
+        return <div className="text-content-muted text-center py-8">No simulation data. Run a simulation first.</div>;
     }
 
     return (
         <div className="space-y-6">
             {/* Section 1: Recommendation Summary */}
-            <div className="bg-gray-900 p-4 rounded-lg border border-gray-800">
+            <Panel className="rounded-lg">
                 <h3 className="text-lg font-semibold text-white mb-4">Contribution Recommendation</h3>
                 {rateComparison ? (
                     <RothRecommendationSummary {...rateComparison} />
                 ) : (
-                    <p className="text-gray-400">Unable to calculate rate comparison.</p>
+                    <p className="text-content-muted">Unable to calculate rate comparison.</p>
                 )}
-            </div>
+            </Panel>
 
             {/* Section 2: Tax Rate Timeline */}
             <TaxRateTimeline timelineData={timelineData} />
@@ -4522,9 +4523,9 @@ function QRCodeDebugTab() {
 
     return (
         <div className="space-y-6">
-            <div className="bg-gray-900 p-6 rounded-lg border border-gray-800">
+            <Panel padding="lg" className="rounded-lg">
                 <h3 className="text-xl font-bold text-white mb-4">QR Code Image Decoder</h3>
-                <p className="text-gray-400 mb-4">
+                <p className="text-content-muted mb-4">
                     Upload a QR code image exported from the app to decode and import the data.
                 </p>
 
@@ -4540,14 +4541,14 @@ function QRCodeDebugTab() {
                 {status === 'idle' && (
                     <button
                         onClick={() => fileInputRef.current?.click()}
-                        className="px-6 py-3 bg-fuchsia-600 hover:bg-fuchsia-500 text-white rounded-lg font-medium transition-colors"
+                        className="px-6 py-3 bg-cat-fuchsia-solid hover:bg-cat-fuchsia-soft text-white rounded-lg font-medium transition-colors"
                     >
                         Select QR Code Image
                     </button>
                 )}
 
                 {status === 'loading' && (
-                    <div className="flex items-center gap-3 text-gray-400">
+                    <div className="flex items-center gap-3 text-content-muted">
                         <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
@@ -4558,28 +4559,28 @@ function QRCodeDebugTab() {
 
                 {status === 'error' && (
                     <div className="space-y-4">
-                        <div className="bg-red-900/20 border border-red-800 rounded-lg p-4">
+                        <div className="bg-negative-tint/20 border border-negative-strong rounded-lg p-4">
                             <div className="flex items-start gap-3">
-                                <svg className="w-6 h-6 text-red-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <svg className="w-6 h-6 text-negative shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                 </svg>
                                 <div>
-                                    <h4 className="text-red-400 font-semibold">Decode Failed</h4>
-                                    <p className="text-red-400/80 text-sm mt-1">{errorMessage}</p>
-                                    {debugInfo && <p className="text-gray-500 text-xs mt-2">{debugInfo}</p>}
+                                    <h4 className="text-negative font-semibold">Decode Failed</h4>
+                                    <p className="text-negative/80 text-sm mt-1">{errorMessage}</p>
+                                    {debugInfo && <p className="text-content-subtle text-xs mt-2">{debugInfo}</p>}
                                 </div>
                             </div>
                             <button
                                 onClick={handleReset}
-                                className="mt-4 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
+                                className="mt-4 px-4 py-2 bg-surface-input hover:bg-surface-hover text-white rounded-lg font-medium transition-colors"
                             >
                                 Try Again
                             </button>
                         </div>
                         {previewUrl && (
-                            <div className="bg-gray-800 rounded-lg p-4">
-                                <p className="text-gray-400 text-sm mb-2">Uploaded image:</p>
-                                <img src={previewUrl} alt="Uploaded QR" className="max-w-75 mx-auto border border-gray-700 rounded" />
+                            <div className="bg-surface-overlay rounded-lg p-4">
+                                <p className="text-content-muted text-sm mb-2">Uploaded image:</p>
+                                <img src={previewUrl} alt="Uploaded QR" className="max-w-75 mx-auto border border-border-default rounded" />
                             </div>
                         )}
                     </div>
@@ -4587,19 +4588,19 @@ function QRCodeDebugTab() {
 
                 {status === 'success' && decodedData && (
                     <div className="space-y-4">
-                        <div className="bg-green-900/20 border border-green-800 rounded-lg p-4">
+                        <div className="bg-positive-tint/20 border border-positive-strong rounded-lg p-4">
                             <div className="flex items-start gap-3">
-                                <svg className="w-6 h-6 text-green-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <svg className="w-6 h-6 text-positive shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                 </svg>
                                 <div>
-                                    <h4 className="text-green-400 font-semibold">QR Code Decoded!</h4>
-                                    <ul className="text-gray-300 text-sm mt-2 space-y-1">
+                                    <h4 className="text-positive font-semibold">QR Code Decoded!</h4>
+                                    <ul className="text-content-default text-sm mt-2 space-y-1">
                                         <li>• {decodedData.accounts} account{decodedData.accounts !== 1 ? 's' : ''}</li>
                                         <li>• {decodedData.incomes} income source{decodedData.incomes !== 1 ? 's' : ''}</li>
                                         <li>• {decodedData.expenses} expense{decodedData.expenses !== 1 ? 's' : ''}</li>
                                     </ul>
-                                    <p className="text-gray-500 text-xs mt-2">
+                                    <p className="text-content-subtle text-xs mt-2">
                                         Compressed: {(decodedData.compressedSize / 1024).toFixed(2)} KB →
                                         Raw: {(decodedData.rawSize / 1024).toFixed(2)} KB
                                     </p>
@@ -4610,28 +4611,28 @@ function QRCodeDebugTab() {
                         <div className="flex gap-3">
                             <button
                                 onClick={handleReset}
-                                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
+                                className="px-4 py-2 bg-surface-input hover:bg-surface-hover text-white rounded-lg font-medium transition-colors"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={handleImport}
-                                className="px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg font-medium transition-colors"
+                                className="px-4 py-2 bg-positive-solid hover:bg-positive-soft text-white rounded-lg font-medium transition-colors"
                             >
                                 Import Data
                             </button>
                         </div>
                     </div>
                 )}
-            </div>
+            </Panel>
 
             {/* Raw JSON Preview (collapsed by default) */}
             {rawJson && (
-                <details className="bg-gray-900 rounded-lg border border-gray-800">
-                    <summary className="p-4 cursor-pointer text-gray-400 hover:text-white">
+                <details className="bg-surface-raised rounded-lg border border-border-subtle">
+                    <summary className="p-4 cursor-pointer text-content-muted hover:text-white">
                         View Raw JSON ({(rawJson.length / 1024).toFixed(2)} KB)
                     </summary>
-                    <pre className="p-4 pt-0 text-xs text-gray-500 overflow-auto max-h-96">
+                    <pre className="p-4 pt-0 text-xs text-content-subtle overflow-auto max-h-96">
                         {JSON.stringify(JSON.parse(rawJson), null, 2)}
                     </pre>
                 </details>
@@ -4649,7 +4650,7 @@ function RatiosDebugTab() {
     const forceExact = assumptions.display?.useCompactCurrency === false;
     const [selectedYearIdx, setSelectedYearIdx] = useState(0);
 
-    if (simulation.length === 0) return <div className="text-gray-400 p-4">No simulation data available.</div>;
+    if (simulation.length === 0) return <div className="text-content-muted p-4">No simulation data available.</div>;
 
     const simYear = simulation[selectedYearIdx];
     const { accounts, cashflow } = simYear;
@@ -4682,10 +4683,10 @@ function RatiosDebugTab() {
     return (
         <div className="space-y-6">
             {/* Year selector */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+            <Panel>
                 <div className="flex items-center gap-4 mb-2">
                     <h3 className="text-lg font-bold text-white">Year: {simYear.year}</h3>
-                    <span className="text-sm text-gray-400">({selectedYearIdx + 1} of {simulation.length})</span>
+                    <span className="text-sm text-content-muted">({selectedYearIdx + 1} of {simulation.length})</span>
                 </div>
                 <input
                     type="range"
@@ -4695,43 +4696,43 @@ function RatiosDebugTab() {
                     onChange={(e) => setSelectedYearIdx(parseInt(e.target.value))}
                     className="w-full"
                 />
-            </div>
+            </Panel>
 
             {/* Accounts Breakdown */}
             <div className="space-y-2">
-                <h4 className="text-gray-400 font-medium">Accounts by Type</h4>
-                <div className="bg-green-900/20 border border-green-700/30 rounded-lg p-3">
+                <h4 className="text-content-muted font-medium">Accounts by Type</h4>
+                <div className="bg-positive-tint/20 border border-positive-strong/30 rounded-lg p-3">
                     <div className="flex justify-between items-center mb-1">
-                        <span className="text-green-400 font-medium">Savings (Liquid)</span>
-                        <span className="text-green-400 font-bold">{formatCompactCurrency(totalLiquid, { forceExact })}</span>
+                        <span className="text-positive font-medium">Savings (Liquid)</span>
+                        <span className="text-positive font-bold">{formatCompactCurrency(totalLiquid, { forceExact })}</span>
                     </div>
                     {savedAccounts.map((acc) => (
-                        <div key={acc.id} className="flex justify-between text-xs text-gray-300">
+                        <div key={acc.id} className="flex justify-between text-xs text-content-default">
                             <span>• {acc.name}</span>
                             <span>{formatCompactCurrency(acc.amount, { forceExact })}</span>
                         </div>
                     ))}
                 </div>
-                <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-3">
+                <div className="bg-surface-overlay/50 border border-border-default rounded-lg p-3">
                     <div className="flex justify-between items-center mb-1">
-                        <span className="text-gray-400 font-medium">Invested (Not Liquid)</span>
-                        <span className="text-gray-400">{formatCompactCurrency(totalInvested, { forceExact })}</span>
+                        <span className="text-content-muted font-medium">Invested (Not Liquid)</span>
+                        <span className="text-content-muted">{formatCompactCurrency(totalInvested, { forceExact })}</span>
                     </div>
                     {investedAccounts.map((acc) => (
-                        <div key={acc.id} className="flex justify-between text-xs text-gray-400">
+                        <div key={acc.id} className="flex justify-between text-xs text-content-muted">
                             <span>• {acc.name} ({acc.taxType})</span>
                             <span>{formatCompactCurrency(acc.amount, { forceExact })}</span>
                         </div>
                     ))}
                 </div>
                 {propertyAccounts.length > 0 && (
-                    <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-3">
+                    <div className="bg-surface-overlay/50 border border-border-default rounded-lg p-3">
                         <div className="flex justify-between items-center mb-1">
-                            <span className="text-gray-400 font-medium">Property (Not Liquid)</span>
-                            <span className="text-gray-400">{formatCompactCurrency(totalProperty, { forceExact })}</span>
+                            <span className="text-content-muted font-medium">Property (Not Liquid)</span>
+                            <span className="text-content-muted">{formatCompactCurrency(totalProperty, { forceExact })}</span>
                         </div>
                         {propertyAccounts.map((acc) => (
-                            <div key={acc.id} className="flex justify-between text-xs text-gray-400">
+                            <div key={acc.id} className="flex justify-between text-xs text-content-muted">
                                 <span>• {acc.name}</span>
                                 <span>{formatCompactCurrency(acc.amount, { forceExact })}</span>
                             </div>
@@ -4739,13 +4740,13 @@ function RatiosDebugTab() {
                     </div>
                 )}
                 {debtAccounts.length > 0 && (
-                    <div className="bg-red-900/20 border border-red-700/30 rounded-lg p-3">
+                    <div className="bg-negative-tint/20 border border-negative-strong/30 rounded-lg p-3">
                         <div className="flex justify-between items-center mb-1">
-                            <span className="text-red-400 font-medium">Debt</span>
-                            <span className="text-red-400">-{formatCompactCurrency(totalDebt, { forceExact })}</span>
+                            <span className="text-negative font-medium">Debt</span>
+                            <span className="text-negative">-{formatCompactCurrency(totalDebt, { forceExact })}</span>
                         </div>
                         {debtAccounts.map((acc) => (
-                            <div key={acc.id} className="flex justify-between text-xs text-gray-300">
+                            <div key={acc.id} className="flex justify-between text-xs text-content-default">
                                 <span>• {acc.name}</span>
                                 <span>-{formatCompactCurrency(acc.amount, { forceExact })}</span>
                             </div>
@@ -4755,55 +4756,55 @@ function RatiosDebugTab() {
             </div>
 
             {/* Emergency Fund Calculation */}
-            <div className="bg-blue-900/20 border border-blue-700/30 rounded-lg p-3">
-                <h4 className="text-blue-400 font-medium mb-2">Emergency Fund Calculation</h4>
+            <div className="bg-info-tint/20 border border-info-strong/30 rounded-lg p-3">
+                <h4 className="text-info font-medium mb-2">Emergency Fund Calculation</h4>
                 <div className="space-y-1 text-xs">
                     <div className="flex justify-between">
-                        <span className="text-gray-400">Liquid Assets (Savings only):</span>
+                        <span className="text-content-muted">Liquid Assets (Savings only):</span>
                         <span className="text-white">{formatCompactCurrency(totalLiquid, { forceExact })}</span>
                     </div>
-                    <div className="border-t border-blue-700/20 my-2"></div>
+                    <div className="border-t border-info-strong/20 my-2"></div>
                     <div className="flex justify-between">
-                        <span className="text-gray-400">Total Expenses:</span>
+                        <span className="text-content-muted">Total Expenses:</span>
                         <span className="text-white">{formatCompactCurrency(cashflow.totalExpense, { forceExact })}</span>
                     </div>
-                    <div className="flex justify-between text-gray-400">
+                    <div className="flex justify-between text-content-muted">
                         <span className="pl-2">- Federal Tax:</span>
                         <span>-{formatCompactCurrency(simYear.taxDetails.fed || 0, { forceExact })}</span>
                     </div>
-                    <div className="flex justify-between text-gray-400">
+                    <div className="flex justify-between text-content-muted">
                         <span className="pl-2">- State Tax:</span>
                         <span>-{formatCompactCurrency(simYear.taxDetails.state || 0, { forceExact })}</span>
                     </div>
-                    <div className="flex justify-between text-gray-400">
+                    <div className="flex justify-between text-content-muted">
                         <span className="pl-2">- FICA:</span>
                         <span>-{formatCompactCurrency(simYear.taxDetails.fica || 0, { forceExact })}</span>
                     </div>
-                    <div className="flex justify-between text-gray-400">
+                    <div className="flex justify-between text-content-muted">
                         <span className="pl-2">- 401k/Pre-tax:</span>
                         <span>-{formatCompactCurrency(simYear.taxDetails.preTax || 0, { forceExact })}</span>
                     </div>
-                    <div className="flex justify-between text-gray-400">
+                    <div className="flex justify-between text-content-muted">
                         <span className="pl-2">- Insurance:</span>
                         <span>-{formatCompactCurrency(simYear.taxDetails.insurance || 0, { forceExact })}</span>
                     </div>
                     {(simYear.taxDetails.postTax || 0) > 0 && (
-                        <div className="flex justify-between text-gray-400">
+                        <div className="flex justify-between text-content-muted">
                             <span className="pl-2">- Post-tax:</span>
                             <span>-{formatCompactCurrency(simYear.taxDetails.postTax || 0, { forceExact })}</span>
                         </div>
                     )}
-                    <div className="flex justify-between border-t border-blue-700/30 pt-1">
-                        <span className="text-gray-300">= Living Expenses:</span>
+                    <div className="flex justify-between border-t border-info-strong/30 pt-1">
+                        <span className="text-content-default">= Living Expenses:</span>
                         <span className="text-white font-medium">{formatCompactCurrency(livingExpenses, { forceExact })}</span>
                     </div>
                     <div className="flex justify-between">
-                        <span className="text-gray-400">Monthly Living Expenses:</span>
+                        <span className="text-content-muted">Monthly Living Expenses:</span>
                         <span className="text-white">{formatCompactCurrency(monthlyLivingExpenses, { forceExact })}</span>
                     </div>
-                    <div className="flex justify-between border-t border-blue-700/30 pt-1 mt-1">
-                        <span className="text-blue-400 font-medium">Emergency Fund Months:</span>
-                        <span className="text-blue-400 font-bold">
+                    <div className="flex justify-between border-t border-info-strong/30 pt-1 mt-1">
+                        <span className="text-info font-medium">Emergency Fund Months:</span>
+                        <span className="text-info font-bold">
                             {formatCompactCurrency(totalLiquid, { forceExact })} / {formatCompactCurrency(monthlyLivingExpenses, { forceExact })} = {emergencyMonths.toFixed(1)} mo
                         </span>
                     </div>
@@ -4811,23 +4812,23 @@ function RatiosDebugTab() {
             </div>
 
             {/* Summary */}
-            <div className="bg-gray-800 rounded-lg p-3">
-                <h4 className="text-gray-300 font-medium mb-2">Summary</h4>
+            <div className="bg-surface-overlay rounded-lg p-3">
+                <h4 className="text-content-default font-medium mb-2">Summary</h4>
                 <div className="grid grid-cols-2 gap-2 text-xs">
                     <div className="flex justify-between">
-                        <span className="text-gray-400">Total Assets:</span>
+                        <span className="text-content-muted">Total Assets:</span>
                         <span className="text-white">{formatCompactCurrency(totalAssets, { forceExact })}</span>
                     </div>
                     <div className="flex justify-between">
-                        <span className="text-gray-400">Total Debt:</span>
-                        <span className="text-red-400">-{formatCompactCurrency(totalDebt, { forceExact })}</span>
+                        <span className="text-content-muted">Total Debt:</span>
+                        <span className="text-negative">-{formatCompactCurrency(totalDebt, { forceExact })}</span>
                     </div>
                     <div className="flex justify-between">
-                        <span className="text-gray-400">Net Worth:</span>
-                        <span className="text-green-400">{formatCompactCurrency(netWorth, { forceExact })}</span>
+                        <span className="text-content-muted">Net Worth:</span>
+                        <span className="text-positive">{formatCompactCurrency(netWorth, { forceExact })}</span>
                     </div>
                     <div className="flex justify-between">
-                        <span className="text-gray-400">Total Income:</span>
+                        <span className="text-content-muted">Total Income:</span>
                         <span className="text-white">{formatCompactCurrency(cashflow.totalIncome, { forceExact })}</span>
                     </div>
                 </div>
@@ -4857,7 +4858,7 @@ function WithdrawalDebugTab() {
         return simulation;
     }, [simulation, yearFilter, startAge, retirementAge]);
 
-    if (simulation.length === 0) return <div className="text-gray-400 p-4">No simulation data available. Run the simulation first.</div>;
+    if (simulation.length === 0) return <div className="text-content-muted p-4">No simulation data available. Run the simulation first.</div>;
 
     // Compute lifetime withdrawal totals by account
     // Note: withdrawalDetail is keyed by account NAME, not ID
@@ -4908,15 +4909,15 @@ function WithdrawalDebugTab() {
     return (
         <div className="space-y-6">
             {/* Controls */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 flex items-center gap-4">
+            <Panel className="flex items-center gap-4">
                 <DropdownInput label="Show Years" value={yearFilter} onChange={setYearFilter} options={['All Years', 'Retirement Only']} />
-            </div>
+            </Panel>
 
             {/* Section 1: Withdrawal Order */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+            <Panel>
                 <h3 className="text-lg font-bold text-white mb-3">Withdrawal Order</h3>
-                <p className="text-sm text-gray-400 mb-3">
-                    Strategy: <span className="text-green-400">{assumptions.investments.withdrawalStrategy}</span> at {assumptions.investments.withdrawalRate}% |
+                <p className="text-sm text-content-muted mb-3">
+                    Strategy: <span className="text-positive">{assumptions.investments.withdrawalStrategy}</span> at {assumptions.investments.withdrawalRate}% |
                     Configured order: {assumptions.withdrawalStrategy.map(b => b.name).join(' → ') || 'None configured'}
                 </p>
 
@@ -4924,10 +4925,10 @@ function WithdrawalDebugTab() {
                 {Object.keys(lifetimeWithdrawals).length > 0 && (
                     <div className="mb-4 grid grid-cols-2 md:grid-cols-4 gap-2">
                         {Object.entries(lifetimeWithdrawals).map(([id, data]) => (
-                            <div key={id} className={`rounded-lg p-2 border ${data.drainedYear ? 'border-red-700/50 bg-red-900/10' : 'border-gray-700 bg-gray-800/50'}`}>
-                                <div className="text-xs text-gray-400">{data.name}</div>
+                            <div key={id} className={`rounded-lg p-2 border ${data.drainedYear ? 'border-negative-strong/50 bg-negative-tint/10' : 'border-border-default bg-surface-overlay/50'}`}>
+                                <div className="text-xs text-content-muted">{data.name}</div>
                                 <div className="text-sm font-bold text-white">{toCurrencyShort(data.total)}</div>
-                                {data.drainedYear && <div className="text-xs text-red-400">Drained in {data.drainedYear}</div>}
+                                {data.drainedYear && <div className="text-xs text-negative">Drained in {data.drainedYear}</div>}
                             </div>
                         ))}
                     </div>
@@ -4936,8 +4937,8 @@ function WithdrawalDebugTab() {
                 {/* Year-by-year table */}
                 <div className="overflow-x-auto max-h-96 overflow-y-auto">
                     <table className="w-full text-sm">
-                        <thead className="sticky top-0 bg-gray-900">
-                            <tr className="text-gray-400 border-b border-gray-700">
+                        <thead className="sticky top-0 bg-surface-raised">
+                            <tr className="text-content-muted border-b border-border-default">
                                 <th className="text-left p-2">Year</th>
                                 <th className="text-left p-2">Age</th>
                                 <th className="text-right p-2">Total</th>
@@ -4953,9 +4954,9 @@ function WithdrawalDebugTab() {
                                 const total = Object.values(detail).reduce((s, v) => s + v, 0);
                                 if (total === 0) return null;
                                 return (
-                                    <tr key={simYear.year} className="border-b border-gray-800 hover:bg-gray-800/50">
-                                        <td className="p-2 text-gray-300">{simYear.year}</td>
-                                        <td className="p-2 text-gray-400">{age}</td>
+                                    <tr key={simYear.year} className="border-b border-border-subtle hover:bg-surface-overlay/50">
+                                        <td className="p-2 text-content-default">{simYear.year}</td>
+                                        <td className="p-2 text-content-muted">{age}</td>
                                         <td className="p-2 text-right text-white font-medium">{toCurrencyShort(total)}</td>
                                         {assumptions.withdrawalStrategy.map(b => {
                                             const acc = simYear.accounts.find(a => a.id === b.accountId);
@@ -4963,7 +4964,7 @@ function WithdrawalDebugTab() {
                                             const amt = detail[accName] || 0;
                                             const drained = acc && acc.amount <= 0;
                                             return (
-                                                <td key={b.id} className={`p-2 text-right ${drained ? 'text-red-400' : amt > 0 ? 'text-green-400' : 'text-gray-600'}`}>
+                                                <td key={b.id} className={`p-2 text-right ${drained ? 'text-negative' : amt > 0 ? 'text-positive' : 'text-content-faint'}`}>
                                                     {amt > 0 ? toCurrencyShort(amt) : '—'}
                                                 </td>
                                             );
@@ -4974,24 +4975,24 @@ function WithdrawalDebugTab() {
                         </tbody>
                     </table>
                 </div>
-            </div>
+            </Panel>
 
             {/* Section 2: Early Withdrawal Penalties */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+            <Panel>
                 <h3 className="text-lg font-bold text-white mb-3">Early Withdrawal Penalties</h3>
                 {penaltyYears.length === 0 ? (
-                    <div className="bg-green-900/20 border border-green-700/50 rounded-lg p-3 text-green-400">
+                    <div className="bg-positive-tint/20 border border-positive-strong/50 rounded-lg p-3 text-positive">
                         No early withdrawal penalties detected. All tax-advantaged withdrawals occur after age 59.5.
                     </div>
                 ) : (
                     <>
-                        <div className="bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-3 mb-3 text-yellow-300">
+                        <div className="bg-warning-tint/30 border border-warning-strong/50 rounded-lg p-3 mb-3 text-warning-bright">
                             {penaltyYears.length} early withdrawal(s) detected before age 59.5. Total penalties: {toCurrency(penaltyYears.reduce((s, p) => s + p.penalty, 0))}
                         </div>
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm">
                                 <thead>
-                                    <tr className="text-gray-400 border-b border-gray-700">
+                                    <tr className="text-content-muted border-b border-border-default">
                                         <th className="text-left p-2">Year</th>
                                         <th className="text-left p-2">Age</th>
                                         <th className="text-left p-2">Account</th>
@@ -5001,12 +5002,12 @@ function WithdrawalDebugTab() {
                                 </thead>
                                 <tbody>
                                     {penaltyYears.map((p, i) => (
-                                        <tr key={i} className="border-b border-gray-800">
-                                            <td className="p-2 text-gray-300">{p.year}</td>
-                                            <td className="p-2 text-gray-400">{p.age}</td>
+                                        <tr key={i} className="border-b border-border-subtle">
+                                            <td className="p-2 text-content-default">{p.year}</td>
+                                            <td className="p-2 text-content-muted">{p.age}</td>
                                             <td className="p-2 text-white">{p.accountName}</td>
-                                            <td className="p-2 text-right text-yellow-300">{toCurrency(p.amount)}</td>
-                                            <td className="p-2 text-right text-red-400">{toCurrency(p.penalty)}</td>
+                                            <td className="p-2 text-right text-warning-bright">{toCurrency(p.amount)}</td>
+                                            <td className="p-2 text-right text-negative">{toCurrency(p.penalty)}</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -5014,13 +5015,13 @@ function WithdrawalDebugTab() {
                         </div>
                     </>
                 )}
-            </div>
+            </Panel>
 
             {/* Section 3: Guyton-Klinger Details */}
             {isGKStrategy && (
-                <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                <Panel>
                     <h3 className="text-lg font-bold text-white mb-3">Guyton-Klinger Guardrail Details</h3>
-                    <p className="text-sm text-gray-400 mb-3">
+                    <p className="text-sm text-content-muted mb-3">
                         Target Rate: {assumptions.investments.withdrawalRate}% |
                         Upper Guardrail: {assumptions.investments.gkUpperGuardrail}x |
                         Lower Guardrail: {assumptions.investments.gkLowerGuardrail}x |
@@ -5028,8 +5029,8 @@ function WithdrawalDebugTab() {
                     </p>
                     <div className="overflow-x-auto max-h-96 overflow-y-auto">
                         <table className="w-full text-sm">
-                            <thead className="sticky top-0 bg-gray-900">
-                                <tr className="text-gray-400 border-b border-gray-700">
+                            <thead className="sticky top-0 bg-surface-raised">
+                                <tr className="text-content-muted border-b border-border-default">
                                     <th className="text-left p-2">Year</th>
                                     <th className="text-right p-2">Withdrawal</th>
                                     <th className="text-right p-2">Target Rate</th>
@@ -5044,28 +5045,28 @@ function WithdrawalDebugTab() {
                                     const sw = simYear.strategyWithdrawal;
                                     const sa = simYear.strategyAdjustment;
                                     if (!sw) return null;
-                                    const triggerColor = sa?.guardrailTriggered === 'capital-preservation' ? 'text-red-400'
-                                        : sa?.guardrailTriggered === 'prosperity' ? 'text-blue-400' : 'text-green-400';
+                                    const triggerColor = sa?.guardrailTriggered === 'capital-preservation' ? 'text-negative'
+                                        : sa?.guardrailTriggered === 'prosperity' ? 'text-info' : 'text-positive';
                                     return (
-                                        <tr key={simYear.year} className="border-b border-gray-800 hover:bg-gray-800/50">
-                                            <td className="p-2 text-gray-300">{simYear.year}</td>
+                                        <tr key={simYear.year} className="border-b border-border-subtle hover:bg-surface-overlay/50">
+                                            <td className="p-2 text-content-default">{simYear.year}</td>
                                             <td className="p-2 text-right text-white">{toCurrencyShort(sw.amount)}</td>
-                                            <td className="p-2 text-right text-gray-400">{sw.targetWithdrawalRate.toFixed(2)}%</td>
-                                            <td className="p-2 text-right text-gray-300">{sw.currentWithdrawalRate.toFixed(2)}%</td>
+                                            <td className="p-2 text-right text-content-muted">{sw.targetWithdrawalRate.toFixed(2)}%</td>
+                                            <td className="p-2 text-right text-content-default">{sw.currentWithdrawalRate.toFixed(2)}%</td>
                                             <td className={`p-2 text-center font-medium ${triggerColor}`}>
                                                 {sa?.guardrailTriggered || 'none'}
                                             </td>
-                                            <td className="p-2 text-right text-gray-300">
+                                            <td className="p-2 text-right text-content-default">
                                                 {sa?.actualAdjustment ? `${sa.actualAdjustment > 0 ? '+' : ''}${toCurrencyShort(sa.actualAdjustment)}` : '—'}
                                             </td>
-                                            <td className="p-2 text-yellow-300 text-xs">{sa?.warning || ''}</td>
+                                            <td className="p-2 text-warning-bright text-xs">{sa?.warning || ''}</td>
                                         </tr>
                                     );
                                 })}
                             </tbody>
                         </table>
                     </div>
-                </div>
+                </Panel>
             )}
         </div>
     );
@@ -5084,7 +5085,7 @@ function AccountsDebugTab() {
     const retirementAge = getRetirementAge(assumptions.milestones);
     const inflationRate = assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate / 100 : 0;
 
-    if (simulation.length === 0) return <div className="text-gray-400 p-4">No simulation data available. Run the simulation first.</div>;
+    if (simulation.length === 0) return <div className="text-content-muted p-4">No simulation data available. Run the simulation first.</div>;
 
     const investedAccounts = simulation[0].accounts.filter((a): a is InvestedAccount => a instanceof InvestedAccount);
     const accountOptions = ['All', ...investedAccounts.map(a => a.name)];
@@ -5184,17 +5185,17 @@ function AccountsDebugTab() {
     return (
         <div className="space-y-6">
             {/* Controls */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 flex items-center gap-4">
+            <Panel className="flex items-center gap-4">
                 <DropdownInput label="Account" value={accountFilter} onChange={setAccountFilter} options={accountOptions} />
-            </div>
+            </Panel>
 
             {/* Section 1: Investment Returns */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+            <Panel>
                 <h3 className="text-lg font-bold text-white mb-3">Investment Returns</h3>
                 <div className="overflow-x-auto max-h-96 overflow-y-auto">
                     <table className="w-full text-sm">
-                        <thead className="sticky top-0 bg-gray-900">
-                            <tr className="text-gray-400 border-b border-gray-700">
+                        <thead className="sticky top-0 bg-surface-raised">
+                            <tr className="text-content-muted border-b border-border-default">
                                 <th className="text-left p-2">Year</th>
                                 <th className="text-left p-2">Age</th>
                                 <th className="text-right p-2">Growth</th>
@@ -5205,13 +5206,13 @@ function AccountsDebugTab() {
                         <tbody>
                             {returnsData.map(d => {
                                 const realReturn = d.portfolioReturn - (inflationRate * 100);
-                                const color = realReturn > 0 ? 'text-green-400' : realReturn > -2 ? 'text-yellow-300' : 'text-red-400';
+                                const color = realReturn > 0 ? 'text-positive' : realReturn > -2 ? 'text-warning-bright' : 'text-negative';
                                 return (
-                                    <tr key={d.year} className="border-b border-gray-800 hover:bg-gray-800/50">
-                                        <td className="p-2 text-gray-300">{d.year}</td>
-                                        <td className="p-2 text-gray-400">{d.age}</td>
+                                    <tr key={d.year} className="border-b border-border-subtle hover:bg-surface-overlay/50">
+                                        <td className="p-2 text-content-default">{d.year}</td>
+                                        <td className="p-2 text-content-muted">{d.age}</td>
                                         <td className="p-2 text-right text-white">{toCurrencyShort(d.totalGrowth)}</td>
-                                        <td className="p-2 text-right text-gray-300">{d.portfolioReturn.toFixed(1)}%</td>
+                                        <td className="p-2 text-right text-content-default">{d.portfolioReturn.toFixed(1)}%</td>
                                         <td className={`p-2 text-right font-medium ${color}`}>{realReturn.toFixed(1)}%</td>
                                     </tr>
                                 );
@@ -5219,15 +5220,15 @@ function AccountsDebugTab() {
                         </tbody>
                     </table>
                 </div>
-            </div>
+            </Panel>
 
             {/* Section 2: Contribution Limits */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+            <Panel>
                 <h3 className="text-lg font-bold text-white mb-3">Contribution Limits</h3>
                 <div className="overflow-x-auto max-h-80 overflow-y-auto">
                     <table className="w-full text-sm">
-                        <thead className="sticky top-0 bg-gray-900">
-                            <tr className="text-gray-400 border-b border-gray-700">
+                        <thead className="sticky top-0 bg-surface-raised">
+                            <tr className="text-content-muted border-b border-border-default">
                                 <th className="text-left p-2">Year</th>
                                 <th className="text-left p-2">Age</th>
                                 <th className="text-right p-2">401k Actual</th>
@@ -5241,35 +5242,35 @@ function AccountsDebugTab() {
                         <tbody>
                             {contributionData.map(d => {
                                 if (!d) return null;
-                                const utilColor = d.util401k >= 95 ? 'text-green-400' : d.util401k >= 50 ? 'text-yellow-300' : 'text-gray-400';
+                                const utilColor = d.util401k >= 95 ? 'text-positive' : d.util401k >= 50 ? 'text-warning-bright' : 'text-content-muted';
                                 return (
-                                    <tr key={d.year} className="border-b border-gray-800">
-                                        <td className="p-2 text-gray-300">{d.year}</td>
-                                        <td className="p-2 text-gray-400">{d.age}</td>
+                                    <tr key={d.year} className="border-b border-border-subtle">
+                                        <td className="p-2 text-content-default">{d.year}</td>
+                                        <td className="p-2 text-content-muted">{d.age}</td>
                                         <td className="p-2 text-right text-white">{toCurrencyShort(d.actual401k)}</td>
-                                        <td className="p-2 text-right text-gray-400">{toCurrencyShort(d.limit401k)}</td>
+                                        <td className="p-2 text-right text-content-muted">{toCurrencyShort(d.limit401k)}</td>
                                         <td className={`p-2 text-right font-medium ${utilColor}`}>{d.util401k.toFixed(0)}%</td>
                                         <td className="p-2 text-right text-white">{toCurrencyShort(d.actualHSA)}</td>
-                                        <td className="p-2 text-right text-gray-400">{toCurrencyShort(d.limitHSA)}</td>
-                                        <td className="p-2 text-center">{d.catchUp ? <span className="text-blue-400 text-xs">50+</span> : ''}</td>
+                                        <td className="p-2 text-right text-content-muted">{toCurrencyShort(d.limitHSA)}</td>
+                                        <td className="p-2 text-center">{d.catchUp ? <span className="text-info text-xs">50+</span> : ''}</td>
                                     </tr>
                                 );
                             })}
                         </tbody>
                     </table>
                 </div>
-            </div>
+            </Panel>
 
             {/* Section 3: Employer Matching */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+            <Panel>
                 <h3 className="text-lg font-bold text-white mb-3">Employer Matching & Vesting</h3>
                 {matchingData.length === 0 ? (
-                    <div className="text-gray-400">No employer match accounts found.</div>
+                    <div className="text-content-muted">No employer match accounts found.</div>
                 ) : (
                     <div className="overflow-x-auto max-h-80 overflow-y-auto">
                         <table className="w-full text-sm">
-                            <thead className="sticky top-0 bg-gray-900">
-                                <tr className="text-gray-400 border-b border-gray-700">
+                            <thead className="sticky top-0 bg-surface-raised">
+                                <tr className="text-content-muted border-b border-border-default">
                                     <th className="text-left p-2">Year</th>
                                     <th className="text-left p-2">Account</th>
                                     <th className="text-right p-2">Employer Bal</th>
@@ -5281,15 +5282,15 @@ function AccountsDebugTab() {
                             <tbody>
                                 {matchingData.map(d =>
                                     d.matchAccounts.map((ma, i) => (
-                                        <tr key={`${d.year}-${i}`} className="border-b border-gray-800">
-                                            <td className="p-2 text-gray-300">{d.year}</td>
+                                        <tr key={`${d.year}-${i}`} className="border-b border-border-subtle">
+                                            <td className="p-2 text-content-default">{d.year}</td>
                                             <td className="p-2 text-white">{ma.name}</td>
-                                            <td className="p-2 text-right text-gray-300">{toCurrencyShort(ma.employerBal)}</td>
-                                            <td className={`p-2 text-right ${ma.vestedPct >= 1 ? 'text-green-400' : 'text-yellow-300'}`}>
+                                            <td className="p-2 text-right text-content-default">{toCurrencyShort(ma.employerBal)}</td>
+                                            <td className={`p-2 text-right ${ma.vestedPct >= 1 ? 'text-positive' : 'text-warning-bright'}`}>
                                                 {(ma.vestedPct * 100).toFixed(0)}%
                                             </td>
-                                            <td className="p-2 text-right text-red-400">{ma.unvested > 0 ? toCurrencyShort(ma.unvested) : '—'}</td>
-                                            <td className="p-2 text-right text-green-400">{ma.matchContrib > 0 ? toCurrencyShort(ma.matchContrib) : '—'}</td>
+                                            <td className="p-2 text-right text-negative">{ma.unvested > 0 ? toCurrencyShort(ma.unvested) : '—'}</td>
+                                            <td className="p-2 text-right text-positive">{ma.matchContrib > 0 ? toCurrencyShort(ma.matchContrib) : '—'}</td>
                                         </tr>
                                     ))
                                 )}
@@ -5297,7 +5298,7 @@ function AccountsDebugTab() {
                         </table>
                     </div>
                 )}
-            </div>
+            </Panel>
         </div>
     );
 }
@@ -5314,7 +5315,7 @@ function IncomeExpensesDebugTab() {
     const startAge = currentYear - getBirthYear(assumptions.milestones);
     const inflationRate = assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate / 100 : 0;
 
-    if (simulation.length === 0) return <div className="text-gray-400 p-4">No simulation data available. Run the simulation first.</div>;
+    if (simulation.length === 0) return <div className="text-content-muted p-4">No simulation data available. Run the simulation first.</div>;
 
     // Section 1: Salary Projections
     const salaryData = useMemo(() => {
@@ -5389,29 +5390,29 @@ function IncomeExpensesDebugTab() {
     return (
         <div className="space-y-6">
             {/* Controls */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 flex items-center gap-4">
+            <Panel className="flex items-center gap-4">
                 <ToggleInput
                     label="Today's Dollars (inflation-adjusted)"
                     enabled={showRealDollars}
                     setEnabled={setShowRealDollars}
                 />
-            </div>
+            </Panel>
 
             {/* Section 1: Salary Projections */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+            <Panel>
                 <h3 className="text-lg font-bold text-white mb-3">Salary Projections</h3>
                 {salaryData.length === 0 ? (
-                    <div className="text-gray-400">No work income found.</div>
+                    <div className="text-content-muted">No work income found.</div>
                 ) : (
                     <>
                         <div className="mb-3 flex gap-4 text-sm">
-                            <span className="text-gray-400">Total Lifetime Earnings: <span className="text-white font-bold">{toCurrencyShort(salaryData.reduce((s, d) => s + d.nominalSalary, 0))}</span></span>
-                            <span className="text-gray-400">Avg Real Growth: <span className="text-green-400">{salaryData.length > 1 ? (salaryData.reduce((s, d) => s + d.yoyGrowth, 0) / (salaryData.length - 1)).toFixed(1) : 0}%</span></span>
+                            <span className="text-content-muted">Total Lifetime Earnings: <span className="text-white font-bold">{toCurrencyShort(salaryData.reduce((s, d) => s + d.nominalSalary, 0))}</span></span>
+                            <span className="text-content-muted">Avg Real Growth: <span className="text-positive">{salaryData.length > 1 ? (salaryData.reduce((s, d) => s + d.yoyGrowth, 0) / (salaryData.length - 1)).toFixed(1) : 0}%</span></span>
                         </div>
                         <div className="overflow-x-auto max-h-80 overflow-y-auto">
                             <table className="w-full text-sm">
-                                <thead className="sticky top-0 bg-gray-900">
-                                    <tr className="text-gray-400 border-b border-gray-700">
+                                <thead className="sticky top-0 bg-surface-raised">
+                                    <tr className="text-content-muted border-b border-border-default">
                                         <th className="text-left p-2">Year</th>
                                         <th className="text-left p-2">Age</th>
                                         <th className="text-left p-2">Source</th>
@@ -5422,15 +5423,15 @@ function IncomeExpensesDebugTab() {
                                 </thead>
                                 <tbody>
                                     {salaryData.map((d, i) => (
-                                        <tr key={i} className="border-b border-gray-800">
-                                            <td className="p-2 text-gray-300">{d.year}</td>
-                                            <td className="p-2 text-gray-400">{d.age}</td>
+                                        <tr key={i} className="border-b border-border-subtle">
+                                            <td className="p-2 text-content-default">{d.year}</td>
+                                            <td className="p-2 text-content-muted">{d.age}</td>
                                             <td className="p-2 text-white">{d.name}</td>
                                             <td className="p-2 text-right text-white">{toCurrencyShort(d.nominalSalary)}</td>
-                                            <td className={`p-2 text-right ${d.yoyGrowth > 0 ? 'text-green-400' : 'text-gray-400'}`}>
+                                            <td className={`p-2 text-right ${d.yoyGrowth > 0 ? 'text-positive' : 'text-content-muted'}`}>
                                                 {showRealDollars ? toCurrencyShort(d.realSalary) : `${d.yoyGrowth.toFixed(1)}%`}
                                             </td>
-                                            <td className="p-2 text-right text-blue-400">{toCurrencyShort(showRealDollars ? d.realContrib : d.totalContrib)}</td>
+                                            <td className="p-2 text-right text-info">{toCurrencyShort(showRealDollars ? d.realContrib : d.totalContrib)}</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -5438,29 +5439,29 @@ function IncomeExpensesDebugTab() {
                         </div>
                     </>
                 )}
-            </div>
+            </Panel>
 
             {/* Section 2: Expense Breakdown */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+            <Panel>
                 <h3 className="text-lg font-bold text-white mb-3">Expense Breakdown</h3>
                 <div className="grid grid-cols-3 gap-3 mb-4">
-                    <div className="bg-gray-800/50 rounded-lg p-3 text-center">
-                        <div className="text-xs text-gray-400">Fixed</div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3 text-center">
+                        <div className="text-xs text-content-muted">Fixed</div>
                         <div className="text-lg font-bold text-white">{expenseData.fixedPct.toFixed(0)}%</div>
                     </div>
-                    <div className="bg-gray-800/50 rounded-lg p-3 text-center">
-                        <div className="text-xs text-gray-400">Discretionary</div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3 text-center">
+                        <div className="text-xs text-content-muted">Discretionary</div>
                         <div className="text-lg font-bold text-white">{(100 - expenseData.fixedPct).toFixed(0)}%</div>
                     </div>
-                    <div className="bg-gray-800/50 rounded-lg p-3 text-center">
-                        <div className="text-xs text-gray-400">Largest Category</div>
-                        <div className="text-lg font-bold text-green-400">{largestCategory}</div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3 text-center">
+                        <div className="text-xs text-content-muted">Largest Category</div>
+                        <div className="text-lg font-bold text-positive">{largestCategory}</div>
                     </div>
                 </div>
                 <div className="overflow-x-auto max-h-64 overflow-y-auto">
                     <table className="w-full text-sm">
-                        <thead className="sticky top-0 bg-gray-900">
-                            <tr className="text-gray-400 border-b border-gray-700">
+                        <thead className="sticky top-0 bg-surface-raised">
+                            <tr className="text-content-muted border-b border-border-default">
                                 <th className="text-left p-2">Category</th>
                                 {simulation.slice(0, Math.min(simulation.length, 10)).map((sy) => (
                                     <th key={sy.year} className="text-right p-2">{sy.year}</th>
@@ -5469,28 +5470,28 @@ function IncomeExpensesDebugTab() {
                         </thead>
                         <tbody>
                             {Object.entries(expenseData.categoryTotals).map(([cat, vals]) => (
-                                <tr key={cat} className="border-b border-gray-800">
+                                <tr key={cat} className="border-b border-border-subtle">
                                     <td className="p-2 text-white">{cat}</td>
                                     {vals.slice(0, 10).map((v, i) => (
-                                        <td key={i} className="p-2 text-right text-gray-300">{v > 0 ? toCurrencyShort(v) : '—'}</td>
+                                        <td key={i} className="p-2 text-right text-content-default">{v > 0 ? toCurrencyShort(v) : '—'}</td>
                                     ))}
                                 </tr>
                             ))}
                         </tbody>
                     </table>
                 </div>
-            </div>
+            </Panel>
 
             {/* Section 3: Healthcare Costs */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+            <Panel>
                 <h3 className="text-lg font-bold text-white mb-3">Healthcare Costs</h3>
                 {healthcareData.length === 0 ? (
-                    <div className="text-gray-400">No healthcare expenses found.</div>
+                    <div className="text-content-muted">No healthcare expenses found.</div>
                 ) : (
                     <div className="overflow-x-auto max-h-80 overflow-y-auto">
                         <table className="w-full text-sm">
-                            <thead className="sticky top-0 bg-gray-900">
-                                <tr className="text-gray-400 border-b border-gray-700">
+                            <thead className="sticky top-0 bg-surface-raised">
+                                <tr className="text-content-muted border-b border-border-default">
                                     <th className="text-left p-2">Year</th>
                                     <th className="text-left p-2">Age</th>
                                     <th className="text-right p-2">Annual Cost</th>
@@ -5500,21 +5501,21 @@ function IncomeExpensesDebugTab() {
                             </thead>
                             <tbody>
                                 {healthcareData.map(d => (
-                                    <tr key={d.year} className={`border-b border-gray-800 ${d.isMedicare ? 'bg-blue-900/10' : ''}`}>
-                                        <td className="p-2 text-gray-300">{d.year}</td>
-                                        <td className="p-2 text-gray-400">{d.age}</td>
+                                    <tr key={d.year} className={`border-b border-border-subtle ${d.isMedicare ? 'bg-info-tint/10' : ''}`}>
+                                        <td className="p-2 text-content-default">{d.year}</td>
+                                        <td className="p-2 text-content-muted">{d.age}</td>
                                         <td className="p-2 text-right text-white">{toCurrencyShort(d.totalHealthcare)}</td>
-                                        <td className="p-2 text-right text-gray-300">
+                                        <td className="p-2 text-right text-content-default">
                                             {showRealDollars ? toCurrencyShort(d.realCost) : `${d.pctOfIncome.toFixed(1)}%`}
                                         </td>
-                                        <td className="p-2 text-center">{d.isMedicare ? <span className="text-blue-400 text-xs">65+</span> : ''}</td>
+                                        <td className="p-2 text-center">{d.isMedicare ? <span className="text-info text-xs">65+</span> : ''}</td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
                     </div>
                 )}
-            </div>
+            </Panel>
         </div>
     );
 }
@@ -5532,7 +5533,7 @@ function CashFlowDebugTab() {
     const retirementAge = getRetirementAge(assumptions.milestones);
     const inflationRate = assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate / 100 : 0;
 
-    if (simulation.length === 0) return <div className="text-gray-400 p-4">No simulation data available. Run the simulation first.</div>;
+    if (simulation.length === 0) return <div className="text-content-muted p-4">No simulation data available. Run the simulation first.</div>;
 
     const filteredSimulation = useMemo(() => {
         if (periodFilter === 'Accumulation') return simulation.filter((_, idx) => startAge + idx < retirementAge);
@@ -5602,20 +5603,20 @@ function CashFlowDebugTab() {
     return (
         <div className="space-y-6">
             {/* Controls */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 flex items-center gap-4">
+            <Panel className="flex items-center gap-4">
                 <DropdownInput label="Period" value={periodFilter} onChange={setPeriodFilter} options={['All Years', 'Accumulation', 'Retirement']} />
-            </div>
+            </Panel>
 
             {/* Section 1: Priority Waterfall */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+            <Panel>
                 <h3 className="text-lg font-bold text-white mb-3">Priority Waterfall</h3>
                 {assumptions.priorities.length === 0 ? (
-                    <div className="text-gray-400">No priority buckets configured.</div>
+                    <div className="text-content-muted">No priority buckets configured.</div>
                 ) : (
                     <div className="overflow-x-auto max-h-80 overflow-y-auto">
                         <table className="w-full text-sm">
-                            <thead className="sticky top-0 bg-gray-900">
-                                <tr className="text-gray-400 border-b border-gray-700">
+                            <thead className="sticky top-0 bg-surface-raised">
+                                <tr className="text-content-muted border-b border-border-default">
                                     <th className="text-left p-2">Year</th>
                                     <th className="text-right p-2">Surplus</th>
                                     {assumptions.priorities.map(b => (
@@ -5625,11 +5626,11 @@ function CashFlowDebugTab() {
                             </thead>
                             <tbody>
                                 {waterfallData.map(d => (
-                                    <tr key={d.year} className="border-b border-gray-800">
-                                        <td className="p-2 text-gray-300">{d.year}</td>
+                                    <tr key={d.year} className="border-b border-border-subtle">
+                                        <td className="p-2 text-content-default">{d.year}</td>
                                         <td className="p-2 text-right text-white">{toCurrencyShort(d.preBucketSurplus)}</td>
                                         {d.buckets.map((b, i) => (
-                                            <td key={i} className={`p-2 text-right ${b.allocated > 0 ? (b.hit ? 'text-yellow-300' : 'text-green-400') : 'text-gray-600'}`}>
+                                            <td key={i} className={`p-2 text-right ${b.allocated > 0 ? (b.hit ? 'text-warning-bright' : 'text-positive') : 'text-content-faint'}`}>
                                                 {b.allocated > 0 ? toCurrencyShort(b.allocated) : '—'}
                                             </td>
                                         ))}
@@ -5639,18 +5640,18 @@ function CashFlowDebugTab() {
                         </table>
                     </div>
                 )}
-            </div>
+            </Panel>
 
             {/* Section 2: Net Worth Timeline */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+            <Panel>
                 <h3 className="text-lg font-bold text-white mb-3">Net Worth Timeline</h3>
-                <div className="mb-3 text-sm text-gray-400">
-                    Peak: <span className="text-green-400 font-bold">{toCurrencyShort(netWorthData.peakNW)}</span> in {netWorthData.peakYear}
+                <div className="mb-3 text-sm text-content-muted">
+                    Peak: <span className="text-positive font-bold">{toCurrencyShort(netWorthData.peakNW)}</span> in {netWorthData.peakYear}
                 </div>
                 <div className="overflow-x-auto max-h-80 overflow-y-auto">
                     <table className="w-full text-sm">
-                        <thead className="sticky top-0 bg-gray-900">
-                            <tr className="text-gray-400 border-b border-gray-700">
+                        <thead className="sticky top-0 bg-surface-raised">
+                            <tr className="text-content-muted border-b border-border-default">
                                 <th className="text-left p-2">Year</th>
                                 <th className="text-left p-2">Age</th>
                                 <th className="text-right p-2">Assets</th>
@@ -5663,13 +5664,13 @@ function CashFlowDebugTab() {
                             {netWorthData.data.map((d, idx) => {
                                 const prev = idx > 0 ? netWorthData.data[idx - 1] : null;
                                 const change = prev ? d.netWorth - prev.netWorth : 0;
-                                const changeColor = change > 0 ? 'text-green-400' : change < 0 ? 'text-red-400' : 'text-gray-500';
+                                const changeColor = change > 0 ? 'text-positive' : change < 0 ? 'text-negative' : 'text-content-subtle';
                                 return (
-                                    <tr key={d.year} className={`border-b border-gray-800 ${d.age === retirementAge ? 'border-t-2 border-t-yellow-600' : ''}`}>
-                                        <td className="p-2 text-gray-300">{d.year}</td>
-                                        <td className="p-2 text-gray-400">{d.age}</td>
-                                        <td className="p-2 text-right text-green-400">{toCurrencyShort(d.assets)}</td>
-                                        <td className="p-2 text-right text-red-400">{d.liabilities > 0 ? toCurrencyShort(d.liabilities) : '—'}</td>
+                                    <tr key={d.year} className={`border-b border-border-subtle ${d.age === retirementAge ? 'border-t-2 border-t-warning-solid' : ''}`}>
+                                        <td className="p-2 text-content-default">{d.year}</td>
+                                        <td className="p-2 text-content-muted">{d.age}</td>
+                                        <td className="p-2 text-right text-positive">{toCurrencyShort(d.assets)}</td>
+                                        <td className="p-2 text-right text-negative">{d.liabilities > 0 ? toCurrencyShort(d.liabilities) : '—'}</td>
                                         <td className="p-2 text-right text-white font-medium">{toCurrencyShort(d.netWorth)}</td>
                                         <td className={`p-2 text-right ${changeColor}`}>
                                             {idx > 0 ? `${change >= 0 ? '+' : ''}${toCurrencyShort(change)}` : '—'}
@@ -5680,15 +5681,15 @@ function CashFlowDebugTab() {
                         </tbody>
                     </table>
                 </div>
-            </div>
+            </Panel>
 
             {/* Section 3: Cash Flow Summary */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+            <Panel>
                 <h3 className="text-lg font-bold text-white mb-3">Cash Flow Summary</h3>
                 <div className="overflow-x-auto max-h-80 overflow-y-auto">
                     <table className="w-full text-sm">
-                        <thead className="sticky top-0 bg-gray-900">
-                            <tr className="text-gray-400 border-b border-gray-700">
+                        <thead className="sticky top-0 bg-surface-raised">
+                            <tr className="text-content-muted border-b border-border-default">
                                 <th className="text-left p-2">Year</th>
                                 <th className="text-left p-2">Age</th>
                                 <th className="text-right p-2">Income</th>
@@ -5700,16 +5701,16 @@ function CashFlowDebugTab() {
                         </thead>
                         <tbody>
                             {cashFlowSummary.map(d => {
-                                const srColor = d.savingsRate >= 20 ? 'text-green-400' : d.savingsRate >= 10 ? 'text-yellow-300' : 'text-red-400';
+                                const srColor = d.savingsRate >= 20 ? 'text-positive' : d.savingsRate >= 10 ? 'text-warning-bright' : 'text-negative';
                                 return (
-                                    <tr key={d.year} className={`border-b border-gray-800 ${d.isRetired ? 'bg-blue-900/5' : ''}`}>
-                                        <td className="p-2 text-gray-300">{d.year}</td>
-                                        <td className="p-2 text-gray-400">{d.age}</td>
-                                        <td className="p-2 text-right text-green-400">{toCurrencyShort(d.totalIncome)}</td>
+                                    <tr key={d.year} className={`border-b border-border-subtle ${d.isRetired ? 'bg-info-tint/5' : ''}`}>
+                                        <td className="p-2 text-content-default">{d.year}</td>
+                                        <td className="p-2 text-content-muted">{d.age}</td>
+                                        <td className="p-2 text-right text-positive">{toCurrencyShort(d.totalIncome)}</td>
                                         <td className="p-2 text-right text-white">{toCurrencyShort(d.livingExpenses)}</td>
-                                        <td className="p-2 text-right text-gray-400">{toCurrencyShort(d.taxes)}</td>
-                                        <td className="p-2 text-right text-blue-400">{d.totalInvested > 0 ? toCurrencyShort(d.totalInvested) : '—'}</td>
-                                        <td className={`p-2 text-right font-medium ${d.isRetired ? 'text-gray-500' : srColor}`}>
+                                        <td className="p-2 text-right text-content-muted">{toCurrencyShort(d.taxes)}</td>
+                                        <td className="p-2 text-right text-info">{d.totalInvested > 0 ? toCurrencyShort(d.totalInvested) : '—'}</td>
+                                        <td className={`p-2 text-right font-medium ${d.isRetired ? 'text-content-subtle' : srColor}`}>
                                             {d.isRetired ? 'N/A' : `${d.savingsRate.toFixed(0)}%`}
                                         </td>
                                     </tr>
@@ -5718,16 +5719,16 @@ function CashFlowDebugTab() {
                         </tbody>
                     </table>
                 </div>
-            </div>
+            </Panel>
 
             {/* Section 4: Inflation Impact */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+            <Panel>
                 <h3 className="text-lg font-bold text-white mb-3">Inflation Impact</h3>
-                <p className="text-sm text-gray-400 mb-3">Rate: {(inflationRate * 100).toFixed(1)}% | Shows erosion of purchasing power over time.</p>
+                <p className="text-sm text-content-muted mb-3">Rate: {(inflationRate * 100).toFixed(1)}% | Shows erosion of purchasing power over time.</p>
                 <div className="overflow-x-auto max-h-64 overflow-y-auto">
                     <table className="w-full text-sm">
-                        <thead className="sticky top-0 bg-gray-900">
-                            <tr className="text-gray-400 border-b border-gray-700">
+                        <thead className="sticky top-0 bg-surface-raised">
+                            <tr className="text-content-muted border-b border-border-default">
                                 <th className="text-left p-2">Year</th>
                                 <th className="text-left p-2">Age</th>
                                 <th className="text-right p-2">$1 Today =</th>
@@ -5737,18 +5738,18 @@ function CashFlowDebugTab() {
                         </thead>
                         <tbody>
                             {inflationData.filter((_, i) => i % 5 === 0 || i === inflationData.length - 1).map(d => (
-                                <tr key={d.year} className="border-b border-gray-800">
-                                    <td className="p-2 text-gray-300">{d.year}</td>
-                                    <td className="p-2 text-gray-400">{d.age}</td>
-                                    <td className="p-2 text-right text-yellow-300">${(d.purchasingPower * 100).toFixed(0)}¢</td>
+                                <tr key={d.year} className="border-b border-border-subtle">
+                                    <td className="p-2 text-content-default">{d.year}</td>
+                                    <td className="p-2 text-content-muted">{d.age}</td>
+                                    <td className="p-2 text-right text-warning-bright">${(d.purchasingPower * 100).toFixed(0)}¢</td>
                                     <td className="p-2 text-right text-white">{toCurrencyShort(d.nominalIncome)}</td>
-                                    <td className="p-2 text-right text-green-400">{toCurrencyShort(d.realIncome)}</td>
+                                    <td className="p-2 text-right text-positive">{toCurrencyShort(d.realIncome)}</td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
                 </div>
-            </div>
+            </Panel>
         </div>
     );
 }
@@ -5934,75 +5935,75 @@ function EOYProjectionDebugTab() {
     return (
         <div className="space-y-6">
             {/* Overview / explainer */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+            <Panel>
                 <h3 className="text-lg font-bold text-white mb-3">What is "Projected Dec {startYear}"?</h3>
-                <div className="text-sm text-gray-300 space-y-2 leading-relaxed">
+                <div className="text-sm text-content-default space-y-2 leading-relaxed">
                     <p>
                         The Overview chart shows two points for the current calendar year:
-                        <span className="text-blue-400"> "Today"</span> (your actual balances right now)
-                        and <span className="text-emerald-400">"Projected Dec {startYear}"</span> (a synthetic
+                        <span className="text-info"> "Today"</span> (your actual balances right now)
+                        and <span className="text-positive">"Projected Dec {startYear}"</span> (a synthetic
                         end-of-year snapshot). This avoids the visual "big jump" between today's balances
                         and the first full future year.
                     </p>
-                    <p>The synthetic EOY row is built in <code className="bg-gray-800 px-1 rounded text-xs">useSimulation.tsx</code> STEP&nbsp;1.5 / 1.75:</p>
-                    <ol className="list-decimal list-inside pl-2 space-y-1 text-gray-400">
-                        <li>Compute <code className="bg-gray-800 px-1 rounded text-xs">remainingFraction = (11 − currentMonth) / 12</code> — the share of the calendar year still ahead.</li>
-                        <li>For each <code className="bg-gray-800 px-1 rounded text-xs">WorkIncome</code> with a linked match account, add <code className="bg-gray-800 px-1 rounded text-xs">(preTax401k + roth401k + employerMatch) × min(remainingFraction, activeMultiplier)</code> to that account's balance.</li>
-                        <li>For each non-payroll <code className="bg-gray-800 px-1 rounded text-xs">priority</code> with an annual goal (Brokerage / IRA / HSA / Savings), add <code className="bg-gray-800 px-1 rounded text-xs">max(0, annualGoal − ytdActual)</code> using YTD from the budget. MULTIPLE_OF_EXPENSES instead uses <code className="bg-gray-800 px-1 rounded text-xs">max(0, target − currentBalance)</code>.</li>
-                        <li>For each debt liability (DebtAccount + LoanExpense, or MortgageExpense), subtract <code className="bg-gray-800 px-1 rounded text-xs">annualPrincipal × remainingFraction</code> from the balance so loan / mortgage payoff through year-end shows up on the synthetic point.</li>
-                        <li>Scale Year-0 cashflow and tax line items by <code className="bg-gray-800 px-1 rounded text-xs">remainingFraction</code>.</li>
-                        <li>Investment growth between today and Dec 31 is <span className="text-yellow-300">not</span> applied — Property / Debt balances are carried forward unchanged.</li>
+                    <p>The synthetic EOY row is built in <code className="bg-surface-overlay px-1 rounded text-xs">useSimulation.tsx</code> STEP&nbsp;1.5 / 1.75:</p>
+                    <ol className="list-decimal list-inside pl-2 space-y-1 text-content-muted">
+                        <li>Compute <code className="bg-surface-overlay px-1 rounded text-xs">remainingFraction = (11 − currentMonth) / 12</code> — the share of the calendar year still ahead.</li>
+                        <li>For each <code className="bg-surface-overlay px-1 rounded text-xs">WorkIncome</code> with a linked match account, add <code className="bg-surface-overlay px-1 rounded text-xs">(preTax401k + roth401k + employerMatch) × min(remainingFraction, activeMultiplier)</code> to that account's balance.</li>
+                        <li>For each non-payroll <code className="bg-surface-overlay px-1 rounded text-xs">priority</code> with an annual goal (Brokerage / IRA / HSA / Savings), add <code className="bg-surface-overlay px-1 rounded text-xs">max(0, annualGoal − ytdActual)</code> using YTD from the budget. MULTIPLE_OF_EXPENSES instead uses <code className="bg-surface-overlay px-1 rounded text-xs">max(0, target − currentBalance)</code>.</li>
+                        <li>For each debt liability (DebtAccount + LoanExpense, or MortgageExpense), subtract <code className="bg-surface-overlay px-1 rounded text-xs">annualPrincipal × remainingFraction</code> from the balance so loan / mortgage payoff through year-end shows up on the synthetic point.</li>
+                        <li>Scale Year-0 cashflow and tax line items by <code className="bg-surface-overlay px-1 rounded text-xs">remainingFraction</code>.</li>
+                        <li>Investment growth between today and Dec 31 is <span className="text-warning-bright">not</span> applied — Property / Debt balances are carried forward unchanged.</li>
                     </ol>
                     {priorYearMode && (
-                        <p className="bg-yellow-900/30 border border-yellow-700/50 rounded p-2 text-yellow-300 text-xs">
+                        <p className="bg-warning-tint/30 border border-warning-strong/50 rounded p-2 text-warning-bright text-xs">
                             Prior-Year Mode is on, so the EOY row is skipped entirely. The chart only shows the
                             normal year-by-year sim points.
                         </p>
                     )}
                     {!priorYearMode && remainingFraction <= 0 && (
-                        <p className="bg-yellow-900/30 border border-yellow-700/50 rounded p-2 text-yellow-300 text-xs">
-                            It's December — <code className="bg-gray-800 px-1 rounded text-xs">remainingFraction</code> is 0, so no EOY row is inserted.
+                        <p className="bg-warning-tint/30 border border-warning-strong/50 rounded p-2 text-warning-bright text-xs">
+                            It's December — <code className="bg-surface-overlay px-1 rounded text-xs">remainingFraction</code> is 0, so no EOY row is inserted.
                         </p>
                     )}
                 </div>
-            </div>
+            </Panel>
 
             {/* Date inputs */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+            <Panel>
                 <h3 className="text-lg font-bold text-white mb-3">Date Inputs</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                     <div>
-                        <div className="text-gray-500 text-xs">Today</div>
+                        <div className="text-content-subtle text-xs">Today</div>
                         <div className="text-white font-mono">{today.toISOString().slice(0, 10)}</div>
                     </div>
                     <div>
-                        <div className="text-gray-500 text-xs">Current month (0–11)</div>
+                        <div className="text-content-subtle text-xs">Current month (0–11)</div>
                         <div className="text-white font-mono">{currentMonth}</div>
                     </div>
                     <div>
-                        <div className="text-gray-500 text-xs">remainingFraction</div>
-                        <div className="text-emerald-400 font-mono">{remainingFraction.toFixed(4)} ({((11 - currentMonth))}/12)</div>
+                        <div className="text-content-subtle text-xs">remainingFraction</div>
+                        <div className="text-positive font-mono">{remainingFraction.toFixed(4)} ({((11 - currentMonth))}/12)</div>
                     </div>
                     <div>
-                        <div className="text-gray-500 text-xs">Simulation start year</div>
+                        <div className="text-content-subtle text-xs">Simulation start year</div>
                         <div className="text-white font-mono">{startYear}</div>
                     </div>
                 </div>
-            </div>
+            </Panel>
 
             {/* Per-WorkIncome partial payroll */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+            <Panel>
                 <h3 className="text-lg font-bold text-white mb-1">Partial-Year Payroll Contributions</h3>
-                <p className="text-xs text-gray-500 mb-3">Mirrors STEP&nbsp;1.5: only <code className="bg-gray-800 px-1 rounded">WorkIncome</code>s with a linked <code className="bg-gray-800 px-1 rounded">matchAccountId</code> appear here.</p>
+                <p className="text-xs text-content-subtle mb-3">Mirrors STEP&nbsp;1.5: only <code className="bg-surface-overlay px-1 rounded">WorkIncome</code>s with a linked <code className="bg-surface-overlay px-1 rounded">matchAccountId</code> appear here.</p>
                 {eoySkipped ? (
-                    <p className="text-sm text-gray-500">EOY row is skipped — no partial contributions computed.</p>
+                    <p className="text-sm text-content-subtle">EOY row is skipped — no partial contributions computed.</p>
                 ) : payrollRows.length === 0 ? (
-                    <p className="text-sm text-gray-500">No active WorkIncome with a linked match account.</p>
+                    <p className="text-sm text-content-subtle">No active WorkIncome with a linked match account.</p>
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead>
-                                <tr className="text-gray-400 border-b border-gray-700">
+                                <tr className="text-content-muted border-b border-border-default">
                                     <th className="text-left p-2">Income</th>
                                     <th className="text-left p-2">→ Account</th>
                                     <th className="text-right p-2">Annual pre-tax 401k</th>
@@ -6016,14 +6017,14 @@ function EOYProjectionDebugTab() {
                             </thead>
                             <tbody>
                                 {payrollRows.map(r => (
-                                    <tr key={r.id} className="border-b border-gray-800 hover:bg-gray-800/50">
-                                        <td className="p-2 text-gray-300">{r.name}</td>
-                                        <td className="p-2 text-gray-400">{r.matchAccountName}</td>
-                                        <td className="p-2 text-right text-gray-300">{toCurrencyShort(r.preTax401k)}</td>
-                                        <td className="p-2 text-right text-gray-300">{toCurrencyShort(r.roth401k)}</td>
-                                        <td className="p-2 text-right text-gray-300">{toCurrencyShort(r.employerMatchAnnual)}</td>
-                                        <td className="p-2 text-right text-gray-400 font-mono">{r.activeMultiplier.toFixed(3)}</td>
-                                        <td className="p-2 text-right text-emerald-400 font-mono">{r.effectiveFraction.toFixed(3)}</td>
+                                    <tr key={r.id} className="border-b border-border-subtle hover:bg-surface-overlay/50">
+                                        <td className="p-2 text-content-default">{r.name}</td>
+                                        <td className="p-2 text-content-muted">{r.matchAccountName}</td>
+                                        <td className="p-2 text-right text-content-default">{toCurrencyShort(r.preTax401k)}</td>
+                                        <td className="p-2 text-right text-content-default">{toCurrencyShort(r.roth401k)}</td>
+                                        <td className="p-2 text-right text-content-default">{toCurrencyShort(r.employerMatchAnnual)}</td>
+                                        <td className="p-2 text-right text-content-muted font-mono">{r.activeMultiplier.toFixed(3)}</td>
+                                        <td className="p-2 text-right text-positive font-mono">{r.effectiveFraction.toFixed(3)}</td>
                                         <td className="p-2 text-right text-white">{toCurrencyShort(r.userContrib)}</td>
                                         <td className="p-2 text-right text-white">{toCurrencyShort(r.employerContrib)}</td>
                                     </tr>
@@ -6032,22 +6033,22 @@ function EOYProjectionDebugTab() {
                         </table>
                     </div>
                 )}
-            </div>
+            </Panel>
 
             {/* Budget-tracked priority contributions */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+            <Panel>
                 <h3 className="text-lg font-bold text-white mb-1">Budget-Tracked Priority Contributions</h3>
-                <p className="text-xs text-gray-500 mb-3">
-                    For each non-payroll priority with an annual goal: remaining = <span className="text-emerald-400">max(0, annualGoal − ytdActual)</span>. YTD comes from budget transactions tagged with <code className="bg-gray-800 px-1 rounded">targetAccountId</code> for the current year.
-                    {' '}<span className="text-sky-300">MULTIPLE_OF_EXPENSES</span> priorities are balance targets — the gap to the target is added, or skipped if already met.
+                <p className="text-xs text-content-subtle mb-3">
+                    For each non-payroll priority with an annual goal: remaining = <span className="text-positive">max(0, annualGoal − ytdActual)</span>. YTD comes from budget transactions tagged with <code className="bg-surface-overlay px-1 rounded">targetAccountId</code> for the current year.
+                    {' '}<span className="text-cat-sky-bright">MULTIPLE_OF_EXPENSES</span> priorities are balance targets — the gap to the target is added, or skipped if already met.
                 </p>
                 {budgetProjection.rows.length === 0 ? (
-                    <p className="text-sm text-gray-500">No priorities configured.</p>
+                    <p className="text-sm text-content-subtle">No priorities configured.</p>
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead>
-                                <tr className="text-gray-400 border-b border-gray-700">
+                                <tr className="text-content-muted border-b border-border-default">
                                     <th className="text-left p-2">Priority</th>
                                     <th className="text-left p-2">Account</th>
                                     <th className="text-left p-2">Cap</th>
@@ -6059,29 +6060,29 @@ function EOYProjectionDebugTab() {
                             </thead>
                             <tbody>
                                 {budgetProjection.rows.map((r, i) => {
-                                    const skipColor = r.skipped ? 'text-gray-600 italic' : 'text-gray-300';
+                                    const skipColor = r.skipped ? 'text-content-faint italic' : 'text-content-default';
                                     const isBalanceTarget = r.source === 'balance-target';
                                     const midValue = isBalanceTarget ? r.currentBalance : r.ytdActual;
-                                    const midColor = isBalanceTarget ? 'text-sky-300' : 'text-gray-400';
+                                    const midColor = isBalanceTarget ? 'text-cat-sky-bright' : 'text-content-muted';
                                     return (
-                                        <tr key={`${r.accountId}-${i}`} className="border-b border-gray-800 hover:bg-gray-800/50">
+                                        <tr key={`${r.accountId}-${i}`} className="border-b border-border-subtle hover:bg-surface-overlay/50">
                                             <td className={`p-2 ${skipColor}`}>{r.priorityName}</td>
                                             <td className={`p-2 ${skipColor}`}>{r.accountName}</td>
-                                            <td className="p-2 text-gray-500 font-mono text-xs">{r.capType}</td>
-                                            <td className="p-2 text-right text-gray-300">{r.annualGoal > 0 ? toCurrencyShort(r.annualGoal) : '—'}</td>
+                                            <td className="p-2 text-content-subtle font-mono text-xs">{r.capType}</td>
+                                            <td className="p-2 text-right text-content-default">{r.annualGoal > 0 ? toCurrencyShort(r.annualGoal) : '—'}</td>
                                             <td className={`p-2 text-right ${midColor}`}>{midValue !== undefined && midValue > 0 ? toCurrencyShort(midValue) : '—'}</td>
-                                            <td className={`p-2 text-right ${r.expectedRemaining > 0 ? 'text-emerald-400' : 'text-gray-600'}`}>
+                                            <td className={`p-2 text-right ${r.expectedRemaining > 0 ? 'text-positive' : 'text-content-faint'}`}>
                                                 {r.expectedRemaining > 0 ? toCurrencyShort(r.expectedRemaining) : '—'}
                                             </td>
                                             <td className="p-2 text-xs">
                                                 {r.skipped ? (
-                                                    <span className="text-gray-500">skipped: {r.skipped}</span>
+                                                    <span className="text-content-subtle">skipped: {r.skipped}</span>
                                                 ) : r.source === 'budget-ytd' ? (
-                                                    <span className="text-emerald-400">budget YTD</span>
+                                                    <span className="text-positive">budget YTD</span>
                                                 ) : r.source === 'balance-target' ? (
-                                                    <span className="text-sky-300">balance target</span>
+                                                    <span className="text-cat-sky-bright">balance target</span>
                                                 ) : (
-                                                    <span className="text-yellow-300">fraction</span>
+                                                    <span className="text-warning-bright">fraction</span>
                                                 )}
                                             </td>
                                         </tr>
@@ -6091,16 +6092,16 @@ function EOYProjectionDebugTab() {
                         </table>
                     </div>
                 )}
-            </div>
+            </Panel>
 
             {/* Per-account: Today → Projected EOY */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+            <Panel>
                 <h3 className="text-lg font-bold text-white mb-1">Per-Account: Today → Projected Dec {startYear}</h3>
-                <p className="text-xs text-gray-500 mb-3">User / Employer = payroll partial-year contributions. Budget = projected non-payroll priority contributions. − Debt = projected principal pay-down on DebtAccount-style liabilities (car loans / credit cards). Property / unmatched accounts carry through unchanged.</p>
+                <p className="text-xs text-content-subtle mb-3">User / Employer = payroll partial-year contributions. Budget = projected non-payroll priority contributions. − Debt = projected principal pay-down on DebtAccount-style liabilities (car loans / credit cards). Property / unmatched accounts carry through unchanged.</p>
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                         <thead>
-                            <tr className="text-gray-400 border-b border-gray-700">
+                            <tr className="text-content-muted border-b border-border-default">
                                 <th className="text-left p-2">Account</th>
                                 <th className="text-left p-2">Category</th>
                                 <th className="text-right p-2">Today</th>
@@ -6116,16 +6117,16 @@ function EOYProjectionDebugTab() {
                             {accountRows.map(r => {
                                 const delta = r.projected - r.today;
                                 return (
-                                    <tr key={r.id} className="border-b border-gray-800 hover:bg-gray-800/50">
-                                        <td className="p-2 text-gray-300">{r.name}</td>
-                                        <td className="p-2 text-gray-500">{r.category}</td>
-                                        <td className="p-2 text-right text-gray-300">{toCurrencyShort(r.today)}</td>
-                                        <td className="p-2 text-right text-gray-400">{r.userAdd > 0 ? toCurrencyShort(r.userAdd) : '—'}</td>
-                                        <td className="p-2 text-right text-gray-400">{r.employerAdd > 0 ? toCurrencyShort(r.employerAdd) : '—'}</td>
-                                        <td className="p-2 text-right text-gray-400">{r.budgetAdd > 0 ? toCurrencyShort(r.budgetAdd) : '—'}</td>
-                                        <td className="p-2 text-right text-red-400">{r.debtReduce > 0 ? toCurrencyShort(r.debtReduce) : '—'}</td>
+                                    <tr key={r.id} className="border-b border-border-subtle hover:bg-surface-overlay/50">
+                                        <td className="p-2 text-content-default">{r.name}</td>
+                                        <td className="p-2 text-content-subtle">{r.category}</td>
+                                        <td className="p-2 text-right text-content-default">{toCurrencyShort(r.today)}</td>
+                                        <td className="p-2 text-right text-content-muted">{r.userAdd > 0 ? toCurrencyShort(r.userAdd) : '—'}</td>
+                                        <td className="p-2 text-right text-content-muted">{r.employerAdd > 0 ? toCurrencyShort(r.employerAdd) : '—'}</td>
+                                        <td className="p-2 text-right text-content-muted">{r.budgetAdd > 0 ? toCurrencyShort(r.budgetAdd) : '—'}</td>
+                                        <td className="p-2 text-right text-negative">{r.debtReduce > 0 ? toCurrencyShort(r.debtReduce) : '—'}</td>
                                         <td className="p-2 text-right text-white">{toCurrencyShort(r.projected)}</td>
-                                        <td className={`p-2 text-right font-mono ${delta > 0 ? 'text-emerald-400' : delta < 0 ? 'text-red-400' : 'text-gray-600'}`}>
+                                        <td className={`p-2 text-right font-mono ${delta > 0 ? 'text-positive' : delta < 0 ? 'text-negative' : 'text-content-faint'}`}>
                                             {delta === 0 ? '—' : (delta > 0 ? '+' : '') + toCurrencyShort(delta)}
                                         </td>
                                     </tr>
@@ -6134,21 +6135,21 @@ function EOYProjectionDebugTab() {
                         </tbody>
                     </table>
                 </div>
-            </div>
+            </Panel>
 
             {/* Debt principal pay-down */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+            <Panel>
                 <h3 className="text-lg font-bold text-white mb-1">Debt Principal Pay-Down</h3>
-                <p className="text-xs text-gray-500 mb-3">
-                    For each liability (DebtAccount linked to a LoanExpense, or MortgageExpense), use the linked amortization's <code className="bg-gray-800 px-1 rounded">totalPrincipal</code> for {startYear}, then scale by <code className="bg-gray-800 px-1 rounded">remainingFraction</code> ({remainingFraction.toFixed(3)}). DeficitDebtAccounts are skipped.
+                <p className="text-xs text-content-subtle mb-3">
+                    For each liability (DebtAccount linked to a LoanExpense, or MortgageExpense), use the linked amortization's <code className="bg-surface-overlay px-1 rounded">totalPrincipal</code> for {startYear}, then scale by <code className="bg-surface-overlay px-1 rounded">remainingFraction</code> ({remainingFraction.toFixed(3)}). DeficitDebtAccounts are skipped.
                 </p>
                 {budgetProjection.debtRows.length === 0 ? (
-                    <p className="text-sm text-gray-500">No debt liabilities found.</p>
+                    <p className="text-sm text-content-subtle">No debt liabilities found.</p>
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead>
-                                <tr className="text-gray-400 border-b border-gray-700">
+                                <tr className="text-content-muted border-b border-border-default">
                                     <th className="text-left p-2">Debt</th>
                                     <th className="text-left p-2">Type</th>
                                     <th className="text-left p-2">Linked expense</th>
@@ -6160,16 +6161,16 @@ function EOYProjectionDebugTab() {
                             </thead>
                             <tbody>
                                 {budgetProjection.debtRows.map((r, i) => {
-                                    const skipColor = r.skipped ? 'text-gray-600 italic' : 'text-gray-300';
+                                    const skipColor = r.skipped ? 'text-content-faint italic' : 'text-content-default';
                                     const eoyBal = Math.max(0, r.currentBalance - r.expectedReduction);
                                     return (
-                                        <tr key={`${r.targetId}-${i}`} className="border-b border-gray-800 hover:bg-gray-800/50">
+                                        <tr key={`${r.targetId}-${i}`} className="border-b border-border-subtle hover:bg-surface-overlay/50">
                                             <td className={`p-2 ${skipColor}`}>{r.name}</td>
-                                            <td className="p-2 text-gray-500 font-mono text-xs">{r.targetType === 'mortgage-expense' ? 'mortgage' : 'account'}</td>
+                                            <td className="p-2 text-content-subtle font-mono text-xs">{r.targetType === 'mortgage-expense' ? 'mortgage' : 'account'}</td>
                                             <td className={`p-2 ${skipColor}`}>{r.linkedExpenseName || (r.skipped ? `(skipped: ${r.skipped})` : '—')}</td>
-                                            <td className="p-2 text-right text-gray-300">{r.currentBalance > 0 ? toCurrencyShort(r.currentBalance) : '—'}</td>
-                                            <td className="p-2 text-right text-gray-400">{r.annualPrincipal > 0 ? toCurrencyShort(r.annualPrincipal) : '—'}</td>
-                                            <td className={`p-2 text-right ${r.expectedReduction > 0 ? 'text-red-400' : 'text-gray-600'}`}>
+                                            <td className="p-2 text-right text-content-default">{r.currentBalance > 0 ? toCurrencyShort(r.currentBalance) : '—'}</td>
+                                            <td className="p-2 text-right text-content-muted">{r.annualPrincipal > 0 ? toCurrencyShort(r.annualPrincipal) : '—'}</td>
+                                            <td className={`p-2 text-right ${r.expectedReduction > 0 ? 'text-negative' : 'text-content-faint'}`}>
                                                 {r.expectedReduction > 0 ? toCurrencyShort(r.expectedReduction) : '—'}
                                             </td>
                                             <td className="p-2 text-right text-white">{r.skipped ? '—' : toCurrencyShort(eoyBal)}</td>
@@ -6180,15 +6181,15 @@ function EOYProjectionDebugTab() {
                         </table>
                     </div>
                 )}
-            </div>
+            </Panel>
 
             {/* Category roll-up (matches Overview chart series) */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+            <Panel>
                 <h3 className="text-lg font-bold text-white mb-1">Overview Chart Series — Today vs Projected Dec {startYear}</h3>
-                <p className="text-xs text-gray-500 mb-3">These are the values plotted at the "Today" and "Dec {startYear}" x-positions on the Overview chart.</p>
+                <p className="text-xs text-content-subtle mb-3">These are the values plotted at the "Today" and "Dec {startYear}" x-positions on the Overview chart.</p>
                 <table className="w-full text-sm">
                     <thead>
-                        <tr className="text-gray-400 border-b border-gray-700">
+                        <tr className="text-content-muted border-b border-border-default">
                             <th className="text-left p-2">Series</th>
                             <th className="text-right p-2">Today</th>
                             <th className="text-right p-2">Projected Dec {startYear}</th>
@@ -6200,55 +6201,55 @@ function EOYProjectionDebugTab() {
                             const t = categoryTotals[k].today;
                             const e = categoryTotals[k].eoy;
                             const d = e - t;
-                            const color = k === 'Invested' ? 'text-emerald-400' : k === 'Saved' ? 'text-blue-400' : 'text-amber-400';
+                            const color = k === 'Invested' ? 'text-positive' : k === 'Saved' ? 'text-info' : 'text-warning';
                             return (
-                                <tr key={k} className="border-b border-gray-800">
+                                <tr key={k} className="border-b border-border-subtle">
                                     <td className={`p-2 font-medium ${color}`}>{k}</td>
-                                    <td className="p-2 text-right text-gray-300">{toCurrencyShort(t)}</td>
+                                    <td className="p-2 text-right text-content-default">{toCurrencyShort(t)}</td>
                                     <td className="p-2 text-right text-white">{toCurrencyShort(e)}</td>
-                                    <td className={`p-2 text-right font-mono ${d > 0 ? 'text-emerald-400' : d < 0 ? 'text-red-400' : 'text-gray-600'}`}>
+                                    <td className={`p-2 text-right font-mono ${d > 0 ? 'text-positive' : d < 0 ? 'text-negative' : 'text-content-faint'}`}>
                                         {d === 0 ? '—' : (d > 0 ? '+' : '') + toCurrencyShort(d)}
                                     </td>
                                 </tr>
                             );
                         })}
                         {/* Debt row: combines DebtAccount + MortgageExpense (chart plots this negative) */}
-                        <tr className="border-b border-gray-800">
-                            <td className="p-2 font-medium text-red-400">Debt</td>
-                            <td className="p-2 text-right text-gray-300">{toCurrencyShort(-(categoryTotals.Debt.today + mortgageDebt.today))}</td>
+                        <tr className="border-b border-border-subtle">
+                            <td className="p-2 font-medium text-negative">Debt</td>
+                            <td className="p-2 text-right text-content-default">{toCurrencyShort(-(categoryTotals.Debt.today + mortgageDebt.today))}</td>
                             <td className="p-2 text-right text-white">{toCurrencyShort(-(categoryTotals.Debt.eoy + mortgageDebt.eoy))}</td>
-                            <td className="p-2 text-right text-gray-600">—</td>
+                            <td className="p-2 text-right text-content-faint">—</td>
                         </tr>
                         <tr>
                             <td className="p-2 font-bold text-white">Net Worth</td>
-                            <td className="p-2 text-right text-gray-200 font-bold">{toCurrencyShort(todayNetWorth)}</td>
+                            <td className="p-2 text-right text-content-emphasis font-bold">{toCurrencyShort(todayNetWorth)}</td>
                             <td className="p-2 text-right text-white font-bold">{toCurrencyShort(eoyNetWorth)}</td>
-                            <td className={`p-2 text-right font-mono font-bold ${eoyNetWorth - todayNetWorth > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            <td className={`p-2 text-right font-mono font-bold ${eoyNetWorth - todayNetWorth > 0 ? 'text-positive' : 'text-negative'}`}>
                                 {(eoyNetWorth - todayNetWorth) >= 0 ? '+' : ''}{toCurrencyShort(eoyNetWorth - todayNetWorth)}
                             </td>
                         </tr>
                     </tbody>
                 </table>
                 {mortgageDebt.items.length > 0 && (
-                    <div className="mt-3 text-xs text-gray-500">
+                    <div className="mt-3 text-xs text-content-subtle">
                         Mortgage balances projected with amortization: {mortgageDebt.items.map(m => `${m.name} ${toCurrencyShort(m.today)} → ${toCurrencyShort(m.eoy)}`).join(', ')}.
                     </div>
                 )}
-            </div>
+            </Panel>
 
             {/* Cashflow / tax scaling */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+            <Panel>
                 <h3 className="text-lg font-bold text-white mb-1">Cashflow &amp; Tax Scaling</h3>
-                <p className="text-xs text-gray-500 mb-3">
-                    The EOY row scales Year 0 cashflow/tax line items by <code className="bg-gray-800 px-1 rounded">remainingFraction</code> ({remainingFraction.toFixed(3)}) so the Sankey / Cashflow views reflect only the rest of the year.
+                <p className="text-xs text-content-subtle mb-3">
+                    The EOY row scales Year 0 cashflow/tax line items by <code className="bg-surface-overlay px-1 rounded">remainingFraction</code> ({remainingFraction.toFixed(3)}) so the Sankey / Cashflow views reflect only the rest of the year.
                 </p>
                 {!eoyYear ? (
-                    <p className="text-sm text-gray-500">No EOY row present in the current simulation.</p>
+                    <p className="text-sm text-content-subtle">No EOY row present in the current simulation.</p>
                 ) : (
                     <>
                         <table className="w-full text-sm mb-4">
                             <thead>
-                                <tr className="text-gray-400 border-b border-gray-700">
+                                <tr className="text-content-muted border-b border-border-default">
                                     <th className="text-left p-2">Cashflow</th>
                                     <th className="text-right p-2">Year 0 (annual)</th>
                                     <th className="text-right p-2">× fraction</th>
@@ -6257,10 +6258,10 @@ function EOYProjectionDebugTab() {
                             </thead>
                             <tbody>
                                 {cashflowRows.map(r => (
-                                    <tr key={r.label} className="border-b border-gray-800">
-                                        <td className="p-2 text-gray-300">{r.label}</td>
-                                        <td className="p-2 text-right text-gray-400">{toCurrencyShort(r.y0)}</td>
-                                        <td className="p-2 text-right text-gray-500 font-mono">{toCurrencyShort(r.y0 * remainingFraction)}</td>
+                                    <tr key={r.label} className="border-b border-border-subtle">
+                                        <td className="p-2 text-content-default">{r.label}</td>
+                                        <td className="p-2 text-right text-content-muted">{toCurrencyShort(r.y0)}</td>
+                                        <td className="p-2 text-right text-content-subtle font-mono">{toCurrencyShort(r.y0 * remainingFraction)}</td>
                                         <td className="p-2 text-right text-white">{toCurrencyShort(r.eoy)}</td>
                                     </tr>
                                 ))}
@@ -6268,7 +6269,7 @@ function EOYProjectionDebugTab() {
                         </table>
                         <table className="w-full text-sm">
                             <thead>
-                                <tr className="text-gray-400 border-b border-gray-700">
+                                <tr className="text-content-muted border-b border-border-default">
                                     <th className="text-left p-2">Tax</th>
                                     <th className="text-right p-2">Year 0 (annual)</th>
                                     <th className="text-right p-2">× fraction</th>
@@ -6277,10 +6278,10 @@ function EOYProjectionDebugTab() {
                             </thead>
                             <tbody>
                                 {taxRows.map(r => (
-                                    <tr key={r.label} className="border-b border-gray-800">
-                                        <td className="p-2 text-gray-300">{r.label}</td>
-                                        <td className="p-2 text-right text-gray-400">{toCurrencyShort(r.y0)}</td>
-                                        <td className="p-2 text-right text-gray-500 font-mono">{toCurrencyShort(r.y0 * remainingFraction)}</td>
+                                    <tr key={r.label} className="border-b border-border-subtle">
+                                        <td className="p-2 text-content-default">{r.label}</td>
+                                        <td className="p-2 text-right text-content-muted">{toCurrencyShort(r.y0)}</td>
+                                        <td className="p-2 text-right text-content-subtle font-mono">{toCurrencyShort(r.y0 * remainingFraction)}</td>
                                         <td className="p-2 text-right text-white">{toCurrencyShort(r.eoy)}</td>
                                     </tr>
                                 ))}
@@ -6288,7 +6289,7 @@ function EOYProjectionDebugTab() {
                         </table>
                     </>
                 )}
-            </div>
+            </Panel>
         </div>
     );
 }
@@ -6442,34 +6443,34 @@ function ValidationDebugTab() {
     return (
         <div className="space-y-6">
             {/* Controls */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 flex items-center gap-4">
+            <Panel className="flex items-center gap-4">
                 <DropdownInput label="Severity" value={severityFilter} onChange={setSeverityFilter} options={['All', 'Errors Only', 'Warnings+']} />
-            </div>
+            </Panel>
 
             {/* Overall Health Banner */}
             <div className={`rounded-lg p-4 border ${
-                overallStatus === 'error' ? 'bg-red-900/20 border-red-800' :
-                overallStatus === 'warning' ? 'bg-yellow-900/30 border-yellow-700/50' :
-                'bg-green-900/20 border-green-700/50'
+                overallStatus === 'error' ? 'bg-negative-tint/20 border-negative-strong' :
+                overallStatus === 'warning' ? 'bg-warning-tint/30 border-warning-strong/50' :
+                'bg-positive-tint/20 border-positive-strong/50'
             }`}>
                 <div className="flex items-center justify-between">
                     <span className={`text-lg font-bold ${
-                        overallStatus === 'error' ? 'text-red-400' :
-                        overallStatus === 'warning' ? 'text-yellow-300' :
-                        'text-green-400'
+                        overallStatus === 'error' ? 'text-negative' :
+                        overallStatus === 'warning' ? 'text-warning-bright' :
+                        'text-positive'
                     }`}>
                         {overallStatus === 'error' ? 'Issues Found' : overallStatus === 'warning' ? 'Warnings Present' : 'All Checks Passed'}
                     </span>
                     <div className="flex gap-3 text-sm">
-                        {errorCount > 0 && <span className="text-red-400">{errorCount} Error{errorCount !== 1 ? 's' : ''}</span>}
-                        {warningCount > 0 && <span className="text-yellow-300">{warningCount} Warning{warningCount !== 1 ? 's' : ''}</span>}
-                        {infoCount > 0 && <span className="text-blue-400">{infoCount} Info</span>}
+                        {errorCount > 0 && <span className="text-negative">{errorCount} Error{errorCount !== 1 ? 's' : ''}</span>}
+                        {warningCount > 0 && <span className="text-warning-bright">{warningCount} Warning{warningCount !== 1 ? 's' : ''}</span>}
+                        {infoCount > 0 && <span className="text-info">{infoCount} Info</span>}
                     </div>
                 </div>
             </div>
 
             {simulation.length === 0 && (
-                <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-3 text-blue-400 text-sm">
+                <div className="bg-info-tint/20 border border-info-strong/50 rounded-lg p-3 text-info text-sm">
                     Run simulation for additional runtime checks (data consistency, RMD shortfalls, negative balances).
                 </div>
             )}
@@ -6477,24 +6478,24 @@ function ValidationDebugTab() {
             {/* Issue Cards */}
             <div className="space-y-2">
                 {filteredIssues.length === 0 ? (
-                    <div className="text-gray-400 text-sm p-4">No issues found at this severity level.</div>
+                    <div className="text-content-muted text-sm p-4">No issues found at this severity level.</div>
                 ) : (
                     filteredIssues.map((issue, i) => (
                         <div key={i} className={`rounded-lg p-3 border ${
-                            issue.type === 'error' ? 'bg-red-900/20 border-red-800' :
-                            issue.type === 'warning' ? 'bg-yellow-900/30 border-yellow-700/50' :
-                            'bg-blue-900/20 border-blue-700/50'
+                            issue.type === 'error' ? 'bg-negative-tint/20 border-negative-strong' :
+                            issue.type === 'warning' ? 'bg-warning-tint/30 border-warning-strong/50' :
+                            'bg-info-tint/20 border-info-strong/50'
                         }`}>
                             <div className="flex items-start justify-between gap-2">
                                 <div>
                                     <span className={`text-sm font-medium ${
-                                        issue.type === 'error' ? 'text-red-400' :
-                                        issue.type === 'warning' ? 'text-yellow-300' :
-                                        'text-blue-400'
+                                        issue.type === 'error' ? 'text-negative' :
+                                        issue.type === 'warning' ? 'text-warning-bright' :
+                                        'text-info'
                                     }`}>{issue.title}</span>
-                                    <p className="text-xs text-gray-400 mt-1">{issue.detail}</p>
+                                    <p className="text-xs text-content-muted mt-1">{issue.detail}</p>
                                 </div>
-                                <span className="text-xs text-gray-500 whitespace-nowrap">{issue.section}</span>
+                                <span className="text-xs text-content-subtle whitespace-nowrap">{issue.section}</span>
                             </div>
                         </div>
                     ))
@@ -6681,7 +6682,7 @@ function TaxOptimizationDebugTab() {
         <div className="space-y-6">
             {/* Year Selector */}
             {simulation.length > 0 && (
-                <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                <Panel>
                     <h3 className="text-lg font-bold text-white mb-2">Year: {selectedYear} (Age {selectedAge})</h3>
                     <div className="flex items-center gap-6">
                         <div className="w-full">
@@ -6691,140 +6692,140 @@ function TaxOptimizationDebugTab() {
                                 max={endYear}
                                 value={selectedYear}
                                 onChange={(e) => setSelectedYear(Number(e.target.value))}
-                                className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                                className="w-full h-2 bg-surface-input rounded-lg appearance-none cursor-pointer accent-positive-soft"
                             />
-                            <div className="flex justify-between text-xs text-gray-500 mt-1">
+                            <div className="flex justify-between text-xs text-content-subtle mt-1">
                                 <span>{startYear}</span>
                                 <span>{endYear}</span>
                             </div>
                         </div>
                         <div className="flex gap-4 text-white min-w-fit text-sm">
                             <div>
-                                <span className="text-gray-400">Net Worth:</span>
-                                <span className="text-green-400 ml-1">{toCurrencyShort(selectedNetWorth)}</span>
+                                <span className="text-content-muted">Net Worth:</span>
+                                <span className="text-positive ml-1">{toCurrencyShort(selectedNetWorth)}</span>
                             </div>
                         </div>
                     </div>
-                </div>
+                </Panel>
             )}
 
             {/* Selected Year Tax Details */}
             {yearData && selectedYearTax && (
-                <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                <Panel>
                     <h3 className="text-lg font-bold text-white mb-3">Tax Details for {selectedYear}</h3>
 
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                        <div className="bg-gray-800/50 rounded-lg p-3">
-                            <div className="text-xs text-gray-400">Federal Tax</div>
+                        <div className="bg-surface-overlay/50 rounded-lg p-3">
+                            <div className="text-xs text-content-muted">Federal Tax</div>
                             <div className="text-lg font-bold text-white">{toCurrencyShort(selectedYearTax.fed)}</div>
-                            <div className="text-xs text-gray-500">incl. {toCurrencyShort(selectedYearTax.penalty)} penalty</div>
+                            <div className="text-xs text-content-subtle">incl. {toCurrencyShort(selectedYearTax.penalty)} penalty</div>
                         </div>
-                        <div className="bg-gray-800/50 rounded-lg p-3">
-                            <div className="text-xs text-gray-400">State Tax</div>
+                        <div className="bg-surface-overlay/50 rounded-lg p-3">
+                            <div className="text-xs text-content-muted">State Tax</div>
                             <div className="text-lg font-bold text-white">{toCurrencyShort(selectedYearTax.state)}</div>
                         </div>
-                        <div className="bg-gray-800/50 rounded-lg p-3">
-                            <div className="text-xs text-gray-400">FICA</div>
+                        <div className="bg-surface-overlay/50 rounded-lg p-3">
+                            <div className="text-xs text-content-muted">FICA</div>
                             <div className="text-lg font-bold text-white">{toCurrencyShort(selectedYearTax.fica)}</div>
                         </div>
-                        <div className="bg-gray-800/50 rounded-lg p-3">
-                            <div className="text-xs text-gray-400">Capital Gains Tax</div>
+                        <div className="bg-surface-overlay/50 rounded-lg p-3">
+                            <div className="text-xs text-content-muted">Capital Gains Tax</div>
                             <div className="text-lg font-bold text-white">{toCurrencyShort(selectedYearTax.cg)}</div>
                         </div>
                     </div>
 
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                        <div className="bg-gray-800/50 rounded-lg p-3">
-                            <div className="text-xs text-gray-400">Withdrawal Ordinary Tax</div>
+                        <div className="bg-surface-overlay/50 rounded-lg p-3">
+                            <div className="text-xs text-content-muted">Withdrawal Ordinary Tax</div>
                             <div className="text-lg font-bold text-white">{toCurrencyShort(selectedYearTax.wot)}</div>
-                            <div className="text-xs text-gray-500">Roth earnings, Trad, HSA</div>
+                            <div className="text-xs text-content-subtle">Roth earnings, Trad, HSA</div>
                         </div>
-                        <div className="bg-gray-800/50 rounded-lg p-3">
-                            <div className="text-xs text-gray-400">NIIT</div>
+                        <div className="bg-surface-overlay/50 rounded-lg p-3">
+                            <div className="text-xs text-content-muted">NIIT</div>
                             <div className="text-lg font-bold text-white">{toCurrencyShort(selectedYearTax.niit)}</div>
                         </div>
-                        <div className="bg-gray-800/50 rounded-lg p-3">
-                            <div className="text-xs text-gray-400">Total Tax</div>
-                            <div className="text-lg font-bold text-red-400">{toCurrencyShort(selectedYearTax.totalTax)}</div>
-                            <div className="text-xs text-gray-500">
+                        <div className="bg-surface-overlay/50 rounded-lg p-3">
+                            <div className="text-xs text-content-muted">Total Tax</div>
+                            <div className="text-lg font-bold text-negative">{toCurrencyShort(selectedYearTax.totalTax)}</div>
+                            <div className="text-xs text-content-subtle">
                                 {selectedYearTax.agiPlusLTCG > 0 ? `${((selectedYearTax.totalTax / selectedYearTax.agiPlusLTCG) * 100).toFixed(1)}% effective` : '—'}
                             </div>
                         </div>
-                        <div className="bg-gray-800/50 rounded-lg p-3">
-                            <div className="text-xs text-gray-400">AGI + LTCG</div>
+                        <div className="bg-surface-overlay/50 rounded-lg p-3">
+                            <div className="text-xs text-content-muted">AGI + LTCG</div>
                             <div className="text-lg font-bold text-white">{toCurrencyShort(selectedYearTax.agiPlusLTCG)}</div>
-                            <div className="text-xs text-gray-500">Effective-rate denom.</div>
+                            <div className="text-xs text-content-subtle">Effective-rate denom.</div>
                         </div>
                     </div>
 
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
-                        <div className="bg-gray-800/50 rounded-lg p-3">
-                            <div className="text-xs text-gray-400">Living Expenses</div>
+                        <div className="bg-surface-overlay/50 rounded-lg p-3">
+                            <div className="text-xs text-content-muted">Living Expenses</div>
                             <div className="text-lg font-bold text-white">{toCurrencyShort(yearData.cashflow.livingExpenses)}</div>
                         </div>
-                        <div className="bg-gray-800/50 rounded-lg p-3">
-                            <div className="text-xs text-gray-400">Withdrawals</div>
-                            <div className="text-lg font-bold text-yellow-400">{toCurrencyShort(yearData.cashflow.withdrawals)}</div>
+                        <div className="bg-surface-overlay/50 rounded-lg p-3">
+                            <div className="text-xs text-content-muted">Withdrawals</div>
+                            <div className="text-lg font-bold text-warning">{toCurrencyShort(yearData.cashflow.withdrawals)}</div>
                         </div>
-                        <div className="bg-gray-800/50 rounded-lg p-3">
-                            <div className="text-xs text-gray-400">Total Income (cashflow)</div>
+                        <div className="bg-surface-overlay/50 rounded-lg p-3">
+                            <div className="text-xs text-content-muted">Total Income (cashflow)</div>
                             <div className="text-lg font-bold text-white">{toCurrencyShort(yearData.cashflow.totalIncome)}</div>
-                            <div className="text-xs text-gray-500">Pre-withdrawal income</div>
+                            <div className="text-xs text-content-subtle">Pre-withdrawal income</div>
                         </div>
                     </div>
 
                     {/* Account Balances for Selected Year */}
                     <div className="grid grid-cols-3 gap-4">
-                        <div className="bg-gray-800/50 rounded-lg p-3">
-                            <div className="text-xs text-gray-400">Traditional Balance</div>
-                            <div className="text-lg font-bold text-orange-400">{toCurrencyShort(selectedYearBalances.traditional)}</div>
+                        <div className="bg-surface-overlay/50 rounded-lg p-3">
+                            <div className="text-xs text-content-muted">Traditional Balance</div>
+                            <div className="text-lg font-bold text-cat-orange">{toCurrencyShort(selectedYearBalances.traditional)}</div>
                         </div>
-                        <div className="bg-gray-800/50 rounded-lg p-3">
-                            <div className="text-xs text-gray-400">Roth Balance</div>
-                            <div className="text-lg font-bold text-blue-400">{toCurrencyShort(selectedYearBalances.roth)}</div>
+                        <div className="bg-surface-overlay/50 rounded-lg p-3">
+                            <div className="text-xs text-content-muted">Roth Balance</div>
+                            <div className="text-lg font-bold text-info">{toCurrencyShort(selectedYearBalances.roth)}</div>
                         </div>
-                        <div className="bg-gray-800/50 rounded-lg p-3">
-                            <div className="text-xs text-gray-400">Brokerage Balance</div>
-                            <div className="text-lg font-bold text-green-400">{toCurrencyShort(selectedYearBalances.brokerage)}</div>
+                        <div className="bg-surface-overlay/50 rounded-lg p-3">
+                            <div className="text-xs text-content-muted">Brokerage Balance</div>
+                            <div className="text-lg font-bold text-positive">{toCurrencyShort(selectedYearBalances.brokerage)}</div>
                         </div>
                     </div>
 
                     {/* Roth Conversion for Selected Year */}
                     {yearData.rothConversion && yearData.rothConversion.amount > 0 && (
-                        <div className="mt-4 p-3 bg-blue-900/20 border border-blue-700/50 rounded-lg">
-                            <div className="text-sm text-blue-400 font-semibold mb-2">Roth Conversion This Year</div>
+                        <div className="mt-4 p-3 bg-info-tint/20 border border-info-strong/50 rounded-lg">
+                            <div className="text-sm text-info font-semibold mb-2">Roth Conversion This Year</div>
                             <div className="grid grid-cols-3 gap-4 text-sm">
                                 <div>
-                                    <span className="text-gray-400">Amount: </span>
+                                    <span className="text-content-muted">Amount: </span>
                                     <span className="text-white">{toCurrencyShort(yearData.rothConversion.amount)}</span>
                                 </div>
                                 <div>
-                                    <span className="text-gray-400">Tax Cost: </span>
-                                    <span className="text-red-400">{toCurrencyShort(yearData.rothConversion.taxCost)}</span>
+                                    <span className="text-content-muted">Tax Cost: </span>
+                                    <span className="text-negative">{toCurrencyShort(yearData.rothConversion.taxCost)}</span>
                                 </div>
                                 <div>
-                                    <span className="text-gray-400">Effective Rate: </span>
-                                    <span className="text-yellow-400">
+                                    <span className="text-content-muted">Effective Rate: </span>
+                                    <span className="text-warning">
                                         {((yearData.rothConversion.taxCost / yearData.rothConversion.amount) * 100).toFixed(1)}%
                                     </span>
                                 </div>
                             </div>
                         </div>
                     )}
-                </div>
+                </Panel>
             )}
 
             {/* Status Banner */}
-            <div className={`rounded-xl border p-4 ${isEnabled ? 'bg-green-900/20 border-green-700/50' : 'bg-gray-900 border-gray-800'}`}>
+            <div className={`rounded-xl border p-4 ${isEnabled ? 'bg-positive-tint/20 border-positive-strong/50' : 'bg-surface-raised border-border-subtle'}`}>
                 <div className="flex items-center justify-between">
                     <div>
                         <h3 className="text-lg font-bold text-white flex items-center gap-2">
                             Tax Optimization
-                            <span className={`px-2 py-0.5 text-xs rounded ${isEnabled ? 'bg-green-600' : 'bg-gray-600'}`}>
+                            <span className={`px-2 py-0.5 text-xs rounded ${isEnabled ? 'bg-positive-solid' : 'bg-surface-hover'}`}>
                                 {isEnabled ? 'ENABLED' : 'DISABLED'}
                             </span>
                         </h3>
-                        <p className="text-sm text-gray-400 mt-1">
+                        <p className="text-sm text-content-muted mt-1">
                             {isEnabled
                                 ? 'Smart withdrawal ordering and auto Roth conversions are active.'
                                 : 'Enable in Withdrawal tab to activate smart withdrawals and conversions.'}
@@ -6834,84 +6835,84 @@ function TaxOptimizationDebugTab() {
             </div>
 
             {/* Section 1: Target Balance Calculation */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 opacity-40">
+            <Panel className="opacity-40">
                 <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
                     Target Traditional Balance
-                    <span className="px-2 py-0.5 text-xs rounded bg-gray-700 text-gray-300">TODO</span>
+                    <span className="px-2 py-0.5 text-xs rounded bg-surface-input text-content-default">TODO</span>
                 </h3>
-                <p className="text-sm text-gray-400 mb-4">
+                <p className="text-sm text-content-muted mb-4">
                     Calculates the ideal Traditional 401k/IRA balance at RMD age to keep RMDs within target bracket.
-                    <span className="block text-gray-500 italic mt-1">Pending reimplementation per TAX_OPTIMIZATION_SPEC.md — values shown are placeholders.</span>
+                    <span className="block text-content-subtle italic mt-1">Pending reimplementation per TAX_OPTIMIZATION_SPEC.md — values shown are placeholders.</span>
                 </p>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                    <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-400">Current Traditional</div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">Current Traditional</div>
                         <div className="text-lg font-bold text-white">{toCurrencyShort(currentTraditionalBalance)}</div>
                     </div>
-                    <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-400">Target Balance</div>
-                        <div className="text-lg font-bold text-green-400">{toCurrencyShort(targetResult.targetBalance)}</div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">Target Balance</div>
+                        <div className="text-lg font-bold text-positive">{toCurrencyShort(targetResult.targetBalance)}</div>
                     </div>
-                    <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-400">Target Age</div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">Target Age</div>
                         <div className="text-lg font-bold text-white">Age {targetResult.targetAge}</div>
                     </div>
-                    <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-400">Target Bracket</div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">Target Bracket</div>
                         <div className="text-lg font-bold text-white">{(targetResult.targetBracket * 100).toFixed(0)}%</div>
                     </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-400">Projected Fixed Income (at RMD age)</div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">Projected Fixed Income (at RMD age)</div>
                         <div className="text-sm text-white">{toCurrency(targetResult.projectedFixedIncome)}</div>
-                        <div className="text-xs text-gray-500">SS + Pensions + Rental</div>
+                        <div className="text-xs text-content-subtle">SS + Pensions + Rental</div>
                     </div>
-                    <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-400">Projected Annual RMD</div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">Projected Annual RMD</div>
                         <div className="text-sm text-white">{toCurrency(targetResult.projectedRMD)}</div>
-                        <div className="text-xs text-gray-500">At target balance</div>
+                        <div className="text-xs text-content-subtle">At target balance</div>
                     </div>
                 </div>
 
-                <div className="mt-3 text-xs text-gray-500">
+                <div className="mt-3 text-xs text-content-subtle">
                     Rationale: {targetResult.rationale}
                 </div>
-            </div>
+            </Panel>
 
             {/* Section 2: Conversion Plan */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 opacity-40">
+            <Panel className="opacity-40">
                 <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
                     Roth Conversion Plan
-                    <span className="px-2 py-0.5 text-xs rounded bg-gray-700 text-gray-300">TODO</span>
+                    <span className="px-2 py-0.5 text-xs rounded bg-surface-input text-content-default">TODO</span>
                 </h3>
-                <p className="text-sm text-gray-400 mb-4">
+                <p className="text-sm text-content-muted mb-4">
                     Multi-year schedule to convert excess Traditional balance to Roth.
-                    <span className="block text-gray-500 italic mt-1">Pending reimplementation per TAX_OPTIMIZATION_SPEC.md — values shown are placeholders.</span>
+                    <span className="block text-content-subtle italic mt-1">Pending reimplementation per TAX_OPTIMIZATION_SPEC.md — values shown are placeholders.</span>
                 </p>
 
                 <div className="grid grid-cols-3 gap-4 mb-4">
-                    <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-400">Total to Convert</div>
-                        <div className="text-lg font-bold text-yellow-400">{toCurrencyShort(conversionPlan.totalConversionNeeded)}</div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">Total to Convert</div>
+                        <div className="text-lg font-bold text-warning">{toCurrencyShort(conversionPlan.totalConversionNeeded)}</div>
                     </div>
-                    <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-400">Scheduled Conversions</div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">Scheduled Conversions</div>
                         <div className="text-lg font-bold text-white">{conversionPlan.schedule.length} years</div>
                     </div>
-                    <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-400">Projected Tax Savings</div>
-                        <div className="text-lg font-bold text-green-400">{toCurrencyShort(conversionPlan.projectedLifetimeTaxSavings)}</div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">Projected Tax Savings</div>
+                        <div className="text-lg font-bold text-positive">{toCurrencyShort(conversionPlan.projectedLifetimeTaxSavings)}</div>
                     </div>
                 </div>
 
                 {conversionPlan.schedule.length > 0 && (
                     <div className="overflow-x-auto max-h-64 overflow-y-auto">
                         <table className="w-full text-sm">
-                            <thead className="sticky top-0 bg-gray-900">
-                                <tr className="text-gray-400 border-b border-gray-700">
+                            <thead className="sticky top-0 bg-surface-raised">
+                                <tr className="text-content-muted border-b border-border-default">
                                     <th className="text-left p-2">Year</th>
                                     <th className="text-left p-2">Age</th>
                                     <th className="text-right p-2">Amount</th>
@@ -6922,13 +6923,13 @@ function TaxOptimizationDebugTab() {
                             </thead>
                             <tbody>
                                 {conversionPlan.schedule.map((item, idx) => (
-                                    <tr key={idx} className="border-b border-gray-800 hover:bg-gray-800/50">
-                                        <td className="p-2 text-gray-300">{item.year}</td>
-                                        <td className="p-2 text-gray-400">{item.age}</td>
+                                    <tr key={idx} className="border-b border-border-subtle hover:bg-surface-overlay/50">
+                                        <td className="p-2 text-content-default">{item.year}</td>
+                                        <td className="p-2 text-content-muted">{item.age}</td>
                                         <td className="p-2 text-right text-white font-medium">{toCurrencyShort(item.amount)}</td>
-                                        <td className="p-2 text-right text-gray-400">{(item.bracketBeforeConversion * 100).toFixed(0)}%</td>
-                                        <td className="p-2 text-right text-yellow-400">{(item.bracketAfterConversion * 100).toFixed(0)}%</td>
-                                        <td className="p-2 text-right text-red-400">{toCurrencyShort(item.estimatedTaxCost)}</td>
+                                        <td className="p-2 text-right text-content-muted">{(item.bracketBeforeConversion * 100).toFixed(0)}%</td>
+                                        <td className="p-2 text-right text-warning">{(item.bracketAfterConversion * 100).toFixed(0)}%</td>
+                                        <td className="p-2 text-right text-negative">{toCurrencyShort(item.estimatedTaxCost)}</td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -6937,30 +6938,30 @@ function TaxOptimizationDebugTab() {
                 )}
 
                 {conversionPlan.schedule.length === 0 && (
-                    <div className="text-center text-gray-500 py-4">
+                    <div className="text-center text-content-subtle py-4">
                         No conversions needed - balance is at or below target.
                     </div>
                 )}
-            </div>
+            </Panel>
 
             {/* Section 3: Simulation Conversions (Actual) */}
             {simulationConversions.length > 0 && (
-                <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                <Panel>
                     <h3 className="text-lg font-bold text-white mb-3">Actual Conversions (from Simulation)</h3>
-                    <p className="text-sm text-gray-400 mb-4">
+                    <p className="text-sm text-content-muted mb-4">
                         Roth conversions executed during simulation run.
                     </p>
 
                     <div className="grid grid-cols-2 gap-4 mb-4">
-                        <div className="bg-gray-800/50 rounded-lg p-3">
-                            <div className="text-xs text-gray-400">Total Converted</div>
+                        <div className="bg-surface-overlay/50 rounded-lg p-3">
+                            <div className="text-xs text-content-muted">Total Converted</div>
                             <div className="text-lg font-bold text-white">
                                 {toCurrencyShort(simulationConversions.reduce((s, c) => s + c.amount, 0))}
                             </div>
                         </div>
-                        <div className="bg-gray-800/50 rounded-lg p-3">
-                            <div className="text-xs text-gray-400">Total Tax Paid</div>
-                            <div className="text-lg font-bold text-red-400">
+                        <div className="bg-surface-overlay/50 rounded-lg p-3">
+                            <div className="text-xs text-content-muted">Total Tax Paid</div>
+                            <div className="text-lg font-bold text-negative">
                                 {toCurrencyShort(simulationConversions.reduce((s, c) => s + c.taxCost, 0))}
                             </div>
                         </div>
@@ -6968,8 +6969,8 @@ function TaxOptimizationDebugTab() {
 
                     <div className="overflow-x-auto max-h-48 overflow-y-auto">
                         <table className="w-full text-sm">
-                            <thead className="sticky top-0 bg-gray-900">
-                                <tr className="text-gray-400 border-b border-gray-700">
+                            <thead className="sticky top-0 bg-surface-raised">
+                                <tr className="text-content-muted border-b border-border-default">
                                     <th className="text-left p-2">Year</th>
                                     <th className="text-left p-2">Age</th>
                                     <th className="text-right p-2">Amount</th>
@@ -6979,12 +6980,12 @@ function TaxOptimizationDebugTab() {
                             </thead>
                             <tbody>
                                 {simulationConversions.map((c, idx) => (
-                                    <tr key={idx} className="border-b border-gray-800 hover:bg-gray-800/50">
-                                        <td className="p-2 text-gray-300">{c.year}</td>
-                                        <td className="p-2 text-gray-400">{c.age}</td>
+                                    <tr key={idx} className="border-b border-border-subtle hover:bg-surface-overlay/50">
+                                        <td className="p-2 text-content-default">{c.year}</td>
+                                        <td className="p-2 text-content-muted">{c.age}</td>
                                         <td className="p-2 text-right text-white">{toCurrencyShort(c.amount)}</td>
-                                        <td className="p-2 text-right text-red-400">{toCurrencyShort(c.taxCost)}</td>
-                                        <td className="p-2 text-right text-yellow-400">
+                                        <td className="p-2 text-right text-negative">{toCurrencyShort(c.taxCost)}</td>
+                                        <td className="p-2 text-right text-warning">
                                             {((c.taxCost / c.amount) * 100).toFixed(1)}%
                                         </td>
                                     </tr>
@@ -6992,25 +6993,25 @@ function TaxOptimizationDebugTab() {
                             </tbody>
                         </table>
                     </div>
-                </div>
+                </Panel>
             )}
 
             {/* Section 4: Smart Withdrawal Order Test */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 opacity-40">
+            <Panel className="opacity-40">
                 <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
                     Smart Withdrawal Order (Test)
-                    <span className="px-2 py-0.5 text-xs rounded bg-gray-700 text-gray-300">TODO</span>
+                    <span className="px-2 py-0.5 text-xs rounded bg-surface-input text-content-default">TODO</span>
                 </h3>
-                <p className="text-sm text-gray-400 mb-4">
+                <p className="text-sm text-content-muted mb-4">
                     Simulated withdrawal order for a ${testDeficit.toLocaleString()} deficit at age {Math.max(currentAge, retirementAge)}.
-                    <span className="block text-gray-500 italic mt-1">Pending reimplementation per TAX_OPTIMIZATION_SPEC.md — values shown are placeholders.</span>
+                    <span className="block text-content-subtle italic mt-1">Pending reimplementation per TAX_OPTIMIZATION_SPEC.md — values shown are placeholders.</span>
                 </p>
 
                 {smartOrder.length > 0 ? (
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead>
-                                <tr className="text-gray-400 border-b border-gray-700">
+                                <tr className="text-content-muted border-b border-border-default">
                                     <th className="text-left p-2">#</th>
                                     <th className="text-left p-2">Account</th>
                                     <th className="text-right p-2">Amount</th>
@@ -7020,106 +7021,106 @@ function TaxOptimizationDebugTab() {
                             </thead>
                             <tbody>
                                 {smartOrder.map((order, idx) => (
-                                    <tr key={idx} className="border-b border-gray-800 hover:bg-gray-800/50">
-                                        <td className="p-2 text-gray-400">{idx + 1}</td>
+                                    <tr key={idx} className="border-b border-border-subtle hover:bg-surface-overlay/50">
+                                        <td className="p-2 text-content-muted">{idx + 1}</td>
                                         <td className="p-2 text-white">{order.accountName}</td>
-                                        <td className="p-2 text-right text-green-400">{toCurrencyShort(order.amount)}</td>
+                                        <td className="p-2 text-right text-positive">{toCurrencyShort(order.amount)}</td>
                                         <td className="p-2">
                                             <span className={`px-2 py-0.5 text-xs rounded ${
-                                                order.taxType === 'tax-free' ? 'bg-green-600' :
-                                                order.taxType === 'pre-tax' ? 'bg-yellow-600' : 'bg-blue-600'
+                                                order.taxType === 'tax-free' ? 'bg-positive-solid' :
+                                                order.taxType === 'pre-tax' ? 'bg-warning-solid' : 'bg-accent'
                                             }`}>
                                                 {order.taxType}
                                             </span>
                                         </td>
-                                        <td className="p-2 text-gray-400">{order.reason}</td>
+                                        <td className="p-2 text-content-muted">{order.reason}</td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
                     </div>
                 ) : (
-                    <div className="text-center text-gray-500 py-4">
+                    <div className="text-center text-content-subtle py-4">
                         No accounts available for withdrawal.
                     </div>
                 )}
-            </div>
+            </Panel>
 
             {/* Section 5: Lifetime Tax Summary */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+            <Panel>
                 <h3 className="text-lg font-bold text-white mb-3">Lifetime Tax Summary</h3>
-                <p className="text-sm text-gray-400 mb-4">
+                <p className="text-sm text-content-muted mb-4">
                     Total taxes paid across the entire simulation (ages {currentAge} to {lifeExpectancy}).
                 </p>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3">
-                    <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-400">Total Taxes</div>
-                        <div className="text-lg font-bold text-red-400">{toCurrencyShort(lifetimeTaxes.total)}</div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">Total Taxes</div>
+                        <div className="text-lg font-bold text-negative">{toCurrencyShort(lifetimeTaxes.total)}</div>
                     </div>
-                    <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-400">Federal</div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">Federal</div>
                         <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.federal)}</div>
-                        <div className="text-xs text-gray-500">incl. penalty</div>
+                        <div className="text-xs text-content-subtle">incl. penalty</div>
                     </div>
-                    <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-400">State</div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">State</div>
                         <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.state)}</div>
                     </div>
-                    <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-400">FICA</div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">FICA</div>
                         <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.fica)}</div>
                     </div>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-400">Capital Gains</div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">Capital Gains</div>
                         <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.capitalGains)}</div>
                     </div>
-                    <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-400">Withdrawal Ordinary</div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">Withdrawal Ordinary</div>
                         <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.withdrawalOrdinary)}</div>
-                        <div className="text-xs text-gray-500">Roth earnings, Trad, HSA</div>
+                        <div className="text-xs text-content-subtle">Roth earnings, Trad, HSA</div>
                     </div>
-                    <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-400">NIIT</div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">NIIT</div>
                         <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.niit)}</div>
                     </div>
-                    <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-400">Early-Withdraw Penalty</div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">Early-Withdraw Penalty</div>
                         <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.penalty)}</div>
-                        <div className="text-xs text-gray-500">already in Federal</div>
+                        <div className="text-xs text-content-subtle">already in Federal</div>
                     </div>
                 </div>
-            </div>
+            </Panel>
 
             {/* Section 6: Account Balances */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+            <Panel>
                 <h3 className="text-lg font-bold text-white mb-3">Current Account Balances</h3>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-400">Traditional (401k/IRA)</div>
-                        <div className="text-lg font-bold text-yellow-400">{toCurrencyShort(currentTraditionalBalance)}</div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">Traditional (401k/IRA)</div>
+                        <div className="text-lg font-bold text-warning">{toCurrencyShort(currentTraditionalBalance)}</div>
                     </div>
-                    <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-400">Roth (401k/IRA)</div>
-                        <div className="text-lg font-bold text-green-400">{toCurrencyShort(currentRothBalance)}</div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">Roth (401k/IRA)</div>
+                        <div className="text-lg font-bold text-positive">{toCurrencyShort(currentRothBalance)}</div>
                     </div>
-                    <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-400">Brokerage</div>
-                        <div className="text-lg font-bold text-blue-400">
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">Brokerage</div>
+                        <div className="text-lg font-bold text-info">
                             {toCurrencyShort(accounts.filter(a => a instanceof InvestedAccount && a.taxType === 'Brokerage').reduce((s, a) => s + a.amount, 0))}
                         </div>
                     </div>
-                    <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="text-xs text-gray-400">Savings/Cash</div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">Savings/Cash</div>
                         <div className="text-lg font-bold text-white">
                             {toCurrencyShort(accounts.filter(a => a instanceof SavedAccount).reduce((s, a) => s + a.amount, 0))}
                         </div>
                     </div>
                 </div>
-            </div>
+            </Panel>
         </div>
     );
 }
@@ -7149,21 +7150,21 @@ export default function Testing() {
 
     if (!showExperimental) {
         return (
-            <div className="w-full min-h-screen bg-gray-950 text-gray-100 p-8 flex items-center justify-center">
-                <p className="text-gray-500">Enable experimental features in Assumptions to access Testing.</p>
+            <div className="w-full min-h-screen bg-surface-base text-content-bright p-8 flex items-center justify-center">
+                <p className="text-content-subtle">Enable experimental features in Assumptions to access Testing.</p>
             </div>
         );
     }
 
     return (
-        <div className="w-full min-h-screen bg-gray-950 text-gray-100 p-8 overflow-y-auto">
+        <div className="w-full min-h-screen bg-surface-base text-content-bright p-8 overflow-y-auto">
             <div className="max-w-7xl mx-auto">
-                <h2 className="text-3xl font-bold mb-4 text-fuchsia-500">
+                <h2 className="text-3xl font-bold mb-4 text-cat-fuchsia-soft">
                     Testing & Debugging
                 </h2>
 
                 {/* Tab Navigation */}
-                <div className="bg-gray-900 rounded-lg mb-4 flex border border-gray-800 overflow-x-auto custom-scrollbar">
+                <Panel padding="none" className="rounded-lg mb-4 flex overflow-x-auto custom-scrollbar">
                     {TESTING_TABS.map(tab => (
                         <button
                             key={tab}
@@ -7172,14 +7173,14 @@ export default function Testing() {
                             onClick={() => handleTabChange(tab)}
                             className={`flex-1 min-w-fit font-semibold px-4 py-3 transition-colors duration-200 whitespace-nowrap ${
                                 activeTab === tab
-                                    ? 'text-green-300 bg-gray-800 border-b-2 border-green-300'
-                                    : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                                    ? 'text-positive-bright bg-surface-overlay border-b-2 border-positive-bright'
+                                    : 'text-content-muted hover:bg-surface-overlay hover:text-white'
                             }`}
                         >
                             {tab}
                         </button>
                     ))}
-                </div>
+                </Panel>
 
                 {/* Tab Content */}
                 <div data-sub-tab-content>

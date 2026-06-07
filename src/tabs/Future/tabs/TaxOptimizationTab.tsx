@@ -39,13 +39,13 @@ const StatCard = ({ label, value, sublabel, tooltip }: {
     sublabel?: string;
     tooltip?: string;
 }) => (
-    <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+    <div className="bg-surface-overlay/50 rounded-xl p-4 border border-border-default">
         <div className="flex items-center gap-1 mb-1">
-            <div className="text-xs text-gray-400 uppercase tracking-wide">{label}</div>
+            <div className="text-xs text-content-muted uppercase tracking-wide">{label}</div>
             {tooltip && <Tooltip text={tooltip} />}
         </div>
         <div className="text-2xl font-bold text-white">{value}</div>
-        {sublabel && <div className="text-xs text-gray-400 mt-1">{sublabel}</div>}
+        {sublabel && <div className="text-xs text-content-muted mt-1">{sublabel}</div>}
     </div>
 );
 
@@ -54,9 +54,9 @@ const StatCard = ({ label, value, sublabel, tooltip }: {
  */
 const RecommendationCard = ({ rec }: { rec: TaxRecommendation }) => {
     const impactColors = {
-        high: 'border-green-500 bg-green-900/20',
-        medium: 'border-yellow-500 bg-yellow-900/20',
-        low: 'border-gray-500 bg-gray-800/50'
+        high: 'border-positive-soft bg-positive-tint/20',
+        medium: 'border-warning-soft bg-warning-tint/20',
+        low: 'border-border-faint bg-surface-overlay/50'
     };
 
     const impactLabels = {
@@ -66,9 +66,9 @@ const RecommendationCard = ({ rec }: { rec: TaxRecommendation }) => {
     };
 
     const impactTextColors = {
-        high: 'text-green-400',
-        medium: 'text-yellow-400',
-        low: 'text-gray-400'
+        high: 'text-positive',
+        medium: 'text-warning',
+        low: 'text-content-muted'
     };
 
     return (
@@ -79,16 +79,16 @@ const RecommendationCard = ({ rec }: { rec: TaxRecommendation }) => {
                     {impactLabels[rec.impact]}
                 </span>
             </div>
-            <p className="text-gray-300 text-sm mb-3">{rec.description}</p>
+            <p className="text-content-default text-sm mb-3">{rec.description}</p>
             {rec.estimatedAnnualSavings > 0 && (
-                <div className="text-green-400 font-semibold mb-2">
+                <div className="text-positive font-semibold mb-2">
                     Estimated Savings: {formatCurrency(rec.estimatedAnnualSavings)}/year
                 </div>
             )}
             <ul className="space-y-1">
                 {rec.actionItems.map((item, i) => (
-                    <li key={i} className="text-sm text-gray-400 flex items-start gap-2">
-                        <span className="text-emerald-400 mt-0.5">-</span>
+                    <li key={i} className="text-sm text-content-muted flex items-start gap-2">
+                        <span className="text-positive mt-0.5">-</span>
                         {item}
                     </li>
                 ))}
@@ -108,13 +108,13 @@ const TaxProjectionTable = ({ projections, forceExact }: {
     const displayCount = expanded ? projections.length : 10;
 
     return (
-        <div className="bg-gray-800/50 rounded-xl border border-gray-700 overflow-hidden">
-            <div className="p-4 border-b border-gray-700 flex justify-between items-center">
+        <div className="bg-surface-overlay/50 rounded-xl border border-border-default overflow-hidden">
+            <div className="p-4 border-b border-border-default flex justify-between items-center">
                 <h3 className="text-white font-semibold">Tax Rate Projections</h3>
                 {projections.length > 10 && (
                     <button
                         onClick={() => setExpanded(!expanded)}
-                        className="text-sm text-emerald-400 hover:text-emerald-300"
+                        className="text-sm text-positive hover:text-positive-bright"
                     >
                         {expanded ? 'Show Less' : `Show All (${projections.length})`}
                     </button>
@@ -122,55 +122,55 @@ const TaxProjectionTable = ({ projections, forceExact }: {
             </div>
             <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                    <thead className="bg-gray-900/50">
+                    <thead className="bg-surface-raised/50">
                         <tr>
-                            <th className="px-4 py-3 text-left text-gray-400">Year</th>
-                            <th className="px-4 py-3 text-left text-gray-400">Age</th>
-                            <th className="px-4 py-3 text-right text-gray-400">
+                            <th className="px-4 py-3 text-left text-content-muted">Year</th>
+                            <th className="px-4 py-3 text-left text-content-muted">Age</th>
+                            <th className="px-4 py-3 text-right text-content-muted">
                                 <span className="inline-flex items-center gap-1 justify-end">
                                     Tax Base
                                     <Tooltip text="Total taxable activity for the year: income (work, SS, pension, passive, RMDs) + Roth conversions + non-RMD Traditional withdrawals. The denominator for the effective rate." />
                                 </span>
                             </th>
-                            <th className="px-4 py-3 text-right text-gray-400">Effective</th>
-                            <th className="px-4 py-3 text-right text-gray-400">Marginal</th>
-                            <th className="px-4 py-3 text-right text-gray-400">Fed Bracket</th>
-                            <th className="px-4 py-3 text-center text-gray-400">Status</th>
+                            <th className="px-4 py-3 text-right text-content-muted">Effective</th>
+                            <th className="px-4 py-3 text-right text-content-muted">Marginal</th>
+                            <th className="px-4 py-3 text-right text-content-muted">Fed Bracket</th>
+                            <th className="px-4 py-3 text-center text-content-muted">Status</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-800">
+                    <tbody className="divide-y divide-border-subtle">
                         {projections.slice(0, displayCount).map((proj) => (
                             <tr
                                 key={proj.year}
-                                className={proj.isLowTaxYear ? 'bg-green-900/10' : ''}
+                                className={proj.isLowTaxYear ? 'bg-positive-tint/10' : ''}
                             >
-                                <td className="px-4 py-3 text-gray-300">{proj.year}</td>
-                                <td className="px-4 py-3 text-gray-300">{proj.age}</td>
-                                <td className="px-4 py-3 text-right text-gray-300">
+                                <td className="px-4 py-3 text-content-default">{proj.year}</td>
+                                <td className="px-4 py-3 text-content-default">{proj.age}</td>
+                                <td className="px-4 py-3 text-right text-content-default">
                                     {formatCompactCurrency(proj.grossIncome, { forceExact })}
                                 </td>
-                                <td className="px-4 py-3 text-right text-gray-300">
+                                <td className="px-4 py-3 text-right text-content-default">
                                     {formatPercent(proj.effectiveRate)}
                                 </td>
-                                <td className="px-4 py-3 text-right text-gray-300">
+                                <td className="px-4 py-3 text-right text-content-default">
                                     {formatPercent(proj.marginalRate)}
                                 </td>
-                                <td className="px-4 py-3 text-right text-gray-300">
+                                <td className="px-4 py-3 text-right text-content-default">
                                     {proj.federalBracket.toFixed(0)}%
                                 </td>
                                 <td className="px-4 py-3 text-center">
                                     {proj.isRetired ? (
                                         proj.isLowTaxYear ? (
-                                            <span className="px-2 py-1 bg-green-500/20 text-green-400 rounded text-xs">
+                                            <span className="px-2 py-1 bg-positive-soft/20 text-positive rounded text-xs">
                                                 Low Tax
                                             </span>
                                         ) : (
-                                            <span className="px-2 py-1 bg-blue-500/20 text-blue-400 rounded text-xs">
+                                            <span className="px-2 py-1 bg-info-tint/20 text-info rounded text-xs">
                                                 Retired
                                             </span>
                                         )
                                     ) : (
-                                        <span className="px-2 py-1 bg-gray-700 text-gray-400 rounded text-xs">
+                                        <span className="px-2 py-1 bg-surface-input text-content-muted rounded text-xs">
                                             Working
                                         </span>
                                     )}
@@ -205,18 +205,18 @@ const RothPreTaxVerdict = ({ allocation }: { allocation: RothPreTaxAllocation })
                         <span className={`text-lg ${verdictMeta.color}`}>{verdictMeta.icon}</span>
                         <h3 className={`font-semibold ${verdictMeta.color}`}>{verdictMeta.title}</h3>
                     </div>
-                    <p className="text-sm text-gray-300">{verdictMeta.body(allocation)}</p>
+                    <p className="text-sm text-content-default">{verdictMeta.body(allocation)}</p>
                 </div>
                 <div className="text-right text-sm shrink-0">
-                    <div className="text-gray-400">
+                    <div className="text-content-muted">
                         Today <span className="text-white font-medium">{currentPct}</span>
-                        <span className="text-gray-500 mx-2">vs</span>
+                        <span className="text-content-subtle mx-2">vs</span>
                         {withdrawalLabel} <span className="text-white font-medium">{futurePct}</span>
                         <span className="ml-1 inline-block align-middle">
                             <Tooltip text="Federal + state marginal rate, excluding FICA. FICA is excluded because 401(k) contributions don't avoid it and RMDs aren't subject to it — only fed + state matters for the Roth vs Traditional decision. The 'Marginal Rate' card above includes FICA, which is why this number is lower." />
                         </span>
                     </div>
-                    <div className="text-xs text-gray-500 mt-0.5">
+                    <div className="text-xs text-content-subtle mt-0.5">
                         Currently {rothPct}% Roth / {100 - rothPct}% Pre-Tax
                     </div>
                 </div>
@@ -235,8 +235,8 @@ const VERDICT_META: Record<AllocationVerdict, {
     'optimal': {
         title: 'Your 401(k) split is optimal',
         icon: '✓',
-        color: 'text-green-400',
-        bg: 'bg-green-900/20 border-green-700/40',
+        color: 'text-positive',
+        bg: 'bg-positive-tint/20 border-positive-strong/40',
         body: (a) => a.rothFraction >= 0.5
             ? `Roth wins by your numbers, and you're already on Roth. Keep going.`
             : `Pre-Tax wins by your numbers, and you're already on Pre-Tax. Keep going.`
@@ -244,38 +244,38 @@ const VERDICT_META: Record<AllocationVerdict, {
     'should-be-roth': {
         title: 'Switch to Roth contributions',
         icon: '⚠',
-        color: 'text-yellow-300',
-        bg: 'bg-yellow-900/20 border-yellow-700/40',
+        color: 'text-warning-bright',
+        bg: 'bg-warning-tint/20 border-warning-strong/40',
         body: (a) =>
             `You're sending ${Math.round((1 - a.rothFraction) * 100)}% to Pre-Tax, but your future tax rate is higher than today's. Roth wins by ~${Math.round(a.rateGap * 100)}¢ per dollar contributed.`
     },
     'should-be-pretax': {
         title: 'Switch to Pre-Tax contributions',
         icon: '⚠',
-        color: 'text-yellow-300',
-        bg: 'bg-yellow-900/20 border-yellow-700/40',
+        color: 'text-warning-bright',
+        bg: 'bg-warning-tint/20 border-warning-strong/40',
         body: (a) =>
             `You're sending ${Math.round(a.rothFraction * 100)}% to Roth, but your future tax rate is lower than today's. Pre-Tax wins by ~${Math.round(-a.rateGap * 100)}¢ per dollar contributed.`
     },
     'lean-roth': {
         title: 'Mostly Roth — consider going further',
         icon: '↗',
-        color: 'text-blue-300',
-        bg: 'bg-blue-900/20 border-blue-700/40',
+        color: 'text-info-bright',
+        bg: 'bg-info-tint/20 border-info-strong/40',
         body: () => `Roth is the right call for your rate gap. You're partly there — moving the rest of your contributions to Roth captures more of the benefit.`
     },
     'lean-pretax': {
         title: 'Mostly Pre-Tax — consider going further',
         icon: '↗',
-        color: 'text-blue-300',
-        bg: 'bg-blue-900/20 border-blue-700/40',
+        color: 'text-info-bright',
+        bg: 'bg-info-tint/20 border-info-strong/40',
         body: () => `Pre-Tax is the right call for your rate gap. You're partly there — moving the rest of your contributions to Pre-Tax captures more of the benefit.`
     },
     'either-fine': {
         title: 'Either choice is fine',
         icon: 'ℹ',
-        color: 'text-gray-300',
-        bg: 'bg-gray-800/50 border-gray-700',
+        color: 'text-content-default',
+        bg: 'bg-surface-overlay/50 border-border-default',
         body: () => `Your rate today is roughly the same as at withdrawal, so the math is a wash. Pick the bucket that fits your other goals (estate planning, RMD risk, tax-rate uncertainty).`
     }
 };
@@ -296,15 +296,15 @@ const ConversionPlanSummary = ({ plan, autoEnabled, forceExact }: {
     if (plan.hasActiveSchedule) {
         const displayCount = expanded ? plan.schedule.length : Math.min(5, plan.schedule.length);
         return (
-            <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+            <div className="bg-surface-overlay/50 rounded-xl p-4 border border-border-default">
                 <h3 className="text-white font-semibold mb-3">Your Conversion Plan</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3 text-sm">
                     <div>
-                        <div className="text-xs text-gray-400 uppercase tracking-wide">Total Converted</div>
+                        <div className="text-xs text-content-muted uppercase tracking-wide">Total Converted</div>
                         <div className="text-white font-semibold">
                             {formatCompactCurrency(plan.totalConverted, { forceExact })}
                         </div>
-                        <div className="text-xs text-gray-500">
+                        <div className="text-xs text-content-subtle">
                             Across {plan.schedule.length} year{plan.schedule.length === 1 ? '' : 's'}
                             {plan.firstAge !== null && plan.lastAge !== null
                                 ? ` (ages ${plan.firstAge}–${plan.lastAge})`
@@ -312,44 +312,44 @@ const ConversionPlanSummary = ({ plan, autoEnabled, forceExact }: {
                         </div>
                     </div>
                     <div>
-                        <div className="text-xs text-gray-400 uppercase tracking-wide">Total Tax Cost</div>
+                        <div className="text-xs text-content-muted uppercase tracking-wide">Total Tax Cost</div>
                         <div className="text-white font-semibold">
                             {formatCompactCurrency(plan.totalTaxCost, { forceExact })}
                         </div>
-                        <div className="text-xs text-gray-500">
+                        <div className="text-xs text-content-subtle">
                             ~{plan.totalConverted > 0 ? ((plan.totalTaxCost / plan.totalConverted) * 100).toFixed(1) : '0'}% effective (fed + state)
                         </div>
                     </div>
                     <div>
-                        <div className="text-xs text-gray-400 uppercase tracking-wide flex items-center gap-1">
+                        <div className="text-xs text-content-muted uppercase tracking-wide flex items-center gap-1">
                             Strategy
                             <Tooltip text="Auto-conversions fill brackets up to your target ceiling each retirement year. Edit the target in Assumptions → Investments." />
                         </div>
                         <div className="text-white font-semibold">Auto (active)</div>
-                        <div className="text-xs text-gray-500">Adjust ceiling in Assumptions</div>
+                        <div className="text-xs text-content-subtle">Adjust ceiling in Assumptions</div>
                     </div>
                 </div>
 
-                <div className="overflow-x-auto rounded-lg border border-gray-700">
+                <div className="overflow-x-auto rounded-lg border border-border-default">
                     <table className="w-full text-sm">
-                        <thead className="bg-gray-900/50">
+                        <thead className="bg-surface-raised/50">
                             <tr>
-                                <th className="px-3 py-2 text-left text-gray-400">Year</th>
-                                <th className="px-3 py-2 text-left text-gray-400">Age</th>
-                                <th className="px-3 py-2 text-right text-gray-400">Converted</th>
-                                <th className="px-3 py-2 text-right text-gray-400">
+                                <th className="px-3 py-2 text-left text-content-muted">Year</th>
+                                <th className="px-3 py-2 text-left text-content-muted">Age</th>
+                                <th className="px-3 py-2 text-right text-content-muted">Converted</th>
+                                <th className="px-3 py-2 text-right text-content-muted">
                                     <span className="inline-flex items-center gap-1">
                                         Tax Cost
                                         <Tooltip text="Combined federal + state tax increase from this year's conversion. FICA is excluded since conversions aren't FICA-taxed." />
                                     </span>
                                 </th>
-                                <th className="px-3 py-2 text-right text-gray-400">
+                                <th className="px-3 py-2 text-right text-content-muted">
                                     <span className="inline-flex items-center gap-1">
                                         Eff. Rate
                                         <Tooltip text="Tax cost ÷ amount converted (fed + state). Lower than Marginal because each conversion fills brackets from the standard deduction (0%) upward through 10%, 12%, etc., before reaching the top bracket." />
                                     </span>
                                 </th>
-                                <th className="px-3 py-2 text-right text-gray-400">
+                                <th className="px-3 py-2 text-right text-content-muted">
                                     <span className="inline-flex items-center gap-1">
                                         Marginal
                                         <Tooltip text="Combined fed + state bracket rate at the top of this year's conversion — the rate the last converted dollar was taxed at." />
@@ -357,23 +357,23 @@ const ConversionPlanSummary = ({ plan, autoEnabled, forceExact }: {
                                 </th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-800">
+                        <tbody className="divide-y divide-border-subtle">
                             {plan.schedule.slice(0, displayCount).map((entry) => {
                                 const effRate = entry.amount > 0 ? (entry.taxCost / entry.amount) * 100 : 0;
                                 return (
                                     <tr key={entry.year}>
-                                        <td className="px-3 py-2 text-gray-300">{entry.year}</td>
-                                        <td className="px-3 py-2 text-gray-300">{entry.age}</td>
+                                        <td className="px-3 py-2 text-content-default">{entry.year}</td>
+                                        <td className="px-3 py-2 text-content-default">{entry.age}</td>
                                         <td className="px-3 py-2 text-right text-white">
                                             {formatCompactCurrency(entry.amount, { forceExact })}
                                         </td>
-                                        <td className="px-3 py-2 text-right text-red-400">
+                                        <td className="px-3 py-2 text-right text-negative">
                                             −{formatCompactCurrency(entry.taxCost, { forceExact })}
                                         </td>
-                                        <td className="px-3 py-2 text-right text-gray-400">
+                                        <td className="px-3 py-2 text-right text-content-muted">
                                             {effRate.toFixed(1)}%
                                         </td>
-                                        <td className="px-3 py-2 text-right text-gray-400">
+                                        <td className="px-3 py-2 text-right text-content-muted">
                                             {(entry.marginalRate * 100).toFixed(0)}%
                                         </td>
                                     </tr>
@@ -385,7 +385,7 @@ const ConversionPlanSummary = ({ plan, autoEnabled, forceExact }: {
                 {plan.schedule.length > 5 && (
                     <button
                         onClick={() => setExpanded(!expanded)}
-                        className="text-sm text-emerald-400 hover:text-emerald-300 mt-2"
+                        className="text-sm text-positive hover:text-positive-bright mt-2"
                     >
                         {expanded ? 'Show Less' : `Show All ${plan.schedule.length} Years`}
                     </button>
@@ -400,16 +400,16 @@ const ConversionPlanSummary = ({ plan, autoEnabled, forceExact }: {
     }
 
     return (
-        <div className="bg-blue-900/20 rounded-xl p-4 border border-blue-700/50">
-            <h3 className="text-blue-300 font-semibold mb-2">Consider Roth Conversions</h3>
-            <p className="text-sm text-gray-300 mb-2">
+        <div className="bg-info-tint/20 rounded-xl p-4 border border-info-strong/50">
+            <h3 className="text-info-bright font-semibold mb-2">Consider Roth Conversions</h3>
+            <p className="text-sm text-content-default mb-2">
                 You have {plan.numLowTaxYears} upcoming low-tax year{plan.numLowTaxYears === 1 ? '' : 's'} where converting Traditional balances to Roth could save approximately{' '}
                 <span className="text-white font-semibold">
                     {formatCompactCurrency(plan.estimatedLifetimeSavings, { forceExact })}
                 </span>{' '}
                 in lifetime taxes.
             </p>
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-content-muted">
                 ⚠ Conversion tax is paid upfront and irreversible. If markets drop or you die early, that prepayment is wasted (sequence-of-returns risk). Auto-conversions are
                 {autoEnabled ? ' enabled' : ' disabled'} in your Assumptions.
             </p>
@@ -468,7 +468,7 @@ export const TaxOptimizationTab = React.memo(({ simulationData }: TaxOptimizatio
 
     if (simulationData.length === 0 || !analysis) {
         return (
-            <div className="flex items-center justify-center h-64 text-gray-400">
+            <div className="flex items-center justify-center h-64 text-content-muted">
                 Run a simulation to see tax optimization recommendations.
             </div>
         );
@@ -518,20 +518,20 @@ export const TaxOptimizationTab = React.memo(({ simulationData }: TaxOptimizatio
             )}
 
             {/* Contribution Status */}
-            <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+            <div className="bg-surface-overlay/50 rounded-xl p-4 border border-border-default">
                 <h3 className="text-white font-semibold mb-3">Contribution Status</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <div className="flex justify-between text-sm mb-1">
-                            <span className="text-gray-400">401(k) Contributions</span>
+                            <span className="text-content-muted">401(k) Contributions</span>
                             <span className="text-white">
                                 {formatCurrency(analysis.preTaxContributions.current401k)} /
                                 {formatCurrency(analysis.preTaxContributions.limit401k)}
                             </span>
                         </div>
-                        <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                        <div className="h-2 bg-surface-input rounded-full overflow-hidden">
                             <div
-                                className="h-full bg-emerald-500 rounded-full"
+                                className="h-full bg-positive-soft rounded-full"
                                 style={{
                                     width: `${Math.min(100, (analysis.preTaxContributions.current401k / analysis.preTaxContributions.limit401k) * 100)}%`
                                 }}
@@ -541,15 +541,15 @@ export const TaxOptimizationTab = React.memo(({ simulationData }: TaxOptimizatio
                     {hsaEligible ? (
                         <div>
                             <div className="flex justify-between text-sm mb-1">
-                                <span className="text-gray-400">HSA Contributions</span>
+                                <span className="text-content-muted">HSA Contributions</span>
                                 <span className="text-white">
                                     {formatCurrency(analysis.preTaxContributions.currentHSA)} /
                                     {formatCurrency(analysis.preTaxContributions.limitHSA)}
                                 </span>
                             </div>
-                            <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                            <div className="h-2 bg-surface-input rounded-full overflow-hidden">
                                 <div
-                                    className="h-full bg-emerald-500 rounded-full"
+                                    className="h-full bg-positive-soft rounded-full"
                                     style={{
                                         width: `${Math.min(100, (analysis.preTaxContributions.currentHSA / analysis.preTaxContributions.limitHSA) * 100)}%`
                                     }}
@@ -557,17 +557,17 @@ export const TaxOptimizationTab = React.memo(({ simulationData }: TaxOptimizatio
                             </div>
                             <button
                                 onClick={() => dispatch({ type: 'UPDATE_DISPLAY', payload: { hsaEligible: false } })}
-                                className="text-xs text-gray-400 hover:text-white mt-2 px-2 py-1 border border-gray-600 hover:border-gray-400 rounded transition-colors"
+                                className="text-xs text-content-muted hover:text-white mt-2 px-2 py-1 border border-border-strong hover:border-border-muted rounded transition-colors"
                             >
                                 Not eligible for HSA
                             </button>
                         </div>
                     ) : (
                         <div className="flex items-center justify-between">
-                            <span className="text-gray-400 text-sm">HSA: Not eligible</span>
+                            <span className="text-content-muted text-sm">HSA: Not eligible</span>
                             <button
                                 onClick={() => dispatch({ type: 'UPDATE_DISPLAY', payload: { hsaEligible: true } })}
-                                className="text-xs text-emerald-500 hover:text-emerald-300 px-2 py-1 border border-emerald-700 hover:border-emerald-500 rounded transition-colors"
+                                className="text-xs text-positive-soft hover:text-positive-bright px-2 py-1 border border-positive-strong hover:border-positive-soft rounded transition-colors"
                             >
                                 I have an HDHP
                             </button>

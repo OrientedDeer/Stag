@@ -32,7 +32,7 @@ const DeleteIncomeControl: React.FC<DeleteControlProps> = ({ incomeId, incomeNam
             <button
                 onClick={handleDeleteClick}
                 aria-label={incomeName ? `Delete ${incomeName} income` : "Delete income"}
-                className="p-1 rounded-full text-red-400 hover:text-red-300 transition-colors"
+                className="p-1 rounded-full text-negative hover:text-negative-bright transition-colors"
             >
                 <svg
                     xmlns="http://www.w3.org/2000/svg"

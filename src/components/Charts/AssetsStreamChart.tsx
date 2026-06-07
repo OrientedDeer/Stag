@@ -5,6 +5,7 @@ import { AssumptionsContext } from '../Objects/Assumptions/AssumptionsContext';
 import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
 import { ChartTooltipPortal } from './ChartTooltipPortal';
 import { useArrowKeyAdjust } from '../../hooks/useKeyboardShortcuts';
+import { useChartTheme } from './useChartTheme';
 
 const MIN_CHART_WIDTH = 300;
 
@@ -26,6 +27,7 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
   colors
 }) => {
   const { state: assumptions } = useContext(AssumptionsContext);
+  const { theme: themeKey, resolve } = useChartTheme();
   const forceExact = assumptions.display?.useCompactCurrency === false;
   const formatCurrency = (value: number) => formatCompactCurrency(value, { forceExact });
 
@@ -91,15 +93,15 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
   }, [filteredData, containerWidth]);
 
   const theme = {
-    axis: { ticks: { text: { fill: '#9ca3af', fontSize: 11 } } },
-    grid: { line: { stroke: '#374151', strokeWidth: 1, strokeDasharray: '4 4' } },
+    axis: { ticks: { text: { fill: 'var(--c-content-muted)', fontSize: 11 } } },
+    grid: { line: { stroke: 'var(--c-border-default)', strokeWidth: 1, strokeDasharray: '4 4' } },
     tooltip: {
       container: {
-        background: '#111827',
-        color: '#f3f4f6',
+        background: 'var(--c-surface-raised)',
+        color: 'var(--c-content-bright)',
         fontSize: '12px',
         borderRadius: '6px',
-        border: '1px solid #374151',
+        border: '1px solid var(--c-border-default)',
         zIndex: 9999,
       },
     },
@@ -117,15 +119,15 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
     return (
       <ChartTooltipPortal>
       <div
-        className="bg-gray-900/95 backdrop-blur-sm p-3 border border-gray-700 shadow-xl rounded-lg text-sm"
+        className="bg-surface-raised/95 backdrop-blur-sm p-3 border border-border-default shadow-xl rounded-lg text-sm"
         style={{ minWidth: '280px', maxWidth: '400px' }}
       >
-        <div className="mb-2 pb-2 border-b border-gray-700">
+        <div className="mb-2 pb-2 border-b border-border-default">
           <div className="flex justify-between items-baseline gap-8 mb-1">
-            <span className="font-bold text-gray-200">{yearData.year}</span>
+            <span className="font-bold text-content-emphasis">{yearData.year}</span>
           </div>
           <div className="flex justify-between items-baseline gap-8">
-            <span className="text-gray-400 text-xs font-medium">Total</span>
+            <span className="text-content-muted text-xs font-medium">Total</span>
             <span className="font-mono font-bold text-white text-base">{formatCurrency(total)}</span>
           </div>
         </div>
@@ -142,15 +144,15 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
               {displayKeys.map((key) => {
                 const value = Number(yearData[key]) || 0;
                 if (value === 0) return null;
-                const color = colors ? colors[key] : '#cbd5e1';
+                const color = colors ? colors[key] : 'var(--c-content-default)';
                 return (
                   <tr key={key}>
                     <td className="py-1 pr-6 whitespace-nowrap flex items-center gap-2">
                         <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
-                        <span className="text-gray-300 font-medium">{key}</span>
+                        <span className="text-content-default font-medium">{key}</span>
                     </td>
-                    <td className="py-1 text-right font-mono text-gray-100 whitespace-nowrap">{formatCurrency(value)}</td>
-                    <td className="py-1 pl-4 text-right text-xs text-gray-400 whitespace-nowrap">{Math.round((value / total) * 100)}%</td>
+                    <td className="py-1 text-right font-mono text-content-bright whitespace-nowrap">{formatCurrency(value)}</td>
+                    <td className="py-1 pl-4 text-right text-xs text-content-muted whitespace-nowrap">{Math.round((value / total) * 100)}%</td>
                   </tr>
                 );
               })}
@@ -166,7 +168,7 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
   if (!isMeasured) {
     return (
       <div ref={containerRef} className="w-full h-full flex items-center justify-center">
-        <p className="text-gray-400 text-sm">Loading chart...</p>
+        <p className="text-content-muted text-sm">Loading chart...</p>
       </div>
     );
   }
@@ -174,8 +176,8 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
   // Show message when container is too narrow for the chart
   if (isNarrow) {
     return (
-      <div ref={containerRef} className="w-full h-full flex items-center justify-center border-2 border-dashed border-gray-700 rounded-xl">
-        <p className="text-gray-400 text-sm text-center px-4">Expand window to view chart</p>
+      <div ref={containerRef} className="w-full h-full flex items-center justify-center border-2 border-dashed border-border-default rounded-xl">
+        <p className="text-content-muted text-sm text-center px-4">Expand window to view chart</p>
       </div>
     );
   }
@@ -194,26 +196,27 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
             />
         </div>
         <div className="flex gap-2 self-start sm:self-auto">
-          <div className="flex bg-gray-800 p-1 rounded-lg border border-gray-700 h-fit">
-            <button onClick={() => setMode('value')} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${mode === 'value' ? 'bg-gray-600 text-white' : 'text-gray-400'}`}>Value ($)</button>
-            <button onClick={() => setMode('percent')} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${mode === 'percent' ? 'bg-gray-600 text-white' : 'text-gray-400'}`}>Allocation (%)</button>
+          <div className="flex bg-surface-overlay p-1 rounded-lg border border-border-default h-fit">
+            <button onClick={() => setMode('value')} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${mode === 'value' ? 'bg-surface-hover text-white' : 'text-content-muted'}`}>Value ($)</button>
+            <button onClick={() => setMode('percent')} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${mode === 'percent' ? 'bg-surface-hover text-white' : 'text-content-muted'}`}>Allocation (%)</button>
           </div>
-          <div className="flex bg-gray-800 p-1 rounded-lg border border-gray-700 h-fit">
-            <button onClick={() => setTooltipSort('value')} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${tooltipSort === 'value' ? 'bg-gray-600 text-white' : 'text-gray-400'}`} title="Sort tooltip by value (highest first)">By Value</button>
-            <button onClick={() => setTooltipSort('stack')} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${tooltipSort === 'stack' ? 'bg-gray-600 text-white' : 'text-gray-400'}`} title="Sort tooltip by chart stacking order">By Chart</button>
+          <div className="flex bg-surface-overlay p-1 rounded-lg border border-border-default h-fit">
+            <button onClick={() => setTooltipSort('value')} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${tooltipSort === 'value' ? 'bg-surface-hover text-white' : 'text-content-muted'}`} title="Sort tooltip by value (highest first)">By Value</button>
+            <button onClick={() => setTooltipSort('stack')} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${tooltipSort === 'stack' ? 'bg-surface-hover text-white' : 'text-content-muted'}`} title="Sort tooltip by chart stacking order">By Chart</button>
           </div>
         </div>
       </div>
 
       <div className="flex-1 min-h-0 relative">
         <ResponsiveStream
+          key={themeKey}
           data={filteredData}
           keys={keys}
           theme={theme}
           margin={isMobile ? { top: 10, right: 10, bottom: 40, left: 60 } : { top: 20, right: 30, bottom: 50, left: 90 }}
           valueFormat={formatCurrency}
           offsetType={mode === 'value' ? 'none' : 'expand'}
-          colors={({ id }) => (colors && colors[String(id)]) ? colors[String(id)] : '#cbd5e1'}
+          colors={({ id }) => resolve((colors && colors[String(id)]) ? colors[String(id)] : 'var(--c-content-default)')}
           fillOpacity={0.85}
           borderWidth={1}
           borderColor={{ from: 'color', modifiers: [['darker', 0.2]] }}

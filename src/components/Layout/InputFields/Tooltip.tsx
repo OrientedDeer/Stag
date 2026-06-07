@@ -52,7 +52,7 @@ export const Tooltip: React.FC<TooltipProps> = ({ text, children }) => {
                 left: coords.left,
                 zIndex: 9999,
             }}
-            className="w-56 px-3 py-2 text-xs text-gray-200 bg-gray-800 border border-gray-700 rounded-lg shadow-xl"
+            className="w-56 px-3 py-2 text-xs text-content-emphasis bg-surface-overlay border border-border-default rounded-lg shadow-xl"
         >
             {text}
         </div>
@@ -63,7 +63,7 @@ export const Tooltip: React.FC<TooltipProps> = ({ text, children }) => {
             <button
                 ref={triggerRef}
                 type="button"
-                className="w-4 h-4 rounded-full bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-gray-200 text-xs flex items-center justify-center transition-colors cursor-help"
+                className="w-4 h-4 rounded-full bg-surface-input hover:bg-surface-hover text-content-muted hover:text-content-emphasis text-xs flex items-center justify-center transition-colors cursor-help"
                 onMouseEnter={() => setIsVisible(true)}
                 onMouseLeave={() => setIsVisible(false)}
                 onFocus={() => setIsVisible(true)}

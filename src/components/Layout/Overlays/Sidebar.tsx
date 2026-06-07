@@ -5,6 +5,7 @@ import { CloudBackupContext } from "../../Objects/CloudBackup/CloudBackupContext
 import CloudBackupPanel from "../../Objects/CloudBackup/CloudBackupPanel";
 import BackupReminder from "../../Objects/CloudBackup/BackupReminder";
 import SidebarCollapseLink from './SidebarCollapseLink'; // Make sure the path is correct
+import ThemeSwitcher from "../../Objects/Theme/ThemeSwitcher";
 type SidebarProps = {
   isOpen: boolean;
   onClose?: () => void;
@@ -18,10 +19,10 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 	const [dataPanelOpen, setDataPanelOpen] = useState(false);
 
 	const link = `flex items-center mb-1 p-2 rounded text-White ${
-		isOpen ? "" : "hover:bg-gray-600"
+		isOpen ? "" : "hover:bg-surface-hover"
 	}`;
 
-	const active = `${isOpen ? "w-0 opacity-0" : "w-auto opacity-100"} bg-gray-600 font-semibold text-green-300`;
+	const active = `${isOpen ? "w-0 opacity-0" : "w-auto opacity-100"} bg-surface-hover font-semibold text-positive-bright`;
 
 	const currentSubLinks = [
         { path: "/current/accounts", label: "Accounts" },
@@ -78,7 +79,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
 			{/* Sidebar */}
 			<div className={`
-				h-full text-white bg-gray-900 transition-all duration-300 flex flex-col z-50
+				h-full text-white bg-surface-raised transition-all duration-300 flex flex-col z-50
 				${isOpen ? "w-0" : "w-48"}
 				md:relative md:z-auto
 				fixed top-0 left-0
@@ -155,12 +156,13 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 				</nav>
 
 				{/* Data Management Footer */}
-				<div className={`border-t border-gray-700 p-2 overflow-hidden transition-all duration-300 ${isOpen ? "w-0 opacity-0" : "w-auto opacity-100"}`}>
+				<div className={`border-t border-border-default p-2 overflow-hidden transition-all duration-300 ${isOpen ? "w-0 opacity-0" : "w-auto opacity-100"}`}>
 					<BackupReminder collapsed={isOpen} />
+						<ThemeSwitcher collapsed={isOpen} />
 					<button
 						onClick={() => setDataPanelOpen(!dataPanelOpen)}
 						className={`flex items-center gap-2 w-full p-2 rounded text-sm transition-colors ${
-							isOpen ? "pointer-events-none" : "hover:bg-gray-700"
+							isOpen ? "pointer-events-none" : "hover:bg-surface-input"
 						}`}
 						title="Data Management"
 					>
@@ -169,10 +171,10 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
 							</svg>
 							{isAuthenticated && lastBackupTimestamp && (
-								<span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-green-400 rounded-full" />
+								<span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-positive rounded-full" />
 							)}
 						</div>
-						<span className={`overflow-hidden whitespace-nowrap transition-all duration-300 text-gray-400 ${isOpen ? "w-0 opacity-0" : "w-auto opacity-100"}`}>
+						<span className={`overflow-hidden whitespace-nowrap transition-all duration-300 text-content-muted ${isOpen ? "w-0 opacity-0" : "w-auto opacity-100"}`}>
 							Data
 						</span>
 					</button>

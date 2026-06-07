@@ -132,17 +132,17 @@ export const HistoricalBacktestPanel = React.memo(({ simulationData }: Historica
 
   // Get success rate color
   const getSuccessRateColor = (rate: number) => {
-    if (rate >= 95) return 'bg-green-500';
-    if (rate >= 80) return 'bg-yellow-500';
-    if (rate >= 60) return 'bg-orange-500';
-    return 'bg-red-500';
+    if (rate >= 95) return 'bg-positive-soft';
+    if (rate >= 80) return 'bg-warning-soft';
+    if (rate >= 60) return 'bg-cat-orange-soft';
+    return 'bg-negative-soft';
   };
 
   const getSuccessRateTextColor = (rate: number) => {
-    if (rate >= 95) return 'text-green-400';
-    if (rate >= 80) return 'text-yellow-400';
-    if (rate >= 60) return 'text-orange-400';
-    return 'text-red-400';
+    if (rate >= 95) return 'text-positive';
+    if (rate >= 80) return 'text-warning';
+    if (rate >= 60) return 'text-cat-orange';
+    return 'text-negative';
   };
 
   // Calculate withdrawal rate
@@ -151,15 +151,15 @@ export const HistoricalBacktestPanel = React.memo(({ simulationData }: Historica
     : '0.0';
 
   return (
-    <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+    <div className="bg-surface-overlay/50 rounded-xl p-4 border border-border-default">
       <h3 className="text-white font-semibold mb-2">Historical Backtesting</h3>
-      <p className="text-gray-400 text-sm mb-2">
+      <p className="text-content-muted text-sm mb-2">
         Test your plan against every {config.retirementYears}-year period since {dataRange.firstYear}.
       </p>
-      <p className="text-gray-400 text-sm mb-4">
-        Using <span className="text-emerald-400 font-medium">{config.withdrawalStrategy}</span> withdrawal strategy
+      <p className="text-content-muted text-sm mb-4">
+        Using <span className="text-positive font-medium">{config.withdrawalStrategy}</span> withdrawal strategy
         {config.withdrawalStrategy === 'Guyton Klinger' && (
-          <span className="text-gray-400"> (±{gkAdjustmentPercent}% adjustments at ±{Math.round((gkUpperGuardrail - 1) * 100)}% guardrails)</span>
+          <span className="text-content-muted"> (±{gkAdjustmentPercent}% adjustments at ±{Math.round((gkUpperGuardrail - 1) * 100)}% guardrails)</span>
         )}
       </p>
 
@@ -192,7 +192,7 @@ export const HistoricalBacktestPanel = React.memo(({ simulationData }: Historica
             onChange={(val) => updateConfig('annualWithdrawal', val)}
             tooltip="Amount withdrawn each year for living expenses"
           />
-          <span className="text-gray-400 text-xs">{withdrawalRate}% withdrawal rate</span>
+          <span className="text-content-muted text-xs">{withdrawalRate}% withdrawal rate</span>
         </div>
 
         <div>
@@ -202,7 +202,7 @@ export const HistoricalBacktestPanel = React.memo(({ simulationData }: Historica
             onChange={(val) => updateConfig('stockAllocation', val / 100)}
             tooltip="Percentage invested in stocks vs bonds"
           />
-          <span className="text-gray-400 text-xs">
+          <span className="text-content-muted text-xs">
             {Math.round((1 - config.stockAllocation) * 100)}% bonds
           </span>
         </div>
@@ -214,8 +214,8 @@ export const HistoricalBacktestPanel = React.memo(({ simulationData }: Historica
         disabled={isRunning}
         className={`px-6 py-2 rounded-lg font-medium transition-colors mb-4
           ${isRunning
-            ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-            : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+            ? 'bg-surface-hover text-content-muted cursor-not-allowed'
+            : 'bg-positive-solid hover:bg-positive-soft text-white'
           }`}
       >
         {isRunning ? 'Running...' : 'Run Historical Backtest'}
@@ -225,56 +225,56 @@ export const HistoricalBacktestPanel = React.memo(({ simulationData }: Historica
       {summary && (
         <div className="mt-4 space-y-4">
           {/* Success Rate Bar */}
-          <div className="bg-gray-900/50 rounded-lg p-4">
+          <div className="bg-surface-raised/50 rounded-lg p-4">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-gray-300 font-medium">Historical Success Rate</span>
+              <span className="text-content-default font-medium">Historical Success Rate</span>
               <span className={`text-2xl font-bold ${getSuccessRateTextColor(summary.successRate)}`}>
                 {summary.successRate}%
               </span>
             </div>
-            <div className="w-full h-4 bg-gray-700 rounded-full overflow-hidden">
+            <div className="w-full h-4 bg-surface-input rounded-full overflow-hidden">
               <div
                 className={`h-full ${getSuccessRateColor(summary.successRate)} transition-all duration-500`}
                 style={{ width: `${summary.successRate}%` }}
               />
             </div>
-            <p className="text-gray-400 text-xs mt-2">
+            <p className="text-content-muted text-xs mt-2">
               {summary.successCount} of {summary.totalPeriods} historical periods succeeded
             </p>
           </div>
 
           {/* Summary Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="bg-gray-900/50 rounded-lg p-3">
-              <div className="text-gray-400 text-xs uppercase">Best Case</div>
-              <div className="text-green-400 font-bold truncate">
+            <div className="bg-surface-raised/50 rounded-lg p-3">
+              <div className="text-content-muted text-xs uppercase">Best Case</div>
+              <div className="text-positive font-bold truncate">
                 {formatCompactCurrency(summary.bestCase.finalBalance, { forceExact })}
               </div>
-              <div className="text-gray-400 text-xs">Started {summary.bestCase.startYear}</div>
+              <div className="text-content-muted text-xs">Started {summary.bestCase.startYear}</div>
             </div>
-            <div className="bg-gray-900/50 rounded-lg p-3">
-              <div className="text-gray-400 text-xs uppercase">Median</div>
-              <div className="text-gray-300 font-bold truncate">
+            <div className="bg-surface-raised/50 rounded-lg p-3">
+              <div className="text-content-muted text-xs uppercase">Median</div>
+              <div className="text-content-default font-bold truncate">
                 {formatCompactCurrency(summary.medianFinalBalance, { forceExact })}
               </div>
             </div>
-            <div className="bg-gray-900/50 rounded-lg p-3">
-              <div className="text-gray-400 text-xs uppercase">Worst Success</div>
-              <div className="text-yellow-400 font-bold truncate">
+            <div className="bg-surface-raised/50 rounded-lg p-3">
+              <div className="text-content-muted text-xs uppercase">Worst Success</div>
+              <div className="text-warning font-bold truncate">
                 {summary.worstSuccess
                   ? formatCompactCurrency(summary.worstSuccess.finalBalance, { forceExact })
                   : 'N/A'}
               </div>
               {summary.worstSuccess && (
-                <div className="text-gray-400 text-xs">Started {summary.worstSuccess.startYear}</div>
+                <div className="text-content-muted text-xs">Started {summary.worstSuccess.startYear}</div>
               )}
             </div>
-            <div className="bg-gray-900/50 rounded-lg p-3">
-              <div className="text-gray-400 text-xs uppercase">Worst Case</div>
-              <div className="text-red-400 font-bold truncate">
+            <div className="bg-surface-raised/50 rounded-lg p-3">
+              <div className="text-content-muted text-xs uppercase">Worst Case</div>
+              <div className="text-negative font-bold truncate">
                 {formatCompactCurrency(summary.worstCase.finalBalance, { forceExact })}
               </div>
-              <div className="text-gray-400 text-xs">
+              <div className="text-content-muted text-xs">
                 {summary.worstCase.succeeded ? 'Survived' : `Depleted ${summary.worstCase.yearOfDepletion}`}
               </div>
             </div>
@@ -282,22 +282,22 @@ export const HistoricalBacktestPanel = React.memo(({ simulationData }: Historica
 
           {/* Notable Periods */}
           {summary.notablePeriods.length > 0 && (
-            <div className="bg-gray-900/50 rounded-lg p-4">
-              <h4 className="text-gray-300 font-medium mb-3">Notable Historical Periods</h4>
+            <div className="bg-surface-raised/50 rounded-lg p-4">
+              <h4 className="text-content-default font-medium mb-3">Notable Historical Periods</h4>
               <div className="space-y-2">
                 {summary.notablePeriods.map(({ result, description }) => (
                   <div
                     key={result.startYear}
-                    className="flex items-center justify-between text-sm py-1 border-b border-gray-800 last:border-0"
+                    className="flex items-center justify-between text-sm py-1 border-b border-border-subtle last:border-0"
                   >
                     <div className="flex items-center gap-2">
-                      <span className={result.succeeded ? 'text-green-400' : 'text-red-400'}>
+                      <span className={result.succeeded ? 'text-positive' : 'text-negative'}>
                         {result.succeeded ? '✓' : '✗'}
                       </span>
-                      <span className="text-gray-400">{result.startYear}:</span>
-                      <span className="text-gray-300">{description}</span>
+                      <span className="text-content-muted">{result.startYear}:</span>
+                      <span className="text-content-default">{description}</span>
                     </div>
-                    <span className={`font-medium ${result.succeeded ? 'text-gray-300' : 'text-red-400'}`}>
+                    <span className={`font-medium ${result.succeeded ? 'text-content-default' : 'text-negative'}`}>
                       {result.succeeded
                         ? formatCompactCurrency(result.finalBalance, { forceExact })
                         : `Depleted ${result.yearOfDepletion}`}
@@ -311,21 +311,21 @@ export const HistoricalBacktestPanel = React.memo(({ simulationData }: Historica
           {/* All Periods Expansion */}
           <button
             onClick={() => setShowAllPeriods(!showAllPeriods)}
-            className="text-gray-400 hover:text-gray-200 text-sm transition-colors"
+            className="text-content-muted hover:text-content-emphasis text-sm transition-colors"
           >
             {showAllPeriods ? '▼ Hide All Periods' : '▶ Show All Periods'}
           </button>
 
           {showAllPeriods && (
-            <div className="bg-gray-900/50 rounded-lg p-4 max-h-96 overflow-y-auto">
+            <div className="bg-surface-raised/50 rounded-lg p-4 max-h-96 overflow-y-auto">
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
                 {summary.results.map(result => (
                   <div
                     key={result.startYear}
                     className={`text-xs p-2 rounded ${
                       result.succeeded
-                        ? 'bg-gray-800 text-gray-300'
-                        : 'bg-red-900/30 text-red-400'
+                        ? 'bg-surface-overlay text-content-default'
+                        : 'bg-negative-tint/30 text-negative'
                     }`}
                   >
                     <div className="font-medium">{result.startYear}</div>
@@ -341,7 +341,7 @@ export const HistoricalBacktestPanel = React.memo(({ simulationData }: Historica
           )}
 
           {/* Interpretation */}
-          <div className="text-gray-400 text-xs">
+          <div className="text-content-muted text-xs">
             <p>
               Historical backtesting shows how your plan would have performed if you retired in any year
               from {dataRange.firstYear} to {dataRange.lastYear - config.retirementYears}. The success rate

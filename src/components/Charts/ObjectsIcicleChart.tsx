@@ -1,10 +1,10 @@
 import { memo, useCallback, useRef, useState, useEffect } from 'react';
 import { ResponsiveIcicle } from "@nivo/icicle";
+import { useChartTheme } from './useChartTheme';
 
 const MIN_CHART_WIDTH = 300;
 const CHART_MARGIN = { top: 20, right: 20, bottom: 20, left: 20 };
 const CHART_THEME = { tooltip: { container: { zIndex: 9999 } } };
-const colorAccessor = (node: any) => node.data.color;
 
 // --- Types ---
 interface ObjectsIcicleChartProps {
@@ -44,7 +44,9 @@ export const ObjectsIcicleChart = memo(({
 }: ObjectsIcicleChartProps) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [containerWidth, setContainerWidth] = useState<number | null>(null);
+    const { theme: themeKey, resolve } = useChartTheme();
 
+    const colorAccessor = useCallback((node: any) => resolve(node.data.color), [resolve]);
     const label = useCallback((node: any) => truncateLabel(node.id), []);
 
     const tooltip = useCallback((node: any) => {
@@ -64,14 +66,14 @@ export const ObjectsIcicleChart = memo(({
         const isRoot = id === data.id;
 
         return (
-            <div className="bg-gray-900 p-2 rounded border border-gray-700 shadow-xl z-50 text-xs min-w-max">
-                <div className="font-bold text-gray-200 mb-1">{id}</div>
+            <div className="bg-surface-raised p-2 rounded border border-border-default shadow-xl z-50 text-xs min-w-max">
+                <div className="font-bold text-content-emphasis mb-1">{id}</div>
                 <div className="flex items-baseline gap-2">
-                    <span className="text-green-400 font-mono">
+                    <span className="text-positive font-mono">
                         ${displayValue.toLocaleString(undefined, { maximumFractionDigits: 0, minimumFractionDigits: 0 })}
                     </span>
                     {!isRoot && (
-                        <span className="text-gray-400">
+                        <span className="text-content-muted">
                             ({percentage.toFixed(1)}%)
                         </span>
                     )}
@@ -102,8 +104,8 @@ export const ObjectsIcicleChart = memo(({
     // Show loading state until measured
     if (!isMeasured) {
         return (
-            <div ref={containerRef} className="w-full bg-gray-900 flex items-center justify-center" style={{ height: `${height}px` }}>
-                <p className="text-gray-400 text-sm">Loading chart...</p>
+            <div ref={containerRef} className="w-full bg-surface-raised flex items-center justify-center" style={{ height: `${height}px` }}>
+                <p className="text-content-muted text-sm">Loading chart...</p>
             </div>
         );
     }
@@ -111,15 +113,16 @@ export const ObjectsIcicleChart = memo(({
     // Show message when container is too narrow for the chart
     if (isNarrow) {
         return (
-            <div ref={containerRef} className="w-full bg-gray-900 flex items-center justify-center border-2 border-dashed border-gray-700 rounded-xl" style={{ height: `${height}px` }}>
-                <p className="text-gray-400 text-sm text-center px-4">Expand window to view chart</p>
+            <div ref={containerRef} className="w-full bg-surface-raised flex items-center justify-center border-2 border-dashed border-border-default rounded-xl" style={{ height: `${height}px` }}>
+                <p className="text-content-muted text-sm text-center px-4">Expand window to view chart</p>
             </div>
         );
     }
 
     return (
-        <div ref={containerRef} className="w-full bg-gray-900" style={{ height: `${height}px` }}>
+        <div ref={containerRef} className="w-full bg-surface-raised" style={{ height: `${height}px` }}>
             <ResponsiveIcicle
+                key={themeKey}
                 data={data}
                 colors={colorAccessor}
                 inheritColorFromParent={false}

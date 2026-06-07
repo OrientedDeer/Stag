@@ -3,6 +3,7 @@ import { ResponsiveSunburst } from '@nivo/sunburst';
 import { AnyExpense, RentExpense, MortgageExpense, FoodExpense, TransportExpense, HealthcareExpense, VacationExpense, LoanExpense, DependentExpense } from '../Objects/Expense/models';
 import { AnyIncome, WorkIncome } from '../Objects/Income/models';
 import { AnyAccount } from '../Objects/Accounts/models';
+import { useChartTheme } from './useChartTheme';
 import { PriorityBucket } from '../Objects/Assumptions/AssumptionsContext';
 import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
 
@@ -36,17 +37,17 @@ const getExpenseCategory = (exp: AnyExpense): string => {
 };
 
 const categoryColors: Record<string, string> = {
-  'Housing': '#6366f1',
-  'Food': '#22c55e',
-  'Transportation': '#f59e0b',
-  'Healthcare': '#ef4444',
-  'Entertainment': '#a855f7',
-  'Utilities': '#3b82f6',
-  'Insurance': '#14b8a6',
-  'Debt': '#f43f5e',
-  'Dependents': '#8b5cf6',
-  'Other': '#6b7280',
-  'Savings': '#10b981',
+  'Housing': 'var(--color-chart-series-5)',
+  'Food': 'var(--c-positive-soft)',
+  'Transportation': 'var(--c-warning-soft)',
+  'Healthcare': 'var(--c-negative-soft)',
+  'Entertainment': 'var(--color-chart-series-8)',
+  'Utilities': 'var(--c-accent-soft)',
+  'Insurance': 'var(--c-cat-cyan-soft)',
+  'Debt': 'var(--c-cat-fuchsia)',
+  'Dependents': 'var(--color-chart-series-3)',
+  'Other': 'var(--c-content-subtle)',
+  'Savings': 'var(--color-chart-money)',
 };
 
 export const SpendingSunburst = ({
@@ -66,6 +67,7 @@ export const SpendingSunburst = ({
   importKey,
   forceExact,
 }: SpendingSunburstProps) => {
+  const { theme: themeKey, resolve } = useChartTheme();
   const [showSavings, setShowSavings] = useState(() => localStorage.getItem('stag_show_savings') === 'true');
   const [showTaxes, setShowTaxes] = useState(() => localStorage.getItem('stag_show_taxes') === 'true');
   const [spendingDrilldown, setSpendingDrilldown] = useState<string | null>(null);
@@ -83,7 +85,7 @@ export const SpendingSunburst = ({
     const children = Array.from(categoryMap.entries())
       .map(([category, items]) => ({
         name: category,
-        color: categoryColors[category] || '#6b7280',
+        color: categoryColors[category] || 'var(--c-content-subtle)',
         children: items,
       }))
       .filter(c => c.children.length > 0)
@@ -101,7 +103,7 @@ export const SpendingSunburst = ({
       if (taxItems.length > 0) {
         children.push({
           name: 'Taxes',
-          color: '#ef4444',
+          color: 'var(--c-negative-soft)',
           children: taxItems,
         });
       }
@@ -173,7 +175,7 @@ export const SpendingSunburst = ({
         if (savingsItems.length > 0) {
           children.push({
             name: 'Savings',
-            color: '#10b981',
+            color: 'var(--color-chart-money)',
             children: savingsItems,
           });
         }
@@ -206,13 +208,13 @@ export const SpendingSunburst = ({
   );
 
   return (
-    <div className="bg-[#18181b] rounded-xl border border-gray-800 p-4">
+    <div className="bg-[var(--c-surface-raised)] rounded-xl border border-border-subtle p-4">
       <div className="flex items-center justify-between mb-2">
-        <h2 className="text-sm font-bold text-gray-200">
+        <h2 className="text-sm font-bold text-content-emphasis">
           {spendingDrilldown ? (
             <>
-              <button onClick={() => setSpendingDrilldown(null)} className="text-gray-500 hover:text-gray-300 transition-colors">Spending</button>
-              <span className="text-gray-600 mx-1">/</span>
+              <button onClick={() => setSpendingDrilldown(null)} className="text-content-subtle hover:text-content-default transition-colors">Spending</button>
+              <span className="text-content-faint mx-1">/</span>
               {spendingDrilldown}
             </>
           ) : 'Spending Breakdown'}
@@ -223,8 +225,8 @@ export const SpendingSunburst = ({
               onClick={() => setShowTaxes(s => { localStorage.setItem('stag_show_taxes', String(!s)); return !s; })}
               className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
                 showTaxes
-                  ? 'border-red-500/50 bg-red-500/10 text-red-400'
-                  : 'border-gray-700 bg-transparent text-gray-500 hover:text-gray-400'
+                  ? 'border-negative-soft/50 bg-negative-soft/10 text-negative'
+                  : 'border-border-default bg-transparent text-content-subtle hover:text-content-muted'
               }`}
             >
               {showTaxes ? 'Taxes On' : '+ Taxes'}
@@ -233,8 +235,8 @@ export const SpendingSunburst = ({
               onClick={() => setShowSavings(s => { localStorage.setItem('stag_show_savings', String(!s)); return !s; })}
               className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
                 showSavings
-                  ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-400'
-                  : 'border-gray-700 bg-transparent text-gray-500 hover:text-gray-400'
+                  ? 'border-positive-soft/50 bg-positive-soft/10 text-positive'
+                  : 'border-border-default bg-transparent text-content-subtle hover:text-content-muted'
               }`}
             >
               {showSavings ? 'Savings On' : '+ Savings'}
@@ -244,12 +246,12 @@ export const SpendingSunburst = ({
       </div>
       <div className="h-64 relative">
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-          <span className="text-sm font-bold text-gray-200">
+          <span className="text-sm font-bold text-content-emphasis">
             {formatCompactCurrency(activeTotal, { forceExact })}
           </span>
         </div>
         <ResponsiveSunburst
-          key={`spending-sunburst-${importKey}`}
+          key={`spending-sunburst-${importKey}-${themeKey}`}
           data={activeSpendingData}
           margin={{ top: 4, right: 4, bottom: 4, left: 4 }}
           id="name"
@@ -263,11 +265,7 @@ export const SpendingSunburst = ({
               current = current.parent;
             }
             const catColor = (current.data as any)?.color;
-            if (catColor) {
-              if (node.depth > 1) return catColor + 'cc';
-              return catColor;
-            }
-            return '#6b7280';
+            return resolve(catColor || 'var(--c-content-subtle)');
           }}
           childColor={{ from: 'color', modifiers: [['brighter', 0.3]] }}
           enableArcLabels={true}
@@ -280,9 +278,9 @@ export const SpendingSunburst = ({
             }
           }}
           tooltip={({ id, value }) => (
-            <div className="bg-gray-900 px-3 py-2 rounded-lg border border-gray-700 shadow-lg">
+            <div className="bg-surface-raised px-3 py-2 rounded-lg border border-border-default shadow-lg">
               <p className="text-sm font-semibold text-white">{String(id)}</p>
-              <p className="text-sm text-gray-300">{formatCompactCurrency(value, { forceExact })}/yr</p>
+              <p className="text-sm text-content-default">{formatCompactCurrency(value, { forceExact })}/yr</p>
             </div>
           )}
           theme={{

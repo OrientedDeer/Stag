@@ -30,20 +30,20 @@ export const createBuiltinMilestones = (
         id: BUILTIN_MILESTONE_IDS.BIRTH,
         name: 'Birth',
         conditions: [{ type: 'YEAR', operator: '=', value: birthYear }],
-        color: '#3b82f6', // blue-500
+        color: 'var(--c-accent-soft)', // blue-500
     },
     {
         id: BUILTIN_MILESTONE_IDS.RETIRE,
         name: 'Retire',
         conditions: [{ type: 'AGE', operator: '>=', value: retirementAge }],
-        color: '#22c55e', // green-500
+        color: 'var(--c-positive-soft)', // green-500
     },
     {
         id: BUILTIN_MILESTONE_IDS.END_OF_PLAN,
         name: 'End of Plan',
         // Trigger AFTER life expectancy year so expenses continue through it
         conditions: [{ type: 'AGE', operator: '>=', value: lifeExpectancy}],
-        color: '#6b7280', // gray-500
+        color: 'var(--c-content-subtle)', // gray-500
     },
 ];
 
@@ -300,7 +300,7 @@ function migrateAssumptions(saved: unknown, defaults: AssumptionsState): Assumpt
       id: BUILTIN_MILESTONE_IDS.BIRTH,
       name: 'Birth',
       conditions: [{ type: 'YEAR', operator: '=', value: birthYearForMilestones }],
-      color: '#3b82f6',
+      color: 'var(--c-accent-soft)',
     });
   }
 
@@ -312,7 +312,7 @@ function migrateAssumptions(saved: unknown, defaults: AssumptionsState): Assumpt
       id: BUILTIN_MILESTONE_IDS.RETIRE,
       name: 'Retire',
       conditions: [{ type: 'AGE', operator: '>=', value: retirementAgeForMilestones }],
-      color: '#22c55e',
+      color: 'var(--c-positive-soft)',
     });
   }
 
@@ -325,7 +325,7 @@ function migrateAssumptions(saved: unknown, defaults: AssumptionsState): Assumpt
       name: 'End of Plan',
       // Trigger AFTER life expectancy year so expenses continue through it
       conditions: [{ type: 'AGE', operator: '>=', value: lifeExpectancyForMilestones }],
-      color: '#6b7280',
+      color: 'var(--c-content-subtle)',
     });
   }
 

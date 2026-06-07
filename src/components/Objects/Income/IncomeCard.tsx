@@ -175,7 +175,7 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
             headerActions={headerActions}
             ariaLabelType="income"
         >
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 bg-[#18181b] p-6 rounded-xl border border-gray-800">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 bg-[var(--c-surface-raised)] p-6 rounded-xl border border-border-subtle">
                 {isFutureSS ? (
                     <FutureSocialSecurityAmountField income={income} />
                 ) : hideAmountInput ? null : (
@@ -234,8 +234,8 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
 
                 {income instanceof CurrentSocialSecurityIncome && (
                     <div className="col-span-3">
-                        <div className="bg-gray-800/50 border border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-400">
-                            <div className="font-semibold text-gray-300 mb-1">
+                        <div className="bg-surface-overlay/50 border border-border-default rounded-lg px-3 py-2 text-xs text-content-muted">
+                            <div className="font-semibold text-content-default mb-1">
                                 Current Social Security Benefits
                             </div>
                             <div>
@@ -313,7 +313,7 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
                             tooltip="When this income ends - fixed date or milestone trigger"
                         />
                         {dateError && (
-                            <div className="col-span-full text-red-400 text-xs">{dateError}</div>
+                            <div className="col-span-full text-negative text-xs">{dateError}</div>
                         )}
                     </>
                 )}

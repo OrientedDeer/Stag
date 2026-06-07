@@ -18,6 +18,7 @@ import { AlertBanner } from '../../components/Layout/AlertBanner';
 
 // --- Charts ---
 import { AssetsStreamChart } from '../../components/Charts/AssetsStreamChart';
+import { colorMapForKeys } from '../../components/Charts/chartColors';
 
 // --- Tabs ---
 import { OverviewTab } from './tabs/OverviewTab';
@@ -28,6 +29,7 @@ import { MonteCarloTab } from './tabs/MonteCarloTab';
 import { TaxOptimizationTab } from './tabs/TaxOptimizationTab';
 import { ScenarioComparisonTab } from './tabs/ScenarioComparisonTab';
 import { FinancialRatiosTab } from './tabs/FinancialRatiosTab';
+import { Panel } from "../../components/Layout/Primitives";
 
 // All visible tabs
 const all_tabs = ["Overview", "Cashflow", "Assets", "Debt", "Monte Carlo", "Tax", "Scenarios", "Ratios", "Data"];
@@ -55,17 +57,7 @@ const AssetsTab = React.memo(({ simulationData }: { simulationData: SimulationYe
         return { data: mappedData, keys: Array.from(allKeys) };
     }, [simulationData]);
 
-    const colors = useMemo(() => {
-        const palette = [
-            '#60a5fa', '#34d399', '#f472b6', '#fbbf24', '#a78bfa', 
-            '#2dd4bf', '#fb7185', '#c084fc', '#a3e635', '#22d3ee'
-        ];
-        const map: Record<string, string> = {};
-        keys.forEach((key, i) => {
-            map[key] = palette[i % palette.length];
-        });
-        return map;
-    }, [keys]);
+    const colors = useMemo(() => colorMapForKeys(keys), [keys]);
 
     return (
         <div className="h-125 w-full">
@@ -85,10 +77,10 @@ interface MilestoneCardProps {
 
 const MilestoneCard = React.memo(({ title, age, year, status, yearsUntil }: MilestoneCardProps) => {
     const statusColors = {
-        now: 'border-green-500 bg-green-900/20',
-        reached: 'border-green-500 bg-green-900/20',
-        projected: 'border-blue-500 bg-blue-900/20',
-        future: 'border-gray-700 bg-gray-800/50',
+        now: 'border-positive-soft bg-positive-tint/20',
+        reached: 'border-positive-soft bg-positive-tint/20',
+        projected: 'border-accent-soft bg-info-tint/20',
+        future: 'border-border-default bg-surface-overlay/50',
     };
 
     const statusLabels = {
@@ -100,10 +92,10 @@ const MilestoneCard = React.memo(({ title, age, year, status, yearsUntil }: Mile
 
     return (
         <div className={`rounded-lg border p-2 text-center ${statusColors[status]}`}>
-            <div className="text-[10px] text-gray-400 uppercase tracking-wide">{title}</div>
+            <div className="text-[10px] text-content-muted uppercase tracking-wide">{title}</div>
             <div className="text-lg font-bold text-white leading-tight">Age {formatAge(age)}</div>
-            <div className="text-xs text-gray-400">{year}</div>
-            <div className={`text-[10px] font-semibold ${status === 'now' || status === 'reached' ? 'text-green-400' : status === 'projected' ? 'text-blue-400' : 'text-gray-400'}`}>
+            <div className="text-xs text-content-muted">{year}</div>
+            <div className={`text-[10px] font-semibold ${status === 'now' || status === 'reached' ? 'text-positive' : status === 'projected' ? 'text-info' : 'text-content-muted'}`}>
                 {statusLabels[status]}
             </div>
         </div>
@@ -125,16 +117,16 @@ const ProgressTimeline = React.memo(({ milestones }: ProgressTimelineProps) => {
     const retirementPos = ((retirementAge - startAge) / range) * 100;
 
     return (
-        <div className="relative h-5 bg-gray-800 rounded-full overflow-hidden">
+        <div className="relative h-5 bg-surface-overlay rounded-full overflow-hidden">
             {/* Progress fill */}
             <div
-                className="absolute h-full bg-linear-to-r from-green-600 to-green-500 rounded-l-full"
+                className="absolute h-full bg-linear-to-r from-positive-solid to-positive-soft rounded-l-full"
                 style={{ width: `${currentPos}%` }}
             />
 
             {/* Retirement marker */}
             <div
-                className="absolute top-0 h-full w-1 bg-amber-400"
+                className="absolute top-0 h-full w-1 bg-warning"
                 style={{ left: `${retirementPos}%` }}
                 title={`Retirement: Age ${retirementAge}`}
             />
@@ -146,20 +138,20 @@ const ProgressTimeline = React.memo(({ milestones }: ProgressTimelineProps) => {
             />
 
             {/* Labels */}
-            <div className="absolute -bottom-4 left-0 text-xs text-gray-400">0</div>
+            <div className="absolute -bottom-4 left-0 text-xs text-content-muted">0</div>
             <div
-                className="absolute -bottom-4 text-xs text-gray-400 transform -translate-x-1/2"
+                className="absolute -bottom-4 text-xs text-content-muted transform -translate-x-1/2"
                 style={{ left: `${currentPos}%` }}
             >
                 {currentAge}
             </div>
             <div
-                className="absolute -bottom-4 text-xs text-amber-400 transform -translate-x-1/2"
+                className="absolute -bottom-4 text-xs text-warning transform -translate-x-1/2"
                 style={{ left: `${retirementPos}%` }}
             >
                 {retirementAge}
             </div>
-            <div className="absolute -bottom-4 right-0 text-xs text-gray-400">{lifeExpectancy}</div>
+            <div className="absolute -bottom-4 right-0 text-xs text-content-muted">{lifeExpectancy}</div>
         </div>
     );
 });
@@ -293,7 +285,7 @@ export default function FutureTab() {
 
     if (simulation.length === 0) {
         return (
-            <div className="p-4 text-white bg-gray-950 text-center">
+            <div className="p-4 text-white bg-surface-base text-center">
                 <div className="flex items-center justify-center gap-2">
                     <LoadingSpinner size="md" />
                     <p>Running simulation...</p>
@@ -337,7 +329,7 @@ export default function FutureTab() {
     );
 
     return (
-        <div className="w-full flex bg-gray-950 justify-center pt-6 pb-24">
+        <div className="w-full flex bg-surface-base justify-center pt-6 pb-24">
             <div className="w-full px-4 sm:px-8 max-w-screen-2xl">
                 
                 {/* 2. Warning Banner */}
@@ -353,17 +345,17 @@ export default function FutureTab() {
                 )}
 
                 {/* Milestone Cards */}
-                <div className="mb-4 p-3 bg-gray-900 rounded-xl border border-gray-800 shadow-lg">
+                <Panel padding="sm" className="mb-4 shadow-lg">
                     <div className="flex items-center gap-3 mb-2">
                         <h2 className="text-base font-bold text-white">Retirement Timeline</h2>
                         {isLoading ? (
-                            <span className="px-2 py-1 text-xs bg-blue-600 text-white rounded-full flex items-center gap-1">
+                            <span className="px-2 py-1 text-xs bg-accent text-white rounded-full flex items-center gap-1">
                                 <LoadingSpinner size="sm" /> Updating...
                             </span>
                         ) : (
                             <button
                                 onClick={handleRecalculate}
-                                className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-full transition-colors"
+                                className="px-2 py-1 text-xs bg-surface-input hover:bg-surface-hover text-content-default rounded-full transition-colors"
                             >
                                 ↻ Recalculate
                             </button>
@@ -398,31 +390,31 @@ export default function FutureTab() {
                     <div>
                         <ProgressTimeline milestones={milestones} />
                     </div>
-                </div>
+                </Panel>
 
                 {/* Tab System */}
-                <div className="bg-gray-900 rounded-lg mb-1 flex border border-gray-800 overflow-x-auto custom-scrollbar">
+                <Panel padding="none" className="rounded-lg mb-1 flex overflow-x-auto custom-scrollbar">
                     {visible_tabs.map((tab) => (
                         <button
                             key={tab}
                             role="tab"
                             aria-selected={activeTab === tab}
                             className={`flex-1 min-w-fit font-semibold px-4 py-3 transition-colors duration-200 whitespace-nowrap ${activeTab === tab
-                                ? "text-green-300 bg-gray-800 border-b-2 border-green-300"
-                                : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                                ? "text-positive-bright bg-surface-overlay border-b-2 border-positive-bright"
+                                : "text-content-muted hover:bg-surface-overlay hover:text-white"
                                 }`}
                             onClick={() => handleTabChange(tab)}
                         >
                             {tab}
                         </button>
                     ))}
-                </div>
+                </Panel>
 
                 {/* Main Content */}
-                <div className="bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl mb-4 p-6 overflow-visible relative">
+                <Panel padding="lg" className="shadow-2xl mb-4 overflow-visible relative">
                     {isLoading && <LoadingOverlay message="Running simulation..." />}
                     {renderTabContent()}
-                </div>
+                </Panel>
             </div>
         </div>
     );

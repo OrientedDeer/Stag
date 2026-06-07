@@ -163,22 +163,22 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
 
     // Format success rate with color
     const getSuccessRateColor = (rate: number) => {
-        if (rate >= 95) return 'text-green-400';
-        if (rate >= 80) return 'text-yellow-400';
-        if (rate >= 60) return 'text-orange-400';
-        return 'text-red-400';
+        if (rate >= 95) return 'text-positive';
+        if (rate >= 80) return 'text-warning';
+        if (rate >= 60) return 'text-cat-orange';
+        return 'text-negative';
     };
 
     return (
         <div className="flex flex-col w-full h-full gap-6 p-4">
             {/* Sub-tab Switcher */}
-            <div className="flex gap-1 bg-gray-800/50 rounded-lg p-1 w-fit">
+            <div className="flex gap-1 bg-surface-overlay/50 rounded-lg p-1 w-fit">
                 <button
                     onClick={() => handleSubTabChange('monte-carlo')}
                     className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                         activeSubTab === 'monte-carlo'
-                            ? 'bg-emerald-600 text-white'
-                            : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                            ? 'bg-positive-solid text-white'
+                            : 'text-content-muted hover:text-white hover:bg-surface-input'
                     }`}
                 >
                     Monte Carlo
@@ -187,8 +187,8 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
                     onClick={() => handleSubTabChange('historical')}
                     className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                         activeSubTab === 'historical'
-                            ? 'bg-emerald-600 text-white'
-                            : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                            ? 'bg-positive-solid text-white'
+                            : 'text-content-muted hover:text-white hover:bg-surface-input'
                     }`}
                 >
                     Historical Backtest
@@ -202,11 +202,11 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
             {activeSubTab === 'monte-carlo' && (
             <>
             {/* Controls Section */}
-            <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+            <div className="bg-surface-overlay/50 rounded-xl p-4 border border-border-default">
                 <h3 className="text-white font-semibold mb-4">Monte Carlo Settings</h3>
 
                 {/* Return Assumptions Preset */}
-                <div className="mb-4 pb-4 border-b border-gray-700">
+                <div className="mb-4 pb-4 border-b border-border-default">
                     <div className="flex flex-col sm:flex-row sm:items-start gap-4">
                         <div className="sm:w-48">
                             <DropdownInput
@@ -219,17 +219,17 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
                                 }))}
                             />
                         </div>
-                        <p className="text-gray-400 text-xs sm:mt-6">
+                        <p className="text-content-muted text-xs sm:mt-6">
                             {RETURN_PRESETS[normalizedPreset].description}
                             {normalizedPreset !== 'custom' && (
-                                <span className="text-gray-400">
+                                <span className="text-content-muted">
                                     {' '}Using {inflationAdjusted ? 'nominal' : 'real'} returns ({getPresetReturnMean(normalizedPreset, inflationAdjusted)}%).
                                 </span>
                             )}
                         </p>
                     </div>
                     {normalizedPreset !== 'custom' && (
-                        <div className="mt-2 text-xs text-gray-400">
+                        <div className="mt-2 text-xs text-content-muted">
                             Data: {HISTORICAL_STATS.stocks.startYear}-{HISTORICAL_STATS.stocks.endYear} S&P 500 total returns
                         </div>
                     )}
@@ -276,7 +276,7 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
                         <button
                             onClick={generateNewSeed}
                             disabled={isRunning}
-                            className="bg-gray-600 hover:bg-gray-500 text-white px-3 py-2 rounded-lg text-xs
+                            className="bg-surface-hover hover:bg-surface-muted text-white px-3 py-2 rounded-lg text-xs
                                      transition-colors disabled:opacity-50 mb-1"
                             title="Generate new random seed"
                         >
@@ -292,8 +292,8 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
                         disabled={isRunning}
                         className={`px-6 py-2 rounded-lg font-medium transition-colors
                             ${isRunning
-                                ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                                : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                                ? 'bg-surface-hover text-content-muted cursor-not-allowed'
+                                : 'bg-positive-solid hover:bg-positive-soft text-white'
                             }`}
                     >
                         {isRunning ? 'Running...' : 'Run Simulation'}
@@ -302,13 +302,13 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
                     {/* Progress Bar */}
                     {isRunning && (
                         <div className="flex-1 flex items-center gap-3">
-                            <div className="flex-1 h-2 bg-gray-700 rounded-full overflow-hidden">
+                            <div className="flex-1 h-2 bg-surface-input rounded-full overflow-hidden">
                                 <div
-                                    className="h-full bg-emerald-500 transition-all duration-100"
+                                    className="h-full bg-positive-soft transition-all duration-100"
                                     style={{ width: `${progress}%` }}
                                 />
                             </div>
-                            <span className="text-gray-400 text-sm tabular-nums">
+                            <span className="text-content-muted text-sm tabular-nums">
                                 {Math.round(progress)}%
                             </span>
                         </div>
@@ -316,7 +316,7 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
 
                     {/* Error Message */}
                     {error && (
-                        <span className="text-red-400 text-sm">{error}</span>
+                        <span className="text-negative text-sm">{error}</span>
                     )}
                 </div>
             </div>
@@ -325,66 +325,66 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
             {summary && (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                     {/* Success Rate */}
-                    <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
-                        <div className="text-gray-400 text-xs uppercase tracking-wider mb-1">
+                    <div className="bg-surface-overlay/50 rounded-xl p-4 border border-border-default">
+                        <div className="text-content-muted text-xs uppercase tracking-wider mb-1">
                             Success Rate
                         </div>
                         <div className={`text-2xl lg:text-3xl font-bold ${getSuccessRateColor(summary.successRate)}`}>
                             {summary.successRate.toFixed(1)}%
                         </div>
-                        <div className="text-gray-400 text-xs mt-1">
+                        <div className="text-content-muted text-xs mt-1">
                             {summary.successfulScenarios} of {summary.totalScenarios} scenarios
                         </div>
                     </div>
 
                     {/* 10th Percentile (Worst Reasonable) */}
-                    <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
-                        <div className="text-gray-400 text-xs uppercase tracking-wider mb-1">
+                    <div className="bg-surface-overlay/50 rounded-xl p-4 border border-border-default">
+                        <div className="text-content-muted text-xs uppercase tracking-wider mb-1">
                             10th Percentile
                         </div>
-                        <div className="text-xl lg:text-2xl font-bold text-red-400 truncate">
+                        <div className="text-xl lg:text-2xl font-bold text-negative truncate">
                             {formatCompactCurrency(summary.percentiles.p10[summary.percentiles.p10.length - 1]?.netWorth ?? 0, { forceExact })}
                         </div>
-                        <div className="text-gray-400 text-xs mt-1">
+                        <div className="text-content-muted text-xs mt-1">
                             Worst reasonable case
                         </div>
                     </div>
 
                     {/* Median (50th) */}
-                    <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
-                        <div className="text-gray-400 text-xs uppercase tracking-wider mb-1">
+                    <div className="bg-surface-overlay/50 rounded-xl p-4 border border-border-default">
+                        <div className="text-content-muted text-xs uppercase tracking-wider mb-1">
                             Median
                         </div>
-                        <div className="text-xl lg:text-2xl font-bold text-emerald-400 truncate">
+                        <div className="text-xl lg:text-2xl font-bold text-positive truncate">
                             {formatCompactCurrency(summary.percentiles.p50[summary.percentiles.p50.length - 1]?.netWorth ?? 0, { forceExact })}
                         </div>
-                        <div className="text-gray-400 text-xs mt-1">
+                        <div className="text-content-muted text-xs mt-1">
                             50th percentile
                         </div>
                     </div>
 
                     {/* 90th Percentile (Best Reasonable) */}
-                    <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
-                        <div className="text-gray-400 text-xs uppercase tracking-wider mb-1">
+                    <div className="bg-surface-overlay/50 rounded-xl p-4 border border-border-default">
+                        <div className="text-content-muted text-xs uppercase tracking-wider mb-1">
                             90th Percentile
                         </div>
-                        <div className="text-xl lg:text-2xl font-bold text-blue-400 truncate">
+                        <div className="text-xl lg:text-2xl font-bold text-info truncate">
                             {formatCompactCurrency(summary.percentiles.p90[summary.percentiles.p90.length - 1]?.netWorth ?? 0, { forceExact })}
                         </div>
-                        <div className="text-gray-400 text-xs mt-1">
+                        <div className="text-content-muted text-xs mt-1">
                             Best reasonable case
                         </div>
                     </div>
 
                     {/* Trimmed Average */}
-                    <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
-                        <div className="text-gray-400 text-xs uppercase tracking-wider mb-1">
+                    <div className="bg-surface-overlay/50 rounded-xl p-4 border border-border-default">
+                        <div className="text-content-muted text-xs uppercase tracking-wider mb-1">
                             Trimmed Avg
                         </div>
-                        <div className="text-xl lg:text-2xl font-bold text-gray-300 truncate">
+                        <div className="text-xl lg:text-2xl font-bold text-content-default truncate">
                             {formatCompactCurrency(summary.averageFinalNetWorth, { forceExact })}
                         </div>
-                        <div className="text-gray-400 text-xs mt-1">
+                        <div className="text-content-muted text-xs mt-1">
                             Excludes top/bottom 5%
                         </div>
                     </div>
@@ -392,7 +392,7 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
             )}
 
             {/* Fan Chart */}
-            <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700 flex-1">
+            <div className="bg-surface-overlay/50 rounded-xl p-4 border border-border-default flex-1">
                 <h3 className="text-white font-semibold mb-4">Probability Distribution</h3>
                 {summary ? (
                     <FanChart
@@ -404,8 +404,8 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
                     />
                 ) : (
                     <div className="flex flex-col items-center justify-center h-96 text-center">
-                        <div className="text-gray-400 text-lg mb-2">No simulation data</div>
-                        <p className="text-gray-400 text-sm max-w-md">
+                        <div className="text-content-muted text-lg mb-2">No simulation data</div>
+                        <p className="text-content-muted text-sm max-w-md">
                             Configure the settings above and click "Run Simulation" to see the probability
                             distribution of your portfolio outcomes over time.
                         </p>
@@ -414,9 +414,9 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
             </div>
 
             {/* Information Panel */}
-            <div className="bg-gray-800/30 rounded-xl p-4 border border-gray-700/50">
-                <h4 className="text-gray-300 font-medium mb-2">About Monte Carlo Simulation</h4>
-                <div className="text-gray-400 text-sm space-y-2">
+            <div className="bg-surface-overlay/30 rounded-xl p-4 border border-border-default/50">
+                <h4 className="text-content-default font-medium mb-2">About Monte Carlo Simulation</h4>
+                <div className="text-content-muted text-sm space-y-2">
                     <p>
                         Monte Carlo simulation runs hundreds of scenarios with randomized market returns
                         to estimate the probability of your retirement plan succeeding.

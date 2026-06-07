@@ -75,11 +75,11 @@ export const ScenarioComparisonTab: React.FC<ScenarioComparisonTabProps> = ({ si
 
             {/* Comparison Controls */}
             {state.scenarios.length > 0 && (
-                <div className="bg-gray-800/50 rounded-xl border border-gray-700 p-4">
+                <div className="bg-surface-overlay/50 rounded-xl border border-border-default p-4">
                     <div className="flex flex-col sm:flex-row gap-4 sm:items-center sm:justify-between">
                         <div>
                             <h3 className="text-white font-semibold">Compare Scenarios</h3>
-                            <p className="text-sm text-gray-400">
+                            <p className="text-sm text-content-muted">
                                 {!selectedBaseline && !selectedComparison
                                     ? 'Select a baseline and comparison scenario above'
                                     : `Comparing: ${getScenarioName(selectedBaseline)} vs ${getScenarioName(selectedComparison || 'current')}`
@@ -91,7 +91,7 @@ export const ScenarioComparisonTab: React.FC<ScenarioComparisonTabProps> = ({ si
                             {comparisonResult && (
                                 <button
                                     onClick={clearComparison}
-                                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm transition-colors"
+                                    className="px-4 py-2 bg-surface-input hover:bg-surface-hover text-white rounded-lg text-sm transition-colors"
                                 >
                                     Clear
                                 </button>
@@ -101,8 +101,8 @@ export const ScenarioComparisonTab: React.FC<ScenarioComparisonTabProps> = ({ si
                                 disabled={!canCompare || isLoading}
                                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
                                     canCompare && !isLoading
-                                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                                        : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                                        ? 'bg-positive-solid hover:bg-positive-soft text-white'
+                                        : 'bg-surface-input text-content-muted cursor-not-allowed'
                                 }`}
                             >
                                 {isLoading && <LoadingSpinner size="sm" />}
@@ -113,7 +113,7 @@ export const ScenarioComparisonTab: React.FC<ScenarioComparisonTabProps> = ({ si
 
                     {/* Error display */}
                     {error && (
-                        <div className="mt-3 bg-red-900/20 border border-red-500/50 rounded-lg p-3 text-red-400 text-sm">
+                        <div className="mt-3 bg-negative-tint/20 border border-negative-soft/50 rounded-lg p-3 text-negative text-sm">
                             {error}
                         </div>
                     )}
@@ -129,8 +129,8 @@ export const ScenarioComparisonTab: React.FC<ScenarioComparisonTabProps> = ({ si
                             onClick={() => setActiveView('side-by-side')}
                             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                                 activeView === 'side-by-side'
-                                    ? 'bg-emerald-600 text-white'
-                                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                                    ? 'bg-positive-solid text-white'
+                                    : 'bg-surface-overlay text-content-muted hover:bg-surface-input'
                             }`}
                         >
                             Side by Side
@@ -139,8 +139,8 @@ export const ScenarioComparisonTab: React.FC<ScenarioComparisonTabProps> = ({ si
                             onClick={() => setActiveView('overlaid')}
                             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                                 activeView === 'overlaid'
-                                    ? 'bg-emerald-600 text-white'
-                                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                                    ? 'bg-positive-solid text-white'
+                                    : 'bg-surface-overlay text-content-muted hover:bg-surface-input'
                             }`}
                         >
                             Overlaid Chart
@@ -149,8 +149,8 @@ export const ScenarioComparisonTab: React.FC<ScenarioComparisonTabProps> = ({ si
                             onClick={() => setActiveView('differences')}
                             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                                 activeView === 'differences'
-                                    ? 'bg-emerald-600 text-white'
-                                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                                    ? 'bg-positive-solid text-white'
+                                    : 'bg-surface-overlay text-content-muted hover:bg-surface-input'
                             }`}
                         >
                             Key Differences
@@ -172,9 +172,9 @@ export const ScenarioComparisonTab: React.FC<ScenarioComparisonTabProps> = ({ si
 
             {/* Empty state when no comparison */}
             {!comparisonResult && state.scenarios.length > 0 && (
-                <div className="bg-gray-800/30 rounded-xl border border-gray-700 border-dashed p-8 text-center">
-                    <div className="text-gray-400 mb-2">No comparison results yet</div>
-                    <p className="text-sm text-gray-400">
+                <div className="bg-surface-overlay/30 rounded-xl border border-border-default border-dashed p-8 text-center">
+                    <div className="text-content-muted mb-2">No comparison results yet</div>
+                    <p className="text-sm text-content-muted">
                         Select scenarios and click "Run Comparison" to see how different plans compare
                     </p>
                 </div>

@@ -21,8 +21,8 @@ interface RangeSliderProps {
 }
 
 // --- Styles ---
-const TRACK_BG = "bg-gray-700";
-const TRACK_FILL = "bg-emerald-600/80";
+const TRACK_BG = "bg-surface-input";
+const TRACK_FILL = "bg-positive-solid/80";
 
 export const RangeSlider: React.FC<RangeSliderProps> = ({
   label,
@@ -94,8 +94,8 @@ export const RangeSlider: React.FC<RangeSliderProps> = ({
           height: 16px;
           width: 16px;
           border-radius: 9999px;
-          background-color: #10b981; /* emerald-500 */
-          border: 2px solid #1f2937; /* gray-800 */
+          background-color: var(--c-positive-soft);
+          border: 2px solid var(--c-border-subtle);
           box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
           -webkit-appearance: none;
           appearance: none;
@@ -108,8 +108,8 @@ export const RangeSlider: React.FC<RangeSliderProps> = ({
           height: 16px;
           width: 16px;
           border-radius: 9999px;
-          background-color: #10b981;
-          border: 2px solid #1f2937;
+          background-color: var(--c-positive-soft);
+          border: 2px solid var(--c-border-subtle);
           box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
           -webkit-appearance: none;
           
@@ -124,8 +124,8 @@ export const RangeSlider: React.FC<RangeSliderProps> = ({
           height: 16px;
           width: 16px;
           border-radius: 9999px;
-          background-color: #10b981;
-          border: 2px solid #1f2937;
+          background-color: var(--c-positive-soft);
+          border: 2px solid var(--c-border-subtle);
           box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
           border: none;
         }
@@ -138,12 +138,12 @@ export const RangeSlider: React.FC<RangeSliderProps> = ({
         {label && (
           <label 
             htmlFor={inputId} 
-            className="text-xs font-semibold text-gray-400 uppercase tracking-wider"
+            className="text-xs font-semibold text-content-muted uppercase tracking-wider"
           >
             {label}
           </label>
         )}
-        <div className="font-mono text-sm text-emerald-400">
+        <div className="font-mono text-sm text-positive">
           {isDual
             ? `${formatTooltip((displayValue as [number, number])[0])} - ${formatTooltip((displayValue as [number, number])[1])}`
             : formatTooltip(displayValue as number)

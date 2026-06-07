@@ -257,13 +257,13 @@ const ImportBalancesModal: React.FC<ImportBalancesModalProps> = ({ isOpen, onClo
                 role="dialog"
                 aria-modal="true"
                 onKeyDown={handleKeyDown}
-                className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-3xl shadow-2xl max-h-[85vh] flex flex-col"
+                className="bg-surface-raised border border-border-subtle rounded-2xl p-6 w-full max-w-3xl shadow-2xl max-h-[85vh] flex flex-col"
             >
-                <div className="flex justify-between items-center mb-4 border-b border-gray-800 pb-3">
+                <div className="flex justify-between items-center mb-4 border-b border-border-subtle pb-3">
                     <h2 className="text-xl font-bold text-white">Import Account Balances</h2>
                     <button
                         onClick={handleClose}
-                        className="text-gray-400 hover:text-white text-2xl leading-none"
+                        className="text-content-muted hover:text-white text-2xl leading-none"
                         aria-label="Close"
                     >
                         ×
@@ -272,17 +272,17 @@ const ImportBalancesModal: React.FC<ImportBalancesModalProps> = ({ isOpen, onClo
 
                 {stage === 'upload' && (
                     <div className="flex flex-col gap-4">
-                        <p className="text-gray-300 text-sm">
-                            Select the <span className="font-mono text-gray-200">balances</span> CSV produced by
+                        <p className="text-content-default text-sm">
+                            Select the <span className="font-mono text-content-emphasis">balances</span> CSV produced by
                             stag-feed. We'll match each account to one of yours and update its current balance.
                         </p>
-                        <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-gray-700 rounded-xl p-10 cursor-pointer hover:border-green-600 hover:bg-gray-800/40 transition-colors">
-                            <span className="text-gray-300 font-semibold">Choose CSV file</span>
-                            <span className="text-gray-500 text-xs">FetchedAt, Org, Account, Balance, …</span>
+                        <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-border-default rounded-xl p-10 cursor-pointer hover:border-positive-solid hover:bg-surface-overlay/40 transition-colors">
+                            <span className="text-content-default font-semibold">Choose CSV file</span>
+                            <span className="text-content-subtle text-xs">FetchedAt, Org, Account, Balance, …</span>
                             <input type="file" accept=".csv,text/csv" onChange={onFileChange} className="hidden" />
                         </label>
                         {errors.length > 0 && (
-                            <div className="bg-red-900/20 border border-red-800 rounded-lg p-3 text-red-400 text-sm">
+                            <div className="bg-negative-tint/20 border border-negative-strong rounded-lg p-3 text-negative text-sm">
                                 {errors.map((err, i) => (
                                     <div key={i}>{err}</div>
                                 ))}
@@ -294,11 +294,11 @@ const ImportBalancesModal: React.FC<ImportBalancesModalProps> = ({ isOpen, onClo
                 {stage === 'review' && (
                     <>
                         <div className="flex-1 overflow-y-auto custom-scrollbar -mx-1 px-1">
-                            <p className="text-gray-400 text-sm mb-3">
+                            <p className="text-content-muted text-sm mb-3">
                                 Confirm where each imported account goes. Use{' '}
-                                <span className="text-gray-300">Split</span> to divide one balance (e.g. a 401k)
+                                <span className="text-content-default">Split</span> to divide one balance (e.g. a 401k)
                                 across multiple accounts. Unmatched rows default to{' '}
-                                <span className="text-gray-300">Don't import</span>.
+                                <span className="text-content-default">Don't import</span>.
                             </p>
                             <div className="space-y-2">
                                 {rows.map((row) => {
@@ -312,17 +312,17 @@ const ImportBalancesModal: React.FC<ImportBalancesModalProps> = ({ isOpen, onClo
                                     return (
                                         <div
                                             key={row.account}
-                                            className="bg-gray-800/40 border border-gray-800 rounded-lg p-3"
+                                            className="bg-surface-overlay/40 border border-border-subtle rounded-lg p-3"
                                         >
                                             <div className="flex justify-between items-start gap-3 mb-2">
                                                 <div className="min-w-0">
                                                     <div className="text-white text-sm truncate">{row.account}</div>
-                                                    <div className="text-gray-500 text-xs truncate">
+                                                    <div className="text-content-subtle text-xs truncate">
                                                         {row.org}
                                                         {row.balanceDate ? ` · ${row.balanceDate}` : ''}
                                                     </div>
                                                 </div>
-                                                <div className="text-right font-mono text-sm text-gray-200 whitespace-nowrap">
+                                                <div className="text-right font-mono text-sm text-content-emphasis whitespace-nowrap">
                                                     {formatCurrency(row.balance)}
                                                 </div>
                                             </div>
@@ -361,7 +361,7 @@ const ImportBalancesModal: React.FC<ImportBalancesModalProps> = ({ isOpen, onClo
                                                                 {targetIds.length > 1 && (
                                                                     <button
                                                                         onClick={() => removeTarget(row, idx)}
-                                                                        className="text-gray-500 hover:text-red-400 text-xl leading-none shrink-0 px-1"
+                                                                        className="text-content-subtle hover:text-negative text-xl leading-none shrink-0 px-1"
                                                                         aria-label="Remove split target"
                                                                     >
                                                                         ×
@@ -377,7 +377,7 @@ const ImportBalancesModal: React.FC<ImportBalancesModalProps> = ({ isOpen, onClo
                                                 {canAddSplit ? (
                                                     <button
                                                         onClick={() => addSplit(row)}
-                                                        className="text-xs font-semibold text-green-400 hover:text-green-300"
+                                                        className="text-xs font-semibold text-positive hover:text-positive-bright"
                                                     >
                                                         + Split across another account
                                                     </button>
@@ -388,8 +388,8 @@ const ImportBalancesModal: React.FC<ImportBalancesModalProps> = ({ isOpen, onClo
                                                     <span
                                                         className={`text-xs font-mono ${
                                                             Math.abs(remaining) < 0.01
-                                                                ? 'text-gray-500'
-                                                                : 'text-yellow-300'
+                                                                ? 'text-content-subtle'
+                                                                : 'text-warning-bright'
                                                         }`}
                                                     >
                                                         {formatCurrency(allocated)} of{' '}
@@ -404,24 +404,24 @@ const ImportBalancesModal: React.FC<ImportBalancesModalProps> = ({ isOpen, onClo
                                 })}
                             </div>
                             {errors.length > 0 && (
-                                <div className="bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-3 text-yellow-300 text-sm mt-3">
+                                <div className="bg-warning-tint/30 border border-warning-strong/50 rounded-lg p-3 text-warning-bright text-sm mt-3">
                                     {errors.map((err, i) => (
                                         <div key={i}>{err}</div>
                                     ))}
                                 </div>
                             )}
                         </div>
-                        <div className="flex justify-between items-center gap-3 mt-4 pt-3 border-t border-gray-800">
+                        <div className="flex justify-between items-center gap-3 mt-4 pt-3 border-t border-border-subtle">
                             <button
                                 onClick={() => setStage('upload')}
-                                className="text-gray-400 hover:text-white text-sm font-semibold px-3 py-2"
+                                className="text-content-muted hover:text-white text-sm font-semibold px-3 py-2"
                             >
                                 ← Back
                             </button>
                             <button
                                 onClick={handleApply}
                                 disabled={matchedCount === 0 || !allValid}
-                                className="bg-green-600 px-5 py-2.5 rounded-xl text-white font-bold hover:bg-green-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                className="bg-positive-solid px-5 py-2.5 rounded-xl text-white font-bold hover:bg-positive-strong transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                                 Update {matchedCount} account{matchedCount === 1 ? '' : 's'}
                             </button>
@@ -432,23 +432,23 @@ const ImportBalancesModal: React.FC<ImportBalancesModalProps> = ({ isOpen, onClo
                 {stage === 'done' && (
                     <div className="flex flex-col gap-4">
                         {result.length > 0 ? (
-                            <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-4 text-blue-400 text-sm">
+                            <div className="bg-info-tint/20 border border-info-strong/50 rounded-lg p-4 text-info text-sm">
                                 Updated {result.length} account balance{result.length === 1 ? '' : 's'}:
-                                <ul className="mt-2 list-disc list-inside text-blue-300">
+                                <ul className="mt-2 list-disc list-inside text-info-bright">
                                     {result.map((name, i) => (
                                         <li key={`${name}-${i}`}>{name}</li>
                                     ))}
                                 </ul>
                             </div>
                         ) : (
-                            <div className="bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-4 text-yellow-300 text-sm">
+                            <div className="bg-warning-tint/30 border border-warning-strong/50 rounded-lg p-4 text-warning-bright text-sm">
                                 No balances were updated.
                             </div>
                         )}
                         <div className="flex justify-end">
                             <button
                                 onClick={handleClose}
-                                className="bg-green-600 px-5 py-2.5 rounded-xl text-white font-bold hover:bg-green-700 transition-colors"
+                                className="bg-positive-solid px-5 py-2.5 rounded-xl text-white font-bold hover:bg-positive-strong transition-colors"
                             >
                                 Done
                             </button>

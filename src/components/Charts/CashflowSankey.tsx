@@ -7,6 +7,7 @@ import { AssumptionsContext } from '../Objects/Assumptions/AssumptionsContext';
 import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
 import { CashflowDetail } from '../../services/simulation/types';
 import { SankeyErrorBoundary } from './SankeyErrorBoundary';
+import { useChartTheme } from './useChartTheme';
 import {
     buildCashflowSankeyData,
     SankeyImbalance,
@@ -61,6 +62,7 @@ const CashflowSankeyInner = ({
     onBalanceCheck
 }: CashflowSankeyProps) => {
     const { state: assumptions } = useContext(AssumptionsContext);
+    const { theme: themeKey, resolve } = useChartTheme();
     const forceExact = assumptions.display?.useCompactCurrency === false;
 
     const currencyFormatter = useCallback((value: number) => {
@@ -109,14 +111,14 @@ const CashflowSankeyInner = ({
 
     if (error) {
         return (
-            <div style={{ height: `${height}px` }} className="flex items-center justify-center bg-red-900/10 border border-red-700 rounded-lg">
+            <div style={{ height: `${height}px` }} className="flex items-center justify-center bg-negative-tint/10 border border-negative-strong rounded-lg">
                 <div className="text-center p-6 max-w-lg">
-                    <div className="text-red-400 text-lg font-bold mb-2">Chart Error</div>
-                    <div className="text-gray-300 text-sm mb-4">{error}</div>
+                    <div className="text-negative text-lg font-bold mb-2">Chart Error</div>
+                    <div className="text-content-default text-sm mb-4">{error}</div>
                     {debugData && (
                         <details className="text-left">
-                            <summary className="cursor-pointer text-gray-400 text-xs hover:text-gray-200">Debug Info</summary>
-                            <pre className="mt-2 text-xs text-gray-400 overflow-auto max-h-48 bg-gray-900 p-2 rounded">
+                            <summary className="cursor-pointer text-content-muted text-xs hover:text-content-emphasis">Debug Info</summary>
+                            <pre className="mt-2 text-xs text-content-muted overflow-auto max-h-48 bg-surface-raised p-2 rounded">
                                 {JSON.stringify(debugData, null, 2)}
                             </pre>
                         </details>
@@ -128,7 +130,7 @@ const CashflowSankeyInner = ({
 
     if (!data.nodes || data.nodes.length === 0) {
         return (
-            <div style={{ height: `${height}px` }} className="flex items-center justify-center text-gray-400">
+            <div style={{ height: `${height}px` }} className="flex items-center justify-center text-content-muted">
                 No data available for chart
             </div>
         );
@@ -146,10 +148,11 @@ const CashflowSankeyInner = ({
         <SankeyErrorBoundary height={height} resetKey={resetKey}>
             <div ref={containerRef} style={{ height: `${height}px` }}>
                 <ResponsiveSankey
+                    key={themeKey}
                     data={data}
                     margin={margins}
                     align="justify"
-                    colors={(node: any) => node.color}
+                    colors={(node: any) => resolve(node.color)}
                     nodeOpacity={1}
                     nodeThickness={isNarrow ? 12 : 15}
                     nodeSpacing={isNarrow ? 8 : 12}
@@ -157,38 +160,38 @@ const CashflowSankeyInner = ({
                     enableLinkGradient={true}
                     linkBlendMode="normal"
                     linkOpacity={0.15}
-                    labelTextColor="#e5e7eb"
+                    labelTextColor="var(--c-content-emphasis)"
                     valueFormat={currencyFormatter}
                     label={(node: any) => node.label}
                     labelPosition="outside"
                     labelPadding={isNarrow ? 8 : 16}
                     sort="input"
                     nodeTooltip={({ node }) => (
-                        <div className="bg-gray-900 p-3 rounded-lg border border-gray-700 shadow-2xl max-w-87.5">
+                        <div className="bg-surface-raised p-3 rounded-lg border border-border-default shadow-2xl max-w-87.5">
                             <div className="flex items-center gap-2 mb-1">
                                 <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: node.color }} />
-                                <span className="font-bold text-gray-100 text-sm truncate">{node.label}</span>
+                                <span className="font-bold text-content-bright text-sm truncate">{node.label}</span>
                             </div>
-                            <div className="text-2xl font-mono text-green-400 font-medium">
+                            <div className="text-2xl font-mono text-positive font-medium">
                                 {node.formattedValue}
                             </div>
                         </div>
                     )}
                     linkTooltip={({ link }) => (
-                        <div className="bg-gray-900 p-3 rounded-lg border border-gray-700 shadow-2xl max-w-87.5">
-                            <div className="flex items-center gap-2 mb-2 text-xs text-gray-400 uppercase tracking-wider font-semibold">
+                        <div className="bg-surface-raised p-3 rounded-lg border border-border-default shadow-2xl max-w-87.5">
+                            <div className="flex items-center gap-2 mb-2 text-xs text-content-muted uppercase tracking-wider font-semibold">
                                 <span className="truncate">{link.source.label}</span>
-                                <span className="text-gray-400 shrink-0">&rarr;</span>
+                                <span className="text-content-muted shrink-0">&rarr;</span>
                                 <span className="truncate">{link.target.label}</span>
                             </div>
-                            <div className="text-xl font-mono text-green-400 font-medium">
+                            <div className="text-xl font-mono text-positive font-medium">
                                 {link.formattedValue}
                             </div>
                         </div>
                     )}
                     theme={{
-                        tooltip: { container: { background: '#111827', color: '#fff', borderRadius: '8px', zIndex: 9999 } },
-                        labels: { text: { fontSize: 11, fontWeight: 600, fill: '#e5e7eb' } }
+                        tooltip: { container: { background: 'var(--c-surface-raised)', color: '#fff', borderRadius: '8px', zIndex: 9999 } },
+                        labels: { text: { fontSize: 11, fontWeight: 600, fill: 'var(--c-content-emphasis)' } }
                     }}
                 />
             </div>
