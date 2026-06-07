@@ -46,7 +46,9 @@ export function processInflows(
             const currentSelf = withdrawalState.userInflows[inc.matchAccountId] || 0;
             const currentMatch = withdrawalState.employerInflows[inc.matchAccountId] || 0;
 
-            const selfContribution = (inc.preTax401k + inc.roth401k) * activeMultiplier;
+            // preTax401k/roth401k are per pay period; getProratedAnnual converts to the
+            // annual deposit (and already folds in the active-period multiplier).
+            const selfContribution = inc.getProratedAnnual(inc.preTax401k + inc.roth401k, year);
             const employerMatch = inc.getEffectiveAnnualEmployerMatch() * activeMultiplier;
 
             totalEmployerMatch += employerMatch;

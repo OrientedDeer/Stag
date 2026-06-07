@@ -46,16 +46,27 @@ export abstract class BaseIncome implements Income {
     public startMilestoneId?: string,  // Start income when this milestone is reached
     public endMilestoneId?: string,    // End income when this milestone is reached
   ) {}
-  getProratedAnnual(value: number, year?: number): number {
-    let annual = 0;
+  // Number of pay periods per year implied by this income's frequency.
+  getPeriodsPerYear(): number {
     switch (this.frequency) {
-      case 'Weekly': annual = value * 52; break;
-      case 'Bi-Weekly': annual = value * 26; break;
-      case 'Semi-Monthly': annual = value * 24; break;
-      case 'Monthly': annual = value * 12; break;
-      case 'Annually': annual = value; break;
-      default: annual = 0;
+      case 'Weekly': return 52;
+      case 'Bi-Weekly': return 26;
+      case 'Semi-Monthly': return 24;
+      case 'Monthly': return 12;
+      case 'Annually': return 1;
+      default: return 0;
     }
+  }
+
+  // Convert an annual figure (e.g. an IRS contribution limit) into the per-period
+  // unit that per-period fields like preTax401k are stored in.
+  annualToPerPeriod(annualValue: number): number {
+    const periods = this.getPeriodsPerYear();
+    return periods > 0 ? annualValue / periods : annualValue;
+  }
+
+  getProratedAnnual(value: number, year?: number): number {
+    const annual = value * this.getPeriodsPerYear();
 
     // Apply the time-based multiplier if a year is requested
     if (year !== undefined) {
@@ -159,8 +170,9 @@ export class WorkIncome extends BaseIncome {
         if (year !== undefined && age !== undefined) {
           // Get annual limits (includes catch-up for age 50+/55+)
           const inflationAdjusted = assumptions.macro.inflationAdjusted;
-          const limit401k = get401kLimit(year, age, inflationAdjusted);
-          const limitHSA = getHSALimit(year, age, 'individual', inflationAdjusted);
+          // Contributions are stored per pay period, so cap against per-period limits.
+          const limit401k = this.annualToPerPeriod(get401kLimit(year, age, inflationAdjusted));
+          const limitHSA = this.annualToPerPeriod(getHSALimit(year, age, 'individual', inflationAdjusted));
 
           // Combined 401k limit (pre-tax + Roth share same limit)
           // Grow current values first, then cap at limit
@@ -200,13 +212,14 @@ export class WorkIncome extends BaseIncome {
       newPreTax = 0;
       newRoth = 0;
     } else if ((this.autoMax401k === 'traditional' || this.autoMax401k === 'roth') && year !== undefined && age !== undefined) {
-      const limit401k = get401kLimit(year, age, assumptions.macro.inflationAdjusted);
+      // The IRS limit is annual; store it per pay period to match the field's unit.
+      const perPeriodLimit = this.annualToPerPeriod(get401kLimit(year, age, assumptions.macro.inflationAdjusted));
       if (this.autoMax401k === 'traditional') {
-        newPreTax = limit401k;
+        newPreTax = perPeriodLimit;
         newRoth = 0;
       } else {
         newPreTax = 0;
-        newRoth = limit401k;
+        newRoth = perPeriodLimit;
       }
     }
 
@@ -268,11 +281,13 @@ export class WorkIncome extends BaseIncome {
     if (this.autoMax401k === 'custom') {
       return { preTax: this.preTax401k, roth: this.roth401k };
     }
-    const limit401k = get401kLimit(year, age, inflationAdjusted);
+    // The IRS limit is annual; preTax401k/roth401k are stored per pay period, so spread
+    // the limit across the income's pay periods. Consumers re-annualize via getProratedAnnual.
+    const perPeriodLimit = this.annualToPerPeriod(get401kLimit(year, age, inflationAdjusted));
     if (this.autoMax401k === 'traditional') {
-      return { preTax: limit401k, roth: 0 };
+      return { preTax: perPeriodLimit, roth: 0 };
     } else {
-      return { preTax: 0, roth: limit401k };
+      return { preTax: 0, roth: perPeriodLimit };
     }
   }
 

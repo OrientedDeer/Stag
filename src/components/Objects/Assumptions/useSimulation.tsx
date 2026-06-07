@@ -341,7 +341,9 @@ export const runSimulation = (
                 const effectiveFraction = Math.min(remainingFraction, activeMultiplier);
                 if (effectiveFraction <= 0) return;
 
-                const userContrib = (inc.preTax401k + inc.roth401k) * effectiveFraction;
+                // preTax401k/roth401k are per pay period; annualize before applying the
+                // partial-year fraction so non-annual frequencies aren't under-counted.
+                const userContrib = inc.getProratedAnnual(inc.preTax401k + inc.roth401k) * effectiveFraction;
                 const employerContrib = inc.getEffectiveAnnualEmployerMatch() * effectiveFraction;
 
                 const existing = partialContributions[inc.matchAccountId] || { user: 0, employer: 0 };

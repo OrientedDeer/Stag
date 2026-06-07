@@ -145,6 +145,28 @@ describe('AccountGrowth', () => {
                 expect(withdrawalState.userInflows['401k']).toBe(10000);
             });
 
+            it('should annualize per-period preTax401k by frequency for deposits (#8)', () => {
+                // preTax401k is per pay period. A $1,000/month contribution must deposit
+                // $12,000 into the 401k for the year, not $1,000.
+                const account = new InvestedAccount('401k', '401k', 100000, 0, 0, 0.1, 'Traditional 401k');
+                const income = new WorkIncome(
+                    'job1', 'Test Job', 8333, 'Monthly', 'Yes',
+                    1000, 0, 0, 0, '401k',
+                    null, 'FIXED',
+                    new Date('2020-01-01'), undefined, 0
+                );
+                const withdrawalState = createWithdrawalState();
+                const assumptions = createTestAssumptions();
+                const logs: string[] = [];
+
+                processInflows(
+                    [income], [account], assumptions, 2025, withdrawalState,
+                    50000, undefined, 40000, 35, logs
+                );
+
+                expect(withdrawalState.userInflows['401k']).toBe(12000);
+            });
+
             it('should process roth401k contributions', () => {
                 const account = new InvestedAccount('401k', '401k', 100000, 0, 0, 0.1, 'Roth 401k');
                 const income = createWorkIncomeWith401k('job1', 100000, 0, 8000, 0, '401k');

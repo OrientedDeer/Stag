@@ -143,6 +143,19 @@ describe('Income Models', () => {
         expect(nextYearFixed.roth401k).toBe(5000);
       });
 
+    it('auto-max stores a per-period contribution for monthly frequency (#8)', () => {
+        // increment() with autoMax401k must store the annual limit as a per-period value
+        // for a monthly income, so annualizing it recovers $23,000 rather than 12× that.
+        const monthly = new WorkIncome(
+          'w1', 'Job', 8333, 'Monthly', 'Yes',
+          0, 0, 0, 0, 'a1', 'Traditional 401k', 'FIXED', undefined, undefined, 0,
+          'traditional'
+        );
+        const next = monthly.increment(mockAssumptions, 2024, 45);
+        expect(next.preTax401k).toBeCloseTo(23000 / 12, 6);
+        expect(next.getProratedAnnual(next.preTax401k)).toBeCloseTo(23000, 6);
+      });
+
     it('should initialize ESPP fields with correct defaults', () => {
       const salary = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 0, 'a1');
       expect(salary.esppContributionType).toBe('NONE');
@@ -228,6 +241,20 @@ describe('Income Models', () => {
       // 2024 base limit: $23,000 (no catch-up for under 50)
       expect(result.preTax).toBe(23000);
       expect(result.roth).toBe(0);
+    });
+
+    it('should return a per-period limit for monthly frequency (#8)', () => {
+      // preTax401k is stored per pay period (keyed off frequency). For a monthly income
+      // the auto-max contribution must be the annual limit spread across 12 periods, so
+      // that consumers which prorate it (×12) recover the true $23,000 limit — not $276k.
+      const income = new WorkIncome(
+        'w1', 'Job', 8333, 'Monthly', 'Yes',
+        0, 0, 0, 0, 'a1', 'Traditional 401k', 'FIXED', undefined, undefined, 0,
+        'traditional'
+      );
+      const result = income.getEffective401k(2024, 45);
+      expect(result.preTax).toBeCloseTo(23000 / 12, 6);
+      expect(income.getProratedAnnual(result.preTax)).toBeCloseTo(23000, 6);
     });
 
     it('should return full limit as Roth when mode is roth (under 50)', () => {
