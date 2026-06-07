@@ -487,9 +487,10 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 								onMilestoneChange={(milestoneId) => updateForm('startMilestoneId', milestoneId)}
 								tooltip={goalMode ? "When you start saving for this goal" : "When this expense begins"}
 							/>
-							{/* A save-by-date goal's Target Date above already is the end, and
-							    recurring goals have no end, so hide the generic End trigger. */}
-							{!goalMode && (
+							{/* A save-by-date goal's Target Date above already is its end, so
+							    hide the generic End there. Recurring goals can still take an
+							    end date (when to stop replacing it). */}
+							{(!goalMode || form.goalType === 'recurring') && (
 							<TriggerSelector
 								id={`${id}-end`}
 								label="End"
