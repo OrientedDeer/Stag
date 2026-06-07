@@ -4,6 +4,7 @@ import { AccountContext, AccountDispatchContext } from './AccountContext';
 import { CurrencyInput } from '../../Layout/InputFields/CurrencyInput';
 import { PropertyAccount } from './models';
 import { useModalAccessibility } from '../../../hooks/useModalAccessibility';
+import { formatDateForInput } from '../../../utils/formatters';
 
 interface EditHistoryModalProps {
     accountId: string;
@@ -20,7 +21,7 @@ export const EditHistoryModal: React.FC<EditHistoryModalProps> = ({ accountId, i
     const account = accounts.find(acc => acc.id === accountId);
     const isMortgage = account instanceof PropertyAccount && account.ownershipType === 'Financed';
 
-    const [newDate, setNewDate] = useState(new Date().toISOString().split('T')[0]);
+    const [newDate, setNewDate] = useState(formatDateForInput(new Date()));
     const [newAmount, setNewAmount] = useState(0);
 
     // Can only delete if there's more than one entry (always keep at least one)

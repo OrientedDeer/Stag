@@ -32,6 +32,15 @@ Object.defineProperty(window, 'localStorage', {
 
 // Mock getTodayString to return a consistent date
 const MOCK_DATE = '2024-01-15';
+
+// Build a Date at LOCAL midnight from a YYYY-MM-DD string so getTodayString()
+// (which formats local time) yields the intended calendar day regardless of the
+// test runner's timezone. Using new Date('2024-01-15') would be UTC midnight,
+// i.e. the prior day in negative-offset zones.
+const localMidnight = (iso: string): Date => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
 vi.mock('../../../../components/Objects/Accounts/AccountContext', async () => {
   const actual = await vi.importActual('../../../../components/Objects/Accounts/AccountContext');
   return {
@@ -44,7 +53,7 @@ describe('AccountContext', () => {
     localStorageMock.clear();
     localStorageMock.getItem.mockClear();
     localStorageMock.setItem.mockClear();
-    vi.setSystemTime(new Date(MOCK_DATE));
+    vi.setSystemTime(localMidnight(MOCK_DATE));
   });
 
   it('should provide initial empty state', () => {
@@ -400,7 +409,7 @@ describe('AccountContext', () => {
           dispatch({ type: 'ADD_ACCOUNT', payload: account });
         });
 
-        vi.setSystemTime(new Date('2024-01-16'));
+        vi.setSystemTime(localMidnight('2024-01-16'));
 
         act(() => {
           dispatch({
@@ -577,7 +586,7 @@ describe('AccountContext', () => {
           </AccountProvider>
         );
 
-        vi.setSystemTime(new Date('2024-01-15'));
+        vi.setSystemTime(localMidnight('2024-01-15'));
         const account = new SavedAccount('1', 'Savings', 1000);
 
         act(() => {
@@ -585,7 +594,7 @@ describe('AccountContext', () => {
         });
 
         act(() => {
-          vi.setSystemTime(new Date('2024-01-16'));
+          vi.setSystemTime(localMidnight('2024-01-16'));
           dispatch({
             type: 'ADD_AMOUNT_SNAPSHOT',
             payload: { id: '1', amount: 1100 },
@@ -593,7 +602,7 @@ describe('AccountContext', () => {
         });
 
         act(() => {
-          vi.setSystemTime(new Date('2024-01-17'));
+          vi.setSystemTime(localMidnight('2024-01-17'));
           dispatch({
             type: 'ADD_AMOUNT_SNAPSHOT',
             payload: { id: '1', amount: 1200 },
@@ -630,7 +639,7 @@ describe('AccountContext', () => {
           </AccountProvider>
         );
 
-        vi.setSystemTime(new Date('2024-01-15'));
+        vi.setSystemTime(localMidnight('2024-01-15'));
         const account = new SavedAccount('1', 'Savings', 1000);
 
         act(() => {
@@ -638,7 +647,7 @@ describe('AccountContext', () => {
         });
 
         act(() => {
-          vi.setSystemTime(new Date('2024-01-20'));
+          vi.setSystemTime(localMidnight('2024-01-20'));
           dispatch({
             type: 'ADD_AMOUNT_SNAPSHOT',
             payload: { id: '1', amount: 1200 },

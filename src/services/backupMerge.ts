@@ -138,9 +138,11 @@ function generateMonthId(): string {
     return `MONTH-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 }
 
-function utcToday(): string {
-    // Mirrors AccountContext.getTodayString(): UTC date, run-day.
-    return new Date().toISOString().split('T')[0];
+function localToday(): string {
+    // Mirrors AccountContext.getTodayString(): local run-day date (not UTC, which
+    // would stamp tomorrow's date in the evening of a negative-offset timezone).
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function round2(n: number): number {
@@ -276,7 +278,7 @@ export function applyBalances(
     rows: BalanceRowInput[],
     opts: { date?: string } = {}
 ): BalanceMergeReport {
-    const date = opts.date ?? utcToday();
+    const date = opts.date ?? localToday();
     const map = blob.balanceAccountMap ?? {};
     const report: BalanceMergeReport = { updated: [], flagged: [] };
 

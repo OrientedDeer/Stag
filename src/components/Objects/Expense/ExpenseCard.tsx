@@ -29,7 +29,7 @@ import { formatCompactCurrency } from "../../../tabs/Future/tabs/FutureUtils.js"
 import { AssumptionsContext } from "../Assumptions/AssumptionsContext.js";
 import { AlertBanner } from "../../Layout/AlertBanner.js";
 import { ExpandableCard } from "../../Layout/ExpandableCard.js";
-import { getFrequencyAbbrev } from "../../../utils/formatters.js";
+import { getFrequencyAbbrev, formatDateForInput } from "../../../utils/formatters.js";
 
 // Annual-cadence option labels (shared shape with AddExpenseModal). Month is
 // stored 1-12; the select uses names. Mode is stored 'lump'|'sinkingFund'.
@@ -346,8 +346,7 @@ interface MortgageFieldsProps {
 
 function MortgageFields({ expense, onFieldUpdate, linkedAccountName, showPmiWarning }: MortgageFieldsProps): ReactElement {
     const handleResetLoanBalance = (): void => {
-        const today = new Date();
-        const todayStr = today.toISOString().split('T')[0];
+        const todayStr = formatDateForInput(new Date());
         const newBalance = expense.getBalanceAtDate(todayStr);
         onFieldUpdate("loan_balance", newBalance);
     };

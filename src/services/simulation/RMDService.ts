@@ -92,8 +92,8 @@ export function processRMDs(
                 'Annually',
                 'No',
                 'RMD',
-                new Date(`${year}-01-01`),
-                new Date(`${year}-12-31`),
+                new Date(year, 0, 1),
+                new Date(year, 11, 31),
                 false
             );
             rmdIncomes.push(rmdIncome);

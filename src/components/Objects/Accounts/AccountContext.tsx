@@ -1,6 +1,7 @@
 import { createContext, ReactNode, Dispatch, useCallback, useRef } from 'react';
 import { AnyAccount, reconstituteAccount } from './models';
 import { usePersistedReducer } from '../../../hooks/usePersistedReducer';
+import { formatDateForInput } from '../../../utils/formatters';
 
 type AllKeys<T> = T extends unknown ? keyof T : never;
 export type AllAccountKeys = AllKeys<AnyAccount>;
@@ -35,7 +36,10 @@ const initialState: AccountState = {
 };
 
 function getTodayString(): string {
-  return new Date().toISOString().split('T')[0];
+  // Local date (not toISOString, which is UTC): otherwise a balance recorded in
+  // the evening of a negative-offset timezone gets stamped with tomorrow's date
+  // and lands in the wrong month for the budget's historicBalance lookups.
+  return formatDateForInput(new Date());
 }
 
 function accountReducer(state: AccountState, action: Action): AccountState {

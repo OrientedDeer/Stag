@@ -312,8 +312,8 @@ export function projectIncomes(
                     'Annually',
                     'No',
                     'Interest',
-                    new Date(`${year}-01-01`),
-                    new Date(`${year}-12-31`),
+                    new Date(year, 0, 1),
+                    new Date(year, 11, 31),
                     true  // isReinvested
                 ));
             }
