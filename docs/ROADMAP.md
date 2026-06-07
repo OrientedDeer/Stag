@@ -153,3 +153,5 @@ Many pages exceed the 150ms render threshold, triggering React warnings. Target 
 ### Technical Debt
 - Screen reader testing
 - Monte Carlo performance testing
+- **Surplus allocator smart-default picks the first `SavedAccount`** — when no priorities are configured, `SurplusAllocator` fills the first `SavedAccount` it finds as the "emergency fund". This can grab a reserved goal sinking-fund account by accident. Should skip reserved/goal-linked accounts (or require an explicit emergency-fund designation).
+- **Date-only fields shift a day for positive-offset timezones in backup roundtrips** — JSON/QR export serializes dates via `Date.toJSON`/`toISOString()` (UTC), and `parseDate` reads them back as local. For US (negative-offset) users this preserves the calendar date, but for UTC+ users a date-only field (start/end/goal/target dates) can land a day early on import. Fix by serializing date-only fields with a local `YYYY-MM-DD` formatter (e.g. `formatDateForInput`) instead of `toISOString()`.
