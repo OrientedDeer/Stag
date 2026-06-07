@@ -1,5 +1,7 @@
 import { useContext, useMemo } from 'react';
 import { ResponsiveLine } from '@nivo/line';
+import { useChartTheme } from '../../components/Charts/useChartTheme';
+import { ChartFrame } from '../../components/Charts/ChartFrame';
 import { BudgetContext } from '../../components/Objects/Budget/BudgetContext';
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
 import {
@@ -22,19 +24,18 @@ const categoryAxisLeft = {
     tickPadding: 10,
     format: (v: number) => `$${v.toLocaleString()}`,
 };
-const spendingColors = ['#f87171', '#4ade80'];
-const categoryColors = { datum: 'color' } as const;
+const spendingColors = ['var(--c-negative)', 'var(--c-positive)'];
 const lineTheme = {
     axis: {
-        ticks: { text: { fill: '#6b7280', fontSize: 11 } },
+        ticks: { text: { fill: 'var(--c-content-subtle)', fontSize: 11 } },
     },
-    grid: { line: { stroke: '#374151' } },
-    legends: { text: { fill: '#9ca3af', fontSize: 11 } },
-    crosshair: { line: { stroke: '#86efac', strokeWidth: 1 } },
+    grid: { line: { stroke: 'var(--c-border-default)' } },
+    legends: { text: { fill: 'var(--c-content-muted)', fontSize: 11 } },
+    crosshair: { line: { stroke: 'var(--c-positive-bright)', strokeWidth: 1 } },
 };
 const categoryLineTheme = {
     ...lineTheme,
-    legends: { text: { fill: '#9ca3af', fontSize: 10 } },
+    legends: { text: { fill: 'var(--c-content-muted)', fontSize: 10 } },
 };
 const pointColor = { theme: 'background' } as const;
 const pointBorderColor = { from: 'serieColor' } as const;
@@ -66,7 +67,7 @@ type LineTooltipPoint = {
     seriesColor: string;
 };
 const LineTooltip = ({ point }: { point: LineTooltipPoint }) => (
-    <div className="bg-gray-800 border border-gray-700 p-2 rounded shadow-xl text-xs">
+    <div className="bg-surface-overlay border border-border-default p-2 rounded shadow-xl text-xs">
         <div className="font-semibold text-white">{point.data.x as string}</div>
         <div style={{ color: point.seriesColor }}>
             {point.seriesId}: {formatCurrency(point.data.y as number)}
@@ -77,6 +78,7 @@ const LineTooltip = ({ point }: { point: LineTooltipPoint }) => (
 export default function TrendsTab() {
     const { months } = useContext(BudgetContext);
     const { expenses } = useContext(ExpenseContext);
+    const { resolve } = useChartTheme();
 
     // Get last 6 months of data (relative to current date or selected year)
     const trendData = useMemo(() => {
@@ -132,19 +134,19 @@ export default function TrendsTab() {
     const lineChartData = useMemo(() => [
         {
             id: 'Spent',
-            color: '#f87171', // red-400
+            color: 'var(--c-negative)', // red-400
             data: trendData.map(d => ({ x: d.month, y: d.spent })),
         },
         {
             id: 'Budget',
-            color: '#4ade80', // green-400
+            color: 'var(--c-positive)', // green-400
             data: trendData.map(d => ({ x: d.month, y: d.budget })),
         },
     ], [trendData]);
 
     // Line chart data for category trends over time
     const categoryTrendData = useMemo(() => {
-        const colors = ['#f87171', '#fb923c', '#facc15', '#4ade80', '#22d3ee', '#818cf8', '#e879f9', '#f472b6'];
+        const colors = ['var(--c-negative)', 'var(--c-cat-orange)', 'var(--c-warning)', 'var(--c-positive)', 'var(--c-cat-cyan)', 'var(--c-cat-purple)', 'var(--c-cat-fuchsia-bright)', 'var(--c-cat-fuchsia)'];
 
         // Get top categories by total spending
         const categoryTotals: Record<string, number> = {};
@@ -201,10 +203,10 @@ export default function TrendsTab() {
     if (!hasData) {
         return (
             <div className="text-center py-12">
-                <div className="text-gray-400 mb-4">
+                <div className="text-content-muted mb-4">
                     No spending data for the last 6 months.
                 </div>
-                <p className="text-gray-500 text-sm">
+                <p className="text-content-subtle text-sm">
                     Enter spending in the Spending tab to see trends over time.
                 </p>
             </div>
@@ -215,25 +217,25 @@ export default function TrendsTab() {
         <div className="space-y-6">
             {/* Stats Cards */}
             <div className="grid grid-cols-3 gap-4">
-                <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-                    <div className="text-xs text-gray-500">6-Month Total</div>
+                <div className="bg-surface-overlay rounded-lg p-4 border border-border-default">
+                    <div className="text-xs text-content-subtle">6-Month Total</div>
                     <div className="text-xl font-bold text-white">{formatCurrency(stats.totalSpent)}</div>
                 </div>
-                <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-                    <div className="text-xs text-gray-500">6-Month Budget</div>
+                <div className="bg-surface-overlay rounded-lg p-4 border border-border-default">
+                    <div className="text-xs text-content-subtle">6-Month Budget</div>
                     <div className="text-xl font-bold text-white">{formatCurrency(stats.totalBudget)}</div>
                 </div>
-                <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-                    <div className="text-xs text-gray-500">Monthly Average</div>
+                <div className="bg-surface-overlay rounded-lg p-4 border border-border-default">
+                    <div className="text-xs text-content-subtle">Monthly Average</div>
                     <div className="text-xl font-bold text-white">{formatCurrency(stats.avgMonthly)}</div>
                 </div>
             </div>
 
             {/* Spending vs Budget Line Chart */}
-            <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-                <h3 className="text-sm text-gray-400 mb-4">Spending vs Budget (Last 6 Months)</h3>
+            <div className="bg-surface-overlay rounded-xl p-4 border border-border-default">
+                <h3 className="text-sm text-content-muted mb-4">Spending vs Budget (Last 6 Months)</h3>
                 <div className="h-64">
-                    <ResponsiveLine
+                    <ChartFrame><ResponsiveLine
                         data={lineChartData}
                         margin={lineMargin}
                         xScale={lineXScale}
@@ -242,7 +244,7 @@ export default function TrendsTab() {
                         axisLeft={spendingAxisLeft}
                         enableGridX={false}
                         gridYValues={5}
-                        colors={spendingColors}
+                        colors={spendingColors.map(resolve)}
                         lineWidth={3}
                         curve="monotoneX"
                         enablePoints={true}
@@ -256,16 +258,16 @@ export default function TrendsTab() {
                         legends={spendingLegends}
                         theme={lineTheme}
                         tooltip={LineTooltip}
-                    />
+                    /></ChartFrame>
                 </div>
             </div>
 
             {/* Category Trends Line Chart */}
             {categoryTrendData.length > 0 && (
-                <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-                    <h3 className="text-sm text-gray-400 mb-4">Category Spending Trends (Top 6)</h3>
+                <div className="bg-surface-overlay rounded-xl p-4 border border-border-default">
+                    <h3 className="text-sm text-content-muted mb-4">Category Spending Trends (Top 6)</h3>
                     <div className="h-64">
-                        <ResponsiveLine
+                        <ChartFrame><ResponsiveLine
                             data={categoryTrendData}
                             margin={lineMargin}
                             xScale={lineXScale}
@@ -274,7 +276,7 @@ export default function TrendsTab() {
                             axisLeft={categoryAxisLeft}
                             enableGridX={false}
                             gridYValues={5}
-                            colors={categoryColors}
+                            colors={(s: { color?: string }) => resolve(s.color)}
                             lineWidth={2}
                             curve="linear"
                             enablePoints={true}
@@ -286,7 +288,7 @@ export default function TrendsTab() {
                             legends={categoryLegends}
                             theme={categoryLineTheme}
                             tooltip={LineTooltip}
-                        />
+                        /></ChartFrame>
                     </div>
                 </div>
             )}

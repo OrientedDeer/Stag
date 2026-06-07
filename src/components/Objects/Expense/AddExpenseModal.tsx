@@ -28,6 +28,7 @@ import { useModalAccessibility } from "../../../hooks/useModalAccessibility";
 import { AssumptionsContext, BUILTIN_MILESTONE_IDS, getBirthYear } from "../Assumptions/AssumptionsContext";
 import { CustomMilestone } from "../../../services/simulation/types";
 
+import { Button } from "../../Layout/Primitives";
 // Resolve a milestone to a concrete calendar date so a goal's target can be
 // expressed as "by retirement" etc. but stored as a real date.
 function resolveMilestoneToDate(milestoneId: string | undefined, milestones: CustomMilestone[]): Date | undefined {
@@ -362,10 +363,10 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				role="dialog"
 				aria-modal="true"
 				aria-labelledby="add-expense-modal-title"
-				className="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto text-white w-full max-w-lg"
+				className="bg-surface-raised border border-border-subtle rounded-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto text-white w-full max-w-lg"
 				onKeyDown={handleKeyDown}
 			>
-				<h2 id="add-expense-modal-title" className="text-xl font-bold mb-6 border-b border-gray-800 pb-3">
+				<h2 id="add-expense-modal-title" className="text-xl font-bold mb-6 border-b border-border-subtle pb-3">
 					{step === "select"
 						? "Select Expense Type"
 						: `New ${selectedType.name.replace("Expense", "")}`}
@@ -379,7 +380,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 								key={cat.label}
 								type="button"
 								onClick={() => handleTypeSelect(cat.class)}
-								className="flex items-center justify-center p-2 h-12 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-xl border border-gray-700 transition-all font-medium text-md text-center"
+								className="flex items-center justify-center p-2 h-12 bg-surface-overlay hover:bg-surface-input text-content-emphasis rounded-xl border border-border-default transition-all font-medium text-md text-center"
 							>
 								{cat.label}
 							</button>
@@ -506,7 +507,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 							/>
 							)}
 							{dateError && (
-								<div className="col-span-full text-red-400 text-xs">
+								<div className="col-span-full text-negative text-xs">
 									{dateError}
 								</div>
 							)}
@@ -653,22 +654,22 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				)}
 
 				<div className="flex justify-end gap-3 mt-8">
-					<button
+					<Button
 						type="button"
 						onClick={handleCancelOrBack}
-						className="px-5 py-2.5 rounded-lg font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+					 variant="ghost" size="lg"
 					>
 						{step === "details" ? "Back" : "Cancel"}
-					</button>
+					</Button>
 					{step === "details" && (
-						<button
+						<Button
 							type="submit"
 							disabled={!form.name.trim() || !!dateError}
 							title={!form.name.trim() ? "Enter a name" : dateError ? "Fix date error" : undefined}
-							className="px-5 py-2.5 rounded-lg font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+						 variant="positive" size="lg"
 						>
 							Add Expense
-						</button>
+						</Button>
 					)}
 				</div>
 				</form>

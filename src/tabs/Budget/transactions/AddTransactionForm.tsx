@@ -10,6 +10,7 @@ import { PriorityBucket } from '../../../components/Objects/Assumptions/Assumpti
 import { CONTRIBUTION_PREFIX } from './utils';
 import { NewTransactionForm } from './useTransactionEditor';
 
+import { Button } from "../../../components/Layout/Primitives";
 interface AddTransactionFormProps {
     formData: NewTransactionForm;
     setFormData: Dispatch<SetStateAction<NewTransactionForm>>;
@@ -39,7 +40,7 @@ export function AddTransactionForm({
     };
 
     return (
-        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+        <div className="bg-surface-overlay rounded-xl p-4 border border-border-default">
             <h4 className="text-sm font-semibold text-white mb-4">Add Transaction</h4>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <input
@@ -47,7 +48,7 @@ export function AddTransactionForm({
                     name="txn-date"
                     value={formData.date}
                     onChange={(e) => update('date', e.target.value)}
-                    className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-green-500 focus:outline-none"
+                    className="bg-surface-raised border border-border-default rounded-lg px-3 py-2 text-white text-sm focus:border-positive-soft focus:outline-none"
                 />
                 <input
                     type="text"
@@ -55,7 +56,7 @@ export function AddTransactionForm({
                     placeholder="Description"
                     value={formData.description}
                     onChange={(e) => update('description', e.target.value)}
-                    className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-green-500 focus:outline-none"
+                    className="bg-surface-raised border border-border-default rounded-lg px-3 py-2 text-white text-sm focus:border-positive-soft focus:outline-none"
                 />
                 <input
                     type="number"
@@ -63,14 +64,14 @@ export function AddTransactionForm({
                     placeholder="Amount"
                     value={formData.amount}
                     onChange={(e) => update('amount', e.target.value)}
-                    className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-green-500 focus:outline-none"
+                    className="bg-surface-raised border border-border-default rounded-lg px-3 py-2 text-white text-sm focus:border-positive-soft focus:outline-none"
                 />
                 <button
                     type="button"
                     onClick={() => update('isCredit', !formData.isCredit)}
-                    className="flex items-center gap-2 text-sm text-gray-300"
+                    className="flex items-center gap-2 text-sm text-content-default"
                 >
-                    <span className={`relative inline-flex items-center h-5 rounded-full w-9 shrink-0 transition-colors duration-200 ${formData.isCredit ? 'bg-green-600' : 'bg-gray-600'}`}>
+                    <span className={`relative inline-flex items-center h-5 rounded-full w-9 shrink-0 transition-colors duration-200 ${formData.isCredit ? 'bg-positive-solid' : 'bg-surface-hover'}`}>
                         <span className={`inline-block w-3.5 h-3.5 transform bg-white rounded-full transition-transform duration-200 ${formData.isCredit ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
                     </span>
                     {formData.isCredit ? 'Credit/Income' : 'Expense'}
@@ -80,35 +81,35 @@ export function AddTransactionForm({
             {formData.isCredit ? (
                 <div className="mt-4 space-y-3">
                     <div className="flex items-center gap-4 flex-wrap">
-                        <label className="text-sm text-gray-400">Type:</label>
+                        <label className="text-sm text-content-muted">Type:</label>
                         <div className="flex gap-4 flex-wrap">
-                            <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                            <label className="flex items-center gap-2 text-sm text-content-default cursor-pointer">
                                 <input
                                     type="radio"
                                     name="creditType"
                                     checked={formData.creditType === 'income'}
                                     onChange={() => setFormData(prev => ({ ...prev, creditType: 'income', expenseId: '' }))}
-                                    className="text-green-500 focus:ring-green-500"
+                                    className="text-positive-soft focus:ring-positive-soft"
                                 />
                                 Income
                             </label>
-                            <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                            <label className="flex items-center gap-2 text-sm text-content-default cursor-pointer">
                                 <input
                                     type="radio"
                                     name="creditType"
                                     checked={formData.creditType === 'reimbursement'}
                                     onChange={() => setFormData(prev => ({ ...prev, creditType: 'reimbursement', incomeCategory: '' }))}
-                                    className="text-green-500 focus:ring-green-500"
+                                    className="text-positive-soft focus:ring-positive-soft"
                                 />
                                 Reimbursement
                             </label>
-                            <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                            <label className="flex items-center gap-2 text-sm text-content-default cursor-pointer">
                                 <input
                                     type="radio"
                                     name="creditType"
                                     checked={formData.creditType === 'transfer'}
                                     onChange={() => setFormData(prev => ({ ...prev, creditType: 'transfer', expenseId: '', incomeCategory: '' }))}
-                                    className="text-green-500 focus:ring-green-500"
+                                    className="text-positive-soft focus:ring-positive-soft"
                                 />
                                 Transfer
                             </label>
@@ -119,7 +120,7 @@ export function AddTransactionForm({
                             name="txn-income-category"
                             value={formData.incomeCategory}
                             onChange={(e) => update('incomeCategory', e.target.value as IncomeCategory | '')}
-                            className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-green-500 focus:outline-none"
+                            className="bg-surface-raised border border-border-default rounded-lg px-3 py-2 text-white text-sm focus:border-positive-soft focus:outline-none"
                         >
                             <option value="">Select income category...</option>
                             {INCOME_CATEGORIES.map(cat => (
@@ -132,7 +133,7 @@ export function AddTransactionForm({
                             name="txn-reimbursement-expense"
                             value={formData.expenseId}
                             onChange={(e) => update('expenseId', e.target.value)}
-                            className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-green-500 focus:outline-none"
+                            className="bg-surface-raised border border-border-default rounded-lg px-3 py-2 text-white text-sm focus:border-positive-soft focus:outline-none"
                         >
                             <option value="">Select expense to offset...</option>
                             {activeExpenses.map(exp => (
@@ -147,7 +148,7 @@ export function AddTransactionForm({
                         name="txn-expense-category"
                         value={formData.expenseId}
                         onChange={(e) => update('expenseId', e.target.value)}
-                        className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-green-500 focus:outline-none"
+                        className="bg-surface-raised border border-border-default rounded-lg px-3 py-2 text-white text-sm focus:border-positive-soft focus:outline-none"
                     >
                         <option value="">Select category...</option>
                         <option value={TRANSFER_CATEGORY_ID}>Transfer</option>
@@ -173,18 +174,18 @@ export function AddTransactionForm({
             )}
 
             <div className="flex gap-2 mt-4">
-                <button
+                <Button
                     onClick={onSubmit}
-                    className="px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg text-sm font-medium transition-colors"
+                    variant="positive"
                 >
                     Add
-                </button>
-                <button
+                </Button>
+                <Button
                     onClick={onCancel}
-                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
+                    variant="secondary"
                 >
                     Cancel
-                </button>
+                </Button>
             </div>
         </div>
     );

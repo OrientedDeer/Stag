@@ -148,7 +148,7 @@ function TransactionRowInner({
 
     if (isEditing) {
         return (
-            <div className="px-4 py-3 hover:bg-gray-700/30 bg-gray-800/50">
+            <div className="px-4 py-3 hover:bg-surface-input/30 bg-surface-overlay/50">
                 <div className="space-y-2">
                     <div className="flex items-center gap-2 flex-wrap">
                         <input
@@ -156,7 +156,7 @@ function TransactionRowInner({
                             name="edit-txn-date"
                             value={editDate}
                             onChange={(e) => setEditDate(e.target.value)}
-                            className="w-32 bg-gray-900 border border-gray-600 rounded px-2 py-1.5 text-sm text-white focus:border-green-500 focus:outline-none"
+                            className="w-32 bg-surface-raised border border-border-strong rounded px-2 py-1.5 text-sm text-white focus:border-positive-soft focus:outline-none"
                         />
                         <input
                             type="text"
@@ -164,7 +164,7 @@ function TransactionRowInner({
                             value={editDescription}
                             onChange={(e) => setEditDescription(e.target.value)}
                             placeholder="Description"
-                            className="flex-1 min-w-30 bg-gray-900 border border-gray-600 rounded px-2 py-1.5 text-sm text-white focus:border-green-500 focus:outline-none"
+                            className="flex-1 min-w-30 bg-surface-raised border border-border-strong rounded px-2 py-1.5 text-sm text-white focus:border-positive-soft focus:outline-none"
                         />
                         <input
                             type="number"
@@ -173,14 +173,14 @@ function TransactionRowInner({
                             onChange={(e) => setEditAmount(e.target.value)}
                             placeholder="Amount"
                             step="0.01"
-                            className="w-24 bg-gray-900 border border-gray-600 rounded px-2 py-1.5 text-sm text-white focus:border-green-500 focus:outline-none"
+                            className="w-24 bg-surface-raised border border-border-strong rounded px-2 py-1.5 text-sm text-white focus:border-positive-soft focus:outline-none"
                         />
                         <button
                             type="button"
                             onClick={() => setIsCredit(!isCredit)}
-                            className="flex items-center gap-1.5 text-xs text-gray-300 whitespace-nowrap"
+                            className="flex items-center gap-1.5 text-xs text-content-default whitespace-nowrap"
                         >
-                            <span className={`relative inline-flex items-center h-5 rounded-full w-9 shrink-0 transition-colors duration-200 ${isCredit ? 'bg-green-600' : 'bg-gray-600'}`}>
+                            <span className={`relative inline-flex items-center h-5 rounded-full w-9 shrink-0 transition-colors duration-200 ${isCredit ? 'bg-positive-solid' : 'bg-surface-hover'}`}>
                                 <span className={`inline-block w-3.5 h-3.5 transform bg-white rounded-full transition-transform duration-200 ${isCredit ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
                             </span>
                             Credit
@@ -194,7 +194,7 @@ function TransactionRowInner({
                                     name="edit-txn-credit-type"
                                     value={editCreditType}
                                     onChange={(e) => setEditCreditType(e.target.value as EditCreditType)}
-                                    className="bg-gray-900 border border-gray-600 rounded px-2 py-1.5 text-sm text-white focus:border-green-500 focus:outline-none"
+                                    className="bg-surface-raised border border-border-strong rounded px-2 py-1.5 text-sm text-white focus:border-positive-soft focus:outline-none"
                                 >
                                     <option value="income">Income</option>
                                     <option value="reimbursement">Reimbursement</option>
@@ -206,7 +206,7 @@ function TransactionRowInner({
                                         name="edit-txn-income-category"
                                         value={editIncomeCategory}
                                         onChange={(e) => setEditIncomeCategory(e.target.value as IncomeCategory | '')}
-                                        className="bg-gray-900 border border-gray-600 rounded px-2 py-1.5 text-sm text-white focus:border-green-500 focus:outline-none"
+                                        className="bg-surface-raised border border-border-strong rounded px-2 py-1.5 text-sm text-white focus:border-positive-soft focus:outline-none"
                                     >
                                         <option value="">Select income category...</option>
                                         {INCOME_CATEGORIES.map(cat => (
@@ -219,7 +219,7 @@ function TransactionRowInner({
                                         name="edit-txn-reimbursement-expense"
                                         value={editExpenseId}
                                         onChange={(e) => setEditExpenseId(e.target.value)}
-                                        className="bg-gray-900 border border-gray-600 rounded px-2 py-1.5 text-sm text-white focus:border-green-500 focus:outline-none"
+                                        className="bg-surface-raised border border-border-strong rounded px-2 py-1.5 text-sm text-white focus:border-positive-soft focus:outline-none"
                                     >
                                         <option value="">Select expense to offset...</option>
                                         {activeExpenses.map(exp => (
@@ -236,7 +236,7 @@ function TransactionRowInner({
                                         name="edit-txn-target-account"
                                         value={editTargetAccountId}
                                         onChange={(e) => setEditTargetAccountId(e.target.value)}
-                                        className="bg-gray-900 border border-gray-600 rounded px-2 py-1.5 text-sm text-white focus:border-green-500 focus:outline-none"
+                                        className="bg-surface-raised border border-border-strong rounded px-2 py-1.5 text-sm text-white focus:border-positive-soft focus:outline-none"
                                     >
                                         <option value="">Select account...</option>
                                         {accounts.map(acc => (
@@ -250,7 +250,7 @@ function TransactionRowInner({
                                 name="edit-txn-expense-category"
                                 value={editExpenseId}
                                 onChange={(e) => setEditExpenseId(e.target.value)}
-                                className="bg-gray-900 border border-gray-600 rounded px-2 py-1.5 text-sm text-white focus:border-green-500 focus:outline-none"
+                                className="bg-surface-raised border border-border-strong rounded px-2 py-1.5 text-sm text-white focus:border-positive-soft focus:outline-none"
                             >
                                 <option value="">Uncategorized</option>
                                 <option value={TRANSFER_CATEGORY_ID}>Transfer</option>
@@ -279,13 +279,13 @@ function TransactionRowInner({
                         )}
                         <button
                             onClick={handleSave}
-                            className="px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded text-xs font-medium"
+                            className="px-3 py-1.5 bg-positive-solid hover:bg-positive-soft text-white rounded text-xs font-medium"
                         >
                             Save
                         </button>
                         <button
                             onClick={onCancel}
-                            className="px-3 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded text-xs font-medium"
+                            className="px-3 py-1.5 bg-surface-hover hover:bg-surface-muted text-white rounded text-xs font-medium"
                         >
                             Cancel
                         </button>
@@ -296,7 +296,7 @@ function TransactionRowInner({
     }
 
     return (
-        <div className="px-4 py-3 hover:bg-gray-700/30">
+        <div className="px-4 py-3 hover:bg-surface-input/30">
             <div className="flex items-center gap-4">
                 <label className="flex items-center justify-center px-4 -ml-4 cursor-pointer">
                     <input
@@ -317,12 +317,12 @@ function TransactionRowInner({
                             }
                         }}
                         data-transaction-select
-                        className="w-4 h-4 rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-blue-500 cursor-pointer"
+                        className="w-4 h-4 rounded bg-surface-input border-border-strong text-info focus:ring-accent-soft cursor-pointer"
                     />
                 </label>
-                <div className="w-16 text-sm text-gray-400">{dateStr}</div>
+                <div className="w-16 text-sm text-content-muted">{dateStr}</div>
                 {showCategory && (
-                    <div className="w-28 text-xs text-gray-500 truncate">
+                    <div className="w-28 text-xs text-content-subtle truncate">
                         {transaction.isTransfer && !transaction.targetAccountId ? 'Transfer' :
                          transaction.targetAccountId ? 'Contribution' :
                          transaction.incomeCategory ? transaction.incomeCategory :
@@ -333,22 +333,22 @@ function TransactionRowInner({
                 <div className="flex-1 text-sm text-white truncate flex items-center gap-2">
                     {transaction.description}
                     {transaction.frequency && transaction.frequency !== 'one-time' && (
-                        <span className="inline-flex items-center px-1.5 py-0.5 bg-purple-900/50 border border-purple-700/50 rounded text-xs text-purple-400">
+                        <span className="inline-flex items-center px-1.5 py-0.5 bg-cat-purple-tint/50 border border-cat-purple-strong/50 rounded text-xs text-cat-purple">
                             {transaction.frequency === 'annual' ? 'Annual' : transaction.frequency === 'quarterly' ? 'Qtr' : 'Mo'}
                         </span>
                     )}
                     {transaction.targetAccountId && (
-                        <span className="inline-flex items-center px-1.5 py-0.5 bg-blue-900/50 border border-blue-700/50 rounded text-xs text-blue-400">
+                        <span className="inline-flex items-center px-1.5 py-0.5 bg-info-tint/50 border border-info-strong/50 rounded text-xs text-info">
                             → {accounts.find(a => a.id === transaction.targetAccountId)?.name || 'Account'}
                         </span>
                     )}
                     {transaction.isReimbursement && (
-                        <span className="inline-flex items-center px-1.5 py-0.5 bg-green-900/50 border border-green-700/50 rounded text-xs text-green-400">
+                        <span className="inline-flex items-center px-1.5 py-0.5 bg-positive-tint/50 border border-positive-strong/50 rounded text-xs text-positive">
                             Reimb
                         </span>
                     )}
                     {transaction.isPossibleCredit && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-blue-900/50 border border-blue-700/50 rounded text-xs text-blue-400" title="This may be a credit or refund">
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-info-tint/50 border border-info-strong/50 rounded text-xs text-info" title="This may be a credit or refund">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                                 <circle cx="12" cy="12" r="10"/>
                                 <path d="M12 16v-4M12 8h.01"/>
@@ -357,18 +357,18 @@ function TransactionRowInner({
                         </span>
                     )}
                 </div>
-                <div className={`text-sm font-medium ${isPositiveAmount ? 'text-green-400' : 'text-white'}`}>
+                <div className={`text-sm font-medium ${isPositiveAmount ? 'text-positive' : 'text-white'}`}>
                     {isPositiveAmount ? '+' : ''}{formatCurrency(Math.abs(transaction.amount), { cents: true })}
                 </div>
                 <button
                     onClick={() => onEdit(transaction.id)}
-                    className="text-gray-500 hover:text-gray-300 text-xs"
+                    className="text-content-subtle hover:text-content-default text-xs"
                 >
                     Edit
                 </button>
                 <button
                     onClick={() => onDelete(transaction.id)}
-                    className="text-gray-500 hover:text-red-400 text-xs"
+                    className="text-content-subtle hover:text-negative text-xs"
                 >
                     Delete
                 </button>

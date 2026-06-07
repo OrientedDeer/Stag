@@ -67,7 +67,7 @@ export const UploadStage: React.FC<UploadStageProps> = ({
                 onDrop={handleDrop}
                 className={`
                     border-2 border-dashed rounded-xl p-12 text-center transition-colors cursor-pointer
-                    ${isDragging ? 'border-green-500 bg-green-500/10' : 'border-gray-700 hover:border-gray-500'}
+                    ${isDragging ? 'border-positive-soft bg-positive-soft/10' : 'border-border-default hover:border-border-faint'}
                 `}
                 onClick={() => document.getElementById('csv-file-input')?.click()}
             >
@@ -78,7 +78,7 @@ export const UploadStage: React.FC<UploadStageProps> = ({
                     onChange={handleFileSelect}
                     className="hidden"
                 />
-                <div className="text-gray-400 mb-2">
+                <div className="text-content-muted mb-2">
                     <svg
                         xmlns="http://www.w3.org/2000/svg"
                         width="48"
@@ -93,14 +93,14 @@ export const UploadStage: React.FC<UploadStageProps> = ({
                     </svg>
                     <p className="text-lg font-medium">Drop CSV file here or click to browse</p>
                 </div>
-                <p className="text-gray-500 text-sm mt-2">
+                <p className="text-content-subtle text-sm mt-2">
                     Supported: Chase, Capital One, Bank of America, or any CSV
                 </p>
             </div>
 
             {savedCSVFormats.length > 0 && (
                 <div className="mt-6">
-                    <p className="text-sm text-gray-400 mb-2">
+                    <p className="text-sm text-content-muted mb-2">
                         Previously recognized formats:{' '}
                         {savedCSVFormats.map((f) => f.name).join(', ')}
                     </p>

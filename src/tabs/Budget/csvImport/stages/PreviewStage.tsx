@@ -4,6 +4,7 @@ import { formatCurrency } from '../../../../components/Objects/Budget/budgetUtil
 import type { Transaction, SavedCSVMapping } from '../../../../components/Objects/Budget/BudgetContext';
 import type { CSVImportAction } from '../csvImportReducer';
 
+import { Button } from "../../../../components/Layout/Primitives";
 interface PreviewStageProps {
     transactions: Transaction[];
     duplicates: Transaction[];
@@ -26,7 +27,7 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
     return (
         <div className="space-y-4">
             {matchedFormat && matchConfidence >= 0.9 && (
-                <div className="flex items-center gap-2 text-green-400 mb-4">
+                <div className="flex items-center gap-2 text-positive mb-4">
                     <svg
                         xmlns="http://www.w3.org/2000/svg"
                         width="20"
@@ -44,22 +45,22 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
 
             {/* Preview Table */}
             <div>
-                <h4 className="text-sm font-medium text-gray-400 mb-2">
+                <h4 className="text-sm font-medium text-content-muted mb-2">
                     Preview ({Math.min(5, transactions.length)} of {transactions.length} transactions)
                 </h4>
-                <div className="overflow-x-auto bg-gray-800/50 rounded-lg">
+                <div className="overflow-x-auto bg-surface-overlay/50 rounded-lg">
                     <table className="w-full text-sm">
                         <thead>
-                            <tr className="border-b border-gray-700">
-                                <th className="text-left px-3 py-2 text-gray-400">Date</th>
-                                <th className="text-left px-3 py-2 text-gray-400">Description</th>
-                                <th className="text-right px-3 py-2 text-gray-400">Amount</th>
+                            <tr className="border-b border-border-default">
+                                <th className="text-left px-3 py-2 text-content-muted">Date</th>
+                                <th className="text-left px-3 py-2 text-content-muted">Description</th>
+                                <th className="text-right px-3 py-2 text-content-muted">Amount</th>
                             </tr>
                         </thead>
                         <tbody>
                             {transactions.slice(0, 5).map((txn, i) => (
-                                <tr key={i} className="border-b border-gray-700/50">
-                                    <td className="px-3 py-2 text-gray-300">
+                                <tr key={i} className="border-b border-border-default/50">
+                                    <td className="px-3 py-2 text-content-default">
                                         {txn.date.toLocaleDateString()}
                                     </td>
                                     <td className="px-3 py-2 text-white truncate max-w-62.5">
@@ -67,7 +68,7 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
                                     </td>
                                     <td
                                         className={`px-3 py-2 text-right ${
-                                            txn.amount < 0 ? 'text-red-400' : 'text-green-400'
+                                            txn.amount < 0 ? 'text-negative' : 'text-positive'
                                         }`}
                                     >
                                         {formatCurrency(Math.abs(txn.amount))}
@@ -80,18 +81,18 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
             </div>
 
             {/* Summary */}
-            <div className="bg-gray-800/50 rounded-lg p-4 space-y-2">
+            <div className="bg-surface-overlay/50 rounded-lg p-4 space-y-2">
                 <p className="text-white">
                     <strong>{transactions.length}</strong> transactions found
                 </p>
                 {autoCategorizedCount > 0 && (
-                    <p className="text-gray-400">
-                        <span className="text-green-400">{autoCategorizedCount}</span> will be
+                    <p className="text-content-muted">
+                        <span className="text-positive">{autoCategorizedCount}</span> will be
                         auto-categorized
                     </p>
                 )}
                 {duplicates.length > 0 && (
-                    <p className="text-yellow-400">
+                    <p className="text-warning">
                         {duplicates.length} possible duplicate(s) detected
                     </p>
                 )}
@@ -101,16 +102,16 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
             <div className="flex justify-end gap-3 pt-4">
                 <button
                     onClick={() => dispatch({ type: 'EDIT_MAPPING' })}
-                    className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+                    className="px-4 py-2 text-content-muted hover:text-white transition-colors"
                 >
                     {matchedFormat ? 'Use Different Format' : 'Back'}
                 </button>
-                <button
+                <Button
                     onClick={handleImport}
-                    className="px-5 py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-lg font-medium transition-colors"
+                    variant="positive" size="lg"
                 >
                     Import {transactions.length - duplicates.length} Transactions
-                </button>
+                </Button>
             </div>
         </div>
     );

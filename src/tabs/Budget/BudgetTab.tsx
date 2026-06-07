@@ -9,6 +9,7 @@ import HistoryTab from './HistoryTab';
 import TrendsTab from './TrendsTab';
 import TransactionsTab from './TransactionsTab';
 import SettingsTab from './SettingsTab';
+import { Panel, Button } from "../../components/Layout/Primitives";
 
 const tabs = ['Overview', 'Spending', 'Transactions', 'History', 'Trends', 'Settings'];
 
@@ -74,45 +75,45 @@ export default function BudgetTab() {
     useSubTabKeyboardNav(tabs, activeTab, handleTabChange);
 
     return (
-        <div className="w-full flex bg-gray-950 justify-center pt-6 pb-24">
+        <div className="w-full flex bg-surface-base justify-center pt-6 pb-24">
             <div className="w-full px-4 sm:px-8 max-w-screen-2xl">
                 {/* Month Selector */}
-                <div className="mb-6 p-4 bg-gray-900 rounded-xl border border-gray-800 shadow-lg">
+                <Panel className="mb-6 shadow-lg">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                            <button
+                            <Button
                                 onClick={handlePrevMonth}
-                                className="p-2 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-colors"
+                                variant="ghost" size="none" className="p-2"
                                 aria-label="Previous month"
                             >
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                     <polyline points="15 18 9 12 15 6" />
                                 </svg>
-                            </button>
+                            </Button>
                             <h1 className="text-2xl font-bold text-white w-52 text-center">
                                 {formatMonthYear(selectedMonth, selectedYear)}
                             </h1>
-                            <button
+                            <Button
                                 onClick={handleNextMonth}
-                                className="p-2 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-colors"
+                                variant="ghost" size="none" className="p-2"
                                 aria-label="Next month"
                             >
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                     <polyline points="9 18 15 12 9 6" />
                                 </svg>
-                            </button>
+                            </Button>
                         </div>
                         <button
                             onClick={handleCurrentMonth}
-                            className="px-3 py-1 text-sm rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white transition-colors"
+                            className="px-3 py-1 text-sm rounded-lg bg-surface-overlay hover:bg-surface-input text-content-default hover:text-white transition-colors"
                         >
                             Today
                         </button>
                     </div>
-                </div>
+                </Panel>
 
                 {/* Tab Navigation */}
-                <div className="bg-gray-900 rounded-lg mb-1 flex border border-gray-800 overflow-x-auto custom-scrollbar">
+                <Panel padding="none" className="rounded-lg mb-1 flex overflow-x-auto custom-scrollbar">
                     {tabs.map((tab) => (
                         <button
                             key={tab}
@@ -120,18 +121,18 @@ export default function BudgetTab() {
                             aria-selected={activeTab === tab}
                             className={`flex-1 min-w-fit font-semibold px-4 py-3 transition-colors duration-200 whitespace-nowrap ${
                                 activeTab === tab
-                                    ? "text-green-300 bg-gray-800 border-b-2 border-green-300"
-                                    : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                                    ? "text-positive-bright bg-surface-overlay border-b-2 border-positive-bright"
+                                    : "text-content-muted hover:bg-surface-overlay hover:text-white"
                             }`}
                             onClick={() => handleTabChange(tab)}
                         >
                             {tab}
                         </button>
                     ))}
-                </div>
+                </Panel>
 
                 {/* Tab Content */}
-                <div className="bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl mb-4 p-6 overflow-visible">
+                <Panel padding="lg" className="shadow-2xl mb-4 overflow-visible">
                     <div data-sub-tab-content>
                         {activeTab === 'Overview' && <OverviewTab />}
                         {activeTab === 'Spending' && <SpendingTab />}
@@ -140,7 +141,7 @@ export default function BudgetTab() {
                         {activeTab === 'Trends' && <TrendsTab />}
                         {activeTab === 'Settings' && <SettingsTab />}
                     </div>
-                </div>
+                </Panel>
             </div>
         </div>
     );

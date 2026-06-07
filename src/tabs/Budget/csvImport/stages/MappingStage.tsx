@@ -6,6 +6,7 @@ import { NameInput } from '../../../../components/Layout/InputFields/NameInput';
 import type { ParsedCSV, CSVMapping, CSVImportOptions } from '../../../../services/CSVImportService';
 import type { CSVImportAction } from '../csvImportReducer';
 
+import { Button } from "../../../../components/Layout/Primitives";
 interface MappingStageProps {
     csvContent: ParsedCSV;
     mapping: Partial<CSVMapping>;
@@ -45,11 +46,11 @@ export const MappingStage: React.FC<MappingStageProps> = ({
                 <div className="overflow-x-auto mb-6">
                     <table className="w-full text-sm">
                         <thead>
-                            <tr className="border-b border-gray-700">
+                            <tr className="border-b border-border-default">
                                 {csvContent.headers.map((header, i) => (
                                     <th
                                         key={i}
-                                        className="text-left px-2 py-2 text-gray-400 font-medium"
+                                        className="text-left px-2 py-2 text-content-muted font-medium"
                                     >
                                         {header}
                                     </th>
@@ -58,11 +59,11 @@ export const MappingStage: React.FC<MappingStageProps> = ({
                         </thead>
                         <tbody>
                             {csvContent.rows.slice(0, 3).map((row, rowIndex) => (
-                                <tr key={rowIndex} className="border-b border-gray-800">
+                                <tr key={rowIndex} className="border-b border-border-subtle">
                                     {row.map((cell, cellIndex) => (
                                         <td
                                             key={cellIndex}
-                                            className="px-2 py-2 text-gray-300 truncate max-w-37.5"
+                                            className="px-2 py-2 text-content-default truncate max-w-37.5"
                                         >
                                             {cell || '-'}
                                         </td>
@@ -212,7 +213,7 @@ export const MappingStage: React.FC<MappingStageProps> = ({
                 </div>
 
                 {/* Save Format Option */}
-                <div className="mt-6 pt-4 border-t border-gray-800">
+                <div className="mt-6 pt-4 border-t border-border-subtle">
                     <ToggleInput
                         id="save-format"
                         label="Remember this mapping for future imports"
@@ -239,16 +240,16 @@ export const MappingStage: React.FC<MappingStageProps> = ({
             <div className="flex justify-end gap-3">
                 <button
                     onClick={() => dispatch({ type: 'BACK_TO_UPLOAD' })}
-                    className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+                    className="px-4 py-2 text-content-muted hover:text-white transition-colors"
                 >
                     Back
                 </button>
-                <button
+                <Button
                     onClick={applyMappingAndPreview}
-                    className="px-5 py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-lg font-medium transition-colors"
+                    variant="positive" size="lg"
                 >
                     Preview Import
-                </button>
+                </Button>
             </div>
         </div>
     );

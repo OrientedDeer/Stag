@@ -11,6 +11,7 @@ import { UploadStage } from './csvImport/stages/UploadStage';
 import { MappingStage } from './csvImport/stages/MappingStage';
 import { PreviewStage } from './csvImport/stages/PreviewStage';
 import { ResultStage } from './csvImport/stages/ResultStage';
+import { Panel } from "../../components/Layout/Primitives";
 
 interface CSVImportModalProps {
     isOpen: boolean;
@@ -59,17 +60,17 @@ const CSVImportModal: React.FC<CSVImportModalProps> = ({ isOpen, onClose }) => {
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="csv-import-modal-title"
-                className="bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto text-white w-full max-w-2xl"
+                className="bg-surface-raised border border-border-subtle rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto text-white w-full max-w-2xl"
                 onKeyDown={handleKeyDown}
             >
                 {/* Header */}
-                <div className="sticky top-0 bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between">
+                <Panel padding="none" className="sticky top-0 border-b px-6 py-4 flex items-center justify-between">
                     <h2 id="csv-import-modal-title" className="text-xl font-bold text-white">
                         Import Transactions
                     </h2>
                     <button
                         onClick={handleClose}
-                        className="text-gray-400 hover:text-white transition-colors p-1"
+                        className="text-content-muted hover:text-white transition-colors p-1"
                         aria-label="Close"
                     >
                         <svg
@@ -84,11 +85,11 @@ const CSVImportModal: React.FC<CSVImportModalProps> = ({ isOpen, onClose }) => {
                             <path d="M18 6L6 18M6 6l12 12" />
                         </svg>
                     </button>
-                </div>
+                </Panel>
 
                 <div className="p-6">
                     {state.error && (
-                        <div className="mb-4 bg-red-900/20 border border-red-800 rounded-lg p-3 text-red-400 text-sm">
+                        <div className="mb-4 bg-negative-tint/20 border border-negative-strong rounded-lg p-3 text-negative text-sm">
                             {state.error}
                         </div>
                     )}

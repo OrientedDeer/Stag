@@ -4,6 +4,7 @@ import { BudgetContext, CategoryMapping } from '../../components/Objects/Budget/
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
 import { AnyExpense } from '../../components/Objects/Expense/models';
 
+import { Button } from "../../components/Layout/Primitives";
 const RULE_ROW_HEIGHT = 36;
 const RULE_EDIT_ROW_HEIGHT = 52;
 const RULE_LIST_MAX_HEIGHT = 480;
@@ -77,25 +78,25 @@ export default function SettingsTab() {
             {/* Header */}
             <div>
                 <h3 className="text-lg font-semibold text-white">Budget Settings</h3>
-                <p className="text-sm text-gray-400 mt-1">
+                <p className="text-sm text-content-muted mt-1">
                     Configure auto-categorization rules and import settings.
                 </p>
             </div>
 
             {/* Auto-categorization Rules */}
-            <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+            <div className="bg-surface-overlay rounded-xl p-4 border border-border-default">
                 <button
                     onClick={() => setShowRules(!showRules)}
                     className="w-full flex items-center justify-between text-left"
                 >
                     <div>
                         <h4 className="font-medium text-white">Auto-categorization Rules</h4>
-                        <p className="text-sm text-gray-400 mt-1">
+                        <p className="text-sm text-content-muted mt-1">
                             {rules.length} rule{rules.length !== 1 ? 's' : ''} defined
                         </p>
                     </div>
                     <svg
-                        className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${showRules ? 'rotate-0' : '-rotate-90'}`}
+                        className={`w-4 h-4 text-content-muted transition-transform duration-200 ${showRules ? 'rotate-0' : '-rotate-90'}`}
                         fill="currentColor"
                         viewBox="0 0 20 20"
                     >
@@ -108,41 +109,41 @@ export default function SettingsTab() {
                     {rules.length > 0 && (
                         <button
                             onClick={handleReapplyAllRules}
-                            className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg text-sm font-medium transition-colors"
+                            className="px-3 py-1.5 bg-surface-input hover:bg-surface-hover text-content-emphasis rounded-lg text-sm font-medium transition-colors"
                         >
                             Re-apply All
                         </button>
                     )}
-                    <button
+                    <Button
                         onClick={() => setShowAddRule(true)}
-                        className="px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded-lg text-sm font-medium transition-colors"
+                        variant="positive" size="sm"
                     >
                         Add Rule
-                    </button>
+                    </Button>
                 </div>
 
                 {/* Add Rule Form */}
                 {showAddRule && (
-                    <div className="bg-gray-900 rounded-lg p-4 mb-4 border border-gray-700">
+                    <div className="bg-surface-raised rounded-lg p-4 mb-4 border border-border-default">
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
-                                <label className="block text-xs text-gray-400 mb-1">Pattern</label>
+                                <label className="block text-xs text-content-muted mb-1">Pattern</label>
                                 <input
                                     type="text"
                                     name="rule-pattern"
                                     placeholder="e.g., AMAZON, NETFLIX"
                                     value={formData.pattern}
                                     onChange={(e) => setFormData({ ...formData, pattern: e.target.value })}
-                                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-green-500 focus:outline-none"
+                                    className="w-full bg-surface-overlay border border-border-default rounded-lg px-3 py-2 text-white text-sm focus:border-positive-soft focus:outline-none"
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs text-gray-400 mb-1">Category</label>
+                                <label className="block text-xs text-content-muted mb-1">Category</label>
                                 <select
                                     name="rule-category"
                                     value={formData.expenseId}
                                     onChange={(e) => setFormData({ ...formData, expenseId: e.target.value })}
-                                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-green-500 focus:outline-none"
+                                    className="w-full bg-surface-overlay border border-border-default rounded-lg px-3 py-2 text-white text-sm focus:border-positive-soft focus:outline-none"
                                 >
                                     <option value="">Select category...</option>
                                     {expenses.map(exp => (
@@ -151,11 +152,11 @@ export default function SettingsTab() {
                                 </select>
                             </div>
                             <div className="flex items-end gap-2">
-                                <div className="flex items-center gap-2 text-sm text-gray-300">
+                                <div className="flex items-center gap-2 text-sm text-content-default">
                                     <button
                                         type="button"
                                         onClick={() => setFormData({ ...formData, isRegex: !formData.isRegex })}
-                                        className={`relative inline-flex items-center h-5 rounded-full w-9 shrink-0 transition-colors duration-200 ${formData.isRegex ? 'bg-green-600' : 'bg-gray-600'}`}
+                                        className={`relative inline-flex items-center h-5 rounded-full w-9 shrink-0 transition-colors duration-200 ${formData.isRegex ? 'bg-positive-solid' : 'bg-surface-hover'}`}
                                     >
                                         <span className={`inline-block w-3.5 h-3.5 transform bg-white rounded-full transition-transform duration-200 ${formData.isRegex ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
                                     </button>
@@ -164,39 +165,39 @@ export default function SettingsTab() {
                             </div>
                         </div>
                         <div className="flex gap-2 mt-4">
-                            <button
+                            <Button
                                 onClick={handleAddRule}
-                                className="px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg text-sm font-medium transition-colors"
+                                variant="positive"
                             >
                                 Add Rule
-                            </button>
-                            <button
+                            </Button>
+                            <Button
                                 onClick={() => {
                                     setShowAddRule(false);
                                     setFormData({ pattern: '', expenseId: '', isRegex: false });
                                 }}
-                                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
+                                variant="secondary"
                             >
                                 Cancel
-                            </button>
+                            </Button>
                         </div>
                     </div>
                 )}
 
                 {/* Rules List */}
                 {rules.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
+                    <div className="text-center py-8 text-content-subtle">
                         <p>No rules defined yet.</p>
                         <p className="text-sm mt-1">
                             Add rules to automatically categorize transactions when importing.
                         </p>
                     </div>
                 ) : (
-                    <div className="bg-gray-900 rounded-lg overflow-hidden text-sm">
-                        <div className={`${RULE_GRID_COLS} border-b border-gray-800`}>
-                            <div className="text-left text-xs text-gray-500 font-medium px-3 py-2">Pattern</div>
-                            <div className="text-left text-xs text-gray-500 font-medium px-3 py-2">Category</div>
-                            <div className="text-right text-xs text-gray-500 font-medium px-3 py-2">Actions</div>
+                    <div className="bg-surface-raised rounded-lg overflow-hidden text-sm">
+                        <div className={`${RULE_GRID_COLS} border-b border-border-subtle`}>
+                            <div className="text-left text-xs text-content-subtle font-medium px-3 py-2">Pattern</div>
+                            <div className="text-left text-xs text-content-subtle font-medium px-3 py-2">Category</div>
+                            <div className="text-right text-xs text-content-subtle font-medium px-3 py-2">Actions</div>
                         </div>
                         <List
                             rowComponent={RuleListRow}
@@ -219,19 +220,19 @@ export default function SettingsTab() {
             </div>
 
             {/* Saved Import Formats */}
-            <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+            <div className="bg-surface-overlay rounded-xl p-4 border border-border-default">
                 <button
                     onClick={() => setShowFormats(!showFormats)}
                     className="w-full flex items-center justify-between text-left"
                 >
                     <div>
                         <h4 className="font-medium text-white">Saved Import Formats</h4>
-                        <p className="text-sm text-gray-400 mt-1">
+                        <p className="text-sm text-content-muted mt-1">
                             {savedFormats.length} format{savedFormats.length !== 1 ? 's' : ''} saved
                         </p>
                     </div>
                     <svg
-                        className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${showFormats ? 'rotate-0' : '-rotate-90'}`}
+                        className={`w-4 h-4 text-content-muted transition-transform duration-200 ${showFormats ? 'rotate-0' : '-rotate-90'}`}
                         fill="currentColor"
                         viewBox="0 0 20 20"
                     >
@@ -241,7 +242,7 @@ export default function SettingsTab() {
 
                 {showFormats && <>
                 {savedFormats.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
+                    <div className="text-center py-8 text-content-subtle">
                         <p>No saved formats yet.</p>
                         <p className="text-sm mt-1">
                             Import a CSV to create one.
@@ -252,17 +253,17 @@ export default function SettingsTab() {
                         {savedFormats.map(format => (
                             <div
                                 key={format.id}
-                                className="bg-gray-900 rounded-lg p-4 border border-gray-700"
+                                className="bg-surface-raised rounded-lg p-4 border border-border-default"
                             >
                                 <div className="flex items-start justify-between">
                                     <div className="flex-1">
                                         <div className="font-medium text-white mb-1">
                                             {format.name}
                                         </div>
-                                        <div className="text-sm text-gray-400 mb-2">
+                                        <div className="text-sm text-content-muted mb-2">
                                             Columns: {format.fingerprint.headers.join(', ')}
                                         </div>
-                                        <div className="flex items-center gap-4 text-xs text-gray-500">
+                                        <div className="flex items-center gap-4 text-xs text-content-subtle">
                                             <span>
                                                 Last used: {new Date(format.lastUsed).toLocaleDateString('en-US', {
                                                     month: 'short',
@@ -277,7 +278,7 @@ export default function SettingsTab() {
                                     </div>
                                     <button
                                         onClick={() => handleDeleteFormat(format.id)}
-                                        className="text-gray-500 hover:text-red-400 text-sm transition-colors"
+                                        className="text-content-subtle hover:text-negative text-sm transition-colors"
                                     >
                                         Delete
                                     </button>
@@ -290,12 +291,12 @@ export default function SettingsTab() {
             </div>
 
             {/* Info Section */}
-            <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-4">
-                <h4 className="text-blue-400 font-medium mb-2">How Auto-categorization Works</h4>
-                <ul className="text-sm text-gray-300 space-y-1">
+            <div className="bg-info-tint/20 border border-info-strong/50 rounded-lg p-4">
+                <h4 className="text-info font-medium mb-2">How Auto-categorization Works</h4>
+                <ul className="text-sm text-content-default space-y-1">
                     <li>• Rules are matched against transaction descriptions (case-insensitive)</li>
                     <li>• Simple patterns match if the text appears anywhere in the description</li>
-                    <li>• Enable "Regex" for advanced pattern matching (e.g., <code className="text-blue-400">AMZN|AMAZON</code>)</li>
+                    <li>• Enable "Regex" for advanced pattern matching (e.g., <code className="text-info">AMZN|AMAZON</code>)</li>
                     <li>• Rules are applied in order - first match wins</li>
                 </ul>
             </div>
@@ -338,11 +339,11 @@ function RuleListRow({
 
     const isEditing = rule.id === editingId;
     const expense = expenses.find(e => e.id === rule.expenseId);
-    const borderClass = index < rules.length - 1 ? 'border-b border-gray-800' : '';
+    const borderClass = index < rules.length - 1 ? 'border-b border-border-subtle' : '';
 
     if (isEditing) {
         return (
-            <div style={style} className={`hover:bg-gray-800/50 px-3 py-2 ${borderClass}`}>
+            <div style={style} className={`hover:bg-surface-overlay/50 px-3 py-2 ${borderClass}`}>
                 <EditRuleForm
                     rule={rule}
                     expenses={expenses}
@@ -354,26 +355,26 @@ function RuleListRow({
     }
 
     return (
-        <div style={style} className={`${RULE_GRID_COLS} hover:bg-gray-800/50 ${borderClass}`}>
+        <div style={style} className={`${RULE_GRID_COLS} hover:bg-surface-overlay/50 ${borderClass}`}>
             <div className="px-3 py-1.5 min-w-0 truncate">
-                <code className="text-green-400 text-xs">{rule.pattern}</code>
+                <code className="text-positive text-xs">{rule.pattern}</code>
                 {rule.isRegex && (
-                    <span className="text-[10px] text-gray-600 ml-1">regex</span>
+                    <span className="text-[10px] text-content-faint ml-1">regex</span>
                 )}
             </div>
-            <div className="px-3 py-1.5 text-gray-400 min-w-0 truncate">
+            <div className="px-3 py-1.5 text-content-muted min-w-0 truncate">
                 {expense?.name || 'Unknown'}
             </div>
             <div className="px-3 py-1.5 text-right">
                 <button
                     onClick={() => onEdit(rule.id)}
-                    className="text-gray-600 hover:text-gray-300 text-xs mr-2"
+                    className="text-content-faint hover:text-content-default text-xs mr-2"
                 >
                     Edit
                 </button>
                 <button
                     onClick={() => onDelete(rule.id)}
-                    className="text-gray-600 hover:text-red-400 text-xs"
+                    className="text-content-faint hover:text-negative text-xs"
                 >
                     ×
                 </button>
@@ -405,23 +406,23 @@ function EditRuleForm({
                 name="edit-rule-pattern"
                 value={pattern}
                 onChange={(e) => setPattern(e.target.value)}
-                className="flex-1 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white text-sm focus:border-green-500 focus:outline-none"
+                className="flex-1 bg-surface-overlay border border-border-default rounded px-2 py-1 text-white text-sm focus:border-positive-soft focus:outline-none"
             />
             <select
                 name="edit-rule-category"
                 value={expenseId}
                 onChange={(e) => setExpenseId(e.target.value)}
-                className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white text-sm focus:border-green-500 focus:outline-none"
+                className="bg-surface-overlay border border-border-default rounded px-2 py-1 text-white text-sm focus:border-positive-soft focus:outline-none"
             >
                 {expenses.map(exp => (
                     <option key={exp.id} value={exp.id}>{exp.name}</option>
                 ))}
             </select>
-            <div className="flex items-center gap-1.5 text-xs text-gray-400">
+            <div className="flex items-center gap-1.5 text-xs text-content-muted">
                 <button
                     type="button"
                     onClick={() => setIsRegex(!isRegex)}
-                    className={`relative inline-flex items-center h-4 rounded-full w-7 shrink-0 transition-colors duration-200 ${isRegex ? 'bg-green-600' : 'bg-gray-600'}`}
+                    className={`relative inline-flex items-center h-4 rounded-full w-7 shrink-0 transition-colors duration-200 ${isRegex ? 'bg-positive-solid' : 'bg-surface-hover'}`}
                 >
                     <span className={`inline-block w-2.5 h-2.5 transform bg-white rounded-full transition-transform duration-200 ${isRegex ? 'translate-x-[14px]' : 'translate-x-0.5'}`} />
                 </button>
@@ -429,13 +430,13 @@ function EditRuleForm({
             </div>
             <button
                 onClick={() => onSave({ pattern, expenseId, isRegex })}
-                className="px-2 py-1 bg-green-600 hover:bg-green-500 text-white rounded text-xs"
+                className="px-2 py-1 bg-positive-solid hover:bg-positive-soft text-white rounded text-xs"
             >
                 Save
             </button>
             <button
                 onClick={onCancel}
-                className="px-2 py-1 bg-gray-600 hover:bg-gray-500 text-white rounded text-xs"
+                className="px-2 py-1 bg-surface-hover hover:bg-surface-muted text-white rounded text-xs"
             >
                 Cancel
             </button>

@@ -16,6 +16,7 @@ import ExpenseCard from '../../components/Objects/Expense/ExpenseCard';
 import AddExpenseModal from '../../components/Objects/Expense/AddExpenseModal';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { ObjectsIcicleChart, tailwindToCssVar, getDistributedColors } from '../../components/Charts/ObjectsIcicleChart';
+import { Panel } from "../../components/Layout/Primitives";
 
 // Cadence sub-tabs for the expense list, mirroring the Accounts page. Weekly +
 // Monthly roll up into "Monthly"; "Annually" expenses form "Annual". "Longer
@@ -65,14 +66,14 @@ const ExpenseList = ({ title, match, collapsible = false, dimmed = false }: Expe
     <button
       type="button"
       onClick={() => setOpen((v) => !v)}
-      className="flex items-center gap-2 text-gray-400 hover:text-white text-xs font-bold uppercase tracking-widest mb-3 transition-colors"
+      className="flex items-center gap-2 text-content-muted hover:text-white text-xs font-bold uppercase tracking-widest mb-3 transition-colors"
     >
       <span className={`transition-transform ${open ? 'rotate-90' : ''}`}>▸</span>
-      {open ? 'Hide' : 'Show'} {title} <span className="text-gray-600">· {filteredExpenses.length}</span>
+      {open ? 'Hide' : 'Show'} {title} <span className="text-content-faint">· {filteredExpenses.length}</span>
     </button>
   ) : title ? (
-    <h3 className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-3">
-      {title} <span className="text-gray-600">· {filteredExpenses.length}</span>
+    <h3 className="text-content-muted text-xs font-bold uppercase tracking-widest mb-3">
+      {title} <span className="text-content-faint">· {filteredExpenses.length}</span>
     </h3>
   ) : null;
 
@@ -100,7 +101,7 @@ const ExpenseList = ({ title, match, collapsible = false, dimmed = false }: Expe
                           {/* Drag Handle inside the gutter */}
                           <div
                             {...provided.dragHandleProps}
-                            className="absolute -left-3 top-2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-2 text-green-200"
+                            className="absolute -left-3 top-2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-2 text-positive-bright"
                           >
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                               <line x1="8" y1="6" x2="21" y2="6"></line>
@@ -185,17 +186,17 @@ const TabsContent = () => {
 
         return {
             id: "Total Expenses",
-            color: "#ef4444", // Root node color
+            color: "var(--c-negative-soft)", // Root node color
             children: categoryChildren
         };
     }, [expenses]);
 
     return (
-        <div className="w-full min-h-full flex bg-gray-950 justify-center pt-6 pb-24">
+        <div className="w-full min-h-full flex bg-surface-base justify-center pt-6 pb-24">
             <div className="w-full px-4 sm:px-8 max-w-screen-2xl">
                 {/* Chart Section */}
-                <div className="space-y-4 mb-4 p-4 bg-gray-900 rounded-xl border border-gray-800">
-                    <h2 className="text-xl font-bold text-white mb-4 border-b border-gray-700 pb-2">
+                <Panel className="space-y-4 mb-4">
+                    <h2 className="text-xl font-bold text-white mb-4 border-b border-border-default pb-2">
                         Expense Breakdown
                     </h2>
                     
@@ -205,10 +206,10 @@ const TabsContent = () => {
                             valueFormat=">-$0,.0f"
                         />
                     )}
-                </div>
+                </Panel>
 
                 {/* Cadence sub-tabs (mirrors the Accounts page) */}
-                <div className="bg-gray-900 rounded-lg mb-1 flex border border-gray-800 overflow-x-auto custom-scrollbar">
+                <Panel padding="none" className="rounded-lg mb-1 flex overflow-x-auto custom-scrollbar">
                     {tabs.map((tab) => (
                         <button
                             key={tab}
@@ -216,18 +217,18 @@ const TabsContent = () => {
                             aria-selected={activeTab === tab}
                             className={`flex-1 min-w-fit font-semibold px-4 py-3 transition-colors duration-200 whitespace-nowrap ${
                                 activeTab === tab
-                                    ? "text-green-300 bg-gray-900 border-b-2 border-green-300"
-                                    : "text-gray-400 hover:bg-gray-900 hover:text-white"
+                                    ? "text-positive-bright bg-surface-raised border-b-2 border-positive-bright"
+                                    : "text-content-muted hover:bg-surface-raised hover:text-white"
                             }`}
                             onClick={() => setActiveTab(tab)}
                         >
                             {tab}
                         </button>
                     ))}
-                </div>
+                </Panel>
 
                 {/* Active tab: that cadence's expenses (done ones excluded) */}
-                <div data-sub-tab-content className="bg-[#09090b] border border-gray-800 rounded-xl min-h-100 mb-4">
+                <div data-sub-tab-content className="bg-surface-base border border-border-subtle rounded-xl min-h-100 mb-4">
                     <div className="p-4">
                         <ExpenseList
                             title=""
@@ -236,7 +237,7 @@ const TabsContent = () => {
 
                         <button
                             onClick={() => setIsModalOpen(true)}
-                            className="bg-green-600 p-4 rounded-xl text-white font-bold mt-4 hover:bg-green-700 transition-colors"
+                            className="bg-positive-solid p-4 rounded-xl text-white font-bold mt-4 hover:bg-positive-strong transition-colors"
                         >
                             {activeTabDef.goal ? '+ Add Goal' : '+ Add Expense'}
                         </button>

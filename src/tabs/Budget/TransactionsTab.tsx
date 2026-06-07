@@ -220,15 +220,15 @@ export default function TransactionsTab() {
             )}
 
             {transactions.length === 0 ? (
-                <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-6 text-center">
-                    <p className="text-blue-400 font-medium mb-2">No transactions yet</p>
-                    <p className="text-gray-400 text-sm">
+                <div className="bg-info-tint/20 border border-info-strong/50 rounded-lg p-6 text-center">
+                    <p className="text-info font-medium mb-2">No transactions yet</p>
+                    <p className="text-content-muted text-sm">
                         Add transactions manually or import them from a CSV file.
                     </p>
                 </div>
             ) : !groupByCategory ? (
-                <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-                    <div className="divide-y divide-gray-700">
+                <div className="bg-surface-overlay rounded-xl border border-border-default overflow-hidden">
+                    <div className="divide-y divide-border-default">
                         {sortedTransactions.map(t => renderRow(t, true))}
                     </div>
                 </div>
@@ -240,7 +240,7 @@ export default function TransactionsTab() {
                             label="Uncategorized"
                             count={groupedTransactions['uncategorized'].transactions.length}
                             headerRight={
-                                <span className="text-yellow-400">
+                                <span className="text-warning">
                                     {formatCurrency(groupedTransactions['uncategorized'].total, { cents: true })}
                                 </span>
                             }
@@ -256,7 +256,7 @@ export default function TransactionsTab() {
                             theme="green"
                             label="Income"
                             headerRight={
-                                <span className="text-green-400">
+                                <span className="text-positive">
                                     {formatCurrency(totalIncome, { cents: true })}
                                 </span>
                             }
@@ -267,10 +267,10 @@ export default function TransactionsTab() {
                                 const group = incomeGroups[cat];
                                 if (!group || group.transactions.length === 0) return null;
                                 return (
-                                    <div key={cat} className="divide-y divide-green-700/20">
-                                        <div className="px-4 py-2 bg-green-900/10 flex items-center justify-between">
-                                            <span className="text-sm font-medium text-green-300">{cat}</span>
-                                            <span className="text-sm text-green-400">{formatCurrency(group.total, { cents: true })}</span>
+                                    <div key={cat} className="divide-y divide-positive-strong/20">
+                                        <div className="px-4 py-2 bg-positive-tint/10 flex items-center justify-between">
+                                            <span className="text-sm font-medium text-positive-bright">{cat}</span>
+                                            <span className="text-sm text-positive">{formatCurrency(group.total, { cents: true })}</span>
                                         </div>
                                         {group.transactions.map(t => renderRow(t, false))}
                                     </div>
@@ -285,9 +285,9 @@ export default function TransactionsTab() {
                             label="Transfers"
                             count={groupedTransactions[TRANSFER_CATEGORY_ID].transactions.length}
                             headerRight={
-                                <span className="text-gray-400">
+                                <span className="text-content-muted">
                                     {formatCurrency(groupedTransactions[TRANSFER_CATEGORY_ID].total, { cents: true })}
-                                    <span className="text-xs ml-2 text-gray-500">(not counted)</span>
+                                    <span className="text-xs ml-2 text-content-subtle">(not counted)</span>
                                 </span>
                             }
                             collapsed={collapse.collapsed.has('transfers')}
@@ -311,13 +311,13 @@ export default function TransactionsTab() {
                                 count={group.transactions.length}
                                 headerRight={
                                     hasReimbursements ? (
-                                        <span className="text-gray-400">
-                                            <span className="text-gray-500">{formatCurrency(group.gross || 0, { cents: true })}</span>
-                                            <span className="text-green-400 mx-1">- {formatCurrency(group.reimbursements || 0, { cents: true })}</span>
+                                        <span className="text-content-muted">
+                                            <span className="text-content-subtle">{formatCurrency(group.gross || 0, { cents: true })}</span>
+                                            <span className="text-positive mx-1">- {formatCurrency(group.reimbursements || 0, { cents: true })}</span>
                                             <span className="text-white">= {formatCurrency(group.net || 0, { cents: true })} net</span>
                                         </span>
                                     ) : (
-                                        <span className="text-gray-400">
+                                        <span className="text-content-muted">
                                             {formatCurrency(group.gross || 0, { cents: true })}
                                         </span>
                                     )
@@ -335,7 +335,7 @@ export default function TransactionsTab() {
                             theme="blue"
                             label="Contributions"
                             headerRight={
-                                <span className="text-blue-400">
+                                <span className="text-info">
                                     {formatCurrency(Object.values(contributionGroups).reduce((sum, g) => sum + g.total, 0), { cents: true })}
                                 </span>
                             }
@@ -346,15 +346,15 @@ export default function TransactionsTab() {
                                 const group = contributionGroups[p.accountId!];
                                 if (!group || group.transactions.length === 0) return null;
                                 return (
-                                    <div key={p.accountId} className="divide-y divide-blue-700/20">
-                                        <div className="px-4 py-2 bg-blue-900/10 flex items-center justify-between">
+                                    <div key={p.accountId} className="divide-y divide-info-strong/20">
+                                        <div className="px-4 py-2 bg-info-tint/10 flex items-center justify-between">
                                             <div>
-                                                <span className="text-sm font-medium text-blue-300">{group.bucketName}</span>
-                                                <span className="text-xs text-blue-400/70 ml-2">→ {group.accountName}</span>
+                                                <span className="text-sm font-medium text-info-bright">{group.bucketName}</span>
+                                                <span className="text-xs text-info/70 ml-2">→ {group.accountName}</span>
                                             </div>
                                             <div className="text-sm text-right">
-                                                <span className="text-blue-400">{formatCurrency(group.total, { cents: true })}</span>
-                                                <span className="text-blue-400/50 text-xs ml-2">
+                                                <span className="text-info">{formatCurrency(group.total, { cents: true })}</span>
+                                                <span className="text-info/50 text-xs ml-2">
                                                     / {formatCurrency(group.annualTarget)} annual
                                                 </span>
                                             </div>

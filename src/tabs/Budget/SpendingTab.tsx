@@ -501,10 +501,10 @@ export default function SpendingTab() {
     if (activeExpenses.length === 0) {
         return (
             <div className="text-center py-12">
-                <div className="text-gray-400 mb-4">
+                <div className="text-content-muted mb-4">
                     No expense categories found for this month.
                 </div>
-                <p className="text-gray-500 text-sm">
+                <p className="text-content-subtle text-sm">
                     Add expenses in the Current &gt; Expenses tab to start tracking your budget.
                 </p>
             </div>
@@ -514,11 +514,11 @@ export default function SpendingTab() {
     return (
         <div className="space-y-6">
             {/* Spending Grid */}
-            <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
-                <div className="p-4 border-b border-gray-700 flex items-start justify-between gap-4">
+            <div className="bg-surface-overlay rounded-lg border border-border-default overflow-hidden">
+                <div className="p-4 border-b border-border-default flex items-start justify-between gap-4">
                     <div>
                         <h3 className="text-lg font-semibold text-white">Spending by Category</h3>
-                        <p className="text-sm text-gray-400 mt-1">
+                        <p className="text-sm text-content-muted mt-1">
                             Spending is automatically calculated from categorized transactions.
                             {isFutureMonth && projectFuture && (
                                 <> Non-discretionary expenses are projected at budgeted amounts for this future month.</>
@@ -549,8 +549,8 @@ export default function SpendingTab() {
 
             {/* Future-month notice for tracking sections */}
             {hasPriorityBuckets && isFutureMonth && (
-                <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-4">
-                    <p className="text-sm text-blue-400">
+                <div className="bg-info-tint/20 border border-info-strong/50 rounded-lg p-4">
+                    <p className="text-sm text-info">
                         Contribution and account tracking is hidden for future months. Navigate to a past or current month to see your progress.
                     </p>
                 </div>
@@ -558,58 +558,58 @@ export default function SpendingTab() {
 
             {/* Savings Targets (balance-based goals) */}
             {showTracking && savingsTargetRows.length > 0 && (
-                <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
-                    <div className="p-4 border-b border-gray-700">
+                <div className="bg-surface-overlay rounded-lg border border-border-default overflow-hidden">
+                    <div className="p-4 border-b border-border-default">
                         <h3 className="text-lg font-semibold text-white">Savings Targets</h3>
-                        <p className="text-sm text-gray-400 mt-1">
+                        <p className="text-sm text-content-muted mt-1">
                             Reach-this-balance goals (e.g. emergency fund). Target uses your current monthly expenses ({formatCurrency(currentMonthlyExpenses)}/mo).
                         </p>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full">
-                            <thead className="bg-gray-900/50">
+                            <thead className="bg-surface-raised/50">
                                 <tr>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">#</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Account</th>
-                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Current</th>
-                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Target</th>
-                                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Status</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-content-muted uppercase tracking-wider">#</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-content-muted uppercase tracking-wider">Account</th>
+                                    <th className="px-4 py-3 text-right text-xs font-medium text-content-muted uppercase tracking-wider">Current</th>
+                                    <th className="px-4 py-3 text-right text-xs font-medium text-content-muted uppercase tracking-wider">Target</th>
+                                    <th className="px-4 py-3 text-center text-xs font-medium text-content-muted uppercase tracking-wider">Status</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-700">
+                            <tbody className="divide-y divide-border-default">
                                 {savingsTargetRows.map(row => {
                                     const cappedProgress = Math.min(row.progressPercent, 100);
                                     const surplus = row.actualBalance - row.target;
                                     return (
-                                        <tr key={row.accountId} className="hover:bg-gray-700/30">
-                                            <td className="px-4 py-3 text-sm text-gray-400">{row.priority}</td>
+                                        <tr key={row.accountId} className="hover:bg-surface-input/30">
+                                            <td className="px-4 py-3 text-sm text-content-muted">{row.priority}</td>
                                             <td className="px-4 py-3">
                                                 <div className="text-sm font-medium text-white">{row.accountName}</div>
-                                                <div className="text-xs text-gray-500">{row.bucketName}</div>
+                                                <div className="text-xs text-content-subtle">{row.bucketName}</div>
                                             </td>
                                             <td className="px-4 py-3 text-sm text-right text-white font-medium">
                                                 {formatCurrency(row.actualBalance)}
                                             </td>
-                                            <td className="px-4 py-3 text-sm text-right text-gray-400">
+                                            <td className="px-4 py-3 text-sm text-right text-content-muted">
                                                 {row.target > 0 ? formatCurrency(row.target) : '—'}
                                             </td>
                                             <td className="px-4 py-3">
                                                 {row.target > 0 ? (
                                                     <div className="flex flex-col items-center gap-1">
-                                                        <div className="w-full bg-gray-700 rounded-full h-2">
+                                                        <div className="w-full bg-surface-input rounded-full h-2">
                                                             <div
                                                                 className={`h-full rounded-full transition-all ${
-                                                                    row.status === 'overfunded' ? 'bg-blue-500' :
-                                                                    row.status === 'fully-funded' ? 'bg-green-500' :
-                                                                    'bg-yellow-500'
+                                                                    row.status === 'overfunded' ? 'bg-accent-soft' :
+                                                                    row.status === 'fully-funded' ? 'bg-positive-soft' :
+                                                                    'bg-warning-soft'
                                                                 }`}
                                                                 style={{ width: `${cappedProgress}%` }}
                                                             />
                                                         </div>
                                                         <span className={`text-xs ${
-                                                            row.status === 'overfunded' ? 'text-blue-400' :
-                                                            row.status === 'fully-funded' ? 'text-green-400' :
-                                                            'text-yellow-400'
+                                                            row.status === 'overfunded' ? 'text-info' :
+                                                            row.status === 'fully-funded' ? 'text-positive' :
+                                                            'text-warning'
                                                         }`}>
                                                             {row.status === 'overfunded'
                                                                 ? `Fully funded · +${formatCurrency(surplus)} over`
@@ -620,7 +620,7 @@ export default function SpendingTab() {
                                                         </span>
                                                     </div>
                                                 ) : (
-                                                    <div className="text-center text-xs text-gray-500">—</div>
+                                                    <div className="text-center text-xs text-content-subtle">—</div>
                                                 )}
                                             </td>
                                         </tr>
@@ -634,37 +634,37 @@ export default function SpendingTab() {
 
             {/* Annual Contributions */}
             {showTracking && contributionRows.length > 0 && (
-                <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
-                    <div className="p-4 border-b border-gray-700">
+                <div className="bg-surface-overlay rounded-lg border border-border-default overflow-hidden">
+                    <div className="p-4 border-b border-border-default">
                         <h3 className="text-lg font-semibold text-white">
-                            Annual Contributions {isPastYear && <span className="text-sm font-normal text-gray-500">({selectedYear})</span>}
+                            Annual Contributions {isPastYear && <span className="text-sm font-normal text-content-subtle">({selectedYear})</span>}
                         </h3>
-                        <p className="text-sm text-gray-400 mt-1">
+                        <p className="text-sm text-content-muted mt-1">
                             Per-year contribution goals. {isCurrentYear && 'Pacing is informational — front-loading or lump-sum contributions are fine.'}
                             {isPastYear && 'Showing full-year totals.'}
                         </p>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full">
-                            <thead className="bg-gray-900/50">
+                            <thead className="bg-surface-raised/50">
                                 <tr>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">#</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Account</th>
-                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Balance</th>
-                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-content-muted uppercase tracking-wider">#</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-content-muted uppercase tracking-wider">Account</th>
+                                    <th className="px-4 py-3 text-right text-xs font-medium text-content-muted uppercase tracking-wider">Balance</th>
+                                    <th className="px-4 py-3 text-right text-xs font-medium text-content-muted uppercase tracking-wider">
                                         {isPastYear ? 'Contributed' : 'YTD Contributed'}
                                     </th>
-                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Annual Goal</th>
-                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
+                                    <th className="px-4 py-3 text-right text-xs font-medium text-content-muted uppercase tracking-wider">Annual Goal</th>
+                                    <th className="px-4 py-3 text-right text-xs font-medium text-content-muted uppercase tracking-wider">
                                         <span className="inline-flex items-center gap-1 justify-end">
                                             {isPastYear ? 'Expected EOY' : 'Expected by now'}
                                             <Tooltip text="Projected balance at the end of the tracking month, assuming on-plan contributions and growth. Mid-month, expect to be slightly behind until the month's paychecks land." />
                                         </span>
                                     </th>
-                                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Pacing</th>
+                                    <th className="px-4 py-3 text-center text-xs font-medium text-content-muted uppercase tracking-wider">Pacing</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-700">
+                            <tbody className="divide-y divide-border-default">
                                 {contributionRows.map(row => {
                                     const rawProgress = row.annualTarget > 0
                                         ? (row.ytdActual / row.annualTarget) * 100
@@ -680,17 +680,17 @@ export default function SpendingTab() {
                                         ? 100
                                         : (trackingMonth / 12) * 100;
                                     const pacingColor =
-                                        row.pacing === 'complete' ? 'text-green-400' :
-                                        row.pacing === 'ahead' ? 'text-green-400' :
-                                        row.pacing === 'on-track' ? 'text-blue-400' :
-                                        row.pacing === 'waiting' ? 'text-gray-400' :
-                                        'text-yellow-400';
+                                        row.pacing === 'complete' ? 'text-positive' :
+                                        row.pacing === 'ahead' ? 'text-positive' :
+                                        row.pacing === 'on-track' ? 'text-info' :
+                                        row.pacing === 'waiting' ? 'text-content-muted' :
+                                        'text-warning';
                                     const barColor =
-                                        row.pacing === 'complete' ? 'bg-green-500' :
-                                        row.pacing === 'ahead' ? 'bg-green-500' :
-                                        row.pacing === 'on-track' ? 'bg-blue-500' :
-                                        row.pacing === 'waiting' ? 'bg-gray-500' :
-                                        'bg-yellow-500';
+                                        row.pacing === 'complete' ? 'bg-positive-soft' :
+                                        row.pacing === 'ahead' ? 'bg-positive-soft' :
+                                        row.pacing === 'on-track' ? 'bg-accent-soft' :
+                                        row.pacing === 'waiting' ? 'bg-surface-muted' :
+                                        'bg-warning-soft';
                                     const pacingText =
                                         row.pacing === 'complete' && overageAmount > 0
                                             ? `Complete · +${formatCurrency(overageAmount)} over`
@@ -705,11 +705,11 @@ export default function SpendingTab() {
                                         : `Behind · ${cappedProgress.toFixed(0)}% · ${formatCurrency(remainingToGo)} to go`;
 
                                     return (
-                                        <tr key={row.accountId} className="hover:bg-gray-700/30">
-                                            <td className="px-4 py-3 text-sm text-gray-400">{row.priority}</td>
+                                        <tr key={row.accountId} className="hover:bg-surface-input/30">
+                                            <td className="px-4 py-3 text-sm text-content-muted">{row.priority}</td>
                                             <td className="px-4 py-3">
                                                 <div className="text-sm font-medium text-white">{row.accountName}</div>
-                                                <div className="text-xs text-gray-500">
+                                                <div className="text-xs text-content-subtle">
                                                     {row.bucketName}
                                                     {row.isTransactionBased && ' · transaction-based'}
                                                     {row.isSavingsAccount && ' · balance-delta'}
@@ -719,34 +719,34 @@ export default function SpendingTab() {
                                                 {formatCurrency(row.actualBalance)}
                                             </td>
                                             <td className={`px-4 py-3 text-sm text-right font-medium ${
-                                                row.ytdActual > 0 ? 'text-green-400' : 'text-gray-400'
+                                                row.ytdActual > 0 ? 'text-positive' : 'text-content-muted'
                                             }`}>
                                                 {row.ytdActual > 0 ? '+' : ''}{formatCurrency(row.ytdActual)}
                                             </td>
-                                            <td className="px-4 py-3 text-sm text-right text-gray-400">
+                                            <td className="px-4 py-3 text-sm text-right text-content-muted">
                                                 {row.annualTarget > 0 ? formatCurrency(row.annualTarget) : '—'}
                                             </td>
                                             <td className="px-4 py-3 text-sm text-right">
                                                 {row.projectedBalance !== null ? (
                                                     <div>
-                                                        <div className="text-gray-300">{formatCurrency(row.projectedBalance)}</div>
+                                                        <div className="text-content-default">{formatCurrency(row.projectedBalance)}</div>
                                                         {row.balanceVariance !== null && (
                                                             <div className={`text-xs ${
-                                                                row.balanceVariance >= 0 ? 'text-green-400' : 'text-red-400'
+                                                                row.balanceVariance >= 0 ? 'text-positive' : 'text-negative'
                                                             }`}>
                                                                 {row.balanceVariance >= 0 ? '+' : ''}{formatCurrency(row.balanceVariance)}
                                                             </div>
                                                         )}
                                                     </div>
-                                                ) : <span className="text-gray-500">—</span>}
+                                                ) : <span className="text-content-subtle">—</span>}
                                             </td>
                                             <td className="px-4 py-3">
                                                 {row.annualTarget > 0 ? (
                                                     <div className="flex flex-col items-center gap-1">
-                                                        <div className="w-full bg-gray-700 rounded-full h-2 relative">
+                                                        <div className="w-full bg-surface-input rounded-full h-2 relative">
                                                             {!isPastYear && (
                                                                 <div
-                                                                    className="absolute top-0 bottom-0 w-px bg-gray-500/60"
+                                                                    className="absolute top-0 bottom-0 w-px bg-surface-muted/60"
                                                                     style={{ left: `${expectedProgressPercent}%` }}
                                                                     title={`Linear pace: ${expectedProgressPercent.toFixed(0)}%`}
                                                                 />
@@ -762,7 +762,7 @@ export default function SpendingTab() {
                                                     </div>
                                                 ) : (
                                                     <div className="text-center">
-                                                        <span className="text-xs text-gray-500">
+                                                        <span className="text-xs text-content-subtle">
                                                             {row.ytdActual > 0 ? formatCurrency(row.ytdActual) : '—'}
                                                         </span>
                                                     </div>
@@ -779,47 +779,47 @@ export default function SpendingTab() {
 
             {/* Other Accounts vs Plan */}
             {!isFutureMonth && otherAccountRows.length > 0 && (
-                <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
-                    <div className="p-4 border-b border-gray-700">
+                <div className="bg-surface-overlay rounded-lg border border-border-default overflow-hidden">
+                    <div className="p-4 border-b border-border-default">
                         <h3 className="text-lg font-semibold text-white">Other Accounts vs Plan</h3>
-                        <p className="text-sm text-gray-400 mt-1">
+                        <p className="text-sm text-content-muted mt-1">
                             Accounts without a priority bucket. Expected balance includes payroll-routed contributions (401k, employer match, ESPP) plus market growth.
                         </p>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full">
-                            <thead className="bg-gray-900/50">
+                            <thead className="bg-surface-raised/50">
                                 <tr>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Account</th>
-                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Current</th>
-                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Annual Plan</th>
-                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-content-muted uppercase tracking-wider">Account</th>
+                                    <th className="px-4 py-3 text-right text-xs font-medium text-content-muted uppercase tracking-wider">Current</th>
+                                    <th className="px-4 py-3 text-right text-xs font-medium text-content-muted uppercase tracking-wider">Annual Plan</th>
+                                    <th className="px-4 py-3 text-right text-xs font-medium text-content-muted uppercase tracking-wider">
                                         <span className="inline-flex items-center gap-1 justify-end">
                                             {isPastYear ? 'Expected EOY' : 'Expected by now'}
                                             <Tooltip text="Projected balance at the end of the tracking month, assuming on-plan contributions and growth. Mid-month, expect to be slightly behind until the month's paychecks land." />
                                         </span>
                                     </th>
-                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Variance</th>
+                                    <th className="px-4 py-3 text-right text-xs font-medium text-content-muted uppercase tracking-wider">Variance</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-700">
+                            <tbody className="divide-y divide-border-default">
                                 {otherAccountRows.map(row => (
-                                    <tr key={row.accountId} className="hover:bg-gray-700/30">
+                                    <tr key={row.accountId} className="hover:bg-surface-input/30">
                                         <td className="px-4 py-3 text-sm font-medium text-white">{row.accountName}</td>
                                         <td className="px-4 py-3 text-sm text-right text-white font-medium">
                                             {formatCurrency(row.actualBalance)}
                                         </td>
-                                        <td className="px-4 py-3 text-sm text-right text-gray-400">
+                                        <td className="px-4 py-3 text-sm text-right text-content-muted">
                                             {row.annualContribution > 0 ? formatCurrency(row.annualContribution) : '—'}
                                         </td>
-                                        <td className="px-4 py-3 text-sm text-right text-gray-400">
+                                        <td className="px-4 py-3 text-sm text-right text-content-muted">
                                             {formatCurrency(row.projectedBalance)}
                                         </td>
                                         <td className="px-4 py-3 text-sm text-right">
-                                            <span className={row.variance >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                            <span className={row.variance >= 0 ? 'text-positive' : 'text-negative'}>
                                                 {row.variance >= 0 ? '+' : ''}{formatCurrency(row.variance)}
                                                 {row.variancePercent !== null && (
-                                                    <span className="text-xs text-gray-500 ml-1">
+                                                    <span className="text-xs text-content-subtle ml-1">
                                                         ({row.variancePercent >= 0 ? '+' : ''}{row.variancePercent.toFixed(1)}%)
                                                     </span>
                                                 )}
@@ -834,13 +834,13 @@ export default function SpendingTab() {
             )}
 
             {/* Legend */}
-            <div className="flex gap-6 text-sm text-gray-400">
+            <div className="flex gap-6 text-sm text-content-muted">
                 <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded bg-green-400"></div>
+                    <div className="w-3 h-3 rounded bg-positive"></div>
                     <span>Under budget</span>
                 </div>
                 <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded bg-yellow-400"></div>
+                    <div className="w-3 h-3 rounded bg-warning"></div>
                     <span>Over budget</span>
                 </div>
             </div>

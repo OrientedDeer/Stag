@@ -1,5 +1,7 @@
 import { useCallback, useContext, useMemo } from 'react';
 import { ResponsiveBar } from '@nivo/bar';
+import { useChartTheme } from '../../components/Charts/useChartTheme';
+import { ChartFrame } from '../../components/Charts/ChartFrame';
 import { BudgetContext } from '../../components/Objects/Budget/BudgetContext';
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
 import {
@@ -24,21 +26,21 @@ const chartAxisBottom = {
 const chartAxisLeft = { tickSize: 0, tickPadding: 10 };
 const chartTheme = {
     axis: {
-        ticks: { text: { fill: '#9ca3af', fontSize: 11 } },
+        ticks: { text: { fill: 'var(--c-content-muted)', fontSize: 11 } },
     },
-    grid: { line: { stroke: '#374151' } },
+    grid: { line: { stroke: 'var(--c-border-default)' } },
 };
-const getBarColor = ({ data }: { data: { color: string } }) => data.color;
 const BarTooltip = ({ data, value }: { data: { name: string }; value: number }) => (
-    <div className="bg-gray-800 border border-gray-700 p-2 rounded shadow-xl text-xs">
+    <div className="bg-surface-overlay border border-border-default p-2 rounded shadow-xl text-xs">
         <div className="font-semibold text-white">{data.name}</div>
-        <div className="text-green-400">{formatCurrency(value)} / month avg</div>
+        <div className="text-positive">{formatCurrency(value)} / month avg</div>
     </div>
 );
 
 export default function OverviewTab() {
     const { months, selectedMonth, selectedYear, importSettings, projectFuture, dispatch } = useContext(BudgetContext);
     const { expenses } = useContext(ExpenseContext);
+    const { resolve } = useChartTheme();
 
     const setProjectFuture = useCallback((enabled: boolean) => {
         dispatch({ type: 'SET_PROJECT_FUTURE', payload: enabled });
@@ -130,7 +132,7 @@ export default function OverviewTab() {
 
     // Category spending data for bar chart (average of 6 months ending at selected month)
     const categoryData = useMemo(() => {
-        const colors = ['#f87171', '#fb923c', '#facc15', '#4ade80', '#22d3ee', '#818cf8', '#e879f9', '#f472b6'];
+        const colors = ['var(--c-negative)', 'var(--c-cat-orange)', 'var(--c-warning)', 'var(--c-positive)', 'var(--c-cat-cyan)', 'var(--c-cat-purple)', 'var(--c-cat-fuchsia-bright)', 'var(--c-cat-fuchsia)'];
 
         // Get 6 months ending at selected month
         const monthsToCheck: { month: number; year: number }[] = [];
@@ -234,23 +236,23 @@ export default function OverviewTab() {
             {/* Quick Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* This Month */}
-                <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-                    <h3 className="text-sm text-gray-400 mb-2">This Month</h3>
+                <div className="bg-surface-overlay rounded-xl p-4 border border-border-default">
+                    <h3 className="text-sm text-content-muted mb-2">This Month</h3>
                     <div className="text-2xl font-bold text-white">
                         {formatCurrency(budgetSummary.totalSpent)}
-                        <span className="text-gray-500 text-lg ml-1">/ {formatCurrency(budgetSummary.totalBudget)}</span>
+                        <span className="text-content-subtle text-lg ml-1">/ {formatCurrency(budgetSummary.totalBudget)}</span>
                     </div>
-                    <div className={`text-sm mt-1 ${budgetSummary.isUnderBudget ? 'text-green-400' : 'text-yellow-400'}`}>
+                    <div className={`text-sm mt-1 ${budgetSummary.isUnderBudget ? 'text-positive' : 'text-warning'}`}>
                         {budgetSummary.isUnderBudget
                             ? `${formatCurrency(budgetSummary.remaining)} under budget`
                             : `${formatCurrency(Math.abs(budgetSummary.remaining))} over budget`
                         }
                     </div>
                     {/* Progress bar */}
-                    <div className="mt-3 bg-gray-700 rounded-full h-2 overflow-hidden">
+                    <div className="mt-3 bg-surface-input rounded-full h-2 overflow-hidden">
                         <div
                             className={`h-full transition-all duration-300 ${
-                                budgetSummary.percentSpent > 100 ? 'bg-yellow-500' : 'bg-green-500'
+                                budgetSummary.percentSpent > 100 ? 'bg-warning-soft' : 'bg-positive-soft'
                             }`}
                             style={{ width: `${Math.min(budgetSummary.percentSpent, 100)}%` }}
                         />
@@ -258,18 +260,18 @@ export default function OverviewTab() {
                 </div>
 
                 {/* Year to Date */}
-                <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-                    <h3 className="text-sm text-gray-400 mb-2">
+                <div className="bg-surface-overlay rounded-xl p-4 border border-border-default">
+                    <h3 className="text-sm text-content-muted mb-2">
                         Year to Date
                         {projectFuture && isMonthInFuture(selectedMonth, selectedYear) && (
-                            <span className="text-xs text-gray-500 font-normal ml-2">(non-discretionary projected)</span>
+                            <span className="text-xs text-content-subtle font-normal ml-2">(non-discretionary projected)</span>
                         )}
                     </h3>
                     <div className="text-2xl font-bold text-white">
                         {formatCurrency(ytdStats.totalSpent)}
-                        <span className="text-gray-500 text-lg ml-1">/ {formatCurrency(ytdStats.totalBudget)}</span>
+                        <span className="text-content-subtle text-lg ml-1">/ {formatCurrency(ytdStats.totalBudget)}</span>
                     </div>
-                    <div className={`text-sm mt-1 ${ytdStats.isUnderBudget ? 'text-green-400' : 'text-yellow-400'}`}>
+                    <div className={`text-sm mt-1 ${ytdStats.isUnderBudget ? 'text-positive' : 'text-warning'}`}>
                         {ytdStats.isUnderBudget
                             ? `${formatCurrency(ytdStats.remaining)} under budget`
                             : `${formatCurrency(Math.abs(ytdStats.remaining))} over budget`
@@ -280,13 +282,13 @@ export default function OverviewTab() {
 
             {/* Uncategorized Transactions Warning */}
             {uncategorizedCount > 0 && (
-                <div className="bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-4 flex items-start gap-3 -mt-1">
-                    <span className="text-yellow-400 text-lg leading-none mt-0.5">!</span>
+                <div className="bg-warning-tint/30 border border-warning-strong/50 rounded-lg p-4 flex items-start gap-3 -mt-1">
+                    <span className="text-warning text-lg leading-none mt-0.5">!</span>
                     <div>
-                        <p className="text-yellow-300 text-sm font-medium">
+                        <p className="text-warning-bright text-sm font-medium">
                             {uncategorizedCount} uncategorized transaction{uncategorizedCount !== 1 ? 's' : ''} ({formatCurrency(uncategorizedTotal)})
                         </p>
-                        <p className="text-yellow-200/60 text-xs mt-0.5">
+                        <p className="text-warning-bright/60 text-xs mt-0.5">
                             Review and categorize them in the Transactions tab so spending is tracked accurately.
                         </p>
                     </div>
@@ -295,7 +297,7 @@ export default function OverviewTab() {
 
             {/* Last Import Indicator */}
             {lastImportDate && (
-                <div className="text-xs text-gray-500 text-right -mt-3">
+                <div className="text-xs text-content-subtle text-right -mt-3">
                     Last import: {lastImportDate.toLocaleDateString('en-US', {
                         month: 'short', day: 'numeric', year: 'numeric'
                     })}
@@ -310,9 +312,9 @@ export default function OverviewTab() {
             )}
 
             {/* Year Progress */}
-            <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+            <div className="bg-surface-overlay rounded-xl p-4 border border-border-default">
                 <div className="flex items-start justify-between gap-4 mb-3">
-                    <h3 className="text-sm text-gray-400">Year Progress</h3>
+                    <h3 className="text-sm text-content-muted">Year Progress</h3>
                     <div className="shrink-0">
                         <ToggleInput
                             label="Project non-discretionary"
@@ -368,19 +370,19 @@ export default function OverviewTab() {
                             if (hasMonthData || isProjected) {
                                 const base = (() => {
                                     switch (budgetStatus) {
-                                        case 'very-under': return 'bg-emerald-500 text-white hover:bg-emerald-400';
-                                        case 'under': return 'bg-green-600 text-white hover:bg-green-500';
-                                        case 'over': return 'bg-amber-500 text-white hover:bg-amber-400';
-                                        case 'very-over': return 'bg-red-500 text-white hover:bg-red-400';
-                                        default: return 'bg-green-600 text-white hover:bg-green-500';
+                                        case 'very-under': return 'bg-positive-soft text-white hover:bg-positive';
+                                        case 'under': return 'bg-positive-solid text-white hover:bg-positive-soft';
+                                        case 'over': return 'bg-warning-soft text-white hover:bg-warning';
+                                        case 'very-over': return 'bg-negative-soft text-white hover:bg-negative';
+                                        default: return 'bg-positive-solid text-white hover:bg-positive-soft';
                                     }
                                 })();
                                 // Slight dimming hint for projected (vs. actual) data.
                                 return isProjected ? `${base} opacity-70` : base;
                             }
                             return isFuture
-                                ? 'bg-gray-700 text-gray-500 hover:bg-gray-600'
-                                : 'bg-gray-600 text-gray-400 hover:bg-gray-500';
+                                ? 'bg-surface-input text-content-subtle hover:bg-surface-hover'
+                                : 'bg-surface-hover text-content-muted hover:bg-surface-muted';
                         };
 
                         const getTitle = () => {
@@ -405,21 +407,21 @@ export default function OverviewTab() {
                         );
                     })}
                 </div>
-                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-xs text-gray-500">
+                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-xs text-content-subtle">
                     <div className="flex items-center gap-1.5">
-                        <div className="w-2.5 h-2.5 rounded bg-emerald-500"></div>
+                        <div className="w-2.5 h-2.5 rounded bg-positive-soft"></div>
                         <span>&lt;80%</span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                        <div className="w-2.5 h-2.5 rounded bg-green-600"></div>
+                        <div className="w-2.5 h-2.5 rounded bg-positive-solid"></div>
                         <span>80-100%</span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                        <div className="w-2.5 h-2.5 rounded bg-amber-500"></div>
+                        <div className="w-2.5 h-2.5 rounded bg-warning-soft"></div>
                         <span>100-120%</span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                        <div className="w-2.5 h-2.5 rounded bg-red-500"></div>
+                        <div className="w-2.5 h-2.5 rounded bg-negative-soft"></div>
                         <span>&gt;120%</span>
                     </div>
                 </div>
@@ -427,20 +429,20 @@ export default function OverviewTab() {
 
             {/* Spending by Category */}
             {categoryData.length > 0 && (
-                <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+                <div className="bg-surface-overlay rounded-xl p-4 border border-border-default">
                     <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-sm text-gray-400">Average Monthly Spending</h3>
-                        <span className="text-xs text-gray-500">{chartDateRange}</span>
+                        <h3 className="text-sm text-content-muted">Average Monthly Spending</h3>
+                        <span className="text-xs text-content-subtle">{chartDateRange}</span>
                     </div>
                     <div className="h-48">
-                        <ResponsiveBar
+                        <ChartFrame><ResponsiveBar
                             data={categoryData}
                             keys={chartKeys}
                             indexBy="name"
                             margin={chartMargin}
                             layout="horizontal"
                             valueScale={chartValueScale}
-                            colors={getBarColor}
+                            colors={({ data }: { data: { color: string } }) => resolve(data.color)}
                             borderRadius={4}
                             padding={0.3}
                             axisBottom={chartAxisBottom}
@@ -449,30 +451,30 @@ export default function OverviewTab() {
                             enableLabel={false}
                             theme={chartTheme}
                             tooltip={BarTooltip}
-                        />
+                        /></ChartFrame>
                     </div>
                 </div>
             )}
 
             {/* Getting Started - shown when no data and not a future month */}
             {!hasData && !isFutureMonth && (
-                <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-6 text-center">
-                    <h3 className="text-lg font-semibold text-blue-400 mb-2">
+                <div className="bg-info-tint/20 border border-info-strong/50 rounded-lg p-6 text-center">
+                    <h3 className="text-lg font-semibold text-info mb-2">
                         Get Started with Budget Tracking
                     </h3>
-                    <p className="text-gray-300 mb-4">
+                    <p className="text-content-default mb-4">
                         Track your actual spending against your budget.
                     </p>
                     <div className="flex justify-center gap-4 flex-wrap">
-                        <div className="bg-gray-800 rounded-lg p-4 max-w-xs">
-                            <div className="text-green-400 font-semibold mb-1">1. Transactions Tab</div>
-                            <p className="text-sm text-gray-400">
+                        <div className="bg-surface-overlay rounded-lg p-4 max-w-xs">
+                            <div className="text-positive font-semibold mb-1">1. Transactions Tab</div>
+                            <p className="text-sm text-content-muted">
                                 Import transactions from your bank or credit card
                             </p>
                         </div>
-                        <div className="bg-gray-800 rounded-lg p-4 max-w-xs">
-                            <div className="text-green-400 font-semibold mb-1">2. Spending Tab</div>
-                            <p className="text-sm text-gray-400">
+                        <div className="bg-surface-overlay rounded-lg p-4 max-w-xs">
+                            <div className="text-positive font-semibold mb-1">2. Spending Tab</div>
+                            <p className="text-sm text-content-muted">
                                 Review spending by category and track contributions
                             </p>
                         </div>

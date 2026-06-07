@@ -207,10 +207,10 @@ export default function HistoryTab() {
     if (expenses.length === 0) {
         return (
             <div className="text-center py-12">
-                <div className="text-gray-400 mb-4">
+                <div className="text-content-muted mb-4">
                     No expense categories found.
                 </div>
-                <p className="text-gray-500 text-sm">
+                <p className="text-content-subtle text-sm">
                     Add expenses in the Current &gt; Expenses tab to start tracking your budget.
                 </p>
             </div>
@@ -221,7 +221,7 @@ export default function HistoryTab() {
         <div className="space-y-4">
             <h3 className="text-lg font-semibold text-white">{selectedYear} Spending History</h3>
 
-            <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+            <div className="bg-surface-overlay rounded-lg border border-border-default overflow-hidden">
                 <div className="budget-grid">
                     <DataSheetGrid
                         value={rows}
@@ -236,20 +236,20 @@ export default function HistoryTab() {
             </div>
 
             {/* Year Totals */}
-            <div className="bg-gray-800 rounded-lg border border-gray-700 px-4 py-2">
+            <div className="bg-surface-overlay rounded-lg border border-border-default px-4 py-2">
                 <div className="flex items-center gap-6 flex-wrap">
-                    <span className="text-sm text-gray-400">Year Totals:</span>
+                    <span className="text-sm text-content-muted">Year Totals:</span>
                     <div className="flex items-center gap-1">
-                        <span className="text-xs text-gray-500">Spent</span>
+                        <span className="text-xs text-content-subtle">Spent</span>
                         <span className="text-sm font-bold text-white">{formatCurrency(totals.total)}</span>
                     </div>
                     <div className="flex items-center gap-1">
-                        <span className="text-xs text-gray-500">Budget</span>
+                        <span className="text-xs text-content-subtle">Budget</span>
                         <span className="text-sm font-bold text-white">{formatCurrency(totals.budget)}</span>
                     </div>
                     <div className="flex items-center gap-1">
-                        <span className="text-xs text-gray-500">+/-</span>
-                        <span className={`text-sm font-bold ${totals.difference >= 0 ? 'text-green-400' : 'text-yellow-400'}`}>
+                        <span className="text-xs text-content-subtle">+/-</span>
+                        <span className={`text-sm font-bold ${totals.difference >= 0 ? 'text-positive' : 'text-warning'}`}>
                             {totals.difference >= 0 ? '+' : ''}{formatCurrency(totals.difference)}
                         </span>
                     </div>

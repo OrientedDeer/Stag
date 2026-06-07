@@ -31,6 +31,7 @@ import { AlertBanner } from "../../Layout/AlertBanner.js";
 import { ExpandableCard } from "../../Layout/ExpandableCard.js";
 import { getFrequencyAbbrev, formatDateForInput } from "../../../utils/formatters.js";
 
+import { Button } from "../../Layout/Primitives";
 // Annual-cadence option labels (shared shape with AddExpenseModal). Month is
 // stored 1-12; the select uses names. Mode is stored 'lump'|'sinkingFund'.
 const MONTH_NAMES = [
@@ -71,7 +72,7 @@ function getExpenseIconBg(expense: AnyExpense): string {
     if (expense instanceof OtherExpense) return EXPENSE_COLORS_BACKGROUND["Other"];
     if (expense instanceof CharityExpense) return EXPENSE_COLORS_BACKGROUND["Charity"];
     if (expense instanceof SubscriptionExpense) return EXPENSE_COLORS_BACKGROUND["Subscription"];
-    return "bg-gray-500";
+    return "bg-surface-muted";
 }
 
 function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
@@ -219,7 +220,7 @@ function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
             headerActions={headerActions}
             ariaLabelType="expense"
         >
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 bg-[#18181b] p-6 rounded-xl border border-gray-800">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 bg-[var(--c-surface-raised)] p-6 rounded-xl border border-border-subtle">
                 {!(expense instanceof MortgageExpense) && (
                     <CurrencyInput
                         id={`${expense.id}-amount`}
@@ -296,7 +297,7 @@ function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
                 />
 
                 {dateError && (
-                    <div className="col-span-full text-red-400 text-xs">
+                    <div className="col-span-full text-negative text-xs">
                         {dateError}
                     </div>
                 )}
@@ -449,13 +450,13 @@ function MortgageFields({ expense, onFieldUpdate, linkedAccountName, showPmiWarn
                 blankValue="No account found, try re-adding"
                 value={linkedAccountName}
             />
-            <button
+            <Button
                 type="button"
                 onClick={handleResetLoanBalance}
-                className="px-5 py-2.5 rounded-lg font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                variant="primary" size="lg" className="text-white"
             >
                 Reset Loan Balance to Today
-            </button>
+            </Button>
             {showPmiWarning && (
                 <AlertBanner severity="warning" size="sm" className="col-span-full">
                     With over 20% equity, you may be eligible to have your PMI removed. Contact your lender to inquire about the process.
