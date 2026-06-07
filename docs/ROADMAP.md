@@ -155,3 +155,7 @@ Many pages exceed the 150ms render threshold, triggering React warnings. Target 
 - Monte Carlo performance testing
 - **Surplus allocator smart-default picks the first `SavedAccount`** — when no priorities are configured, `SurplusAllocator` fills the first `SavedAccount` it finds as the "emergency fund". This can grab a reserved goal sinking-fund account by accident. Should skip reserved/goal-linked accounts (or require an explicit emergency-fund designation).
 - **Date-only fields shift a day for positive-offset timezones in backup roundtrips** — JSON/QR export serializes dates via `Date.toJSON`/`toISOString()` (UTC), and `parseDate` reads them back as local. For US (negative-offset) users this preserves the calendar date, but for UTC+ users a date-only field (start/end/goal/target dates) can land a day early on import. Fix by serializing date-only fields with a local `YYYY-MM-DD` formatter (e.g. `formatDateForInput`) instead of `toISOString()`.
+- `react-hooks/rules-of-hooks` warnings in `src/tabs/Testing/Testing.tsx` (surfaced by the React Compiler lint ruleset; pre-existing, Testing/debug tab only):
+  - ~line 259: `SectionHeader` component defined inside the `Testing` component — should be hoisted to a top-level (or memoized) component.
+  - ~line 5571: outer-scope variable mutation (`peakNW`/`peakYear`) during render inside a `.map`/loop — compute via a plain reduce or `useMemo` instead of mutating captured vars.
+  - Not confirmed runtime bugs, but worth resolving for React Compiler compatibility.
