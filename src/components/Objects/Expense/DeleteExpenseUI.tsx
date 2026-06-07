@@ -1,7 +1,8 @@
 import React, { useContext, useState } from 'react';
 import { ExpenseContext, ExpenseDispatchContext } from './ExpenseContext';
 import { AccountDispatchContext } from '../Accounts/AccountContext';
-import { MortgageExpense, LoanExpense } from './models';
+import { AssumptionsContext } from '../Assumptions/AssumptionsContext';
+import { MortgageExpense, LoanExpense, isLongTermGoal } from './models';
 import { ConfirmDialog } from '../../Layout/ConfirmDialog';
 
 interface DeleteControlProps {
@@ -13,9 +14,13 @@ const DeleteExpenseControl: React.FC<DeleteControlProps> = ({ expenseId, expense
     const { expenses } = useContext(ExpenseContext);
     const expenseDispatch = useContext(ExpenseDispatchContext);
     const { dispatch: accountDispatch } = useContext(AccountDispatchContext);
+    const { state: assumptions, dispatch: assumptionsDispatch } = useContext(AssumptionsContext);
     const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 
     const expense = expenses.find(exp => exp.id === expenseId);
+    // A long-term goal owns an auto-created sinking-fund account + savings
+    // priority; deleting the goal must clean both up or they fund a dead account.
+    const isGoalWithFund = !!expense && isLongTermGoal(expense) && !!expense.goalAccountId;
 
     const handleDeleteClick = () => {
         setIsConfirmOpen(true);
@@ -30,6 +35,16 @@ const DeleteExpenseControl: React.FC<DeleteControlProps> = ({ expenseId, expense
                     payload: { id: expense.linkedAccountId }
                 });
             }
+        }
+
+        // Delete a goal's auto-created sinking-fund account and its funding
+        // priority so they don't keep diverting cashflow into a dead account.
+        if (isGoalWithFund && expense?.goalAccountId) {
+            const fundId = expense.goalAccountId;
+            accountDispatch({ type: 'DELETE_ACCOUNT', payload: { id: fundId } });
+            (assumptions.priorities || [])
+                .filter(p => p.accountId === fundId)
+                .forEach(p => assumptionsDispatch({ type: 'REMOVE_PRIORITY', payload: p.id }));
         }
 
         expenseDispatch({
@@ -47,7 +62,9 @@ const DeleteExpenseControl: React.FC<DeleteControlProps> = ({ expenseId, expense
     const hasLinkedAccount = expense instanceof MortgageExpense || expense instanceof LoanExpense;
     const message = hasLinkedAccount
         ? "This will permanently delete this expense and its linked account (property/debt). This action cannot be undone."
-        : "This will permanently delete this expense. This action cannot be undone.";
+        : isGoalWithFund
+            ? "This will permanently delete this goal, its sinking-fund account, and its monthly funding priority. This action cannot be undone."
+            : "This will permanently delete this expense. This action cannot be undone.";
 
     return (
         <>
