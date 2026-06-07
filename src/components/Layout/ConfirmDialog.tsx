@@ -51,7 +51,6 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
             ),
-            confirmButton: 'bg-negative-solid hover:bg-negative-strong focus:ring-negative-soft',
             iconBg: 'bg-negative-tint/30'
         },
         warning: {
@@ -60,7 +59,6 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
             ),
-            confirmButton: 'bg-warning-solid hover:bg-warning-strong focus:ring-warning-soft',
             iconBg: 'bg-warning-tint/30'
         },
         info: {
@@ -69,12 +67,13 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
             ),
-            confirmButton: 'bg-accent hover:bg-accent-hover focus:ring-accent-soft',
             iconBg: 'bg-info-tint/30'
         }
     };
 
     const styles = variantStyles[variant];
+    // map dialog intent -> Button variant (single source of button styling)
+    const confirmVariant = ({ danger: 'negative', warning: 'warning', info: 'primary' } as const)[variant];
 
     return (
         <div
@@ -109,12 +108,9 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                     >
                         {cancelLabel}
                     </Button>
-                    <button
-                        onClick={onConfirm}
-                        className={`px-4 py-2 rounded-lg font-medium text-white transition-colors focus:outline-none focus:ring-2 ${styles.confirmButton}`}
-                    >
+                    <Button variant={confirmVariant} onClick={onConfirm}>
                         {confirmLabel}
-                    </button>
+                    </Button>
                 </div>
             </div>
         </div>

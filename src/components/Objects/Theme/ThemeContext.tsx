@@ -31,6 +31,14 @@ function applyTheme(theme: ThemeId) {
   }
 }
 
+// Apply the persisted theme once at module load — before React renders the tree
+// — so charts that resolve CSS-var colors via getComputedStyle on first mount
+// see the correct theme even when Elite is persisted. The provider's effect
+// alone runs after paint, which would leave first-render charts default-coloured.
+if (typeof document !== "undefined") {
+  applyTheme(readStoredTheme());
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<ThemeId>(readStoredTheme);
 

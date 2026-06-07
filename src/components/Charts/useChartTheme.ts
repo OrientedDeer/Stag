@@ -15,11 +15,19 @@ import { resolveColor } from "./chartColors";
  */
 export function useChartTheme() {
   const theme = useContext(ThemeContext)?.theme ?? "default";
-  return useMemo(
-    () => ({
-      theme,
-      resolve: (value: string | undefined) => resolveColor(value),
-    }),
-    [theme],
-  );
+  return useMemo(() => {
+    // Per-theme cache: Nivo calls the colors accessor once per node per render,
+    // and resolveColor() forces a synchronous style recalc. Memoising by the
+    // var() string collapses repeated nodes to one getComputedStyle. A fresh
+    // cache per theme keeps values correct across theme switches.
+    const cache = new Map<string | undefined, string>();
+    const resolve = (value: string | undefined) => {
+      const hit = cache.get(value);
+      if (hit !== undefined) return hit;
+      const resolved = resolveColor(value);
+      cache.set(value, resolved);
+      return resolved;
+    };
+    return { theme, resolve };
+  }, [theme]);
 }

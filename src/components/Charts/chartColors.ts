@@ -14,18 +14,6 @@ export const CHART_SERIES: string[] = Array.from(
 /** Primary "money"/net-worth series color. */
 export const CHART_MONEY = "var(--color-chart-money)";
 
-/** Semantic chart colors (reuse the app's state tokens). */
-export const CHART_POSITIVE = "var(--c-positive)";
-export const CHART_NEGATIVE = "var(--c-negative)";
-export const CHART_WARNING = "var(--c-warning)";
-export const CHART_ACCENT = "var(--c-accent-soft)";
-export const CHART_NEUTRAL = "var(--c-content-muted)";
-
-/** Pick `count` evenly distributed series colors (wraps if count > 12). */
-export function seriesColors(count: number): string[] {
-  return Array.from({ length: count }, (_, i) => CHART_SERIES[i % CHART_SERIES.length]);
-}
-
 /** Map an array of keys to stable series colors. */
 export function colorMapForKeys(keys: string[]): Record<string, string> {
   const map: Record<string, string> = {};

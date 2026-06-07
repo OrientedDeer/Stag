@@ -98,84 +98,86 @@
 /* ---- Default theme (current look — visually identical to today) ---- */
 :root,
 [data-theme="default"] {
-  --c-surface-base:    #030712; /* gray-950 */
-  --c-surface-raised:  #111827; /* gray-900 */
-  --c-surface-overlay: #1f2937; /* gray-800 */
-  --c-surface-input:   #374151; /* gray-700 */
-  --c-surface-hover:   #4b5563; /* gray-600 */
-  --c-surface-muted:   #6b7280; /* gray-500 */
+  /* Default = Tailwind v4 stock palette (oklch) so migrated tokens match the
+     original raw-class rendering exactly (and match still-unmigrated areas). */
+  --c-surface-base:    oklch(13% 0.028 261.692);  /* gray-950 */
+  --c-surface-raised:  oklch(21% 0.034 264.665);  /* gray-900 */
+  --c-surface-overlay: oklch(27.8% 0.033 256.848);/* gray-800 */
+  --c-surface-input:   oklch(37.3% 0.034 259.733);/* gray-700 */
+  --c-surface-hover:   oklch(44.6% 0.03 256.802); /* gray-600 */
+  --c-surface-muted:   oklch(55.1% 0.027 264.364);/* gray-500 */
 
-  --c-content-strong:   #f9fafb; /* gray-50 */
-  --c-content-bright:   #f3f4f6; /* gray-100 */
-  --c-content-emphasis: #e5e7eb; /* gray-200 */
-  --c-content-default:  #d1d5db; /* gray-300 */
-  --c-content-muted:    #9ca3af; /* gray-400 */
-  --c-content-subtle:   #6b7280; /* gray-500 */
-  --c-content-faint:    #4b5563; /* gray-600 */
+  --c-content-strong:   oklch(98.5% 0.002 247.839);/* gray-50 */
+  --c-content-bright:   oklch(96.7% 0.003 264.542);/* gray-100 */
+  --c-content-emphasis: oklch(92.8% 0.006 264.531);/* gray-200 */
+  --c-content-default:  oklch(87.2% 0.01 258.338); /* gray-300 */
+  --c-content-muted:    oklch(70.7% 0.022 261.325);/* gray-400 */
+  --c-content-subtle:   oklch(55.1% 0.027 264.364);/* gray-500 */
+  --c-content-faint:    oklch(44.6% 0.03 256.802); /* gray-600 */
 
-  --c-border-subtle:   #1f2937; /* gray-800 */
-  --c-border-default:  #374151; /* gray-700 */
-  --c-border-strong:   #4b5563; /* gray-600 */
-  --c-border-faint:    #6b7280; /* gray-500 */
-  --c-border-muted:    #9ca3af; /* gray-400 */
+  --c-border-subtle:   oklch(27.8% 0.033 256.848);/* gray-800 */
+  --c-border-default:  oklch(37.3% 0.034 259.733);/* gray-700 */
+  --c-border-strong:   oklch(44.6% 0.03 256.802); /* gray-600 */
+  --c-border-faint:    oklch(55.1% 0.027 264.364);/* gray-500 */
+  --c-border-muted:    oklch(70.7% 0.022 261.325);/* gray-400 */
 
-  --c-accent:          #2563eb; /* blue-600 (solid action) */
-  --c-accent-soft:     #3b82f6; /* blue-500 */
-  --c-accent-hover:    #1d4ed8; /* blue-700 */
+  --c-accent:          oklch(54.6% 0.245 262.881);/* blue-600 (solid action) */
+  --c-accent-soft:     oklch(62.3% 0.214 259.815);/* blue-500 */
+  --c-accent-hover:    oklch(48.8% 0.243 264.376);/* blue-700 */
   --c-accent-contrast: #ffffff;
-  --c-grid-accent:     #86efac; /* spreadsheet selection (green-300) */
-  --c-focus-ring:      #10b981; /* keyboard focus outline (emerald-500) */
+  --c-grid-accent:     #86efac; /* spreadsheet selection (was hardcoded green-300) */
+  --c-focus-ring:      #10b981; /* keyboard focus outline (was hardcoded emerald-500) */
 
-  --c-info:            #60a5fa; /* blue-400 (informational) */
-  --c-info-bright:     #93c5fd; /* blue-300 */
-  --c-info-strong:     #1d4ed8; /* blue-700 (alert border) */
-  --c-info-tint:       #1e3a8a; /* blue-900 (alert bg) */
+  --c-info:            oklch(70.7% 0.165 254.624);/* blue-400 (informational) */
+  --c-info-bright:     oklch(80.9% 0.105 251.813);/* blue-300 */
+  --c-info-strong:     oklch(48.8% 0.243 264.376);/* blue-700 (alert border) */
+  --c-info-tint:       oklch(37.9% 0.146 265.522);/* blue-900 (alert bg) */
 
-  --c-positive:        #4ade80; /* green-400 (gains, text/icon) */
-  --c-positive-bright: #86efac; /* green-300 */
-  --c-positive-soft:   #22c55e; /* green-500 */
-  --c-positive-solid:  #16a34a; /* green-600 (button base) */
-  --c-positive-strong: #15803d; /* green-700 (button hover / border) */
-  --c-positive-tint:   #14532d; /* green-900 (alert bg) */
+  --c-positive:        oklch(79.2% 0.209 151.711);/* green-400 (gains, text/icon) */
+  --c-positive-bright: oklch(87.1% 0.15 154.449); /* green-300 */
+  --c-positive-soft:   oklch(72.3% 0.219 149.579);/* green-500 */
+  --c-positive-solid:  oklch(62.7% 0.194 149.214);/* green-600 (button base) */
+  --c-positive-strong: oklch(52.7% 0.154 150.069);/* green-700 (button hover / border) */
+  --c-positive-tint:   oklch(39.3% 0.095 152.535);/* green-900 (alert bg) */
 
-  --c-negative:        #f87171; /* red-400 (losses) */
-  --c-negative-bright: #fca5a5; /* red-300 */
-  --c-negative-soft:   #ef4444; /* red-500 */
-  --c-negative-solid:  #dc2626; /* red-600 */
-  --c-negative-strong: #b91c1c; /* red-700 */
-  --c-negative-tint:   #7f1d1d; /* red-900 */
+  --c-negative:        oklch(70.4% 0.191 22.216); /* red-400 (losses) */
+  --c-negative-bright: oklch(80.8% 0.114 19.571); /* red-300 */
+  --c-negative-soft:   oklch(63.7% 0.237 25.331); /* red-500 */
+  --c-negative-solid:  oklch(57.7% 0.245 27.325); /* red-600 */
+  --c-negative-strong: oklch(50.5% 0.213 27.518); /* red-700 */
+  --c-negative-tint:   oklch(39.6% 0.141 25.723); /* red-900 */
 
-  --c-warning:         #facc15; /* yellow-400 */
-  --c-warning-bright:  #fde047; /* yellow-300 */
-  --c-warning-soft:    #eab308; /* yellow-500 */
-  --c-warning-solid:   #ca8a04; /* yellow-600 */
-  --c-warning-strong:  #a16207; /* yellow-700 */
-  --c-warning-tint:    #713f12; /* yellow-900 */
+  --c-warning:         oklch(85.2% 0.199 91.936); /* yellow-400 */
+  --c-warning-bright:  oklch(90.5% 0.182 98.111); /* yellow-300 */
+  --c-warning-soft:    oklch(79.5% 0.184 86.047); /* yellow-500 */
+  --c-warning-solid:   oklch(68.1% 0.162 75.834); /* yellow-600 */
+  --c-warning-strong:  oklch(55.4% 0.135 66.442); /* yellow-700 */
+  --c-warning-tint:    oklch(42.1% 0.095 57.708); /* yellow-900 */
 
-  /* categorical (default = real Tailwind hues) */
-  --c-cat-orange:         #fb923c; /* orange-400 */
-  --c-cat-orange-bright:  #fdba74; /* orange-300 */
-  --c-cat-orange-soft:    #f97316; /* orange-500 */
-  --c-cat-orange-solid:   #ea580c; /* orange-600 */
-  --c-cat-orange-strong:  #c2410c; /* orange-700 */
-  --c-cat-orange-tint:    #7c2d12; /* orange-900 */
-  --c-cat-cyan:           #22d3ee; /* cyan-400 */
-  --c-cat-cyan-bright:    #67e8f9; /* cyan-300 */
-  --c-cat-cyan-soft:      #06b6d4; /* cyan-500 */
-  --c-cat-cyan-tint:      #164e63; /* cyan-900 */
-  --c-cat-purple:         #c084fc; /* purple-400 */
-  --c-cat-purple-bright:  #d8b4fe; /* purple-300 */
-  --c-cat-purple-soft:    #a855f7; /* purple-500 */
-  --c-cat-purple-solid:   #9333ea; /* purple-600 */
-  --c-cat-purple-strong:  #7e22ce; /* purple-700 */
-  --c-cat-purple-tint:    #581c87; /* purple-900 */
-  --c-cat-fuchsia:        #e879f9; /* fuchsia-400 */
-  --c-cat-fuchsia-bright: #f0abfc; /* fuchsia-300 */
-  --c-cat-fuchsia-soft:   #d946ef; /* fuchsia-500 */
-  --c-cat-fuchsia-solid:  #c026d3; /* fuchsia-600 */
-  --c-cat-fuchsia-tint:   #701a75; /* fuchsia-900 */
-  --c-cat-lime:           #a3e635; /* lime-400 */
-  --c-cat-sky-bright:     #7dd3fc; /* sky-300 */
+  /* categorical (default = Tailwind v4 stock hues) */
+  --c-cat-orange:         oklch(75% 0.183 55.934);  /* orange-400 */
+  --c-cat-orange-bright:  oklch(83.7% 0.128 66.29); /* orange-300 */
+  --c-cat-orange-soft:    oklch(70.5% 0.213 47.604);/* orange-500 */
+  --c-cat-orange-solid:   oklch(64.6% 0.222 41.116);/* orange-600 */
+  --c-cat-orange-strong:  oklch(55.3% 0.195 38.402);/* orange-700 */
+  --c-cat-orange-tint:    oklch(40.8% 0.123 38.172);/* orange-900 */
+  --c-cat-cyan:           oklch(78.9% 0.154 211.53);/* cyan-400 */
+  --c-cat-cyan-bright:    oklch(86.5% 0.127 207.078);/* cyan-300 */
+  --c-cat-cyan-soft:      oklch(71.5% 0.143 215.221);/* cyan-500 */
+  --c-cat-cyan-tint:      oklch(39.8% 0.07 227.392);/* cyan-900 */
+  --c-cat-purple:         oklch(71.4% 0.203 305.504);/* purple-400 */
+  --c-cat-purple-bright:  oklch(82.7% 0.119 306.383);/* purple-300 */
+  --c-cat-purple-soft:    oklch(62.7% 0.265 303.9); /* purple-500 */
+  --c-cat-purple-solid:   oklch(55.8% 0.288 302.321);/* purple-600 */
+  --c-cat-purple-strong:  oklch(49.6% 0.265 301.924);/* purple-700 */
+  --c-cat-purple-tint:    oklch(38.1% 0.176 304.987);/* purple-900 */
+  --c-cat-fuchsia:        oklch(74% 0.238 322.16);  /* fuchsia-400 */
+  --c-cat-fuchsia-bright: oklch(83.3% 0.145 321.434);/* fuchsia-300 */
+  --c-cat-fuchsia-soft:   oklch(66.7% 0.295 322.15);/* fuchsia-500 */
+  --c-cat-fuchsia-solid:  oklch(59.1% 0.293 322.896);/* fuchsia-600 */
+  --c-cat-fuchsia-tint:   oklch(40.1% 0.17 325.612);/* fuchsia-900 */
+  --c-cat-lime:           oklch(84.1% 0.238 128.85);/* lime-400 */
+  --c-cat-sky-bright:     oklch(82.8% 0.111 230.318);/* sky-300 */
 }
 
 /* ---- Elite Dangerous theme (full orange HUD) ---- */
@@ -264,67 +266,73 @@
   /* (was sky blue) -> pale cyan */
   --c-cat-sky-bright:     #9fd0dc;
 
-  /* --- raw-palette overrides: reskin components not yet migrated --- */
-  --color-gray-950: #0a0705;
-  --color-gray-900: #140f09;
-  --color-gray-800: #1d160d;
-  --color-gray-700: #2a2012;
-  --color-gray-600: #3a2c18;
-  --color-gray-500: #8f6320;
-  --color-gray-400: #cf8a2c;
-  --color-gray-300: #ffb152;
-  --color-gray-200: #ffce8f;
-  --color-gray-100: #ffdaa6;
-  --color-gray-50:  #fff0db;
+  /* --- raw-palette overrides: reskin components NOT yet migrated to tokens
+     (Budget/Expense). Derived from the --c-* tokens above so there is ONE
+     source of truth — retuning a token updates migrated and unmigrated areas
+     together. Deletable once Budget/Expense are migrated. --- */
+  --color-gray-950: var(--c-surface-base);
+  --color-gray-900: var(--c-surface-raised);
+  --color-gray-800: var(--c-surface-overlay);
+  --color-gray-700: var(--c-surface-input);
+  --color-gray-600: var(--c-surface-hover);
+  --color-gray-500: var(--c-content-subtle);
+  --color-gray-400: var(--c-content-muted);
+  --color-gray-300: var(--c-content-default);
+  --color-gray-200: var(--c-content-emphasis);
+  --color-gray-100: var(--c-content-bright);
+  --color-gray-50:  var(--c-content-strong);
 
-  --color-blue-900: #2a1400;
-  --color-blue-800: #3a1d00;
-  --color-blue-700: #5e3300;
-  --color-blue-600: #ff7100;
-  --color-blue-500: #ff8a1f;
-  --color-blue-400: #ffa94d;
-  --color-blue-300: #ffc078;
-  --color-blue-200: #ffd9a6;
+  --color-blue-900: var(--c-info-tint);
+  --color-blue-800: var(--c-info-strong);
+  --color-blue-700: var(--c-info-strong);
+  --color-blue-600: var(--c-accent);
+  --color-blue-500: var(--c-accent-soft);
+  --color-blue-400: var(--c-info);
+  --color-blue-300: var(--c-info-bright);
+  --color-blue-200: var(--c-info-bright);
 
-  --color-green-900: #2a1d00;
-  --color-green-600: #b87a00;
-  --color-green-500: #d99500;
-  --color-green-400: #ffc030;
-  --color-green-300: #ffd97a;
+  --color-green-900: var(--c-positive-tint);
+  --color-green-700: var(--c-positive-strong);
+  --color-green-600: var(--c-positive-solid);
+  --color-green-500: var(--c-positive-soft);
+  --color-green-400: var(--c-positive);
+  --color-green-300: var(--c-positive-bright);
 
-  --color-red-900: #2e0d00;
-  --color-red-800: #4a1500;
-  --color-red-400: #ff5a1f;
-  --color-red-300: #ff8a5c;
+  --color-red-900: var(--c-negative-tint);
+  --color-red-800: var(--c-negative-strong);
+  --color-red-700: var(--c-negative-strong);
+  --color-red-600: var(--c-negative-solid);
+  --color-red-500: var(--c-negative-soft);
+  --color-red-400: var(--c-negative);
+  --color-red-300: var(--c-negative-bright);
 
-  --color-yellow-900: #2e2200;
-  --color-yellow-400: #ffd900;
-  --color-yellow-300: #ffe34d;
-  --color-amber-400:  #ffb000;
+  --color-yellow-900: var(--c-warning-tint);
+  --color-yellow-600: var(--c-warning-solid);
+  --color-yellow-500: var(--c-warning-soft);
+  --color-yellow-400: var(--c-warning);
+  --color-yellow-300: var(--c-warning-bright);
+  --color-amber-400:  var(--c-warning);
 
-  /* emerald (success/positive variant) -> gold-amber, full scale for
-     not-yet-migrated (Budget/Expense) components */
-  --color-emerald-900: #2a1d00;
-  --color-emerald-700: #7a5410;
-  --color-emerald-600: #d99500;
-  --color-emerald-500: #e0a800;
-  --color-emerald-400: #ffc030;
-  --color-emerald-300: #ffd97a;
-  --color-emerald-200: #ffe7a8;
+  /* emerald (success/positive variant) -> positive token scale */
+  --color-emerald-900: var(--c-positive-tint);
+  --color-emerald-700: var(--c-positive-strong);
+  --color-emerald-600: var(--c-positive-solid);
+  --color-emerald-500: var(--c-positive-soft);
+  --color-emerald-400: var(--c-positive);
+  --color-emerald-300: var(--c-positive-bright);
+  --color-emerald-200: var(--c-positive-bright);
 
-  /* --- categorical-color stopgap: keep the HUD all-amber (with a touch of
-     cyan, as ED does) until the categorical/chart token pass. Tints kept
-     dark so translucent backgrounds read correctly. --- */
-  --color-orange-900: #2e1500; --color-orange-700: #8a4510;
-  --color-orange-500: #ff7a14; --color-orange-400: #ff9d3c; --color-orange-300: #ffb866;
-  --color-purple-900: #2a1d00; --color-purple-700: #7a5410;
-  --color-purple-500: #d99500; --color-purple-400: #ffc030; --color-purple-300: #ffd97a;
-  --color-fuchsia-900: #2e0d00; --color-fuchsia-700: #8a2a08;
-  --color-fuchsia-500: #ff5a1f; --color-fuchsia-400: #ff8a5c; --color-fuchsia-300: #ffb199;
-  --color-lime-500: #d99500; --color-lime-400: #ffc030; --color-lime-300: #ffd97a;
-  --color-sky-500: #1f9ec8; --color-sky-400: #4bd0e9; --color-sky-300: #7fdcef;
-  /* cyan retained as a real secondary HUD hue (ED uses amber + cyan) */
-  --color-cyan-500: #1f9ec8; --color-cyan-400: #4bd0e9; --color-cyan-300: #7fdcef;
+  /* categorical raw colors -> cat-* tokens (keeps unmigrated areas in sync
+     with the retuned categorical palette) */
+  --color-orange-900: var(--c-cat-orange-tint); --color-orange-700: var(--c-cat-orange-strong);
+  --color-orange-500: var(--c-cat-orange-soft); --color-orange-400: var(--c-cat-orange); --color-orange-300: var(--c-cat-orange-bright);
+  --color-purple-900: var(--c-cat-purple-tint); --color-purple-700: var(--c-cat-purple-strong);
+  --color-purple-500: var(--c-cat-purple-soft); --color-purple-400: var(--c-cat-purple); --color-purple-300: var(--c-cat-purple-bright);
+  --color-fuchsia-900: var(--c-cat-fuchsia-tint); --color-fuchsia-700: var(--c-cat-fuchsia-solid);
+  --color-fuchsia-500: var(--c-cat-fuchsia-soft); --color-fuchsia-400: var(--c-cat-fuchsia); --color-fuchsia-300: var(--c-cat-fuchsia-bright);
+  --color-lime-500: var(--c-cat-lime); --color-lime-400: var(--c-cat-lime); --color-lime-300: var(--c-cat-lime);
+  --color-sky-500: var(--c-cat-sky-bright); --color-sky-400: var(--c-cat-sky-bright); --color-sky-300: var(--c-cat-sky-bright);
+  --color-cyan-500: var(--c-cat-cyan-soft); --color-cyan-400: var(--c-cat-cyan); --color-cyan-300: var(--c-cat-cyan-bright);
 
   /* --- Nivo chart ramps -> HUD palette (amber/cyan-centric, distinguishable).
      Overrides the layered :root chart vars; this block is unlayered so it wins
@@ -403,12 +411,13 @@
       "Segoe UI", Roboto, Helvetica, Arial, sans-serif);
   }
 
-  /* Elite HUD: square off rounded corners for an angular cockpit look. */
-  [data-theme="elite"] .rounded,
-  [data-theme="elite"] .rounded-md,
-  [data-theme="elite"] .rounded-lg,
-  [data-theme="elite"] .rounded-xl,
-  [data-theme="elite"] .rounded-2xl {
+  /* HUD: square off rounded corners for an angular cockpit look. Gated on the
+     `angular` flag (ThemeProvider sets data-angular on <html>), like glow/scanlines. */
+  [data-angular="true"] .rounded,
+  [data-angular="true"] .rounded-md,
+  [data-angular="true"] .rounded-lg,
+  [data-angular="true"] .rounded-xl,
+  [data-angular="true"] .rounded-2xl {
     border-radius: 2px;
   }
 
@@ -465,7 +474,7 @@
     position: fixed;
     inset: 0;
     pointer-events: none;
-    z-index: 9000;
+    z-index: 99999; /* above all app UI (tooltips/modals use z-9999) so the overlay is uniform */
     background:
       repeating-linear-gradient(
         0deg,
@@ -488,9 +497,9 @@
      green in default / amber in Elite). */
   .budget-grid .dsg-container {
     --dsg-selection-border-color: var(--c-grid-accent);
-    --dsg-selection-background-color: color-mix(in oklab, var(--c-grid-accent) 15%, transparent);
+    --dsg-selection-background-color: color-mix(in srgb, var(--c-grid-accent) 15%, transparent);
     --dsg-selection-disabled-border-color: var(--c-border-strong);
-    --dsg-selection-disabled-background-color: color-mix(in oklab, var(--c-border-strong) 10%, transparent);
+    --dsg-selection-disabled-background-color: color-mix(in srgb, var(--c-border-strong) 10%, transparent);
     --dsg-border-color: var(--c-border-subtle);
     --dsg-header-text-color: var(--c-content-muted);
     --dsg-header-active-text-color: var(--c-content-strong);
@@ -503,12 +512,12 @@
   /* Selection rectangle - the highlight */
   .budget-grid .dsg-selection-rect {
     border-color: var(--c-grid-accent) !important;
-    background-color: color-mix(in oklab, var(--c-grid-accent) 15%, transparent) !important;
+    background-color: color-mix(in srgb, var(--c-grid-accent) 15%, transparent) !important;
   }
 
   /* Active cell (starting cell of selection) - match selection highlight */
   .budget-grid .dsg-active-cell {
-    background-color: color-mix(in oklab, var(--c-grid-accent) 15%, transparent) !important;
+    background-color: color-mix(in srgb, var(--c-grid-accent) 15%, transparent) !important;
   }
 
   .budget-grid .dsg-selection-col-marker,
@@ -546,24 +555,24 @@
   /* Row status colors for accounts tab (ahead=positive, behind=warning,
      market-driven=accent) */
   .budget-grid .row-ahead .dsg-cell {
-    background: color-mix(in oklab, var(--c-positive-soft) 15%, transparent) !important;
+    background: color-mix(in srgb, var(--c-positive-soft) 15%, transparent) !important;
   }
   .budget-grid .row-ahead .dsg-cell-disabled {
-    background: color-mix(in oklab, var(--c-positive-soft) 10%, transparent) !important;
+    background: color-mix(in srgb, var(--c-positive-soft) 10%, transparent) !important;
   }
 
   .budget-grid .row-behind .dsg-cell {
-    background: color-mix(in oklab, var(--c-warning-soft) 15%, transparent) !important;
+    background: color-mix(in srgb, var(--c-warning-soft) 15%, transparent) !important;
   }
   .budget-grid .row-behind .dsg-cell-disabled {
-    background: color-mix(in oklab, var(--c-warning-soft) 10%, transparent) !important;
+    background: color-mix(in srgb, var(--c-warning-soft) 10%, transparent) !important;
   }
 
   .budget-grid .row-market-driven .dsg-cell {
-    background: color-mix(in oklab, var(--c-accent-soft) 15%, transparent) !important;
+    background: color-mix(in srgb, var(--c-accent-soft) 15%, transparent) !important;
   }
   .budget-grid .row-market-driven .dsg-cell-disabled {
-    background: color-mix(in oklab, var(--c-accent-soft) 10%, transparent) !important;
+    background: color-mix(in srgb, var(--c-accent-soft) 10%, transparent) !important;
   }
 
   .budget-grid .dsg-input {
@@ -576,7 +585,7 @@
   .budget-grid .dsg-input:focus {
     border-color: var(--c-grid-accent) !important;
     outline: none !important;
-    box-shadow: 0 0 0 2px color-mix(in oklab, var(--c-grid-accent) 15%, transparent) !important;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--c-grid-accent) 15%, transparent) !important;
   }
 
   /* Chart colors for Nivo SVG - must be in :root for SVG access */

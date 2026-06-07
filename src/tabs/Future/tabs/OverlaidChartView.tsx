@@ -1,5 +1,4 @@
 import React, { useMemo, useContext } from 'react';
-import { CHART_SERIES } from '../../../components/Charts/chartColors';
 import { useChartTheme } from '../../../components/Charts/useChartTheme';
 import { ResponsiveLine } from '@nivo/line';
 import { ScenarioComparison } from '../../../services/ScenarioTypes';
@@ -131,7 +130,7 @@ export const OverlaidChartView: React.FC<OverlaidChartViewProps> = ({ comparison
                         }}
                         enableGridX={false}
                         enableGridY={true}
-                        colors={[resolve(CHART_SERIES[0]), resolve(CHART_SERIES[10])]}
+                        colors={(d) => resolve((d as { color?: string }).color)}
                         lineWidth={2}
                         enablePoints={false}
                         useMesh={true}

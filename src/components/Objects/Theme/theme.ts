@@ -22,8 +22,6 @@ export interface ThemeConfig {
     /** Square off rounded corners for an angular HUD look. */
     angular: boolean;
   };
-  /** Which chart colour ramp to feed Nivo. */
-  chartRamp: "default" | "amber";
 }
 
 export const THEMES: Record<ThemeId, ThemeConfig> = {
@@ -31,14 +29,12 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
     id: "default",
     label: "Default",
     flags: { glow: false, scanlines: false, angular: false },
-    chartRamp: "default",
   },
   elite: {
     id: "elite",
     label: "Elite Dangerous",
     font: "'Orbitron', 'Chakra Petch', ui-sans-serif, system-ui, sans-serif",
     flags: { glow: true, scanlines: true, angular: true },
-    chartRamp: "amber",
   },
 };
 
