@@ -433,15 +433,11 @@
      reskins every .stag-panel (Layer 3 lever). */
   [data-theme="elite"] .stag-panel {
     --hud-bracket: color-mix(in oklab, var(--c-accent) 60%, transparent);
+    --bracket-line: linear-gradient(var(--hud-bracket), var(--hud-bracket));
+    /* 8 lines = 2 per corner (horizontal + vertical), sized/positioned below */
     background-image:
-      linear-gradient(var(--hud-bracket), var(--hud-bracket)),
-      linear-gradient(var(--hud-bracket), var(--hud-bracket)),
-      linear-gradient(var(--hud-bracket), var(--hud-bracket)),
-      linear-gradient(var(--hud-bracket), var(--hud-bracket)),
-      linear-gradient(var(--hud-bracket), var(--hud-bracket)),
-      linear-gradient(var(--hud-bracket), var(--hud-bracket)),
-      linear-gradient(var(--hud-bracket), var(--hud-bracket)),
-      linear-gradient(var(--hud-bracket), var(--hud-bracket));
+      var(--bracket-line), var(--bracket-line), var(--bracket-line), var(--bracket-line),
+      var(--bracket-line), var(--bracket-line), var(--bracket-line), var(--bracket-line);
     background-repeat: no-repeat;
     background-size:
       13px 1.5px, 1.5px 13px, 13px 1.5px, 1.5px 13px,

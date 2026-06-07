@@ -3,6 +3,7 @@ import { ResponsiveSunburst } from '@nivo/sunburst';
 import { AnyAccount, SavedAccount, InvestedAccount, ESPPAccount, PropertyAccount, DebtAccount } from '../Objects/Accounts/models';
 import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
 import { useChartTheme } from './useChartTheme';
+import { ChartFrame } from "./ChartFrame";
 
 interface AssetSunburstProps {
   accounts: AnyAccount[];
@@ -26,7 +27,7 @@ const accountCategoryColors: Record<string, string> = {
 };
 
 export const AssetSunburst = ({ accounts, importKey, forceExact }: AssetSunburstProps) => {
-  const { theme: themeKey, resolve } = useChartTheme();
+  const { resolve } = useChartTheme();
   const [assetDrilldown, setAssetDrilldown] = useState<string | null>(null);
 
   const assetSunburstData = useMemo(() => {
@@ -117,8 +118,8 @@ export const AssetSunburst = ({ accounts, importKey, forceExact }: AssetSunburst
             {formatCompactCurrency(activeTotal, { forceExact })}
           </span>
         </div>
-        <ResponsiveSunburst
-          key={`asset-sunburst-${importKey}-${themeKey}`}
+        <ChartFrame><ResponsiveSunburst
+          key={`asset-sunburst-${importKey}`}
           data={activeAssetData}
           margin={{ top: 4, right: 4, bottom: 4, left: 4 }}
           id="name"
@@ -154,7 +155,7 @@ export const AssetSunburst = ({ accounts, importKey, forceExact }: AssetSunburst
           theme={{
             labels: { text: { fontSize: 10, fontWeight: 600 } },
           }}
-        />
+        /></ChartFrame>
       </div>
     </div>
   );

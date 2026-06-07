@@ -24,7 +24,7 @@ export const Tooltip: React.FC<TooltipProps> = ({ text, children }) => {
             setPosition(showBelow ? 'bottom' : 'top');
 
             // Calculate position for portal
-            let top = showBelow
+            const top = showBelow
                 ? rect.bottom + 8 // 8px gap below trigger
                 : rect.top - 8; // 8px gap above trigger (tooltip will use bottom positioning)
 

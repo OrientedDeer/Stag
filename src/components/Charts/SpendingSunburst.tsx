@@ -4,6 +4,7 @@ import { AnyExpense, RentExpense, MortgageExpense, FoodExpense, TransportExpense
 import { AnyIncome, WorkIncome } from '../Objects/Income/models';
 import { AnyAccount } from '../Objects/Accounts/models';
 import { useChartTheme } from './useChartTheme';
+import { ChartFrame } from "./ChartFrame";
 import { PriorityBucket } from '../Objects/Assumptions/AssumptionsContext';
 import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
 
@@ -67,7 +68,7 @@ export const SpendingSunburst = ({
   importKey,
   forceExact,
 }: SpendingSunburstProps) => {
-  const { theme: themeKey, resolve } = useChartTheme();
+  const { resolve } = useChartTheme();
   const [showSavings, setShowSavings] = useState(() => localStorage.getItem('stag_show_savings') === 'true');
   const [showTaxes, setShowTaxes] = useState(() => localStorage.getItem('stag_show_taxes') === 'true');
   const [spendingDrilldown, setSpendingDrilldown] = useState<string | null>(null);
@@ -250,8 +251,8 @@ export const SpendingSunburst = ({
             {formatCompactCurrency(activeTotal, { forceExact })}
           </span>
         </div>
-        <ResponsiveSunburst
-          key={`spending-sunburst-${importKey}-${themeKey}`}
+        <ChartFrame><ResponsiveSunburst
+          key={`spending-sunburst-${importKey}`}
           data={activeSpendingData}
           margin={{ top: 4, right: 4, bottom: 4, left: 4 }}
           id="name"
@@ -286,7 +287,7 @@ export const SpendingSunburst = ({
           theme={{
             labels: { text: { fontSize: 10, fontWeight: 600 } },
           }}
-        />
+        /></ChartFrame>
       </div>
     </div>
   );

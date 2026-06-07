@@ -3,6 +3,7 @@ import { useArrowKeyAdjust } from '../../../hooks/useKeyboardShortcuts';
 import { ChartTooltipPortal } from '../../../components/Charts/ChartTooltipPortal';
 import { ResponsiveLine } from '@nivo/line';
 import { useChartTheme } from '../../../components/Charts/useChartTheme';
+import { ChartFrame } from "../../../components/Charts/ChartFrame";
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { SavedAccount, InvestedAccount, PropertyAccount, DebtAccount, DeficitDebtAccount } from '../../../components/Objects/Accounts/models';
 import { formatCompactCurrency } from './FutureUtils';
@@ -57,7 +58,7 @@ function checkEarningsTest(
 
 export const OverviewTab = React.memo(({ simulationData }: { simulationData: SimulationYear[] }) => {
     const { assumptions } = useAssumptions();
-    const { theme: themeKey, resolve } = useChartTheme();
+    const { resolve } = useChartTheme();
     const forceExact = assumptions.display?.useCompactCurrency === false;
     const containerRef = useRef<HTMLDivElement>(null);
     const [containerWidth, setContainerWidth] = useState<number | null>(null);
@@ -468,8 +469,7 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                         <p className="text-content-muted text-sm text-center px-4">Expand window to view chart</p>
                     </div>
                 ) : (
-                <ResponsiveLine
-                    key={themeKey}
+                <ChartFrame><ResponsiveLine
                     data={lineData}
                     margin={{ top: 20, right: 30, bottom: 50, left: 90 }}
                     xScale={{ type: 'point' }}
@@ -529,7 +529,7 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                         "crosshair": { "line": { "stroke": "var(--c-content-muted)", "strokeWidth": 1, "strokeOpacity": 0.35 } },
                         "tooltip": { "container": { "zIndex": 9999 } }
                     }}
-                />
+                /></ChartFrame>
                 )}
             </div>
         </div>

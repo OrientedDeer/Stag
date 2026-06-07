@@ -8,6 +8,7 @@ import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
 import { CashflowDetail } from '../../services/simulation/types';
 import { SankeyErrorBoundary } from './SankeyErrorBoundary';
 import { useChartTheme } from './useChartTheme';
+import { ChartFrame } from "./ChartFrame";
 import {
     buildCashflowSankeyData,
     SankeyImbalance,
@@ -62,7 +63,7 @@ const CashflowSankeyInner = ({
     onBalanceCheck
 }: CashflowSankeyProps) => {
     const { state: assumptions } = useContext(AssumptionsContext);
-    const { theme: themeKey, resolve } = useChartTheme();
+    const { resolve } = useChartTheme();
     const forceExact = assumptions.display?.useCompactCurrency === false;
 
     const currencyFormatter = useCallback((value: number) => {
@@ -147,8 +148,7 @@ const CashflowSankeyInner = ({
     return (
         <SankeyErrorBoundary height={height} resetKey={resetKey}>
             <div ref={containerRef} style={{ height: `${height}px` }}>
-                <ResponsiveSankey
-                    key={themeKey}
+                <ChartFrame><ResponsiveSankey
                     data={data}
                     margin={margins}
                     align="justify"
@@ -193,7 +193,7 @@ const CashflowSankeyInner = ({
                         tooltip: { container: { background: 'var(--c-surface-raised)', color: '#fff', borderRadius: '8px', zIndex: 9999 } },
                         labels: { text: { fontSize: 11, fontWeight: 600, fill: 'var(--c-content-emphasis)' } }
                     }}
-                />
+                /></ChartFrame>
             </div>
         </SankeyErrorBoundary>
     );

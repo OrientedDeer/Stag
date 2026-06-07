@@ -3,6 +3,7 @@ import { ResponsiveStream } from '@nivo/stream';
 import { AssumptionsContext } from '../Objects/Assumptions/AssumptionsContext';
 import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
 import { useChartTheme } from './useChartTheme';
+import { ChartFrame } from "./ChartFrame";
 
 const MIN_CHART_WIDTH = 300;
 
@@ -24,7 +25,7 @@ export const DebtStreamChart: React.FC<DebtStreamChartProps> = ({
   keys,
   colors
 }) => {
-  const { theme: themeKey, resolve } = useChartTheme();
+  const { resolve } = useChartTheme();
   // Use data as-is; the parent component (DebtTab) controls the range via slider
   const trimmedData = data;
 
@@ -193,8 +194,7 @@ export const DebtStreamChart: React.FC<DebtStreamChartProps> = ({
     <div ref={containerRef} className="w-full h-full flex flex-col">
       {/* Chart Area */}
       <div className="flex-1 min-h-0 relative text-white">
-        <ResponsiveStream
-          key={themeKey}
+        <ChartFrame><ResponsiveStream
           data={trimmedData}
           keys={keys}
           theme={theme}
@@ -238,7 +238,7 @@ export const DebtStreamChart: React.FC<DebtStreamChartProps> = ({
           
           // The Custom Tooltip
           tooltip={CustomTooltip}
-        />
+        /></ChartFrame>
       </div>
 
       {/* Footer / Legend Note */}

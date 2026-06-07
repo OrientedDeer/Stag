@@ -1,6 +1,7 @@
 import { memo, useCallback, useRef, useState, useEffect } from 'react';
 import { ResponsiveIcicle } from "@nivo/icicle";
 import { useChartTheme } from './useChartTheme';
+import { ChartFrame } from "./ChartFrame";
 
 const MIN_CHART_WIDTH = 300;
 const CHART_MARGIN = { top: 20, right: 20, bottom: 20, left: 20 };
@@ -44,7 +45,7 @@ export const ObjectsIcicleChart = memo(({
 }: ObjectsIcicleChartProps) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [containerWidth, setContainerWidth] = useState<number | null>(null);
-    const { theme: themeKey, resolve } = useChartTheme();
+    const { resolve } = useChartTheme();
 
     const colorAccessor = useCallback((node: any) => resolve(node.data.color), [resolve]);
     const label = useCallback((node: any) => truncateLabel(node.id), []);
@@ -121,8 +122,7 @@ export const ObjectsIcicleChart = memo(({
 
     return (
         <div ref={containerRef} className="w-full bg-surface-raised" style={{ height: `${height}px` }}>
-            <ResponsiveIcicle
-                key={themeKey}
+            <ChartFrame><ResponsiveIcicle
                 data={data}
                 colors={colorAccessor}
                 inheritColorFromParent={false}
@@ -143,7 +143,7 @@ export const ObjectsIcicleChart = memo(({
                 labelAlign='center'
 
                 tooltip={tooltip}
-            />
+            /></ChartFrame>
         </div>
     );
 });

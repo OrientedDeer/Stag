@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { ResponsiveSunburst } from '@nivo/sunburst';
 import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
 import { useChartTheme } from './useChartTheme';
+import { ChartFrame } from "./ChartFrame";
 
 interface TaxBreakdownSunburstProps {
   annualFedTax: number;
@@ -18,7 +19,7 @@ export const TaxBreakdownSunburst = ({
   importKey,
   forceExact,
 }: TaxBreakdownSunburstProps) => {
-  const { theme: themeKey, resolve } = useChartTheme();
+  const { resolve } = useChartTheme();
   const totalTaxes = annualFedTax + annualStateTax + annualFicaTax;
 
   const data = useMemo(() => {
@@ -51,8 +52,8 @@ export const TaxBreakdownSunburst = ({
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
           <span className="text-sm font-bold text-content-emphasis">{formatCompactCurrency(totalTaxes, { forceExact })}</span>
         </div>
-        <ResponsiveSunburst
-          key={`tax-sunburst-${importKey}-${themeKey}`}
+        <ChartFrame><ResponsiveSunburst
+          key={`tax-sunburst-${importKey}`}
           data={data}
           margin={{ top: 4, right: 4, bottom: 4, left: 4 }}
           id="name"
@@ -74,7 +75,7 @@ export const TaxBreakdownSunburst = ({
           theme={{
             labels: { text: { fontSize: 10, fontWeight: 600 } },
           }}
-        />
+        /></ChartFrame>
       </div>
     </div>
   );

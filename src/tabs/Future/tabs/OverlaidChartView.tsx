@@ -1,5 +1,6 @@
 import React, { useMemo, useContext } from 'react';
 import { useChartTheme } from '../../../components/Charts/useChartTheme';
+import { ChartFrame } from "../../../components/Charts/ChartFrame";
 import { ResponsiveLine } from '@nivo/line';
 import { ScenarioComparison } from '../../../services/ScenarioTypes';
 import { formatCompactCurrency } from './FutureUtils';
@@ -36,7 +37,7 @@ const ChartTooltip = ({ point }: { point: { seriesId: string | number; data: { x
  * Overlaid chart view showing both scenario trajectories
  */
 export const OverlaidChartView: React.FC<OverlaidChartViewProps> = ({ comparison }) => {
-    const { theme: themeKey, resolve } = useChartTheme();
+    const { resolve } = useChartTheme();
     const { state: assumptions } = useContext(AssumptionsContext);
     const forceExact = assumptions.display?.useCompactCurrency === false;
     const { baseline, comparison: comp, differences } = comparison;
@@ -97,8 +98,7 @@ export const OverlaidChartView: React.FC<OverlaidChartViewProps> = ({ comparison
                 <h3 className="text-white font-semibold mb-4">Net Worth Over Time</h3>
 
                 <div className="h-96 w-full">
-                    <ResponsiveLine
-                        key={themeKey}
+                    <ChartFrame><ResponsiveLine
                         data={chartData}
                         margin={{ top: 20, right: 30, bottom: 50, left: 80 }}
                         xScale={{ type: 'point' }}
@@ -180,7 +180,7 @@ export const OverlaidChartView: React.FC<OverlaidChartViewProps> = ({ comparison
                             </div>
                         )}
                         tooltip={ChartTooltip}
-                    />
+                    /></ChartFrame>
                 </div>
             </div>
 

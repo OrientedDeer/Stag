@@ -6,6 +6,7 @@ import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
 import { ChartTooltipPortal } from './ChartTooltipPortal';
 import { useArrowKeyAdjust } from '../../hooks/useKeyboardShortcuts';
 import { useChartTheme } from './useChartTheme';
+import { ChartFrame } from "./ChartFrame";
 
 const MIN_CHART_WIDTH = 300;
 
@@ -27,7 +28,7 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
   colors
 }) => {
   const { state: assumptions } = useContext(AssumptionsContext);
-  const { theme: themeKey, resolve } = useChartTheme();
+  const { resolve } = useChartTheme();
   const forceExact = assumptions.display?.useCompactCurrency === false;
   const formatCurrency = (value: number) => formatCompactCurrency(value, { forceExact });
 
@@ -208,8 +209,7 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
       </div>
 
       <div className="flex-1 min-h-0 relative">
-        <ResponsiveStream
-          key={themeKey}
+        <ChartFrame><ResponsiveStream
           data={filteredData}
           keys={keys}
           theme={theme}
@@ -238,7 +238,7 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
           enableStackTooltip={true}
           stackTooltip={CustomTooltip}
           tooltip={() => null}
-        />
+        /></ChartFrame>
       </div>
     </div>
   );

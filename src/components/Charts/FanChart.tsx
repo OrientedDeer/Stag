@@ -2,6 +2,7 @@ import { useMemo, useContext, useRef, useState, useEffect } from 'react';
 import { ResponsiveLine } from '@nivo/line';
 import { PercentileData, YearlyPercentile, ScenarioResult } from '../../services/MonteCarloTypes';
 import { useChartTheme } from './useChartTheme';
+import { ChartFrame } from "./ChartFrame";
 import { AssumptionsContext } from '../Objects/Assumptions/AssumptionsContext';
 import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
 import { calculateNetWorth } from '../../tabs/Future/tabs/FutureUtils';
@@ -21,7 +22,7 @@ interface FanChartProps {
  * Shows probability bands (10th-90th, 25th-75th percentiles) with median line
  */
 export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, height = 400 }: FanChartProps) => {
-    const { theme: themeKey, resolve } = useChartTheme();
+    const { resolve } = useChartTheme();
     const { state: assumptions } = useContext(AssumptionsContext);
     const forceExact = assumptions.display?.useCompactCurrency === false;
     const containerRef = useRef<HTMLDivElement>(null);
@@ -304,8 +305,7 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
 
     return (
         <div ref={containerRef} style={{ height }}>
-            <ResponsiveLine
-                key={themeKey}
+            <ChartFrame><ResponsiveLine
                 data={chartData}
                 margin={{ top: 20, right: 110, bottom: 50, left: 80 }}
                 xScale={{ type: 'linear', min: 'auto', max: 'auto' }}
@@ -402,7 +402,7 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
                         </div>
                     </div>
                 )}
-            />
+            /></ChartFrame>
         </div>
     );
 };

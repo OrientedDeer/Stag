@@ -2,6 +2,7 @@ import { useContext, useMemo } from 'react';
 import { ResponsiveLine } from '@nivo/line';
 import { CHART_MONEY } from './chartColors';
 import { useChartTheme } from './useChartTheme';
+import { ChartFrame } from "./ChartFrame";
 import { Panel, SectionHeader } from '../Layout/Primitives';
 import { AccountContext } from '../Objects/Accounts/AccountContext';
 import { DebtAccount, InvestedAccount, PropertyAccount } from '../Objects/Accounts/models';
@@ -14,7 +15,7 @@ export const NetWorthCard = () => {
     const { accounts, amountHistory } = useContext(AccountContext);
     const { expenses } = useContext(ExpenseContext);
     const { state: assumptions } = useContext(AssumptionsContext);
-    const { theme: themeKey, resolve } = useChartTheme();
+    const { resolve } = useChartTheme();
     const forceExact = assumptions.display?.useCompactCurrency === false;
     // 1. Calculate Current Stats
     const stats = useMemo(() => {
@@ -152,7 +153,7 @@ export const NetWorthCard = () => {
             {/* Historical Line Chart */}
             <div className="flex-1 min-h-36 w-full mt-2">
                 {chartData[0].data.length > 1 ? (
-                    <ResponsiveLine
+                    <ChartFrame><ResponsiveLine
                         data={chartData}
                         margin={{ top: 10, right: 15, bottom: 20, left: 15 }}
                         xScale={{
@@ -170,7 +171,6 @@ export const NetWorthCard = () => {
                         }}
                         enableGridX={false}
                         enableGridY={false}
-                        key={themeKey}
                         colors={[resolve(CHART_MONEY)]}
                         lineWidth={3}
                         axisLeft={null}
@@ -196,7 +196,7 @@ export const NetWorthCard = () => {
                                 <span className="text-positive font-bold">${point.data.y.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                             </div>
                         )}
-                    />
+                    /></ChartFrame>
                 ) : (
                     <div className='flex flex-col items-center justify-center text-center p-12 border-2 border-dashed border-border-subtle rounded-2xl'>
                         <div className="text-content-muted text-lg mb-2">No account history available</div>
