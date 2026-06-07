@@ -73,8 +73,11 @@ export default function SpendingTab() {
         [months, selectedMonth, selectedYear]
     );
 
+    // Long-term goals are funded as savings (a fund account + savings priority),
+    // not logged as spending — so they're shown in the savings section, not the
+    // expense spending grid.
     const activeExpenses = useMemo(() =>
-        getActiveExpenses(expenses, selectedMonth, selectedYear),
+        getActiveExpenses(expenses, selectedMonth, selectedYear).filter(exp => !isLongTermGoal(exp)),
         [expenses, selectedMonth, selectedYear]
     );
 
