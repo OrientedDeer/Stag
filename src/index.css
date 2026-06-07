@@ -244,8 +244,8 @@
   --c-cat-orange-solid:   #e85f00;
   --c-cat-orange-strong:  #b84a00;
   --c-cat-orange-tint:    #2e1500;
-  --c-cat-cyan:           #4bd0e9;
-  --c-cat-cyan-bright:    #a0e8f5;
+  --c-cat-cyan:           #2a8fa5; /* muted HUD cyan (was too-bright #4bd0e9) */
+  --c-cat-cyan-bright:    #4aa8bb;
   --c-cat-cyan-soft:      #1f9ec8;
   --c-cat-cyan-tint:      #08323a;
   /* (was periwinkle) -> tan/bronze */
@@ -290,7 +290,7 @@
   /* canonical series palette + money -> ED-cohesive (warm + cyan, no
      magenta/purple/lime), ordered most-distinct-first for low-series charts. */
   --color-chart-series-1: #ff9d3c;  /* amber */
-  --color-chart-series-2: #4bd0e9;  /* cyan */
+  --color-chart-series-2: #2a8fa5;  /* muted HUD cyan */
   --color-chart-series-3: #ffc030;  /* gold */
   --color-chart-series-4: #ff5a1f;  /* red-orange */
   --color-chart-series-5: #ffe3b0;  /* cream */
