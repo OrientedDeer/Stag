@@ -73,11 +73,55 @@ cat <<EOF
 
 >> Paste this into the PR description so the reviewer treats tests correctly:
    ----------------------------------------------------------------------
-   Scoped review of the simulation/tax core. Only the source files in the
-   diff should be reviewed. The test files in this branch are present as a
-   behavioral reference ONLY (they are not in the diff). Treat them as
-   possibly-wrong: if source and a test disagree, flag it as a question
-   rather than assuming the test is correct.
+   Scoped review of the simulation / tax core. ONLY the source files added in
+   the diff are under review. The test files in this branch are a behavioral
+   reference ONLY (not in the diff) and may be wrong or timezone-dependent: if
+   source and a test disagree, flag it as a question, do not assume the test.
+
+   This core has been through several prior scoped reviews. Recurring problem
+   areas — each has actually bitten us, so give them extra scrutiny:
+
+     1. Date-only / timezone handling. parseDate (modelUtils.ts) stores
+        date-only values at LOCAL midnight via new Date(y, m-1, d), so they must
+        be read with LOCAL getFullYear/getMonth, NOT getUTC*. Some existing code
+        reads them with getUTC* under a comment that wrongly claims parseDate
+        returns UTC — a latent off-by-one in positive-offset zones. Check
+        parseDate itself, not the comments. The unit suite runs in UTC, so it
+        structurally cannot catch these.
+     2. Social Security tax. Taxable SS double-counted in Roth-conversion sizing
+        (provisional income); the three SS income classes are siblings, so a
+        filter listing only two silently drops the third; SS-exempt-state logic.
+     3. Duplicated logic that drifts. calculateStateTax vs
+        calculateUnifiedStateTax applying deductions differently; duplicate RMD
+        divisor tables; "recompute" paths that drift from the sim's actual values
+        (e.g. employer match vs the 415(c)-trimmed deposit). Fix EVERY copy.
+     4. Falsy-zero. '|| default' where 0 is a valid value (returnRate=0,
+        costBasis, deductions, contributions) should be '?? default'.
+     5. Persistence / migration. A deep-merge that copies only keys present in
+        the DEFAULTS silently drops saved-only fields (e.g. imported SSA
+        earnings) on reload.
+     6. Roth conversion mechanics. IRS ordering (contributions -> oldest
+        conversions -> earnings) and the 5-year clock; the ACA look-ahead and the
+        main withdrawal loop must drain the SAME conversion list (no double-spend).
+     7. Contribution / RMD modeling. 415(c) combined employee+employer cap; RMD
+        basis (vested vs full balance); RMD divisor values at extreme ages.
+     8. Gross-up sizing. Binary-search bounds, and omitting a tax component from
+        the denominator (e.g. the ordinary bargain element on an ESPP sale).
+     9. Sankey cash accounting. inflows must equal outflows; never count one
+        dollar as both income and a withdrawal (RMD is the classic trap).
+    10. Tax data tables. Year-specific figures (SS wage base, LTCG thresholds,
+        brackets) copy-pasted from a prior year instead of the real value.
+
+   Advice for this final pass:
+     * Verify every suspected bug against the actual implementation / data flow,
+       not a comment or a variable name — comments in this code have been wrong.
+     * Green tests do NOT mean correct: the suite runs in UTC (hides date bugs)
+       and some oracle values were written to match buggy behavior. A failing
+       oracle test may mean the TEST is wrong — flag it rather than matching it.
+     * Before flagging, confirm it is not intended behavior — some "overshoots"
+       are deliberate and have a test asserting them.
+     * Prefer deep fixes over special-cases; name the inputs/state that trigger
+       each bug and the wrong output it produces.
    ----------------------------------------------------------------------
 
 >> Then in Claude Code:  /code-review ultra <PR-number>
