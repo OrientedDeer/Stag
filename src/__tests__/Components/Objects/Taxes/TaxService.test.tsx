@@ -734,8 +734,9 @@ describe('TaxService: Additional Functions', () => {
             // SS is capped at the 2024 wage base of 176,100. Medicare is not.
             // SS = 176100 * 0.062 = 10918.2
             // Medicare = 500000 * 0.0145 = 7250
-            // Total = 18168.2
-            expect(fica).toBeCloseTo(18168.2);
+            // Additional Medicare = 0.9% * (500000 - 200000 single threshold) = 2700
+            // Total = 10918.2 + 7250 + 2700 = 20868.2
+            expect(fica).toBeCloseTo(20868.2);
         });
 
         it('should use FICA override when provided', () => {

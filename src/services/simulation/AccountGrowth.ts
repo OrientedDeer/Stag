@@ -237,7 +237,30 @@ export function growAccounts(
         }
 
         if (acc instanceof ESPPAccount) {
-            let grownAccount = acc.increment(assumptions, returnOverride);
+            let workingAccount: ESPPAccount = acc;
+
+            // Apply any withdrawal (sale) recorded for this account: sell shares at the
+            // current (start-of-year) FMV per share before growth, using the account's
+            // configured lot-selling order. This keeps the ESPP balance conserved.
+            const grossWithdrawn = userIn < 0 ? -userIn : 0;
+            if (grossWithdrawn > 0) {
+                const totalShares = workingAccount.lots.reduce((sum, lot) => sum + lot.shares, 0);
+                const fmvPerShare = totalShares > 0 ? workingAccount.amount / totalShares : 0;
+                if (fmvPerShare > 0) {
+                    const sharesToSell = Math.min(totalShares, grossWithdrawn / fmvPerShare);
+                    // removeSoldShares only accepts 'fifo' | 'disqualifying_first' | 'qualifying_first'.
+                    // ESPPWithdrawalPreference also includes 'dont_sell_until_qualifying', which has no
+                    // direct sell-order equivalent here, so it falls back to 'fifo'.
+                    const pref = workingAccount.withdrawalPreference;
+                    const lotOrder: 'fifo' | 'disqualifying_first' | 'qualifying_first' =
+                        pref === 'disqualifying_first' || pref === 'qualifying_first' || pref === 'fifo'
+                            ? pref
+                            : 'fifo';
+                    workingAccount = workingAccount.removeSoldShares(sharesToSell, fmvPerShare, undefined, lotOrder);
+                }
+            }
+
+            let grownAccount = workingAccount.increment(assumptions, returnOverride);
 
             const newLots = esppLots[acc.id] || [];
             if (newLots.length > 0) {

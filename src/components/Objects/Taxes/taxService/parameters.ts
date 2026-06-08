@@ -108,6 +108,10 @@ export function getTaxParameters(
                 baseYearParams.socialSecurityWageBase * inflationMultiplier
             ),
             brackets: inflatedBrackets,
+            capitalGainsBrackets: baseYearParams.capitalGainsBrackets?.map((bracket) => ({
+                ...bracket,
+                threshold: Math.round(bracket.threshold * inflationMultiplier),
+            })),
         };
     }
 

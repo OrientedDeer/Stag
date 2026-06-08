@@ -100,7 +100,7 @@ export function getContributionLimits(year: number, inflationAdjusted: boolean =
 export function get401kLimit(year: number, age: number, inflationAdjusted: boolean = true): number {
   const limits = getContributionLimits(year, inflationAdjusted);
   const base = limits.traditional401k;
-  const catchUp = age >= 50 ? limits.catchUp401k : 0;
+  const catchUp = age >= 50 ? (age >= 60 && age <= 63 ? Math.round(limits.catchUp401k * 1.5) : limits.catchUp401k) : 0;
   return base + catchUp;
 }
 

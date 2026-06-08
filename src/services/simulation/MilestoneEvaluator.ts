@@ -34,12 +34,22 @@ export function calculateNetWorth(accounts: AnyAccount[], expenses: AnyExpense[]
         }
     });
 
-    // Also include mortgage and loan balances from expenses
+    // Build set of expense ids that are linked to an account (so the loan is
+    // already counted on the account side) to avoid double-counting.
+    const linkedExpenseIds = new Set<string>();
+    accounts.forEach(a => {
+        if ((a instanceof PropertyAccount || a instanceof DebtAccount) && a.linkedAccountId) {
+            linkedExpenseIds.add(a.linkedAccountId);
+        }
+    });
+
+    // Also include mortgage and loan balances from standalone expenses
+    // (skip those linked to an account, already counted above).
     expenses.forEach(expense => {
         if (expense instanceof MortgageExpense) {
-            liabilities += expense.loan_balance;
+            if (!linkedExpenseIds.has(expense.id)) liabilities += expense.loan_balance;
         } else if (expense instanceof LoanExpense) {
-            liabilities += expense.amount;
+            if (!linkedExpenseIds.has(expense.id)) liabilities += expense.amount;
         }
     });
 
@@ -83,12 +93,22 @@ export function calculateTotalDebt(accounts: AnyAccount[], expenses: AnyExpense[
         }
     });
 
-    // Also include mortgage and loan balances from expenses
+    // Build set of expense ids that are linked to an account (so the loan is
+    // already counted on the account side) to avoid double-counting.
+    const linkedExpenseIds = new Set<string>();
+    accounts.forEach(a => {
+        if ((a instanceof PropertyAccount || a instanceof DebtAccount) && a.linkedAccountId) {
+            linkedExpenseIds.add(a.linkedAccountId);
+        }
+    });
+
+    // Also include mortgage and loan balances from standalone expenses
+    // (skip those linked to an account, already counted above).
     expenses.forEach(expense => {
         if (expense instanceof MortgageExpense) {
-            debt += expense.loan_balance;
+            if (!linkedExpenseIds.has(expense.id)) debt += expense.loan_balance;
         } else if (expense instanceof LoanExpense) {
-            debt += expense.amount;
+            if (!linkedExpenseIds.has(expense.id)) debt += expense.amount;
         }
     });
 

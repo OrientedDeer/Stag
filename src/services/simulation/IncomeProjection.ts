@@ -97,7 +97,7 @@ export function projectIncomes(
                     if (currentSalary > 0) salaryHistory.push(currentSalary);
                 }
 
-                if (currentAge === inc.retirementAge && inc.calculatedBenefit === 0 && salaryHistory.length > 0) {
+                if (currentAge === inc.retirementAge && salaryHistory.length > 0) {
                     const high3 = calculateHigh3(salaryHistory);
                     const baseBenefit = (inc.retirementAge >= 62 && inc.yearsOfService >= 20 ? 0.011 : 0.01)
                         * inc.yearsOfService * high3;
@@ -147,7 +147,7 @@ export function projectIncomes(
                     if (currentSalary > 0) salaryHistory.push(currentSalary);
                 }
 
-                if (currentAge === inc.retirementAge && inc.calculatedBenefit === 0 && salaryHistory.length > 0) {
+                if (currentAge === inc.retirementAge && salaryHistory.length > 0) {
                     const high3 = calculateHigh3(salaryHistory);
                     let baseBenefit = 0;
                     const first5 = Math.min(inc.yearsOfService, 5);

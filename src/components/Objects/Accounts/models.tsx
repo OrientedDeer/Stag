@@ -781,7 +781,11 @@ export class PropertyAccount extends BaseAccount {
     if (overrides?.newValue !== undefined) {
         nextValue = overrides.newValue;
     } else {
-        nextValue = this.amount * (1 + assumptions.expenses.housingAppreciation / 100);
+        // Home value grows nominally: real appreciation (housingAppreciation) plus
+        // general inflation when inflation-adjusted. Mirrors the linked-mortgage
+        // valuation path so owned and financed homes appreciate consistently.
+        const generalInflation = (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) / 100;
+        nextValue = this.amount * (1 + assumptions.expenses.housingAppreciation / 100 + generalInflation);
     }
     let nextLoan: number;
     if (overrides?.newLoanBalance !== undefined) {

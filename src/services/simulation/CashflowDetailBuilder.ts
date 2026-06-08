@@ -112,7 +112,10 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
             inc instanceof FutureSocialSecurityIncome
         ) {
             incomeBySource.push({ name: inc.name, amount, kind: 'ss' });
-        } else if (inc instanceof FERSPensionIncome || inc instanceof CSRSPensionIncome) {
+        } else if (inc instanceof FERSPensionIncome) {
+            // Include the MRA-to-62 supplement so the Sankey matches spendable income.
+            incomeBySource.push({ name: inc.name, amount: inc.getTotalAnnualAmount(year), kind: 'pension' });
+        } else if (inc instanceof CSRSPensionIncome) {
             incomeBySource.push({ name: inc.name, amount, kind: 'pension' });
         } else {
             incomeBySource.push({ name: inc.name, amount, kind: 'passive' });

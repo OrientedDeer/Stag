@@ -604,7 +604,7 @@ export class LoanExpense extends BaseExpense {
             break;
         }
 
-        const interest = this.interest_type === 'Compounding' && this.apr > 0 ? balance * monthlyRate : 0;
+        const interest = this.apr > 0 ? balance * monthlyRate : 0;
         
         // Determine the payment for this month
         // It's either the full payment, or just enough to clear the balance

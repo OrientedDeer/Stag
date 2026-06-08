@@ -22,7 +22,7 @@ import { applyLifestyleCreep, calculateStrategyTarget, calculateTotalDiscretiona
 import { processDeficitDebt } from "../../../services/simulation/WithdrawalService";
 import { processInflows, growAccounts } from "../../../services/simulation/AccountGrowth";
 import { evaluateAllMilestones, isActiveByMilestone, MilestoneContext } from "../../../services/simulation/MilestoneEvaluator";
-import { InvestedAccount, SavedAccount } from "../Accounts/models";
+import { InvestedAccount, SavedAccount, ESPPAccount } from "../Accounts/models";
 import { solveYear, YearSolverInput } from "../../../services/simulation/YearSolver";
 import { YearPlan } from "../../../services/simulation/types";
 import { buildCashflowDetail } from "../../../services/simulation/CashflowDetailBuilder";
@@ -46,7 +46,7 @@ function executeYearPlan(
     // Execute withdrawals
     for (const withdrawal of plan.withdrawals) {
         const account = accounts.find(a => a.id === withdrawal.accountId);
-        if (!account || !(account instanceof InvestedAccount || account instanceof SavedAccount)) {
+        if (!account || !(account instanceof InvestedAccount || account instanceof SavedAccount || account instanceof ESPPAccount)) {
             continue;
         }
 

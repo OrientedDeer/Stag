@@ -226,6 +226,85 @@ describe('planConversionsViaDP', { timeout: 30_000 }, () => {
         expect(plan.diagnostics.elapsedMs).toBeLessThan(15_000);
     });
 
+    it('per-year conversion grid reaches above the year-0 ceiling in late years (frozen-dC fix)', () => {
+        // Regression for the frozen-dC bug. Pre-fix, `dC` was a single scalar
+        // computed once from the YEAR-0 trad balance:
+        //   dC = min(startingTrad, $500k) / CONVERSION_BUCKETS
+        // so the largest conversion candidate offered in EVERY year was the
+        // frozen year-0 ceiling `200·dC = min(startingTrad, $500k)`. A
+        // portfolio that starts below the $500k cap and then GROWS past it
+        // could never have conversions between that frozen ceiling and a later
+        // cell's true cMax evaluated — the backward sweep's V-table (and thus
+        // the optimum) was silently truncated in late years.
+        //
+        // Post-fix, `dCByYear[t]` scales to year t's reachable trad balance
+        // (same cap/floor, applied per year off the projected balance). For a
+        // small-start, high-growth, long-horizon portfolio the late-year grid
+        // ceiling must therefore exceed the year-0 ceiling — i.e. the late-year
+        // band that was previously unreachable is now in the search space.
+        const startingTrad = 400_000; // below the $500k cap
+        const contexts: DPYearContext[] = [];
+        for (let i = 0; i < 40; i++) {
+            const age = 60 + i;
+            const year = 2030 + i;
+            const rmdDivisor =
+                age >= 73 ? Math.max(8.0, 26.5 - (age - 73) * 0.9) : 0;
+            contexts.push(makeContext({
+                year,
+                age,
+                ssBenefits: age >= 67 ? 30_000 : 0,
+                nonSSOrdinaryIncomeExclRMD: 30_000,
+                rmdDivisor,
+                // Aggressive net growth so the reachable trad balance compounds
+                // well past the $400k year-0 ceiling within the horizon.
+                growthRate: 0.10,
+                rothGrowthRate: 0.10,
+            }));
+        }
+
+        const plan = planConversionsViaDP({
+            contexts,
+            currentTradBalance: startingTrad,
+            currentRothBalance: 50_000,
+        });
+
+        const dCByYear = plan.diagnostics.dCByYear;
+        const convBuckets = plan.diagnostics.conversionBuckets;
+
+        // Sanity: per-year conversion grid is plumbed through, one entry per
+        // V-table slice (horizonYears + 1).
+        expect(dCByYear.length).toBe(contexts.length + 1);
+
+        // The OLD frozen ceiling: the single year-0 value the pre-fix code used
+        // for every year. With a $400k start (< $500k cap) this is $400k.
+        const oldFrozenCeiling = dCByYear[0] * convBuckets;
+        expect(oldFrozenCeiling).toBeCloseTo(Math.min(startingTrad, 500_000), -2);
+
+        // The fix: at least one LATE year (age ≥ 75) offers a conversion
+        // candidate band that extends strictly above the old frozen ceiling —
+        // exactly the region the pre-fix grid could never evaluate. (The grid
+        // is capped at $500k, so the late ceiling lands between $400k and
+        // $500k.) Map age → horizon index t (age 75 = index 15).
+        const lateGridCeilings = dCByYear
+            .map((dc, t) => ({ t, ceiling: dc * convBuckets }))
+            // index t corresponds to age 60 + t (contexts start at age 60).
+            .filter(({ t }) => 60 + t >= 75 && t < contexts.length);
+        const aboveOld = lateGridCeilings.filter(
+            ({ ceiling }) => ceiling > oldFrozenCeiling + 1,
+        );
+        expect(aboveOld.length).toBeGreaterThan(0);
+        // And the widest late-year band reaches the cap, well above the old
+        // frozen ceiling.
+        const maxLateCeiling = Math.max(...lateGridCeilings.map(c => c.ceiling));
+        expect(maxLateCeiling).toBeGreaterThan(oldFrozenCeiling);
+
+        // Forward-plan invariant still holds: no chosen conversion exceeds its
+        // year's reachable trad balance (the per-cell cMax bound is intact).
+        for (const e of plan.diagnostics.perYearAmounts) {
+            expect(e.amount).toBeLessThanOrEqual(e.estimatedTradBalance + 1);
+        }
+    });
+
     it('plumbs Roth grid scaffolding through diagnostics (Phase 1)', () => {
         const contexts = buildHorizonContexts();
         const plan = planConversionsViaDP({

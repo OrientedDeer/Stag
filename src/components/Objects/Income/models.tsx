@@ -690,7 +690,9 @@ export class FERSPensionIncome extends BaseIncome {
    * Get total annual income including FERS Supplement
    */
   getTotalAnnualAmount(year?: number): number {
-    return this.getAnnualAmount(year) + (this.fersSupplement || 0);
+    const base = this.getAnnualAmount(year);
+    if (base <= 0) return 0;
+    return base + (this.fersSupplement || 0);
   }
 }
 

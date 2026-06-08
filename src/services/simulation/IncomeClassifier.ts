@@ -58,8 +58,13 @@ export function classifyIncome(
             // Social Security is always spendable
             spendable += annualAmount;
             breakdown.socialSecurity += annualAmount;
-        } else if (income instanceof FERSPensionIncome || income instanceof CSRSPensionIncome) {
-            // Pensions are always spendable
+        } else if (income instanceof FERSPensionIncome) {
+            // FERS pension is always spendable; include the MRA-to-62 supplement.
+            const fersTotal = income.getTotalAnnualAmount(year);
+            spendable += fersTotal;
+            breakdown.pensions += fersTotal;
+        } else if (income instanceof CSRSPensionIncome) {
+            // CSRS pension is always spendable
             spendable += annualAmount;
             breakdown.pensions += annualAmount;
         } else if (income instanceof PassiveIncome) {

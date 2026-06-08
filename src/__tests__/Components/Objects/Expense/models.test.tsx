@@ -556,10 +556,11 @@ describe('Expense Models', () => {
 
         const { totalInterest, totalPrincipal } = loanSimple.calculateAnnualAmortization(2024);
 
-        // Simple interest: no monthly interest accrual
-        // All payment goes to principal
-        expect(totalInterest).toBe(0);
-        expect(totalPrincipal).toBeCloseTo(405.53 * 12, 0);
+        // Simple-interest loans now accrue interest on the outstanding balance
+        // each month, just like compounding loans (the prior $0-interest
+        // behavior was a bug). Interest ≈ $1,477.53, principal makes up the rest.
+        expect(totalInterest).toBeCloseTo(1477.53, 2);
+        expect(totalPrincipal).toBeCloseTo(3388.83, 2);
       });
 
       it('should handle partial first year (loan starts July)', () => {

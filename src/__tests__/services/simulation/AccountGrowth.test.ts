@@ -851,8 +851,8 @@ describe('AccountGrowth', () => {
                 );
 
                 const updated = result.find(a => a.id === 'prop1') as PropertyAccount;
-                // $500k * 1.04 = $520k
-                expect(updated.amount).toBeCloseTo(520000, 0);
+                // $500k * (1.04 + 0.026 inflation) = $533k
+                expect(updated.amount).toBeCloseTo(533000, 0);
             });
 
             it('should update value from linked mortgage', () => {

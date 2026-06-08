@@ -83,6 +83,9 @@ function hasEarlyWithdrawalPenalty(
     age: number,
     isEarnings: boolean = false
 ): boolean {
+    // HSA non-medical withdrawals are penalized (20%) until age 65, not 59.5.
+    if (accountType === 'hsa') return age < 65;
+
     if (age >= EARLY_WITHDRAWAL_AGE) return false;
 
     switch (accountType) {
@@ -93,9 +96,7 @@ function hasEarlyWithdrawalPenalty(
         case 'roth_ira':
             // Only earnings have penalty; contributions are penalty-free
             return isEarnings;
-        case 'hsa':
-            // HSA has penalty for non-medical withdrawals before 65
-            return true;
+        // 'hsa' is handled above (penalized until 65, not 59.5).
         default:
             return false;
     }
@@ -833,7 +834,7 @@ export function planWithdrawals(
                     : Math.max(0, (snapshot.rothContributions ?? 0) - acaAlreadyConsumed);
                 const conversionsForCall = isPooled
                     ? pooledRothConversions
-                    : (snapshot.conversionHistory ? [...snapshot.conversionHistory].sort((a, b) => a.year - b.year) : []);
+                    : (snapshot.conversionHistory ? snapshot.conversionHistory.map(c => ({ year: c.year, amount: c.amount })).sort((a, b) => a.year - b.year) : []);
 
                 const result = grossUpRoth(
                     remainingNetNeeded,

@@ -26,5 +26,10 @@ export function calculateFicaTax(
         fedParams.socialSecurityTaxRate;
     const medicareTax = taxableBase * fedParams.medicareTaxRate;
 
-    return ssTax + medicareTax;
+    const additionalMedicareThreshold =
+        state.filingStatus === 'Married Filing Jointly' ? 250000 :
+        state.filingStatus === 'Married Filing Separately' ? 125000 : 200000;
+    const additionalMedicareTax = Math.max(0, taxableBase - additionalMedicareThreshold) * 0.009;
+
+    return ssTax + medicareTax + additionalMedicareTax;
 }

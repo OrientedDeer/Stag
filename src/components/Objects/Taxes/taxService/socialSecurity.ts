@@ -76,7 +76,7 @@ export function getTaxableSocialSecurityBenefits(
 
     // Up to 85% of SS benefits are taxable above second threshold
     const excessAboveSecond = combinedIncome - thresholds.second;
-    const tier1Amount = (thresholds.second - thresholds.first) * SS_TIER1_TAXABLE_RATE;
+    const tier1Amount = Math.min((thresholds.second - thresholds.first) * SS_TIER1_TAXABLE_RATE, totalSSBenefits * SS_TIER1_TAXABLE_RATE);
     const tier2Amount = excessAboveSecond * SS_TIER2_TAXABLE_RATE;
     const totalTaxable = tier1Amount + tier2Amount;
 

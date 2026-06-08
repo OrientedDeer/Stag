@@ -223,6 +223,14 @@ export interface DPDiagnostics {
      */
     dBByYear: number[];
     dRothByYear: number[];
+    /**
+     * Per-year conversion-grid bucket width. Index `t` is the conversion
+     * bucket size for year `t`; the largest candidate that year is
+     * `CONVERSION_BUCKETS × dCByYear[t]`. Sized to year `t`'s reachable
+     * trad balance so late-year conversions above the year-0 ceiling are
+     * still evaluated.
+     */
+    dCByYear: number[];
     dC: number;
     maxConversion: number;
     horizonYears: number;
@@ -543,8 +551,25 @@ function computeYearTax(
 
     let state = 0;
     if (ctx.stateParams) {
-        // Most states tax LTCG as ordinary; SS treatment is handled by stateParams.
-        state = TaxService.calculateTax(ordinaryIncome + ctx.ltcgIncome, 0, ctx.stateParams);
+        // Most states tax LTCG as ordinary. SS treatment mirrors the real sim's
+        // calculateUnifiedStateTax (stateTax.ts): `ordinaryIncome` here already
+        // EXCLUDES SS, so the state base is non-SS ordinary + LTCG, plus — only
+        // for states that tax SS — the IRS-taxable portion of SS. SS-taxing
+        // states (e.g. via the SS torpedo) make a conversion that raises
+        // provisional income create real state tax the DP must price in.
+        let stateBase = ordinaryIncome + ctx.ltcgIncome;
+        if (ctx.ssBenefits > 0 && ctx.stateParams.socialSecurityTreatment === 'taxable') {
+            // agiExcludingSS = non-SS ordinary + LTCG (preTaxDeductions already
+            // folded into nonSSOrdinaryIncomeExclRMD upstream).
+            const taxableSS = TaxService.getTaxableSocialSecurityBenefits(
+                ctx.ssBenefits,
+                ordinaryIncome + ctx.ltcgIncome,
+                0,
+                ctx.filingStatus,
+            );
+            stateBase += taxableSS;
+        }
+        state = TaxService.calculateTax(stateBase, 0, ctx.stateParams);
     }
 
     let acaPenalty = 0;
@@ -703,8 +728,8 @@ function interpV2D(
     tradBuckets: number,
     rothBuckets: number,
 ): number {
-    let trad = tradBalance < 0 ? 0 : tradBalance;
-    let roth = rothBalance < 0 ? 0 : rothBalance;
+    const trad = tradBalance < 0 ? 0 : tradBalance;
+    const roth = rothBalance < 0 ? 0 : rothBalance;
 
     let tIdx = trad / dB;
     let rIdx = roth / dRoth;
@@ -761,7 +786,7 @@ function determineGridScales(
     contexts: DPYearContext[],
     currentTradBalance: number,
     currentRothBalance: number,
-): { dBByYear: number[]; dRothByYear: number[] } {
+): { dBByYear: number[]; dRothByYear: number[]; dCByYear: number[] } {
     const horizonYears = contexts.length;
     const tradMaxByYear: number[] = new Array(horizonYears + 1);
     const rothMaxByYear: number[] = new Array(horizonYears + 1);
@@ -800,18 +825,19 @@ function determineGridScales(
         Math.max(MIN_BALANCE_RANGE, v * BALANCE_HEADROOM_FACTOR) / ROTH_BUCKETS
     );
 
-    return { dBByYear, dRothByYear };
-}
+    // Per-year conversion grid: each year's dC scales to that year's
+    // reachable trad balance (the no-conversion/no-spending trad-max
+    // trajectory), applying the MAX_CONVERSION_CAP ceiling and
+    // MIN_CONVERSION_RANGE floor off the projected balance rather than the
+    // year-0 balance.
+    // This preserves fine early-year resolution AND full late-year reach,
+    // so conversions between the old year-0 ceiling and a later cell's true
+    // cMax are no longer silently truncated.
+    const dCByYear = tradMaxByYear.map(v =>
+        Math.min(MAX_CONVERSION_CAP, Math.max(MIN_CONVERSION_RANGE, v)) / CONVERSION_BUCKETS
+    );
 
-/**
- * Pick the maximum per-year conversion considered. Cap at MAX_CONVERSION_CAP
- * (or trad balance, whichever is smaller) so dC stays fine enough to pick
- * std-deduction headroom precisely on large portfolios. Floor for grid
- * resolution on small portfolios.
- */
-function determineMaxConversion(currentTradBalance: number): number {
-    const upper = Math.min(currentTradBalance, MAX_CONVERSION_CAP);
-    return Math.max(MIN_CONVERSION_RANGE, upper);
+    return { dBByYear, dRothByYear, dCByYear };
 }
 
 /**
@@ -840,6 +866,7 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
                 dRoth: 0,
                 dBByYear: [],
                 dRothByYear: [],
+                dCByYear: [],
                 dC: 0,
                 maxConversion: 0,
                 horizonYears: 0,
@@ -852,7 +879,7 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
         };
     }
 
-    const { dBByYear, dRothByYear } = determineGridScales(
+    const { dBByYear, dRothByYear, dCByYear } = determineGridScales(
         contexts, currentTradBalance, currentRothBalance,
     );
     // Legacy/representative scalars: max-of-horizon. Some diagnostics
@@ -863,8 +890,13 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
     const dRoth = Math.max(...dRothByYear);
     const maxBalance = dB * TRAD_BUCKETS;
     const maxRoth = dRoth * ROTH_BUCKETS;
-    const maxConversion = determineMaxConversion(currentTradBalance);
-    const dC = maxConversion / CONVERSION_BUCKETS;
+    // Representative scalars for diagnostics: the conversion grid is now
+    // per-year (dCByYear), so surface the widest bucket across the horizon
+    // (and its implied ceiling) for the DPDiagnostics fields and any
+    // consumer (e.g. RothConversionDebug.tsx) that reads scalar dC /
+    // maxConversion. The solver itself uses dCByYear[t] per cell.
+    const dC = Math.max(...dCByYear);
+    const maxConversion = dC * CONVERSION_BUCKETS;
     const summaryLogs: string[] = [];
     const perYearDebug = new Map<number, string[]>();
     const perYearTraces = new Map<number, DPYearTrace>();
@@ -977,7 +1009,7 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
                 let bestCost = Infinity;
 
                 for (let ci = 0; ci <= CONVERSION_BUCKETS; ci++) {
-                    const c = Math.min(ci * dC, cMax);
+                    const c = Math.min(ci * dCByYear[t], cMax);
                     const { yearTax, tradNext, rothNext, unmetNeed } =
                         evaluateCell(b, r, c, ctx, taxBaseline);
 
@@ -1048,7 +1080,7 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
         let bestFuture = 0;
 
         for (let ci = 0; ci <= CONVERSION_BUCKETS; ci++) {
-            const c = Math.min(ci * dC, cMax);
+            const c = Math.min(ci * dCByYear[t], cMax);
             const { yearTax, conversionMarginal, tradNext, rothNext, tradSpending, fromRoth, fromBrokerage, unmetNeed } =
                 evaluateCell(trad, roth, c, ctx, taxBaseline);
 
@@ -1275,6 +1307,7 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
             dRoth,
             dBByYear,
             dRothByYear,
+            dCByYear,
             dC,
             maxConversion,
             horizonYears,
