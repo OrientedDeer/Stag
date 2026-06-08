@@ -23,6 +23,7 @@ import {
     DecisionLogEntry,
 } from "./types";
 import * as TaxService from "../../components/Objects/Taxes/TaxService";
+import { getLTCGRate as getLTCGRateForIncome } from "../../components/Objects/Taxes/taxService/capitalGainsTax";
 import { TaxBracket } from "../../data/TaxData";
 
 // =============================================================================
@@ -501,19 +502,11 @@ export function planWithdrawals(
     const fedParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'federal', undefined, assumptions);
     const stateParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions);
 
-    // Get LTCG rate based on current ordinary income
-    const getLTCGRate = (ordinaryIncome: number): number => {
-        if (!fedParams?.capitalGainsBrackets) return 0.15;
-
-        // Find applicable rate based on ordinary income
-        const brackets = fedParams.capitalGainsBrackets;
-        for (let i = brackets.length - 1; i >= 0; i--) {
-            if (ordinaryIncome >= brackets[i].threshold) {
-                return brackets[i].rate;
-            }
-        }
-        return brackets[0]?.rate ?? 0;
-    };
+    // Get LTCG rate based on current ordinary income.
+    // Delegates to the shared getLTCGRate helper (imported as getLTCGRateForIncome),
+    // closing over this year's fedParams.
+    const getLTCGRate = (ordinaryIncome: number): number =>
+        getLTCGRateForIncome(ordinaryIncome, fedParams);
 
     // Get marginal ordinary rate
     const getMarginalRate = (ordinaryIncome: number): number => {

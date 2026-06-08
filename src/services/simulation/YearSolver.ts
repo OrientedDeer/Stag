@@ -39,6 +39,7 @@ import { WithdrawalResult } from "../WithdrawalStrategies";
 import { classifyIncome, getTotalSSBenefits } from "./IncomeClassifier";
 import { planWithdrawals, createOrderedSnapshots } from "./WithdrawalPlanner";
 import * as TaxService from "../../components/Objects/Taxes/TaxService";
+import { getLTCGRate } from "../../components/Objects/Taxes/taxService/capitalGainsTax";
 import { calculateEffectiveConversionTax, ACAOptions } from "./helpers";
 import { getRMDStartAge } from "../../data/RMDData";
 import {
@@ -213,20 +214,9 @@ function getBrokerageGainRatio(accounts: AnyAccount[]): number {
 
 /**
  * Get LTCG rate based on ordinary income level.
- * Uses the same logic as WithdrawalPlanner.getLTCGRate.
+ * Thin alias over the shared getLTCGRate helper in capitalGainsTax.
  */
-function getLTCGRateForIncome(ordinaryIncome: number, fedParams: TaxParameters): number {
-    if (!fedParams?.capitalGainsBrackets) return 0.15;
-
-    // Find applicable rate based on ordinary income
-    const brackets = fedParams.capitalGainsBrackets;
-    for (let i = brackets.length - 1; i >= 0; i--) {
-        if (ordinaryIncome >= brackets[i].threshold) {
-            return brackets[i].rate;
-        }
-    }
-    return brackets[0]?.rate ?? 0;
-}
+const getLTCGRateForIncome = getLTCGRate;
 
 /**
  * Estimate LTCG that would result from covering a deficit via brokerage withdrawal.

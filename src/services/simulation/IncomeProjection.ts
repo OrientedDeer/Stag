@@ -1,7 +1,7 @@
 import { AnyIncome, WorkIncome, FutureSocialSecurityIncome, FERSPensionIncome, CSRSPensionIncome, PassiveIncome } from "../../components/Objects/Income/models";
 import { AnyAccount, SavedAccount } from "../../components/Objects/Accounts/models";
 import { AssumptionsState, getRetirementAge, getLifeExpectancy, getBirthYear } from "../../components/Objects/Assumptions/AssumptionsContext";
-import { calculateHigh3, checkFERSEligibility, checkCSRSEligibility } from "../../data/PensionData";
+import { calculateHigh3, checkFERSEligibility, checkCSRSEligibility, calculateFERSBasicBenefit, calculateCSRSBasicBenefit } from "../../data/PensionData";
 import { calculateAIME, extractEarningsFromSimulation, calculateEarningsTestReduction } from "../SocialSecurityCalculator";
 import { getFRA } from "../../data/SocialSecurityData";
 import * as TaxService from "../../components/Objects/Taxes/TaxService";
@@ -99,8 +99,7 @@ export function projectIncomes(
 
                 if (currentAge === inc.retirementAge && salaryHistory.length > 0) {
                     const high3 = calculateHigh3(salaryHistory);
-                    const baseBenefit = (inc.retirementAge >= 62 && inc.yearsOfService >= 20 ? 0.011 : 0.01)
-                        * inc.yearsOfService * high3;
+                    const baseBenefit = calculateFERSBasicBenefit(inc.yearsOfService, high3, inc.retirementAge);
                     const eligibility = checkFERSEligibility(inc.retirementAge, inc.yearsOfService, inc.birthYear);
                     const reductionFactor = 1 - (eligibility.reductionPercent / 100);
                     const actualBenefit = baseBenefit * reductionFactor;
@@ -149,18 +148,7 @@ export function projectIncomes(
 
                 if (currentAge === inc.retirementAge && salaryHistory.length > 0) {
                     const high3 = calculateHigh3(salaryHistory);
-                    let baseBenefit = 0;
-                    const first5 = Math.min(inc.yearsOfService, 5);
-                    baseBenefit += first5 * high3 * 0.015;
-                    if (inc.yearsOfService > 5) {
-                        const next5 = Math.min(inc.yearsOfService - 5, 5);
-                        baseBenefit += next5 * high3 * 0.0175;
-                    }
-                    if (inc.yearsOfService > 10) {
-                        const remaining = inc.yearsOfService - 10;
-                        baseBenefit += remaining * high3 * 0.02;
-                    }
-                    baseBenefit = Math.min(baseBenefit, high3 * 0.80);
+                    const baseBenefit = calculateCSRSBasicBenefit(inc.yearsOfService, high3);
 
                     const eligibility = checkCSRSEligibility(inc.retirementAge, inc.yearsOfService);
                     const reductionFactor = 1 - (eligibility.reductionPercent / 100);

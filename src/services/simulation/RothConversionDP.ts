@@ -625,6 +625,18 @@ function evaluateCell(
     conversion: number,
     ctx: DPYearContext,
     taxBaseline: number,
+    /**
+     * Pre-computed initial-guess tax = `computeYearTax(ordIncomeExclTradSpend,
+     * ctx)`, i.e. the year's tax assuming zero trad-spending. This quantity
+     * depends only on (conversion, tradBalance via RMD) and NOT on
+     * rothBalance, so the backward sweep hoists it out of the rothIdx loop and
+     * passes it in to avoid recomputing the full fed+state+SS tax once per
+     * rothIdx. When omitted (forward extract / debug-curve paths), it's
+     * computed inline as before. The fixed-point still recomputes tax inside
+     * the loop whenever trad-spending > 0 (the roth-dependent path), so
+     * results are numerically identical.
+     */
+    precomputedInitialTax?: number,
 ): {
     yearTax: number;
     conversionMarginal: number;
@@ -651,8 +663,12 @@ function evaluateCell(
 
     // Initial guess: tax assuming no trad-spending. This is exact when the
     // waterfall can cover totalNeed from brokerage + roth alone (the common
-    // case in early retirement years).
-    let yearTax = computeYearTax(ordIncomeExclTradSpend, ctx);
+    // case in early retirement years). Depends only on (conversion,
+    // tradBalance) — the backward sweep precomputes it once per (tradIdx,
+    // convIdx) and passes it in (see precomputedInitialTax docs).
+    let yearTax = precomputedInitialTax !== undefined
+        ? precomputedInitialTax
+        : computeYearTax(ordIncomeExclTradSpend, ctx);
     let fromBrokerage = 0;
     let fromRoth = 0;
     let tradSpending = 0;
@@ -1002,6 +1018,26 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
             // the marginal diagnostic. Doesn't depend on rothIdx.
             const taxBaseline = computeYearTax(ctx.nonSSOrdinaryIncomeExclRMD + rmdAtB, ctx);
 
+            // Hoist the roth-INDEPENDENT initial-guess tax out of the rothIdx
+            // loop. For a fixed (bi, ci), the conversion `c` and RMD are fixed
+            // (cMax depends only on b), so `ordIncomeExclTradSpend =
+            // nonSSOrdinaryIncomeExclRMD + rmdAtB + c` — and thus its full
+            // fed+state+SS tax — is identical across all rothIdx values. We
+            // compute it once per (bi, ci) here and reuse it for every ri.
+            // The fixed-point inside evaluateCell still recomputes tax when
+            // trad-spending > 0 (the genuinely roth-dependent path), so
+            // results are numerically identical.
+            const initialTaxByCi: number[] = new Array(CONVERSION_BUCKETS + 1);
+            {
+                let ci = 0;
+                for (; ci <= CONVERSION_BUCKETS; ci++) {
+                    const c = Math.min(ci * dCByYear[t], cMax);
+                    initialTaxByCi[ci] =
+                        computeYearTax(ctx.nonSSOrdinaryIncomeExclRMD + rmdAtB + c, ctx);
+                    if (c >= cMax) break;
+                }
+            }
+
             for (let ri = 0; ri <= ROTH_BUCKETS; ri++) {
                 const r = ri * dRoth_t;
 
@@ -1010,7 +1046,7 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
                 for (let ci = 0; ci <= CONVERSION_BUCKETS; ci++) {
                     const c = Math.min(ci * dCByYear[t], cMax);
                     const { yearTax, tradNext, rothNext, unmetNeed } =
-                        evaluateCell(b, r, c, ctx, taxBaseline);
+                        evaluateCell(b, r, c, ctx, taxBaseline, initialTaxByCi[ci]);
 
                     const futureCost = interpV2D(
                         Vnext, tradNext, rothNext,

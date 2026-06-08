@@ -26,10 +26,10 @@ sibling path the original fix didn't reach (#1, #7).
 | 8 | Low-Med | `Expense/models.tsx:916` (+900) | `getGoalMonthlySetAside`/`monthsBetween` local getters + `months<=0` returns full goal cost as one month | ✅ Fixing |
 | 9 | Low | `SocialSecurityData.tsx:197` | 2026 SS wage base `184200`, should be `184500` (disagrees with TaxData) | ✅ Fixing |
 | 10 | Low | `Expense/models.tsx:481` | `getBalanceAtDate` local getters on parsed date (no sim consumer) | ✅ Fixing |
-| 11 | Perf | `RothConversionDP.ts:656` | DP recomputes roth-independent `yearTax` for all ~51 roth buckets in the ~1M-cell loop | ⏸ Deferred (perf) |
-| 12 | Cleanup | `YearSolver.ts:218` | LTCG bracket-rate walk is a 3rd copy (also WithdrawalPlanner:505, capitalGainsTax.ts) | ⏸ Deferred (refactor) |
-| 13 | Cleanup | `IncomeProjection.ts:102` | FERS/CSRS pension formulas inlined, duplicating PensionData.tsx | ⏸ Deferred (refactor) |
-| 14 | Accuracy | `MilestoneEvaluator.ts:167` | `EXPENSES_GROSSED_UP` uses hardcoded `0.15` gross-up rate | ⏸ Deferred (changes milestone numbers — needs sign-off) |
+| 11 | Perf | `RothConversionDP.ts:656` | DP recomputes roth-independent `yearTax` for all ~51 roth buckets in the ~1M-cell loop | ✅ Fixed |
+| 12 | Cleanup | `YearSolver.ts:218` | LTCG bracket-rate walk duplicated (WithdrawalPlanner:505) | ✅ Fixed |
+| 13 | Cleanup | `IncomeProjection.ts:102` | FERS/CSRS pension formulas inlined, duplicating PensionData.tsx | ✅ Fixed |
+| 14 | Accuracy | `MilestoneEvaluator.ts:167` | `EXPENSES_GROSSED_UP` uses hardcoded `0.15` gross-up rate | ✅ Fixed |
 | 15 | Cleanup | `TaxOptimizedWithdrawal.ts:1049` + `RothConversionDP.ts:1324` | Dead `if(false&&…)` block + `void WorkIncome;` dead import | ✅ Fixing |
 
 **Refuted:** `getRMDDivisor` "age<72" gate (TaxOptimizedWithdrawal:159) — its
@@ -50,10 +50,14 @@ Fixes applied + verified on `main` (worktree): **`tsc -b` clean; `vitest` 3307/3
 
 **#3 deferred (reverted).** Investigation confirmed the double-count is real (RMD is in both `yearPlan.income.spendable` via `allIncomes`→`classifyIncome` *and* `withdrawalState.totalWithdrawals` via RMDService), so the Sankey's `investedUser` is inflated by the RMD each RMD year. **However it is display-only** (it does not affect account balances, taxes owed, or money movement), and the current code is internally *balanced* — the duplicated RMD appears on both the inflow and outflow (`investedUser`) sides, so `Scenario10`'s $1 Sankey-balance invariant holds. Any one-sided correction breaks a test: removing RMD from `totalCashAvailable` breaks `Scenario10` (balance off by the RMD); removing it from `cf.totalIncome` breaks `LongHorizonStability` ("tax ≤ income" assumes income includes RMD) and `StrategyBoundaries`. A correct fix requires a deliberate Sankey convention decision (is RMD an income node or a withdrawal node?) plus coordinated updates to `Scenario10`, `LongHorizonStability`, and `StrategyBoundaries`. Left for a focused follow-up.
 
+## Second batch — #11–#14 landed (verified: `tsc -b` clean, vitest 3307/3307)
+
+- **#11** — Hoisted the roth-independent initial `yearTax` out of the DP `rothIdx` loop (computed once per `(tradIdx, convIdx)`); numerically identical, ~51× fewer tax calls on the `dp-precomputed` hot path. The roth-dependent fixed-point path (when `tradSpending > 0`) is unchanged.
+- **#12** — Extracted a single `getLTCGRate(ordinaryIncome, fedParams)` into `capitalGainsTax.ts`; `YearSolver` and `WithdrawalPlanner` now delegate to it. (The "third copy" in `capitalGainsTax.ts` was a *different* function — `calculateCapitalGainsTax` returns a tax amount, not a rate — so only the two true duplicates were unified.)
+- **#13** — Verified the inlined FERS/CSRS formulas are exactly equivalent to `calculateFERSBasicBenefit`/`calculateCSRSBasicBenefit` in `PensionData.tsx`, then replaced the inline blocks with calls to them.
+- **#14** — Replaced the flat `0.15` with a fixed-point gross-up over the real federal brackets for the milestone's year (`gross = expenses + tax(gross)`), and threaded the user's actual `filingStatus` from `SimulationEngine` through `MilestoneContext` (no longer hardcoded to Single). Still federal-only — `stateResidency` isn't on `MilestoneContext`; including state tax is a small further follow-up. No test asserted the old `0.15` value.
+
 ## Deferred (optional follow-ups)
 
-- **#3** — Sankey RMD double-count (display-only; needs convention + test updates, above).
-- **#11** — DP redundant `yearTax` recompute across roth buckets (perf, `dp-precomputed` path).
-- **#12** — LTCG bracket-rate walk triplication → one shared helper.
-- **#13** — FERS/CSRS pension formulas inlined → call `PensionData.tsx`.
-- **#14** — `EXPENSES_GROSSED_UP` hardcoded `0.15` rate → derive from tax service (changes milestone numbers; wants sign-off).
+- **#3** — Sankey RMD double-count (display-only; needs a Sankey income-vs-withdrawal convention decision + coordinated test updates, above).
+- **#14 (state tax)** — minor: thread `stateResidency` into `MilestoneContext` to include state tax in the `EXPENSES_GROSSED_UP` gross-up.

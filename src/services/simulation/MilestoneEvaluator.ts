@@ -1,6 +1,8 @@
 import { AnyAccount, InvestedAccount, SavedAccount, DebtAccount, PropertyAccount, ESPPAccount, DeficitDebtAccount } from "../../components/Objects/Accounts/models";
 import { MortgageExpense, LoanExpense, AnyExpense } from "../../components/Objects/Expense/models";
 import { CustomMilestone, MilestoneCondition, MilestoneReachEvent } from "./types";
+import { getTaxParameters, calculateTotalFederalTax } from "../../components/Objects/Taxes/TaxService";
+import { FilingStatus } from "../../data/TaxData";
 
 /**
  * Context for evaluating milestone conditions
@@ -11,6 +13,7 @@ export interface MilestoneContext {
     year: number;
     age: number;
     milestoneReachYears?: Map<string, number>;  // milestoneId -> year reached (for YEARS_AFTER_MILESTONE)
+    filingStatus?: FilingStatus;  // user's filing status, for the EXPENSES_GROSSED_UP tax gross-up (defaults to Single)
 }
 
 /**
@@ -142,6 +145,66 @@ export function calculateAnnualExpenses(expenses: AnyExpense[], year: number): n
 }
 
 /**
+ * Fallback filing status for the expense gross-up, used only when the
+ * MilestoneContext doesn't carry one. 'Single' is the same conservative default
+ * the app ships with (TaxContext.defaultTaxState) and yields the least-favorable
+ * brackets, so the grossed-up target is never optimistic.
+ */
+const GROSS_UP_DEFAULT_FILING_STATUS: FilingStatus = 'Single';
+
+/**
+ * Gross up after-tax living expenses into the pre-tax withdrawal needed to fund
+ * them, using the real federal bracket schedule for the given year instead of a
+ * flat assumed rate.
+ *
+ * A retiree who needs `netExpenses` to spend must withdraw enough pre-tax
+ * dollars `gross` such that `gross - tax(gross) === netExpenses`, i.e.
+ * `gross === netExpenses + tax(gross)`. Because `tax(gross)` depends on `gross`,
+ * we solve it with a short fixed-point iteration (gross starts at the raw
+ * expenses and is bumped by the tax owed each pass). This converges quickly
+ * because the federal schedule is piecewise-linear; a handful of iterations is
+ * more than enough.
+ *
+ * The withdrawal is modeled as ordinary income (the typical case for funding
+ * retirement from Traditional 401k/IRA balances), so it correctly benefits from
+ * the standard deduction and the lower brackets — making the effective rate far
+ * more accurate than the previous flat 15%, especially at modest spend levels.
+ *
+ * Falls back to a flat 15% gross-up if tax parameters can't be resolved for the
+ * year (mirrors the previous behavior so the milestone never silently breaks).
+ */
+function grossUpExpenses(netExpenses: number, year: number, filingStatus: FilingStatus): number {
+    const FALLBACK_TAX_RATE = 0.15;
+
+    const fedParams = getTaxParameters(year, filingStatus, "federal");
+    if (!fedParams) {
+        return netExpenses / (1 - FALLBACK_TAX_RATE);
+    }
+
+    // Fixed-point solve for gross such that gross - tax(gross) === netExpenses.
+    let gross = netExpenses;
+    for (let i = 0; i < 8; i++) {
+        const tax = calculateTotalFederalTax(
+            gross,  // ordinary income (Traditional-account withdrawal)
+            0,      // socialSecurityBenefits
+            0,      // shortTermCapitalGains
+            0,      // longTermCapitalGains
+            0,      // preTaxDeductions (already retired; none assumed)
+            filingStatus,
+            fedParams,
+        ).totalTax;
+        const next = netExpenses + tax;
+        if (Math.abs(next - gross) < 1) {
+            gross = next;
+            break;
+        }
+        gross = next;
+    }
+
+    return gross;
+}
+
+/**
  * Calculate the target value for comparison based on valueType
  */
 function calculateTargetValue(condition: MilestoneCondition, context: MilestoneContext): number | null {
@@ -160,12 +223,28 @@ function calculateTargetValue(condition: MilestoneCondition, context: MilestoneC
         }
 
         case 'EXPENSES_GROSSED_UP': {
-            // value × (expenses / (1 - tax_rate)) - includes estimated taxes
-            // Uses 15% estimated tax rate (conservative for retirement withdrawals)
+            // value × (pre-tax dollars needed to net the annual expenses).
+            //
+            // Previously this used a flat 15% rate (expenses / (1 - 0.15)),
+            // ignoring filing status, state, and the actual bracket schedule.
+            // We now derive the gross-up from the real federal tax brackets for
+            // the milestone's year via grossUpExpenses() (solving
+            // gross - tax(gross) === expenses), which is materially more
+            // accurate — at low spend the standard deduction makes the effective
+            // rate well under 15%, and at high spend the upper brackets push it
+            // above 15%.
+            //
+            // The user's real filingStatus is threaded through MilestoneContext
+            // (set by SimulationEngine). Still federal-only: MilestoneContext does
+            // not carry stateResidency, so STATE tax is not included in the
+            // gross-up — a fuller fix would thread stateResidency through too.
             const annualExpenses = calculateAnnualExpenses(context.expenses, context.year);
             if (annualExpenses <= 0) return null;
-            const estimatedTaxRate = 0.15;
-            const grossedUpExpenses = annualExpenses / (1 - estimatedTaxRate);
+            const grossedUpExpenses = grossUpExpenses(
+                annualExpenses,
+                context.year,
+                context.filingStatus ?? GROSS_UP_DEFAULT_FILING_STATUS,
+            );
             return condition.value * grossedUpExpenses;
         }
 
