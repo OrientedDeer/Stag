@@ -15,21 +15,6 @@ export interface SpendingStrategyResult {
 }
 
 /**
- * Calculate total living expenses from an expense list.
- */
-function calculateTotalLivingExpenses(expenses: AnyExpense[], year: number): number {
-    return expenses.reduce((sum, exp) => {
-        if (exp instanceof MortgageExpense) {
-            return sum + exp.calculateAnnualAmortization(year).totalPayment;
-        }
-        if (exp instanceof LoanExpense) {
-            return sum + exp.calculateAnnualAmortization(year).totalPayment;
-        }
-        return sum + exp.getAnnualAmount(year);
-    }, 0);
-}
-
-/**
  * Calculate total discretionary expenses.
  */
 export function calculateTotalDiscretionary(expenses: AnyExpense[], year: number): number {
@@ -162,92 +147,6 @@ export function calculateStrategyTarget(
     }
 
     return result;
-}
-
-/**
- * Enforce GK spending cap: trim discretionary expenses to stay within budget.
- */
-/**
- * Enforce spending cap for all withdrawal strategies (GK, Fixed Real, Percentage).
- * Trims discretionary expenses when spending exceeds the strategy budget.
- */
-export function enforceSpendingCap(
-    expenses: AnyExpense[],
-    strategyWithdrawalResult: WithdrawalResult,
-    discretionaryCash: number,
-    totalGrossIncome: number,
-    preTaxDeductions: number,
-    postTaxDeductions: number,
-    totalTax: number,
-    reinvestedIncome: number,
-    year: number,
-    assumptions: AssumptionsState,
-    logs: string[]
-): { nextExpenses: AnyExpense[]; totalLivingExpenses: number; discretionaryCash: number; strategyAdjustmentResult: SimulationYear['strategyAdjustment'] } {
-    const strategy = assumptions.investments.withdrawalStrategy;
-    const isGK = strategy === 'Guyton Klinger';
-    const deficit = Math.abs(discretionaryCash);
-    const budget = strategyWithdrawalResult.amount;
-    let nextExpenses = expenses;
-    let strategyAdjustmentResult: SimulationYear['strategyAdjustment'] = undefined;
-
-    if (deficit > budget) {
-        const excessSpending = deficit - budget;
-        const totalDiscretionary = calculateTotalDiscretionary(nextExpenses, year);
-
-        if (totalDiscretionary > 0) {
-            const trimAmount = Math.min(excessSpending, totalDiscretionary);
-            const cutRatio = 1 - (trimAmount / totalDiscretionary);
-
-            nextExpenses = nextExpenses.map(exp => {
-                if (exp.isDiscretionary) {
-                    return exp.adjustAmount(cutRatio);
-                }
-                return exp;
-            });
-
-            const totalLivingExpenses = calculateTotalLivingExpenses(nextExpenses, year);
-            const newDiscretionaryCash = totalGrossIncome - preTaxDeductions - postTaxDeductions - totalTax - totalLivingExpenses - reinvestedIncome;
-
-            logs.push(`[TARGET] ${strategy} spending cap: trimmed discretionary by $${trimAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} to stay within $${budget.toLocaleString(undefined, { maximumFractionDigits: 0 })} budget`);
-
-            if (trimAmount >= totalDiscretionary) {
-                logs.push(`[WARN] ${strategy} cap: all discretionary expenses eliminated but fixed expenses still exceed budget`);
-            }
-
-            // For GK, use the guardrail from the strategy result; for others use 'capital-preservation'
-            const guardrailTriggered = isGK ? strategyWithdrawalResult.guardrailTriggered : 'capital-preservation';
-
-            strategyAdjustmentResult = {
-                guardrailTriggered,
-                requiredAdjustment: excessSpending,
-                actualAdjustment: trimAmount,
-                discretionaryAvailable: totalDiscretionary,
-                warning: trimAmount < excessSpending
-                    ? `${strategy} budget is $${budget.toLocaleString(undefined, { maximumFractionDigits: 0 })} but fixed expenses alone create a $${(deficit - totalDiscretionary).toLocaleString(undefined, { maximumFractionDigits: 0 })} deficit. Consider reducing fixed expenses.`
-                    : undefined,
-            };
-
-            return { nextExpenses, totalLivingExpenses, discretionaryCash: newDiscretionaryCash, strategyAdjustmentResult };
-        } else {
-            logs.push(`[WARN] ${strategy} spending cap: deficit ($${deficit.toLocaleString(undefined, { maximumFractionDigits: 0 })}) exceeds budget ($${budget.toLocaleString(undefined, { maximumFractionDigits: 0 })}) but no discretionary expenses to trim`);
-
-            const guardrailTriggered = isGK ? strategyWithdrawalResult.guardrailTriggered : 'capital-preservation';
-
-            strategyAdjustmentResult = {
-                guardrailTriggered,
-                requiredAdjustment: excessSpending,
-                actualAdjustment: 0,
-                discretionaryAvailable: 0,
-                warning: `${strategy} budget is $${budget.toLocaleString(undefined, { maximumFractionDigits: 0 })} but no discretionary expenses to trim. All expenses are fixed.`,
-            };
-        }
-    } else {
-        logs.push(`[OK] ${strategy} spending cap: deficit ($${deficit.toLocaleString(undefined, { maximumFractionDigits: 0 })}) within budget ($${budget.toLocaleString(undefined, { maximumFractionDigits: 0 })})`);
-    }
-
-    const totalLivingExpenses = calculateTotalLivingExpenses(nextExpenses, year);
-    return { nextExpenses, totalLivingExpenses, discretionaryCash, strategyAdjustmentResult };
 }
 
 /**

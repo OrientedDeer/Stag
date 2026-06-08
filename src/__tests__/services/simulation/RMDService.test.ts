@@ -15,9 +15,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { processRMDs } from '../../../services/simulation/RMDService';
 import { InvestedAccount } from '../../../components/Objects/Accounts/models';
-import { CurrentSocialSecurityIncome } from '../../../components/Objects/Income/models';
 import { AssumptionsState, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { SimulationYear, WithdrawalState } from '../../../services/simulation/types';
 import * as TaxService from '../../../components/Objects/Taxes/TaxService';
 
@@ -51,14 +49,6 @@ function createMockAssumptions(birthYear: number = 1955): AssumptionsState {
             extended: true,
         },
     } as unknown as AssumptionsState;
-}
-
-function createMockTaxState(stateResidency: string = 'TX'): TaxState {
-    return {
-        filingStatus: 'Single',
-        stateResidency,
-        deductionMethod: 'Standard',
-    } as TaxState;
 }
 
 function createWithdrawalState(totalGrossIncome: number = 50000): WithdrawalState {
@@ -238,28 +228,22 @@ describe('processRMDs', () => {
             const currentAge = 65; // Below 73 (RMD start for birth year 1955)
             const accounts = [createTraditionalAccount('acc1', 'Traditional 401k', 500000)];
             const assumptions = createMockAssumptions(1955); // RMD starts at 73
-            const taxState = createMockTaxState('TX');
             const withdrawalState = createWithdrawalState(50000);
             const logs: string[] = [];
 
             const result = processRMDs(
                 year,
                 accounts,
-                [],
                 assumptions,
-                taxState,
                 [],
                 currentAge,
                 50000,
-                0,
                 withdrawalState,
                 logs
             );
 
             expect(result.rmdDetails).toBeUndefined();
             expect(result.rmdIncomes).toHaveLength(0);
-            expect(result.fedTaxIncrease).toBe(0);
-            expect(result.stateTaxIncrease).toBe(0);
         });
 
         it('should return empty result at age 72 for birth year 1955', () => {
@@ -267,20 +251,16 @@ describe('processRMDs', () => {
             const currentAge = 72;
             const accounts = [createTraditionalAccount('acc1', 'Traditional 401k', 500000)];
             const assumptions = createMockAssumptions(1955);
-            const taxState = createMockTaxState('TX');
             const withdrawalState = createWithdrawalState(50000);
             const logs: string[] = [];
 
             const result = processRMDs(
                 year,
                 accounts,
-                [],
                 assumptions,
-                taxState,
                 [],
                 currentAge,
                 50000,
-                0,
                 withdrawalState,
                 logs
             );
@@ -297,7 +277,6 @@ describe('processRMDs', () => {
             const priorYearBalance = 500000;
             const accounts = [createTraditionalAccount('acc1', 'Traditional 401k', priorYearBalance)];
             const assumptions = createMockAssumptions(1955);
-            const taxState = createMockTaxState('TX');
             const previousSim = createPriorSimulationYear(accounts, 2027);
             const withdrawalState = createWithdrawalState(50000);
             const logs: string[] = [];
@@ -305,13 +284,10 @@ describe('processRMDs', () => {
             const result = processRMDs(
                 year,
                 accounts,
-                [],
                 assumptions,
-                taxState,
                 previousSim,
                 currentAge,
                 50000,
-                0,
                 withdrawalState,
                 logs
             );
@@ -336,7 +312,6 @@ describe('processRMDs', () => {
                 0, 10, 0.1, 'Traditional IRA', true, 0.2, priorYearBalance
             );
             const assumptions = createMockAssumptions(1955);
-            const taxState = createMockTaxState('CA');
             const previousSim = createPriorSimulationYear([account], 2029);
             const withdrawalState = createWithdrawalState(50000);
             const logs: string[] = [];
@@ -344,13 +319,10 @@ describe('processRMDs', () => {
             const result = processRMDs(
                 year,
                 [account],
-                [],
                 assumptions,
-                taxState,
                 previousSim,
                 currentAge,
                 50000,
-                0,
                 withdrawalState,
                 logs
             );
@@ -377,7 +349,6 @@ describe('processRMDs', () => {
                 ),
             ];
             const assumptions = createMockAssumptions(1955);
-            const taxState = createMockTaxState('TX');
             const previousSim = createPriorSimulationYear(accounts, 2029);
             const withdrawalState = createWithdrawalState(50000);
             const logs: string[] = [];
@@ -385,13 +356,10 @@ describe('processRMDs', () => {
             const result = processRMDs(
                 year,
                 accounts,
-                [],
                 assumptions,
-                taxState,
                 previousSim,
                 currentAge,
                 50000,
-                0,
                 withdrawalState,
                 logs
             );
@@ -415,7 +383,6 @@ describe('processRMDs', () => {
                 createRothAccount('roth1', 'Roth 401k', 500000),
             ];
             const assumptions = createMockAssumptions(1955);
-            const taxState = createMockTaxState('TX');
             const previousSim = createPriorSimulationYear(accounts, 2029);
             const withdrawalState = createWithdrawalState(50000);
             const logs: string[] = [];
@@ -423,13 +390,10 @@ describe('processRMDs', () => {
             const result = processRMDs(
                 year,
                 accounts,
-                [],
                 assumptions,
-                taxState,
                 previousSim,
                 currentAge,
                 50000,
-                0,
                 withdrawalState,
                 logs
             );
@@ -453,7 +417,6 @@ describe('processRMDs', () => {
                 createRothAccount('roth1', 'Roth 401k', rothBalance),
             ];
             const assumptions = createMockAssumptions(1955);
-            const taxState = createMockTaxState('TX');
             const previousSim = createPriorSimulationYear(accounts, 2029);
             const withdrawalState = createWithdrawalState(50000);
             const logs: string[] = [];
@@ -461,13 +424,10 @@ describe('processRMDs', () => {
             const result = processRMDs(
                 year,
                 accounts,
-                [],
                 assumptions,
-                taxState,
                 previousSim,
                 currentAge,
                 50000,
-                0,
                 withdrawalState,
                 logs
             );
@@ -489,7 +449,6 @@ describe('processRMDs', () => {
             const accountBalance = 5000; // Small balance
             const accounts = [createTraditionalAccount('acc1', 'Traditional 401k', accountBalance)];
             const assumptions = createMockAssumptions(1955);
-            const taxState = createMockTaxState('TX');
             const previousSim = createPriorSimulationYear(accounts, 2029);
             const withdrawalState = createWithdrawalState(50000);
             const logs: string[] = [];
@@ -497,13 +456,10 @@ describe('processRMDs', () => {
             const result = processRMDs(
                 year,
                 accounts,
-                [],
                 assumptions,
-                taxState,
                 previousSim,
                 currentAge,
                 50000,
-                0,
                 withdrawalState,
                 logs
             );
@@ -537,7 +493,6 @@ describe('processRMDs', () => {
             // Vested amount: 20000 + 32000 = 52000
 
             const assumptions = createMockAssumptions(1955);
-            const taxState = createMockTaxState('TX');
             const previousSim = createPriorSimulationYear([account], 2029);
             const withdrawalState = createWithdrawalState(50000);
             const logs: string[] = [];
@@ -545,13 +500,10 @@ describe('processRMDs', () => {
             const result = processRMDs(
                 year,
                 [account],
-                [],
                 assumptions,
-                taxState,
                 previousSim,
                 currentAge,
                 50000,
-                0,
                 withdrawalState,
                 logs
             );
@@ -563,211 +515,12 @@ describe('processRMDs', () => {
         });
     });
 
-    describe('Test 6: Tax calculation (marginal)', () => {
-        it('should calculate marginal federal tax on RMD', () => {
-            const year = 2030;
-            const currentAge = 75;
-            const priorYearBalance = 500000;
-            const accounts = [createTraditionalAccount('acc1', 'Traditional 401k', priorYearBalance)];
-            const assumptions = createMockAssumptions(1955);
-            const taxState = createMockTaxState('TX'); // No state income tax
-            const previousSim = createPriorSimulationYear(accounts, 2029);
-            const totalGrossIncome = 50000;
-            const withdrawalState = createWithdrawalState(totalGrossIncome);
-            const logs: string[] = [];
-
-            const result = processRMDs(
-                year,
-                accounts,
-                [],
-                assumptions,
-                taxState,
-                previousSim,
-                currentAge,
-                totalGrossIncome,
-                0,
-                withdrawalState,
-                logs
-            );
-
-            // RMD amount: ~18867.92
-            // This is added to existing income and taxed at marginal rate
-            expect(result.fedTaxIncrease).toBeGreaterThan(0);
-            // TX has no state income tax
-            expect(result.stateTaxIncrease).toBe(0);
-        });
-
-        it('should increase tax when RMD pushes into higher bracket', () => {
-            const year = 2030;
-            const currentAge = 75;
-            const priorYearBalance = 1000000; // Large balance = large RMD
-            const accounts = [createTraditionalAccount('acc1', 'Traditional 401k', priorYearBalance)];
-            const assumptions = createMockAssumptions(1955);
-            const taxState = createMockTaxState('CA');
-            const previousSim = createPriorSimulationYear(accounts, 2029);
-            const totalGrossIncome = 100000;
-            const withdrawalState = createWithdrawalState(totalGrossIncome);
-            const logs: string[] = [];
-
-            const result = processRMDs(
-                year,
-                accounts,
-                [],
-                assumptions,
-                taxState,
-                previousSim,
-                currentAge,
-                totalGrossIncome,
-                0,
-                withdrawalState,
-                logs
-            );
-
-            // RMD: 1000000 / 24.6 ≈ 40650.41
-            // Tax should be significant due to high income + large RMD
-            expect(result.fedTaxIncrease).toBeGreaterThan(5000);
-            expect(result.stateTaxIncrease).toBeGreaterThan(0);
-        });
-    });
-
-    describe('Test 7: State does NOT tax Social Security (TX)', () => {
-        it('should exclude SS from state income calculation in TX', () => {
-            const year = 2030;
-            const currentAge = 75;
-            const priorYearBalance = 300000;
-            const accounts = [createTraditionalAccount('acc1', 'Traditional 401k', priorYearBalance)];
-            const ssIncome = new CurrentSocialSecurityIncome('ss1', 'Social Security', 30000, 'Annually');
-            const assumptions = createMockAssumptions(1955);
-            const taxState = createMockTaxState('TX');
-            const previousSim = createPriorSimulationYear(accounts, 2029);
-            const totalGrossIncome = 80000; // Includes 30k SS
-            const withdrawalState = createWithdrawalState(totalGrossIncome);
-            const logs: string[] = [];
-
-            const result = processRMDs(
-                year,
-                accounts,
-                [ssIncome],
-                assumptions,
-                taxState,
-                previousSim,
-                currentAge,
-                totalGrossIncome,
-                0,
-                withdrawalState,
-                logs
-            );
-
-            // TX has no state income tax, so state tax should be 0
-            expect(result.stateTaxIncrease).toBe(0);
-            // Federal tax should still be calculated
-            expect(result.fedTaxIncrease).toBeGreaterThan(0);
-        });
-
-        it('should properly exclude SS when calculating state tax in Florida', () => {
-            const year = 2030;
-            const currentAge = 75;
-            const priorYearBalance = 300000;
-            const accounts = [createTraditionalAccount('acc1', 'Traditional 401k', priorYearBalance)];
-            const ssIncome = new CurrentSocialSecurityIncome('ss1', 'Social Security', 30000, 'Annually');
-            const assumptions = createMockAssumptions(1955);
-            const taxState = createMockTaxState('FL');
-            const previousSim = createPriorSimulationYear(accounts, 2029);
-            const totalGrossIncome = 80000;
-            const withdrawalState = createWithdrawalState(totalGrossIncome);
-            const logs: string[] = [];
-
-            const result = processRMDs(
-                year,
-                accounts,
-                [ssIncome],
-                assumptions,
-                taxState,
-                previousSim,
-                currentAge,
-                totalGrossIncome,
-                0,
-                withdrawalState,
-                logs
-            );
-
-            // FL has no state income tax
-            expect(result.stateTaxIncrease).toBe(0);
-        });
-    });
-
-    describe('Test 8: State DOES tax Social Security (MN)', () => {
-        it('should include taxable SS in state income calculation for MN', () => {
-            const year = 2030;
-            const currentAge = 75;
-            const priorYearBalance = 300000;
-            const accounts = [createTraditionalAccount('acc1', 'Traditional 401k', priorYearBalance)];
-            const ssIncome = new CurrentSocialSecurityIncome('ss1', 'Social Security', 30000, 'Annually');
-            const assumptions = createMockAssumptions(1955);
-            const taxState = createMockTaxState('MN');
-            const previousSim = createPriorSimulationYear(accounts, 2029);
-            const totalGrossIncome = 80000;
-            const withdrawalState = createWithdrawalState(totalGrossIncome);
-            const logs: string[] = [];
-
-            const result = processRMDs(
-                year,
-                accounts,
-                [ssIncome],
-                assumptions,
-                taxState,
-                previousSim,
-                currentAge,
-                totalGrossIncome,
-                0,
-                withdrawalState,
-                logs
-            );
-
-            // MN taxes SS and has state income tax
-            // State tax should be > 0
-            expect(result.stateTaxIncrease).toBeGreaterThan(0);
-        });
-
-        it('should include taxable SS in state income calculation for Colorado', () => {
-            const year = 2030;
-            const currentAge = 75;
-            const priorYearBalance = 300000;
-            const accounts = [createTraditionalAccount('acc1', 'Traditional 401k', priorYearBalance)];
-            const ssIncome = new CurrentSocialSecurityIncome('ss1', 'Social Security', 30000, 'Annually');
-            const assumptions = createMockAssumptions(1955);
-            const taxState = createMockTaxState('CO');
-            const previousSim = createPriorSimulationYear(accounts, 2029);
-            const totalGrossIncome = 80000;
-            const withdrawalState = createWithdrawalState(totalGrossIncome);
-            const logs: string[] = [];
-
-            const result = processRMDs(
-                year,
-                accounts,
-                [ssIncome],
-                assumptions,
-                taxState,
-                previousSim,
-                currentAge,
-                totalGrossIncome,
-                0,
-                withdrawalState,
-                logs
-            );
-
-            // CO taxes SS and has state income tax
-            expect(result.stateTaxIncrease).toBeGreaterThan(0);
-        });
-    });
-
     describe('RMD start age by birth year', () => {
         it('should require RMD at 72 for birth year 1950', () => {
             const year = 2022;
             const currentAge = 72;
             const accounts = [createTraditionalAccount('acc1', 'Traditional 401k', 500000)];
             const assumptions = createMockAssumptions(1950);
-            const taxState = createMockTaxState('TX');
             const previousSim = createPriorSimulationYear(accounts, 2021);
             const withdrawalState = createWithdrawalState(50000);
             const logs: string[] = [];
@@ -775,13 +528,10 @@ describe('processRMDs', () => {
             const result = processRMDs(
                 year,
                 accounts,
-                [],
                 assumptions,
-                taxState,
                 previousSim,
                 currentAge,
                 50000,
-                0,
                 withdrawalState,
                 logs
             );
@@ -795,7 +545,6 @@ describe('processRMDs', () => {
             const currentAge = 75;
             const accounts = [createTraditionalAccount('acc1', 'Traditional 401k', 500000)];
             const assumptions = createMockAssumptions(1960);
-            const taxState = createMockTaxState('TX');
             const previousSim = createPriorSimulationYear(accounts, 2034);
             const withdrawalState = createWithdrawalState(50000);
             const logs: string[] = [];
@@ -803,13 +552,10 @@ describe('processRMDs', () => {
             const result = processRMDs(
                 year,
                 accounts,
-                [],
                 assumptions,
-                taxState,
                 previousSim,
                 currentAge,
                 50000,
-                0,
                 withdrawalState,
                 logs
             );
@@ -823,20 +569,16 @@ describe('processRMDs', () => {
             const currentAge = 74;
             const accounts = [createTraditionalAccount('acc1', 'Traditional 401k', 500000)];
             const assumptions = createMockAssumptions(1960);
-            const taxState = createMockTaxState('TX');
             const withdrawalState = createWithdrawalState(50000);
             const logs: string[] = [];
 
             const result = processRMDs(
                 year,
                 accounts,
-                [],
                 assumptions,
-                taxState,
                 [],
                 currentAge,
                 50000,
-                0,
                 withdrawalState,
                 logs
             );

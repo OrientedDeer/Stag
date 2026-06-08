@@ -11,7 +11,6 @@
  *   - stateTax            calculateStateTax, calculateUnifiedStateTax
  *   - ficaTax             calculateFicaTax
  *   - capitalGainsTax     calculateCapitalGainsTax
- *   - withdrawalGrossUp   calculateGrossWithdrawal
  *   - marginalRates       getMarginalTaxRate, getCombinedMarginalRate
  *   - esppTax             calculateESPPDispositionTax
  *
@@ -41,7 +40,6 @@ export { calculateFederalTaxFromIncomes } from "./taxService/federalTax";
 export { calculateStateTax, calculateUnifiedStateTax } from "./taxService/stateTax";
 export { calculateFicaTax } from "./taxService/ficaTax";
 export { calculateCapitalGainsTax } from "./taxService/capitalGainsTax";
-export { calculateGrossWithdrawal } from "./taxService/withdrawalGrossUp";
 export {
     getMarginalTaxRate,
     getCombinedMarginalRate,

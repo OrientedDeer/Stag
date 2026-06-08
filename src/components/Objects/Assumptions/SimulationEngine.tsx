@@ -302,8 +302,8 @@ function simulateOneYearWithNewEngine(
     };
 
     const rmdResult = processRMDs(
-        year, accounts, allIncomes, assumptions, taxState,
-        previousSimulation, currentAge, totalGrossIncome, preTaxDeductions,
+        year, accounts, assumptions,
+        previousSimulation, currentAge, totalGrossIncome,
         withdrawalState, logs
     );
 
