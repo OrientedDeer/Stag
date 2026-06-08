@@ -81,13 +81,19 @@ cat <<EOF
    This core has been through several prior scoped reviews. Recurring problem
    areas — each has actually bitten us, so give them extra scrutiny:
 
-     1. Date-only / timezone handling. parseDate (modelUtils.ts) stores
-        date-only values at LOCAL midnight via new Date(y, m-1, d), so they must
-        be read with LOCAL getFullYear/getMonth, NOT getUTC*. Some existing code
-        reads them with getUTC* under a comment that wrongly claims parseDate
-        returns UTC — a latent off-by-one in positive-offset zones. Check
-        parseDate itself, not the comments. The unit suite runs in UTC, so it
-        structurally cannot catch these.
+     1. Date-only / timezone handling (UNRESOLVED — please determine the correct
+        convention). Date-only values are CREATED inconsistently: parseDate
+        (modelUtils.ts) builds them at LOCAL midnight (new Date(y, m-1, d)), but
+        many sites build them at UTC midnight via Date.UTC() (form defaults in
+        AddExpenseModal / incomeFormTypes, pension + SS dates in IncomeProjection,
+        ESPP in AccountGrowth). The reader functions are correspondingly split —
+        some use getUTC*, some local. Empirically: in negative-offset (US) zones
+        getUTC* reads BOTH constructions correctly and local breaks the
+        Date.UTC-built ones; in positive-offset zones it flips and neither is
+        universally right. The unit suite runs in UTC, so it structurally cannot
+        catch any of this, and comments claiming "parseDate returns UTC" are
+        stale. The real fix is a SINGLE convention for both creation and reads —
+        please determine which, and which call sites are wrong.
      2. Social Security tax. Taxable SS double-counted in Roth-conversion sizing
         (provisional income); the three SS income classes are siblings, so a
         filter listing only two silently drops the third; SS-exempt-state logic.

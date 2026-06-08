@@ -34,11 +34,22 @@ tests:
 - **#10** RMD reserved against the Traditional snapshot (`YearSolver.ts`)
 - **#11** gross-up search bound widens for combined rates > ~67% (`WithdrawalPlanner.ts`)
 
-## (Cross-reference) Date-only convention cleanup
-The withdrawn date findings (#7/#9/#12) exposed a real *latent* issue that is not
-in PR #52's changes: several pre-existing functions (`getExpenseActiveMultiplier`,
-`getIncomeActiveMultiplier`, `isGoalDueInYear`, `getBalanceAtDate`) read
-`parseDate`'s **local**-midnight dates with `getUTC*`, under comments wrongly
-claiming `parseDate` returns UTC. Harmless for US-timezone users, but the
-convention is backwards. This originated in PR #50 — see `code-review-pr-50.md`
-#2 (standardize all date-only reads on local accessors).
+## Date-only / timezone convention — UNRESOLVED, deferred to the next review
+
+Date-only values are created with TWO conventions: `parseDate` (modelUtils.ts)
+builds **local**-midnight dates, while many call sites build **UTC**-midnight
+dates via `Date.UTC()` (form defaults in `AddExpenseModal`/`incomeFormTypes`,
+pension + SS dates in `IncomeProjection`, ESPP in `AccountGrowth`). The reader
+functions are correspondingly inconsistent (some `getUTC*`, some local), and the
+"`parseDate` returns UTC" comments are stale.
+
+Empirically (verified by running both constructions under a fixed TZ): in
+US/negative-offset zones `getUTC*` reads **both** constructions correctly while
+local breaks the `Date.UTC`-built ones; positive-offset zones flip and neither
+accessor is universally correct. The real fix is to unify **creation and reads**
+on one convention.
+
+> Correction: an earlier draft of this note (and `pr-50.md` #2) said "standardize
+> on local accessors" — that is **wrong**; in this app's timezone `getUTC*` is the
+> safe read. Direction deliberately left open for the next (ultra) review to
+> decide, since it spans creation sites + readers + parseDate + the stale tests.
