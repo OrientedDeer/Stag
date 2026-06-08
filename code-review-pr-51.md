@@ -68,4 +68,4 @@ Fixes applied + verified on `main` (worktree): **`tsc -b` clean; `vitest` 3307/3
 
 ## Deferred (optional follow-ups)
 
-- **#14 (state tax)** — minor: thread `stateResidency` into `MilestoneContext` to include state tax in the `EXPENSES_GROSSED_UP` gross-up.
+- **#14 (state tax)** — ~~thread `stateResidency` into `MilestoneContext` to include state tax in the `EXPENSES_GROSSED_UP` gross-up~~. **Won't-do** — federal-only gross-up is sufficient; not worth the plumbing. All PR #51 findings are now closed.
