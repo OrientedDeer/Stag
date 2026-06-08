@@ -200,8 +200,8 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                 ],
                 capitalGainsBrackets: [
                     { threshold: 0, rate: 0.00 },
-                    { threshold: 49700, rate: 0.15 },
-                    { threshold: 548200, rate: 0.20 }
+                    { threshold: 49450, rate: 0.15 },
+                    { threshold: 545500, rate: 0.20 }
                 ],
                 socialSecurityTaxRate: 0.062,
                 socialSecurityWageBase: 184500,
@@ -220,8 +220,8 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                 ],
                 capitalGainsBrackets: [
                     { threshold: 0, rate: 0.00 },
-                    { threshold: 99400, rate: 0.15 },
-                    { threshold: 616400, rate: 0.20 }
+                    { threshold: 98900, rate: 0.15 },
+                    { threshold: 613700, rate: 0.20 }
                 ],
                 socialSecurityTaxRate: 0.062,
                 socialSecurityWageBase: 184500,
@@ -240,8 +240,8 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                 ],
                 capitalGainsBrackets: [
                     { threshold: 0, rate: 0.00 },
-                    { threshold: 49700, rate: 0.15 },
-                    { threshold: 308200, rate: 0.20 }
+                    { threshold: 49450, rate: 0.15 },
+                    { threshold: 306850, rate: 0.20 }
                 ],
                 socialSecurityTaxRate: 0.062,
                 socialSecurityWageBase: 184500,
