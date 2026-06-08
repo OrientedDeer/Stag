@@ -115,5 +115,20 @@ export function getTaxParameters(
         };
     }
 
-    return sourceData[closestYear]?.[filingStatus];
+    if (sourceData[closestYear]) {
+        return sourceData[closestYear][filingStatus];
+    }
+
+    // State tables may not cover every federal year (e.g. California has no 2024
+    // entry), so getClosestTaxYear — which only knows federal years — can resolve
+    // to a year missing from this authority's table. Fall back to the nearest year
+    // actually present so the gap doesn't return undefined → $0 tax.
+    const availableYears = Object.keys(sourceData)
+        .map(Number)
+        .filter((y) => !Number.isNaN(y));
+    if (availableYears.length === 0) return undefined;
+    const nearestYear = availableYears.reduce((best, y) =>
+        Math.abs(y - year) < Math.abs(best - year) ? y : best
+    );
+    return sourceData[nearestYear]?.[filingStatus];
 }

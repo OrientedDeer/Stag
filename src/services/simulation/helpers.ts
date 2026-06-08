@@ -71,36 +71,11 @@ export interface EffectiveConversionTaxResult {
  * @param stateParams - State tax parameters (null if no state tax)
  * @param acaOptions - ACA subsidy awareness options (undefined if not applicable)
  */
-// TODO: ACA MAGI double-counts Social Security in this function.
-//
-// The `nonSSIncome` parameter is documented as "non-SS ordinary income", but the caller
-// (planConversion in YearSolver.ts, ~line 692) passes `baseOrdinaryIncome`, which is
-// actually `nonSSIncome + taxableSS` (it's computed as taxableBase - fullSS + taxableSS).
-//
-// Then at line 186 below, the ACA MAGI check computes:
-//     magiBefore = nonSSIncome + totalSSBenefits
-//                = (actualNonSSIncome + taxableSS) + fullSS
-//
-// This overcounts SS by `taxableSS` (which is 0-85% of fullSS depending on income).
-// The correct ACA MAGI formula should be:
-//     magiBefore = actualNonSSIncome + fullSS
-//
-// We fixed this same bug in the two primary ACA enforcement paths (the binary search
-// estimateMAGI in planConversion, and the withdrawal currentMAGI in solveRetirementYear)
-// by using `spendable + reinvested` from the income classifier, which naturally includes
-// 100% of SS without any taxable-portion substitution.
-//
-// Fixing it HERE requires either:
-//   (a) Changing the call site to pass actual non-SS income (baseOrdinaryIncome - taxableSS),
-//       but this would also affect the tax calculations (lines 89-97) which currently expect
-//       the value they're getting, OR
-//   (b) Adding a separate parameter for ACA MAGI that bypasses the SS manipulation.
-//
-// Impact: This ACA check is a SECONDARY mechanism — it adds an estimated subsidy loss cost
-// to the effective conversion tax rate. The PRIMARY ACA enforcement is the binary search in
-// planConversion (estimateMAGI), which was already fixed. So this bug causes the subsidy-loss
-// penalty to trigger at a slightly wrong income level, but the conversion amount is still
-// correctly capped by the primary binary search. Net effect is minimal.
+// NOTE: This function's ACA-MAGI check (magiBefore = nonSSIncome + totalSSBenefits)
+// previously double-counted Social Security because callers passed `baseOrdinaryIncome`
+// (= non-SS income + taxableSS) into the `nonSSIncome` slot. The conversion review fixed
+// the call sites to pass true non-SS ordinary income, so `nonSSIncome + totalSSBenefits`
+// now correctly equals actual-non-SS + full SS.
 export function calculateEffectiveConversionTax(
     nonSSIncome: number,
     totalSSBenefits: number,

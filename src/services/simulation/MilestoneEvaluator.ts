@@ -181,12 +181,9 @@ function calculateTargetValue(condition: MilestoneCondition, context: MilestoneC
             // For YEAR conditions, return the year + offset
             // For AGE conditions, convert to age equivalent
             if (condition.type === 'AGE') {
-                // Convert milestone year to age, then add offset
-                const milestoneAge = context.milestoneReachYears.get(condition.referenceMilestoneId + '_age');
-                if (milestoneAge !== undefined) {
-                    return milestoneAge + condition.value;
-                }
-                // Fallback: calculate age from year difference
+                // Convert the milestone's reach-year to the age the user was when it
+                // was reached, then add the offset. (No '_age' key is ever stored in
+                // milestoneReachYears, so this derivation is the sole path.)
                 return (reachedYear - context.year + context.age) + condition.value;
             }
             return reachedYear + condition.value;
