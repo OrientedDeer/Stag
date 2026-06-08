@@ -633,6 +633,7 @@ function simulateOneYearWithNewEngine(
         insurance: totalInsuranceCost,
         year,
         brokerageLTCGFromGross,
+        employerInflows: withdrawalState.employerInflows,
     });
 
     // ------------------------------------------------------------------

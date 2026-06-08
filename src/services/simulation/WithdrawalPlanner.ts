@@ -339,9 +339,27 @@ function grossUpTraditional(
 
     const penaltyRate = age < EARLY_WITHDRAWAL_AGE ? EARLY_WITHDRAWAL_PENALTY_RATE : 0;
 
+    // Helper: net delivered by a given gross withdrawal (tax + penalty subtracted).
+    const netAtGross = (gross: number): number => {
+        const t = computeTaxOnGross(
+            gross, fedTaxableIncome, stateTaxableIncome,
+            fedBrackets, stateBrackets,
+            remainingFedStdDedSpace, remainingStateStdDedSpace
+        );
+        return gross - t.totalTax - gross * penaltyRate;
+    };
+
     // Binary search: find gross such that gross - tax(gross) - penalty(gross) = netNeeded
     let lo = netNeeded;
     let hi = netNeeded * 3;
+
+    // When the combined fed+state+penalty rate exceeds ~66.7%, even gross = 3×netNeeded
+    // nets less than netNeeded, so [lo, hi] never brackets the target and the search
+    // silently under-funds the deficit. Grow hi (capped) until net(hi) >= netNeeded.
+    const maxHi = netNeeded * 20;
+    while (hi < maxHi && netAtGross(hi) < netNeeded) {
+        hi = Math.min(hi * 2, maxHi);
+    }
 
     let bestGross = netNeeded;
     let bestTax = 0;

@@ -376,7 +376,7 @@ function planConversion(
 
     // Skip conversion if not enabled or not retired
     if (!input.taxOptimizationEnabled || !input.isRetired) {
-        const limitingFactor: ConversionLimitingFactor = !input.isRetired ? 'NOT_RETIRED' : 'NOT_RETIRED';
+        const limitingFactor: ConversionLimitingFactor = !input.isRetired ? 'NOT_RETIRED' : 'OPTIMIZATION_DISABLED';
         return {
             conversion: null,
             conversionTax: 0,
@@ -1409,7 +1409,7 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     let withdrawalDecisions: DecisionLogEntry[] = [];
     let totalPenalties = 0;
     let iterations = 0;
-    let converged = true;
+    let converged = false;
 
     if (input.rmdAmount > 0) {
         // Find Traditional accounts for RMD source
@@ -1439,6 +1439,22 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     let accountSnapshots = createOrderedSnapshots(
         input.accounts, input.withdrawalOrder, input.currentAge, input.year
     );
+
+    // Reserve the RMD against the Traditional account it draws from. The RMD already
+    // claims `input.rmdAmount` from that account (recorded as a negative userInflow,
+    // applied later by growAccounts), but createOrderedSnapshots reads the raw balance,
+    // so without this the discretionary planner could plan to withdraw dollars the RMD
+    // already took — over-draining the account and surfacing phantom spendable cash.
+    if (input.rmdAmount > 0) {
+        const rmdAccount = getFirstTraditionalAccount(input.accounts);
+        if (rmdAccount) {
+            accountSnapshots = accountSnapshots.map(s =>
+                s.accountId === rmdAccount.id
+                    ? { ...s, vestedBalance: Math.max(0, s.vestedBalance - input.rmdAmount) }
+                    : s
+            );
+        }
+    }
 
     if (conversionPlan.bracketSpaceForSpending > 0) {
         // Tax-optimized order: put capped Traditional first, then normal order
@@ -1566,7 +1582,11 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
             ficaTax -
             incomeClassification.classified.spendable;
 
-        if (deficit <= 0) break;
+        if (deficit <= 0) {
+            // Surplus year: nothing to solve, this is a genuine (converged) outcome.
+            converged = true;
+            break;
+        }
 
         // Plan withdrawals - planner uses allOrdinaryIncome as starting income position
         // Pass currentSSTaxable as stateExemptIncome so the planner excludes it from

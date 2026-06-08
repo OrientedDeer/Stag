@@ -945,9 +945,12 @@ export function reconstituteAccount(data: unknown): AnyAccount | null {
                 : [];
             // Clamp persisted values to safe ranges. employerBalance > amount makes
             // nonVestedAmount/vestedAmount go negative (RMDService then silently skips a
-            // required RMD); costBasis > amount is nonsensical for stored data.
+            // required RMD). costBasis MAY exceed amount for an underwater position
+            // (contributions/conversions above current market value) — that is valid,
+            // so it is floored at 0 but NOT clamped to amount; clamping would erase the
+            // unrealized loss and tax later recovery as phantom gain.
             const employerBalance = Math.max(0, Math.min(Number(data.employerBalance) || 0, amount));
-            const costBasis = Math.max(0, Math.min(Number(data.costBasis ?? amount), amount));
+            const costBasis = Math.max(0, Number(data.costBasis ?? amount));
             return new InvestedAccount(
                 id, name, amount,
                 employerBalance,

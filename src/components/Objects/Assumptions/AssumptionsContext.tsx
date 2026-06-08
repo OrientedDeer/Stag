@@ -271,6 +271,14 @@ function migrateAssumptions(saved: unknown, defaults: AssumptionsState): Assumpt
   // Migration: Get legacy values from old demographics if present
   const savedDemographics = data.demographics as Record<string, unknown> | undefined;
 
+  // priorEarnings is a saved-only demographics field (absent from the defaults
+  // object), so the mergeSection above silently drops it on every reload.
+  // Preserve the imported SSA earnings history explicitly — the SS benefit
+  // projection (IncomeProjection) depends on it.
+  if (savedDemographics?.priorEarnings !== undefined && savedDemographics?.priorEarnings !== null) {
+    migrated.demographics.priorEarnings = savedDemographics.priorEarnings as EarningsRecord[];
+  }
+
   // Handle very old format with startAge/startYear
   let legacyBirthYear = savedDemographics?.birthYear as number | undefined;
   if (!legacyBirthYear && savedDemographics) {
@@ -338,13 +346,15 @@ function migrateAssumptions(saved: unknown, defaults: AssumptionsState): Assumpt
       return { ...m, name: 'Retire' };
     }
     if (m.id === BUILTIN_MILESTONE_IDS.END_OF_PLAN) {
-      // Migrate old format (operator '>') to new format (operator '>=' with value+1)
+      // Migrate old format (operator '>') to new format (operator '>=') preserving
+      // the age value: getLifeExpectancy returns this value verbatim, so it must equal
+      // the intended life expectancy for both fresh and migrated users (no +1).
       const ageCondition = m.conditions.find(c => c.type === 'AGE');
       if (ageCondition && ageCondition.operator === '>') {
         return {
           ...m,
           name: 'End of Plan',
-          conditions: [{ type: 'AGE' as const, operator: '>=' as const, value: ageCondition.value + 1 }],
+          conditions: [{ type: 'AGE' as const, operator: '>=' as const, value: ageCondition.value }],
         };
       }
       return { ...m, name: 'End of Plan' };

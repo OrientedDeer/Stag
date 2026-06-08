@@ -187,8 +187,10 @@ export function calculateEffectiveConversionTax(
     let crossesACACliff = false;
     let acaSubsidyLost = 0;
     if (acaOptions && acaOptions.acaSubsidyAware && acaOptions.currentAge < 65) {
-        // MAGI for ACA includes 100% of SS benefits (not just taxable portion)
-        const magiBefore = nonSSIncome + totalSSBenefits;
+        // MAGI for ACA includes 100% of SS benefits (not just taxable portion) and
+        // capital gains (LTCG is part of AGI), so cliff crossings are detected for
+        // retirees with capital gains.
+        const magiBefore = nonSSIncome + totalSSBenefits + ltcgIncome;
         const magiAfter = magiBefore + conversionAmount;
 
         if (magiBefore < acaOptions.acaCliffThreshold && magiAfter >= acaOptions.acaCliffThreshold) {

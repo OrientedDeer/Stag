@@ -32,6 +32,7 @@ function limitingFactorLabel(factor: ConversionLimitingFactor | undefined): stri
         case 'NOT_RETIRED': return 'Not retired';
         case 'AT_RMD_AGE': return 'At RMD age';
         case 'SPENDING_DEFICIT': return 'Spending withdrawal';
+        case 'OPTIMIZATION_DISABLED': return 'Optimization disabled';
         default: return '—';
     }
 }

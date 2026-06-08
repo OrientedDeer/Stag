@@ -39,6 +39,15 @@ interface BuildCashflowDetailInput {
      * Sankey can subtract it from the gross withdrawal inflow.
      */
     brokerageLTCGFromGross: number;
+    /**
+     * The ACTUAL employer match the sim deposited, keyed by destination account id
+     * (withdrawalState.employerInflows) — already §415(c)-trimmed by
+     * AccountGrowth.processInflows, so it is authoritative. When present, the
+     * Roth/pretax match split is derived from this map instead of recomputing via
+     * getEffectiveAnnualEmployerMatch (which ignores the §415(c) trim and overstates
+     * the match, breaking inflow=outflow for high earners at the combined 401k limit).
+     */
+    employerInflows?: Record<string, number>;
 }
 
 /**
@@ -49,7 +58,7 @@ interface BuildCashflowDetailInput {
  * to re-derive it (and drift from the sim's actual values).
  */
 export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDetail {
-    const { incomes, expenses, accounts, insurance, year, brokerageLTCGFromGross } = input;
+    const { incomes, expenses, accounts, insurance, year, brokerageLTCGFromGross, employerInflows } = input;
 
     const incomeBySource: CashflowIncomeSource[] = [];
     let userPreTax401k = 0;
@@ -69,7 +78,7 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
             userPreTax401k += inc.getProratedAnnual(inc.preTax401k, year);
             userRoth401k += inc.getProratedAnnual(inc.roth401k, year);
 
-            if (inc.matchAccountId) {
+            if (inc.matchAccountId && !employerInflows) {
                 const match = inc.getEffectiveAnnualEmployerMatch(year);
                 if (match >= MIN_AMOUNT) {
                     const matchAccount = accounts.find(a => a.id === inc.matchAccountId);
@@ -120,6 +129,23 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
             incomeBySource.push({ name: inc.name, amount, kind: 'pension' });
         } else {
             incomeBySource.push({ name: inc.name, amount, kind: 'passive' });
+        }
+    }
+
+    // When the sim's actual deposited match is available, derive the Roth/pretax
+    // split from it (per destination account, already §415(c)-trimmed) so the Sankey
+    // matches what AccountGrowth deposited rather than an untrimmed recompute.
+    if (employerInflows) {
+        for (const [accountId, match] of Object.entries(employerInflows)) {
+            if (match < MIN_AMOUNT) continue;
+            const matchAccount = accounts.find(a => a.id === accountId);
+            const isRoth = matchAccount instanceof InvestedAccount &&
+                (matchAccount.taxType === 'Roth 401k' || matchAccount.taxType === 'Roth IRA');
+            if (isRoth) {
+                employerMatchRoth += match;
+            } else {
+                employerMatchPreTax += match;
+            }
         }
     }
 

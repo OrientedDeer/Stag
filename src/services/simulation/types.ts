@@ -473,6 +473,7 @@ export type ConversionLimitingFactor =
     | 'NO_BRACKET_SPACE'      // Already in or above target bracket
     | 'TRADITIONAL_DEPLETED'  // No Traditional balance left to convert
     | 'NOT_RETIRED'           // Not retired yet, no conversions
+    | 'OPTIMIZATION_DISABLED' // Tax optimization disabled in settings
     | 'AT_RMD_AGE'            // At or past RMD age, no conversions
     | 'SPENDING_DEFICIT';      // Bracket space shared with Traditional spending withdrawals
 

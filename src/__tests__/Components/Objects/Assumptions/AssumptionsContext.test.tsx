@@ -101,6 +101,68 @@ describe('AssumptionsContext', () => {
     expect(getByTestId('inflation-rate').textContent).toBe('10');
   });
 
+  // Regression: PR #52 finding #1.
+  // migrateAssumptions/mergeSection only copies keys present in the defaults object.
+  // `demographics.priorEarnings` (imported SSA earnings history) is a saved-only field
+  // absent from defaults, so it was silently dropped on every reload — breaking the SS
+  // benefit projection that depends on it. (No prior test exercised priorEarnings.)
+  it('preserves imported demographics.priorEarnings across a localStorage load', () => {
+    const priorEarnings = [
+      { year: 2010, amount: 50000 },
+      { year: 2011, amount: 52000 },
+    ];
+    const savedState: AssumptionsState = {
+      ...defaultAssumptions,
+      demographics: { ...defaultAssumptions.demographics, priorEarnings },
+    };
+    localStorageMock.setItem('assumptions_settings', JSON.stringify(savedState));
+
+    let loaded: AssumptionsState | undefined;
+    const Capture = () => {
+      loaded = useContext(AssumptionsContext).state;
+      return null;
+    };
+    render(
+      <AssumptionsProvider>
+        <Capture />
+      </AssumptionsProvider>
+    );
+
+    expect(loaded?.demographics.priorEarnings).toBeDefined();
+    expect(loaded?.demographics.priorEarnings).toHaveLength(2);
+    expect(loaded?.demographics.priorEarnings?.[0]).toMatchObject({ year: 2010, amount: 50000 });
+  });
+
+  // Regression: PR #52 finding #6.
+  // A legacy "> N" End-of-Plan milestone must migrate to ">= N" (NOT ">= N+1"), so that
+  // getLifeExpectancy (which returns the milestone's raw age value) stays N for both fresh
+  // and migrated users. The old "+1" inflated life expectancy by a year for migrated users.
+  it('migrates a legacy "> N" End-of-Plan milestone to ">= N" (life expectancy unchanged)', () => {
+    const legacyMilestones = defaultAssumptions.milestones.map(m =>
+      m.id === BUILTIN_MILESTONE_IDS.END_OF_PLAN
+        ? { ...m, conditions: [{ type: 'AGE' as const, operator: '>' as const, value: 90 }] }
+        : m
+    );
+    const savedState = {
+      ...defaultAssumptions,
+      milestones: legacyMilestones,
+    } as AssumptionsState;
+    localStorageMock.setItem('assumptions_settings', JSON.stringify(savedState));
+
+    let loaded: AssumptionsState | undefined;
+    const Capture = () => {
+      loaded = useContext(AssumptionsContext).state;
+      return null;
+    };
+    render(
+      <AssumptionsProvider>
+        <Capture />
+      </AssumptionsProvider>
+    );
+
+    expect(getLifeExpectancy(loaded!.milestones)).toBe(90);
+  });
+
   it('should save state to localStorage when state changes (debounced)', async () => {
     vi.useFakeTimers();
     const { getByText } = render(

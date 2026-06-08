@@ -1,6 +1,7 @@
 import {
     AnyIncome,
     WorkIncome,
+    SocialSecurityIncome,
     CurrentSocialSecurityIncome,
     FutureSocialSecurityIncome,
 } from "../../Income/models";
@@ -97,6 +98,7 @@ export function getEarnedIncome(incomes: AnyIncome[], year: number): number {
 export function getSocialSecurityBenefits(incomes: AnyIncome[], year: number): number {
     return incomes
         .filter((inc) =>
+            inc instanceof SocialSecurityIncome ||
             inc instanceof CurrentSocialSecurityIncome ||
             inc instanceof FutureSocialSecurityIncome,
         )
