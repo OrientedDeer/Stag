@@ -98,14 +98,18 @@ export function processRMDs(
             totalGrossIncome += actualWithdrawal;
             withdrawalState.totalGrossIncome = totalGrossIncome;
 
-            // Apply withdrawal to account
+            // Drain the account. This is the ONLY money movement — growAccounts applies
+            // userInflows to the balance (AccountGrowth.ts), so the Traditional account
+            // drops by exactly the RMD regardless of how it's later reported.
             withdrawalState.userInflows[account.id] = (withdrawalState.userInflows[account.id] || 0) - actualWithdrawal;
             totalRMDWithdrawn += actualWithdrawal;
 
-            // Track in withdrawal details
-            withdrawalState.totalWithdrawals += actualWithdrawal;
-            withdrawalState.withdrawalDetail[account.name] = (withdrawalState.withdrawalDetail[account.name] || 0) + actualWithdrawal;
-
+            // NOTE: the RMD is intentionally NOT added to withdrawalState.totalWithdrawals
+            // or withdrawalDetail. It is surfaced as spendable INCOME (a PassiveIncome with
+            // sourceType 'RMD', classified into `spendable` by IncomeClassifier), so adding
+            // it to the withdrawal tallies too would double-count the same dollars in the
+            // Sankey cash accounting (inflated `investedUser`/`totalInvested`). RMD = income
+            // that funds expenses, with any surplus reinvested.
             logs.push(`📋 RMD from ${account.name}: $${actualWithdrawal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
         }
     }

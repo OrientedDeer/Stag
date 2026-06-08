@@ -532,9 +532,11 @@ describe('Temporal Boundary Tests', () => {
                 const age = getAge(year.year, birthYear);
                 if (age < rmdStartAge) continue;
 
-                // If only RMD is triggering withdrawals (not expenses), Roth shouldn't be touched
+                // If only RMD is triggering withdrawals (not expenses), Roth shouldn't be touched.
+                // RMD is surfaced as income (drains Traditional via userInflows, not in
+                // withdrawalDetail), so read the Traditional distribution from rmdDetails.
                 const rothWithdrawal = year.cashflow.withdrawalDetail['Roth 401k'] || 0;
-                const tradWithdrawal = year.cashflow.withdrawalDetail['Traditional 401k'] || 0;
+                const tradWithdrawal = year.rmdDetails?.totalWithdrawn ?? 0;
 
                 // If Traditional has a balance and Roth is being withdrawn, that's likely an error
                 // (Roth has no RMD requirement, Traditional should be used first for RMD)

@@ -166,7 +166,9 @@ describe('Story 4: RMD Compliance', () => {
 
         if (preRMDYear && rmdYear) {
             const priorBalance = getAccountById(preRMDYear, 'acc-trad401k')?.amount || 0;
-            const traditionalWithdrawal = rmdYear.cashflow.withdrawalDetail['Traditional 401k'] || 0;
+            // RMD is surfaced as income (it drains the Traditional account but is not in
+            // withdrawalDetail), so assert on the canonical distribution record.
+            const traditionalWithdrawal = rmdYear.rmdDetails?.totalWithdrawn ?? 0;
 
             // IRS Uniform Lifetime Table: age 73 divisor = 26.5
             const expectedRMD = priorBalance / 26.5;
@@ -231,7 +233,9 @@ describe('Story 4: RMD Compliance', () => {
             const expectedRMD = priorBalance / distributionPeriod73;
 
             // Check that withdrawals include approximately the RMD amount
-            const traditionalWithdrawal = rmdYear.cashflow.withdrawalDetail['Traditional 401k'] || 0;
+            // RMD is surfaced as income (it drains the Traditional account but is not in
+            // withdrawalDetail), so assert on the canonical distribution record.
+            const traditionalWithdrawal = rmdYear.rmdDetails?.totalWithdrawn ?? 0;
 
             // RMD should be at least close to the calculated amount
             // (May be higher if additional withdrawals are needed for expenses)
@@ -254,7 +258,9 @@ describe('Story 4: RMD Compliance', () => {
         const rmdYear = getYearByAge(simulation, rmdStartAge, birthYear);
 
         if (rmdYear) {
-            const traditionalWithdrawal = rmdYear.cashflow.withdrawalDetail['Traditional 401k'] || 0;
+            // RMD is surfaced as income (it drains the Traditional account but is not in
+            // withdrawalDetail), so assert on the canonical distribution record.
+            const traditionalWithdrawal = rmdYear.rmdDetails?.totalWithdrawn ?? 0;
 
             if (traditionalWithdrawal > 0) {
                 // RMD counts as taxable income - verify total income includes it
@@ -290,7 +296,8 @@ describe('Story 4: RMD Compliance', () => {
 
             if (prevYear && currYear) {
                 const priorBalance = getAccountById(prevYear, 'acc-trad401k')?.amount || 0;
-                const tradWithdrawal = currYear.cashflow.withdrawalDetail['Traditional 401k'] || 0;
+                // RMD is surfaced as income, not in withdrawalDetail — assert on rmdDetails.
+                const tradWithdrawal = currYear.rmdDetails?.totalWithdrawn ?? 0;
 
                 // Only check if there's meaningful balance
                 if (priorBalance > 10000) {
@@ -329,7 +336,8 @@ describe('Story 4: RMD Compliance', () => {
             const expectedRMD74 = year73EndBalance / 25.5;
 
             // The actual withdrawal should be at least the RMD
-            const year74Withdrawal = year74.cashflow.withdrawalDetail['Traditional 401k'] || 0;
+            // RMD is surfaced as income, not in withdrawalDetail — assert on rmdDetails.
+            const year74Withdrawal = year74.rmdDetails?.totalWithdrawn ?? 0;
 
             if (year74Withdrawal > 0 && year73EndBalance > 0) {
                 // Allow some tolerance for timing and growth
@@ -358,7 +366,8 @@ describe('Story 4: RMD Compliance', () => {
 
         const rmdYear = getYearByAge(simulation, rmdStartAge, birthYear);
         if (rmdYear) {
-            const withdrawal = rmdYear.cashflow.withdrawalDetail['Traditional 401k'] || 0;
+            // RMD is surfaced as income, not in withdrawalDetail — assert on rmdDetails.
+            const withdrawal = rmdYear.rmdDetails?.totalWithdrawn ?? 0;
             expect(Number.isFinite(withdrawal), 'Withdrawal should be a finite number').toBe(true);
             expect(withdrawal, 'Large balance should produce substantial RMD').toBeGreaterThan(100000);
         }
@@ -528,7 +537,9 @@ describe('Story 4b: RMD Compliance for Birth Year 1965+ (RMD at 75)', () => {
 
         if (preRMDYear && rmdYear) {
             const priorBalance = getAccountById(preRMDYear, 'acc-trad401k')?.amount || 0;
-            const traditionalWithdrawal = rmdYear.cashflow.withdrawalDetail['Traditional 401k'] || 0;
+            // RMD is surfaced as income (it drains the Traditional account but is not in
+            // withdrawalDetail), so assert on the canonical distribution record.
+            const traditionalWithdrawal = rmdYear.rmdDetails?.totalWithdrawn ?? 0;
 
             // IRS divisor at age 75 is 24.6
             const expectedRMD = priorBalance / 24.6;

@@ -23,7 +23,7 @@ import {
 const MIN_AMOUNT = 0.005;
 
 interface BuildCashflowDetailInput {
-    /** Active incomes after earnings test, excluding RMD-sourced PassiveIncomes. */
+    /** Active incomes after earnings test, including RMD-sourced PassiveIncomes (shown as income). */
     incomes: AnyIncome[];
     /** Expenses after lifestyle creep + GK trim. */
     expenses: AnyExpense[];
@@ -88,9 +88,10 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
         if (amount < MIN_AMOUNT) continue;
 
         if (inc instanceof PassiveIncome) {
-            // RMDs are surfaced as withdrawals (in cashflow.withdrawalDetail), not as income.
-            if (inc.sourceType === 'RMD') continue;
-
+            // RMDs are surfaced as spendable income (they drain the Traditional account
+            // via userInflows, but cash-flow-wise they're a required distribution that
+            // funds expenses, with any surplus reinvested). They are deliberately NOT in
+            // cashflow.withdrawalDetail, so showing them here is the single representation.
             const kind: CashflowIncomeKind = inc.isReinvested ? 'reinvested' : 'passive';
             const source: CashflowIncomeSource = { name: inc.name, amount, kind };
 

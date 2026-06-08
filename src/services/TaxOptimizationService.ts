@@ -438,8 +438,8 @@ export function generateTaxProjections(
 
         // Traditional non-RMD withdrawals: cross-reference withdrawalDetail (keyed by
         // account name) against the year's accounts to find Traditional 401(k)/IRA.
-        // RMDs are already counted via PassiveIncome objects in incomes, so subtract
-        // them here to avoid double-counting.
+        // RMDs are no longer in withdrawalDetail (they're surfaced as income via
+        // PassiveIncome objects), so this sum is already RMD-free — no subtraction needed.
         const traditionalAccountNames = new Set(
             simYear.accounts
                 .filter((acc): acc is InvestedAccount =>
@@ -448,14 +448,12 @@ export function generateTaxProjections(
                 )
                 .map(acc => acc.name)
         );
-        let traditionalWithdrawals = 0;
+        let traditionalNonRMDWithdrawals = 0;
         for (const [name, amount] of Object.entries(simYear.cashflow.withdrawalDetail || {})) {
             if (traditionalAccountNames.has(name)) {
-                traditionalWithdrawals += amount;
+                traditionalNonRMDWithdrawals += amount;
             }
         }
-        const rmdWithdrawn = simYear.rmdDetails?.totalWithdrawn ?? 0;
-        const traditionalNonRMDWithdrawals = Math.max(0, traditionalWithdrawals - rmdWithdrawn);
 
         const grossIncome = incomeFromObjects + conversionAmount + traditionalNonRMDWithdrawals;
 

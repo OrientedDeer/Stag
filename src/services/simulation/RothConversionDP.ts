@@ -292,7 +292,8 @@ function sumTradBalanceDiag(simYear: SimulationYear): number {
 }
 
 /**
- * Sum trad withdrawals from this year's withdrawalDetail (excludes RMD via subtraction).
+ * Sum trad withdrawals from this year's withdrawalDetail. RMDs are no longer in
+ * withdrawalDetail (they're surfaced as income), so this is already RMD-free.
  */
 function sumTraditionalWithdrawals(simYear: SimulationYear): number {
     const traditionalNames = new Set(
@@ -426,9 +427,10 @@ export function buildDPYearContexts(
         // baseline trad-spending into nonSSOrdinaryIncomeExclRMD. Still computed
         // to populate `baselineTradWithdrawal`, which the in-flight 2D solver
         // uses until Phase 3 lands.
-        const totalTradWithdrawals = sumTraditionalWithdrawals(simYear);
+        // withdrawalDetail no longer includes RMD (RMD is surfaced as income), so the
+        // trad withdrawal sum is already RMD-free — no subtraction needed.
+        const tradNonRMDWithdrawals = sumTraditionalWithdrawals(simYear);
         const baselineRMDAmount = simYear.rmdDetails?.totalRMD ?? 0;
-        const tradNonRMDWithdrawals = Math.max(0, totalTradWithdrawals - baselineRMDAmount);
 
         // getGrossIncome includes RMD (PassiveIncome with sourceType='RMD') but
         // excludes conversions and non-RMD trad withdrawals. We want

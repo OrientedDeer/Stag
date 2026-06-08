@@ -18,7 +18,7 @@ sibling path the original fix didn't reach (#1, #7).
 |---|-----|-----------|-----|--------|
 | 1 | High | `YearSolver.ts:598` | SS double-counted when *sizing* a Roth conversion (search path; direct path was fixed) | ✅ Fixing |
 | 2 | Med-High | `WithdrawalPlanner.ts:677` | roth_401k ACA path drains the live account `conversionHistory` in place across reused snapshots | ✅ Fixing |
-| 3 | Med | `SimulationEngine.tsx:594` | RMD double-counted in Sankey `totalCashAvailable` → inflated `trueUserSaved`/`investedUser` | ⏸ Deferred (real but display-only — see Verification) |
+| 3 | Med | `SimulationEngine.tsx:594` | RMD double-counted in Sankey `totalCashAvailable` → inflated `trueUserSaved`/`investedUser` | ✅ Fixed (RMD = income; see follow-up) |
 | 4 | Med | `Expense/models.tsx:930` (+933, SimulationEngine:523) | `isGoalDueInYear` reads UTC date-only with local `getFullYear()` → goal fires wrong year | ✅ Fixing |
 | 5 | Med | `MilestoneEvaluator.ts:127` | `calculateAnnualExpenses` uses local getters on UTC date-only bounds | ✅ Fixing |
 | 6 | Med-Low | `Accounts/models.tsx:931` | `reconstituteAccount`/constructor don't clamp `employerBalance≤amount`/`costBasis≤amount` → negative `vestedAmount` → RMD skipped | ✅ Fixing |
@@ -57,7 +57,15 @@ Fixes applied + verified on `main` (worktree): **`tsc -b` clean; `vitest` 3307/3
 - **#13** — Verified the inlined FERS/CSRS formulas are exactly equivalent to `calculateFERSBasicBenefit`/`calculateCSRSBasicBenefit` in `PensionData.tsx`, then replaced the inline blocks with calls to them.
 - **#14** — Replaced the flat `0.15` with a fixed-point gross-up over the real federal brackets for the milestone's year (`gross = expenses + tax(gross)`), and threaded the user's actual `filingStatus` from `SimulationEngine` through `MilestoneContext` (no longer hardcoded to Single). Still federal-only — `stateResidency` isn't on `MilestoneContext`; including state tax is a small further follow-up. No test asserted the old `0.15` value.
 
+## Third batch — #3 landed (verified: `tsc -b` clean, vitest 3307/3307)
+
+- **#3** — Sankey RMD double-count, fixed by adopting the **RMD = income** convention (user's call). The RMD was being counted on *both* the income side (`classifyIncome` → `spendable`) and the withdrawal side (`RMDService` → `totalWithdrawals`/`withdrawalDetail`), inflating `investedUser`/`totalInvested` by the RMD each year. The account drain has always lived solely in `userInflows` (applied by `growAccounts`), and `executeYearPlan` already skips the solver's RMD entry — so the withdrawal tallies were pure (double-counting) reporting. Changes:
+  - `RMDService.ts` — stop adding RMD to `totalWithdrawals`/`withdrawalDetail`; keep the `userInflows` drain.
+  - `CashflowDetailBuilder.ts` — surface RMD as an income node (removed the `sourceType === 'RMD'` skip).
+  - `RothConversionDP.ts` + `TaxOptimizationService.ts` — drop the now-redundant "subtract RMD from withdrawalDetail-derived trad withdrawals" (numerically identical, since `withdrawalDetail` is already RMD-free).
+  - `SimulationEngine.tsx` — `totalCashAvailable` auto-corrects (no RMD in `totalWithdrawals`); comment updated.
+  - Oracle: `RMDCompliance.test.tsx` (8 spots) + `TemporalBoundaries.test.tsx` now assert the RMD via `rmdDetails.totalWithdrawn` instead of `withdrawalDetail['Traditional 401k']`. Scenario10's $1 Sankey-balance and the lifetime-reconciliation invariants still hold untouched (`totalIncome` keeps RMD; only the withdrawal representation moved).
+
 ## Deferred (optional follow-ups)
 
-- **#3** — Sankey RMD double-count (display-only; needs a Sankey income-vs-withdrawal convention decision + coordinated test updates, above).
 - **#14 (state tax)** — minor: thread `stateResidency` into `MilestoneContext` to include state tax in the `EXPENSES_GROSSED_UP` gross-up.

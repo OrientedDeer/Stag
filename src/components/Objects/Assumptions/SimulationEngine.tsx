@@ -623,8 +623,9 @@ function simulateOneYearWithNewEngine(
     // expense categories from scratch in the chart layer)
     // ------------------------------------------------------------------
     // Use allIncomes so reinvested interest (created in projectIncomes) is
-    // included. RMD-sourced PassiveIncomes are filtered inside the builder
-    // since they're surfaced as withdrawals, not income.
+    // included, and so RMD-sourced PassiveIncomes are surfaced as income (they
+    // drain the Traditional account via userInflows but are not in
+    // withdrawalDetail, so income is their single Sankey representation).
     const cashflowDetail = buildCashflowDetail({
         incomes: allIncomes,
         expenses: nextExpenses,
