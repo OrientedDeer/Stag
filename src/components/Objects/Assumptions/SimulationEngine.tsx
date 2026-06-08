@@ -520,7 +520,7 @@ function simulateOneYearWithNewEngine(
         if (!isLongTermGoal(exp) || !exp.goalAccountId || !isGoalDueInYear(exp, year)) continue;
         // A recurring goal can carry an end date (when to stop replacing it);
         // don't fire the lump after it.
-        if (exp.endDate && new Date(exp.endDate).getFullYear() < year) continue;
+        if (exp.endDate && new Date(exp.endDate).getUTCFullYear() < year) continue;
         const fund = nextAccounts.find(a => a.id === exp.goalAccountId);
         if (!fund) continue;
         const spent = Math.min(fund.amount, exp.amount);

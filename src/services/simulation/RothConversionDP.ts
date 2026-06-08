@@ -51,7 +51,6 @@ import { ACAOptions } from "./helpers";
 import { getDistributionPeriod, getRMDStartAge } from "../../data/RMDData";
 import { getAcaCliffThreshold } from "./TaxOptimizedWithdrawal";
 import { InvestedAccount } from "../../components/Objects/Accounts/models";
-import { WorkIncome } from "../../components/Objects/Income/models";
 
 // =============================================================================
 // CONSTANTS
@@ -1319,6 +1318,3 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
         },
     };
 }
-
-// Avoid unused-import warnings until step 5 wires this in.
-void WorkIncome;

@@ -1045,10 +1045,6 @@ export function calculateDynamicConversionCeiling(
     const projectedTaxableIncome = projectedRMD + effectivePensionAtRMD + projectedTaxableSS - peakBracketTaxParams.standardDeduction;
     const projectedRMDBracket = TaxService.getMarginalTaxRate(Math.max(0, projectedTaxableIncome), peakBracketTaxParams).rate;
 
-    // DEBUG: Log ceiling decision for high balances (DISABLED to reduce noise)
-    if (false && currentTraditionalBalance > 1_500_000 && taxState.year >= 2042 && taxState.year <= 2043) {
-    }
-
     return {
         conversionCeiling: ceiling,
         bracketSpacePerYear,

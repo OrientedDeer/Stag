@@ -943,15 +943,20 @@ export function reconstituteAccount(data: unknown): AnyAccount | null {
             const conversionHistory = Array.isArray(data.conversionHistory)
                 ? data.conversionHistory.map((c: any) => ({ year: Number(c.year), amount: Number(c.amount) }))
                 : [];
+            // Clamp persisted values to safe ranges. employerBalance > amount makes
+            // nonVestedAmount/vestedAmount go negative (RMDService then silently skips a
+            // required RMD); costBasis > amount is nonsensical for stored data.
+            const employerBalance = Math.max(0, Math.min(Number(data.employerBalance) || 0, amount));
+            const costBasis = Math.max(0, Math.min(Number(data.costBasis ?? amount), amount));
             return new InvestedAccount(
                 id, name, amount,
-                Number(data.employerBalance) || 0,
+                employerBalance,
                 Number(data.tenureYears) || 0,
                 Number(data.expenseRatio ?? 0.1),
                 (data.taxType as TaxType) ?? 'Brokerage',
                 (data.isContributionEligible as boolean) ?? true,
                 Number(data.vestedPerYear ?? 0.2),
-                Number(data.costBasis ?? amount),
+                costBasis,
                 data.customROR !== undefined ? Number(data.customROR) : undefined,
                 conversionHistory
             );

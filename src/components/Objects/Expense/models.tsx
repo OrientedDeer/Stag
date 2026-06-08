@@ -487,8 +487,8 @@ export class MortgageExpense extends BaseExpense {
 
     // Calculate months elapsed
     const monthsElapsed =
-      (targetDate.getFullYear() - start.getFullYear()) * 12 +
-      (targetDate.getMonth() - start.getMonth());
+      (targetDate.getUTCFullYear() - start.getUTCFullYear()) * 12 +
+      (targetDate.getUTCMonth() - start.getUTCMonth());
 
     if (monthsElapsed <= 0) return this.starting_loan_balance;
 
@@ -897,7 +897,7 @@ export function isLongTermGoal(expense: AnyExpense): boolean {
 
 /** Whole months between two dates (>= 0). */
 function monthsBetween(from: Date, to: Date): number {
-  const months = (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth());
+  const months = (to.getUTCFullYear() - from.getUTCFullYear()) * 12 + (to.getUTCMonth() - from.getUTCMonth());
   return Math.max(0, months);
 }
 
@@ -914,7 +914,7 @@ export function getGoalMonthlySetAside(expense: AnyExpense): number {
   if (expense.goalType === 'targetDate' && expense.goalTargetDate) {
     const start = expense.startDate ? new Date(expense.startDate) : new Date();
     const months = monthsBetween(start, new Date(expense.goalTargetDate));
-    return months > 0 ? expense.amount / months : expense.amount;
+    return months > 0 ? expense.amount / months : 0;
   }
   return 0;
 }
@@ -927,10 +927,10 @@ export function getGoalMonthlySetAside(expense: AnyExpense): number {
  */
 export function isGoalDueInYear(expense: AnyExpense, year: number): boolean {
   if (expense.goalType === 'targetDate' && expense.goalTargetDate) {
-    return new Date(expense.goalTargetDate).getFullYear() === year;
+    return new Date(expense.goalTargetDate).getUTCFullYear() === year;
   }
   if (expense.goalType === 'recurring' && expense.intervalYears && expense.intervalYears > 0) {
-    const anchorYear = (expense.startDate ? new Date(expense.startDate) : new Date()).getFullYear();
+    const anchorYear = (expense.startDate ? new Date(expense.startDate) : new Date()).getUTCFullYear();
     const diff = year - anchorYear;
     return diff > 0 && diff % expense.intervalYears === 0;
   }

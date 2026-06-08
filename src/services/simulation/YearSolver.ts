@@ -591,11 +591,16 @@ function planConversion(
     // Federal-only rates: the ceiling (e.g., 12%) is a federal bracket target.
     // State tax is still fully accounted for in the actual conversion tax cost.
     // Adjust base income and available balance for spending reservation.
-    const adjustedBaseIncome = baseOrdinaryIncome + bracketSpaceForSpending;
+    // Base must EXCLUDE SS: the search → getEffectiveConversionRate →
+    // calculateEffectiveConversionTax re-derives taxable SS internally from the
+    // separate socialSecurityBenefits arg. Passing baseOrdinaryIncome (which
+    // already includes taxable SS) double-counts SS. Mirror the direct conversion-
+    // tax call below, which passes nonSSOrdinaryIncome.
+    const adjustedNonSSBaseIncome = nonSSOrdinaryIncome + bracketSpaceForSpending;
     const searchResult = coarseToFineSearch(
         ceilingResult.conversionCeiling,
         traditionalBalance - bracketSpaceForSpending,
-        adjustedBaseIncome,
+        adjustedNonSSBaseIncome,
         socialSecurityBenefits,
         0, // ltcgIncome
         fedParams,

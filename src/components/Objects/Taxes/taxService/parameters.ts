@@ -88,10 +88,24 @@ export function getTaxParameters(
     const closestYear = getClosestTaxYear(year);
 
     if (inflationAdjusted && year > max_year) {
-        const baseYearParams = sourceData[max_year][filingStatus];
+        // A state's table may not include the federal max_year row. Resolve the
+        // nearest year actually present and inflate from there (same nearest-year
+        // logic used by the non-inflation path below) instead of throwing.
+        let baseYear = max_year;
+        if (!sourceData[max_year]) {
+            const availableYears = Object.keys(sourceData)
+                .map(Number)
+                .filter((y) => !Number.isNaN(y));
+            if (availableYears.length === 0) return undefined;
+            baseYear = availableYears.reduce((best, y) =>
+                Math.abs(y - max_year) < Math.abs(best - max_year) ? y : best
+            );
+        }
+
+        const baseYearParams = sourceData[baseYear][filingStatus];
         if (!baseYearParams) return undefined;
 
-        const yearsToCompound = year - max_year;
+        const yearsToCompound = year - baseYear;
         const inflationMultiplier = Math.pow(1 + inflation, yearsToCompound);
 
         const inflatedBrackets = baseYearParams.brackets.map((bracket) => ({

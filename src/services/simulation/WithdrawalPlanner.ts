@@ -660,22 +660,24 @@ export function planWithdrawals(
                                 // `pooledRothConversions` array (grossUpRoth mutates conv.amount in
                                 // place, so the drain is visible to the main loop) and decrement the
                                 // shared `remainingPoolBasis` by whatever contribution basis is used.
-                                // For roth_401k (per-account) we drain the snapshot's own
-                                // conversionHistory in place. The ACA look-ahead runs during the
-                                // brokerage iteration, which precedes the roth iterations in
-                                // withdrawal order, so the main loop later copies the (now drained)
-                                // array and won't re-spend those conversions. Combined with the main
-                                // loop's acaRothConsumed/effectiveVestedBalance guard on balance,
-                                // this prevents double-spend.
+                                // For roth_401k (per-account) the snapshot's conversionHistory is a
+                                // LIVE reference to the account model's array, and snapshots are reused
+                                // across YearSolver's deficit iterations (and the model persists across
+                                // simulation years). grossUpRoth decrements conv.amount in place, so we
+                                // must pass a deep COPY here (mirroring pooledRothConversions) to avoid
+                                // corrupting the account's conversion basis / 5-year-penalty accounting
+                                // on later iterations and years. Combined with the main loop's
+                                // acaRothConsumed/effectiveVestedBalance guard on balance, this prevents
+                                // double-spend without mutating the model.
                                 const isPooledRoth = rothSnapshot.accountType === 'roth_ira';
                                 const acaContribAvailable = isPooledRoth
                                     ? Math.max(0, Math.min(remainingPoolBasis, rothSnapshot.vestedBalance) - alreadyConsumed)
                                     : Math.max(0, (rothSnapshot.rothContributions ?? 0) - alreadyConsumed);
                                 const acaConversionsForCall = isPooledRoth
                                     ? pooledRothConversions
-                                    : (rothSnapshot.conversionHistory
-                                        ? rothSnapshot.conversionHistory.sort((a, b) => a.year - b.year)
-                                        : []);
+                                    : (rothSnapshot.conversionHistory ?? [])
+                                        .map(c => ({ year: c.year, amount: c.amount }))
+                                        .sort((a, b) => a.year - b.year);
 
                                 const rothResult = grossUpRoth(
                                     Math.min(stillNeeded, availableRoth),
