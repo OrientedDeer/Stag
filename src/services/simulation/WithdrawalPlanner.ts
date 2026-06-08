@@ -651,19 +651,45 @@ export function planWithdrawals(
 
                                 const stillNeeded = netShortfall - rothSubstitutionNet;
 
-                                // Use grossUpRoth for proper contribution/conversion/earnings ordering
-                                // TODO: rothContributions and conversionHistory may be stale if Roth was
-                                // partially consumed by an earlier withdrawal in the same loop. This could
-                                // lead to incorrect penalty/tax calculations for very early retirees.
+                                // BUG #9 FIX: consume from the SAME conversion/basis source the
+                                // main loop drains, so a conversion spent here is not available
+                                // again to the main pass (which would double-count the dollars and
+                                // mis-assign the 5-year penalty).
+                                //
+                                // For roth_ira (pooled per IRS Pub 590-B) we pass the shared
+                                // `pooledRothConversions` array (grossUpRoth mutates conv.amount in
+                                // place, so the drain is visible to the main loop) and decrement the
+                                // shared `remainingPoolBasis` by whatever contribution basis is used.
+                                // For roth_401k (per-account) we drain the snapshot's own
+                                // conversionHistory in place. The ACA look-ahead runs during the
+                                // brokerage iteration, which precedes the roth iterations in
+                                // withdrawal order, so the main loop later copies the (now drained)
+                                // array and won't re-spend those conversions. Combined with the main
+                                // loop's acaRothConsumed/effectiveVestedBalance guard on balance,
+                                // this prevents double-spend.
+                                const isPooledRoth = rothSnapshot.accountType === 'roth_ira';
+                                const acaContribAvailable = isPooledRoth
+                                    ? Math.max(0, Math.min(remainingPoolBasis, rothSnapshot.vestedBalance) - alreadyConsumed)
+                                    : Math.max(0, (rothSnapshot.rothContributions ?? 0) - alreadyConsumed);
+                                const acaConversionsForCall = isPooledRoth
+                                    ? pooledRothConversions
+                                    : (rothSnapshot.conversionHistory
+                                        ? rothSnapshot.conversionHistory.sort((a, b) => a.year - b.year)
+                                        : []);
+
                                 const rothResult = grossUpRoth(
                                     Math.min(stillNeeded, availableRoth),
-                                    Math.max(0, (rothSnapshot.rothContributions ?? 0) - alreadyConsumed),
-                                    rothSnapshot.conversionHistory ?? [],
+                                    acaContribAvailable,
+                                    acaConversionsForCall,
                                     year,
                                     currentAge,
                                     marginalRate,
                                     availableRoth
                                 );
+
+                                if (isPooledRoth) {
+                                    remainingPoolBasis = Math.max(0, remainingPoolBasis - rothResult.fromContributions);
+                                }
 
                                 const rothGross = rothResult.gross;
                                 const rothTax = rothResult.tax;
@@ -930,9 +956,36 @@ export function planWithdrawals(
 
                 // Use pre-computed lot data if available
                 if (esppLots && esppLots.length > 0) {
-                    // Estimate gross needed
+                    // Blended effective-tax sizing. The bargain element is taxed as
+                    // ordinary income (marginal + state), only the post-bargain
+                    // appreciation is LTCG. Sizing the gross against just
+                    // gainRatio*ltcgRate (as before) ignored the ordinary tax on the
+                    // bargain element AND wrongly applied the lower LTCG rate to the
+                    // ordinary-taxed portion, so the sale under-delivered net cash.
+                    // Derive the pool's tax-per-gross-dollar from the lot data and
+                    // gross up against the blended rate.
+                    const esppMarginalRate = getMarginalRate(runningOrdinaryIncome);
+                    const esppStateRate = getStateRate();
+                    const esppCombinedOrdinaryRate = esppMarginalRate + esppStateRate;
+
+                    let poolValue = 0;
+                    let poolOrdinaryTax = 0;
+                    let poolLtcgTax = 0;
+                    for (const lot of esppLots) {
+                        poolValue += lot.totalValue;
+                        poolOrdinaryTax += lot.shares * lot.ordinaryIncomePerShare * esppCombinedOrdinaryRate;
+                        poolLtcgTax += lot.shares * lot.ltcgPerShare * ltcgRate;
+                    }
+                    const effectiveTaxPerGrossDollar = poolValue > 0
+                        ? (poolOrdinaryTax + poolLtcgTax) / poolValue
+                        : 0;
+
+                    // Estimate gross needed using the blended effective rate.
+                    // Clamp the denominator defensively so a near-100% blended rate
+                    // can't produce a negative/exploding gross.
+                    const esppDenominator = Math.max(0.01, 1 - effectiveTaxPerGrossDollar);
                     const estimatedGross = Math.min(
-                        remainingNetNeeded / (1 - snapshot.gainRatio * ltcgRate),
+                        remainingNetNeeded / esppDenominator,
                         effectiveVestedBalance
                     );
 
@@ -960,12 +1013,9 @@ export function planWithdrawals(
                         continue; // Skip to next account if no value to withdraw
                     }
 
-                    // Calculate taxes: ordinary income at marginal rate, LTCG at cap gains rate
-                    const marginalRate = getMarginalRate(runningOrdinaryIncome);
-                    const stateRate = getStateRate();
-                    const combinedOrdinaryRate = marginalRate + stateRate;
-
-                    const ordinaryTax = esppOrdinaryIncome * combinedOrdinaryRate;
+                    // Calculate taxes: ordinary income at marginal rate, LTCG at cap gains rate.
+                    // Reuse the blended-rate inputs computed above for the gross-up.
+                    const ordinaryTax = esppOrdinaryIncome * esppCombinedOrdinaryRate;
                     const ltcgTax = esppLTCG * ltcgRate;
                     const actualTax = ordinaryTax + ltcgTax;
 

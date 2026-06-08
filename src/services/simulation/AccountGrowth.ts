@@ -2,7 +2,7 @@ import { AnyAccount, InvestedAccount, SavedAccount, ESPPAccount, PropertyAccount
 import { AnyExpense, MortgageExpense, LoanExpense } from "../../components/Objects/Expense/models";
 import { AnyIncome, WorkIncome, getIncomeActiveMultiplier } from "../../components/Objects/Income/models";
 import { AssumptionsState } from "../../components/Objects/Assumptions/AssumptionsContext";
-import { getESPPLimit } from "../../data/ContributionLimits";
+import { getESPPLimit, get415cLimit } from "../../data/ContributionLimits";
 import { WithdrawalState } from "./types";
 
 export interface InflowResult {
@@ -22,13 +22,13 @@ export interface InflowResult {
 export function processInflows(
     incomesWithEarningsTest: AnyIncome[],
     accounts: AnyAccount[],
-    _assumptions: AssumptionsState,
+    assumptions: AssumptionsState,
     year: number,
     withdrawalState: WithdrawalState,
     discretionaryCash: number,
     _existingDeficitDebt: DeficitDebtAccount | undefined,
     _totalLivingExpenses: number,
-    _currentAge: number,
+    currentAge: number,
     logs: string[]
 ): InflowResult {
     const bucketDetail: Record<string, number> = {};
@@ -49,7 +49,28 @@ export function processInflows(
             // preTax401k/roth401k are per pay period; getProratedAnnual converts to the
             // annual deposit (and already folds in the active-period multiplier).
             const selfContribution = inc.getProratedAnnual(inc.preTax401k + inc.roth401k, year);
-            const employerMatch = inc.getEffectiveAnnualEmployerMatch() * activeMultiplier;
+            let employerMatch = inc.getEffectiveAnnualEmployerMatch() * activeMultiplier;
+
+            // Bug #11: enforce the §415(c) combined annual-additions limit
+            // (employee pre-tax + Roth + employer) for this 401k account. The
+            // §402(g) elective-deferral limit is handled at the income-model
+            // level (get401kLimit / getEffective401k); this is the separate,
+            // higher combined cap. Excess is removed from the employer match
+            // first, since the employee's own deferrals are already capped and
+            // are the participant's money. We clamp using the additions already
+            // routed to this account this year (currentSelf/currentMatch) plus
+            // this income's new contributions, so multiple incomes feeding one
+            // account share a single limit.
+            const limit415c = get415cLimit(year, currentAge, assumptions.macro.inflationAdjusted);
+            const totalAdditions = currentSelf + currentMatch + selfContribution + employerMatch;
+            if (totalAdditions > limit415c) {
+                const excess = totalAdditions - limit415c;
+                const trimmedMatch = Math.max(0, employerMatch - excess);
+                if (trimmedMatch < employerMatch) {
+                    logs.push(`[WARN] §415(c) limit: ${inc.name} employer match reduced by $${(employerMatch - trimmedMatch).toLocaleString(undefined, { maximumFractionDigits: 0 })} to stay within combined $${limit415c.toLocaleString()} 401k limit`);
+                }
+                employerMatch = trimmedMatch;
+            }
 
             totalEmployerMatch += employerMatch;
 

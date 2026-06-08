@@ -80,7 +80,7 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     { threshold: 518900, rate: 0.20 }
                 ],
                 socialSecurityTaxRate: 0.062,
-                socialSecurityWageBase: 176100,
+                socialSecurityWageBase: 168600,
                 medicareTaxRate: 0.0145
             },
             'Married Filing Jointly': {
@@ -100,7 +100,7 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     { threshold: 583750, rate: 0.20 }
                 ],
                 socialSecurityTaxRate: 0.062,
-                socialSecurityWageBase: 176100,
+                socialSecurityWageBase: 168600,
                 medicareTaxRate: 0.0145
             },
             'Married Filing Separately': {
@@ -120,7 +120,7 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     { threshold: 291850, rate: 0.20 }
                 ],
                 socialSecurityTaxRate: 0.062,
-                socialSecurityWageBase: 176100,
+                socialSecurityWageBase: 168600,
                 medicareTaxRate: 0.0145
             }
         },

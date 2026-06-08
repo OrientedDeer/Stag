@@ -14,6 +14,7 @@ import * as TaxService from '../../components/Objects/Taxes/TaxService';
 import { TaxState } from '../../components/Objects/Taxes/TaxContext';
 import { AssumptionsState, getBirthYear } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { calculateEffectiveConversionTax, ACAOptions } from './helpers';
+import { getDistributionPeriod } from '../../data/RMDData';
 import { BaselineProjections, RateMatchWalkRow } from './types';
 
 // Re-export for convenience
@@ -144,58 +145,20 @@ export function getBracketProgression(taxParams: TaxParameters): number[] {
 }
 
 /**
- * IRS Uniform Lifetime Table - RMD divisors by age (2024+)
- * Source: IRS Publication 590-B
- */
-const RMD_DIVISORS: Record<number, number> = {
-    72: 27.4,
-    73: 26.5,
-    74: 25.5,
-    75: 24.6,
-    76: 23.7,
-    77: 22.9,
-    78: 22.0,
-    79: 21.1,
-    80: 20.2,
-    81: 19.4,
-    82: 18.5,
-    83: 17.7,
-    84: 16.8,
-    85: 16.0,
-    86: 15.2,
-    87: 14.4,
-    88: 13.7,
-    89: 12.9,
-    90: 12.2,
-    91: 11.5,
-    92: 10.8,
-    93: 10.1,
-    94: 9.5,
-    95: 8.9,
-} as const;
-
-/**
  * Get the RMD divisor for a given age.
- * Uses IRS Uniform Lifetime Table values.
+ *
+ * Delegates to the canonical IRS Uniform Lifetime Table in RMDData
+ * (getDistributionPeriod), which covers ages 72-120 accurately, instead of
+ * keeping a duplicate truncated table with an inaccurate >95 extrapolation.
+ * The "no RMD before 72 -> 0" sentinel is preserved here because RMDData's
+ * getDistributionPeriod returns the age-72 factor for ages < 72.
  *
  * @param age - Age at end of year
- * @returns RMD divisor (distribution period)
+ * @returns RMD divisor (distribution period), or 0 if no RMD applies
  */
 export function getRMDDivisor(age: number): number {
     if (age < 72) return 0; // No RMD before 72
-
-    // Return from table if available
-    if (age in RMD_DIVISORS) {
-        return RMD_DIVISORS[age];
-    }
-
-    // For ages beyond table, estimate with linear extrapolation
-    // (divisor decreases ~0.9 per year after 95)
-    if (age > 95) {
-        return Math.max(1.0, 8.9 - (age - 95) * 0.9);
-    }
-
-    return 0;
+    return getDistributionPeriod(age);
 }
 
 // =============================================================================

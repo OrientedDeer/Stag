@@ -139,6 +139,7 @@ export type ConversionStrategy = (
     input: YearSolverInput,
     baseOrdinaryIncome: number,
     socialSecurityBenefits: number,
+    nonSSOrdinaryIncome: number,
     fedParams: TaxParameters,
     stateParams: TaxParameters | null,
     surplus: number,
@@ -302,7 +303,7 @@ function computeCeilingContext(
         pensionCola
     );
 
-    const grossRoR = input.assumptions.investments.returnRates.ror || (DEFAULT_GROWTH_RATE * 100);
+    const grossRoR = input.assumptions.investments.returnRates.ror ?? (DEFAULT_GROWTH_RATE * 100);
     const tradAccounts = input.accounts.filter(a =>
         a instanceof InvestedAccount &&
         (a.taxType === 'Traditional 401k' || a.taxType === 'Traditional IRA')
@@ -370,8 +371,9 @@ function computeCeilingContext(
  */
 function planConversion(
     input: YearSolverInput,
-    baseOrdinaryIncome: number,
+    baseOrdinaryIncome: number, // non-SS ordinary income + taxable SS (federal bracket-positioning base)
     socialSecurityBenefits: number,
+    nonSSOrdinaryIncome: number, // ordinary income EXCLUDING SS entirely (taxableBase - fullSS)
     fedParams: TaxParameters,
     stateParams: TaxParameters | null,
     surplus: number, // Cash surplus that could pay conversion tax
@@ -660,9 +662,12 @@ function planConversion(
             // 1. Calculate ordinary income with conversion (same as solver line 690)
             const allOrdinaryIncome = baseOrdinaryIncome + conversion;
 
-            // 2. Calculate federal tax using the SAME function as solver (lines 716-724)
+            // 2. Calculate federal tax using the SAME function as solver (lines 716-724).
+            // First arg = ordinary income EXCLUDING SS. nonSSOrdinaryIncome already
+            // strips SS; baseOrdinaryIncome - socialSecurityBenefits would mis-net it
+            // (baseOrdinaryIncome holds taxable SS, not full SS).
             const ordinaryTaxResult = TaxService.calculateTotalFederalTax(
-                allOrdinaryIncome - socialSecurityBenefits, // non-SS ordinary income
+                nonSSOrdinaryIncome + conversion, // non-SS ordinary income
                 socialSecurityBenefits,
                 0, // STCG
                 0, // LTCG - not known yet
@@ -809,9 +814,12 @@ function planConversion(
         ltcgRateAtIncome,
     );
 
-    // Calculate conversion tax
+    // Calculate conversion tax.
+    // First arg must be ordinary income EXCLUDING SS — the function re-derives
+    // taxable SS internally from the separate socialSecurityBenefits arg. Passing
+    // baseOrdinaryIncome (which already includes taxable SS) double-counts SS.
     const conversionTaxResult = calculateEffectiveConversionTax(
-        baseOrdinaryIncome,
+        nonSSOrdinaryIncome,
         socialSecurityBenefits,
         estimatedLTCGForYear,
         conversionAmount,
@@ -920,8 +928,9 @@ function planConversion(
  */
 function planConversionDP(
     input: YearSolverInput,
-    baseOrdinaryIncome: number,
+    baseOrdinaryIncome: number, // non-SS ordinary income + taxable SS (federal bracket-positioning base)
     socialSecurityBenefits: number,
+    nonSSOrdinaryIncome: number, // ordinary income EXCLUDING SS entirely (taxableBase - fullSS)
     fedParams: TaxParameters,
     stateParams: TaxParameters | null,
     surplus: number,
@@ -1107,8 +1116,11 @@ function planConversionDP(
         ltcgRateAtIncome,
     );
 
+    // First arg must be ordinary income EXCLUDING SS — the function re-derives
+    // taxable SS internally from the separate socialSecurityBenefits arg. Passing
+    // baseOrdinaryIncome (which already includes taxable SS) double-counts SS.
     const conversionTaxResult = calculateEffectiveConversionTax(
-        baseOrdinaryIncome,
+        nonSSOrdinaryIncome,
         socialSecurityBenefits,
         estimatedLTCGForYear,
         conversionAmount,
@@ -1301,7 +1313,7 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     // Rough tax estimate for preliminary deficit (before conversion is known)
     const roughPreTaxDeductions = TaxService.getPreTaxExemptions(input.incomes, input.year, input.currentAge, true);
     const roughFedTax = TaxService.calculateTotalFederalTax(
-        baseOrdinaryIncome - socialSecurityBenefits,
+        taxableBase - socialSecurityBenefits, // non-SS ordinary income (baseOrdinaryIncome holds taxable SS)
         socialSecurityBenefits,
         0, 0, // no STCG/LTCG
         roughPreTaxDeductions,
@@ -1328,6 +1340,11 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
         input,
         baseOrdinaryIncome,
         socialSecurityBenefits,
+        // True non-SS ordinary income (excludes SS entirely). baseOrdinaryIncome
+        // already folds in taxable SS, so it must NOT be reused where the federal
+        // tax contract expects SS-free ordinary income (calculateTotalFederalTax /
+        // calculateEffectiveConversionTax re-derive taxable SS internally).
+        taxableBase - socialSecurityBenefits,
         fedParams,
         stateParams ?? null, // Convert undefined to null
         initialSurplusEstimate,

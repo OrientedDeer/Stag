@@ -210,6 +210,8 @@ export class InvestedAccount extends BaseAccount {
     let preGrowthUserBalance = this.amount - this.employerBalance;
     let preGrowthEmployerBalance = this.employerBalance;
     let preGrowthCostBasis = this.costBasis;
+    // FIFO-drained conversion history, populated in the withdrawal branch below.
+    let newConversionHistoryFifo: { year: number; amount: number }[] | undefined;
 
     // 3. Apply employer contribution (before growth)
     preGrowthEmployerBalance += employerContribution;
@@ -238,10 +240,52 @@ export class InvestedAccount extends BaseAccount {
         preGrowthUserBalance -= withdrawalAmount;
       }
 
-      // Reduce cost basis and conversion history proportionally on withdrawal (before growth)
+      // Reduce cost basis (and, for Roth, conversion history) on withdrawal,
+      // before growth.
       if (this.amount > 0) {
-        const withdrawalPct = withdrawalAmount / this.amount;
-        preGrowthCostBasis = this.costBasis * (1 - withdrawalPct);
+        const isRoth = this.taxType === 'Roth IRA' || this.taxType === 'Roth 401k';
+        if (isRoth) {
+          // Roth: drain in IRS FIFO order, mirroring the WithdrawalPlanner
+          // (grossUpRoth): contribution basis first, then conversions oldest-first
+          // (preserving each layer's year for the 5-year rule), then earnings.
+          // increment() only receives a net withdrawal amount (no tranche
+          // breakdown), so we re-derive the ordering from the account's figures.
+          let remainingToWithdraw = withdrawalAmount;
+
+          // 1. Contribution basis first (penalty/tax-free, doesn't affect 5-year clock).
+          //    regularContributions = costBasis above the total conversion basis.
+          const fromContributions = Math.min(remainingToWithdraw, this.regularContributions);
+          remainingToWithdraw -= fromContributions;
+
+          // 2. Conversions next, oldest-first. Each dollar drawn reduces both the
+          //    conversion layer and costBasis (conversions are part of costBasis).
+          let fromConversions = 0;
+          if (remainingToWithdraw > 0) {
+            // Sort oldest-first so the 5-year clock is preserved per layer.
+            newConversionHistoryFifo = [...this.conversionHistory].sort((a, b) => a.year - b.year);
+            newConversionHistoryFifo = newConversionHistoryFifo
+              .map(c => {
+                if (remainingToWithdraw <= 0) return c;
+                const fromThis = Math.min(remainingToWithdraw, c.amount);
+                remainingToWithdraw -= fromThis;
+                fromConversions += fromThis;
+                return { year: c.year, amount: c.amount - fromThis };
+              })
+              .filter(c => c.amount > 0.01); // Remove negligible entries
+          } else {
+            newConversionHistoryFifo = this.conversionHistory.filter(c => c.amount > 0.01);
+          }
+
+          // 3. Any remainder comes from earnings, which carry no basis.
+          // costBasis is reduced only by the basis + conversion dollars actually drawn.
+          preGrowthCostBasis = this.costBasis - fromContributions - fromConversions;
+        } else {
+          // Non-Roth (e.g. taxable Brokerage without lot tracking): average-cost
+          // basis — costBasis reduces proportionally to the withdrawal. (Lot-based
+          // Brokerage re-derives costBasis from lots in the lifecycle block below.)
+          const withdrawalPct = withdrawalAmount / this.amount;
+          preGrowthCostBasis = this.costBasis * (1 - withdrawalPct);
+        }
       }
     } else {
       // User is contributing (or no change)
@@ -252,16 +296,9 @@ export class InvestedAccount extends BaseAccount {
       preGrowthCostBasis = this.costBasis + userContribution + vestedEmployerContrib;
     }
 
-    // Build updated conversion history
-    let newConversionHistory = [...this.conversionHistory];
-
-    // On withdrawal, reduce conversion history proportionally
-    if (userContribution < 0 && this.amount > 0) {
-      const withdrawalPct = Math.abs(userContribution) / this.amount;
-      newConversionHistory = newConversionHistory
-        .map(c => ({ year: c.year, amount: c.amount * (1 - withdrawalPct) }))
-        .filter(c => c.amount > 0.01); // Remove negligible entries
-    }
+    // Build updated conversion history. On a withdrawal it was already drained in
+    // FIFO order above (newConversionHistoryFifo); otherwise carry it forward.
+    let newConversionHistory = newConversionHistoryFifo ?? [...this.conversionHistory];
 
     // Add new conversion entry if applicable
     if (conversionAmount > 0 && currentYear > 0) {

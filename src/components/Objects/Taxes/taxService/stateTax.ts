@@ -90,7 +90,7 @@ export function calculateStateTax(
         });
         const taxWithItemized = calculateTax(adjustedGrossForState, totalPreTaxDeductions, {
             ...stateParams,
-            standardDeduction: itemizedTotal,
+            standardDeduction: itemizedTotal + seniorDeductionAmount,
         });
         return Math.min(taxWithStandard, taxWithItemized);
     }
@@ -98,7 +98,7 @@ export function calculateStateTax(
     const stateAppliedMainDeduction =
         state.deductionMethod === "Standard"
             ? stateStandardDeduction
-            : itemizedTotal;
+            : itemizedTotal + seniorDeductionAmount;
 
     return calculateTax(adjustedGrossForState, totalPreTaxDeductions, {
         ...stateParams,

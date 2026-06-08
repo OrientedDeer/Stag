@@ -692,7 +692,10 @@ export class FERSPensionIncome extends BaseIncome {
   getTotalAnnualAmount(year?: number): number {
     const base = this.getAnnualAmount(year);
     if (base <= 0) return 0;
-    return base + (this.fersSupplement || 0);
+    // Prorate the FERS supplement with the same active-year multiplier as the base
+    // benefit, so a mid-year start prorates both identically (matches getProratedAnnual).
+    const activeMult = year !== undefined ? getIncomeActiveMultiplier(this as unknown as AnyIncome, year) : 1;
+    return base + (this.fersSupplement || 0) * activeMult;
   }
 }
 
@@ -806,18 +809,21 @@ export function calculateSocialSecurityStartDate(
 
 export function getIncomeActiveMultiplier(income: AnyIncome, year: number): number {
     const incomeStartDate = income.startDate ? new Date(income.startDate) : new Date();
-    const startYear = incomeStartDate.getFullYear();
+    // Date-only values come from parseDate, which returns UTC dates (see modelUtils
+    // contract). Read with getUTC* so the active window doesn't shift by a month/year
+    // in negative timezones.
+    const startYear = incomeStartDate.getUTCFullYear();
 
     const safeEndDate = income.end_date ? new Date(income.end_date) : null;
-    const endYear = safeEndDate ? safeEndDate.getFullYear() : null;
+    const endYear = safeEndDate ? safeEndDate.getUTCFullYear() : null;
 
     if (startYear > year) return 0;
     if (endYear !== null && endYear < year) return 0;
 
-    const startMonthIndex = (startYear < year) ? 0 : incomeStartDate.getMonth();
+    const startMonthIndex = (startYear < year) ? 0 : incomeStartDate.getUTCMonth();
 
     const endMonthIndex = (safeEndDate && endYear === year)
-        ? safeEndDate.getMonth()
+        ? safeEndDate.getUTCMonth()
         : 11;
 
     const monthsActive = endMonthIndex - startMonthIndex + 1;

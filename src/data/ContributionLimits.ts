@@ -18,6 +18,11 @@ export interface YearlyContributionLimits {
   hsaIndividual: number;        // Self-only coverage
   hsaFamily: number;            // Family coverage
   catchUpHSA: number;           // Additional amount for age 55+
+
+  // §415(c) annual-additions limit: combined cap on employee (pre-tax + Roth)
+  // + employer contributions to a single defined-contribution plan.
+  // Catch-up contributions are ON TOP of this limit (handled via get415cLimit).
+  section415c: number;
 }
 
 const CONTRIBUTION_LIMITS: Record<number, YearlyContributionLimits> = {
@@ -29,6 +34,7 @@ const CONTRIBUTION_LIMITS: Record<number, YearlyContributionLimits> = {
     hsaIndividual: 4150,
     hsaFamily: 8300,
     catchUpHSA: 1000,
+    section415c: 69000,
   },
   2025: {
     traditional401k: 23500,
@@ -38,6 +44,7 @@ const CONTRIBUTION_LIMITS: Record<number, YearlyContributionLimits> = {
     hsaIndividual: 4300,
     hsaFamily: 8550,
     catchUpHSA: 1000,
+    section415c: 70000,
   },
   2026: {
     traditional401k: 24500,     // Projected
@@ -47,6 +54,7 @@ const CONTRIBUTION_LIMITS: Record<number, YearlyContributionLimits> = {
     hsaIndividual: 4400,        // Projected
     hsaFamily: 8750,            // Projected
     catchUpHSA: 1000,
+    section415c: 71000,         // Projected
   },
 };
 
@@ -91,6 +99,7 @@ export function getContributionLimits(year: number, inflationAdjusted: boolean =
     hsaIndividual: Math.round(latestLimits.hsaIndividual * inflationFactor / 50) * 50,
     hsaFamily: Math.round(latestLimits.hsaFamily * inflationFactor / 50) * 50,
     catchUpHSA: latestLimits.catchUpHSA,
+    section415c: Math.round(latestLimits.section415c * inflationFactor / 1000) * 1000,
   };
 }
 
@@ -100,6 +109,21 @@ export function getContributionLimits(year: number, inflationAdjusted: boolean =
 export function get401kLimit(year: number, age: number, inflationAdjusted: boolean = true): number {
   const limits = getContributionLimits(year, inflationAdjusted);
   const base = limits.traditional401k;
+  const catchUp = age >= 50 ? (age >= 60 && age <= 63 ? Math.round(limits.catchUp401k * 1.5) : limits.catchUp401k) : 0;
+  return base + catchUp;
+}
+
+/**
+ * Get the §415(c) annual-additions limit for a specific year and age.
+ *
+ * This caps the COMBINED employee (pre-tax + Roth) + employer contributions to
+ * a single defined-contribution (401k) plan. Per IRS rules, age 50+ catch-up
+ * contributions are allowed ON TOP of the §415(c) limit, so we add the same
+ * catch-up amount used by get401kLimit (including the 60-63 super catch-up).
+ */
+export function get415cLimit(year: number, age: number, inflationAdjusted: boolean = true): number {
+  const limits = getContributionLimits(year, inflationAdjusted);
+  const base = limits.section415c;
   const catchUp = age >= 50 ? (age >= 60 && age <= 63 ? Math.round(limits.catchUp401k * 1.5) : limits.catchUp401k) : 0;
   return base + catchUp;
 }

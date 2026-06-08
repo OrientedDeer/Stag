@@ -372,7 +372,11 @@ export class MortgageExpense extends BaseExpense {
     const numPayments = this.term_length * 12;
 
     // Calculate the Standard P&I + Extra Payment Target (Same as before)
-    const standardMonthlyPI = this.starting_loan_balance * (monthlyRate * Math.pow(1 + monthlyRate, numPayments)) / (Math.pow(1 + monthlyRate, numPayments) - 1);
+    // Guard against 0% APR: the amortization formula is 0/0 = NaN when monthlyRate === 0.
+    // Fall back to straight-line principal / numPayments (matches constructor & calculatePrincipalAndInterest).
+    const standardMonthlyPI = monthlyRate === 0
+      ? (numPayments > 0 ? this.starting_loan_balance / numPayments : 0)
+      : this.starting_loan_balance * (monthlyRate * Math.pow(1 + monthlyRate, numPayments)) / (Math.pow(1 + monthlyRate, numPayments) - 1);
     const targetMonthlyPayment = standardMonthlyPI + this.extra_payment;
 
     // Isolate the Escrow Amount (Taxes, HOA, Insurance)
@@ -423,7 +427,10 @@ export class MortgageExpense extends BaseExpense {
     const n = this.term_length * 12;
 
     // Fixed P&I Calculation (Always use starting_loan_balance)
-    const fixed_amortization = this.starting_loan_balance * ((r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1));
+    // Guard 0% APR: formula is 0/0 = NaN when r === 0; fall back to straight-line.
+    const fixed_amortization = r === 0
+      ? (n > 0 ? this.starting_loan_balance / n : 0)
+      : this.starting_loan_balance * ((r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1));
 
     // Interest (Based on current balance)
     const interest_payment = this.loan_balance * r;
@@ -460,7 +467,10 @@ export class MortgageExpense extends BaseExpense {
 
     // Fixed P&I Calculation (Always use starting_loan_balance)
     // FIX: Switched from this.loan_balance to this.starting_loan_balance
-    const fixed_amortization = this.starting_loan_balance * ((r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1));
+    // Guard 0% APR: formula is 0/0 = NaN when r === 0; fall back to straight-line.
+    const fixed_amortization = r === 0
+      ? (n > 0 ? this.starting_loan_balance / n : 0)
+      : this.starting_loan_balance * ((r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1));
 
     const interest_payment = this.loan_balance * r;
 
@@ -487,7 +497,10 @@ export class MortgageExpense extends BaseExpense {
     const n = this.term_length * 12;
 
     // Standard Formula for Fixed Monthly Payment using Starting Balance
-    const piPayment = this.starting_loan_balance * ((r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1));
+    // Guard 0% APR: formula is 0/0 = NaN when r === 0; fall back to straight-line.
+    const piPayment = r === 0
+      ? (n > 0 ? this.starting_loan_balance / n : 0)
+      : this.starting_loan_balance * ((r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1));
 
     let balance = this.starting_loan_balance;
 
@@ -806,18 +819,21 @@ export type AnyExpense = RentExpense | MortgageExpense | LoanExpense | Dependent
 
 export function getExpenseActiveMultiplier(expense: BaseExpense, year: number): number {
   const expenseStartDate = expense.startDate ? new Date(expense.startDate) : new Date();
-  const startYear = expenseStartDate.getFullYear();
+  // Date-only values come from parseDate, which returns UTC dates (see modelUtils
+  // contract). Read with getUTC* so the active window doesn't shift by a month/year
+  // in negative timezones.
+  const startYear = expenseStartDate.getUTCFullYear();
 
   const safeEndDate = expense.endDate ? new Date(expense.endDate) : null;
-  const endYear = safeEndDate ? safeEndDate.getFullYear() : null;
+  const endYear = safeEndDate ? safeEndDate.getUTCFullYear() : null;
 
   if (startYear > year) return 0;
   if (endYear !== null && endYear < year) return 0;
 
-  const startMonthIndex = (startYear < year) ? 0 : expenseStartDate.getMonth();
+  const startMonthIndex = (startYear < year) ? 0 : expenseStartDate.getUTCMonth();
 
   const endMonthIndex = (safeEndDate && endYear === year)
-    ? safeEndDate.getMonth()
+    ? safeEndDate.getUTCMonth()
     : 11;
 
   const monthsActive = endMonthIndex - startMonthIndex + 1;

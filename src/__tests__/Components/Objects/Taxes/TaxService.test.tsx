@@ -731,12 +731,12 @@ describe('TaxService: Additional Functions', () => {
             const highIncome = new WorkIncome('w1', 'Job', 500000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
             const taxState = createTaxState();
             const fica = calculateFicaTax(taxState, [highIncome], 2024, noInflationAssumptions);
-            // SS is capped at the 2024 wage base of 176,100. Medicare is not.
-            // SS = 176100 * 0.062 = 10918.2
+            // SS is capped at the 2024 wage base of 168,600. Medicare is not.
+            // SS = 168600 * 0.062 = 10453.2
             // Medicare = 500000 * 0.0145 = 7250
             // Additional Medicare = 0.9% * (500000 - 200000 single threshold) = 2700
-            // Total = 10918.2 + 7250 + 2700 = 20868.2
-            expect(fica).toBeCloseTo(20868.2);
+            // Total = 10453.2 + 7250 + 2700 = 20403.2
+            expect(fica).toBeCloseTo(20403.2);
         });
 
         it('should use FICA override when provided', () => {
@@ -787,11 +787,11 @@ describe('TaxService: Additional Functions', () => {
             const job2 = new WorkIncome('w2', 'Job 2', 100000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc2', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
             const taxState = createTaxState();
             const fica = calculateFicaTax(taxState, [job1, job2], 2024, noInflationAssumptions);
-            // Combined earned income = 200k (above 2024 wage base of 176,100)
-            // SS = 176100 * 0.062 = 10918.2
+            // Combined earned income = 200k (above 2024 wage base of 168,600)
+            // SS = 168600 * 0.062 = 10453.2
             // Medicare = 200000 * 0.0145 = 2900
-            // Total = 13818.2
-            expect(fica).toBeCloseTo(13818.2);
+            // Total = 13353.2
+            expect(fica).toBeCloseTo(13353.2);
         });
     });
 

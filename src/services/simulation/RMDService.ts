@@ -56,14 +56,21 @@ export function processRMDs(
         if (!(account instanceof InvestedAccount)) continue;
         if (!isAccountSubjectToRMD(account.taxType)) continue;
 
-        // Get prior year's ending balance for RMD calculation
+        // Get prior year's ending balance for RMD calculation.
+        // Bug #12: base the RMD requirement on the VESTED prior-year balance so
+        // the requirement and the withdrawal cap (availableBalance below) share
+        // the same basis. Using full balance here while capping withdrawals at
+        // vested fabricates a phantom shortfall + 25% penalty for unvested
+        // employer money the owner cannot legally distribute. The IRS bases RMDs
+        // on the account balance, but unvested employer funds are not yet the
+        // owner's assets, so vested balance is the conservative, consistent basis.
         const priorYearSim = previousSimulation[previousSimulation.length - 1];
-        let priorYearBalance = account.amount;
+        let priorYearBalance = account.vestedAmount;
 
         if (priorYearSim) {
             const priorAccount = priorYearSim.accounts.find(a => a.id === account.id);
-            if (priorAccount) {
-                priorYearBalance = priorAccount.amount;
+            if (priorAccount instanceof InvestedAccount) {
+                priorYearBalance = priorAccount.vestedAmount;
             }
         }
 

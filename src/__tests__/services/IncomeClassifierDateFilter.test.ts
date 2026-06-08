@@ -63,7 +63,7 @@ describe('IncomeClassifier date filtering', () => {
 
         const result = classifyIncome([midYearIncome], 0, 0, 2035);
 
-        // July (index 6) through December (index 11) = 7 months = 7/12 ≈ 58.33%
-        expect(result.classified.spendable).toBeCloseTo(58333.33, 0);
+        // July (index 6) through December (index 11) = 6 months = 6/12 = 50%
+        expect(result.classified.spendable).toBeCloseTo(50000, 0);
     });
 });

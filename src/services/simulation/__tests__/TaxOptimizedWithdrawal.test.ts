@@ -806,36 +806,37 @@ describe('getRMDDivisor', () => {
         });
     });
 
-    describe('Ages Beyond Table (Linear Extrapolation)', () => {
-        // Formula: Math.max(1.0, 8.9 - (age - 95) * 0.9)
+    describe('Ages Beyond 95 (IRS Uniform Lifetime Table)', () => {
+        // getRMDDivisor now delegates to RMDData.getDistributionPeriod, the
+        // canonical IRS Uniform Lifetime Table (ages 72-120), instead of the
+        // old linear extrapolation that diverged from the published values.
 
-        it('returns 8.0 for age 96 (8.9 - 1*0.9)', () => {
-            expect(getRMDDivisor(96)).toBe(8.0);
+        it('returns 8.4 for age 96', () => {
+            expect(getRMDDivisor(96)).toBeCloseTo(8.4, 2);
         });
 
-        it('returns 7.1 for age 97 (8.9 - 2*0.9)', () => {
-            expect(getRMDDivisor(97)).toBeCloseTo(7.1, 2);
+        it('returns 7.8 for age 97', () => {
+            expect(getRMDDivisor(97)).toBeCloseTo(7.8, 2);
         });
 
-        it('returns 6.2 for age 98 (8.9 - 3*0.9)', () => {
-            expect(getRMDDivisor(98)).toBeCloseTo(6.2, 2);
+        it('returns 7.3 for age 98', () => {
+            expect(getRMDDivisor(98)).toBeCloseTo(7.3, 2);
         });
 
-        it('returns 4.4 for age 100 (8.9 - 5*0.9)', () => {
-            expect(getRMDDivisor(100)).toBeCloseTo(4.4, 2);
+        it('returns 6.4 for age 100', () => {
+            expect(getRMDDivisor(100)).toBeCloseTo(6.4, 2);
         });
 
-        it('returns 1.7 for age 103 (8.9 - 8*0.9)', () => {
-            expect(getRMDDivisor(103)).toBeCloseTo(1.7, 2);
+        it('returns 5.2 for age 103', () => {
+            expect(getRMDDivisor(103)).toBeCloseTo(5.2, 2);
         });
 
-        it('returns 1.0 for age 104 (floored at 1.0)', () => {
-            // 8.9 - 9*0.9 = 0.8, but max with 1.0
-            expect(getRMDDivisor(104)).toBe(1.0);
+        it('returns 4.9 for age 104', () => {
+            expect(getRMDDivisor(104)).toBeCloseTo(4.9, 2);
         });
 
-        it('returns 1.0 for age 110 (floor of 1.0)', () => {
-            expect(getRMDDivisor(110)).toBe(1.0);
+        it('returns 3.5 for age 110', () => {
+            expect(getRMDDivisor(110)).toBeCloseTo(3.5, 2);
         });
     });
 
@@ -849,13 +850,13 @@ describe('getRMDDivisor', () => {
         });
     });
 
-    describe('Verify Floor of 1.0 at Very High Ages', () => {
-        it('returns 1.0 for age 120', () => {
-            expect(getRMDDivisor(120)).toBe(1.0);
+    describe('Very High Ages (capped at the table maximum)', () => {
+        it('returns 2.0 for age 120 (table maximum)', () => {
+            expect(getRMDDivisor(120)).toBeCloseTo(2.0, 2);
         });
 
-        it('returns 1.0 for age 150', () => {
-            expect(getRMDDivisor(150)).toBe(1.0);
+        it('returns 2.0 for age 150 (beyond table, uses last value)', () => {
+            expect(getRMDDivisor(150)).toBeCloseTo(2.0, 2);
         });
     });
 });

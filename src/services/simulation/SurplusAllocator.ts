@@ -160,6 +160,12 @@ export function allocateSurplus(
         // 2c. Put remainder in brokerage (handled by step 3 below)
     }
 
+    // Running total of Roth IRA contributions across ALL buckets in this pass.
+    // settings.rothIRAContributedThisYear is a fixed snapshot (caller passes 0)
+    // and is never mutated, so without this accumulator each Roth IRA bucket
+    // would independently see the full annual limit as available room.
+    let rothIRAContributedSoFar = settings.rothIRAContributedThisYear ?? 0;
+
     for (const bucket of sortedBuckets) {
         if (remaining <= 0) break;
 
@@ -180,13 +186,24 @@ export function allocateSurplus(
                 // capValue is max annual allocation
                 bucketCap = capValue;
                 break;
-            case 'MULTIPLE_OF_EXPENSES':
-                // capValue is number of months of expenses → target balance
-                // Use totalExpenses from settings to compute target
+            case 'MULTIPLE_OF_EXPENSES': {
+                // capValue is number of months of expenses → desired END balance.
+                // Subtract not just the start-of-year balance but also surplus
+                // already routed to this account earlier in this pass, so we
+                // don't overshoot the target balance.
+                // NOTE: payroll/other same-year contributions applied elsewhere
+                // are NOT visible here; fully closing that gap would require the
+                // caller to pass a projected-contributions figure per account.
+                const alreadyAllocatedThisAccount = allocations
+                    .filter(a => a.accountId === account.id)
+                    .reduce((sum, a) => sum + a.amount, 0);
                 bucketCap = Math.max(0,
-                    (settings.monthlyExpenses ?? 0) * capValue - account.amount
+                    (settings.monthlyExpenses ?? 0) * capValue
+                    - account.amount
+                    - alreadyAllocatedThisAccount
                 );
                 break;
+            }
             case 'REMAINDER':
             default:
                 bucketCap = Infinity;
@@ -239,8 +256,9 @@ export function allocateSurplus(
                     continue;
                 }
 
-                // Calculate available contribution room
-                const contributionRoom = Math.max(0, settings.rothIRALimit - settings.rothIRAContributedThisYear);
+                // Calculate available contribution room against the running
+                // total so multiple Roth IRA buckets share the per-person limit.
+                const contributionRoom = Math.max(0, settings.rothIRALimit - rothIRAContributedSoFar);
                 const maxContribution = Math.min(maxForBucket, earnedIncome, contributionRoom);
 
                 if (maxContribution > 0) {
@@ -258,6 +276,7 @@ export function allocateSurplus(
                     });
 
                     remaining -= maxContribution;
+                    rothIRAContributedSoFar += maxContribution;
                 } else if (contributionRoom <= 0) {
                     decisions.push({
                         category: 'surplus',
