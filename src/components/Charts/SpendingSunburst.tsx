@@ -106,7 +106,8 @@ export const SpendingSunburst = ({
       if (taxItems.length > 0) {
         children.push({
           name: 'Taxes',
-          color: 'var(--c-negative-soft)',
+          // yellow-400 — distinct from Transportation's softer yellow (--c-warning-soft)
+          color: 'var(--c-warning)',
           children: taxItems,
         });
       }
