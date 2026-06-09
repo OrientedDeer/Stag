@@ -16,7 +16,7 @@
  */
 
 import { AnyAccount, InvestedAccount } from "../../components/Objects/Accounts/models";
-import { AnyIncome } from "../../components/Objects/Income/models";
+import { AnyIncome, FERSPensionIncome } from "../../components/Objects/Income/models";
 // AnyExpense is currently unused but kept for future extension
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { AnyExpense } from "../../components/Objects/Expense/models";
@@ -72,6 +72,13 @@ export interface YearSolverInput {
     expenses: AnyExpense[];
     totalLivingExpenses: number;
     rmdAmount: number;
+    /**
+     * IRS excise penalty (25% of the RMD shortfall) computed by RMDService when a
+     * required distribution can't be fully satisfied. It's a cash tax with no
+     * matching distribution, so the solver folds it into the year's total tax /
+     * penalties so it reduces cash and shows up in net worth. Defaults to 0.
+     */
+    rmdPenalty?: number;
 
     // Accounts
     accounts: AnyAccount[];
@@ -263,9 +270,16 @@ function computeCeilingContext(
     const rmdStartAge = getRMDStartAge(birthYear);
     const yearsUntilRMD = Math.max(0, rmdStartAge - input.currentAge);
 
+    // Pension income for the conversion ceiling must include the FERS MRA-to-62
+    // supplement (a bridge payment that ends at 62). FERSPensionIncome exposes it
+    // via getTotalAnnualAmount(); plain getAnnualAmount() drops it. Mirror
+    // IncomeClassifier / CashflowDetailBuilder, which both use the total. Other
+    // pension types (CSRS) have no supplement, so fall back to getAnnualAmount().
     const pensionIncome = input.incomes
-        .filter(i => (i as any).className?.includes('Pension'))
-        .reduce((sum, i) => sum + i.getAnnualAmount(input.year), 0);
+        .filter(i => i.className?.includes('Pension'))
+        .reduce((sum, i) => sum + (i instanceof FERSPensionIncome
+            ? i.getTotalAnnualAmount(input.year)
+            : i.getAnnualAmount(input.year)), 0);
 
     const passiveIncome = input.incomes
         .filter(i => (i as any).className === 'PassiveIncome' && (i as any).sourceType !== 'RMD')
@@ -1488,19 +1502,26 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
         });
     }
 
-    // ACA withdrawal options (computed once, used in each iteration)
-    const acaWithdrawalOpts = input.acaAware && input.currentAge < 65
-        ? {
-            acaCliffThreshold: getAcaCliffThreshold(
-                input.taxState.filingStatus === 'Married Filing Jointly' ? 'married_filing_jointly' : 'single',
-                input.year
-            ),
-            // ACA MAGI = all gross income including 100% of SS benefits.
-            // taxableBase (= spendable + reinvested) already includes full SS,
-            // so we just add conversion income on top.
-            currentMAGI: taxableBase + conversionPlan.additionalOrdinaryIncome,
-        }
-        : undefined;
+    // ACA cliff context. The threshold is fixed; the MAGI base is not.
+    //
+    // Bug #10: currentMAGI must reflect ALL income realized this year, but the
+    // Traditional spending withdrawal (ordinary income) and the brokerage LTCG are
+    // both produced by the deficit loop below — they aren't known here. The base
+    // MAGI is therefore everything EXCEPT those loop-produced amounts:
+    //   base = taxableBase (incl. 100% SS) + conversion.
+    // The planner already layers its own brokerage LTCG onto currentMAGI internally
+    // (cumulativeLTCG + actualLTCG), so we must NOT add LTCG here. But the planner
+    // does NOT know about the Traditional withdrawal, so we feed the running
+    // estimatedTradWithdrawal into currentMAGI each iteration. Without it the cliff
+    // guard under-counts MAGI by the Traditional draw and can blow past the cliff.
+    const acaCliffActive = input.acaAware && input.currentAge < 65;
+    const acaCliffThreshold = acaCliffActive
+        ? getAcaCliffThreshold(
+            input.taxState.filingStatus === 'Married Filing Jointly' ? 'married_filing_jointly' : 'single',
+            input.year
+        )
+        : 0;
+    const acaBaseMAGI = taxableBase + conversionPlan.additionalOrdinaryIncome;
 
     // Iterative deficit loop: converges on LTCG and SS taxability.
     //
@@ -1588,6 +1609,14 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
             break;
         }
 
+        // Per-iteration ACA options (Bug #10): roll the running Traditional
+        // withdrawal into currentMAGI so the planner's cliff guard sees the
+        // ordinary income this loop realizes. estimatedTradWithdrawal is the prior
+        // iteration's value (0 on the first pass) and converges alongside LTCG.
+        const acaWithdrawalOpts = acaCliffActive
+            ? { acaCliffThreshold, currentMAGI: acaBaseMAGI + estimatedTradWithdrawal }
+            : undefined;
+
         // Plan withdrawals - planner uses allOrdinaryIncome as starting income position
         // Pass currentSSTaxable as stateExemptIncome so the planner excludes it from
         // state bracket positioning (DC and most states exempt SS from income tax)
@@ -1642,6 +1671,22 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     // withdrawal amount, causing Sankey balance leaks.
 
     decisions.push(...withdrawalDecisions);
+
+    // RMD shortfall excise (Bug #4). When RMDService couldn't fully satisfy a
+    // required distribution, it computed a 25% penalty on the shortfall. It is an
+    // excise paid in cash with no offsetting distribution, so fold it into the
+    // year's penalties: this flows into totalTax (below) → cashOut, reducing the
+    // surplus / increasing the deficit, and surfaces in the tax summary's
+    // penalties line. Without this the computed penalty had zero financial effect.
+    const rmdPenalty = input.rmdPenalty ?? 0;
+    if (rmdPenalty > 0) {
+        totalPenalties += rmdPenalty;
+        decisions.push({
+            category: 'rmd',
+            amount: rmdPenalty,
+            description: `RMD shortfall excise: $${Math.round(rmdPenalty).toLocaleString()} (25% of unmet required distribution).`,
+        });
+    }
 
     // Step F: Calculate final surplus using authoritative tax values.
     // Exclude RMD entries from totalGrossWithdrawals — RMD is already in spendable

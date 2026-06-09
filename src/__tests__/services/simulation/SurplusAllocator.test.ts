@@ -312,6 +312,76 @@ describe('SurplusAllocator', () => {
         });
     });
 
+    describe('capped-bucket overflow (Bug #2: surplus must not be dropped)', () => {
+        it('should not drop surplus when the only brokerage is a capped priority bucket', () => {
+            // A single FIXED-cap brokerage bucket ($24k/yr cap) with $30k surplus.
+            // Before the fix, steps 3-4 skipped the bucket account and the $6k
+            // leftover vanished (unallocated > 0, dropped from net worth).
+            const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
+
+            const result = allocateSurplus(
+                30000,
+                [brokerage],
+                [{ accountId: 'brok', priority: 1, capType: 'FIXED', capValue: 2000 }], // $2000/mo = $24k/yr
+                0,
+                defaultSettings()
+            );
+
+            // No surplus may be lost.
+            expect(result.unallocated).toBe(0);
+            // Full $30k landed in the brokerage (capped + overflow).
+            const total = result.allocations
+                .filter(a => a.accountId === 'brok')
+                .reduce((sum, a) => sum + a.amount, 0);
+            expect(total).toBe(30000);
+        });
+
+        it('should overflow into a capped savings bucket when no brokerage exists', () => {
+            const savings = new SavedAccount('sav', 'Vacation', 5000, 1.5);
+
+            const result = allocateSurplus(
+                20000,
+                [savings],
+                [{ accountId: 'sav', priority: 1, capType: 'MAX', capValue: 5000 }],
+                0,
+                defaultSettings()
+            );
+
+            expect(result.unallocated).toBe(0);
+            const total = result.allocations
+                .filter(a => a.accountId === 'sav')
+                .reduce((sum, a) => sum + a.amount, 0);
+            expect(total).toBe(20000);
+        });
+
+        it('should prefer a capped brokerage bucket over a capped savings bucket for overflow', () => {
+            const savings = new SavedAccount('sav', 'Vacation', 5000, 1.5);
+            const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
+
+            const result = allocateSurplus(
+                30000,
+                [savings, brokerage],
+                [
+                    { accountId: 'sav', priority: 1, capType: 'MAX', capValue: 5000 },
+                    { accountId: 'brok', priority: 2, capType: 'MAX', capValue: 10000 },
+                ],
+                0,
+                defaultSettings()
+            );
+
+            expect(result.unallocated).toBe(0);
+            // Caps fill $5k savings + $10k brokerage = $15k; overflow $15k → brokerage (preferred).
+            const brokTotal = result.allocations
+                .filter(a => a.accountId === 'brok')
+                .reduce((sum, a) => sum + a.amount, 0);
+            const savTotal = result.allocations
+                .filter(a => a.accountId === 'sav')
+                .reduce((sum, a) => sum + a.amount, 0);
+            expect(savTotal).toBe(5000);
+            expect(brokTotal).toBe(25000); // $10k cap + $15k overflow
+        });
+    });
+
     describe('non-IRA accounts', () => {
         it('should allow Savings contributions without earned income', () => {
             const savings = new SavedAccount('sav-1', 'Emergency Fund', 10000, 1.5);

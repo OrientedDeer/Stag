@@ -513,6 +513,46 @@ describe('processRMDs', () => {
             // This should work fine since 52000 > 4065
             expect(result.rmdDetails!.shortfall).toBe(0);
         });
+
+        it('should compute a 25% penalty when the current balance cannot cover the required RMD (Bug #4)', () => {
+            // The RMD requirement is based on the PRIOR-year vested balance ($500k),
+            // but the account has since drained to $10k this year, so it cannot
+            // satisfy the full distribution. That produces a real shortfall, and the
+            // excise penalty must be 25% of it.
+            const year = 2030;
+            const currentAge = 75;
+
+            // Current account: only $10k available (vested = amount since no employer balance).
+            const currentAccount = createTraditionalAccount('acc1', 'Traditional 401k', 10000);
+            // Prior-year snapshot: $500k vested → drives the RMD requirement.
+            const priorAccount = createTraditionalAccount('acc1', 'Traditional 401k', 500000);
+
+            const assumptions = createMockAssumptions(1955);
+            const previousSim = createPriorSimulationYear([priorAccount], 2029);
+            const withdrawalState = createWithdrawalState(50000);
+            const logs: string[] = [];
+
+            const result = processRMDs(
+                year,
+                [currentAccount],
+                assumptions,
+                previousSim,
+                currentAge,
+                50000,
+                withdrawalState,
+                logs
+            );
+
+            // Required: 500000 / 24.6 ≈ 20325; withdrawn capped at current vested $10k.
+            const expectedRequired = 500000 / 24.6;
+            const expectedShortfall = expectedRequired - 10000;
+            const expectedPenalty = expectedShortfall * 0.25;
+
+            expect(result.rmdDetails!.totalWithdrawn).toBeCloseTo(10000, 0);
+            expect(result.rmdDetails!.shortfall).toBeCloseTo(expectedShortfall, 0);
+            expect(result.rmdDetails!.penalty).toBeGreaterThan(0);
+            expect(result.rmdDetails!.penalty).toBeCloseTo(expectedPenalty, 0);
+        });
     });
 
     describe('RMD start age by birth year', () => {

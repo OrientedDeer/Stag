@@ -365,6 +365,9 @@ function simulateOneYearWithNewEngine(
         expenses: nextExpenses,
         totalLivingExpenses,
         rmdAmount,
+        // RMD shortfall excise (25% of unmet required distribution) — solver folds
+        // it into the year's tax/penalties so it reduces cash (Bug #4).
+        rmdPenalty: rmdDetails?.penalty ?? 0,
         accounts,
         withdrawalOrder: assumptions.withdrawalStrategy.map(w => ({ accountId: w.accountId })),
         taxState,

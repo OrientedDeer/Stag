@@ -363,6 +363,43 @@ export function allocateSurplus(
         }
     }
 
+    // 5. Last-resort catch-all: every non-bucket destination is exhausted, yet
+    //    surplus remains. This happens when the ONLY brokerage/savings account is
+    //    a priority bucket whose cap (FIXED/MAX/MULTIPLE_OF_EXPENSES) was reached
+    //    in step 2 — steps 3-4 skip it via `bucketAccountIds`, so the leftover
+    //    would otherwise vanish from net worth (Bug #2). A bucket cap paces
+    //    contributions; it is NOT a directive to discard cash that has nowhere
+    //    else to go. Deposit the remainder into the best available bucket
+    //    account (brokerage preferred, then savings) so the dollars stay in net
+    //    worth instead of leaking.
+    if (remaining > 0) {
+        const bucketBrokerage = accounts.find(a =>
+            a instanceof InvestedAccount && a.taxType === 'Brokerage'
+            && bucketAccountIds.has(a.id)
+        );
+        const bucketSavings = accounts.find(a =>
+            a instanceof SavedAccount && bucketAccountIds.has(a.id)
+        );
+        const overflowTarget = bucketBrokerage ?? bucketSavings;
+
+        if (overflowTarget) {
+            allocations.push({
+                accountId: overflowTarget.id,
+                amount: remaining,
+                reason: `Surplus overflow (priority caps reached; no uncapped destination)`,
+            });
+
+            decisions.push({
+                category: 'surplus',
+                account: overflowTarget.name,
+                amount: remaining,
+                description: `Deposited remaining $${remaining.toLocaleString()} surplus into ${overflowTarget.name} (all priority caps reached; no uncapped account available).`,
+            });
+
+            remaining = 0;
+        }
+    }
+
     const result = {
         allocations,
         decisions,
