@@ -33,6 +33,16 @@ import { TaxBracket } from "../../data/TaxData";
 const EARLY_WITHDRAWAL_AGE = 59.5;
 const EARLY_WITHDRAWAL_PENALTY_RATE = 0.10;
 
+// BUG #14 FIX: gross-up divides by (1 - effectiveRate). If a combined
+// marginal+penalty rate reaches or exceeds 1, the denominator is <= 0 and the
+// gross-up returns Infinity/NaN, which then propagates into the plan totals.
+// Clamp the divisor to a small positive floor so the output stays finite (and
+// conservatively large) instead of exploding. 0.01 mirrors the ESPP guard below.
+const MIN_GROSSUP_DENOMINATOR = 0.01;
+export function grossUpDivisor(effectiveRate: number): number {
+    return Math.max(MIN_GROSSUP_DENOMINATOR, 1 - effectiveRate);
+}
+
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -452,8 +462,10 @@ function grossUpRoth(
             const penaltyRate = EARLY_WITHDRAWAL_PENALTY_RATE;
             const effectiveRate = marginalRate + penaltyRate;
 
-            // Gross up the remaining need, capped by available room
-            const grossEarnings = Math.min(remaining / (1 - effectiveRate), grossRoom);
+            // Gross up the remaining need, capped by available room.
+            // BUG #14 FIX: guard the divisor so a >= 1 effective rate (marginal +
+            // 10% penalty) can't produce Infinity/NaN.
+            const grossEarnings = Math.min(remaining / grossUpDivisor(effectiveRate), grossRoom);
             fromEarnings = grossEarnings;
             tax = grossEarnings * marginalRate;
             penalty += grossEarnings * penaltyRate;
@@ -508,7 +520,11 @@ export function planWithdrawals(
     let totalTax = 0;
     let totalPenalties = 0;
     let totalLTCG = 0;
-    let totalSTCG = 0;
+    // STCG is always 0 today: the planner has no per-lot holding-period data to
+    // split brokerage gains short/long, and YearSolver hardcodes STCG=0 in the
+    // authoritative federal tax. Tracked as a const placeholder until that
+    // cross-file short/long split is wired up (reviewed bug #9, NEEDS-CROSS-FILE).
+    const totalSTCG = 0;
     let cumulativeLTCG = 0; // Tracks LTCG from brokerage/ESPP for ACA MAGI headroom
     let runningOrdinaryIncome = currentOrdinaryIncome;
 
@@ -523,8 +539,17 @@ export function planWithdrawals(
     // Get LTCG rate based on current ordinary income.
     // Delegates to the shared getLTCGRate helper (imported as getLTCGRateForIncome),
     // closing over this year's fedParams.
-    const getLTCGRate = (ordinaryIncome: number): number =>
-        getLTCGRateForIncome(ordinaryIncome, fedParams);
+    //
+    // BUG #3 FIX: getLTCGRateForIncome compares income against the capital-gains
+    // bracket thresholds, which are TAXABLE-income thresholds. The caller passes
+    // GROSS ordinary income (runningOrdinaryIncome), so we must subtract the
+    // federal standard deduction (floored at 0) first — mirroring getMarginalRate.
+    // Without this, a retiree whose taxable income is below the 0% LTCG ceiling
+    // but whose gross income exceeds it is wrongly taxed at 15%.
+    const getLTCGRate = (ordinaryIncome: number): number => {
+        const taxableIncome = Math.max(0, ordinaryIncome - (fedParams?.standardDeduction ?? 0));
+        return getLTCGRateForIncome(taxableIncome, fedParams);
+    };
 
     // Get marginal ordinary rate
     const getMarginalRate = (ordinaryIncome: number): number => {
@@ -537,17 +562,20 @@ export function planWithdrawals(
         return result.rate;
     };
 
-    // Get state marginal rate
-    const getStateRate = (): number => {
+    // Get state marginal rate.
+    // BUG #7 FIX: take an income arg and recompute per-iteration (like
+    // getMarginalRate) instead of freezing it at the initial
+    // currentOrdinaryIncome. As traditional/HSA withdrawals raise running
+    // income across state brackets, the state portion of the marginal rate
+    // used for subsequent Roth-earnings / HSA / ESPP gross-ups must update too.
+    const getStateRate = (ordinaryIncome: number): number => {
         if (!stateParams) return 0;
         const result = TaxService.getMarginalTaxRate(
-            Math.max(0, currentOrdinaryIncome - stateParams.standardDeduction),
+            Math.max(0, ordinaryIncome - stateParams.standardDeduction),
             stateParams
         );
         return result.rate;
     };
-
-    const stateRate = getStateRate();
 
     // IRS Pub 590-B: all Roth IRAs are treated as a single Roth IRA for ordering
     // rules. Pool contribution basis and conversion history (FIFO across accounts)
@@ -575,7 +603,7 @@ export function planWithdrawals(
         if (effectiveVestedBalance <= 0) continue;
 
         const ltcgRate = getLTCGRate(runningOrdinaryIncome);
-        const marginalRate = getMarginalRate(runningOrdinaryIncome) + stateRate;
+        const marginalRate = getMarginalRate(runningOrdinaryIncome) + getStateRate(runningOrdinaryIncome);
 
         let withdrawal: PlannedWithdrawal;
 
@@ -928,7 +956,9 @@ export function planWithdrawals(
                 // HSA withdrawals for non-healthcare are taxed as ordinary + 20% penalty before 65
                 const penaltyRate = currentAge < 65 ? 0.20 : 0;
                 const effectiveRate = marginalRate + penaltyRate;
-                const gross = remainingNetNeeded / (1 - effectiveRate);
+                // BUG #14 FIX: guard the divisor so a >= 1 effective rate
+                // (marginal + 20% HSA penalty) can't produce Infinity/NaN.
+                const gross = remainingNetNeeded / grossUpDivisor(effectiveRate);
                 const grossToWithdraw = Math.min(gross, effectiveVestedBalance);
 
                 const actualPenalty = grossToWithdraw * penaltyRate;
@@ -978,7 +1008,7 @@ export function planWithdrawals(
                     // Derive the pool's tax-per-gross-dollar from the lot data and
                     // gross up against the blended rate.
                     const esppMarginalRate = getMarginalRate(runningOrdinaryIncome);
-                    const esppStateRate = getStateRate();
+                    const esppStateRate = getStateRate(runningOrdinaryIncome);
                     const esppCombinedOrdinaryRate = esppMarginalRate + esppStateRate;
 
                     let poolValue = 0;
