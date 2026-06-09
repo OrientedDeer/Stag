@@ -536,20 +536,18 @@ export function planWithdrawals(
     const fedParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'federal', undefined, assumptions);
     const stateParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions);
 
-    // Get LTCG rate based on current ordinary income.
-    // Delegates to the shared getLTCGRate helper (imported as getLTCGRateForIncome),
-    // closing over this year's fedParams.
+    // Get LTCG rate based on current ordinary income. Delegates to the shared
+    // getLTCGRate helper (imported as getLTCGRateForIncome), closing over this
+    // year's fedParams.
     //
-    // BUG #3 FIX: getLTCGRateForIncome compares income against the capital-gains
-    // bracket thresholds, which are TAXABLE-income thresholds. The caller passes
-    // GROSS ordinary income (runningOrdinaryIncome), so we must subtract the
-    // federal standard deduction (floored at 0) first — mirroring getMarginalRate.
-    // Without this, a retiree whose taxable income is below the 0% LTCG ceiling
-    // but whose gross income exceeds it is wrongly taxed at 15%.
-    const getLTCGRate = (ordinaryIncome: number): number => {
-        const taxableIncome = Math.max(0, ordinaryIncome - (fedParams?.standardDeduction ?? 0));
-        return getLTCGRateForIncome(taxableIncome, fedParams);
-    };
+    // NOTE (review #3): passing GROSS runningOrdinaryIncome here is a deliberately
+    // conservative proxy for sizing the gross-up — it never under-states the rate.
+    // A taxable-income lookup (subtracting the standard deduction) returns the 0%
+    // *floor* rate whenever taxable ordinary income is below the 0% LTCG ceiling,
+    // which under-withdraws when the gains themselves spill into the 15% bracket.
+    // The authoritative per-year tax (calculateTotalFederalTax) stacks correctly.
+    const getLTCGRate = (ordinaryIncome: number): number =>
+        getLTCGRateForIncome(ordinaryIncome, fedParams);
 
     // Get marginal ordinary rate
     const getMarginalRate = (ordinaryIncome: number): number => {

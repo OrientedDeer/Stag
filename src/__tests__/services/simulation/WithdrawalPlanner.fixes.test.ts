@@ -1,10 +1,12 @@
 /**
  * Reviewed-bug fixes for WithdrawalPlanner.planWithdrawals.
  *
- * Bug #3  — LTCG rate looked up off GROSS income instead of taxable income.
  * Bug #7  — State marginal rate frozen at initial income (stale across iterations).
  * Bug #14 — Unguarded gross-up `1/(1-rate)` can divide by <= 0 → Infinity/NaN.
  *
+ * (Bug #3 — LTCG rate off gross vs taxable — was REVERTED: passing gross is a
+ *  conservative gross-up proxy; a taxable-income lookup returns the 0% floor rate
+ *  and under-withdraws when gains spill into 15%. See WithdrawalPlanner.getLTCGRate.)
  * (Bug #9 — brokerage short/long split — is NEEDS-CROSS-FILE: the snapshot only
  *  carries an averaged gainRatio with no lot holding-period data, and YearSolver
  *  hardcodes STCG=0 when computing the authoritative federal tax, so it can't be
@@ -35,70 +37,6 @@ function taxStateFor(stateResidency: string): TaxState {
         year: YEAR,
     };
 }
-
-// =============================================================================
-// BUG #3: LTCG rate uses TAXABLE income, not gross
-// =============================================================================
-// 2025 Single: standardDeduction = 15,750; LTCG 0% -> 15% threshold = 48,350.
-// Gross ordinary income = 60,000 → taxable = 60,000 - 15,750 = 44,250 < 48,350,
-// so the correct LTCG rate is 0%. The buggy code compared gross 60,000 >= 48,350
-// and applied 15%.
-describe('Bug #3: LTCG rate is looked up off taxable income, not gross', () => {
-    it('applies 0% LTCG when taxable income is below the 0% ceiling even though gross is above it', () => {
-        // Brokerage: $200k balance, $100k basis → gainRatio 0.5 (all gains).
-        const brokerage = new InvestedAccount(
-            'brk-1', 'Brokerage', 200000,
-            0, 10, 0.07, 'Brokerage', true, 0.2,
-            100000, // costBasis
-        );
-        const snapshot = createAccountSnapshot(brokerage);
-        expect(snapshot.gainRatio).toBeCloseTo(0.5, 6);
-
-        const grossOrdinaryIncome = 60000; // taxable 44,250 < 48,350 LTCG ceiling
-
-        const result = planWithdrawals(
-            10000,            // netNeeded
-            [snapshot],
-            65,               // age (no penalties)
-            YEAR,
-            taxStateFor('Texas'), // no state tax → isolate LTCG behavior
-            grossOrdinaryIncome,
-            undefined,
-        );
-
-        // Correct behavior: LTCG rate is 0%, so no tax is withheld and gross == net.
-        expect(result.totalTax).toBeCloseTo(0, 6);
-        const brkW = result.withdrawals.find(w => w.source === 'brokerage');
-        expect(brkW).toBeDefined();
-        expect(brkW!.tax).toBeCloseTo(0, 6);
-        expect(brkW!.gross).toBeCloseTo(10000, 6);
-    });
-
-    it('still applies 15% LTCG when taxable income clears the ceiling', () => {
-        const brokerage = new InvestedAccount(
-            'brk-2', 'Brokerage', 200000,
-            0, 10, 0.07, 'Brokerage', true, 0.2,
-            100000,
-        );
-        const snapshot = createAccountSnapshot(brokerage);
-
-        // Gross 100k → taxable 84,250 > 48,350 → 15% LTCG rate.
-        const result = planWithdrawals(
-            10000,
-            [snapshot],
-            65,
-            YEAR,
-            taxStateFor('Texas'),
-            100000,
-            undefined,
-        );
-
-        expect(result.totalTax).toBeGreaterThan(0);
-        const brkW = result.withdrawals.find(w => w.source === 'brokerage')!;
-        // gainRatio 0.5 at 15% → effective tax-per-gross-dollar = 0.075.
-        expect(brkW.tax / brkW.gross).toBeCloseTo(0.5 * 0.15, 4);
-    });
-});
 
 // =============================================================================
 // BUG #7: state marginal rate must update as running income rises
