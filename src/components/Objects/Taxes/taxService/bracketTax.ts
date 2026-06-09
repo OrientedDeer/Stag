@@ -77,10 +77,17 @@ export function calculateTotalFederalTax(
         filingStatus,
     );
 
-    // STEP 3: Taxable ordinary income (includes STCG; LTCG does NOT get the standard deduction)
+    // STEP 3: Taxable ordinary income (includes STCG).
+    // The standard deduction is applied against ordinary income first, but any UNUSED
+    // portion still offsets LTCG. The IRS 0%/15%/20% LTCG brackets are measured against
+    // TOTAL taxable income (ordinary + LTCG, after the standard deduction), so when
+    // ordinary income is below the deduction the leftover deduction reduces the amount of
+    // LTCG that is taxable. `taxableOrdinary` (floored at 0) is the LTCG stacking floor;
+    // `unusedDeduction` is the leftover deduction that reduces taxable LTCG in STEP 5.
     const totalOrdinaryIncome = ordinaryIncome + shortTermCapitalGains + taxableSS;
     const adjustedOrdinary = Math.max(0, totalOrdinaryIncome - preTaxDeductions);
     const taxableOrdinary = Math.max(0, adjustedOrdinary - params.standardDeduction);
+    const unusedDeduction = Math.max(0, params.standardDeduction - adjustedOrdinary);
 
     // STEP 4: Ordinary income tax (includes STCG)
     let ordinaryTax = 0;
@@ -99,7 +106,10 @@ export function calculateTotalFederalTax(
     let ltcgTax = 0;
     if (longTermCapitalGains > 0 && params.capitalGainsBrackets) {
         const brackets = params.capitalGainsBrackets;
-        let remainingGains = longTermCapitalGains;
+        // Any standard deduction not consumed by ordinary income offsets LTCG, so only the
+        // LTCG above that unused deduction is taxable. LTCG then stacks on top of taxable
+        // ordinary income for bracket placement.
+        let remainingGains = Math.max(0, longTermCapitalGains - unusedDeduction);
         let incomeStack = taxableOrdinary;
 
         for (let i = 0; i < brackets.length && remainingGains > 0; i++) {

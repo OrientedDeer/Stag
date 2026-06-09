@@ -399,10 +399,12 @@ describe('Test Group 3: SS + Ordinary Income', () => {
 // =============================================================================
 
 describe('Test Group 4: LTCG Only', () => {
-    // With no ordinary income, taxable income = 0, LTCG fills from $0
+    // With no ordinary income, the FULL standard deduction ($16,100) is unused and offsets
+    // LTCG. IRS rule: the 0%/15%/20% brackets are measured against total taxable income
+    // (LTCG minus the unused standard deduction here), so taxable LTCG = ltcg - 16100.
 
     it('LTCG below 0% threshold is tax-free', () => {
-        // All $40k at 0% rate
+        // 40000 - 16100 = 23900 taxable, all at 0% rate
         const result = calcTax(0, 0, 0, 40000);
         expect(result.ltcgTax).toBe(0);
         expect(result.ordinaryTax).toBe(0);
@@ -410,30 +412,35 @@ describe('Test Group 4: LTCG Only', () => {
     });
 
     it('LTCG exactly at $49700 threshold is tax-free', () => {
+        // 49700 - 16100 = 33600 taxable < 49700 → all at 0%
         const result = calcTax(0, 0, 0, 49700);
         expect(result.ltcgTax).toBe(0);
         validateResult(result, 0);
     });
 
-    it('LTCG $1 over threshold is $0.15', () => {
-        // $49701: $49700 at 0%, $1 at 15%
+    it('LTCG below unused-deduction-adjusted threshold is tax-free', () => {
+        // Unused std deduction offsets LTCG: 49701 - 16100 = 33601 taxable < 49700 → $0.
+        // (Pre-fix this floored taxableOrdinary at 0 and taxed $1 @ 15% = $0.15.)
         const result = calcTax(0, 0, 0, 49701);
-        expect(result.ltcgTax).toBeCloseTo(0.15, 2);
+        expect(result.ltcgTax).toBe(0);
         validateResult(result, 0);
     });
 
-    it('LTCG $10k over threshold is $1500', () => {
-        // $59700: $49700 at 0%, $10000 at 15%
+    it('LTCG $10k over nominal threshold still tax-free after deduction', () => {
+        // 59700 - 16100 = 43600 taxable < 49700 → $0.
+        // (Pre-fix taxed $10000 @ 15% = $1500.)
         const result = calcTax(0, 0, 0, 59700);
-        expect(result.ltcgTax).toBeCloseTo(1500, 0);
+        expect(result.ltcgTax).toBe(0);
         validateResult(result, 0);
     });
 
     it('LTCG into 20% bracket', () => {
-        // $600000: $49700 at 0%, $498500 at 15%, $51800 at 20%
-        // Tax = 0 + 498500 × 0.15 + 51800 × 0.20 = 74775 + 10360 = 85135
+        // Taxable LTCG = 600000 - 16100 = 583900.
+        // $49700 at 0%, (548200-49700)=498500 at 15%, (583900-548200)=35700 at 20%.
+        // Tax = 0 + 498500 × 0.15 + 35700 × 0.20 = 74775 + 7140 = 81915.
+        // (Pre-fix ignored the unused deduction and returned 85135.)
         const result = calcTax(0, 0, 0, 600000);
-        expect(result.ltcgTax).toBeCloseTo(85135, 0);
+        expect(result.ltcgTax).toBeCloseTo(81915, 0);
         validateResult(result, 0);
     });
 
@@ -570,12 +577,14 @@ describe('Test Group 7: STCG vs LTCG Comparison', () => {
         expect(result.totalTax).toBeCloseTo(3820, 0);
     });
 
-    it('$50k LTCG only = $45', () => {
-        // $50k LTCG: $49700 at 0%, $300 at 15%
+    it('$50k LTCG only = $0 after unused standard deduction', () => {
+        // With $0 ordinary income the full $16,100 std deduction is unused and offsets LTCG:
+        // taxable LTCG = 50000 - 16100 = 33900 < 49700 → all at the 0% rate → $0.
+        // (Pre-fix the unused deduction was dropped: $49700 @ 0% + $300 @ 15% = $45.)
         const result = calcTax(0, 0, 0, 50000);
         expect(result.ordinaryTax).toBe(0);
-        expect(result.ltcgTax).toBeCloseTo(45, 0);
-        expect(result.totalTax).toBeCloseTo(45, 0);
+        expect(result.ltcgTax).toBe(0);
+        expect(result.totalTax).toBe(0);
     });
 
     it('same amount STCG costs more than LTCG', () => {
@@ -583,9 +592,12 @@ describe('Test Group 7: STCG vs LTCG Comparison', () => {
         const ltcgResult = calcTax(0, 0, 0, 50000);
 
         expect(stcgResult.totalTax).toBeGreaterThan(ltcgResult.totalTax);
-        // STCG tax should be about 85x more expensive in this case
+        // STCG ($50k) is taxed as ordinary: 50000 - 16100 = 33900 taxable → $3,820.
+        // LTCG ($50k) gets the unused std deduction: 50000 - 16100 = 33900 taxable LTCG
+        // < 49700 → all at the 0% rate → $0. (Pre-fix the unused deduction was dropped
+        // and LTCG was taxed $300 @ 15% = $45.)
         expect(stcgResult.totalTax).toBeCloseTo(3820, 0);
-        expect(ltcgResult.totalTax).toBeCloseTo(45, 0);
+        expect(ltcgResult.totalTax).toBe(0);
     });
 
     it('at higher income, STCG still costs more', () => {
