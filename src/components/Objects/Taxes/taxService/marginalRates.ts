@@ -22,6 +22,13 @@ export function getMarginalTaxRate(
     taxableIncome: number,
     params: TaxParameters,
 ): MarginalRateResult {
+    // Defensive guard: an authority with no brackets (e.g. a sparsely-populated
+    // future-year fallback) would otherwise dereference `undefined`. Treat the
+    // absence of any bracket as a flat 0% rate with unbounded headroom.
+    if (params.brackets.length === 0) {
+        return { rate: 0, bracketStart: 0, bracketEnd: Infinity, headroom: Infinity };
+    }
+
     if (taxableIncome <= 0) {
         const first = params.brackets[0];
         const second = params.brackets[1];

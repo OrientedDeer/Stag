@@ -189,6 +189,24 @@ describe('getMarginalTaxRate', () => {
             expect(result.bracketEnd).toBe(12400);
             expect(result.headroom).toBe(12400);
         });
+
+        it('should return a flat 0% rate for empty brackets at zero income (no throw)', () => {
+            const emptyBrackets: TaxParameters = { ...fed2026Single, brackets: [] };
+            const result = getMarginalTaxRate(0, emptyBrackets);
+            expect(result.rate).toBe(0);
+            expect(result.bracketStart).toBe(0);
+            expect(result.bracketEnd).toBe(Infinity);
+            expect(result.headroom).toBe(Infinity);
+        });
+
+        it('should return a flat 0% rate for empty brackets at positive income (no throw)', () => {
+            const emptyBrackets: TaxParameters = { ...fed2026Single, brackets: [] };
+            const result = getMarginalTaxRate(100000, emptyBrackets);
+            expect(result.rate).toBe(0);
+            expect(result.bracketStart).toBe(0);
+            expect(result.bracketEnd).toBe(Infinity);
+            expect(result.headroom).toBe(Infinity);
+        });
     });
 
     describe('Headroom calculation', () => {
