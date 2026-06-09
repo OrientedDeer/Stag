@@ -21,6 +21,7 @@ import {
     createBuiltinMilestones
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { SimulationYear } from '../../../services/simulation/types';
+import { getIncomeActiveMultiplier } from '../../../components/Objects/Income/models';
 
 // Helper to create test assumptions with custom milestones
 function createTestAssumptions(overrides: Partial<{
@@ -890,6 +891,39 @@ describe('IncomeProjection', () => {
 
                 const interest = result.interestIncomes[0];
                 expect(interest.isReinvested).toBe(true);
+            });
+
+            it('should construct interest dates as UTC so it is active the full calendar year', () => {
+                // Regression (Bug #13): interest income was built with local
+                // new Date(year, 0, 1) / new Date(year, 11, 31), but
+                // getIncomeActiveMultiplier reads start/end with getUTC*. In
+                // positive-UTC timezones the local Jan-1 is the prior year's Dec-31
+                // in UTC, shrinking/shifting the active window below a full year.
+                const year = 2025;
+                const savingsAccount = new SavedAccount('sav1', 'HYSA', 100000, 5);
+                const assumptions = createTestAssumptions();
+                const logs: string[] = [];
+
+                const result = projectIncomes(
+                    year,
+                    [],
+                    [savingsAccount],
+                    assumptions,
+                    [],
+                    35,
+                    false,
+                    logs
+                );
+
+                const interest = result.interestIncomes[0];
+                // Dates must read as the intended calendar year in UTC.
+                expect(interest.startDate?.getUTCFullYear()).toBe(year);
+                expect(interest.startDate?.getUTCMonth()).toBe(0);
+                expect(interest.end_date?.getUTCFullYear()).toBe(year);
+                expect(interest.end_date?.getUTCMonth()).toBe(11);
+
+                // The whole point: the consumer must see a clean full-year window.
+                expect(getIncomeActiveMultiplier(interest, year)).toBe(1.0);
             });
 
             it('should include interest in allIncomes', () => {

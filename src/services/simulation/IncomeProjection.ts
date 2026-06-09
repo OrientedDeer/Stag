@@ -315,8 +315,12 @@ export function projectIncomes(
                     'Annually',
                     'No',
                     'Interest',
-                    new Date(year, 0, 1),
-                    new Date(year, 11, 31),
+                    // Use UTC so getIncomeActiveMultiplier (which reads getUTC*) sees a
+                    // clean full-calendar-year active window (multiplier = 1.0). Local
+                    // new Date(year, ...) shifts into the prior/next year in +UTC zones,
+                    // mis-prorating this full-year reinvested income.
+                    new Date(Date.UTC(year, 0, 1)),
+                    new Date(Date.UTC(year, 11, 31)),
                     true  // isReinvested
                 ));
             }
