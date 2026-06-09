@@ -9,7 +9,7 @@ import {
     isActiveByMilestone,
     MilestoneContext,
 } from '../../services/simulation/MilestoneEvaluator';
-import { InvestedAccount, SavedAccount, DebtAccount, PropertyAccount, ESPPAccount, DeficitDebtAccount } from '../../components/Objects/Accounts/models';
+import { InvestedAccount, SavedAccount, DebtAccount, PropertyAccount, ESPPAccount, DeficitDebtAccount, AnyAccount } from '../../components/Objects/Accounts/models';
 import { MortgageExpense, LoanExpense, OtherExpense } from '../../components/Objects/Expense/models';
 import { CustomMilestone } from '../../services/simulation/types';
 
@@ -45,6 +45,49 @@ describe('MilestoneEvaluator', () => {
             // Net worth = 500k value - 300k loan = 200k
             const netWorth = calculateNetWorth(accounts, expenses);
             expect(netWorth).toBe(200000);
+        });
+
+        it('counts a linked property + mortgage loan exactly once (no double-count)', () => {
+            // Mirrors how the app creates a financed property: the PropertyAccount
+            // and its MortgageExpense are linked atomically (AddAccountModal /
+            // AddExpenseModal). The established direction is:
+            //   account.linkedAccountId === mortgage.id
+            //   mortgage.linkedAccountId === account.id
+            // The PropertyAccount already carries loanAmount as a liability, so the
+            // linked MortgageExpense.loan_balance must NOT be added again.
+            const accounts = [
+                // loanAmount = 300k on the account side
+                new PropertyAccount('acc-house', 'Home', 500000, 'Financed', 300000, 400000, 'exs-house'),
+            ];
+            const expenses = [
+                new MortgageExpense(
+                    'exs-house', 'Home', 'Monthly',
+                    500000, 300000, 400000, 4, 30,
+                    1.2, 0, 0.5, 200, 0.3, 0, 0,
+                    'Itemized', 0, 'acc-house',
+                    new Date()
+                ),
+            ];
+
+            // 500k value - 300k loan (counted once on the account) = 200k.
+            // If double-counted, this would be -100k (500k - 300k - 300k).
+            expect(calculateNetWorth(accounts, expenses)).toBe(200000);
+        });
+
+        it('still counts a standalone mortgage (no linked property account) once', () => {
+            const accounts: AnyAccount[] = [];
+            const expenses = [
+                new MortgageExpense(
+                    'exs-standalone', 'Mortgage', 'Monthly',
+                    500000, 300000, 400000, 4, 30,
+                    1.2, 0, 0.5, 200, 0.3, 0, 0,
+                    'Itemized', 0, '',
+                    new Date()
+                ),
+            ];
+
+            // No asset, just the single mortgage liability.
+            expect(calculateNetWorth(accounts, expenses)).toBe(-300000);
         });
 
         it('includes mortgage from expense when no property account', () => {
