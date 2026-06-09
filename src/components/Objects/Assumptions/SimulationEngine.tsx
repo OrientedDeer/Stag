@@ -338,10 +338,15 @@ function simulateOneYearWithNewEngine(
         expenses
             .filter(e => isLongTermGoal(e) && e.goalAccountId)
             .filter(e => {
-                const goalStartYear = (e.startDate ? new Date(e.startDate) : new Date()).getFullYear();
+                // Use UTC year extraction to match isGoalDueInYear (and the
+                // purchase gate, which flows through it). Goal dates are stored
+                // as UTC-midnight, so reading them with local getFullYear() in a
+                // negative-UTC timezone shifts a YYYY-01-01 target back a year and
+                // caps the sinking fund to $0 a full year before the lump fires.
+                const goalStartYear = (e.startDate ? new Date(e.startDate) : new Date()).getUTCFullYear();
                 if (year < goalStartYear) return true; // not saving yet
                 if (e.goalType === 'targetDate' && e.goalTargetDate
-                    && new Date(e.goalTargetDate).getFullYear() < year) return true; // already purchased
+                    && new Date(e.goalTargetDate).getUTCFullYear() < year) return true; // already purchased
                 return false;
             })
             .map(e => e.goalAccountId!)
