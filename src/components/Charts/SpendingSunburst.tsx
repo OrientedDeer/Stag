@@ -46,7 +46,9 @@ const categoryColors: Record<string, string> = {
   'Utilities': 'var(--c-accent-soft)',
   'Insurance': 'var(--c-cat-cyan-soft)',
   'Debt': 'var(--c-cat-fuchsia)',
-  'Dependents': 'var(--color-chart-series-3)',
+  // Distinct from Savings, which uses --color-chart-money (== series-3, #ffc030,
+  // on the default theme) — using series-3 here made both slices the same gold.
+  'Dependents': 'var(--c-cat-purple)',
   'Other': 'var(--c-content-subtle)',
   'Savings': 'var(--color-chart-money)',
 };
