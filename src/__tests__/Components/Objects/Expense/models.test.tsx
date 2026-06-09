@@ -1039,4 +1039,105 @@ describe('Expense Models', () => {
       expect(multiplier).toBeCloseTo(7 / 12, 4);
     });
   });
+
+  // --- UTC date-only convention regression tests (bugs #5, #8) ---
+  // Date-only values are stored as UTC-midnight Dates. In a negative-UTC (US)
+  // timezone, new Date(Date.UTC(2030,0,1)) is 2029-12-31T19:00 local, so local
+  // getMonth()/getFullYear() read Dec 2029 (off by a month AND a year) while
+  // getUTC* correctly reads Jan 2030. These methods must use getUTC*.
+  describe('UTC date-only handling (timezone safety)', () => {
+    // 2030-01-01 at UTC midnight — reads as Dec 2029 with LOCAL accessors in US TZs.
+    const utcStart = new Date(Date.UTC(2030, 0, 1));
+    // 2035-06-01 at UTC midnight — reads as May 2035 with LOCAL accessors in US TZs.
+    const utcEnd = new Date(Date.UTC(2035, 5, 1));
+
+    describe('MortgageExpense.calculateAnnualAmortization (#5)', () => {
+      it('treats a UTC-midnight startDate as Jan 2030, not Dec 2029', () => {
+        const mortgage = new MortgageExpense(
+          'm-utc', 'UTC Home', 'Monthly',
+          350000, 300000, 300000,
+          6, 30,
+          0, 0, 0, 0, 0,
+          0, 0, 'Yes', 0, 'a1',
+          utcStart
+        );
+        // year before start -> nothing.
+        expect(mortgage.calculateAnnualAmortization(2029).totalPayment).toBe(0);
+        // start year -> active (would be skipped if read as 2029 via local accessors,
+        // and the purchaseMonth would be 11 instead of 0).
+        const startYear = mortgage.calculateAnnualAmortization(2030);
+        expect(startYear.totalPayment).toBeGreaterThan(0);
+        // Jan start => full 12 months. A local read (Dec) would only count 1 month.
+        const fullYear = mortgage.calculateAnnualAmortization(2031);
+        expect(startYear.totalPayment).toBeCloseTo(fullYear.totalPayment, 0);
+      });
+    });
+
+    describe('LoanExpense.calculateAnnualAmortization (#5)', () => {
+      it('uses UTC accessors for start/end year and month boundaries', () => {
+        const loan = new LoanExpense(
+          'l-utc', 'UTC Loan', 30000, 'Monthly',
+          6, 'Compounding', 600, 'No', 0, 'a1',
+          utcStart, // 2030-01-01 UTC
+          utcEnd    // 2035-06-01 UTC
+        );
+        // Before start year: zero. Local read would think start is Dec 2029.
+        expect(loan.calculateAnnualAmortization(2029).totalPayment).toBe(0);
+        // Start year active and starts in January (full run of months from index 0).
+        const startYear = loan.calculateAnnualAmortization(2030);
+        expect(startYear.totalPayment).toBeGreaterThan(0);
+        // End year is 2035 (UTC), not 2035 misread as something else; past end => 0.
+        expect(loan.calculateAnnualAmortization(2036).totalPayment).toBe(0);
+      });
+    });
+
+    describe('getMonthsUntilPaidOff (#8)', () => {
+      it('computes whole months using UTC accessors', () => {
+        // Start on the 1st (UTC) — rolls back a month with local accessors in a
+        // US TZ. End mid-month (the 15th, UTC) — does NOT roll back. So a local
+        // read shifts only the start, giving 66 instead of the correct 65.
+        const loan = new LoanExpense(
+          'l-months-utc', 'UTC Loan', 30000, 'Monthly',
+          6, 'Compounding', 600, 'No', 0, 'a1',
+          new Date(Date.UTC(2030, 0, 1)),  // 2030-01-01 UTC
+          new Date(Date.UTC(2035, 5, 15))  // 2035-06-15 UTC
+        );
+        // (2035-2030)*12 + (5-0) = 65 months.
+        expect(loan.getMonthsUntilPaidOff()).toBe(65);
+      });
+    });
+
+    describe('isExpenseActiveInCurrentMonth (#8)', () => {
+      it('agrees with getExpenseActiveMultiplier on the current year for UTC dates', () => {
+        // Build a UTC-midnight start on the 1st of the current month. With LOCAL
+        // accessors in a US TZ this would read as the previous month, but the
+        // expense is genuinely active now.
+        const now = new Date();
+        const utcThisMonth = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
+        const expense = new OtherExpense('e-utc', 'UTC active', 100, 'Monthly', utcThisMonth);
+
+        expect(isExpenseActiveInCurrentMonth(expense)).toBe(true);
+        // Cross-check with the file's getUTC*-based multiplier: active this year.
+        expect(getExpenseActiveMultiplier(expense, now.getFullYear())).toBeGreaterThan(0);
+      });
+
+      it('treats a next-month UTC start as inactive (not pulled into this month)', () => {
+        // A UTC-midnight start on the 1st of NEXT month reads, in a US TZ, as the
+        // last day of THIS month with local accessors — which would wrongly mark
+        // it active now. With getUTC* it stays correctly inactive. (When run on
+        // the last day of a month the local roll-back lands in the current month
+        // too; the assertion holds either way since UTC start is still future.)
+        const now = new Date();
+        const nextMonthStart = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 1));
+        const expense = new OtherExpense('e-next', 'Next month', 100, 'Monthly', nextMonthStart);
+        expect(isExpenseActiveInCurrentMonth(expense)).toBe(false);
+      });
+
+      it('treats a future UTC start as inactive', () => {
+        const future = new Date(Date.UTC(new Date().getFullYear() + 2, 0, 1));
+        const expense = new OtherExpense('e-future', 'Future', 100, 'Monthly', future);
+        expect(isExpenseActiveInCurrentMonth(expense)).toBe(false);
+      });
+    });
+  });
 });

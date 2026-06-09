@@ -837,8 +837,11 @@ export function isIncomeActiveInCurrentMonth(income: AnyIncome): boolean {
     const currentMonth = today.getMonth(); // 0-indexed
 
     const incomeStartDate = income.startDate != null ? income.startDate : new Date();
-    const incomeStartYear = incomeStartDate.getFullYear();
-    const incomeStartMonth = incomeStartDate.getMonth();
+    // Stored date-only values are UTC-midnight; read them with getUTC* (today stays
+    // local since it's a true instant). Both sides feed local new Date(y, m, 1)
+    // month-boundary comparisons, so the bases stay consistent.
+    const incomeStartYear = incomeStartDate.getUTCFullYear();
+    const incomeStartMonth = incomeStartDate.getUTCMonth();
 
     const currentMonthStart = new Date(currentYear, currentMonth, 1);
     const incomeEffectiveStart = new Date(incomeStartYear, incomeStartMonth, 1);
@@ -849,8 +852,8 @@ export function isIncomeActiveInCurrentMonth(income: AnyIncome): boolean {
 
     if (income.end_date) {
         const incomeEndDate = new Date(income.end_date);
-        const incomeEndYear = incomeEndDate.getFullYear();
-        const incomeEndMonth = incomeEndDate.getMonth();
+        const incomeEndYear = incomeEndDate.getUTCFullYear();
+        const incomeEndMonth = incomeEndDate.getUTCMonth();
 
         const incomeEffectiveEnd = new Date(incomeEndYear, incomeEndMonth + 1, 0);
 

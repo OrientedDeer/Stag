@@ -1288,4 +1288,45 @@ describe('Income Models', () => {
       }
     });
   });
+
+  // --- UTC date-only convention regression tests (bug #8) ---
+  // Date-only values are stored as UTC-midnight Dates. In a US (negative-UTC)
+  // timezone, new Date(Date.UTC(2030,0,1)) is 2029-12-31 local, so LOCAL
+  // getMonth()/getFullYear() misread the month/year. isIncomeActiveInCurrentMonth
+  // must read stored dates with getUTC*.
+  describe('UTC date-only handling (timezone safety)', () => {
+    it('agrees with getIncomeActiveMultiplier on the current year for UTC dates', () => {
+      const now = new Date();
+      // UTC-midnight start on the 1st of the current month: genuinely active now,
+      // but a LOCAL read in a US TZ would place it in the previous month.
+      const utcThisMonth = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
+      const income = new PassiveIncome('i-utc', 'UTC active', 1000, 'Annually', 'No', 'Interest', utcThisMonth);
+
+      expect(isIncomeActiveInCurrentMonth(income)).toBe(true);
+      expect(getIncomeActiveMultiplier(income, now.getFullYear())).toBeGreaterThan(0);
+    });
+
+    it('treats a next-month UTC start as inactive (not pulled into this month)', () => {
+      // A UTC-midnight start on the 1st of NEXT month reads, in a US TZ, as the
+      // last day of THIS month with local accessors — which would wrongly mark it
+      // active now. With getUTC* it stays correctly inactive.
+      const now = new Date();
+      const nextMonthStart = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 1));
+      const income = new PassiveIncome('i-next', 'Next month', 1000, 'Annually', 'No', 'Interest', nextMonthStart);
+      expect(isIncomeActiveInCurrentMonth(income)).toBe(false);
+    });
+
+    it('treats a future UTC start as inactive', () => {
+      const future = new Date(Date.UTC(new Date().getFullYear() + 2, 0, 1));
+      const income = new PassiveIncome('i-future', 'Future', 1000, 'Annually', 'No', 'Interest', future);
+      expect(isIncomeActiveInCurrentMonth(income)).toBe(false);
+    });
+
+    it('treats a UTC end date in the past as inactive', () => {
+      const start = new Date(Date.UTC(new Date().getFullYear() - 3, 0, 1));
+      const end = new Date(Date.UTC(new Date().getFullYear() - 1, 0, 1));
+      const income = new PassiveIncome('i-ended', 'Ended', 1000, 'Annually', 'No', 'Interest', start, end);
+      expect(isIncomeActiveInCurrentMonth(income)).toBe(false);
+    });
+  });
 });

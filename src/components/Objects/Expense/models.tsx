@@ -356,8 +356,8 @@ export class MortgageExpense extends BaseExpense {
 
 
   calculateAnnualAmortization(year: number): { totalInterest: number, totalPrincipal: number, totalPayment: number } {
-    const purchaseYear = this.startDate != null ? this.startDate.getFullYear() : new Date().getFullYear();
-    const purchaseMonth = this.startDate != null ? this.startDate.getMonth() : new Date().getMonth();
+    const purchaseYear = this.startDate != null ? this.startDate.getUTCFullYear() : new Date().getFullYear();
+    const purchaseMonth = this.startDate != null ? this.startDate.getUTCMonth() : new Date().getMonth();
 
     if (year < purchaseYear) {
       return { totalInterest: 0, totalPrincipal: 0, totalPayment: 0 };
@@ -593,12 +593,12 @@ export class LoanExpense extends BaseExpense {
   }
 
   calculateAnnualAmortization(year: number): { totalInterest: number, totalPrincipal: number, totalPayment: number } {
-    const loanStartYear = this.startDate ? this.startDate.getFullYear() : new Date().getFullYear();
+    const loanStartYear = this.startDate ? this.startDate.getUTCFullYear() : new Date().getFullYear();
     if (year < loanStartYear) {
         return { totalInterest: 0, totalPrincipal: 0, totalPayment: 0 };
     }
 
-    const loanEndYear = this.endDate ? this.endDate.getFullYear() : null;
+    const loanEndYear = this.endDate ? this.endDate.getUTCFullYear() : null;
     if (loanEndYear !== null && year > loanEndYear) {
         return { totalInterest: 0, totalPrincipal: 0, totalPayment: 0 };
     }
@@ -609,8 +609,8 @@ export class LoanExpense extends BaseExpense {
 
     const monthlyRate = this.apr / 100 / 12;
 
-    const startMonth = (year === loanStartYear) ? (this.startDate ? this.startDate.getMonth() : 0) : 0;
-    const endMonth = (loanEndYear === year) ? (this.endDate ? this.endDate.getMonth() : 11) : 11;
+    const startMonth = (year === loanStartYear) ? (this.startDate ? this.startDate.getUTCMonth() : 0) : 0;
+    const endMonth = (loanEndYear === year) ? (this.endDate ? this.endDate.getUTCMonth() : 11) : 11;
 
     for (let month = startMonth; month <= endMonth; month++) {
         if (balance <= 0) {
@@ -675,7 +675,9 @@ export class LoanExpense extends BaseExpense {
     if (!this.endDate || !this.startDate) return 0;
     const start = new Date(this.startDate);
     const end = new Date(this.endDate);
-    return (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+    // startDate/endDate are UTC-midnight date-only values; read with getUTC* to
+    // avoid a one-month shift in negative-UTC timezones.
+    return (end.getUTCFullYear() - start.getUTCFullYear()) * 12 + (end.getUTCMonth() - start.getUTCMonth());
   }
 
   getAnnualAmount(year?: number): number {
@@ -847,8 +849,11 @@ export function isExpenseActiveInCurrentMonth(expense: AnyExpense): boolean {
   const currentMonth = today.getMonth();
 
   const expenseStartDate = expense.startDate != null ? expense.startDate : new Date();
-  const expenseStartYear = expenseStartDate.getFullYear();
-  const expenseStartMonth = expenseStartDate.getMonth();
+  // Stored date-only values are UTC-midnight; read them with getUTC* (today stays
+  // local since it's a true instant). Both sides feed local new Date(y, m, 1)
+  // month-boundary comparisons, so the bases stay consistent.
+  const expenseStartYear = expenseStartDate.getUTCFullYear();
+  const expenseStartMonth = expenseStartDate.getUTCMonth();
 
   const currentMonthStart = new Date(currentYear, currentMonth, 1);
   const expenseEffectiveStart = new Date(expenseStartYear, expenseStartMonth, 1);
@@ -859,8 +864,8 @@ export function isExpenseActiveInCurrentMonth(expense: AnyExpense): boolean {
 
   if (expense.endDate) {
     const expenseEndDate = new Date(expense.endDate);
-    const expenseEndYear = expenseEndDate.getFullYear();
-    const expenseEndMonth = expenseEndDate.getMonth();
+    const expenseEndYear = expenseEndDate.getUTCFullYear();
+    const expenseEndMonth = expenseEndDate.getUTCMonth();
 
     const expenseEffectiveEnd = new Date(expenseEndYear, expenseEndMonth + 1, 0);
 
