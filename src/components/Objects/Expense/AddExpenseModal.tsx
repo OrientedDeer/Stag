@@ -117,6 +117,11 @@ interface ExpenseFormState {
 }
 
 function getInitialFormState(frequency: ExpenseFrequency = 'Monthly'): ExpenseFormState {
+	// Local (not UTC) date-only values so they display/round-trip correctly
+	// through TriggerSelector (which formats + parses in local time).
+	const now = new Date();
+	const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+	const oneYearOut = new Date(now.getFullYear() + 1, now.getMonth(), now.getDate());
 	return {
 		name: '',
 		amount: 0,
@@ -125,7 +130,8 @@ function getInitialFormState(frequency: ExpenseFrequency = 'Monthly'): ExpenseFo
 		annualMode: 'lump',
 		goalType: 'recurring',
 		intervalYears: 10,
-		goalTargetDate: undefined,
+		// "Save by date" goals default ~1 year out, not the End-of-Plan milestone.
+		goalTargetDate: oneYearOut,
 		goalTargetMilestoneId: undefined,
 		valuation: 0,
 		loanBalance: 0,
@@ -144,7 +150,7 @@ function getInitialFormState(frequency: ExpenseFrequency = 'Monthly'): ExpenseFo
 		payment: 0,
 		isTaxDeductible: 'No',
 		taxDeductibleAmount: 0,
-		startDate: new Date(Date.UTC(new Date().getFullYear(), 0, 1)),
+		startDate: today,
 		endDate: undefined,
 		startMilestoneId: undefined,
 		endMilestoneId: undefined,
