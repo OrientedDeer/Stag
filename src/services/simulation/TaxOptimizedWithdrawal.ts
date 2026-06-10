@@ -856,8 +856,6 @@ export function projectBalanceAtRMD(
  * @param pensionIncomeAtRMD - Non-SS fixed income at RMD age (pensions, annuities)
  * @param ssAtRMD - Social Security benefits at RMD age
  * @param currentAGI - This year's AGI (excluding SS)
- * @param socialSecurityThisYear - This year's SS benefits
- * @param ltcgIncome - Long-term capital gains (for bump zone detection)
  * @param growthRate - Expected annual growth rate
  * @param rmdStartAge - Age at which RMDs begin (72, 73, or 75 based on birth year)
  * @param taxParams - Federal tax parameters
@@ -871,14 +869,10 @@ export function calculateDynamicConversionCeiling(
     ssAtRMD: number,
     passiveIncomeAtRMD: number,
     currentAGI: number,
-    _socialSecurityThisYear: number,
-    _ltcgIncome: number,
     growthRate: number,
     rmdStartAge: number,
     taxParams: TaxParameters,
     taxState: TaxState,
-    _stateParams: TaxParameters | null = null,
-    _acaOptions?: ACAOptions,
     baselineProjections?: BaselineProjections,
     /**
      * Simulation assumptions. When provided, the peak-RMD bracket lookup uses
@@ -1015,7 +1009,7 @@ export function calculateDynamicConversionCeiling(
     );
 
     const ceiling = rateMatchResult.topConversionRate;
-    let bracketSpacePerYear = rateMatchResult.optimalConversion;
+    const bracketSpacePerYear = rateMatchResult.optimalConversion;
 
     // Subsequent SS-torpedo / ACA / LTCG-bump logic (downstream in YearSolver) may
     // further reduce this; rate-match output is the rate-arbitrage optimum.

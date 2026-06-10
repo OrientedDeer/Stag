@@ -168,13 +168,10 @@ describe('Bug D: Gap Year Input→Output Tests', () => {
                 25_000,     // ssAtRMD
                 0,          // passiveIncomeAtRMD
                 0,          // currentAGI = 0 (gap year)
-                0,          // socialSecurityThisYear = 0
-                0,          // ltcgIncome = 0
                 0.06,       // growthRate
                 75,         // rmdStartAge
                 taxParams,
-                singleTaxState,
-                null
+                singleTaxState
             );
 
             console.log('Test 2a - Gap year, small balance:', {
@@ -202,13 +199,10 @@ describe('Bug D: Gap Year Input→Output Tests', () => {
                 30_000,     // ssAtRMD
                 0,          // passiveIncomeAtRMD
                 0,          // currentAGI = 0 (gap year)
-                0,          // socialSecurityThisYear = 0
-                0,          // ltcgIncome = 0
                 0.07,       // growthRate
                 75,         // rmdStartAge
                 taxParams,
-                singleTaxState,
-                null
+                singleTaxState
             );
 
             console.log('Test 2b - Gap year, large balance, escalated ceiling:', {
@@ -238,13 +232,10 @@ describe('Bug D: Gap Year Input→Output Tests', () => {
                 35_000,     // ssAtRMD
                 0,          // passiveIncomeAtRMD
                 0,          // currentAGI = 0 (gap year)
-                0,          // socialSecurityThisYear = 0
-                0,          // ltcgIncome = 0
                 0.07,       // growthRate
                 75,         // rmdStartAge
                 taxParams,
-                singleTaxState,
-                null
+                singleTaxState
             );
 
             console.log('Test 2c - Gap year, very large balance, 24% ceiling:', {
@@ -344,13 +335,10 @@ describe('Bug D: bracketSpacePerYear calculation', () => {
                 30_000,     // SS at RMD
                 0,          // passiveIncomeAtRMD
                 0,          // currentAGI = $0 (gap years, no income)
-                0,          // SS this year = 0
-                0,          // LTCG = 0
                 0.06,       // growth rate
                 75,         // RMD start age
                 taxParams,
-                singleTaxState,
-                null        // no state params
+                singleTaxState
             );
 
             console.log('Bug D Test - Zero AGI, 12% ceiling:', {

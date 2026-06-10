@@ -17,7 +17,6 @@ import {
     SEARCH_CONFIG,
     MAX_CONVERSION_BRACKET,
 } from '../TaxOptimizedWithdrawal';
-import { TaxParameters } from '../../../data/TaxData';
 import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import * as TaxService from '../../../components/Objects/Taxes/TaxService';
 import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
@@ -949,13 +948,10 @@ describe('calculateDynamicConversionCeiling', () => {
                 inputs.ssAtRMD,
                 0, // passiveIncomeAtRMD
                 inputs.currentAGI,
-                inputs.socialSecurityThisYear,
-                inputs.ltcgIncome,
                 inputs.growthRate,
                 inputs.rmdStartAge,
                 taxParams,
-                singleTaxState,
-                null
+                singleTaxState
             );
 
             expect(result.conversionCeiling).toBe(0);
@@ -974,13 +970,10 @@ describe('calculateDynamicConversionCeiling', () => {
                 inputs.ssAtRMD,
                 0, // passiveIncomeAtRMD
                 inputs.currentAGI,
-                inputs.socialSecurityThisYear,
-                inputs.ltcgIncome,
                 inputs.growthRate,
                 inputs.rmdStartAge,
                 taxParams,
-                singleTaxState,
-                null
+                singleTaxState
             );
 
             expect(result.conversionCeiling).toBe(0);
@@ -1011,13 +1004,10 @@ describe('calculateDynamicConversionCeiling', () => {
                 inputs.ssAtRMD,
                 0, // passiveIncomeAtRMD
                 inputs.currentAGI,
-                inputs.socialSecurityThisYear,
-                inputs.ltcgIncome,
                 inputs.growthRate,
                 inputs.rmdStartAge,
                 taxParams,
-                singleTaxState,
-                null
+                singleTaxState
             );
 
             // Rate-match algorithm: peak future RMD lands in 12% bracket. From 0%
@@ -1049,13 +1039,10 @@ describe('calculateDynamicConversionCeiling', () => {
                 inputs.ssAtRMD,
                 0, // passiveIncomeAtRMD
                 inputs.currentAGI,
-                inputs.socialSecurityThisYear,
-                inputs.ltcgIncome,
                 inputs.growthRate,
                 inputs.rmdStartAge,
                 taxParams,
-                singleTaxState,
-                null
+                singleTaxState
             );
 
             // Rate-match: peak future = 24% bracket. From 0% std-ded (gap 24, convert),
@@ -1088,13 +1075,10 @@ describe('calculateDynamicConversionCeiling', () => {
                 inputs.ssAtRMD,
                 0, // passiveIncomeAtRMD
                 inputs.currentAGI,
-                inputs.socialSecurityThisYear,
-                inputs.ltcgIncome,
                 inputs.growthRate,
                 inputs.rmdStartAge,
                 taxParams,
-                singleTaxState,
-                null
+                singleTaxState
             );
 
             // Rate-match: peak lands in 35%/37% bracket. With 5pp gap requirement,
@@ -1133,14 +1117,10 @@ describe('calculateDynamicConversionCeiling', () => {
                 inputs.ssAtRMD,
                 0, // passiveIncomeAtRMD
                 inputs.currentAGI,
-                inputs.socialSecurityThisYear,
-                inputs.ltcgIncome,
                 inputs.growthRate,
                 inputs.rmdStartAge,
                 taxParams,
                 singleTaxState,
-                null,
-                undefined,
                 baselineProjections
             );
 
@@ -1170,13 +1150,10 @@ describe('calculateDynamicConversionCeiling', () => {
                 inputs.ssAtRMD,
                 0, // passiveIncomeAtRMD
                 inputs.currentAGI,
-                inputs.socialSecurityThisYear,
-                inputs.ltcgIncome,
                 inputs.growthRate,
                 inputs.rmdStartAge,
                 taxParams,
-                singleTaxState,
-                null
+                singleTaxState
             );
 
             // projectedRMDBracket should be a valid bracket rate
@@ -1206,13 +1183,10 @@ describe('calculateDynamicConversionCeiling', () => {
                 inputs.ssAtRMD,
                 0, // passiveIncomeAtRMD
                 inputs.currentAGI,
-                inputs.socialSecurityThisYear,
-                inputs.ltcgIncome,
                 inputs.growthRate,
                 inputs.rmdStartAge,
                 taxParams,
-                singleTaxState,
-                null
+                singleTaxState
             );
 
             // If utilization ratio > 0.90, ceiling should raise even if projected bracket is low
@@ -1238,23 +1212,11 @@ describe('calculateDynamicConversionCeiling', () => {
                 inputs.ssAtRMD,
                 0, // passiveIncomeAtRMD
                 inputs.currentAGI,
-                inputs.socialSecurityThisYear,
-                inputs.ltcgIncome,
                 inputs.growthRate,
                 inputs.rmdStartAge,
                 taxParams,
-                singleTaxState,
-                null  // No state params
+                singleTaxState
             );
-
-            // With 5% flat state tax
-            const stateParams: TaxParameters = {
-                standardDeduction: 0,
-                brackets: [{ threshold: 0, rate: 0.05 }],
-                socialSecurityTaxRate: 0,
-                socialSecurityWageBase: 0,
-                medicareTaxRate: 0
-            };
 
             const stateTaxState: TaxState = {
                 ...singleTaxState,
@@ -1268,13 +1230,10 @@ describe('calculateDynamicConversionCeiling', () => {
                 inputs.ssAtRMD,
                 0, // passiveIncomeAtRMD
                 inputs.currentAGI,
-                inputs.socialSecurityThisYear,
-                inputs.ltcgIncome,
                 inputs.growthRate,
                 inputs.rmdStartAge,
                 taxParams,
-                stateTaxState,
-                stateParams  // 5% flat state tax
+                stateTaxState
             );
 
             // Both should use the same ceiling (based on federal RMD bracket projection)
@@ -1310,13 +1269,10 @@ describe('calculateDynamicConversionCeiling', () => {
                 inputs.ssAtRMD,
                 0, // passiveIncomeAtRMD
                 inputs.currentAGI,
-                inputs.socialSecurityThisYear,
-                inputs.ltcgIncome,
                 inputs.growthRate,
                 inputs.rmdStartAge,
                 taxParams,
-                singleTaxState,
-                null
+                singleTaxState
             );
 
             // Projected balance equals current balance (no growth)
@@ -1341,13 +1297,10 @@ describe('calculateDynamicConversionCeiling', () => {
                 inputs.ssAtRMD,
                 0, // passiveIncomeAtRMD
                 inputs.currentAGI,
-                inputs.socialSecurityThisYear,
-                inputs.ltcgIncome,
                 inputs.growthRate,
                 inputs.rmdStartAge,
                 taxParams,
-                singleTaxState,
-                null
+                singleTaxState
             );
 
             // conversionCeiling: valid bracket rate <= 32%
@@ -1388,13 +1341,10 @@ describe('calculateDynamicConversionCeiling', () => {
                 inputs.ssAtRMD,
                 0, // passiveIncomeAtRMD
                 inputs.currentAGI,
-                inputs.socialSecurityThisYear,
-                inputs.ltcgIncome,
                 inputs.growthRate,
                 inputs.rmdStartAge,
                 singleParams,
-                singleTaxState,
-                null
+                singleTaxState
             );
 
             const mfjResult = calculateDynamicConversionCeiling(
@@ -1404,13 +1354,10 @@ describe('calculateDynamicConversionCeiling', () => {
                 inputs.ssAtRMD,
                 0, // passiveIncomeAtRMD
                 inputs.currentAGI,
-                inputs.socialSecurityThisYear,
-                inputs.ltcgIncome,
                 inputs.growthRate,
                 inputs.rmdStartAge,
                 mfjParams,
-                mfjTaxState,
-                null
+                mfjTaxState
             );
 
             // MFJ has wider brackets, so may not need to raise ceiling as high
@@ -1472,14 +1419,14 @@ describe('calculateDynamicConversionCeiling', () => {
             const resultAt35 = calculateDynamicConversionCeiling(
                 balanceAtAge35, yearsAtAge35,
                 pensionAtRMD, ssAtRMD, passiveAtRMD,
-                0, 0, 0, growthRate, rmdStartAge,
-                fedAtAge35, taxStateAtAge35, null, undefined, undefined, assumptions
+                0, growthRate, rmdStartAge,
+                fedAtAge35, taxStateAtAge35, undefined, assumptions
             );
             const resultAt55 = calculateDynamicConversionCeiling(
                 balanceAtAge55, yearsAtAge55,
                 pensionAtRMD, ssAtRMD, passiveAtRMD,
-                0, 0, 0, growthRate, rmdStartAge,
-                fedAtAge55, taxStateAtAge55, null, undefined, undefined, assumptions
+                0, growthRate, rmdStartAge,
+                fedAtAge55, taxStateAtAge55, undefined, assumptions
             );
 
             // Same RMD-year balance and same RMD-year income → same peak-RMD bracket → same ceiling.
@@ -1501,8 +1448,8 @@ describe('calculateDynamicConversionCeiling', () => {
             const result = calculateDynamicConversionCeiling(
                 500_000, 30,
                 0, 30_000, 0,
-                50_000, 0, 0, 0.07, 75,
-                fedParams, taxState, null
+                50_000, 0.07, 75,
+                fedParams, taxState
                 // assumptions intentionally omitted
             );
 
@@ -1537,14 +1484,10 @@ describe('calculateDynamicConversionCeiling', () => {
                 inputs.ssAtRMD,
                 0,
                 inputs.currentAGI,
-                inputs.socialSecurityThisYear,
-                inputs.ltcgIncome,
                 inputs.growthRate,
                 inputs.rmdStartAge,
                 taxParams,
                 singleTaxState,
-                null,
-                undefined,
                 undefined,
                 undefined,
                 'std-ded-only'
@@ -1566,14 +1509,10 @@ describe('calculateDynamicConversionCeiling', () => {
                 inputs.ssAtRMD,
                 0,
                 inputs.currentAGI,
-                inputs.socialSecurityThisYear,
-                inputs.ltcgIncome,
                 inputs.growthRate,
                 inputs.rmdStartAge,
                 taxParams,
                 singleTaxState,
-                null,
-                undefined,
                 undefined,
                 undefined,
                 'std-ded-only'
@@ -1597,14 +1536,10 @@ describe('calculateDynamicConversionCeiling', () => {
                 inputs.ssAtRMD,
                 0,
                 inputs.currentAGI,
-                inputs.socialSecurityThisYear,
-                inputs.ltcgIncome,
                 inputs.growthRate,
                 inputs.rmdStartAge,
                 taxParams,
                 singleTaxState,
-                null,
-                undefined,
                 undefined,
                 undefined,
                 'std-ded-only'

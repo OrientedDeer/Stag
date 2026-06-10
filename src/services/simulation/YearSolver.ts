@@ -326,7 +326,6 @@ function computeCeilingContext(
     baseOrdinaryIncome: number,
     socialSecurityBenefits: number,
     fedParams: TaxParameters,
-    stateParams: TaxParameters | null,
 ): {
     ceilingResult: ReturnType<typeof calculateDynamicConversionCeiling>;
     rmdStartAge: number;
@@ -412,14 +411,10 @@ function computeCeilingContext(
         fixedIncomeAtRMD.ssAtRMD,
         passiveIncome,
         baseOrdinaryIncome,
-        socialSecurityBenefits,
-        0,
         growthRate,
         rmdStartAge,
         fedParams,
         input.taxState,
-        stateParams,
-        acaOptions,
         input.baselineProjections,
         input.assumptions,
         input.conversionMode ?? 'rate-match'
@@ -516,7 +511,7 @@ function planConversion(
         yearsUntilRMD,
         fixedIncomeAtRMD,
         acaOptions,
-    } = computeCeilingContext(input, baseOrdinaryIncome, socialSecurityBenefits, fedParams, stateParams);
+    } = computeCeilingContext(input, baseOrdinaryIncome, socialSecurityBenefits, fedParams);
 
     // Log ceiling decision so it's visible in the year inspector
     decisions.push({
@@ -1034,7 +1029,7 @@ function planConversionDP(
     const penaltyApplies = input.currentAge < 59.5;
     if (spendingDeficit > 0 && !penaltyApplies) {
         const { ceilingResult } = computeCeilingContext(
-            input, baseOrdinaryIncome, socialSecurityBenefits, fedParams, stateParams,
+            input, baseOrdinaryIncome, socialSecurityBenefits, fedParams,
         );
         const conversionCeiling = ceilingResult.conversionCeiling;
         const bracketSpacePerYear = Math.max(0, ceilingResult.bracketSpacePerYear);
