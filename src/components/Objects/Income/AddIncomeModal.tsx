@@ -184,7 +184,9 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
             );
         } else if (selectedType === FERSPensionIncome) {
             const retirementYear = getBirthYear(assumptions.milestones) + form.pensionRetirementAge;
-            const pensionStartDate = new Date(Date.UTC(retirementYear, 0, 1));
+            // Local (not UTC) so it displays as Jan 1 of the retirement year
+            // rather than Dec 31 of the prior year in negative-UTC timezones.
+            const pensionStartDate = new Date(retirementYear, 0, 1);
             let effectiveHigh3 = form.pensionHigh3Salary;
             if (form.autoCalculateHigh3 && form.linkedIncomeId) {
                 const linkedIncome = workIncomes.find(inc => inc.id === form.linkedIncomeId);
@@ -204,7 +206,9 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
             );
         } else if (selectedType === CSRSPensionIncome) {
             const retirementYear = getBirthYear(assumptions.milestones) + form.pensionRetirementAge;
-            const pensionStartDate = new Date(Date.UTC(retirementYear, 0, 1));
+            // Local (not UTC) so it displays as Jan 1 of the retirement year
+            // rather than Dec 31 of the prior year in negative-UTC timezones.
+            const pensionStartDate = new Date(retirementYear, 0, 1);
             let effectiveHigh3 = form.pensionHigh3Salary;
             if (form.autoCalculateHigh3 && form.linkedIncomeId) {
                 const linkedIncome = workIncomes.find(inc => inc.id === form.linkedIncomeId);
