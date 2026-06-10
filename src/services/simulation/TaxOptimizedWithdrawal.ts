@@ -13,7 +13,7 @@ import { TaxParameters, FilingStatus } from '../../data/TaxData';
 import * as TaxService from '../../components/Objects/Taxes/TaxService';
 import { TaxState } from '../../components/Objects/Taxes/TaxContext';
 import { AssumptionsState, getBirthYear } from '../../components/Objects/Assumptions/AssumptionsContext';
-import { calculateEffectiveConversionTax, ACAOptions } from './helpers';
+import { calculateEffectiveConversionTax, computeConversionTaxBaseline, ACAOptions } from './helpers';
 import { getDistributionPeriod } from '../../data/RMDData';
 import { BaselineProjections, RateMatchWalkRow } from './types';
 
@@ -220,6 +220,17 @@ export function getEffectiveConversionRate(
     stateParams: TaxParameters | null,
     acaOptions?: ACAOptions
 ): number {
+    // The "before" tax positions are conversion-independent, so compute them once
+    // and reuse for both probes instead of recomputing inside each call.
+    const baseline = computeConversionTaxBaseline(
+        ordinaryIncome,
+        socialSecurity,
+        ltcgIncome,
+        taxState.filingStatus,
+        taxParams,
+        stateParams,
+    );
+
     // Calculate total cost of converting conversionAmount
     // taxIncrease includes federal tax increase + state tax + ACA subsidy loss
     const resultAtAmount = calculateEffectiveConversionTax(
@@ -230,7 +241,8 @@ export function getEffectiveConversionRate(
         taxState.filingStatus,
         taxParams,
         stateParams,
-        acaOptions
+        acaOptions,
+        baseline,
     );
 
     // Calculate total cost of converting conversionAmount + $1
@@ -242,7 +254,8 @@ export function getEffectiveConversionRate(
         taxState.filingStatus,
         taxParams,
         stateParams,
-        acaOptions
+        acaOptions,
+        baseline,
     );
 
     // Marginal rate = difference in total cost for $1 more conversion

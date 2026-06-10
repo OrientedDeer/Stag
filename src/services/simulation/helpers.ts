@@ -53,6 +53,41 @@ export interface EffectiveConversionTaxResult {
 }
 
 /**
+ * The conversion-INDEPENDENT "before" tax positions used by
+ * calculateEffectiveConversionTax. They depend only on the fixed income inputs,
+ * so a search that probes many conversion amounts at the same income (e.g.
+ * coarseToFineSearch via getEffectiveConversionRate) can compute this once and
+ * pass it in via the optional `baseline` param instead of recomputing it on
+ * every probe.
+ */
+export interface ConversionTaxBaseline {
+    taxResultBefore: ReturnType<typeof TaxService.calculateTotalFederalTax>;
+    taxBeforeManualSS: ReturnType<typeof TaxService.calculateTotalFederalTax>;
+    stateTaxBefore: number;
+}
+
+export function computeConversionTaxBaseline(
+    nonSSIncome: number,
+    totalSSBenefits: number,
+    ltcgIncome: number,
+    filingStatus: FilingStatus,
+    fedParams: TaxParameters,
+    stateParams: TaxParameters | null,
+): ConversionTaxBaseline {
+    const taxResultBefore = TaxService.calculateTotalFederalTax(
+        nonSSIncome, totalSSBenefits, 0, ltcgIncome, 0, filingStatus, fedParams,
+    );
+    // "before" with taxable SS folded into ordinary income (frozen-SS baseline).
+    const taxBeforeManualSS = TaxService.calculateTotalFederalTax(
+        nonSSIncome + taxResultBefore.taxableSS, 0, 0, ltcgIncome, 0, filingStatus, fedParams,
+    );
+    const stateTaxBefore = stateParams
+        ? TaxService.calculateTax(nonSSIncome + ltcgIncome, 0, stateParams)
+        : 0;
+    return { taxResultBefore, taxBeforeManualSS, stateTaxBefore };
+}
+
+/**
  * Calculate the effective tax cost of a Roth conversion, including:
  * - SS "tax torpedo" effect (conversion pushes more SS into taxable territory)
  * - LTCG bump (conversion can push LTCG from 0% to 15% bracket)
@@ -84,22 +119,21 @@ export function calculateEffectiveConversionTax(
     filingStatus: FilingStatus,
     fedParams: TaxParameters,
     stateParams: TaxParameters | null,
-    acaOptions?: ACAOptions
+    acaOptions?: ACAOptions,
+    /** Precomputed conversion-independent "before" positions. When omitted they
+     *  are computed here (unchanged behavior); a probing search can compute them
+     *  once and pass them in to avoid recomputing on every probe. */
+    baseline?: ConversionTaxBaseline,
 ): EffectiveConversionTaxResult {
+    const base = baseline ?? computeConversionTaxBaseline(
+        nonSSIncome, totalSSBenefits, ltcgIncome, filingStatus, fedParams, stateParams,
+    );
     // =========================================================================
     // CALCULATE FULL TAX BEFORE AND AFTER CONVERSION
     // =========================================================================
     // Use calculateTotalFederalTax for unified handling of SS taxability and LTCG stacking
     // Note: ltcgIncome is passed as longTermCapitalGains (4th param), STCG is 0 (3rd param)
-    const taxResultBefore = TaxService.calculateTotalFederalTax(
-        nonSSIncome,
-        totalSSBenefits,
-        0,          // shortTermCapitalGains
-        ltcgIncome, // longTermCapitalGains
-        0,          // preTaxDeductions - already accounted for in nonSSIncome
-        filingStatus,
-        fedParams
-    );
+    const taxResultBefore = base.taxResultBefore;
 
     const taxResultAfter = TaxService.calculateTotalFederalTax(
         nonSSIncome + conversionAmount,
@@ -150,16 +184,9 @@ export function calculateEffectiveConversionTax(
         fedParams
     );
 
-    // Also need the "before" state with SS added manually for apples-to-apples comparison
-    const taxBeforeManualSS = TaxService.calculateTotalFederalTax(
-        nonSSIncome + taxableSS_before,
-        0,          // no SS benefits
-        0,          // shortTermCapitalGains
-        ltcgIncome, // longTermCapitalGains
-        0,          // preTaxDeductions
-        filingStatus,
-        fedParams
-    );
+    // Also need the "before" state with SS added manually for apples-to-apples
+    // comparison (conversion-independent; supplied by the baseline).
+    const taxBeforeManualSS = base.taxBeforeManualSS;
 
     // federalOrdinaryTaxCost = marginal tax at current bracket (with existing taxable SS held constant)
     const federalOrdinaryTaxCost = taxFrozenSS.ordinaryTax - taxBeforeManualSS.ordinaryTax;
@@ -176,7 +203,7 @@ export function calculateEffectiveConversionTax(
         // Most states tax LTCG as ordinary income (no preferential rate).
         // Include LTCG in state income to get correct marginal rate on conversion.
         const stateIncome = nonSSIncome + ltcgIncome;
-        const stateTaxBefore = TaxService.calculateTax(stateIncome, 0, stateParams);
+        const stateTaxBefore = base.stateTaxBefore;
         const stateTaxAfter = TaxService.calculateTax(stateIncome + conversionAmount, 0, stateParams);
         stateTaxCost = stateTaxAfter - stateTaxBefore;
     }
