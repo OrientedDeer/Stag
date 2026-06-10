@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ResponsiveSunburst } from '@nivo/sunburst';
-import { AnyExpense, RentExpense, MortgageExpense, FoodExpense, TransportExpense, HealthcareExpense, VacationExpense, LoanExpense, DependentExpense, getGoalFundMonthlyCap, isLongTermGoal } from '../Objects/Expense/models';
+import { AnyExpense, RentExpense, MortgageExpense, FoodExpense, TransportExpense, HealthcareExpense, VacationExpense, LoanExpense, DependentExpense, getGoalFundAnnualSetAside, isLongTermGoal } from '../Objects/Expense/models';
 import { AnyIncome, WorkIncome } from '../Objects/Income/models';
 import { AnyAccount } from '../Objects/Accounts/models';
 import { useChartTheme } from './useChartTheme';
@@ -148,10 +148,11 @@ export const SpendingSunburst = ({
 
         // Long-term goal set-asides are COMMITTED transfers — taken before the
         // priority waterfall, mirroring the sim engine (which counts them with
-        // living expenses and credits the fund directly).
+        // living expenses and credits the fund directly). Months-prorated for
+        // mid-year starts and the partial final year.
         for (const g of expenses) {
           if (!isLongTermGoal(g) || !g.goalAccountId) continue;
-          const annual = (getGoalFundMonthlyCap(expenses, g.goalAccountId, year) ?? 0) * 12;
+          const annual = getGoalFundAnnualSetAside(expenses, g.goalAccountId, year) ?? 0;
           if (annual <= 0) continue;
           const allocated = Math.min(Math.max(0, remaining), annual);
           if (allocated > 0) {
@@ -163,7 +164,7 @@ export const SpendingSunburst = ({
         for (const bucket of priorities) {
           if (remaining <= 0) break;
           // Legacy goal buckets are skipped — goal funding is committed above.
-          if (getGoalFundMonthlyCap(expenses, bucket.accountId, year) !== undefined) continue;
+          if (getGoalFundAnnualSetAside(expenses, bucket.accountId, year) !== undefined) continue;
           let bucketCap: number;
           switch (bucket.capType) {
             case 'FIXED':

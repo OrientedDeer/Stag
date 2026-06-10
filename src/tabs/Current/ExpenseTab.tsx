@@ -10,7 +10,8 @@ import {
     EXPENSE_CATEGORIES,
     isExpenseActiveInCurrentMonth,
     isExpenseDone,
-    isLongTermGoal
+    isLongTermGoal,
+    getGoalMonthlySetAside
 } from '../../components/Objects/Expense/models';
 import ExpenseCard from '../../components/Objects/Expense/ExpenseCard';
 import AddExpenseModal from '../../components/Objects/Expense/AddExpenseModal';
@@ -175,7 +176,9 @@ const TabsContent = () => {
                 color: tailwindToCssVar(categoryColor), // Parent Color
                 children: expensesInCategory.map((exp, i) => ({
                     id: exp.name,
-                    value: exp.getMonthlyAmount(),
+                    // Goals report $0 from getMonthlyAmount; their committed
+                    // monthly set-aside is the real outflow to chart.
+                    value: isLongTermGoal(exp) ? getGoalMonthlySetAside(exp) : exp.getMonthlyAmount(),
                     color: tailwindToCssVar(expenseColors[i]), // Child Gradient Color
                     // Metadata
                     originalAmount: exp instanceof LoanExpense ? exp.payment : exp.amount,

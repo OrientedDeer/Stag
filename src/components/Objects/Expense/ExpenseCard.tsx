@@ -194,6 +194,12 @@ function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
         if (expense instanceof RentExpense || expense instanceof MortgageExpense || expense instanceof LoanExpense) {
             return formatCompactCurrency(expense.payment, { forceExact });
         }
+        // A goal's `amount` is the TOTAL cost with frequency 'Monthly' — showing
+        // "$10,000/mo" in the header would be wildly wrong. Show the committed
+        // monthly set-aside; the total lives in the Amount field inside.
+        if (isGoal) {
+            return formatCompactCurrency(getGoalMonthlySetAside(expense), { forceExact });
+        }
         return formatCompactCurrency(expense.amount, { forceExact });
     };
 

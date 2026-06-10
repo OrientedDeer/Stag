@@ -970,6 +970,47 @@ export function getGoalFundMonthlyCap(
 }
 
 /**
+ * Months of a calendar year during which a goal is actively saving: from its
+ * start month through the month before its end/target (a January target means
+ * no saving months in that final year — the lump is due then). Summed across
+ * years this equals monthsBetween(start, end) exactly, so a goal funded at its
+ * monthly set-aside lands on its total by the target — mid-year starts and the
+ * partial final year are handled instead of charging a full 12 months. UTC
+ * accessors match the rest of the goal math.
+ */
+function goalMonthsActiveInYear(goal: AnyExpense, year: number): number {
+  const start = goal.startDate ? new Date(goal.startDate) : new Date();
+  const startYear = start.getUTCFullYear();
+  if (year < startYear) return 0;
+  const from = year === startYear ? start.getUTCMonth() : 0;
+  let to = 12;
+  if (goal.endDate) {
+    const end = new Date(goal.endDate);
+    const endYear = end.getUTCFullYear();
+    if (year > endYear) return 0;
+    if (year === endYear) to = end.getUTCMonth();
+  }
+  return Math.max(0, to - from);
+}
+
+/**
+ * Annual committed set-aside for a goal's fund in a calendar year — the
+ * monthly set-aside × months active that year — or undefined when the account
+ * isn't a goal fund. This is what the simulation counts with living expenses
+ * and credits into the fund; budget projections use it for per-year totals.
+ */
+export function getGoalFundAnnualSetAside(
+  expenses: AnyExpense[],
+  accountId: string | undefined,
+  year: number,
+): number | undefined {
+  if (!accountId) return undefined;
+  const goal = expenses.find(e => isLongTermGoal(e) && e.goalAccountId === accountId);
+  if (!goal) return undefined;
+  return getGoalMonthlySetAside(goal) * goalMonthsActiveInYear(goal, year);
+}
+
+/**
  * Merge synthetic goal-fund buckets into a priority list for budget tracking.
  *
  * Goals don't carry a savings-priority bucket — their funding is a committed

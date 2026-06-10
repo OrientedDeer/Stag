@@ -10,7 +10,7 @@ import { AccountContext } from '../../components/Objects/Accounts/AccountContext
 import { IncomeContext } from '../../components/Objects/Income/IncomeContext';
 import { WorkIncome } from '../../components/Objects/Income/models';
 import { InvestedAccount, SavedAccount, AnyAccount } from '../../components/Objects/Accounts/models';
-import { isLongTermGoal, getGoalFundMonthlyCap, mergeGoalFundBuckets } from '../../components/Objects/Expense/models';
+import { isLongTermGoal, getGoalFundAnnualSetAside, mergeGoalFundBuckets } from '../../components/Objects/Expense/models';
 import { useAssumptions, getBirthYear } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
 import { SimulationContext } from '../../components/Objects/Assumptions/SimulationContext';
@@ -106,10 +106,12 @@ export default function SpendingTab() {
         const hsaCoverage = taxState.filingStatus === 'Married Filing Jointly' ? 'family' : 'individual';
 
         // Goal sinking funds: derive the annual goal from the goal expense
-        // itself, not the priority's stored capValue snapshot, so goal edits
-        // propagate (mirrors the sim engine and EOY projection).
-        const goalCap = getGoalFundMonthlyCap(expenses, priority.accountId, selectedYear);
-        if (goalCap !== undefined) return goalCap * 12;
+        // itself so goal edits propagate. Months-prorated, mirroring the sim's
+        // committed funding — a goal started in June plans 7 months of
+        // set-aside this year, not 12. Pacing and the expected-balance ramp
+        // spread this over the active months (see plannedMonths below).
+        const goalAnnual = getGoalFundAnnualSetAside(expenses, priority.accountId, selectedYear);
+        if (goalAnnual !== undefined) return goalAnnual;
 
         if (priority.capType === 'MAX' && account instanceof InvestedAccount) {
             // Look up IRS limit based on account's taxType
@@ -269,7 +271,15 @@ export default function SpendingTab() {
             const r = getAccountGrowthRate(account);
             const m = Math.max(0, Math.min(12, monthOfYear));
             const timeFraction = m / 12; // growth on the starting balance
-            const contribFraction = Math.max(0, Math.min(12, m - (startMonth - 1))) / 12;
+            // The year's planned contribution spreads over the months funding is
+            // ACTIVE (startMonth..Dec), not a flat /12 — a goal started in June
+            // plans its (already prorated) annual amount across 7 months, so by
+            // December the full plan is expected. With startMonth = 1 this is
+            // the original m/12 ramp, so non-goal rows are unchanged.
+            const plannedMonths = 12 - (startMonth - 1);
+            const contribFraction = plannedMonths > 0
+                ? Math.max(0, Math.min(plannedMonths, m - (startMonth - 1))) / plannedMonths
+                : 0;
             return start + (start * r) * timeFraction + (annualContribution * (1 + r)) * contribFraction;
         },
         [startingBalances, getAccountGrowthRate]
@@ -375,7 +385,11 @@ export default function SpendingTab() {
                 : null;
 
             // Pacing — linear is the visual reference; status is more permissive.
-            const monthlyTarget = annualTarget / 12;
+            // Spread the year's target over the months funding is active, not a
+            // flat /12: a goal started in June paces against 7 months, so saving
+            // the monthly set-aside from June reads on-track, not behind.
+            const plannedMonths = 12 - (startMonth - 1);
+            const monthlyTarget = plannedMonths > 0 ? annualTarget / plannedMonths : 0;
             const ytdLinearTarget = monthlyTarget * monthsActive;
             const monthsRemaining = Math.max(0, 12 - trackingMonth);
             const remainingNeeded = Math.max(0, annualTarget - ytdActual);

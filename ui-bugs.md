@@ -154,3 +154,25 @@ removed in the same way other committed expenses are." Final architecture:
 - SurplusAllocator: goal funds are reserved (`reservedAccountIds`) — the
   no-priorities smart-default must not pick one as "the emergency fund".
 - PriorityTab keeps the generic "below a REMAINDER = never funded" warning.
+
+Follow-up sweep (user testing after the committed-funding pivot):
+- **Sankey imbalance = set-aside.** The sim's livingExpenses includes the
+  committed set-aside, but cashflowDetail.expensesByCategory (built from
+  per-expense getAnnualAmount → $0 for goals) didn't → Expenses node
+  unbalanced. Fixed: goals contribute a 'Goals' category equal to the
+  set-aside in CashflowDetailBuilder.
+- **Half-years (`getGoalFundAnnualSetAside`).** The engine charged monthly×12
+  in every active calendar year, over-funding mid-year starts/targets. Now
+  months-prorated (June start → 7 months that year; Jan target → 0 in the
+  final year); credits sum exactly to the goal amount. Used by the engine,
+  EOY projection, sunburst.
+- **Budget pacing mid-year.** SpendingTab's annual contribution target was
+  full-rate 12 months; pacing judged a June goal "behind" forever. Now the
+  target is the prorated plan and pacing/expected-by-now spread it over the
+  active months (startMonth=1 → identical /12 behavior for non-goal rows).
+- **Expenses icicle chart.** Goals were invisible (getMonthlyAmount = 0);
+  now charted at their monthly set-aside.
+- **ExpenseCard header "$10,000/mo".** A goal's amount is the TOTAL with
+  frequency 'Monthly'; header now shows the monthly set-aside instead.
+- **Allocation tab.** Committed Expenses now includes "(goal set-aside)"
+  lines and disposable income subtracts them before the waterfall.

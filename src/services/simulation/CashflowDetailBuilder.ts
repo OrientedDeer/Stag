@@ -12,6 +12,8 @@ import {
     AnyExpense,
     MortgageExpense,
     CLASS_TO_CATEGORY,
+    isLongTermGoal,
+    getGoalFundAnnualSetAside,
 } from "../../components/Objects/Expense/models";
 import { AnyAccount, InvestedAccount } from "../../components/Objects/Accounts/models";
 import {
@@ -162,9 +164,17 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
     const expensesByCategory: Record<string, number> = {};
     for (const exp of expenses) {
         if (exp instanceof MortgageExpense) continue;
-        const amount = exp.getAnnualAmount(year);
+        // Long-term goals report $0 from getAnnualAmount, but their committed
+        // set-aside IS in the sim's living expenses (SimulationEngine counts it
+        // and credits the fund). Without a matching category here the Sankey's
+        // Expenses node is unbalanced by exactly the set-aside.
+        const amount = isLongTermGoal(exp) && exp.goalAccountId
+            ? (getGoalFundAnnualSetAside(expenses, exp.goalAccountId, year) ?? 0)
+            : exp.getAnnualAmount(year);
         if (amount < MIN_AMOUNT) continue;
-        const category = CLASS_TO_CATEGORY[exp.constructor.name] || 'Other';
+        const category = isLongTermGoal(exp)
+            ? 'Goals'
+            : (CLASS_TO_CATEGORY[exp.constructor.name] || 'Other');
         expensesByCategory[category] = (expensesByCategory[category] || 0) + amount;
     }
 

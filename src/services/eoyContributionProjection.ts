@@ -2,7 +2,7 @@ import { PriorityBucket, AssumptionsState, CapType, getBirthYear } from '../comp
 import { TaxState } from '../components/Objects/Taxes/TaxContext';
 import { AnyAccount, InvestedAccount, DebtAccount, DeficitDebtAccount } from '../components/Objects/Accounts/models';
 import { AnyIncome, WorkIncome } from '../components/Objects/Income/models';
-import { AnyExpense, LoanExpense, MortgageExpense, getGoalFundMonthlyCap, mergeGoalFundBuckets } from '../components/Objects/Expense/models';
+import { AnyExpense, LoanExpense, MortgageExpense, getGoalFundAnnualSetAside, mergeGoalFundBuckets } from '../components/Objects/Expense/models';
 import { MonthlySnapshot } from '../components/Objects/Budget/BudgetTypes';
 import { get401kLimit, getIRALimit, getHSALimit } from '../data/ContributionLimits';
 import { getActiveExpenses } from '../components/Objects/Budget/budgetUtils';
@@ -77,11 +77,10 @@ function getAnnualGoalForPriority(
     const hsaCoverage = taxState.filingStatus === 'Married Filing Jointly' ? 'family' : 'individual';
 
     // Goal sinking funds: derive the annual goal from the goal expense itself
-    // rather than the priority's stored capValue snapshot, so goal edits
-    // (amount/dates/interval) propagate to the budget projection. Mirrors the
-    // simulation engine's per-year derivation.
-    const goalCap = getGoalFundMonthlyCap(expenses, priority.accountId, year);
-    if (goalCap !== undefined) return goalCap * 12;
+    // (months-prorated — a June-start goal plans 7 months this year), mirroring
+    // the simulation engine's committed funding.
+    const goalAnnual = getGoalFundAnnualSetAside(expenses, priority.accountId, year);
+    if (goalAnnual !== undefined) return goalAnnual;
 
     if (priority.capType === 'MAX' && account instanceof InvestedAccount) {
         switch (account.taxType) {

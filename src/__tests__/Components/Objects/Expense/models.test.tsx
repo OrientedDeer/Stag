@@ -11,6 +11,7 @@ import {
   isExpenseActiveInCurrentMonth,
   getGoalMonthlySetAside,
   getGoalFundMonthlyCap,
+  getGoalFundAnnualSetAside,
   DependentExpense,
   VacationExpense,
   OtherExpense,
@@ -1175,6 +1176,50 @@ describe('Expense Models', () => {
       expect(getGoalFundMonthlyCap([goal], 'acc-fund', 2026)).toBeCloseTo(2000, 5);
       goal.endDate = new Date(Date.UTC(2031, 0, 1)); // user pushes the target out (72 months)
       expect(getGoalFundMonthlyCap([goal], 'acc-fund', 2026)).toBeCloseTo(1000, 5);
+    });
+
+    it('getGoalFundAnnualSetAside prorates partial years and sums to the goal amount', () => {
+      // Goal: $31,000 starting June 2026, due Jan 2029 → 31 months → $1,000/mo.
+      // 2026 commits Jun–Dec (7 mo), 2027/2028 full years, 2029 (Jan target) 0.
+      const goal = new OtherExpense('exp-g', 'Goal', 31000, 'Monthly', new Date(Date.UTC(2026, 5, 1)));
+      goal.goalType = 'targetDate';
+      goal.endDate = new Date(Date.UTC(2029, 0, 1));
+      goal.goalAccountId = 'acc-fund';
+
+      expect(getGoalFundAnnualSetAside([goal], 'acc-fund', 2025)).toBe(0);
+      expect(getGoalFundAnnualSetAside([goal], 'acc-fund', 2026)).toBeCloseTo(7000, 5);
+      expect(getGoalFundAnnualSetAside([goal], 'acc-fund', 2027)).toBeCloseTo(12000, 5);
+      expect(getGoalFundAnnualSetAside([goal], 'acc-fund', 2028)).toBeCloseTo(12000, 5);
+      expect(getGoalFundAnnualSetAside([goal], 'acc-fund', 2029)).toBe(0);
+
+      // Across all years, exactly the goal amount is committed.
+      const total = [2025, 2026, 2027, 2028, 2029, 2030]
+        .reduce((s, y) => s + (getGoalFundAnnualSetAside([goal], 'acc-fund', y) ?? 0), 0);
+      expect(total).toBeCloseTo(31000, 5);
+    });
+
+    it('getGoalFundAnnualSetAside prorates a mid-year target in the final year', () => {
+      // $24,000 from Jan 2026 to Jun 2028 → 29 months. 2028 commits Jan–May (5 mo).
+      const goal = new OtherExpense('exp-g', 'Goal', 29000, 'Monthly', new Date(Date.UTC(2026, 0, 1)));
+      goal.goalType = 'targetDate';
+      goal.endDate = new Date(Date.UTC(2028, 5, 1));
+      goal.goalAccountId = 'acc-fund';
+
+      expect(getGoalFundAnnualSetAside([goal], 'acc-fund', 2028)).toBeCloseTo(5000, 5);
+      const total = [2026, 2027, 2028]
+        .reduce((s, y) => s + (getGoalFundAnnualSetAside([goal], 'acc-fund', y) ?? 0), 0);
+      expect(total).toBeCloseTo(29000, 5);
+    });
+
+    it('getGoalFundAnnualSetAside prorates a recurring goal start year, then runs full years', () => {
+      const goal = new OtherExpense('exp-g', 'Roof', 36000, 'Monthly', new Date(Date.UTC(2026, 9, 1))); // Oct
+      goal.goalType = 'recurring';
+      goal.intervalYears = 3; // $1,000/mo
+      goal.goalAccountId = 'acc-fund';
+
+      expect(getGoalFundAnnualSetAside([goal], 'acc-fund', 2026)).toBeCloseTo(3000, 5); // Oct–Dec
+      expect(getGoalFundAnnualSetAside([goal], 'acc-fund', 2027)).toBeCloseTo(12000, 5);
+      expect(getGoalFundAnnualSetAside([goal], 'acc-fund', 2035)).toBeCloseTo(12000, 5); // recurs forever
     });
 
     it('getGoalFundMonthlyCap returns undefined for accounts that are not goal funds', () => {

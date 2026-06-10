@@ -2,7 +2,7 @@
 // Thin orchestrator - delegates to focused service modules.
 
 import { AnyAccount } from "../../Objects/Accounts/models";
-import { AnyExpense, MortgageExpense, LoanExpense, isLongTermGoal, isGoalDueInYear, getGoalFundMonthlyCap } from "../Expense/models";
+import { AnyExpense, MortgageExpense, LoanExpense, isLongTermGoal, isGoalDueInYear, getGoalFundAnnualSetAside } from "../Expense/models";
 import { AnyIncome, WorkIncome, PassiveIncome } from "../../Objects/Income/models";
 import { AssumptionsState, getBirthYear, BUILTIN_MILESTONE_IDS } from "./AssumptionsContext";
 import { TaxState } from "../../Objects/Taxes/TaxContext";
@@ -273,7 +273,9 @@ function simulateOneYearWithNewEngine(
     const goalFundCredits = new Map<string, number>(); // fund accountId → annual set-aside
     for (const e of expenses) {
         if (!isLongTermGoal(e) || !e.goalAccountId) continue;
-        const annual = (getGoalFundMonthlyCap(expenses, e.goalAccountId, year) ?? 0) * 12;
+        // Months-prorated: a goal starting in June commits 7 months this year,
+        // and the target year commits only the months before the target.
+        const annual = getGoalFundAnnualSetAside(expenses, e.goalAccountId, year) ?? 0;
         if (annual > 0) goalFundCredits.set(e.goalAccountId, (goalFundCredits.get(e.goalAccountId) ?? 0) + annual);
     }
     const totalGoalFunding = [...goalFundCredits.values()].reduce((s, v) => s + v, 0);
