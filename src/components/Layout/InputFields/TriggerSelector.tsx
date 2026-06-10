@@ -43,9 +43,13 @@ export function TriggerSelector({
 
     const [mode, setMode] = useState<TriggerMode>(getCurrentMode);
 
-    // Sync mode when external props change
+    // Reflect external prop changes, but never yank the user out of the mode
+    // they're actively editing just because the value is momentarily empty
+    // (e.g. mid-typing a date, the native input briefly reports ""). Only switch
+    // when a concrete date or milestone is present.
     useEffect(() => {
-        setMode(getCurrentMode());
+        if (date) setMode('date');
+        else if (milestoneId) setMode('milestone');
     }, [date, milestoneId]);
 
     // If milestone was deleted, reset to default
@@ -113,12 +117,15 @@ export function TriggerSelector({
     };
 
     const handleDateInput = (dateString: string) => {
-        if (dateString) {
-            const [y, m, d] = dateString.split('-').map(Number);
-            onDateChange(new Date(y, m - 1, d));
-        } else {
-            onDateChange(undefined);
-        }
+        // Native <input type="date"> reports "" while a segment is mid-edit
+        // (typing "20" toward "2026"). Propagating that empty/incomplete value
+        // would clear the date, flip the selector back to Milestone mode, and
+        // wipe the in-progress edit. Ignore it and only commit complete dates;
+        // use the Milestone tab to represent "no fixed date".
+        if (!dateString) return;
+        const [y, m, d] = dateString.split('-').map(Number);
+        if (!y || !m || !d) return;
+        onDateChange(new Date(y, m - 1, d));
     };
 
     const handleMilestoneSelect = (selectedId: string) => {
