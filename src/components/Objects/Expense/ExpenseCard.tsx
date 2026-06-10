@@ -13,7 +13,8 @@ import {
     OtherExpense,
     CharityExpense,
     SubscriptionExpense,
-    EXPENSE_COLORS_BACKGROUND
+    EXPENSE_COLORS_BACKGROUND,
+    isLongTermGoal
 } from './models.js';
 import { ExpenseDispatchContext, AllExpenseKeys } from "./ExpenseContext.js";
 import { AccountContext, AccountDispatchContext } from "../Accounts/AccountContext.js";
@@ -110,6 +111,10 @@ function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
         expense.valuation > 0 &&
         ((expense.valuation - expense.loan_balance) / expense.valuation) > 0.2 &&
         expense.pmi > 0;
+
+    // Long-term goals are funded via a linked sinking-fund + savings priority,
+    // so per-expense frequency is meaningless for them (the goal "kind" governs).
+    const isGoal = isLongTermGoal(expense);
 
     const handleFieldUpdate = (field: AllExpenseKeys, value: unknown): void => {
         expenseDispatch({
@@ -237,32 +242,43 @@ function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
                     />
                 )}
 
-                <StyledSelect
-                    id={`${expense.id}-frequency`}
-                    label="Frequency"
-                    value={expense.frequency}
-                    onChange={(e) => handleFieldUpdate("frequency", e.target.value)}
-                    options={["Weekly", "Monthly", "Annually"]}
-                />
-
-                {expense.frequency === "Annually" && (
+                {isGoal ? (
+                    <StyledDisplay
+                        label="Goal"
+                        value={expense.goalType === "recurring"
+                            ? `Recurring · every ${expense.intervalYears ?? "?"} yr`
+                            : `Save by ${expense.goalTargetDate ? formatDateForInput(expense.goalTargetDate) : "target date"}`}
+                    />
+                ) : (
                     <>
                         <StyledSelect
-                            id={`${expense.id}-due-month`}
-                            label="Due Month"
-                            value={MONTH_NAMES[(expense.dueMonth ?? 1) - 1]}
-                            onChange={(e) => handleFieldUpdate("dueMonth", MONTH_NAMES.indexOf(e.target.value) + 1)}
-                            tooltip="The month this yearly expense is actually paid."
-                            options={MONTH_NAMES}
+                            id={`${expense.id}-frequency`}
+                            label="Frequency"
+                            value={expense.frequency}
+                            onChange={(e) => handleFieldUpdate("frequency", e.target.value)}
+                            options={["Weekly", "Monthly", "Annually"]}
                         />
-                        <StyledSelect
-                            id={`${expense.id}-annual-mode`}
-                            label="How to Budget"
-                            value={ANNUAL_MODE_LABELS[expense.annualMode ?? "lump"]}
-                            onChange={(e) => handleFieldUpdate("annualMode", e.target.value === ANNUAL_MODE_LABELS.sinkingFund ? "sinkingFund" : "lump")}
-                            tooltip="Pay in due month: the full amount is budgeted in its due month. Save monthly: set aside 1/12 each month toward it."
-                            options={[ANNUAL_MODE_LABELS.lump, ANNUAL_MODE_LABELS.sinkingFund]}
-                        />
+
+                        {expense.frequency === "Annually" && (
+                            <>
+                                <StyledSelect
+                                    id={`${expense.id}-due-month`}
+                                    label="Due Month"
+                                    value={MONTH_NAMES[(expense.dueMonth ?? 1) - 1]}
+                                    onChange={(e) => handleFieldUpdate("dueMonth", MONTH_NAMES.indexOf(e.target.value) + 1)}
+                                    tooltip="The month this yearly expense is actually paid."
+                                    options={MONTH_NAMES}
+                                />
+                                <StyledSelect
+                                    id={`${expense.id}-annual-mode`}
+                                    label="How to Budget"
+                                    value={ANNUAL_MODE_LABELS[expense.annualMode ?? "lump"]}
+                                    onChange={(e) => handleFieldUpdate("annualMode", e.target.value === ANNUAL_MODE_LABELS.sinkingFund ? "sinkingFund" : "lump")}
+                                    tooltip="Pay in due month: the full amount is budgeted in its due month. Save monthly: set aside 1/12 each month toward it."
+                                    options={[ANNUAL_MODE_LABELS.lump, ANNUAL_MODE_LABELS.sinkingFund]}
+                                />
+                            </>
+                        )}
                     </>
                 )}
 
