@@ -117,14 +117,19 @@ export function TriggerSelector({
     };
 
     const handleDateInput = (dateString: string) => {
-        // Native <input type="date"> reports "" while a segment is mid-edit
-        // (typing "20" toward "2026"). Propagating that empty/incomplete value
-        // would clear the date, flip the selector back to Milestone mode, and
-        // wipe the in-progress edit. Ignore it and only commit complete dates;
-        // use the Milestone tab to represent "no fixed date".
+        // A native <input type="date"> emits intermediate values while you type a
+        // multi-digit year: with a month/day already present, the first keystroke
+        // "2" yields a *complete, valid* date "0002-06-09". Committing that resets
+        // the controlled value and ejects you from the year segment, so the second
+        // digit has nothing to build on. It also reports "" when a segment is
+        // wholly empty (which would flip the selector to Milestone mode).
+        //
+        // So: ignore empty/incomplete input, and only commit once the year is a
+        // full 4-digit value. Use the Milestone tab to represent "no fixed date".
         if (!dateString) return;
         const [y, m, d] = dateString.split('-').map(Number);
         if (!y || !m || !d) return;
+        if (y < 1000) return; // year still being typed (e.g. 2 → 20 → 202 → 2026)
         onDateChange(new Date(y, m - 1, d));
     };
 
