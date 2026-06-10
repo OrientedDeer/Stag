@@ -969,6 +969,39 @@ export function getGoalFundMonthlyCap(
   return getGoalMonthlySetAside(goal);
 }
 
+/**
+ * Merge synthetic goal-fund buckets into a priority list for budget tracking.
+ *
+ * Goals don't carry a savings-priority bucket — their funding is a committed
+ * transfer inside the simulation, derived from the goal itself. But the budget
+ * views still track contribution pacing per fund account, so they synthesize
+ * one bucket per goal here (capValue 0 — consumers derive the live value via
+ * getGoalFundMonthlyCap). Legacy goal buckets from pre-migration data are
+ * dropped so a fund never appears twice.
+ */
+export function mergeGoalFundBuckets<T extends { accountId?: string }>(
+  priorities: T[],
+  expenses: AnyExpense[],
+): (T | {
+  id: string; name: string; type: 'SAVINGS';
+  accountId: string; capType: 'FIXED'; capValue: number;
+})[] {
+  const goals = expenses.filter(e => isLongTermGoal(e) && e.goalAccountId);
+  if (goals.length === 0) return priorities;
+  const goalFundIds = new Set(goals.map(e => e.goalAccountId!));
+  return [
+    ...priorities.filter(p => !(p.accountId && goalFundIds.has(p.accountId))),
+    ...goals.map(e => ({
+      id: `goal-${e.id}`,
+      name: `${e.name} fund`,
+      type: 'SAVINGS' as const,
+      accountId: e.goalAccountId!,
+      capType: 'FIXED' as const,
+      capValue: 0,
+    })),
+  ];
+}
+
 export const EXPENSE_CATEGORIES = [
   'Rent',
   'Mortgage',

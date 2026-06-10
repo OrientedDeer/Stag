@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ResponsiveSunburst } from '@nivo/sunburst';
-import { AnyExpense, RentExpense, MortgageExpense, FoodExpense, TransportExpense, HealthcareExpense, VacationExpense, LoanExpense, DependentExpense, getGoalFundMonthlyCap } from '../Objects/Expense/models';
+import { AnyExpense, RentExpense, MortgageExpense, FoodExpense, TransportExpense, HealthcareExpense, VacationExpense, LoanExpense, DependentExpense, getGoalFundMonthlyCap, isLongTermGoal } from '../Objects/Expense/models';
 import { AnyIncome, WorkIncome } from '../Objects/Income/models';
 import { AnyAccount } from '../Objects/Accounts/models';
 import { useChartTheme } from './useChartTheme';
@@ -146,21 +146,25 @@ export const SpendingSunburst = ({
         if (totalESPP > 0) savingsItems.push({ name: 'ESPP', value: totalESPP });
         if (totalInsurance > 0) savingsItems.push({ name: 'Insurance', value: totalInsurance });
 
+        // Long-term goal set-asides are COMMITTED transfers — taken before the
+        // priority waterfall, mirroring the sim engine (which counts them with
+        // living expenses and credits the fund directly).
+        for (const g of expenses) {
+          if (!isLongTermGoal(g) || !g.goalAccountId) continue;
+          const annual = (getGoalFundMonthlyCap(expenses, g.goalAccountId, year) ?? 0) * 12;
+          if (annual <= 0) continue;
+          const allocated = Math.min(Math.max(0, remaining), annual);
+          if (allocated > 0) {
+            savingsItems.push({ name: `${g.name} fund`, value: allocated });
+            remaining -= allocated;
+          }
+        }
+
         for (const bucket of priorities) {
           if (remaining <= 0) break;
+          // Legacy goal buckets are skipped — goal funding is committed above.
+          if (getGoalFundMonthlyCap(expenses, bucket.accountId, year) !== undefined) continue;
           let bucketCap: number;
-          // Goal sinking funds: derive the cap from the goal expense itself,
-          // not the stored capValue snapshot (mirrors the sim engine).
-          const goalCap = getGoalFundMonthlyCap(expenses, bucket.accountId, year);
-          if (goalCap !== undefined) {
-            bucketCap = goalCap * 12;
-            const allocated = Math.min(remaining, bucketCap);
-            if (allocated > 0) {
-              savingsItems.push({ name: bucket.name, value: allocated });
-              remaining -= allocated;
-            }
-            continue;
-          }
           switch (bucket.capType) {
             case 'FIXED':
               bucketCap = (bucket.capValue ?? 0) * 12;

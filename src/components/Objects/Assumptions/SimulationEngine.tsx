@@ -262,6 +262,22 @@ function simulateOneYearWithNewEngine(
     // ------------------------------------------------------------------
     // CALCULATE EXPENSES
     // ------------------------------------------------------------------
+    // Long-term goal funding is COMMITTED, like any other expense — not a
+    // surplus-allocation priority. Each year the goal's monthly set-aside
+    // (derived live from the goal — $0 outside its saving window) is counted
+    // with living expenses so the solver covers it like a bill (withdrawing in
+    // retirement if needed), and the same dollars are credited into the goal's
+    // reserved fund account after account growth — a forced transfer, immune
+    // to priority ordering and surplus availability. Net worth is unchanged by
+    // saving (cash out, fund up); it dips when the lump is spent in the due year.
+    const goalFundCredits = new Map<string, number>(); // fund accountId → annual set-aside
+    for (const e of expenses) {
+        if (!isLongTermGoal(e) || !e.goalAccountId) continue;
+        const annual = (getGoalFundMonthlyCap(expenses, e.goalAccountId, year) ?? 0) * 12;
+        if (annual > 0) goalFundCredits.set(e.goalAccountId, (goalFundCredits.get(e.goalAccountId) ?? 0) + annual);
+    }
+    const totalGoalFunding = [...goalFundCredits.values()].reduce((s, v) => s + v, 0);
+
     const totalLivingExpenses = nextExpenses.reduce((sum, exp) => {
         if (exp instanceof MortgageExpense) {
             return sum + exp.calculateAnnualAmortization(year).totalPayment;
@@ -270,7 +286,7 @@ function simulateOneYearWithNewEngine(
             return sum + exp.calculateAnnualAmortization(year).totalPayment;
         }
         return sum + exp.getAnnualAmount(year);
-    }, 0);
+    }, 0) + totalGoalFunding;
 
     // ------------------------------------------------------------------
     // WITHDRAWAL STRATEGY TARGET (for GK, Fixed Real, etc.)
@@ -322,30 +338,23 @@ function simulateOneYearWithNewEngine(
     const discretionaryExpenses = calculateTotalDiscretionary(nextExpenses, year);
     const fixedExpenses = totalLivingExpenses - discretionaryExpenses;
 
-    // Goal sinking-fund priorities are DERIVED each year, never trusted from
-    // storage. The priority created alongside a goal carries only a snapshot
-    // capValue; here we recompute the monthly set-aside from the goal itself
-    // (getGoalFundMonthlyCap), so editing a goal's amount, dates, or interval
-    // propagates into the simulation automatically. Outside the goal's active
-    // window — before its start year, or (for one-time goals) after the
-    // purchase year — the cap is $0. We neutralize rather than remove those
-    // priorities: dropping the bucket entirely can leave the list empty and
-    // trip the surplus allocator's smart-default, which would refill the
-    // reserved SavedAccount anyway. Capping at 0 lets the surplus flow to the
-    // remaining priorities/remainder instead, and mirrors the budget's
-    // fundingStartMonth so the "expected balance" benchmark matches the sim.
-    // Recurring goals keep funding past each purchase — they refill toward the
-    // next cycle.
-    const hasGoalFunds = expenses.some(e => isLongTermGoal(e) && e.goalAccountId);
-    const effectiveAssumptions = hasGoalFunds
+    // Legacy cleanup: goals used to create a savings-priority bucket and fund
+    // from surplus. Funding now flows as a committed transfer (see
+    // goalFundCredits above), so any remaining bucket pointing at a goal fund
+    // is zeroed to prevent double-funding old data. Neutralized rather than
+    // dropped: an empty bucket list trips the surplus allocator's
+    // smart-default, which would refill the reserved fund anyway.
+    const goalFundIds = new Set(
+        expenses.filter(e => isLongTermGoal(e) && e.goalAccountId).map(e => e.goalAccountId!)
+    );
+    const effectiveAssumptions = goalFundIds.size > 0
         ? {
             ...assumptions,
-            priorities: (assumptions.priorities || []).map(p => {
-                const liveCap = getGoalFundMonthlyCap(expenses, p.accountId, year);
-                return liveCap !== undefined
-                    ? { ...p, capType: 'FIXED' as const, capValue: liveCap }
-                    : p;
-            }),
+            priorities: (assumptions.priorities || []).map(p =>
+                p.accountId && goalFundIds.has(p.accountId)
+                    ? { ...p, capType: 'FIXED' as const, capValue: 0 }
+                    : p
+            ),
         }
         : assumptions;
 
@@ -362,6 +371,9 @@ function simulateOneYearWithNewEngine(
         rmdPenalty: rmdDetails?.penalty ?? 0,
         accounts,
         withdrawalOrder: assumptions.withdrawalStrategy.map(w => ({ accountId: w.accountId })),
+        // Goal funds are reserved: funded directly via goalFundCredits, so the
+        // surplus allocator must not pick them as general savings targets.
+        reservedAccountIds: [...goalFundIds],
         taxState,
         assumptions: effectiveAssumptions,
         strategyResult: strategyWithdrawalResult,
@@ -505,6 +517,21 @@ function simulateOneYearWithNewEngine(
         inflowResult.esppLots, yearPlan.deficitDebtPayment, existingDeficitDebt,
         assumptions, year, returnOverride, logs
     );
+
+    // ------------------------------------------------------------------
+    // LONG-TERM GOAL FUNDING (committed transfer)
+    // The set-aside was counted with living expenses above (cash already left
+    // the budget); deposit the same dollars into each goal's reserved fund so
+    // it's a transfer, not spending. Credited after growth (no growth on the
+    // current year's contributions), before the purchase check below so the
+    // due year's own set-aside counts toward the lump.
+    // ------------------------------------------------------------------
+    for (const [fundId, annual] of goalFundCredits) {
+        const fund = nextAccounts.find(a => a.id === fundId);
+        if (!fund) continue;
+        fund.amount += annual;
+        logs.push(`🎯 Goal funding: set aside $${Math.round(annual).toLocaleString()} into "${fund.name}" (balance now $${Math.round(fund.amount).toLocaleString()})`);
+    }
 
     // ------------------------------------------------------------------
     // LONG-TERM GOAL PURCHASES

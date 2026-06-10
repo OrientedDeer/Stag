@@ -10,7 +10,7 @@ import { AccountContext } from '../../components/Objects/Accounts/AccountContext
 import { IncomeContext } from '../../components/Objects/Income/IncomeContext';
 import { WorkIncome } from '../../components/Objects/Income/models';
 import { InvestedAccount, SavedAccount, AnyAccount } from '../../components/Objects/Accounts/models';
-import { isLongTermGoal, getGoalFundMonthlyCap } from '../../components/Objects/Expense/models';
+import { isLongTermGoal, getGoalFundMonthlyCap, mergeGoalFundBuckets } from '../../components/Objects/Expense/models';
 import { useAssumptions, getBirthYear } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
 import { SimulationContext } from '../../components/Objects/Assumptions/SimulationContext';
@@ -40,7 +40,14 @@ export default function SpendingTab() {
     const { assumptions } = useAssumptions();
     const { state: taxState } = useContext(TaxContext);
     const { simulation } = useContext(SimulationContext);
-    const priorities = assumptions.priorities;
+
+    // The user's priority buckets plus a synthetic bucket per long-term goal —
+    // goals no longer create a priority (their funding is a committed transfer
+    // in the sim), but the budget still tracks contribution pacing per fund.
+    const priorities = useMemo(
+        () => mergeGoalFundBuckets(assumptions.priorities, expenses),
+        [assumptions.priorities, expenses]
+    );
 
     const setProjectFuture = useCallback((enabled: boolean) => {
         budgetDispatch({ type: 'SET_PROJECT_FUTURE', payload: enabled });

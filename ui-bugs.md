@@ -135,15 +135,22 @@ Goal-feature pass (the "stale duplicates" root cause) — FIXED:
 - Still open (smaller): full kind-switch (recurring ↔ save-by-date) after
   creation still isn't offered in the UI.
 
-**#9 root cause found (goal invisible in simulation): dead priority bucket.**
-The surplus waterfall runs top-down and a REMAINDER ("everything remaining")
-bucket takes all surplus. Goal creation appended its funding bucket AFTER the
-default REMAINDER sweep, so the fund received $0 in every simulated year —
-budget looked right (it computes per-priority goals independent of order) but
-the sim never funded or purchased the goal. Fixed:
-- `ADD_PRIORITY_BEFORE_REMAINDER` reducer action; goal creation inserts the
-  fund bucket above the first REMAINDER.
-- PriorityTab warns on ANY bucket sitting below a REMAINDER ("Never funded —
-  drag this above it").
-- Pre-existing goals created before this fix must be dragged above the
-  REMAINDER bucket in Future → Priorities (or the goal recreated).
+**#9 final design: goal funding is COMMITTED, not a surplus priority.**
+First diagnosis: goal creation appended its funding bucket after the default
+REMAINDER sweep → $0 funded in the sim (budget looked right because it
+computes per-priority goals independent of order). Briefly fixed via
+insert-before-REMAINDER, but the user's call was that the whole bucket
+approach is wrong: "If I say I'm doing 10000 by jan 2029 then it should get
+removed in the same way other committed expenses are." Final architecture:
+- The engine counts each goal's derived set-aside WITH living expenses (the
+  solver covers it like a bill — withdrawing in retirement if needed) and
+  credits the fund account directly. A transfer: net worth unchanged by
+  saving, dips at the purchase.
+- Goals create NO priority bucket; nothing goal-related in the allocation
+  tab. Legacy buckets are zeroed by the engine and auto-removed when
+  PriorityTab mounts. `ADD_PRIORITY_BEFORE_REMAINDER` removed again.
+- Budget views synthesize per-goal rows via `mergeGoalFundBuckets`
+  (SpendingTab + eoyContributionProjection), so pacing display is unchanged.
+- SurplusAllocator: goal funds are reserved (`reservedAccountIds`) — the
+  no-priorities smart-default must not pick one as "the emergency fund".
+- PriorityTab keeps the generic "below a REMAINDER = never funded" warning.

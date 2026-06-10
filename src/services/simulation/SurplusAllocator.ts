@@ -42,6 +42,11 @@ export interface SurplusAllocationSettings {
     rothIRAContributedThisYear: number;
     /** Monthly expenses (used for MULTIPLE_OF_EXPENSES cap type) */
     monthlyExpenses?: number;
+    /**
+     * Accounts reserved for a dedicated purpose (goal sinking funds) that the
+     * smart-default path must never pick as a general savings target.
+     */
+    reservedAccountIds?: Set<string>;
 }
 
 // =============================================================================
@@ -104,8 +109,12 @@ export function allocateSurplus(
 
     // If no explicit priorities, use smart defaults: Emergency → Roth IRA → Brokerage
     if (sortedBuckets.length === 0) {
-        // 2a. Find and fill emergency fund (SavedAccount) to target
-        const emergencyFund = accounts.find(a => a instanceof SavedAccount) as SavedAccount | undefined;
+        // 2a. Find and fill emergency fund (SavedAccount) to target — skipping
+        // reserved accounts (goal sinking funds), which are funded directly by
+        // the engine and must not absorb general surplus.
+        const emergencyFund = accounts.find(a =>
+            a instanceof SavedAccount && !settings.reservedAccountIds?.has(a.id)
+        ) as SavedAccount | undefined;
         if (emergencyFund && emergencyFund.amount < settings.emergencyFundTarget) {
             const gap = settings.emergencyFundTarget - emergencyFund.amount;
             const toAdd = Math.min(remaining, gap);
@@ -340,10 +349,12 @@ export function allocateSurplus(
     }
 
     // 4. If STILL remaining (no brokerage account), find any savings account
-    //    (skip accounts already in a priority bucket)
+    //    (skip accounts already in a priority bucket, and reserved goal funds
+    //    which are funded directly by the engine)
     if (remaining > 0) {
         const savings = accounts.find(a => a instanceof SavedAccount
-            && !bucketAccountIds.has(a.id));
+            && !bucketAccountIds.has(a.id)
+            && !settings.reservedAccountIds?.has(a.id));
 
         if (savings) {
             allocations.push({

@@ -2,7 +2,7 @@ import { PriorityBucket, AssumptionsState, CapType, getBirthYear } from '../comp
 import { TaxState } from '../components/Objects/Taxes/TaxContext';
 import { AnyAccount, InvestedAccount, DebtAccount, DeficitDebtAccount } from '../components/Objects/Accounts/models';
 import { AnyIncome, WorkIncome } from '../components/Objects/Income/models';
-import { AnyExpense, LoanExpense, MortgageExpense, getGoalFundMonthlyCap } from '../components/Objects/Expense/models';
+import { AnyExpense, LoanExpense, MortgageExpense, getGoalFundMonthlyCap, mergeGoalFundBuckets } from '../components/Objects/Expense/models';
 import { MonthlySnapshot } from '../components/Objects/Budget/BudgetTypes';
 import { get401kLimit, getIRALimit, getHSALimit } from '../data/ContributionLimits';
 import { getActiveExpenses } from '../components/Objects/Budget/budgetUtils';
@@ -166,7 +166,11 @@ export function computeEOYBudgetContributions(
     const remainingFraction = (11 - today.getMonth()) / 12;
     const age = startYear - getBirthYear(assumptions.milestones);
 
-    priorities.forEach(priority => {
+    // Goal funds are tracked via synthetic buckets (goals no longer carry a
+    // priority — their funding is a committed transfer derived from the goal).
+    const effectivePriorities = mergeGoalFundBuckets(priorities, expenses);
+
+    effectivePriorities.forEach(priority => {
         if (!priority.accountId) return;
         const account = accounts.find(a => a.id === priority.accountId);
         if (!account) {

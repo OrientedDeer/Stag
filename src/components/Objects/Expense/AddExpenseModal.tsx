@@ -13,7 +13,6 @@ import {
 	FoodExpense,
 	CharityExpense,
 	OtherExpense,
-	getGoalMonthlySetAside,
 } from "./models";
 import { AccountDispatchContext } from "../Accounts/AccountContext";
 import { DebtAccount, PropertyAccount, SavedAccount } from "../../Objects/Accounts/models";
@@ -166,7 +165,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 }) => {
 	const expenseDispatch = useContext(ExpenseDispatchContext);
 	const { dispatch: accountDispatch } = useContext(AccountDispatchContext);
-	const { state: assumptions, dispatch: assumptionsDispatch } = useContext(AssumptionsContext);
+	const { state: assumptions } = useContext(AssumptionsContext);
 	const { modalRef, handleKeyDown } = useModalAccessibility(isOpen, onClose);
 	const [step, setStep] = useState<"select" | "details">("select");
 	const [selectedType, setSelectedType] = useState<any>(null);
@@ -311,29 +310,15 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 					// drops out of the active budget/list afterward.
 					newExpense.endDate = form.goalTargetDate;
 				}
-				// Create a linked sinking-fund SavedAccount and a FIXED savings
-				// priority that funds it with the monthly set-aside. The account is
-				// reserved (not in any withdrawal order); the simulation debits it
-				// for the lump in the goal's due year. The capValue here is only a
-				// display snapshot — the sim and budget derive the live set-aside
-				// from the goal each year (getGoalFundMonthlyCap).
+				// Create a linked sinking-fund SavedAccount. The account is
+				// reserved (not in any withdrawal order); the simulation funds it
+				// as a COMMITTED transfer (the set-aside is counted with living
+				// expenses, like any other bill — no surplus-priority bucket) and
+				// debits it for the lump in the goal's due year.
 				const fundAccountId = 'ACC' + id.substring(3);
 				accountDispatch({
 					type: "ADD_ACCOUNT",
 					payload: new SavedAccount(fundAccountId, `${form.name.trim()} (fund)`, 0),
-				});
-				assumptionsDispatch({
-					// Before any REMAINDER bucket — appended after one, the fund
-					// would never receive surplus (remainder takes everything).
-					type: "ADD_PRIORITY_BEFORE_REMAINDER",
-					payload: {
-						id: 'PRI' + id.substring(3),
-						name: `${form.name.trim()} fund`,
-						type: 'SAVINGS',
-						accountId: fundAccountId,
-						capType: 'FIXED',
-						capValue: getGoalMonthlySetAside(newExpense), // FIXED capValue is monthly
-					},
 				});
 				newExpense.goalAccountId = fundAccountId;
 			} else if (form.frequency === 'Annually') {

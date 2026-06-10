@@ -37,8 +37,9 @@ const DeleteExpenseControl: React.FC<DeleteControlProps> = ({ expenseId, expense
             }
         }
 
-        // Delete a goal's auto-created sinking-fund account and its funding
-        // priority so they don't keep diverting cashflow into a dead account.
+        // Delete a goal's auto-created sinking-fund account (and any legacy
+        // funding priority from before goal funding became a committed
+        // transfer) so nothing keeps referencing a dead account.
         if (isGoalWithFund && expense?.goalAccountId) {
             const fundId = expense.goalAccountId;
             accountDispatch({ type: 'DELETE_ACCOUNT', payload: { id: fundId } });
@@ -63,7 +64,7 @@ const DeleteExpenseControl: React.FC<DeleteControlProps> = ({ expenseId, expense
     const message = hasLinkedAccount
         ? "This will permanently delete this expense and its linked account (property/debt). This action cannot be undone."
         : isGoalWithFund
-            ? "This will permanently delete this goal, its sinking-fund account, and its monthly funding priority. This action cannot be undone."
+            ? "This will permanently delete this goal and its sinking-fund account. This action cannot be undone."
             : "This will permanently delete this expense. This action cannot be undone.";
 
     return (

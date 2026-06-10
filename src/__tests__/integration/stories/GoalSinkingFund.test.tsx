@@ -4,9 +4,14 @@
  * Scenario: A recurring big-ticket goal (e.g. replace the roof every 3 years)
  * funded by a monthly set-aside into a reserved sinking-fund SavedAccount.
  *
+ * Goal funding is COMMITTED: the engine counts the set-aside with living
+ * expenses (like any bill) and credits the fund directly — it is NOT a
+ * surplus-allocation priority, so it doesn't depend on bucket order or
+ * surplus availability.
+ *
  * Key Assertions:
- * - The goal itself adds nothing to living expenses (goals return 0 from
- *   getAnnualAmount).
+ * - The set-aside is committed spending; the full goal cost (the lump) never
+ *   inflates living expenses — it's paid from the fund.
  * - The sinking-fund account accrues the set-aside year over year.
  * - In the goal's due year the lump is spent from the fund (balance drops
  *   sharply), then it starts accruing again toward the next cycle.
@@ -37,7 +42,9 @@ describe('Story: Long-Term Goal Sinking Fund', () => {
         macro: { ...defaultAssumptions.macro, inflationRate: 0, inflationAdjusted: false },
         investments: { ...defaultAssumptions.investments, returnRates: { ror: 0 }, autoRothConversions: false },
         withdrawalStrategy: [],
-        // Fund the roof goal with a fixed $1,000/mo savings priority.
+        // Legacy-shaped data: goals used to create a savings priority. The
+        // engine must zero this bucket (funding is committed now) — keeping it
+        // here guards against double-funding pre-migration data.
         priorities: [
             { id: 'pri-roof', name: 'Roof fund', type: 'SAVINGS', accountId: 'acc-roof-fund', capType: 'FIXED', capValue: 1000 },
         ],
@@ -77,11 +84,16 @@ describe('Story: Long-Term Goal Sinking Fund', () => {
         expect(biggestDrop).toBeGreaterThan(20000);
     });
 
-    it('does not let the goal inflate ordinary living expenses', () => {
+    it('counts the committed set-aside with living expenses — never the full goal cost', () => {
         const sim = realYears();
-        // Living expense is $20k; the $36k goal cost must not be counted as spending.
-        for (const s of sim) {
-            expect(s.cashflow.livingExpenses).toBeLessThan(30000);
+        // $20k living + $12k/yr committed set-aside ≈ $32k. The $36k lump must
+        // never be counted as spending (it's paid from the reserved fund), and
+        // exactly one set-aside must be counted (legacy bucket zeroed — no
+        // double-funding). The first row is the current-year baseline (not a
+        // projected year), so assert from the first projected year onward.
+        for (const s of sim.filter(s => s.year > startYear)) {
+            expect(s.cashflow.livingExpenses).toBeGreaterThan(30000);
+            expect(s.cashflow.livingExpenses).toBeLessThan(36000);
         }
     });
 });
@@ -151,10 +163,11 @@ describe('Story: One-Time Goal (target date)', () => {
         expect(fundAt(targetYear + 3)).toBeLessThan(1000);
     });
 
-    it('derives funding from the goal, ignoring a stale stored capValue (post-edit state)', () => {
-        // Simulate the state after a user edits a goal: the priority created at
-        // goal-creation still holds the old capValue snapshot ($10/mo here), but
-        // the sim must fund at the rate derived from the goal itself (~$1000/mo).
+    it('funds at the goal-derived rate even when a legacy bucket holds a stale capValue', () => {
+        // Pre-migration data: the bucket created at goal-creation still holds a
+        // stale capValue snapshot ($10/mo). Funding is committed and derived
+        // from the goal itself, and the legacy bucket is zeroed — exactly one
+        // goal-rate set-aside lands in the fund (no $10/mo on top).
         const staleAssumptions: AssumptionsState = {
             ...assumptions,
             priorities: [
@@ -166,32 +179,44 @@ describe('Story: One-Time Goal (target date)', () => {
         const fundAt = (y: number) =>
             sim.find(s => s.year === y)?.accounts.find(a => a.id === 'acc-car-fund')?.amount ?? 0;
 
-        // $10/mo would accrue only ~$120/yr; the derived set-aside accrues ~$12k/yr.
+        // $10/mo would accrue only ~$120/yr; the derived set-aside accrues ~$18k/yr.
         expect(fundAt(startYear + 1)).toBeGreaterThan(5000);
         expect(sim.some(s => s.logs.some(l => l.includes('came due')))).toBe(true);
     });
 
-    it('funds the goal even when a REMAINDER sweep bucket exists (goal bucket ordered first)', () => {
-        // Mirrors real data: a default "everything remaining" sweep bucket takes
-        // ALL surplus, so a goal bucket appended after it would never fund —
-        // which is why goal creation inserts before the first REMAINDER
-        // (ADD_PRIORITY_BEFORE_REMAINDER). This pins the resulting order working
-        // end-to-end: the goal funds first, the sweep takes what's left.
-        const brokerage = new SavedAccount('acc-sweep', 'Sweep', 0, 0);
+    it('funds the goal with a REMAINDER sweep and no goal bucket at all (committed funding)', () => {
+        // The new world: goals create NO priority bucket. Even with an
+        // "everything remaining" sweep swallowing all surplus, the committed
+        // set-aside still lands in the fund and the purchase fires.
+        const sweepAcct = new SavedAccount('acc-sweep', 'Sweep', 0, 0);
         const withSweep: AssumptionsState = {
             ...assumptions,
             priorities: [
-                // Goal bucket first — where ADD_PRIORITY_BEFORE_REMAINDER puts it.
-                { id: 'pri-car', name: 'Car fund', type: 'SAVINGS', accountId: 'acc-car-fund', capType: 'FIXED', capValue: 1000 },
                 { id: 'pri-sweep', name: 'Sweep (REMAINDER)', type: 'SAVINGS', accountId: 'acc-sweep', capType: 'REMAINDER' },
             ],
         };
-        const sim = runSimulation(8, [carFund, brokerage], [income], [living, carGoal], withSweep, taxState)
+        const sim = runSimulation(8, [carFund, sweepAcct], [income], [living, carGoal], withSweep, taxState)
             .filter(s => !s.isEndOfYearProjection);
         const fundAt = (y: number) =>
             sim.find(s => s.year === y)?.accounts.find(a => a.id === 'acc-car-fund')?.amount ?? 0;
 
         expect(fundAt(startYear + 1)).toBeGreaterThan(5000);
         expect(sim.some(s => s.logs.some(l => l.includes('came due')))).toBe(true);
+    });
+
+    it('with no priorities, the smart-default allocator must not stuff surplus into the reserved fund', () => {
+        // The goal fund is the ONLY SavedAccount here — without the reservation
+        // the allocator's no-priorities smart-default would treat it as "the
+        // emergency fund" and pile general surplus on top of the committed
+        // set-aside. The fund must receive exactly the goal-derived amount
+        // (36000 over 24 months = $18k/yr; first projected year is startYear+1).
+        const noPriorities: AssumptionsState = { ...assumptions, priorities: [] };
+        const sim = runSimulation(8, [carFund], [income], [living, carGoal], noPriorities, taxState)
+            .filter(s => !s.isEndOfYearProjection);
+        const fundAt = (y: number) =>
+            sim.find(s => s.year === y)?.accounts.find(a => a.id === 'acc-car-fund')?.amount ?? 0;
+
+        expect(fundAt(startYear + 1)).toBeGreaterThan(17000);
+        expect(fundAt(startYear + 1)).toBeLessThan(19000);
     });
 });

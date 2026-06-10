@@ -83,6 +83,14 @@ export interface YearSolverInput {
     // Accounts
     accounts: AnyAccount[];
     withdrawalOrder: { accountId: string }[];
+    /**
+     * Accounts reserved for a dedicated purpose (goal sinking funds). The
+     * surplus allocator must never treat these as general savings — without
+     * this, its no-priorities smart-default can pick a goal fund as "the
+     * emergency fund" and stuff surplus into it on top of the committed goal
+     * funding the engine deposits directly.
+     */
+    reservedAccountIds?: string[];
 
     // Tax state
     taxState: TaxState;
@@ -1764,6 +1772,7 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
             rothIRALimit: getIRALimit(input.year, input.currentAge, input.assumptions.macro.inflationAdjusted),
             rothIRAContributedThisYear: 0,
             monthlyExpenses: effectiveLivingExpenses / 12,
+            reservedAccountIds: input.reservedAccountIds ? new Set(input.reservedAccountIds) : undefined,
         };
 
         const surplusResult = allocateSurplus(
@@ -1958,6 +1967,7 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
             rothIRALimit: getIRALimit(input.year, input.currentAge, input.assumptions.macro.inflationAdjusted),
             rothIRAContributedThisYear: 0,
             monthlyExpenses: input.totalLivingExpenses / 12,
+            reservedAccountIds: input.reservedAccountIds ? new Set(input.reservedAccountIds) : undefined,
         };
 
         const surplusResult = allocateSurplus(
