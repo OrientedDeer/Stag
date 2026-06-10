@@ -19,6 +19,7 @@ export const ToggleInput: React.FC<ToggleInputProps> = ({ label, enabled, setEna
         {tooltip && <Tooltip text={tooltip} />}
       </label>
       <button
+        type="button"
         id={id}
         onClick={toggle}
         className={`relative inline-flex items-center h-6 rounded-full w-11 shrink-0 transition-colors duration-300 focus:outline-none ${
