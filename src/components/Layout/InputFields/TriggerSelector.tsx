@@ -43,6 +43,16 @@ export function TriggerSelector({
 
     const [mode, setMode] = useState<TriggerMode>(getCurrentMode);
 
+    // Local buffer that drives the native date <input>. The input is controlled
+    // by this string rather than the `date` prop directly, so React never resets
+    // the field mid-keystroke when an incomplete value isn't pushed upward — that
+    // reset is what blocked typing a multi-digit year. We mirror every keystroke
+    // here and only propagate complete dates to the parent (see handleDateInput).
+    const [dateInputStr, setDateInputStr] = useState<string>(() => formatDateForInput(date));
+    useEffect(() => {
+        setDateInputStr(formatDateForInput(date));
+    }, [date]);
+
     // Reflect external prop changes, but never yank the user out of the mode
     // they're actively editing just because the value is momentarily empty
     // (e.g. mid-typing a date, the native input briefly reports ""). Only switch
@@ -213,8 +223,11 @@ export function TriggerSelector({
                             <input
                                 id={`${id}-date-input`}
                                 type="date"
-                                value={formatDateForInput(date)}
-                                onChange={(e) => handleDateInput(e.target.value)}
+                                value={dateInputStr}
+                                onChange={(e) => {
+                                    setDateInputStr(e.target.value);
+                                    handleDateInput(e.target.value);
+                                }}
                                 className="w-full px-3 py-2 bg-surface-overlay border border-border-default rounded-lg text-content-default text-sm focus:border-accent-soft focus:ring-1 focus:ring-accent-soft"
                             />
                         )}
