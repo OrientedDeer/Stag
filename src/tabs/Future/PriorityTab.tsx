@@ -11,7 +11,7 @@ import { WorkIncome } from '../../components/Objects/Income/models';
 import { formatCompactCurrency } from './tabs/FutureUtils';
 import { get401kLimit, getIRALimit, getHSALimit } from '../../data/ContributionLimits';
 import { getActiveExpenses } from '../../components/Objects/Budget/budgetUtils';
-import { isLongTermGoal } from '../../components/Objects/Expense/models';
+import { isLongTermGoal, getGoalFundMonthlyCap } from '../../components/Objects/Expense/models';
 
 // UI Components
 import { CurrencyInput } from '../../components/Layout/InputFields/CurrencyInput';
@@ -95,10 +95,23 @@ export default function PriorityTab() {
 
     const monthlyPaycheckDeductions = deductionBreakdown.total;
 
+    // Committed goal set-asides: the simulation counts these with living
+    // expenses (funded directly into each goal's reserved fund), so they come
+    // off the top here too — before any priority bucket sees surplus. Note
+    // goals report $0 from getMonthlyAmount, so they're not already counted
+    // in totalMonthlyFixedExpenses.
+    const totalGoalSetAsides = useMemo(() =>
+        expenses.reduce((sum, e) =>
+            isLongTermGoal(e) && e.goalAccountId
+                ? sum + (getGoalFundMonthlyCap(expenses, e.goalAccountId, year) ?? 0)
+                : sum,
+        0),
+    [expenses, year]);
+
     // Take-home calculation
     const totalWithheld = monthlyTaxes + monthlyPaycheckDeductions;
     const takeHome = totalMonthlyIncome - totalWithheld;
-    const disposableAfterExpenses = takeHome - totalMonthlyFixedExpenses;
+    const disposableAfterExpenses = takeHome - totalMonthlyFixedExpenses - totalGoalSetAsides;
 
     // ========== CONTRIBUTION LIMITS ==========
 
@@ -534,19 +547,27 @@ export default function PriorityTab() {
                             >
                                 <span className="text-content-default font-medium">Committed Expenses</span>
                                 <div className="flex items-center gap-3">
-                                    <span className="text-negative-bright font-mono">-{formatMoney(totalMonthlyFixedExpenses)}</span>
+                                    <span className="text-negative-bright font-mono">-{formatMoney(totalMonthlyFixedExpenses + totalGoalSetAsides)}</span>
                                     <ChevronIcon expanded={showExpenseDetails} className="w-5 h-5" />
                                 </div>
                             </button>
 
                             {showExpenseDetails && (
                                 <Panel padding="sm" className="mt-2 bg-surface-raised/30 space-y-1 text-sm">
-                                    {expenses.map(exp => (
-                                        <div key={exp.id} className="flex justify-between py-1">
-                                            <span className="text-content-muted">{exp.name}</span>
-                                            <span className="text-negative-bright font-mono">-{formatMoney(exp.getMonthlyAmount(year))}</span>
-                                        </div>
-                                    ))}
+                                    {expenses.map(exp => {
+                                        // Goals report $0 as an expense; their committed
+                                        // monthly set-aside is the real outflow.
+                                        const isGoal = isLongTermGoal(exp);
+                                        const monthly = isGoal && exp.goalAccountId
+                                            ? (getGoalFundMonthlyCap(expenses, exp.goalAccountId, year) ?? 0)
+                                            : exp.getMonthlyAmount(year);
+                                        return (
+                                            <div key={exp.id} className="flex justify-between py-1">
+                                                <span className="text-content-muted">{exp.name}{isGoal ? ' (goal set-aside)' : ''}</span>
+                                                <span className="text-negative-bright font-mono">-{formatMoney(monthly)}</span>
+                                            </div>
+                                        );
+                                    })}
                                 </Panel>
                             )}
                         </div>
