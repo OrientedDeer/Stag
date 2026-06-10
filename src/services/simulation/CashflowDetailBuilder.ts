@@ -172,8 +172,11 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
             ? (getGoalFundAnnualSetAside(expenses, exp.goalAccountId, year) ?? 0)
             : exp.getAnnualAmount(year);
         if (amount < MIN_AMOUNT) continue;
+        // Each goal gets its own labeled node ("Car (goal)") — clearer in the
+        // chart than a generic "Goals" bucket, and the "(goal)" suffix avoids
+        // colliding with a regular expense of the same name.
         const category = isLongTermGoal(exp)
-            ? 'Goals'
+            ? `${exp.name} (goal)`
             : (CLASS_TO_CATEGORY[exp.constructor.name] || 'Other');
         expensesByCategory[category] = (expensesByCategory[category] || 0) + amount;
     }
