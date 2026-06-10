@@ -295,11 +295,20 @@ function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
 
                 <TriggerSelector
                     id={`${expense.id}-end`}
-                    label="End"
+                    label={isGoal && expense.goalType === "targetDate" ? "Target date" : "End"}
                     date={expense.endDate}
                     milestoneId={expense.endMilestoneId}
                     milestones={assumptions.milestones || []}
-                    onDateChange={(date) => handleFieldUpdate("endDate", date)}
+                    onDateChange={(date) => {
+                        handleFieldUpdate("endDate", date);
+                        // For a "save by date" goal the end date IS the target, and
+                        // goalTargetDate is what the Goal label and the simulation
+                        // (isGoalDueInYear / getGoalMonthlySetAside) read — keep it in
+                        // sync so editing the end updates everything.
+                        if (isGoal && expense.goalType === "targetDate") {
+                            handleFieldUpdate("goalTargetDate", date);
+                        }
+                    }}
                     onMilestoneChange={(id) => handleFieldUpdate("endMilestoneId", id)}
                     tooltip="When this expense ends - fixed date or milestone trigger"
                 />
