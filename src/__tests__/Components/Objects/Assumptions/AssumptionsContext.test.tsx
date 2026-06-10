@@ -273,6 +273,58 @@ describe('AssumptionsContext', () => {
         expect(state.priorities).toContainEqual(updatedPriority);
         expect(state.priorities).not.toContainEqual(initialPriority);
     });
+
+    it('ADD_PRIORITY_BEFORE_REMAINDER inserts above the first REMAINDER bucket', () => {
+        // Regression: goal sinking-fund priorities were appended after a
+        // REMAINDER bucket, which takes all surplus — so the fund never
+        // received a dime in the simulation (invisible in Future charts).
+        let state!: AssumptionsState;
+        let dispatch: React.Dispatch<any>;
+
+        const TestComponent = () => {
+          ({ state, dispatch } = useContext(AssumptionsContext));
+          return null;
+        };
+
+        render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
+
+        const fixed: PriorityBucket = { id: 'p-fixed', name: 'IRA', type: 'INVESTMENT', capType: 'MAX' };
+        const remainder: PriorityBucket = { id: 'p-rem', name: 'Sweep', type: 'INVESTMENT', capType: 'REMAINDER' };
+        const goalFund: PriorityBucket = { id: 'p-goal', name: 'Car fund', type: 'SAVINGS', capType: 'FIXED', capValue: 0 };
+
+        act(() => {
+            dispatch({ type: 'SET_PRIORITIES', payload: [fixed, remainder] });
+        });
+        act(() => {
+            dispatch({ type: 'ADD_PRIORITY_BEFORE_REMAINDER', payload: goalFund });
+        });
+
+        expect(state.priorities.map(p => p.id)).toEqual(['p-fixed', 'p-goal', 'p-rem']);
+    });
+
+    it('ADD_PRIORITY_BEFORE_REMAINDER appends when no REMAINDER bucket exists', () => {
+        let state!: AssumptionsState;
+        let dispatch: React.Dispatch<any>;
+
+        const TestComponent = () => {
+          ({ state, dispatch } = useContext(AssumptionsContext));
+          return null;
+        };
+
+        render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
+
+        const fixed: PriorityBucket = { id: 'p-fixed', name: 'IRA', type: 'INVESTMENT', capType: 'MAX' };
+        const goalFund: PriorityBucket = { id: 'p-goal', name: 'Car fund', type: 'SAVINGS', capType: 'FIXED', capValue: 0 };
+
+        act(() => {
+            dispatch({ type: 'SET_PRIORITIES', payload: [fixed] });
+        });
+        act(() => {
+            dispatch({ type: 'ADD_PRIORITY_BEFORE_REMAINDER', payload: goalFund });
+        });
+
+        expect(state.priorities.map(p => p.id)).toEqual(['p-fixed', 'p-goal']);
+    });
   });
 
   // Withdrawal Strategy Reducer Tests

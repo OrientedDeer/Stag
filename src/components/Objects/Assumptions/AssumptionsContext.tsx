@@ -382,6 +382,7 @@ type Action =
   | { type: 'SET_BULK_DATA'; payload: AssumptionsState }
   | { type: 'SET_PRIORITIES'; payload: PriorityBucket[] }
   | { type: 'ADD_PRIORITY'; payload: PriorityBucket }
+  | { type: 'ADD_PRIORITY_BEFORE_REMAINDER'; payload: PriorityBucket }
   | { type: 'REMOVE_PRIORITY'; payload: string }
   | { type: 'UPDATE_PRIORITY'; payload: PriorityBucket }
   | { type: 'SET_WITHDRAWAL_STRATEGY'; payload: WithdrawalBucket[] }
@@ -431,6 +432,16 @@ const assumptionsReducer = (state: AssumptionsState, action: Action): Assumption
         return { ...state, priorities: action.payload };
     case 'ADD_PRIORITY':
         return { ...state, priorities: [...state.priorities, action.payload] };
+    case 'ADD_PRIORITY_BEFORE_REMAINDER': {
+        // The surplus waterfall runs top-down and a REMAINDER bucket takes
+        // everything left, so any bucket appended after one can never receive
+        // funding. Auto-created buckets (goal sinking funds) insert here so
+        // they actually fund instead of being dead on arrival.
+        const idx = state.priorities.findIndex(p => p.capType === 'REMAINDER');
+        const priorities = [...state.priorities];
+        priorities.splice(idx === -1 ? priorities.length : idx, 0, action.payload);
+        return { ...state, priorities };
+    }
     case 'REMOVE_PRIORITY':
         return { ...state, priorities: state.priorities.filter(p => p.id !== action.payload) };
     case 'UPDATE_PRIORITY':

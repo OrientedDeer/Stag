@@ -170,4 +170,28 @@ describe('Story: One-Time Goal (target date)', () => {
         expect(fundAt(startYear + 1)).toBeGreaterThan(5000);
         expect(sim.some(s => s.logs.some(l => l.includes('came due')))).toBe(true);
     });
+
+    it('funds the goal even when a REMAINDER sweep bucket exists (goal bucket ordered first)', () => {
+        // Mirrors real data: a default "everything remaining" sweep bucket takes
+        // ALL surplus, so a goal bucket appended after it would never fund —
+        // which is why goal creation inserts before the first REMAINDER
+        // (ADD_PRIORITY_BEFORE_REMAINDER). This pins the resulting order working
+        // end-to-end: the goal funds first, the sweep takes what's left.
+        const brokerage = new SavedAccount('acc-sweep', 'Sweep', 0, 0);
+        const withSweep: AssumptionsState = {
+            ...assumptions,
+            priorities: [
+                // Goal bucket first — where ADD_PRIORITY_BEFORE_REMAINDER puts it.
+                { id: 'pri-car', name: 'Car fund', type: 'SAVINGS', accountId: 'acc-car-fund', capType: 'FIXED', capValue: 1000 },
+                { id: 'pri-sweep', name: 'Sweep (REMAINDER)', type: 'SAVINGS', accountId: 'acc-sweep', capType: 'REMAINDER' },
+            ],
+        };
+        const sim = runSimulation(8, [carFund, brokerage], [income], [living, carGoal], withSweep, taxState)
+            .filter(s => !s.isEndOfYearProjection);
+        const fundAt = (y: number) =>
+            sim.find(s => s.year === y)?.accounts.find(a => a.id === 'acc-car-fund')?.amount ?? 0;
+
+        expect(fundAt(startYear + 1)).toBeGreaterThan(5000);
+        expect(sim.some(s => s.logs.some(l => l.includes('came due')))).toBe(true);
+    });
 });

@@ -323,7 +323,9 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 					payload: new SavedAccount(fundAccountId, `${form.name.trim()} (fund)`, 0),
 				});
 				assumptionsDispatch({
-					type: "ADD_PRIORITY",
+					// Before any REMAINDER bucket — appended after one, the fund
+					// would never receive surplus (remainder takes everything).
+					type: "ADD_PRIORITY_BEFORE_REMAINDER",
 					payload: {
 						id: 'PRI' + id.substring(3),
 						name: `${form.name.trim()} fund`,

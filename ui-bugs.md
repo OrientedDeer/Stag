@@ -134,3 +134,16 @@ Goal-feature pass (the "stale duplicates" root cause) — FIXED:
   migration), GoalSinkingFund story (sim ignores a stale capValue snapshot).
 - Still open (smaller): full kind-switch (recurring ↔ save-by-date) after
   creation still isn't offered in the UI.
+
+**#9 root cause found (goal invisible in simulation): dead priority bucket.**
+The surplus waterfall runs top-down and a REMAINDER ("everything remaining")
+bucket takes all surplus. Goal creation appended its funding bucket AFTER the
+default REMAINDER sweep, so the fund received $0 in every simulated year —
+budget looked right (it computes per-priority goals independent of order) but
+the sim never funded or purchased the goal. Fixed:
+- `ADD_PRIORITY_BEFORE_REMAINDER` reducer action; goal creation inserts the
+  fund bucket above the first REMAINDER.
+- PriorityTab warns on ANY bucket sitting below a REMAINDER ("Never funded —
+  drag this above it").
+- Pre-existing goals created before this fix must be dragged above the
+  REMAINDER bucket in Future → Priorities (or the goal recreated).
