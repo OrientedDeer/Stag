@@ -17,8 +17,6 @@
 
 import { AnyAccount, InvestedAccount } from "../../components/Objects/Accounts/models";
 import { AnyIncome, FERSPensionIncome } from "../../components/Objects/Income/models";
-// AnyExpense is currently unused but kept for future extension
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { AnyExpense } from "../../components/Objects/Expense/models";
 import { TaxParameters } from "../../data/TaxData";
 import { TaxState } from "../../components/Objects/Taxes/TaxContext";
@@ -701,11 +699,16 @@ function planConversion(
             // 4. Total ordinary tax (same as solver line 732)
             const ordinaryTax = ordinaryTaxResult.totalTax + stateTax;
 
-            // 5. Calculate base deficit using SAME formula as solver
+            // 5. Calculate base deficit using the SAME formula as the solver.
             // Note: ordinaryTax already includes conversion tax (via allOrdinaryIncome),
             // so no separate adjustment needed for taxSource='BROKERAGE'.
+            // classifyIncome already folds rmdAmount into spendableIncome, so it must
+            // NOT be subtracted again here — the authoritative loop deficit and the
+            // preliminaryDeficit both omit it. Subtracting it understated the deficit
+            // (and thus estimated LTCG and MAGI), letting the ACA-cliff search permit
+            // a conversion that breached the cliff.
             const estimatedDeficit = Math.max(0,
-                input.totalLivingExpenses + ordinaryTax + ficaTax - spendableIncome - input.rmdAmount
+                input.totalLivingExpenses + ordinaryTax + ficaTax - spendableIncome
             );
 
             // 6. Calculate LTCG using gross-up formula
@@ -855,7 +858,7 @@ function planConversion(
 
     // Determine tax payment source
     let taxSource: ConversionTaxSource = 'SURPLUS';
-    let netToRoth = conversionAmount;
+    const netToRoth = conversionAmount;
 
     const brokerageBalance = getTotalBrokerageBalance(input.accounts);
 
@@ -1050,13 +1053,6 @@ function planConversionDP(
                         `marginal rate ${(marginalResult.rate * 100).toFixed(1)}% ` +
                         `vs ${(conversionCeiling * 100).toFixed(0)}% ceiling).`,
                 });
-            } else {
-                decisions.push({
-                    category: 'conversion',
-                    description: `[DEBUG DP exec] year=${input.year}: spending reservation skipped — ` +
-                        `marginal ${(marginalResult.rate * 100).toFixed(1)}% > ceiling ${(conversionCeiling * 100).toFixed(0)}%; ` +
-                        `Roth-bound deficit $${Math.round(rothBoundDeficit).toLocaleString()} stays Roth-funded.`,
-                });
             }
         }
     }
@@ -1066,32 +1062,6 @@ function planConversionDP(
     const availableTradForConversion = Math.max(0, traditionalBalance - bracketSpaceForSpending);
     const targetConversion = input.dpConversionPlan?.get(input.year) ?? 0;
     const conversionAmount = Math.max(0, Math.min(targetConversion, availableTradForConversion));
-
-    // Log real-sim balances side-by-side with DP's projection so we can spot
-    // when DP's forward-sweep state diverges from reality.
-    const realRothBalance = input.accounts
-        .filter(a => a instanceof InvestedAccount && a.taxType === 'Roth IRA')
-        .reduce((sum, a) => sum + (a as InvestedAccount).vestedAmount, 0);
-    const realBrokerageBalance = getTotalBrokerageBalance(input.accounts);
-    decisions.push({
-        category: 'conversion',
-        description:
-            `[DEBUG DP exec] year=${input.year}: plan-lookup=${'$' + Math.round(targetConversion).toLocaleString()}, ` +
-            `traditional=${'$' + Math.round(traditionalBalance).toLocaleString()}, ` +
-            `bracketSpaceForSpending=${'$' + Math.round(bracketSpaceForSpending).toLocaleString()}, ` +
-            `availableTrad=${'$' + Math.round(availableTradForConversion).toLocaleString()}, ` +
-            `clampedAmount=${'$' + Math.round(conversionAmount).toLocaleString()}, ` +
-            `dpPlanProvided=${input.dpConversionPlan ? 'yes' : 'no'}`,
-    });
-    decisions.push({
-        category: 'conversion',
-        description:
-            `[DEBUG DP reality] year=${input.year}: ` +
-            `realTrad=${'$' + Math.round(traditionalBalance).toLocaleString()}, ` +
-            `realRoth=${'$' + Math.round(realRothBalance).toLocaleString()}, ` +
-            `realBrokerage=${'$' + Math.round(realBrokerageBalance).toLocaleString()} ` +
-            `— compare against [DEBUG DP solver] tradEntering and [DEBUG DP baseline] for divergence.`,
-    });
 
     if (conversionAmount <= 0) {
         // Spending reservation may still be nonzero — preserve it via skipReturn.
@@ -1338,7 +1308,11 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
         fedParams
     ).totalTax;
     const roughStateTax = stateParams
-        ? TaxService.calculateTax(baseOrdinaryIncome, roughPreTaxDeductions, stateParams)
+        // State tax excludes Social Security (DC and all modeled states exempt
+        // it), mirroring the authoritative state calc below. baseOrdinaryIncome
+        // folds in taxable SS, so use the non-SS ordinary income — the same base
+        // the rough federal calc above uses.
+        ? TaxService.calculateTax(taxableBase - socialSecurityBenefits, roughPreTaxDeductions, stateParams)
         : 0;
     const roughFica = TaxService.calculateFicaTax(input.taxState, input.incomes, input.year, input.assumptions);
     const roughTax = roughFedTax + roughStateTax + roughFica;
@@ -1549,6 +1523,7 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     // Convergence: SS taxable is piecewise-linear and monotonic, so 2-4 iterations.
     let estimatedLTCG = 0;
     let estimatedTradWithdrawal = 0;
+    let estimatedESPPOrdinaryIncome = 0;
 
     // Initial federal tax: SS taxable computed without Traditional withdrawal
     // Pass allOrdinaryIncome (which includes taxable SS) with SS=0 to skip internal SS calc
@@ -1575,7 +1550,7 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
             // AGI excluding SS includes: base income + conversion + Trad withdrawal + LTCG.
             const updatedSSTaxable = TaxService.getTaxableSocialSecurityBenefits(
                 socialSecurityBenefits,
-                nonSSBaseIncome + conversionAdded + estimatedTradWithdrawal + estimatedLTCG,
+                nonSSBaseIncome + conversionAdded + estimatedTradWithdrawal + estimatedESPPOrdinaryIncome + estimatedLTCG,
                 0,
                 input.taxState.filingStatus
             );
@@ -1646,9 +1621,11 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
             ...withdrawals.filter(w => w.reason === 'Required Minimum Distribution'), // Keep RMD
             ...withdrawalResult.withdrawals,
         ];
+        // Ordinary withdrawal tax = the full tax of ordinary-only withdrawals
+        // (Traditional/HSA/Roth, capitalGains undefined) PLUS the ordinary
+        // portion of mixed withdrawals (ESPP bargain element, ordinaryTax set).
         withdrawalOrdinaryTax = withdrawalResult.withdrawals
-            .filter(w => w.capitalGains === undefined)
-            .reduce((sum, w) => sum + w.tax, 0);
+            .reduce((sum, w) => sum + (w.capitalGains === undefined ? w.tax : (w.ordinaryTax ?? 0)), 0);
         totalPenalties = withdrawalResult.totalPenalties;
         withdrawalDecisions = withdrawalResult.decisions;
         iterations = iter + 1;
@@ -1658,6 +1635,13 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
         const newTradWithdrawal = withdrawalResult.withdrawals
             .filter(w => w.source === 'traditional_401k' || w.source === 'traditional_ira')
             .reduce((sum, w) => sum + w.gross, 0);
+
+        // ESPP bargain-element ordinary income drives SS taxability like a
+        // Traditional withdrawal. Its tax is reported via withdrawalOrdinaryTax,
+        // so it is NOT folded into allOrdinaryIncome's federal base (which would
+        // double-count the tax) — only into the SS-taxability combined income.
+        estimatedESPPOrdinaryIncome = withdrawalResult.withdrawals
+            .reduce((sum, w) => sum + (w.ordinaryIncome ?? 0), 0);
 
         // Check convergence: both LTCG and Traditional withdrawal (which drives SS taxable) must stabilize
         const newLTCG = withdrawalResult.totalLTCG;
@@ -1712,9 +1696,12 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     // The deficit already included LTCG (via finalFedResult.totalTax), so the gross withdrawal
     // is deficit + ltcgTax. Counting that full gross as spendable cash-in would create a phantom
     // surplus equal to ltcgTax. Subtract it so only the net (post-tax) portion is cash-in.
+    // LTCG pass-through tax = the LTCG portion of capital-gains withdrawals.
+    // For ESPP, exclude the bargain-element ordinary tax (ordinaryTax) — that is
+    // reported via withdrawalOrdinaryTax, not subtracted from cash-in here.
     const actualLTCGTax = withdrawals
         .filter(w => w.capitalGains !== undefined)
-        .reduce((sum, w) => sum + w.tax, 0);
+        .reduce((sum, w) => sum + (w.tax - (w.ordinaryTax ?? 0)), 0);
 
     const cashIn =
         incomeClassification.classified.spendable +
@@ -1892,6 +1879,7 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
     let ltcgTax = 0;
     let withdrawalOrdinaryTax = 0;
     let totalPenalties = 0;
+    let niitTax = 0;
 
     if (initialDeficit > 0) {
         const accountSnapshots = createOrderedSnapshots(
@@ -1910,19 +1898,39 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
         );
 
         withdrawals = withdrawalResult.withdrawals;
+        // Split mixed (ESPP) withdrawal tax: the LTCG portion → ltcgTax, the
+        // ordinary bargain-element portion → withdrawalOrdinaryTax. Before this
+        // split, ESPP's full tax was mislabeled as capital-gains tax.
         ltcgTax = withdrawalResult.withdrawals
             .filter(w => w.capitalGains !== undefined)
-            .reduce((sum, w) => sum + w.tax, 0);
+            .reduce((sum, w) => sum + (w.tax - (w.ordinaryTax ?? 0)), 0);
         withdrawalOrdinaryTax = withdrawalResult.withdrawals
-            .filter(w => w.capitalGains === undefined)
-            .reduce((sum, w) => sum + w.tax, 0);
+            .reduce((sum, w) => sum + (w.capitalGains === undefined ? w.tax : (w.ordinaryTax ?? 0)), 0);
         totalPenalties = withdrawalResult.totalPenalties;
+
+        // NIIT (3.8%) on capital gains realized to fund the deficit. The federal
+        // tax helper computes it internally from investment income; extract only
+        // the NIIT so the existing planner-based ltcgTax cash handling is kept.
+        const realizedLTCG = withdrawalResult.totalLTCG;
+        const realizedSTCG = withdrawalResult.totalSTCG;
+        if (realizedLTCG > 0 || realizedSTCG > 0) {
+            niitTax = TaxService.calculateTotalFederalTax(
+                taxableOrdinaryBase - socialSecurityBenefits,
+                socialSecurityBenefits,
+                realizedSTCG,
+                realizedLTCG,
+                preTaxDeductions,
+                input.taxState.filingStatus,
+                fedParams
+            ).niitTax;
+        }
+
         decisions.push(...withdrawalResult.decisions);
     }
 
     // Final cash flow including withdrawals
     const totalGrossWithdrawals = withdrawals.reduce((sum, w) => sum + w.gross, 0);
-    const finalTotalTax = totalTax + ltcgTax + withdrawalOrdinaryTax + totalPenalties;
+    const finalTotalTax = totalTax + ltcgTax + withdrawalOrdinaryTax + niitTax + totalPenalties;
 
     const finalCashIn = incomeCashIn + totalGrossWithdrawals;
     const finalCashOut = input.totalLivingExpenses + finalTotalTax;
@@ -1944,7 +1952,7 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
         capitalGainsLT: ltcgTax,
         capitalGainsST: 0,
         withdrawalOrdinaryTax,
-        niit: 0,
+        niit: niitTax,
         penalties: totalPenalties,
         total: finalTotalTax,
     };

@@ -364,6 +364,15 @@ export interface PlannedWithdrawal {
     penalty: number;
     /** Tax on this withdrawal */
     tax: number;
+    /** Ordinary income realized by this withdrawal that is not already in the
+     *  income base (e.g. ESPP bargain element). Feeds SS-taxability like a
+     *  Traditional withdrawal. */
+    ordinaryIncome?: number;
+    /** Ordinary-income portion of `tax` (e.g. the ESPP bargain-element tax).
+     *  The remainder of `tax` is LTCG pass-through. When absent, `tax` is
+     *  all-ordinary (Traditional/HSA/Roth) or all-LTCG (brokerage) as indicated
+     *  by `capitalGains`. */
+    ordinaryTax?: number;
     /** Reason for withdrawal */
     reason: 'Required Minimum Distribution' | 'Spending deficit' | 'Conversion tax' | 'Healthcare expense' | 'ACA cliff Roth substitution';
 }

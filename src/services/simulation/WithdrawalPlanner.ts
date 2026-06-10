@@ -600,7 +600,11 @@ export function planWithdrawals(
         const effectiveVestedBalance = snapshot.vestedBalance - acaAlreadyConsumed;
         if (effectiveVestedBalance <= 0) continue;
 
-        const ltcgRate = getLTCGRate(runningOrdinaryIncome);
+        // LTCG stacks on top of ordinary income AND on top of gains already
+        // realized earlier in this pass, so position the rate lookup above
+        // cumulativeLTCG — otherwise each successive gain-bearing account re-uses
+        // the 0% floor as if no gains had been realized yet.
+        const ltcgRate = getLTCGRate(runningOrdinaryIncome + cumulativeLTCG);
         const marginalRate = getMarginalRate(runningOrdinaryIncome) + getStateRate(runningOrdinaryIncome);
 
         let withdrawal: PlannedWithdrawal;
@@ -1069,6 +1073,8 @@ export function planWithdrawals(
                         gross: grossToWithdraw,
                         net: netReceived,
                         capitalGains: { shortTerm: 0, longTerm: esppLTCG },
+                        ordinaryIncome: esppOrdinaryIncome,
+                        ordinaryTax,
                         penalty: 0,
                         tax: actualTax,
                         reason,

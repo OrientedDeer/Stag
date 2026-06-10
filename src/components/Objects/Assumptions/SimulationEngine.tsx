@@ -613,7 +613,7 @@ function simulateOneYearWithNewEngine(
     // change. Auth LTCG in that case is captured by `unfundedDeficit` instead.
     const brokerageLTCGFromGross = yearPlan.withdrawals
         .filter(w => w.capitalGains !== undefined)
-        .reduce((sum, w) => sum + w.tax, 0);
+        .reduce((sum, w) => sum + (w.tax - (w.ordinaryTax ?? 0)), 0);
     const totalCashAvailable =
         spendableIncome
         + withdrawalState.totalWithdrawals

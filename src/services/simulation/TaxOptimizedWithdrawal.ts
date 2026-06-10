@@ -1036,13 +1036,15 @@ export function calculateDynamicConversionCeiling(
     const projectedRMD = rmdDivisor > 0 ? effectiveProjectedBalance / rmdDivisor : 0;
     const projectedTaxableSS = TaxService.getTaxableSocialSecurityBenefits(
         effectiveSsAtRMD,
-        effectivePensionAtRMD + projectedRMD,
+        effectivePensionAtRMD + projectedRMD + effectivePassiveIncomeAtRMD,
         0,
         taxState.filingStatus
     );
     // Same units fix as peakRMDBracket: projectedRMD/SS/pension are in RMD-year
     // nominal dollars, so look up brackets in RMD-year params when available.
-    const projectedTaxableIncome = projectedRMD + effectivePensionAtRMD + projectedTaxableSS - peakBracketTaxParams.standardDeduction;
+    // Include passive income (rental/dividends) to match peakTaxableIncome — it
+    // was previously dropped here, understating the projected RMD bracket.
+    const projectedTaxableIncome = projectedRMD + effectivePensionAtRMD + effectivePassiveIncomeAtRMD + projectedTaxableSS - peakBracketTaxParams.standardDeduction;
     const projectedRMDBracket = TaxService.getMarginalTaxRate(Math.max(0, projectedTaxableIncome), peakBracketTaxParams).rate;
 
     return {
