@@ -6,7 +6,6 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-    getDampingFactor,
     getAcaCliffThreshold,
     getEffectiveConversionRate,
     coarseToFineSearch,
@@ -22,114 +21,6 @@ import { TaxParameters } from '../../../data/TaxData';
 import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import * as TaxService from '../../../components/Objects/Taxes/TaxService';
 import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
-
-// =============================================================================
-// Task 2: getDampingFactor() tests
-// =============================================================================
-
-describe('getDampingFactor', () => {
-    describe('Tier: 15+ years (very conservative, 0.15)', () => {
-        it('returns 0.15 for yearsUntilRMD = 15', () => {
-            expect(getDampingFactor(15)).toBe(0.15);
-        });
-
-        it('returns 0.15 for yearsUntilRMD = 20', () => {
-            expect(getDampingFactor(20)).toBe(0.15);
-        });
-
-        it('returns 0.15 for yearsUntilRMD = 100', () => {
-            expect(getDampingFactor(100)).toBe(0.15);
-        });
-    });
-
-    describe('Tier: 10-14 years (0.20)', () => {
-        it('returns 0.20 for yearsUntilRMD = 14', () => {
-            expect(getDampingFactor(14)).toBe(0.20);
-        });
-
-        it('returns 0.20 for yearsUntilRMD = 10', () => {
-            expect(getDampingFactor(10)).toBe(0.20);
-        });
-
-        it('returns 0.20 for yearsUntilRMD = 12', () => {
-            expect(getDampingFactor(12)).toBe(0.20);
-        });
-    });
-
-    describe('Tier: 7-9 years (0.25)', () => {
-        it('returns 0.25 for yearsUntilRMD = 9', () => {
-            expect(getDampingFactor(9)).toBe(0.25);
-        });
-
-        it('returns 0.25 for yearsUntilRMD = 7', () => {
-            expect(getDampingFactor(7)).toBe(0.25);
-        });
-
-        it('returns 0.25 for yearsUntilRMD = 8', () => {
-            expect(getDampingFactor(8)).toBe(0.25);
-        });
-    });
-
-    describe('Tier: 5-6 years (0.30)', () => {
-        it('returns 0.30 for yearsUntilRMD = 6', () => {
-            expect(getDampingFactor(6)).toBe(0.30);
-        });
-
-        it('returns 0.30 for yearsUntilRMD = 5', () => {
-            expect(getDampingFactor(5)).toBe(0.30);
-        });
-    });
-
-    describe('Tier: 3-4 years (0.40)', () => {
-        it('returns 0.40 for yearsUntilRMD = 4', () => {
-            expect(getDampingFactor(4)).toBe(0.40);
-        });
-
-        it('returns 0.40 for yearsUntilRMD = 3', () => {
-            expect(getDampingFactor(3)).toBe(0.40);
-        });
-    });
-
-    describe('Tier: 0-2 years (aggressive, 0.50)', () => {
-        it('returns 0.50 for yearsUntilRMD = 2', () => {
-            expect(getDampingFactor(2)).toBe(0.50);
-        });
-
-        it('returns 0.50 for yearsUntilRMD = 1', () => {
-            expect(getDampingFactor(1)).toBe(0.50);
-        });
-
-        it('returns 0.50 for yearsUntilRMD = 0', () => {
-            expect(getDampingFactor(0)).toBe(0.50);
-        });
-    });
-
-    describe('Negative Values (Edge Case)', () => {
-        it('returns 0.50 for yearsUntilRMD = -1 (past RMD)', () => {
-            expect(getDampingFactor(-1)).toBe(0.50);
-        });
-
-        it('returns 0.50 for yearsUntilRMD = -5 (past RMD)', () => {
-            expect(getDampingFactor(-5)).toBe(0.50);
-        });
-    });
-
-    describe('Range Validation', () => {
-        it('result is always >= 0.15', () => {
-            const testValues = [-5, -1, 0, 1, 2, 3, 5, 7, 10, 15, 20, 100];
-            for (const years of testValues) {
-                expect(getDampingFactor(years)).toBeGreaterThanOrEqual(0.15);
-            }
-        });
-
-        it('result is always <= 0.50', () => {
-            const testValues = [-5, -1, 0, 1, 2, 3, 5, 7, 10, 15, 20, 100];
-            for (const years of testValues) {
-                expect(getDampingFactor(years)).toBeLessThanOrEqual(0.50);
-            }
-        });
-    });
-});
 
 // =============================================================================
 // Task 4: getAcaCliffThreshold() tests

@@ -35,7 +35,7 @@ import {
 } from "./types";
 import { WithdrawalResult } from "../WithdrawalStrategies";
 import { classifyIncome, getTotalSSBenefits } from "./IncomeClassifier";
-import { planWithdrawals, createOrderedSnapshots } from "./WithdrawalPlanner";
+import { planWithdrawals, createOrderedSnapshots, grossUpBrokerage } from "./WithdrawalPlanner";
 import * as TaxService from "../../components/Objects/Taxes/TaxService";
 import { getLTCGRate } from "../../components/Objects/Taxes/taxService/capitalGainsTax";
 import { calculateEffectiveConversionTax, ACAOptions } from "./helpers";
@@ -240,9 +240,9 @@ const getLTCGRateForIncome = getLTCGRate;
 function estimateLTCGFromDeficit(deficit: number, gainRatio: number, ltcgRate: number = 0): number {
     if (deficit <= 0 || gainRatio <= 0) return 0;
 
-    const effectiveRate = gainRatio * ltcgRate;
-    const grossWithdrawal = effectiveRate < 1 ? deficit / (1 - effectiveRate) : deficit;
-    return grossWithdrawal * gainRatio;
+    // Delegate to the authoritative brokerage sizer so this ACA-cliff prediction
+    // can't drift from how the withdrawal planner actually realizes LTCG.
+    return grossUpBrokerage(deficit, gainRatio, ltcgRate).ltcg;
 }
 
 // =============================================================================

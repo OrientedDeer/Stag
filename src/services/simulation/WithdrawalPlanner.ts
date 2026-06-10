@@ -253,7 +253,7 @@ function grossUpSavings(netNeeded: number): { gross: number; tax: number; penalt
  * Calculate gross withdrawal needed for a given net from brokerage.
  * Uses algebraic formula: gross = net / (1 - gainRatio × ltcgRate)
  */
-function grossUpBrokerage(
+export function grossUpBrokerage(
     netNeeded: number,
     gainRatio: number,
     ltcgRate: number
@@ -263,8 +263,10 @@ function grossUpBrokerage(
         return { gross: netNeeded, tax: 0, ltcg: 0 };
     }
 
+    // Floor the divisor (mirrors the Roth/HSA/ESPP gross-ups) so a pathological
+    // ~100% effective rate can't divide by zero / explode. No-op for real rates.
     const effectiveRate = gainRatio * ltcgRate;
-    const gross = netNeeded / (1 - effectiveRate);
+    const gross = netNeeded / grossUpDivisor(effectiveRate);
     const ltcg = gross * gainRatio;
     const tax = ltcg * ltcgRate;
 

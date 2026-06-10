@@ -166,22 +166,6 @@ export function getRMDDivisor(age: number): number {
 // =============================================================================
 
 /**
- * Get the damping factor for conversion calculations based on years until RMD.
- * More aggressive (higher %) when time is short, conservative when time is long.
- *
- * @param yearsUntilRMD - Years remaining until Required Minimum Distributions start
- * @returns Damping factor between 0.15 and 0.50
- */
-export function getDampingFactor(yearsUntilRMD: number): number {
-    if (yearsUntilRMD >= 15) return 0.15;  // Very conservative when lots of time
-    if (yearsUntilRMD >= 10) return 0.20;
-    if (yearsUntilRMD >= 7) return 0.25;
-    if (yearsUntilRMD >= 5) return 0.30;
-    if (yearsUntilRMD >= 3) return 0.40;
-    return 0.50;  // Aggressive when time is very short
-}
-
-/**
  * Get the ACA subsidy cliff threshold (400% FPL) for a given year and filing status.
  * Values should be updated annually when FPL is published (typically January).
  *

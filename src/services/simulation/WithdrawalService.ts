@@ -2,7 +2,6 @@ import { AnyAccount, DeficitDebtAccount } from "../../components/Objects/Account
 
 export interface DeficitDebtResult {
     existingDeficitDebt: DeficitDebtAccount | undefined;
-    deficitDebtPayment: number;
     discretionaryCash: number;
     logs: string[];
 }
@@ -17,7 +16,6 @@ export function processDeficitDebt(
 ): DeficitDebtResult {
     const DEFICIT_DEBT_ID = 'system-deficit-debt';
     const DEFICIT_DEBT_NAME = 'Uncovered Deficit';
-    let deficitDebtPayment = 0;
 
     let existingDeficitDebt = accounts.find(
         acc => acc instanceof DeficitDebtAccount && acc.id === DEFICIT_DEBT_ID
@@ -47,5 +45,5 @@ export function processDeficitDebt(
         discretionaryCash = 0;
     }
 
-    return { existingDeficitDebt, deficitDebtPayment, discretionaryCash, logs };
+    return { existingDeficitDebt, discretionaryCash, logs };
 }

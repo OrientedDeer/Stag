@@ -108,16 +108,6 @@ describe('processDeficitDebt', () => {
             expect(result.existingDeficitDebt).toBeInstanceOf(DeficitDebtAccount);
         });
 
-        it('should return deficitDebtPayment', () => {
-            const accounts: AnyAccount[] = [];
-            const logs: string[] = [];
-
-            const result = processDeficitDebt(-1000, accounts, logs);
-
-            expect(result.deficitDebtPayment).toBeDefined();
-            expect(typeof result.deficitDebtPayment).toBe('number');
-        });
-
         it('should set discretionaryCash to 0 after debt creation', () => {
             const accounts: AnyAccount[] = [];
             const logs: string[] = [];
