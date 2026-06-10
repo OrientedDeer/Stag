@@ -245,6 +245,72 @@ function estimateLTCGFromDeficit(deficit: number, gainRatio: number, ltcgRate: n
     return grossUpBrokerage(deficit, gainRatio, ltcgRate).ltcg;
 }
 
+/**
+ * Compute a conversion's tax cost, its federal/state decomposition, and the
+ * tax-payment source. Shared by planConversion (rate-match) and planConversionDP
+ * so both strategies price an identical conversion identically (they previously
+ * duplicated this block, which risked the two paths silently diverging).
+ */
+function computeConversionTaxAndSource(
+    input: YearSolverInput,
+    baseOrdinaryIncome: number,
+    nonSSOrdinaryIncome: number,
+    socialSecurityBenefits: number,
+    conversionAmount: number,
+    spendingDeficit: number,
+    surplus: number,
+    fedParams: TaxParameters,
+    stateParams: TaxParameters | null,
+    acaOptions: ACAOptions | undefined,
+): { conversionTax: number; conversionFedTax: number; conversionStateTax: number; taxSource: ConversionTaxSource } {
+    // Estimate this year's LTCG so the conversion's displayed Tax Cost reflects
+    // the LTCG bump (brokerage is sold for the spending deficit + conversion tax,
+    // and the LTCG rate rises 0%→15%→20% as ordinary income climbs).
+    const ltcgGainRatio = getBrokerageGainRatio(input.accounts);
+    const ltcgRateAtIncome = getLTCGRateForIncome(baseOrdinaryIncome + conversionAmount, fedParams);
+    const estimatedLTCGForYear = estimateLTCGFromDeficit(
+        Math.max(0, spendingDeficit),
+        ltcgGainRatio,
+        ltcgRateAtIncome,
+    );
+
+    // First arg must be ordinary income EXCLUDING SS — the function re-derives
+    // taxable SS internally from the separate socialSecurityBenefits arg. Passing
+    // baseOrdinaryIncome (which already includes taxable SS) double-counts SS.
+    const conversionTaxResult = calculateEffectiveConversionTax(
+        nonSSOrdinaryIncome,
+        socialSecurityBenefits,
+        estimatedLTCGForYear,
+        conversionAmount,
+        input.taxState.filingStatus,
+        fedParams,
+        stateParams,
+        acaOptions,
+    );
+
+    const conversionTax = conversionTaxResult.taxIncrease;
+    const conversionFedTax = conversionTaxResult.breakdown.federalOrdinaryTaxCost
+        + conversionTaxResult.breakdown.ssTorpedoCost
+        + conversionTaxResult.breakdown.ltcgBumpCost
+        + conversionTaxResult.breakdown.niitCost;
+    const conversionStateTax = conversionTaxResult.breakdown.stateTaxCost;
+
+    // Tax payment source: prefer surplus, then brokerage, else withhold from the
+    // conversion (the spending deficit already includes the conversion tax via
+    // finalFedResult.totalTax, so the full amount still reaches Roth).
+    const brokerageBalance = getTotalBrokerageBalance(input.accounts);
+    let taxSource: ConversionTaxSource;
+    if (surplus >= conversionTax) {
+        taxSource = 'SURPLUS';
+    } else if (brokerageBalance >= conversionTax) {
+        taxSource = 'BROKERAGE';
+    } else {
+        taxSource = 'WITHHOLD';
+    }
+
+    return { conversionTax, conversionFedTax, conversionStateTax, taxSource };
+}
+
 // =============================================================================
 // CONVERSION PLANNING
 // =============================================================================
@@ -820,58 +886,12 @@ function planConversion(
         };
     }
 
-    // Estimate LTCG that the year will realize. Brokerage gets sold for two
-    // reasons: covering this year's spending deficit, and covering the
-    // conversion tax (when taxSource is BROKERAGE). The LTCG bumps the
-    // conversion's tax cost (LTCG rate goes from 0% → 15% / 15% → 20% as
-    // ordinary income rises), so we want it reflected in the displayed
-    // conversionTax. Same formula the ACA-cliff binary-search uses above.
-    const ltcgGainRatio = getBrokerageGainRatio(input.accounts);
-    const ltcgRateAtIncome = getLTCGRateForIncome(baseOrdinaryIncome + conversionAmount, fedParams);
-    const estimatedLTCGForYear = estimateLTCGFromDeficit(
-        Math.max(0, spendingDeficit),
-        ltcgGainRatio,
-        ltcgRateAtIncome,
-    );
-
-    // Calculate conversion tax.
-    // First arg must be ordinary income EXCLUDING SS — the function re-derives
-    // taxable SS internally from the separate socialSecurityBenefits arg. Passing
-    // baseOrdinaryIncome (which already includes taxable SS) double-counts SS.
-    const conversionTaxResult = calculateEffectiveConversionTax(
-        nonSSOrdinaryIncome,
-        socialSecurityBenefits,
-        estimatedLTCGForYear,
-        conversionAmount,
-        input.taxState.filingStatus,
-        fedParams,
-        stateParams,
-        acaOptions
-    );
-
-    const conversionTax = conversionTaxResult.taxIncrease;
-    const conversionFedTax = conversionTaxResult.breakdown.federalOrdinaryTaxCost
-                           + conversionTaxResult.breakdown.ssTorpedoCost
-                           + conversionTaxResult.breakdown.ltcgBumpCost
-                           + conversionTaxResult.breakdown.niitCost;
-    const conversionStateTax = conversionTaxResult.breakdown.stateTaxCost;
-
-    // Determine tax payment source
-    let taxSource: ConversionTaxSource = 'SURPLUS';
+    const { conversionTax, conversionFedTax, conversionStateTax, taxSource } =
+        computeConversionTaxAndSource(
+            input, baseOrdinaryIncome, nonSSOrdinaryIncome, socialSecurityBenefits,
+            conversionAmount, spendingDeficit, surplus, fedParams, stateParams, acaOptions,
+        );
     const netToRoth = conversionAmount;
-
-    const brokerageBalance = getTotalBrokerageBalance(input.accounts);
-
-    if (surplus >= conversionTax) {
-        taxSource = 'SURPLUS';
-    } else if (brokerageBalance >= conversionTax) {
-        taxSource = 'BROKERAGE';
-    } else {
-        // No surplus or brokerage to pay tax — tax is covered by the
-        // spending deficit (which already includes conversion tax via
-        // finalFedResult.totalTax). Full conversion amount reaches Roth.
-        taxSource = 'WITHHOLD';
-    }
 
     // Find source and target accounts
     const sourceAccount = getFirstTraditionalAccount(input.accounts);
@@ -1093,46 +1113,11 @@ function planConversionDP(
         };
     }
 
-    // Estimate this year's LTCG (mirrors the rate-match path) so the
-    // conversion's displayed Tax Cost reflects the LTCG bump.
-    const ltcgGainRatio = getBrokerageGainRatio(input.accounts);
-    const ltcgRateAtIncome = getLTCGRateForIncome(baseOrdinaryIncome + conversionAmount, fedParams);
-    const estimatedLTCGForYear = estimateLTCGFromDeficit(
-        Math.max(0, spendingDeficit),
-        ltcgGainRatio,
-        ltcgRateAtIncome,
-    );
-
-    // First arg must be ordinary income EXCLUDING SS — the function re-derives
-    // taxable SS internally from the separate socialSecurityBenefits arg. Passing
-    // baseOrdinaryIncome (which already includes taxable SS) double-counts SS.
-    const conversionTaxResult = calculateEffectiveConversionTax(
-        nonSSOrdinaryIncome,
-        socialSecurityBenefits,
-        estimatedLTCGForYear,
-        conversionAmount,
-        input.taxState.filingStatus,
-        fedParams,
-        stateParams,
-        acaOptions,
-    );
-    const conversionTax = conversionTaxResult.taxIncrease;
-    const conversionFedTax = conversionTaxResult.breakdown.federalOrdinaryTaxCost
-        + conversionTaxResult.breakdown.ssTorpedoCost
-        + conversionTaxResult.breakdown.ltcgBumpCost
-        + conversionTaxResult.breakdown.niitCost;
-    const conversionStateTax = conversionTaxResult.breakdown.stateTaxCost;
-
-    // Tax payment source selection (same priority as rate-match).
-    const brokerageBalance = getTotalBrokerageBalance(input.accounts);
-    let taxSource: ConversionTaxSource;
-    if (surplus >= conversionTax) {
-        taxSource = 'SURPLUS';
-    } else if (brokerageBalance >= conversionTax) {
-        taxSource = 'BROKERAGE';
-    } else {
-        taxSource = 'WITHHOLD';
-    }
+    const { conversionTax, conversionFedTax, conversionStateTax, taxSource } =
+        computeConversionTaxAndSource(
+            input, baseOrdinaryIncome, nonSSOrdinaryIncome, socialSecurityBenefits,
+            conversionAmount, spendingDeficit, surplus, fedParams, stateParams, acaOptions,
+        );
 
     const conversion: PlannedConversion = {
         amount: conversionAmount,
