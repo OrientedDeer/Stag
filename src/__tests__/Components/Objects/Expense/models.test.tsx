@@ -9,6 +9,8 @@ import {
   reconstituteExpense,
   getExpenseActiveMultiplier,
   isExpenseActiveInCurrentMonth,
+  getGoalMonthlySetAside,
+  getGoalFundMonthlyCap,
   DependentExpense,
   VacationExpense,
   OtherExpense,
@@ -1138,6 +1140,64 @@ describe('Expense Models', () => {
         const expense = new OtherExpense('e-future', 'Future', 100, 'Monthly', future);
         expect(isExpenseActiveInCurrentMonth(expense)).toBe(false);
       });
+    });
+  });
+
+  describe('long-term goals — derived funding (no stored duplicates)', () => {
+    // endDate IS a targetDate goal's target. The funding set-aside is derived
+    // from the goal each year (getGoalFundMonthlyCap) so edits to the goal's
+    // amount/dates propagate — the priority's stored capValue is only a
+    // creation-time snapshot that nothing should trust.
+    const makeGoal = (amount: number, startYear: number, targetYear: number) => {
+      const goal = new OtherExpense('exp-g', 'Goal', amount, 'Monthly', new Date(Date.UTC(startYear, 0, 1)));
+      goal.goalType = 'targetDate';
+      goal.endDate = new Date(Date.UTC(targetYear, 0, 1));
+      goal.goalAccountId = 'acc-fund';
+      return goal;
+    };
+
+    it('getGoalMonthlySetAside reads the target from endDate', () => {
+      const goal = makeGoal(36000, 2025, 2028); // 36 months
+      expect(getGoalMonthlySetAside(goal)).toBeCloseTo(1000, 5);
+    });
+
+    it('getGoalFundMonthlyCap derives the live cap inside the saving window', () => {
+      const goal = makeGoal(36000, 2025, 2028);
+      expect(getGoalFundMonthlyCap([goal], 'acc-fund', 2024)).toBe(0);   // not saving yet
+      expect(getGoalFundMonthlyCap([goal], 'acc-fund', 2026)).toBeCloseTo(1000, 5);
+      expect(getGoalFundMonthlyCap([goal], 'acc-fund', 2028)).toBeCloseTo(1000, 5); // purchase year still funds
+      expect(getGoalFundMonthlyCap([goal], 'acc-fund', 2029)).toBe(0);   // already purchased
+    });
+
+    it('getGoalFundMonthlyCap reflects goal edits immediately (regression: stale capValue)', () => {
+      const goal = makeGoal(36000, 2025, 2028);
+      goal.amount = 72000; // user doubles the goal after creation
+      expect(getGoalFundMonthlyCap([goal], 'acc-fund', 2026)).toBeCloseTo(2000, 5);
+      goal.endDate = new Date(Date.UTC(2031, 0, 1)); // user pushes the target out (72 months)
+      expect(getGoalFundMonthlyCap([goal], 'acc-fund', 2026)).toBeCloseTo(1000, 5);
+    });
+
+    it('getGoalFundMonthlyCap returns undefined for accounts that are not goal funds', () => {
+      const goal = makeGoal(36000, 2025, 2028);
+      expect(getGoalFundMonthlyCap([goal], 'acc-other', 2026)).toBeUndefined();
+      expect(getGoalFundMonthlyCap([goal], undefined, 2026)).toBeUndefined();
+    });
+
+    it('reconstituteExpense migrates legacy goalTargetDate into endDate', () => {
+      // Pre-migration backups stored the target in a separate goalTargetDate
+      // field (a duplicate of endDate that could drift). On load it must be
+      // absorbed into endDate when endDate is missing.
+      const legacy = {
+        className: 'OtherExpense',
+        id: 'exp-legacy', name: 'Legacy goal', amount: 12000, frequency: 'Monthly',
+        startDate: '2025-01-01T00:00:00.000Z',
+        goalType: 'targetDate',
+        goalTargetDate: '2027-01-01T00:00:00.000Z',
+        goalAccountId: 'acc-fund',
+      };
+      const expense = reconstituteExpense(legacy)!;
+      expect(expense.endDate?.getUTCFullYear()).toBe(2027);
+      expect(getGoalMonthlySetAside(expense)).toBeCloseTo(12000 / 24, 5);
     });
   });
 });

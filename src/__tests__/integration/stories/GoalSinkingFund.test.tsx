@@ -128,10 +128,10 @@ describe('Story: One-Time Goal (target date)', () => {
     );
     const living = new FoodExpense('exp-living', 'Living', 20000, 'Annually', new Date(startYear, 0, 1));
 
-    // Mirror how the modal creates a one-time goal: endDate = target date.
+    // Mirror how the modal creates a one-time goal: endDate IS the target date
+    // (single source of truth — no separate goalTargetDate field).
     const carGoal = new OtherExpense('exp-car', 'Car', goalCost, 'Monthly', new Date(startYear, 0, 1));
     carGoal.goalType = 'targetDate';
-    carGoal.goalTargetDate = new Date(targetYear, 0, 1);
     carGoal.endDate = new Date(targetYear, 0, 1);
     carGoal.goalAccountId = 'acc-car-fund';
 
@@ -149,5 +149,25 @@ describe('Story: One-Time Goal (target date)', () => {
         // stops, so the balance stays drained instead of growing ~$12k/yr again.
         expect(fundAt(targetYear + 1)).toBeLessThan(1000);
         expect(fundAt(targetYear + 3)).toBeLessThan(1000);
+    });
+
+    it('derives funding from the goal, ignoring a stale stored capValue (post-edit state)', () => {
+        // Simulate the state after a user edits a goal: the priority created at
+        // goal-creation still holds the old capValue snapshot ($10/mo here), but
+        // the sim must fund at the rate derived from the goal itself (~$1000/mo).
+        const staleAssumptions: AssumptionsState = {
+            ...assumptions,
+            priorities: [
+                { id: 'pri-car', name: 'Car fund', type: 'SAVINGS', accountId: 'acc-car-fund', capType: 'FIXED', capValue: 10 },
+            ],
+        };
+        const sim = runSimulation(8, [carFund], [income], [living, carGoal], staleAssumptions, taxState)
+            .filter(s => !s.isEndOfYearProjection);
+        const fundAt = (y: number) =>
+            sim.find(s => s.year === y)?.accounts.find(a => a.id === 'acc-car-fund')?.amount ?? 0;
+
+        // $10/mo would accrue only ~$120/yr; the derived set-aside accrues ~$12k/yr.
+        expect(fundAt(startYear + 1)).toBeGreaterThan(5000);
+        expect(sim.some(s => s.logs.some(l => l.includes('came due')))).toBe(true);
     });
 });

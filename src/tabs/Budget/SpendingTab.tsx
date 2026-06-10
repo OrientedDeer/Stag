@@ -10,7 +10,7 @@ import { AccountContext } from '../../components/Objects/Accounts/AccountContext
 import { IncomeContext } from '../../components/Objects/Income/IncomeContext';
 import { WorkIncome } from '../../components/Objects/Income/models';
 import { InvestedAccount, SavedAccount, AnyAccount } from '../../components/Objects/Accounts/models';
-import { isLongTermGoal } from '../../components/Objects/Expense/models';
+import { isLongTermGoal, getGoalFundMonthlyCap } from '../../components/Objects/Expense/models';
 import { useAssumptions, getBirthYear } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
 import { SimulationContext } from '../../components/Objects/Assumptions/SimulationContext';
@@ -98,6 +98,12 @@ export default function SpendingTab() {
         const inflationAdjusted = assumptions.macro.inflationAdjusted;
         const hsaCoverage = taxState.filingStatus === 'Married Filing Jointly' ? 'family' : 'individual';
 
+        // Goal sinking funds: derive the annual goal from the goal expense
+        // itself, not the priority's stored capValue snapshot, so goal edits
+        // propagate (mirrors the sim engine and EOY projection).
+        const goalCap = getGoalFundMonthlyCap(expenses, priority.accountId, selectedYear);
+        if (goalCap !== undefined) return goalCap * 12;
+
         if (priority.capType === 'MAX' && account instanceof InvestedAccount) {
             // Look up IRS limit based on account's taxType
             switch (account.taxType) {
@@ -123,7 +129,7 @@ export default function SpendingTab() {
             return simulatedBucketAllocations[priority.accountId!] || 0;
         }
         return 0;
-    }, [assumptions, selectedYear, currentAge, taxState.filingStatus, currentMonthlyExpenses, simulatedBucketAllocations]);
+    }, [assumptions, selectedYear, currentAge, taxState.filingStatus, currentMonthlyExpenses, simulatedBucketAllocations, expenses]);
 
     // The "tracking horizon" is the month we treat as YTD-end:
     // - past years: full year (month 12)

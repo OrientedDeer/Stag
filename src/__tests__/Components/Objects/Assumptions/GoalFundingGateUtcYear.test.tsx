@@ -21,17 +21,18 @@ import { WorkIncome } from '../../../../components/Objects/Income/models';
 import { FoodExpense, OtherExpense, isGoalDueInYear } from '../../../../components/Objects/Expense/models';
 import { runSimulation } from '../../../../components/Objects/Assumptions/useSimulation';
 
-// Replicates the funding-gate predicate from SimulationEngine.tsx (the block
-// that builds `inactiveGoalFundIds`). Kept in lockstep with the source so this
-// test fails if either reader drifts back to a local getFullYear().
+// Replicates the funding-gate predicate from getGoalFundMonthlyCap (used by
+// SimulationEngine's per-year priority derivation). Kept in lockstep with the
+// source so this test fails if either reader drifts back to a local
+// getFullYear(). A goal's endDate IS its target date.
 function fundingGateInactive(
-    e: { startDate?: Date | null; goalType?: string; goalTargetDate?: Date | null },
+    e: { startDate?: Date | null; goalType?: string; endDate?: Date | null },
     year: number,
 ): boolean {
     const goalStartYear = (e.startDate ? new Date(e.startDate) : new Date()).getUTCFullYear();
     if (year < goalStartYear) return true;
-    if (e.goalType === 'targetDate' && e.goalTargetDate
-        && new Date(e.goalTargetDate).getUTCFullYear() < year) return true;
+    if (e.goalType === 'targetDate' && e.endDate
+        && new Date(e.endDate).getUTCFullYear() < year) return true;
     return false;
 }
 
@@ -39,7 +40,7 @@ describe('Bug #11 — goal funding gate UTC year', () => {
     it('funding gate and isGoalDueInYear agree on the year for a UTC-midnight target', () => {
         const goal = new OtherExpense('exp-car', 'Car', 30000, 'Monthly', new Date(Date.UTC(2025, 0, 1)));
         goal.goalType = 'targetDate';
-        goal.goalTargetDate = new Date(Date.UTC(2030, 0, 1));
+        goal.endDate = new Date(Date.UTC(2030, 0, 1)); // endDate IS the target
         goal.goalAccountId = 'acc-car-fund';
 
         // The gate must NOT mark the goal "already purchased" until AFTER the
@@ -88,8 +89,7 @@ describe('Bug #11 — goal funding gate UTC year', () => {
         // UTC-midnight target — this is the date shape that triggered the bug.
         const carGoal = new OtherExpense('exp-car', 'Car', 12000, 'Monthly', new Date(Date.UTC(startYear, 0, 1)));
         carGoal.goalType = 'targetDate';
-        carGoal.goalTargetDate = new Date(Date.UTC(targetYear, 0, 1));
-        carGoal.endDate = new Date(Date.UTC(targetYear, 0, 1));
+        carGoal.endDate = new Date(Date.UTC(targetYear, 0, 1)); // endDate IS the target
         carGoal.goalAccountId = 'acc-car-fund';
 
         const sim = runSimulation(8, [carFund], [income], [living, carGoal], assumptions, taxState)

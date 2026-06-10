@@ -116,10 +116,21 @@ Modal sweep (Account/Income) — same lens applied:
   on `YYYY-MM-DD` strings (UTC-parse off-by-one footgun) at lines ~52-53, 87-88.
   Niche; not fixed yet.
 
-Known remaining gap (not a quick fix — needs a goal-feature pass):
-- **Goal edits don't re-sync the funding priority.** The linked savings-priority
-  `capValue` (monthly set-aside) is computed once at creation
-  (`getGoalMonthlySetAside`) and stored in assumptions. Editing the goal's
-  amount/interval/target later does NOT update it, so funding goes stale. This
-  underlies real #5 editability and any future #7 drift. Also: full kind-switch
-  (recurring ↔ save-by-date) needs to re-wire the fund/priority.
+Goal-feature pass (the "stale duplicates" root cause) — FIXED:
+- **`goalTargetDate` removed from the model.** It duplicated `endDate` (and
+  drifted — the "GOAL doesn't update" bug). `endDate` is now the single target;
+  `reconstituteExpense` migrates legacy `goalTargetDate` into `endDate` so old
+  backups/QRs still load. ExpenseCard's Goal row no longer duplicates the date —
+  it shows the derived monthly set-aside instead.
+- **Goal funding is derived, never trusted from storage.** New
+  `getGoalFundMonthlyCap(expenses, accountId, year)` computes the live monthly
+  set-aside (0 outside the saving window). Used by SimulationEngine (per-year
+  priority override), eoyContributionProjection, SpendingTab's getAnnualGoal,
+  SpendingSunburst's savings waterfall, and PriorityTab's waterfall/warnings.
+  The priority's stored `capValue` is now only a creation-time display snapshot.
+  PriorityTab locks goal-fund rows to name-only editing ("edit the goal
+  expense instead").
+- Regression tests: models.test.tsx (derivation + edit propagation + legacy
+  migration), GoalSinkingFund story (sim ignores a stale capValue snapshot).
+- Still open (smaller): full kind-switch (recurring ↔ save-by-date) after
+  creation still isn't offered in the UI.

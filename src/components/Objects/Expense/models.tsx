@@ -16,9 +16,11 @@ export type AnnualBudgetMode = 'lump' | 'sinkingFund';
  * A long-term savings goal — the "Longer term" cadence. Either:
  * - 'recurring'  – a big-ticket item replaced on a long cycle (roof every N
  *   years); `intervalYears` set; recurs forever.
- * - 'targetDate' – a one-time goal funded by `goalTargetDate`; done afterward.
+ * - 'targetDate' – a one-time goal saved up by its `endDate`; done afterward.
  * In both cases `amount` is the total cost, funded by a steady monthly
- * set-aside (a sinking fund) over the horizon.
+ * set-aside (a sinking fund) over the horizon. There is intentionally no
+ * separate "target date" field — the expense's own `endDate` IS the target,
+ * so editing the end date automatically moves the goal.
  */
 export type GoalType = 'recurring' | 'targetDate';
 
@@ -34,7 +36,6 @@ export interface Expense {
   annualMode?: AnnualBudgetMode; // how an `Annually` expense spreads across the budget
   goalType?: GoalType;        // marks a long-term goal ("Longer term" cadence)
   intervalYears?: number;     // recurrence (years) for a 'recurring' goal
-  goalTargetDate?: Date;      // funding deadline for a 'targetDate' goal
   goalAccountId?: string;     // linked sinking-fund SavedAccount
 }
 
@@ -63,7 +64,6 @@ export abstract class BaseExpense implements Expense {
   // marks an expense as a goal. `amount` holds the total cost.
   public goalType?: GoalType;
   public intervalYears?: number;   // for 'recurring' goals
-  public goalTargetDate?: Date;    // for 'targetDate' goals
   public goalAccountId?: string;   // linked sinking-fund SavedAccount
 
   /**
@@ -77,7 +77,6 @@ export abstract class BaseExpense implements Expense {
     target.annualMode = this.annualMode;
     target.goalType = this.goalType;
     target.intervalYears = this.intervalYears;
-    target.goalTargetDate = this.goalTargetDate;
     target.goalAccountId = this.goalAccountId;
     return target;
   }
@@ -888,10 +887,8 @@ export function isExpenseDone(expense: AnyExpense): boolean {
   const now = new Date();
   if (expense.endDate && new Date(expense.endDate) < now) return true;
   if (expense instanceof LoanExpense && expense.amount <= 0) return true;
-  // A one-time goal is done once its target date has passed. Recurring goals
-  // never finish.
-  if (expense.goalType === 'targetDate' && expense.goalTargetDate
-      && new Date(expense.goalTargetDate) < now) return true;
+  // A one-time goal is done once its target (endDate) has passed — covered by
+  // the endDate check above. Recurring goals never finish.
   return false;
 }
 
@@ -909,16 +906,16 @@ function monthsBetween(from: Date, to: Date): number {
 /**
  * Steady monthly set-aside that funds a goal over its horizon (a sinking fund).
  * - recurring: total / (intervalYears * 12)
- * - targetDate: total / months from start to target
+ * - targetDate: total / months from start to target (the goal's endDate)
  * Returns 0 for non-goals or ill-defined horizons.
  */
 export function getGoalMonthlySetAside(expense: AnyExpense): number {
   if (expense.goalType === 'recurring' && expense.intervalYears && expense.intervalYears > 0) {
     return expense.amount / (expense.intervalYears * 12);
   }
-  if (expense.goalType === 'targetDate' && expense.goalTargetDate) {
+  if (expense.goalType === 'targetDate' && expense.endDate) {
     const start = expense.startDate ? new Date(expense.startDate) : new Date();
-    const months = monthsBetween(start, new Date(expense.goalTargetDate));
+    const months = monthsBetween(start, new Date(expense.endDate));
     return months > 0 ? expense.amount / months : 0;
   }
   return 0;
@@ -926,13 +923,13 @@ export function getGoalMonthlySetAside(expense: AnyExpense): number {
 
 /**
  * Whether a goal's lump comes due in the given calendar year.
- * - targetDate: the year of the target date.
+ * - targetDate: the year of the target (the goal's endDate).
  * - recurring: anchor year (start date) + k*intervalYears for k >= 1, so the
  *   first purchase is one full interval after you start saving.
  */
 export function isGoalDueInYear(expense: AnyExpense, year: number): boolean {
-  if (expense.goalType === 'targetDate' && expense.goalTargetDate) {
-    return new Date(expense.goalTargetDate).getUTCFullYear() === year;
+  if (expense.goalType === 'targetDate' && expense.endDate) {
+    return new Date(expense.endDate).getUTCFullYear() === year;
   }
   if (expense.goalType === 'recurring' && expense.intervalYears && expense.intervalYears > 0) {
     const anchorYear = (expense.startDate ? new Date(expense.startDate) : new Date()).getUTCFullYear();
@@ -940,6 +937,36 @@ export function isGoalDueInYear(expense: AnyExpense, year: number): boolean {
     return diff > 0 && diff % expense.intervalYears === 0;
   }
   return false;
+}
+
+/**
+ * Live monthly cap for a goal's sinking-fund savings priority in a given year,
+ * or undefined when the account isn't a goal fund.
+ *
+ * Goal funding is DERIVED, never trusted from storage: the priority created
+ * alongside a goal stores a capValue snapshot, but editing the goal's amount,
+ * dates, or interval would leave that snapshot stale. Both the simulation and
+ * the budget projection call this instead, so goal edits propagate
+ * automatically. Returns 0 outside the active saving window — before the
+ * goal's start year, and (for one-time goals) after the purchase year.
+ *
+ * Years are extracted with getUTCFullYear to match isGoalDueInYear: goal dates
+ * are stored as UTC-midnight, so local accessors in a negative-UTC timezone
+ * would shift a YYYY-01-01 target back a year.
+ */
+export function getGoalFundMonthlyCap(
+  expenses: AnyExpense[],
+  accountId: string | undefined,
+  year: number,
+): number | undefined {
+  if (!accountId) return undefined;
+  const goal = expenses.find(e => isLongTermGoal(e) && e.goalAccountId === accountId);
+  if (!goal) return undefined;
+  const startYear = (goal.startDate ? new Date(goal.startDate) : new Date()).getUTCFullYear();
+  if (year < startYear) return 0; // not saving yet
+  if (goal.goalType === 'targetDate' && goal.endDate
+      && new Date(goal.endDate).getUTCFullYear() < year) return 0; // already purchased
+  return getGoalMonthlySetAside(goal);
 }
 
 export const EXPENSE_CATEGORIES = [
@@ -1011,7 +1038,11 @@ export function reconstituteExpense(data: unknown): AnyExpense | null {
     if (!hasClassName(data)) return null;
 
     const startDate = parseDateRequired(data.startDate);
-    const endDate = parseDate(data.endDate);
+    // Legacy migration: 'targetDate' goals used to store the target in a
+    // separate `goalTargetDate` field (a duplicate of endDate that could
+    // drift). endDate is now the single source of truth; absorb the old field
+    // when endDate is missing so pre-migration backups still load.
+    const endDate = parseDate(data.endDate) ?? parseDate(data.goalTargetDate);
     const frequency = (data.frequency as ExpenseFrequency) || 'Monthly';
     const id = String(data.id ?? '');
     const name = String(data.name ?? 'Unnamed Expense');
@@ -1024,7 +1055,6 @@ export function reconstituteExpense(data: unknown): AnyExpense | null {
     const goalType: GoalType | undefined =
         data.goalType === 'recurring' || data.goalType === 'targetDate' ? data.goalType : undefined;
     const intervalYears = data.intervalYears != null ? Number(data.intervalYears) : undefined;
-    const goalTargetDate = parseDate(data.goalTargetDate);
     const goalAccountId = data.goalAccountId ? String(data.goalAccountId) : undefined;
 
     let expense: AnyExpense | null = null;
@@ -1120,7 +1150,6 @@ export function reconstituteExpense(data: unknown): AnyExpense | null {
         expense.annualMode = annualMode;
         expense.goalType = goalType;
         expense.intervalYears = intervalYears;
-        expense.goalTargetDate = goalTargetDate;
         expense.goalAccountId = goalAccountId;
     }
 

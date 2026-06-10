@@ -14,7 +14,8 @@ import {
     CharityExpense,
     SubscriptionExpense,
     EXPENSE_COLORS_BACKGROUND,
-    isLongTermGoal
+    isLongTermGoal,
+    getGoalMonthlySetAside
 } from './models.js';
 import { ExpenseDispatchContext, AllExpenseKeys } from "./ExpenseContext.js";
 import { AccountContext, AccountDispatchContext } from "../Accounts/AccountContext.js";
@@ -243,11 +244,13 @@ function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
                 )}
 
                 {isGoal ? (
+                    // Derived live from amount + dates/interval — edits to the
+                    // goal update this (and the funding) automatically.
                     <StyledDisplay
-                        label="Goal"
-                        value={expense.goalType === "recurring"
-                            ? `Recurring · every ${expense.intervalYears ?? "?"} yr`
-                            : `Save by ${expense.goalTargetDate ? formatDateForInput(expense.goalTargetDate) : "target date"}`}
+                        label="Set-aside"
+                        value={`$${getGoalMonthlySetAside(expense).toLocaleString(undefined, { maximumFractionDigits: 0 })}/mo${
+                            expense.goalType === "recurring" ? ` · every ${expense.intervalYears ?? "?"} yr` : ""
+                        }`}
                     />
                 ) : (
                     <>
@@ -299,16 +302,7 @@ function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
                     date={expense.endDate}
                     milestoneId={expense.endMilestoneId}
                     milestones={assumptions.milestones || []}
-                    onDateChange={(date) => {
-                        handleFieldUpdate("endDate", date);
-                        // For a "save by date" goal the end date IS the target, and
-                        // goalTargetDate is what the Goal label and the simulation
-                        // (isGoalDueInYear / getGoalMonthlySetAside) read — keep it in
-                        // sync so editing the end updates everything.
-                        if (isGoal && expense.goalType === "targetDate") {
-                            handleFieldUpdate("goalTargetDate", date);
-                        }
-                    }}
+                    onDateChange={(date) => handleFieldUpdate("endDate", date)}
                     onMilestoneChange={(id) => handleFieldUpdate("endMilestoneId", id)}
                     tooltip="When this expense ends - fixed date or milestone trigger"
                 />

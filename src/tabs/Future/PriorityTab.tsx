@@ -11,6 +11,7 @@ import { WorkIncome } from '../../components/Objects/Income/models';
 import { formatCompactCurrency } from './tabs/FutureUtils';
 import { get401kLimit, getIRALimit, getHSALimit } from '../../data/ContributionLimits';
 import { getActiveExpenses } from '../../components/Objects/Budget/budgetUtils';
+import { getGoalFundMonthlyCap } from '../../components/Objects/Expense/models';
 
 // UI Components
 import { CurrencyInput } from '../../components/Layout/InputFields/CurrencyInput';
@@ -119,11 +120,25 @@ export default function PriorityTab() {
         }
     }, [year, state.milestones]);
 
+    // Goal sinking-fund priorities: the stored capValue is only a creation-time
+    // snapshot — the simulation and budget derive the live monthly set-aside
+    // from the goal expense itself (getGoalFundMonthlyCap), so goal edits
+    // propagate. Mirror that derivation here so the waterfall shows what will
+    // actually run, and tag the rows so editing redirects to the goal.
+    const livePriorities = useMemo(() =>
+        state.priorities.map(item => {
+            const liveCap = getGoalFundMonthlyCap(expenses, item.accountId, year);
+            return liveCap !== undefined
+                ? { ...item, capType: 'FIXED' as CapType, capValue: liveCap, isGoalFund: true }
+                : { ...item, isGoalFund: false };
+        }),
+    [state.priorities, expenses, year]);
+
     // Priority warnings for exceeding IRS limits
     const priorityWarnings = useMemo(() => {
         const warnings: Record<string, { message: string; annual: number; limit: number }> = {};
 
-        state.priorities.forEach(item => {
+        livePriorities.forEach(item => {
             if (item.capType !== 'FIXED' && item.capType !== 'MAX') return;
             if (!item.accountId) return;
 
@@ -151,7 +166,7 @@ export default function PriorityTab() {
         });
 
         return warnings;
-    }, [state.priorities, accounts, year, getAccountContributionLimit]);
+    }, [livePriorities, accounts, year, getAccountContributionLimit]);
 
     // ========== UI STATE ==========
 
@@ -283,6 +298,15 @@ export default function PriorityTab() {
         const updatedPriority = state.priorities.find(p => p.id === editingId);
         if (!updatedPriority) return;
 
+        // Goal sinking funds: only the name is editable here. The destination
+        // account is the goal's linked fund, and the amount is derived from the
+        // goal expense each year — edit the goal itself to change funding.
+        if (livePriorities.find(p => p.id === editingId)?.isGoalFund) {
+            dispatch({ type: 'UPDATE_PRIORITY', payload: { ...updatedPriority, name: editName } });
+            setEditingId(null);
+            return;
+        }
+
         let finalCapValue = editCapValue;
         if (editCapType === 'MAX' && editAccountHasLimit && editAccountLimit !== null) {
             finalCapValue = editAccountLimit;
@@ -317,14 +341,16 @@ export default function PriorityTab() {
     const waterfallItems = useMemo(() => {
         let currentRemaining = disposableAfterExpenses;
 
-        return state.priorities.map(item => {
+        return livePriorities.map(item => {
             let cost = 0;
             let displayInfo = "";
 
             switch (item.capType) {
                 case 'FIXED':
                     cost = item.capValue || 0;
-                    displayInfo = `Fixed Amount`;
+                    displayInfo = item.isGoalFund
+                        ? `Goal set-aside (derived from the goal)`
+                        : `Fixed Amount`;
                     break;
                 case 'REMAINDER':
                     cost = currentRemaining;
@@ -363,7 +389,7 @@ export default function PriorityTab() {
                 displayInfo
             };
         });
-    }, [state.priorities, disposableAfterExpenses, totalMonthlyFixedExpenses, accounts, formatMoney]);
+    }, [livePriorities, disposableAfterExpenses, totalMonthlyFixedExpenses, accounts, formatMoney]);
 
     const finalRemaining = waterfallItems.length > 0
         ? waterfallItems[waterfallItems.length - 1].remainingAfter
@@ -563,6 +589,15 @@ export default function PriorityTab() {
                                                                         value={editName}
                                                                         onChange={setEditName}
                                                                     />
+                                                                    {item.isGoalFund ? (
+                                                                        <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg px-3 py-2">
+                                                                            <p className="text-xs text-blue-400">
+                                                                                This funds a goal — the monthly set-aside is derived from
+                                                                                the goal's amount and dates. Edit the goal expense to
+                                                                                change it.
+                                                                            </p>
+                                                                        </div>
+                                                                    ) : (<>
                                                                     <DropdownInput
                                                                         id={`edit-account-${item.id}`}
                                                                         label="Destination Account"
@@ -609,6 +644,7 @@ export default function PriorityTab() {
                                                                             />
                                                                         )}
                                                                     </div>
+                                                                    </>)}
                                                                     <div className="flex gap-2 justify-end pt-2">
                                                                         <Button
                                                                             onClick={handleCancelEdit}

@@ -2,7 +2,7 @@
 // Thin orchestrator - delegates to focused service modules.
 
 import { AnyAccount } from "../../Objects/Accounts/models";
-import { AnyExpense, MortgageExpense, LoanExpense, isLongTermGoal, isGoalDueInYear } from "../Expense/models";
+import { AnyExpense, MortgageExpense, LoanExpense, isLongTermGoal, isGoalDueInYear, getGoalFundMonthlyCap } from "../Expense/models";
 import { AnyIncome, WorkIncome, PassiveIncome } from "../../Objects/Income/models";
 import { AssumptionsState, getBirthYear, BUILTIN_MILESTONE_IDS } from "./AssumptionsContext";
 import { TaxState } from "../../Objects/Taxes/TaxContext";
@@ -322,43 +322,30 @@ function simulateOneYearWithNewEngine(
     const discretionaryExpenses = calculateTotalDiscretionary(nextExpenses, year);
     const fixedExpenses = totalLivingExpenses - discretionaryExpenses;
 
-    // A goal's sinking-fund priority should only run while the goal is actively
-    // saving: from its start year onward, and — for one-time (targetDate) goals —
-    // only up to the purchase year. Outside that window funding would pile into an
-    // account the goal doesn't need yet (before start) or into a drained, reserved
-    // account forever (after a one-time purchase). We neutralize those priorities
-    // (cap them to $0) rather than removing them: dropping the bucket entirely can
-    // leave the list empty and trip the surplus allocator's smart-default, which
-    // would refill the reserved SavedAccount anyway. Capping at 0 lets the surplus
-    // flow to the remaining priorities/remainder instead, and mirrors the budget's
+    // Goal sinking-fund priorities are DERIVED each year, never trusted from
+    // storage. The priority created alongside a goal carries only a snapshot
+    // capValue; here we recompute the monthly set-aside from the goal itself
+    // (getGoalFundMonthlyCap), so editing a goal's amount, dates, or interval
+    // propagates into the simulation automatically. Outside the goal's active
+    // window — before its start year, or (for one-time goals) after the
+    // purchase year — the cap is $0. We neutralize rather than remove those
+    // priorities: dropping the bucket entirely can leave the list empty and
+    // trip the surplus allocator's smart-default, which would refill the
+    // reserved SavedAccount anyway. Capping at 0 lets the surplus flow to the
+    // remaining priorities/remainder instead, and mirrors the budget's
     // fundingStartMonth so the "expected balance" benchmark matches the sim.
     // Recurring goals keep funding past each purchase — they refill toward the
     // next cycle.
-    const inactiveGoalFundIds = new Set(
-        expenses
-            .filter(e => isLongTermGoal(e) && e.goalAccountId)
-            .filter(e => {
-                // Use UTC year extraction to match isGoalDueInYear (and the
-                // purchase gate, which flows through it). Goal dates are stored
-                // as UTC-midnight, so reading them with local getFullYear() in a
-                // negative-UTC timezone shifts a YYYY-01-01 target back a year and
-                // caps the sinking fund to $0 a full year before the lump fires.
-                const goalStartYear = (e.startDate ? new Date(e.startDate) : new Date()).getUTCFullYear();
-                if (year < goalStartYear) return true; // not saving yet
-                if (e.goalType === 'targetDate' && e.goalTargetDate
-                    && new Date(e.goalTargetDate).getUTCFullYear() < year) return true; // already purchased
-                return false;
-            })
-            .map(e => e.goalAccountId!)
-    );
-    const effectiveAssumptions = inactiveGoalFundIds.size > 0
+    const hasGoalFunds = expenses.some(e => isLongTermGoal(e) && e.goalAccountId);
+    const effectiveAssumptions = hasGoalFunds
         ? {
             ...assumptions,
-            priorities: (assumptions.priorities || []).map(p =>
-                p.accountId && inactiveGoalFundIds.has(p.accountId)
-                    ? { ...p, capType: 'FIXED' as const, capValue: 0 }
-                    : p
-            ),
+            priorities: (assumptions.priorities || []).map(p => {
+                const liveCap = getGoalFundMonthlyCap(expenses, p.accountId, year);
+                return liveCap !== undefined
+                    ? { ...p, capType: 'FIXED' as const, capValue: liveCap }
+                    : p;
+            }),
         }
         : assumptions;
 

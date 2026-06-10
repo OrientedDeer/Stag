@@ -306,15 +306,17 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				if (form.goalType === 'recurring') {
 					newExpense.intervalYears = form.intervalYears;
 				} else {
-					newExpense.goalTargetDate = form.goalTargetDate;
-					// A one-time goal completes at its target date, so it drops out
-					// of the active budget/list afterward (becomes a "past" item).
+					// endDate IS the target date (single source of truth — no
+					// separate field). The goal completes at its target, so it
+					// drops out of the active budget/list afterward.
 					newExpense.endDate = form.goalTargetDate;
 				}
 				// Create a linked sinking-fund SavedAccount and a FIXED savings
 				// priority that funds it with the monthly set-aside. The account is
 				// reserved (not in any withdrawal order); the simulation debits it
-				// for the lump in the goal's due year.
+				// for the lump in the goal's due year. The capValue here is only a
+				// display snapshot — the sim and budget derive the live set-aside
+				// from the goal each year (getGoalFundMonthlyCap).
 				const fundAccountId = 'ACC' + id.substring(3);
 				accountDispatch({
 					type: "ADD_ACCOUNT",
