@@ -275,10 +275,11 @@ export function checkCSRSEligibility(
   if ((age >= 50 && yearsOfService >= 20) || yearsOfService >= 25) {
     const yearsUnder55 = Math.max(0, 55 - age);
     const reduction = yearsUnder55 * 2;
+    const cappedReduction = Math.min(reduction, 10); // Cap reduction at 10%
     return {
       eligible: true,
-      reductionPercent: Math.min(reduction, 10), // Cap reduction
-      message: `Early retirement with ${reduction}% reduction`
+      reductionPercent: cappedReduction,
+      message: `Early retirement with ${cappedReduction}% reduction`
     };
   }
 

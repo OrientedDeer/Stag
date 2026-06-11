@@ -25,7 +25,7 @@ import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { PassiveIncome, WorkIncome, FERSPensionIncome, AnyIncome } from '../../../components/Objects/Income/models';
 import { ESPPAccount, InvestedAccount } from '../../../components/Objects/Accounts/models';
 import { get415cLimit } from '../../../data/ContributionLimits';
-import { calculateFERSSupplement } from '../../../data/PensionData';
+import { calculateFERSSupplement, checkCSRSEligibility } from '../../../data/PensionData';
 
 // Born 1955 → RMD start age 73. In 2030 this person is 75 (well into RMD age).
 const BIRTH_YEAR = 1955;
@@ -386,5 +386,21 @@ describe('PR #56 #4 — FERS MRA-to-62 supplement is auto-computed on activation
         const expected = calculateFERSSupplement(yearsOfService, estimatedSSAt62Annual / 12);
         expect(expected).toBeGreaterThan(0);
         expect(updatedFers.fersSupplement).toBeCloseTo(expected, 2);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// PR #56 #6 — CSRS early-retirement message must use the CAPPED reduction.
+//
+// checkCSRSEligibility caps the benefit cut at 10% (reductionPercent) but
+// interpolated the UNCAPPED reduction into the message. age 45 / 25 yrs returns
+// 10% but the message read "20% reduction". The two must agree.
+// ---------------------------------------------------------------------------
+describe('PR #56 #6 — CSRS eligibility message matches the capped reductionPercent', () => {
+    it('shows the capped 10% in the message, not the uncapped 20%', () => {
+        const result = checkCSRSEligibility(45, 25);
+        expect(result.reductionPercent).toBe(10);
+        expect(result.message).toContain(`${result.reductionPercent}%`);
+        expect(result.message).not.toContain('20%');
     });
 });
