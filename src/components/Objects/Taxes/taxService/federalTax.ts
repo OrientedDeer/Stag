@@ -58,15 +58,20 @@ export function calculateFederalTaxFromIncomes(
     const fedParams = getTaxParameters(year, state.filingStatus, "federal", undefined, assumptions);
     if (!fedParams) return 0;
 
-    // SALT cap interaction with state tax
-    const stateTax = additionalOrdinaryIncome > 0
-        ? calculateUnifiedStateTax(state, incomes, expenses, additionalOrdinaryIncome, year, assumptions)
-        : calculateStateTax(state, incomes, expenses, year, assumptions);
+    // SALT cap interaction with state tax. Only needed for the Itemized / Auto
+    // paths — on the Standard path `itemizedTotal` is never used, so skip the
+    // (expensive) state-tax + SALT + itemized computation entirely.
+    let itemizedTotal = 0;
+    if (state.deductionMethod !== "Standard") {
+        const stateTax = additionalOrdinaryIncome > 0
+            ? calculateUnifiedStateTax(state, incomes, expenses, additionalOrdinaryIncome, year, assumptions)
+            : calculateStateTax(state, incomes, expenses, year, assumptions);
 
-    const saltCap = getSALTCap(year, state.filingStatus);
-    const cappedStateTax = Math.min(stateTax, saltCap);
+        const saltCap = getSALTCap(year, state.filingStatus);
+        const cappedStateTax = Math.min(stateTax, saltCap);
 
-    const itemizedTotal = getItemizedDeductions(expenses, year) + cappedStateTax;
+        itemizedTotal = getItemizedDeductions(expenses, year) + cappedStateTax;
+    }
 
     const calcTaxWithDeduction = (deductionAmount: number): number => {
         const paramsWithDeduction = {

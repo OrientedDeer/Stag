@@ -12,60 +12,56 @@ import { getTaxableSocialSecurityBenefits } from "./socialSecurity";
 import { getItemizedDeductions, getYesDeductions } from "./deductions";
 import { calculateTax } from "./bracketTax";
 
-export function calculateStateTax(
+/**
+ * Shared core of state-tax computation.
+ *
+ * Given the ordinary gross income BEFORE Social Security treatment
+ * (`annualGross`, which already includes any additional ordinary income like
+ * withdrawals / Roth conversions / RMDs), this applies the data-driven SS
+ * treatment, the senior deduction (doubled per-person for MFJ), and the
+ * Auto / Standard / Itemized deduction selection.
+ *
+ * Both `calculateStateTax` and `calculateUnifiedStateTax` delegate here so the
+ * SS-treatment switch, senior-deduction doubling, and deduction selection live
+ * in exactly one place. Callers are responsible for the `stateOverride`
+ * short-circuit and the `getTaxParameters` undefined guard before calling.
+ */
+function computeStateTaxFromGross(
+    annualGross: number,
     state: TaxState,
     incomes: AnyIncome[],
     expenses: AnyExpense[],
     year: number,
-    assumptions?: AssumptionsState,
-) {
-    if (state.stateOverride !== null) {
-        return state.stateOverride;
-    }
-
-    const annualGross = getGrossIncome(incomes, year);
-    const age = assumptions?.milestones ? year - getBirthYear(assumptions.milestones) : undefined;
+    stateParams: NonNullable<ReturnType<typeof getTaxParameters>>,
+    age: number | undefined,
+): number {
     const incomePreTaxDeductions = getPreTaxExemptions(incomes, year, age);
     const expenseAboveLineDeductions = getYesDeductions(expenses, year);
     const totalPreTaxDeductions = incomePreTaxDeductions + expenseAboveLineDeductions;
 
-    const itemizedTotal = getItemizedDeductions(expenses, year);
-    const stateParams = getTaxParameters(
-        year,
-        state.filingStatus,
-        "state",
-        state.stateResidency,
-        assumptions,
-    );
-
-    if (!stateParams) return 0;
-
     // Social Security handling — data-driven `socialSecurityTreatment` defaults to 'exempt'.
     const ssTreatment = stateParams.socialSecurityTreatment ?? 'exempt';
     const totalSSBenefits = getSocialSecurityBenefits(incomes, year);
-    let adjustedGrossForState = annualGross;
+    let adjustedGross = annualGross;
 
-    if (totalSSBenefits > 0) {
-        if (ssTreatment === 'taxable') {
-            // States that tax SS: use only the taxable portion (like federal)
-            const nonSSGross = annualGross - totalSSBenefits;
-            const agiExcludingSS = nonSSGross - totalPreTaxDeductions;
-            // TODO: Verify all income types are included (LTCG, STCG, dividends, etc.)
-            const taxableSSBenefits = getTaxableSocialSecurityBenefits(
-                totalSSBenefits,
-                agiExcludingSS,
-                0,
-                state.filingStatus,
-            );
-            adjustedGrossForState = annualGross - totalSSBenefits + taxableSSBenefits;
-        } else if (ssTreatment === 'income-based') {
-            // TODO: Implement income-based SS exemption for states like CO, CT, etc.
-            // For now, treat as exempt (conservative).
-            adjustedGrossForState = annualGross - totalSSBenefits;
-        } else {
-            // 'exempt' — exclude SS benefits entirely
-            adjustedGrossForState = annualGross - totalSSBenefits;
-        }
+    if (ssTreatment === 'taxable') {
+        // States that tax SS: use only the taxable portion (like federal)
+        const nonSSGross = annualGross - totalSSBenefits;
+        const agiExcludingSS = nonSSGross - totalPreTaxDeductions;
+        // TODO: Verify all income types are included (LTCG, STCG, dividends, etc.)
+        const taxableSSBenefits = getTaxableSocialSecurityBenefits(
+            totalSSBenefits,
+            agiExcludingSS,
+            0,
+            state.filingStatus,
+        );
+        adjustedGross = annualGross - totalSSBenefits + taxableSSBenefits;
+    } else {
+        // 'exempt' (and, for now, 'income-based' — treated conservatively as
+        // exempt) — exclude SS benefits entirely. Subtracting 0 when there are
+        // no SS benefits leaves the gross unchanged.
+        // TODO: Implement income-based SS exemption for states like CO, CT, etc.
+        adjustedGross = annualGross - totalSSBenefits;
     }
 
     // Senior deduction: per-person variants (e.g., Virginia) get doubled for MFJ
@@ -81,14 +77,15 @@ export function calculateStateTax(
         }
     }
 
+    const itemizedTotal = getItemizedDeductions(expenses, year);
     const stateStandardDeduction = (stateParams.standardDeduction || 0) + seniorDeductionAmount;
 
     if (state.deductionMethod === "Auto") {
-        const taxWithStandard = calculateTax(adjustedGrossForState, totalPreTaxDeductions, {
+        const taxWithStandard = calculateTax(adjustedGross, totalPreTaxDeductions, {
             ...stateParams,
             standardDeduction: stateStandardDeduction,
         });
-        const taxWithItemized = calculateTax(adjustedGrossForState, totalPreTaxDeductions, {
+        const taxWithItemized = calculateTax(adjustedGross, totalPreTaxDeductions, {
             ...stateParams,
             standardDeduction: itemizedTotal + seniorDeductionAmount,
         });
@@ -100,10 +97,22 @@ export function calculateStateTax(
             ? stateStandardDeduction
             : itemizedTotal + seniorDeductionAmount;
 
-    return calculateTax(adjustedGrossForState, totalPreTaxDeductions, {
+    return calculateTax(adjustedGross, totalPreTaxDeductions, {
         ...stateParams,
         standardDeduction: stateAppliedMainDeduction,
     });
+}
+
+export function calculateStateTax(
+    state: TaxState,
+    incomes: AnyIncome[],
+    expenses: AnyExpense[],
+    year: number,
+    assumptions?: AssumptionsState,
+) {
+    // calculateStateTax is exactly calculateUnifiedStateTax with no additional
+    // ordinary income — delegate so the two stay in lockstep.
+    return calculateUnifiedStateTax(state, incomes, expenses, 0, year, assumptions);
 }
 
 /**
@@ -141,67 +150,7 @@ export function calculateUnifiedStateTax(
 
     const incomeGross = getGrossIncome(incomes, year);
     const annualGross = incomeGross + additionalOrdinaryIncome;
-
     const age = assumptions?.milestones ? year - getBirthYear(assumptions.milestones) : undefined;
-    const incomePreTaxDeductions = getPreTaxExemptions(incomes, year, age);
-    const expenseAboveLineDeductions = getYesDeductions(expenses, year);
-    const totalPreTaxDeductions = incomePreTaxDeductions + expenseAboveLineDeductions;
 
-    const ssTreatment = stateParams.socialSecurityTreatment ?? 'exempt';
-    const totalSSBenefits = getSocialSecurityBenefits(incomes, year);
-    let adjustedGross = annualGross;
-
-    if (totalSSBenefits > 0) {
-        if (ssTreatment === 'taxable') {
-            const nonSSGross = annualGross - totalSSBenefits;
-            const agiExcludingSS = nonSSGross - totalPreTaxDeductions;
-            // TODO: Verify all income types are included (LTCG, STCG, dividends, etc.)
-            const taxableSSBenefits = getTaxableSocialSecurityBenefits(
-                totalSSBenefits,
-                agiExcludingSS,
-                0,
-                state.filingStatus,
-            );
-            adjustedGross = annualGross - totalSSBenefits + taxableSSBenefits;
-        } else if (ssTreatment === 'income-based') {
-            // TODO: Implement income-based SS exemption (CO, CT, etc.)
-            adjustedGross = annualGross - totalSSBenefits;
-        } else {
-            adjustedGross = annualGross - totalSSBenefits;
-        }
-    }
-
-    let seniorDeductionAmount = 0;
-    if (stateParams.seniorDeduction && age !== undefined) {
-        const seniorAge = stateParams.seniorAge ?? 65;
-        if (age >= seniorAge) {
-            seniorDeductionAmount = stateParams.seniorDeduction;
-            if (stateParams.seniorDeductionPerPerson && state.filingStatus === 'Married Filing Jointly') {
-                seniorDeductionAmount *= 2;
-            }
-        }
-    }
-
-    const itemizedTotal = getItemizedDeductions(expenses, year);
-    const stateStandardDeduction = (stateParams.standardDeduction || 0) + seniorDeductionAmount;
-
-    if (state.deductionMethod === "Auto") {
-        const taxWithStandard = calculateTax(adjustedGross, totalPreTaxDeductions, {
-            ...stateParams,
-            standardDeduction: stateStandardDeduction,
-        });
-        const taxWithItemized = calculateTax(adjustedGross, totalPreTaxDeductions, {
-            ...stateParams,
-            standardDeduction: itemizedTotal + seniorDeductionAmount,
-        });
-        return Math.min(taxWithStandard, taxWithItemized);
-    }
-
-    const stateAppliedMainDeduction =
-        state.deductionMethod === "Standard" ? stateStandardDeduction : itemizedTotal + seniorDeductionAmount;
-
-    return calculateTax(adjustedGross, totalPreTaxDeductions, {
-        ...stateParams,
-        standardDeduction: stateAppliedMainDeduction,
-    });
+    return computeStateTaxFromGross(annualGross, state, incomes, expenses, year, stateParams, age);
 }
