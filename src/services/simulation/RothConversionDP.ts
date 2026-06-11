@@ -430,19 +430,22 @@ export function buildDPYearContexts(
         // withdrawalDetail no longer includes RMD (RMD is surfaced as income), so the
         // trad withdrawal sum is already RMD-free — no subtraction needed.
         const tradNonRMDWithdrawals = sumTraditionalWithdrawals(simYear);
-        const baselineRMDAmount = simYear.rmdDetails?.totalRMD ?? 0;
 
-        // getGrossIncome includes RMD (PassiveIncome with sourceType='RMD') but
-        // excludes conversions and non-RMD trad withdrawals. We want
+        // The stored `simYear.incomes` already EXCLUDES RMD-sourced PassiveIncome
+        // (SimulationEngine filters it out of the returned year), so
+        // getGrossIncome(incomes) is already RMD-free. It also excludes
+        // conversions and non-RMD trad withdrawals. Subtracting SS leaves the
         // plan-INDEPENDENT ordinary-on-return — wages/pension/passive — EXCLUDING
         // RMD, SS, conversion, AND baseline trad withdrawals. RMD, conversion,
         // and trad-spending are added back inside evaluateCell using state-derived
         // amounts (Phase 3 makes trad-spending endogenous; Phase 2 leaves a
         // brief inconsistency where the 2D solver under-counts ordinary income
-        // in trad-spending years).
+        // in trad-spending years). NOTE: do NOT subtract rmdDetails.totalRMD here
+        // — that would remove RMD a second time and wrongly zero out ordinary
+        // income in post-RMD years where RMD > wages/pension.
         const nonSSOrdinaryIncomeExclRMD = Math.max(
             0,
-            grossIncome - ssBenefits - baselineRMDAmount,
+            grossIncome - ssBenefits,
         );
         const ltcgIncome = simYear.taxDetails.longTermCapitalGains ?? 0;
 
