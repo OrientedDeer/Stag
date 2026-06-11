@@ -68,10 +68,10 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                 brackets: [
                     { threshold: 0, rate: 0.10 },
                     { threshold: 11600, rate: 0.12 },
-                    { threshold: 47151, rate: 0.22 },
-                    { threshold: 100526, rate: 0.24 },
-                    { threshold: 191951, rate: 0.32 },
-                    { threshold: 243726, rate: 0.35 },
+                    { threshold: 47150, rate: 0.22 },
+                    { threshold: 100525, rate: 0.24 },
+                    { threshold: 191950, rate: 0.32 },
+                    { threshold: 243725, rate: 0.35 },
                     { threshold: 609350, rate: 0.37 }
                 ],
                 capitalGainsBrackets: [

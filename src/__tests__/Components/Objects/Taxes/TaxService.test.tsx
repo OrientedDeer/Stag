@@ -478,11 +478,12 @@ describe('TaxService: Additional Functions', () => {
             if (params) {
                 // Taxable income = 64,600 - 14,600 (standard deduction) = 50,000
                 const tax = calculateTax(64600, 0, params);
+                // PR#55 #3: corrected 2024 Single bracket to breakpoint convention
                 // 11600 * 0.10 = 1160
-                // (47151 - 11600) * 0.12 = 4266.12
-                // (50000 - 47151) * 0.22 = 626.78
-                // Total = 6052.9
-                expect(tax).toBeCloseTo(6052.9);
+                // (47150 - 11600) * 0.12 = 4266.00
+                // (50000 - 47150) * 0.22 = 627.00
+                // Total = 6053.00
+                expect(tax).toBeCloseTo(6053.00);
             }
         });
 
@@ -738,12 +739,13 @@ describe('TaxService: Additional Functions', () => {
             const income = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
             const taxState = createTaxState({ deductionMethod: 'Standard' });
             const fedTax = calculateFederalTaxFromIncomes(taxState, [income], [], 0, 2024, noInflationAssumptions);
+            // PR#55 #3: corrected 2024 Single bracket to breakpoint convention
             // Taxable income: 100k - 14.6k (std deduction) = 85.4k
             // 11600 * 0.10 = 1160
-            // (47151 - 11600) * 0.12 = 4266.12
-            // (85400 - 47151) * 0.22 = 8414.78
-            // Total = 13840.9
-            expect(fedTax).toBeCloseTo(13840.9);
+            // (47150 - 11600) * 0.12 = 4266.00
+            // (85400 - 47150) * 0.22 = 8415.00
+            // Total = 13841.00
+            expect(fedTax).toBeCloseTo(13841.00);
         });
 
         it('should calculate federal tax with itemized deductions', () => {
@@ -753,8 +755,9 @@ describe('TaxService: Additional Functions', () => {
             mortgage.loan_balance = mortgage.getBalanceAtDate('2024-01-02');
             const taxState = createTaxState({ deductionMethod: 'Itemized', stateResidency: 'DC' });
             const fedTax = calculateFederalTaxFromIncomes(taxState, [income], [mortgage], 0, 2024, noInflationAssumptions);
+            // PR#55 #3: corrected 2024 Single bracket to breakpoint convention (+$0.10 vs old +1 boundary)
             // Placeholder value. Actual tax depends on the calculated itemized deduction.
-            expect(fedTax).toBeCloseTo(13356.34);
+            expect(fedTax).toBeCloseTo(13356.44);
         });
 
         it('should use federal override when provided', () => {
@@ -906,12 +909,13 @@ describe('TaxService: Additional Functions', () => {
         it('should return correct marginal rate for income in 12% bracket', () => {
             const params = getTaxParameters(2024, 'Single', 'federal');
             if (params) {
-                // Taxable income of $30,000 is in the 12% bracket (11,600 - 47,151)
+                // PR#55 #3: corrected 2024 Single bracket to breakpoint convention
+                // Taxable income of $30,000 is in the 12% bracket (11,600 - 47,150)
                 const result = getMarginalTaxRate(30000, params);
                 expect(result.rate).toBe(0.12);
                 expect(result.bracketStart).toBe(11600);
-                expect(result.bracketEnd).toBe(47151);
-                expect(result.headroom).toBe(47151 - 30000);
+                expect(result.bracketEnd).toBe(47150);
+                expect(result.headroom).toBe(47150 - 30000);
             }
         });
 
@@ -1032,9 +1036,10 @@ describe('TaxService: Additional Functions', () => {
                 true
             );
 
-            // Taxable = 50000 - 14600 = 35400, in 12% bracket (11600-47151)
-            // Headroom = 47151 - 35400 = 11751
-            expect(result.federalHeadroom).toBeCloseTo(11751);
+            // PR#55 #3: corrected 2024 Single bracket to breakpoint convention
+            // Taxable = 50000 - 14600 = 35400, in 12% bracket (11600-47150)
+            // Headroom = 47150 - 35400 = 11750
+            expect(result.federalHeadroom).toBeCloseTo(11750);
         });
     });
 
