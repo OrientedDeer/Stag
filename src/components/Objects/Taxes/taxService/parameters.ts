@@ -63,6 +63,25 @@ export function getSALTCap(year: number, filingStatus: FilingStatus): number {
     return isMFS ? SALT_CAP_TCJA_MFS : SALT_CAP_TCJA_JOINT;
 }
 
+/**
+ * Find the year key in `sourceData` closest to `target`. On an exact tie
+ * (target equidistant between two years) the newer year wins (`<=`), since
+ * more recent tax law is the better approximation. Returns undefined when the
+ * table has no numeric year keys.
+ */
+function findNearestYear(
+    sourceData: AuthorityData,
+    target: number
+): number | undefined {
+    const availableYears = Object.keys(sourceData)
+        .map(Number)
+        .filter((y) => !Number.isNaN(y));
+    if (availableYears.length === 0) return undefined;
+    return availableYears.reduce((best, y) =>
+        Math.abs(y - target) <= Math.abs(best - target) ? y : best
+    );
+}
+
 export function getTaxParameters(
     year: number,
     filingStatus: FilingStatus,
@@ -73,7 +92,11 @@ export function getTaxParameters(
         macro: { ...defaultAssumptions.macro, inflationAdjusted: false },
     }
 ): TaxParameters | undefined {
-    const inflation = assumptions.macro.inflationRate / 100;
+    let inflation = assumptions.macro.inflationRate / 100;
+    // The default-param above only fills in when the WHOLE assumptions arg is
+    // undefined; a partial object missing inflationRate yields NaN, which would
+    // poison every inflated value. Treat a non-finite rate as 0%.
+    if (!Number.isFinite(inflation)) inflation = 0;
     const inflationAdjusted = assumptions.macro.inflationAdjusted;
 
     let sourceData: AuthorityData;
@@ -93,13 +116,9 @@ export function getTaxParameters(
         // logic used by the non-inflation path below) instead of throwing.
         let baseYear = max_year;
         if (!sourceData[max_year]) {
-            const availableYears = Object.keys(sourceData)
-                .map(Number)
-                .filter((y) => !Number.isNaN(y));
-            if (availableYears.length === 0) return undefined;
-            baseYear = availableYears.reduce((best, y) =>
-                Math.abs(y - max_year) < Math.abs(best - max_year) ? y : best
-            );
+            const nearest = findNearestYear(sourceData, max_year);
+            if (nearest === undefined) return undefined;
+            baseYear = nearest;
         }
 
         const baseYearParams = sourceData[baseYear][filingStatus];
@@ -126,6 +145,28 @@ export function getTaxParameters(
                 ...bracket,
                 threshold: Math.round(bracket.threshold * inflationMultiplier),
             })),
+            // Dollar-amount fields spread in via ...baseYearParams stay nominal
+            // unless re-inflated here. seniorAge / *Rate fields are NOT dollars,
+            // so they are intentionally left untouched.
+            ...(baseYearParams.seniorDeduction !== undefined && {
+                seniorDeduction: Math.round(
+                    baseYearParams.seniorDeduction * inflationMultiplier
+                ),
+            }),
+            ...(baseYearParams.ssExemptionThreshold !== undefined && {
+                ssExemptionThreshold: Math.round(
+                    baseYearParams.ssExemptionThreshold * inflationMultiplier
+                ),
+            }),
+            ...(baseYearParams.retirementIncomeExemption !== undefined && {
+                retirementIncomeExemption: {
+                    ...baseYearParams.retirementIncomeExemption,
+                    amount: Math.round(
+                        baseYearParams.retirementIncomeExemption.amount *
+                            inflationMultiplier
+                    ),
+                },
+            }),
         };
     }
 
@@ -137,12 +178,7 @@ export function getTaxParameters(
     // entry), so getClosestTaxYear — which only knows federal years — can resolve
     // to a year missing from this authority's table. Fall back to the nearest year
     // actually present so the gap doesn't return undefined → $0 tax.
-    const availableYears = Object.keys(sourceData)
-        .map(Number)
-        .filter((y) => !Number.isNaN(y));
-    if (availableYears.length === 0) return undefined;
-    const nearestYear = availableYears.reduce((best, y) =>
-        Math.abs(y - year) < Math.abs(best - year) ? y : best
-    );
+    const nearestYear = findNearestYear(sourceData, year);
+    if (nearestYear === undefined) return undefined;
     return sourceData[nearestYear]?.[filingStatus];
 }
