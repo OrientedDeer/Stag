@@ -22,7 +22,7 @@ import {
     createBuiltinMilestones,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
-import { PassiveIncome, WorkIncome, FERSPensionIncome, AnyIncome } from '../../../components/Objects/Income/models';
+import { PassiveIncome, WorkIncome, FERSPensionIncome, FutureSocialSecurityIncome, AnyIncome } from '../../../components/Objects/Income/models';
 import { ESPPAccount, InvestedAccount } from '../../../components/Objects/Accounts/models';
 import { get415cLimit } from '../../../data/ContributionLimits';
 import { calculateFERSSupplement, checkCSRSEligibility } from '../../../data/PensionData';
@@ -402,5 +402,108 @@ describe('PR #56 #6 — CSRS eligibility message matches the capped reductionPer
         expect(result.reductionPercent).toBe(10);
         expect(result.message).toContain(`${result.reductionPercent}%`);
         expect(result.message).not.toContain('20%');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// PR #56 #2 — SS earnings-test reduction must NOT compound year-over-year.
+//
+// For a pre-FRA claimant who keeps earning above the earnings-test limit, the
+// earnings test withholds part of the benefit each year. The reduction must be
+// computed off the FULL benefit (projectedPIA) every year, producing a STABLE
+// payable (full − withheld). The bug computed it off the running, already-reduced
+// `inc.amount` (= calculatedPIA × 12); because the earnings-test rebuild stored
+// `monthlyReduced` back into calculatedPIA and the next year's increment carried
+// that reduced value forward, the reduction re-applied to a smaller base each
+// year and the payable ratcheted DOWN — compounding.
+// ---------------------------------------------------------------------------
+const SS_BIRTH_YEAR = 1960; // FRA = 67
+const SS_CLAIMING_AGE = 62; // claimed before FRA
+const SS_MONTHLY_PIA = 2000; // $24,000/yr full benefit
+
+function createSSAssumptions(): AssumptionsState {
+    return {
+        ...defaultAssumptions,
+        // Disable COLA so the ONLY year-over-year movement in the payable benefit
+        // is whatever the earnings-test logic does — a clean signal for compounding.
+        macro: { ...defaultAssumptions.macro, inflationAdjusted: false, inflationRate: 2.5 },
+        milestones: createBuiltinMilestones(SS_BIRTH_YEAR, 62, 90),
+    };
+}
+
+/** An already-activated pre-FRA SS income: calculatedPIA = projectedPIA = full benefit. */
+function createActivatedSS(): FutureSocialSecurityIncome {
+    const claimingYear = SS_BIRTH_YEAR + SS_CLAIMING_AGE; // 2022
+    return new FutureSocialSecurityIncome(
+        'ss1',
+        'Social Security',
+        SS_CLAIMING_AGE,
+        SS_MONTHLY_PIA,                       // calculatedPIA → amount = PIA*12
+        claimingYear,                         // calculationYear
+        new Date(Date.UTC(claimingYear, 0, 1)),
+        new Date(Date.UTC(SS_BIRTH_YEAR + 90, 11, 31)),
+        undefined,
+        undefined,
+        SS_MONTHLY_PIA,                       // projectedPIA = full, un-reduced benefit
+    );
+}
+
+/** Steady WorkIncome with earnings well above the pre-FRA earnings-test limit. */
+function createSteadyWork(): WorkIncome {
+    // Earnings only MODESTLY above the pre-FRA limit (~$21k in 2023), so the
+    // withholding is a PARTIAL cut. A huge salary would zero the benefit outright
+    // (floored at 0), hiding the year-over-year ratchet we want to expose.
+    return new WorkIncome(
+        'work1', 'Job', 29240, 'Annually', 'Yes',
+        0, 0, 0, 0, '',
+        null, 'FIXED',
+        new Date('2000-01-01'), undefined,
+    );
+}
+
+describe('PR #56 #2 — SS earnings-test reduction does not compound year-over-year', () => {
+    it('keeps the pre-FRA payable benefit stable across two earning years (not ratcheting down)', () => {
+        const assumptions = createSSAssumptions();
+        const logs: string[] = [];
+
+        // Year N: age 63 (pre-FRA, already activated).
+        const yearN = SS_BIRTH_YEAR + 63; // 2023
+        const resultN = projectIncomes(
+            yearN,
+            [createActivatedSS(), createSteadyWork()],
+            [],
+            assumptions,
+            [],
+            63,    // currentAge < FRA(67)
+            false, // still working pre-FRA, not retired (keeps WorkIncome active)
+            logs,
+        );
+        const ssN = resultN.nextIncomes.find(i => i.id === 'ss1') as FutureSocialSecurityIncome;
+        const payableN = ssN.getAnnualAmount(yearN);
+
+        // Year N+1: feed year N's incomes back in, age 64 (still pre-FRA, earning).
+        const yearN1 = yearN + 1; // 2024
+        const resultN1 = projectIncomes(
+            yearN1,
+            resultN.nextIncomes,
+            [],
+            assumptions,
+            [],
+            64,    // currentAge < FRA(67)
+            false, // still working pre-FRA, not retired (keeps WorkIncome active)
+            logs,
+        );
+        const ssN1 = resultN1.nextIncomes.find(i => i.id === 'ss1') as FutureSocialSecurityIncome;
+        const payableN1 = ssN1.getAnnualAmount(yearN1);
+
+        // Sanity: the earnings test actually fired in year N (benefit was reduced
+        // below the full $24k). Otherwise the test proves nothing.
+        expect(payableN).toBeLessThan(SS_MONTHLY_PIA * 12);
+        expect(payableN).toBeGreaterThan(0);
+
+        // The reduction must be STABLE, not compounding: year N+1's payable must
+        // not be materially below year N's. With COLA disabled the two should be
+        // essentially equal; allow a tiny tolerance for limit-table drift.
+        expect(payableN1).toBeGreaterThanOrEqual(payableN - 1);
     });
 });

@@ -275,7 +275,22 @@ export function projectIncomes(
 
             if (currentAge < fra) {
                 const earnedIncome = TaxService.getEarnedIncome(nextIncomes, year);
-                const annualSSBenefit = inc.getProratedAnnual(inc.amount, year);
+                // Base the earnings-test withholding on the FULL benefit, NOT the running
+                // `inc.amount`. inc.amount = calculatedPIA × 12, and the earnings-test
+                // rebuild below stores the reduced monthly benefit back into calculatedPIA;
+                // next year's increment() carries that reduced value forward. If we
+                // recomputed off inc.amount each year, the withholding would re-apply to an
+                // already-reduced base and the payable would ratchet DOWN every year.
+                //
+                // projectedPIA is the full, un-reduced monthly PIA — set equal to
+                // calculatedPIA at activation (see the activation branch above) and
+                // COLA-grown in lockstep by increment() — so it stays the full benefit
+                // across years and yields a STABLE reduction (full − withheld). It is
+                // monthly, so ×12 to match inc.amount's annual basis. Fall back to
+                // inc.amount when projectedPIA is unset (0), e.g. an income constructed
+                // without it, so the single-year reduction still applies in that case.
+                const fullMonthlyPIA = inc.projectedPIA > 0 ? inc.projectedPIA : inc.amount / 12;
+                const annualSSBenefit = inc.getProratedAnnual(fullMonthlyPIA * 12, year);
                 const wageGrowthRate = assumptions.macro.inflationRate / 100;
                 const inflationAdjusted = assumptions.macro.inflationAdjusted;
 
