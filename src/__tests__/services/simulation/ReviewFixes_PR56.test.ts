@@ -13,14 +13,16 @@
  */
 import { describe, it, expect } from 'vitest';
 import { buildDPYearContexts } from '../../../services/simulation/RothConversionDP';
-import { SimulationYear } from '../../../services/simulation/types';
+import { processInflows, growAccounts } from '../../../services/simulation/AccountGrowth';
+import { SimulationYear, WithdrawalState } from '../../../services/simulation/types';
 import {
     AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
-import { PassiveIncome } from '../../../components/Objects/Income/models';
+import { PassiveIncome, WorkIncome } from '../../../components/Objects/Income/models';
+import { ESPPAccount } from '../../../components/Objects/Accounts/models';
 
 // Born 1955 → RMD start age 73. In 2030 this person is 75 (well into RMD age).
 const BIRTH_YEAR = 1955;
@@ -130,5 +132,112 @@ describe('PR #56 #1 — buildDPYearContexts does not double-subtract RMD', () =>
         // plan-independent ordinary-income base must equal that $40k — NOT 0,
         // which is what the double-subtraction produced (40k − 0 − 60k → floored).
         expect(ctx!.nonSSOrdinaryIncomeExclRMD).toBeCloseTo(PENSION_AMOUNT, 2);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Shared helpers for the AccountGrowth (processInflows / growAccounts) tests.
+// ---------------------------------------------------------------------------
+function createWithdrawalState(overrides: Partial<WithdrawalState> = {}): WithdrawalState {
+    return {
+        userInflows: {},
+        employerInflows: {},
+        withdrawalTaxes: 0,
+        capitalGainsTaxTotal: 0,
+        withdrawalOrdinaryTaxTotal: 0,
+        strategyWithdrawalExecuted: 0,
+        totalWithdrawals: 0,
+        withdrawalDetail: {},
+        withdrawalPenalties: 0,
+        totalGrossIncome: 0,
+        traditionalWithdrawals: 0,
+        longTermCapitalGains: 0,
+        shortTermCapitalGains: 0,
+        stateCapitalGainsTax: 0,
+        ...overrides,
+    };
+}
+
+function createGrowthAssumptions(): AssumptionsState {
+    return {
+        ...defaultAssumptions,
+        macro: { ...defaultAssumptions.macro, inflationAdjusted: false },
+        investments: {
+            ...defaultAssumptions.investments,
+            returnRates: { ror: 0 },
+        },
+    };
+}
+
+// ---------------------------------------------------------------------------
+// PR #56 #3 — ESPP purchase must not mask a same-year sale in growAccounts.
+//
+// SimulationEngine records an ESPP SALE as a NEGATIVE userInflows entry, while
+// processInflows previously added a POSITIVE userInflows entry for a same-year
+// PURCHASE. growAccounts reads the NET userInflows as its sale signal, so when
+// purchase >= sale the net was non-negative and the sale was silently dropped —
+// the ESPP balance/shares never decreased.
+// ---------------------------------------------------------------------------
+describe('PR #56 #3 — same-year ESPP purchase does not mask a sale in growAccounts', () => {
+    it('still removes sold shares when a larger purchase happens the same year', () => {
+        const esppId = 'espp1';
+        // Pre-existing ESPP holding: 100 shares @ $100 FMV = $10,000 balance.
+        const existingLot = {
+            id: 'existing-lot',
+            grantDate: new Date(Date.UTC(2020, 0, 1)),
+            purchaseDate: new Date(Date.UTC(2020, 5, 28)),
+            fmvAtGrant: 100,
+            fmvAtPurchase: 100,
+            purchasePrice: 85,
+            shares: 100,
+            totalCost: 8500,
+            discountAmount: 15,
+        };
+        const esppAccount = new ESPPAccount('espp1', 'Company ESPP', 10000, [existingLot]);
+
+        // WorkIncome configured to buy ESPP this year (FIXED $/period contribution).
+        const income = new WorkIncome(
+            'job1', 'Test Job', 100000, 'Annually', 'Yes',
+            0, 0, 0, 0, '',
+            null, 'FIXED',
+            new Date('2020-01-01'), undefined,
+            0,
+            'custom',
+            'FIXED',          // esppContributionType
+            8000,             // esppContributionAmount ($/period -> annual since Annually)
+            15,               // esppDiscountPercent
+            false,            // esppHasLookback
+            6,                // esppOfferingPeriodMonths
+            esppId,           // esppAccountId
+            7,                // esppExpectedStockGrowth
+        );
+
+        const withdrawalState = createWithdrawalState();
+        // Pre-seed a SALE of $5,000 (negative), SMALLER than the purchase about to
+        // be recorded — this is what SimulationEngine writes for an ESPP withdrawal.
+        withdrawalState.userInflows[esppId] = -5000;
+
+        const assumptions = createGrowthAssumptions();
+        const logs: string[] = [];
+
+        // Drive the REAL purchase path: this adds a POSITIVE purchase to userInflows.
+        const inflowResult = processInflows(
+            [income], [esppAccount], assumptions, 2025, withdrawalState,
+            0, undefined, 0, 40, logs
+        );
+
+        const result = growAccounts(
+            [esppAccount], [], withdrawalState,
+            {}, inflowResult.esppLots, 0, undefined,
+            assumptions, 2025, 0, logs
+        );
+
+        const updated = result.find(a => a.id === esppId) as ESPPAccount;
+
+        // The pre-existing lot started with 100 shares. A $5,000 sale at $100/share
+        // FMV must remove 50 shares from it, regardless of the same-year purchase.
+        const existingLotAfter = updated.lots.find(l => l.id === 'existing-lot');
+        expect(existingLotAfter).toBeDefined();
+        expect(existingLotAfter!.shares).toBeCloseTo(50, 4);
     });
 });

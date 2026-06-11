@@ -149,7 +149,13 @@ export function processInflows(
                     discountAmount
                 };
 
-                withdrawalState.userInflows[esppAccount.id] = (withdrawalState.userInflows[esppAccount.id] || 0) + (reducedShares * fmvAtPurchase);
+                // NOTE: do NOT write the purchase FMV into userInflows[esppId].
+                // The ESPP balance is updated via addLot (esppLots) in growAccounts,
+                // not via userInflows. userInflows[esppId] is reserved for the NET
+                // SALE signal that SimulationEngine records as a negative entry — a
+                // positive purchase write here would net against a same-year sale and
+                // mask it (PR #56 #3). Cash deployed into ESPP is tracked separately
+                // via the WorkIncome contribution, not this field.
                 totalESPPFMVThisYear += remainingFMV;
 
                 if (!esppLots[esppAccount.id]) esppLots[esppAccount.id] = [];
@@ -167,7 +173,8 @@ export function processInflows(
                     discountAmount
                 };
 
-                withdrawalState.userInflows[esppAccount.id] = (withdrawalState.userInflows[esppAccount.id] || 0) + fmvOfShares;
+                // See note above: the purchase reaches the balance via addLot, so
+                // we must NOT add it to userInflows (it would mask a same-year sale).
                 totalESPPFMVThisYear += fmvOfShares;
 
                 if (!esppLots[esppAccount.id]) esppLots[esppAccount.id] = [];
