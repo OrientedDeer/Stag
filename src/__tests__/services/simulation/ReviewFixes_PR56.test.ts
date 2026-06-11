@@ -22,7 +22,8 @@ import {
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { PassiveIncome, WorkIncome } from '../../../components/Objects/Income/models';
-import { ESPPAccount } from '../../../components/Objects/Accounts/models';
+import { ESPPAccount, InvestedAccount } from '../../../components/Objects/Accounts/models';
+import { get415cLimit } from '../../../data/ContributionLimits';
 
 // Born 1955 → RMD start age 73. In 2030 this person is 75 (well into RMD age).
 const BIRTH_YEAR = 1955;
@@ -239,5 +240,52 @@ describe('PR #56 #3 — same-year ESPP purchase does not mask a sale in growAcco
         const existingLotAfter = updated.lots.find(l => l.id === 'existing-lot');
         expect(existingLotAfter).toBeDefined();
         expect(existingLotAfter!.shares).toBeCloseTo(50, 4);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// PR #56 #5 — §415(c) cap must also trim employee deferrals when the match
+// can't absorb the excess.
+//
+// When MULTIPLE incomes feed the SAME 401k account, their combined EMPLOYEE
+// deferrals alone can exceed §415(c) with little/no match to trim. The old code
+// only reduced the employer match, leaving the account over-funded.
+// ---------------------------------------------------------------------------
+describe('PR #56 #5 — §415(c) trims employee deferrals when match cannot absorb excess', () => {
+    it('keeps combined additions within the §415(c) limit for two incomes on one 401k', () => {
+        const accountId = '401k-shared';
+        const account = new InvestedAccount('401k-shared', '401k', 0, 0, 0, 0, 'Traditional 401k');
+
+        // Two jobs, each deferring under the §402(g) elective limit on their own,
+        // but together exceeding §415(c). Negligible employer match.
+        const job1 = new WorkIncome(
+            'job1', 'Job One', 200000, 'Annually', 'Yes',
+            40000, 0, 0, 0, accountId,
+            null, 'FIXED', new Date('2020-01-01'), undefined, 0
+        );
+        const job2 = new WorkIncome(
+            'job2', 'Job Two', 200000, 'Annually', 'Yes',
+            35000, 0, 0, 0, accountId,
+            null, 'FIXED', new Date('2020-01-01'), undefined, 0
+        );
+
+        const withdrawalState = createWithdrawalState();
+        const assumptions = createGrowthAssumptions();
+        const logs: string[] = [];
+        const year = 2025;
+        const age = 40;
+
+        processInflows(
+            [job1, job2], [account], assumptions, year, withdrawalState,
+            0, undefined, 0, age, logs
+        );
+
+        const limit = get415cLimit(year, age, assumptions.macro.inflationAdjusted);
+        const totalAdditions =
+            (withdrawalState.userInflows[accountId] || 0) +
+            (withdrawalState.employerInflows[accountId] || 0);
+
+        // Combined $75k of employee deferrals must be clamped to the ~$70k limit.
+        expect(totalAdditions).toBeLessThanOrEqual(limit + 0.001);
     });
 });

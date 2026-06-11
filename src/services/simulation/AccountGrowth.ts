@@ -62,19 +62,33 @@ export function processInflows(
             // this income's new contributions, so multiple incomes feeding one
             // account share a single limit.
             const limit415c = get415cLimit(year, currentAge, assumptions.macro.inflationAdjusted);
+            let trimmedSelf = selfContribution;
             const totalAdditions = currentSelf + currentMatch + selfContribution + employerMatch;
             if (totalAdditions > limit415c) {
                 const excess = totalAdditions - limit415c;
+                // Trim the employer match first — the employee's own deferrals are
+                // already §402(g)-capped and are the participant's money.
                 const trimmedMatch = Math.max(0, employerMatch - excess);
                 if (trimmedMatch < employerMatch) {
                     logs.push(`[WARN] §415(c) limit: ${inc.name} employer match reduced by $${(employerMatch - trimmedMatch).toLocaleString(undefined, { maximumFractionDigits: 0 })} to stay within combined $${limit415c.toLocaleString()} 401k limit`);
                 }
+                const matchReduction = employerMatch - trimmedMatch;
                 employerMatch = trimmedMatch;
+
+                // If the match couldn't absorb all of the excess (e.g. multiple
+                // incomes feed this account and their combined EMPLOYEE deferrals
+                // alone exceed §415(c)), trim this income's employee deferral too —
+                // as a last resort — so the account is never over-funded (PR #56 #5).
+                const remainingExcess = Math.max(0, excess - matchReduction);
+                if (remainingExcess > 0) {
+                    trimmedSelf = Math.max(0, selfContribution - remainingExcess);
+                    logs.push(`[WARN] §415(c) limit: ${inc.name} employee deferral reduced by $${(selfContribution - trimmedSelf).toLocaleString(undefined, { maximumFractionDigits: 0 })} to stay within combined $${limit415c.toLocaleString()} 401k limit`);
+                }
             }
 
             totalEmployerMatch += employerMatch;
 
-            withdrawalState.userInflows[inc.matchAccountId] = currentSelf + selfContribution;
+            withdrawalState.userInflows[inc.matchAccountId] = currentSelf + trimmedSelf;
             withdrawalState.employerInflows[inc.matchAccountId] = currentMatch + employerMatch;
         }
     });
