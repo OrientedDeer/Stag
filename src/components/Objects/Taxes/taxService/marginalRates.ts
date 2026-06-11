@@ -2,6 +2,7 @@ import { TaxParameters } from "../../../../data/TaxData";
 import { TaxState } from "../TaxContext";
 import { AssumptionsState } from "../../Assumptions/AssumptionsContext";
 import { getTaxParameters } from "./parameters";
+import { getAdditionalMedicareThreshold } from "./ficaTax";
 
 /** Result of marginal tax rate calculation */
 export interface MarginalRateResult {
@@ -93,8 +94,8 @@ export function getCombinedMarginalRate(
     const stateParams = getTaxParameters(year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions);
 
     const adjustedGross = Math.max(0, grossIncome - preTaxDeductions);
-    const fedStdDed = fedParams?.standardDeduction || 14600;
-    const stateStdDed = stateParams?.standardDeduction || 0;
+    const fedStdDed = fedParams?.standardDeduction ?? 14600;
+    const stateStdDed = stateParams?.standardDeduction ?? 0;
 
     const fedTaxableIncome = Math.max(0, adjustedGross - fedStdDed);
     const stateTaxableIncome = Math.max(0, adjustedGross - stateStdDed);
@@ -102,7 +103,10 @@ export function getCombinedMarginalRate(
     const fedMarginal = fedParams ? getMarginalTaxRate(fedTaxableIncome, fedParams) : { rate: 0, headroom: Infinity };
     const stateMarginal = stateParams ? getMarginalTaxRate(stateTaxableIncome, stateParams) : { rate: 0, headroom: Infinity };
 
-    // FICA: 6.2% SS (up to wage base) + 1.45% Medicare
+    // FICA: 6.2% SS (up to wage base) + 1.45% Medicare + 0.9% Additional
+    // Medicare surtax above the filing-status threshold. Above the SS wage
+    // base the 6.2% has already dropped off, so a high earner ends at
+    // 0.0145 + 0.009 = 0.0235.
     let ficaRate = 0;
     if (includesFICA && fedParams) {
         const ssWageBase = fedParams.socialSecurityWageBase || 168600;
@@ -110,6 +114,12 @@ export function getCombinedMarginalRate(
             ficaRate = fedParams.socialSecurityTaxRate + fedParams.medicareTaxRate;
         } else {
             ficaRate = fedParams.medicareTaxRate;
+        }
+        // Mirror calculateFicaTax: the 0.9% surtax applies above a
+        // filing-status threshold (shared helper keeps the two in sync).
+        const additionalMedicareThreshold = getAdditionalMedicareThreshold(taxState.filingStatus);
+        if (grossIncome >= additionalMedicareThreshold) {
+            ficaRate += 0.009;
         }
     }
 

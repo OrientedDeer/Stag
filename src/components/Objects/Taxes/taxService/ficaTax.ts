@@ -4,6 +4,16 @@ import { AssumptionsState } from "../../Assumptions/AssumptionsContext";
 import { getTaxParameters } from "./parameters";
 import { getEarnedIncome, getFicaExemptions } from "./incomeAggregation";
 
+/**
+ * Income threshold above which the 0.9% Additional Medicare surtax applies,
+ * by filing status. Shared with the marginal-rate calculation so the two
+ * cannot drift apart.
+ */
+export function getAdditionalMedicareThreshold(filingStatus: TaxState['filingStatus']): number {
+    return filingStatus === 'Married Filing Jointly' ? 250000 :
+        filingStatus === 'Married Filing Separately' ? 125000 : 200000;
+}
+
 export function calculateFicaTax(
     state: TaxState,
     incomes: AnyIncome[],
@@ -26,9 +36,7 @@ export function calculateFicaTax(
         fedParams.socialSecurityTaxRate;
     const medicareTax = taxableBase * fedParams.medicareTaxRate;
 
-    const additionalMedicareThreshold =
-        state.filingStatus === 'Married Filing Jointly' ? 250000 :
-        state.filingStatus === 'Married Filing Separately' ? 125000 : 200000;
+    const additionalMedicareThreshold = getAdditionalMedicareThreshold(state.filingStatus);
     const additionalMedicareTax = Math.max(0, taxableBase - additionalMedicareThreshold) * 0.009;
 
     return ssTax + medicareTax + additionalMedicareTax;
