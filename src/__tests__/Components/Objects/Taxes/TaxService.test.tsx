@@ -982,7 +982,7 @@ describe('TaxService: Additional Functions', () => {
 
         it('should only include Medicare rate above SS wage base', () => {
             const result = getCombinedMarginalRate(
-                200000, // Above 2024 SS wage base of 168,600
+                175000, // Above 2024 SS wage base ($168,600), below the $200k Additional-Medicare threshold
                 0,
                 createTaxState({ stateResidency: 'Texas' }),
                 2024,
@@ -990,7 +990,8 @@ describe('TaxService: Additional Functions', () => {
                 true
             );
 
-            // Above SS wage base, only Medicare (1.45%) applies, not SS (6.2%)
+            // Above SS wage base, only Medicare (1.45%) applies, not SS (6.2%);
+            // below the $200k threshold so the 0.9% Additional Medicare surtax does not apply.
             expect(result.fica).toBe(0.0145); // Only Medicare rate
         });
 

@@ -158,9 +158,10 @@ describe('PR55 #7: calculateUnifiedStateTax(...,0,...) === calculateStateTax', (
 // but return the SAME number; Itemized/Auto must still apply SALT.
 // =============================================================================
 describe('PR55 #8: calculateFederalTaxFromIncomes characterization', () => {
-    it('Standard deduction path pins to 13840.9 (DC residency irrelevant on Standard)', () => {
+    it('Standard deduction path pins to 13841 (DC residency irrelevant on Standard)', () => {
+        // Value moved +$0.10 with the PR#55 #3 fix (2024 Single brackets → breakpoint convention).
         const s = createTaxState({ deductionMethod: 'Standard', stateResidency: 'DC' });
-        expect(calculateFederalTaxFromIncomes(s, [work(100000)], [], 0, 2024, noInflationAssumptions)).toBeCloseTo(13840.9, 4);
+        expect(calculateFederalTaxFromIncomes(s, [work(100000)], [], 0, 2024, noInflationAssumptions)).toBeCloseTo(13841, 4);
     });
 
     it('Standard path identical whether high-tax or no-tax state (SALT irrelevant)', () => {
@@ -169,10 +170,11 @@ describe('PR55 #8: calculateFederalTaxFromIncomes characterization', () => {
         expect(dc).toBe(tx);
     });
 
-    it('Itemized path applies SALT (pins to 13356.34)', () => {
+    it('Itemized path applies SALT (pins to 13356.44)', () => {
+        // Value moved +$0.10 with the PR#55 #3 fix (2024 Single brackets → breakpoint convention).
         const s = createTaxState({ deductionMethod: 'Itemized', stateResidency: 'DC' });
         const m = [itemizedMortgage()];
-        expect(calculateFederalTaxFromIncomes(s, [work(100000)], m, 0, 2024, noInflationAssumptions)).toBeCloseTo(13356.34, 2);
+        expect(calculateFederalTaxFromIncomes(s, [work(100000)], m, 0, 2024, noInflationAssumptions)).toBeCloseTo(13356.44, 2);
     });
 
     it('Auto path pins to its computed value (still applies SALT)', () => {
@@ -181,7 +183,8 @@ describe('PR55 #8: calculateFederalTaxFromIncomes characterization', () => {
         // Standard/Itemized calls. Pin the concrete value as a regression guard.
         const m = [itemizedMortgage()];
         const auto = calculateFederalTaxFromIncomes(createTaxState({ deductionMethod: 'Auto', stateResidency: 'DC' }), [work(100000)], m, 0, 2024, noInflationAssumptions);
-        expect(auto).toBeCloseTo(13426.980948654455, 4);
+        // Value moved +$0.10 with the PR#55 #3 fix (2024 Single brackets → breakpoint convention).
+        expect(auto).toBeCloseTo(13427.080948654457, 4);
     });
 
     it('Itemized path with additionalOrdinaryIncome>0 uses unified state tax', () => {
