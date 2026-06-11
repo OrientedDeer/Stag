@@ -1,7 +1,7 @@
 import { AnyIncome, WorkIncome, FutureSocialSecurityIncome, FERSPensionIncome, CSRSPensionIncome, PassiveIncome } from "../../components/Objects/Income/models";
 import { AnyAccount, SavedAccount } from "../../components/Objects/Accounts/models";
 import { AssumptionsState, getRetirementAge, getLifeExpectancy, getBirthYear } from "../../components/Objects/Assumptions/AssumptionsContext";
-import { calculateHigh3, checkFERSEligibility, checkCSRSEligibility, calculateFERSBasicBenefit, calculateCSRSBasicBenefit } from "../../data/PensionData";
+import { calculateHigh3, checkFERSEligibility, checkCSRSEligibility, calculateFERSBasicBenefit, calculateCSRSBasicBenefit, calculateFERSSupplement } from "../../data/PensionData";
 import { calculateAIME, extractEarningsFromSimulation, calculateEarningsTestReduction } from "../SocialSecurityCalculator";
 import { getFRA } from "../../data/SocialSecurityData";
 import * as TaxService from "../../components/Objects/Taxes/TaxService";
@@ -104,16 +104,29 @@ export function projectIncomes(
                     const reductionFactor = 1 - (eligibility.reductionPercent / 100);
                     const actualBenefit = baseBenefit * reductionFactor;
 
+                    // Auto-compute the FERS MRA-to-62 supplement on activation. Auto
+                    // pensions leave `fersSupplement` at its default 0, so deriving it
+                    // here mirrors the model's getSupplement(): estimatedSSAt62 is stored
+                    // as an ANNUAL figure and divided by 12 to feed the monthly-input
+                    // calculateFERSSupplement. The model's increment() COLA-grows this
+                    // value and zeroes it at 62, so it only needs to be correct now.
+                    const supplement = inc.retirementAge < 62
+                        ? calculateFERSSupplement(inc.yearsOfService, inc.estimatedSSAt62 / 12)
+                        : 0;
+
                     logs.push(`[PENSION] FERS Pension started: High-3 calculated as $${high3.toLocaleString()}/yr from ${salaryHistory.length} years of salary history`);
                     if (eligibility.reductionPercent > 0) {
                         logs.push(`   Base benefit: $${baseBenefit.toLocaleString()}/yr, reduced by ${eligibility.reductionPercent}% (${eligibility.message})`);
                     }
                     logs.push(`   Annual benefit: $${actualBenefit.toLocaleString()}/yr`);
+                    if (supplement > 0) {
+                        logs.push(`[PENSION] FERS Supplement (MRA-to-62): $${supplement.toLocaleString()}/yr until age 62`);
+                    }
 
                     return new FERSPensionIncome(
                         inc.id, inc.name, inc.yearsOfService, high3,
                         inc.retirementAge, inc.birthYear, actualBenefit,
-                        inc.fersSupplement, inc.estimatedSSAt62,
+                        supplement, inc.estimatedSSAt62,
                         inc.startDate, inc.end_date,
                         inc.autoCalculateHigh3, inc.linkedIncomeId,
                         inc.startMilestoneId, inc.endMilestoneId

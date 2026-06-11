@@ -14,6 +14,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildDPYearContexts } from '../../../services/simulation/RothConversionDP';
 import { processInflows, growAccounts } from '../../../services/simulation/AccountGrowth';
+import { projectIncomes } from '../../../services/simulation/IncomeProjection';
 import { SimulationYear, WithdrawalState } from '../../../services/simulation/types';
 import {
     AssumptionsState,
@@ -21,9 +22,10 @@ import {
     createBuiltinMilestones,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
-import { PassiveIncome, WorkIncome } from '../../../components/Objects/Income/models';
+import { PassiveIncome, WorkIncome, FERSPensionIncome, AnyIncome } from '../../../components/Objects/Income/models';
 import { ESPPAccount, InvestedAccount } from '../../../components/Objects/Accounts/models';
 import { get415cLimit } from '../../../data/ContributionLimits';
+import { calculateFERSSupplement } from '../../../data/PensionData';
 
 // Born 1955 → RMD start age 73. In 2030 this person is 75 (well into RMD age).
 const BIRTH_YEAR = 1955;
@@ -287,5 +289,102 @@ describe('PR #56 #5 — §415(c) trims employee deferrals when match cannot abso
 
         // Combined $75k of employee deferrals must be clamped to the ~$70k limit.
         expect(totalAdditions).toBeLessThanOrEqual(limit + 0.001);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// PR #56 #4 — FERS MRA-to-62 supplement must be auto-computed on activation.
+//
+// When a FERS pension is auto-configured (autoCalculateHigh3 + linkedIncomeId)
+// and the user retires before 62, the activation branch in IncomeProjection
+// constructed the new FERSPensionIncome passing `inc.fersSupplement` verbatim.
+// That value is left at its default 0 for auto pensions, so the bridge
+// supplement was never paid. The model's getSupplement()/calculateSupplement()
+// formula (which would derive it) is dead code in this path. The fix computes
+// the supplement at activation when retiring before 62.
+// ---------------------------------------------------------------------------
+function createFersTestAssumptions(birthYear: number, retirementAge: number): AssumptionsState {
+    return {
+        ...defaultAssumptions,
+        macro: { ...defaultAssumptions.macro, inflationAdjusted: false, inflationRate: 2.6 },
+        milestones: createBuiltinMilestones(birthYear, retirementAge, 90),
+    };
+}
+
+function createFersWorkIncome(id: string, salary: number): WorkIncome {
+    return new WorkIncome(
+        id, 'Fed Job', salary, 'Annually', 'Yes',
+        0, 0, 0, 0, '',
+        null, 'FIXED',
+        new Date('2020-01-01'), undefined,
+        0, 'custom', 'NONE', 0, 15, true, 6, null, 7, 'FERS'
+    );
+}
+
+function createFersSimYear(year: number, incomes: AnyIncome[]): SimulationYear {
+    return {
+        year,
+        incomes,
+        expenses: [],
+        accounts: [],
+        cashflow: {
+            totalIncome: 0, totalExpense: 0, livingExpenses: 0, discretionary: 0,
+            investedUser: 0, investedMatch: 0, totalInvested: 0,
+            bucketAllocations: 0, bucketDetail: {}, withdrawals: 0, withdrawalDetail: {},
+        },
+        taxDetails: {
+            fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0,
+            capitalGains: 0, withdrawalOrdinaryTax: 0, niit: 0,
+        },
+        logs: [],
+    };
+}
+
+describe('PR #56 #4 — FERS MRA-to-62 supplement is auto-computed on activation', () => {
+    it('computes the supplement for a pre-62 auto FERS pension even when fersSupplement defaults to 0', () => {
+        // Born 1968 → MRA 57. Retiring at 57 with 30 years is a full unreduced
+        // MRA+30 retirement (no early-reduction), so the bridge supplement applies.
+        const birthYear = 1968;
+        const retirementAge = 57;
+        const yearsOfService = 30;
+        const estimatedSSAt62Annual = 24000; // stored as an ANNUAL figure on the model
+
+        const fersPension = new FERSPensionIncome(
+            'fers1', 'FERS Pension', yearsOfService, 0, retirementAge, birthYear,
+            0,                       // calculatedBenefit
+            0,                       // fersSupplement (default — never edited for auto pensions)
+            estimatedSSAt62Annual,   // estimatedSSAt62 (annual)
+            undefined, undefined,
+            true, 'work1'            // autoCalculateHigh3=true, linkedIncomeId='work1'
+        );
+
+        // Salary history so the High-3 / activation branch runs.
+        const previousSimulation: SimulationYear[] = [
+            createFersSimYear(2022, [createFersWorkIncome('work1', 100000)]),
+            createFersSimYear(2023, [createFersWorkIncome('work1', 100000)]),
+            createFersSimYear(2024, [createFersWorkIncome('work1', 100000)]),
+        ];
+
+        const assumptions = createFersTestAssumptions(birthYear, retirementAge);
+        const logs: string[] = [];
+
+        const result = projectIncomes(
+            2025,
+            [fersPension], // linked work income already filtered out at retirement
+            [],
+            assumptions,
+            previousSimulation,
+            retirementAge, // currentAge === retirementAge → activation
+            true,
+            logs
+        );
+
+        const updatedFers = result.nextIncomes.find(inc => inc.id === 'fers1') as FERSPensionIncome;
+
+        // Convention: model stores estimatedSSAt62 as ANNUAL and feeds /12 (monthly)
+        // into calculateFERSSupplement. (30/40) * 2000/mo * 12 = $18,000/yr.
+        const expected = calculateFERSSupplement(yearsOfService, estimatedSSAt62Annual / 12);
+        expect(expected).toBeGreaterThan(0);
+        expect(updatedFers.fersSupplement).toBeCloseTo(expected, 2);
     });
 });
