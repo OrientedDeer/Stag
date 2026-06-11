@@ -1,5 +1,14 @@
 import { AnyExpense, MortgageExpense, getExpenseActiveMultiplier } from "../../Expense/models";
 
+/**
+ * Narrow an expense to those that declare a numeric `tax_deductible` field.
+ * Only some classes in the AnyExpense union (Mortgage, Loan, Dependent,
+ * Healthcare, Charity) carry it; the SimpleExpense / Rent variants do not.
+ */
+function hasTaxDeductible(exp: AnyExpense): exp is AnyExpense & { tax_deductible: number } {
+    return "tax_deductible" in exp;
+}
+
 export function getItemizedDeductions(expenses: AnyExpense[], year: number): number {
     return expenses
         .filter(
@@ -12,7 +21,9 @@ export function getItemizedDeductions(expenses: AnyExpense[], year: number): num
             if (exp instanceof MortgageExpense) {
                 return val + exp.calculateAnnualAmortization(year).totalInterest;
             }
-            return val + exp.getProratedAnnual((exp as any).tax_deductible || 0, year);
+            return hasTaxDeductible(exp)
+                ? val + exp.getProratedAnnual(exp.tax_deductible ?? 0, year)
+                : val;
         }, 0);
 }
 
@@ -28,6 +39,8 @@ export function getYesDeductions(expenses: AnyExpense[], year: number): number {
             if (exp instanceof MortgageExpense) {
                 return val + exp.calculateAnnualAmortization(year).totalInterest;
             }
-            return val + exp.getProratedAnnual((exp as any).tax_deductible || 0, year);
+            return hasTaxDeductible(exp)
+                ? val + exp.getProratedAnnual(exp.tax_deductible ?? 0, year)
+                : val;
         }, 0);
 }

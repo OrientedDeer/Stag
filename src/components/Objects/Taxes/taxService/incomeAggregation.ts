@@ -17,6 +17,27 @@ export function getGrossIncome(incomes: AnyIncome[], year: number): number {
 }
 
 /**
+ * Resolve the effective per-period 401k contribution field for a work income.
+ *
+ * When `useStoredValue` is true (simulation, after increment() has run) the stored
+ * preTax401k/roth401k is read directly. Otherwise, when an age is provided, the value
+ * is resolved through getEffective401k() (UI preview / auto-max). Falls back to the
+ * stored value when no age is available.
+ */
+function resolveEffective401k(
+    inc: WorkIncome,
+    year: number,
+    age: number | undefined,
+    useStoredValue: boolean,
+    kind: "preTax" | "roth",
+): number {
+    if (useStoredValue || age === undefined) {
+        return kind === "preTax" ? inc.preTax401k : inc.roth401k;
+    }
+    return inc.getEffective401k(year, age)[kind];
+}
+
+/**
  * Get pre-tax exemptions (401k, insurance, HSA) from work incomes.
  * @param useStoredValue - If true, reads stored preTax401k directly instead of calling getEffective401k().
  *                         Use true in simulation (after increment() has run), false for UI preview.
@@ -30,9 +51,7 @@ export function getPreTaxExemptions(
     return incomes
         .filter((inc) => inc instanceof WorkIncome)
         .reduce((acc, inc) => {
-            const preTax401k = useStoredValue
-                ? inc.preTax401k
-                : (age !== undefined ? inc.getEffective401k(year, age).preTax : inc.preTax401k);
+            const preTax401k = resolveEffective401k(inc, year, age, useStoredValue, "preTax");
             return (
                 acc +
                 inc.getProratedAnnual(preTax401k, year) +
@@ -65,9 +84,7 @@ export function getPostTaxExemptions(
     return incomes
         .filter((inc) => inc instanceof WorkIncome)
         .reduce((acc, inc) => {
-            const roth401k = useStoredValue
-                ? inc.roth401k
-                : (age !== undefined ? inc.getEffective401k(year, age).roth : inc.roth401k);
+            const roth401k = resolveEffective401k(inc, year, age, useStoredValue, "roth");
             return acc + inc.getProratedAnnual(roth401k, year);
         }, 0);
 }
