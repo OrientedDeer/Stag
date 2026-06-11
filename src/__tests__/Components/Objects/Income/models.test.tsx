@@ -891,23 +891,25 @@ describe('Income Models', () => {
   describe('calculateSocialSecurityStartDate', () => {
     it('should return correct date for claiming age', () => {
       // Person born 1995 (age 30 in 2025), claiming at 67 in January
+      // calculateSocialSecurityStartDate builds a LOCAL-midnight date-only value
+      // (parseDate convention), so read it back with local accessors.
       const result = calculateSocialSecurityStartDate(1995, 67);
-      expect(result.getUTCFullYear()).toBe(2062);
-      expect(result.getUTCMonth()).toBe(0); // January
-      expect(result.getUTCDate()).toBe(1);
+      expect(result.getFullYear()).toBe(2062);
+      expect(result.getMonth()).toBe(0); // January
+      expect(result.getDate()).toBe(1);
     });
 
     it('should handle custom claiming month', () => {
       // Person born 1970 (age 55 in 2025), claiming at 62 in July
       const result = calculateSocialSecurityStartDate(1970, 62, 6);
-      expect(result.getUTCFullYear()).toBe(2032);
-      expect(result.getUTCMonth()).toBe(6); // July
+      expect(result.getFullYear()).toBe(2032);
+      expect(result.getMonth()).toBe(6); // July
     });
 
     it('should default to January when month not specified', () => {
       // Person born 1985 (age 40 in 2025), claiming at 67
       const result = calculateSocialSecurityStartDate(1985, 67);
-      expect(result.getUTCMonth()).toBe(0); // January
+      expect(result.getMonth()).toBe(0); // January
     });
   });
 
@@ -954,6 +956,62 @@ describe('Income Models', () => {
     it('should return 0 supplement for retirement at 62+', () => {
       const supplement = fersPension.calculateSupplement();
       expect(supplement).toBe(0);
+    });
+
+    // --- Finding 3: FERS Annuity Supplement must NOT grow with COLA ---
+    // The real FERS supplement is a fixed bridge payment from retirement to age 62;
+    // it receives no COLA. The increment() formula now uses the bare `this.fersSupplement`
+    // rather than `this.fersSupplement * (1 + cola)`.
+    //
+    // NOTE: getFERSCOLA() returns 0 for any age < 62, and FERS basic benefits also
+    // get no COLA before 62, so in the supplement's only active window (pre-62) BOTH
+    // values are flat under inflationAdjusted assumptions. The supplement must stay
+    // exactly 12000 across ages 58-61 (and the basic benefit stays flat too, per the
+    // FERS pre-62 no-COLA rule). This pins the fixed-supplement behavior as a guard.
+    it('keeps the FERS supplement fixed (no COLA) before age 62', () => {
+      let pension = new FERSPensionIncome(
+        'fers-supp', 'FERS Pension', 30, 100000, 57, 1975, 30000, 12000, 24000,
+        new Date(2032, 0, 1), new Date(2060, 11, 31)
+      );
+
+      for (const age of [58, 59, 60, 61]) {
+        pension = pension.increment(mockAssumptions, 2032 + (age - 57), age);
+        expect(pension.fersSupplement).toBe(12000); // fixed bridge payment, no COLA
+        // FERS basic benefit also gets no COLA before 62 (getFERSCOLA -> 0).
+        expect(pension.calculatedBenefit).toBeCloseTo(30000, 0);
+      }
+    });
+
+    // --- Finding 6: age-62 boundary verification (regression guard) ---
+    // increment(assumptions, year, currentAge) is called from IncomeProjection with
+    // currentAge = the age DURING `year`. So the supplement must drop to 0 in the
+    // SAME year the retiree turns 62, with no extra year of payment. This drives the
+    // increment chain the way the projection does and pins the exact boundary.
+    it('zeroes the FERS supplement in the age-62 year (no off-by-one overpayment)', () => {
+      // Retire at 57 in 2032 (born 1975). Age each year equals 57 + (year - 2032).
+      let pension = new FERSPensionIncome(
+        'fers-62', 'FERS Pension', 30, 100000, 57, 1975, 30000, 12000, 24000,
+        new Date(2032, 0, 1), new Date(2060, 11, 31)
+      );
+
+      // getTotalAnnualAmount at retirement (age 57): supplement is paid.
+      expect(pension.getTotalAnnualAmount(2032)).toBe(30000 + 12000);
+
+      const supplementByAge: Record<number, number> = {};
+      // Walk the increment chain exactly like IncomeProjection: produce the income
+      // object FOR each year from the prior year using currentAge = age during year.
+      for (let age = 58; age <= 64; age++) {
+        const year = 2032 + (age - 57);
+        pension = pension.increment(mockAssumptions, year, age);
+        supplementByAge[age] = pension.getTotalAnnualAmount(year) - pension.getAnnualAmount(year);
+      }
+
+      // Supplement still paid at 58-61...
+      expect(supplementByAge[58]).toBe(12000);
+      expect(supplementByAge[61]).toBe(12000);
+      // ...and drops to 0 starting AT age 62 (the year the retiree IS 62) — no extra year.
+      expect(supplementByAge[62]).toBe(0);
+      expect(supplementByAge[63]).toBe(0);
     });
 
     // DIRECT unit tests for FERSPensionIncome.calculateBenefit() - Batch 28
@@ -1289,44 +1347,49 @@ describe('Income Models', () => {
     });
   });
 
-  // --- UTC date-only convention regression tests (bug #8) ---
-  // Date-only values are stored as UTC-midnight Dates. In a US (negative-UTC)
-  // timezone, new Date(Date.UTC(2030,0,1)) is 2029-12-31 local, so LOCAL
-  // getMonth()/getFullYear() misread the month/year. isIncomeActiveInCurrentMonth
-  // must read stored dates with getUTC*.
-  describe('UTC date-only handling (timezone safety)', () => {
-    it('agrees with getIncomeActiveMultiplier on the current year for UTC dates', () => {
+  // --- LOCAL date-only convention regression tests (timezone safety) ---
+  // Income date-only values are stored as LOCAL-midnight Dates (parseDate builds
+  // `new Date(y, m-1, d)`), and the readers (getIncomeActiveMultiplier /
+  // isIncomeActiveInCurrentMonth) now read them with local accessors. A date
+  // entered as Y-M-D therefore round-trips to the same Y-M-D in ANY timezone.
+  // These cases construct dates the same way the app does (local) and assert the
+  // active/inactive outcomes hold under both positive- and negative-UTC TZs.
+  describe('LOCAL date-only handling (timezone safety)', () => {
+    it('agrees with getIncomeActiveMultiplier on the current year for local dates', () => {
       const now = new Date();
-      // UTC-midnight start on the 1st of the current month: genuinely active now,
-      // but a LOCAL read in a US TZ would place it in the previous month.
-      const utcThisMonth = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
-      const income = new PassiveIncome('i-utc', 'UTC active', 1000, 'Annually', 'No', 'Interest', utcThisMonth);
+      const localThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const income = new PassiveIncome('i-local', 'Local active', 1000, 'Annually', 'No', 'Interest', localThisMonth);
 
       expect(isIncomeActiveInCurrentMonth(income)).toBe(true);
       expect(getIncomeActiveMultiplier(income, now.getFullYear())).toBeGreaterThan(0);
     });
 
-    it('treats a next-month UTC start as inactive (not pulled into this month)', () => {
-      // A UTC-midnight start on the 1st of NEXT month reads, in a US TZ, as the
-      // last day of THIS month with local accessors — which would wrongly mark it
-      // active now. With getUTC* it stays correctly inactive.
+    it('treats a next-month local start as inactive (not pulled into this month)', () => {
       const now = new Date();
-      const nextMonthStart = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 1));
+      const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
       const income = new PassiveIncome('i-next', 'Next month', 1000, 'Annually', 'No', 'Interest', nextMonthStart);
       expect(isIncomeActiveInCurrentMonth(income)).toBe(false);
     });
 
-    it('treats a future UTC start as inactive', () => {
-      const future = new Date(Date.UTC(new Date().getFullYear() + 2, 0, 1));
+    it('treats a future local start as inactive', () => {
+      const future = new Date(new Date().getFullYear() + 2, 0, 1);
       const income = new PassiveIncome('i-future', 'Future', 1000, 'Annually', 'No', 'Interest', future);
       expect(isIncomeActiveInCurrentMonth(income)).toBe(false);
     });
 
-    it('treats a UTC end date in the past as inactive', () => {
-      const start = new Date(Date.UTC(new Date().getFullYear() - 3, 0, 1));
-      const end = new Date(Date.UTC(new Date().getFullYear() - 1, 0, 1));
+    it('treats a local end date in the past as inactive', () => {
+      const start = new Date(new Date().getFullYear() - 3, 0, 1);
+      const end = new Date(new Date().getFullYear() - 1, 0, 1);
       const income = new PassiveIncome('i-ended', 'Ended', 1000, 'Annually', 'No', 'Interest', start, end);
       expect(isIncomeActiveInCurrentMonth(income)).toBe(false);
+    });
+
+    // Finding 1: a Jan-1 local start is FULLY active in its start year (multiplier 1),
+    // not suppressed, in any timezone — the core round-trip guarantee.
+    it('start-of-year local start yields multiplier 1 in its start year', () => {
+      const start = new Date(2032, 0, 1); // local Jan 1 2032
+      const income = new PassiveIncome('i-jan', 'Jan start', 1000, 'Annually', 'No', 'Interest', start);
+      expect(getIncomeActiveMultiplier(income, 2032)).toBe(1);
     });
   });
 });

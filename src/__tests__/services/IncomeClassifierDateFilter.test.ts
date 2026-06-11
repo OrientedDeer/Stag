@@ -12,8 +12,8 @@ describe('IncomeClassifier date filtering', () => {
         const endedIncome = new WorkIncome(
             'test-1', 'Ended Job', 100000, 'Annually', 'Yes',
             0, 0, 0, 0, '', null, 'FIXED',
-            new Date('2020-01-01'),  // start
-            new Date('2030-12-31')   // end
+            new Date(2020, 0, 1),  // start
+            new Date(2030, 11, 31) // end
         );
 
         const result = classifyIncome([endedIncome], 0, 0, 2035);
@@ -27,8 +27,8 @@ describe('IncomeClassifier date filtering', () => {
         const futureIncome = new WorkIncome(
             'test-2', 'Future Job', 100000, 'Annually', 'Yes',
             0, 0, 0, 0, '', null, 'FIXED',
-            new Date('2040-01-01'),  // start (future)
-            undefined                 // no end
+            new Date(2040, 0, 1),  // start (future)
+            undefined              // no end
         );
 
         const result = classifyIncome([futureIncome], 0, 0, 2035);
@@ -42,8 +42,8 @@ describe('IncomeClassifier date filtering', () => {
         const activeIncome = new WorkIncome(
             'test-3', 'Active Job', 100000, 'Annually', 'Yes',
             0, 0, 0, 0, '', null, 'FIXED',
-            new Date('2020-01-01'),  // start (past)
-            new Date('2040-12-31')   // end (future)
+            new Date(2020, 0, 1),  // start (past)
+            new Date(2040, 11, 31) // end (future)
         );
 
         const result = classifyIncome([activeIncome], 0, 0, 2035);
@@ -57,8 +57,8 @@ describe('IncomeClassifier date filtering', () => {
         const midYearIncome = new WorkIncome(
             'test-4', 'Mid-Year Job', 100000, 'Annually', 'Yes',
             0, 0, 0, 0, '', null, 'FIXED',
-            new Date('2035-07-01'),  // start mid-year (month index 6)
-            undefined                 // no end
+            new Date(2035, 6, 1),  // start mid-year (month index 6)
+            undefined              // no end
         );
 
         const result = classifyIncome([midYearIncome], 0, 0, 2035);

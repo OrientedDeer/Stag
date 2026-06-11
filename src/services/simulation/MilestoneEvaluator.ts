@@ -127,8 +127,8 @@ export function calculateAnnualExpenses(expenses: AnyExpense[], year: number): n
 
     expenses.forEach(expense => {
         // Check if expense is active in this year
-        const startYear = expense.startDate ? expense.startDate.getUTCFullYear() : 0;
-        const endYear = expense.endDate ? expense.endDate.getUTCFullYear() : 9999;
+        const startYear = expense.startDate ? expense.startDate.getFullYear() : 0;
+        const endYear = expense.endDate ? expense.endDate.getFullYear() : 9999;
 
         if (year >= startYear && year <= endYear) {
             if (expense instanceof MortgageExpense) {

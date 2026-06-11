@@ -12,10 +12,10 @@ describe('modelUtils', () => {
       const result = parseDate('2024-06-15');
       expect(result).toBeInstanceOf(Date);
       expect(result?.getFullYear()).toBe(2024);
-      // Note: Date parsing of ISO strings creates UTC dates
-      // For local date comparison, use getUTC methods
-      expect(result?.getUTCMonth()).toBe(5); // June = 5 (0-indexed)
-      expect(result?.getUTCDate()).toBe(15);
+      // parseDate builds LOCAL-midnight date-only values (new Date(y, m-1, d)),
+      // so read them with local accessors — stable in any timezone.
+      expect(result?.getMonth()).toBe(5); // June = 5 (0-indexed)
+      expect(result?.getDate()).toBe(15);
     });
 
     it('should parse ISO datetime string as local date', () => {
@@ -84,9 +84,9 @@ describe('modelUtils', () => {
     it('should parse valid ISO date string', () => {
       const result = parseDateRequired('2024-06-15');
       expect(result).toBeInstanceOf(Date);
-      expect(result.getUTCFullYear()).toBe(2024);
-      expect(result.getUTCMonth()).toBe(5); // June
-      expect(result.getUTCDate()).toBe(15);
+      expect(result.getFullYear()).toBe(2024);
+      expect(result.getMonth()).toBe(5); // June
+      expect(result.getDate()).toBe(15);
     });
 
     it('should return current time for null', () => {

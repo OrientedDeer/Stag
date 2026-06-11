@@ -893,12 +893,13 @@ describe('IncomeProjection', () => {
                 expect(interest.isReinvested).toBe(true);
             });
 
-            it('should construct interest dates as UTC so it is active the full calendar year', () => {
-                // Regression (Bug #13): interest income was built with local
-                // new Date(year, 0, 1) / new Date(year, 11, 31), but
-                // getIncomeActiveMultiplier reads start/end with getUTC*. In
-                // positive-UTC timezones the local Jan-1 is the prior year's Dec-31
-                // in UTC, shrinking/shifting the active window below a full year.
+            it('should construct interest dates locally so it is active the full calendar year', () => {
+                // Income date-only values follow the repo-wide LOCAL convention
+                // (parseDate builds new Date(y, m-1, d)), and getIncomeActiveMultiplier
+                // now reads them with local accessors. Interest income is therefore
+                // built with local new Date(year, 0, 1) / new Date(year, 11, 31), which
+                // reads back as the same calendar year and yields a clean full-year
+                // active window (multiplier 1.0) in ANY timezone.
                 const year = 2025;
                 const savingsAccount = new SavedAccount('sav1', 'HYSA', 100000, 5);
                 const assumptions = createTestAssumptions();
@@ -916,11 +917,11 @@ describe('IncomeProjection', () => {
                 );
 
                 const interest = result.interestIncomes[0];
-                // Dates must read as the intended calendar year in UTC.
-                expect(interest.startDate?.getUTCFullYear()).toBe(year);
-                expect(interest.startDate?.getUTCMonth()).toBe(0);
-                expect(interest.end_date?.getUTCFullYear()).toBe(year);
-                expect(interest.end_date?.getUTCMonth()).toBe(11);
+                // Dates must read as the intended calendar year with LOCAL accessors.
+                expect(interest.startDate?.getFullYear()).toBe(year);
+                expect(interest.startDate?.getMonth()).toBe(0);
+                expect(interest.end_date?.getFullYear()).toBe(year);
+                expect(interest.end_date?.getMonth()).toBe(11);
 
                 // The whole point: the consumer must see a clean full-year window.
                 expect(getIncomeActiveMultiplier(interest, year)).toBe(1.0);

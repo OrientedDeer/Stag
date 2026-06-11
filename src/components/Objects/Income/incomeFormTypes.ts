@@ -56,7 +56,7 @@ export function getInitialFormState(): IncomeFormState {
         name: '',
         amount: 0,
         frequency: 'Monthly',
-        startDate: new Date(Date.UTC(new Date().getFullYear(), 0, 1)),
+        startDate: new Date(new Date().getFullYear(), 0, 1),
         endDate: undefined,
         startMilestoneId: undefined,
         endMilestoneId: undefined,

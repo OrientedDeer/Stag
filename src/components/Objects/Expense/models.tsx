@@ -355,8 +355,9 @@ export class MortgageExpense extends BaseExpense {
 
 
   calculateAnnualAmortization(year: number): { totalInterest: number, totalPrincipal: number, totalPayment: number } {
-    const purchaseYear = this.startDate != null ? this.startDate.getUTCFullYear() : new Date().getFullYear();
-    const purchaseMonth = this.startDate != null ? this.startDate.getUTCMonth() : new Date().getMonth();
+    // startDate is a local-midnight date-only value; use local accessors.
+    const purchaseYear = this.startDate != null ? this.startDate.getFullYear() : new Date().getFullYear();
+    const purchaseMonth = this.startDate != null ? this.startDate.getMonth() : new Date().getMonth();
 
     if (year < purchaseYear) {
       return { totalInterest: 0, totalPrincipal: 0, totalPayment: 0 };
@@ -438,7 +439,10 @@ export class MortgageExpense extends BaseExpense {
     const principal_payment = fixed_amortization - interest_payment;
 
     const property_tax_payment = (this.valuation - this.valuation_deduction) * this.property_taxes / 100 / 12;
-    const pmi_payment = this.valuation * this.pmi / 100 / 12;
+    // PMI applies only while loan-to-value is ABOVE 80% (low equity), matching the
+    // LTV gate in the constructor and increment(). Without the gate, calculatePayment
+    // overstates the payment for mortgages with >20% equity.
+    const pmi_payment = (this.loan_balance / this.valuation) > 0.8 ? this.valuation * this.pmi / 100 / 12 : 0;
     const repair_payment = this.maintenance / 100 / 12 * this.valuation;
     const home_owners_insurance_payment = this.home_owners_insurance / 100 / 12 * this.valuation;
 
@@ -484,10 +488,10 @@ export class MortgageExpense extends BaseExpense {
     // If target is before purchase, the loan didn't exist yet (return 0)
     if (targetDate < start) return 0;
 
-    // Calculate months elapsed
+    // Calculate months elapsed — both dates are local-midnight, use local accessors.
     const monthsElapsed =
-      (targetDate.getUTCFullYear() - start.getUTCFullYear()) * 12 +
-      (targetDate.getUTCMonth() - start.getUTCMonth());
+      (targetDate.getFullYear() - start.getFullYear()) * 12 +
+      (targetDate.getMonth() - start.getMonth());
 
     if (monthsElapsed <= 0) return this.starting_loan_balance;
 
@@ -592,12 +596,13 @@ export class LoanExpense extends BaseExpense {
   }
 
   calculateAnnualAmortization(year: number): { totalInterest: number, totalPrincipal: number, totalPayment: number } {
-    const loanStartYear = this.startDate ? this.startDate.getUTCFullYear() : new Date().getFullYear();
+    // startDate/endDate are local-midnight date-only values; use local accessors.
+    const loanStartYear = this.startDate ? this.startDate.getFullYear() : new Date().getFullYear();
     if (year < loanStartYear) {
         return { totalInterest: 0, totalPrincipal: 0, totalPayment: 0 };
     }
 
-    const loanEndYear = this.endDate ? this.endDate.getUTCFullYear() : null;
+    const loanEndYear = this.endDate ? this.endDate.getFullYear() : null;
     if (loanEndYear !== null && year > loanEndYear) {
         return { totalInterest: 0, totalPrincipal: 0, totalPayment: 0 };
     }
@@ -608,8 +613,8 @@ export class LoanExpense extends BaseExpense {
 
     const monthlyRate = this.apr / 100 / 12;
 
-    const startMonth = (year === loanStartYear) ? (this.startDate ? this.startDate.getUTCMonth() : 0) : 0;
-    const endMonth = (loanEndYear === year) ? (this.endDate ? this.endDate.getUTCMonth() : 11) : 11;
+    const startMonth = (year === loanStartYear) ? (this.startDate ? this.startDate.getMonth() : 0) : 0;
+    const endMonth = (loanEndYear === year) ? (this.endDate ? this.endDate.getMonth() : 11) : 11;
 
     for (let month = startMonth; month <= endMonth; month++) {
         if (balance <= 0) {
@@ -674,17 +679,25 @@ export class LoanExpense extends BaseExpense {
     if (!this.endDate || !this.startDate) return 0;
     const start = new Date(this.startDate);
     const end = new Date(this.endDate);
-    // startDate/endDate are UTC-midnight date-only values; read with getUTC* to
-    // avoid a one-month shift in negative-UTC timezones.
-    return (end.getUTCFullYear() - start.getUTCFullYear()) * 12 + (end.getUTCMonth() - start.getUTCMonth());
+    // startDate/endDate are local-midnight date-only values (parseDate uses new
+    // Date(y, m-1, d)); read with local getFullYear/getMonth.
+    return (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
   }
 
   getAnnualAmount(year?: number): number {
-    return this.getProratedAnnual(this.payment, year);
+    // Use calculateAnnualAmortization to cap the payment in the payoff year:
+    // in the final year the loan balance is paid off mid-year, so the actual
+    // payment is less than payment×12. calculateAnnualAmortization already
+    // handles loanStartYear/loanEndYear proration as well.
+    if (year !== undefined) {
+      return this.calculateAnnualAmortization(year).totalPayment;
+    }
+    // No year — full-year un-prorated amount (used for display).
+    return this.payment * 12;
   }
 
   getMonthlyAmount(year?: number): number {
-    return this.getProratedAnnual(this.payment, year) / 12;
+    return this.getAnnualAmount(year) / 12;
   }
 
   /**
@@ -820,21 +833,21 @@ export type AnyExpense = RentExpense | MortgageExpense | LoanExpense | Dependent
 
 export function getExpenseActiveMultiplier(expense: BaseExpense, year: number): number {
   const expenseStartDate = expense.startDate ? new Date(expense.startDate) : new Date();
-  // Date-only values come from parseDate, which returns UTC dates (see modelUtils
-  // contract). Read with getUTC* so the active window doesn't shift by a month/year
-  // in negative timezones.
-  const startYear = expenseStartDate.getUTCFullYear();
+  // Expense date-only values are built with parseDate (new Date(y, m-1, d)) — local
+  // midnight. Read with local getFullYear/getMonth so the active window does not
+  // shift in positive-UTC timezones (e.g. Sydney UTC+10/11).
+  const startYear = expenseStartDate.getFullYear();
 
   const safeEndDate = expense.endDate ? new Date(expense.endDate) : null;
-  const endYear = safeEndDate ? safeEndDate.getUTCFullYear() : null;
+  const endYear = safeEndDate ? safeEndDate.getFullYear() : null;
 
   if (startYear > year) return 0;
   if (endYear !== null && endYear < year) return 0;
 
-  const startMonthIndex = (startYear < year) ? 0 : expenseStartDate.getUTCMonth();
+  const startMonthIndex = (startYear < year) ? 0 : expenseStartDate.getMonth();
 
   const endMonthIndex = (safeEndDate && endYear === year)
-    ? safeEndDate.getUTCMonth()
+    ? safeEndDate.getMonth()
     : 11;
 
   const monthsActive = endMonthIndex - startMonthIndex + 1;
@@ -848,11 +861,11 @@ export function isExpenseActiveInCurrentMonth(expense: AnyExpense): boolean {
   const currentMonth = today.getMonth();
 
   const expenseStartDate = expense.startDate != null ? expense.startDate : new Date();
-  // Stored date-only values are UTC-midnight; read them with getUTC* (today stays
-  // local since it's a true instant). Both sides feed local new Date(y, m, 1)
-  // month-boundary comparisons, so the bases stay consistent.
-  const expenseStartYear = expenseStartDate.getUTCFullYear();
-  const expenseStartMonth = expenseStartDate.getUTCMonth();
+  // Expense date-only values are local-midnight (parseDate uses new Date(y, m-1, d)).
+  // Read with local getFullYear/getMonth (today stays local since it's a true instant).
+  // Both sides feed local new Date(y, m, 1) month-boundary comparisons.
+  const expenseStartYear = expenseStartDate.getFullYear();
+  const expenseStartMonth = expenseStartDate.getMonth();
 
   const currentMonthStart = new Date(currentYear, currentMonth, 1);
   const expenseEffectiveStart = new Date(expenseStartYear, expenseStartMonth, 1);
@@ -863,8 +876,8 @@ export function isExpenseActiveInCurrentMonth(expense: AnyExpense): boolean {
 
   if (expense.endDate) {
     const expenseEndDate = new Date(expense.endDate);
-    const expenseEndYear = expenseEndDate.getUTCFullYear();
-    const expenseEndMonth = expenseEndDate.getUTCMonth();
+    const expenseEndYear = expenseEndDate.getFullYear();
+    const expenseEndMonth = expenseEndDate.getMonth();
 
     const expenseEffectiveEnd = new Date(expenseEndYear, expenseEndMonth + 1, 0);
 
@@ -897,9 +910,9 @@ export function isLongTermGoal(expense: AnyExpense): boolean {
   return expense.goalType != null;
 }
 
-/** Whole months between two dates (>= 0). */
+/** Whole months between two local-midnight date-only values (>= 0). */
 function monthsBetween(from: Date, to: Date): number {
-  const months = (to.getUTCFullYear() - from.getUTCFullYear()) * 12 + (to.getUTCMonth() - from.getUTCMonth());
+  const months = (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth());
   return Math.max(0, months);
 }
 
@@ -929,10 +942,11 @@ export function getGoalMonthlySetAside(expense: AnyExpense): number {
  */
 export function isGoalDueInYear(expense: AnyExpense, year: number): boolean {
   if (expense.goalType === 'targetDate' && expense.endDate) {
-    return new Date(expense.endDate).getUTCFullYear() === year;
+    // Goal dates are local-midnight; use local accessors to avoid timezone shift.
+    return new Date(expense.endDate).getFullYear() === year;
   }
   if (expense.goalType === 'recurring' && expense.intervalYears && expense.intervalYears > 0) {
-    const anchorYear = (expense.startDate ? new Date(expense.startDate) : new Date()).getUTCFullYear();
+    const anchorYear = (expense.startDate ? new Date(expense.startDate) : new Date()).getFullYear();
     const diff = year - anchorYear;
     return diff > 0 && diff % expense.intervalYears === 0;
   }
@@ -950,9 +964,11 @@ export function isGoalDueInYear(expense: AnyExpense, year: number): boolean {
  * automatically. Returns 0 outside the active saving window — before the
  * goal's start year, and (for one-time goals) after the purchase year.
  *
- * Years are extracted with getUTCFullYear to match isGoalDueInYear: goal dates
- * are stored as UTC-midnight, so local accessors in a negative-UTC timezone
- * would shift a YYYY-01-01 target back a year.
+ * When multiple goals share the same goalAccountId, the cap is the sum of all
+ * their set-asides (each goal's own active window is respected).
+ *
+ * Goal dates are local-midnight (parseDate uses new Date(y, m-1, d)); read
+ * with local getFullYear/getMonth to avoid timezone shift.
  */
 export function getGoalFundMonthlyCap(
   expenses: AnyExpense[],
@@ -960,13 +976,15 @@ export function getGoalFundMonthlyCap(
   year: number,
 ): number | undefined {
   if (!accountId) return undefined;
-  const goal = expenses.find(e => isLongTermGoal(e) && e.goalAccountId === accountId);
-  if (!goal) return undefined;
-  const startYear = (goal.startDate ? new Date(goal.startDate) : new Date()).getUTCFullYear();
-  if (year < startYear) return 0; // not saving yet
-  if (goal.goalType === 'targetDate' && goal.endDate
-      && new Date(goal.endDate).getUTCFullYear() < year) return 0; // already purchased
-  return getGoalMonthlySetAside(goal);
+  const goals = expenses.filter(e => isLongTermGoal(e) && e.goalAccountId === accountId);
+  if (goals.length === 0) return undefined;
+  return goals.reduce((sum, goal) => {
+    const startYear = (goal.startDate ? new Date(goal.startDate) : new Date()).getFullYear();
+    if (year < startYear) return sum; // not saving yet for this goal
+    if (goal.goalType === 'targetDate' && goal.endDate
+        && new Date(goal.endDate).getFullYear() < year) return sum; // already purchased
+    return sum + getGoalMonthlySetAside(goal);
+  }, 0);
 }
 
 /**
@@ -975,29 +993,30 @@ export function getGoalFundMonthlyCap(
  * no saving months in that final year — the lump is due then). Summed across
  * years this equals monthsBetween(start, end) exactly, so a goal funded at its
  * monthly set-aside lands on its total by the target — mid-year starts and the
- * partial final year are handled instead of charging a full 12 months. UTC
- * accessors match the rest of the goal math.
+ * partial final year are handled instead of charging a full 12 months.
+ * Goal dates are local-midnight; read with local accessors to avoid timezone shift.
  */
 function goalMonthsActiveInYear(goal: AnyExpense, year: number): number {
   const start = goal.startDate ? new Date(goal.startDate) : new Date();
-  const startYear = start.getUTCFullYear();
+  const startYear = start.getFullYear();
   if (year < startYear) return 0;
-  const from = year === startYear ? start.getUTCMonth() : 0;
+  const from = year === startYear ? start.getMonth() : 0;
   let to = 12;
   if (goal.endDate) {
     const end = new Date(goal.endDate);
-    const endYear = end.getUTCFullYear();
+    const endYear = end.getFullYear();
     if (year > endYear) return 0;
-    if (year === endYear) to = end.getUTCMonth();
+    if (year === endYear) to = end.getMonth();
   }
   return Math.max(0, to - from);
 }
 
 /**
- * Annual committed set-aside for a goal's fund in a calendar year — the
- * monthly set-aside × months active that year — or undefined when the account
- * isn't a goal fund. This is what the simulation counts with living expenses
- * and credits into the fund; budget projections use it for per-year totals.
+ * Annual committed set-aside for a goal's fund in a calendar year — the sum
+ * of (monthly set-aside × months active) over every goal targeting the account
+ * — or undefined when the account isn't a goal fund. When multiple goals share
+ * the same goalAccountId, each goal's own active window is respected and their
+ * set-asides are summed.
  */
 export function getGoalFundAnnualSetAside(
   expenses: AnyExpense[],
@@ -1005,9 +1024,12 @@ export function getGoalFundAnnualSetAside(
   year: number,
 ): number | undefined {
   if (!accountId) return undefined;
-  const goal = expenses.find(e => isLongTermGoal(e) && e.goalAccountId === accountId);
-  if (!goal) return undefined;
-  return getGoalMonthlySetAside(goal) * goalMonthsActiveInYear(goal, year);
+  const goals = expenses.filter(e => isLongTermGoal(e) && e.goalAccountId === accountId);
+  if (goals.length === 0) return undefined;
+  return goals.reduce(
+    (sum, goal) => sum + getGoalMonthlySetAside(goal) * goalMonthsActiveInYear(goal, year),
+    0,
+  );
 }
 
 /**

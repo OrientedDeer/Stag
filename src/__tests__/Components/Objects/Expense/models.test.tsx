@@ -361,14 +361,14 @@ describe('Expense Models', () => {
         // P&I ≈ $1,799 (from $300k at 6%, 30yr)
         // + taxes $400/mo (property_taxes as % of valuation)
         // + insurance $150/mo
-        // + PMI $100/mo
+        // + PMI: LTV = 300k/400k = 75% <= 80%, so PMI does NOT apply (bug fix)
         // + repairs $200/mo
         // + utilities $300
         // + extra $0
         const mortgageWithAll = new MortgageExpense(
           'm-full', 'Full Payment', 'Monthly',
           400000,   // valuation
-          300000,   // loan_balance
+          300000,   // loan_balance → LTV = 75% (no PMI should apply)
           300000,   // starting_loan_balance
           6,        // apr
           30,       // term
@@ -377,7 +377,7 @@ describe('Expense Models', () => {
           0.6,      // maintenance (0.6% of valuation = $2400/yr = $200/mo)
           300,      // utilities
           0.45,     // insurance (0.45% of valuation = $1800/yr = $150/mo)
-          0.3,      // pmi (0.3% of valuation = $1200/yr = $100/mo)
+          0.3,      // pmi rate, but LTV <= 80% so PMI = $0
           0,        // hoa_fee
           'Yes', 0, 'a1',
           new Date('2024-01-01')
@@ -388,11 +388,11 @@ describe('Expense Models', () => {
         // P&I ≈ $1,798.65
         // taxes = 400000 × 0.012 / 12 = $400
         // insurance = 400000 × 0.0045 / 12 = $150
-        // pmi = 400000 × 0.003 / 12 = $100
+        // PMI = $0 (LTV 75% is ≤ 80%; PMI gate prevents inclusion)
         // repairs = 400000 × 0.006 / 12 = $200
         // utilities = $300
-        // Total ≈ $2,949
-        expect(payment).toBeCloseTo(2949, 0);
+        // Total ≈ $2,849 (was $2,949 before the PMI gate fix)
+        expect(payment).toBeCloseTo(2849, 0);
       });
     });
 
@@ -1043,101 +1043,90 @@ describe('Expense Models', () => {
     });
   });
 
-  // --- UTC date-only convention regression tests (bugs #5, #8) ---
-  // Date-only values are stored as UTC-midnight Dates. In a negative-UTC (US)
-  // timezone, new Date(Date.UTC(2030,0,1)) is 2029-12-31T19:00 local, so local
-  // getMonth()/getFullYear() read Dec 2029 (off by a month AND a year) while
-  // getUTC* correctly reads Jan 2030. These methods must use getUTC*.
-  describe('UTC date-only handling (timezone safety)', () => {
-    // 2030-01-01 at UTC midnight — reads as Dec 2029 with LOCAL accessors in US TZs.
-    const utcStart = new Date(Date.UTC(2030, 0, 1));
-    // 2035-06-01 at UTC midnight — reads as May 2035 with LOCAL accessors in US TZs.
-    const utcEnd = new Date(Date.UTC(2035, 5, 1));
+  // --- Local-midnight date convention regression tests ---
+  // Date-only values are built by parseDate via new Date(y, m-1, d) — LOCAL midnight.
+  // Readers now use getFullYear()/getMonth() (local) so they work correctly in any
+  // timezone: positive-UTC (Sydney) and negative-UTC (US) alike. Tests use
+  // new Date(y, m, d) (local midnight) to match production date construction.
+  describe('local-midnight date handling (timezone safety)', () => {
+    // Jan 1 2030 local midnight — matches parseDate('2030-01-01').
+    const localStart = new Date(2030, 0, 1);
+    // Jun 1 2035 local midnight.
+    const localEnd = new Date(2035, 5, 1);
 
-    describe('MortgageExpense.calculateAnnualAmortization (#5)', () => {
-      it('treats a UTC-midnight startDate as Jan 2030, not Dec 2029', () => {
+    describe('MortgageExpense.calculateAnnualAmortization', () => {
+      it('treats a local-midnight Jan 1 2030 startDate as Jan 2030', () => {
         const mortgage = new MortgageExpense(
-          'm-utc', 'UTC Home', 'Monthly',
+          'm-local', 'Local Home', 'Monthly',
           350000, 300000, 300000,
           6, 30,
           0, 0, 0, 0, 0,
           0, 0, 'Yes', 0, 'a1',
-          utcStart
+          localStart
         );
-        // year before start -> nothing.
+        // Year before start → nothing.
         expect(mortgage.calculateAnnualAmortization(2029).totalPayment).toBe(0);
-        // start year -> active (would be skipped if read as 2029 via local accessors,
-        // and the purchaseMonth would be 11 instead of 0).
+        // Start year → active.
         const startYear = mortgage.calculateAnnualAmortization(2030);
         expect(startYear.totalPayment).toBeGreaterThan(0);
-        // Jan start => full 12 months. A local read (Dec) would only count 1 month.
+        // Jan start → full 12 months equals a plain full year.
         const fullYear = mortgage.calculateAnnualAmortization(2031);
         expect(startYear.totalPayment).toBeCloseTo(fullYear.totalPayment, 0);
       });
     });
 
-    describe('LoanExpense.calculateAnnualAmortization (#5)', () => {
-      it('uses UTC accessors for start/end year and month boundaries', () => {
+    describe('LoanExpense.calculateAnnualAmortization', () => {
+      it('uses local accessors for start/end year and month boundaries', () => {
         const loan = new LoanExpense(
-          'l-utc', 'UTC Loan', 30000, 'Monthly',
+          'l-local', 'Local Loan', 30000, 'Monthly',
           6, 'Compounding', 600, 'No', 0, 'a1',
-          utcStart, // 2030-01-01 UTC
-          utcEnd    // 2035-06-01 UTC
+          localStart, // Jan 1 2030 local
+          localEnd    // Jun 1 2035 local
         );
-        // Before start year: zero. Local read would think start is Dec 2029.
+        // Before start year → zero.
         expect(loan.calculateAnnualAmortization(2029).totalPayment).toBe(0);
-        // Start year active and starts in January (full run of months from index 0).
+        // Start year active and starts in January.
         const startYear = loan.calculateAnnualAmortization(2030);
         expect(startYear.totalPayment).toBeGreaterThan(0);
-        // End year is 2035 (UTC), not 2035 misread as something else; past end => 0.
+        // End year is 2035 local; past end → 0.
         expect(loan.calculateAnnualAmortization(2036).totalPayment).toBe(0);
       });
     });
 
-    describe('getMonthsUntilPaidOff (#8)', () => {
-      it('computes whole months using UTC accessors', () => {
-        // Start on the 1st (UTC) — rolls back a month with local accessors in a
-        // US TZ. End mid-month (the 15th, UTC) — does NOT roll back. So a local
-        // read shifts only the start, giving 66 instead of the correct 65.
+    describe('getMonthsUntilPaidOff', () => {
+      it('computes whole months using local accessors', () => {
+        // Jan 2030 to Jun 2035 = 65 months: (2035-2030)*12 + (5-0) = 65.
         const loan = new LoanExpense(
-          'l-months-utc', 'UTC Loan', 30000, 'Monthly',
+          'l-months-local', 'Local Loan', 30000, 'Monthly',
           6, 'Compounding', 600, 'No', 0, 'a1',
-          new Date(Date.UTC(2030, 0, 1)),  // 2030-01-01 UTC
-          new Date(Date.UTC(2035, 5, 15))  // 2035-06-15 UTC
+          new Date(2030, 0, 1),  // Jan 2030 local
+          new Date(2035, 5, 15)  // Jun 15 2035 local (mid-month — getMonth still 5)
         );
         // (2035-2030)*12 + (5-0) = 65 months.
         expect(loan.getMonthsUntilPaidOff()).toBe(65);
       });
     });
 
-    describe('isExpenseActiveInCurrentMonth (#8)', () => {
-      it('agrees with getExpenseActiveMultiplier on the current year for UTC dates', () => {
-        // Build a UTC-midnight start on the 1st of the current month. With LOCAL
-        // accessors in a US TZ this would read as the previous month, but the
-        // expense is genuinely active now.
+    describe('isExpenseActiveInCurrentMonth', () => {
+      it('agrees with getExpenseActiveMultiplier on the current year for local dates', () => {
+        // Local-midnight start on the 1st of the current month — genuinely active.
         const now = new Date();
-        const utcThisMonth = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
-        const expense = new OtherExpense('e-utc', 'UTC active', 100, 'Monthly', utcThisMonth);
+        const localThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const expense = new OtherExpense('e-local', 'Local active', 100, 'Monthly', localThisMonth);
 
         expect(isExpenseActiveInCurrentMonth(expense)).toBe(true);
-        // Cross-check with the file's getUTC*-based multiplier: active this year.
         expect(getExpenseActiveMultiplier(expense, now.getFullYear())).toBeGreaterThan(0);
       });
 
-      it('treats a next-month UTC start as inactive (not pulled into this month)', () => {
-        // A UTC-midnight start on the 1st of NEXT month reads, in a US TZ, as the
-        // last day of THIS month with local accessors — which would wrongly mark
-        // it active now. With getUTC* it stays correctly inactive. (When run on
-        // the last day of a month the local roll-back lands in the current month
-        // too; the assertion holds either way since UTC start is still future.)
+      it('treats a next-month local start as inactive', () => {
         const now = new Date();
-        const nextMonthStart = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 1));
+        const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
         const expense = new OtherExpense('e-next', 'Next month', 100, 'Monthly', nextMonthStart);
         expect(isExpenseActiveInCurrentMonth(expense)).toBe(false);
       });
 
-      it('treats a future UTC start as inactive', () => {
-        const future = new Date(Date.UTC(new Date().getFullYear() + 2, 0, 1));
+      it('treats a future local start as inactive', () => {
+        const future = new Date(new Date().getFullYear() + 2, 0, 1);
         const expense = new OtherExpense('e-future', 'Future', 100, 'Monthly', future);
         expect(isExpenseActiveInCurrentMonth(expense)).toBe(false);
       });
@@ -1149,10 +1138,11 @@ describe('Expense Models', () => {
     // from the goal each year (getGoalFundMonthlyCap) so edits to the goal's
     // amount/dates propagate — the priority's stored capValue is only a
     // creation-time snapshot that nothing should trust.
+    // Dates use local midnight (new Date(y, m, d)) to match parseDate output.
     const makeGoal = (amount: number, startYear: number, targetYear: number) => {
-      const goal = new OtherExpense('exp-g', 'Goal', amount, 'Monthly', new Date(Date.UTC(startYear, 0, 1)));
+      const goal = new OtherExpense('exp-g', 'Goal', amount, 'Monthly', new Date(startYear, 0, 1));
       goal.goalType = 'targetDate';
-      goal.endDate = new Date(Date.UTC(targetYear, 0, 1));
+      goal.endDate = new Date(targetYear, 0, 1);
       goal.goalAccountId = 'acc-fund';
       return goal;
     };
@@ -1174,16 +1164,17 @@ describe('Expense Models', () => {
       const goal = makeGoal(36000, 2025, 2028);
       goal.amount = 72000; // user doubles the goal after creation
       expect(getGoalFundMonthlyCap([goal], 'acc-fund', 2026)).toBeCloseTo(2000, 5);
-      goal.endDate = new Date(Date.UTC(2031, 0, 1)); // user pushes the target out (72 months)
+      goal.endDate = new Date(2031, 0, 1); // user pushes the target out (72 months, local midnight)
       expect(getGoalFundMonthlyCap([goal], 'acc-fund', 2026)).toBeCloseTo(1000, 5);
     });
 
     it('getGoalFundAnnualSetAside prorates partial years and sums to the goal amount', () => {
       // Goal: $31,000 starting June 2026, due Jan 2029 → 31 months → $1,000/mo.
       // 2026 commits Jun–Dec (7 mo), 2027/2028 full years, 2029 (Jan target) 0.
-      const goal = new OtherExpense('exp-g', 'Goal', 31000, 'Monthly', new Date(Date.UTC(2026, 5, 1)));
+      // Dates are local midnight to match parseDate output.
+      const goal = new OtherExpense('exp-g', 'Goal', 31000, 'Monthly', new Date(2026, 5, 1));
       goal.goalType = 'targetDate';
-      goal.endDate = new Date(Date.UTC(2029, 0, 1));
+      goal.endDate = new Date(2029, 0, 1);
       goal.goalAccountId = 'acc-fund';
 
       expect(getGoalFundAnnualSetAside([goal], 'acc-fund', 2025)).toBe(0);
@@ -1199,10 +1190,10 @@ describe('Expense Models', () => {
     });
 
     it('getGoalFundAnnualSetAside prorates a mid-year target in the final year', () => {
-      // $24,000 from Jan 2026 to Jun 2028 → 29 months. 2028 commits Jan–May (5 mo).
-      const goal = new OtherExpense('exp-g', 'Goal', 29000, 'Monthly', new Date(Date.UTC(2026, 0, 1)));
+      // $29,000 from Jan 2026 to Jun 2028 → 29 months. 2028 commits Jan–May (5 mo).
+      const goal = new OtherExpense('exp-g', 'Goal', 29000, 'Monthly', new Date(2026, 0, 1));
       goal.goalType = 'targetDate';
-      goal.endDate = new Date(Date.UTC(2028, 5, 1));
+      goal.endDate = new Date(2028, 5, 1);
       goal.goalAccountId = 'acc-fund';
 
       expect(getGoalFundAnnualSetAside([goal], 'acc-fund', 2028)).toBeCloseTo(5000, 5);
@@ -1212,7 +1203,7 @@ describe('Expense Models', () => {
     });
 
     it('getGoalFundAnnualSetAside prorates a recurring goal start year, then runs full years', () => {
-      const goal = new OtherExpense('exp-g', 'Roof', 36000, 'Monthly', new Date(Date.UTC(2026, 9, 1))); // Oct
+      const goal = new OtherExpense('exp-g', 'Roof', 36000, 'Monthly', new Date(2026, 9, 1)); // Oct local
       goal.goalType = 'recurring';
       goal.intervalYears = 3; // $1,000/mo
       goal.goalAccountId = 'acc-fund';
@@ -1232,6 +1223,7 @@ describe('Expense Models', () => {
       // Pre-migration backups stored the target in a separate goalTargetDate
       // field (a duplicate of endDate that could drift). On load it must be
       // absorbed into endDate when endDate is missing.
+      // parseDate converts the ISO string to local midnight: new Date(2027, 0, 1).
       const legacy = {
         className: 'OtherExpense',
         id: 'exp-legacy', name: 'Legacy goal', amount: 12000, frequency: 'Monthly',
@@ -1241,7 +1233,8 @@ describe('Expense Models', () => {
         goalAccountId: 'acc-fund',
       };
       const expense = reconstituteExpense(legacy)!;
-      expect(expense.endDate?.getUTCFullYear()).toBe(2027);
+      // parseDate builds local midnight, so getFullYear() = 2027 regardless of TZ.
+      expect(expense.endDate?.getFullYear()).toBe(2027);
       expect(getGoalMonthlySetAside(expense)).toBeCloseTo(12000 / 24, 5);
     });
   });

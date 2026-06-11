@@ -664,8 +664,10 @@ export class FERSPensionIncome extends BaseIncome {
     // FERS COLA is reduced compared to full CPI
     const cola = getFERSCOLA(inflation, currentAge);
 
-    // FERS Supplement ends at age 62
-    const newSupplement = currentAge >= 62 ? 0 : this.fersSupplement * (1 + cola);
+    // FERS Supplement ends at age 62. The real FERS Annuity Supplement receives NO
+    // COLA — it is a fixed bridge payment from retirement until 62 — so it must NOT
+    // grow with `cola`. (The basic benefit below still gets the COLA.)
+    const newSupplement = currentAge >= 62 ? 0 : this.fersSupplement;
 
     return new FERSPensionIncome(
       this.id,
@@ -804,26 +806,28 @@ export function calculateSocialSecurityStartDate(
     claimingMonth: number = 0
 ): Date {
     const year = calculateSocialSecurityStartYear(birthYear, claimingAge);
-    return new Date(Date.UTC(year, claimingMonth, 1));
+    // Date-only value: build at LOCAL midnight (parseDate convention) so it reads
+    // back as the same Y-M-D in any timezone.
+    return new Date(year, claimingMonth, 1);
 }
 
 export function getIncomeActiveMultiplier(income: AnyIncome, year: number): number {
     const incomeStartDate = income.startDate ? new Date(income.startDate) : new Date();
-    // Date-only values come from parseDate, which returns UTC dates (see modelUtils
-    // contract). Read with getUTC* so the active window doesn't shift by a month/year
-    // in negative timezones.
-    const startYear = incomeStartDate.getUTCFullYear();
+    // Date-only values come from parseDate, which returns LOCAL-midnight dates (the
+    // repo-wide convention). Read with local getFullYear()/getMonth() so a date
+    // entered as Y-M-D round-trips to the same Y-M-D in any timezone.
+    const startYear = incomeStartDate.getFullYear();
 
     const safeEndDate = income.end_date ? new Date(income.end_date) : null;
-    const endYear = safeEndDate ? safeEndDate.getUTCFullYear() : null;
+    const endYear = safeEndDate ? safeEndDate.getFullYear() : null;
 
     if (startYear > year) return 0;
     if (endYear !== null && endYear < year) return 0;
 
-    const startMonthIndex = (startYear < year) ? 0 : incomeStartDate.getUTCMonth();
+    const startMonthIndex = (startYear < year) ? 0 : incomeStartDate.getMonth();
 
     const endMonthIndex = (safeEndDate && endYear === year)
-        ? safeEndDate.getUTCMonth()
+        ? safeEndDate.getMonth()
         : 11;
 
     const monthsActive = endMonthIndex - startMonthIndex + 1;
@@ -837,11 +841,12 @@ export function isIncomeActiveInCurrentMonth(income: AnyIncome): boolean {
     const currentMonth = today.getMonth(); // 0-indexed
 
     const incomeStartDate = income.startDate != null ? income.startDate : new Date();
-    // Stored date-only values are UTC-midnight; read them with getUTC* (today stays
-    // local since it's a true instant). Both sides feed local new Date(y, m, 1)
-    // month-boundary comparisons, so the bases stay consistent.
-    const incomeStartYear = incomeStartDate.getUTCFullYear();
-    const incomeStartMonth = incomeStartDate.getUTCMonth();
+    // Stored date-only values are LOCAL-midnight (parseDate convention); read them
+    // with local accessors. `today` above is a true instant and also read locally,
+    // so both sides feed the local new Date(y, m, 1) month-boundary comparisons on
+    // a consistent basis.
+    const incomeStartYear = incomeStartDate.getFullYear();
+    const incomeStartMonth = incomeStartDate.getMonth();
 
     const currentMonthStart = new Date(currentYear, currentMonth, 1);
     const incomeEffectiveStart = new Date(incomeStartYear, incomeStartMonth, 1);
@@ -852,8 +857,8 @@ export function isIncomeActiveInCurrentMonth(income: AnyIncome): boolean {
 
     if (income.end_date) {
         const incomeEndDate = new Date(income.end_date);
-        const incomeEndYear = incomeEndDate.getUTCFullYear();
-        const incomeEndMonth = incomeEndDate.getUTCMonth();
+        const incomeEndYear = incomeEndDate.getFullYear();
+        const incomeEndMonth = incomeEndDate.getMonth();
 
         const incomeEffectiveEnd = new Date(incomeEndYear, incomeEndMonth + 1, 0);
 

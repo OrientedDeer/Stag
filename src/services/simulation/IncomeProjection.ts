@@ -55,7 +55,7 @@ export function projectIncomes(
                 inc.taxType,
                 inc.contributionGrowthStrategy,
                 inc.startDate,
-                new Date(Date.UTC(retirementYear - 1, 11, 31)),
+                new Date(retirementYear - 1, 11, 31),
                 0, // hsaContribution
                 inc.autoMax401k,
                 inc.esppContributionType,
@@ -215,17 +215,17 @@ export function projectIncomes(
                     if (currentAge === inc.claimingAge) {
                         // At claiming age - activate the income
                         // Set both calculatedPIA (feeds amount) and projectedPIA
-                        const endDate = new Date(Date.UTC(
+                        const endDate = new Date(
                             birthYear + getLifeExpectancy(assumptions.milestones),
                             11, 31
-                        ));
+                        );
                         return new FutureSocialSecurityIncome(
                             inc.id,
                             inc.name,
                             inc.claimingAge,
                             adjustedMonthlyBenefit,  // calculatedPIA - activates income (amount = PIA * 12)
                             year,
-                            new Date(Date.UTC(year, 0, 1)),
+                            new Date(year, 0, 1),
                             endDate,
                             inc.startMilestoneId,
                             inc.endMilestoneId,
@@ -236,7 +236,7 @@ export function projectIncomes(
                         // calculatedPIA = 0 so amount stays 0 (income not yet active)
                         // projectedPIA = calculated value for Roth conversion planning
                         const claimingYear = birthYear + inc.claimingAge;
-                        const futureStartDate = new Date(Date.UTC(claimingYear, 0, 1));
+                        const futureStartDate = new Date(claimingYear, 0, 1);
                         return new FutureSocialSecurityIncome(
                             inc.id,
                             inc.name,
@@ -343,12 +343,11 @@ export function projectIncomes(
                     'Annually',
                     'No',
                     'Interest',
-                    // Use UTC so getIncomeActiveMultiplier (which reads getUTC*) sees a
-                    // clean full-calendar-year active window (multiplier = 1.0). Local
-                    // new Date(year, ...) shifts into the prior/next year in +UTC zones,
-                    // mis-prorating this full-year reinvested income.
-                    new Date(Date.UTC(year, 0, 1)),
-                    new Date(Date.UTC(year, 11, 31)),
+                    // Build LOCAL date-only values (the repo convention). getIncomeActiveMultiplier
+                    // now reads dates with local accessors, so a local Jan-1..Dec-31 window
+                    // yields a clean full-calendar-year multiplier (1.0) in any timezone.
+                    new Date(year, 0, 1),
+                    new Date(year, 11, 31),
                     true  // isReinvested
                 ));
             }

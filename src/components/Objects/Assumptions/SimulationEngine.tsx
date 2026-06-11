@@ -271,12 +271,21 @@ function simulateOneYearWithNewEngine(
     // to priority ordering and surplus availability. Net worth is unchanged by
     // saving (cash out, fund up); it dips when the lump is spent in the due year.
     const goalFundCredits = new Map<string, number>(); // fund accountId → annual set-aside
-    for (const e of expenses) {
-        if (!isLongTermGoal(e) || !e.goalAccountId) continue;
+    // Collect the unique fund accountIds from milestone-active goals only, so a
+    // goal gated by an inactive start/end milestone is NOT funded (consistent
+    // with how its set-aside is excluded from living expenses).
+    const activeGoalFundIds = new Set<string>();
+    for (const e of milestoneFilteredExpenses) {
+        if (isLongTermGoal(e) && e.goalAccountId) activeGoalFundIds.add(e.goalAccountId);
+    }
+    for (const fundId of activeGoalFundIds) {
         // Months-prorated: a goal starting in June commits 7 months this year,
         // and the target year commits only the months before the target.
-        const annual = getGoalFundAnnualSetAside(expenses, e.goalAccountId, year) ?? 0;
-        if (annual > 0) goalFundCredits.set(e.goalAccountId, (goalFundCredits.get(e.goalAccountId) ?? 0) + annual);
+        // getGoalFundAnnualSetAside already SUMS the set-aside across every goal
+        // on this account, so assign once — never += (that would double-count
+        // when two goals share a fund account).
+        const annual = getGoalFundAnnualSetAside(milestoneFilteredExpenses, fundId, year) ?? 0;
+        if (annual > 0) goalFundCredits.set(fundId, annual);
     }
     const totalGoalFunding = [...goalFundCredits.values()].reduce((s, v) => s + v, 0);
 
@@ -541,11 +550,11 @@ function simulateOneYearWithNewEngine(
     // account. Net worth dips by what's available in the fund; recurring goals
     // keep accruing toward the next cycle afterward.
     // ------------------------------------------------------------------
-    for (const exp of expenses) {
+    for (const exp of milestoneFilteredExpenses) {
         if (!isLongTermGoal(exp) || !exp.goalAccountId || !isGoalDueInYear(exp, year)) continue;
         // A recurring goal can carry an end date (when to stop replacing it);
         // don't fire the lump after it.
-        if (exp.endDate && new Date(exp.endDate).getUTCFullYear() < year) continue;
+        if (exp.endDate && new Date(exp.endDate).getFullYear() < year) continue;
         const fund = nextAccounts.find(a => a.id === exp.goalAccountId);
         if (!fund) continue;
         const spent = Math.min(fund.amount, exp.amount);

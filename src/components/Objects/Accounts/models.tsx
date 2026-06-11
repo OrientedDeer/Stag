@@ -836,9 +836,10 @@ export class PropertyAccount extends BaseAccount {
       this.name,
       nextValue,
       this.ownershipType,
-      nextLoan, 
+      nextLoan,
       this.startingLoanBalance,
-      this.linkedAccountId
+      this.linkedAccountId,
+      this.apr
     );
   }
 }
@@ -960,7 +961,7 @@ export function reconstituteAccount(data: unknown): AnyAccount | null {
                 (data.isContributionEligible as boolean) ?? true,
                 Number(data.vestedPerYear ?? 0.2),
                 costBasis,
-                data.customROR !== undefined ? Number(data.customROR) : undefined,
+                data.customROR != null ? Number(data.customROR) : undefined,
                 conversionHistory
             );
         }
@@ -981,7 +982,7 @@ export function reconstituteAccount(data: unknown): AnyAccount | null {
             return new ESPPAccount(
                 id, name, amount, lots,
                 data.linkedIncomeId ? String(data.linkedIncomeId) : null,
-                data.customROR !== undefined ? Number(data.customROR) : undefined,
+                data.customROR != null ? Number(data.customROR) : undefined,
                 data.stockTicker ? String(data.stockTicker) : undefined,
                 data.currentSharePrice !== undefined ? Number(data.currentSharePrice) : undefined,
                 (data.withdrawalPreference as ESPPWithdrawalPreference) ?? 'fifo',
@@ -995,7 +996,8 @@ export function reconstituteAccount(data: unknown): AnyAccount | null {
                 (data.ownershipType as 'Financed' | 'Owned') ?? 'Owned',
                 Number(data.loanAmount) || 0,
                 Number(data.startingLoanBalance) || 0,
-                String(data.linkedAccountId ?? '')
+                String(data.linkedAccountId ?? ''),
+                Number(data.apr) || 0
             );
 
         case 'DebtAccount':
