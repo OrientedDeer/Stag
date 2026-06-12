@@ -23,6 +23,8 @@
 
 import { applyCategories, detectDuplicates, detectIncomeCategory } from './CSVImportService';
 import { autoMatchAccount } from './simplefinBalances';
+import { generateId } from '../utils/id';
+import { formatDateForInput } from '../utils/formatters';
 import type { Transaction, CategoryMapping, MonthlySnapshot, BudgetState } from '../components/Objects/Budget/BudgetTypes';
 
 // --- The structural subset of a decrypted FullBackup these helpers read/mutate ---
@@ -133,22 +135,10 @@ export function makeTransaction(input: NewTransactionInput): Transaction {
 
 // --- Small helpers (mirror the app) ---
 
-// Monotonic counter so several months created in one synchronous tick get
-// distinct ids (Date.now() only has ms resolution).
-let monthIdCounter = 0;
-function generateMonthId(): string {
-    // Mirrors BudgetContext.generateId('MONTH').
-    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-        return `MONTH-${crypto.randomUUID()}`;
-    }
-    return `MONTH-${Date.now()}-${monthIdCounter++}-${Math.floor(Math.random() * 1000)}`;
-}
-
 function localToday(): string {
     // Mirrors AccountContext.getTodayString(): local run-day date (not UTC, which
     // would stamp tomorrow's date in the evening of a negative-offset timezone).
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return formatDateForInput(new Date());
 }
 
 function round2(n: number): number {
@@ -179,7 +169,7 @@ function getOrCreateMonth(blob: MergeBlob, month: number, year: number): Monthly
     if (existing) return existing;
 
     const created: MonthlySnapshot = {
-        id: generateMonthId(),
+        id: generateId('MONTH'),
         month,
         year,
         spending: {},

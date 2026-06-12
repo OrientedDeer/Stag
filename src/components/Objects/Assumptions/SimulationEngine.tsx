@@ -126,6 +126,18 @@ function updateWithdrawalStateFromPlan(
 }
 
 /**
+ * Long-term goals that are milestone-active this year AND carry a reserved
+ * fund account — the shared gate for both the goal-funding (set-aside) and
+ * goal-purchase (lump) loops. Expects the already milestone-filtered expense
+ * list, so a goal gated by an inactive start/end milestone is neither funded
+ * nor purchased. Loop-specific guards (due-year, recurring end date) stay
+ * with their loops.
+ */
+function activeFundedGoals(milestoneFilteredExpenses: AnyExpense[]): AnyExpense[] {
+    return milestoneFilteredExpenses.filter(e => isLongTermGoal(e) && !!e.goalAccountId);
+}
+
+/**
  * Simulate one year using the new YearSolver-based engine.
  *
  * This is the V2 engine that uses:
@@ -274,10 +286,8 @@ function simulateOneYearWithNewEngine(
     // Collect the unique fund accountIds from milestone-active goals only, so a
     // goal gated by an inactive start/end milestone is NOT funded (consistent
     // with how its set-aside is excluded from living expenses).
-    const activeGoalFundIds = new Set<string>();
-    for (const e of milestoneFilteredExpenses) {
-        if (isLongTermGoal(e) && e.goalAccountId) activeGoalFundIds.add(e.goalAccountId);
-    }
+    const fundedGoals = activeFundedGoals(milestoneFilteredExpenses);
+    const activeGoalFundIds = new Set(fundedGoals.map(e => e.goalAccountId!));
     for (const fundId of activeGoalFundIds) {
         // Months-prorated: a goal starting in June commits 7 months this year,
         // and the target year commits only the months before the target.
@@ -550,8 +560,8 @@ function simulateOneYearWithNewEngine(
     // account. Net worth dips by what's available in the fund; recurring goals
     // keep accruing toward the next cycle afterward.
     // ------------------------------------------------------------------
-    for (const exp of milestoneFilteredExpenses) {
-        if (!isLongTermGoal(exp) || !exp.goalAccountId || !isGoalDueInYear(exp, year)) continue;
+    for (const exp of fundedGoals) {
+        if (!isGoalDueInYear(exp, year)) continue;
         // A recurring goal can carry an end date (when to stop replacing it);
         // don't fire the lump after it.
         if (exp.endDate && new Date(exp.endDate).getFullYear() < year) continue;

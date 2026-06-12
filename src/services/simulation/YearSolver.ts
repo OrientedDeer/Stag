@@ -16,7 +16,7 @@
  */
 
 import { AnyAccount, InvestedAccount } from "../../components/Objects/Accounts/models";
-import { AnyIncome, FERSPensionIncome } from "../../components/Objects/Income/models";
+import { AnyIncome, FERSPensionIncome, PassiveIncome } from "../../components/Objects/Income/models";
 import { AnyExpense } from "../../components/Objects/Expense/models";
 import { TaxParameters } from "../../data/TaxData";
 import { TaxState } from "../../components/Objects/Taxes/TaxContext";
@@ -246,6 +246,27 @@ function estimateLTCGFromDeficit(deficit: number, gainRatio: number, ltcgRate: n
 }
 
 /**
+ * Tax-split helpers for planned withdrawals, shared by the retirement and
+ * working solvers. A withdrawal with `capitalGains === undefined` is
+ * ordinary-only (Traditional/HSA/Roth): its whole `tax` is ordinary. A
+ * capital-gains-bearing withdrawal (brokerage/ESPP) carries its ordinary
+ * portion (the ESPP bargain element) in `ordinaryTax`; the rest of its `tax`
+ * is the LTCG/STCG pass-through.
+ */
+function ordinaryTaxOf(withdrawals: PlannedWithdrawal[]): number {
+    return withdrawals.reduce(
+        (sum, w) => sum + (w.capitalGains === undefined ? w.tax : (w.ordinaryTax ?? 0)),
+        0,
+    );
+}
+
+function ltcgTaxOf(withdrawals: PlannedWithdrawal[]): number {
+    return withdrawals
+        .filter(w => w.capitalGains !== undefined)
+        .reduce((sum, w) => sum + (w.tax - (w.ordinaryTax ?? 0)), 0);
+}
+
+/**
  * Compute a conversion's tax cost, its federal/state decomposition, and the
  * tax-payment source. Shared by planConversion (rate-match) and planConversionDP
  * so both strategies price an identical conversion identically (they previously
@@ -353,10 +374,10 @@ function computeCeilingContext(
             : i.getAnnualAmount(input.year)), 0);
 
     const passiveIncome = input.incomes
-        .filter(i => (i as any).className === 'PassiveIncome' && (i as any).sourceType !== 'RMD')
+        .filter(i => i.className === 'PassiveIncome' && (i as PassiveIncome).sourceType !== 'RMD')
         .reduce((sum, i) => sum + i.getAnnualAmount(input.year), 0);
 
-    const futureSS = input.incomes.find(i => (i as any).className === 'FutureSocialSecurityIncome') as
+    const futureSS = input.incomes.find(i => i.className === 'FutureSocialSecurityIncome') as
         { calculatedPIA?: number; claimingAge?: number; name?: string; amount?: number; projectedPIA?: number } | undefined;
     const futureSS_PIA = (futureSS?.projectedPIA && futureSS.projectedPIA > 0)
         ? futureSS.projectedPIA
@@ -752,9 +773,18 @@ function planConversion(
                 fedParams
             );
 
-            // 3. Calculate state tax (same as solver lines 726-728)
+            // 3. Calculate state tax the same way the solver loop does: the state
+            // base EXCLUDES the SS-taxable portion (DC and all modeled states
+            // exempt SS), i.e. `allOrdinaryIncome - currentSSTaxable`, which is
+            // exactly nonSS ordinary income + conversion. Using allOrdinaryIncome
+            // (which embeds taxable SS via baseOrdinaryIncome) overstated state
+            // tax in SS-exempting states, inflating the estimated deficit →
+            // estimated LTCG → predicted MAGI, and over-cutting the conversion.
+            // The solver's `+ estimatedLTCG` term is intentionally absent here:
+            // LTCG is derived from this very deficit below, so it isn't known yet
+            // (this matches the solver's pre-loop baseline, which also omits it).
             const stateTax = stateParams
-                ? TaxService.calculateTax(allOrdinaryIncome, preTaxDeductions, stateParams)
+                ? TaxService.calculateTax(nonSSOrdinaryIncome + conversion, preTaxDeductions, stateParams)
                 : 0;
 
             // 4. Total ordinary tax (same as solver line 732)
@@ -1518,8 +1548,12 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     );
     // State tax: exclude SS taxable (DC and most states exempt SS from income tax)
     // State tax on the Traditional withdrawal is in withdrawalOrdinaryTax from the planner.
+    // `+ estimatedLTCG` keeps this textually identical to the in-loop recompute below;
+    // it is always 0 here (no withdrawals planned yet), and every loop exit that has
+    // planned withdrawals goes through the in-loop recompute or converged with
+    // ltcgDelta < $1, so this baseline can never be left stale with material LTCG.
     let finalStateTax = stateParams
-        ? TaxService.calculateTax(allOrdinaryIncome - currentSSTaxable, preTaxDeductions, stateParams)
+        ? TaxService.calculateTax(allOrdinaryIncome - currentSSTaxable + estimatedLTCG, preTaxDeductions, stateParams)
         : 0;
 
     const MAX_ITERATIONS = 10;
@@ -1604,8 +1638,7 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
         // Ordinary withdrawal tax = the full tax of ordinary-only withdrawals
         // (Traditional/HSA/Roth, capitalGains undefined) PLUS the ordinary
         // portion of mixed withdrawals (ESPP bargain element, ordinaryTax set).
-        withdrawalOrdinaryTax = withdrawalResult.withdrawals
-            .reduce((sum, w) => sum + (w.capitalGains === undefined ? w.tax : (w.ordinaryTax ?? 0)), 0);
+        withdrawalOrdinaryTax = ordinaryTaxOf(withdrawalResult.withdrawals);
         totalPenalties = withdrawalResult.totalPenalties;
         withdrawalDecisions = withdrawalResult.decisions;
         iterations = iter + 1;
@@ -1620,17 +1653,23 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
         // Traditional withdrawal. Its tax is reported via withdrawalOrdinaryTax,
         // so it is NOT folded into allOrdinaryIncome's federal base (which would
         // double-count the tax) — only into the SS-taxability combined income.
-        estimatedESPPOrdinaryIncome = withdrawalResult.withdrawals
+        const newESPPOrdinaryIncome = withdrawalResult.withdrawals
             .reduce((sum, w) => sum + (w.ordinaryIncome ?? 0), 0);
 
-        // Check convergence: both LTCG and Traditional withdrawal (which drives SS taxable) must stabilize
+        // Check convergence: LTCG, the Traditional withdrawal, and the ESPP
+        // bargain element (all three drive SS taxability) must stabilize. An
+        // exit while the ESPP estimate is still moving would leave the final SS
+        // taxability (and the taxes/deficit derived from it) one iteration
+        // behind the withdrawals that were sized from it.
         const newLTCG = withdrawalResult.totalLTCG;
         const ltcgDelta = Math.abs(newLTCG - estimatedLTCG);
         const tradDelta = Math.abs(newTradWithdrawal - estimatedTradWithdrawal);
+        const esppDelta = Math.abs(newESPPOrdinaryIncome - estimatedESPPOrdinaryIncome);
         estimatedLTCG = newLTCG;
         estimatedTradWithdrawal = newTradWithdrawal;
+        estimatedESPPOrdinaryIncome = newESPPOrdinaryIncome;
 
-        if (ltcgDelta < 1 && tradDelta < 1) {
+        if (ltcgDelta < 1 && tradDelta < 1 && esppDelta < 1) {
             converged = true;
             break;
         }
@@ -1679,9 +1718,7 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     // LTCG pass-through tax = the LTCG portion of capital-gains withdrawals.
     // For ESPP, exclude the bargain-element ordinary tax (ordinaryTax) — that is
     // reported via withdrawalOrdinaryTax, not subtracted from cash-in here.
-    const actualLTCGTax = withdrawals
-        .filter(w => w.capitalGains !== undefined)
-        .reduce((sum, w) => sum + (w.tax - (w.ordinaryTax ?? 0)), 0);
+    const actualLTCGTax = ltcgTaxOf(withdrawals);
 
     const cashIn =
         incomeClassification.classified.spendable +
@@ -1881,11 +1918,8 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
         // Split mixed (ESPP) withdrawal tax: the LTCG portion → ltcgTax, the
         // ordinary bargain-element portion → withdrawalOrdinaryTax. Before this
         // split, ESPP's full tax was mislabeled as capital-gains tax.
-        ltcgTax = withdrawalResult.withdrawals
-            .filter(w => w.capitalGains !== undefined)
-            .reduce((sum, w) => sum + (w.tax - (w.ordinaryTax ?? 0)), 0);
-        withdrawalOrdinaryTax = withdrawalResult.withdrawals
-            .reduce((sum, w) => sum + (w.capitalGains === undefined ? w.tax : (w.ordinaryTax ?? 0)), 0);
+        ltcgTax = ltcgTaxOf(withdrawalResult.withdrawals);
+        withdrawalOrdinaryTax = ordinaryTaxOf(withdrawalResult.withdrawals);
         totalPenalties = withdrawalResult.totalPenalties;
 
         // NIIT (3.8%) on capital gains realized to fund the deficit. The federal

@@ -73,7 +73,9 @@ describe('useFileManager', () => {
     alertMock.mockClear();
     createObjectURLMock.mockClear();
     revokeObjectURLMock.mockClear();
-    vi.setSystemTime(new Date('2024-01-15'));
+    // Local noon (not 'YYYY-MM-DD', which parses as UTC midnight) so the local
+    // calendar date is 2024-01-15 in any reasonable runner timezone.
+    vi.setSystemTime(new Date(2024, 0, 15, 12, 0, 0));
   });
 
   describe('handleGlobalExport', () => {
@@ -92,7 +94,7 @@ describe('useFileManager', () => {
 
       const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
         if (tagName === 'a') {
-          return linkElement as any;
+          return linkElement as unknown as HTMLElement;
         }
         return originalCreateElement(tagName);
       });
@@ -109,6 +111,41 @@ describe('useFileManager', () => {
       createElementSpy.mockRestore();
     });
 
+    // Finding #6: the backup filename used the UTC date (toISOString), which is
+    // tomorrow's date during evening hours in negative-offset timezones. The
+    // repo convention is local dates for date-only values (formatDateForInput).
+    it('names the backup file with the local date, not the UTC date', () => {
+      // 23:30 on June 11 in New York is already June 12 in UTC. (Node re-reads
+      // process.env.TZ on date formatting, so stubbing it mid-test works.)
+      vi.stubEnv('TZ', 'America/New_York');
+      try {
+        vi.setSystemTime(new Date('2026-06-12T03:30:00Z'));
+
+        const { result } = renderHook(() => useFileManager(), {
+          wrapper: AllProvidersWrapper,
+        });
+
+        const originalCreateElement = document.createElement.bind(document);
+        const linkElement = { href: '', download: '', click: vi.fn() };
+        const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+          if (tagName === 'a') {
+            return linkElement as unknown as HTMLElement;
+          }
+          return originalCreateElement(tagName);
+        });
+
+        act(() => {
+          result.current.handleGlobalExport();
+        });
+
+        expect(linkElement.download).toBe('stag_full_backup_2026-06-11.json');
+
+        createElementSpy.mockRestore();
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
     it('should include className metadata for all objects', () => {
       const { result } = renderHook(() => useFileManager(), {
         wrapper: AllProvidersWrapper,
@@ -116,7 +153,7 @@ describe('useFileManager', () => {
 
       const originalBlob = window.Blob;
       let capturedParts: BlobPart[] = [];
-      (window as any).Blob = class MockBlob extends originalBlob {
+      (window as unknown as { Blob: unknown }).Blob = class MockBlob extends originalBlob {
         constructor(parts: BlobPart[], options?: BlobPropertyBag) {
           super(parts, options);
           capturedParts = parts;
@@ -133,7 +170,7 @@ describe('useFileManager', () => {
 
       const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
         if (tagName === 'a') {
-          return linkElement as any;
+          return linkElement as unknown as HTMLElement;
         }
         return originalCreateElement(tagName);
       });
@@ -156,7 +193,7 @@ describe('useFileManager', () => {
       }
 
       createElementSpy.mockRestore();
-      (window as any).Blob = originalBlob;
+      (window as unknown as { Blob: unknown }).Blob = originalBlob;
     });
 
     it('should create valid JSON structure', () => {
@@ -165,7 +202,7 @@ describe('useFileManager', () => {
       });
 
       const originalBlob = window.Blob;
-      (window as any).Blob = class extends originalBlob {
+      (window as unknown as { Blob: unknown }).Blob = class extends originalBlob {
         constructor(parts: BlobPart[], options?: BlobPropertyBag) {
           super(parts, options);
         }
@@ -178,7 +215,7 @@ describe('useFileManager', () => {
             href: '',
             download: '',
             click: vi.fn(),
-          } as any;
+          } as unknown as HTMLElement;
         }
         return originalCreateElement(tagName);
       });
@@ -188,7 +225,7 @@ describe('useFileManager', () => {
       });
 
       createElementSpy.mockRestore();
-      (window as any).Blob = originalBlob;
+      (window as unknown as { Blob: unknown }).Blob = originalBlob;
     });
   });
 
@@ -549,7 +586,7 @@ describe('useFileManager', () => {
       let exportedData: string = '';
 
       const originalBlob = window.Blob;
-      (window as any).Blob = class extends originalBlob {
+      (window as unknown as { Blob: unknown }).Blob = class extends originalBlob {
         constructor(parts: BlobPart[], options?: BlobPropertyBag) {
           super(parts, options);
           if (parts.length > 0 && typeof parts[0] === 'string') {
@@ -565,7 +602,7 @@ describe('useFileManager', () => {
             href: '',
             download: '',
             click: vi.fn(),
-          } as any;
+          } as unknown as HTMLElement;
         }
         return originalCreateElement(tagName);
       });
@@ -587,7 +624,7 @@ describe('useFileManager', () => {
       }
 
       createElementSpy.mockRestore();
-      (window as any).Blob = originalBlob;
+      (window as unknown as { Blob: unknown }).Blob = originalBlob;
     });
 
     it('should carry the SimpleFIN account map through the backup blob', () => {

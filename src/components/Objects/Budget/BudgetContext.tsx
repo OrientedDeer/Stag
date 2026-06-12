@@ -26,15 +26,8 @@ import type {
     BudgetState,
 } from './BudgetTypes';
 
-// Monotonic counter so several ids minted in the same synchronous tick never
-// collide (Date.now() has ms resolution; multiple months can be created in one tick).
-let idCounter = 0;
-export function generateId(prefix: string): string {
-    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-        return `${prefix}-${crypto.randomUUID()}`;
-    }
-    return `${prefix}-${Date.now()}-${idCounter++}-${Math.floor(Math.random() * 1000)}`;
-}
+// Shared id minter (utils/id) so CSVImportService and backupMerge mint ids the same way.
+import { generateId } from '../../../utils/id';
 
 const now = new Date();
 

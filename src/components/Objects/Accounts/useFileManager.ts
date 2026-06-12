@@ -12,13 +12,14 @@ import { TaxState, defaultTaxState } from '../../Objects/Taxes/TaxContext';
 import { ImportKeyContext } from './ImportKeyContext';
 import { BudgetContext, BudgetState, reconstituteBudgetState } from '../Budget/BudgetContext';
 import { loadAccountMap, saveAccountMap } from '../../../services/simplefinBalances';
+import { formatDateForInput } from '../../../utils/formatters';
 
 export interface FullBackup {
     version: number;
-    accounts: any[];
+    accounts: Array<Record<string, unknown>>;
     amountHistory: Record<string, AmountHistoryEntry[]>;
-    incomes: any[];
-    expenses: any[];
+    incomes: Array<Record<string, unknown>>;
+    expenses: Array<Record<string, unknown>>;
     taxSettings: TaxState;
     assumptions: AssumptionsState;
     // View state (selectedMonth/selectedYear) is intentionally excluded — it's UI
@@ -43,13 +44,13 @@ export const useFileManager = () => {
     const budgetContext = useContext(BudgetContext);
     const { dispatch: budgetDispatch } = budgetContext;
 
-    const handleGlobalExport = () => {
+    const getBackupData = (): FullBackup => {
         // Extract budget data (excluding dispatch/helpers). selectedMonth/selectedYear
         // are UI view state, not data — omit them so switching months doesn't dirty the backup.
         const { months, importSettings } = budgetContext;
         const budgetState = { months, importSettings };
 
-        const fullBackup: FullBackup = {
+        return {
             version: 2,
             accounts: accounts.map(a => ({ ...a, className: a.constructor.name })),
             amountHistory,
@@ -60,12 +61,18 @@ export const useFileManager = () => {
             budget: budgetState,
             balanceAccountMap: loadAccountMap(),
         };
+    };
+
+    const handleGlobalExport = () => {
+        const fullBackup = getBackupData();
 
         const blob = new Blob([JSON.stringify(fullBackup, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `stag_full_backup_${new Date().toISOString().split('T')[0]}.json`;
+        // Local date, not UTC (toISOString), so an evening export in a
+        // negative-offset timezone isn't stamped with tomorrow's date.
+        a.download = `stag_full_backup_${formatDateForInput(new Date())}.json`;
         a.click();
         URL.revokeObjectURL(url);
     };
@@ -74,9 +81,9 @@ export const useFileManager = () => {
         try {
             const data = JSON.parse(json);
 
-            const newAccounts = data.accounts.map(reconstituteAccount).filter(Boolean as any as (value: AnyAccount | null) => value is AnyAccount);
-            const newIncomes = data.incomes.map(reconstituteIncome).filter(Boolean as any as (value: AnyIncome | null) => value is AnyIncome);
-            const newExpenses = data.expenses.map(reconstituteExpense).filter(Boolean as any as (value: AnyExpense | null) => value is AnyExpense);
+            const newAccounts = data.accounts.map(reconstituteAccount).filter((value: AnyAccount | null): value is AnyAccount => value !== null);
+            const newIncomes = data.incomes.map(reconstituteIncome).filter((value: AnyIncome | null): value is AnyIncome => value !== null);
+            const newExpenses = data.expenses.map(reconstituteExpense).filter((value: AnyExpense | null): value is AnyExpense => value !== null);
 
             accountDispatch({ type: 'SET_BULK_DATA', payload: { accounts: newAccounts, amountHistory: data.amountHistory || {} } });
             incomeDispatch({ type: 'SET_BULK_DATA', payload: { incomes: newIncomes } });
@@ -118,24 +125,6 @@ export const useFileManager = () => {
             console.error(e);
             alert("Error importing backup. Please check file format.");
         }
-    };
-
-    const getBackupData = (): FullBackup => {
-        // selectedMonth/selectedYear are UI view state — omit so month switches don't dirty the backup.
-        const { months, importSettings } = budgetContext;
-        const budgetState = { months, importSettings };
-
-        return {
-            version: 2,
-            accounts: accounts.map(a => ({ ...a, className: a.constructor.name })),
-            amountHistory,
-            incomes: incomes.map(i => ({ ...i, className: i.constructor.name })),
-            expenses: expenses.map(e => ({ ...e, className: e.constructor.name })),
-            taxSettings: state as TaxState,
-            assumptions: assumptions as AssumptionsState,
-            budget: budgetState,
-            balanceAccountMap: loadAccountMap(),
-        };
     };
 
     return { handleGlobalExport, handleGlobalImport, getBackupData, importKey };

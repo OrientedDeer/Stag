@@ -191,6 +191,27 @@ export function shortenKeys(obj: unknown): unknown {
 }
 
 /**
+ * Legacy decode aliases, applied per-object during expansion.
+ *
+ * Before campaign 7, KEY_MAP encoded BOTH `purchasePrice` and `projectedPIA`
+ * as 'pp' (a collision); `projectedPIA` now encodes as 'Pi', so 'pp' decodes
+ * to `purchasePrice` by default. QR payloads created by the old encoder still
+ * carry a Social Security income's `projectedPIA` under 'pp'. Context
+ * heuristic: `projectedPIA` only exists on Social Security incomes (whose
+ * className is serialized in-payload under 'c'), while `purchasePrice` only
+ * exists on ESPP lots/accounts, which never have an SS className — so 'pp' on
+ * an object whose className contains 'SocialSecurity' is the legacy
+ * `projectedPIA`.
+ */
+function legacyAliasFor(shortKey: string, siblings: Record<string, unknown>): string | null {
+    if (shortKey !== 'pp') return null;
+    const className = siblings.c ?? siblings.className;
+    return typeof className === 'string' && className.includes('SocialSecurity')
+        ? 'projectedPIA'
+        : null;
+}
+
+/**
  * Recursively expand all keys in an object.
  */
 export function expandKeys(obj: unknown): unknown {
@@ -198,9 +219,10 @@ export function expandKeys(obj: unknown): unknown {
         return obj.map(expandKeys);
     }
     if (obj !== null && typeof obj === 'object') {
+        const record = obj as Record<string, unknown>;
         const result: Record<string, unknown> = {};
-        for (const [key, value] of Object.entries(obj)) {
-            const fullKey = REVERSE_KEY_MAP[key] || key;
+        for (const [key, value] of Object.entries(record)) {
+            const fullKey = legacyAliasFor(key, record) ?? REVERSE_KEY_MAP[key] ?? key;
             result[fullKey] = expandKeys(value);
         }
         return result;

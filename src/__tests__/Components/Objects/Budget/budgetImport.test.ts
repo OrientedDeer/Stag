@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { reconstituteBudgetState, generateId } from '../../../../components/Objects/Budget/BudgetContext';
+import { reconstituteBudgetState } from '../../../../components/Objects/Budget/BudgetContext';
+import { generateId } from '../../../../utils/id';
 
 // Finding #10: generateId('MONTH') = `MONTH-${Date.now()}-${rand(1000)}` collided
 // when several months were minted in one synchronous tick (Date.now() is ms-coarse,

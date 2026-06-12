@@ -31,6 +31,7 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, bir
     const forceExact = assumptions.display?.useCompactCurrency === false;
 
     // PDF export state (button hidden, keeping code for potential future use)
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [_pdfLoading, _setPdfLoading] = useState(false);
 
     // Chart data for PDF capture (simple net worth line)
@@ -62,7 +63,7 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, bir
 
     // PDF export handler (button hidden, keeping code for potential future use)
     // @ts-expect-error - Intentionally unused, keeping for future use
-    const _handleExportPDF = useCallback(async () => {
+    const _handleExportPDF = useCallback(async () => { // eslint-disable-line @typescript-eslint/no-unused-vars
         if (simulationData.length === 0) return;
 
         _setPdfLoading(true);
@@ -89,14 +90,16 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, bir
         } finally {
             _setPdfLoading(false);
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [simulationData, assumptions, monteCarloState.summary]);
 
     // 1. Prepare Table Data (Summary View)
     const tableData = useMemo(() => {
         return simulationData.map((year, index) => {
             const totalTaxes = year.taxDetails.fed + year.taxDetails.state + year.taxDetails.fica;
-            const livingExpenses = year.expenses.reduce((sum, exp) => sum + exp.getAnnualAmount(), 0);
+            // Pass the row's year so amounts that are year-aware (e.g. a loan's
+            // payment capped by amortization in its payoff year, date proration)
+            // match what the charts and the simulation itself report.
+            const livingExpenses = year.expenses.reduce((sum, exp) => sum + exp.getAnnualAmount(year.year), 0);
             
             // Calculate Total Debt for the year
             let totalDebt = 0;
@@ -196,7 +199,8 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, bir
             const incMap = new Map(year.incomes.map(i => [i.name, i.amount]));
             sortedIncKeys.forEach(key => row.push(incMap.get(key) || 0));
 
-            const expMap = new Map(year.expenses.map(e => [e.name, e.getAnnualAmount()]));
+            // Year-aware for the same reason as the table's livingExpenses sum.
+            const expMap = new Map(year.expenses.map(e => [e.name, e.getAnnualAmount(year.year)]));
             sortedExpKeys.forEach(key => row.push(expMap.get(key) || 0));
 
             const accMap = new Map(year.accounts.map(a => [a.name, a.amount]));

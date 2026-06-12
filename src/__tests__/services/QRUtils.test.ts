@@ -2463,4 +2463,111 @@ describe('qrUtils', () => {
       expect((a.investments as Record<string, unknown>).acaAware).toBe(false);
     });
   });
+
+  // ============================================
+  // PR #59: legacy `pp` decode regressions
+  // ============================================
+  describe('PR #59 regressions: legacy pp short-key decode', () => {
+    // FINDING #1: before campaign 7 the KEY_MAP encoded BOTH `purchasePrice`
+    // and `projectedPIA` as 'pp' (and the last-writer-wins reverse map decoded
+    // 'pp' -> projectedPIA). `projectedPIA` now encodes as 'Pi', so a naive
+    // reverse map sends legacy 'pp' on a Social Security income to
+    // `purchasePrice` -- silently dropping projectedPIA on import of old QR
+    // payloads. Legacy 'pp' must decode context-aware.
+    it('should decode legacy pp on a Social Security income to projectedPIA (full backup path)', () => {
+      // Exactly what the OLD encoder produced for a FutureSocialSecurityIncome:
+      // projectedPIA was shortened to 'pp'.
+      const legacyCompact = {
+        v: 1,
+        a: [],
+        h: {},
+        i: [
+          {
+            d: 'ss1',
+            n: 'Social Security', // name
+            a: 30000, // amount
+            c: 'FutureSocialSecurityIncome',
+            C: 67, // claimingAge
+            P: 2500, // calculatedPIA
+            W: 2026, // calculationYear
+            pp: 3100, // LEGACY: projectedPIA encoded as 'pp' by the old KEY_MAP
+          },
+        ],
+        e: [],
+        t: {},
+        m: { by: 1985 },
+      };
+
+      const expanded = expandCompactBackup(legacyCompact as Parameters<typeof expandCompactBackup>[0]);
+      const income = expanded.incomes[0] as Record<string, unknown>;
+
+      expect(income.projectedPIA).toBe(3100);
+      expect('purchasePrice' in income).toBe(false);
+      // The other SS fields decode as before
+      expect(income.claimingAge).toBe(67);
+      expect(income.calculatedPIA).toBe(2500);
+      expect(income.calculationYear).toBe(2026);
+    });
+
+    it('should decode legacy pp on an ESPP lot (no className) to purchasePrice', () => {
+      // ESPP lots never carried a className; their 'pp' has always meant
+      // purchasePrice and must keep decoding that way.
+      const legacyLot = {
+        gd: '2023-01-01',
+        pd: '2023-06-30',
+        fg: 100,
+        fp: 120,
+        pp: 85, // purchasePrice in both old and new encodings
+        sh: 50,
+        tc: 4250,
+        da: 750,
+      };
+
+      const expanded = expandKeys(legacyLot) as Record<string, unknown>;
+
+      expect(expanded.purchasePrice).toBe(85);
+      expect('projectedPIA' in expanded).toBe(false);
+    });
+
+    it('should decode legacy pp on an ESPP account lot through the full backup path', () => {
+      const legacyCompact = {
+        v: 1,
+        a: [
+          {
+            d: 'espp1',
+            n: 'Company ESPP',
+            a: 6000,
+            c: 'ESPPAccount',
+            lt: [
+              { gd: '2023-01-01', pd: '2023-06-30', fg: 100, fp: 120, pp: 85, sh: 50, tc: 4250, da: 750 },
+            ],
+          },
+        ],
+        h: {},
+        i: [],
+        e: [],
+        t: {},
+        m: { by: 1985 },
+      };
+
+      const expanded = expandCompactBackup(legacyCompact as Parameters<typeof expandCompactBackup>[0]);
+      const lots = (expanded.accounts[0] as Record<string, unknown>).lots as Array<Record<string, unknown>>;
+
+      expect(lots[0].purchasePrice).toBe(85);
+      expect('projectedPIA' in lots[0]).toBe(false);
+    });
+
+    it('should still decode the new Pi short key to projectedPIA', () => {
+      const newCompact = {
+        c: 'FutureSocialSecurityIncome',
+        C: 67,
+        Pi: 3100, // NEW encoding of projectedPIA
+      };
+
+      const expanded = expandKeys(newCompact) as Record<string, unknown>;
+
+      expect(expanded.projectedPIA).toBe(3100);
+      expect('purchasePrice' in expanded).toBe(false);
+    });
+  });
 });
