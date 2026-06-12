@@ -110,6 +110,11 @@ export function getTaxParameters(
 
     const closestYear = getClosestTaxYear(year);
 
+    // Inflation indexing is forward-only by design: years beyond the data range
+    // are inflated up from the latest table, but years BEFORE the range snap to
+    // the nearest table verbatim (no deflation). Historical/back-test years will
+    // therefore use modern (larger) brackets and understate tax. The app is a
+    // forward-only projector, so this asymmetry is accepted (pr55 #4).
     if (inflationAdjusted && year > max_year) {
         // A state's table may not include the federal max_year row. Resolve the
         // nearest year actually present and inflate from there (same nearest-year

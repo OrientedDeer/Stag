@@ -1,5 +1,5 @@
 import { AssumptionsState } from "../Assumptions/AssumptionsContext";
-import { parseDate, hasClassName } from "../modelUtils";
+import { parseDate, hasClassName, extractBaseFields } from "../modelUtils";
 
 // 1. Interface
 
@@ -298,7 +298,7 @@ export class InvestedAccount extends BaseAccount {
 
     // Build updated conversion history. On a withdrawal it was already drained in
     // FIFO order above (newConversionHistoryFifo); otherwise carry it forward.
-    let newConversionHistory = newConversionHistoryFifo ?? [...this.conversionHistory];
+    const newConversionHistory = newConversionHistoryFifo ?? [...this.conversionHistory];
 
     // Add new conversion entry if applicable
     if (conversionAmount > 0 && currentYear > 0) {
@@ -932,9 +932,7 @@ export const CATEGORY_PALETTES: Record<AccountCategory, string[]> = {
 export function reconstituteAccount(data: unknown): AnyAccount | null {
     if (!hasClassName(data)) return null;
 
-    const id = String(data.id ?? '');
-    const name = String(data.name ?? 'Unnamed Account');
-    const amount = Number(data.amount) || 0;
+    const { id, name, amount } = extractBaseFields(data, 'Unnamed Account');
 
     switch (data.className) {
         case 'SavedAccount':
@@ -942,7 +940,7 @@ export function reconstituteAccount(data: unknown): AnyAccount | null {
 
         case 'InvestedAccount': {
             const conversionHistory = Array.isArray(data.conversionHistory)
-                ? data.conversionHistory.map((c: any) => ({ year: Number(c.year), amount: Number(c.amount) }))
+                ? data.conversionHistory.map((c: Record<string, unknown>) => ({ year: Number(c.year), amount: Number(c.amount) }))
                 : [];
             // Clamp persisted values to safe ranges. employerBalance > amount makes
             // nonVestedAmount/vestedAmount go negative (RMDService then silently skips a

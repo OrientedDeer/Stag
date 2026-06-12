@@ -1,5 +1,5 @@
 import { AssumptionsState } from "../Assumptions/AssumptionsContext";
-import { parseDate, parseDateRequired, hasClassName } from "../modelUtils";
+import { parseDate, parseDateRequired, hasClassName, extractBaseFields, getActiveWindowMultiplier, isWindowActiveInCurrentMonth } from "../modelUtils";
 
 export type ExpenseFrequency = 'Weekly' | 'Monthly' | 'Annually';
 
@@ -37,6 +37,20 @@ export interface Expense {
   goalType?: GoalType;        // marks a long-term goal ("Longer term" cadence)
   intervalYears?: number;     // recurrence (years) for a 'recurring' goal
   goalAccountId?: string;     // linked sinking-fund SavedAccount
+}
+
+/**
+ * Standard fixed-payment amortization formula: the level monthly payment that
+ * retires `principal` at `apr` (annual %) over `numPayments` months.
+ *
+ * Single home for the formula AND its 0% APR guard (backlog C2): the closed
+ * form is 0/0 = NaN when the monthly rate is 0, so fall back to straight-line
+ * principal / numPayments (0 when numPayments <= 0).
+ */
+function calculateMonthlyPayment(principal: number, apr: number, numPayments: number): number {
+  if (apr === 0) return numPayments > 0 ? principal / numPayments : 0;
+  const r = apr / 100 / 12;
+  return principal * ((r * Math.pow(1 + r, numPayments)) / (Math.pow(1 + r, numPayments) - 1));
 }
 
 // 2. Base Abstract Class
@@ -262,12 +276,9 @@ export class MortgageExpense extends BaseExpense {
     endMilestoneId?: string,
   ) {
     const r = apr / 100 / 12;
-    const n = term_length * 12;
-    // Guard against 0% APR: the standard amortization formula is 0/0 = NaN when r === 0,
-    // which would poison the entire payment. Fall back to straight-line principal / n.
-    const fixed_amortization = r === 0
-      ? (n > 0 ? starting_loan_balance / n : 0)
-      : starting_loan_balance * ((r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1));
+    // `this` isn't available before super(), so use the shared module-level
+    // formula directly (calculatePrincipalAndInterest delegates to it too).
+    const fixed_amortization = calculateMonthlyPayment(starting_loan_balance, apr, term_length * 12);
 
     const interest_payment = loan_balance * r;
     const principal_payment = (loan_balance > 0 ? fixed_amortization : 0) - interest_payment;
@@ -344,13 +355,9 @@ export class MortgageExpense extends BaseExpense {
     return nextYearMortgage;
   }
 
-  // Helper method required for the grow calculation
+  // Standard monthly P&I for this mortgage (always from starting_loan_balance).
   private calculatePrincipalAndInterest(): number {
-    if (this.apr === 0) return this.starting_loan_balance / (this.term_length * 12);
-
-    const r = this.apr / 100 / 12;
-    const n = this.term_length * 12;
-    return this.starting_loan_balance * ((r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1));
+    return calculateMonthlyPayment(this.starting_loan_balance, this.apr, this.term_length * 12);
   }
 
 
@@ -369,14 +376,9 @@ export class MortgageExpense extends BaseExpense {
     let balance = this.loan_balance;
 
     const monthlyRate = this.apr / 100 / 12;
-    const numPayments = this.term_length * 12;
 
     // Calculate the Standard P&I + Extra Payment Target (Same as before)
-    // Guard against 0% APR: the amortization formula is 0/0 = NaN when monthlyRate === 0.
-    // Fall back to straight-line principal / numPayments (matches constructor & calculatePrincipalAndInterest).
-    const standardMonthlyPI = monthlyRate === 0
-      ? (numPayments > 0 ? this.starting_loan_balance / numPayments : 0)
-      : this.starting_loan_balance * (monthlyRate * Math.pow(1 + monthlyRate, numPayments)) / (Math.pow(1 + monthlyRate, numPayments) - 1);
+    const standardMonthlyPI = this.calculatePrincipalAndInterest();
     const targetMonthlyPayment = standardMonthlyPI + this.extra_payment;
 
     // Isolate the Escrow Amount (Taxes, HOA, Insurance)
@@ -424,13 +426,9 @@ export class MortgageExpense extends BaseExpense {
 
   calculatePayment(): number {
     const r = this.apr / 100 / 12;
-    const n = this.term_length * 12;
 
     // Fixed P&I Calculation (Always use starting_loan_balance)
-    // Guard 0% APR: formula is 0/0 = NaN when r === 0; fall back to straight-line.
-    const fixed_amortization = r === 0
-      ? (n > 0 ? this.starting_loan_balance / n : 0)
-      : this.starting_loan_balance * ((r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1));
+    const fixed_amortization = this.calculatePrincipalAndInterest();
 
     // Interest (Based on current balance)
     const interest_payment = this.loan_balance * r;
@@ -455,9 +453,34 @@ export class MortgageExpense extends BaseExpense {
   }
 
   /**
+   * Year-aware annual amount comes from the amortization schedule (backlog A1,
+   * mirroring LoanExpense after PR #57 #2): in the payoff year the P&I stops
+   * once the balance hits zero (escrow continues), so the actual outflow is
+   * less than payment×12. The simulation engine, Sankey, and tax deductions
+   * already special-case mortgages through calculateAnnualAmortization — this
+   * makes plain getAnnualAmount(year) consumers (DataTab, CSV/Excel export,
+   * sunburst) agree with them instead of overstating the payoff year.
+   *
+   * Note: like the engine path, this intentionally ignores endDate — a
+   * paid-off mortgage still carries escrow (taxes, insurance, HOA).
+   */
+  getAnnualAmount(year?: number): number {
+    if (year !== undefined) {
+      return this.calculateAnnualAmortization(year).totalPayment;
+    }
+    // No year — full-year un-prorated "today" amount (Dashboard/SpendingTab/budget).
+    return super.getAnnualAmount();
+  }
+
+  getMonthlyAmount(year?: number): number {
+    return this.getAnnualAmount(year) / 12;
+  }
+
+  /**
    * Mortgages are contractual obligations and cannot be adjusted.
    * Returns the same mortgage unchanged.
    */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   adjustAmount(_ratio: number): MortgageExpense {
     // Mortgages are fixed contractual obligations - cannot scale them
     // If someone marks a mortgage as discretionary, we just ignore the adjustment
@@ -466,14 +489,10 @@ export class MortgageExpense extends BaseExpense {
 
   getPrincipalPayment(): number {
     const r = this.apr / 100 / 12;
-    const n = this.term_length * 12;
 
     // Fixed P&I Calculation (Always use starting_loan_balance)
     // FIX: Switched from this.loan_balance to this.starting_loan_balance
-    // Guard 0% APR: formula is 0/0 = NaN when r === 0; fall back to straight-line.
-    const fixed_amortization = r === 0
-      ? (n > 0 ? this.starting_loan_balance / n : 0)
-      : this.starting_loan_balance * ((r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1));
+    const fixed_amortization = this.calculatePrincipalAndInterest();
 
     const interest_payment = this.loan_balance * r;
 
@@ -497,13 +516,9 @@ export class MortgageExpense extends BaseExpense {
 
     // Calculate Monthly P&I Payment (Principal + Interest only)
     const r = this.apr / 100 / 12;
-    const n = this.term_length * 12;
 
-    // Standard Formula for Fixed Monthly Payment using Starting Balance
-    // Guard 0% APR: formula is 0/0 = NaN when r === 0; fall back to straight-line.
-    const piPayment = r === 0
-      ? (n > 0 ? this.starting_loan_balance / n : 0)
-      : this.starting_loan_balance * ((r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1));
+    // Standard Fixed Monthly Payment using Starting Balance
+    const piPayment = this.calculatePrincipalAndInterest();
 
     let balance = this.starting_loan_balance;
 
@@ -550,6 +565,7 @@ export class LoanExpense extends BaseExpense {
       this.payment = this.calculatePaymentFromEndDate();
     }
   }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   increment(_assumptions: AssumptionsState): LoanExpense {
     let balance = this.amount; // In LoanExpense, 'amount' tracks the current balance
     const monthlyRate = this.apr / 100 / 12;
@@ -648,11 +664,8 @@ export class LoanExpense extends BaseExpense {
     const months = this.getMonthsUntilPaidOff();
     if (months <= 0) return this.amount;
 
-    if (this.apr === 0) {
-      return this.amount / months;
-    }
-    const monthlyRate = this.apr / 100 / 12;
-    const payment = this.amount * (monthlyRate * Math.pow(1 + monthlyRate, months)) / (Math.pow(1 + monthlyRate, months) - 1);
+    // calculateMonthlyPayment handles the 0% APR straight-line fallback.
+    const payment = calculateMonthlyPayment(this.amount, this.apr, months);
     return parseFloat(payment.toFixed(2));
   }
 
@@ -704,6 +717,7 @@ export class LoanExpense extends BaseExpense {
    * Loans are contractual obligations and cannot be adjusted.
    * Returns the same loan unchanged.
    */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   adjustAmount(_ratio: number): LoanExpense {
     // Loans are fixed contractual obligations - cannot scale them
     return this;
@@ -832,61 +846,12 @@ export class CharityExpense extends BaseExpense {
 export type AnyExpense = RentExpense | MortgageExpense | LoanExpense | DependentExpense | HealthcareExpense | VacationExpense | EmergencyExpense | TransportExpense | FoodExpense | OtherExpense | CharityExpense | SubscriptionExpense;
 
 export function getExpenseActiveMultiplier(expense: BaseExpense, year: number): number {
-  const expenseStartDate = expense.startDate ? new Date(expense.startDate) : new Date();
-  // Expense date-only values are built with parseDate (new Date(y, m-1, d)) — local
-  // midnight. Read with local getFullYear/getMonth so the active window does not
-  // shift in positive-UTC timezones (e.g. Sydney UTC+10/11).
-  const startYear = expenseStartDate.getFullYear();
-
-  const safeEndDate = expense.endDate ? new Date(expense.endDate) : null;
-  const endYear = safeEndDate ? safeEndDate.getFullYear() : null;
-
-  if (startYear > year) return 0;
-  if (endYear !== null && endYear < year) return 0;
-
-  const startMonthIndex = (startYear < year) ? 0 : expenseStartDate.getMonth();
-
-  const endMonthIndex = (safeEndDate && endYear === year)
-    ? safeEndDate.getMonth()
-    : 11;
-
-  const monthsActive = endMonthIndex - startMonthIndex + 1;
-
-  return Math.max(0, monthsActive) / 12;
+  return getActiveWindowMultiplier(expense, year);
 }
 
 export function isExpenseActiveInCurrentMonth(expense: AnyExpense): boolean {
-  const today = new Date();
-  const currentYear = today.getFullYear();
-  const currentMonth = today.getMonth();
-
-  const expenseStartDate = expense.startDate != null ? expense.startDate : new Date();
-  // Expense date-only values are local-midnight (parseDate uses new Date(y, m-1, d)).
-  // Read with local getFullYear/getMonth (today stays local since it's a true instant).
-  // Both sides feed local new Date(y, m, 1) month-boundary comparisons.
-  const expenseStartYear = expenseStartDate.getFullYear();
-  const expenseStartMonth = expenseStartDate.getMonth();
-
-  const currentMonthStart = new Date(currentYear, currentMonth, 1);
-  const expenseEffectiveStart = new Date(expenseStartYear, expenseStartMonth, 1);
-
-  if (expenseEffectiveStart > currentMonthStart) {
-    return false;
-  }
-
-  if (expense.endDate) {
-    const expenseEndDate = new Date(expense.endDate);
-    const expenseEndYear = expenseEndDate.getFullYear();
-    const expenseEndMonth = expenseEndDate.getMonth();
-
-    const expenseEffectiveEnd = new Date(expenseEndYear, expenseEndMonth + 1, 0);
-
-    if (expenseEffectiveEnd < currentMonthStart) {
-      return false;
-    }
-  }
-  return true;
-};
+  return isWindowActiveInCurrentMonth(expense);
+}
 
 /**
  * An expense is "done" when it no longer applies going forward:
@@ -1140,9 +1105,7 @@ export function reconstituteExpense(data: unknown): AnyExpense | null {
     // when endDate is missing so pre-migration backups still load.
     const endDate = parseDate(data.endDate) ?? parseDate(data.goalTargetDate);
     const frequency = (data.frequency as ExpenseFrequency) || 'Monthly';
-    const id = String(data.id ?? '');
-    const name = String(data.name ?? 'Unnamed Expense');
-    const amount = Number(data.amount) || 0;
+    const { id, name, amount } = extractBaseFields(data, 'Unnamed Expense');
     const isDiscretionary = (data.isDiscretionary as boolean) ?? false;
     const startMilestoneId = data.startMilestoneId ? String(data.startMilestoneId) : undefined;
     const endMilestoneId = data.endMilestoneId ? String(data.endMilestoneId) : undefined;

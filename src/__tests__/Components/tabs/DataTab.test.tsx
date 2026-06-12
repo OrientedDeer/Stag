@@ -17,7 +17,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 
 import { DataTab } from '../../../tabs/Future/tabs/DataTab';
-import { LoanExpense, FoodExpense } from '../../../components/Objects/Expense/models';
+import { LoanExpense, FoodExpense, MortgageExpense } from '../../../components/Objects/Expense/models';
 import { SimulationYear } from '../../../services/simulation/types';
 
 // The hidden PDF-capture chart is irrelevant here and nivo needs ResizeObserver
@@ -51,6 +51,40 @@ function makePayoffYearLoan(): LoanExpense {
 // $14,400 uncapped) is distinct from the Debt Load cell (also $5,000).
 function makeFoodExpense(): FoodExpense {
     return new FoodExpense('food-1', 'Food', 200, 'Monthly', new Date(PAYOFF_YEAR - 2, 0, 1));
+}
+
+/**
+ * Mortgage in its payoff year (backlog A1). 0% APR for exact numbers:
+ * starting $360k over 30y → standard P&I $1,000/month, no escrow (all
+ * rates/fees 0). $5,000 balance left at the start of the payoff year:
+ * - payment × 12                              → $12,000 (the old DataTab value)
+ * - calculateAnnualAmortization(PAYOFF_YEAR)  → $5,000 (engine/Sankey value)
+ */
+function makePayoffYearMortgage(): MortgageExpense {
+    return new MortgageExpense(
+        'mort-1', 'Home', 'Monthly',
+        400000,  // valuation
+        5000,    // loan_balance at start of payoff year
+        360000,  // starting_loan_balance
+        0,       // apr
+        30,      // term_length
+        0, 0, 0, 0, 0, // taxes, deduction, maintenance, utilities, insurance
+        0, 0, 'No', 0, 'acc-1',
+        new Date(PAYOFF_YEAR - 2, 0, 1), // purchased Jan two years earlier
+    );
+}
+
+// Distinct food amount ($250/mo = $3,000/yr) so the capped total ($8,000)
+// differs from both the Debt Load cell ($5,000) and the loan test's totals.
+function makeMortgageFoodExpense(): FoodExpense {
+    return new FoodExpense('food-2', 'Groceries', 250, 'Monthly', new Date(PAYOFF_YEAR - 2, 0, 1));
+}
+
+function makeMortgageSimYear(): SimulationYear {
+    return {
+        ...makeSimYear(),
+        expenses: [makePayoffYearMortgage(), makeMortgageFoodExpense()],
+    };
 }
 
 function makeSimYear(): SimulationYear {
@@ -128,6 +162,51 @@ describe('DataTab year-aware expense sums (PR #59 #4)', () => {
         const loanCol = headers.indexOf('EXP: Car Loan');
         expect(loanCol).toBeGreaterThan(-1);
         expect(Number(values[loanCol])).toBe(5000); // capped, not 12000
+
+        delete urlAny.createObjectURL;
+    });
+});
+
+describe('DataTab mortgage payoff year matches the amortization (engine/Sankey) value — backlog A1', () => {
+    it('sanity: the mortgage caps its payment in the payoff year only when the year is passed', () => {
+        const mortgage = makePayoffYearMortgage();
+        expect(mortgage.getAnnualAmount()).toBeCloseTo(12000, 2);            // no-arg: "today" payment×12
+        expect(mortgage.getAnnualAmount(PAYOFF_YEAR)).toBeCloseTo(5000, 2);  // year-aware: amortized
+    });
+
+    it('table Expenses column shows the amortization-consistent total in the payoff year', () => {
+        render(<DataTab simulationData={[makeMortgageSimYear()]} birthYear={1990} />);
+
+        // Amortized: $5,000 mortgage payoff + $3,000 food.
+        expect(screen.getByText('$8,000')).toBeInTheDocument();
+        // payment×12 ($12,000 + $3,000) must NOT appear — that's the
+        // table/Sankey mismatch this fix removes.
+        expect(screen.queryByText('$15,000')).toBeNull();
+    });
+
+    it('CSV export writes the amortization-consistent per-mortgage amount', async () => {
+        let capturedBlob: Blob | null = null;
+        const urlAny = URL as unknown as { createObjectURL?: (b: Blob) => string };
+        urlAny.createObjectURL = (b: Blob) => { capturedBlob = b; return 'blob:mock'; };
+        vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+        render(<DataTab simulationData={[makeMortgageSimYear()]} birthYear={1990} />);
+        fireEvent.click(screen.getByText('CSV'));
+
+        expect(capturedBlob).not.toBeNull();
+        const csv: string = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = () => reject(reader.error);
+            reader.readAsText(capturedBlob!);
+        });
+        const [headerLine, dataLine] = csv.split('\n');
+        const headers = headerLine.split(',');
+        const values = dataLine.split(',');
+
+        const mortgageCol = headers.indexOf('EXP: Home');
+        expect(mortgageCol).toBeGreaterThan(-1);
+        expect(Number(values[mortgageCol])).toBeCloseTo(5000, 2); // amortized, not 12000
 
         delete urlAny.createObjectURL;
     });

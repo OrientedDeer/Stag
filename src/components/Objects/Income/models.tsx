@@ -10,7 +10,7 @@ import {
   checkCSRSEligibility,
   calculateFERSSupplement,
 } from '../../../data/PensionData';
-import { parseDate, parseDateRequired, hasClassName } from "../modelUtils";
+import { parseDate, parseDateRequired, hasClassName, extractBaseFields, getActiveWindowMultiplier, isWindowActiveInCurrentMonth } from "../modelUtils";
 
 export type ContributionGrowthStrategy = 'FIXED' | 'GROW_WITH_SALARY' | 'TRACK_ANNUAL_MAX';
 export type AutoMax401kOption = 'disabled' | 'custom' | 'traditional' | 'roth';
@@ -227,13 +227,11 @@ export class WorkIncome extends BaseIncome {
     // Insurance grows with salary (it's a payroll deduction)
     const newInsurance = this.insurance * (1 + salaryGrowth + generalInflation);
 
-    // ESPP contribution grows with salary if percentage-based
+    // ESPP: for PERCENTAGE the stored value is a percent of salary — it stays
+    // constant here and the dollar amount tracks salary at consumption time
+    // (getAnnualESPPContribution). Only a FIXED per-period amount may grow.
     let newESPPAmount = this.esppContributionAmount;
-    if (this.esppContributionType === 'PERCENTAGE') {
-      // Percentage stays the same, effective amount grows with salary
-      newESPPAmount = this.esppContributionAmount;
-    } else if (this.esppContributionType === 'FIXED' && this.contributionGrowthStrategy === 'GROW_WITH_SALARY') {
-      // Fixed amount can optionally grow with salary
+    if (this.esppContributionType === 'FIXED' && this.contributionGrowthStrategy === 'GROW_WITH_SALARY') {
       newESPPAmount = this.esppContributionAmount * (1 + salaryGrowth + generalInflation);
     }
 
@@ -812,62 +810,12 @@ export function calculateSocialSecurityStartDate(
 }
 
 export function getIncomeActiveMultiplier(income: AnyIncome, year: number): number {
-    const incomeStartDate = income.startDate ? new Date(income.startDate) : new Date();
-    // Date-only values come from parseDate, which returns LOCAL-midnight dates (the
-    // repo-wide convention). Read with local getFullYear()/getMonth() so a date
-    // entered as Y-M-D round-trips to the same Y-M-D in any timezone.
-    const startYear = incomeStartDate.getFullYear();
-
-    const safeEndDate = income.end_date ? new Date(income.end_date) : null;
-    const endYear = safeEndDate ? safeEndDate.getFullYear() : null;
-
-    if (startYear > year) return 0;
-    if (endYear !== null && endYear < year) return 0;
-
-    const startMonthIndex = (startYear < year) ? 0 : incomeStartDate.getMonth();
-
-    const endMonthIndex = (safeEndDate && endYear === year)
-        ? safeEndDate.getMonth()
-        : 11;
-
-    const monthsActive = endMonthIndex - startMonthIndex + 1;
-
-    return Math.max(0, monthsActive) / 12;
+    return getActiveWindowMultiplier({ startDate: income.startDate, endDate: income.end_date }, year);
 }
 
 export function isIncomeActiveInCurrentMonth(income: AnyIncome): boolean {
-    const today = new Date();
-    const currentYear = today.getFullYear();
-    const currentMonth = today.getMonth(); // 0-indexed
-
-    const incomeStartDate = income.startDate != null ? income.startDate : new Date();
-    // Stored date-only values are LOCAL-midnight (parseDate convention); read them
-    // with local accessors. `today` above is a true instant and also read locally,
-    // so both sides feed the local new Date(y, m, 1) month-boundary comparisons on
-    // a consistent basis.
-    const incomeStartYear = incomeStartDate.getFullYear();
-    const incomeStartMonth = incomeStartDate.getMonth();
-
-    const currentMonthStart = new Date(currentYear, currentMonth, 1);
-    const incomeEffectiveStart = new Date(incomeStartYear, incomeStartMonth, 1);
-
-    if (incomeEffectiveStart > currentMonthStart) {
-        return false;
-    }
-
-    if (income.end_date) {
-        const incomeEndDate = new Date(income.end_date);
-        const incomeEndYear = incomeEndDate.getFullYear();
-        const incomeEndMonth = incomeEndDate.getMonth();
-
-        const incomeEffectiveEnd = new Date(incomeEndYear, incomeEndMonth + 1, 0);
-
-        if (incomeEffectiveEnd < currentMonthStart) {
-            return false;
-        }
-    }
-    return true;
-};
+    return isWindowActiveInCurrentMonth({ startDate: income.startDate, endDate: income.end_date });
+}
 
 export const INCOME_CATEGORIES = [
   'Work',
@@ -915,9 +863,7 @@ export function reconstituteIncome(data: unknown): AnyIncome | null {
     const startDate = parseDateRequired(data.startDate);
     const endDate = parseDate(data.end_date);
     const frequency = (data.frequency as IncomeFrequency) || 'Monthly';
-    const id = String(data.id ?? '');
-    const name = String(data.name ?? 'Unnamed Income');
-    const amount = Number(data.amount) || 0;
+    const { id, name, amount } = extractBaseFields(data, 'Unnamed Income');
     const earned_income = (data.earned_income as "Yes" | "No") || "No";
     const startMilestoneId = data.startMilestoneId ? String(data.startMilestoneId) : undefined;
     const endMilestoneId = data.endMilestoneId ? String(data.endMilestoneId) : undefined;

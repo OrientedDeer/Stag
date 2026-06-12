@@ -13,7 +13,7 @@ M trials). Don't loosen existing assertions without sign-off.
 
 ## A. Behavioral
 
-### A1. ☐ DataTab shows MortgageExpense as payment×12, Sankey uses amortization
+### A1. ☑ (2026-06-12) DataTab shows MortgageExpense as payment×12, Sankey uses amortization
 Source: PR #59 #4 follow-up note. Verified: DataTab (and its CSV export) now
 pass `year.year` for all expenses, which fixed LoanExpense, but
 `MortgageExpense.getAnnualAmount(year)` is the base date-prorated payment×12 —
@@ -28,7 +28,7 @@ LoanExpense payoff-year test, plus a model test on the mortgage payoff year.
 Risk: callers that already apply the special case (Sankey/CashflowDetailBuilder)
 must not double-apply — grep all `MortgageExpense` special-casing first.
 
-### A2. ☐ Tax parameters never deflate below the data range (pr55 #4, deferred)
+### A2. ☑ (2026-06-12, cheap option) Tax parameters never deflate below the data range (pr55 #4, deferred)
 Source: `code-review-pr55.md` #4 ("Plausible · Low", deferred as out of
 scope/risky). Verified still true: `parameters.ts` inflates only when
 `year > max_year`; `year=2019, inflationAdjusted=true` snaps to the 2024
@@ -41,7 +41,7 @@ table verbatim, understating historical tax.
 Recommendation: cheap option unless back-testing becomes a feature; the
 campaign already judged the full fix risky for no current user value.
 
-### A3. ☐ `WorkIncome.increment` ESPP `PERCENTAGE` branch is a no-op (pr57 #13)
+### A3. ☑ (2026-06-12, resolved as cleanup) `WorkIncome.increment` ESPP `PERCENTAGE` branch is a no-op (pr57 #13)
 Source: `code-review-pr57.md` cleanup #13. Verified still present
 (`Income/models.tsx` ~231: `newESPPAmount = this.esppContributionAmount;` —
 assigns the value it already holds).
@@ -88,7 +88,7 @@ timing of a 1000-trial Monte Carlo to confirm it's worth keeping.
 
 ## C. Code-quality cleanups (mechanical, characterization-tested)
 
-### C1. ☐ `reconstitute{Account,Income,Expense}` hand-roll base fields (pr57 #10)
+### C1. ☑ (2026-06-12) `reconstitute{Account,Income,Expense}` hand-roll base fields (pr57 #10)
 Verified: `modelUtils.extractBaseFields()` exists and is tested, but
 `Accounts/models.tsx:935`, `Income/models.tsx:~913`, `Expense/models.tsx:~1121`
 still do `String(data.id ?? '')` etc. inline.
@@ -96,7 +96,7 @@ still do `String(data.id ?? '')` etc. inline.
 per-domain default names ("Unnamed Account" vs "Unnamed") — preserve exact
 current defaults; QR/backup round-trip tests are the oracle.
 
-### C2. ☐ MortgageExpense amortization formula duplicated (pr57 #11, half done)
+### C2. ☑ (2026-06-12) MortgageExpense amortization formula duplicated (pr57 #11, half done)
 Was 5 copies; verified now 2 copies of the `Math.pow(1 + monthlyRate, ...)`
 payment formula plus a straight-line 0%-APR fallback, with
 `calculatePrincipalAndInterest()` (:348) as the intended single home.
@@ -104,7 +104,7 @@ payment formula plus a straight-line 0%-APR fallback, with
 `calculatePrincipalAndInterest()`; keep the 0%-APR guard in exactly one place.
 Combines naturally with A1 (same class, same tests).
 
-### C3. ☐ Expense/Income active-multiplier duplicates (pr57 #12)
+### C3. ☑ (2026-06-12) Expense/Income active-multiplier duplicates (pr57 #12)
 Verified: `getExpenseActiveMultiplier` (`Expense/models.tsx:834`) and
 `getIncomeActiveMultiplier` (`Income/models.tsx:814`) remain line-for-line
 parallel implementations.

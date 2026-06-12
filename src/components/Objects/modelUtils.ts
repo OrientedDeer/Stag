@@ -80,6 +80,83 @@ export function extractBaseFields(data: Record<string, unknown>, defaultName: st
 }
 
 /**
+ * An active date window shared by Income and Expense models.
+ * `startDate`/`endDate` are date-only values built at LOCAL midnight
+ * (the parseDate convention) — always read them with local getters.
+ */
+export interface ActiveDateWindow {
+  startDate?: Date | null;
+  endDate?: Date | null;
+}
+
+/**
+ * Returns the fraction of `year` (in twelfths) that the window is active.
+ * A missing startDate is treated as "now"; a missing endDate as open-ended.
+ */
+export function getActiveWindowMultiplier(window: ActiveDateWindow, year: number): number {
+  const startDate = window.startDate ? new Date(window.startDate) : new Date();
+  // Date-only values come from parseDate, which returns LOCAL-midnight dates (the
+  // repo-wide convention). Read with local getFullYear()/getMonth() so a date
+  // entered as Y-M-D round-trips to the same Y-M-D in any timezone.
+  const startYear = startDate.getFullYear();
+
+  const safeEndDate = window.endDate ? new Date(window.endDate) : null;
+  const endYear = safeEndDate ? safeEndDate.getFullYear() : null;
+
+  if (startYear > year) return 0;
+  if (endYear !== null && endYear < year) return 0;
+
+  const startMonthIndex = (startYear < year) ? 0 : startDate.getMonth();
+
+  const endMonthIndex = (safeEndDate && endYear === year)
+    ? safeEndDate.getMonth()
+    : 11;
+
+  const monthsActive = endMonthIndex - startMonthIndex + 1;
+
+  return Math.max(0, monthsActive) / 12;
+}
+
+/**
+ * Whether the window overlaps the current calendar month.
+ * A missing startDate is treated as "now"; a missing endDate as open-ended.
+ */
+export function isWindowActiveInCurrentMonth(window: ActiveDateWindow): boolean {
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth(); // 0-indexed
+
+  const startDate = window.startDate != null ? window.startDate : new Date();
+  // Stored date-only values are LOCAL-midnight (parseDate convention); read them
+  // with local accessors. `today` above is a true instant and also read locally,
+  // so both sides feed the local new Date(y, m, 1) month-boundary comparisons on
+  // a consistent basis.
+  const startYear = startDate.getFullYear();
+  const startMonth = startDate.getMonth();
+
+  const currentMonthStart = new Date(currentYear, currentMonth, 1);
+  const effectiveStart = new Date(startYear, startMonth, 1);
+
+  if (effectiveStart > currentMonthStart) {
+    return false;
+  }
+
+  if (window.endDate) {
+    const endDate = new Date(window.endDate);
+    const endYear = endDate.getFullYear();
+    const endMonth = endDate.getMonth();
+
+    // Last day of the end month — the window is active through month end.
+    const effectiveEnd = new Date(endYear, endMonth + 1, 0);
+
+    if (effectiveEnd < currentMonthStart) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
  * Type guard to check if a value is a non-null object with a className property.
  * Used to validate data before reconstitution.
  */

@@ -58,7 +58,9 @@ const inflationAssumptions: AssumptionsState = {
 describe('Expense Models', () => {
   describe('BaseExpense', () => {
     class TestExpense extends BaseExpense {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       increment(_assumptions: AssumptionsState): AnyExpense { return this as unknown as AnyExpense; }
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       adjustAmount(_ratio: number): AnyExpense { return this as unknown as AnyExpense; }
     }
 
@@ -393,6 +395,79 @@ describe('Expense Models', () => {
         // utilities = $300
         // Total ≈ $2,849 (was $2,949 before the PMI gate fix)
         expect(payment).toBeCloseTo(2849, 0);
+      });
+    });
+
+    // A1 backlog item: MortgageExpense.getAnnualAmount(year) must be
+    // amortization-aware (mirroring LoanExpense after PR #57 #2), so the
+    // DataTab table/CSV agree with the Sankey/engine path, which already
+    // special-cases mortgages through calculateAnnualAmortization.
+    describe('getAnnualAmount year-aware amortization (backlog A1)', () => {
+      // 0% APR for exact numbers: starting $360k over 30y → standard P&I $1,000/mo.
+      // $5,000 balance left at the start of 2030 → paid off after 5 payments.
+      // No escrow (all rates/fees 0), so payment === P&I === $1,000/mo.
+      const payoffYearMortgage = new MortgageExpense(
+        'm-payoff', 'Payoff Year', 'Monthly',
+        400000,  // valuation
+        5000,    // loan_balance at start of 2030
+        360000,  // starting_loan_balance
+        0,       // apr (0% → exact straight-line P&I)
+        30,      // term_length
+        0, 0, 0, 0, 0, // taxes, deduction, maintenance, utilities, insurance
+        0, 0, 'No', 0, 'a1',
+        new Date(2028, 0, 1) // purchased Jan 2028 → 2030 is a full year (startMonth 0)
+      );
+
+      it('getAnnualAmount(payoffYear) equals calculateAnnualAmortization(payoffYear).totalPayment', () => {
+        const { totalPayment } = payoffYearMortgage.calculateAnnualAmortization(2030);
+        expect(totalPayment).toBeCloseTo(5000, 2); // sanity: 5 × $1,000, then paid off
+        expect(payoffYearMortgage.getAnnualAmount(2030)).toBeCloseTo(totalPayment, 2);
+      });
+
+      it('getAnnualAmount(payoffYear) is LESS than payment × 12', () => {
+        expect(payoffYearMortgage.payment).toBeCloseTo(1000, 2);
+        expect(payoffYearMortgage.getAnnualAmount(2030)).toBeLessThan(payoffYearMortgage.payment * 12);
+      });
+
+      it('no-arg getAnnualAmount keeps the "today" payment×12 semantics (Dashboard/SpendingTab)', () => {
+        expect(payoffYearMortgage.getAnnualAmount()).toBeCloseTo(12000, 2);
+      });
+
+      it('getMonthlyAmount(year) equals getAnnualAmount(year) / 12', () => {
+        expect(payoffYearMortgage.getMonthlyAmount(2030))
+          .toBeCloseTo(payoffYearMortgage.getAnnualAmount(2030) / 12, 8);
+      });
+
+      it('a normal (non-payoff) full year still equals payment × 12, including LTV-gated PMI', () => {
+        // LTV = 450k/500k = 90% > 80% → PMI applies and is embedded in `payment`.
+        const withPmi = new MortgageExpense(
+          'm-pmi', 'High LTV', 'Monthly',
+          500000, 450000, 450000,
+          3, 30,
+          0, 0, 0, 0, 0,
+          0.6,  // pmi rate → 500000 × 0.6% / 12 = $250/mo while LTV > 80%
+          0, 'No', 0, 'a1',
+          new Date(2025, 0, 1)
+        );
+        // Identical mortgage without PMI, to pin the PMI delta.
+        const noPmi = new MortgageExpense(
+          'm-nopmi', 'High LTV no PMI', 'Monthly',
+          500000, 450000, 450000,
+          3, 30,
+          0, 0, 0, 0, 0,
+          0, 0, 'No', 0, 'a1',
+          new Date(2025, 0, 1)
+        );
+
+        // Mid-life full year: amortization-aware annual == payment × 12.
+        expect(withPmi.getAnnualAmount(2026)).toBeCloseTo(withPmi.payment * 12, 2);
+        expect(noPmi.getAnnualAmount(2026)).toBeCloseTo(noPmi.payment * 12, 2);
+        // The PMI escrow flows through the year-aware amount: $250/mo × 12.
+        expect(withPmi.getAnnualAmount(2026) - noPmi.getAnnualAmount(2026)).toBeCloseTo(3000, 2);
+      });
+
+      it('returns 0 before the purchase year', () => {
+        expect(payoffYearMortgage.getAnnualAmount(2027)).toBe(0);
       });
     });
 
