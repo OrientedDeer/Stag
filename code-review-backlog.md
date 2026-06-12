@@ -58,7 +58,21 @@ purchases, IncomeProjection) to determine the unit, then act accordingly.
 
 ## B. Performance (measure first; matters at years × Monte Carlo trials)
 
-### B1. ☐ `getTaxParameters` has no memoization (pr55 #9, second half)
+### B1. ✗ dropped (2026-06-12) — implemented, measured, reverted: gain within noise
+Benchmarked via `src/__bench__/simulation.bench.ts` (vitest bench; real
+`runSimulation` 50-year Monte Carlo path, rich household, order-symmetric
+within-process A/B since cross-invocation drift is ±20%). The cache was fully
+built (keyed `year|status|authority|state|inflationAdjusted|inflation`, 512-cap,
+8 characterization tests incl. full-horizon cached-vs-uncached deep-equality)
+and showed ~1.4% apparent gain — inside the ±1–2.5% rme. Instrumentation
+explains why: `getTaxParameters` runs only ~300×/50-year run (~0.5ms of ~13ms
+self-time, ~3.5%); the solver converges in 1–2 iterations and the "O(years)
+nearest-year scan" premise applies only to rare state-table gaps. Safety facts
+verified for any future attempt: TAX_DATABASE is never mutated; user tax
+overrides short-circuit before parameter resolution; only
+`macro.inflationRate/inflationAdjusted` are read from assumptions.
+
+### ~~B1.~~ original entry — `getTaxParameters` has no memoization (pr55 #9, second half)
 Source: `code-review-pr55.md` #9 — reducer extraction landed (`73248f5`),
 memoization deferred. Verified: no cache in `taxService/parameters.ts`; one
 `calculateFederalTaxFromIncomes` triggers 2–3 parameter resolutions for the
@@ -71,7 +85,22 @@ assumptions will cross-contaminate. Bound the cache (or clear per simulation
 run). Characterization test: identical results with/without cache across the
 existing pr55 parameter tests; benchmark a Monte Carlo run before/after.
 
-### B2. ☐ SimulationEngine per-year hot-path scans (pr57 #14)
+### B2. ✗ dropped (2026-06-12) — implemented, measured, reverted: zero effect
+Per-year `accountById` Maps (the 4 `.find` sites) and memoized `getBirthYear`
+were built and tested (all simulation suites green), then measured via
+stash-interleaved ABAB runs: no difference (the `.find` scans iterate ~5
+accounts). Reverted as added complexity in a heavily-reviewed engine file.
+**Correctness warning recorded for future readers:** the third sub-item —
+"derive `goalFundIds` (:368) from `fundedGoals`" — is NOT a pure refactor.
+Line 368 intentionally uses *unfiltered* expenses while `fundedGoals` is
+milestone-filtered; deriving one from the other would stop zeroing legacy
+buckets and would un-reserve fund accounts for milestone-inactive goals. Do
+not "simplify" that without a deliberate behavior decision.
+Note: accounts get new object identities each year (`increment()`, plus the
+`justRetired` Roth-401k remap mid-year), so any future map must be per-year,
+post-remap.
+
+### ~~B2.~~ original entry — SimulationEngine per-year hot-path scans (pr57 #14)
 Source: `code-review-pr57.md` cleanup #14. Verified still present in
 `SimulationEngine.tsx`: `accounts.find(...)` per withdrawal/conversion
 (:48, :89-90, :580-581), `goalFundIds` Set rebuilt each year (:368),
