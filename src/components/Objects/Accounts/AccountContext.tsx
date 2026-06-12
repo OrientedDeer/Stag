@@ -193,6 +193,7 @@ export function AccountProvider({ children }: { children: ReactNode }): React.Re
     a.href = url;
     a.download = `stag_backup_${new Date().toISOString().split('T')[0]}.json`;
     a.click();
+    URL.revokeObjectURL(url);
   }, []);
 
   const importData = useCallback((json: string) => {

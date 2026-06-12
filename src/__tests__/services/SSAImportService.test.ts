@@ -158,7 +158,8 @@ describe('SSAImportService', () => {
 
       const result = validateEarningsImport(earnings, 1990);
 
-      expect(result.valid).toBe(false);
+      // Non-blocking advisory warning: it must surface but not block the import.
+      expect(result.valid).toBe(true);
       expect(result.warnings.length).toBeGreaterThan(0);
       expect(result.warnings[0]).toContain('age');
     });
@@ -178,7 +179,8 @@ describe('SSAImportService', () => {
 
       const result = validateEarningsImport(earnings, 1930);
 
-      expect(result.valid).toBe(false);
+      // Non-blocking advisory warning: it must surface but not block the import.
+      expect(result.valid).toBe(true);
       expect(result.warnings.some(w => w.includes('1951'))).toBe(true);
     });
 
@@ -192,6 +194,8 @@ describe('SSAImportService', () => {
       const result = validateEarningsImport(earnings, 1990);
 
       expect(result.warnings.some(w => w.includes('future'))).toBe(true);
+      // A benign, non-blocking future-year warning must NOT flip valid to false.
+      expect(result.valid).toBe(true);
     });
   });
 

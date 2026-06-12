@@ -3,14 +3,14 @@ import { AccountContext, AccountDispatchContext } from './AccountContext';
 import { IncomeContext, IncomeDispatchContext } from '../Income/IncomeContext';
 import { ExpenseContext, ExpenseDispatchContext } from '../Expense/ExpenseContext';
 import { TaxContext } from '../../Objects/Taxes/TaxContext';
-import { AssumptionsContext, AssumptionsState, defaultAssumptions } from '../Assumptions/AssumptionsContext';
+import { AssumptionsContext, AssumptionsState, defaultAssumptions, migrateAssumptions } from '../Assumptions/AssumptionsContext';
 import { AnyAccount, reconstituteAccount } from './models';
 import { AmountHistoryEntry } from './AccountContext';
 import { AnyIncome, reconstituteIncome } from '../Income/models';
 import { AnyExpense, reconstituteExpense } from '../Expense/models';
 import { TaxState, defaultTaxState } from '../../Objects/Taxes/TaxContext';
 import { ImportKeyContext } from './ImportKeyContext';
-import { BudgetContext, BudgetState } from '../Budget/BudgetContext';
+import { BudgetContext, BudgetState, reconstituteBudgetState } from '../Budget/BudgetContext';
 import { loadAccountMap, saveAccountMap } from '../../../services/simplefinBalances';
 
 export interface FullBackup {
@@ -88,31 +88,23 @@ export const useFileManager = () => {
             };
             taxesDispatch({ type: 'SET_BULK_DATA', payload: mergedTaxSettings });
             if (data.assumptions) { // Check if assumptions exist in the backup data
-                const mergedAssumptions = {
-                    ...defaultAssumptions,
-                    ...data.assumptions,
-                    macro: { ...defaultAssumptions.macro, ...(data.assumptions.macro || {}) },
-                    income: { ...defaultAssumptions.income, ...(data.assumptions.income || {}) },
-                    expenses: { ...defaultAssumptions.expenses, ...(data.assumptions.expenses || {}) },
-                    investments: {
-                        ...defaultAssumptions.investments,
-                        ...(data.assumptions.investments || {}),
-                        returnRates: {
-                            ...defaultAssumptions.investments.returnRates,
-                            ...((data.assumptions.investments && data.assumptions.investments.returnRates) || {}),
-                        },
-                    },
-                    demographics: { ...defaultAssumptions.demographics, ...(data.assumptions.demographics || {}) },
-                    priorities: data.assumptions.priorities || defaultAssumptions.priorities
-                };
+                // Route through migrateAssumptions so OLD backups (legacy
+                // demographics.birthYear/retirementAge/lifeExpectancy with no
+                // milestones array) get their built-in milestones synthesized, and
+                // every section (including display + arrays) is deep-merged with
+                // defaults — matching the on-load localStorage migration.
+                const mergedAssumptions = migrateAssumptions(data.assumptions, defaultAssumptions);
                 assumptionsDispatch({ type: 'SET_BULK_DATA', payload: mergedAssumptions });
             }
             else {
                 assumptionsDispatch({ type: 'RESET_DEFAULTS'});
             }
-            // Import budget data if present
+            // Import budget data if present. Reconstitute Date fields (transactions'
+            // date/statementDate, months' createdAt/updatedAt) since JSON.parse leaves
+            // them as ISO strings — bypassing hydrateBudgetState would otherwise store
+            // strings under Date-typed fields.
             if (data.budget) {
-                budgetDispatch({ type: 'SET_BULK_DATA', payload: data.budget });
+                budgetDispatch({ type: 'SET_BULK_DATA', payload: reconstituteBudgetState(data.budget) });
             }
             // Restore the SimpleFIN account mapping if present (v2+ backups)
             if (data.balanceAccountMap) {

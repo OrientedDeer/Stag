@@ -554,6 +554,23 @@ function isTransactionTypeCredit(value: string): boolean {
     return lower === 'credit' || lower === 'cr' || lower === 'c';
 }
 
+// Monotonic fallback counter so that, when crypto.randomUUID is unavailable,
+// ids minted within a single synchronous loop (same Date.now()) never collide.
+let txnIdCounter = 0;
+
+/**
+ * Mint a transaction id that is unique even within a single synchronous
+ * applyMapping call over hundreds of rows. Uses crypto.randomUUID() when
+ * available (jsdom/node both support it); otherwise falls back to a
+ * module-level monotonic counter combined with Date.now().
+ */
+function newTransactionId(): string {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return `TXN-${crypto.randomUUID()}`;
+    }
+    return `TXN-${Date.now()}-${txnIdCounter++}`;
+}
+
 /**
  * Apply mapping to convert CSV rows to transactions
  */
@@ -645,7 +662,7 @@ export function applyMapping(
         }
 
         transactions.push({
-            id: `TXN-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+            id: newTransactionId(),
             date,
             description: description.trim(),
             amount,
@@ -818,9 +835,19 @@ export function applyCategories(
         if (!isCategorizable) return txn;
 
         for (const rule of rules) {
-            const matches = rule.isRegex
-                ? new RegExp(rule.pattern, 'i').test(txn.description)
-                : txn.description.toLowerCase().includes(rule.pattern.toLowerCase());
+            let matches: boolean;
+            if (rule.isRegex) {
+                // A saved rule may carry an invalid pattern (e.g. "(" or "[a-").
+                // Treat an uncompilable regex as a non-match instead of letting
+                // the SyntaxError abort categorization of the entire import.
+                try {
+                    matches = new RegExp(rule.pattern, 'i').test(txn.description);
+                } catch {
+                    matches = false;
+                }
+            } else {
+                matches = txn.description.toLowerCase().includes(rule.pattern.toLowerCase());
+            }
 
             if (matches) {
                 autoCategorizedCount++;

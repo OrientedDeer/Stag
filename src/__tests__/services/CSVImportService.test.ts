@@ -793,6 +793,24 @@ describe('applyMapping', () => {
             expect(transactions[0].date.getFullYear()).toBe(2025);
         });
     });
+
+    describe('unique transaction ids', () => {
+        it('should mint a unique id for every row in a large CSV (no collisions)', () => {
+            const rows: string[][] = [];
+            for (let i = 0; i < 500; i++) {
+                rows.push(['1/15/2025', `Merchant ${i}`, '-12.34']);
+            }
+            const csv: ParsedCSV = {
+                headers: ['Date', 'Description', 'Amount'],
+                rows,
+                hasHeaders: true,
+            };
+            const transactions = applyMapping(csv, baseMapping, baseOptions);
+            expect(transactions).toHaveLength(500);
+            const ids = transactions.map(t => t.id);
+            expect(new Set(ids).size).toBe(transactions.length);
+        });
+    });
 });
 
 // =============================================================================
@@ -925,6 +943,32 @@ describe('applyCategories', () => {
         date: new Date(),
         amount: -50,
         description,
+    });
+
+    it('should not throw on an invalid saved regex rule and still apply valid rules', () => {
+        const transactions = [createTransaction('STARBUCKS')];
+        const rules: CategoryMapping[] = [
+            { id: 'bad', pattern: '(', isRegex: true, expenseId: 'X' },
+            { id: 'good', pattern: 'starbucks', isRegex: true, expenseId: 'exp-coffee' },
+        ];
+        let result: ReturnType<typeof applyCategories>;
+        expect(() => {
+            result = applyCategories(transactions, rules);
+        }).not.toThrow();
+        // Invalid rule is treated as no-match; the valid regex rule still categorizes.
+        expect(result!.categorized).toHaveLength(1);
+        expect(result!.categorized[0].expenseId).toBe('exp-coffee');
+        expect(result!.autoCategorizedCount).toBe(1);
+    });
+
+    it('should leave a transaction uncategorized when the only rule has an invalid regex', () => {
+        const transactions = [createTransaction('STARBUCKS')];
+        const rules: CategoryMapping[] = [
+            { id: 'bad', pattern: '[a-', isRegex: true, expenseId: 'X' },
+        ];
+        const result = applyCategories(transactions, rules);
+        expect(result.categorized[0].expenseId).toBeUndefined();
+        expect(result.autoCategorizedCount).toBe(0);
     });
 
     it('should apply expenseId for matching string pattern', () => {

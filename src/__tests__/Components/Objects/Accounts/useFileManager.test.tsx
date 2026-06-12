@@ -7,7 +7,14 @@ import { AccountProvider } from '../../../../components/Objects/Accounts/Account
 import { IncomeProvider } from '../../../../components/Objects/Income/IncomeContext';
 import { ExpenseProvider } from '../../../../components/Objects/Expense/ExpenseContext';
 import { TaxProvider } from '../../../../components/Objects/Taxes/TaxContext';
-import { AssumptionsProvider, defaultAssumptions } from '../../../../components/Objects/Assumptions/AssumptionsContext';
+import {
+  AssumptionsProvider,
+  defaultAssumptions,
+  migrateAssumptions,
+  getBirthYear,
+  getRetirementAge,
+  getLifeExpectancy,
+} from '../../../../components/Objects/Assumptions/AssumptionsContext';
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -606,6 +613,33 @@ describe('useFileManager', () => {
         'stag_balance_account_map',
         JSON.stringify(map)
       );
+    });
+  });
+
+  // Findings #8 + #12: handleGlobalImport routes data.assumptions through
+  // migrateAssumptions (instead of a hand-rolled spread) so importing an OLD
+  // backup — legacy demographics.{birthYear,retirementAge,lifeExpectancy} with no
+  // `milestones` array — synthesizes the built-in milestones from those legacy
+  // values rather than resetting the age timeline to defaults (1990/65/90), and
+  // deep-merges every section (display + arrays). This focused test proves the
+  // legacy->milestone path that the import now relies on.
+  describe('migrateAssumptions legacy demographics -> milestones', () => {
+    it('synthesizes built-in milestones from legacy birthYear/retirementAge/lifeExpectancy', () => {
+      const legacy = {
+        demographics: { birthYear: 1975, retirementAge: 60, lifeExpectancy: 95 },
+        // No milestones array at all (old backup shape).
+      };
+
+      const result = migrateAssumptions(legacy, defaultAssumptions);
+
+      expect(getBirthYear(result.milestones)).toBe(1975);
+      expect(getRetirementAge(result.milestones)).toBe(60);
+      expect(getLifeExpectancy(result.milestones)).toBe(95);
+    });
+
+    it('falls back to defaults when a non-object is passed', () => {
+      const result = migrateAssumptions(undefined, defaultAssumptions);
+      expect(result).toBe(defaultAssumptions);
     });
   });
 

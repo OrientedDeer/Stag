@@ -133,9 +133,15 @@ export function makeTransaction(input: NewTransactionInput): Transaction {
 
 // --- Small helpers (mirror the app) ---
 
+// Monotonic counter so several months created in one synchronous tick get
+// distinct ids (Date.now() only has ms resolution).
+let monthIdCounter = 0;
 function generateMonthId(): string {
     // Mirrors BudgetContext.generateId('MONTH').
-    return `MONTH-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return `MONTH-${crypto.randomUUID()}`;
+    }
+    return `MONTH-${Date.now()}-${monthIdCounter++}-${Math.floor(Math.random() * 1000)}`;
 }
 
 function localToday(): string {

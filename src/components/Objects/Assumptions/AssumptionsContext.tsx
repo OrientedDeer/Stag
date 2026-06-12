@@ -205,7 +205,7 @@ export const defaultAssumptions: AssumptionsState = {
  * Deep merge saved data with defaults, ensuring all fields exist.
  * This handles cases where old localStorage data is missing newer fields.
  */
-function migrateAssumptions(saved: unknown, defaults: AssumptionsState): AssumptionsState {
+export function migrateAssumptions(saved: unknown, defaults: AssumptionsState): AssumptionsState {
   // If saved is not an object, return defaults
   if (!saved || typeof saved !== 'object' || Array.isArray(saved)) {
     return defaults;
@@ -265,7 +265,13 @@ function migrateAssumptions(saved: unknown, defaults: AssumptionsState): Assumpt
     // Arrays: use saved if it's a valid array, otherwise use default
     priorities: Array.isArray(data.priorities) ? data.priorities as PriorityBucket[] : defaults.priorities,
     withdrawalStrategy: Array.isArray(data.withdrawalStrategy) ? data.withdrawalStrategy as WithdrawalBucket[] : defaults.withdrawalStrategy,
-    milestones: Array.isArray(data.milestones) ? data.milestones as CustomMilestone[] : defaults.milestones,
+    // When saved data has no milestones array, start EMPTY (not defaults.milestones)
+    // so the built-in-milestone synthesis below actually fires and can seed Birth/
+    // Retire/End-of-Plan from any legacy demographics.{birthYear,retirementAge,
+    // lifeExpectancy}. If we copied defaults.milestones here, those built-ins would
+    // already exist at default values (1990/65/90) and the legacy values would be
+    // silently dropped (Findings #8/#12).
+    milestones: Array.isArray(data.milestones) ? data.milestones as CustomMilestone[] : [],
   };
 
   // Migration: Get legacy values from old demographics if present

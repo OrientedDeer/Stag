@@ -33,7 +33,7 @@ const KEY_MAP: Record<string, string> = {
     // Passive income
     sourceType: 'O', isReinvested: 'R', end_date: 'Z',
     // Social security
-    claimingAge: 'C', calculatedPIA: 'P', calculationYear: 'W', projectedPIA: 'pp',
+    claimingAge: 'C', calculatedPIA: 'P', calculationYear: 'W', projectedPIA: 'Pi',
     // Expenses
     payment: 'J', utilities: 'U', interest_type: 'T', is_tax_deductible: 'B', tax_deductible: 'Q',
     // Tax
@@ -47,8 +47,15 @@ const KEY_MAP: Record<string, string> = {
     gkUpperGuardrail: 'gu', gkLowerGuardrail: 'gl', gkAdjustmentPercent: 'ga', autoRothConversions: 'ar',
     retirementAge: 'ra', lifeExpectancy: 'le', birthYear: 'by', priorYearMode: 'pm',
     useCompactCurrency: 'cc', showExperimentalFeatures: 'ef', hsaEligible: 'he',
+    // Assumptions - Roth conversion / tax optimization flags
+    rothConversionStrategy: 'rs', rothConversionMinRateGap: 'rg', rothConversionDPBackloadDelta: 'rd',
+    taxOptimizationEnabled: 'to', acaAware: 'aa',
+    // Assumptions - top-level arrays (priorEarnings, milestones, and the Burn-Order
+    // withdrawal-strategy array which is flattened under the synthetic `burnOrder` key
+    // so it does not collide with the investments `withdrawalStrategy` string)
+    priorEarnings: 'pe', milestones: 'ms', burnOrder: 'bo',
     // Priorities/Withdrawal
-    type: 't', accountId: 'ai', capType: 'ct', capValue: 'cv',
+    type: 't', accountId: 'ai', capType: 'ct', capValue: 'cv', maxAmount: 'mx',
 };
 
 // Create reverse mapping
@@ -119,6 +126,11 @@ const ASSUMPTIONS_DEFAULTS: Record<string, unknown> = {
     gkLowerGuardrail: 0.8,
     gkAdjustmentPercent: 10,
     autoRothConversions: false,
+    rothConversionStrategy: 'rate-match',
+    rothConversionMinRateGap: 0.05,
+    rothConversionDPBackloadDelta: 0.015,
+    taxOptimizationEnabled: false,
+    acaAware: true,
     // Demographics
     retirementAge: 65,
     lifeExpectancy: 90,
@@ -198,13 +210,24 @@ export function expandKeys(obj: unknown): unknown {
 
 /**
  * Strips default values and null from an object.
+ *
+ * A field is dropped when it is null, or when it matches its type default.
+ * Default *arrays* (e.g. `conversionHistory: []`, `lots: []`) are compared
+ * structurally rather than by reference, so an empty default array is stripped
+ * (and re-added by restoreDefaults) instead of bloating the payload.
  */
 export function stripDefaults(obj: Record<string, unknown>, type: string): Record<string, unknown> {
     const typeDefaults = DEFAULTS[type] || {};
+    const matchesDefault = (key: string, value: unknown): boolean => {
+        if (!(key in typeDefaults)) return false;
+        const def = typeDefaults[key];
+        if (value === def) return true;
+        // [] !== [] by reference — treat an empty array as equal to an empty default array.
+        if (Array.isArray(value) && Array.isArray(def) && value.length === 0 && def.length === 0) return true;
+        return false;
+    };
     return Object.fromEntries(
-        Object.entries(obj).filter(([key, value]) =>
-            value !== null && !(key in typeDefaults && typeDefaults[key] === value)
-        )
+        Object.entries(obj).filter(([key, value]) => value !== null && !matchesDefault(key, value))
     );
 }
 
@@ -223,18 +246,26 @@ export function flattenAssumptions(assumptions: Record<string, unknown>): Record
     const flat: Record<string, unknown> = {};
 
     for (const [category, values] of Object.entries(assumptions)) {
-        if (category === 'priorities' || category === 'withdrawalOrder') {
-            // Keep arrays as-is
+        if (category === 'priorities' || category === 'milestones') {
+            // Top-level arrays kept as-is under their own key
             if (Array.isArray(values) && values.length > 0) {
                 flat[category] = values;
             }
+        } else if (category === 'withdrawalStrategy') {
+            // Top-level Burn-Order array. Flattened under the synthetic `burnOrder`
+            // key so it does NOT collide with the investments `withdrawalStrategy`
+            // STRING that is flattened out of the investments object below.
+            if (Array.isArray(values) && values.length > 0) {
+                flat['burnOrder'] = values;
+            }
         } else if (typeof values === 'object' && values !== null) {
-            // Flatten nested object (macro, income, etc.)
+            // Flatten nested object (macro, income, investments, demographics, ...)
             for (const [key, value] of Object.entries(values as Record<string, unknown>)) {
                 // Handle nested returnRates.ror
                 if (key === 'returnRates' && typeof value === 'object' && value !== null) {
                     flat['ror'] = (value as Record<string, unknown>).ror;
                 } else {
+                    // Includes demographics.priorEarnings and the investments flags
                     flat[key] = value;
                 }
             }
@@ -248,6 +279,18 @@ export function flattenAssumptions(assumptions: Record<string, unknown>): Record
  * Expands a flattened assumptions object back to nested structure.
  */
 export function expandAssumptions(flat: Record<string, unknown>): Record<string, unknown> {
+    const demographics: Record<string, unknown> = {
+        birthYear: flat.birthYear, // No default - must be provided (legacy flat field)
+        retirementAge: flat.retirementAge ?? ASSUMPTIONS_DEFAULTS.retirementAge,
+        lifeExpectancy: flat.lifeExpectancy ?? ASSUMPTIONS_DEFAULTS.lifeExpectancy,
+        priorYearMode: flat.priorYearMode ?? ASSUMPTIONS_DEFAULTS.priorYearMode,
+    };
+    // priorEarnings (SSA earnings history) is optional - only restore when present
+    // so we don't fabricate an empty array that would break deep-equal round-trips.
+    if (flat.priorEarnings !== undefined) {
+        demographics.priorEarnings = flat.priorEarnings;
+    }
+
     return {
         macro: {
             inflationRate: flat.inflationRate ?? ASSUMPTIONS_DEFAULTS.inflationRate,
@@ -266,26 +309,30 @@ export function expandAssumptions(flat: Record<string, unknown>): Record<string,
         },
         investments: {
             returnRates: { ror: flat.ror ?? ASSUMPTIONS_DEFAULTS.ror },
+            // This is the investments STRING (Fixed Real / Guardrails / ...), distinct
+            // from the top-level `withdrawalStrategy` Burn-Order array restored below.
             withdrawalStrategy: flat.withdrawalStrategy ?? ASSUMPTIONS_DEFAULTS.withdrawalStrategy,
             withdrawalRate: flat.withdrawalRate ?? ASSUMPTIONS_DEFAULTS.withdrawalRate,
             gkUpperGuardrail: flat.gkUpperGuardrail ?? ASSUMPTIONS_DEFAULTS.gkUpperGuardrail,
             gkLowerGuardrail: flat.gkLowerGuardrail ?? ASSUMPTIONS_DEFAULTS.gkLowerGuardrail,
             gkAdjustmentPercent: flat.gkAdjustmentPercent ?? ASSUMPTIONS_DEFAULTS.gkAdjustmentPercent,
             autoRothConversions: flat.autoRothConversions ?? ASSUMPTIONS_DEFAULTS.autoRothConversions,
+            rothConversionStrategy: flat.rothConversionStrategy ?? ASSUMPTIONS_DEFAULTS.rothConversionStrategy,
+            rothConversionMinRateGap: flat.rothConversionMinRateGap ?? ASSUMPTIONS_DEFAULTS.rothConversionMinRateGap,
+            rothConversionDPBackloadDelta: flat.rothConversionDPBackloadDelta ?? ASSUMPTIONS_DEFAULTS.rothConversionDPBackloadDelta,
+            taxOptimizationEnabled: flat.taxOptimizationEnabled ?? ASSUMPTIONS_DEFAULTS.taxOptimizationEnabled,
+            acaAware: flat.acaAware ?? ASSUMPTIONS_DEFAULTS.acaAware,
         },
-        demographics: {
-            birthYear: flat.birthYear, // No default - must be provided
-            retirementAge: flat.retirementAge ?? ASSUMPTIONS_DEFAULTS.retirementAge,
-            lifeExpectancy: flat.lifeExpectancy ?? ASSUMPTIONS_DEFAULTS.lifeExpectancy,
-            priorYearMode: flat.priorYearMode ?? ASSUMPTIONS_DEFAULTS.priorYearMode,
-        },
+        demographics,
         display: {
             useCompactCurrency: flat.useCompactCurrency ?? ASSUMPTIONS_DEFAULTS.useCompactCurrency,
             showExperimentalFeatures: flat.showExperimentalFeatures ?? ASSUMPTIONS_DEFAULTS.showExperimentalFeatures,
             hsaEligible: flat.hsaEligible ?? ASSUMPTIONS_DEFAULTS.hsaEligible,
         },
         priorities: flat.priorities ?? [],
-        withdrawalOrder: flat.withdrawalOrder ?? [],
+        // Top-level Burn-Order array was flattened under the synthetic `burnOrder` key.
+        withdrawalStrategy: flat.burnOrder ?? [],
+        milestones: flat.milestones ?? [],
     };
 }
 
@@ -495,7 +542,15 @@ export function isCompactFormat(data: unknown): data is CompactBackup {
 export function compressData(data: object): string {
     const jsonString = JSON.stringify(data);
     const compressed = pako.deflate(jsonString);
-    return btoa(String.fromCharCode(...compressed));
+    // Build the binary string in chunks: String.fromCharCode(...bytes) spreads the
+    // whole array as arguments and throws RangeError (call-stack overflow) for large
+    // payloads. Chunking keeps each spread well under the argument limit.
+    let binary = '';
+    const CHUNK = 0x8000; // 32 KB
+    for (let i = 0; i < compressed.length; i += CHUNK) {
+        binary += String.fromCharCode(...compressed.subarray(i, i + CHUNK));
+    }
+    return btoa(binary);
 }
 
 /**

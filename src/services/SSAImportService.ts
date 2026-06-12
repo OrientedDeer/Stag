@@ -140,7 +140,10 @@ export function validateEarningsImport(
     warnings.push(`Found ${futureEarnings.length} future year(s) which will be ignored`);
   }
 
-  return { valid: warnings.length === 0, warnings };
+  // `valid` reflects only truly blocking conditions. Having no valid records
+  // is the sole hard block (handled above); all other warnings are advisory and
+  // must NOT block the import.
+  return { valid: earnings.length > 0, warnings };
 }
 
 /**

@@ -26,8 +26,14 @@ import type {
     BudgetState,
 } from './BudgetTypes';
 
-function generateId(prefix: string): string {
-    return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+// Monotonic counter so several ids minted in the same synchronous tick never
+// collide (Date.now() has ms resolution; multiple months can be created in one tick).
+let idCounter = 0;
+export function generateId(prefix: string): string {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return `${prefix}-${crypto.randomUUID()}`;
+    }
+    return `${prefix}-${Date.now()}-${idCounter++}-${Math.floor(Math.random() * 1000)}`;
 }
 
 const now = new Date();
@@ -196,7 +202,7 @@ function budgetReducer(state: BudgetState, action: BudgetAction): BudgetState {
 
             // If target month doesn't exist, we need to create it
             if (!targetMonth) {
-                const newMonthId = `MONTH-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+                const newMonthId = generateId('MONTH');
                 targetMonth = {
                     id: newMonthId,
                     month: toMonth,
@@ -430,11 +436,15 @@ export const BudgetContext = createContext<BudgetContextProps>({
     getCurrentMonth: () => undefined,
 });
 
-function hydrateBudgetState(parsed: unknown, initial: BudgetState): BudgetState {
-    const data = parsed as Record<string, unknown>;
-    if (!data) return initial;
-
-    const months = ((data.months as unknown[]) || []).map((m: unknown) => {
+/**
+ * Reconstitute the date fields of a parsed budget payload's months. JSON
+ * serializes Date as ISO strings; this converts transactions' date/statementDate
+ * and each month's createdAt/updatedAt back into Date instances. Used by both
+ * localStorage hydration and the global backup-import path (useFileManager) so
+ * imported budgets get the same Date typing as persisted ones.
+ */
+export function reconstituteBudgetMonths(rawMonths: unknown): MonthlySnapshot[] {
+    return ((rawMonths as unknown[]) || []).map((m: unknown) => {
         const month = m as Record<string, unknown>;
         const transactions = ((month.transactions as unknown[]) || []).map((t: unknown) => {
             const trans = t as Record<string, unknown>;
@@ -451,6 +461,47 @@ function hydrateBudgetState(parsed: unknown, initial: BudgetState): BudgetState 
             transactions,
         } as MonthlySnapshot;
     });
+}
+
+/**
+ * Reconstitute a parsed budget payload (Date strings -> Date) for import via
+ * SET_BULK_DATA. Returns a Partial<BudgetState> with months' dates rehydrated.
+ * Mirrors the month/importSettings date handling in hydrateBudgetState without
+ * the localStorage-specific selectedMonth/selectedYear defaulting.
+ */
+export function reconstituteBudgetState(parsed: unknown): Partial<BudgetState> {
+    const data = (parsed as Record<string, unknown>) || {};
+    const months = reconstituteBudgetMonths(data.months);
+
+    const importSettingsData = (data.importSettings as Record<string, unknown>) || undefined;
+    if (!importSettingsData) {
+        return { ...data, months };
+    }
+
+    const savedCSVFormats = ((importSettingsData.savedCSVFormats as unknown[]) || []).map((f: unknown) => {
+        const format = f as Record<string, unknown>;
+        return {
+            ...format,
+            lastUsed: format.lastUsed ? new Date(format.lastUsed as string) : new Date(),
+            createdAt: format.createdAt ? new Date(format.createdAt as string) : new Date(),
+        } as SavedCSVMapping;
+    });
+
+    return {
+        ...data,
+        months,
+        importSettings: {
+            ...(importSettingsData as unknown as BudgetState['importSettings']),
+            savedCSVFormats,
+        },
+    };
+}
+
+function hydrateBudgetState(parsed: unknown, initial: BudgetState): BudgetState {
+    const data = parsed as Record<string, unknown>;
+    if (!data) return initial;
+
+    const months = reconstituteBudgetMonths(data.months);
 
     const importSettingsData = (data.importSettings as Record<string, unknown>) || {};
     const savedCSVFormats = ((importSettingsData.savedCSVFormats as unknown[]) || []).map((f: unknown) => {

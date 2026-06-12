@@ -260,12 +260,22 @@ describe('qrUtils', () => {
         expect('linkedAccountId' in result).toBe(false);
       });
 
-      it('should NOT strip empty conversionHistory array (reference comparison)', () => {
-        // Note: stripDefaults uses === for comparison, so [] === [] is false
-        // Empty arrays are NOT stripped because they're different references
+      it('should strip empty conversionHistory array (matches empty default)', () => {
+        // PR #58: corrected — empty default arrays are now compared structurally
+        // and stripped (restoreDefaults re-adds them), instead of bloating the payload.
         const input = { id: 'acc1', conversionHistory: [] };
         const result = stripDefaults(input, 'account');
-        expect(result).toEqual({ id: 'acc1', conversionHistory: [] });
+        expect(result).toEqual({ id: 'acc1' });
+        expect('conversionHistory' in result).toBe(false);
+        // Round-trips: restoreDefaults re-adds the empty array.
+        expect(restoreDefaults(result, 'account').conversionHistory).toEqual([]);
+      });
+
+      it('should strip empty lots array (matches empty default)', () => {
+        // PR #58: empty ESPP `lots: []` default also strips structurally.
+        const input = { id: 'acc1', lots: [] };
+        const result = stripDefaults(input, 'account');
+        expect('lots' in result).toBe(false);
       });
 
       it('should keep non-empty conversionHistory array', () => {
@@ -672,9 +682,11 @@ describe('qrUtils', () => {
       ]);
     });
 
-    it('should preserve non-empty withdrawalOrder array', () => {
+    // PR #58: corrected — the top-level Burn-Order array is `withdrawalStrategy`
+    // (there is no `withdrawalOrder` key), flattened under the synthetic `burnOrder` key.
+    it('should preserve non-empty withdrawalStrategy (burn-order) array under burnOrder', () => {
       const input = {
-        withdrawalOrder: [
+        withdrawalStrategy: [
           { accountId: 'acc1' },
           { accountId: 'acc2' },
         ],
@@ -682,7 +694,7 @@ describe('qrUtils', () => {
 
       const result = flattenAssumptions(input);
 
-      expect(result.withdrawalOrder).toEqual([
+      expect(result.burnOrder).toEqual([
         { accountId: 'acc1' },
         { accountId: 'acc2' },
       ]);
@@ -691,13 +703,14 @@ describe('qrUtils', () => {
     it('should exclude empty arrays', () => {
       const input = {
         priorities: [],
-        withdrawalOrder: [],
+        withdrawalStrategy: [],
       };
 
       const result = flattenAssumptions(input);
 
       expect('priorities' in result).toBe(false);
-      expect('withdrawalOrder' in result).toBe(false);
+      // PR #58: corrected — burn-order flattens to `burnOrder`, not `withdrawalOrder`
+      expect('burnOrder' in result).toBe(false);
     });
   });
 
@@ -801,25 +814,30 @@ describe('qrUtils', () => {
       expect(display.hsaEligible).toBe(true);
     });
 
-    it('should default priorities and withdrawalOrder to empty arrays', () => {
+    // PR #58: corrected — top-level array is `withdrawalStrategy` (burn order),
+    // restored from the flattened `burnOrder` key; `milestones` also defaults to [].
+    it('should default priorities and withdrawalStrategy to empty arrays', () => {
       const input = {};
 
       const result = expandAssumptions(input);
 
       expect(result.priorities).toEqual([]);
-      expect(result.withdrawalOrder).toEqual([]);
+      expect(result.withdrawalStrategy).toEqual([]);
+      expect(result.milestones).toEqual([]);
+      // No phantom withdrawalOrder key is emitted
+      expect('withdrawalOrder' in result).toBe(false);
     });
 
-    it('should preserve provided priorities and withdrawalOrder', () => {
+    it('should preserve provided priorities and withdrawalStrategy (burn order)', () => {
       const input = {
         priorities: [{ type: 'debt', accountId: 'acc1' }],
-        withdrawalOrder: [{ accountId: 'acc2' }],
+        burnOrder: [{ accountId: 'acc2' }],
       };
 
       const result = expandAssumptions(input);
 
       expect(result.priorities).toEqual([{ type: 'debt', accountId: 'acc1' }]);
-      expect(result.withdrawalOrder).toEqual([{ accountId: 'acc2' }]);
+      expect(result.withdrawalStrategy).toEqual([{ accountId: 'acc2' }]);
     });
 
     it('should preserve non-default values when provided', () => {
@@ -861,6 +879,8 @@ describe('qrUtils', () => {
           housingAppreciation: 1.4,
           rentInflation: 1.2,
         },
+        // PR #58: corrected — include the newer investments flags so the expanded
+        // output (which now restores them from defaults) deep-equals the original.
         investments: {
           returnRates: { ror: 5.9 },
           withdrawalStrategy: 'Fixed Real',
@@ -869,6 +889,11 @@ describe('qrUtils', () => {
           gkLowerGuardrail: 0.8,
           gkAdjustmentPercent: 10,
           autoRothConversions: false,
+          rothConversionStrategy: 'rate-match',
+          rothConversionMinRateGap: 0.05,
+          rothConversionDPBackloadDelta: 0.015,
+          taxOptimizationEnabled: false,
+          acaAware: true,
         },
         demographics: {
           birthYear: 1985,
@@ -882,7 +907,10 @@ describe('qrUtils', () => {
           hsaEligible: true,
         },
         priorities: [],
-        withdrawalOrder: [],
+        // PR #58: corrected — real shape uses top-level `withdrawalStrategy` (burn
+        // order) array + `milestones`, not the obsolete `withdrawalOrder` key.
+        withdrawalStrategy: [],
+        milestones: [],
       };
 
       const flattened = flattenAssumptions(original);
@@ -908,6 +936,7 @@ describe('qrUtils', () => {
           housingAppreciation: 2.0,
           rentInflation: 1.5,
         },
+        // PR #58: corrected — include the newer investments flags.
         investments: {
           returnRates: { ror: 7.0 },
           withdrawalStrategy: 'Guardrails',
@@ -916,6 +945,11 @@ describe('qrUtils', () => {
           gkLowerGuardrail: 0.7,
           gkAdjustmentPercent: 15,
           autoRothConversions: true,
+          rothConversionStrategy: 'rate-match',
+          rothConversionMinRateGap: 0.05,
+          rothConversionDPBackloadDelta: 0.015,
+          taxOptimizationEnabled: false,
+          acaAware: true,
         },
         demographics: {
           birthYear: 1990,
@@ -929,7 +963,9 @@ describe('qrUtils', () => {
           hsaEligible: false,
         },
         priorities: [{ type: 'debt', accountId: 'acc1' }],
-        withdrawalOrder: [{ accountId: 'acc2' }],
+        // PR #58: corrected — burn-order array is `withdrawalStrategy`; add `milestones`.
+        withdrawalStrategy: [{ accountId: 'acc2' }],
+        milestones: [],
       };
 
       const flattened = flattenAssumptions(original);
@@ -1015,17 +1051,21 @@ describe('qrUtils', () => {
       expect(priorities[0].cv).toBe(500); // capValue
     });
 
-    it('should exclude empty priorities and withdrawalOrder arrays', () => {
+    // PR #58: corrected — empty burn-order is the top-level `withdrawalStrategy`
+    // array, which flattens to `burnOrder` and must be excluded when empty.
+    it('should exclude empty priorities and withdrawalStrategy (burn-order) arrays', () => {
       const input = {
         macro: { inflationRate: 2.6 },
         priorities: [],
-        withdrawalOrder: [],
+        withdrawalStrategy: [],
+        milestones: [],
       };
 
       const result = compactAssumptions(input);
 
       expect('priorities' in result).toBe(false);
-      expect('withdrawalOrder' in result).toBe(false);
+      expect('bo' in result).toBe(false); // burnOrder short key absent
+      expect('ms' in result).toBe(false); // milestones short key absent
     });
   });
 
@@ -1141,6 +1181,7 @@ describe('qrUtils', () => {
           housingAppreciation: 2.0,
           rentInflation: 1.5,
         },
+        // PR #58: corrected — include the newer investments flags.
         investments: {
           returnRates: { ror: 7.5 },
           withdrawalStrategy: 'Guardrails',
@@ -1149,6 +1190,11 @@ describe('qrUtils', () => {
           gkLowerGuardrail: 0.75,
           gkAdjustmentPercent: 12,
           autoRothConversions: true,
+          rothConversionStrategy: 'rate-match',
+          rothConversionMinRateGap: 0.05,
+          rothConversionDPBackloadDelta: 0.015,
+          taxOptimizationEnabled: false,
+          acaAware: true,
         },
         demographics: {
           birthYear: 1988,
@@ -1164,9 +1210,11 @@ describe('qrUtils', () => {
         priorities: [
           { type: 'debt', accountId: 'acc1' },
         ],
-        withdrawalOrder: [
+        // PR #58: corrected — burn-order array is the top-level `withdrawalStrategy`.
+        withdrawalStrategy: [
           { accountId: 'acc2' },
         ],
+        milestones: [],
       };
 
       const compacted = compactAssumptions(original);
@@ -1773,6 +1821,7 @@ describe('qrUtils', () => {
             housingAppreciation: 1.4,
             rentInflation: 1.2,
           },
+          // PR #58: corrected — include the newer investments flags.
           investments: {
             returnRates: { ror: 5.9 },
             withdrawalStrategy: 'Fixed Real',
@@ -1781,6 +1830,11 @@ describe('qrUtils', () => {
             gkLowerGuardrail: 0.8,
             gkAdjustmentPercent: 10,
             autoRothConversions: false,
+            rothConversionStrategy: 'rate-match',
+            rothConversionMinRateGap: 0.05,
+            rothConversionDPBackloadDelta: 0.015,
+            taxOptimizationEnabled: false,
+            acaAware: true,
           },
           demographics: {
             birthYear: 1985,
@@ -1794,7 +1848,9 @@ describe('qrUtils', () => {
             hsaEligible: true,
           },
           priorities: [],
-          withdrawalOrder: [],
+          // PR #58: corrected — real shape uses top-level `withdrawalStrategy` array + `milestones`.
+          withdrawalStrategy: [],
+          milestones: [],
         },
         amountHistory: {
           acc1: [
@@ -1885,6 +1941,7 @@ describe('qrUtils', () => {
             housingAppreciation: 1.4,
             rentInflation: 1.2,
           },
+          // PR #58: corrected — include the newer investments flags.
           investments: {
             returnRates: { ror: 7.0 }, // non-default
             withdrawalStrategy: 'Guardrails', // non-default
@@ -1893,6 +1950,11 @@ describe('qrUtils', () => {
             gkLowerGuardrail: 0.8,
             gkAdjustmentPercent: 10,
             autoRothConversions: false,
+            rothConversionStrategy: 'rate-match',
+            rothConversionMinRateGap: 0.05,
+            rothConversionDPBackloadDelta: 0.015,
+            taxOptimizationEnabled: false,
+            acaAware: true,
           },
           demographics: {
             birthYear: 1990,
@@ -1906,7 +1968,9 @@ describe('qrUtils', () => {
             hsaEligible: true,
           },
           priorities: [],
-          withdrawalOrder: [],
+          // PR #58: corrected — real shape uses top-level `withdrawalStrategy` array + `milestones`.
+          withdrawalStrategy: [],
+          milestones: [],
         },
         amountHistory: {},
       };
@@ -1931,6 +1995,22 @@ describe('qrUtils', () => {
       expect(typeof result).toBe('string');
       // Base64 characters only
       expect(result).toMatch(/^[A-Za-z0-9+/=]+$/);
+    });
+
+    it('should not RangeError on a large, low-redundancy payload (PR #58)', () => {
+      // String.fromCharCode(...bytes) used to spread the whole deflated array as
+      // arguments and overflow the call stack for large inputs. Use random-ish,
+      // poorly-compressible data so the deflated byte array stays large (>64 KB).
+      const big = {
+        items: Array.from({ length: 20000 }, (_, i) => ({
+          id: `id-${i}-${(i * 2654435761 % 1e9).toString(36)}`,
+          v: Math.sin(i) * 1e6,
+        })),
+      };
+      let compressed = '';
+      expect(() => { compressed = compressData(big); }).not.toThrow();
+      // And it still round-trips.
+      expect(decompressData(compressed)).toEqual(big);
     });
 
     it('should produce smaller output for repetitive data', () => {
@@ -2142,6 +2222,245 @@ describe('qrUtils', () => {
 
       // Large data should exceed the limit
       expect(exceedsQRLimit(compressed)).toBe(true);
+    });
+  });
+
+  // ============================================
+  // PR #58: QR-backup data-loss regression tests
+  // ============================================
+  describe('PR #58 regressions', () => {
+    // FINDING #2: `pp` short-key collision between purchasePrice (ESPP lot)
+    // and projectedPIA (Social Security). An ESPP lot's purchasePrice must
+    // survive a QR round-trip and must NOT be renamed to projectedPIA.
+    it('should preserve ESPP lot purchasePrice through a full backup round-trip', () => {
+      const original = {
+        version: 1,
+        accounts: [
+          {
+            id: 'espp1',
+            className: 'ESPPAccount',
+            name: 'Company ESPP',
+            amount: 0,
+            lots: [
+              {
+                grantDate: '2023-01-01',
+                purchaseDate: '2023-06-30',
+                fmvAtGrant: 100,
+                fmvAtPurchase: 120,
+                purchasePrice: 85, // <-- must survive, must NOT become projectedPIA
+                shares: 50,
+                totalCost: 4250,
+                discountAmount: 750,
+              },
+            ],
+          },
+        ],
+        incomes: [],
+        expenses: [],
+        taxSettings: {
+          filingStatus: 'Single',
+          stateResidency: 'DC',
+          deductionMethod: 'Auto',
+          fedOverride: null,
+          ficaOverride: null,
+          stateOverride: null,
+        },
+        assumptions: {
+          macro: { inflationRate: 2.6, healthcareInflation: 3.9, inflationAdjusted: true },
+          income: { salaryGrowth: 1.0, qualifiesForSocialSecurity: true, socialSecurityFundingPercent: 100 },
+          expenses: { lifestyleCreep: 75.0, housingAppreciation: 1.4, rentInflation: 1.2 },
+          investments: {
+            returnRates: { ror: 5.9 },
+            withdrawalStrategy: 'Fixed Real',
+            withdrawalRate: 4.0,
+            gkUpperGuardrail: 1.2,
+            gkLowerGuardrail: 0.8,
+            gkAdjustmentPercent: 10,
+            autoRothConversions: false,
+            rothConversionStrategy: 'rate-match',
+            rothConversionMinRateGap: 0.05,
+            rothConversionDPBackloadDelta: 0.015,
+            taxOptimizationEnabled: false,
+            acaAware: true,
+          },
+          demographics: { priorYearMode: false },
+          display: { useCompactCurrency: true, showExperimentalFeatures: false, hsaEligible: true },
+          priorities: [],
+          withdrawalStrategy: [],
+          milestones: [],
+        },
+        amountHistory: {},
+      };
+
+      const compacted = createCompactBackup(original);
+      const expanded = expandCompactBackup(compacted);
+
+      const lot = (expanded.accounts[0] as Record<string, unknown>).lots as Array<Record<string, unknown>>;
+      expect(lot[0].purchasePrice).toBe(85);
+      expect('projectedPIA' in lot[0]).toBe(false);
+    });
+
+    it('should keep projectedPIA round-tripping on a Social Security income (no collision)', () => {
+      const income = {
+        className: 'SocialSecurityIncome',
+        id: 'ss1',
+        name: 'Social Security',
+        claimingAge: 67,
+        calculatedPIA: 2500,
+        calculationYear: 2026,
+        projectedPIA: 3100, // distinct from purchasePrice now
+      };
+
+      const shortened = shortenKeys(income) as Record<string, unknown>;
+      const expanded = expandKeys(shortened) as Record<string, unknown>;
+
+      expect(expanded.projectedPIA).toBe(3100);
+      expect('purchasePrice' in expanded).toBe(false);
+    });
+
+    // FINDINGS #1, #4, #6: milestones, top-level withdrawalStrategy burn order,
+    // demographics.priorEarnings, and the newer investments flags must all
+    // survive the compact assumptions round-trip.
+    it('should round-trip milestones, burn-order, priorEarnings, and investment flags', () => {
+      const original = {
+        macro: { inflationRate: 4.0, healthcareInflation: 5.0, inflationAdjusted: false },
+        income: { salaryGrowth: 2.5, qualifiesForSocialSecurity: false, socialSecurityFundingPercent: 75 },
+        expenses: { lifestyleCreep: 60, housingAppreciation: 2.0, rentInflation: 1.5 },
+        investments: {
+          returnRates: { ror: 7.5 },
+          withdrawalStrategy: 'Guardrails',
+          withdrawalRate: 3.5,
+          gkUpperGuardrail: 1.25,
+          gkLowerGuardrail: 0.75,
+          gkAdjustmentPercent: 12,
+          autoRothConversions: true,
+          rothConversionStrategy: 'dp-precomputed', // non-default
+          rothConversionMinRateGap: 0.08, // non-default
+          rothConversionDPBackloadDelta: 0.02, // non-default
+          taxOptimizationEnabled: true, // non-default
+          acaAware: false, // non-default
+        },
+        demographics: {
+          priorYearMode: true,
+          priorEarnings: [
+            { year: 2010, earnings: 50000 },
+            { year: 2011, earnings: 55000 },
+          ],
+        },
+        display: { useCompactCurrency: false, showExperimentalFeatures: true, hsaEligible: false },
+        priorities: [{ type: 'debt', accountId: 'acc1' }],
+        withdrawalStrategy: [
+          { id: 'w1', name: 'Brokerage', accountId: 'acc1' },
+          { id: 'w2', name: 'Roth', accountId: 'acc2', maxAmount: 10000 },
+        ],
+        milestones: [
+          {
+            id: 'BUILTIN_BIRTH',
+            name: 'Birth',
+            conditions: [{ type: 'YEAR', operator: '=', value: 1980 }],
+            color: 'var(--c-accent-soft)',
+          },
+          {
+            id: 'BUILTIN_RETIRE',
+            name: 'Retire',
+            conditions: [{ type: 'AGE', operator: '>=', value: 58 }],
+            color: 'var(--c-positive-soft)',
+          },
+          {
+            id: 'BUILTIN_END_OF_PLAN',
+            name: 'End of Plan',
+            conditions: [{ type: 'AGE', operator: '>=', value: 92 }],
+            color: 'var(--c-content-subtle)',
+          },
+        ],
+      };
+
+      const compacted = compactAssumptions(original);
+      const expanded = expandCompactAssumptions(compacted);
+
+      // Top-level burn-order array survives (and is NOT the investments string)
+      expect(expanded.withdrawalStrategy).toEqual(original.withdrawalStrategy);
+      expect((expanded.investments as Record<string, unknown>).withdrawalStrategy).toBe('Guardrails');
+      // Milestones survive
+      expect(expanded.milestones).toEqual(original.milestones);
+      // priorEarnings survive
+      expect((expanded.demographics as Record<string, unknown>).priorEarnings).toEqual(
+        original.demographics.priorEarnings
+      );
+      // Investment flags survive
+      const inv = expanded.investments as Record<string, unknown>;
+      expect(inv.rothConversionStrategy).toBe('dp-precomputed');
+      expect(inv.rothConversionMinRateGap).toBe(0.08);
+      expect(inv.rothConversionDPBackloadDelta).toBe(0.02);
+      expect(inv.taxOptimizationEnabled).toBe(true);
+      expect(inv.acaAware).toBe(false);
+
+      // No phantom withdrawalOrder key
+      expect('withdrawalOrder' in expanded).toBe(false);
+    });
+
+    it('should round-trip the new fields when embedded in a full backup', () => {
+      const original = {
+        version: 1,
+        accounts: [],
+        incomes: [],
+        expenses: [],
+        taxSettings: {
+          filingStatus: 'Single',
+          stateResidency: 'DC',
+          deductionMethod: 'Auto',
+          fedOverride: null,
+          ficaOverride: null,
+          stateOverride: null,
+        },
+        assumptions: {
+          macro: { inflationRate: 2.6, healthcareInflation: 3.9, inflationAdjusted: true },
+          income: { salaryGrowth: 1.0, qualifiesForSocialSecurity: true, socialSecurityFundingPercent: 100 },
+          expenses: { lifestyleCreep: 75.0, housingAppreciation: 1.4, rentInflation: 1.2 },
+          investments: {
+            returnRates: { ror: 5.9 },
+            withdrawalStrategy: 'Fixed Real',
+            withdrawalRate: 4.0,
+            gkUpperGuardrail: 1.2,
+            gkLowerGuardrail: 0.8,
+            gkAdjustmentPercent: 10,
+            autoRothConversions: false,
+            rothConversionStrategy: 'rate-match',
+            rothConversionMinRateGap: 0.05,
+            rothConversionDPBackloadDelta: 0.015,
+            taxOptimizationEnabled: true, // non-default
+            acaAware: false, // non-default
+          },
+          demographics: {
+            priorYearMode: false,
+            priorEarnings: [{ year: 2015, earnings: 80000 }],
+          },
+          display: { useCompactCurrency: true, showExperimentalFeatures: false, hsaEligible: true },
+          priorities: [],
+          withdrawalStrategy: [{ id: 'w1', name: 'Brokerage', accountId: 'acc1' }],
+          milestones: [
+            {
+              id: 'BUILTIN_BIRTH',
+              name: 'Birth',
+              conditions: [{ type: 'YEAR', operator: '=', value: 1992 }],
+              color: 'var(--c-accent-soft)',
+            },
+          ],
+        },
+        amountHistory: {},
+      };
+
+      const compacted = createCompactBackup(original);
+      const expanded = expandCompactBackup(compacted);
+      const a = expanded.assumptions as Record<string, unknown>;
+
+      expect(a.milestones).toEqual(original.assumptions.milestones);
+      expect(a.withdrawalStrategy).toEqual(original.assumptions.withdrawalStrategy);
+      expect((a.demographics as Record<string, unknown>).priorEarnings).toEqual(
+        original.assumptions.demographics.priorEarnings
+      );
+      expect((a.investments as Record<string, unknown>).taxOptimizationEnabled).toBe(true);
+      expect((a.investments as Record<string, unknown>).acaAware).toBe(false);
     });
   });
 });

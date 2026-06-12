@@ -114,6 +114,32 @@ describe('applyTransactions', () => {
         expect(credit.isPossibleCredit).toBe(true);
     });
 
+    it('mints distinct month ids when one merge creates several months in a tick (Finding #10)', () => {
+        // generateMonthId used to be `MONTH-${Date.now()}-${rand(1000)}`, which
+        // collided when several months were created in one synchronous merge.
+        const blob: MergeBlob = { version: 1, accounts: [], amountHistory: {} };
+        const incoming: Transaction[] = [];
+        // One transaction in each of many distinct months -> each forces a new snapshot.
+        for (let i = 0; i < 24; i++) {
+            const year = 2026 + Math.floor(i / 12);
+            const monthNum = (i % 12) + 1;
+            incoming.push(
+                txn({
+                    id: `t${i}`,
+                    date: `${year}-${String(monthNum).padStart(2, '0')}-15`,
+                    amount: -10,
+                    description: `TXN ${i}`,
+                })
+            );
+        }
+
+        applyTransactions(blob, incoming, { dedup: 'id' });
+
+        const ids = blob.budget!.months.map(m => m.id);
+        expect(ids.length).toBe(24);
+        expect(new Set(ids).size).toBe(24); // all distinct
+    });
+
     it('tolerates a v1 blob with no budget container', () => {
         const blob: MergeBlob = { version: 1, accounts: [], amountHistory: {} };
         const report = applyTransactions(blob, [

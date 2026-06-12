@@ -34,6 +34,7 @@ export function useDebouncedLocalStorage<T>(
         }
 
         timeoutRef.current = setTimeout(() => {
+            timeoutRef.current = null;
             try {
                 localStorage.setItem(key, serializer(valueRef.current));
             } catch (e) {
@@ -47,6 +48,40 @@ export function useDebouncedLocalStorage<T>(
             }
         };
     }, [key, value, serializer, delay]);
+
+    // Flush any pending debounced write synchronously when the page is being
+    // unloaded (hard reload, tab close, or backgrounding). The React unmount
+    // cleanup below does NOT run on a real browser unload, so without this a
+    // value changed within the debounce window would be lost.
+    useEffect(() => {
+        const flush = () => {
+            if (timeoutRef.current === null) {
+                // No pending write — nothing to flush.
+                return;
+            }
+            clearTimeout(timeoutRef.current);
+            timeoutRef.current = null;
+            try {
+                localStorage.setItem(keyRef.current, serializerRef.current(valueRef.current));
+            } catch (e) {
+                console.error('Failed to flush localStorage on page unload:', e);
+            }
+        };
+
+        const onVisibilityChange = () => {
+            if (document.visibilityState === 'hidden') {
+                flush();
+            }
+        };
+
+        window.addEventListener('pagehide', flush);
+        document.addEventListener('visibilitychange', onVisibilityChange);
+
+        return () => {
+            window.removeEventListener('pagehide', flush);
+            document.removeEventListener('visibilitychange', onVisibilityChange);
+        };
+    }, []);
 
     // Write immediately on unmount to ensure data is not lost
     useEffect(() => {
