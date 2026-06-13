@@ -1,4 +1,4 @@
-import { useContext, useMemo, useCallback } from "react";
+import { useContext, useMemo, useCallback, useState } from "react";
 import { IncomeContext } from "../../components/Objects/Income/IncomeContext";
 import { ExpenseContext } from "../../components/Objects/Expense/ExpenseContext";
 import { TaxContext } from "../../components/Objects/Taxes/TaxContext";
@@ -18,6 +18,7 @@ import {
 } from "../../components/Objects/Taxes/TaxService";
 import { CurrencyInput } from "../../components/Layout/InputFields/CurrencyInput";
 import { DropdownInput } from "../../components/Layout/InputFields/DropdownInput";
+import { NumberInput } from "../../components/Layout/InputFields/NumberInput";
 import { DeductionMethod } from "../../components/Objects/Taxes/TaxContext";
 import { Panel } from "../../components/Layout/Primitives";
 import { Tooltip } from "../../components/Layout/InputFields/Tooltip";
@@ -29,7 +30,36 @@ export default function TaxesTab() {
     const { incomes } = useContext(IncomeContext);
     const { expenses } = useContext(ExpenseContext);
     const { state, dispatch } = useContext(TaxContext);
-    const { state: assumptions } = useContext(AssumptionsContext);
+    const { state: assumptions, dispatch: assumptionsDispatch } = useContext(AssumptionsContext);
+
+    // Future tax-law modeling (assumptions.macro.taxBracketShiftPct). The
+    // current-year estimate always uses current law; this only affects the
+    // projection. Mode is local UI state so typing the % to 0 doesn't collapse
+    // the inputs out from under the user.
+    const shiftPct = assumptions.macro.taxBracketShiftPct ?? 0;
+    const shiftStartYear = assumptions.macro.taxBracketShiftStartYear ?? 0;
+    const nextYear = new Date().getFullYear() + 1;
+    const [taxLawMode, setTaxLawMode] = useState<'current' | 'adjust'>(shiftPct !== 0 ? 'adjust' : 'current');
+
+    const onTaxLawModeChange = useCallback((mode: string) => {
+        if (mode === 'adjust') {
+            setTaxLawMode('adjust');
+            if ((assumptions.macro.taxBracketShiftPct ?? 0) === 0) {
+                assumptionsDispatch({ type: 'UPDATE_MACRO', payload: { taxBracketShiftPct: 5, taxBracketShiftStartYear: assumptions.macro.taxBracketShiftStartYear || nextYear } });
+            }
+        } else {
+            setTaxLawMode('current');
+            assumptionsDispatch({ type: 'UPDATE_MACRO', payload: { taxBracketShiftPct: 0 } });
+        }
+    }, [assumptions.macro.taxBracketShiftPct, assumptions.macro.taxBracketShiftStartYear, assumptionsDispatch, nextYear]);
+
+    const onShiftPctChange = useCallback((val: number) => {
+        assumptionsDispatch({ type: 'UPDATE_MACRO', payload: { taxBracketShiftPct: val } });
+    }, [assumptionsDispatch]);
+
+    const onShiftStartYearChange = useCallback((val: number) => {
+        assumptionsDispatch({ type: 'UPDATE_MACRO', payload: { taxBracketShiftStartYear: val } });
+    }, [assumptionsDispatch]);
 
     const {
         filingStatus,
@@ -222,6 +252,41 @@ export default function TaxesTab() {
                                         <p className="text-[11px] text-warning-soft mt-2 italic leading-tight">
                                             Tip: Your itemized deductions (${federalItemizedTotal.toLocaleString()}) are higher than the standard deduction.
                                         </p>
+                                    )}
+                                </div>
+
+                                {/* Future Tax Law */}
+                                <div className="pt-6 border-t border-border-subtle space-y-3">
+                                    <h3 className="text-xs font-semibold text-content-muted uppercase tracking-wider">Future Tax Law</h3>
+                                    <DropdownInput
+                                        label="Projection uses"
+                                        onChange={onTaxLawModeChange}
+                                        options={[
+                                            { value: 'current', label: 'Current tax law' },
+                                            { value: 'adjust', label: 'Adjust tax brackets' },
+                                        ]}
+                                        value={taxLawMode}
+                                        tooltip="How the projection models federal income tax in future years. The current-year estimate above always uses current law."
+                                    />
+                                    {taxLawMode === 'adjust' && (
+                                        <>
+                                            <NumberInput
+                                                label="Rate change (percentage points)"
+                                                value={shiftPct}
+                                                onChange={onShiftPctChange}
+                                                min={-50}
+                                                max={50}
+                                                tooltip="Added to every federal marginal rate from the start year on — e.g. +5 turns the 22% bracket into 27%. Use a negative value to model lower future rates."
+                                            />
+                                            <NumberInput
+                                                label="Starting year"
+                                                value={shiftStartYear > 0 ? shiftStartYear : nextYear}
+                                                onChange={onShiftStartYearChange}
+                                                min={new Date().getFullYear()}
+                                                max={new Date().getFullYear() + 60}
+                                                tooltip="The first year the adjustment applies. Defaults to next year; set e.g. 2026 to model the TCJA sunset."
+                                            />
+                                        </>
                                     )}
                                 </div>
 

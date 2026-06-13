@@ -98,6 +98,18 @@ export interface AssumptionsState {
     inflationRate: number;       // e.g., 3.0
     healthcareInflation: number; // e.g., 5.0
     inflationAdjusted: boolean;   // usually true (pegged to inflation)
+    /**
+     * Future federal tax regime. 0 = current tax law. A non-zero value shifts
+     * every federal ordinary-income marginal RATE by that many percentage
+     * points (e.g. +5 turns the 22% bracket into 27%), clamped to [0, 100],
+     * for projected years on/after `taxBracketShiftStartYear`. Models "I think
+     * future taxes will be higher/lower" / a TCJA-style sunset. State tax and
+     * the current-year snapshot are unaffected.
+     */
+    taxBracketShiftPct?: number;
+    /** Year the bracket shift takes effect. Defaults to next year (so this
+     *  year's taxes stay current-law); set e.g. 2026 to model TCJA. */
+    taxBracketShiftStartYear?: number;
   };
   income: {
     salaryGrowth: number;        // e.g., 3.0
@@ -165,6 +177,8 @@ export const defaultAssumptions: AssumptionsState = {
   macro: {
     inflationRate: 2.6,
     healthcareInflation: 3.9,
+    taxBracketShiftPct: 0,
+    taxBracketShiftStartYear: 0,
     inflationAdjusted: true,
   },
   income: {

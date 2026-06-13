@@ -82,6 +82,37 @@ function findNearestYear(
     );
 }
 
+/**
+ * Apply the "future tax regime" bracket shift
+ * (assumptions.macro.taxBracketShiftPct): bump every FEDERAL ordinary-income
+ * marginal rate by N percentage points, clamped to [0, 1], for years on/after
+ * the start year. No-op for state tax, a zero shift, or years before the start
+ * (default: next year, so the current-year snapshot stays current-law).
+ * Thresholds and LTCG brackets are untouched — this models "future rates will
+ * be higher/lower" / a TCJA-style sunset, not bracket-creep.
+ */
+function applyBracketShift(
+    params: TaxParameters | undefined,
+    year: number,
+    authority: "federal" | "state",
+    assumptions: AssumptionsState,
+): TaxParameters | undefined {
+    if (!params || authority !== "federal") return params;
+    const pct = assumptions.macro.taxBracketShiftPct ?? 0;
+    if (!pct) return params;
+    const configuredStart = assumptions.macro.taxBracketShiftStartYear ?? 0;
+    const startYear = configuredStart > 0 ? configuredStart : new Date().getFullYear() + 1;
+    if (year < startYear) return params;
+    const delta = pct / 100;
+    return {
+        ...params,
+        brackets: params.brackets.map(b => ({
+            ...b,
+            rate: Math.min(1, Math.max(0, b.rate + delta)),
+        })),
+    };
+}
+
 export function getTaxParameters(
     year: number,
     filingStatus: FilingStatus,
@@ -92,6 +123,7 @@ export function getTaxParameters(
         macro: { ...defaultAssumptions.macro, inflationAdjusted: false },
     }
 ): TaxParameters | undefined {
+    const shift = (p: TaxParameters | undefined) => applyBracketShift(p, year, authority, assumptions);
     let inflation = assumptions.macro.inflationRate / 100;
     // The default-param above only fills in when the WHOLE assumptions arg is
     // undefined; a partial object missing inflationRate yields NaN, which would
@@ -137,7 +169,7 @@ export function getTaxParameters(
             threshold: Math.round(bracket.threshold * inflationMultiplier),
         }));
 
-        return {
+        return shift({
             ...baseYearParams,
             standardDeduction: Math.round(
                 baseYearParams.standardDeduction * inflationMultiplier
@@ -172,11 +204,11 @@ export function getTaxParameters(
                     ),
                 },
             }),
-        };
+        });
     }
 
     if (sourceData[closestYear]) {
-        return sourceData[closestYear][filingStatus];
+        return shift(sourceData[closestYear][filingStatus]);
     }
 
     // State tables may not cover every federal year (e.g. California has no 2024
@@ -185,5 +217,5 @@ export function getTaxParameters(
     // actually present so the gap doesn't return undefined → $0 tax.
     const nearestYear = findNearestYear(sourceData, year);
     if (nearestYear === undefined) return undefined;
-    return sourceData[nearestYear]?.[filingStatus];
+    return shift(sourceData[nearestYear]?.[filingStatus]);
 }
