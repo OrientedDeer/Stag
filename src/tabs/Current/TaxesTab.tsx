@@ -228,7 +228,11 @@ export default function TaxesTab() {
                                 {/* Manual Overrides Section */}
                                 <div className="pt-6 border-t border-border-subtle space-y-4">
                                     <h3 className="text-xs font-semibold text-content-muted uppercase tracking-wider">Manual Overrides</h3>
-                                    
+                                    <p className="text-xs text-content-subtle">
+                                        Applies to this year's estimate only — overrides are no longer
+                                        carried flat into your projection.
+                                    </p>
+
                                     <div className="space-y-4">
                                         <div>
                                             <CurrencyInput

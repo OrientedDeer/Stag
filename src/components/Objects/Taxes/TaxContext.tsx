@@ -8,6 +8,13 @@ export interface TaxState {
   filingStatus: FilingStatus;
   stateResidency: string;
   deductionMethod: DeductionMethod;
+  /**
+   * Dollar tax overrides. These apply to the CURRENT year only (the snapshot
+   * and the projection's year 0) — the engine clears them for every future
+   * year, so a current-year correction no longer pins a flat amount across the
+   * projection. (Carrying a correction forward as a % — calibration — is a
+   * planned follow-up.)
+   */
   fedOverride: number | null;
   ficaOverride: number | null;
   stateOverride: number | null;

@@ -280,6 +280,19 @@ export const runSimulation = (
     const currentFica = TaxService.calculateFicaTax(taxState, resolvedIncomes, startYear, assumptions);
     const currentTotalTax = currentFed + currentState + currentFica;
 
+    // Dollar tax overrides apply to the CURRENT year only (year 0, computed
+    // above with the overrides intact). Every projected (future) year uses a
+    // scoped copy with the overrides cleared — so a current-year correction
+    // (notably a FICA override, the only one the projection's tax path actually
+    // honored) no longer pins a flat amount across decades. Carrying a
+    // correction forward as a percentage is the next step (calibration).
+    const futureTaxState: TaxState = {
+        ...taxState,
+        fedOverride: null,
+        ficaOverride: null,
+        stateOverride: null,
+    };
+
     const currentLivingExpenses = expenses.reduce((sum, exp) => sum + exp.getAnnualAmount(startYear), 0);
 
     // For Year 0, discretionary is what's left over from your current input data
@@ -488,7 +501,7 @@ export const runSimulation = (
                 simulationYear - 1, // sub-sim starts AFTER previous year, ends at rmdYear
                 subAccounts, subIncomes, subExpenses,
                 subTimeline, subActiveMilestones, subReachYears,
-                assumptions, taxState, birthYear,
+                assumptions, futureTaxState, birthYear,
             );
         }
         : undefined;
@@ -503,7 +516,7 @@ export const runSimulation = (
         previousActiveMilestones: [],
         milestoneReachYears: new Map(),
         assumptions,
-        taxState,
+        taxState: futureTaxState,
         yearlyReturns,
         conversionMode,
         baselineProvider,
