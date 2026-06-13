@@ -40,8 +40,10 @@ import {
 } from '../../services/SocialSecurityCalculator';
 import {
     getMedianRetirementTaxRate,
-    findRothConversionWindows
+    findRothConversionWindows,
+    analyzeRothPreTaxAllocation
 } from '../../services/TaxOptimizationService';
+import type { RothPreTaxAllocation, AllocationVerdict } from '../../services/TaxOptimizationService';
 import { get401kLimit, getHSALimit, getIRALimit } from '../../data/ContributionLimits';
 import { calculateEffectiveConversionTax } from '../../components/Objects/Assumptions/SimulationEngine';
 import {
@@ -3709,58 +3711,53 @@ function PensionDebugTab() {
 // ============================================================================
 
 // --- Section 1: Recommendation Summary ---
-function RothRecommendationSummary({ currentRate, retirementRate, currentFedRate, currentStateRate, retirementFedRate, retirementStateRate }: {
-    currentRate: number;
-    retirementRate: number;
-    currentFedRate: number;
-    currentStateRate: number;
-    retirementFedRate: number;
-    retirementStateRate: number;
-}) {
-    const diff = currentRate - retirementRate;
-    const verdict = diff > 0.02 ? 'pretax' : diff < -0.02 ? 'roth' : 'close';
+const VERDICT_LABEL: Record<AllocationVerdict, { text: string; cls: string }> = {
+    'optimal': { text: 'Optimal', cls: 'text-positive-bright' },
+    'should-be-roth': { text: 'Should be Roth', cls: 'text-positive-bright' },
+    'should-be-pretax': { text: 'Should be Pre-Tax', cls: 'text-info-bright' },
+    'lean-roth': { text: 'Lean Roth', cls: 'text-positive' },
+    'lean-pretax': { text: 'Lean Pre-Tax', cls: 'text-info' },
+    'either-fine': { text: 'Either is fine', cls: 'text-warning-bright' },
+};
 
-    const bannerStyles = {
-        pretax: 'bg-info-tint/30 border-info-strong/50',
-        roth: 'bg-positive-tint/30 border-positive-strong/50',
-        close: 'bg-warning-tint/30 border-warning-strong/50'
-    };
-    const textStyles = {
-        pretax: 'text-info-bright',
-        roth: 'text-positive-bright',
-        close: 'text-warning-bright'
-    };
-    const verdictText = {
-        pretax: 'Pre-Tax Wins',
-        roth: 'Roth Wins',
-        close: 'Close Call'
-    };
-    const explanations = {
-        pretax: `Your current marginal rate (${(currentRate * 100).toFixed(1)}%) is higher than your projected retirement rate (${(retirementRate * 100).toFixed(1)}%). Every $1 contributed pre-tax saves you ${(currentRate * 100).toFixed(1)}% today; you'll only pay ${(retirementRate * 100).toFixed(1)}% on withdrawal.`,
-        roth: `Your projected retirement rate (${(retirementRate * 100).toFixed(1)}%) exceeds your current marginal rate (${(currentRate * 100).toFixed(1)}%). Paying tax now at the lower rate and withdrawing tax-free is more efficient.`,
-        close: `Your current rate (${(currentRate * 100).toFixed(1)}%) and retirement rate (${(retirementRate * 100).toFixed(1)}%) are within 2% of each other. Consider splitting contributions or using bracket-filling strategies.`
-    };
+function RothPreTaxAllocationDebug({ allocation }: { allocation: RothPreTaxAllocation }) {
+    const v = VERDICT_LABEL[allocation.verdict];
+    const rothPct = Math.round(allocation.rothFraction * 100);
+    const basisLabel = allocation.futureRateBasis === 'rmd-year'
+        ? 'first RMD year (marginal)'
+        : 'median retirement (fallback — no RMD years)';
+    const gapCls = allocation.rateGap > 0 ? 'text-positive' : allocation.rateGap < 0 ? 'text-info' : 'text-warning';
 
     return (
         <div className="space-y-4">
-            <div className={`p-4 rounded-lg border ${bannerStyles[verdict]}`}>
-                <h3 className={`text-2xl font-bold ${textStyles[verdict]} text-center`}>{verdictText[verdict]}</h3>
+            <div className="p-3 rounded-lg border bg-surface-overlay border-border-default flex items-center justify-between">
+                <span className="text-content-muted text-sm">Verdict</span>
+                <span className={`text-xl font-bold ${v.cls}`}>{v.text}</span>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-                <div className="bg-surface-overlay p-4 rounded-lg text-center">
-                    <span className="text-content-muted text-sm">Current Marginal Rate</span>
-                    <p className="text-white text-2xl font-bold">{(currentRate * 100).toFixed(1)}%</p>
-                    <p className="text-content-muted text-xs mt-1">Fed: {(currentFedRate * 100).toFixed(1)}% | State: {(currentStateRate * 100).toFixed(1)}%</p>
-                    <p className="text-content-subtle text-xs">FICA excluded (applies to both paths)</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-surface-overlay p-3 rounded-lg text-center">
+                    <span className="text-content-muted text-xs">Current Marginal</span>
+                    <p className="text-white text-lg font-bold">{(allocation.currentRate * 100).toFixed(1)}%</p>
                 </div>
-                <div className="bg-surface-overlay p-4 rounded-lg text-center">
-                    <span className="text-content-muted text-sm">Projected Retirement Rate</span>
-                    <p className="text-white text-2xl font-bold">{(retirementRate * 100).toFixed(1)}%</p>
-                    <p className="text-content-muted text-xs mt-1">Fed: {(retirementFedRate * 100).toFixed(1)}% | State: {(retirementStateRate * 100).toFixed(1)}%</p>
-                    <p className="text-content-subtle text-xs">Median effective rate in retirement</p>
+                <div className="bg-surface-overlay p-3 rounded-lg text-center">
+                    <span className="text-content-muted text-xs">Future Marginal</span>
+                    <p className="text-white text-lg font-bold">{(allocation.futureRate * 100).toFixed(1)}%</p>
+                    <p className="text-content-subtle text-xs">{basisLabel}</p>
+                </div>
+                <div className="bg-surface-overlay p-3 rounded-lg text-center">
+                    <span className="text-content-muted text-xs">Rate Gap</span>
+                    <p className={`text-lg font-bold ${gapCls}`}>{allocation.rateGap >= 0 ? '+' : ''}{(allocation.rateGap * 100).toFixed(1)}%</p>
+                    <p className="text-content-subtle text-xs">future − current</p>
+                </div>
+                <div className="bg-surface-overlay p-3 rounded-lg text-center">
+                    <span className="text-content-muted text-xs">Current Split</span>
+                    <p className="text-white text-lg font-bold">{rothPct}% Roth</p>
+                    <p className="text-content-subtle text-xs">{toCurrencyShort(allocation.current401kSplit.preTax)} PT / {toCurrencyShort(allocation.current401kSplit.roth)} Roth</p>
                 </div>
             </div>
-            <p className="text-content-default text-sm">{explanations[verdict]}</p>
+            <p className="text-content-subtle text-xs">
+                Positive gap → future rate higher → Roth wins. Negative → Pre-Tax wins. Within ±2% reads as "either fine."
+            </p>
         </div>
     );
 }
@@ -3938,7 +3935,10 @@ function ConversionWindowsAnalysis({ windows, windowSummary }: {
     return (
         <Panel className="rounded-lg">
             <h3 className="text-lg font-semibold text-white mb-4">Conversion Windows</h3>
-            <p className="text-content-muted text-sm mb-4">Years where Roth conversions can be done at rates below your retirement rate. Effective rate includes the SS "tax torpedo" effect.</p>
+            <p className="text-content-muted text-sm mb-1">Years where Roth conversions can be done at rates below your retirement rate. Effective rate includes the SS "tax torpedo" effect.</p>
+            <p className="text-warning/70 text-xs mb-4">
+                Hypothetical opportunity heuristic ("convert up to the income where your marginal rate reaches the retirement rate") — <em>not</em> what the simulation actually converted. For realized conversions (rate-match or DP) see the Roth Debug tab.
+            </p>
 
             {windowSummary && (
                 <div className="bg-surface-overlay p-3 rounded-lg mb-4 flex flex-wrap gap-4 text-sm">
@@ -4019,7 +4019,10 @@ function RothVsPreTaxComparison({ comparisons }: { comparisons: ContributionComp
     return (
         <Panel className="rounded-lg">
             <h3 className="text-lg font-semibold text-white mb-4">Roth vs Pre-Tax Contribution Comparison</h3>
-            <p className="text-content-muted text-sm mb-4">Compares the after-tax terminal wealth of contributing the full 401k limit as all pre-tax vs all Roth.</p>
+            <p className="text-content-muted text-sm mb-1">Compares the after-tax terminal wealth of contributing the full 401k limit as all pre-tax vs all Roth.</p>
+            <p className="text-warning/70 text-xs mb-4">
+                Illustrative projection only — simplified assumptions (flat growth, an approximate 15% long-term-capital-gains drag on reinvested pre-tax savings, and today's marginal rate vs the median <em>effective</em> retirement rate). The authoritative Roth-vs-Pre-Tax call is the marginal-to-marginal verdict in "Contribution Recommendation" above.
+            </p>
 
             {comparisons.map((comp, idx) => (
                 <div key={idx} className="mb-6 last:mb-0">
@@ -4097,45 +4100,17 @@ function RothAnalysisDebugTab() {
     const retirementYear = birthYear + retirementAge;
     const ror = (assumptions.investments?.returnRates?.ror / 100) || 0.07;
 
-    // --- Section 1 Data: Current vs Retirement Rate ---
-    const rateComparison = useMemo(() => {
+    // --- Section 1: production Roth-vs-Pre-Tax verdict (same fn the Tax Optimization tab uses) ---
+    const allocation = useMemo(
+        () => analyzeRothPreTaxAllocation(simulation, assumptions, taxState),
+        [simulation, assumptions, taxState]
+    );
+
+    // --- Section 5 input: median effective retirement rate (drives the illustrative projection) ---
+    const retirementEffectiveRate = useMemo(() => {
         if (simulation.length === 0) return null;
-
-        // Current marginal rate (fed + state, no FICA)
-        const firstYear = simulation[0];
-        const grossIncome = getGrossIncome(firstYear.incomes, firstYear.year);
-        const preTaxDeductions = getPreTaxExemptions(firstYear.incomes, firstYear.year, currentAge);
-        const marginal = getCombinedMarginalRate(grossIncome, preTaxDeductions, taxState, firstYear.year, assumptions, false);
-
-        // Retirement rate: median effective fed+state rate
-        const retirementEffective = getMedianRetirementTaxRate(simulation, retirementYear);
-
-        // Get retirement fed vs state breakdown from median year
-        const retirementYears = simulation.filter(s => s.year >= retirementYear);
-        let retFed = 0, retState = 0;
-        if (retirementYears.length > 0) {
-            const fedRates = retirementYears.map(sy => {
-                const inc = sy.cashflow.totalIncome;
-                return inc > 0 ? sy.taxDetails.fed / inc : 0;
-            }).sort((a, b) => a - b);
-            const stateRates = retirementYears.map(sy => {
-                const inc = sy.cashflow.totalIncome;
-                return inc > 0 ? sy.taxDetails.state / inc : 0;
-            }).sort((a, b) => a - b);
-            const mid = Math.floor(fedRates.length / 2);
-            retFed = fedRates.length % 2 === 0 ? (fedRates[mid - 1] + fedRates[mid]) / 2 : fedRates[mid];
-            retState = stateRates.length % 2 === 0 ? (stateRates[mid - 1] + stateRates[mid]) / 2 : stateRates[mid];
-        }
-
-        return {
-            currentRate: marginal.federal + marginal.state,
-            currentFedRate: marginal.federal,
-            currentStateRate: marginal.state,
-            retirementRate: retirementEffective,
-            retirementFedRate: retFed,
-            retirementStateRate: retState
-        };
-    }, [simulation, taxState, assumptions, currentAge, retirementYear]);
+        return getMedianRetirementTaxRate(simulation, retirementYear);
+    }, [simulation, retirementYear]);
 
     // --- Section 2 Data: Tax Rate Timeline ---
     const timelineData = useMemo((): TimelineRow[] => {
@@ -4241,7 +4216,7 @@ function RothAnalysisDebugTab() {
     const conversionWindowData = useMemo(() => {
         if (simulation.length === 0) return { windows: [] as ConversionWindowRow[], summary: null };
 
-        const opportunities = findRothConversionWindows(simulation, assumptions);
+        const opportunities = findRothConversionWindows(simulation, assumptions, taxState);
         if (opportunities.length === 0) return { windows: [] as ConversionWindowRow[], summary: null };
 
         const windows: ConversionWindowRow[] = opportunities.map(opp => {
@@ -4318,7 +4293,7 @@ function RothAnalysisDebugTab() {
 
         if (workIncomes.length === 0) return [];
 
-        const retirementRate = rateComparison?.retirementRate || 0.15;
+        const retirementRate = retirementEffectiveRate || 0.15;
         const yearsToRetirement = Math.max(1, retirementAge - currentAge);
         const capGainsRate = 0.15; // Approximate long-term capital gains rate
 
@@ -4413,7 +4388,7 @@ function RothAnalysisDebugTab() {
                 optimalSplit
             };
         });
-    }, [simulation, incomes, taxState, assumptions, currentYear, currentAge, retirementAge, ror, rateComparison]);
+    }, [simulation, incomes, taxState, assumptions, currentYear, currentAge, retirementAge, ror, retirementEffectiveRate]);
 
     if (simulation.length === 0) {
         return <div className="text-content-muted text-center py-8">No simulation data. Run a simulation first.</div>;
@@ -4421,13 +4396,16 @@ function RothAnalysisDebugTab() {
 
     return (
         <div className="space-y-6">
-            {/* Section 1: Recommendation Summary */}
+            {/* Section 1: Production Roth-vs-Pre-Tax verdict */}
             <Panel className="rounded-lg">
-                <h3 className="text-lg font-semibold text-white mb-4">Contribution Recommendation</h3>
-                {rateComparison ? (
-                    <RothRecommendationSummary {...rateComparison} />
+                <h3 className="text-lg font-semibold text-white mb-1">Contribution Recommendation</h3>
+                <p className="text-content-muted text-sm mb-4">
+                    Live output of <code className="text-content-default">analyzeRothPreTaxAllocation</code> — the same diagnostic the Tax Optimization tab renders. Compares today's marginal rate to the marginal rate when Traditional dollars come back out (first RMD year; median retirement if there are no RMD years). Fed + state, FICA excluded.
+                </p>
+                {allocation ? (
+                    <RothPreTaxAllocationDebug allocation={allocation} />
                 ) : (
-                    <p className="text-content-muted">Unable to calculate rate comparison.</p>
+                    <p className="text-content-muted">No current 401(k) employee contributions — this diagnostic doesn't apply.</p>
                 )}
             </Panel>
 
