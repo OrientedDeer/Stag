@@ -860,13 +860,24 @@ export function isExpenseActiveInCurrentMonth(expense: AnyExpense): boolean {
  * Done expenses are hidden from the active list by default (but kept for the
  * record). Mortgages are intentionally excluded — even with the loan paid off
  * they carry ongoing escrow costs (taxes, insurance, HOA).
+ *
+ * Goals route through the shared endDate semantics below (`goalEndsBeforeYear`):
+ * a `targetDate` goal is done after its target year, and a `recurring` goal is
+ * done only if it carries an explicit "stop replacing it" end date that has
+ * passed — a recurring goal with NO end date recurs forever and never finishes.
+ * This keeps the active-list gate aligned with the funding cap, the annual
+ * set-aside, and the simulation's purchase loop so they can't disagree.
  */
 export function isExpenseDone(expense: AnyExpense): boolean {
   const now = new Date();
+  if (isLongTermGoal(expense)) {
+    // A goal is done once its (type-aware) end has passed. A recurring goal
+    // with no end date never finishes; getGoalFundMonthlyCap / the sim engine
+    // keep funding and replacing it.
+    return goalEndsBeforeYear(expense, now.getFullYear());
+  }
   if (expense.endDate && new Date(expense.endDate) < now) return true;
   if (expense instanceof LoanExpense && expense.amount <= 0) return true;
-  // A one-time goal is done once its target (endDate) has passed — covered by
-  // the endDate check above. Recurring goals never finish.
   return false;
 }
 
@@ -879,6 +890,28 @@ export function isLongTermGoal(expense: AnyExpense): boolean {
 function monthsBetween(from: Date, to: Date): number {
   const months = (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth());
   return Math.max(0, months);
+}
+
+/**
+ * Single source of truth for a goal's type-aware end semantics: has the goal's
+ * saving/replacing window closed strictly before `year`?
+ *
+ * - 'targetDate': done after its target year (the goal's `endDate`). The funding
+ *   set-aside and the lump both stop after the target.
+ * - 'recurring': a recurring goal recurs forever UNLESS the user gave it an
+ *   explicit "stop replacing it" end date; honor that date when present, but a
+ *   recurring goal with NO end date never ends.
+ *
+ * All goal surfaces — the monthly funding cap (`getGoalFundMonthlyCap`), the
+ * annual set-aside (`goalMonthsActiveInYear`), the active-list gate
+ * (`isExpenseDone`), and the simulation's purchase loop — defer to this so they
+ * can't disagree if a stale `endDate` lingers (e.g. left over from a
+ * targetDate→recurring kind switch). Goal dates are local-midnight; read with
+ * local getFullYear to avoid timezone shift.
+ */
+export function goalEndsBeforeYear(goal: AnyExpense, year: number): boolean {
+  if (!goal.endDate) return false; // no end date ⇒ recurs forever (and targetDate has none)
+  return new Date(goal.endDate).getFullYear() < year;
 }
 
 /**
@@ -946,8 +979,10 @@ export function getGoalFundMonthlyCap(
   return goals.reduce((sum, goal) => {
     const startYear = (goal.startDate ? new Date(goal.startDate) : new Date()).getFullYear();
     if (year < startYear) return sum; // not saving yet for this goal
-    if (goal.goalType === 'targetDate' && goal.endDate
-        && new Date(goal.endDate).getFullYear() < year) return sum; // already purchased
+    // Past the goal's type-aware end (targetDate target, or a recurring goal's
+    // explicit "stop replacing it" date) we no longer reserve — matching the
+    // annual set-aside (goalMonthsActiveInYear) and the sim's purchase loop.
+    if (goalEndsBeforeYear(goal, year)) return sum; // already purchased / stopped
     return sum + getGoalMonthlySetAside(goal);
   }, 0);
 }
@@ -959,19 +994,23 @@ export function getGoalFundMonthlyCap(
  * years this equals monthsBetween(start, end) exactly, so a goal funded at its
  * monthly set-aside lands on its total by the target — mid-year starts and the
  * partial final year are handled instead of charging a full 12 months.
+ *
+ * The "is the goal already over?" decision defers to `goalEndsBeforeYear` so a
+ * recurring goal with no end date saves every full year (recurs forever), while
+ * any goal carrying an end date stops after it — keeping this in lockstep with
+ * getGoalFundMonthlyCap and isExpenseDone.
  * Goal dates are local-midnight; read with local accessors to avoid timezone shift.
  */
 function goalMonthsActiveInYear(goal: AnyExpense, year: number): number {
   const start = goal.startDate ? new Date(goal.startDate) : new Date();
   const startYear = start.getFullYear();
   if (year < startYear) return 0;
+  if (goalEndsBeforeYear(goal, year)) return 0; // window closed (type-aware end)
   const from = year === startYear ? start.getMonth() : 0;
   let to = 12;
   if (goal.endDate) {
     const end = new Date(goal.endDate);
-    const endYear = end.getFullYear();
-    if (year > endYear) return 0;
-    if (year === endYear) to = end.getMonth();
+    if (year === end.getFullYear()) to = end.getMonth(); // partial final year
   }
   return Math.max(0, to - from);
 }

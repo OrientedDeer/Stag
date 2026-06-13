@@ -12,6 +12,7 @@ import {
   getGoalMonthlySetAside,
   getGoalFundMonthlyCap,
   getGoalFundAnnualSetAside,
+  isExpenseDone,
   DependentExpense,
   VacationExpense,
   OtherExpense,
@@ -1286,6 +1287,54 @@ describe('Expense Models', () => {
       expect(getGoalFundAnnualSetAside([goal], 'acc-fund', 2026)).toBeCloseTo(3000, 5); // Oct–Dec
       expect(getGoalFundAnnualSetAside([goal], 'acc-fund', 2027)).toBeCloseTo(12000, 5);
       expect(getGoalFundAnnualSetAside([goal], 'acc-fund', 2035)).toBeCloseTo(12000, 5); // recurs forever
+    });
+
+    // #83: the monthly cap (PriorityTab) and the annual set-aside (sim engine +
+    // charts) must agree on a goal's end semantics even when an endDate lingers.
+    // Previously getGoalFundMonthlyCap only honored endDate for 'targetDate'
+    // goals, so a recurring goal carrying an endDate kept a nonzero $/mo cap
+    // while goalMonthsActiveInYear (and the sim) reserved $0 past that year.
+    describe('#83: cap, set-aside, and done-status agree on goalType-aware endDate', () => {
+      const makeRecurring = (opts: { endDate?: Date } = {}) => {
+        const goal = new OtherExpense('exp-rg', 'Roof', 36000, 'Monthly', new Date(2026, 0, 1));
+        goal.goalType = 'recurring';
+        goal.intervalYears = 3; // $1,000/mo
+        goal.goalAccountId = 'acc-fund';
+        if (opts.endDate) goal.endDate = opts.endDate;
+        return goal;
+      };
+
+      it('recurring goal with NO endDate: cap, set-aside, and done all say it never finishes', () => {
+        const goal = makeRecurring();
+        // Funds every full year forever; never done.
+        expect(getGoalFundMonthlyCap([goal], 'acc-fund', 2040)).toBeCloseTo(1000, 5);
+        expect(getGoalFundAnnualSetAside([goal], 'acc-fund', 2040)).toBeCloseTo(12000, 5);
+        expect(isExpenseDone(goal)).toBe(false);
+      });
+
+      it('recurring goal WITH an endDate: cap and set-aside both stop after it (no disagreement)', () => {
+        // "Stop replacing it" at end of 2029 (the sim engine stops the lump and
+        // the set-aside after endDate.year < year; the cap must match).
+        const goal = makeRecurring({ endDate: new Date(2029, 0, 1) });
+        // In the saving window both surfaces fund.
+        expect(getGoalFundMonthlyCap([goal], 'acc-fund', 2028)).toBeCloseTo(1000, 5);
+        expect(getGoalFundAnnualSetAside([goal], 'acc-fund', 2028)).toBeCloseTo(12000, 5);
+        // After the end year, both reserve $0 — the regression was cap > 0 here.
+        expect(getGoalFundMonthlyCap([goal], 'acc-fund', 2030)).toBe(0);
+        expect(getGoalFundAnnualSetAside([goal], 'acc-fund', 2030)).toBe(0);
+      });
+
+      it('isExpenseDone is goalType-aware: recurring-with-past-end is done, no-end recurring is not', () => {
+        const ended = makeRecurring({ endDate: new Date(2000, 0, 1) }); // long past
+        expect(isExpenseDone(ended)).toBe(true);
+        const forever = makeRecurring();
+        expect(isExpenseDone(forever)).toBe(false);
+        // A targetDate goal still respects its own past target.
+        const target = makeGoal(36000, 2010, 2013);
+        expect(isExpenseDone(target)).toBe(true);
+        const futureTarget = makeGoal(36000, 2030, 2033);
+        expect(isExpenseDone(futureTarget)).toBe(false);
+      });
     });
 
     it('getGoalFundMonthlyCap returns undefined for accounts that are not goal funds', () => {
