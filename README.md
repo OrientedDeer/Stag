@@ -104,7 +104,7 @@ The simulation accounts for interactions between these systems—like how Roth c
 - **Nivo** for charts and visualizations
 - **LocalStorage** for data persistence (no backend required)
 - **Web Crypto API** for client-side encryption (AES-256-GCM, PBKDF2)
-- **AWS** (Cognito, Lambda, S3, API Gateway) for optional cloud backup
+- **Optional cloud backup** — Google sign-in + a zero-knowledge encrypted-blob store (the server only ever holds ciphertext). Self-host the whole stack with the [`selfhost/`](selfhost) Docker bundle — see the [self-hosting guide](docs/SELF_HOSTING_PLAN.md).
 
 ---
 
