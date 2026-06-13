@@ -1,4 +1,4 @@
-import { memo, useContext, useState, useEffect, useCallback, ReactElement } from "react";
+import { memo, useContext, ReactElement } from "react";
 import {
     AnyExpense,
     RentExpense,
@@ -94,19 +94,11 @@ function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
     const { dispatch: accountDispatch } = useContext(AccountDispatchContext);
     const { state: assumptions } = useContext(AssumptionsContext);
     const forceExact = assumptions.display?.useCompactCurrency === false;
-    const [dateError, setDateError] = useState<string | undefined>();
-
-    const validateDates = useCallback((start: Date | undefined, end: Date | undefined) => {
-        if (start && end && end < start) {
-            setDateError("End date must be after start date");
-        } else {
-            setDateError(undefined);
-        }
-    }, []);
-
-    useEffect(() => {
-        validateDates(expense.startDate, expense.endDate);
-    }, [expense.startDate, expense.endDate, validateDates]);
+    // Purely derived from the two dates — compute during render rather than via
+    // setState in an effect (which causes cascading renders; react-hooks flags it).
+    const dateError = expense.startDate && expense.endDate && expense.endDate < expense.startDate
+        ? "End date must be after start date"
+        : undefined;
 
     const isHousing = expense instanceof RentExpense || expense instanceof MortgageExpense;
 
@@ -208,8 +200,17 @@ function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
     // default so the set-aside isn't 0 until the user types one.
     const handleGoalTypeChange = (next: 'recurring' | 'targetDate'): void => {
         handleFieldUpdate("goalType", next);
-        if (next === 'recurring' && !(expense.intervalYears && expense.intervalYears > 0)) {
-            handleFieldUpdate("intervalYears", DEFAULT_GOAL_INTERVAL_YEARS);
+        if (next === 'recurring') {
+            // Recurring goals have no end date — the next purchase is start +
+            // k*interval (mirrors AddExpenseModal, which never sets endDate on a
+            // recurring goal). A leftover targetDate endDate would suppress the
+            // recurring lump and halt the fund's accrual past that year, and a
+            // past endDate would mark the goal "done" (#67).
+            if (expense.endDate) handleFieldUpdate("endDate", undefined);
+            if (expense.endMilestoneId) handleFieldUpdate("endMilestoneId", undefined);
+            if (!(expense.intervalYears && expense.intervalYears > 0)) {
+                handleFieldUpdate("intervalYears", DEFAULT_GOAL_INTERVAL_YEARS);
+            }
         }
     };
 
@@ -296,7 +297,9 @@ function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
                                 id={`${expense.id}-interval-years`}
                                 label="Every (years)"
                                 value={expense.intervalYears ?? DEFAULT_GOAL_INTERVAL_YEARS}
-                                onChange={(val) => handleFieldUpdate("intervalYears", val)}
+                                // Ignore a transient 0 (field cleared to retype): an
+                                // interval of 0 silently zeroes the set-aside (#67).
+                                onChange={(val) => { if (val >= 1) handleFieldUpdate("intervalYears", val); }}
                                 tooltip="How often this expense recurs, in years."
                             />
                         )}
