@@ -328,6 +328,60 @@ export function getMedianRetirementTaxRate(simulation: SimulationYear[], retirem
 }
 
 /**
+ * Ordinary AGI for a simulation year — the income that federal bracket thresholds
+ * apply to, before the standard deduction. Built the way the engine's tax pipeline
+ * is, so headroom/recommendation math lines up with the real projection:
+ *
+ * - `getGrossIncome(simYear.incomes)` excludes RMD-sourced PassiveIncomes (they're
+ *   filtered out of the stored `incomes` array) and non-RMD Traditional withdrawals
+ *   (those live in `cashflow.withdrawalDetail`), so both are added back here — they
+ *   are ordinary income.
+ * - Social Security is reduced from its full benefit to the taxable portion (≤85%).
+ * - Capital gains / qualified dividends are intentionally NOT included: they're taxed
+ *   on a separate schedule (`taxDetails.capitalGains`), not as ordinary income.
+ *
+ * Callers subtract the federal standard deduction to get bracket-space taxable income.
+ *
+ * @param includeConversion whether to add the year's modeled Roth conversion. Pass
+ *   false (default) when estimating the room available *before* a conversion.
+ */
+export function getOrdinaryAGI(
+    simYear: SimulationYear,
+    age: number,
+    filingStatus: TaxState['filingStatus'],
+    includeConversion = false,
+): number {
+    const incomeFromObjects = TaxService.getGrossIncome(simYear.incomes, simYear.year);
+    const ssBenefits = TaxService.getSocialSecurityBenefits(simYear.incomes, simYear.year);
+    const preTaxDeductions = TaxService.getPreTaxExemptions(simYear.incomes, simYear.year, age);
+    const rmd = simYear.rmdDetails?.totalWithdrawn ?? 0;
+    const conversion = includeConversion ? (simYear.rothConversion?.amount ?? 0) : 0;
+
+    // Non-RMD Traditional withdrawals: cross-reference withdrawalDetail (keyed by
+    // account name) against this year's Traditional 401(k)/IRA accounts. RMDs are
+    // not in withdrawalDetail, so this sum is already RMD-free.
+    const traditionalAccountNames = new Set(
+        simYear.accounts
+            .filter((acc): acc is InvestedAccount =>
+                acc instanceof InvestedAccount &&
+                (acc.taxType === 'Traditional 401k' || acc.taxType === 'Traditional IRA'))
+            .map(acc => acc.name)
+    );
+    let traditionalNonRMDWithdrawals = 0;
+    for (const [name, amount] of Object.entries(simYear.cashflow.withdrawalDetail || {})) {
+        if (traditionalAccountNames.has(name)) traditionalNonRMDWithdrawals += amount;
+    }
+
+    // AGI excluding SS is the provisional-income base for the SS-taxability calc.
+    const agiExcludingSS = Math.max(
+        0,
+        incomeFromObjects - ssBenefits + rmd + traditionalNonRMDWithdrawals + conversion - preTaxDeductions
+    );
+    const taxableSS = TaxService.getTaxableSocialSecurityBenefits(ssBenefits, agiExcludingSS, 0, filingStatus);
+    return agiExcludingSS + taxableSS;
+}
+
+/**
  * Find years with low marginal rates suitable for Roth conversions.
  * Calculates optimal conversion amount based on retirement tax rate.
  */
@@ -351,21 +405,25 @@ export function findRothConversionWindows(
         // Only consider post-retirement years (when income typically drops)
         if (age < retirementAge) continue;
 
-        // Calculate taxable income
-        const grossIncome = TaxService.getGrossIncome(simYear.incomes, simYear.year);
-        const preTaxDeductions = TaxService.getPreTaxExemptions(simYear.incomes, simYear.year, age);
-        const taxableIncome = Math.max(0, grossIncome - preTaxDeductions);
-
-        // Get federal tax parameters
+        // Federal tax parameters for this year + filing status.
+        const filingStatus = taxState?.filingStatus ?? 'Single';
         const fedParams = TaxService.getTaxParameters(
             simYear.year,
-            taxState?.filingStatus ?? 'Single',
+            filingStatus,
             'federal',
             undefined,
             assumptions
         );
 
         if (!fedParams) continue;
+
+        // Ordinary taxable income in the same space as the bracket thresholds
+        // (i.e. post standard deduction). getOrdinaryAGI reduces SS to its taxable
+        // portion and adds the RMD / Traditional withdrawals missing from
+        // simYear.incomes; the conversion is excluded since we're sizing the room
+        // available before converting.
+        const ordinaryAGI = getOrdinaryAGI(simYear, age, filingStatus);
+        const taxableIncome = Math.max(0, ordinaryAGI - fedParams.standardDeduction);
 
         // Get current bracket info
         const marginalInfo = TaxService.getMarginalTaxRate(taxableIncome, fedParams);

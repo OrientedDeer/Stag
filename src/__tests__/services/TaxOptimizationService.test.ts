@@ -15,6 +15,8 @@ import {
     generateRecommendations,
     getMedianRetirementTaxRate,
     findRothConversionWindows,
+    getOrdinaryAGI,
+    getIncomeThresholdForRate,
     generateTaxProjections,
     analyzeConversionPlan,
     TaxAnalysis,
@@ -33,7 +35,8 @@ import { InvestedAccount } from '../../components/Objects/Accounts/models';
 import { SimulationYear } from '../../services/simulation/types';
 import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../components/Objects/Taxes/TaxContext';
-import { WorkIncome, PassiveIncome } from '../../components/Objects/Income/models';
+import { WorkIncome, PassiveIncome, CurrentSocialSecurityIncome } from '../../components/Objects/Income/models';
+import { getTaxParameters } from '../../components/Objects/Taxes/TaxService';
 
 // ============================================================================
 // Helper Functions for Creating Test Data
@@ -758,6 +761,56 @@ describe('getMedianRetirementTaxRate', () => {
 // findRothConversionWindows Tests
 // ============================================================================
 
+describe('getOrdinaryAGI', () => {
+    const filingStatus = 'Single' as const;
+    const baseYear = (year: number): SimulationYear => createMockSimulationYear({ year, incomes: [] });
+
+    it('counts RMDs as ordinary income (they are filtered out of simYear.incomes)', () => {
+        const simYear = baseYear(2043);
+        simYear.rmdDetails = { totalRMD: 40000, totalWithdrawn: 40000, accountBreakdown: [], shortfall: 0, penalty: 0 };
+        expect(getOrdinaryAGI(simYear, 73, filingStatus)).toBe(40000);
+    });
+
+    it('counts non-RMD Traditional withdrawals as ordinary income', () => {
+        const simYear = baseYear(2040);
+        simYear.accounts = [new InvestedAccount('t1', 'My Trad', 500000, 0, 0, 0.1, 'Traditional 401k')];
+        simYear.cashflow.withdrawalDetail = { 'My Trad': 20000 };
+        expect(getOrdinaryAGI(simYear, 70, filingStatus)).toBe(20000);
+    });
+
+    it('does NOT count Roth or brokerage withdrawals as ordinary income', () => {
+        const simYear = baseYear(2040);
+        simYear.accounts = [
+            new InvestedAccount('r1', 'My Roth', 300000, 0, 0, 0.1, 'Roth IRA'),
+            new InvestedAccount('b1', 'My Brokerage', 300000, 0, 0, 0.1, 'Brokerage'),
+        ];
+        simYear.cashflow.withdrawalDetail = { 'My Roth': 30000, 'My Brokerage': 15000 };
+        expect(getOrdinaryAGI(simYear, 70, filingStatus)).toBe(0);
+    });
+
+    it('reduces Social Security to its taxable portion, not the full benefit', () => {
+        const simYear = baseYear(2040);
+        simYear.incomes = [new CurrentSocialSecurityIncome('ss1', 'Social Security', 30000, 'Annually',
+            new Date('2040-01-01'), new Date('2040-12-31'))];
+        // $30k SS, no other income → provisional income $15k < $25k threshold → 0% taxable.
+        const agi = getOrdinaryAGI(simYear, 70, filingStatus);
+        expect(agi).toBeLessThan(30000); // the full-benefit bug would yield 30000
+        expect(agi).toBe(0);
+    });
+
+    it('excludes the modeled conversion by default, includes it when asked', () => {
+        const simYear = baseYear(2040);
+        simYear.accounts = [new InvestedAccount('t1', 'My Trad', 500000, 0, 0, 0.1, 'Traditional 401k')];
+        simYear.cashflow.withdrawalDetail = { 'My Trad': 20000 };
+        simYear.rothConversion = {
+            amount: 10000, taxCost: 1200, federalTaxCost: 1200, stateTaxCost: 0, taxAfter: 0,
+            fromAccounts: {}, toAccounts: {}, fromAccountIds: {}, toAccountIds: {},
+        };
+        expect(getOrdinaryAGI(simYear, 70, filingStatus, false)).toBe(20000);
+        expect(getOrdinaryAGI(simYear, 70, filingStatus, true)).toBe(30000);
+    });
+});
+
 describe('findRothConversionWindows', () => {
     const birthYear = 1970;
     const retirementAge = 65;
@@ -818,12 +871,37 @@ describe('findRothConversionWindows', () => {
 
             const result = findRothConversionWindows(simulation, assumptions);
 
-            // Low income should create opportunity
-            expect(result.length).toBeGreaterThanOrEqual(0);
-            // If there are results, they should have low marginal rate
-            if (result.length > 0) {
-                expect(result[0].marginalRate).toBeLessThan(0.22); // Less than MIN_CONVERSION_TARGET_RATE
-            }
+            // A genuinely low-income retirement year must surface an opportunity.
+            expect(result.length).toBeGreaterThanOrEqual(1);
+            expect(result[0].marginalRate).toBeLessThan(0.22); // Less than MIN_CONVERSION_TARGET_RATE
+        });
+
+        it('applies the standard deduction when sizing headroom (regression: not gross/AGI)', () => {
+            const retirementYear = birthYear + retirementAge;
+            const grossOrdinary = 30000;
+            const rental = new PassiveIncome(
+                'rental', 'Rental Income', grossOrdinary, 'Annually', 'No', 'Rental',
+                new Date(`${retirementYear}-01-01`), new Date(`${retirementYear}-12-31`)
+            );
+            // Retiree with only rental income: negligible federal tax, no FICA/state,
+            // so the projected retirement target rate falls back to 22%.
+            const simulation = [createMockSimulationYear({
+                year: retirementYear, totalIncome: grossOrdinary,
+                fedTax: 1000, stateTax: 0, ficaTax: 0, incomes: [rental],
+            })];
+
+            const result = findRothConversionWindows(simulation, assumptions, createTestTaxState());
+            expect(result.length).toBe(1);
+
+            const fedParams = getTaxParameters(retirementYear, 'Single', 'federal', undefined, assumptions)!;
+            const taxableIncome = Math.max(0, grossOrdinary - fedParams.standardDeduction);
+            const expectedOptimal = getIncomeThresholdForRate(0.22, fedParams) - taxableIncome;
+            expect(result[0].optimalConversionAmount).toBeCloseTo(expectedOptimal, 0);
+
+            // The pre-fix value (no standard deduction) would be smaller by exactly
+            // one standard deduction — guard against regressing to that.
+            const buggyOptimal = getIncomeThresholdForRate(0.22, fedParams) - grossOrdinary;
+            expect(result[0].optimalConversionAmount - buggyOptimal).toBeCloseTo(fedParams.standardDeduction, 0);
         });
     });
 
