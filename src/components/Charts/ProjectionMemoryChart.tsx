@@ -85,10 +85,13 @@ export function ProjectionMemoryChart({ yearRange }: Props = {}): ReactElement {
     const SliceTooltip = ({ slice }: { slice: { points: readonly SlicePoint[] } }) => {
         const pts = slice.points;
         if (!pts.length) return null;
-        // Show the prominent series (Actual / Projected now) by name; vintages
-        // would clutter, so summarize them.
+        // Name the prominent series (Actual / Projected now); summarize the past
+        // predictions (the faint vintage lines) as the range of what they
+        // forecast for this year — that spread is the useful comparison.
         const prominent = pts.filter(p => p.seriesId === 'Actual' || p.seriesId === 'Projected (now)');
-        const vintageCount = pts.length - prominent.length;
+        const vintageVals = pts.filter(p => p.seriesId !== 'Actual' && p.seriesId !== 'Projected (now)').map(p => p.data.y);
+        const vMin = vintageVals.length ? Math.min(...vintageVals) : 0;
+        const vMax = vintageVals.length ? Math.max(...vintageVals) : 0;
         return (
             <ChartTooltipPortal>
                 <div className="bg-surface-overlay p-3 rounded border border-border-default shadow-xl text-xs min-w-37.5">
@@ -104,9 +107,14 @@ export function ProjectionMemoryChart({ yearRange }: Props = {}): ReactElement {
                                 </span>
                             </div>
                         ))}
-                        {vintageCount > 0 && (
-                            <div className="text-content-subtle pt-1">
-                                + {vintageCount} past prediction{vintageCount > 1 ? 's' : ''}
+                        {vintageVals.length > 0 && (
+                            <div className="flex justify-between gap-4 pt-1 border-t border-border-strong/50">
+                                <span className="text-content-subtle">
+                                    {vintageVals.length === 1 ? 'Earlier prediction:' : `Earlier predictions (${vintageVals.length}):`}
+                                </span>
+                                <span className="font-mono text-content-subtle">
+                                    {vMin === vMax ? formatCompactCurrency(vMin) : `${formatCompactCurrency(vMin)}–${formatCompactCurrency(vMax)}`}
+                                </span>
                             </div>
                         )}
                     </div>
