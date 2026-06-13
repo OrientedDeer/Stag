@@ -578,8 +578,12 @@ export function buildDPYearContexts(
             // age-63/64 MAGI, which the conversion can't retroactively raise).
             // Fall back to same-year pricing when the lookback MAGI is missing
             // (e.g. lookback year predates the baseline timeline).
+            // Window = the IRMAA lookback (ages 65-66 are billed on age-63/64
+            // MAGI), NOT the tail-skip width — they're equal today but mean
+            // different things, so key off the lookback to stay correct if the
+            // tail-skip width is ever tuned independently.
             const isMedicareHeadYear =
-                age < MEDICARE_ELIGIBILITY_AGE + IRMAA_HORIZON_EDGE_YEARS;
+                age < MEDICARE_ELIGIBILITY_AGE + IRMAA_LOOKBACK_YEARS;
             const lookbackMagi = isMedicareHeadYear
                 ? baselineMagiByYear.get(simYear.year - IRMAA_LOOKBACK_YEARS)
                 : undefined;

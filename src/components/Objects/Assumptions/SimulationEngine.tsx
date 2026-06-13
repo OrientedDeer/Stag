@@ -2,7 +2,7 @@
 // Thin orchestrator - delegates to focused service modules.
 
 import { AnyAccount } from "../../Objects/Accounts/models";
-import { AnyExpense, MortgageExpense, LoanExpense, isLongTermGoal, isGoalDueInYear, getGoalFundAnnualSetAside } from "../Expense/models";
+import { AnyExpense, MortgageExpense, LoanExpense, isLongTermGoal, isGoalDueInYear, getGoalFundAnnualSetAside, goalEndsBeforeYear } from "../Expense/models";
 import { AnyIncome, WorkIncome, PassiveIncome } from "../../Objects/Income/models";
 import { AssumptionsState, getBirthYear, BUILTIN_MILESTONE_IDS } from "./AssumptionsContext";
 import { TaxState } from "../../Objects/Taxes/TaxContext";
@@ -588,9 +588,10 @@ function simulateOneYearWithNewEngine(
     // ------------------------------------------------------------------
     for (const exp of fundedGoals) {
         if (!isGoalDueInYear(exp, year)) continue;
-        // A recurring goal can carry an end date (when to stop replacing it);
-        // don't fire the lump after it.
-        if (exp.endDate && new Date(exp.endDate).getFullYear() < year) continue;
+        // Past a goal's type-aware end (a recurring goal's "stop replacing it"
+        // date, or a targetDate target) we don't fire the lump — shared with the
+        // funding cap / set-aside / active-list via goalEndsBeforeYear.
+        if (goalEndsBeforeYear(exp, year)) continue;
         const fund = nextAccounts.find(a => a.id === exp.goalAccountId);
         if (!fund) continue;
         const spent = Math.min(fund.amount, exp.amount);
