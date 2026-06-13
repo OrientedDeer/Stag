@@ -552,7 +552,9 @@ function ESPPAccountFields({ account, onFieldUpdate, onAddLot, onEditLot, onDele
                     id={`${account.id}-share-price`}
                     label="Current Share Price"
                     value={account.currentSharePrice ?? 0}
-                    onChange={(val) => onFieldUpdate("currentSharePrice", Number.isFinite(val) ? val : undefined)}
+                    // Treat 0 as "unset": readers do `currentSharePrice ?? derived`,
+                    // and 0 ?? x === 0 would value every lot at $0 (account unsellable).
+                    onChange={(val) => onFieldUpdate("currentSharePrice", val || undefined)}
                     tooltip="Current price per share for easier value tracking"
                 />
                 <ToggleInput
@@ -810,7 +812,9 @@ function RSUAccountFields({ account, onFieldUpdate, onDeleteLot }: RSUAccountFie
                     id={`${account.id}-rsu-share-price`}
                     label="Current Share Price"
                     value={account.currentSharePrice ?? 0}
-                    onChange={(val) => onFieldUpdate("currentSharePrice", Number.isFinite(val) ? val : undefined)}
+                    // Treat 0 as "unset": readers do `currentSharePrice ?? derived`,
+                    // and 0 ?? x === 0 would value every lot at $0 (account unsellable).
+                    onChange={(val) => onFieldUpdate("currentSharePrice", val || undefined)}
                     tooltip="Current price per share. Seeds the projected fair-market value at each vest."
                 />
                 <ToggleInput

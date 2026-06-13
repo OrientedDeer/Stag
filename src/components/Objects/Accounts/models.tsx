@@ -1157,6 +1157,14 @@ export class RSUAccount extends BaseAccount {
     // (gainPerShare / totalValue computed off currentSharePrice) tracks the
     // compounding account balance. Otherwise a set price stays frozen while
     // `amount` grows, and the two valuations diverge year over year.
+    //
+    // NOTE: existing holdings here appreciate at the account return rate, while
+    // FUTURE grants' cost basis is projected at the income's separate
+    // `rsuExpectedStockGrowth` (see projectFMVAtVest in RSUVesting.ts). These are
+    // deliberately distinct quantities — "how my vested shares grow" vs "what the
+    // stock will be worth when later grants vest" — but if a user sets the two
+    // rates differently, new-lot basis and the account's price drift apart over a
+    // long horizon. Acceptable by design; flagged so it doesn't look accidental.
     const newSharePrice =
       this.currentSharePrice !== undefined
         ? this.currentSharePrice * returnRate

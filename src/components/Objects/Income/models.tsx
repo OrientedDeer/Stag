@@ -454,8 +454,14 @@ export class WorkIncome extends BaseIncome {
       const vestYear = grantYear + Math.floor(totalMonths / 12);
       if (vestYear !== year) continue;
       const vestMonth = ((totalMonths % 12) + 12) % 12;
+      // Clamp the day to the vest month's length so a day-29–31 grant doesn't
+      // overflow into the next month (e.g. a Jan-31 grant's Feb tranche would be
+      // new Date(y, 1, 31) → Mar 3), which would shift the lot's short/long-term
+      // and minimum-holding-period boundary by a few days.
+      const lastDayOfVestMonth = new Date(vestYear, vestMonth + 1, 0).getDate();
+      const vestDay = Math.min(grantDay, lastDayOfVestMonth);
       events.push({
-        vestDate: new Date(vestYear, vestMonth, grantDay),
+        vestDate: new Date(vestYear, vestMonth, vestDay),
         shares: tranche.shares,
       });
     }

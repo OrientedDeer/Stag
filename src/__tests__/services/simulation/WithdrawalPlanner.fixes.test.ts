@@ -21,7 +21,7 @@ import {
     grossUpDivisor,
 } from '../../../services/simulation/WithdrawalPlanner';
 import { AccountBalanceSnapshot } from '../../../services/simulation/types';
-import { InvestedAccount } from '../../../components/Objects/Accounts/models';
+import { InvestedAccount, RSUAccount } from '../../../components/Objects/Accounts/models';
 import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
 
 const YEAR = 2025;
@@ -144,5 +144,33 @@ describe('Bug #14: gross-up divisor is guarded against >= 1 effective rates', ()
         const hsaW = result.withdrawals.find(w => w.source === 'hsa')!;
         expect(Number.isFinite(hsaW.gross)).toBe(true);
         expect(hsaW.gross).toBeGreaterThan(0);
+    });
+});
+
+// =============================================================================
+// §1211(b): a NET realized capital loss offsets at most $3,000 of other income.
+// The cap must apply to the year's AGGREGATE (totalSTCG + totalLTCG), not per
+// bucket or per sale — a both-underwater RSU pool otherwise piped a loss many
+// times the limit into the unfloored SS-taxability and state-tax bases.
+// =============================================================================
+describe('§1211(b): RSU net capital loss capped at $3,000 on the aggregate', () => {
+    it('caps the combined ST+LT loss when BOTH buckets are underwater', () => {
+        // Two 1,000-share lots, $40 basis, current price $25 → -$15/sh each. One
+        // long-term (vested 2023), one short-term (vested Jan 2025). FIFO sells
+        // both, realizing an LT loss AND an ST loss; raw net is ~-$27k.
+        const ltLot = { id: 'lt', grantDate: new Date(2022, 0, 1), vestDate: new Date(2023, 0, 1), fmvAtVest: 40, shares: 1000, costBasis: 40000 };
+        const stLot = { id: 'st', grantDate: new Date(2025, 0, 1), vestDate: new Date(2025, 0, 1), fmvAtVest: 40, shares: 1000, costBasis: 40000 };
+        const rsu = new RSUAccount('rsu-1', 'Company RSU', 50000, [ltLot, stLot], null, undefined, 'CO', 25, 'fifo', 0);
+
+        const result = planWithdrawals(
+            45000, [createAccountSnapshot(rsu, new Date(YEAR, 5, 15))], 66, YEAR,
+            taxStateFor('Texas'), 0, undefined,
+        );
+
+        // Both buckets sold at a loss...
+        expect(result.totalSTCG).toBeLessThan(0);
+        expect(result.totalLTCG).toBeLessThan(0);
+        // ...but the NET reported loss is the §1211 cap, not the raw ~-$27k.
+        expect(result.totalSTCG + result.totalLTCG).toBeCloseTo(-3000, 0);
     });
 });

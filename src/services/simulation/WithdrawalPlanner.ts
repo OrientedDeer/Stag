@@ -1244,16 +1244,14 @@ export function planWithdrawals(
                     const ltcgTax = rawLtcgTax;
                     const actualTax = stcgTax + ltcgTax;
                     const netReceived = grossToWithdraw - actualTax;
-                    // Realized capital gains reported downstream (MAGI/NIIT). A net
-                    // loss is capped at the $3,000 annual limit so it can't over-
-                    // reduce MAGI; positive gains pass through in full.
-                    const netCapitalGain = rsuSTCG + rsuLTCG;
-                    const reportedSTCG = netCapitalGain < 0
-                        ? Math.max(rsuSTCG, -ANNUAL_CAPITAL_LOSS_LIMIT)
-                        : rsuSTCG;
-                    const reportedLTCG = netCapitalGain < 0 && rsuSTCG >= 0
-                        ? Math.max(rsuLTCG, -ANNUAL_CAPITAL_LOSS_LIMIT)
-                        : rsuLTCG;
+                    // Report the raw realized gains/losses for this sale. The
+                    // §1211(b) $3,000 net-loss limit is applied ONCE on the year's
+                    // aggregate (totalSTCG + totalLTCG) just before this planner
+                    // returns — capping here per-sale or per-bucket let an underwater
+                    // pool, or N underwater accounts, pipe a loss many times the limit
+                    // into the (unfloored) SS-taxability and state-tax bases.
+                    const reportedSTCG = rsuSTCG;
+                    const reportedLTCG = rsuLTCG;
 
                     withdrawal = {
                         source: 'rsu',
@@ -1349,6 +1347,27 @@ export function planWithdrawals(
             amount: remainingNetNeeded,
             description: `Unfunded deficit of $${remainingNetNeeded.toLocaleString()}. All accounts exhausted.`,
         });
+    }
+
+    // §1211(b): a NET realized capital loss offsets at most $3,000 of other income
+    // per year. Cap the aggregate (across every sale and account) ONCE here, scaling
+    // the ST/LT buckets proportionally. YearSolver feeds totalLTCG raw into the
+    // SS-taxability and state-tax bases (no Math.max(0,…) floor there), so an
+    // uncapped loss would drop taxable SS / zero out state tax on real income —
+    // phantom federal+state refunds, not just MAGI drift. (Brokerage/ESPP only ever
+    // contribute non-negative gains, so the net loss is RSU's; gains and losses
+    // across sources net here, which is the correct §1211 treatment.)
+    //
+    // Residual (intentional, conservative): YearSolver's stcgForFederal clamps a
+    // negative scaled STCG bucket to 0 in the retirement bases, so the ST share of
+    // a capped loss doesn't reduce the federal/SS/MAGI base — the loss is very
+    // slightly UNDER-applied. That's the safe direction (opposite of the
+    // phantom-refund bug) and only in this already-rare both-underwater case.
+    const netRealizedCapital = totalSTCG + totalLTCG;
+    if (netRealizedCapital < -ANNUAL_CAPITAL_LOSS_LIMIT) {
+        const lossScale = -ANNUAL_CAPITAL_LOSS_LIMIT / netRealizedCapital; // in (0,1)
+        totalSTCG *= lossScale;
+        totalLTCG *= lossScale;
     }
 
     return {
