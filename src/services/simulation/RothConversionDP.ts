@@ -50,7 +50,7 @@ import * as TaxService from "../../components/Objects/Taxes/TaxService";
 import { ACAOptions } from "./helpers";
 import { getDistributionPeriod, getRMDStartAge } from "../../data/RMDData";
 import { getAcaCliffThreshold } from "./TaxOptimizedWithdrawal";
-import { getIRMAASchedule, computeIrmaaMAGI, MEDICARE_ELIGIBILITY_AGE } from "../../data/IRMAAData";
+import { getIRMAASchedule, computeIrmaaMAGI, MEDICARE_ELIGIBILITY_AGE, IRMAA_LOOKBACK_YEARS } from "../../data/IRMAAData";
 import { InvestedAccount } from "../../components/Objects/Accounts/models";
 
 // =============================================================================
@@ -67,6 +67,31 @@ import { InvestedAccount } from "../../components/Objects/Accounts/models";
  * 0.015 = 1.5%/year — see project memory for rationale.
  */
 export const DP_BACKLOAD_DELTA = 0.015;
+
+/**
+ * IRMAA bills on a 2-year lag (year N premiums ← year N-2 MAGI), but the DP
+ * prices IRMAA same-year (it carries no MAGI history — see DPYearContext.
+ * irmaaSurchargeForMAGI). The two agree in the interior and diverge only at
+ * the two horizon edges, which this constant governs:
+ *
+ *  - TAIL: a conversion that spikes MAGI in one of the LAST two horizon years
+ *    would bill its surcharge in N+2 — past the simulated horizon — so the
+ *    real engine never charges it. Same-year pricing would charge it anyway,
+ *    over-penalizing end-of-life conversions and fighting the back-load
+ *    preference. The solver drops the IRMAA term for the last 2 years.
+ *  - HEAD: the real surcharge for the first two Medicare years (ages 65-66)
+ *    comes from pre-Medicare (ages 63-64) MAGI, which is typically lower
+ *    (pre-RMD, and the year-65/66 conversion itself can't retroactively raise
+ *    it). buildDPYearContexts seeds ages 65-66 with a FIXED surcharge from the
+ *    baseline pre-65 MAGI instead of the Medicare year's own (post-RMD,
+ *    conversion-sensitive) MAGI.
+ *
+ * Cheap-approximation note: this models the 2-year lag only at the edges, not
+ * through the recursion (a maintainer decision — full-lag state would balloon
+ * the DP). The interior is unchanged because same-year and lagged attribution
+ * sum to the same lifetime IRMAA total there.
+ */
+const IRMAA_HORIZON_EDGE_YEARS = 2;
 
 const TRAD_BUCKETS = 100;
 /**
@@ -138,10 +163,21 @@ export interface DPYearContext {
     acaOptions?: ACAOptions;
     /**
      * Medicare IRMAA surcharge as a function of this year's MAGI. Set only for
-     * Medicare years (age 65+). The DP carries no MAGI history, so it attributes
-     * the surcharge to the same year's MAGI (a conversion's surcharge actually
-     * lands two years out; same-year attribution sums to the same lifetime total
-     * over the horizon and makes the DP avoid IRMAA-tripping conversions).
+     * Medicare years (age 65+). The DP carries no MAGI history, so it generally
+     * attributes the surcharge to the same year's MAGI (a conversion's surcharge
+     * actually lands two years out; same-year attribution sums to the same
+     * lifetime total over the interior horizon and makes the DP avoid
+     * IRMAA-tripping conversions).
+     *
+     * Two horizon-edge corrections approximate the real 2-year lag (#76):
+     *  - HEAD: for ages 65-66 (the first IRMAA_HORIZON_EDGE_YEARS Medicare
+     *    years), buildDPYearContexts pins this to a CONSTANT surcharge derived
+     *    from the baseline pre-65 (year−2) MAGI — it ignores its `magi` argument
+     *    — because those premiums are billed on pre-Medicare MAGI the year-65/66
+     *    conversion can't affect.
+     *  - TAIL: for the last IRMAA_HORIZON_EDGE_YEARS horizon years, the solver
+     *    nulls this field (its surcharge would bill past the horizon and never
+     *    be charged by the real engine).
      */
     irmaaSurchargeForMAGI?: (magi: number) => number;
 
@@ -424,6 +460,23 @@ export function buildDPYearContexts(
         });
     }
 
+    // Head IRMAA seeding (#76): the first IRMAA_HORIZON_EDGE_YEARS Medicare
+    // years (ages 65-66) are billed on the pre-Medicare (ages 63-64) MAGI under
+    // the real 2-year lag. The DP carries no MAGI history, so we look that MAGI
+    // up from the baseline timeline (which stores each year's AGI-equivalent
+    // MAGI on `simYear.magi`) and, for ages 65-66, charge a FIXED surcharge from
+    // it rather than letting the surcharge ride the Medicare year's own
+    // (post-RMD, conversion-sensitive) MAGI. The pre-65 lookback years are
+    // typically pre-retirement, so they carry no DP conversion — exactly the
+    // basis the engine bills. We key by year so age-65 reads year−2 (age 63) and
+    // age-66 reads year−2 (age 64).
+    const baselineMagiByYear = new Map<number, number>();
+    for (const simYear of baseline) {
+        if (simYear.magi !== undefined) {
+            baselineMagiByYear.set(simYear.year, simYear.magi);
+        }
+    }
+
     // Diagnostic: capture the baseline sub-sim's trad balance at the year
     // BEFORE retirement. If `currentTradBalance` (used by DP's forward sweep)
     // matches this value, it means the lookup is grabbing the end-of-(year
@@ -515,9 +568,28 @@ export function buildDPYearContexts(
         const irmaaSchedule = age >= MEDICARE_ELIGIBILITY_AGE
             ? getIRMAASchedule(effTax.filingStatus, simYear.year, assumptions)
             : undefined;
-        const irmaaSurchargeForMAGI = irmaaSchedule
-            ? (magi: number) => irmaaSchedule.annualSurcharge(magi)
-            : undefined;
+        let irmaaSurchargeForMAGI: ((magi: number) => number) | undefined;
+        if (irmaaSchedule) {
+            // Head edge (#76): for the first IRMAA_HORIZON_EDGE_YEARS Medicare
+            // years (ages 65-66), the surcharge is set by the pre-65 (year−2)
+            // MAGI from the baseline, NOT this year's conversion-sensitive MAGI.
+            // Pin a constant surcharge so the DP can't trip a phantom early
+            // surcharge by converting at 65-66 (the engine bills those years on
+            // age-63/64 MAGI, which the conversion can't retroactively raise).
+            // Fall back to same-year pricing when the lookback MAGI is missing
+            // (e.g. lookback year predates the baseline timeline).
+            const isMedicareHeadYear =
+                age < MEDICARE_ELIGIBILITY_AGE + IRMAA_HORIZON_EDGE_YEARS;
+            const lookbackMagi = isMedicareHeadYear
+                ? baselineMagiByYear.get(simYear.year - IRMAA_LOOKBACK_YEARS)
+                : undefined;
+            if (isMedicareHeadYear && lookbackMagi !== undefined) {
+                const seededSurcharge = irmaaSchedule.annualSurcharge(lookbackMagi);
+                irmaaSurchargeForMAGI = () => seededSurcharge;
+            } else {
+                irmaaSurchargeForMAGI = (magi: number) => irmaaSchedule.annualSurcharge(magi);
+            }
+        }
 
         const growthRate = getNetGrowthRate(simYear, assumptions);
         const rothGrowthRate = getRothGrowthRate(simYear, assumptions);
@@ -960,6 +1032,24 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
         };
     }
 
+    // Tail IRMAA skip (#76): drop the same-year IRMAA term for the last
+    // IRMAA_HORIZON_EDGE_YEARS horizon years. A conversion there would bill its
+    // surcharge two years out — past the horizon — so the real engine never
+    // charges it; same-year pricing would over-penalize these end-of-life
+    // conversions and undercut the back-load preference. We shadow those
+    // contexts with `irmaaSurchargeForMAGI: undefined` so computeYearTax (used
+    // in both the backward sweep and the forward extract) skips the surcharge,
+    // and use `solveContexts` everywhere the solver prices a cell. Diagnostics
+    // that read other context fields are unaffected (only this one field is
+    // nulled). The head edge (ages 65-66 seeding) is handled upstream in
+    // buildDPYearContexts, which has the baseline pre-65 MAGI.
+    const tailSkipFrom = horizonYears - IRMAA_HORIZON_EDGE_YEARS;
+    const solveContexts: DPYearContext[] = contexts.map((ctx, t) =>
+        (t >= tailSkipFrom && ctx.irmaaSurchargeForMAGI)
+            ? { ...ctx, irmaaSurchargeForMAGI: undefined }
+            : ctx
+    );
+
     const { dBByYear, dRothByYear, dCByYear } = determineGridScales(
         contexts, currentTradBalance, currentRothBalance,
     );
@@ -1067,7 +1157,8 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
     // We hoist them outside the rothIdx loop.
     // -----------------------------------------------------------------
     for (let t = horizonYears - 1; t >= 0; t--) {
-        const ctx = contexts[t];
+        // Use the tail-IRMAA-skipped context for pricing (see solveContexts).
+        const ctx = solveContexts[t];
         const Vnext = V[t + 1];
         const Vt = V[t];
         const dB_t = dBByYear[t];
@@ -1155,7 +1246,9 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
         `If startingTrad matches baselineTrad@firstYear ⇒ off-by-one (DP is starting from end-of-retirement-year baseline).`;
 
     for (let t = 0; t < horizonYears; t++) {
-        const ctx = contexts[t];
+        // Price against the tail-IRMAA-skipped context so the forward extract
+        // matches the backward sweep's V-table (see solveContexts).
+        const ctx = solveContexts[t];
         const Vnext = V[t + 1];
         const dB_next = dBByYear[t + 1];
         const dRoth_next = dRothByYear[t + 1];

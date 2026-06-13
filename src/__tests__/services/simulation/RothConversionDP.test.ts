@@ -12,6 +12,8 @@ import {
     DP_BACKLOAD_DELTA,
 } from '../../../services/simulation/RothConversionDP';
 import { TAX_DATABASE } from '../../../data/TaxData';
+import { getIRMAASchedule } from '../../../data/IRMAAData';
+import { defaultAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
 
 // ---------------------------------------------------------------------------
 // Synthetic context builders
@@ -319,5 +321,105 @@ describe('planConversionsViaDP', { timeout: 30_000 }, () => {
         expect(plan.diagnostics.maxRoth).toBeGreaterThan(250_000);
         expect(plan.diagnostics.dRoth).toBeGreaterThan(0);
         expect(plan.diagnostics.dRoth).toBe(plan.diagnostics.maxRoth / 50);
+    });
+
+    // #76 — tail IRMAA skip. IRMAA bills on a 2-year lag, so a conversion that
+    // spikes MAGI in one of the last two horizon years would bill its surcharge
+    // two years out — past the simulated horizon — and the real engine never
+    // charges it. The DP prices IRMAA same-year, which without this fix would
+    // charge that phantom surcharge and over-penalize end-of-life conversions
+    // (working against the back-load preference). The solver now drops the IRMAA
+    // term for the last 2 horizon years.
+    //
+    // We build a long horizon where IRMAA genuinely bites (RMDs + conversions
+    // push MAGI across the surcharge cliffs) and compare two solver runs that
+    // differ ONLY in whether a steep IRMAA closure is attached to every Medicare
+    // year. The tail-skip's signature: because the solver drops IRMAA for the
+    // last 2 years in BOTH runs, the last-2-year conversions are IDENTICAL
+    // across the two runs (the phantom surcharge can't touch them), while an
+    // INTERIOR Medicare year — where the surcharge IS priced — is demonstrably
+    // suppressed by it. That contrast proves the closure is capable of biting
+    // AND that the tail is genuinely exempted, so end-of-life conversions look
+    // at least as attractive as in the no-surcharge world.
+    it('does not let a phantom (never-billed) IRMAA surcharge suppress the last 2 years (#76 tail skip)', () => {
+        // Single filer: IRMAA tier-1 cliff at $109k MAGI, with a $1k+/yr jump —
+        // steep enough to swing a conversion decision when it applies.
+        const irmaaSchedule = getIRMAASchedule('Single', 2030, {
+            ...defaultAssumptions,
+            macro: { ...defaultAssumptions.macro, inflationAdjusted: false, inflationRate: 0 },
+        });
+        const fedParams = TAX_DATABASE.federal[2024]['Single'];
+
+        // 30-year horizon, ages 65-94. Ordinary income sits a touch under the
+        // IRMAA tier-1 cliff, so any conversion that's priced same-year trips it.
+        // Large trad balance + RMDs from 73 give the DP a clear (front-loaded
+        // here, but tail-relevant) conversion incentive; an exaggerated δ adds a
+        // back-load pull so the tail-vs-interior contrast is sharp.
+        const buildIrmaaHorizon = (withIrmaa: boolean): DPYearContext[] => {
+            const ctxs: DPYearContext[] = [];
+            for (let i = 0; i < 30; i++) {
+                const age = 65 + i;
+                const year = 2030 + i;
+                const rmdDivisor =
+                    age >= 73 ? Math.max(8.0, 26.5 - (age - 73) * 0.9) : 0;
+                ctxs.push(makeContext({
+                    year,
+                    age,
+                    filingStatus: 'Single',
+                    fedParams,
+                    // Sit just under the $109k tier-1 cliff so even a modest
+                    // conversion trips it when IRMAA is priced this year.
+                    nonSSOrdinaryIncomeExclRMD: 100_000,
+                    ssBenefits: 0,
+                    rmdDivisor,
+                    irmaaSurchargeForMAGI: withIrmaa
+                        ? (magi: number) => irmaaSchedule.annualSurcharge(magi)
+                        : undefined,
+                }));
+            }
+            return ctxs;
+        };
+
+        const common = {
+            currentTradBalance: 1_500_000,
+            currentRothBalance: 100_000,
+            backloadDelta: 0.05, // exaggerate the back-load pull toward the tail
+        };
+
+        const withIrmaa = planConversionsViaDP({ ...common, contexts: buildIrmaaHorizon(true) });
+        const noIrmaa = planConversionsViaDP({ ...common, contexts: buildIrmaaHorizon(false) });
+
+        const lastYear = 2030 + 29;
+        const secondLastYear = 2030 + 28;
+        // An interior Medicare year where the surcharge demonstrably bites (the
+        // diagnosed scenario suppresses ages 75-79 hard; age 77 is comfortably
+        // interior, far from the tail-skip window).
+        const interiorBittenYear = 2030 + 12; // age 77
+
+        const convAt = (p: typeof withIrmaa, yr: number) =>
+            p.conversionsByYear.get(yr) ?? 0;
+
+        // Tail (last 2 years): the solver drops the IRMAA term, so attaching the
+        // surcharge closure must not change the chosen conversion at all — the
+        // two runs agree to the dollar. This is the core anti-phantom assertion:
+        // the never-billed surcharge does NOT alter end-of-life conversions.
+        expect(convAt(withIrmaa, lastYear)).toBeCloseTo(convAt(noIrmaa, lastYear), 2);
+        expect(convAt(withIrmaa, secondLastYear)).toBeCloseTo(convAt(noIrmaa, secondLastYear), 2);
+
+        // Stated directly: the tail conversions look AT LEAST as attractive with
+        // the phantom surcharge removed as without it (equality is the achieved
+        // case; this guards against any future regression that would re-penalize
+        // the tail and shrink these below the no-surcharge baseline).
+        const tailTotal = (p: typeof withIrmaa) =>
+            convAt(p, lastYear) + convAt(p, secondLastYear);
+        expect(tailTotal(withIrmaa)).toBeGreaterThanOrEqual(tailTotal(noIrmaa) - 1);
+
+        // Non-vacuousness: the same surcharge closure genuinely SUPPRESSES an
+        // interior Medicare year's conversion (where IRMAA is NOT skipped). If
+        // this failed, the tail equality above would be meaningless (IRMAA never
+        // mattering anywhere). This is the contrast that demonstrates the tail
+        // is being deliberately exempted from a penalty that bites elsewhere.
+        expect(convAt(withIrmaa, interiorBittenYear))
+            .toBeLessThan(convAt(noIrmaa, interiorBittenYear));
     });
 });

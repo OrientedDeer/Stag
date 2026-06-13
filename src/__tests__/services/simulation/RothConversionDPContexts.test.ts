@@ -20,6 +20,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { buildDPYearContexts } from '../../../services/simulation/RothConversionDP';
+import { getIRMAAAnnualSurcharge } from '../../../data/IRMAAData';
 import {
     deriveFutureAssumptions,
     runSimulationWithOptimization,
@@ -351,5 +352,124 @@ describe('runSimulationWithOptimization — DP plan honors future tax state', { 
 
         expect(stayTotal).toBeGreaterThan(50_000);
         expect(Math.abs(moveTotal - stayTotal)).toBeGreaterThan(20_000);
+    });
+});
+
+// =============================================================================
+// #76 — head IRMAA seeding. Under the real 2-year lag, the first two Medicare
+// years (ages 65-66) are billed on the pre-Medicare (ages 63-64) MAGI, which is
+// typically lower (pre-RMD, and the year-65/66 conversion can't retroactively
+// raise it). buildDPYearContexts has no MAGI history, so it pins a CONSTANT
+// surcharge for ages 65-66 from the baseline timeline's stored year−2 MAGI —
+// the surcharge ignores the Medicare year's own (possibly higher) MAGI.
+// =============================================================================
+describe('buildDPYearContexts — head IRMAA seeding (#76)', () => {
+    // Retire at 62 so the contexts begin at age 62 and span the head Medicare
+    // window (ages 65-66). The baseline must also carry ages 63-64 (the lookback
+    // years) so their MAGI is available to seed.
+    const HEAD_RETIREMENT_AGE = 62;
+    const HEAD_RETIREMENT_YEAR = BIRTH_YEAR + HEAD_RETIREMENT_AGE;
+    const headAssumptions: AssumptionsState = {
+        ...assumptions,
+        milestones: createBuiltinMilestones(BIRTH_YEAR, HEAD_RETIREMENT_AGE, 95),
+    };
+
+    /**
+     * Baseline spanning ages 62..72, with each year's stored `magi` controlled
+     * by `magiForAge`. Ages 63-64 are the pre-65 lookback years that seed the
+     * age-65/66 surcharge; ages 65-66 carry a deliberately HIGH own-year magi so
+     * we can prove the seed ignores it.
+     */
+    const buildHeadBaseline = (magiForAge: (age: number) => number): SimulationYear[] => {
+        const years: SimulationYear[] = [];
+        for (let i = 0; i < 11; i++) {
+            const year = HEAD_RETIREMENT_YEAR + i;
+            const age = year - BIRTH_YEAR;
+            const trad = new InvestedAccount(
+                'trad', 'Traditional IRA', 1_000_000, 0, 10, 0.0, 'Traditional IRA', true, 0.2, 1_000_000,
+            );
+            years.push({
+                year,
+                incomes: [],
+                expenses: [],
+                accounts: [trad],
+                cashflow: {
+                    totalIncome: 0, totalExpense: 40_000, livingExpenses: 40_000, discretionary: 0,
+                    investedUser: 0, investedMatch: 0, totalInvested: 0, bucketAllocations: 0,
+                    bucketDetail: {}, withdrawals: 0, withdrawalDetail: {},
+                },
+                taxDetails: {
+                    fed: 0, state: 0, fica: 0, preTax: 0, insurance: 0, postTax: 0,
+                    capitalGains: 0, withdrawalOrdinaryTax: 0, niit: 0,
+                },
+                magi: magiForAge(age),
+                logs: [],
+            });
+        }
+        return years;
+    };
+
+    // Single filer, no inflation indexing → IRMAA tier-1 cliff at $109k.
+    const taxState = baseTaxState({ filingStatus: 'Single', stateResidency: 'Texas' });
+    const surchargeAt = (magi: number, year: number) =>
+        getIRMAAAnnualSurcharge(magi, 'Single', year, headAssumptions);
+
+    it('seeds ages 65-66 from the pre-65 (year−2) MAGI, ignoring the Medicare year own MAGI', () => {
+        // Pre-65 (ages 63-64) MAGI sits BELOW the $109k cliff → seeded surcharge
+        // is $0. The Medicare years (65-66) carry a HIGH own-year MAGI ($300k,
+        // well into a surcharge tier) that same-year pricing would have billed.
+        const baseline = buildHeadBaseline(age => (age >= 65 ? 300_000 : 50_000));
+        const contexts = buildDPYearContexts(
+            baseline, headAssumptions, taxState, HEAD_RETIREMENT_YEAR, 0,
+        );
+
+        const ctx65 = contexts.find(c => c.age === 65)!;
+        const ctx66 = contexts.find(c => c.age === 66)!;
+        expect(ctx65.irmaaSurchargeForMAGI).toBeDefined();
+        expect(ctx66.irmaaSurchargeForMAGI).toBeDefined();
+
+        // The seeded surcharge ignores its MAGI argument: probing with the high
+        // own-year MAGI still returns the pre-65 (below-cliff → $0) surcharge.
+        expect(ctx65.irmaaSurchargeForMAGI!(300_000)).toBe(0);
+        expect(ctx66.irmaaSurchargeForMAGI!(300_000)).toBe(0);
+        // Sanity: that high MAGI WOULD have billed a real surcharge under
+        // same-year pricing, so the $0 above is the seed at work, not a no-op.
+        expect(surchargeAt(300_000, ctx65.year)).toBeGreaterThan(0);
+    });
+
+    it('a HIGH pre-65 MAGI seeds a real (constant) surcharge into ages 65-66 even when probed low', () => {
+        // Pre-65 (ages 63-64) MAGI is HIGH (above the cliff); the Medicare years'
+        // own MAGI is LOW. The seed should bill the pre-65 surcharge regardless.
+        const baseline = buildHeadBaseline(age => (age >= 65 ? 40_000 : 200_000));
+        const contexts = buildDPYearContexts(
+            baseline, headAssumptions, taxState, HEAD_RETIREMENT_YEAR, 0,
+        );
+
+        const ctx65 = contexts.find(c => c.age === 65)!;
+        const ctx66 = contexts.find(c => c.age === 66)!;
+        // age-65 seeds from age-63 magi ($200k), age-66 from age-64 magi ($200k).
+        const expected65 = surchargeAt(200_000, ctx65.year);
+        const expected66 = surchargeAt(200_000, ctx66.year);
+        expect(expected65).toBeGreaterThan(0);
+
+        // Constant surcharge equal to the pre-65 value, independent of the probe.
+        expect(ctx65.irmaaSurchargeForMAGI!(40_000)).toBe(expected65);
+        expect(ctx65.irmaaSurchargeForMAGI!(999_999)).toBe(expected65);
+        expect(ctx66.irmaaSurchargeForMAGI!(40_000)).toBe(expected66);
+    });
+
+    it('a normal (age 67+) Medicare year still prices IRMAA on its own MAGI', () => {
+        // Outside the head window, the surcharge must remain MAGI-sensitive: the
+        // seeding is an edge correction, not a blanket constant.
+        const baseline = buildHeadBaseline(() => 50_000);
+        const contexts = buildDPYearContexts(
+            baseline, headAssumptions, taxState, HEAD_RETIREMENT_YEAR, 0,
+        );
+        const ctx70 = contexts.find(c => c.age === 70)!;
+        expect(ctx70.irmaaSurchargeForMAGI).toBeDefined();
+        // Below the cliff → 0; above it → a real surcharge. Argument-sensitive.
+        expect(ctx70.irmaaSurchargeForMAGI!(50_000)).toBe(0);
+        expect(ctx70.irmaaSurchargeForMAGI!(300_000)).toBe(surchargeAt(300_000, ctx70.year));
+        expect(ctx70.irmaaSurchargeForMAGI!(300_000)).toBeGreaterThan(0);
     });
 });
