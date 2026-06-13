@@ -4,3 +4,8 @@ dist
 e2e
 coverage
 playwright-report
+# Self-hosting deploy dir: never needed by the frontend image build, and at
+# runtime it holds local secrets (.env) + the CouchDB data volume. Keep both
+# out of the build context.
+selfhost
+.env
