@@ -112,6 +112,8 @@ The simulation accounts for interactions between these systems—like how Roth c
 
 Contributions are welcome! This project is a work in progress.
 
+**Roadmap & backlog:** planned work, bugs, and feature ideas live on the [project board](https://github.com/users/OrientedDeer/projects/1) as GitHub issues — that's the single source of truth, not docs in the repo.
+
 ```bash
 # Run tests
 npm run test
