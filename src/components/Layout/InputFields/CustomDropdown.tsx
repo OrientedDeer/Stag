@@ -81,6 +81,18 @@ const CustomDropdownInner: React.FC<CustomDropdownProps> = ({
                             ref={buttonRef}
                             id={buttonId}
                             onClick={updatePosition}
+                            onKeyDown={(e: React.KeyboardEvent) => {
+                                // Headless UI opens the listbox from KEYDOWN
+                                // (Space/Enter/Arrows) and preventDefaults it, so
+                                // the button's click never fires for keyboard
+                                // users — updatePosition wouldn't run, leaving the
+                                // portal'd options with no position: the chevron
+                                // showed "open" but no menu appeared. Compute the
+                                // position for keyboard opens too.
+                                if (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                                    updatePosition();
+                                }
+                            }}
                             className="w-full text-left flex items-center justify-between bg-transparent text-white text-md font-semibold cursor-pointer"
                         >
                             <span>{selectedOption?.label || value}</span>
