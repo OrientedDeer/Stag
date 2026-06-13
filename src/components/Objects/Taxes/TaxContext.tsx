@@ -4,6 +4,24 @@ import { usePersistedReducer } from '../../../hooks/usePersistedReducer';
 
 export type DeductionMethod = 'Standard' | 'Itemized' | 'Auto';
 
+/**
+ * A scheduled tax change in the projection — "moving to TX in 2034", "filing
+ * status → Single when I retire". `filingStatus` and `stateResidency` on
+ * TaxState are the CURRENT (year-0) values; events override them from their
+ * trigger year onward. The trigger is a calendar `year` OR a `milestoneId`
+ * (resolved to the year that milestone is reached). Year-based is exact;
+ * milestone-based takes effect the year after the milestone is reached.
+ * Stored with primitive triggers (no Date) so it round-trips through
+ * persistence cleanly.
+ */
+export interface TaxLifeEvent {
+  id: string;
+  kind: 'stateResidency' | 'filingStatus';
+  value: string; // a state name, or a FilingStatus
+  year?: number;
+  milestoneId?: string;
+}
+
 export interface TaxState {
   filingStatus: FilingStatus;
   stateResidency: string;
@@ -27,6 +45,8 @@ export interface TaxState {
    * through the simulation's gross-up sizing with no cash-balance risk.
    */
   calibrateFutureYears?: boolean;
+  /** Scheduled state-residency / filing-status changes over the projection. */
+  taxEvents?: TaxLifeEvent[];
   year: number;
 }
 
@@ -38,6 +58,7 @@ type Action =
   | { type: 'SET_FICA_OVERRIDE'; payload: number | null }
   | { type: 'SET_STATE_OVERRIDE'; payload: number | null }
   | { type: 'SET_CALIBRATE_FUTURE'; payload: boolean }
+  | { type: 'SET_TAX_EVENTS'; payload: TaxLifeEvent[] }
   | { type: 'SET_YEAR'; payload: number }
   | { type: 'SET_BULK_DATA'; payload: TaxState };
 
@@ -60,10 +81,51 @@ function taxReducer(state: TaxState, action: Action): TaxState {
     case 'SET_FICA_OVERRIDE': return { ...state, ficaOverride: action.payload };
     case 'SET_STATE_OVERRIDE': return { ...state, stateOverride: action.payload };
     case 'SET_CALIBRATE_FUTURE': return { ...state, calibrateFutureYears: action.payload };
+    case 'SET_TAX_EVENTS': return { ...state, taxEvents: action.payload };
     case 'SET_YEAR': return { ...state, year: action.payload };
     case 'SET_BULK_DATA': return { ...action.payload };
     default: return state;
   }
+}
+
+/**
+ * Resolve a year's effective TaxState by applying scheduled tax events
+ * (state-residency / filing-status changes) that have fired by `year`. For
+ * each kind the latest-firing event wins. Year-triggered events fire in their
+ * year; milestone-triggered events fire in the year the milestone was reached
+ * (per `milestoneReachYears`). Returns the base unchanged when nothing applies.
+ */
+export function resolveTaxEventsForYear(
+  base: TaxState,
+  year: number,
+  milestoneReachYears: Map<string, number>,
+): TaxState {
+  const events = base.taxEvents;
+  if (!events || events.length === 0) return base;
+
+  let stateResidency = base.stateResidency;
+  let filingStatus = base.filingStatus;
+  let bestStateYear = -Infinity;
+  let bestFilingYear = -Infinity;
+
+  for (const ev of events) {
+    const firedYear = ev.year !== undefined
+      ? ev.year
+      : ev.milestoneId !== undefined
+        ? milestoneReachYears.get(ev.milestoneId)
+        : undefined;
+    if (firedYear === undefined || firedYear > year) continue;
+    if (ev.kind === 'stateResidency' && firedYear >= bestStateYear) {
+      stateResidency = ev.value;
+      bestStateYear = firedYear;
+    } else if (ev.kind === 'filingStatus' && firedYear >= bestFilingYear) {
+      filingStatus = ev.value as FilingStatus;
+      bestFilingYear = firedYear;
+    }
+  }
+
+  if (stateResidency === base.stateResidency && filingStatus === base.filingStatus) return base;
+  return { ...base, stateResidency, filingStatus };
 }
 
 interface TaxContextProps {

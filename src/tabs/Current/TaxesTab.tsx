@@ -20,6 +20,8 @@ import { CurrencyInput } from "../../components/Layout/InputFields/CurrencyInput
 import { DropdownInput } from "../../components/Layout/InputFields/DropdownInput";
 import { NumberInput } from "../../components/Layout/InputFields/NumberInput";
 import { ToggleInput } from "../../components/Layout/InputFields/ToggleInput";
+import { TaxLifeEventsEditor } from "../../components/Objects/Taxes/TaxLifeEventsEditor";
+import { TaxLifeEvent } from "../../components/Objects/Taxes/TaxContext";
 import { DeductionMethod } from "../../components/Objects/Taxes/TaxContext";
 import { Panel } from "../../components/Layout/Primitives";
 import { Tooltip } from "../../components/Layout/InputFields/Tooltip";
@@ -192,6 +194,10 @@ export default function TaxesTab() {
         (enabled: boolean) => dispatch({ type: 'SET_CALIBRATE_FUTURE', payload: enabled }),
         [dispatch]
     );
+    const onTaxEventsChange = useCallback(
+        (events: TaxLifeEvent[]) => dispatch({ type: 'SET_TAX_EVENTS', payload: events }),
+        [dispatch]
+    );
 
     const yearOptions = useMemo(
         () => Object.keys(TAX_DATABASE.federal).map(y => ({ value: y, label: y })).reverse(),
@@ -315,6 +321,22 @@ export default function TaxesTab() {
                                             />
                                         </>
                                     )}
+                                </div>
+
+                                {/* Tax Life Events */}
+                                <div className="pt-6 border-t border-border-subtle space-y-3">
+                                    <h3 className="text-xs font-semibold text-content-muted uppercase tracking-wider">Tax Life Events</h3>
+                                    <p className="text-xs text-content-subtle">
+                                        Schedule changes the projection should model — moving states or a
+                                        change in filing status, by a year or a milestone.
+                                    </p>
+                                    <TaxLifeEventsEditor
+                                        events={state.taxEvents ?? []}
+                                        onChange={onTaxEventsChange}
+                                        milestones={assumptions.milestones || []}
+                                        stateOptions={stateOptions}
+                                        filingOptions={filingStatusOptions}
+                                    />
                                 </div>
 
                                 {/* Manual Overrides Section */}

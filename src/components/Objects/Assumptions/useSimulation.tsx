@@ -5,7 +5,7 @@ import { AnyAccount, InvestedAccount, SavedAccount, DebtAccount, DeficitDebtAcco
 import { AnyIncome } from '../Income/models';
 import { AnyExpense, MortgageExpense } from '../Expense/models';
 import { AssumptionsState, getLifeExpectancy, getBirthYear, getRetirementAge } from './AssumptionsContext';
-import { TaxState } from '../Taxes/TaxContext';
+import { TaxState, resolveTaxEventsForYear } from '../Taxes/TaxContext';
 import { BaselineProjections } from '../../../services/simulation/types';
 import { getRMDStartAge } from '../../../data/RMDData';
 import { buildDPYearContexts, planConversionsViaDP, DPPlan } from '../../../services/simulation/RothConversionDP';
@@ -160,13 +160,18 @@ function runSimulationLoop(args: {
             timeline, previousActiveMilestones, milestoneReachYears,
         );
 
+        // Apply any scheduled tax life events (moving states, filing-status
+        // change) that have fired by this year. milestoneReachYears holds the
+        // years milestones were reached in prior loop iterations.
+        const effectiveTaxState = resolveTaxEventsForYear(taxState, simulationYear, milestoneReachYears);
+
         const result = simulateOneYear(
             simulationYear,
             currentIncomes,
             currentExpenses,
             currentAccounts,
             assumptions,
-            taxState,
+            effectiveTaxState,
             timeline,
             returnOverride,
             previousActiveMilestones,
