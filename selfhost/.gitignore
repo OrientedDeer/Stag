@@ -1,0 +1,5 @@
+# Local secrets and runtime state — never commit these.
+.env
+couchdb/
+backend/node_modules/
+backend/dist/

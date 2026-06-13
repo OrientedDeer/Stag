@@ -1,0 +1,74 @@
+# Stag self-hosting stack: encrypted-blob backend + CouchDB + the static SPA,
+# with an optional Cloudflare tunnel for public access.
+#
+# Quick start:
+#   1. cp .env.example .env   and fill it in (see that file for each value).
+#   2. docker compose up -d --build
+#   3. (optional public access) docker compose --profile tunnel up -d
+#
+# All secrets come from .env — nothing sensitive is hard-coded here. The
+# frontend's VITE_* values are BUILD-time (baked into the static bundle), so
+# changing them requires a rebuild: docker compose up -d --build frontend.
+name: stag
+
+services:
+  couchdb:
+    image: couchdb:3
+    container_name: stag-couchdb
+    restart: unless-stopped
+    environment:
+      # On first boot CouchDB creates this single-node admin from these vars.
+      COUCHDB_USER: ${COUCHDB_USER:?set COUCHDB_USER in .env}
+      COUCHDB_PASSWORD: ${COUCHDB_PASSWORD:?set COUCHDB_PASSWORD in .env}
+    volumes:
+      - ./couchdb/data:/opt/couchdb/data
+      - ./couchdb/config:/opt/couchdb/etc/local.d
+
+  backend:
+    build: ./backend
+    container_name: stag-backend
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+      COUCHDB_URL: http://couchdb:5984
+      COUCHDB_USER: ${COUCHDB_USER:?}
+      COUCHDB_PASSWORD: ${COUCHDB_PASSWORD:?}
+      BACKUP_DB: stag_backups
+      # Google OAuth Web client ID (the backend verifies ID tokens against it).
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      # The app's public origin, e.g. https://stag.example.com (CORS allow-list).
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
+      MAX_BLOB_BYTES: ${MAX_BLOB_BYTES:-5242880}
+    depends_on:
+      - couchdb
+
+  frontend:
+    # Builds the SPA from the repo root (this bundle lives in ./selfhost).
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        # Same Google client ID as the backend (public — shipped in the bundle).
+        VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+        # Public URL of the backend's /backup API, e.g. https://api.example.com
+        VITE_CLOUD_API_ENDPOINT: ${VITE_CLOUD_API_ENDPOINT:-}
+        # Serve at domain root (default /Stag/ is for GitHub Pages → blank page).
+        VITE_BASE_PATH: ${VITE_BASE_PATH:-/}
+    container_name: stag-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+
+  # Optional: expose the stack publicly via a named Cloudflare tunnel.
+  # Enable with:  docker compose --profile tunnel up -d
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: stag-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    depends_on:
+      - backend
+      - frontend
+    profiles: ["tunnel"]
