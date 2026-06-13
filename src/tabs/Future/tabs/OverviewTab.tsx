@@ -186,7 +186,12 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
 
         const result: string[] = [];
         rawData.forEach((d) => {
-            if (d.yearLabel === 'Today' || d.isEOY) {
+            // Don't tick the EOY ("Dec YYYY") points — their long labels sit
+            // right next to the adjacent year and overlap. The line still
+            // passes through them and the tooltip still identifies them as
+            // "Projected Dec YYYY".
+            if (d.isEOY) return;
+            if (d.yearLabel === 'Today') {
                 result.push(d.yearLabel);
                 return;
             }
