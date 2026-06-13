@@ -2,6 +2,7 @@ import { AnyExpense } from '../Expense/models';
 import { SimulationYear } from '../Assumptions/SimulationEngine';
 import { AnyAccount } from '../Accounts/models';
 import { MonthlySnapshot, Transaction, IncomeCategory, getFrequencyDivisor } from './BudgetContext';
+import { MONTH_NAMES } from '../Expense/annualCadence';
 
 /**
  * Get the effective monthly amount for a transaction
@@ -13,12 +14,14 @@ export function getTransactionMonthlyAmount(transaction: Transaction): number {
 }
 
 /**
- * Month names for display
+ * Month names for display.
+ *
+ * Re-exported from the single source of truth in annualCadence.ts (#85/#88) so
+ * the Budget tabs and the expense create/edit paths share one canonical list and
+ * can't drift. Kept as a named re-export here to preserve the existing import
+ * paths (Budget tabs and csvImport import MONTH_NAMES from budgetUtils).
  */
-export const MONTH_NAMES = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-];
+export { MONTH_NAMES };
 
 /**
  * Format month and year for display
