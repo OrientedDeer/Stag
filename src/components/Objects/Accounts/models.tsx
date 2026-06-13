@@ -1315,16 +1315,24 @@ export const CATEGORY_PALETTES: Record<AccountCategory, string[]> = {
 };
 
 /**
- * #86: parse a persisted ESPP/RSU `currentSharePrice`. Mirrors the #81 costBasis
- * NaN guard, but this field is OPTIONAL — readers do `currentSharePrice ?? derived`
- * (e.g. AccountCard lot math: `amount / totalShares`) and the header gates on a
- * truthy value. A non-numeric / null / NaN persisted value would make
- * `Number(...)` produce NaN, which `?? derived` keeps (nullish coalescing only
- * catches null/undefined) → "$NaN/sh". Returning `undefined` when the parse isn't
- * finite restores the "unset → derive" path, so no NaN can surface.
+ * #86: parse a persisted OPTIONAL finite number — ESPP/RSU `currentSharePrice`
+ * and any account's `customROR`. These fields are unset-able and every reader
+ * treats "missing" as a cue to derive/fall back, e.g. `currentSharePrice ??
+ * (amount / totalShares)` or `customROR ?? globalRoR`.
+ *
+ * The hazard (sibling of #81's costBasis guard): a corrupt/imported non-numeric
+ * value — stray string, NaN, Infinity, or a persisted null — makes `Number(...)`
+ * produce NaN, which the `?? fallback` readers KEEP (nullish coalescing only
+ * catches null/undefined). A surviving NaN then poisons downstream MATH, not just
+ * display: a NaN share price fails `if (fmvPerShare > 0)` in AccountGrowth and
+ * silently skips the RSU sale; a NaN customROR feeds the Roth-conversion
+ * optimizer's growth. (The card header itself is NaN-safe — it truthy-gates.)
+ *
+ * Returning `undefined` for any non-finite parse, and for null/undefined,
+ * restores the "unset → derive" path so no NaN can leak.
  */
-function parseOptionalSharePrice(raw: unknown): number | undefined {
-    if (raw === undefined) return undefined;
+function parseOptionalFiniteNumber(raw: unknown): number | undefined {
+    if (raw == null) return undefined; // null OR undefined ⇒ unset → derive
     const parsed = Number(raw);
     return Number.isFinite(parsed) ? parsed : undefined;
 }
@@ -1367,7 +1375,7 @@ export function reconstituteAccount(data: unknown): AnyAccount | null {
                 (data.isContributionEligible as boolean) ?? true,
                 Number(data.vestedPerYear ?? 0.2),
                 costBasis,
-                data.customROR != null ? Number(data.customROR) : undefined,
+                parseOptionalFiniteNumber(data.customROR),
                 conversionHistory
             );
         }
@@ -1388,9 +1396,9 @@ export function reconstituteAccount(data: unknown): AnyAccount | null {
             return new ESPPAccount(
                 id, name, amount, lots,
                 data.linkedIncomeId ? String(data.linkedIncomeId) : null,
-                data.customROR != null ? Number(data.customROR) : undefined,
+                parseOptionalFiniteNumber(data.customROR),
                 data.stockTicker ? String(data.stockTicker) : undefined,
-                parseOptionalSharePrice(data.currentSharePrice),
+                parseOptionalFiniteNumber(data.currentSharePrice),
                 (data.withdrawalPreference as ESPPWithdrawalPreference) ?? 'fifo',
                 Number(data.minimumHoldingDays) || 0
             );
@@ -1409,9 +1417,9 @@ export function reconstituteAccount(data: unknown): AnyAccount | null {
             return new RSUAccount(
                 id, name, amount, lots,
                 data.linkedIncomeId ? String(data.linkedIncomeId) : null,
-                data.customROR != null ? Number(data.customROR) : undefined,
+                parseOptionalFiniteNumber(data.customROR),
                 data.stockTicker ? String(data.stockTicker) : undefined,
-                parseOptionalSharePrice(data.currentSharePrice),
+                parseOptionalFiniteNumber(data.currentSharePrice),
                 (data.withdrawalPreference as RSUWithdrawalPreference) ?? 'fifo',
                 Number(data.minimumHoldingDays) || 0
             );

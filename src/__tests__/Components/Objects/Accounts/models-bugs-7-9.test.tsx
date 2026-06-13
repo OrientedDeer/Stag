@@ -153,6 +153,28 @@ describe('Finding 9 – reconstituteAccount: customROR null → undefined', () =
 
             expect(result.customROR).toBeUndefined();
         });
+
+        // #86: customROR shares the same finite-guard as currentSharePrice — a
+        // corrupt/non-numeric value must NOT become NaN (which would render
+        // "NaN% growth" and feed NaN into the Roth optimizer via customROR ?? globalRoR).
+        it('customROR: non-numeric string falls back to undefined (not NaN)', () => {
+            const result = reconstituteAccount({
+                className: 'InvestedAccount', id: 'i4', name: 'Traditional 401k',
+                amount: 200_000, customROR: 'corrupted',
+            }) as InvestedAccount;
+
+            expect(result.customROR).toBeUndefined();
+            expect(Number.isNaN(result.customROR as number)).toBe(false);
+        });
+
+        it('customROR: NaN literal falls back to undefined', () => {
+            const result = reconstituteAccount({
+                className: 'InvestedAccount', id: 'i5', name: 'Traditional 401k',
+                amount: 200_000, customROR: NaN,
+            }) as InvestedAccount;
+
+            expect(result.customROR).toBeUndefined();
+        });
     });
 
     describe('ESPPAccount', () => {
@@ -280,9 +302,10 @@ describe('#81 – reconstituteAccount: InvestedAccount costBasis NaN guard', () 
 // ─── #86 ────────────────────────────────────────────────────────────────────
 // Sibling of #81: a non-numeric persisted currentSharePrice makes
 // Number(...) NaN. Readers do `currentSharePrice ?? derived`, and NaN ?? x
-// keeps NaN (nullish coalescing only catches null/undefined) → "$NaN/sh" on
-// the ESPP/RSU card header and in per-lot value math. The fix falls back to
-// undefined (the "unset → derive" sentinel) when the parse isn't finite.
+// keeps NaN (nullish coalescing only catches null/undefined) → it poisons the
+// per-lot value math and the sim's RSU-sale gate (the card header itself is
+// NaN-safe — it truthy-gates). The fix (parseOptionalFiniteNumber) falls back
+// to undefined for any non-finite parse AND for null, so no NaN can leak.
 
 describe('#86 – reconstituteAccount: ESPP/RSU currentSharePrice NaN guard', () => {
     describe('ESPPAccount', () => {
@@ -302,20 +325,20 @@ describe('#86 – reconstituteAccount: ESPP/RSU currentSharePrice NaN guard', ()
             expect(Number.isNaN(result.currentSharePrice as number)).toBe(false);
         });
 
-        it('currentSharePrice: null falls back to undefined', () => {
+        it('currentSharePrice: null falls back to undefined (not 0 — preserves the derive path)', () => {
             const serialized = {
                 className: 'ESPPAccount',
                 id: 'sp-espp2',
                 name: 'Company ESPP',
                 amount: 20_000,
-                currentSharePrice: null, // Number(null) === 0 but treated as corrupt-ish; passes !== undefined
+                currentSharePrice: null, // corrupt/legacy persisted null
             };
 
             const result = reconstituteAccount(serialized) as ESPPAccount;
 
-            // Number(null) is 0 (finite), but our intent is "no real price" → keep finite-only.
-            // null is finite-coercible to 0, which is the "unset" sentinel readers already handle.
-            expect(Number.isNaN(result.currentSharePrice as number)).toBe(false);
+            // null → undefined (the unset sentinel) so `?? derived` kicks in;
+            // 0 would short-circuit `??` and value the position at $0.
+            expect(result.currentSharePrice).toBeUndefined();
         });
 
         it('currentSharePrice: NaN literal falls back to undefined', () => {
@@ -392,7 +415,7 @@ describe('#86 – reconstituteAccount: ESPP/RSU currentSharePrice NaN guard', ()
             expect(result.currentSharePrice).toBeUndefined();
         });
 
-        it('currentSharePrice: null does not produce NaN', () => {
+        it('currentSharePrice: null falls back to undefined (not 0)', () => {
             const serialized = {
                 className: 'RSUAccount',
                 id: 'sp-rsu3',
@@ -403,7 +426,7 @@ describe('#86 – reconstituteAccount: ESPP/RSU currentSharePrice NaN guard', ()
 
             const result = reconstituteAccount(serialized) as RSUAccount;
 
-            expect(Number.isNaN(result.currentSharePrice as number)).toBe(false);
+            expect(result.currentSharePrice).toBeUndefined();
         });
 
         it('currentSharePrice: valid numeric value round-trips', () => {
