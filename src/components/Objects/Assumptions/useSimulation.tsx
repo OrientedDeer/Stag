@@ -11,6 +11,101 @@ import { getRMDStartAge } from '../../../data/RMDData';
 import { buildDPYearContexts, planConversionsViaDP, DPPlan } from '../../../services/simulation/RothConversionDP';
 
 /**
+ * Scope a TaxState for FUTURE (projected) years. Dollar tax overrides
+ * (fed/fica/state) apply to the CURRENT year only — clearing them here means a
+ * current-year correction no longer pins a flat amount across the projection.
+ * Used by both runSimulation (its inline year-0 derivation) and the DP context
+ * builder so the DP optimizes against the same future-year tax state the final
+ * sim executes.
+ */
+export function scopeFutureTaxState(taxState: TaxState): TaxState {
+    return {
+        ...taxState,
+        fedOverride: null,
+        ficaOverride: null,
+        stateOverride: null,
+    };
+}
+
+/**
+ * Resolve `autoMax401k` on WorkIncomes for a given start year/age. When
+ * autoMax401k is 'traditional' or 'roth', the stored preTax401k/roth401k values
+ * are the user's custom values, not the IRS-limit-capped values; this bakes the
+ * effective values in so downstream consumers (year-0 metrics, calibration,
+ * partial-year adjustments) see capped amounts. Returns a new array; incomes
+ * that need no change are returned by reference.
+ */
+export function resolveIncomes(
+    incomes: AnyIncome[],
+    startYear: number,
+    startAge: number,
+): AnyIncome[] {
+    return incomes.map(inc => {
+        if (inc instanceof WorkIncome && inc.autoMax401k !== 'custom') {
+            const effective = inc.getEffective401k(startYear, startAge);
+            if (effective.preTax !== inc.preTax401k || effective.roth !== inc.roth401k) {
+                return new WorkIncome(
+                    inc.id, inc.name, inc.amount, inc.frequency,
+                    inc.earned_income, effective.preTax, inc.insurance,
+                    effective.roth, inc.employerMatch, inc.matchAccountId,
+                    inc.taxType, inc.contributionGrowthStrategy,
+                    inc.startDate, inc.end_date, inc.hsaContribution,
+                    inc.autoMax401k, inc.esppContributionType,
+                    inc.esppContributionAmount, inc.esppDiscountPercent,
+                    inc.esppHasLookback, inc.esppOfferingPeriodMonths,
+                    inc.esppAccountId, inc.esppExpectedStockGrowth,
+                    inc.pensionSystem, inc.startMilestoneId, inc.endMilestoneId
+                );
+            }
+        }
+        return inc;
+    });
+}
+
+/**
+ * Derive the FUTURE-year assumptions, applying opt-in calibration: carry the
+ * current-year tax override forward as a % by scaling the marginal rates
+ * (assumptions.macro.taxCalibration). Tax is linear in the rates, so this scales
+ * the bill exactly and flows through gross-up sizing with no cash-balance risk.
+ * Returns `assumptions` unchanged when calibration is off or yields no factor.
+ *
+ * Extracted from runSimulation's inline year-0 block so the DP context builder
+ * can derive the SAME calibrated assumptions the final sim executes against.
+ *
+ * `resolvedIncomes` must already have effective 401k values baked in (see
+ * resolveIncomes) so the computed-without-override base matches year 0.
+ */
+export function deriveFutureAssumptions(
+    assumptions: AssumptionsState,
+    taxState: TaxState,
+    resolvedIncomes: AnyIncome[],
+    expenses: AnyExpense[],
+    startYear: number,
+): AssumptionsState {
+    let futureAssumptions = assumptions;
+    if (taxState.calibrateFutureYears) {
+        // Only calibrate a component when its override is a POSITIVE number. An
+        // override of exactly 0 is not null, but treating it as a factor would
+        // scale every future rate to 0 and silently zero all future tax — so
+        // a 0 override must NOT calibrate (future years fall back to current law).
+        const hasFedOverride = taxState.fedOverride !== null && taxState.fedOverride > 0;
+        const hasStateOverride = taxState.stateOverride !== null && taxState.stateOverride > 0;
+        const computedFed = hasFedOverride
+            ? TaxService.calculateFederalTaxFromIncomes({ ...taxState, fedOverride: null }, resolvedIncomes, expenses, 0, startYear, assumptions)
+            : 0;
+        const computedState = hasStateOverride
+            ? TaxService.calculateStateTax({ ...taxState, stateOverride: null }, resolvedIncomes, expenses, startYear, assumptions)
+            : 0;
+        const fedFactor = hasFedOverride && computedFed > 1 ? taxState.fedOverride! / computedFed : 1;
+        const stateFactor = hasStateOverride && computedState > 1 ? taxState.stateOverride! / computedState : 1;
+        if (fedFactor !== 1 || stateFactor !== 1) {
+            futureAssumptions = { ...assumptions, macro: { ...assumptions.macro, taxCalibration: { fed: fedFactor, state: stateFactor } } };
+        }
+    }
+    return futureAssumptions;
+}
+
+/**
  * Extract baseline projections from a simulation run WITHOUT Roth conversions.
  * These projections capture the actual simulated values at RMD age, including:
  * - Traditional balance with all contributions, growth, and withdrawals
@@ -246,26 +341,7 @@ export const runSimulation = (
     // When autoMax401k is 'traditional' or 'roth', the stored preTax401k/roth401k values
     // are the user's custom values, not the IRS-limit-capped values. Resolve them now
     // so Year 0 incomes have effective values for Sankey charts and partial-year adjustments.
-    const resolvedIncomes: AnyIncome[] = incomes.map(inc => {
-        if (inc instanceof WorkIncome && inc.autoMax401k !== 'custom') {
-            const effective = inc.getEffective401k(startYear, startAge);
-            if (effective.preTax !== inc.preTax401k || effective.roth !== inc.roth401k) {
-                return new WorkIncome(
-                    inc.id, inc.name, inc.amount, inc.frequency,
-                    inc.earned_income, effective.preTax, inc.insurance,
-                    effective.roth, inc.employerMatch, inc.matchAccountId,
-                    inc.taxType, inc.contributionGrowthStrategy,
-                    inc.startDate, inc.end_date, inc.hsaContribution,
-                    inc.autoMax401k, inc.esppContributionType,
-                    inc.esppContributionAmount, inc.esppDiscountPercent,
-                    inc.esppHasLookback, inc.esppOfferingPeriodMonths,
-                    inc.esppAccountId, inc.esppExpectedStockGrowth,
-                    inc.pensionSystem, inc.startMilestoneId, inc.endMilestoneId
-                );
-            }
-        }
-        return inc;
-    });
+    const resolvedIncomes: AnyIncome[] = resolveIncomes(incomes, startYear, startAge);
 
     // --- STEP 1: CREATE YEAR 0 (Baseline) ---
     // Note: Interest income is NOT included in Year 0 to allow users to match
@@ -289,12 +365,7 @@ export const runSimulation = (
     // above with the overrides intact). Every projected (future) year uses a
     // scoped copy with the overrides cleared, so a current-year correction no
     // longer pins a flat amount across decades.
-    const futureTaxState: TaxState = {
-        ...taxState,
-        fedOverride: null,
-        ficaOverride: null,
-        stateOverride: null,
-    };
+    const futureTaxState: TaxState = scopeFutureTaxState(taxState);
 
     // Calibration (opt-in): carry the current-year correction forward as a %.
     // Derive the per-component factor = override ÷ engine's computed-without-
@@ -303,20 +374,7 @@ export const runSimulation = (
     // rates, so this scales the bill exactly and flows through gross-up sizing
     // with no cash-balance risk. FICA is excluded (mechanical); a ~zero
     // computed base (retirement) is guarded so the ratio can't blow up.
-    let futureAssumptions = assumptions;
-    if (taxState.calibrateFutureYears) {
-        const computedFed = taxState.fedOverride !== null
-            ? TaxService.calculateFederalTaxFromIncomes({ ...taxState, fedOverride: null }, resolvedIncomes, expenses, 0, startYear, assumptions)
-            : 0;
-        const computedState = taxState.stateOverride !== null
-            ? TaxService.calculateStateTax({ ...taxState, stateOverride: null }, resolvedIncomes, expenses, startYear, assumptions)
-            : 0;
-        const fedFactor = taxState.fedOverride !== null && computedFed > 1 ? taxState.fedOverride / computedFed : 1;
-        const stateFactor = taxState.stateOverride !== null && computedState > 1 ? taxState.stateOverride / computedState : 1;
-        if (fedFactor !== 1 || stateFactor !== 1) {
-            futureAssumptions = { ...assumptions, macro: { ...assumptions.macro, taxCalibration: { fed: fedFactor, state: stateFactor } } };
-        }
-    }
+    const futureAssumptions = deriveFutureAssumptions(assumptions, taxState, resolvedIncomes, expenses, startYear);
 
     const currentLivingExpenses = expenses.reduce((sum, exp) => sum + exp.getAnnualAmount(startYear), 0);
 
@@ -639,8 +697,26 @@ export const runSimulationWithOptimization = (
                     a instanceof InvestedAccount && a.taxType === 'Brokerage')
                 .reduce((sum, a) => sum + a.vestedAmount, 0);
 
+        // The final sim (Pass 3) runs against the SAME future-year tax state and
+        // calibrated assumptions that runSimulation derives internally. Derive
+        // them here too so the DP optimizes against the rates/events it will
+        // actually execute against — not the un-calibrated year-0 tax state.
+        //   #4 (calibration): dpAssumptions carries assumptions.macro.taxCalibration
+        //       when TaxState.calibrateFutureYears is on, so getTaxParameters
+        //       inside buildDPYearContexts scales the brackets to match.
+        //   #3 (scheduled tax events): dpTaxState clears dollar overrides (which
+        //       getTaxParameters ignores anyway) so the DP's future-year tax
+        //       state matches the executed one; the per-year filing/state move
+        //       itself is resolved inside buildDPYearContexts via taxEvents.
+        const currentYear = new Date().getFullYear();
+        const startYear = assumptions.demographics.priorYearMode ? currentYear - 1 : currentYear;
+        const startAge = startYear - birthYear;
+        const resolvedIncomes = resolveIncomes(incomes, startYear, startAge);
+        const dpAssumptions = deriveFutureAssumptions(assumptions, taxState, resolvedIncomes, expenses, startYear);
+        const dpTaxState = scopeFutureTaxState(taxState);
+
         const contexts = buildDPYearContexts(
-            baselineTimeline, assumptions, taxState, retirementYear, startingBrokerageBalance,
+            baselineTimeline, dpAssumptions, dpTaxState, retirementYear, startingBrokerageBalance,
         );
 
         // Critical: the DP only solves retirement years onward, so its forward

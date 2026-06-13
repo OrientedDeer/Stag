@@ -66,6 +66,16 @@ describe('tax calibration', () => {
         expect(fedAt(sim, START_YEAR)).toBe(override);
     });
 
+    it('a fed override of 0 does NOT zero future tax (BUG #5)', () => {
+        const baseline = fedAt(run(taxBase()), START_YEAR + 2);
+        // fedOverride 0 is not null; without the positive-override guard the
+        // factor becomes 0/computed = 0 and every future rate scales to 0,
+        // silently zeroing all future federal tax.
+        const withZeroOverride = fedAt(run(taxBase({ fedOverride: 0, calibrateFutureYears: true })), START_YEAR + 2);
+        expect(withZeroOverride).toBeCloseTo(baseline, 0);
+        expect(withZeroOverride).toBeGreaterThan(0);
+    });
+
     it('guards a near-zero computed base (no blow-up)', () => {
         // calibrateFutureYears with no override set → factor 1, no change.
         const baseline = fedAt(run(taxBase()), START_YEAR + 2);

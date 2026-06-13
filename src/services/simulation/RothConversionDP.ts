@@ -43,7 +43,7 @@
  */
 
 import { TaxParameters, FilingStatus } from "../../data/TaxData";
-import { TaxState } from "../../components/Objects/Taxes/TaxContext";
+import { TaxState, resolveTaxEventsForYear } from "../../components/Objects/Taxes/TaxContext";
 import { AssumptionsState, getBirthYear } from "../../components/Objects/Assumptions/AssumptionsContext";
 import { SimulationYear, DPYearTrace } from "./types";
 import * as TaxService from "../../components/Objects/Taxes/TaxService";
@@ -393,6 +393,28 @@ export function buildDPYearContexts(
     const birthYear = getBirthYear(assumptions.milestones);
     const rmdStartAge = getRMDStartAge(birthYear);
 
+    // Reconstruct the milestone-reach-year map from the baseline timeline so
+    // milestone-triggered tax events (e.g. "file Single when I retire") resolve
+    // to the same years they fired in the real run. First occurrence of each
+    // milestone wins.
+    //
+    // One-year lag: in the main sim a milestone reached in year M only becomes
+    // visible to the NEXT year's resolveTaxEventsForYear call — runSimulationLoop
+    // records the reach year AFTER simulating year M, so a milestone-triggered
+    // tax event takes effect in M+1, not M (see TaxLifeEvent docs). resolveTax-
+    // EventsForYear has no lag of its own (it applies as soon as firedYear <=
+    // year), so we encode the lag here by storing yearReached + 1. This keeps the
+    // DP's per-year filing/state in lockstep with the executed sim. Year-triggered
+    // events carry their own exact `year` and are unaffected.
+    const reachYears = new Map<string, number>();
+    for (const simYear of baseline) {
+        simYear.milestoneEvents?.forEach(event => {
+            if (!reachYears.has(event.milestoneId)) {
+                reachYears.set(event.milestoneId, event.yearReached + 1);
+            }
+        });
+    }
+
     // Diagnostic: capture the baseline sub-sim's trad balance at the year
     // BEFORE retirement. If `currentTradBalance` (used by DP's forward sweep)
     // matches this value, it means the lookup is grabbing the end-of-(year
@@ -449,19 +471,27 @@ export function buildDPYearContexts(
         );
         const ltcgIncome = simYear.taxDetails.longTermCapitalGains ?? 0;
 
+        // Apply scheduled tax life events (state move / filing-status change)
+        // that have fired by this year, so the DP sees the same per-year filing
+        // status and state residency the main sim executes against (#3). Using
+        // taxState.filingStatus / taxState.stateResidency directly would pin the
+        // year-0 values across the whole horizon and miss e.g. a move to a
+        // no-tax state at retirement.
+        const effTax = resolveTaxEventsForYear(taxState, simYear.year, reachYears);
+
         const fedParams = TaxService.getTaxParameters(
-            simYear.year, taxState.filingStatus, 'federal', undefined, assumptions
+            simYear.year, effTax.filingStatus, 'federal', undefined, assumptions
         );
         if (!fedParams) continue;
         const stateParams = TaxService.getTaxParameters(
-            simYear.year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions
+            simYear.year, effTax.filingStatus, 'state', effTax.stateResidency, assumptions
         );
 
         // ACA cliff applies pre-65 only (Medicare eligibility starts at 65).
         let acaOptions: ACAOptions | undefined;
         if (assumptions.investments.acaAware !== false && age < 65) {
             const acaFiling: 'single' | 'married_filing_jointly' =
-                taxState.filingStatus === 'Married Filing Jointly' ? 'married_filing_jointly' : 'single';
+                effTax.filingStatus === 'Married Filing Jointly' ? 'married_filing_jointly' : 'single';
             acaOptions = {
                 currentAge: age,
                 acaSubsidyAware: true,
@@ -501,7 +531,7 @@ export function buildDPYearContexts(
             nonSSOrdinaryIncomeExclRMD,
             ssBenefits,
             ltcgIncome,
-            filingStatus: taxState.filingStatus,
+            filingStatus: effTax.filingStatus,
             fedParams,
             stateParams: stateParams ?? null,
             acaOptions,
