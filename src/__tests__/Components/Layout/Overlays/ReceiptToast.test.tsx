@@ -124,6 +124,33 @@ describe('ReceiptToast', () => {
         expect(screen.getByText('fourth')).toBeInTheDocument();
     });
 
+    it('renders an action button and runs onAction when clicked', () => {
+        const onAction = vi.fn();
+        renderWithProvider({
+            message: 'Deleted "AMAZON" $42.10',
+            actionLabel: 'Undo',
+            onAction,
+        });
+
+        fireEvent.click(screen.getByText('trigger'));
+
+        const undo = screen.getByRole('button', { name: 'Undo' });
+        expect(undo).toBeInTheDocument();
+
+        fireEvent.click(undo);
+        expect(onAction).toHaveBeenCalledTimes(1);
+        // clicking the action also dismisses the toast
+        expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    });
+
+    it('does not render an action button without onAction', () => {
+        renderWithProvider({ message: 'No action', actionLabel: 'Undo' });
+
+        fireEvent.click(screen.getByText('trigger'));
+
+        expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument();
+    });
+
     it('is a no-op outside the provider (default context)', () => {
         const Standalone = () => {
             const { show } = useReceiptToast();

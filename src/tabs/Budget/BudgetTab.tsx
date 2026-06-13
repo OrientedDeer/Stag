@@ -2,6 +2,7 @@ import { useContext, useEffect, useRef, useState } from 'react';
 import { BudgetContext } from '../../components/Objects/Budget/BudgetContext';
 import { formatMonthYear, navigateMonth } from '../../components/Objects/Budget/budgetUtils';
 import { useAutoReconcile } from '../../hooks/useAutoReconcile';
+import { useSubTabDeepLink } from '../../hooks/useSubTabDeepLink';
 import { useSubTabKeyboardNav } from '../../hooks/useKeyboardShortcuts';
 import SpendingTab from './SpendingTab';
 import OverviewTab from './OverviewTab';
@@ -27,6 +28,10 @@ export default function BudgetTab() {
         setActiveTab(tab);
         localStorage.setItem('stag_budget_tab', tab);
     };
+
+    // Receipt links arrive as /budget?tab=Settings — select that sub-tab
+    // instead of whatever localStorage last saved.
+    useSubTabDeepLink(tabs, handleTabChange);
 
     const handlePrevMonth = () => {
         const { month, year } = navigateMonth(selectedMonth, selectedYear, 'prev');

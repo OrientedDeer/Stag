@@ -14,6 +14,7 @@ import {
     MONTH_NAMES,
 } from '../../components/Objects/Budget/budgetUtils';
 import { ToggleInput } from '../../components/Layout/InputFields/ToggleInput';
+import { Tooltip } from '../../components/Layout/InputFields/Tooltip';
 
 const chartKeys = ['average'];
 const chartMargin = { top: 5, right: 20, bottom: 25, left: 100 };
@@ -120,6 +121,8 @@ export default function OverviewTab() {
             totalSpent,
             remaining: totalBudget - totalSpent,
             isUnderBudget: totalSpent <= totalBudget,
+            monthsCounted: selectedMonth - firstMonthWithData + 1,
+            firstMonth: firstMonthWithData,
         };
     }, [months, expenses, selectedMonth, selectedYear, getEffectiveMonthSpend]);
 
@@ -237,7 +240,12 @@ export default function OverviewTab() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* This Month */}
                 <div className="bg-surface-overlay rounded-xl p-4 border border-border-default">
-                    <h3 className="text-sm text-content-muted mb-2">This Month</h3>
+                    <h3 className="text-sm text-content-muted mb-2 flex items-center gap-1.5">
+                        This Month
+                        <Tooltip
+                            text={`${formatCurrency(budgetSummary.totalBudget)} budget = this month's active expenses (non-discretionary + discretionary). Spent ${formatCurrency(budgetSummary.totalSpent)} so far; ${budgetSummary.isUnderBudget ? `${formatCurrency(budgetSummary.remaining)} remaining` : `${formatCurrency(Math.abs(budgetSummary.remaining))} over`}.`}
+                        />
+                    </h3>
                     <div className="text-2xl font-bold text-white">
                         {formatCurrency(budgetSummary.totalSpent)}
                         <span className="text-content-subtle text-lg ml-1">/ {formatCurrency(budgetSummary.totalBudget)}</span>
@@ -261,10 +269,13 @@ export default function OverviewTab() {
 
                 {/* Year to Date */}
                 <div className="bg-surface-overlay rounded-xl p-4 border border-border-default">
-                    <h3 className="text-sm text-content-muted mb-2">
+                    <h3 className="text-sm text-content-muted mb-2 flex items-center gap-1.5">
                         Year to Date
+                        <Tooltip
+                            text={`${formatCurrency(ytdStats.totalBudget)} budget = sum of ${ytdStats.monthsCounted} month${ytdStats.monthsCounted === 1 ? '' : 's'}' active expenses (${MONTH_NAMES[ytdStats.firstMonth - 1]}–${MONTH_NAMES[selectedMonth - 1]}). Spent ${formatCurrency(ytdStats.totalSpent)} against it.${projectFuture && isMonthInFuture(selectedMonth, selectedYear) ? ' Future months count their non-discretionary budget as projected spend.' : ''}`}
+                        />
                         {projectFuture && isMonthInFuture(selectedMonth, selectedYear) && (
-                            <span className="text-xs text-content-subtle font-normal ml-2">(non-discretionary projected)</span>
+                            <span className="text-xs text-content-subtle font-normal ml-1">(non-discretionary projected)</span>
                         )}
                     </h3>
                     <div className="text-2xl font-bold text-white">
@@ -349,8 +360,10 @@ export default function OverviewTab() {
 
                         let budgetStatus: 'very-under' | 'under' | 'over' | 'very-over' | null = null;
                         let percentSpent = 0;
+                        let tileSpent = 0;
                         if (hasMonthData && monthSnapshot) {
                             const monthSpent = Object.values(monthSnapshot.spending).reduce((s, v) => s + v, 0) + getUncategorizedSpending(monthSnapshot);
+                            tileSpent = monthSpent;
                             percentSpent = monthBudget > 0 ? (monthSpent / monthBudget) * 100 : 0;
 
                             if (percentSpent <= 80) budgetStatus = 'very-under';
@@ -359,6 +372,7 @@ export default function OverviewTab() {
                             else budgetStatus = 'very-over';
                         } else if (isProjected) {
                             const projected = getNonDiscretionaryMonthlyBudget(expenses, monthNum, selectedYear);
+                            tileSpent = projected;
                             percentSpent = monthBudget > 0 ? (projected / monthBudget) * 100 : 0;
                             if (percentSpent <= 80) budgetStatus = 'very-under';
                             else if (percentSpent <= 100) budgetStatus = 'under';
@@ -387,12 +401,12 @@ export default function OverviewTab() {
 
                         const getTitle = () => {
                             if (hasMonthData) {
-                                return `${name}: ${percentSpent.toFixed(0)}% of budget spent`;
+                                return `${name}: ${formatCurrency(tileSpent)} spent of ${formatCurrency(monthBudget)} budget (${percentSpent.toFixed(0)}%)`;
                             }
                             if (isProjected) {
-                                return `${name}: ${percentSpent.toFixed(0)}% projected (non-discretionary only)`;
+                                return `${name}: ${formatCurrency(tileSpent)} projected of ${formatCurrency(monthBudget)} budget (${percentSpent.toFixed(0)}%, non-discretionary only)`;
                             }
-                            return `${name}: ${isFuture ? 'Future' : 'No data'}`;
+                            return `${name}: ${isFuture ? 'Future month — no data yet' : 'No data'}`;
                         };
 
                         return (

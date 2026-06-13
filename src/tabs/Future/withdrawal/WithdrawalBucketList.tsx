@@ -2,6 +2,16 @@ import { memo } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { AnyAccount } from '../../../components/Objects/Accounts/models';
 import { Panel } from "../../../components/Layout/Primitives";
+import { Tooltip } from '../../../components/Layout/InputFields/Tooltip';
+
+export interface AccountTimeline {
+    tappedYear?: number;
+    tappedAge?: number;
+    depletedYear?: number;
+    depletedAge?: number;
+    depletedDrawAmount?: number;
+    depletedBalanceBefore?: number;
+}
 
 export interface BucketDetail {
     id: string;
@@ -10,6 +20,8 @@ export interface BucketDetail {
     account: AnyAccount | undefined;
     badge: { label: string; color: string };
     balance: number;
+    /** Derived from the simulation: when this account is first tapped / depletes. */
+    timeline?: AccountTimeline;
 }
 
 interface WithdrawalBucketListProps {
@@ -17,6 +29,47 @@ interface WithdrawalBucketListProps {
     buckets: BucketDetail[];
     onDragEnd: (result: DropResult) => void;
     formatMoney: (amount: number) => string;
+}
+
+// One-line "Tapped age X → depleted age Y" consequence, derived from the sim.
+function TimelineLine({
+    timeline,
+    formatMoney,
+}: {
+    timeline: AccountTimeline | undefined;
+    formatMoney: (amount: number) => string;
+}) {
+    if (!timeline || timeline.tappedYear === undefined) {
+        return (
+            <div className="text-xs text-content-subtle mt-0.5">
+                Not tapped within the plan
+            </div>
+        );
+    }
+
+    const { tappedAge, depletedAge, depletedDrawAmount, depletedBalanceBefore } = timeline;
+
+    if (depletedAge === undefined) {
+        return (
+            <div className="text-xs text-content-subtle mt-0.5">
+                Tapped age {tappedAge} → lasts the rest of the plan
+            </div>
+        );
+    }
+
+    const depletionExplain =
+        depletedBalanceBefore !== undefined && depletedDrawAmount !== undefined
+            ? `Depletes at age ${depletedAge}: ~${formatMoney(depletedBalanceBefore)} balance entering the year vs a ${formatMoney(depletedDrawAmount)} draw drains it to ~$0.`
+            : `Depletes at age ${depletedAge}, when the year's draw empties the balance.`;
+
+    return (
+        <div className="flex items-center gap-1 text-xs text-content-subtle mt-0.5">
+            <span>
+                Tapped age {tappedAge} → depleted age {depletedAge}
+            </span>
+            <Tooltip text={depletionExplain} />
+        </div>
+    );
 }
 
 function WithdrawalBucketListInner({
@@ -126,6 +179,7 @@ function WithdrawalBucketListInner({
                                                         <div className="text-sm text-content-muted">
                                                             Balance: {formatMoney(bucket.balance)}
                                                         </div>
+                                                        <TimelineLine timeline={bucket.timeline} formatMoney={formatMoney} />
                                                     </div>
                                                 </div>
                                             </div>

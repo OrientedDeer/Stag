@@ -1,5 +1,7 @@
 import { useCallback } from 'react';
 import type { Dispatch } from 'react';
+import { useReceiptToast } from '../../../components/Layout/Overlays/ReceiptToast';
+import { MONTH_NAMES } from '../../../components/Objects/Budget/budgetUtils';
 import {
     parseCSV,
     detectColumnTypes,
@@ -50,6 +52,8 @@ export function useCSVImportFlow({
     budgetDispatch,
     getOrCreateMonth,
 }: UseCSVImportFlowArgs): CSVImportActions {
+    const { show: showReceipt } = useReceiptToast();
+
     const processFile = useCallback(
         (content: string) => {
             try {
@@ -190,6 +194,7 @@ export function useCSVImportFlow({
             byMonth[key].push(txn);
         }
 
+        const monthLabels: string[] = [];
         for (const [key, txns] of Object.entries(byMonth)) {
             const [yearStr, monthStr] = key.split('-');
             const month = parseInt(monthStr, 10);
@@ -199,6 +204,35 @@ export function useCSVImportFlow({
                 type: 'BULK_ADD_TRANSACTIONS',
                 payload: { monthId: snapshot.id, transactions: txns },
             });
+            monthLabels.push(`${MONTH_NAMES[month - 1]} ${year}`);
+        }
+
+        const importedCount = toImport.length;
+        // A newly-saved CSV format lands on the Settings tab; surface it via the
+        // receipt link so the side-effect isn't invisible.
+        const savedNewFormat =
+            state.saveFormat &&
+            state.formatName.trim().length > 0 &&
+            !!state.csvContent &&
+            !state.matchedFormat;
+
+        if (importedCount > 0) {
+            const txnLabel = `${importedCount} transaction${importedCount === 1 ? '' : 's'}`;
+            // Name the destination month when everything landed in one; otherwise
+            // report the spread without listing every month.
+            const monthPart =
+                monthLabels.length === 1
+                    ? ` to ${monthLabels[0]}`
+                    : ` across ${monthLabels.length} months`;
+            let message = `Imported ${txnLabel}${monthPart}`;
+            if (savedNewFormat) {
+                message += ` · saved CSV format "${state.formatName.trim()}"`;
+            }
+            showReceipt(
+                savedNewFormat
+                    ? { message, linkTo: '/budget?tab=Settings', linkLabel: 'View Settings' }
+                    : { message },
+            );
         }
 
         if (
@@ -254,7 +288,7 @@ export function useCSVImportFlow({
         }
 
         dispatch({ type: 'IMPORT_COMPLETED' });
-    }, [state, dispatch, budgetDispatch, getOrCreateMonth]);
+    }, [state, dispatch, budgetDispatch, getOrCreateMonth, showReceipt]);
 
     return { processFile, applyMappingAndPreview, handleImport };
 }

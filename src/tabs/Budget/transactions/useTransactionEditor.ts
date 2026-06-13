@@ -6,6 +6,8 @@ import {
     IncomeCategory,
 } from '../../../components/Objects/Budget/BudgetContext';
 import { ExpenseContext } from '../../../components/Objects/Expense/ExpenseContext';
+import { useReceiptToast } from '../../../components/Layout/Overlays/ReceiptToast';
+import { formatCurrency } from '../../../components/Objects/Budget/budgetUtils';
 import { CONTRIBUTION_PREFIX, toLocalDateString } from './utils';
 
 export interface NewTransactionForm {
@@ -50,6 +52,7 @@ export function useTransactionEditor(selectedMonth: number, selectedYear: number
         importSettings,
     } = useContext(BudgetContext);
     const { expenses } = useContext(ExpenseContext);
+    const { show: showReceipt } = useReceiptToast();
 
     const currentSnapshot = months.find(
         m => m.month === selectedMonth && m.year === selectedYear,
@@ -196,11 +199,30 @@ export function useTransactionEditor(selectedMonth: number, selectedYear: number
 
     const remove = useCallback((transactionId: string) => {
         if (!currentSnapshot) return;
+        // Capture the removed row so the receipt can re-add it (Undo). The
+        // reducer deletes by id, so a clean undo is just an add of the same row.
+        const removed = currentSnapshot.transactions.find(t => t.id === transactionId);
+        const monthId = currentSnapshot.id;
         dispatch({
             type: 'DELETE_TRANSACTION',
-            payload: { monthId: currentSnapshot.id, transactionId },
+            payload: { monthId, transactionId },
         });
-    }, [currentSnapshot, dispatch]);
+
+        if (removed) {
+            const desc = removed.description || 'transaction';
+            const amt = formatCurrency(Math.abs(removed.amount), { cents: true });
+            showReceipt({
+                message: `Deleted "${desc}" ${amt}`,
+                actionLabel: 'Undo',
+                onAction: () => {
+                    dispatch({
+                        type: 'ADD_TRANSACTION',
+                        payload: { monthId, transaction: removed },
+                    });
+                },
+            });
+        }
+    }, [currentSnapshot, dispatch, showReceipt]);
 
     const clearAllForMonth = useCallback(() => {
         if (!currentSnapshot) return;

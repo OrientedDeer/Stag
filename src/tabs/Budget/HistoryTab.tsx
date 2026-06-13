@@ -20,7 +20,10 @@ interface HistoryRow {
     total: number;
     budget: number;
     difference: number;
-    [key: string]: string | number; // Dynamic expense columns
+    // True when the month is tracked from transactions (auto-reconciled), so its
+    // spending cells are read-only — edits would be overwritten by reconcile.
+    hasTransactions: boolean;
+    [key: string]: string | number | boolean; // Dynamic expense columns
 }
 
 export default function HistoryTab() {
@@ -57,6 +60,7 @@ export default function HistoryTab() {
                 total: totalSpent,
                 budget: monthBudget,
                 difference: monthBudget - totalSpent,
+                hasTransactions: (snapshot?.transactions?.length ?? 0) > 0,
             };
 
             // Add each expense category as a column
@@ -67,7 +71,8 @@ export default function HistoryTab() {
             return row;
         });
 
-        // Add average row
+        // Add average row. NOTE: divides by a fixed 12 months even for partial
+        // years (see the "of 12 months" note rendered below the grid).
         const avgRow: HistoryRow = {
             month: 'Avg',
             monthNum: 0,
@@ -75,6 +80,7 @@ export default function HistoryTab() {
             total: monthRows.reduce((s, r) => s + r.total, 0) / 12,
             budget: monthRows.reduce((s, r) => s + r.budget, 0) / 12,
             difference: monthRows.reduce((s, r) => s + r.difference, 0) / 12,
+            hasTransactions: false,
         };
         expenses.forEach(exp => {
             avgRow[`exp_${exp.id}`] = monthRows.reduce((s, r) => s + ((r[`exp_${exp.id}`] as number) || 0), 0) / 12;
@@ -84,9 +90,12 @@ export default function HistoryTab() {
         return monthRows;
     }, [months, selectedYear, expenses]);
 
-    // Build columns dynamically based on expenses
+    // Build columns dynamically based on expenses. The datasheet-grid column
+    // shapes don't unify cleanly across mixed cell types, so the column list is
+    // built untyped (matching the existing `as any` return below).
     const columns = useMemo(() => {
-        const cols = [
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const cols: any[] = [
             {
                 ...keyColumn('month', readOnlyTextColumn),
                 title: 'Month',
@@ -96,13 +105,17 @@ export default function HistoryTab() {
             },
         ];
 
-        // Add expense columns
+        // Add expense columns. Spending is read-only for any month tracked from
+        // transactions (auto-reconcile owns those values); editable only for
+        // empty/manual months. The Avg row (monthNum 0) is always read-only.
         expenses.forEach(exp => {
             cols.push({
                 ...keyColumn(`exp_${exp.id}`, currencyColumn),
                 title: exp.name.length > 12 ? exp.name.slice(0, 10) + '...' : exp.name,
                 minWidth: 90,
-            } as any);
+                disabled: ({ rowData }: { rowData: HistoryRow }) =>
+                    rowData.monthNum === 0 || rowData.hasTransactions,
+            });
         });
 
         // Add summary columns
@@ -112,30 +125,32 @@ export default function HistoryTab() {
                 title: 'Total',
                 disabled: true,
                 minWidth: 90,
-            } as any,
+            },
             {
                 ...keyColumn('budget', currencyColumn),
                 title: 'Budget',
                 disabled: true,
                 minWidth: 90,
-            } as any,
+            },
             {
                 ...keyColumn('difference', currencyColumn),
                 title: '+/-',
                 disabled: true,
                 minWidth: 80,
-            } as any
+            }
         );
 
         return cols;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    }, [expenses]) as any;
+    }, [expenses]);
 
     // Handle changes to the grid
     const handleChange = (newRows: HistoryRow[]) => {
         newRows.forEach((row, idx) => {
             // Skip the average row (not editable)
             if (row.monthNum === 0) return;
+            // Skip months tracked from transactions — their spending is owned by
+            // auto-reconcile and any hand-edit here would be silently reverted.
+            if (row.hasTransactions) return;
 
             const originalRow = rows[idx];
 
@@ -204,6 +219,11 @@ export default function HistoryTab() {
         return result;
     }, [rows, expenses]);
 
+    const hasTrackedMonths = useMemo(
+        () => rows.some(row => row.monthNum !== 0 && row.hasTransactions),
+        [rows],
+    );
+
     if (expenses.length === 0) {
         return (
             <div className="text-center py-12">
@@ -221,6 +241,16 @@ export default function HistoryTab() {
         <div className="space-y-4">
             <h3 className="text-lg font-semibold text-white">{selectedYear} Spending History</h3>
 
+            {hasTrackedMonths && (
+                <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-3">
+                    <p className="text-sm text-blue-400">
+                        Months tracked from transactions are read-only here — their
+                        spending is calculated from categorized transactions. Edit them in
+                        the Transactions tab. Empty/manual months stay editable.
+                    </p>
+                </div>
+            )}
+
             <div className="bg-surface-overlay rounded-lg border border-border-default overflow-hidden">
                 <div className="budget-grid">
                     <DataSheetGrid
@@ -234,6 +264,10 @@ export default function HistoryTab() {
                     />
                 </div>
             </div>
+
+            <p className="text-xs text-content-subtle">
+                The <span className="text-content-muted font-medium">Avg</span> row divides each total by 12 months (a full year), even for partial years.
+            </p>
 
             {/* Year Totals */}
             <div className="bg-surface-overlay rounded-lg border border-border-default px-4 py-2">

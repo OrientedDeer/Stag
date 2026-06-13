@@ -15,6 +15,7 @@ import { runSimulationWithOptimization } from '../../components/Objects/Assumpti
 import { SimulationYear } from '../../services/simulation/types';
 import { Phase } from '../../services/simulation/TaxOptimizedWithdrawal';
 import { getSimulationInputHash } from '../../services/simulationHash';
+import { useReceiptToast } from '../../components/Layout/Overlays/ReceiptToast';
 import { HelpSection } from './withdrawal/HelpSection';
 import { TaxOptimizationControls } from './withdrawal/TaxOptimizationControls';
 import { OptimizationSummaryCard, OptimizationSummary, ComparisonResult } from './withdrawal/OptimizationSummaryCard';
@@ -67,6 +68,7 @@ export default function WithdrawalTab() {
     const { incomes } = useContext(IncomeContext);
     const { expenses } = useContext(ExpenseContext);
     const { state: taxState } = useContext(TaxContext);
+    const { show: showReceipt } = useReceiptToast();
     const forceExact = state.display?.useCompactCurrency === false;
 
     const taxOptimizationEnabled = state.investments.taxOptimizationEnabled;
@@ -259,11 +261,78 @@ export default function WithdrawalTab() {
 
     const onDragEnd = useCallback((result: DropResult) => {
         if (!result.destination) return;
+        if (result.destination.index === result.source.index) return;
         const items = Array.from(state.withdrawalStrategy);
         const [reorderedItem] = items.splice(result.source.index, 1);
         items.splice(result.destination.index, 0, reorderedItem);
         dispatch({ type: 'SET_WITHDRAWAL_STRATEGY', payload: items });
-    }, [state.withdrawalStrategy, dispatch]);
+        showReceipt({ message: 'Withdrawal order changed — projection updated' });
+    }, [state.withdrawalStrategy, dispatch, showReceipt]);
+
+    // Derive, per account, the year it is first tapped and the year it depletes,
+    // directly from the cached simulation — this is what makes the burn-order
+    // drag have a visible consequence.
+    //
+    // Assumptions (documented honestly, since the sim doesn't store an explicit
+    // "depleted" flag):
+    //  - "Tapped" = first projected year with a positive withdrawal from this
+    //    account (`cashflow.withdrawalDetail[accountId] > 0`).
+    //  - "Depleted" = first year AT OR AFTER the first tap whose end-of-year
+    //    balance snapshot falls to ~$0 (≤ $1, to absorb float dust) while a
+    //    withdrawal occurred that year — i.e. the account was actively drained
+    //    to empty. An account that's tapped but never hits ~$0 within the plan
+    //    is reported as "tapped" only. Growth can lift a near-zero balance back
+    //    up, so we take the FIRST year it bottoms out after being tapped.
+    //  - Synthetic end-of-year projection rows (`isEndOfYearProjection`) are
+    //    skipped so the reported year/age line up with real plan years.
+    const accountTimeline = useMemo(() => {
+        const birthYear = getBirthYear(state.milestones);
+        const rows = simulation
+            .filter(y => !y.isEndOfYearProjection)
+            .sort((a, b) => a.year - b.year);
+
+        const timeline = new Map<string, {
+            tappedYear?: number; tappedAge?: number;
+            depletedYear?: number; depletedAge?: number;
+            depletedDrawAmount?: number; depletedBalanceBefore?: number;
+        }>();
+
+        for (const acc of accounts) {
+            let tappedYear: number | undefined;
+            let depletedYear: number | undefined;
+            let prevBalance: number | undefined;
+            let depletedDrawAmount: number | undefined;
+            let depletedBalanceBefore: number | undefined;
+
+            for (const y of rows) {
+                const draw = y.cashflow.withdrawalDetail?.[acc.id] ?? 0;
+                const snapshot = y.accounts.find(a => a.id === acc.id);
+                const balance = snapshot?.amount ?? 0;
+
+                if (draw > 0 && tappedYear === undefined) {
+                    tappedYear = y.year;
+                }
+                if (tappedYear !== undefined && depletedYear === undefined && draw > 0 && balance <= 1) {
+                    depletedYear = y.year;
+                    depletedDrawAmount = draw;
+                    // Balance heading into the year that emptied it (the draw
+                    // plus what's left). Falls back to this year's draw.
+                    depletedBalanceBefore = prevBalance ?? draw;
+                }
+                prevBalance = balance;
+            }
+
+            timeline.set(acc.id, {
+                tappedYear,
+                tappedAge: tappedYear !== undefined ? tappedYear - birthYear : undefined,
+                depletedYear,
+                depletedAge: depletedYear !== undefined ? depletedYear - birthYear : undefined,
+                depletedDrawAmount,
+                depletedBalanceBefore,
+            });
+        }
+        return timeline;
+    }, [simulation, accounts, state.milestones]);
 
     // Build a Map once so the lookup is O(1) per bucket instead of accounts.find() per bucket.
     const bucketsWithDetails = useMemo<BucketDetail[]>(() => {
@@ -276,9 +345,10 @@ export default function WithdrawalTab() {
                 account,
                 badge,
                 balance: account?.amount || 0,
+                timeline: accountTimeline.get(bucket.accountId),
             };
         });
-    }, [state.withdrawalStrategy, accounts]);
+    }, [state.withdrawalStrategy, accounts, accountTimeline]);
 
     const [showHelp, setShowHelp] = useState(false);
     const toggleHelp = useCallback(() => setShowHelp(h => !h), []);

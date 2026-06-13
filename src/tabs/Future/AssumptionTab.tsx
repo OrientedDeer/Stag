@@ -1,6 +1,7 @@
 import { useContext, useState, useMemo } from "react";
-import { AssumptionsContext } from "../../components/Objects/Assumptions/AssumptionsContext";
+import { AssumptionsContext, getBirthYear } from "../../components/Objects/Assumptions/AssumptionsContext";
 import { ExpenseContext } from "../../components/Objects/Expense/ExpenseContext";
+import { SimulationContext } from "../../components/Objects/Assumptions/SimulationContext";
 import { PercentageInput } from "../../components/Layout/InputFields/PercentageInput";
 import { DropdownInput } from "../../components/Layout/InputFields/DropdownInput";
 import { ToggleInput } from "../../components/Layout/InputFields/ToggleInput";
@@ -10,6 +11,7 @@ import { Panel } from "../../components/Layout/Primitives";
 export default function AssumptionTab() {
   const { state, dispatch } = useContext(AssumptionsContext);
   const { expenses } = useContext(ExpenseContext);
+  const { simulation } = useContext(SimulationContext);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showMilestoneModal, setShowMilestoneModal] = useState(false);
@@ -18,6 +20,23 @@ export default function AssumptionTab() {
   const hasDiscretionaryExpenses = useMemo(() => {
     return expenses.some(exp => exp.isDiscretionary);
   }, [expenses]);
+
+  const birthYear = useMemo(() => getBirthYear(state.milestones), [state.milestones]);
+
+  // Derive milestoneId → year-reached from the cached simulation. Each
+  // SimulationYear carries the milestone events that fired that year; the
+  // first occurrence wins (matches useSimulation's reach-year tracking).
+  const milestoneReachYears = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const year of simulation) {
+      year.milestoneEvents?.forEach(event => {
+        if (!map.has(event.milestoneId)) {
+          map.set(event.milestoneId, event.yearReached);
+        }
+      });
+    }
+    return map;
+  }, [simulation]);
 
   return (
     <div className="w-full min-h-full flex bg-surface-base justify-center pt-6 pb-24">
@@ -365,6 +384,8 @@ export default function AssumptionTab() {
         <MilestoneModal
             isOpen={showMilestoneModal}
             onClose={() => setShowMilestoneModal(false)}
+            milestoneReachYears={milestoneReachYears}
+            birthYear={birthYear}
         />
     </div>
   );

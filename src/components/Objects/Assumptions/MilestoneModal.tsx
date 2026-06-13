@@ -17,6 +17,10 @@ const generateUniqueId = () =>
 interface MilestoneModalProps {
     isOpen: boolean;
     onClose: () => void;
+    /** milestoneId → year the simulation reaches that milestone (from useSimulation). */
+    milestoneReachYears?: Map<string, number>;
+    /** Birth year, used to render the age at which each milestone is reached. */
+    birthYear?: number;
 }
 
 interface MilestoneFormState {
@@ -60,7 +64,7 @@ function getInitialFormState(): MilestoneFormState {
     };
 }
 
-const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose }) => {
+const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose, milestoneReachYears, birthYear }) => {
     const { state, dispatch } = useContext(AssumptionsContext);
     const { incomes } = useContext(IncomeContext);
     const { expenses } = useContext(ExpenseContext);
@@ -264,6 +268,30 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose }) => {
                                                     </span>
                                                 ))}
                                             </div>
+                                            {milestoneReachYears && (() => {
+                                                const reachYear = milestoneReachYears.get(milestone.id);
+                                                const refs = getMilestoneReferences(milestone.id);
+                                                const triggerCount = refs.expenses.length + refs.incomes.length;
+                                                return (
+                                                    <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                                                        {reachYear !== undefined ? (
+                                                            <span className="text-xs text-positive">
+                                                                → reached {reachYear}
+                                                                {birthYear !== undefined && ` (age ${reachYear - birthYear})`}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-xs text-content-subtle italic">
+                                                                Not reached within plan
+                                                            </span>
+                                                        )}
+                                                        {triggerCount > 0 && (
+                                                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-input text-content-muted">
+                                                                {refs.expenses.length} expense{refs.expenses.length === 1 ? '' : 's'} / {refs.incomes.length} income{refs.incomes.length === 1 ? '' : 's'} triggered
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
                                         <div className="flex gap-2 ml-4">
                                             <button

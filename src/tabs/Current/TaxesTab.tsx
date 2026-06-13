@@ -20,6 +20,7 @@ import { CurrencyInput } from "../../components/Layout/InputFields/CurrencyInput
 import { DropdownInput } from "../../components/Layout/InputFields/DropdownInput";
 import { DeductionMethod } from "../../components/Objects/Taxes/TaxContext";
 import { Panel } from "../../components/Layout/Primitives";
+import { Tooltip } from "../../components/Layout/InputFields/Tooltip";
 
 // Suggestion: Create a 'useTax' hook in TaxContext.tsx that handles the null check
 // and throws an error if the provider is missing.
@@ -66,7 +67,7 @@ export default function TaxesTab() {
     );
     const federalItemizedTotal = stateItemized + stateTax;
     const stateParams = TAX_DATABASE.states[stateResidency]?.[taxYear]?.[filingStatus];
-    const stateStandardDeduction = stateParams.standardDeduction;
+    const stateStandardDeduction = stateParams?.standardDeduction ?? 0;
     const fedParams = TAX_DATABASE.federal[taxYear][filingStatus];
     const fedStandardDeduction = fedParams.standardDeduction;
 
@@ -98,6 +99,8 @@ export default function TaxesTab() {
     const earnedIncome = useMemo(() => getEarnedIncome(incomes, taxYear), [incomes, taxYear]);
     const totalPreTaxDeductions = incomePreTaxDeductions + expenseAboveLineDeductions;
     const netPaycheck = annualGross - incomePreTaxDeductions - (federalTax + stateTax + ficaTax) - incomePostTaxDeductions - postTaxEmployerMatch;
+    const agi = Math.max(0, annualGross - totalPreTaxDeductions);
+    const deductionLabel = effectiveDeductionMethod === "Standard" ? "standard" : "itemized";
 
     const onYearChange = useCallback(
         (val: string) => dispatch({ type: "SET_YEAR", payload: Number(val) }),
@@ -276,7 +279,10 @@ export default function TaxesTab() {
                                     </h2>
                                 </div>
                                 <div className="text-left sm:text-right border-l sm:border-l-0 sm:border-r border-border-subtle pl-4 sm:pl-0 sm:pr-4">
-                                    <p className="text-content-muted text-xs font-bold uppercase mb-1">Effective Rate</p>
+                                    <p className="text-content-muted text-xs font-bold uppercase mb-1 flex items-center gap-1 sm:justify-end">
+                                        Effective Rate
+                                        <Tooltip text="(Federal + FICA + State) ÷ Gross Income — the share of your total pay that goes to taxes." />
+                                    </p>
                                     <p className="text-2xl font-bold text-white">
                                          {annualGross > 0 ? (((federalTax + stateTax + ficaTax) / annualGross) * 100).toFixed(1) : 0}%
                                     </p>
@@ -327,17 +333,32 @@ export default function TaxesTab() {
                                 <div className="pt-2 border-b border-border-subtle" />
 
                                 <div className="flex justify-between text-negative items-center">
-                                    <span className="text-lg">Federal Income Tax {fedOverride !== null && "(Manual)"}</span>
+                                    <span className="text-lg flex items-center gap-1">
+                                        Federal Income Tax {fedOverride !== null && "(Manual)"}
+                                        <Tooltip text={fedOverride !== null
+                                            ? `Manual override. Federal tax is normally computed on AGI of $${agi.toLocaleString()} after the $${fedAppliedMainDeduction.toLocaleString()} ${deductionLabel} deduction.`
+                                            : `Federal income tax on AGI of $${agi.toLocaleString()} after the $${fedAppliedMainDeduction.toLocaleString()} ${deductionLabel} deduction.`} />
+                                    </span>
                                     <span className="font-mono text-lg">-${federalTax.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                                 </div>
 
                                 <div className="flex justify-between text-negative items-center">
-                                    <span className="text-lg">FICA (SS & Medicare) {ficaOverride !== null && "(Manual)"}</span>
+                                    <span className="text-lg flex items-center gap-1">
+                                        FICA (SS & Medicare) {ficaOverride !== null && "(Manual)"}
+                                        <Tooltip text={`Social Security (6.2%) + Medicare (1.45%) on earned income of $${earnedIncome.toLocaleString()}. FICA applies to wages before deductions, not to AGI.`} />
+                                    </span>
                                     <span className="font-mono text-lg">-${ficaTax.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                                 </div>
 
                                 <div className="flex justify-between text-negative items-center">
-                                    <span className="text-lg">{stateResidency} State Tax {stateOverride !== null && "(Manual)"}</span>
+                                    <span className="text-lg flex items-center gap-1">
+                                        {stateResidency} State Tax {stateOverride !== null && "(Manual)"}
+                                        <Tooltip text={stateOverride !== null
+                                            ? `Manual override for ${stateResidency} state tax.`
+                                            : stateParams
+                                                ? `${stateResidency} state income tax on AGI of $${agi.toLocaleString()} after the $${stateStandardDeduction.toLocaleString()} state ${deductionLabel} deduction.`
+                                                : `No ${stateResidency} tax table for ${taxYear} / ${filingStatus}, so state tax is treated as $0.`} />
+                                    </span>
                                     <span className="font-mono text-lg">
                                         {stateParams || stateOverride !== null
                                             ? `-$${stateTax.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
@@ -358,8 +379,21 @@ export default function TaxesTab() {
                                     </div>
                                 )}
 
+                                {postTaxEmployerMatch > 0 && (
+                                    <div className="flex justify-between text-positive-soft text-sm italic items-center">
+                                        <span className="flex items-center gap-1">
+                                            Employer Match (post-tax)
+                                            <Tooltip text="A post-tax employer-match contribution (e.g. a Roth match) routed straight to your account. It's subtracted from take-home pay because it never reaches your paycheck." />
+                                        </span>
+                                        <span className="font-mono">-${postTaxEmployerMatch.toLocaleString()}</span>
+                                    </div>
+                                )}
+
                                 <div className="flex justify-between border-t border-border-default pt-6 mt-6 items-center">
-                                    <span className="text-3xl font-bold text-white">Net Take Home</span>
+                                    <span className="text-3xl font-bold text-white flex items-center gap-2">
+                                        Net Take Home
+                                        <Tooltip text={`Gross $${annualGross.toLocaleString()} − pre-tax deductions $${incomePreTaxDeductions.toLocaleString()} − total taxes $${(federalTax + ficaTax + stateTax).toLocaleString(undefined, { maximumFractionDigits: 0 })}${incomePostTaxDeductions > 0 ? ` − Roth $${incomePostTaxDeductions.toLocaleString()}` : ''}${postTaxEmployerMatch > 0 ? ` − employer match $${postTaxEmployerMatch.toLocaleString()}` : ''} = the cash that lands in your pocket.`} />
+                                    </span>
                                     <span className="text-3xl font-black text-positive font-mono">
                                         ${netPaycheck.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                     </span>

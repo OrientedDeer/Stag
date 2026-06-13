@@ -12,6 +12,14 @@ export interface ReceiptToastOptions {
     message: string;
     linkTo?: string;
     linkLabel?: string;
+    /**
+     * Optional inline action button (e.g. "Undo"). When provided, a button
+     * labelled `actionLabel` is rendered; clicking it runs `onAction` and
+     * dismisses the toast. Additive — existing callers ({message,linkTo,
+     * linkLabel}) are unaffected.
+     */
+    actionLabel?: string;
+    onAction?: () => void;
 }
 
 interface ReceiptToastEntry extends ReceiptToastOptions {
@@ -89,6 +97,21 @@ export function ReceiptToastProvider({ children }: { children: React.ReactNode }
                                         >
                                             {toast.linkLabel ?? 'View'}
                                         </Link>
+                                    </>
+                                )}
+                                {toast.actionLabel && toast.onAction && (
+                                    <>
+                                        {' '}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                toast.onAction?.();
+                                                dismiss(toast.id);
+                                            }}
+                                            className="font-medium underline text-blue-300 hover:text-blue-200"
+                                        >
+                                            {toast.actionLabel}
+                                        </button>
                                     </>
                                 )}
                             </p>

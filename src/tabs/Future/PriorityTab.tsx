@@ -19,7 +19,9 @@ import { DropdownInput } from '../../components/Layout/InputFields/DropdownInput
 import { NameInput } from '../../components/Layout/InputFields/NameInput';
 import { NumberInput } from '../../components/Layout/InputFields/NumberInput';
 import { ChevronIcon } from '../../components/Layout/Icons/ChevronIcon';
+import { Tooltip } from '../../components/Layout/InputFields/Tooltip';
 import { Panel, Button } from "../../components/Layout/Primitives";
+import { useReceiptToast } from '../../components/Layout/Overlays/ReceiptToast';
 
 export default function PriorityTab() {
     const { state, dispatch } = useContext(AssumptionsContext);
@@ -27,6 +29,7 @@ export default function PriorityTab() {
     const { incomes } = useContext(IncomeContext);
     const { expenses } = useContext(ExpenseContext);
     const { state: taxState } = useContext(TaxContext);
+    const { show: showReceipt } = useReceiptToast();
 
     const year = new Date().getFullYear();
     const forceExact = state.display?.useCompactCurrency === false;
@@ -276,6 +279,7 @@ export default function PriorityTab() {
         };
 
         dispatch({ type: 'ADD_PRIORITY', payload: newBucket });
+        showReceipt({ message: 'Allocation added — projection updated' });
         setNewName('');
         setNewCapType('MAX');
         setNewCapValue(0);
@@ -345,10 +349,12 @@ export default function PriorityTab() {
 
     const onDragEnd = (result: DropResult) => {
         if (!result.destination) return;
+        if (result.destination.index === result.source.index) return;
         const items = Array.from(state.priorities);
         const [reorderedItem] = items.splice(result.source.index, 1);
         items.splice(result.destination.index, 0, reorderedItem);
         dispatch({ type: 'SET_PRIORITIES', payload: items });
+        showReceipt({ message: 'Allocation order changed — projection updated' });
     };
 
     // ========== WATERFALL CALCULATION ==========
@@ -358,16 +364,23 @@ export default function PriorityTab() {
 
         return state.priorities.map(item => {
             let cost = 0;
-            let displayInfo = "";
+            // Short label shown inline; provenance string explains the cost +
+            // the min(cost, remaining) clamp in a tooltip (built below).
+            let label = "";
+            let wantedNote = "";
+
+            const surplusBefore = Math.max(0, currentRemaining);
 
             switch (item.capType) {
                 case 'FIXED':
                     cost = item.capValue || 0;
-                    displayInfo = `Fixed Amount`;
+                    label = 'Fixed monthly';
+                    wantedNote = `Wanted ${formatMoney(cost)}/mo`;
                     break;
                 case 'REMAINDER':
                     cost = currentRemaining;
-                    displayInfo = `Everything Remaining`;
+                    label = 'Everything remaining';
+                    wantedNote = `Wanted everything left (${formatMoney(Math.max(0, cost))})`;
                     break;
                 case 'MULTIPLE_OF_EXPENSES': {
                     const targetAccount = accounts.find(a => a.id === item.accountId);
@@ -376,10 +389,12 @@ export default function PriorityTab() {
                     if (targetAccount) {
                         const currentBalance = targetAccount.amount;
                         cost = Math.max(0, targetAmount - currentBalance);
-                        displayInfo = `${item.capValue}x Expenses (Target: ${formatMoney(targetAmount)} - Current: ${formatMoney(currentBalance)})`;
+                        label = `Emergency fund (${item.capValue}× expenses)`;
+                        wantedNote = `Target = ${item.capValue} months × ${formatMoney(totalMonthlyFixedExpenses)} monthly expenses = ${formatMoney(targetAmount)}. Balance ${formatMoney(currentBalance)}, so ${formatMoney(cost)} still needed`;
                     } else {
                         cost = 0;
-                        displayInfo = `${item.capValue}x Expenses (No Account Linked)`;
+                        label = `Emergency fund (${item.capValue}× expenses)`;
+                        wantedNote = 'No account linked — nothing funded';
                     }
                     break;
                 }
@@ -387,7 +402,8 @@ export default function PriorityTab() {
                     const annualLimit = item.capValue || 23000;
                     const monthlyLimit = annualLimit / 12;
                     cost = Math.max(0, monthlyLimit);
-                    displayInfo = `Max Out (Annual Limit: ${formatMoney(annualLimit)})`;
+                    label = 'Max out (IRS annual limit)';
+                    wantedNote = `Annual limit ${formatMoney(annualLimit)} ÷ 12 = ${formatMoney(monthlyLimit)}/mo`;
                     break;
                 }
             }
@@ -395,11 +411,20 @@ export default function PriorityTab() {
             const actualDed = Math.min(cost, Math.max(0, currentRemaining));
             currentRemaining -= actualDed;
 
+            // Explain the funded amount whenever the surplus clamp bit (the
+            // bucket wanted more than was left), so a partially-funded bucket
+            // showing a smaller number than typed isn't a mystery.
+            const clamped = actualDed < cost - 0.005;
+            const provenance = clamped
+                ? `${wantedNote} · ${formatMoney(surplusBefore)} surplus left · funded ${formatMoney(actualDed)}`
+                : wantedNote;
+
             return {
                 ...item,
                 actualDed,
                 remainingAfter: currentRemaining,
-                displayInfo
+                label,
+                provenance,
             };
         });
     }, [state.priorities, disposableAfterExpenses, totalMonthlyFixedExpenses, accounts, formatMoney]);
@@ -690,7 +715,10 @@ export default function PriorityTab() {
 
                                                                     <div className="flex-1 min-w-0">
                                                                         <div className="font-medium text-content-emphasis truncate">{item.name}</div>
-                                                                        <div className="text-xs text-info truncate">{item.displayInfo}</div>
+                                                                        <div className="flex items-center gap-1 text-xs text-info">
+                                                                            <span className="truncate">{item.label}</span>
+                                                                            <Tooltip text={item.provenance} />
+                                                                        </div>
                                                                         {unreachableIds.has(item.id) && (
                                                                             <div className="flex items-center gap-1 mt-0.5">
                                                                                 <svg className="w-3 h-3 text-warning" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -714,7 +742,10 @@ export default function PriorityTab() {
                                                                     </div>
 
                                                                     <div className="flex flex-col items-end shrink-0 mx-3">
-                                                                        <span className="text-info-bright font-mono text-sm">-{formatMoney(item.actualDed)}</span>
+                                                                        <div className="flex items-center gap-1">
+                                                                            <span className="text-info-bright font-mono text-sm">-{formatMoney(item.actualDed)}</span>
+                                                                            <Tooltip text={item.provenance} />
+                                                                        </div>
                                                                         <span className={`text-xs ${item.remainingAfter < 0 ? 'text-negative' : 'text-content-subtle'}`}>
                                                                             {formatMoney(item.remainingAfter)} left
                                                                         </span>
@@ -732,7 +763,10 @@ export default function PriorityTab() {
                                                                             </svg>
                                                                         </button>
                                                                         <button
-                                                                            onClick={() => dispatch({type: 'REMOVE_PRIORITY', payload: item.id})}
+                                                                            onClick={() => {
+                                                                                dispatch({ type: 'REMOVE_PRIORITY', payload: item.id });
+                                                                                showReceipt({ message: `Removed "${item.name}" — projection updated` });
+                                                                            }}
                                                                             className="text-content-subtle hover:text-negative p-1.5 hover:bg-negative-soft/10 rounded transition-colors"
                                                                             title="Delete"
                                                                         >
