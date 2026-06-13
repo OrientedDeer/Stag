@@ -337,7 +337,8 @@ export function getAccountBalances(
 
         // Invested accounts are considered "market driven"
         const isMarketDriven = account.constructor.name === 'InvestedAccount'
-            || account.constructor.name === 'ESPPAccount';
+            || account.constructor.name === 'ESPPAccount'
+            || account.constructor.name === 'RSUAccount';
 
         return {
             accountId: account.id,

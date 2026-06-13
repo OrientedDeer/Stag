@@ -1,5 +1,5 @@
 import { memo, useContext, useState, ReactElement } from "react";
-import { AnyAccount, SavedAccount, InvestedAccount, ESPPAccount, PropertyAccount, DebtAccount, ACCOUNT_COLORS_BACKGROUND, TaxTypeEnum, ESPPLot, ESPPWithdrawalPreference, ESPP_WITHDRAWAL_PREFERENCE_OPTIONS } from "./models.js";
+import { AnyAccount, SavedAccount, InvestedAccount, ESPPAccount, RSUAccount, PropertyAccount, DebtAccount, ACCOUNT_COLORS_BACKGROUND, TaxTypeEnum, ESPPLot, ESPPWithdrawalPreference, ESPP_WITHDRAWAL_PREFERENCE_OPTIONS, RSULot, RSUWithdrawalPreference, RSU_WITHDRAWAL_PREFERENCE_OPTIONS } from "./models.js";
 import { AccountDispatchContext, AllAccountKeys } from "./AccountContext.js";
 import { ExpenseContext, ExpenseDispatchContext, AllExpenseKeys } from "../Expense/ExpenseContext.js";
 import { StyledSelect, StyledDisplay } from "../../Layout/InputFields/StyleUI.js";
@@ -49,9 +49,23 @@ function getESPPSettingsSummary(account: ESPPAccount): string {
     return parts.join(" · ");
 }
 
+function getRSUSettingsSummary(account: RSUAccount): string {
+    const parts: string[] = [];
+    if (account.stockTicker) parts.push(account.stockTicker);
+    if (account.currentSharePrice) parts.push(`$${account.currentSharePrice}/sh`);
+    if (account.customROR !== undefined) parts.push(`${account.customROR}% growth`);
+    const prefLabel = RSU_WITHDRAWAL_PREFERENCE_OPTIONS
+        .find((opt) => opt.value === account.withdrawalPreference)?.label.split(" (")[0]
+        ?? account.withdrawalPreference;
+    parts.push(prefLabel);
+    if (account.minimumHoldingDays > 0) parts.push(`${account.minimumHoldingDays}d hold`);
+    return parts.join(" · ");
+}
+
 function getAccountDescriptor(account: AnyAccount): string {
     if (account instanceof SavedAccount) return "CASH";
     if (account instanceof ESPPAccount) return "ESPP";
+    if (account instanceof RSUAccount) return "RSU";
     if (account instanceof InvestedAccount) return "INVESTMENT";
     if (account instanceof PropertyAccount) return "PROPERTY";
     if (account instanceof DebtAccount) return "DEBT";
@@ -60,7 +74,7 @@ function getAccountDescriptor(account: AnyAccount): string {
 
 function getAccountIconBg(account: AnyAccount): string {
     if (account instanceof SavedAccount) return ACCOUNT_COLORS_BACKGROUND["Cash"];
-    if (account instanceof ESPPAccount || account instanceof InvestedAccount) return ACCOUNT_COLORS_BACKGROUND["Invested"];
+    if (account instanceof ESPPAccount || account instanceof RSUAccount || account instanceof InvestedAccount) return ACCOUNT_COLORS_BACKGROUND["Invested"];
     if (account instanceof PropertyAccount) return ACCOUNT_COLORS_BACKGROUND["Property"];
     if (account instanceof DebtAccount) return ACCOUNT_COLORS_BACKGROUND["Debt"];
     return "bg-surface-muted";
@@ -218,6 +232,27 @@ function AccountCard({ account }: { account: AnyAccount }): ReactElement {
                                     type: "UPDATE_ACCOUNT_FIELD",
                                     payload: { id: account.id, field: "lots", value: account.lots.filter(l => l.id !== lotId) }
                                 });
+                            }}
+                        />
+                    )}
+
+                    {account instanceof RSUAccount && (
+                        <RSUAccountFields
+                            account={account}
+                            onFieldUpdate={handleFieldUpdate}
+                            onDeleteLot={(lotId) => {
+                                const lot = account.lots.find(l => l.id === lotId);
+                                accountDispatch({
+                                    type: "UPDATE_ACCOUNT_FIELD",
+                                    payload: { id: account.id, field: "lots", value: account.lots.filter(l => l.id !== lotId) }
+                                });
+                                // Keep the balance consistent: drop the lot's at-vest value.
+                                if (lot) {
+                                    accountDispatch({
+                                        type: "UPDATE_ACCOUNT_FIELD",
+                                        payload: { id: account.id, field: "amount", value: Math.max(0, account.amount - lot.fmvAtVest * lot.shares) }
+                                    });
+                                }
                             }}
                         />
                     )}
@@ -734,6 +769,207 @@ function ESPPLotRow({ lot, index, account, onEdit, onDelete }: ESPPLotRowProps):
                             <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                         </svg>
                     </button>
+                    <button
+                        onClick={onDelete}
+                        className="text-content-muted hover:text-negative p-1 transition-colors"
+                        aria-label="Delete lot"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <path d="M18 6L6 18M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+interface RSUAccountFieldsProps {
+    account: RSUAccount;
+    onFieldUpdate: (field: AllAccountKeys, value: unknown) => void;
+    onDeleteLot: (lotId: string) => void;
+}
+
+function RSUAccountFields({ account, onFieldUpdate, onDeleteLot }: RSUAccountFieldsProps): ReactElement {
+    return (
+        <>
+            <CardSection
+                id={`${account.id}-section-rsu-stock`}
+                title="Stock & Vesting Settings"
+                summary={getRSUSettingsSummary(account)}
+                gridClassName={CARD_SECTION_GRID}
+            >
+                <NameInput
+                    id={`${account.id}-rsu-ticker`}
+                    label="Stock Ticker"
+                    value={account.stockTicker || ''}
+                    onChange={(val) => onFieldUpdate("stockTicker", val || undefined)}
+                    placeholder="e.g., AAPL"
+                />
+                <CurrencyInput
+                    id={`${account.id}-rsu-share-price`}
+                    label="Current Share Price"
+                    value={account.currentSharePrice ?? 0}
+                    onChange={(val) => onFieldUpdate("currentSharePrice", val || undefined)}
+                    tooltip="Current price per share. Seeds the projected fair-market value at each vest."
+                />
+                <ToggleInput
+                    id={`${account.id}-rsu-use-custom-ror`}
+                    label="Custom Growth Rate"
+                    enabled={account.customROR !== undefined}
+                    setEnabled={(checked) => {
+                        onFieldUpdate("customROR", checked ? 7.0 : undefined);
+                    }}
+                    tooltip="Override global return rate assumptions with a custom rate for this RSU account."
+                />
+                {account.customROR !== undefined && (
+                    <PercentageInput
+                        id={`${account.id}-rsu-custom-ror`}
+                        label="Expected Growth"
+                        value={account.customROR}
+                        onChange={(val) => onFieldUpdate("customROR", val)}
+                        max={30}
+                        tooltip="Expected annual stock growth rate. Overrides global assumptions."
+                    />
+                )}
+                <DropdownInput
+                    id={`${account.id}-rsu-withdrawal-pref`}
+                    label="Withdrawal Preference"
+                    value={account.withdrawalPreference}
+                    onChange={(val) => onFieldUpdate("withdrawalPreference", val as RSUWithdrawalPreference)}
+                    options={RSU_WITHDRAWAL_PREFERENCE_OPTIONS}
+                    tooltip="Controls which lots are sold first during retirement withdrawals."
+                />
+                <NumberInput
+                    id={`${account.id}-rsu-min-hold`}
+                    label="Min Holding (Days)"
+                    value={account.minimumHoldingDays}
+                    onChange={(val) => onFieldUpdate("minimumHoldingDays", val)}
+                    min={0}
+                    max={1095}
+                    tooltip="Optional holding period before shares can be sold."
+                />
+            </CardSection>
+
+            <RSUHoldingsSummary account={account} />
+            <RSULotsList account={account} onDeleteLot={onDeleteLot} />
+
+            <div className="col-span-full text-sm text-content-muted">
+                RSU grants and vesting schedules are configured in the associated Work Income. Vesting tranches are added automatically during the simulation.
+            </div>
+        </>
+    );
+}
+
+function RSUHoldingsSummary({ account }: { account: RSUAccount }): ReactElement {
+    // True gain/loss for display: account.unrealizedGains floors at 0 (correct for
+    // the tax/withdrawal basis-vs-gains split), but the card should show a loss
+    // when the account is underwater (current value below cost basis) — the #71
+    // brokerage-card precedent.
+    const unrealizedGain = account.amount - account.totalCostBasis;
+    return (
+        <div className="col-span-full bg-surface-overlay/50 border border-border-default rounded-lg p-4">
+            <h4 className="text-sm font-semibold text-white mb-3">RSU Holdings Summary</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div>
+                    <div className="text-content-muted">Total Lots</div>
+                    <div className="text-white font-medium">{account.lots.length}</div>
+                </div>
+                <div>
+                    <div className="text-content-muted">Total Shares</div>
+                    <div className="text-white font-medium">{account.totalShares.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+                </div>
+                <div>
+                    <div className="text-content-muted">Cost Basis</div>
+                    <div className="text-white font-medium">
+                        {account.totalCostBasis.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
+                    </div>
+                </div>
+                <div>
+                    <div className="text-content-muted">Unrealized Gain/Loss</div>
+                    <div className={`font-medium ${unrealizedGain >= 0 ? 'text-positive' : 'text-negative'}`}>
+                        {unrealizedGain.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
+                        {account.totalCostBasis > 0 && (
+                            <span className="text-xs ml-1">
+                                ({((unrealizedGain / account.totalCostBasis) * 100).toFixed(1)}%)
+                            </span>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+interface RSULotsListProps {
+    account: RSUAccount;
+    onDeleteLot: (lotId: string) => void;
+}
+
+function RSULotsList({ account, onDeleteLot }: RSULotsListProps): ReactElement {
+    return (
+        <div className="col-span-full bg-surface-overlay/50 border border-border-default rounded-lg p-4">
+            <h4 className="text-sm font-semibold text-white mb-3">Vested Lots</h4>
+
+            {account.lots.length === 0 ? (
+                <div className="text-content-muted text-sm text-center py-4">
+                    No vested lots yet. Link a Work Income with RSUs enabled to add vesting tranches during the simulation.
+                </div>
+            ) : (
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {account.lots.map((lot, index) => (
+                        <RSULotRow
+                            key={lot.id}
+                            lot={lot}
+                            index={index}
+                            account={account}
+                            onDelete={() => onDeleteLot(lot.id)}
+                        />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+interface RSULotRowProps {
+    lot: RSULot;
+    index: number;
+    account: RSUAccount;
+    onDelete: () => void;
+}
+
+function RSULotRow({ lot, index, account, onDelete }: RSULotRowProps): ReactElement {
+    const isLongTerm = account.isLongTerm(lot, new Date());
+    const vestDate = new Date(lot.vestDate);
+    const sharePrice = account.currentSharePrice ?? (account.totalShares > 0 ? account.amount / account.totalShares : lot.fmvAtVest);
+    const currentValue = lot.shares * sharePrice;
+    // Real gain/loss for display (do NOT floor at 0 — show underwater losses, #71).
+    const gain = currentValue - lot.costBasis;
+
+    return (
+        <div className="bg-surface-raised/50 border border-border-default rounded-lg p-3">
+            <div className="flex items-start justify-between">
+                <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                        <span className="text-white font-medium">Lot {index + 1}</span>
+                        <span className="text-content-muted">|</span>
+                        <span className="text-content-default">{lot.shares.toLocaleString(undefined, { maximumFractionDigits: 2 })} shares</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${isLongTerm ? 'bg-positive-tint/50 text-positive' : 'bg-warning-tint/50 text-warning'}`}>
+                            {isLongTerm ? 'Long-Term' : 'Short-Term'}
+                        </span>
+                    </div>
+                    <div className="text-xs text-content-subtle">
+                        Vested: {vestDate.toLocaleDateString()} |
+                        FMV@Vest: ${lot.fmvAtVest.toFixed(2)} |
+                        Basis: {lot.costBasis.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })} |
+                        Value: {currentValue.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })} |
+                        <span className={gain >= 0 ? 'text-positive' : 'text-negative'}>
+                            {' '}{gain >= 0 ? 'Gain' : 'Loss'}: {gain.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
+                        </span>
+                    </div>
+                </div>
+                <div className="flex gap-1 ml-2">
                     <button
                         onClick={onDelete}
                         className="text-content-muted hover:text-negative p-1 transition-colors"

@@ -80,6 +80,8 @@ export default function Dashboard() {
                       inc.esppContributionAmount, inc.esppDiscountPercent,
                       inc.esppHasLookback, inc.esppOfferingPeriodMonths,
                       inc.esppAccountId, inc.esppExpectedStockGrowth,
+                      inc.rsuVestingSchedule, inc.rsuGrantShares, inc.rsuVestFrequency,
+                      inc.rsuExpectedStockGrowth, inc.rsuAccountId, inc.rsuWithholdingRate,
                       inc.pensionSystem, inc.startMilestoneId, inc.endMilestoneId
                   );
               }

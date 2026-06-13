@@ -48,6 +48,12 @@ function serializeIncomeFields(income: AnyIncome): Record<string, unknown> {
             hsaContribution: income.hsaContribution,
             esppContributionType: income.esppContributionType,
             esppContributionAmount: income.esppContributionAmount,
+            rsuVestingSchedule: income.rsuVestingSchedule,
+            rsuGrantShares: income.rsuGrantShares,
+            rsuVestFrequency: income.rsuVestFrequency,
+            rsuExpectedStockGrowth: income.rsuExpectedStockGrowth,
+            rsuAccountId: income.rsuAccountId,
+            rsuWithholdingRate: income.rsuWithholdingRate,
         };
     }
 

@@ -17,7 +17,7 @@ import DeleteIncomeControl from './DeleteIncomeUI';
 import { NameInput } from '../../Layout/InputFields/NameInput';
 import { NumberInput } from '../../Layout/InputFields/NumberInput';
 import { AccountContext } from '../Accounts/AccountContext';
-import { InvestedAccount, ESPPAccount } from '../../Objects/Accounts/models';
+import { InvestedAccount, ESPPAccount, RSUAccount } from '../../Objects/Accounts/models';
 import { TriggerSelector } from '../../Layout/InputFields/TriggerSelector';
 import { AssumptionsContext, getBirthYear } from '../Assumptions/AssumptionsContext';
 import { ExpandableCard } from '../../Layout/ExpandableCard';
@@ -108,6 +108,7 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
     );
 
     const esppAccounts = accounts.filter((acc): acc is ESPPAccount => acc instanceof ESPPAccount);
+    const rsuAccounts = accounts.filter((acc): acc is RSUAccount => acc instanceof RSUAccount);
 
     const workIncomes = useMemo(
         () => incomes.filter((inc): inc is WorkIncome => inc instanceof WorkIncome),
@@ -215,6 +216,7 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
                         onFieldUpdate={handleFieldUpdate}
                         contributionAccounts={contributionAccounts}
                         esppAccounts={esppAccounts}
+                        rsuAccounts={rsuAccounts}
                         contributionWarnings={contributionWarnings}
                         onMatchAccountChange={handleMatchAccountChange}
                     />

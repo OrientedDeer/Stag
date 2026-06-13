@@ -1,4 +1,4 @@
-import { AnyAccount, InvestedAccount, SavedAccount, DebtAccount, PropertyAccount, ESPPAccount, DeficitDebtAccount } from "../../components/Objects/Accounts/models";
+import { AnyAccount, InvestedAccount, SavedAccount, DebtAccount, PropertyAccount, ESPPAccount, RSUAccount, DeficitDebtAccount } from "../../components/Objects/Accounts/models";
 import { MortgageExpense, LoanExpense, AnyExpense } from "../../components/Objects/Expense/models";
 import { CustomMilestone, MilestoneCondition, MilestoneReachEvent } from "./types";
 import { getTaxParameters, calculateTotalFederalTax } from "../../components/Objects/Taxes/TaxService";
@@ -32,7 +32,7 @@ export function calculateNetWorth(accounts: AnyAccount[], expenses: AnyExpense[]
             // Property value minus loan balance
             assets += account.amount; // Value
             liabilities += account.loanAmount || 0;
-        } else if (account instanceof InvestedAccount || account instanceof SavedAccount || account instanceof ESPPAccount) {
+        } else if (account instanceof InvestedAccount || account instanceof SavedAccount || account instanceof ESPPAccount || account instanceof RSUAccount) {
             assets += account.amount;
         }
     });
@@ -71,8 +71,8 @@ export function calculateLiquidNetWorth(accounts: AnyAccount[]): number {
             liquid += account.amount;
         } else if (account instanceof InvestedAccount && account.taxType === 'Brokerage') {
             liquid += account.amount;
-        } else if (account instanceof ESPPAccount) {
-            // ESPP is liquid (publicly traded stock)
+        } else if (account instanceof ESPPAccount || account instanceof RSUAccount) {
+            // ESPP and vested RSUs are liquid (publicly traded stock)
             liquid += account.amount;
         }
     });

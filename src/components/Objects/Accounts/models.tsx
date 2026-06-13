@@ -36,6 +36,19 @@ export interface ESPPLot {
   discountAmount: number; // Per-share discount (for tax calculation)
 }
 
+// RSU Lot interface for tracking individual vesting tranches.
+// Each vesting event produces one lot from the NET shares (after sell-to-cover
+// withholding). fmvAtVest is both the ordinary income per share recognized at
+// vest AND the per-share cost basis for future capital-gains on sale.
+export interface RSULot {
+  id: string;
+  grantDate: Date;     // When the underlying grant was issued
+  vestDate: Date;      // When this tranche vested (basis date for ST/LT holding)
+  fmvAtVest: number;   // FMV per share at vest = ordinary income per share = cost basis per share
+  shares: number;      // Net shares in this tranche (after sell-to-cover)
+  costBasis: number;   // fmvAtVest * shares — basis for future capital gains
+}
+
 // Brokerage Lot interface for tracking individual contributions (simulation-internal, not persisted)
 export interface BrokerageLot {
   purchaseYear: number;    // Year contribution was made
@@ -797,6 +810,335 @@ export class ESPPAccount extends BaseAccount {
   }
 }
 
+/**
+ * RSU withdrawal preference - controls which lots are sold first.
+ * RSUs have no qualifying/disqualifying distinction (the discount tax that
+ * drives ESPP ordering doesn't exist), so the meaningful axes are sale order
+ * by date and long-term vs short-term holding for capital-gains treatment.
+ */
+export type RSUWithdrawalPreference =
+  | 'fifo'                  // First-in, first-out by vest date (default)
+  | 'long_term_first'       // Sell lots held >=1yr first (long-term gains)
+  | 'short_term_first';     // Sell most-recently-vested lots first
+
+export const RSU_WITHDRAWAL_PREFERENCE_OPTIONS = [
+  { value: 'fifo' as const, label: 'FIFO (First-In, First-Out)' },
+  { value: 'long_term_first' as const, label: 'Long-Term First' },
+  { value: 'short_term_first' as const, label: 'Short-Term First' },
+];
+
+/**
+ * RSUAccount - Restricted Stock Unit Account
+ *
+ * Tracks vested RSU shares with lot-level detail. Each vesting tranche becomes
+ * one lot created from the NET shares after sell-to-cover tax withholding.
+ *
+ * Tax treatment:
+ * - Ordinary income at vest = fmvAtVest * shares (handled at the income/sim layer)
+ * - Post-vest sale: gain = sale price - fmvAtVest basis
+ *   - Short-term if sold <1yr from vest date, long-term if >=1yr
+ */
+export class RSUAccount extends BaseAccount {
+  constructor(
+    id: string,
+    name: string,
+    amount: number,
+    public lots: RSULot[] = [],
+    public linkedIncomeId: string | null = null,  // Link to WorkIncome providing grants
+    public customROR?: number,                     // Optional custom return rate (overrides global assumptions)
+    public stockTicker?: string,                   // Company ticker (e.g., "AAPL")
+    public currentSharePrice?: number,             // Current price per share
+    public withdrawalPreference: RSUWithdrawalPreference = 'fifo',  // Lot selling order
+    public minimumHoldingDays: number = 0,         // Days before shares can be sold
+  ) {
+    super(id, name, amount);
+  }
+
+  /**
+   * Determine if a lot has been held long enough (>=1yr from vest) for
+   * long-term capital-gains treatment.
+   */
+  isLongTerm(lot: RSULot, saleDate: Date): boolean {
+    const vestDate = new Date(lot.vestDate);
+    const oneYearFromVest = new Date(vestDate);
+    oneYearFromVest.setFullYear(oneYearFromVest.getFullYear() + 1);
+    return saleDate >= oneYearFromVest;
+  }
+
+  /**
+   * Sort lots based on withdrawal preference.
+   */
+  private sortLots(
+    lots: RSULot[],
+    saleDate: Date,
+    lotOrder: RSUWithdrawalPreference
+  ): RSULot[] {
+    const byVestDate = (a: RSULot, b: RSULot) =>
+      new Date(a.vestDate).getTime() - new Date(b.vestDate).getTime();
+
+    if (lotOrder === 'fifo') {
+      return [...lots].sort(byVestDate);
+    }
+
+    const longTermFirst = lotOrder === 'long_term_first';
+    return [...lots].sort((a, b) => {
+      const aLong = this.isLongTerm(a, saleDate);
+      const bLong = this.isLongTerm(b, saleDate);
+      if (aLong !== bLong) {
+        return longTermFirst
+          ? (aLong ? -1 : 1)
+          : (aLong ? 1 : -1);
+      }
+      return byVestDate(a, b);
+    });
+  }
+
+  /**
+   * Calculate tax implications of selling RSU shares.
+   *
+   * RSU shares were already taxed as ordinary income at vest, so a sale only
+   * produces capital gains: gain = (sale price - fmvAtVest basis) per share.
+   * Short-term if held <1yr from vest, long-term if >=1yr. Losses (underwater
+   * lots) flow through as negative gains.
+   */
+  calculateSaleTax(
+    sharesToSell: number,
+    salePrice: number, // Per share
+    saleDate: Date,
+    lotOrder: RSUWithdrawalPreference = 'fifo',
+    eligibleLots?: RSULot[]
+  ): { ordinaryIncome: number; shortTermGains: number; longTermGains: number; lotsUsed: RSULot[] } {
+    let shortTermGains = 0;
+    let longTermGains = 0;
+    let remainingShares = sharesToSell;
+    const lotsUsed: RSULot[] = [];
+
+    const lotsToConsider = eligibleLots || this.lots;
+    const sortedLots = this.sortLots(lotsToConsider, saleDate, lotOrder);
+
+    for (const lot of sortedLots) {
+      if (remainingShares <= 0) break;
+
+      const sharesToUse = Math.min(remainingShares, lot.shares);
+      const gain = (salePrice - lot.fmvAtVest) * sharesToUse;
+
+      if (this.isLongTerm(lot, saleDate)) {
+        longTermGains += gain;
+      } else {
+        shortTermGains += gain;
+      }
+
+      remainingShares -= sharesToUse;
+      lotsUsed.push({ ...lot, shares: sharesToUse });
+    }
+
+    // RSUs never produce ordinary income on sale (that happened at vest).
+    return { ordinaryIncome: 0, shortTermGains, longTermGains, lotsUsed };
+  }
+
+  /**
+   * Get total shares across all lots
+   */
+  get totalShares(): number {
+    return this.lots.reduce((sum, lot) => sum + lot.shares, 0);
+  }
+
+  /**
+   * Get total cost basis across all lots
+   */
+  get totalCostBasis(): number {
+    return this.lots.reduce((sum, lot) => sum + lot.costBasis, 0);
+  }
+
+  /**
+   * Get total unrealized gains. Floored at 0 for the tax/withdrawal split
+   * (a position can't yield positive taxable gains while underwater); the
+   * AccountCard shows the true (possibly negative) value - costBasis for
+   * display per the #71 brokerage-card precedent.
+   */
+  get unrealizedGains(): number {
+    return Math.max(0, this.amount - this.totalCostBasis);
+  }
+
+  /**
+   * Get lots that are eligible for sale (meet minimum holding period)
+   */
+  getEligibleLots(asOfDate: Date = new Date()): RSULot[] {
+    if (this.minimumHoldingDays <= 0) {
+      return this.lots;
+    }
+
+    return this.lots.filter(lot => {
+      const vestDate = new Date(lot.vestDate);
+      const daysSinceVest = (asOfDate.getTime() - vestDate.getTime()) / (1000 * 60 * 60 * 24);
+      return daysSinceVest >= this.minimumHoldingDays;
+    });
+  }
+
+  /**
+   * Get total shares that are eligible for sale (meet minimum holding period)
+   */
+  getEligibleShares(asOfDate: Date = new Date()): number {
+    return this.getEligibleLots(asOfDate).reduce((sum, lot) => sum + lot.shares, 0);
+  }
+
+  /**
+   * Add a new lot from a vesting tranche
+   */
+  addLot(lot: RSULot): RSUAccount {
+    const newLots = [...this.lots, lot];
+    const newAmount = this.amount + (lot.fmvAtVest * lot.shares);
+
+    return new RSUAccount(
+      this.id,
+      this.name,
+      newAmount,
+      newLots,
+      this.linkedIncomeId,
+      this.customROR,
+      this.stockTicker,
+      this.currentSharePrice,
+      this.withdrawalPreference,
+      this.minimumHoldingDays
+    );
+  }
+
+  /**
+   * Remove shares from lots after a sale, using the configured lot order.
+   * Cost bases of partially-sold lots scale down with the remaining shares.
+   */
+  removeSoldShares(
+    sharesToRemove: number,
+    salePrice: number,
+    saleDate?: Date,
+    lotOrder: RSUWithdrawalPreference = 'fifo'
+  ): RSUAccount {
+    let remaining = sharesToRemove;
+    const newLots: RSULot[] = [];
+    const useSaleDate = saleDate || new Date();
+    const sortedLots = this.sortLots(this.lots, useSaleDate, lotOrder);
+
+    for (const lot of sortedLots) {
+      if (remaining >= lot.shares) {
+        // Use entire lot
+        remaining -= lot.shares;
+      } else if (remaining > 0) {
+        // Partial lot - keep the remainder (scale cost basis to remaining shares)
+        const remainingShares = lot.shares - remaining;
+        newLots.push({
+          ...lot,
+          shares: remainingShares,
+          costBasis: lot.fmvAtVest * remainingShares,
+        });
+        remaining = 0;
+      } else {
+        // Keep the lot as-is
+        newLots.push(lot);
+      }
+    }
+
+    const saleProceeds = sharesToRemove * salePrice;
+    const newAmount = this.amount - saleProceeds;
+
+    return new RSUAccount(
+      this.id,
+      this.name,
+      Math.max(0, newAmount),
+      newLots,
+      this.linkedIncomeId,
+      this.customROR,
+      this.stockTicker,
+      this.currentSharePrice,
+      this.withdrawalPreference,
+      this.minimumHoldingDays
+    );
+  }
+
+  /**
+   * Update a specific lot by ID
+   */
+  updateLot(lotId: string, updates: Partial<RSULot>): RSUAccount {
+    const newLots = this.lots.map(lot =>
+      lot.id === lotId ? { ...lot, ...updates } : lot
+    );
+
+    // Recalculate amount from lots if shares or FMV changed
+    const totalLotValue = newLots.reduce((sum, lot) => sum + (lot.fmvAtVest * lot.shares), 0);
+
+    return new RSUAccount(
+      this.id,
+      this.name,
+      totalLotValue > 0 ? totalLotValue : this.amount,
+      newLots,
+      this.linkedIncomeId,
+      this.customROR,
+      this.stockTicker,
+      this.currentSharePrice,
+      this.withdrawalPreference,
+      this.minimumHoldingDays
+    );
+  }
+
+  /**
+   * Delete a lot by ID
+   */
+  deleteLot(lotId: string): RSUAccount {
+    const lotToDelete = this.lots.find(lot => lot.id === lotId);
+    const newLots = this.lots.filter(lot => lot.id !== lotId);
+
+    // Reduce amount by the lot's current value (at vest FMV)
+    const lotValue = lotToDelete ? lotToDelete.fmvAtVest * lotToDelete.shares : 0;
+    const newAmount = Math.max(0, this.amount - lotValue);
+
+    return new RSUAccount(
+      this.id,
+      this.name,
+      newAmount,
+      newLots,
+      this.linkedIncomeId,
+      this.customROR,
+      this.stockTicker,
+      this.currentSharePrice,
+      this.withdrawalPreference,
+      this.minimumHoldingDays
+    );
+  }
+
+  /**
+   * Increment the account value based on stock growth.
+   * Lots retain their original cost basis — only the current value (amount) grows.
+   */
+  increment(
+    assumptions: AssumptionsState,
+    overrideReturnRate?: number
+  ): RSUAccount {
+    // Priority: overrideReturnRate (Monte Carlo) > customROR (per-account) > global assumptions
+    let returnRate: number;
+    if (overrideReturnRate !== undefined) {
+      returnRate = 1 + overrideReturnRate / 100;
+    } else if (this.customROR !== undefined) {
+      returnRate = 1 + (this.customROR + (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0)) / 100;
+    } else {
+      returnRate = 1 + (assumptions.investments.returnRates.ror + (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0)) / 100;
+    }
+
+    const newAmount = this.amount * returnRate;
+
+    return new RSUAccount(
+      this.id,
+      this.name,
+      newAmount,
+      this.lots,
+      this.linkedIncomeId,
+      this.customROR,
+      this.stockTicker,
+      this.currentSharePrice,
+      this.withdrawalPreference,
+      this.minimumHoldingDays
+    );
+  }
+}
+
 export class PropertyAccount extends BaseAccount {
   constructor(
     id: string,
@@ -888,7 +1230,7 @@ export class DeficitDebtAccount extends DebtAccount {
 }
 
 // Union type for use in State Management
-export type AnyAccount = SavedAccount | InvestedAccount | ESPPAccount | PropertyAccount | DebtAccount | DeficitDebtAccount;
+export type AnyAccount = SavedAccount | InvestedAccount | ESPPAccount | RSUAccount | PropertyAccount | DebtAccount | DeficitDebtAccount;
 
 export const ACCOUNT_CATEGORIES = [
   'Cash',
@@ -910,6 +1252,7 @@ export const CLASS_TO_CATEGORY: Record<string, AccountCategory> = {
     [SavedAccount.name]: 'Cash',
     [InvestedAccount.name]: 'Invested',
     [ESPPAccount.name]: 'Invested',
+    [RSUAccount.name]: 'Invested',
     [PropertyAccount.name]: 'Property',
     [DebtAccount.name]: 'Debt',
     [DeficitDebtAccount.name]: 'Debt',
@@ -984,6 +1327,27 @@ export function reconstituteAccount(data: unknown): AnyAccount | null {
                 data.stockTicker ? String(data.stockTicker) : undefined,
                 data.currentSharePrice !== undefined ? Number(data.currentSharePrice) : undefined,
                 (data.withdrawalPreference as ESPPWithdrawalPreference) ?? 'fifo',
+                Number(data.minimumHoldingDays) || 0
+            );
+        }
+
+        case 'RSUAccount': {
+            const lotsData = Array.isArray(data.lots) ? data.lots : [];
+            const lots: RSULot[] = lotsData.map((lot: Record<string, unknown>) => ({
+                id: String(lot.id ?? ''),
+                grantDate: parseDate(lot.grantDate, new Date()) as Date,
+                vestDate: parseDate(lot.vestDate, new Date()) as Date,
+                fmvAtVest: Number(lot.fmvAtVest) || 0,
+                shares: Number(lot.shares) || 0,
+                costBasis: Number(lot.costBasis) || 0,
+            }));
+            return new RSUAccount(
+                id, name, amount, lots,
+                data.linkedIncomeId ? String(data.linkedIncomeId) : null,
+                data.customROR != null ? Number(data.customROR) : undefined,
+                data.stockTicker ? String(data.stockTicker) : undefined,
+                data.currentSharePrice !== undefined ? Number(data.currentSharePrice) : undefined,
+                (data.withdrawalPreference as RSUWithdrawalPreference) ?? 'fifo',
                 Number(data.minimumHoldingDays) || 0
             );
         }

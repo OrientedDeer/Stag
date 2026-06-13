@@ -72,6 +72,7 @@ function createWorkIncome(
         options.startDate ?? new Date('2020-01-01'),
         options.endDate,
         0, 'custom', 'NONE', 0, 15, true, 6, null, 7,
+        'NONE', 0, 'quarterly', 7, null, 37, // RSU defaults
         options.pensionSystem ?? 'NONE'
     );
 }
@@ -279,7 +280,9 @@ describe('IncomeProjection', () => {
                     null, 'FIXED',
                     new Date('2020-01-01'),
                     undefined,
-                    0, 'custom', 'NONE', 0, 15, true, 6, null, 7, 'NONE',
+                    0, 'custom', 'NONE', 0, 15, true, 6, null, 7,
+                    'NONE', 0, 'quarterly', 7, null, 37, // RSU defaults
+                    'NONE',
                     'start-milestone-123',
                     'end-milestone-456'
                 );

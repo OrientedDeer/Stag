@@ -15,6 +15,10 @@ import { parseDate, parseDateRequired, hasClassName, extractBaseFields, getActiv
 export type ContributionGrowthStrategy = 'FIXED' | 'GROW_WITH_SALARY' | 'TRACK_ANNUAL_MAX';
 export type AutoMax401kOption = 'disabled' | 'custom' | 'traditional' | 'roth';
 export type ESPPContributionType = 'NONE' | 'PERCENTAGE' | 'FIXED';
+// RSU vesting schedules (v1). 'custom' (arbitrary per-tranche) is intentionally
+// not supported — graded-4yr-quarterly covers the dominant real-world case.
+export type RSUVestingSchedule = 'NONE' | 'cliff-1yr' | 'graded-3yr' | 'graded-4yr';
+export type RSUVestFrequency = 'quarterly' | 'semi-annual' | 'annual';
 export type PensionSystem = 'NONE' | 'FERS' | 'CSRS';
 export type EmployerMatchType = 'fixed' | 'percent';
 
@@ -120,6 +124,13 @@ export class WorkIncome extends BaseIncome {
     public esppOfferingPeriodMonths: number = 6,    // Typical is 6 months
     public esppAccountId: string | null = null,     // Linked ESPP account
     public esppExpectedStockGrowth: number = 7,     // Expected annual stock growth for lookback modeling
+    // RSU configuration
+    public rsuVestingSchedule: RSUVestingSchedule = 'NONE',  // Vesting schedule type
+    public rsuGrantShares: number = 0,              // Total shares granted (vest over the schedule)
+    public rsuVestFrequency: RSUVestFrequency = 'quarterly', // How often tranches vest
+    public rsuExpectedStockGrowth: number = 7,      // Expected annual stock appreciation for FMV projection
+    public rsuAccountId: string | null = null,      // Linked RSU account
+    public rsuWithholdingRate: number = 37,         // Tax withholding % at vest (supplemental wages; default 37%)
     public pensionSystem: PensionSystem = 'NONE',   // Which pension system this job is covered by
     startMilestoneId?: string,
     endMilestoneId?: string,
@@ -259,6 +270,13 @@ export class WorkIncome extends BaseIncome {
       this.esppOfferingPeriodMonths,
       this.esppAccountId,
       this.esppExpectedStockGrowth,
+      // RSU fields are share counts / rates, not dollar amounts — carry forward unchanged.
+      this.rsuVestingSchedule,
+      this.rsuGrantShares,
+      this.rsuVestFrequency,
+      this.rsuExpectedStockGrowth,
+      this.rsuAccountId,
+      this.rsuWithholdingRate,
       this.pensionSystem,
       this.startMilestoneId,
       this.endMilestoneId,
@@ -306,6 +324,95 @@ export class WorkIncome extends BaseIncome {
       // FIXED: esppContributionAmount is per-period, convert to annual
       return this.getProratedAnnual(this.esppContributionAmount, year);
     }
+  }
+
+  /**
+   * Number of years over which the grant vests, per the schedule.
+   */
+  private getRSUVestingYears(): number {
+    switch (this.rsuVestingSchedule) {
+      case 'cliff-1yr': return 1;
+      case 'graded-3yr': return 3;
+      case 'graded-4yr': return 4;
+      default: return 0;
+    }
+  }
+
+  /**
+   * Number of vesting events per year implied by the configured frequency.
+   */
+  private getRSUVestsPerYear(): number {
+    switch (this.rsuVestFrequency) {
+      case 'quarterly': return 4;
+      case 'semi-annual': return 2;
+      case 'annual': return 1;
+      default: return 1;
+    }
+  }
+
+  /**
+   * Build the full vesting schedule for the grant as a list of tranches, each
+   * with a fractional year offset from the grant date and the shares vesting
+   * at that point.
+   *
+   * - cliff-1yr: 100% vests at the 1-year mark (frequency ignored — a cliff is
+   *   a single event by definition).
+   * - graded-3yr / graded-4yr: shares vest evenly across the period at the
+   *   configured frequency (e.g. 4yr quarterly = 16 equal tranches at 0.25,
+   *   0.5, ... 4.0 years).
+   *
+   * The grant is the WorkIncome's start date (startDate).
+   */
+  getRSUVestSchedule(): { yearOffset: number; shares: number }[] {
+    if (this.rsuVestingSchedule === 'NONE' || this.rsuGrantShares <= 0) {
+      return [];
+    }
+
+    const vestingYears = this.getRSUVestingYears();
+
+    if (this.rsuVestingSchedule === 'cliff-1yr') {
+      // A cliff vests all at once at the 1-year mark.
+      return [{ yearOffset: 1, shares: this.rsuGrantShares }];
+    }
+
+    const vestsPerYear = this.getRSUVestsPerYear();
+    const totalVests = vestingYears * vestsPerYear;
+    const sharesPerVest = this.rsuGrantShares / totalVests;
+    const periodFraction = 1 / vestsPerYear;
+
+    const schedule: { yearOffset: number; shares: number }[] = [];
+    for (let i = 1; i <= totalVests; i++) {
+      schedule.push({ yearOffset: i * periodFraction, shares: sharesPerVest });
+    }
+    return schedule;
+  }
+
+  /**
+   * Get the number of shares vesting in a given calendar year, based on the
+   * grant date (startDate) and vesting schedule. Returns 0 when RSUs aren't
+   * configured or the income has no start date.
+   */
+  getAnnualRSUVestShares(year: number): number {
+    if (this.rsuVestingSchedule === 'NONE' || this.rsuGrantShares <= 0) {
+      return 0;
+    }
+    if (!this.startDate) return 0;
+
+    const grantYear = new Date(this.startDate).getFullYear();
+    // Fractional year offset that maps a tranche into the requested calendar
+    // year. yearOffset is measured from the grant; a vest at offset N lands in
+    // calendar year grantYear + ceil-ish bucket. We bucket each tranche by the
+    // calendar year its vest date falls in: grant month-of-year carries over.
+    const grantMonth = new Date(this.startDate).getMonth();
+
+    return this.getRSUVestSchedule().reduce((sum, tranche) => {
+      // Vest date = grant date + yearOffset years. Compute the calendar year it
+      // lands in using the grant's month so a mid-year grant's quarterly vests
+      // bucket into the correct calendar years.
+      const totalMonths = grantMonth + Math.round(tranche.yearOffset * 12);
+      const vestYear = grantYear + Math.floor(totalMonths / 12);
+      return vestYear === year ? sum + tranche.shares : sum;
+    }, 0);
   }
 }
 
@@ -390,7 +497,7 @@ export class PassiveIncome extends BaseIncome {
     amount: number,
     frequency: IncomeFrequency,
     earned_income: "Yes" | "No",
-    public sourceType: 'Dividend' | 'Rental' | 'Royalty' | 'Interest' | 'RMD' | 'Other',
+    public sourceType: 'Dividend' | 'Rental' | 'Royalty' | 'Interest' | 'RMD' | 'RSU' | 'Other',
     startDate?: Date,
     end_date?: Date,
     public isReinvested: boolean = false,  // If true, income is taxable but not available as spendable cash (e.g., savings interest that stays in the account)
@@ -886,6 +993,12 @@ export function reconstituteIncome(data: unknown): AnyIncome | null {
                 Number(data.esppOfferingPeriodMonths ?? 6),
                 data.esppAccountId ? String(data.esppAccountId) : null,
                 Number(data.esppExpectedStockGrowth ?? 7),
+                (data.rsuVestingSchedule as RSUVestingSchedule) || 'NONE',
+                Number(data.rsuGrantShares) || 0,
+                (data.rsuVestFrequency as RSUVestFrequency) || 'quarterly',
+                Number(data.rsuExpectedStockGrowth ?? 7),
+                data.rsuAccountId ? String(data.rsuAccountId) : null,
+                Number(data.rsuWithholdingRate ?? 37),
                 (data.pensionSystem as PensionSystem) || 'NONE',
                 startMilestoneId, endMilestoneId,
                 (data.employerMatchType as EmployerMatchType) || 'fixed',

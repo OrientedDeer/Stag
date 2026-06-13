@@ -231,7 +231,9 @@ describe('PR #56 #3 — same-year ESPP purchase does not mask a sale in growAcco
 
         const result = growAccounts(
             [esppAccount], [], withdrawalState,
-            {}, inflowResult.esppLots, 0, undefined,
+            {}, inflowResult.esppLots,
+            {}, // rsuLots
+            0, undefined,
             assumptions, 2025, 0, logs
         );
 
@@ -317,7 +319,9 @@ function createFersWorkIncome(id: string, salary: number): WorkIncome {
         0, 0, 0, 0, '',
         null, 'FIXED',
         new Date('2020-01-01'), undefined,
-        0, 'custom', 'NONE', 0, 15, true, 6, null, 7, 'FERS'
+        0, 'custom', 'NONE', 0, 15, true, 6, null, 7,
+        'NONE', 0, 'quarterly', 7, null, 37, // RSU defaults
+        'FERS'
     );
 }
 

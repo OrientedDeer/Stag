@@ -413,7 +413,8 @@ describe('AccountGrowth', () => {
                     [],
                     withdrawalState,
                     {}, // conversionDeposits
-                    {}, // esppLots
+                    {},
+                    {}, // rsuLots // esppLots
                     3000, // deficitDebtPayment
                     deficitDebt,
                     assumptions,
@@ -438,6 +439,7 @@ describe('AccountGrowth', () => {
                     withdrawalState,
                     {},
                     {},
+                    {}, // rsuLots
                     5000, // Pay off entire debt
                     deficitDebt,
                     assumptions,
@@ -463,6 +465,7 @@ describe('AccountGrowth', () => {
                     withdrawalState,
                     {},
                     {},
+                    {}, // rsuLots
                     0,
                     undefined,
                     assumptions,
@@ -490,6 +493,7 @@ describe('AccountGrowth', () => {
                     withdrawalState,
                     {},
                     {},
+                    {}, // rsuLots
                     0,
                     undefined,
                     assumptions,
@@ -529,6 +533,7 @@ describe('AccountGrowth', () => {
                     withdrawalState,
                     {},
                     {},
+                    {}, // rsuLots
                     0,
                     undefined,
                     assumptions,
@@ -559,6 +564,7 @@ describe('AccountGrowth', () => {
                     withdrawalState,
                     {},
                     {},
+                    {}, // rsuLots
                     0,
                     undefined,
                     assumptions,
@@ -586,6 +592,7 @@ describe('AccountGrowth', () => {
                     withdrawalState,
                     {},
                     {},
+                    {}, // rsuLots
                     0,
                     undefined,
                     assumptions,
@@ -613,6 +620,7 @@ describe('AccountGrowth', () => {
                     withdrawalState,
                     {},
                     {},
+                    {}, // rsuLots
                     0,
                     undefined,
                     assumptions,
@@ -640,6 +648,7 @@ describe('AccountGrowth', () => {
                     withdrawalState,
                     {},
                     {},
+                    {}, // rsuLots
                     0,
                     undefined,
                     assumptions,
@@ -669,6 +678,7 @@ describe('AccountGrowth', () => {
                     withdrawalState,
                     { 'roth1': 20000 }, // conversionDeposits records this in conversion history
                     {},
+                    {}, // rsuLots
                     0,
                     undefined,
                     assumptions,
@@ -699,6 +709,7 @@ describe('AccountGrowth', () => {
                     withdrawalState,
                     {},
                     {},
+                    {}, // rsuLots
                     0,
                     undefined,
                     assumptions,
@@ -726,6 +737,7 @@ describe('AccountGrowth', () => {
                     withdrawalState,
                     {},
                     {},
+                    {}, // rsuLots
                     0,
                     undefined,
                     assumptions,
@@ -754,6 +766,7 @@ describe('AccountGrowth', () => {
                     withdrawalState,
                     {},
                     {},
+                    {}, // rsuLots
                     0,
                     undefined,
                     assumptions,
@@ -790,6 +803,7 @@ describe('AccountGrowth', () => {
                     withdrawalState,
                     {},
                     { 'espp1': [newLot] },
+                    {}, // rsuLots
                     0,
                     undefined,
                     assumptions,
@@ -815,6 +829,7 @@ describe('AccountGrowth', () => {
                     withdrawalState,
                     {},
                     {},
+                    {}, // rsuLots
                     0,
                     undefined,
                     assumptions,
@@ -842,6 +857,7 @@ describe('AccountGrowth', () => {
                     withdrawalState,
                     {},
                     {},
+                    {}, // rsuLots
                     0,
                     undefined,
                     assumptions,
@@ -892,6 +908,7 @@ describe('AccountGrowth', () => {
                     withdrawalState,
                     {},
                     {},
+                    {}, // rsuLots
                     0,
                     undefined,
                     assumptions,

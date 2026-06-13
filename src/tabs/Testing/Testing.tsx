@@ -70,7 +70,7 @@ import {
     getCSRSCOLA,
     PENSION_SYSTEM_COMPARISON
 } from '../../data/PensionData';
-import { SavedAccount, InvestedAccount, DebtAccount, DeficitDebtAccount, PropertyAccount, ESPPAccount, AnyAccount } from '../../components/Objects/Accounts/models';
+import { SavedAccount, InvestedAccount, DebtAccount, DeficitDebtAccount, PropertyAccount, ESPPAccount, RSUAccount, AnyAccount } from '../../components/Objects/Accounts/models';
 import { formatCompactCurrency } from '../Future/tabs/FutureUtils';
 import { SimulationYear } from '../../services/simulation/types';
 import RothConversionDebugTab from './RothConversionDebug';
@@ -99,11 +99,12 @@ function generateYearSummaryText(simYear: SimulationYear, age: number, accountsC
     for (const acc of simYear.accounts) {
         const isInvested = acc instanceof InvestedAccount;
         const isESPP = acc instanceof ESPPAccount;
+        const isRSU = acc instanceof RSUAccount;
         const isSaved = acc instanceof SavedAccount;
         const isDebt = acc instanceof DebtAccount || acc instanceof DeficitDebtAccount;
         const isProperty = acc instanceof PropertyAccount;
         const type = isInvested ? (acc as InvestedAccount).taxType :
-            isESPP ? 'ESPP' : isSaved ? 'Savings' : isDebt ? 'Debt' : isProperty ? 'Property' : 'Unknown';
+            isESPP ? 'ESPP' : isRSU ? 'RSU' : isSaved ? 'Savings' : isDebt ? 'Debt' : isProperty ? 'Property' : 'Unknown';
         lines.push(`  ${acc.name} (${type}): ${fmt(acc.amount)}`);
         totalBalance += acc.amount;
     }
@@ -147,7 +148,7 @@ function generateYearSummaryText(simYear: SimulationYear, age: number, accountsC
             const isTraditional = account instanceof InvestedAccount &&
                 ((account as InvestedAccount).taxType === 'Traditional 401k' || (account as InvestedAccount).taxType === 'Traditional IRA');
             const isBrokerage = account instanceof InvestedAccount && (account as InvestedAccount).taxType === 'Brokerage';
-            const taxable = isTraditional || isBrokerage || account instanceof ESPPAccount;
+            const taxable = isTraditional || isBrokerage || account instanceof ESPPAccount || account instanceof RSUAccount;
             lines.push(`  ${name}: ${fmt(amount)}${taxable ? ' (taxable)' : ''}`);
         }
         lines.push(`  Total: ${fmt(simYear.cashflow.withdrawals)}`);
@@ -275,6 +276,7 @@ function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYear
     const accountDetails = simYear.accounts.map(acc => {
         const isInvested = acc instanceof InvestedAccount;
         const isESPP = acc instanceof ESPPAccount;
+        const isRSU = acc instanceof RSUAccount;
         const isSaved = acc instanceof SavedAccount;
         const isDebt = acc instanceof DebtAccount || acc instanceof DeficitDebtAccount;
         const isProperty = acc instanceof PropertyAccount;
@@ -285,6 +287,7 @@ function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYear
             amount: acc.amount,
             type: isInvested ? (acc as InvestedAccount).taxType :
                   isESPP ? 'ESPP' :
+                  isRSU ? 'RSU' :
                   isSaved ? 'Savings' :
                   isDebt ? 'Debt' :
                   isProperty ? 'Property' : 'Unknown',
@@ -351,6 +354,7 @@ function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYear
         const isBrokerage = account instanceof InvestedAccount &&
             ((account as InvestedAccount).taxType === 'Brokerage');
         const isESPP = account instanceof ESPPAccount;
+        const isRSU = account instanceof RSUAccount;
         const isTraditional = account instanceof InvestedAccount &&
             ((account as InvestedAccount).taxType === 'Traditional 401k' || (account as InvestedAccount).taxType === 'Traditional IRA');
         const isRoth = account instanceof InvestedAccount &&
@@ -359,8 +363,8 @@ function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYear
         return {
             name,
             amount,
-            type: isBrokerage ? 'Brokerage' : isESPP ? 'ESPP' : isTraditional ? 'Traditional' : isRoth ? 'Roth' : 'Other',
-            isTaxable: isTraditional || isBrokerage || isESPP
+            type: isBrokerage ? 'Brokerage' : isESPP ? 'ESPP' : isRSU ? 'RSU' : isTraditional ? 'Traditional' : isRoth ? 'Roth' : 'Other',
+            isTaxable: isTraditional || isBrokerage || isESPP || isRSU
         };
     });
 
@@ -5636,7 +5640,7 @@ function CashFlowDebugTab() {
             const age = startAge + idx;
             let assets = 0, liabilities = 0;
             simYear.accounts.forEach(acc => {
-                if (acc instanceof InvestedAccount || acc instanceof SavedAccount || acc instanceof ESPPAccount || acc instanceof PropertyAccount) {
+                if (acc instanceof InvestedAccount || acc instanceof SavedAccount || acc instanceof ESPPAccount || acc instanceof RSUAccount || acc instanceof PropertyAccount) {
                     assets += acc.amount;
                 } else if (acc instanceof DebtAccount) {
                     liabilities += acc.amount;

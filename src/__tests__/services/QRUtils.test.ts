@@ -19,6 +19,8 @@ import {
   exceedsQRLimit,
 } from '../../components/Objects/Accounts/QRTransfer/qrUtils';
 import { parseDate } from '../../components/Objects/modelUtils';
+import { reconstituteAccount, RSUAccount } from '../../components/Objects/Accounts/models';
+import { reconstituteIncome, WorkIncome } from '../../components/Objects/Income/models';
 
 /**
  * Batch 21: QR Utils - Date & Key Transformations
@@ -247,6 +249,80 @@ describe('qrUtils', () => {
       const shortened = shortenKeys(original);
       const expanded = expandKeys(shortened);
       expect(expanded).toEqual(original);
+    });
+  });
+
+  // ============================================
+  // RSU (issue #29) serialization round-trips
+  // ============================================
+  describe('RSU serialization round-trip', () => {
+    it('round-trips an RSUAccount with a lot through shorten/expand/reconstitute', () => {
+      const original = new RSUAccount(
+        'rsu-1', 'Company RSU', 12000,
+        [{
+          id: 'RSU-LOT-2026-work-1',
+          grantDate: new Date(2025, 0, 1),
+          vestDate: new Date(2026, 0, 1),
+          fmvAtVest: 110,
+          shares: 63,
+          costBasis: 110 * 63,
+        }],
+        'work-1',
+        8.5,
+        'CO',
+        120,
+        'long_term_first',
+        30,
+      );
+
+      // Plain-object form (as stored in a backup), then shorten → expand → reconstitute.
+      const plain = JSON.parse(JSON.stringify({ ...original, className: 'RSUAccount' }));
+      const shortened = shortenKeys(plain);
+      const expanded = expandKeys(shortened);
+      const restored = reconstituteAccount(expanded) as RSUAccount;
+
+      expect(restored).toBeInstanceOf(RSUAccount);
+      expect(restored.id).toBe('rsu-1');
+      expect(restored.amount).toBe(12000);
+      expect(restored.linkedIncomeId).toBe('work-1');
+      expect(restored.customROR).toBe(8.5);
+      expect(restored.stockTicker).toBe('CO');
+      expect(restored.currentSharePrice).toBe(120);
+      expect(restored.withdrawalPreference).toBe('long_term_first');
+      expect(restored.minimumHoldingDays).toBe(30);
+      expect(restored.lots.length).toBe(1);
+      const lot = restored.lots[0];
+      expect(lot.fmvAtVest).toBe(110);
+      expect(lot.shares).toBe(63);
+      expect(lot.costBasis).toBeCloseTo(110 * 63, 2);
+      expect(lot.vestDate.getFullYear()).toBe(2026);
+      expect(lot.grantDate.getFullYear()).toBe(2025);
+    });
+
+    it('round-trips WorkIncome RSU fields through shorten/expand/reconstitute', () => {
+      const income = new WorkIncome(
+        'work-1', 'Engineer', 200000, 'Annually', 'Yes',
+        0, 0, 0, 0, '', null, 'FIXED', new Date(2025, 0, 1), undefined,
+      );
+      income.rsuVestingSchedule = 'graded-4yr';
+      income.rsuGrantShares = 1600;
+      income.rsuVestFrequency = 'quarterly';
+      income.rsuExpectedStockGrowth = 9;
+      income.rsuAccountId = 'rsu-1';
+      income.rsuWithholdingRate = 32;
+
+      const plain = JSON.parse(JSON.stringify({ ...income, className: 'WorkIncome' }));
+      const shortened = shortenKeys(plain);
+      const expanded = expandKeys(shortened);
+      const restored = reconstituteIncome(expanded) as WorkIncome;
+
+      expect(restored).toBeInstanceOf(WorkIncome);
+      expect(restored.rsuVestingSchedule).toBe('graded-4yr');
+      expect(restored.rsuGrantShares).toBe(1600);
+      expect(restored.rsuVestFrequency).toBe('quarterly');
+      expect(restored.rsuExpectedStockGrowth).toBe(9);
+      expect(restored.rsuAccountId).toBe('rsu-1');
+      expect(restored.rsuWithholdingRate).toBe(32);
     });
   });
 
@@ -566,6 +642,12 @@ describe('qrUtils', () => {
         esppOfferingPeriodMonths: 6,
         esppAccountId: null,
         esppExpectedStockGrowth: 7,
+        rsuVestingSchedule: 'NONE',
+        rsuGrantShares: 0,
+        rsuVestFrequency: 'quarterly',
+        rsuExpectedStockGrowth: 7,
+        rsuAccountId: null,
+        rsuWithholdingRate: 37,
         pensionSystem: 'NONE',
       };
       const stripped = stripDefaults(original, 'income');
@@ -1817,6 +1899,12 @@ describe('qrUtils', () => {
             esppOfferingPeriodMonths: 6,
             esppAccountId: null,
             esppExpectedStockGrowth: 7,
+            rsuVestingSchedule: 'NONE',
+            rsuGrantShares: 0,
+            rsuVestFrequency: 'quarterly',
+            rsuExpectedStockGrowth: 7,
+            rsuAccountId: null,
+            rsuWithholdingRate: 37,
             pensionSystem: 'NONE',
           },
         ],
@@ -1937,6 +2025,12 @@ describe('qrUtils', () => {
             esppOfferingPeriodMonths: 6,
             esppAccountId: null,
             esppExpectedStockGrowth: 7,
+            rsuVestingSchedule: 'NONE',
+            rsuGrantShares: 0,
+            rsuVestFrequency: 'quarterly',
+            rsuExpectedStockGrowth: 7,
+            rsuAccountId: null,
+            rsuWithholdingRate: 37,
             pensionSystem: 'NONE',
           },
         ],

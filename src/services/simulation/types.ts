@@ -348,7 +348,8 @@ export type WithdrawalAccountType =
     | 'roth_401k'
     | 'roth_ira'
     | 'hsa'
-    | 'espp';
+    | 'espp'
+    | 'rsu';
 
 /**
  * Individual planned withdrawal from an account.
@@ -646,6 +647,17 @@ export interface AccountBalanceSnapshot {
         dispositionType: 'qualifying' | 'disqualifying';
         ordinaryIncomePerShare: number;
         ltcgPerShare: number;
+        totalValue: number;
+    }[];
+    /** For RSU: pre-computed per-lot capital-gains data (no ordinary income on sale) */
+    rsuLots?: {
+        lotId: string;
+        shares: number;
+        currentValuePerShare: number;
+        /** Per-share gain (sale - fmvAtVest basis); negative for underwater lots */
+        gainPerShare: number;
+        /** True if held >=1yr from vest (long-term), false for short-term */
+        isLongTerm: boolean;
         totalValue: number;
     }[];
 }

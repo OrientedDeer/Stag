@@ -4,12 +4,15 @@ import {
     SavedAccount,
     InvestedAccount,
     ESPPAccount,
+    RSUAccount,
     PropertyAccount,
     DebtAccount,
     TaxType,
     TaxTypeEnum,
     ESPPWithdrawalPreference,
-    ESPP_WITHDRAWAL_PREFERENCE_OPTIONS
+    ESPP_WITHDRAWAL_PREFERENCE_OPTIONS,
+    RSUWithdrawalPreference,
+    RSU_WITHDRAWAL_PREFERENCE_OPTIONS
 } from './models';
 import { ExpenseDispatchContext } from "../Expense/ExpenseContext";
 import { LoanExpense, MortgageExpense } from "../Expense/models";
@@ -37,6 +40,7 @@ type AddableAccountClass =
     | typeof SavedAccount
     | typeof InvestedAccount
     | typeof ESPPAccount
+    | typeof RSUAccount
     | typeof PropertyAccount
     | typeof DebtAccount;
 
@@ -69,6 +73,8 @@ interface AccountFormState {
     currentSharePrice: number;
     withdrawalPreference: ESPPWithdrawalPreference;
     minimumHoldingDays: number;
+    // RSU withdrawal preference (separate enum from ESPP)
+    rsuWithdrawalPreference: RSUWithdrawalPreference;
 }
 
 const INITIAL_FORM_STATE: AccountFormState = {
@@ -91,6 +97,7 @@ const INITIAL_FORM_STATE: AccountFormState = {
     currentSharePrice: 0,
     withdrawalPreference: 'fifo',
     minimumHoldingDays: 0,
+    rsuWithdrawalPreference: 'fifo',
 };
 
 /** Live one-liner for the collapsed Growth & Fees section. */
@@ -115,6 +122,19 @@ function getESPPSettingsSummary(form: AccountFormState): string {
     const prefLabel = ESPP_WITHDRAWAL_PREFERENCE_OPTIONS
         .find((opt) => opt.value === form.withdrawalPreference)?.label.split(' (')[0]
         ?? form.withdrawalPreference;
+    parts.push(prefLabel);
+    if (form.minimumHoldingDays > 0) parts.push(`${form.minimumHoldingDays}d hold`);
+    return parts.join(' · ');
+}
+
+function getRSUSettingsSummary(form: AccountFormState): string {
+    const parts: string[] = [];
+    if (form.stockTicker.trim()) parts.push(form.stockTicker.trim());
+    if (form.currentSharePrice > 0) parts.push(`$${form.currentSharePrice}/sh`);
+    if (form.useCustomROR) parts.push(`${form.customROR}% growth`);
+    const prefLabel = RSU_WITHDRAWAL_PREFERENCE_OPTIONS
+        .find((opt) => opt.value === form.rsuWithdrawalPreference)?.label.split(' (')[0]
+        ?? form.rsuWithdrawalPreference;
     parts.push(prefLabel);
     if (form.minimumHoldingDays > 0) parts.push(`${form.minimumHoldingDays}d hold`);
     return parts.join(' · ');
@@ -171,6 +191,17 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                 finalCustomROR, finalTicker, finalSharePrice,
                 form.withdrawalPreference, form.minimumHoldingDays
             );
+        } else if (selectedType === RSUAccount) {
+            const finalCustomROR = form.useCustomROR ? form.customROR : undefined;
+            const finalTicker = form.stockTicker.trim() || undefined;
+            const finalSharePrice = form.currentSharePrice > 0 ? form.currentSharePrice : undefined;
+            newAccount = new RSUAccount(
+                id, form.name.trim(), form.amount,
+                [], // No initial lots — vesting tranches are added by the simulation
+                null, // No linked income
+                finalCustomROR, finalTicker, finalSharePrice,
+                form.rsuWithdrawalPreference, form.minimumHoldingDays
+            );
         } else if (selectedType === PropertyAccount) {
             if (form.ownershipType === "Financed") {
                 const newExpense = new MortgageExpense(
@@ -215,6 +246,7 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
         if (selectedType === SavedAccount) return 'Add Cash Account';
         if (selectedType === InvestedAccount) return 'Add Investment Account';
         if (selectedType === ESPPAccount) return 'Add ESPP Account';
+        if (selectedType === RSUAccount) return 'Add RSU Account';
         if (selectedType === PropertyAccount) return 'Add Property';
         if (selectedType === DebtAccount) return 'Add Debt';
         return 'Add Account';
@@ -446,7 +478,76 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                             </div>
                         </div>
                     )}
-                    {!(selectedType === InvestedAccount || selectedType === PropertyAccount || selectedType === ESPPAccount) && (
+                    {selectedType === RSUAccount && (
+                        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+                            <CurrencyInput
+                                id={`${id}-amount`}
+                                label="Current Value"
+                                value={form.amount}
+                                onChange={(val) => updateForm('amount', val)}
+                                tooltip="Current market value of your vested RSU shares."
+                            />
+                            <CardSection
+                                id={`${id}-section-rsu-stock`}
+                                title="Stock & Vesting Settings"
+                                summary={getRSUSettingsSummary(form)}
+                                gridClassName={MODAL_SECTION_GRID}
+                            >
+                                <NameInput
+                                    id={`${id}-rsu-ticker`}
+                                    label="Stock Ticker"
+                                    value={form.stockTicker}
+                                    onChange={(val) => updateForm('stockTicker', val)}
+                                    placeholder="e.g., AAPL"
+                                />
+                                <CurrencyInput
+                                    id={`${id}-rsu-share-price`}
+                                    label="Current Share Price"
+                                    value={form.currentSharePrice}
+                                    onChange={(val) => updateForm('currentSharePrice', val)}
+                                    tooltip="Current price per share. Seeds the projected fair-market value at each vest."
+                                />
+                                <ToggleInput
+                                    id={`${id}-rsu-use-custom-ror`}
+                                    label="Custom Growth Rate"
+                                    enabled={form.useCustomROR}
+                                    setEnabled={(val) => updateForm('useCustomROR', val)}
+                                    tooltip="Override global return rate assumptions with a custom rate for this RSU account."
+                                />
+                                {form.useCustomROR && (
+                                    <PercentageInput
+                                        id={`${id}-rsu-custom-ror`}
+                                        label="Expected Growth"
+                                        value={form.customROR}
+                                        onChange={(val) => updateForm('customROR', val)}
+                                        max={30}
+                                        tooltip="Expected annual stock growth rate. Overrides global assumptions."
+                                    />
+                                )}
+                                <DropdownInput
+                                    id={`${id}-rsu-withdrawal-pref`}
+                                    label="Withdrawal Preference"
+                                    value={form.rsuWithdrawalPreference}
+                                    onChange={(val) => updateForm('rsuWithdrawalPreference', val as RSUWithdrawalPreference)}
+                                    options={RSU_WITHDRAWAL_PREFERENCE_OPTIONS}
+                                    tooltip="Controls which lots are sold first during retirement withdrawals."
+                                />
+                                <NumberInput
+                                    id={`${id}-rsu-min-hold`}
+                                    label="Min Holding (Days)"
+                                    value={form.minimumHoldingDays}
+                                    onChange={(val) => updateForm('minimumHoldingDays', val)}
+                                    min={0}
+                                    max={1095}
+                                    tooltip="Optional holding period before shares can be sold."
+                                />
+                            </CardSection>
+                            <div className="col-span-full text-sm text-content-muted">
+                                RSU grants and vesting schedules are configured in the associated Work Income. Link this account to an income source with RSUs enabled.
+                            </div>
+                        </div>
+                    )}
+                    {!(selectedType === InvestedAccount || selectedType === PropertyAccount || selectedType === ESPPAccount || selectedType === RSUAccount) && (
                         <div className="grid grid-cols-1 gap-4">
                             <CurrencyInput
                                 id={`${id}-amount`}

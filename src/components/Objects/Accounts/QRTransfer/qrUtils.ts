@@ -19,6 +19,10 @@ const KEY_MAP: Record<string, string> = {
     // ESPP Lot fields
     grantDate: 'gd', purchaseDate: 'pd', fmvAtGrant: 'fg', fmvAtPurchase: 'fp',
     purchasePrice: 'pp', shares: 'sh', totalCost: 'tc', discountAmount: 'da',
+    // RSU Lot fields (lots/linkedIncomeId/customROR/stockTicker/currentSharePrice/
+    // withdrawalPreference/minimumHoldingDays/grantDate/shares/costBasis are shared
+    // with the ESPP/account key maps above).
+    vestDate: 'vd', fmvAtVest: 'fv',
     // Income/Expense
     frequency: 'f', startDate: 's', endDate: 'E', annualGrowthRate: 'w',
     earned_income: 'I', isDiscretionary: 'D', dueMonth: 'dm', annualMode: 'am',
@@ -29,6 +33,9 @@ const KEY_MAP: Record<string, string> = {
     // Work income ESPP
     esppContributionType: 'et', esppContributionAmount: 'ea', esppDiscountPercent: 'ed',
     esppHasLookback: 'el', esppOfferingPeriodMonths: 'eo', esppAccountId: 'ei', esppExpectedStockGrowth: 'eg',
+    // Work income RSU
+    rsuVestingSchedule: 'rv', rsuGrantShares: 'rgs', rsuVestFrequency: 'rf',
+    rsuExpectedStockGrowth: 'rsg', rsuAccountId: 'rai', rsuWithholdingRate: 'rw',
     // Work income pension eligibility
     pensionSystem: 'ps',
     // Passive income
@@ -94,6 +101,13 @@ const DEFAULTS: Record<string, Record<string, unknown>> = {
         esppOfferingPeriodMonths: 6,
         esppAccountId: null,
         esppExpectedStockGrowth: 7,
+        // RSU Work Income defaults
+        rsuVestingSchedule: 'NONE',
+        rsuGrantShares: 0,
+        rsuVestFrequency: 'quarterly',
+        rsuExpectedStockGrowth: 7,
+        rsuAccountId: null,
+        rsuWithholdingRate: 37,
         // Pension eligibility defaults
         pensionSystem: 'NONE',
     },
@@ -177,7 +191,7 @@ export function shortenKeys(obj: unknown): unknown {
         return obj.map(shortenKeys);
     }
     // The Date fields that flow through here (startDate, endDate, end_date,
-    // grantDate, purchaseDate, goalTargetDate) are all date-only calendar values
+    // grantDate, purchaseDate, vestDate, goalTargetDate) are all date-only calendar values
     // picked at local midnight. Serialize them with the local YYYY-MM-DD formatter
     // rather than toISOString(): UTC serialization rolls the date back a day for
     // UTC+ users, shifting it on import (issue #73). parseDate() reads the date

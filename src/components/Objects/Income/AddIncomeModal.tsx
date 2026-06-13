@@ -169,7 +169,10 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                 form.matchAccountId, taxType, form.contributionGrowthStrategy,
                 finalStartDate, finalEndDate, form.hsaContribution, form.autoMax401k,
                 form.esppContributionType, form.esppContributionAmount, form.esppDiscountPercent,
-                form.esppHasLookback, 6, finalEsppAccountId, 7, form.pensionSystem,
+                form.esppHasLookback, 6, finalEsppAccountId, 7,
+                // RSU defaults (configured later via the Work Income RSU section).
+                'NONE', 0, 'quarterly', 7, null, 37,
+                form.pensionSystem,
                 finalStartMilestoneId, getDefaultEndMilestone(BUILTIN_MILESTONE_IDS.RETIRE),
                 form.employerMatchType, form.employerMatchPercent, form.employerMatchMax
             );

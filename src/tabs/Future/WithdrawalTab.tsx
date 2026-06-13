@@ -8,7 +8,7 @@ import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
 import { SimulationContext } from '../../components/Objects/Assumptions/SimulationContext';
 import { BudgetContext } from '../../components/Objects/Budget/BudgetContext';
 import { computeEOYBudgetContributions } from '../../services/eoyContributionProjection';
-import { AnyAccount, ESPPAccount, SavedAccount, InvestedAccount } from '../../components/Objects/Accounts/models';
+import { AnyAccount, ESPPAccount, RSUAccount, SavedAccount, InvestedAccount } from '../../components/Objects/Accounts/models';
 import { formatCompactCurrency } from './tabs/FutureUtils';
 import { getRMDStartAge } from '../../data/RMDData';
 import { runSimulationWithOptimization } from '../../components/Objects/Assumptions/useSimulation';
@@ -57,6 +57,10 @@ const getTaxBadge = (account: AnyAccount | undefined): { label: string; color: s
 
     if (account instanceof ESPPAccount) {
         return { label: 'ESPP (Mixed)', color: 'bg-cat-purple-solid' };
+    }
+
+    if (account instanceof RSUAccount) {
+        return { label: 'RSU (Cap Gains)', color: 'bg-cat-purple-solid' };
     }
 
     return { label: 'Unknown', color: 'bg-surface-hover' };
@@ -224,9 +228,9 @@ export default function WithdrawalTab() {
         };
     }, [taxOptimizationEnabled, state.milestones, accounts, expenses, simulation]);
 
-    // Filter to only withdrawal-eligible accounts (SavedAccount, InvestedAccount, ESPPAccount)
+    // Filter to only withdrawal-eligible accounts (SavedAccount, InvestedAccount, ESPPAccount, RSUAccount)
     const eligibleAccounts = useMemo(() => accounts.filter(
-        acc => acc instanceof SavedAccount || acc instanceof InvestedAccount || acc instanceof ESPPAccount
+        acc => acc instanceof SavedAccount || acc instanceof InvestedAccount || acc instanceof ESPPAccount || acc instanceof RSUAccount
     ), [accounts]);
 
     // Sync withdrawal strategy with accounts: add new eligible accounts, drop

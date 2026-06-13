@@ -11,15 +11,17 @@ import type {
     PensionSystem,
 } from '../models';
 import type { AllIncomeKeys } from '../IncomeContext';
-import type { InvestedAccount, ESPPAccount } from '../../Accounts/models';
+import type { InvestedAccount, ESPPAccount, RSUAccount } from '../../Accounts/models';
 import type { ContributionWarning } from '../incomeCardUtils';
 import { ESPPFields } from './ESPPFields';
+import { RSUFields } from './RSUFields';
 
 interface WorkIncomeFieldsProps {
     income: WorkIncome;
     onFieldUpdate: (field: AllIncomeKeys, value: unknown) => void;
     contributionAccounts: InvestedAccount[];
     esppAccounts: ESPPAccount[];
+    rsuAccounts: RSUAccount[];
     contributionWarnings: ContributionWarning[] | null;
     onMatchAccountChange: (accountId: string | null) => void;
 }
@@ -60,11 +62,23 @@ function getESPPSummary(income: WorkIncome): string {
         : `${fmt(income.esppContributionAmount)}/yr`;
 }
 
+function getRSUSummary(income: WorkIncome): string {
+    if (income.rsuVestingSchedule === 'NONE') return 'None';
+    const scheduleLabel: Record<string, string> = {
+        'cliff-1yr': '1-yr cliff',
+        'graded-3yr': '3-yr graded',
+        'graded-4yr': '4-yr graded',
+    };
+    const label = scheduleLabel[income.rsuVestingSchedule] ?? income.rsuVestingSchedule;
+    return `${income.rsuGrantShares} sh · ${label}`;
+}
+
 export function WorkIncomeFields({
     income,
     onFieldUpdate,
     contributionAccounts,
     esppAccounts,
+    rsuAccounts,
     contributionWarnings,
     onMatchAccountChange,
 }: WorkIncomeFieldsProps): ReactElement {
@@ -203,6 +217,14 @@ export function WorkIncomeFields({
                 summary={getESPPSummary(income)}
             >
                 <ESPPFields income={income} onFieldUpdate={onFieldUpdate} esppAccounts={esppAccounts} />
+            </CardSection>
+
+            <CardSection
+                id={`${income.id}-section-rsu`}
+                title="RSU"
+                summary={getRSUSummary(income)}
+            >
+                <RSUFields income={income} onFieldUpdate={onFieldUpdate} rsuAccounts={rsuAccounts} />
             </CardSection>
 
             <CardSection

@@ -22,7 +22,8 @@ import { applyLifestyleCreep, calculateStrategyTarget, calculateTotalDiscretiona
 import { processDeficitDebt } from "../../../services/simulation/WithdrawalService";
 import { processInflows, growAccounts } from "../../../services/simulation/AccountGrowth";
 import { evaluateAllMilestones, isActiveByMilestone, MilestoneContext } from "../../../services/simulation/MilestoneEvaluator";
-import { InvestedAccount, SavedAccount, ESPPAccount } from "../Accounts/models";
+import { InvestedAccount, SavedAccount, ESPPAccount, RSUAccount } from "../Accounts/models";
+import { processRSUVesting } from "../../../services/simulation/RSUVesting";
 import { solveYear, YearSolverInput } from "../../../services/simulation/YearSolver";
 import { YearPlan } from "../../../services/simulation/types";
 import { buildCashflowDetail } from "../../../services/simulation/CashflowDetailBuilder";
@@ -46,7 +47,7 @@ function executeYearPlan(
     // Execute withdrawals
     for (const withdrawal of plan.withdrawals) {
         const account = accounts.find(a => a.id === withdrawal.accountId);
-        if (!account || !(account instanceof InvestedAccount || account instanceof SavedAccount || account instanceof ESPPAccount)) {
+        if (!account || !(account instanceof InvestedAccount || account instanceof SavedAccount || account instanceof ESPPAccount || account instanceof RSUAccount)) {
             continue;
         }
 
@@ -256,6 +257,25 @@ function simulateOneYearWithNewEngine(
         currentAge, isRetired, logs
     );
     const { nextIncomes: incomesWithEarningsTest, allIncomes } = incomeResult;
+
+    // ------------------------------------------------------------------
+    // RSU VESTING
+    // ------------------------------------------------------------------
+    // Vest income is ordinary (W-2 supplemental) income — recognized here BEFORE
+    // the tax solver so it feeds federal/state/FICA and the income breakdown.
+    // Net-share lots are created in growAccounts (rsuLots); the withheld amount
+    // is an estimated-tax prepayment subtracted from the year's tax owed.
+    // Vesting reads the ORIGINAL incomes (pre-retirement-zeroing carries the RSU
+    // config, so a grant keeps vesting after the salary ends).
+    const rsuVestingResult = processRSUVesting(
+        incomesWithEarningsTest, accounts, year, logs
+    );
+    // Add vest income to allIncomes only — that array drives tax/FICA (via the
+    // solver) and the income breakdown. It is NOT added to incomesWithEarningsTest
+    // (the persisted income list) because vest income is regenerated fresh each
+    // year from the schedule; projectIncomes filters prior-year RSU vest income
+    // out at the top (same pattern as Interest/RMD synthetic incomes).
+    allIncomes.push(...rsuVestingResult.vestIncomes);
 
     // ------------------------------------------------------------------
     // LIFESTYLE CREEP (same as old engine)
@@ -535,7 +555,7 @@ function simulateOneYearWithNewEngine(
     // ------------------------------------------------------------------
     const nextAccounts = growAccounts(
         accounts, nextExpenses, withdrawalState, conversionDeposits,
-        inflowResult.esppLots, yearPlan.deficitDebtPayment, existingDeficitDebt,
+        inflowResult.esppLots, rsuVestingResult.rsuLots, yearPlan.deficitDebtPayment, existingDeficitDebt,
         assumptions, year, returnOverride, logs
     );
 
@@ -606,7 +626,15 @@ function simulateOneYearWithNewEngine(
     }, 0);
 
     const postTaxDeductions = TaxService.getPostTaxExemptions(incomesWithEarningsTest, year);
-    const totalTax = yearPlan.tax.total;
+    // RSU sell-to-cover withholding is an estimated-tax PREPAYMENT: the company
+    // already remitted it (by selling the withholding slice of shares at vest), so
+    // it offsets the cash tax due this year. Subtracting it from totalTax means a
+    // vest whose withholding ≈ its marginal tax is cash-neutral, while a user who
+    // lowers the rate sees the resulting shortfall reduce spendable cash rather
+    // than have it hidden. Floored at 0 so over-withholding never creates phantom
+    // negative tax (it would otherwise appear as spendable cash).
+    const rsuWithholding = rsuVestingResult.totalWithholding;
+    const totalTax = Math.max(0, yearPlan.tax.total - rsuWithholding);
 
     // ------------------------------------------------------------------
     // SANKEY CASH ACCOUNTING (Fix A + Fix B + Fix C)

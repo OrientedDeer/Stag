@@ -13,7 +13,7 @@
  * LTCG tax is NOT included in the deficit before grossing up - that causes double-counting.
  */
 
-import { AnyAccount, InvestedAccount, SavedAccount, ESPPAccount } from "../../components/Objects/Accounts/models";
+import { AnyAccount, InvestedAccount, SavedAccount, ESPPAccount, RSUAccount } from "../../components/Objects/Accounts/models";
 import { TaxState } from "../../components/Objects/Taxes/TaxContext";
 import { AssumptionsState } from "../../components/Objects/Assumptions/AssumptionsContext";
 import {
@@ -71,6 +71,7 @@ export interface WithdrawalPlanResult {
 function classifyAccount(account: AnyAccount): WithdrawalAccountType {
     if (account instanceof SavedAccount) return 'savings';
     if (account instanceof ESPPAccount) return 'espp';
+    if (account instanceof RSUAccount) return 'rsu';
     if (account instanceof InvestedAccount) {
         switch (account.taxType) {
             case 'Traditional 401k': return 'traditional_401k';
@@ -128,8 +129,27 @@ export function createAccountSnapshot(account: AnyAccount, snapshotDate?: Date):
     let rothContributions: number | undefined;
     let conversionHistory: { year: number; amount: number }[] | undefined;
     let esppLots: AccountBalanceSnapshot['esppLots'];
+    let rsuLots: AccountBalanceSnapshot['rsuLots'];
 
-    if (account instanceof ESPPAccount) {
+    if (account instanceof RSUAccount) {
+        // RSU: pre-compute per-lot capital-gains data. RSU shares were already
+        // taxed as ordinary income at vest, so a sale only realizes capital
+        // gains/losses (sale - fmvAtVest basis), short- or long-term by hold time.
+        const saleDate = snapshotDate ?? new Date();
+        const sharePrice = account.currentSharePrice ?? (account.amount / Math.max(1, account.totalShares));
+
+        rsuLots = account.lots.map(lot => ({
+            lotId: lot.id,
+            shares: lot.shares,
+            currentValuePerShare: sharePrice,
+            gainPerShare: sharePrice - lot.fmvAtVest,
+            isLongTerm: account.isLongTerm(lot, saleDate),
+            totalValue: lot.shares * sharePrice,
+        }));
+
+        const unrealizedGains = Math.max(0, account.amount - account.totalCostBasis);
+        gainRatio = account.amount > 0 ? unrealizedGains / account.amount : 0;
+    } else if (account instanceof ESPPAccount) {
         // ESPP: pre-compute per-lot disposition data using existing functions
         const saleDate = snapshotDate ?? new Date();
         const sharePrice = account.currentSharePrice ?? (account.amount / Math.max(1, account.totalShares));
@@ -196,6 +216,7 @@ export function createAccountSnapshot(account: AnyAccount, snapshotDate?: Date):
         rothContributions,
         conversionHistory,
         esppLots,
+        rsuLots,
     };
 }
 
@@ -522,11 +543,12 @@ export function planWithdrawals(
     let totalTax = 0;
     let totalPenalties = 0;
     let totalLTCG = 0;
-    // STCG is always 0 today: the planner has no per-lot holding-period data to
-    // split brokerage gains short/long, and YearSolver hardcodes STCG=0 in the
-    // authoritative federal tax. Tracked as a const placeholder until that
-    // cross-file short/long split is wired up (reviewed bug #9, NEEDS-CROSS-FILE).
-    const totalSTCG = 0;
+    // STCG was historically always 0: brokerage/ESPP gains have no per-lot
+    // holding-period split in the planner. RSU lots DO carry explicit vest dates,
+    // so an RSU sale can realize genuine short-term gains (taxed at ordinary
+    // rates). Accumulate those here; YearSolver reads totalSTCG into realizedSTCG
+    // and feeds it through the authoritative federal tax + MAGI.
+    let totalSTCG = 0;
     let cumulativeLTCG = 0; // Tracks LTCG from brokerage/ESPP for ACA MAGI headroom
     let runningOrdinaryIncome = currentOrdinaryIncome;
 
@@ -1113,6 +1135,130 @@ export function planWithdrawals(
 
                     withdrawal = {
                         source: 'espp',
+                        accountId: snapshot.accountId,
+                        accountName: snapshot.accountName,
+                        gross: grossToWithdraw,
+                        net: netReceived,
+                        capitalGains: { shortTerm: 0, longTerm: actualLTCG },
+                        penalty: 0,
+                        tax: actualTax,
+                        reason,
+                    };
+
+                    cumulativeLTCG += actualLTCG;
+                    remainingNetNeeded -= netReceived;
+                    totalNet += netReceived;
+                    totalGross += grossToWithdraw;
+                    totalTax += actualTax;
+                    totalLTCG += actualLTCG;
+                }
+                break;
+            }
+
+            case 'rsu': {
+                const rsuLots = snapshot.rsuLots;
+
+                // Use pre-computed lot data if available. RSU shares were already
+                // taxed as ordinary income at vest, so a sale only realizes capital
+                // gains/losses: short-term at the ordinary marginal rate, long-term
+                // at the LTCG rate. Underwater lots carry negative gains (losses).
+                if (rsuLots && rsuLots.length > 0) {
+                    const rsuOrdinaryRate = getMarginalRate(runningOrdinaryIncome) + getStateRate(runningOrdinaryIncome);
+
+                    // Blended effective tax-per-gross-dollar across the pool, using
+                    // each lot's ST/LT classification (mirrors the ESPP sizing).
+                    let poolValue = 0;
+                    let poolTax = 0;
+                    for (const lot of rsuLots) {
+                        poolValue += lot.totalValue;
+                        const lotGain = lot.shares * lot.gainPerShare;
+                        poolTax += lotGain * (lot.isLongTerm ? ltcgRate : rsuOrdinaryRate);
+                    }
+                    const effectiveTaxPerGrossDollar = poolValue > 0 ? poolTax / poolValue : 0;
+                    const rsuDenominator = Math.max(0.01, 1 - effectiveTaxPerGrossDollar);
+                    const estimatedGross = Math.min(
+                        remainingNetNeeded / rsuDenominator,
+                        effectiveVestedBalance
+                    );
+
+                    // Walk lots in order, consuming shares until we have enough.
+                    let grossToWithdraw = 0;
+                    let rsuSTCG = 0;
+                    let rsuLTCG = 0;
+                    let remainingGrossNeeded = estimatedGross;
+
+                    for (const lot of rsuLots) {
+                        if (remainingGrossNeeded <= 0) break;
+
+                        const lotValue = lot.totalValue;
+                        const valueToUse = Math.min(lotValue, remainingGrossNeeded);
+                        const shareRatio = lotValue > 0 ? valueToUse / lotValue : 0;
+                        const sharesUsed = lot.shares * shareRatio;
+                        const lotGain = sharesUsed * lot.gainPerShare;
+
+                        grossToWithdraw += valueToUse;
+                        if (lot.isLongTerm) {
+                            rsuLTCG += lotGain;
+                        } else {
+                            rsuSTCG += lotGain;
+                        }
+                        remainingGrossNeeded -= valueToUse;
+                    }
+
+                    if (grossToWithdraw <= 0) {
+                        continue; // Skip to next account if no value to withdraw
+                    }
+
+                    // Short-term gains are taxed at ordinary rates; long-term at the
+                    // LTCG rate. Losses (negative gains) reduce tax (offset).
+                    const stcgTax = rsuSTCG * rsuOrdinaryRate;
+                    const ltcgTax = rsuLTCG * ltcgRate;
+                    const actualTax = stcgTax + ltcgTax;
+                    const netReceived = grossToWithdraw - actualTax;
+
+                    withdrawal = {
+                        source: 'rsu',
+                        accountId: snapshot.accountId,
+                        accountName: snapshot.accountName,
+                        gross: grossToWithdraw,
+                        net: netReceived,
+                        capitalGains: { shortTerm: rsuSTCG, longTerm: rsuLTCG },
+                        // STCG is taxed at ordinary rates, so route its tax through
+                        // ordinaryTax — ordinaryTaxOf()/ltcgTaxOf() then split it
+                        // correctly (ordinary bucket vs LTCG bucket).
+                        ordinaryTax: stcgTax,
+                        penalty: 0,
+                        tax: actualTax,
+                        reason,
+                    };
+
+                    cumulativeLTCG += rsuLTCG;
+                    remainingNetNeeded -= netReceived;
+                    totalNet += netReceived;
+                    totalGross += grossToWithdraw;
+                    totalTax += actualTax;
+                    totalLTCG += rsuLTCG;
+                    totalSTCG += rsuSTCG;
+
+                    if (rsuSTCG !== 0 || rsuLTCG !== 0) {
+                        decisions.push({
+                            category: 'tax',
+                            account: snapshot.accountName,
+                            amount: rsuSTCG + rsuLTCG,
+                            description: `RSU sale: $${Math.round(rsuSTCG).toLocaleString()} short-term, $${Math.round(rsuLTCG).toLocaleString()} long-term capital gains.`,
+                        });
+                    }
+                } else {
+                    // Fallback: treat like brokerage if no RSU lot data (long-term).
+                    const result = grossUpBrokerage(remainingNetNeeded, snapshot.gainRatio, ltcgRate);
+                    const grossToWithdraw = Math.min(result.gross, effectiveVestedBalance);
+
+                    const actualLTCG = grossToWithdraw * snapshot.gainRatio;
+                    const actualTax = actualLTCG * ltcgRate;
+                    const netReceived = grossToWithdraw - actualTax;
+
+                    withdrawal = {
+                        source: 'rsu',
                         accountId: snapshot.accountId,
                         accountName: snapshot.accountName,
                         gross: grossToWithdraw,

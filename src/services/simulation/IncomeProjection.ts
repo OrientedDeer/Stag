@@ -28,9 +28,11 @@ export function projectIncomes(
     isRetired: boolean,
     logs: string[]
 ): IncomeProjectionResult {
-    // Filter out previous year's interest and RMD income - they're regenerated fresh each year
+    // Filter out previous year's interest, RMD, and RSU-vest income - they're
+    // regenerated fresh each year (interest from balances, RMD from required
+    // distributions, RSU vest from the grant schedule).
     const regularIncomes = incomes.filter(inc => {
-        if (inc instanceof PassiveIncome && (inc.sourceType === 'Interest' || inc.sourceType === 'RMD')) {
+        if (inc instanceof PassiveIncome && (inc.sourceType === 'Interest' || inc.sourceType === 'RMD' || inc.sourceType === 'RSU')) {
             return false;
         }
         return true;
@@ -65,6 +67,15 @@ export function projectIncomes(
                 inc.esppOfferingPeriodMonths,
                 inc.esppAccountId,
                 inc.esppExpectedStockGrowth,
+                // Preserve RSU config: a grant keeps vesting on schedule even after
+                // the salary stops (zeroed here at retirement). Vest income is still
+                // recognized as ordinary income in those years.
+                inc.rsuVestingSchedule,
+                inc.rsuGrantShares,
+                inc.rsuVestFrequency,
+                inc.rsuExpectedStockGrowth,
+                inc.rsuAccountId,
+                inc.rsuWithholdingRate,
                 inc.pensionSystem,
                 inc.startMilestoneId,
                 inc.endMilestoneId,  // CRITICAL: Preserve milestone IDs

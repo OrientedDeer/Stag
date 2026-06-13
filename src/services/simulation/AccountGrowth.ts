@@ -1,4 +1,4 @@
-import { AnyAccount, InvestedAccount, SavedAccount, ESPPAccount, PropertyAccount, DebtAccount, DeficitDebtAccount, ESPPLot } from "../../components/Objects/Accounts/models";
+import { AnyAccount, InvestedAccount, SavedAccount, ESPPAccount, RSUAccount, PropertyAccount, DebtAccount, DeficitDebtAccount, ESPPLot, RSULot } from "../../components/Objects/Accounts/models";
 import { AnyExpense, MortgageExpense, LoanExpense } from "../../components/Objects/Expense/models";
 import { AnyIncome, WorkIncome, getIncomeActiveMultiplier } from "../../components/Objects/Income/models";
 import { AssumptionsState } from "../../components/Objects/Assumptions/AssumptionsContext";
@@ -222,6 +222,7 @@ export function growAccounts(
     withdrawalState: WithdrawalState,
     conversionDeposits: Record<string, number>,
     esppLots: Record<string, ESPPLot[]>,
+    rsuLots: Record<string, RSULot[]>,
     deficitDebtPayment: number,
     existingDeficitDebt: DeficitDebtAccount | undefined,
     assumptions: AssumptionsState,
@@ -305,6 +306,37 @@ export function growAccounts(
             let grownAccount = workingAccount.increment(assumptions, returnOverride);
 
             const newLots = esppLots[acc.id] || [];
+            if (newLots.length > 0) {
+                for (const lot of newLots) {
+                    grownAccount = grownAccount.addLot(lot);
+                }
+            }
+
+            return grownAccount;
+        }
+
+        if (acc instanceof RSUAccount) {
+            let workingAccount: RSUAccount = acc;
+
+            // Apply any withdrawal (sale) recorded for this account: sell shares at
+            // the current (start-of-year) FMV per share before growth, using the
+            // account's configured lot-selling order. Conserves the RSU balance.
+            const grossWithdrawn = userIn < 0 ? -userIn : 0;
+            if (grossWithdrawn > 0) {
+                const totalShares = workingAccount.lots.reduce((sum, lot) => sum + lot.shares, 0);
+                const fmvPerShare = totalShares > 0 ? workingAccount.amount / totalShares : 0;
+                if (fmvPerShare > 0) {
+                    const sharesToSell = Math.min(totalShares, grossWithdrawn / fmvPerShare);
+                    workingAccount = workingAccount.removeSoldShares(
+                        sharesToSell, fmvPerShare, undefined, workingAccount.withdrawalPreference
+                    );
+                }
+            }
+
+            let grownAccount = workingAccount.increment(assumptions, returnOverride);
+
+            // Add this year's vesting tranches (net shares, after sell-to-cover).
+            const newLots = rsuLots[acc.id] || [];
             if (newLots.length > 0) {
                 for (const lot of newLots) {
                     grownAccount = grownAccount.addLot(lot);

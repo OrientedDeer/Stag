@@ -6,6 +6,7 @@ import {
     SavedAccount,
     InvestedAccount,
     ESPPAccount,
+    RSUAccount,
     PropertyAccount,
     DebtAccount,
     ACCOUNT_CATEGORIES,
@@ -116,6 +117,7 @@ export default function AccountTab() {
     useSubTabDeepLink(ACCOUNT_CATEGORIES, setActiveTab);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [showESPPModal, setShowESPPModal] = useState(false);
+    const [showRSUModal, setShowRSUModal] = useState(false);
     const [showImportModal, setShowImportModal] = useState(false);
 
     // Data wrangling for icicle chart
@@ -204,6 +206,7 @@ export default function AccountTab() {
             <div className="p-4">
                 <AccountList type={InvestedAccount} />
                 <AccountList type={ESPPAccount} />
+                <AccountList type={RSUAccount} />
                 <div className="flex gap-2 mt-4">
                     <button
                         onClick={() => setIsModalOpen(true)}
@@ -217,6 +220,12 @@ export default function AccountTab() {
                     >
                         + Add ESPP
                     </button>
+                    <button
+                        onClick={() => setShowRSUModal(true)}
+                        className="bg-positive-strong p-4 rounded-xl text-white font-bold hover:bg-positive-solid transition-colors"
+                    >
+                        + Add RSU
+                    </button>
                 </div>
                 <AddAccountModal
                     isOpen={isModalOpen}
@@ -227,6 +236,11 @@ export default function AccountTab() {
                     isOpen={showESPPModal}
                     onClose={() => setShowESPPModal(false)}
                     selectedType={ESPPAccount}
+                />
+                <AddAccountModal
+                    isOpen={showRSUModal}
+                    onClose={() => setShowRSUModal(false)}
+                    selectedType={RSUAccount}
                 />
             </div>
         ),

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ResponsiveSunburst } from '@nivo/sunburst';
-import { AnyAccount, SavedAccount, InvestedAccount, ESPPAccount, PropertyAccount, DebtAccount } from '../Objects/Accounts/models';
+import { AnyAccount, SavedAccount, InvestedAccount, ESPPAccount, RSUAccount, PropertyAccount, DebtAccount } from '../Objects/Accounts/models';
 import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
 import { useChartTheme } from './useChartTheme';
 import { ChartFrame } from "./ChartFrame";
@@ -15,6 +15,7 @@ const getAccountCategory = (acc: AnyAccount): string => {
   if (acc instanceof SavedAccount) return 'Cash';
   if (acc instanceof InvestedAccount) return 'Invested';
   if (acc instanceof ESPPAccount) return 'Invested';
+  if (acc instanceof RSUAccount) return 'Invested';
   if (acc instanceof PropertyAccount) return 'Property';
   return 'Other';
 };
