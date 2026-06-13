@@ -2,7 +2,6 @@ import { ReactElement, useContext, useMemo } from 'react';
 import { ResponsiveLine } from '@nivo/line';
 import { AccountContext } from '../Objects/Accounts/AccountContext';
 import { SimulationContext } from '../Objects/Assumptions/SimulationContext';
-import { AssumptionsContext } from '../Objects/Assumptions/AssumptionsContext';
 import { useChartTheme } from './useChartTheme';
 import { ChartFrame } from './ChartFrame';
 import { ChartTooltipPortal } from './ChartTooltipPortal';
@@ -40,8 +39,6 @@ interface SlicePoint {
 export function ProjectionMemoryChart(): ReactElement {
     const { accounts, amountHistory } = useContext(AccountContext);
     const { simulation } = useContext(SimulationContext);
-    const { state: assumptions } = useContext(AssumptionsContext);
-    const forceExact = assumptions.display?.useCompactCurrency === false;
     const { theme, resolve } = useChartTheme();
 
     const { lineData, vintageIds, hasData } = useMemo(() => {
@@ -84,7 +81,7 @@ export function ProjectionMemoryChart(): ReactElement {
                             <div key={p.seriesId} className="flex justify-between gap-4">
                                 <span className="text-content-muted">{p.seriesId}:</span>
                                 <span className="font-mono" style={{ color: p.seriesColor }}>
-                                    {formatCompactCurrency(p.data.y, { forceExact })}
+                                    {formatCompactCurrency(p.data.y)}
                                 </span>
                             </div>
                         ))}
