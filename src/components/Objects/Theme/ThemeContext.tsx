@@ -12,7 +12,6 @@ import {
  * Writes the active theme onto <html> (data-theme + effect flags + --app-font)
  * so the Layer 1 CSS tokens in src/index.css take effect, and persists the
  * choice to localStorage. Config/types/hook live in ./theme.
- * See docs/THEMING_PLAN.md.
  */
 /** Apply the theme's attributes/font to <html>. Called synchronously on switch
  *  so that components reading resolved CSS-var colors (charts) see fresh values

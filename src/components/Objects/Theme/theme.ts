@@ -4,7 +4,7 @@ import { createContext, useContext } from "react";
  * Theme system — Layer 2 config + context (non-component module).
  * The <ThemeProvider> component lives in ThemeContext.tsx; everything that is
  * not a component (config, types, context object, hook) lives here so the
- * provider file stays fast-refresh friendly. See docs/THEMING_PLAN.md.
+ * provider file stays fast-refresh friendly.
  */
 
 export type ThemeId = "default" | "elite";

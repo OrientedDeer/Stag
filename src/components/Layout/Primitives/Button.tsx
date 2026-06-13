@@ -3,7 +3,7 @@ import type { ComponentPropsWithRef } from "react";
 /**
  * Button — themeable action button (Layer 3 primitive).
  * Variants map to semantic tokens so they recolor per theme; a heavy reskin
- * can also restyle every button (shape/glow) from here. See docs/THEMING_PLAN.md.
+ * can also restyle every button (shape/glow) from here.
  */
 type Variant =
   | "primary"

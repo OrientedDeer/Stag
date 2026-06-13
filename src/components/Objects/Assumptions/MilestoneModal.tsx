@@ -9,6 +9,7 @@ import { DropdownInput } from "../../Layout/InputFields/DropdownInput";
 import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput";
 import { useModalAccessibility } from "../../../hooks/useModalAccessibility";
 import { Button } from "../../Layout/Primitives";
+import { AlertBanner } from "../../Layout/AlertBanner";
 import { ConfirmDialog } from "../../Layout/ConfirmDialog";
 
 const generateUniqueId = () =>
@@ -538,7 +539,7 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose, milest
                 onCancel={() => setPendingDeleteId(null)}
                 variant="danger"
                 details={pendingDeleteRefs && (
-                    <div className="bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-3 text-yellow-300 text-sm">
+                    <AlertBanner severity="warning" size="sm">
                         <p>
                             {pendingDeleteRefs.expenses.length} expense(s) and {pendingDeleteRefs.incomes.length} income(s) use
                             this milestone as a trigger — they will reset to End of Plan:
@@ -547,7 +548,7 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose, milest
                             {pendingDeleteRefs.expenses.map(e => <li key={`exp-${e.id}`}>{e.name}</li>)}
                             {pendingDeleteRefs.incomes.map(i => <li key={`inc-${i.id}`}>{i.name}</li>)}
                         </ul>
-                    </div>
+                    </AlertBanner>
                 )}
             />
         </div>

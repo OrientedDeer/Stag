@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
  * SectionHeader — the uppercase, wide-tracked label used above panels/sections
  * (Layer 3 primitive). Centralises the `text-content-muted text-xs font-bold
  * uppercase tracking-widest` pattern so the Elite theme can give it a HUD
- * readout treatment in one place. See docs/THEMING_PLAN.md.
+ * readout treatment in one place.
  */
 interface SectionHeaderProps {
   children: ReactNode;

@@ -7,7 +7,6 @@ import type { ElementType, ReactNode, HTMLAttributes } from "react";
  * rounded-xl p-*` block (~70 sites). Centralising it means a heavy reskin
  * restyles every panel in one place — e.g. the Elite theme adds an angular HUD
  * frame to `.stag-panel` from src/index.css without touching call sites.
- * See docs/THEMING_PLAN.md (Layer 3).
  */
 type Padding = "none" | "sm" | "md" | "lg";
 

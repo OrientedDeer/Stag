@@ -6,6 +6,7 @@ import { AssumptionsContext } from '../Assumptions/AssumptionsContext';
 import { DebtAccount, PropertyAccount } from './models';
 import { WorkIncome } from '../Income/models';
 import { ConfirmDialog } from '../../Layout/ConfirmDialog';
+import { AlertBanner } from '../../Layout/AlertBanner';
 import { useReceiptToast } from '../../Layout/Overlays/ReceiptToast';
 
 interface DeleteControlProps {
@@ -98,7 +99,8 @@ const DeleteAccountControl: React.FC<DeleteControlProps> = ({ accountId, account
         : "This will permanently delete this account. This action cannot be undone.";
 
     const impactDetails = hasReferences ? (
-        <div className="bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-3 text-yellow-300 text-sm space-y-2">
+        <AlertBanner severity="warning" size="sm">
+            <div className="space-y-2">
             {hasCleanup && (
                 <div>
                     <p>Deleting this account also removes:</p>
@@ -122,7 +124,8 @@ const DeleteAccountControl: React.FC<DeleteControlProps> = ({ accountId, account
                     </ul>
                 </div>
             )}
-        </div>
+            </div>
+        </AlertBanner>
     ) : undefined;
 
     return (

@@ -2,7 +2,7 @@
  * Themeable chart colors. These are CSS `var()` strings that resolve at render
  * time (SVG fill/stroke and Nivo theme values accept them), so every chart that
  * uses them recolors automatically with the active theme. Token values live in
- * src/index.css (default + [data-theme="elite"]). See docs/THEMING_PLAN.md.
+ * src/index.css (default + [data-theme="elite"]).
  */
 
 /** Canonical categorical series palette (12 distinct, themeable slots). */

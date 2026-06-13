@@ -6,16 +6,16 @@
 
 /* =====================================================================
    THEME SYSTEM — Layer 1 (design tokens)
-   See docs/THEMING_PLAN.md for the full architecture.
 
    - Semantic tokens are registered with `@theme inline` so utilities like
      `bg-surface-base` / `text-content-muted` emit `var(--c-*)` directly.
    - Each theme is a block of `--c-*` assignments under a `[data-theme]`
      selector. The default block reproduces today's exact look.
-   - The `elite` block ALSO overrides the raw Tailwind palette
-     (`--color-gray-*`, etc.) so components not yet migrated to semantic
-     tokens still get reskinned. Those overrides become redundant — and
-     can be deleted — as the migration completes.
+   - Themes only reassign the semantic `--c-*` tokens; the raw Tailwind
+     palette (`--color-gray-*`, etc.) is left at its stock values. Use the
+     semantic tokens (or AlertBanner / the Layer-3 primitives) so styling
+     follows the active theme — raw color utilities render literally and
+     leak through under non-default themes.
    ===================================================================== */
 @theme inline {
   /* surfaces */

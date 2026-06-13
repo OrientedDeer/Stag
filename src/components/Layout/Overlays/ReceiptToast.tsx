@@ -5,7 +5,7 @@ import { Link } from "react-router-dom";
  * ReceiptToast — a small "receipt" notification for actions whose side
  * effects land in another tab (e.g. creating a Debt account spawns a
  * LoanExpense under Expenses). Shows an info-blue toast with an optional
- * react-router link to the affected tab.
+ * react-router link to the affected tab. Themed via the info-* tokens.
  */
 
 export interface ReceiptToastOptions {
@@ -83,9 +83,9 @@ export function ReceiptToastProvider({ children }: { children: React.ReactNode }
                         <div
                             key={toast.id}
                             role="status"
-                            className="pointer-events-auto bg-blue-900/20 border border-blue-700/50 rounded-lg shadow-lg backdrop-blur-sm p-3 flex items-start gap-3"
+                            className="pointer-events-auto bg-info-tint/20 border border-info-strong/50 rounded-lg shadow-lg backdrop-blur-sm p-3 flex items-start gap-3"
                         >
-                            <p className="flex-1 text-sm text-blue-400">
+                            <p className="flex-1 text-sm text-info">
                                 {toast.message}
                                 {toast.linkTo && (
                                     <>
@@ -93,7 +93,7 @@ export function ReceiptToastProvider({ children }: { children: React.ReactNode }
                                         <Link
                                             to={toast.linkTo}
                                             onClick={() => dismiss(toast.id)}
-                                            className="font-medium underline text-blue-300 hover:text-blue-200"
+                                            className="font-medium underline text-info-bright hover:text-info-bright/80"
                                         >
                                             {toast.linkLabel ?? 'View'}
                                         </Link>
@@ -108,7 +108,7 @@ export function ReceiptToastProvider({ children }: { children: React.ReactNode }
                                                 toast.onAction?.();
                                                 dismiss(toast.id);
                                             }}
-                                            className="font-medium underline text-blue-300 hover:text-blue-200"
+                                            className="font-medium underline text-info-bright hover:text-info-bright/80"
                                         >
                                             {toast.actionLabel}
                                         </button>
@@ -119,7 +119,7 @@ export function ReceiptToastProvider({ children }: { children: React.ReactNode }
                                 type="button"
                                 aria-label="Dismiss notification"
                                 onClick={() => dismiss(toast.id)}
-                                className="shrink-0 text-blue-400 hover:text-blue-200 leading-none"
+                                className="shrink-0 text-info hover:text-info-bright leading-none"
                             >
                                 &times;
                             </button>

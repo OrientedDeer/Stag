@@ -85,9 +85,9 @@ Nivo charts (`@nivo/sankey`, `@nivo/line`, `@nivo/stream`, etc.) are used throug
 
 ## Alert/Message Styles
 
-- **Info (blue):** `bg-blue-900/20 border border-blue-700/50 rounded-lg` with `text-blue-400`
-- **Warning (yellow):** `bg-yellow-900/30 border border-yellow-700/50 rounded-lg` with `text-yellow-300`
-- **Error (red):** `bg-red-900/20 border border-red-800 rounded-lg` with `text-red-400`
+- **Use `AlertBanner`** (`src/components/Layout/AlertBanner.tsx`) for alert/notice boxes: `<AlertBanner severity="info|warning|error|success" size="default|sm" title="…">…</AlertBanner>`. It carries the icon, padding, and themeable colors.
+- **Don't hand-roll alerts with raw Tailwind color classes** (`bg-blue-900/20`, `text-yellow-300`, etc.). The raw palette is not reskinned by the theme system, so those colors leak through (e.g. literal blue/yellow under the Elite theme).
+- When a banner doesn't fit the structure, use the **semantic tokens** directly: `bg-info-tint` / `border-info-strong` / `text-info` / `text-info-bright`, and the `warning-*`, `negative-*` (error), `positive-*` (success) equivalents. These resolve to `var(--c-*)` and follow the active theme.
 
 ## Debugging the Simulation Engine
 

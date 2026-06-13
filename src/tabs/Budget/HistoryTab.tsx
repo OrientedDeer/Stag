@@ -12,6 +12,7 @@ import {
     getExpenseMonthlyBudget,
 } from '../../components/Objects/Budget/budgetUtils';
 import { currencyColumn, readOnlyTextColumn } from '../../components/Layout/DataSheetColumns';
+import { AlertBanner } from '../../components/Layout/AlertBanner';
 
 interface HistoryRow {
     month: string;
@@ -242,13 +243,11 @@ export default function HistoryTab() {
             <h3 className="text-lg font-semibold text-white">{selectedYear} Spending History</h3>
 
             {hasTrackedMonths && (
-                <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-3">
-                    <p className="text-sm text-blue-400">
-                        Months tracked from transactions are read-only here — their
-                        spending is calculated from categorized transactions. Edit them in
-                        the Transactions tab. Empty/manual months stay editable.
-                    </p>
-                </div>
+                <AlertBanner severity="info" size="sm">
+                    Months tracked from transactions are read-only here — their
+                    spending is calculated from categorized transactions. Edit them in
+                    the Transactions tab. Empty/manual months stay editable.
+                </AlertBanner>
             )}
 
             <div className="bg-surface-overlay rounded-lg border border-border-default overflow-hidden">

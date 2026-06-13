@@ -23,6 +23,7 @@ import { PercentageInput } from "../../Layout/InputFields/PercentageInput";
 import { DropdownInput } from "../../Layout/InputFields/DropdownInput";
 import { NumberInput } from "../../Layout/InputFields/NumberInput";
 import { NameInput } from "../../Layout/InputFields/NameInput";
+import { AlertBanner } from "../../Layout/AlertBanner";
 import { ToggleInput } from "../../Layout/InputFields/ToggleInput";
 import { TriggerSelector } from "../../Layout/InputFields/TriggerSelector";
 import { CardSection } from "../../Layout/CardSection";
@@ -456,27 +457,27 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 			// either way there's no monthly plan, just the lump.
 			if (monthly <= 0 || monthly >= form.amount) {
 				goalPlanPreview = (
-					<div className="bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-3 text-sm text-yellow-300">
+					<AlertBanner severity="warning" size="sm">
 						Target is less than a month away — the full {formatDollars(form.amount)} is due immediately.
-					</div>
+					</AlertBanner>
 				);
 			} else {
 				const start = previewGoal.startDate ? new Date(previewGoal.startDate) : new Date();
 				const target = new Date(previewGoal.endDate as Date);
 				goalPlanPreview = (
-					<div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-3 text-sm text-blue-400">
+					<AlertBanner severity="info" size="sm">
 						Sets aside <span className="font-semibold">{formatDollars(monthly)}/mo</span>{' '}
 						({formatMonthYear(start)} → {formatMonthYear(target)}) into a new '{fundName}' account.
 						The {formatDollars(form.amount)} is spent at the target date.
-					</div>
+					</AlertBanner>
 				);
 			}
 		} else if (monthly > 0) {
 			goalPlanPreview = (
-				<div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-3 text-sm text-blue-400">
+				<AlertBanner severity="info" size="sm">
 					Sets aside <span className="font-semibold">{formatDollars(monthly)}/mo</span> into a new
 					'{fundName}' account, replacing the {formatDollars(form.amount)} item every {form.intervalYears} years.
-				</div>
+				</AlertBanner>
 			);
 		}
 	}

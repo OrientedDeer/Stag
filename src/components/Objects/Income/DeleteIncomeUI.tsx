@@ -4,6 +4,7 @@ import { AccountContext } from '../Accounts/AccountContext';
 import { FERSPensionIncome, CSRSPensionIncome } from './models';
 import { ESPPAccount } from '../Accounts/models';
 import { ConfirmDialog } from '../../Layout/ConfirmDialog';
+import { AlertBanner } from '../../Layout/AlertBanner';
 import { useReceiptToast } from '../../Layout/Overlays/ReceiptToast';
 
 interface DeleteControlProps {
@@ -82,7 +83,7 @@ const DeleteIncomeControl: React.FC<DeleteControlProps> = ({ incomeId, incomeNam
                 title="Delete Income"
                 message="This will permanently delete this income source. This will affect your cashflow projections. This action cannot be undone."
                 details={hasReferences ? (
-                    <div className="bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-3 text-sm text-yellow-300">
+                    <AlertBanner severity="warning" size="sm">
                         <p className="font-semibold">Other items link to this income:</p>
                         <ul className="mt-1 list-disc list-inside">
                             {referencingPensions.map(p => (
@@ -93,7 +94,7 @@ const DeleteIncomeControl: React.FC<DeleteControlProps> = ({ incomeId, incomeNam
                             ))}
                         </ul>
                         <p className="mt-1">They won't be deleted, but you should reassign them afterward.</p>
-                    </div>
+                    </AlertBanner>
                 ) : undefined}
                 confirmLabel="Delete"
                 cancelLabel="Cancel"
