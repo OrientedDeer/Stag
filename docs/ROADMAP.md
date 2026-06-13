@@ -11,12 +11,7 @@ These features are complete but need validation:
 
 ## High Priority
 
-### Tax-Adjusted Net Worth Comparison
-
-- The headline "total balance" number doesn't tell the full story — $2M in Roth is worth more than $2M in Traditional because the Traditional money has a hidden tax liability
-- Show a tax-adjusted net worth metric that discounts Traditional/pre-tax balances by estimated future tax rate
-- Use this to demonstrate the real value of tax optimization: even if total nominal balances look similar with optimization ON vs OFF, the after-tax purchasing power can be significantly different
-- Display on the withdrawal or overview tab as a comparison (e.g., "Effective after-tax wealth: $X with optimization vs $Y without")
+- **Tax-Adjusted Net Worth Comparison** ([#68](https://github.com/OrientedDeer/Stag/issues/68)) — discount pre-tax balances by an estimated future rate; surface as an optimization on-vs-off comparison.
 
 ---
 
