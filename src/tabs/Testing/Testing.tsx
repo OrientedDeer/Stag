@@ -42,7 +42,6 @@ import {
     getMedianRetirementTaxRate,
     findRothConversionWindows
 } from '../../services/TaxOptimizationService';
-// TODO: Re-implement tax optimization functions per TAX_OPTIMIZATION_SPEC.md
 import { get401kLimit, getHSALimit, getIRALimit } from '../../data/ContributionLimits';
 import { calculateEffectiveConversionTax } from '../../components/Objects/Assumptions/SimulationEngine';
 import {
@@ -1754,6 +1753,35 @@ function TaxDebugTab() {
         }).filter(Boolean);
     }, [simulation, startAge, taxState, assumptions, filingStatus]);
 
+    // Lifetime tax totals across the whole simulation. Follows the YearSolver
+    // convention: fed already includes ordinary federal income tax + the
+    // early-withdrawal penalty; capitalGains, niit, and withdrawalOrdinaryTax are
+    // separate line items that all add into total.
+    const lifetimeTaxes = useMemo(() => {
+        const empty = { total: 0, federal: 0, state: 0, fica: 0, capitalGains: 0, withdrawalOrdinary: 0, niit: 0, penalty: 0 };
+        const years = simulation.filter(y => !y.isEndOfYearProjection);
+        if (years.length === 0) return empty;
+        return years.reduce((acc, s) => {
+            const fed = s.taxDetails.fed;
+            const state = s.taxDetails.state;
+            const fica = s.taxDetails.fica;
+            const cg = s.taxDetails.capitalGains;
+            const wot = s.taxDetails.withdrawalOrdinaryTax ?? 0;
+            const niit = s.taxDetails.niit ?? 0;
+            const penalty = s.taxDetails.earlyWithdrawalPenalty ?? 0;
+            return {
+                total: acc.total + fed + state + fica + cg + wot + niit,
+                federal: acc.federal + fed,
+                state: acc.state + state,
+                fica: acc.fica + fica,
+                capitalGains: acc.capitalGains + cg,
+                withdrawalOrdinary: acc.withdrawalOrdinary + wot,
+                niit: acc.niit + niit,
+                penalty: acc.penalty + penalty,
+            };
+        }, empty);
+    }, [simulation]);
+
     if (simulation.length === 0) {
         return (
             <div className="text-center py-8 text-content-muted">
@@ -1852,6 +1880,54 @@ function TaxDebugTab() {
                             ))}
                         </tbody>
                     </table>
+                </div>
+            </Panel>
+
+            {/* Lifetime Tax Summary */}
+            <Panel>
+                <h3 className="text-lg font-bold text-white mb-3">Lifetime Tax Summary</h3>
+                <p className="text-sm text-content-muted mb-4">
+                    Total taxes paid across the entire simulation (ages {startAge} to {getLifeExpectancy(assumptions.milestones)}).
+                </p>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3">
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">Total Taxes</div>
+                        <div className="text-lg font-bold text-negative">{toCurrencyShort(lifetimeTaxes.total)}</div>
+                    </div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">Federal</div>
+                        <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.federal)}</div>
+                        <div className="text-xs text-content-subtle">incl. penalty</div>
+                    </div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">State</div>
+                        <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.state)}</div>
+                    </div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">FICA</div>
+                        <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.fica)}</div>
+                    </div>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">Capital Gains</div>
+                        <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.capitalGains)}</div>
+                    </div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">Withdrawal Ordinary</div>
+                        <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.withdrawalOrdinary)}</div>
+                        <div className="text-xs text-content-subtle">Roth earnings, Trad, HSA</div>
+                    </div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">NIIT</div>
+                        <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.niit)}</div>
+                    </div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">Early-Withdraw Penalty</div>
+                        <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.penalty)}</div>
+                        <div className="text-xs text-content-subtle">already in Federal</div>
+                    </div>
                 </div>
             </Panel>
 
@@ -6506,629 +6582,9 @@ function ValidationDebugTab() {
 }
 
 // ============================================================================
-// TAX OPTIMIZATION DEBUG TAB
-// ============================================================================
-function TaxOptimizationDebugTab() {
-    const { state: assumptions } = useContext(AssumptionsContext);
-    const { accounts } = useContext(AccountContext);
-    const { incomes: _incomes } = useContext(IncomeContext);
-    const { state: taxState } = useContext(TaxContext);
-    const filingStatus = taxState.filingStatus;
-    const { simulation: rawSimulation } = useContext(SimulationContext);
-    const simulation = useMemo(() => rawSimulation.filter(y => !y.isEndOfYearProjection), [rawSimulation]);
-
-    const currentYear = new Date().getFullYear();
-    const birthYear = getBirthYear(assumptions.milestones);
-    const retirementAge = getRetirementAge(assumptions.milestones);
-    const lifeExpectancy = getLifeExpectancy(assumptions.milestones);
-    const currentAge = currentYear - birthYear;
-    const isEnabled = assumptions.investments.taxOptimizationEnabled;
-
-    // Current Traditional balance
-    const currentTraditionalBalance = useMemo(() =>
-        accounts
-            .filter(acc => acc instanceof InvestedAccount && (acc.taxType === 'Traditional 401k' || acc.taxType === 'Traditional IRA'))
-            .reduce((sum, acc) => sum + acc.amount, 0),
-        [accounts]
-    );
-
-    // Current Roth balance
-    const currentRothBalance = useMemo(() =>
-        accounts
-            .filter(acc => acc instanceof InvestedAccount && (acc.taxType === 'Roth 401k' || acc.taxType === 'Roth IRA'))
-            .reduce((sum, acc) => sum + acc.amount, 0),
-        [accounts]
-    );
-
-    // TODO: Re-implement per TAX_OPTIMIZATION_SPEC.md
-    const targetResult = useMemo(() => ({
-        targetBalance: currentTraditionalBalance,
-        targetAge: 73,
-        targetBracket: 0.12,
-        projectedFixedIncome: 0,
-        projectedRMD: 0,
-        rationale: "Tax optimization pending reimplementation"
-    }), [currentTraditionalBalance]);
-
-    // TODO: Re-implement per TAX_OPTIMIZATION_SPEC.md
-    const conversionPlan = useMemo(() => ({
-        schedule: [] as { year: number; age: number; amount: number; bracketBeforeConversion: number; bracketAfterConversion: number; estimatedTaxCost: number }[],
-        totalConversionNeeded: 0,
-        targetTraditionalBalance: 0,
-        projectedLifetimeTaxSavings: 0
-    }), []);
-
-    // TODO: Re-implement per TAX_OPTIMIZATION_SPEC.md
-    const testDeficit = 50000;
-    const smartOrder = useMemo(() =>
-        [] as { accountId: string; accountName: string; amount: number; reason: string; taxType: 'tax-free' | 'pre-tax' | 'capital-gains' }[],
-        []
-    );
-
-    // Calculate lifetime taxes from simulation. Total matches the Year Inspector
-    // convention (Testing.tsx:174) and YearSolver.ts:1357: fed already includes
-    // ordinary federal income tax + early-withdrawal penalty; capitalGains, niit,
-    // and withdrawalOrdinaryTax are separate line items that all add into total.
-    const lifetimeTaxes = useMemo(() => {
-        const empty = { total: 0, federal: 0, state: 0, fica: 0, capitalGains: 0, withdrawalOrdinary: 0, niit: 0, penalty: 0 };
-        if (simulation.length === 0) return empty;
-        return simulation.reduce((acc, s) => {
-            const fed = s.taxDetails.fed;
-            const state = s.taxDetails.state;
-            const fica = s.taxDetails.fica;
-            const cg = s.taxDetails.capitalGains;
-            const wot = s.taxDetails.withdrawalOrdinaryTax ?? 0;
-            const niit = s.taxDetails.niit ?? 0;
-            const penalty = s.taxDetails.earlyWithdrawalPenalty ?? 0;
-            return {
-                total: acc.total + fed + state + fica + cg + wot + niit,
-                federal: acc.federal + fed,
-                state: acc.state + state,
-                fica: acc.fica + fica,
-                capitalGains: acc.capitalGains + cg,
-                withdrawalOrdinary: acc.withdrawalOrdinary + wot,
-                niit: acc.niit + niit,
-                penalty: acc.penalty + penalty,
-            };
-        }, empty);
-    }, [simulation]);
-
-    // Extract Roth conversions from simulation
-    const simulationConversions = useMemo(() => {
-        if (simulation.length === 0) return [];
-        return simulation
-            .filter(s => s.rothConversion && s.rothConversion.amount > 0)
-            .map(s => ({
-                year: s.year,
-                age: s.year - birthYear,
-                amount: s.rothConversion!.amount,
-                taxCost: s.rothConversion!.taxCost
-            }));
-    }, [simulation, birthYear]);
-
-
-
-
-    // Year navigation state
-    const startYear = simulation.length > 0 ? simulation[0].year : currentYear;
-    const endYear = simulation.length > 0 ? simulation[simulation.length - 1].year : startYear;
-    const [selectedYear, setSelectedYear] = useState(startYear);
-
-    // Get data for the selected year
-    const selectedYearIndex = simulation.findIndex(s => s.year === selectedYear);
-    const yearData = simulation[selectedYearIndex] || simulation[0];
-    const selectedAge = selectedYear - birthYear;
-
-    // Calculate net worth for selected year
-    const selectedNetWorth = useMemo(() => {
-        if (!yearData) return 0;
-        return yearData.accounts.reduce((sum, acc) => {
-            if (acc instanceof DebtAccount) return sum - acc.amount;
-            if (acc instanceof PropertyAccount) return sum + acc.amount - (acc.loanAmount || 0);
-            return sum + acc.amount;
-        }, 0);
-    }, [yearData]);
-
-    // AGI-equivalent for the selected year (for effective-rate denominator). Mirrors
-    // the Tax Brackets tab logic: gross income (cashflow + Roth conversion) minus
-    // pre-tax deductions, applying the SS taxability formula, plus LTCG (which sits
-    // below the AGI line in the calc but is part of total income for effective rate).
-    const selectedYearTax = useMemo(() => {
-        if (!yearData) return null;
-        const fedParams = getTaxParameters(selectedYear, filingStatus, 'federal', undefined, assumptions);
-        if (!fedParams) return null;
-
-        const rothConversionAmount = yearData.rothConversion?.amount ?? 0;
-        const grossIncome = yearData.cashflow.totalIncome + rothConversionAmount;
-        const preTaxDeductions = getPreTaxExemptions(yearData.incomes, selectedYear, selectedAge);
-        const aboveLineDeductions = getYesDeductions(yearData.expenses, selectedYear);
-        const totalPreTax = preTaxDeductions + aboveLineDeductions;
-        const ssBenefits = getSocialSecurityBenefits(yearData.incomes, selectedYear);
-        const agiExcludingSS = grossIncome - ssBenefits - totalPreTax;
-        const taxableSS = getTaxableSocialSecurityBenefits(ssBenefits, agiExcludingSS, 0, filingStatus);
-        const agi = grossIncome - ssBenefits + taxableSS - totalPreTax;
-        const ltcgAmount = yearData.taxDetails.longTermCapitalGains ?? 0;
-        const agiPlusLTCG = Math.max(0, agi) + ltcgAmount;
-
-        const fed = yearData.taxDetails.fed;
-        const state = yearData.taxDetails.state;
-        const fica = yearData.taxDetails.fica;
-        const cg = yearData.taxDetails.capitalGains;
-        const wot = yearData.taxDetails.withdrawalOrdinaryTax ?? 0;
-        const niit = yearData.taxDetails.niit ?? 0;
-        const penalty = yearData.taxDetails.earlyWithdrawalPenalty ?? 0;
-        const totalTax = fed + state + fica + cg + wot + niit;
-
-        return { agiPlusLTCG, fed, state, fica, cg, wot, niit, penalty, totalTax };
-    }, [yearData, selectedYear, selectedAge, filingStatus, assumptions]);
-
-    // Get Traditional and Roth balances for selected year
-    const selectedYearBalances = useMemo(() => {
-        if (!yearData) return { traditional: 0, roth: 0, brokerage: 0 };
-        return {
-            traditional: yearData.accounts
-                .filter(acc => acc instanceof InvestedAccount && (acc.taxType === 'Traditional 401k' || acc.taxType === 'Traditional IRA'))
-                .reduce((sum, acc) => sum + acc.amount, 0),
-            roth: yearData.accounts
-                .filter(acc => acc instanceof InvestedAccount && (acc.taxType === 'Roth 401k' || acc.taxType === 'Roth IRA'))
-                .reduce((sum, acc) => sum + acc.amount, 0),
-            brokerage: yearData.accounts
-                .filter(acc => acc instanceof InvestedAccount && acc.taxType === 'Brokerage')
-                .reduce((sum, acc) => sum + acc.amount, 0)
-        };
-    }, [yearData]);
-
-    return (
-        <div className="space-y-6">
-            {/* Year Selector */}
-            {simulation.length > 0 && (
-                <Panel>
-                    <h3 className="text-lg font-bold text-white mb-2">Year: {selectedYear} (Age {selectedAge})</h3>
-                    <div className="flex items-center gap-6">
-                        <div className="w-full">
-                            <input
-                                type="range"
-                                min={startYear}
-                                max={endYear}
-                                value={selectedYear}
-                                onChange={(e) => setSelectedYear(Number(e.target.value))}
-                                className="w-full h-2 bg-surface-input rounded-lg appearance-none cursor-pointer accent-positive-soft"
-                            />
-                            <div className="flex justify-between text-xs text-content-subtle mt-1">
-                                <span>{startYear}</span>
-                                <span>{endYear}</span>
-                            </div>
-                        </div>
-                        <div className="flex gap-4 text-white min-w-fit text-sm">
-                            <div>
-                                <span className="text-content-muted">Net Worth:</span>
-                                <span className="text-positive ml-1">{toCurrencyShort(selectedNetWorth)}</span>
-                            </div>
-                        </div>
-                    </div>
-                </Panel>
-            )}
-
-            {/* Selected Year Tax Details */}
-            {yearData && selectedYearTax && (
-                <Panel>
-                    <h3 className="text-lg font-bold text-white mb-3">Tax Details for {selectedYear}</h3>
-
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                        <div className="bg-surface-overlay/50 rounded-lg p-3">
-                            <div className="text-xs text-content-muted">Federal Tax</div>
-                            <div className="text-lg font-bold text-white">{toCurrencyShort(selectedYearTax.fed)}</div>
-                            <div className="text-xs text-content-subtle">incl. {toCurrencyShort(selectedYearTax.penalty)} penalty</div>
-                        </div>
-                        <div className="bg-surface-overlay/50 rounded-lg p-3">
-                            <div className="text-xs text-content-muted">State Tax</div>
-                            <div className="text-lg font-bold text-white">{toCurrencyShort(selectedYearTax.state)}</div>
-                        </div>
-                        <div className="bg-surface-overlay/50 rounded-lg p-3">
-                            <div className="text-xs text-content-muted">FICA</div>
-                            <div className="text-lg font-bold text-white">{toCurrencyShort(selectedYearTax.fica)}</div>
-                        </div>
-                        <div className="bg-surface-overlay/50 rounded-lg p-3">
-                            <div className="text-xs text-content-muted">Capital Gains Tax</div>
-                            <div className="text-lg font-bold text-white">{toCurrencyShort(selectedYearTax.cg)}</div>
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                        <div className="bg-surface-overlay/50 rounded-lg p-3">
-                            <div className="text-xs text-content-muted">Withdrawal Ordinary Tax</div>
-                            <div className="text-lg font-bold text-white">{toCurrencyShort(selectedYearTax.wot)}</div>
-                            <div className="text-xs text-content-subtle">Roth earnings, Trad, HSA</div>
-                        </div>
-                        <div className="bg-surface-overlay/50 rounded-lg p-3">
-                            <div className="text-xs text-content-muted">NIIT</div>
-                            <div className="text-lg font-bold text-white">{toCurrencyShort(selectedYearTax.niit)}</div>
-                        </div>
-                        <div className="bg-surface-overlay/50 rounded-lg p-3">
-                            <div className="text-xs text-content-muted">Total Tax</div>
-                            <div className="text-lg font-bold text-negative">{toCurrencyShort(selectedYearTax.totalTax)}</div>
-                            <div className="text-xs text-content-subtle">
-                                {selectedYearTax.agiPlusLTCG > 0 ? `${((selectedYearTax.totalTax / selectedYearTax.agiPlusLTCG) * 100).toFixed(1)}% effective` : '—'}
-                            </div>
-                        </div>
-                        <div className="bg-surface-overlay/50 rounded-lg p-3">
-                            <div className="text-xs text-content-muted">AGI + LTCG</div>
-                            <div className="text-lg font-bold text-white">{toCurrencyShort(selectedYearTax.agiPlusLTCG)}</div>
-                            <div className="text-xs text-content-subtle">Effective-rate denom.</div>
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
-                        <div className="bg-surface-overlay/50 rounded-lg p-3">
-                            <div className="text-xs text-content-muted">Living Expenses</div>
-                            <div className="text-lg font-bold text-white">{toCurrencyShort(yearData.cashflow.livingExpenses)}</div>
-                        </div>
-                        <div className="bg-surface-overlay/50 rounded-lg p-3">
-                            <div className="text-xs text-content-muted">Withdrawals</div>
-                            <div className="text-lg font-bold text-warning">{toCurrencyShort(yearData.cashflow.withdrawals)}</div>
-                        </div>
-                        <div className="bg-surface-overlay/50 rounded-lg p-3">
-                            <div className="text-xs text-content-muted">Total Income (cashflow)</div>
-                            <div className="text-lg font-bold text-white">{toCurrencyShort(yearData.cashflow.totalIncome)}</div>
-                            <div className="text-xs text-content-subtle">Pre-withdrawal income</div>
-                        </div>
-                    </div>
-
-                    {/* Account Balances for Selected Year */}
-                    <div className="grid grid-cols-3 gap-4">
-                        <div className="bg-surface-overlay/50 rounded-lg p-3">
-                            <div className="text-xs text-content-muted">Traditional Balance</div>
-                            <div className="text-lg font-bold text-cat-orange">{toCurrencyShort(selectedYearBalances.traditional)}</div>
-                        </div>
-                        <div className="bg-surface-overlay/50 rounded-lg p-3">
-                            <div className="text-xs text-content-muted">Roth Balance</div>
-                            <div className="text-lg font-bold text-info">{toCurrencyShort(selectedYearBalances.roth)}</div>
-                        </div>
-                        <div className="bg-surface-overlay/50 rounded-lg p-3">
-                            <div className="text-xs text-content-muted">Brokerage Balance</div>
-                            <div className="text-lg font-bold text-positive">{toCurrencyShort(selectedYearBalances.brokerage)}</div>
-                        </div>
-                    </div>
-
-                    {/* Roth Conversion for Selected Year */}
-                    {yearData.rothConversion && yearData.rothConversion.amount > 0 && (
-                        <div className="mt-4 p-3 bg-info-tint/20 border border-info-strong/50 rounded-lg">
-                            <div className="text-sm text-info font-semibold mb-2">Roth Conversion This Year</div>
-                            <div className="grid grid-cols-3 gap-4 text-sm">
-                                <div>
-                                    <span className="text-content-muted">Amount: </span>
-                                    <span className="text-white">{toCurrencyShort(yearData.rothConversion.amount)}</span>
-                                </div>
-                                <div>
-                                    <span className="text-content-muted">Tax Cost: </span>
-                                    <span className="text-negative">{toCurrencyShort(yearData.rothConversion.taxCost)}</span>
-                                </div>
-                                <div>
-                                    <span className="text-content-muted">Effective Rate: </span>
-                                    <span className="text-warning">
-                                        {((yearData.rothConversion.taxCost / yearData.rothConversion.amount) * 100).toFixed(1)}%
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                </Panel>
-            )}
-
-            {/* Status Banner */}
-            <div className={`rounded-xl border p-4 ${isEnabled ? 'bg-positive-tint/20 border-positive-strong/50' : 'bg-surface-raised border-border-subtle'}`}>
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                            Tax Optimization
-                            <span className={`px-2 py-0.5 text-xs rounded ${isEnabled ? 'bg-positive-solid' : 'bg-surface-hover'}`}>
-                                {isEnabled ? 'ENABLED' : 'DISABLED'}
-                            </span>
-                        </h3>
-                        <p className="text-sm text-content-muted mt-1">
-                            {isEnabled
-                                ? 'Smart withdrawal ordering and auto Roth conversions are active.'
-                                : 'Enable in Withdrawal tab to activate smart withdrawals and conversions.'}
-                        </p>
-                    </div>
-                </div>
-            </div>
-
-            {/* Section 1: Target Balance Calculation */}
-            <Panel className="opacity-40">
-                <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
-                    Target Traditional Balance
-                    <span className="px-2 py-0.5 text-xs rounded bg-surface-input text-content-default">TODO</span>
-                </h3>
-                <p className="text-sm text-content-muted mb-4">
-                    Calculates the ideal Traditional 401k/IRA balance at RMD age to keep RMDs within target bracket.
-                    <span className="block text-content-subtle italic mt-1">Pending reimplementation per TAX_OPTIMIZATION_SPEC.md — values shown are placeholders.</span>
-                </p>
-
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                    <div className="bg-surface-overlay/50 rounded-lg p-3">
-                        <div className="text-xs text-content-muted">Current Traditional</div>
-                        <div className="text-lg font-bold text-white">{toCurrencyShort(currentTraditionalBalance)}</div>
-                    </div>
-                    <div className="bg-surface-overlay/50 rounded-lg p-3">
-                        <div className="text-xs text-content-muted">Target Balance</div>
-                        <div className="text-lg font-bold text-positive">{toCurrencyShort(targetResult.targetBalance)}</div>
-                    </div>
-                    <div className="bg-surface-overlay/50 rounded-lg p-3">
-                        <div className="text-xs text-content-muted">Target Age</div>
-                        <div className="text-lg font-bold text-white">Age {targetResult.targetAge}</div>
-                    </div>
-                    <div className="bg-surface-overlay/50 rounded-lg p-3">
-                        <div className="text-xs text-content-muted">Target Bracket</div>
-                        <div className="text-lg font-bold text-white">{(targetResult.targetBracket * 100).toFixed(0)}%</div>
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-surface-overlay/50 rounded-lg p-3">
-                        <div className="text-xs text-content-muted">Projected Fixed Income (at RMD age)</div>
-                        <div className="text-sm text-white">{toCurrency(targetResult.projectedFixedIncome)}</div>
-                        <div className="text-xs text-content-subtle">SS + Pensions + Rental</div>
-                    </div>
-                    <div className="bg-surface-overlay/50 rounded-lg p-3">
-                        <div className="text-xs text-content-muted">Projected Annual RMD</div>
-                        <div className="text-sm text-white">{toCurrency(targetResult.projectedRMD)}</div>
-                        <div className="text-xs text-content-subtle">At target balance</div>
-                    </div>
-                </div>
-
-                <div className="mt-3 text-xs text-content-subtle">
-                    Rationale: {targetResult.rationale}
-                </div>
-            </Panel>
-
-            {/* Section 2: Conversion Plan */}
-            <Panel className="opacity-40">
-                <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
-                    Roth Conversion Plan
-                    <span className="px-2 py-0.5 text-xs rounded bg-surface-input text-content-default">TODO</span>
-                </h3>
-                <p className="text-sm text-content-muted mb-4">
-                    Multi-year schedule to convert excess Traditional balance to Roth.
-                    <span className="block text-content-subtle italic mt-1">Pending reimplementation per TAX_OPTIMIZATION_SPEC.md — values shown are placeholders.</span>
-                </p>
-
-                <div className="grid grid-cols-3 gap-4 mb-4">
-                    <div className="bg-surface-overlay/50 rounded-lg p-3">
-                        <div className="text-xs text-content-muted">Total to Convert</div>
-                        <div className="text-lg font-bold text-warning">{toCurrencyShort(conversionPlan.totalConversionNeeded)}</div>
-                    </div>
-                    <div className="bg-surface-overlay/50 rounded-lg p-3">
-                        <div className="text-xs text-content-muted">Scheduled Conversions</div>
-                        <div className="text-lg font-bold text-white">{conversionPlan.schedule.length} years</div>
-                    </div>
-                    <div className="bg-surface-overlay/50 rounded-lg p-3">
-                        <div className="text-xs text-content-muted">Projected Tax Savings</div>
-                        <div className="text-lg font-bold text-positive">{toCurrencyShort(conversionPlan.projectedLifetimeTaxSavings)}</div>
-                    </div>
-                </div>
-
-                {conversionPlan.schedule.length > 0 && (
-                    <div className="overflow-x-auto max-h-64 overflow-y-auto">
-                        <table className="w-full text-sm">
-                            <thead className="sticky top-0 bg-surface-raised">
-                                <tr className="text-content-muted border-b border-border-default">
-                                    <th className="text-left p-2">Year</th>
-                                    <th className="text-left p-2">Age</th>
-                                    <th className="text-right p-2">Amount</th>
-                                    <th className="text-right p-2">Bracket Before</th>
-                                    <th className="text-right p-2">Bracket After</th>
-                                    <th className="text-right p-2">Est. Tax Cost</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {conversionPlan.schedule.map((item, idx) => (
-                                    <tr key={idx} className="border-b border-border-subtle hover:bg-surface-overlay/50">
-                                        <td className="p-2 text-content-default">{item.year}</td>
-                                        <td className="p-2 text-content-muted">{item.age}</td>
-                                        <td className="p-2 text-right text-white font-medium">{toCurrencyShort(item.amount)}</td>
-                                        <td className="p-2 text-right text-content-muted">{(item.bracketBeforeConversion * 100).toFixed(0)}%</td>
-                                        <td className="p-2 text-right text-warning">{(item.bracketAfterConversion * 100).toFixed(0)}%</td>
-                                        <td className="p-2 text-right text-negative">{toCurrencyShort(item.estimatedTaxCost)}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-
-                {conversionPlan.schedule.length === 0 && (
-                    <div className="text-center text-content-subtle py-4">
-                        No conversions needed - balance is at or below target.
-                    </div>
-                )}
-            </Panel>
-
-            {/* Section 3: Simulation Conversions (Actual) */}
-            {simulationConversions.length > 0 && (
-                <Panel>
-                    <h3 className="text-lg font-bold text-white mb-3">Actual Conversions (from Simulation)</h3>
-                    <p className="text-sm text-content-muted mb-4">
-                        Roth conversions executed during simulation run.
-                    </p>
-
-                    <div className="grid grid-cols-2 gap-4 mb-4">
-                        <div className="bg-surface-overlay/50 rounded-lg p-3">
-                            <div className="text-xs text-content-muted">Total Converted</div>
-                            <div className="text-lg font-bold text-white">
-                                {toCurrencyShort(simulationConversions.reduce((s, c) => s + c.amount, 0))}
-                            </div>
-                        </div>
-                        <div className="bg-surface-overlay/50 rounded-lg p-3">
-                            <div className="text-xs text-content-muted">Total Tax Paid</div>
-                            <div className="text-lg font-bold text-negative">
-                                {toCurrencyShort(simulationConversions.reduce((s, c) => s + c.taxCost, 0))}
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="overflow-x-auto max-h-48 overflow-y-auto">
-                        <table className="w-full text-sm">
-                            <thead className="sticky top-0 bg-surface-raised">
-                                <tr className="text-content-muted border-b border-border-default">
-                                    <th className="text-left p-2">Year</th>
-                                    <th className="text-left p-2">Age</th>
-                                    <th className="text-right p-2">Amount</th>
-                                    <th className="text-right p-2">Tax Cost</th>
-                                    <th className="text-right p-2">Effective Rate</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {simulationConversions.map((c, idx) => (
-                                    <tr key={idx} className="border-b border-border-subtle hover:bg-surface-overlay/50">
-                                        <td className="p-2 text-content-default">{c.year}</td>
-                                        <td className="p-2 text-content-muted">{c.age}</td>
-                                        <td className="p-2 text-right text-white">{toCurrencyShort(c.amount)}</td>
-                                        <td className="p-2 text-right text-negative">{toCurrencyShort(c.taxCost)}</td>
-                                        <td className="p-2 text-right text-warning">
-                                            {((c.taxCost / c.amount) * 100).toFixed(1)}%
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </Panel>
-            )}
-
-            {/* Section 4: Smart Withdrawal Order Test */}
-            <Panel className="opacity-40">
-                <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
-                    Smart Withdrawal Order (Test)
-                    <span className="px-2 py-0.5 text-xs rounded bg-surface-input text-content-default">TODO</span>
-                </h3>
-                <p className="text-sm text-content-muted mb-4">
-                    Simulated withdrawal order for a ${testDeficit.toLocaleString()} deficit at age {Math.max(currentAge, retirementAge)}.
-                    <span className="block text-content-subtle italic mt-1">Pending reimplementation per TAX_OPTIMIZATION_SPEC.md — values shown are placeholders.</span>
-                </p>
-
-                {smartOrder.length > 0 ? (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr className="text-content-muted border-b border-border-default">
-                                    <th className="text-left p-2">#</th>
-                                    <th className="text-left p-2">Account</th>
-                                    <th className="text-right p-2">Amount</th>
-                                    <th className="text-left p-2">Tax Type</th>
-                                    <th className="text-left p-2">Reason</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {smartOrder.map((order, idx) => (
-                                    <tr key={idx} className="border-b border-border-subtle hover:bg-surface-overlay/50">
-                                        <td className="p-2 text-content-muted">{idx + 1}</td>
-                                        <td className="p-2 text-white">{order.accountName}</td>
-                                        <td className="p-2 text-right text-positive">{toCurrencyShort(order.amount)}</td>
-                                        <td className="p-2">
-                                            <span className={`px-2 py-0.5 text-xs rounded ${
-                                                order.taxType === 'tax-free' ? 'bg-positive-solid' :
-                                                order.taxType === 'pre-tax' ? 'bg-warning-solid' : 'bg-accent'
-                                            }`}>
-                                                {order.taxType}
-                                            </span>
-                                        </td>
-                                        <td className="p-2 text-content-muted">{order.reason}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                ) : (
-                    <div className="text-center text-content-subtle py-4">
-                        No accounts available for withdrawal.
-                    </div>
-                )}
-            </Panel>
-
-            {/* Section 5: Lifetime Tax Summary */}
-            <Panel>
-                <h3 className="text-lg font-bold text-white mb-3">Lifetime Tax Summary</h3>
-                <p className="text-sm text-content-muted mb-4">
-                    Total taxes paid across the entire simulation (ages {currentAge} to {lifeExpectancy}).
-                </p>
-
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3">
-                    <div className="bg-surface-overlay/50 rounded-lg p-3">
-                        <div className="text-xs text-content-muted">Total Taxes</div>
-                        <div className="text-lg font-bold text-negative">{toCurrencyShort(lifetimeTaxes.total)}</div>
-                    </div>
-                    <div className="bg-surface-overlay/50 rounded-lg p-3">
-                        <div className="text-xs text-content-muted">Federal</div>
-                        <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.federal)}</div>
-                        <div className="text-xs text-content-subtle">incl. penalty</div>
-                    </div>
-                    <div className="bg-surface-overlay/50 rounded-lg p-3">
-                        <div className="text-xs text-content-muted">State</div>
-                        <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.state)}</div>
-                    </div>
-                    <div className="bg-surface-overlay/50 rounded-lg p-3">
-                        <div className="text-xs text-content-muted">FICA</div>
-                        <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.fica)}</div>
-                    </div>
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-surface-overlay/50 rounded-lg p-3">
-                        <div className="text-xs text-content-muted">Capital Gains</div>
-                        <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.capitalGains)}</div>
-                    </div>
-                    <div className="bg-surface-overlay/50 rounded-lg p-3">
-                        <div className="text-xs text-content-muted">Withdrawal Ordinary</div>
-                        <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.withdrawalOrdinary)}</div>
-                        <div className="text-xs text-content-subtle">Roth earnings, Trad, HSA</div>
-                    </div>
-                    <div className="bg-surface-overlay/50 rounded-lg p-3">
-                        <div className="text-xs text-content-muted">NIIT</div>
-                        <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.niit)}</div>
-                    </div>
-                    <div className="bg-surface-overlay/50 rounded-lg p-3">
-                        <div className="text-xs text-content-muted">Early-Withdraw Penalty</div>
-                        <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.penalty)}</div>
-                        <div className="text-xs text-content-subtle">already in Federal</div>
-                    </div>
-                </div>
-            </Panel>
-
-            {/* Section 6: Account Balances */}
-            <Panel>
-                <h3 className="text-lg font-bold text-white mb-3">Current Account Balances</h3>
-
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-surface-overlay/50 rounded-lg p-3">
-                        <div className="text-xs text-content-muted">Traditional (401k/IRA)</div>
-                        <div className="text-lg font-bold text-warning">{toCurrencyShort(currentTraditionalBalance)}</div>
-                    </div>
-                    <div className="bg-surface-overlay/50 rounded-lg p-3">
-                        <div className="text-xs text-content-muted">Roth (401k/IRA)</div>
-                        <div className="text-lg font-bold text-positive">{toCurrencyShort(currentRothBalance)}</div>
-                    </div>
-                    <div className="bg-surface-overlay/50 rounded-lg p-3">
-                        <div className="text-xs text-content-muted">Brokerage</div>
-                        <div className="text-lg font-bold text-info">
-                            {toCurrencyShort(accounts.filter(a => a instanceof InvestedAccount && a.taxType === 'Brokerage').reduce((s, a) => s + a.amount, 0))}
-                        </div>
-                    </div>
-                    <div className="bg-surface-overlay/50 rounded-lg p-3">
-                        <div className="text-xs text-content-muted">Savings/Cash</div>
-                        <div className="text-lg font-bold text-white">
-                            {toCurrencyShort(accounts.filter(a => a instanceof SavedAccount).reduce((s, a) => s + a.amount, 0))}
-                        </div>
-                    </div>
-                </div>
-            </Panel>
-        </div>
-    );
-}
-
-// ============================================================================
 // MAIN TESTING COMPONENT WITH TABS
 // ============================================================================
-const TESTING_TABS = ['Simulation Debug', 'Tax Debug', 'Tax Brackets', 'Social Security', 'Pensions', 'RMDs', 'Roth Analysis', 'Tax Opt', 'Roth Debug', 'Ratios', 'Mortgage', 'QR Code', 'Withdrawals', 'Accounts', 'Income & Expenses', 'Cash Flow', 'EOY Projection', 'Validation'];
+const TESTING_TABS = ['Simulation Debug', 'Tax Debug', 'Tax Brackets', 'Social Security', 'Pensions', 'RMDs', 'Roth Analysis', 'Roth Debug', 'Ratios', 'Mortgage', 'QR Code', 'Withdrawals', 'Accounts', 'Income & Expenses', 'Cash Flow', 'EOY Projection', 'Validation'];
 
 export default function Testing() {
     const { state: assumptionsState } = useContext(AssumptionsContext);
@@ -7191,7 +6647,6 @@ export default function Testing() {
                     {activeTab === 'Pensions' && <PensionDebugTab />}
                     {activeTab === 'RMDs' && <RMDDebugTab />}
                     {activeTab === 'Roth Analysis' && <RothAnalysisDebugTab />}
-                    {activeTab === 'Tax Opt' && <TaxOptimizationDebugTab />}
                     {activeTab === 'Roth Debug' && <RothConversionDebugTab />}
                     {activeTab === 'Ratios' && <RatiosDebugTab />}
                     {activeTab === 'Mortgage' && <MortgageTestingTab />}
