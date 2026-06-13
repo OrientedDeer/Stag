@@ -18,6 +18,7 @@ import FutureTab from "./tabs/Future/FutureTab";
 import AssumptionTab from "./tabs/Future/AssumptionTab";
 import { AssumptionsProvider } from "./components/Objects/Assumptions/AssumptionsContext";
 import { SimulationProvider } from "./components/Objects/Assumptions/SimulationContext";
+import { ProjectionHistoryCapture } from "./components/Objects/Assumptions/ProjectionHistoryCapture";
 import { MonteCarloProvider } from "./components/Objects/Assumptions/MonteCarloContext";
 import { ScenarioProvider } from "./components/Objects/Scenarios/ScenarioContext";
 import PriorityTab from "./tabs/Future/PriorityTab";
@@ -48,6 +49,7 @@ export default function App() {
               <CloudBackupProvider>
               <ReceiptToastProvider>
               <GlobalKeyboardShortcuts />
+              <ProjectionHistoryCapture />
               <div className="flex h-screen">
                 <Sidebar isOpen={isOpen} onClose={() => setIsOpen(true)}/>
                 <div className="flex flex-col flex-1 overflow-hidden">
