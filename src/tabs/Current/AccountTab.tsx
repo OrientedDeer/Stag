@@ -1,6 +1,7 @@
 import React, { useState, useContext, useEffect, useMemo } from "react";
 import { AccountContext, AccountDispatchContext } from "../../components/Objects/Accounts/AccountContext";
 import { useSubTabKeyboardNav } from "../../hooks/useKeyboardShortcuts";
+import { useSubTabDeepLink } from "../../hooks/useSubTabDeepLink";
 import {
     SavedAccount,
     InvestedAccount,
@@ -19,7 +20,7 @@ import ImportBalancesModal from "./ImportBalancesModal";
 import { ObjectsIcicleChart, tailwindToCssVar, getDistributedColors } from "../../components/Charts/ObjectsIcicleChart";
 import { Panel } from "../../components/Layout/Primitives";
 
-const AccountList = ({ type }: { type: any }) => {
+const AccountList = ({ type }: { type: abstract new (...args: never[]) => unknown }) => {
     const { accounts } = useContext(AccountContext);
     const { dispatch } = useContext(AccountDispatchContext);
 
@@ -110,6 +111,9 @@ export default function AccountTab() {
             ? saved
             : ACCOUNT_CATEGORIES[0];
     });
+    // Receipt links arrive as /current/accounts?tab=Cash — select that
+    // category instead of whatever tab localStorage last saved.
+    useSubTabDeepLink(ACCOUNT_CATEGORIES, setActiveTab);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [showESPPModal, setShowESPPModal] = useState(false);
     const [showImportModal, setShowImportModal] = useState(false);

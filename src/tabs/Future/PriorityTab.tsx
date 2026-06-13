@@ -416,7 +416,7 @@ export default function PriorityTab() {
 
                 {/* Header */}
                 <div className="flex items-center justify-between mb-6 border-b border-border-subtle pb-2">
-                    <h2 className="text-2xl font-bold">Paycheck Allocator</h2>
+                    <h2 className="text-2xl font-bold">Allocation</h2>
                     <button
                         onClick={() => setShowHelp(!showHelp)}
                         className="text-xs text-content-muted hover:text-white flex items-center gap-1 transition-colors"
@@ -431,7 +431,7 @@ export default function PriorityTab() {
                 {/* Help Section */}
                 {showHelp && (
                     <div className="mb-6 bg-info-tint/20 border border-info-strong/50 rounded-xl p-4 text-sm">
-                        <h3 className="font-semibold text-info-bright mb-2">How the Paycheck Allocator Works</h3>
+                        <h3 className="font-semibold text-info-bright mb-2">How Allocation Works</h3>
                         <p className="text-content-default mb-3">
                             This page shows where your money goes each month. After taxes, deductions, and expenses are taken out,
                             you decide how to allocate the rest through your <strong>priorities</strong>.
@@ -547,7 +547,10 @@ export default function PriorityTab() {
                             >
                                 <span className="text-content-default font-medium">Committed Expenses</span>
                                 <div className="flex items-center gap-3">
+                                    {/* Today's active expenses — deliberately different from the
+                                        Dashboard's "avg/mo this year" (annual total / 12). */}
                                     <span className="text-negative-bright font-mono">-{formatMoney(totalMonthlyFixedExpenses + totalGoalSetAsides)}</span>
+                                    <span className="text-content-subtle text-sm">this month</span>
                                     <ChevronIcon expanded={showExpenseDetails} className="w-5 h-5" />
                                 </div>
                             </button>

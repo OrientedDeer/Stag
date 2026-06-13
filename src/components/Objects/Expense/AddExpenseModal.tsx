@@ -13,7 +13,9 @@ import {
 	FoodExpense,
 	CharityExpense,
 	OtherExpense,
+	getGoalMonthlySetAside,
 } from "./models";
+import { useReceiptToast } from "../../Layout/Overlays/ReceiptToast";
 import { AccountDispatchContext } from "../Accounts/AccountContext";
 import { DebtAccount, PropertyAccount, SavedAccount } from "../../Objects/Accounts/models";
 import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput";
@@ -23,6 +25,7 @@ import { NumberInput } from "../../Layout/InputFields/NumberInput";
 import { NameInput } from "../../Layout/InputFields/NameInput";
 import { ToggleInput } from "../../Layout/InputFields/ToggleInput";
 import { TriggerSelector } from "../../Layout/InputFields/TriggerSelector";
+import { CardSection } from "../../Layout/CardSection";
 import { useModalAccessibility } from "../../../hooks/useModalAccessibility";
 import { AssumptionsContext, BUILTIN_MILESTONE_IDS, getBirthYear } from "../Assumptions/AssumptionsContext";
 import { CustomMilestone } from "../../../services/simulation/types";
@@ -44,6 +47,26 @@ const generateUniqueId = () =>
 	`EXS-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
 type ExpenseFrequency = "Weekly" | "Monthly" | "Annually";
+
+// Simple expenses share one constructor signature (id, name, amount,
+// frequency, dates, milestones) so the generic `new selectedType(...)`
+// fallback below can construct any of them.
+type SimpleExpenseClass =
+	| typeof VacationExpense
+	| typeof SubscriptionExpense
+	| typeof EmergencyExpense
+	| typeof TransportExpense
+	| typeof FoodExpense
+	| typeof OtherExpense;
+
+type AddableExpenseClass =
+	| typeof RentExpense
+	| typeof MortgageExpense
+	| typeof LoanExpense
+	| typeof DependentExpense
+	| typeof HealthcareExpense
+	| typeof CharityExpense
+	| SimpleExpenseClass;
 
 interface AddExpenseModalProps {
 	isOpen: boolean;
@@ -115,6 +138,69 @@ interface ExpenseFormState {
 	isDiscretionary: boolean;
 }
 
+/**
+ * Build a throwaway goal expense from the current form values, mirroring
+ * EXACTLY how handleAdd constructs the real goal (startDate, endDate set to
+ * the target date for 'targetDate' goals, goalType, intervalYears). The plan
+ * preview derives its monthly figure from getGoalMonthlySetAside on this
+ * object, so the preview can never drift from what creation actually does.
+ */
+function buildGoalForPreview(form: ExpenseFormState): OtherExpense {
+	const goal = new OtherExpense(
+		'PREVIEW',
+		form.name.trim() || '(unnamed)',
+		form.amount,
+		form.frequency,
+		form.startDate,
+		form.endDate,
+	);
+	goal.goalType = form.goalType;
+	if (form.goalType === 'recurring') {
+		goal.intervalYears = form.intervalYears;
+	} else {
+		// endDate IS the target date (single source of truth), same as handleAdd.
+		goal.endDate = form.goalTargetDate;
+	}
+	return goal;
+}
+
+const formatMonthYear = (d: Date): string =>
+	d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+
+const formatDollars = (n: number): string =>
+	`$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+
+// Modal field grids are narrower than cards, so collapsed sections reuse the
+// modal's own column layout instead of CardSection's 4-col card default.
+const MODAL_SECTION_GRID = "grid grid-cols-2 lg:grid-cols-3 gap-4 px-4 pb-4";
+
+/** Estimated monthly total of the collapsed escrow/ownership costs, mirroring
+ *  how MortgageExpense's constructor converts each input (percent-of-value
+ *  rates annualized → monthly; utilities/HOA already monthly; PMI only while
+ *  loan-to-value is above 80%). Approximate on purpose — it's a stub line. */
+function getEscrowSummary(form: ExpenseFormState): string {
+	const v = form.valuation;
+	const pctOfValueMonthly = (pct: number) => (v * pct) / 100 / 12;
+	const propertyTax = (Math.max(0, v - form.valuationDeduction) * form.propertyTaxes) / 100 / 12;
+	const pmiApplies = v > 0 && form.loanBalance / v > 0.8;
+	const total =
+		propertyTax +
+		pctOfValueMonthly(form.homeOwnersInsurance) +
+		(pmiApplies ? pctOfValueMonthly(form.pmi) : 0) +
+		pctOfValueMonthly(form.maintenance) +
+		form.utilities +
+		form.hoaFee;
+	return total > 0 ? `~${formatDollars(total)}/mo` : "None";
+}
+
+function getTaxTreatmentSummary(option: TaxDeductibleOption): string {
+	switch (option) {
+		case "Yes": return "Deductible";
+		case "Itemized": return "Deductible if itemizing";
+		default: return "Not deductible";
+	}
+}
+
 function getInitialFormState(frequency: ExpenseFrequency = 'Monthly'): ExpenseFormState {
 	// Local (not UTC) date-only values so they display/round-trip correctly
 	// through TriggerSelector (which formats + parses in local time).
@@ -166,9 +252,10 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 	const expenseDispatch = useContext(ExpenseDispatchContext);
 	const { dispatch: accountDispatch } = useContext(AccountDispatchContext);
 	const { state: assumptions } = useContext(AssumptionsContext);
+	const receiptToast = useReceiptToast();
 	const { modalRef, handleKeyDown } = useModalAccessibility(isOpen, onClose);
 	const [step, setStep] = useState<"select" | "details">("select");
-	const [selectedType, setSelectedType] = useState<any>(null);
+	const [selectedType, setSelectedType] = useState<AddableExpenseClass | null>(null);
 	const [form, setForm] = useState<ExpenseFormState>(() => getInitialFormState(defaultFrequency));
 	const [dateError, setDateError] = useState<string | undefined>();
 
@@ -204,14 +291,14 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 		}
 	};
 
-	const handleTypeSelect = (typeClass: any) => {
+	const handleTypeSelect = (typeClass: AddableExpenseClass) => {
 		setSelectedType(() => typeClass);
 		// Set sensible defaults based on expense type
 		if (typeClass === CharityExpense) {
 			updateForm('isTaxDeductible', 'Itemized');
 		}
 		// Default discretionary for non-essential expense types
-		const discretionaryTypes = [VacationExpense, SubscriptionExpense, CharityExpense, OtherExpense];
+		const discretionaryTypes: AddableExpenseClass[] = [VacationExpense, SubscriptionExpense, CharityExpense, OtherExpense];
 		updateForm('isDiscretionary', discretionaryTypes.includes(typeClass));
 		// Default end milestone to End of Plan for all expenses
 		updateForm('endMilestoneId', BUILTIN_MILESTONE_IDS.END_OF_PLAN);
@@ -242,6 +329,11 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				'Financed', form.loanBalance, form.loanBalance, id
 			);
 			accountDispatch({ type: "ADD_ACCOUNT", payload: newAccount });
+			receiptToast.show({
+				message: `Created property account '${form.name.trim()}' to track this mortgage's value and balance`,
+				linkTo: "/current/accounts?tab=Property",
+				linkLabel: "View",
+			});
 			newExpense = new MortgageExpense(
 				id, form.name.trim(), form.frequency, form.valuation,
 				form.loanBalance, form.startingLoanBalance, form.apr, form.termLength,
@@ -256,6 +348,11 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				'ACC' + id.substring(3), form.name.trim(), form.amount, id
 			);
 			accountDispatch({ type: "ADD_ACCOUNT", payload: newAccount });
+			receiptToast.show({
+				message: `Created debt account '${form.name.trim()}' to track this loan's balance`,
+				linkTo: "/current/accounts?tab=Debt",
+				linkLabel: "View",
+			});
 			newExpense = new LoanExpense(
 				id, form.name.trim(), form.amount, form.frequency, form.apr,
 				form.interestType, form.payment, form.isTaxDeductible,
@@ -290,7 +387,9 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				finalStartMilestoneId, finalEndMilestoneId
 			);
 		} else {
-			newExpense = new selectedType(
+			// Remaining types are all SimpleExpense subclasses (Vacation,
+			// Subscription, Emergency, Food) sharing the simple constructor.
+			newExpense = new (selectedType as SimpleExpenseClass)(
 				id, form.name.trim(), form.amount, form.frequency, finalStartDate, finalEndDate,
 				finalStartMilestoneId, finalEndMilestoneId
 			);
@@ -329,10 +428,58 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 		}
 
 		expenseDispatch({ type: "ADD_EXPENSE", payload: newExpense });
+		if (goalMode) {
+			// Receipt for the cross-tab side effect: the goal's sinking-fund
+			// account lands under Current → Accounts, not here.
+			receiptToast.show({
+				message: `Created '${form.name.trim()} (fund)' account — it holds this goal's savings`,
+				linkTo: "/current/accounts?tab=Cash",
+				linkLabel: "View",
+			});
+		}
 		handleClose();
 	};
 
 	if (!isOpen) return null;
+
+	// Live goal-plan preview: derived per keystroke from the same helper the
+	// simulation uses (getGoalMonthlySetAside on a mirror of the goal that
+	// handleAdd would build), so what's promised here is what Create does.
+	let goalPlanPreview: React.ReactNode = null;
+	if (goalMode && step === "details" && form.amount > 0) {
+		const previewGoal = buildGoalForPreview(form);
+		const monthly = getGoalMonthlySetAside(previewGoal);
+		const fundName = `${form.name.trim() || '(unnamed)'} (fund)`;
+		if (form.goalType === 'targetDate') {
+			// Degenerate horizon (target this month or already past): the helper
+			// returns 0 for <= 0 months and the full total for exactly one month —
+			// either way there's no monthly plan, just the lump.
+			if (monthly <= 0 || monthly >= form.amount) {
+				goalPlanPreview = (
+					<div className="bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-3 text-sm text-yellow-300">
+						Target is less than a month away — the full {formatDollars(form.amount)} is due immediately.
+					</div>
+				);
+			} else {
+				const start = previewGoal.startDate ? new Date(previewGoal.startDate) : new Date();
+				const target = new Date(previewGoal.endDate as Date);
+				goalPlanPreview = (
+					<div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-3 text-sm text-blue-400">
+						Sets aside <span className="font-semibold">{formatDollars(monthly)}/mo</span>{' '}
+						({formatMonthYear(start)} → {formatMonthYear(target)}) into a new '{fundName}' account.
+						The {formatDollars(form.amount)} is spent at the target date.
+					</div>
+				);
+			}
+		} else if (monthly > 0) {
+			goalPlanPreview = (
+				<div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-3 text-sm text-blue-400">
+					Sets aside <span className="font-semibold">{formatDollars(monthly)}/mo</span> into a new
+					'{fundName}' account, replacing the {formatDollars(form.amount)} item every {form.intervalYears} years.
+				</div>
+			);
+		}
+	}
 
 	const expenseCategories = [
 		{ label: "Rent", class: RentExpense },
@@ -364,7 +511,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				<h2 id="add-expense-modal-title" className="text-xl font-bold mb-6 border-b border-border-subtle pb-3">
 					{step === "select"
 						? "Select Expense Type"
-						: `New ${selectedType.name.replace("Expense", "")}`}
+						: `New ${selectedType?.name.replace("Expense", "") ?? "Expense"}`}
 				</h2>
 
 				<form onSubmit={handleAdd}>
@@ -536,27 +683,46 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 
 							{selectedType === MortgageExpense && (
 								<>
+									{/* Essentials a user knows off-hand stay visible; the escrow/
+									    ownership-cost inputs all have sane defaults and collapse
+									    below so the add form stays approachable. */}
 									<CurrencyInput id={`${id}-valuation`} label="Valuation" value={form.valuation} onChange={(val) => updateForm('valuation', val)} tooltip="Current market value of the property." />
 									<CurrencyInput id={`${id}-starting-loan-balance`} label="Starting Loan Balance" value={form.startingLoanBalance} onChange={(val) => updateForm('startingLoanBalance', val)} tooltip="Original loan amount when the mortgage was taken out." />
 									<CurrencyInput id={`${id}-loan-balance`} label="Current Loan Balance" value={form.loanBalance} onChange={(val) => updateForm('loanBalance', val)} tooltip="Remaining amount owed on the mortgage today." />
 									<PercentageInput id={`${id}-apr`} label="APR" value={form.apr} onChange={(val) => updateForm('apr', val)} max={50} tooltip="Annual Percentage Rate - the yearly interest rate on your loan." />
 									<NumberInput id={`${id}-term-length`} label="Term Length (years)" value={form.termLength} onChange={(val) => updateForm('termLength', val)} tooltip="Total length of the mortgage (typically 15 or 30 years)." />
-									<PercentageInput id={`${id}-property-tax-rate`} label="Property Tax Rate" value={form.propertyTaxes} onChange={(val) => updateForm('propertyTaxes', val)} max={20} tooltip="Annual property tax as a percentage of home value. Varies by location (0.5-2.5% typical)." />
-									<CurrencyInput id={`${id}-valuation-deduction`} label="Valuation Deduction" value={form.valuationDeduction} onChange={(val) => updateForm('valuationDeduction', val)} tooltip="Homestead exemption or other deductions that reduce taxable property value." />
-									<PercentageInput id={`${id}-maintenance`} label="Maintenance" value={form.maintenance} onChange={(val) => updateForm('maintenance', val)} max={20} tooltip="Annual maintenance budget as % of home value. 1% is a common rule of thumb." />
-									<CurrencyInput id={`${id}-utilities`} label="Utilities" value={form.utilities} onChange={(val) => updateForm('utilities', val)} tooltip="Monthly utility costs (electric, gas, water, etc.)." />
-									<PercentageInput id={`${id}-homeowners-insurance`} label="Homeowners Insurance" value={form.homeOwnersInsurance} onChange={(val) => updateForm('homeOwnersInsurance', val)} max={20} tooltip="Annual insurance as % of home value. Typically 0.3-0.6%." />
-									<PercentageInput id={`${id}-pmi`} label="PMI" value={form.pmi} onChange={(val) => updateForm('pmi', val)} max={20} tooltip="Private Mortgage Insurance. Required if down payment < 20%. Usually 0.5-1% of loan annually. Set to 0 if not applicable." />
-									<CurrencyInput id={`${id}-hoa-fee`} label="HOA Fee" value={form.hoaFee} onChange={(val) => updateForm('hoaFee', val)} tooltip="Monthly Homeowners Association fee, if applicable." />
 									<CurrencyInput id={`${id}-extra-payment`} label="Extra Payment" value={form.extraPayment} onChange={(val) => updateForm('extraPayment', val)} tooltip="Additional monthly payment toward principal to pay off the mortgage faster." />
-									<DropdownInput
-										id={`${id}-tax-deductible`}
-										label="Tax Deductible"
-										value={form.isTaxDeductible}
-										onChange={(val) => updateForm('isTaxDeductible', val as TaxDeductibleOption)}
-										options={["No", "Yes", "Itemized"]}
-										tooltip="Yes: always deductible. Itemized: only if you itemize deductions instead of taking standard deduction."
-									/>
+									<CardSection
+										id={`${id}-section-escrow`}
+										title="Escrow & ownership costs"
+										summary={getEscrowSummary(form)}
+										gridClassName={MODAL_SECTION_GRID}
+									>
+										<PercentageInput id={`${id}-property-tax-rate`} label="Property Tax Rate" value={form.propertyTaxes} onChange={(val) => updateForm('propertyTaxes', val)} max={20} tooltip="Annual property tax as a percentage of home value. Varies by location (0.5-2.5% typical)." />
+										<CurrencyInput id={`${id}-valuation-deduction`} label="Valuation Deduction" value={form.valuationDeduction} onChange={(val) => updateForm('valuationDeduction', val)} tooltip="Homestead exemption or other deductions that reduce taxable property value." />
+										<PercentageInput id={`${id}-homeowners-insurance`} label="Homeowners Insurance" value={form.homeOwnersInsurance} onChange={(val) => updateForm('homeOwnersInsurance', val)} max={20} tooltip="Annual insurance as % of home value. Typically 0.3-0.6%." />
+										<PercentageInput id={`${id}-pmi`} label="PMI" value={form.pmi} onChange={(val) => updateForm('pmi', val)} max={20} tooltip="Private Mortgage Insurance. Required if down payment < 20%. Usually 0.5-1% of loan annually. Set to 0 if not applicable." />
+										<CurrencyInput id={`${id}-hoa-fee`} label="HOA Fee" value={form.hoaFee} onChange={(val) => updateForm('hoaFee', val)} tooltip="Monthly Homeowners Association fee, if applicable." />
+										<PercentageInput id={`${id}-maintenance`} label="Maintenance" value={form.maintenance} onChange={(val) => updateForm('maintenance', val)} max={20} tooltip="Annual maintenance budget as % of home value. 1% is a common rule of thumb." />
+										<CurrencyInput id={`${id}-utilities`} label="Utilities" value={form.utilities} onChange={(val) => updateForm('utilities', val)} tooltip="Monthly utility costs (electric, gas, water, etc.)." />
+									</CardSection>
+									<CardSection
+										id={`${id}-section-tax`}
+										title="Tax treatment"
+										summary={getTaxTreatmentSummary(form.isTaxDeductible)}
+										gridClassName={MODAL_SECTION_GRID}
+									>
+										{/* No amount input here: MortgageExpense derives its
+										    deductible amount (the interest paid) itself. */}
+										<DropdownInput
+											id={`${id}-tax-deductible`}
+											label="Tax Deductible"
+											value={form.isTaxDeductible}
+											onChange={(val) => updateForm('isTaxDeductible', val as TaxDeductibleOption)}
+											options={["No", "Yes", "Itemized"]}
+											tooltip="Yes: always deductible. Itemized: only if you itemize deductions instead of taking standard deduction."
+										/>
+									</CardSection>
 								</>
 							)}
 
@@ -645,6 +811,9 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 								/>
 							</div>
 						</div>
+
+						{/* Goal plan preview: what Create will set up, live */}
+						{goalPlanPreview}
 					</div>
 				)}
 

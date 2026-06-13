@@ -3,6 +3,7 @@ import { parseSSAXml, validateEarningsImport } from '../../../services/SSAImport
 import type { EarningsRecord } from '../../../services/SocialSecurityCalculator';
 import { getBirthYear } from '../Assumptions/AssumptionsContext';
 import type { CustomMilestone } from '../../../services/simulation/types';
+import { useReceiptToast } from '../../Layout/Overlays/ReceiptToast';
 
 // The AssumptionsContext Action type isn't exported; we use a narrow structural
 // shape covering the two cases this hook dispatches.
@@ -32,6 +33,7 @@ export function useSSAEarningsImport({
     dispatch,
 }: UseSSAEarningsImportArgs): SSAEarningsImport {
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const receiptToast = useReceiptToast();
 
     const onFileChange = useCallback(
         (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -62,9 +64,12 @@ export function useSSAEarningsImport({
                     }
 
                     dispatch({ type: 'SET_PRIOR_EARNINGS', payload: earnings });
-                    alert(
-                        `Successfully imported ${earnings.length} years of earnings history.\n\nYour Social Security benefit will be calculated using this data when you reach claiming age.`
-                    );
+                    // Cross-context write (earnings live in Assumptions and feed
+                    // the SS benefit calculation) — announce it as a receipt
+                    // instead of a blocking alert.
+                    receiptToast.show({
+                        message: `Imported ${earnings.length} years of SSA earnings — Social Security benefits will be calculated from them at claiming age`,
+                    });
                 } catch {
                     alert(
                         "Error parsing SSA file. Please ensure it's a valid SSA XML export from ssa.gov."
@@ -74,7 +79,7 @@ export function useSSAEarningsImport({
             reader.readAsText(file);
             e.target.value = '';
         },
-        [milestones, dispatch]
+        [milestones, dispatch, receiptToast]
     );
 
     return { fileInputRef, onFileChange };

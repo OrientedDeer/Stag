@@ -46,15 +46,15 @@ test.describe('Simulation & Scenarios', () => {
     await waitForLocalStorageSave(page);
   });
 
-  test('should navigate to Future tab and show simulation', async ({ page }) => {
-    await navigateToTab(page, 'Charts');
+  test('should navigate to Projection page and show simulation', async ({ page }) => {
+    await navigateToTab(page, 'Projection');
 
     // The simulation should load and show some content
     await expect(page.locator('main')).toBeVisible({ timeout: 3000 });
   });
 
   test('should show net worth chart', async ({ page }) => {
-    await navigateToTab(page, 'Charts');
+    await navigateToTab(page, 'Projection');
 
     // Wait for chart to render
     const chart = page.locator('[class*="chart"], [class*="Chart"], svg').first();
@@ -67,13 +67,13 @@ test.describe('Simulation & Scenarios', () => {
     // Verify the assumptions page loads
     await expect(page.locator('main')).toBeVisible();
 
-    // Navigate to Charts and verify simulation runs
-    await navigateToTab(page, 'Charts');
+    // Navigate to Projection and verify simulation runs
+    await navigateToTab(page, 'Projection');
     await expect(page.locator('main')).toBeVisible({ timeout: 3000 });
   });
 
-  test('should display data in Charts tab', async ({ page }) => {
-    await navigateToTab(page, 'Charts');
+  test('should display data in Projection page', async ({ page }) => {
+    await navigateToTab(page, 'Projection');
 
     // Check that the main content area has loaded
     await expect(page.locator('main')).toBeVisible({ timeout: 3000 });

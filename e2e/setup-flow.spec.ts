@@ -171,10 +171,10 @@ test.describe('Setup Flow - New User Journey', () => {
     await page.getByRole('button', { name: /add expense/i }).last().click();
     await waitForLocalStorageSave(page);
 
-    // Step 4: Navigate to Charts (Future) tab
-    await navigateToTab(page, 'Charts');
+    // Step 4: Navigate to the Projection page
+    await navigateToTab(page, 'Projection');
 
-    // The Charts tab should be visible with simulation data
+    // The Projection page should be visible with simulation data
     await expect(page.locator('main')).toBeVisible({ timeout: 3000 });
   });
 });

@@ -1,5 +1,6 @@
 import { useState, useContext, useMemo, useEffect } from 'react';
 import { useSubTabKeyboardNav } from '../../hooks/useKeyboardShortcuts';
+import { useSubTabDeepLink } from '../../hooks/useSubTabDeepLink';
 import { ExpenseContext, ExpenseDispatchContext } from '../../components/Objects/Expense/ExpenseContext';
 import {
     AnyExpense,
@@ -144,6 +145,9 @@ const TabsContent = () => {
         localStorage.setItem('expense_active_tab', activeTab);
     }, [activeTab]);
     useSubTabKeyboardNav(tabs, activeTab, setActiveTab);
+    // Receipt links arrive as /current/expense?tab=Monthly — select that
+    // cadence instead of whatever tab localStorage last saved.
+    useSubTabDeepLink(tabs, setActiveTab);
 
     const activeTabDef = CADENCE_TABS.find((t) => t.label === activeTab) ?? CADENCE_TABS[0];
 

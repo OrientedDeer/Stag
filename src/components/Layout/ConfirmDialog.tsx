@@ -10,6 +10,8 @@ interface ConfirmDialogProps {
     onConfirm: () => void;
     onCancel: () => void;
     variant?: 'danger' | 'warning' | 'info';
+    /** Optional rich content rendered below the message (e.g. an impact summary). */
+    details?: React.ReactNode;
 }
 
 export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
@@ -20,7 +22,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     cancelLabel = 'Cancel',
     onConfirm,
     onCancel,
-    variant = 'danger'
+    variant = 'danger',
+    details
 }) => {
     const cancelButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -97,6 +100,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                         <p id="confirm-dialog-message" className="mt-2 text-sm text-content-muted">
                             {message}
                         </p>
+                        {details && <div className="mt-3">{details}</div>}
                     </div>
                 </div>
 

@@ -30,6 +30,7 @@ import { TriggerSelector } from "../../Layout/InputFields/TriggerSelector.js";
 import { formatCompactCurrency } from "../../../tabs/Future/tabs/FutureUtils.js";
 import { AssumptionsContext } from "../Assumptions/AssumptionsContext.js";
 import { AlertBanner } from "../../Layout/AlertBanner.js";
+import { CardSection } from "../../Layout/CardSection.js";
 import { ExpandableCard } from "../../Layout/ExpandableCard.js";
 import { getFrequencyAbbrev, formatDateForInput } from "../../../utils/formatters.js";
 
@@ -239,6 +240,9 @@ function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
                         label={expense instanceof RentExpense ? "Rent/Mortgage Payment" : "Amount"}
                         value={expense instanceof RentExpense ? expense.payment : expense.amount}
                         onChange={(val) => handleFieldUpdate(isHousing ? "payment" : "amount", val)}
+                        tooltip={expense instanceof LoanExpense
+                            ? "Synced with the linked debt account's balance."
+                            : undefined}
                     />
                 )}
 
@@ -363,6 +367,38 @@ function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
 
 // Sub-components for type-specific fields
 
+const fmt = (n: number): string => formatCompactCurrency(n, { forceExact: true });
+
+/** Paystub-style one-liner for the collapsed Loan section. */
+function getMortgageLoanSummary(expense: MortgageExpense): string {
+    let summary = `${fmt(expense.loan_balance)} @ ${expense.apr}% · ${expense.term_length} yr`;
+    if (expense.extra_payment > 0) {
+        summary += ` · +${fmt(expense.extra_payment)} extra`;
+    }
+    return summary;
+}
+
+/** Total monthly escrow/ownership extras on top of P&I — mirrors the
+ *  per-component math in the MortgageExpense constructor. */
+function getMortgageExtrasSummary(expense: MortgageExpense): string {
+    const monthlyPct = (pct: number, base: number): number => (pct / 100 / 12) * base;
+    const propertyTax = monthlyPct(expense.property_taxes, expense.valuation - expense.valuation_deduction);
+    // PMI only applies while loan-to-value is above 80% (matches the constructor).
+    const pmi = expense.valuation > 0 && expense.loan_balance / expense.valuation > 0.8
+        ? monthlyPct(expense.pmi, expense.valuation)
+        : 0;
+    const total = propertyTax + pmi
+        + monthlyPct(expense.maintenance, expense.valuation)
+        + monthlyPct(expense.home_owners_insurance, expense.valuation)
+        + expense.hoa_fee
+        + expense.utilities;
+    return total > 0 ? `${fmt(Math.round(total))}/mo extras` : 'None';
+}
+
+function getLoanDetailsSummary(expense: LoanExpense): string {
+    return `${expense.apr}% APR · ${fmt(expense.payment)}/${getFrequencyAbbrev(expense.frequency)}`;
+}
+
 interface MortgageFieldsProps {
     expense: MortgageExpense;
     onFieldUpdate: (field: AllExpenseKeys, value: unknown) => void;
@@ -379,99 +415,18 @@ function MortgageFields({ expense, onFieldUpdate, linkedAccountName, showPmiWarn
 
     return (
         <>
+            {/* Valuation is the headline number; the linked-account display,
+                reset button, and PMI warning also stay top-level — warnings
+                and alerts must never be hidden by a collapsed section. */}
             <CurrencyInput
                 id={`${expense.id}-valuation`}
                 label="Valuation"
                 value={expense.valuation}
                 onChange={(val) => onFieldUpdate("valuation", val)}
+                tooltip="Synced with the linked property account's value — editing this updates your net worth."
             />
-            <CurrencyInput
-                id={`${expense.id}-starting-loan-balance`}
-                label="Starting Loan Balance"
-                value={expense.starting_loan_balance}
-                onChange={(val) => onFieldUpdate("starting_loan_balance", val)}
-            />
-            <CurrencyInput
-                id={`${expense.id}-loan-balance`}
-                label="Current Loan Balance"
-                value={expense.loan_balance}
-                onChange={(val) => onFieldUpdate("loan_balance", val)}
-            />
-            <PercentageInput
-                id={`${expense.id}-apr`}
-                label="APR"
-                value={expense.apr}
-                onChange={(val) => onFieldUpdate("apr", val)}
-            />
-            <NumberInput
-                id={`${expense.id}-term-length`}
-                label="Term Length (years)"
-                value={expense.term_length}
-                onChange={(val) => onFieldUpdate("term_length", val)}
-            />
-            <PercentageInput
-                id={`${expense.id}-property-taxes`}
-                label="Property Taxes"
-                value={expense.property_taxes}
-                onChange={(val) => onFieldUpdate("property_taxes", val)}
-            />
-            <CurrencyInput
-                id={`${expense.id}-valuation-deduction`}
-                label="Valuation Deduction"
-                value={expense.valuation_deduction}
-                onChange={(val) => onFieldUpdate("valuation_deduction", val)}
-            />
-            <PercentageInput
-                id={`${expense.id}-maintenance`}
-                label="Maintenance"
-                value={expense.maintenance}
-                onChange={(val) => onFieldUpdate("maintenance", val)}
-            />
-            <CurrencyInput
-                id={`${expense.id}-utilities`}
-                label="Utilities"
-                value={expense.utilities}
-                onChange={(val) => onFieldUpdate("utilities", val)}
-            />
-            <PercentageInput
-                id={`${expense.id}-homeowners-insurance`}
-                label="Homeowners Insurance"
-                value={expense.home_owners_insurance}
-                onChange={(val) => onFieldUpdate("home_owners_insurance", val)}
-            />
-            <PercentageInput
-                id={`${expense.id}-pmi`}
-                label="PMI"
-                value={expense.pmi}
-                onChange={(val) => onFieldUpdate("pmi", val)}
-            />
-            <CurrencyInput
-                id={`${expense.id}-hoa-fee`}
-                label="HOA Fee"
-                value={expense.hoa_fee}
-                onChange={(val) => onFieldUpdate("hoa_fee", val)}
-            />
-            <CurrencyInput
-                id={`${expense.id}-extra-payment`}
-                label="Extra Payment"
-                value={expense.extra_payment}
-                onChange={(val) => onFieldUpdate("extra_payment", val)}
-            />
-            <StyledSelect
-                id={`${expense.id}-tax-deductible`}
-                label="Tax Deductible"
-                value={expense.is_tax_deductible}
-                onChange={(e) => onFieldUpdate("is_tax_deductible", e.target.value)}
-                options={["Yes", "No", "Itemized"]}
-            />
-            {(expense.is_tax_deductible === 'Yes' || expense.is_tax_deductible === 'Itemized') && (
-                <StyledDisplay
-                    label="Deductible Amount"
-                    value={"$" + expense.tax_deductible.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                />
-            )}
             <StyledDisplay
-                label="Linked to Expense"
+                label="Linked to Property"
                 blankValue="No account found, try re-adding"
                 value={linkedAccountName}
             />
@@ -482,6 +437,115 @@ function MortgageFields({ expense, onFieldUpdate, linkedAccountName, showPmiWarn
             >
                 Reset Loan Balance to Today
             </Button>
+
+            <CardSection
+                id={`${expense.id}-section-loan`}
+                title="Loan"
+                summary={getMortgageLoanSummary(expense)}
+            >
+                <CurrencyInput
+                    id={`${expense.id}-starting-loan-balance`}
+                    label="Starting Loan Balance"
+                    value={expense.starting_loan_balance}
+                    onChange={(val) => onFieldUpdate("starting_loan_balance", val)}
+                    tooltip="Synced with the linked property account."
+                />
+                <CurrencyInput
+                    id={`${expense.id}-loan-balance`}
+                    label="Current Loan Balance"
+                    value={expense.loan_balance}
+                    onChange={(val) => onFieldUpdate("loan_balance", val)}
+                    tooltip="Synced with the linked property account's loan balance."
+                />
+                <PercentageInput
+                    id={`${expense.id}-apr`}
+                    label="APR"
+                    value={expense.apr}
+                    onChange={(val) => onFieldUpdate("apr", val)}
+                />
+                <NumberInput
+                    id={`${expense.id}-term-length`}
+                    label="Term Length (years)"
+                    value={expense.term_length}
+                    onChange={(val) => onFieldUpdate("term_length", val)}
+                />
+                <CurrencyInput
+                    id={`${expense.id}-extra-payment`}
+                    label="Extra Payment"
+                    value={expense.extra_payment}
+                    onChange={(val) => onFieldUpdate("extra_payment", val)}
+                />
+            </CardSection>
+
+            <CardSection
+                id={`${expense.id}-section-escrow`}
+                title="Escrow & ownership costs"
+                summary={getMortgageExtrasSummary(expense)}
+            >
+                <PercentageInput
+                    id={`${expense.id}-property-taxes`}
+                    label="Property Taxes"
+                    value={expense.property_taxes}
+                    onChange={(val) => onFieldUpdate("property_taxes", val)}
+                />
+                <CurrencyInput
+                    id={`${expense.id}-valuation-deduction`}
+                    label="Valuation Deduction"
+                    value={expense.valuation_deduction}
+                    onChange={(val) => onFieldUpdate("valuation_deduction", val)}
+                />
+                <PercentageInput
+                    id={`${expense.id}-homeowners-insurance`}
+                    label="Homeowners Insurance"
+                    value={expense.home_owners_insurance}
+                    onChange={(val) => onFieldUpdate("home_owners_insurance", val)}
+                />
+                <PercentageInput
+                    id={`${expense.id}-pmi`}
+                    label="PMI"
+                    value={expense.pmi}
+                    onChange={(val) => onFieldUpdate("pmi", val)}
+                />
+                <CurrencyInput
+                    id={`${expense.id}-hoa-fee`}
+                    label="HOA Fee"
+                    value={expense.hoa_fee}
+                    onChange={(val) => onFieldUpdate("hoa_fee", val)}
+                />
+                <PercentageInput
+                    id={`${expense.id}-maintenance`}
+                    label="Maintenance"
+                    value={expense.maintenance}
+                    onChange={(val) => onFieldUpdate("maintenance", val)}
+                />
+                <CurrencyInput
+                    id={`${expense.id}-utilities`}
+                    label="Utilities"
+                    value={expense.utilities}
+                    onChange={(val) => onFieldUpdate("utilities", val)}
+                />
+            </CardSection>
+
+            <CardSection
+                id={`${expense.id}-section-tax`}
+                title="Tax treatment"
+                summary={expense.is_tax_deductible}
+            >
+                <StyledSelect
+                    id={`${expense.id}-tax-deductible`}
+                    label="Tax Deductible"
+                    value={expense.is_tax_deductible}
+                    onChange={(e) => onFieldUpdate("is_tax_deductible", e.target.value)}
+                    options={["Yes", "No", "Itemized"]}
+                />
+                {(expense.is_tax_deductible === 'Yes' || expense.is_tax_deductible === 'Itemized') && (
+                    <StyledDisplay
+                        label="Deductible Amount"
+                        value={"$" + expense.tax_deductible.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    />
+                )}
+            </CardSection>
+
             {showPmiWarning && (
                 <AlertBanner severity="warning" size="sm" className="col-span-full">
                     With over 20% equity, you may be eligible to have your PMI removed. Contact your lender to inquire about the process.
@@ -500,45 +564,54 @@ interface LoanFieldsProps {
 function LoanFields({ expense, onFieldUpdate, linkedAccountName }: LoanFieldsProps): ReactElement {
     return (
         <>
-            <PercentageInput
-                id={`${expense.id}-apr`}
-                label="APR"
-                value={expense.apr}
-                onChange={(val) => onFieldUpdate("apr", val)}
-            />
-            <StyledSelect
-                id={`${expense.id}-interest-type`}
-                label="Interest Type"
-                value={expense.interest_type}
-                onChange={(e) => onFieldUpdate("interest_type", e.target.value)}
-                options={["Simple", "Compounding"]}
-            />
-            <CurrencyInput
-                id={`${expense.id}-payment`}
-                label="Payment"
-                value={expense.payment}
-                onChange={(val) => onFieldUpdate("payment", val)}
-            />
-            <StyledSelect
-                id={`${expense.id}-tax-deductible`}
-                label="Tax Deductible"
-                value={expense.is_tax_deductible}
-                onChange={(e) => onFieldUpdate("is_tax_deductible", e.target.value)}
-                options={["Yes", "No", "Itemized"]}
-            />
-            {(expense.is_tax_deductible === 'Yes' || expense.is_tax_deductible === 'Itemized') && (
-                <CurrencyInput
-                    id={`${expense.id}-deductible-amount`}
-                    label="Deductible Amount"
-                    value={expense.tax_deductible}
-                    onChange={(val) => onFieldUpdate("tax_deductible", val)}
-                />
-            )}
+            {/* The linked-account display stays top-level so a broken link is
+                never hidden behind a collapsed section. */}
             <StyledDisplay
-                label="Linked to Expense"
+                label="Linked to Debt Account"
                 blankValue="No account found, try re-adding"
                 value={linkedAccountName}
             />
+            <CardSection
+                id={`${expense.id}-section-loan-details`}
+                title="Loan details"
+                summary={getLoanDetailsSummary(expense)}
+            >
+                <PercentageInput
+                    id={`${expense.id}-apr`}
+                    label="APR"
+                    value={expense.apr}
+                    onChange={(val) => onFieldUpdate("apr", val)}
+                    tooltip="Synced with the linked debt account's APR."
+                />
+                <StyledSelect
+                    id={`${expense.id}-interest-type`}
+                    label="Interest Type"
+                    value={expense.interest_type}
+                    onChange={(e) => onFieldUpdate("interest_type", e.target.value)}
+                    options={["Simple", "Compounding"]}
+                />
+                <CurrencyInput
+                    id={`${expense.id}-payment`}
+                    label="Payment"
+                    value={expense.payment}
+                    onChange={(val) => onFieldUpdate("payment", val)}
+                />
+                <StyledSelect
+                    id={`${expense.id}-tax-deductible`}
+                    label="Tax Deductible"
+                    value={expense.is_tax_deductible}
+                    onChange={(e) => onFieldUpdate("is_tax_deductible", e.target.value)}
+                    options={["Yes", "No", "Itemized"]}
+                />
+                {(expense.is_tax_deductible === 'Yes' || expense.is_tax_deductible === 'Itemized') && (
+                    <CurrencyInput
+                        id={`${expense.id}-deductible-amount`}
+                        label="Deductible Amount"
+                        value={expense.tax_deductible}
+                        onChange={(val) => onFieldUpdate("tax_deductible", val)}
+                    />
+                )}
+            </CardSection>
         </>
     );
 }

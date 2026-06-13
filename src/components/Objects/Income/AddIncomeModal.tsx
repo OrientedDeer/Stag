@@ -38,6 +38,16 @@ import { Button } from "../../Layout/Primitives";
 const generateUniqueId = () =>
     `INC-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
+type AddableIncomeClass =
+    | typeof WorkIncome
+    | typeof SocialSecurityIncome
+    | typeof CurrentSocialSecurityIncome
+    | typeof FutureSocialSecurityIncome
+    | typeof FERSPensionIncome
+    | typeof CSRSPensionIncome
+    | typeof PassiveIncome
+    | typeof WindfallIncome;
+
 interface AddIncomeModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -51,7 +61,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
     const { modalRef, handleKeyDown } = useModalAccessibility(isOpen, onClose);
 
     const [step, setStep] = useState<'select' | 'details'>('select');
-    const [selectedType, setSelectedType] = useState<any>(null);
+    const [selectedType, setSelectedType] = useState<AddableIncomeClass | null>(null);
     const [form, setForm] = useState<IncomeFormState>(getInitialFormState);
     const [dateError, setDateError] = useState<string | undefined>();
 
@@ -119,7 +129,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
 		}
 	};
 
-    const handleTypeSelect = (typeClass: any) => {
+    const handleTypeSelect = (typeClass: AddableIncomeClass) => {
         setSelectedType(() => typeClass);
         // Set smart default end milestone based on income type
         if (typeClass === WorkIncome) {
@@ -236,7 +246,10 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                 finalStartMilestoneId, form.endMilestoneId
             );
         } else {
-            newIncome = new selectedType(
+            // Defensive fallback — every selector type is handled above. The
+            // cast keeps the generic (id, name, amount, frequency, earned,
+            // dates, milestones) construction compiling.
+            newIncome = new (selectedType as typeof WindfallIncome)(
                 id, form.name.trim(), form.amount, form.frequency, "Yes", finalStartDate, finalEndDate,
                 finalStartMilestoneId, form.endMilestoneId
             );
@@ -261,7 +274,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                 onKeyDown={handleKeyDown}
             >
                 <h2 id="add-income-modal-title" className="text-xl font-bold mb-6 border-b border-border-subtle pb-3">
-                  {step === 'select' ? 'Select Income Type' : `New ${selectedType.name.replace('Income', '')}`}
+                  {step === 'select' ? 'Select Income Type' : `New ${selectedType?.name.replace('Income', '') ?? ''}`}
                 </h2>
 
                 <form onSubmit={handleAdd}>
@@ -319,14 +332,6 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                              selectedType !== FERSPensionIncome &&
                              selectedType !== CSRSPensionIncome && (
                                 <CurrencyInput label="Gross Amount" value={form.amount} onChange={(val) => updateForm('amount', val)} tooltip="Your gross income before any deductions (taxes, 401k, insurance, etc.). This is NOT your take-home pay." />
-                            )}
-                            {selectedType === WorkIncome && (
-                                <WorkIncomeFields
-                                    form={form}
-                                    updateForm={updateForm}
-                                    contributionAccounts={contributionAccounts}
-                                    esppAccounts={esppAccounts}
-                                />
                             )}
                             {/* Hide date fields for auto-calculated income types */}
                             {selectedType !== FutureSocialSecurityIncome &&
@@ -432,6 +437,16 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                              selectedType !== FERSPensionIncome &&
                              selectedType !== CSRSPensionIncome && (
                                 <DropdownInput label="Earned Income" value={form.earnedIncome} onChange={(val) => updateForm('earnedIncome', val as EarnedIncomeOption)} options={["Yes", "No"]} tooltip="Earned income (wages, self-employment) is subject to FICA taxes. Unearned income (investments, rental) is not." />
+                            )}
+                            {/* Optional clusters (401k, benefits, ESPP, pension) collapse
+                                below the core salary fields so a plain-salary add stays short. */}
+                            {selectedType === WorkIncome && (
+                                <WorkIncomeFields
+                                    form={form}
+                                    updateForm={updateForm}
+                                    contributionAccounts={contributionAccounts}
+                                    esppAccounts={esppAccounts}
+                                />
                             )}
 
                         </div>

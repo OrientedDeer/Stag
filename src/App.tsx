@@ -1,4 +1,4 @@
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import "./index.css";
 import Sidebar from "./components/Layout/Overlays/Sidebar";
 import TopBar from "./components/Layout/Overlays/TopBar";
@@ -28,6 +28,7 @@ import { CloudBackupProvider } from "./components/Objects/CloudBackup/CloudBacku
 import { ThemeProvider } from "./components/Objects/Theme/ThemeContext";
 import CloudBackupSync from "./components/Objects/CloudBackup/CloudBackupSync";
 import GlobalKeyboardShortcuts from "./components/Layout/Overlays/GlobalKeyboardShortcuts";
+import { ReceiptToastProvider } from "./components/Layout/Overlays/ReceiptToast";
 import { PerformanceProfiler } from "./components/Layout/PerformanceProfiler";
 
 export default function App() {
@@ -45,6 +46,7 @@ export default function App() {
               <ScenarioProvider>
               <BudgetProvider>
               <CloudBackupProvider>
+              <ReceiptToastProvider>
               <GlobalKeyboardShortcuts />
               <div className="flex h-screen">
                 <Sidebar isOpen={isOpen} onClose={() => setIsOpen(true)}/>
@@ -66,16 +68,24 @@ export default function App() {
                       <Route path="/budget" element={<PerformanceProfiler id="Budget"><BudgetTab /></PerformanceProfiler>} />
                       <Route path="/budget/*" element={<PerformanceProfiler id="Budget"><BudgetTab /></PerformanceProfiler>} />
 
-                      <Route path="/future" element={<PerformanceProfiler id="Future"><FutureTab /></PerformanceProfiler>} />
-                      <Route path="/future/assumptions" element={<PerformanceProfiler id="Future/Assumptions"><AssumptionTab /></PerformanceProfiler>} />
-                      <Route path="/future/allocation" element={<PerformanceProfiler id="Future/Allocation"><PriorityTab /></PerformanceProfiler>} />
-                      <Route path="/future/withdrawal" element={<PerformanceProfiler id="Future/Withdrawal"><WithdrawalTab /></PerformanceProfiler>} />
-                      <Route path="/future/charts" element={<PerformanceProfiler id="Future/Charts"><FutureTab /></PerformanceProfiler>} />
+                      <Route path="/plan" element={<Navigate to="/plan/assumptions" replace />} />
+                      <Route path="/plan/assumptions" element={<PerformanceProfiler id="Plan/Assumptions"><AssumptionTab /></PerformanceProfiler>} />
+                      <Route path="/plan/allocation" element={<PerformanceProfiler id="Plan/Allocation"><PriorityTab /></PerformanceProfiler>} />
+                      <Route path="/plan/withdrawal" element={<PerformanceProfiler id="Plan/Withdrawal"><WithdrawalTab /></PerformanceProfiler>} />
+                      <Route path="/projection" element={<PerformanceProfiler id="Projection"><FutureTab /></PerformanceProfiler>} />
+
+                      {/* Legacy /future paths — redirect so bookmarks and muscle memory keep working */}
+                      <Route path="/future" element={<Navigate to="/projection" replace />} />
+                      <Route path="/future/assumptions" element={<Navigate to="/plan/assumptions" replace />} />
+                      <Route path="/future/allocation" element={<Navigate to="/plan/allocation" replace />} />
+                      <Route path="/future/withdrawal" element={<Navigate to="/plan/withdrawal" replace />} />
+                      <Route path="/future/charts" element={<Navigate to="/projection" replace />} />
                       <Route path="/testing" element={<PerformanceProfiler id="Testing"><Testing /></PerformanceProfiler>} />
                     </Routes>
                   </main>
                 </div>
               </div>
+              </ReceiptToastProvider>
               </CloudBackupProvider>
               </BudgetProvider>
               </ScenarioProvider>

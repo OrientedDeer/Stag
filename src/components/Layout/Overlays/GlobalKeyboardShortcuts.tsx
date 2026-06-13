@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useKeyboardShortcuts } from '../../../hooks/useKeyboardShortcuts';
+import { AssumptionsContext } from '../../Objects/Assumptions/AssumptionsContext';
 import KeyboardShortcutsOverlay from './KeyboardShortcutsOverlay';
 
 /**
  * Flat ordering of sidebar pages, top-to-bottom. Shift+↑ / Shift+↓ walks through
- * this list with wraparound.
+ * this list with wraparound. /testing is only included when the "Developer
+ * tools" display setting is on, mirroring its Sidebar entry.
  */
 const SIDEBAR_ROUTES: readonly string[] = [
     '/dashboard',
@@ -14,10 +16,10 @@ const SIDEBAR_ROUTES: readonly string[] = [
     '/current/expense',
     '/current/taxes',
     '/budget',
-    '/future/assumptions',
-    '/future/allocation',
-    '/future/withdrawal',
-    '/future/charts',
+    '/plan/assumptions',
+    '/plan/allocation',
+    '/plan/withdrawal',
+    '/projection',
     '/testing',
 ];
 
@@ -25,13 +27,13 @@ const SIDEBAR_ROUTES: readonly string[] = [
  * Picks the sidebar route that matches the current pathname most closely.
  * Falls back to 0 (Dashboard) if no match.
  */
-function currentSidebarIndex(pathname: string): number {
-    const exact = SIDEBAR_ROUTES.indexOf(pathname);
+function currentSidebarIndex(pathname: string, routes: readonly string[]): number {
+    const exact = routes.indexOf(pathname);
     if (exact !== -1) return exact;
     // Match by prefix for child paths (e.g. /budget/something → /budget)
-    const sorted = [...SIDEBAR_ROUTES].sort((a, b) => b.length - a.length);
+    const sorted = [...routes].sort((a, b) => b.length - a.length);
     for (const route of sorted) {
-        if (pathname.startsWith(route)) return SIDEBAR_ROUTES.indexOf(route);
+        if (pathname.startsWith(route)) return routes.indexOf(route);
     }
     return 0;
 }
@@ -43,8 +45,18 @@ function currentSidebarIndex(pathname: string): number {
 export default function GlobalKeyboardShortcuts() {
     const navigate = useNavigate();
     const { pathname } = useLocation();
+    const { state: assumptions } = useContext(AssumptionsContext);
+    const showDevTools = assumptions.display?.showDevTools ?? false;
     const [helpOpen, setHelpOpen] = useState(false);
     const closeHelp = useCallback(() => setHelpOpen(false), []);
+
+    // Skip /testing when its Sidebar entry is hidden — Shift+↑/↓ should only
+    // cycle through pages the user can see. The route itself stays mounted, so
+    // a direct URL still works either way.
+    const routes = useMemo(
+        () => (showDevTools ? SIDEBAR_ROUTES : SIDEBAR_ROUTES.filter(r => r !== '/testing')),
+        [showDevTools]
+    );
 
     const shortcuts = useMemo(() => {
         const scrollMain = (dy: number) => {
@@ -68,18 +80,18 @@ export default function GlobalKeyboardShortcuts() {
             },
             'Shift+ArrowUp': (e: KeyboardEvent) => {
                 e.preventDefault();
-                const idx = currentSidebarIndex(pathname);
-                const nextIdx = (idx - 1 + SIDEBAR_ROUTES.length) % SIDEBAR_ROUTES.length;
-                navigate(SIDEBAR_ROUTES[nextIdx]);
+                const idx = currentSidebarIndex(pathname, routes);
+                const nextIdx = (idx - 1 + routes.length) % routes.length;
+                navigate(routes[nextIdx]);
             },
             'Shift+ArrowDown': (e: KeyboardEvent) => {
                 e.preventDefault();
-                const idx = currentSidebarIndex(pathname);
-                const nextIdx = (idx + 1) % SIDEBAR_ROUTES.length;
-                navigate(SIDEBAR_ROUTES[nextIdx]);
+                const idx = currentSidebarIndex(pathname, routes);
+                const nextIdx = (idx + 1) % routes.length;
+                navigate(routes[nextIdx]);
             },
         };
-    }, [navigate, pathname]);
+    }, [navigate, pathname, routes]);
 
     useKeyboardShortcuts(shortcuts);
 

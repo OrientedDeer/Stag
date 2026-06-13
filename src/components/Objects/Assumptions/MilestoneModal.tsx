@@ -1,5 +1,7 @@
 import React, { useState, useContext } from "react";
 import { AssumptionsContext, isBuiltinMilestone, BUILTIN_MILESTONE_IDS } from "./AssumptionsContext";
+import { IncomeContext } from "../Income/IncomeContext";
+import { ExpenseContext } from "../Expense/ExpenseContext";
 import { CustomMilestone, MilestoneCondition, MilestoneConditionType, MilestoneOperator, MilestoneValueType } from "../../../services/simulation/types";
 import { NameInput } from "../../Layout/InputFields/NameInput";
 import { NumberInput } from "../../Layout/InputFields/NumberInput";
@@ -7,6 +9,7 @@ import { DropdownInput } from "../../Layout/InputFields/DropdownInput";
 import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput";
 import { useModalAccessibility } from "../../../hooks/useModalAccessibility";
 import { Button } from "../../Layout/Primitives";
+import { ConfirmDialog } from "../../Layout/ConfirmDialog";
 
 const generateUniqueId = () =>
     `MILE-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -59,18 +62,30 @@ function getInitialFormState(): MilestoneFormState {
 
 const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose }) => {
     const { state, dispatch } = useContext(AssumptionsContext);
+    const { incomes } = useContext(IncomeContext);
+    const { expenses } = useContext(ExpenseContext);
     const { modalRef, handleKeyDown } = useModalAccessibility(isOpen, onClose);
 
     const [view, setView] = useState<'list' | 'edit'>('list');
     const [editingId, setEditingId] = useState<string | null>(null);
     const [form, setForm] = useState<MilestoneFormState>(getInitialFormState);
+    const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
     const milestones = state.milestones || [];
+
+    // Objects whose start/end trigger points at this milestone. Deleting the
+    // milestone makes those references dangle; TriggerSelector then silently
+    // resets them to End of Plan — so warn the user up front.
+    const getMilestoneReferences = (id: string) => ({
+        expenses: expenses.filter(e => e.startMilestoneId === id || e.endMilestoneId === id),
+        incomes: incomes.filter(i => i.startMilestoneId === id || i.endMilestoneId === id),
+    });
 
     const handleClose = () => {
         setView('list');
         setEditingId(null);
         setForm(getInitialFormState());
+        setPendingDeleteId(null);
         onClose();
     };
 
@@ -90,7 +105,20 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose }) => {
     };
 
     const handleDelete = (id: string) => {
-        dispatch({ type: 'REMOVE_MILESTONE', payload: id });
+        const refs = getMilestoneReferences(id);
+        if (refs.expenses.length === 0 && refs.incomes.length === 0) {
+            // Nothing references it — delete without friction
+            dispatch({ type: 'REMOVE_MILESTONE', payload: id });
+            return;
+        }
+        setPendingDeleteId(id);
+    };
+
+    const handleConfirmDelete = () => {
+        if (pendingDeleteId) {
+            dispatch({ type: 'REMOVE_MILESTONE', payload: pendingDeleteId });
+        }
+        setPendingDeleteId(null);
     };
 
     const handleSave = (e?: React.FormEvent) => {
@@ -192,6 +220,9 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose }) => {
     };
 
     if (!isOpen) return null;
+
+    const pendingDeleteMilestone = pendingDeleteId ? milestones.find(m => m.id === pendingDeleteId) : undefined;
+    const pendingDeleteRefs = pendingDeleteId ? getMilestoneReferences(pendingDeleteId) : undefined;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -468,6 +499,29 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose }) => {
                     </form>
                 )}
             </div>
+
+            <ConfirmDialog
+                isOpen={pendingDeleteId !== null}
+                title="Delete Milestone"
+                message={`Delete "${pendingDeleteMilestone?.name ?? 'this milestone'}"? This action cannot be undone.`}
+                confirmLabel="Delete"
+                cancelLabel="Cancel"
+                onConfirm={handleConfirmDelete}
+                onCancel={() => setPendingDeleteId(null)}
+                variant="danger"
+                details={pendingDeleteRefs && (
+                    <div className="bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-3 text-yellow-300 text-sm">
+                        <p>
+                            {pendingDeleteRefs.expenses.length} expense(s) and {pendingDeleteRefs.incomes.length} income(s) use
+                            this milestone as a trigger — they will reset to End of Plan:
+                        </p>
+                        <ul className="list-disc list-inside mt-2 space-y-0.5">
+                            {pendingDeleteRefs.expenses.map(e => <li key={`exp-${e.id}`}>{e.name}</li>)}
+                            {pendingDeleteRefs.incomes.map(i => <li key={`inc-${i.id}`}>{i.name}</li>)}
+                        </ul>
+                    </div>
+                )}
+            />
         </div>
     );
 };

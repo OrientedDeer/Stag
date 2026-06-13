@@ -21,13 +21,28 @@ import { ToggleInput } from "../../Layout/InputFields/ToggleInput";
 import { NumberInput } from "../../Layout/InputFields/NumberInput";
 import { useModalAccessibility } from "../../../hooks/useModalAccessibility";
 import { Button } from "../../Layout/Primitives";
+import { useReceiptToast } from "../../Layout/Overlays/ReceiptToast";
+import { CardSection } from "../../Layout/CardSection";
+import { formatCompactCurrency } from "../../../tabs/Future/tabs/FutureUtils";
 
 const generateUniqueAccId = () =>
     `ACC-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
+// Modal field grid, mirrored inside collapsible sections.
+const MODAL_SECTION_GRID = "grid grid-cols-2 lg:grid-cols-3 gap-4 px-4 pb-4";
+
+const fmt = (n: number) => formatCompactCurrency(n, { forceExact: true });
+
+type AddableAccountClass =
+    | typeof SavedAccount
+    | typeof InvestedAccount
+    | typeof ESPPAccount
+    | typeof PropertyAccount
+    | typeof DebtAccount;
+
 interface AddAccountModalProps {
     isOpen: boolean;
-    selectedType: any;
+    selectedType: AddableAccountClass | null;
     onClose: () => void;
 }
 
@@ -78,6 +93,33 @@ const INITIAL_FORM_STATE: AccountFormState = {
     minimumHoldingDays: 0,
 };
 
+/** Live one-liner for the collapsed Growth & Fees section. */
+function getGrowthFeesSummary(form: AccountFormState): string {
+    const ror = form.useCustomROR ? `${form.customROR}% custom` : 'Global return';
+    return `${ror} · ${form.expenseRatio}% ER`;
+}
+
+function get401kDetailsSummary(form: AccountFormState): string {
+    const parts: string[] = [];
+    if (form.employerBalance > 0) parts.push(`${fmt(form.employerBalance)} employer`);
+    parts.push(form.isFullyVested ? 'fully vested' : 'vesting schedule');
+    if (!form.isContributionEligible) parts.push('not eligible');
+    return parts.join(' · ');
+}
+
+function getESPPSettingsSummary(form: AccountFormState): string {
+    const parts: string[] = [];
+    if (form.stockTicker.trim()) parts.push(form.stockTicker.trim());
+    if (form.currentSharePrice > 0) parts.push(`$${form.currentSharePrice}/sh`);
+    if (form.useCustomROR) parts.push(`${form.customROR}% growth`);
+    const prefLabel = ESPP_WITHDRAWAL_PREFERENCE_OPTIONS
+        .find((opt) => opt.value === form.withdrawalPreference)?.label.split(' (')[0]
+        ?? form.withdrawalPreference;
+    parts.push(prefLabel);
+    if (form.minimumHoldingDays > 0) parts.push(`${form.minimumHoldingDays}d hold`);
+    return parts.join(' · ');
+}
+
 const AddAccountModal: React.FC<AddAccountModalProps> = ({
     isOpen,
     selectedType,
@@ -85,6 +127,7 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
 }) => {
     const { dispatch: accountDispatch } = useContext(AccountDispatchContext);
     const expenseDispatch = useContext(ExpenseDispatchContext);
+    const { show: showReceipt } = useReceiptToast();
     const { modalRef, handleKeyDown } = useModalAccessibility(isOpen, onClose);
     const [form, setForm] = useState<AccountFormState>(INITIAL_FORM_STATE);
 
@@ -106,13 +149,13 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
         let newAccount;
 
         if (selectedType === SavedAccount) {
-            newAccount = new selectedType(id, form.name.trim(), form.amount, form.apr);
+            newAccount = new SavedAccount(id, form.name.trim(), form.amount, form.apr);
         } else if (selectedType === InvestedAccount) {
             // If fully vested, use 100% per year with 1 year tenure
             const finalTenure = form.isFullyVested ? 1 : form.tenureYears;
             const finalVestedPerYear = form.isFullyVested ? 1.0 : form.vestedPerYear;
             const finalCustomROR = form.useCustomROR ? form.customROR : undefined;
-            newAccount = new selectedType(
+            newAccount = new InvestedAccount(
                 id, form.name.trim(), form.amount, form.employerBalance, finalTenure,
                 form.expenseRatio, form.taxType, form.isContributionEligible,
                 finalVestedPerYear, form.amount, finalCustomROR
@@ -137,6 +180,11 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                     'Itemized', 0, id, new Date(), 0, 0
                 );
                 expenseDispatch({ type: "ADD_EXPENSE", payload: newExpense });
+                showReceipt({
+                    message: `Created mortgage expense '${form.name.trim()}' with assumed terms (6.23% APR, 30 yr) — review it`,
+                    linkTo: "/current/expense?tab=Monthly",
+                    linkLabel: "Review",
+                });
             }
             newAccount = new PropertyAccount(
                 id, form.name.trim(), form.amount, form.ownershipType,
@@ -148,9 +196,14 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                 "Monthly", form.apr, "Compounding", 0, "No", 0, id, new Date()
             );
             expenseDispatch({ type: "ADD_EXPENSE", payload: newExpense });
-            newAccount = new selectedType(id, form.name.trim(), form.amount, 'EXS' + id.substring(3), form.apr);
+            showReceipt({
+                message: `Created loan expense '${form.name.trim()}' under Expenses`,
+                linkTo: "/current/expense?tab=Monthly",
+            });
+            newAccount = new DebtAccount(id, form.name.trim(), form.amount, 'EXS' + id.substring(3), form.apr);
         }
 
+        if (!newAccount) return;
         accountDispatch({ type: "ADD_ACCOUNT", payload: newAccount });
         handleClose();
     };
@@ -234,14 +287,6 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                                 value={form.amount}
                                 onChange={(val) => updateForm('amount', val)}
                             />
-                            <PercentageInput
-                                id={`${id}-expense-ratio`}
-                                label="Expense Ratio"
-                                value={form.expenseRatio}
-                                onChange={(val) => updateForm('expenseRatio', val)}
-                                max={5}
-                                tooltip="Annual fee charged by the fund. Example: 0.15% = $15 per $10,000 invested per year."
-                            />
                             <DropdownInput
                                 id={`${id}-tax-type`}
                                 label="Tax Type"
@@ -250,14 +295,58 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                                 options={[...TaxTypeEnum]}
                                 tooltip="Tax treatment: Brokerage (taxable), Traditional (pre-tax, taxed on withdrawal), Roth (post-tax, tax-free growth)."
                             />
+                            <CardSection
+                                id={`${id}-section-growth`}
+                                title="Growth & Fees"
+                                summary={getGrowthFeesSummary(form)}
+                                gridClassName={MODAL_SECTION_GRID}
+                            >
+                                <PercentageInput
+                                    id={`${id}-expense-ratio`}
+                                    label="Expense Ratio"
+                                    value={form.expenseRatio}
+                                    onChange={(val) => updateForm('expenseRatio', val)}
+                                    max={5}
+                                    tooltip="Annual fee charged by the fund. Example: 0.15% = $15 per $10,000 invested per year."
+                                />
+                                <ToggleInput
+                                    id={`${id}-use-custom-ror`}
+                                    label="Custom Return Rate"
+                                    enabled={form.useCustomROR}
+                                    setEnabled={(val) => updateForm('useCustomROR', val)}
+                                    tooltip="Override global return rate assumptions with a custom rate for this account."
+                                />
+                                {form.useCustomROR && (
+                                    <PercentageInput
+                                        id={`${id}-custom-ror`}
+                                        label="Return Rate"
+                                        value={form.customROR}
+                                        onChange={(val) => updateForm('customROR', val)}
+                                        max={30}
+                                        tooltip="Expected annual return rate for this account. Overrides the global assumption."
+                                    />
+                                )}
+                            </CardSection>
                             {(form.taxType === 'Roth 401k' || form.taxType === 'Traditional 401k') && (
-                                <>
+                                <CardSection
+                                    id={`${id}-section-401k`}
+                                    title="401k Details"
+                                    summary={get401kDetailsSummary(form)}
+                                    gridClassName={MODAL_SECTION_GRID}
+                                >
                                     <CurrencyInput
                                         id={`${id}-employer-balance`}
                                         label="Employer Balance"
                                         value={form.employerBalance}
                                         onChange={(val) => updateForm('employerBalance', val)}
                                         tooltip="Amount contributed by your employer (401k match). Subject to vesting schedule."
+                                    />
+                                    <ToggleInput
+                                        id={`${id}-fully-vested`}
+                                        label="100% Vested"
+                                        enabled={form.isFullyVested}
+                                        setEnabled={(val) => updateForm('isFullyVested', val)}
+                                        tooltip="Check if employer contributions are fully vested. Hides vesting schedule fields."
                                     />
                                     {!form.isFullyVested && (
                                         <>
@@ -277,49 +366,15 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                                             />
                                         </>
                                     )}
-                                </>
+                                    <ToggleInput
+                                        id={`${id}-contribution-eligible`}
+                                        label="Contribution Eligible"
+                                        enabled={form.isContributionEligible}
+                                        setEnabled={(val) => updateForm('isContributionEligible', val)}
+                                        tooltip="Can you still contribute to this account? Turn off for accounts from previous employers."
+                                    />
+                                </CardSection>
                             )}
-                            {form.useCustomROR && (
-                                <PercentageInput
-                                    id={`${id}-custom-ror`}
-                                    label="Return Rate"
-                                    value={form.customROR}
-                                    onChange={(val) => updateForm('customROR', val)}
-                                    max={30}
-                                    tooltip="Expected annual return rate for this account. Overrides the global assumption."
-                                />
-                            )}
-                            {(form.taxType === 'Roth 401k' || form.taxType === 'Traditional 401k') && (
-                                <>
-                                    <div className="col-span-full">
-                                        <ToggleInput
-                                            id={`${id}-fully-vested`}
-                                            label="100% Vested"
-                                            enabled={form.isFullyVested}
-                                            setEnabled={(val) => updateForm('isFullyVested', val)}
-                                            tooltip="Check if employer contributions are fully vested. Hides vesting schedule fields."
-                                        />
-                                    </div>
-                                    <div className="col-span-full">
-                                        <ToggleInput
-                                            id={`${id}-contribution-eligible`}
-                                            label="Contribution Eligible"
-                                            enabled={form.isContributionEligible}
-                                            setEnabled={(val) => updateForm('isContributionEligible', val)}
-                                            tooltip="Can you still contribute to this account? Turn off for accounts from previous employers."
-                                        />
-                                    </div>
-                                </>
-                            )}
-                            <div className="col-span-full">
-                                <ToggleInput
-                                    id={`${id}-use-custom-ror`}
-                                    label="Custom Return Rate"
-                                    enabled={form.useCustomROR}
-                                    setEnabled={(val) => updateForm('useCustomROR', val)}
-                                    tooltip="Override global return rate assumptions with a custom rate for this account."
-                                />
-                            </div>
                         </div>
                     )}
                     {selectedType === ESPPAccount && (
@@ -331,48 +386,26 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                                 onChange={(val) => updateForm('amount', val)}
                                 tooltip="Current market value of your ESPP shares."
                             />
-                            <NameInput
-                                id={`${id}-ticker`}
-                                label="Stock Ticker"
-                                value={form.stockTicker}
-                                onChange={(val) => updateForm('stockTicker', val)}
-                                placeholder="e.g., AAPL"
-                            />
-                            <CurrencyInput
-                                id={`${id}-share-price`}
-                                label="Current Share Price"
-                                value={form.currentSharePrice}
-                                onChange={(val) => updateForm('currentSharePrice', val)}
-                                tooltip="Current price per share for easier value tracking."
-                            />
-                            {form.useCustomROR && (
-                                <PercentageInput
-                                    id={`${id}-custom-ror`}
-                                    label="Expected Growth"
-                                    value={form.customROR}
-                                    onChange={(val) => updateForm('customROR', val)}
-                                    max={30}
-                                    tooltip="Expected annual stock growth rate. Overrides global assumptions."
+                            <CardSection
+                                id={`${id}-section-stock`}
+                                title="Stock & Purchase Settings"
+                                summary={getESPPSettingsSummary(form)}
+                                gridClassName={MODAL_SECTION_GRID}
+                            >
+                                <NameInput
+                                    id={`${id}-ticker`}
+                                    label="Stock Ticker"
+                                    value={form.stockTicker}
+                                    onChange={(val) => updateForm('stockTicker', val)}
+                                    placeholder="e.g., AAPL"
                                 />
-                            )}
-                            <DropdownInput
-                                id={`${id}-withdrawal-pref`}
-                                label="Withdrawal Preference"
-                                value={form.withdrawalPreference}
-                                onChange={(val) => updateForm('withdrawalPreference', val as ESPPWithdrawalPreference)}
-                                options={ESPP_WITHDRAWAL_PREFERENCE_OPTIONS}
-                                tooltip="Controls which lots are sold first during retirement withdrawals."
-                            />
-                            <NumberInput
-                                id={`${id}-min-hold`}
-                                label="Min Holding (Days)"
-                                value={form.minimumHoldingDays}
-                                onChange={(val) => updateForm('minimumHoldingDays', val)}
-                                min={0}
-                                max={1095}
-                                tooltip="Employer-required holding period before shares can be sold."
-                            />
-                            <div className="col-span-full">
+                                <CurrencyInput
+                                    id={`${id}-share-price`}
+                                    label="Current Share Price"
+                                    value={form.currentSharePrice}
+                                    onChange={(val) => updateForm('currentSharePrice', val)}
+                                    tooltip="Current price per share for easier value tracking."
+                                />
                                 <ToggleInput
                                     id={`${id}-use-custom-ror`}
                                     label="Custom Growth Rate"
@@ -380,7 +413,34 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                                     setEnabled={(val) => updateForm('useCustomROR', val)}
                                     tooltip="Override global return rate assumptions with a custom rate for this ESPP."
                                 />
-                            </div>
+                                {form.useCustomROR && (
+                                    <PercentageInput
+                                        id={`${id}-custom-ror`}
+                                        label="Expected Growth"
+                                        value={form.customROR}
+                                        onChange={(val) => updateForm('customROR', val)}
+                                        max={30}
+                                        tooltip="Expected annual stock growth rate. Overrides global assumptions."
+                                    />
+                                )}
+                                <DropdownInput
+                                    id={`${id}-withdrawal-pref`}
+                                    label="Withdrawal Preference"
+                                    value={form.withdrawalPreference}
+                                    onChange={(val) => updateForm('withdrawalPreference', val as ESPPWithdrawalPreference)}
+                                    options={ESPP_WITHDRAWAL_PREFERENCE_OPTIONS}
+                                    tooltip="Controls which lots are sold first during retirement withdrawals."
+                                />
+                                <NumberInput
+                                    id={`${id}-min-hold`}
+                                    label="Min Holding (Days)"
+                                    value={form.minimumHoldingDays}
+                                    onChange={(val) => updateForm('minimumHoldingDays', val)}
+                                    min={0}
+                                    max={1095}
+                                    tooltip="Employer-required holding period before shares can be sold."
+                                />
+                            </CardSection>
                             <div className="col-span-full text-sm text-content-muted">
                                 ESPP purchases are configured in the associated Work Income. Link this account to an income source with ESPP enabled.
                             </div>

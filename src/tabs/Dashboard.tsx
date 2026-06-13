@@ -264,7 +264,9 @@ export default function Dashboard() {
                       <div className="bg-[var(--c-surface-raised)] rounded-xl border border-border-subtle p-3 text-center">
                         <p className="text-xs text-content-muted uppercase tracking-wide mb-1">Expenses</p>
                         <p className="text-lg font-bold text-cat-orange">{formatCompactCurrency(dashboardMetrics.monthlyExpenses, { forceExact })}</p>
-                        <p className="text-xs text-content-subtle">per month</p>
+                        {/* Annualized average (annual total / 12) — deliberately different from
+                            Budget/Allocation's "this month" figures, which use today's active expenses. */}
+                        <p className="text-xs text-content-subtle">avg/mo this year</p>
                       </div>
                     </div>
 

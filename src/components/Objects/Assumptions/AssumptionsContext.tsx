@@ -150,6 +150,10 @@ export interface AssumptionsState {
   display: {
     useCompactCurrency: boolean; // Show $1.2M instead of $1,200,000
     showExperimentalFeatures: boolean; // Show Tax, Scenarios, Ratios tabs
+    // Show the Testing tab and chart self-check diagnostics. Optional so saved
+    // data (and existing display literals) predating the flag stay valid;
+    // migrateAssumptions fills in the default (false) on load.
+    showDevTools?: boolean;
     hsaEligible: boolean; // Whether user has HDHP and is eligible for HSA
   };
   priorities: PriorityBucket[];
@@ -194,6 +198,7 @@ export const defaultAssumptions: AssumptionsState = {
   display: {
     useCompactCurrency: true,
     showExperimentalFeatures: false,
+    showDevTools: false,
     hsaEligible: true,
   },
   priorities: [],
@@ -508,7 +513,7 @@ export const AssumptionsProvider = ({ children }: { children: ReactNode }) => {
         const parsed = JSON.parse(saved);
         // Deep merge with defaults to handle missing fields from older versions
         return migrateAssumptions(parsed, initial);
-      } catch (e) {
+      } catch {
         // JSON parse failed - return defaults
         return initial;
       }

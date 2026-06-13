@@ -4,6 +4,7 @@ import { TaxContext } from '../../../components/Objects/Taxes/TaxContext';
 import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider';
 import { useArrowKeyAdjust } from '../../../hooks/useKeyboardShortcuts';
 import type { SankeyImbalance } from '../../../components/Charts/CashflowSankey';
+import type { SimulationYear } from '../../../services/simulation/types';
 import { calculateNetWorth, formatCompactCurrency } from './FutureUtils';
 import { Panel } from "../../../components/Layout/Primitives";
 
@@ -17,10 +18,11 @@ const CashflowSankey = lazy(() =>
 // and defeat the memo bailout.
 const EMPTY_RECORD: Record<string, number> = Object.freeze({});
 
-export const CashflowTab = React.memo(({ simulationData }: { simulationData: any[] }) => {
+export const CashflowTab = React.memo(({ simulationData }: { simulationData: SimulationYear[] }) => {
     const { state: assumptions } = useContext(AssumptionsContext);
     const { state: taxState } = useContext(TaxContext);
     const forceExact = assumptions.display?.useCompactCurrency === false;
+    const showDevTools = assumptions.display?.showDevTools ?? false;
     const formatCurrency = (value: number) => formatCompactCurrency(value || 0, { forceExact });
     const startYear = simulationData.length > 0 ? simulationData[0].year : new Date().getFullYear();
     const endYear = simulationData.length > 0 ? simulationData[simulationData.length - 1].year : startYear;
@@ -159,8 +161,10 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: any
                 </div>
             )}
 
-            {/* Sankey Imbalance Error (Development Debug Aid) */}
-            {sankeyImbalances.length > 0 && (
+            {/* Sankey Imbalance Error (Development Debug Aid) — accounting
+                self-check, only shown when Developer tools is enabled. The
+                balance check itself still runs (cheap; Testing tab uses it). */}
+            {showDevTools && sankeyImbalances.length > 0 && (
                 <div className="p-3 bg-negative-tint/20 border border-negative-strong rounded-lg text-sm">
                     <div className="flex flex-col gap-1">
                         <span className="text-negative font-semibold">⚠️ Sankey Imbalance Detected:</span>

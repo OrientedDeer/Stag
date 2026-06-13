@@ -270,7 +270,14 @@ export default function AssumptionTab() {
                             label="Experimental"
                             enabled={state.display?.showExperimentalFeatures ?? false}
                             setEnabled={(val) => dispatch({ type: "UPDATE_DISPLAY", payload: { showExperimentalFeatures: val } })}
-                            tooltip="Show Testing tab and experimental calculators"
+                            tooltip="Show experimental calculators in the Testing tab"
+                        />
+
+                        <ToggleInput
+                            label="Developer tools"
+                            enabled={state.display?.showDevTools ?? false}
+                            setEnabled={(val) => dispatch({ type: "UPDATE_DISPLAY", payload: { showDevTools: val } })}
+                            tooltip="Show the Testing tab and chart self-check diagnostics."
                         />
 
                         <ToggleInput

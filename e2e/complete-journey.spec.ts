@@ -61,7 +61,7 @@ test.describe('Complete User Journey', () => {
     await expect(page.locator('main')).toBeVisible();
 
     // Step 6: View charts/projections
-    await navigateToTab(page, 'Charts');
+    await navigateToTab(page, 'Projection');
     await expect(page.locator('main')).toBeVisible();
 
     // Verify chart renders
@@ -115,7 +115,7 @@ test.describe('Complete User Journey', () => {
     await waitForLocalStorageSave(page);
 
     // Navigate to charts
-    await navigateToTab(page, 'Charts');
+    await navigateToTab(page, 'Projection');
     await expect(page.locator('main')).toBeVisible();
 
     // Verify chart content

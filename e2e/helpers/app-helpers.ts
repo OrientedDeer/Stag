@@ -43,8 +43,9 @@ export async function navigateToTab(page: Page, tabName: string) {
     'Assumptions': 'Assumptions',
     'Allocation': 'Allocation',
     'Withdrawal': 'Withdrawal',
-    'Future': 'Charts',
-    'Charts': 'Charts',
+    'Future': 'Projection',
+    'Charts': 'Projection',
+    'Projection': 'Projection',
   };
 
   const linkText = tabMappings[tabName] || tabName;
@@ -114,8 +115,7 @@ export async function addWorkIncome(
 export async function addExpense(
   page: Page,
   name: string,
-  amount: number,
-  frequency: 'Annually' | 'Monthly' = 'Monthly'
+  amount: number
 ) {
   // Click add expense button
   await page.getByRole('button', { name: /add expense/i }).first().click();

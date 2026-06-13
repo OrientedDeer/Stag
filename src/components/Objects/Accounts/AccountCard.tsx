@@ -15,6 +15,39 @@ import AddESPPLotModal from "./AddESPPLotModal.js";
 import { formatCompactCurrency } from "../../../tabs/Future/tabs/FutureUtils.js";
 import { AssumptionsContext } from "../Assumptions/AssumptionsContext.js";
 import { ExpandableCard } from "../../Layout/ExpandableCard.js";
+import { CardSection } from "../../Layout/CardSection.js";
+
+// Grid layout shared by the card body and its collapsible sections.
+const CARD_SECTION_GRID = "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 px-4 pb-4";
+
+const fmt = (n: number) => formatCompactCurrency(n, { forceExact: true });
+
+/** Paystub-style one-liner for the collapsed Growth & Fees section. */
+function getGrowthFeesSummary(customROR: number | undefined, expenseRatio: number): string {
+    const ror = customROR !== undefined ? `${customROR}% custom` : "Global return";
+    return `${ror} · ${expenseRatio}% ER`;
+}
+
+function get401kDetailsSummary(account: InvestedAccount): string {
+    const parts: string[] = [];
+    if (account.employerBalance > 0) parts.push(`${fmt(account.employerBalance)} employer`);
+    parts.push(account.vestedPerYear >= 1.0 ? "fully vested" : "vesting schedule");
+    if (!account.isContributionEligible) parts.push("not eligible");
+    return parts.join(" · ");
+}
+
+function getESPPSettingsSummary(account: ESPPAccount): string {
+    const parts: string[] = [];
+    if (account.stockTicker) parts.push(account.stockTicker);
+    if (account.currentSharePrice) parts.push(`$${account.currentSharePrice}/sh`);
+    if (account.customROR !== undefined) parts.push(`${account.customROR}% growth`);
+    const prefLabel = ESPP_WITHDRAWAL_PREFERENCE_OPTIONS
+        .find((opt) => opt.value === account.withdrawalPreference)?.label.split(" (")[0]
+        ?? account.withdrawalPreference;
+    parts.push(prefLabel);
+    if (account.minimumHoldingDays > 0) parts.push(`${account.minimumHoldingDays}d hold`);
+    return parts.join(" · ");
+}
 
 function getAccountDescriptor(account: AnyAccount): string {
     if (account instanceof SavedAccount) return "CASH";
@@ -140,6 +173,11 @@ function AccountCard({ account }: { account: AnyAccount }): ReactElement {
                         label="Current Amount"
                         value={account.amount}
                         onChange={(val) => handleFieldUpdate("amount", val)}
+                        tooltip={account instanceof PropertyAccount
+                            ? "Synced with the linked mortgage expense's valuation."
+                            : account instanceof DebtAccount
+                                ? "Synced with the linked loan expense's balance."
+                                : undefined}
                     />
 
                     {account instanceof SavedAccount && (
@@ -244,32 +282,6 @@ function InvestedAccountFields({ account, onFieldUpdate }: InvestedAccountFields
                     tooltip="Your original purchase cost. Used to calculate capital gains taxes on withdrawals."
                 />
             )}
-            <PercentageInput
-                id={`${account.id}-expense-ratio`}
-                label="Expense Ratio"
-                value={account.expenseRatio}
-                onChange={(val) => onFieldUpdate("expenseRatio", val)}
-                tooltip="Annual fee charged by the fund. Example: 0.15% = $15 per $10,000 invested per year."
-            />
-            <ToggleInput
-                id={`${account.id}-use-custom-ror`}
-                label="Custom Return Rate"
-                enabled={account.customROR !== undefined}
-                setEnabled={(checked) => {
-                    onFieldUpdate("customROR", checked ? 7.0 : undefined);
-                }}
-                tooltip="Override global return rate assumptions with a custom rate for this account."
-            />
-            {account.customROR !== undefined && (
-                <PercentageInput
-                    id={`${account.id}-custom-ror`}
-                    label="Return Rate"
-                    value={account.customROR}
-                    onChange={(val) => onFieldUpdate("customROR", val)}
-                    max={30}
-                    tooltip="Expected annual return rate for this account. Overrides the global assumption."
-                />
-            )}
             <StyledSelect
                 id={`${account.id}-tax-type`}
                 label="Tax Type"
@@ -278,8 +290,48 @@ function InvestedAccountFields({ account, onFieldUpdate }: InvestedAccountFields
                 options={TaxTypeEnum as unknown as string[]}
                 tooltip="Tax treatment: Brokerage (taxable), Traditional (pre-tax, taxed on withdrawal), Roth (post-tax, tax-free growth)."
             />
+            <CardSection
+                id={`${account.id}-section-growth`}
+                title="Growth & Fees"
+                summary={getGrowthFeesSummary(account.customROR, account.expenseRatio)}
+                gridClassName={CARD_SECTION_GRID}
+            >
+                <PercentageInput
+                    id={`${account.id}-expense-ratio`}
+                    label="Expense Ratio"
+                    value={account.expenseRatio}
+                    onChange={(val) => onFieldUpdate("expenseRatio", val)}
+                    tooltip="Annual fee charged by the fund. Example: 0.15% = $15 per $10,000 invested per year."
+                />
+                <ToggleInput
+                    id={`${account.id}-use-custom-ror`}
+                    label="Custom Return Rate"
+                    enabled={account.customROR !== undefined}
+                    setEnabled={(checked) => {
+                        onFieldUpdate("customROR", checked ? 7.0 : undefined);
+                    }}
+                    tooltip="Override global return rate assumptions with a custom rate for this account."
+                />
+                {account.customROR !== undefined && (
+                    <PercentageInput
+                        id={`${account.id}-custom-ror`}
+                        label="Return Rate"
+                        value={account.customROR}
+                        onChange={(val) => onFieldUpdate("customROR", val)}
+                        max={30}
+                        tooltip="Expected annual return rate for this account. Overrides the global assumption."
+                    />
+                )}
+            </CardSection>
             {(account.taxType === 'Roth 401k' || account.taxType === 'Traditional 401k') && (
-                <Contribution401kFields account={account} onFieldUpdate={onFieldUpdate} />
+                <CardSection
+                    id={`${account.id}-section-401k`}
+                    title="401k Details"
+                    summary={get401kDetailsSummary(account)}
+                    gridClassName={CARD_SECTION_GRID}
+                >
+                    <Contribution401kFields account={account} onFieldUpdate={onFieldUpdate} />
+                </CardSection>
             )}
         </>
     );
@@ -377,14 +429,21 @@ function PropertyAccountFields({ account, onFieldUpdate, linkedAccountName }: Pr
                         label="Loan Amount"
                         value={account.loanAmount}
                         onChange={(val) => onFieldUpdate("loanAmount", val)}
+                        tooltip="Synced with the linked mortgage expense's current loan balance."
                     />
                     <CurrencyInput
                         id={`${account.id}-starting-loan-balance`}
                         label="Starting Loan Balance"
                         value={account.startingLoanBalance}
                         onChange={(val) => onFieldUpdate("startingLoanBalance", val)}
+                        tooltip="Synced with the linked mortgage expense."
                     />
-                    {!linkedAccountName && (
+                    {linkedAccountName ? (
+                        <StyledDisplay
+                            label="Linked to Expense"
+                            value={linkedAccountName}
+                        />
+                    ) : (
                         <div className="col-span-full bg-warning-tint/30 border border-warning-strong/50 rounded-lg p-3 text-xs text-warning-bright">
                             <span className="font-semibold">Warning: Missing mortgage expense</span>
                             <p className="text-warning/80 mt-1">Mortgage payments won't be tracked. Try deleting and re-adding this property.</p>
@@ -410,8 +469,14 @@ function DebtAccountFields({ account, onFieldUpdate, linkedAccountName }: DebtAc
                 label="APR"
                 value={account.apr}
                 onChange={(val) => onFieldUpdate("apr", val)}
+                tooltip="Synced with the linked loan expense's APR."
             />
-            {!linkedAccountName && (
+            {linkedAccountName ? (
+                <StyledDisplay
+                    label="Linked to Expense"
+                    value={linkedAccountName}
+                />
+            ) : (
                 <div className="col-span-full bg-warning-tint/30 border border-warning-strong/50 rounded-lg p-3 text-xs text-warning-bright">
                     <span className="font-semibold">Warning: Missing loan expense</span>
                     <p className="text-warning/80 mt-1">Loan payments won't be tracked. Try deleting and re-adding this debt.</p>
@@ -432,58 +497,63 @@ interface ESPPAccountFieldsProps {
 function ESPPAccountFields({ account, onFieldUpdate, onAddLot, onEditLot, onDeleteLot }: ESPPAccountFieldsProps): ReactElement {
     return (
         <>
-            <NameInput
-                id={`${account.id}-ticker`}
-                label="Stock Ticker"
-                value={account.stockTicker || ''}
-                onChange={(val) => onFieldUpdate("stockTicker", val || undefined)}
-                placeholder="e.g., AAPL"
-            />
-            <CurrencyInput
-                id={`${account.id}-share-price`}
-                label="Current Share Price"
-                value={account.currentSharePrice ?? 0}
-                onChange={(val) => onFieldUpdate("currentSharePrice", val || undefined)}
-                tooltip="Current price per share for easier value tracking"
-            />
-
-            <ToggleInput
-                id={`${account.id}-use-custom-ror`}
-                label="Custom Growth Rate"
-                enabled={account.customROR !== undefined}
-                setEnabled={(checked) => {
-                    onFieldUpdate("customROR", checked ? 7.0 : undefined);
-                }}
-                tooltip="Override global return rate assumptions with a custom rate for this ESPP."
-            />
-            {account.customROR !== undefined && (
-                <PercentageInput
-                    id={`${account.id}-custom-ror`}
-                    label="Expected Growth"
-                    value={account.customROR}
-                    onChange={(val) => onFieldUpdate("customROR", val)}
-                    max={30}
-                    tooltip="Expected annual stock growth rate. Overrides global assumptions."
+            <CardSection
+                id={`${account.id}-section-stock`}
+                title="Stock & Purchase Settings"
+                summary={getESPPSettingsSummary(account)}
+                gridClassName={CARD_SECTION_GRID}
+            >
+                <NameInput
+                    id={`${account.id}-ticker`}
+                    label="Stock Ticker"
+                    value={account.stockTicker || ''}
+                    onChange={(val) => onFieldUpdate("stockTicker", val || undefined)}
+                    placeholder="e.g., AAPL"
                 />
-            )}
-
-            <DropdownInput
-                id={`${account.id}-withdrawal-pref`}
-                label="Withdrawal Preference"
-                value={account.withdrawalPreference}
-                onChange={(val) => onFieldUpdate("withdrawalPreference", val as ESPPWithdrawalPreference)}
-                options={ESPP_WITHDRAWAL_PREFERENCE_OPTIONS}
-                tooltip="Controls which lots are sold first during retirement withdrawals"
-            />
-            <NumberInput
-                id={`${account.id}-min-hold`}
-                label="Min Holding (Days)"
-                value={account.minimumHoldingDays}
-                onChange={(val) => onFieldUpdate("minimumHoldingDays", val)}
-                min={0}
-                max={1095}
-                tooltip="Employer-required holding period before shares can be sold"
-            />
+                <CurrencyInput
+                    id={`${account.id}-share-price`}
+                    label="Current Share Price"
+                    value={account.currentSharePrice ?? 0}
+                    onChange={(val) => onFieldUpdate("currentSharePrice", val || undefined)}
+                    tooltip="Current price per share for easier value tracking"
+                />
+                <ToggleInput
+                    id={`${account.id}-use-custom-ror`}
+                    label="Custom Growth Rate"
+                    enabled={account.customROR !== undefined}
+                    setEnabled={(checked) => {
+                        onFieldUpdate("customROR", checked ? 7.0 : undefined);
+                    }}
+                    tooltip="Override global return rate assumptions with a custom rate for this ESPP."
+                />
+                {account.customROR !== undefined && (
+                    <PercentageInput
+                        id={`${account.id}-custom-ror`}
+                        label="Expected Growth"
+                        value={account.customROR}
+                        onChange={(val) => onFieldUpdate("customROR", val)}
+                        max={30}
+                        tooltip="Expected annual stock growth rate. Overrides global assumptions."
+                    />
+                )}
+                <DropdownInput
+                    id={`${account.id}-withdrawal-pref`}
+                    label="Withdrawal Preference"
+                    value={account.withdrawalPreference}
+                    onChange={(val) => onFieldUpdate("withdrawalPreference", val as ESPPWithdrawalPreference)}
+                    options={ESPP_WITHDRAWAL_PREFERENCE_OPTIONS}
+                    tooltip="Controls which lots are sold first during retirement withdrawals"
+                />
+                <NumberInput
+                    id={`${account.id}-min-hold`}
+                    label="Min Holding (Days)"
+                    value={account.minimumHoldingDays}
+                    onChange={(val) => onFieldUpdate("minimumHoldingDays", val)}
+                    min={0}
+                    max={1095}
+                    tooltip="Employer-required holding period before shares can be sold"
+                />
+            </CardSection>
 
             <ESPPHoldingsSummary account={account} />
             <ESPPLotsList account={account} onAddLot={onAddLot} onEditLot={onEditLot} onDeleteLot={onDeleteLot} />

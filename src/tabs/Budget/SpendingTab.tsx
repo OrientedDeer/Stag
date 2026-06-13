@@ -19,6 +19,7 @@ import {
     getActiveExpenses,
     getExpenseMonthlyBudget,
     formatCurrency,
+    MONTH_NAMES,
 } from '../../components/Objects/Budget/budgetUtils';
 import { currencyColumn, readOnlyTextColumn } from '../../components/Layout/DataSheetColumns';
 import { ToggleInput } from '../../components/Layout/InputFields/ToggleInput';
@@ -427,6 +428,11 @@ export default function SpendingTab() {
                 annualTarget,
                 ytdActual,
                 ytdLinearTarget,
+                monthlyTarget,
+                monthsActive,
+                startMonth,
+                plannedMonths,
+                monthsRemaining,
                 actualBalance,
                 projectedBalance,
                 balanceVariance,
@@ -589,7 +595,7 @@ export default function SpendingTab() {
                     <div className="p-4 border-b border-border-default">
                         <h3 className="text-lg font-semibold text-white">Savings Targets</h3>
                         <p className="text-sm text-content-muted mt-1">
-                            Reach-this-balance goals (e.g. emergency fund). Target uses your current monthly expenses ({formatCurrency(currentMonthlyExpenses)}/mo).
+                            Reach-this-balance goals (e.g. emergency fund). Target uses your current monthly expenses ({formatCurrency(currentMonthlyExpenses)}/mo this month).
                         </p>
                     </div>
                     <div className="overflow-x-auto">
@@ -731,6 +737,28 @@ export default function SpendingTab() {
                                             ? `Awaiting contribution · ${formatCurrency(remainingToGo)} planned`
                                         : `Behind · ${cappedProgress.toFixed(0)}% · ${formatCurrency(remainingToGo)} to go`;
 
+                                    // "Why" tooltip: the pacing arithmetic with real numbers plus one
+                                    // line explaining the status. Every value comes straight from the
+                                    // row computation above — nothing is recomputed here. A mid-year
+                                    // goal plans only its active months (annualTarget is prorated and
+                                    // spread over plannedMonths), so a June start reads "7 active months".
+                                    const activeMonthsPhrase = `${row.monthsActive} active month${row.monthsActive === 1 ? '' : 's'}`;
+                                    const remainingMonthsPhrase = `${row.monthsRemaining} month${row.monthsRemaining === 1 ? '' : 's'}`;
+                                    const pacingFormula = `Expected ${formatCurrency(row.ytdLinearTarget)} by ${MONTH_NAMES[trackingMonth - 1]} = ${formatCurrency(row.monthlyTarget)}/mo × ${activeMonthsPhrase} — ${formatCurrency(row.annualTarget)} planned over ${row.plannedMonths} month${row.plannedMonths === 1 ? '' : 's'}${row.startMonth > 1 ? `, funding starts ${MONTH_NAMES[row.startMonth - 1]}` : ''}.`;
+                                    const pacingStatusWhy =
+                                        row.pacing === 'complete'
+                                            ? `Complete — ${formatCurrency(row.ytdActual)} contributed covers the ${formatCurrency(row.annualTarget)} annual goal.`
+                                        : row.pacing === 'ahead'
+                                            ? `Ahead — ${formatCurrency(row.ytdActual)} contributed is above the ${formatCurrency(row.ytdLinearTarget)} expected by now.`
+                                        : row.pacing === 'waiting'
+                                            ? 'Waiting — no contributions logged yet; pacing starts with the first one.'
+                                        : row.pacing === 'behind' && row.monthsRemaining === 0
+                                            ? `Behind — the year ended ${formatCurrency(remainingToGo)} short of the annual goal.`
+                                        : row.pacing === 'behind'
+                                            ? `Behind — even 2× the monthly target for the remaining ${remainingMonthsPhrase} can't reach the annual goal.`
+                                        : `On track — ${formatCurrency(row.ytdActual)} contributed; ${formatCurrency(remainingToGo)} more over the remaining ${remainingMonthsPhrase} keeps the annual goal in reach.`;
+                                    const pacingWhy = `${pacingFormula} ${pacingStatusWhy}`;
+
                                     return (
                                         <tr key={row.accountId} className="hover:bg-surface-input/30">
                                             <td className="px-4 py-3 text-sm text-content-muted">{row.priority}</td>
@@ -783,8 +811,9 @@ export default function SpendingTab() {
                                                                 style={{ width: `${cappedProgress}%` }}
                                                             />
                                                         </div>
-                                                        <span className={`text-xs ${pacingColor}`}>
+                                                        <span className={`text-xs ${pacingColor} inline-flex items-center gap-1`}>
                                                             {pacingText}
+                                                            <Tooltip text={pacingWhy} />
                                                         </span>
                                                     </div>
                                                 ) : (
@@ -895,6 +924,11 @@ interface ContributionRow {
     annualTarget: number;
     ytdActual: number;
     ytdLinearTarget: number;
+    monthlyTarget: number;
+    monthsActive: number;
+    startMonth: number;
+    plannedMonths: number;
+    monthsRemaining: number;
     actualBalance: number;
     projectedBalance: number | null;
     balanceVariance: number | null;

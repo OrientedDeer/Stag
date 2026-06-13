@@ -4,6 +4,7 @@ import { AccountDispatchContext } from '../Accounts/AccountContext';
 import { AssumptionsContext } from '../Assumptions/AssumptionsContext';
 import { MortgageExpense, LoanExpense, isLongTermGoal } from './models';
 import { ConfirmDialog } from '../../Layout/ConfirmDialog';
+import { useReceiptToast } from '../../Layout/Overlays/ReceiptToast';
 
 interface DeleteControlProps {
     expenseId: string;
@@ -15,6 +16,7 @@ const DeleteExpenseControl: React.FC<DeleteControlProps> = ({ expenseId, expense
     const expenseDispatch = useContext(ExpenseDispatchContext);
     const { dispatch: accountDispatch } = useContext(AccountDispatchContext);
     const { state: assumptions, dispatch: assumptionsDispatch } = useContext(AssumptionsContext);
+    const receiptToast = useReceiptToast();
     const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 
     const expense = expenses.find(exp => exp.id === expenseId);
@@ -52,6 +54,19 @@ const DeleteExpenseControl: React.FC<DeleteControlProps> = ({ expenseId, expense
             type: 'DELETE_EXPENSE',
             payload: { id: expenseId }
         });
+
+        // Deletion receipt: confirm what went with the expense. Deliberately
+        // no link — there's nothing to navigate to afterwards.
+        const name = expense?.name ?? expenseName ?? 'expense';
+        let message = `Deleted '${name}'`;
+        if (expense instanceof MortgageExpense && expense.linkedAccountId) {
+            message = `Deleted '${name}' along with its property account`;
+        } else if (expense instanceof LoanExpense && expense.linkedAccountId) {
+            message = `Deleted '${name}' along with its debt account`;
+        } else if (isGoalWithFund) {
+            message = `Deleted goal '${name}' along with its fund account`;
+        }
+        receiptToast.show({ message });
         setIsConfirmOpen(false);
     };
 

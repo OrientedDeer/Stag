@@ -30,9 +30,14 @@ import { TaxOptimizationTab } from './tabs/TaxOptimizationTab';
 import { ScenarioComparisonTab } from './tabs/ScenarioComparisonTab';
 import { FinancialRatiosTab } from './tabs/FinancialRatiosTab';
 import { Panel } from "../../components/Layout/Primitives";
+import { FUTURE_TABS, migrateSavedFutureTab } from './futureTabs';
 
-// All visible tabs
-const all_tabs = ["Overview", "Cashflow", "Assets", "Debt", "Monte Carlo", "Tax", "Scenarios", "Ratios", "Data"];
+// All visible tabs. "Risk" wraps Monte Carlo (which nests its own Historical
+// Backtest toggle); "Strategy" wraps Tax + Scenarios behind a secondary toggle.
+const all_tabs = FUTURE_TABS;
+
+type StrategySubTab = "Tax" | "Scenarios";
+const STRATEGY_SUBTAB_KEY = "stag_strategy_subtab";
 
 // --- Inline Assets Tab (Memoized) ---
 const AssetsTab = React.memo(({ simulationData }: { simulationData: SimulationYear[] }) => {
@@ -165,15 +170,24 @@ export default function FutureTab() {
     const { expenses } = useContext(ExpenseContext);
     const { state: taxState } = useContext(TaxContext);
     const { months: budgetMonths } = useContext(BudgetContext);
-    const [activeTab, setActiveTab] = useState(() => {
-        const saved = localStorage.getItem('stag_future_tab');
-        return saved && all_tabs.includes(saved) ? saved : 'Overview';
+    const [activeTab, setActiveTab] = useState(() =>
+        migrateSavedFutureTab(localStorage.getItem('stag_future_tab'))
+    );
+    const [strategySubTab, setStrategySubTab] = useState<StrategySubTab>(() => {
+        const saved = localStorage.getItem(STRATEGY_SUBTAB_KEY);
+        if (saved === 'Tax' || saved === 'Scenarios') return saved;
+        // First run after the regroup: land on the panel the user last used.
+        return localStorage.getItem('stag_future_tab') === 'Scenarios' ? 'Scenarios' : 'Tax';
     });
 
-    // Persist tab selection
+    // Persist tab selections
     const handleTabChange = (tab: string) => {
         setActiveTab(tab);
         localStorage.setItem('stag_future_tab', tab);
+    };
+    const handleStrategySubTabChange = (tab: StrategySubTab) => {
+        setStrategySubTab(tab);
+        localStorage.setItem(STRATEGY_SUBTAB_KEY, tab);
     };
     const [isLoading, setIsLoading] = useState(false);
 
@@ -310,14 +324,36 @@ export default function FutureTab() {
             <div data-sub-tab-content className={activeTab === 'Debt' ? '' : 'hidden'}>
                 <DebtTab simulationData={simulationWithoutEOY} />
             </div>
-            <div data-sub-tab-content className={activeTab === 'Monte Carlo' ? '' : 'hidden'}>
+            <div data-sub-tab-content className={activeTab === 'Risk' ? '' : 'hidden'}>
+                {/* Monte Carlo nests its own Monte Carlo / Historical Backtest toggle */}
                 <MonteCarloTab simulationData={simulationWithoutEOY} />
             </div>
-            <div data-sub-tab-content className={activeTab === 'Tax' ? '' : 'hidden'}>
-                <TaxOptimizationTab simulationData={simulationWithoutEOY} />
-            </div>
-            <div data-sub-tab-content className={activeTab === 'Scenarios' ? '' : 'hidden'}>
-                <ScenarioComparisonTab simulationData={simulationWithoutEOY} />
+            <div data-sub-tab-content className={activeTab === 'Strategy' ? '' : 'hidden'}>
+                {/* Secondary toggle — same pill idiom as MonteCarloTab's sub-tabs */}
+                <div className="flex gap-1 bg-surface-overlay/50 rounded-lg p-1 w-fit mb-4">
+                    {(['Tax', 'Scenarios'] as const).map((tab) => (
+                        <button
+                            key={tab}
+                            role="tab"
+                            aria-selected={strategySubTab === tab}
+                            onClick={() => handleStrategySubTabChange(tab)}
+                            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                                strategySubTab === tab
+                                    ? 'bg-positive-solid text-white'
+                                    : 'text-content-muted hover:text-white hover:bg-surface-input'
+                            }`}
+                        >
+                            {tab}
+                        </button>
+                    ))}
+                </div>
+                {/* CSS-hidden (not unmounted) so charts stay initialized */}
+                <div className={strategySubTab === 'Tax' ? '' : 'hidden'}>
+                    <TaxOptimizationTab simulationData={simulationWithoutEOY} />
+                </div>
+                <div className={strategySubTab === 'Scenarios' ? '' : 'hidden'}>
+                    <ScenarioComparisonTab simulationData={simulationWithoutEOY} />
+                </div>
             </div>
             <div data-sub-tab-content className={activeTab === 'Ratios' ? '' : 'hidden'}>
                 <FinancialRatiosTab simulationData={simulationWithoutEOY} />
@@ -336,10 +372,10 @@ export default function FutureTab() {
                 {!hasRemainderBucket && (
                     <AlertBanner severity="warning" title="Warning: Disappearing Money" className="mb-6">
                         <p className="text-sm">
-                            You do not have a <strong>"Remainder"</strong> bucket set up in your Priorities.
+                            You do not have a <strong>"Remainder"</strong> bucket set up in Allocation.
                             Any unallocated cash (surplus income) will disappear from the simulation instead of being saved.
                             <br/>
-                            Please go to the <strong>Allocation</strong> tab and create a bucket with Cap Type: <strong>"Remainder"</strong>.
+                            Please go to the <strong>Allocation</strong> page and create a bucket with Cap Type: <strong>"Remainder"</strong>.
                         </p>
                     </AlertBanner>
                 )}

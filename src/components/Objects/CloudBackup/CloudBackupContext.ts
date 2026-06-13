@@ -90,7 +90,7 @@ export async function sha256Hex(text: string): Promise<string> {
 // and restored, but must be stripped before computing the dirty-detection hash so
 // they don't trigger a spurious "Unsaved changes" prompt. (selectedMonth/selectedYear
 // are handled separately — excluded from the backup payload entirely in useFileManager.)
-const PRESENTATION_ONLY_DISPLAY_FIELDS = ['useCompactCurrency', 'showExperimentalFeatures'] as const;
+const PRESENTATION_ONLY_DISPLAY_FIELDS = ['useCompactCurrency', 'showExperimentalFeatures', 'showDevTools'] as const;
 
 // Produce the canonical string used for backup dirty-detection. Accepts either the
 // serialized blob (backup/restore paths) or the live payload object, strips
