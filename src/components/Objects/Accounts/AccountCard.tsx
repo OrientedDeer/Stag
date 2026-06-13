@@ -274,13 +274,16 @@ function InvestedAccountFields({ account, onFieldUpdate }: InvestedAccountFields
     return (
         <>
             {account.taxType === 'Brokerage' && (
-                <CurrencyInput
-                    id={`${account.id}-cost-basis`}
-                    label="Cost Basis"
-                    value={account.costBasis}
-                    onChange={(val) => onFieldUpdate("costBasis", val)}
-                    tooltip="Your original purchase cost. Used to calculate capital gains taxes on withdrawals."
-                />
+                <>
+                    <CurrencyInput
+                        id={`${account.id}-cost-basis`}
+                        label="Cost Basis"
+                        value={account.costBasis}
+                        onChange={(val) => onFieldUpdate("costBasis", val)}
+                        tooltip="Your original purchase cost. Used to calculate capital gains taxes on withdrawals."
+                    />
+                    <BrokerageHoldingsSummary account={account} />
+                </>
             )}
             <StyledSelect
                 id={`${account.id}-tax-type`}
@@ -562,6 +565,41 @@ function ESPPAccountFields({ account, onFieldUpdate, onAddLot, onEditLot, onDele
                 ESPP purchases are configured in the associated Work Income. Link this account to an income source with ESPP enabled to track future purchases.
             </div>
         </>
+    );
+}
+
+function BrokerageHoldingsSummary({ account }: { account: InvestedAccount }): ReactElement {
+    const principal = account.costBasis;
+    const unrealizedGain = account.unrealizedGains;
+    return (
+        <div className="col-span-full bg-surface-overlay/50 border border-border-default rounded-lg p-4">
+            <h4 className="text-sm font-semibold text-white mb-3">Cost Basis Breakdown</h4>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                <div>
+                    <div className="text-content-muted">Current Value</div>
+                    <div className="text-white font-medium">
+                        {account.amount.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
+                    </div>
+                </div>
+                <div>
+                    <div className="text-content-muted">Principal (Cost Basis)</div>
+                    <div className="text-white font-medium">
+                        {principal.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
+                    </div>
+                </div>
+                <div>
+                    <div className="text-content-muted">Unrealized Gain</div>
+                    <div className={`font-medium ${unrealizedGain >= 0 ? 'text-positive' : 'text-negative'}`}>
+                        {unrealizedGain.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
+                        {principal > 0 && (
+                            <span className="text-xs ml-1">
+                                ({((unrealizedGain / principal) * 100).toFixed(1)}%)
+                            </span>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
     );
 }
 
