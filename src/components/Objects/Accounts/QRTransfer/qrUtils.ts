@@ -1,4 +1,5 @@
 import pako from 'pako';
+import { formatDateForInput } from '../../../../utils/formatters';
 
 // Epoch for date conversion: 2020-01-01
 const EPOCH = new Date('2020-01-01').getTime();
@@ -169,15 +170,20 @@ export function daysToDate(days: number): string {
 
 /**
  * Recursively shorten all keys in an object.
- * Handles Date objects by converting to ISO strings.
+ * Handles Date objects by converting to local YYYY-MM-DD strings.
  */
 export function shortenKeys(obj: unknown): unknown {
     if (Array.isArray(obj)) {
         return obj.map(shortenKeys);
     }
-    // Convert Date objects to ISO strings before they get corrupted
+    // The Date fields that flow through here (startDate, endDate, end_date,
+    // grantDate, purchaseDate, goalTargetDate) are all date-only calendar values
+    // picked at local midnight. Serialize them with the local YYYY-MM-DD formatter
+    // rather than toISOString(): UTC serialization rolls the date back a day for
+    // UTC+ users, shifting it on import (issue #73). parseDate() reads the date
+    // portion locally on the way back in, so this round-trips unchanged.
     if (obj instanceof Date) {
-        return obj.toISOString();
+        return formatDateForInput(obj);
     }
     if (obj !== null && typeof obj === 'object') {
         const result: Record<string, unknown> = {};

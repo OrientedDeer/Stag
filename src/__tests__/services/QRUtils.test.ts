@@ -18,6 +18,7 @@ import {
   decompressData,
   exceedsQRLimit,
 } from '../../components/Objects/Accounts/QRTransfer/qrUtils';
+import { parseDate } from '../../components/Objects/modelUtils';
 
 /**
  * Batch 21: QR Utils - Date & Key Transformations
@@ -126,10 +127,13 @@ describe('qrUtils', () => {
       expect(result).toEqual([{ n: 'First', a: 100 }, { n: 'Second', a: 200 }]);
     });
 
-    it('should convert Date objects to ISO strings', () => {
-      const input = { startDate: new Date('2024-06-15T00:00:00Z') };
+    it('should convert Date objects to local YYYY-MM-DD strings', () => {
+      // A date-only value picked at local midnight must serialize to its local
+      // calendar date, not a UTC instant — otherwise UTC+ users round-trip a day
+      // early (issue #73).
+      const input = { startDate: new Date(2024, 5, 15) };
       const result = shortenKeys(input);
-      expect(result).toEqual({ s: '2024-06-15T00:00:00.000Z' });
+      expect(result).toEqual({ s: '2024-06-15' });
     });
 
     it('should pass through unmapped keys unchanged', () => {
@@ -143,6 +147,36 @@ describe('qrUtils', () => {
       expect(shortenKeys(123)).toBe(123);
       expect(shortenKeys(true)).toBe(true);
       expect(shortenKeys(null)).toBe(null);
+    });
+  });
+
+  // Issue #73: a date-only field (created at local midnight) must survive a
+  // shorten -> expand -> parseDate round-trip with its calendar date intact,
+  // regardless of the host timezone. This test only catches the bug when run
+  // in a UTC+ timezone; run with e.g. `TZ=Asia/Tokyo` to exercise it.
+  describe('date-only round-trip (issue #73)', () => {
+    const roundTrip = (localDate: Date): Date | undefined => {
+      const shortened = shortenKeys({ startDate: localDate }) as Record<string, unknown>;
+      const expanded = expandKeys(shortened) as Record<string, unknown>;
+      return parseDate(expanded.startDate);
+    };
+
+    it('preserves the local calendar date through shorten/expand', () => {
+      const original = new Date(2024, 5, 15); // local 2024-06-15 midnight
+      const result = roundTrip(original);
+      expect(result).toBeDefined();
+      expect(result!.getFullYear()).toBe(2024);
+      expect(result!.getMonth()).toBe(5);
+      expect(result!.getDate()).toBe(15);
+    });
+
+    it('does not shift a year boundary date (Jan 1) backward', () => {
+      const original = new Date(2030, 0, 1); // local 2030-01-01 midnight
+      const result = roundTrip(original);
+      expect(result).toBeDefined();
+      expect(result!.getFullYear()).toBe(2030);
+      expect(result!.getMonth()).toBe(0);
+      expect(result!.getDate()).toBe(1);
     });
   });
 
