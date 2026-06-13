@@ -11,6 +11,7 @@ import {
     PropertyAccount,
     InvestedAccount,
     ESPPAccount,
+    RSUAccount,
     reconstituteAccount,
 } from '../../../../components/Objects/Accounts/models';
 import { defaultAssumptions } from '../../../../components/Objects/Assumptions/AssumptionsContext';
@@ -273,5 +274,164 @@ describe('#81 – reconstituteAccount: InvestedAccount costBasis NaN guard', () 
         const result = reconstituteAccount(serialized) as InvestedAccount;
 
         expect(result.costBasis).toBe(0);
+    });
+});
+
+// ─── #86 ────────────────────────────────────────────────────────────────────
+// Sibling of #81: a non-numeric persisted currentSharePrice makes
+// Number(...) NaN. Readers do `currentSharePrice ?? derived`, and NaN ?? x
+// keeps NaN (nullish coalescing only catches null/undefined) → "$NaN/sh" on
+// the ESPP/RSU card header and in per-lot value math. The fix falls back to
+// undefined (the "unset → derive" sentinel) when the parse isn't finite.
+
+describe('#86 – reconstituteAccount: ESPP/RSU currentSharePrice NaN guard', () => {
+    describe('ESPPAccount', () => {
+        it('currentSharePrice: non-numeric string falls back to undefined (not NaN)', () => {
+            const serialized = {
+                className: 'ESPPAccount',
+                id: 'sp-espp1',
+                name: 'Company ESPP',
+                amount: 20_000,
+                currentSharePrice: 'corrupted', // Number('corrupted') === NaN
+            };
+
+            const result = reconstituteAccount(serialized) as ESPPAccount;
+
+            // BUG: before fix, currentSharePrice was NaN → "$NaN/sh"
+            expect(result.currentSharePrice).toBeUndefined();
+            expect(Number.isNaN(result.currentSharePrice as number)).toBe(false);
+        });
+
+        it('currentSharePrice: null falls back to undefined', () => {
+            const serialized = {
+                className: 'ESPPAccount',
+                id: 'sp-espp2',
+                name: 'Company ESPP',
+                amount: 20_000,
+                currentSharePrice: null, // Number(null) === 0 but treated as corrupt-ish; passes !== undefined
+            };
+
+            const result = reconstituteAccount(serialized) as ESPPAccount;
+
+            // Number(null) is 0 (finite), but our intent is "no real price" → keep finite-only.
+            // null is finite-coercible to 0, which is the "unset" sentinel readers already handle.
+            expect(Number.isNaN(result.currentSharePrice as number)).toBe(false);
+        });
+
+        it('currentSharePrice: NaN literal falls back to undefined', () => {
+            const serialized = {
+                className: 'ESPPAccount',
+                id: 'sp-espp3',
+                name: 'Company ESPP',
+                amount: 20_000,
+                currentSharePrice: NaN,
+            };
+
+            const result = reconstituteAccount(serialized) as ESPPAccount;
+
+            expect(result.currentSharePrice).toBeUndefined();
+        });
+
+        it('currentSharePrice: valid numeric value round-trips', () => {
+            const serialized = {
+                className: 'ESPPAccount',
+                id: 'sp-espp4',
+                name: 'Company ESPP',
+                amount: 20_000,
+                currentSharePrice: 42.5,
+            };
+
+            const result = reconstituteAccount(serialized) as ESPPAccount;
+
+            expect(result.currentSharePrice).toBe(42.5);
+        });
+
+        it('currentSharePrice: absent value stays undefined', () => {
+            const serialized = {
+                className: 'ESPPAccount',
+                id: 'sp-espp5',
+                name: 'Company ESPP',
+                amount: 20_000,
+                // currentSharePrice not present
+            };
+
+            const result = reconstituteAccount(serialized) as ESPPAccount;
+
+            expect(result.currentSharePrice).toBeUndefined();
+        });
+    });
+
+    describe('RSUAccount', () => {
+        it('currentSharePrice: non-numeric string falls back to undefined (not NaN)', () => {
+            const serialized = {
+                className: 'RSUAccount',
+                id: 'sp-rsu1',
+                name: 'Company RSU',
+                amount: 30_000,
+                currentSharePrice: 'corrupted',
+            };
+
+            const result = reconstituteAccount(serialized) as RSUAccount;
+
+            // BUG: before fix, currentSharePrice was NaN → "$NaN/sh"
+            expect(result.currentSharePrice).toBeUndefined();
+            expect(Number.isNaN(result.currentSharePrice as number)).toBe(false);
+        });
+
+        it('currentSharePrice: NaN literal falls back to undefined', () => {
+            const serialized = {
+                className: 'RSUAccount',
+                id: 'sp-rsu2',
+                name: 'Company RSU',
+                amount: 30_000,
+                currentSharePrice: NaN,
+            };
+
+            const result = reconstituteAccount(serialized) as RSUAccount;
+
+            expect(result.currentSharePrice).toBeUndefined();
+        });
+
+        it('currentSharePrice: null does not produce NaN', () => {
+            const serialized = {
+                className: 'RSUAccount',
+                id: 'sp-rsu3',
+                name: 'Company RSU',
+                amount: 30_000,
+                currentSharePrice: null,
+            };
+
+            const result = reconstituteAccount(serialized) as RSUAccount;
+
+            expect(Number.isNaN(result.currentSharePrice as number)).toBe(false);
+        });
+
+        it('currentSharePrice: valid numeric value round-trips', () => {
+            const serialized = {
+                className: 'RSUAccount',
+                id: 'sp-rsu4',
+                name: 'Company RSU',
+                amount: 30_000,
+                currentSharePrice: 187.33,
+            };
+
+            const result = reconstituteAccount(serialized) as RSUAccount;
+
+            expect(result.currentSharePrice).toBe(187.33);
+        });
+
+        it('currentSharePrice: absent value stays undefined', () => {
+            const serialized = {
+                className: 'RSUAccount',
+                id: 'sp-rsu5',
+                name: 'Company RSU',
+                amount: 30_000,
+                // currentSharePrice not present
+            };
+
+            const result = reconstituteAccount(serialized) as RSUAccount;
+
+            expect(result.currentSharePrice).toBeUndefined();
+        });
     });
 });

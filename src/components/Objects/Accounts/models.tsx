@@ -1315,6 +1315,21 @@ export const CATEGORY_PALETTES: Record<AccountCategory, string[]> = {
 };
 
 /**
+ * #86: parse a persisted ESPP/RSU `currentSharePrice`. Mirrors the #81 costBasis
+ * NaN guard, but this field is OPTIONAL — readers do `currentSharePrice ?? derived`
+ * (e.g. AccountCard lot math: `amount / totalShares`) and the header gates on a
+ * truthy value. A non-numeric / null / NaN persisted value would make
+ * `Number(...)` produce NaN, which `?? derived` keeps (nullish coalescing only
+ * catches null/undefined) → "$NaN/sh". Returning `undefined` when the parse isn't
+ * finite restores the "unset → derive" path, so no NaN can surface.
+ */
+function parseOptionalSharePrice(raw: unknown): number | undefined {
+    if (raw === undefined) return undefined;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+/**
  * Robustly creates class instances from raw JSON.
  * Maps fields explicitly and provides defaults for missing fields.
  */
@@ -1375,7 +1390,7 @@ export function reconstituteAccount(data: unknown): AnyAccount | null {
                 data.linkedIncomeId ? String(data.linkedIncomeId) : null,
                 data.customROR != null ? Number(data.customROR) : undefined,
                 data.stockTicker ? String(data.stockTicker) : undefined,
-                data.currentSharePrice !== undefined ? Number(data.currentSharePrice) : undefined,
+                parseOptionalSharePrice(data.currentSharePrice),
                 (data.withdrawalPreference as ESPPWithdrawalPreference) ?? 'fifo',
                 Number(data.minimumHoldingDays) || 0
             );
@@ -1396,7 +1411,7 @@ export function reconstituteAccount(data: unknown): AnyAccount | null {
                 data.linkedIncomeId ? String(data.linkedIncomeId) : null,
                 data.customROR != null ? Number(data.customROR) : undefined,
                 data.stockTicker ? String(data.stockTicker) : undefined,
-                data.currentSharePrice !== undefined ? Number(data.currentSharePrice) : undefined,
+                parseOptionalSharePrice(data.currentSharePrice),
                 (data.withdrawalPreference as RSUWithdrawalPreference) ?? 'fifo',
                 Number(data.minimumHoldingDays) || 0
             );
