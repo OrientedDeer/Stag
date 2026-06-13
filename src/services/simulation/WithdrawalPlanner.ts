@@ -33,6 +33,12 @@ import { TaxBracket } from "../../data/TaxData";
 const EARLY_WITHDRAWAL_AGE = 59.5;
 const EARLY_WITHDRAWAL_PENALTY_RATE = 0.10;
 
+// IRS annual limit on a net capital loss deductible against ordinary income
+// (§1211(b)). Used to cap the tax benefit of selling underwater RSU lots so an
+// uncapped loss can't refund unlimited tax or push net proceeds above gross.
+// (Carry-forward of the disallowed excess is not modeled.)
+const ANNUAL_CAPITAL_LOSS_LIMIT = 3000;
+
 // BUG #14 FIX: gross-up divides by (1 - effectiveRate). If a combined
 // marginal+penalty rate reaches or exceeds 1, the denominator is <= 0 and the
 // gross-up returns Infinity/NaN, which then propagates into the plan totals.
@@ -138,7 +144,14 @@ export function createAccountSnapshot(account: AnyAccount, snapshotDate?: Date):
         const saleDate = snapshotDate ?? new Date();
         const sharePrice = account.currentSharePrice ?? (account.amount / Math.max(1, account.totalShares));
 
-        rsuLots = account.lots.map(lot => ({
+        // Only lots past minimumHoldingDays are sellable, and walk them in the
+        // account's configured withdrawalPreference order so the planner's tax
+        // estimate matches the lots growAccounts/removeSoldShares actually
+        // removes (which sorts by the same preference).
+        const eligibleLots = account.getEligibleLots(saleDate);
+        const orderedEligibleLots = account.orderLotsForSale(eligibleLots, saleDate);
+
+        rsuLots = orderedEligibleLots.map(lot => ({
             lotId: lot.id,
             shares: lot.shares,
             currentValuePerShare: sharePrice,
@@ -146,6 +159,10 @@ export function createAccountSnapshot(account: AnyAccount, snapshotDate?: Date):
             isLongTerm: account.isLongTerm(lot, saleDate),
             totalValue: lot.shares * sharePrice,
         }));
+
+        // Cap sellable value at the eligible lots only (ineligible lots are not
+        // liquid). vestedBalance is what the planner is allowed to draw against.
+        vestedBalance = orderedEligibleLots.reduce((sum, lot) => sum + lot.shares * sharePrice, 0);
 
         const unrealizedGains = Math.max(0, account.amount - account.totalCostBasis);
         gainRatio = account.amount > 0 ? unrealizedGains / account.amount : 0;
@@ -1209,12 +1226,34 @@ export function planWithdrawals(
                         continue; // Skip to next account if no value to withdraw
                     }
 
-                    // Short-term gains are taxed at ordinary rates; long-term at the
-                    // LTCG rate. Losses (negative gains) reduce tax (offset).
-                    const stcgTax = rsuSTCG * rsuOrdinaryRate;
-                    const ltcgTax = rsuLTCG * ltcgRate;
+                    // Short-term gains are taxed at ordinary rates; long-term at
+                    // the LTCG rate. Underwater lots carry negative gains (losses).
+                    // Two invariants must hold for a sale:
+                    //  1. A sale's net proceeds can NEVER exceed its gross — a loss
+                    //     refund arrives at tax time, not as extra sale cash, so we
+                    //     floor the per-sale tax at 0 for withdrawal sizing.
+                    //  2. A net capital LOSS only ever offsets up to $3,000 of other
+                    //     income (no uncapped refund, no carry-forward modeled).
+                    // Positive gains: each bucket taxed at its own rate. If buckets
+                    // net to a loss, no negative tax leaks into the sale net.
+                    const rawStcgTax = rsuSTCG * rsuOrdinaryRate;
+                    const rawLtcgTax = rsuLTCG > 0 ? rsuLTCG * ltcgRate : 0;
+                    // Tax actually charged against the sale: positive-gain tax only,
+                    // floored at 0 (losses don't refund cash here).
+                    const stcgTax = Math.max(0, rawStcgTax);
+                    const ltcgTax = rawLtcgTax;
                     const actualTax = stcgTax + ltcgTax;
                     const netReceived = grossToWithdraw - actualTax;
+                    // Realized capital gains reported downstream (MAGI/NIIT). A net
+                    // loss is capped at the $3,000 annual limit so it can't over-
+                    // reduce MAGI; positive gains pass through in full.
+                    const netCapitalGain = rsuSTCG + rsuLTCG;
+                    const reportedSTCG = netCapitalGain < 0
+                        ? Math.max(rsuSTCG, -ANNUAL_CAPITAL_LOSS_LIMIT)
+                        : rsuSTCG;
+                    const reportedLTCG = netCapitalGain < 0 && rsuSTCG >= 0
+                        ? Math.max(rsuLTCG, -ANNUAL_CAPITAL_LOSS_LIMIT)
+                        : rsuLTCG;
 
                     withdrawal = {
                         source: 'rsu',
@@ -1222,7 +1261,7 @@ export function planWithdrawals(
                         accountName: snapshot.accountName,
                         gross: grossToWithdraw,
                         net: netReceived,
-                        capitalGains: { shortTerm: rsuSTCG, longTerm: rsuLTCG },
+                        capitalGains: { shortTerm: reportedSTCG, longTerm: reportedLTCG },
                         // STCG is taxed at ordinary rates, so route its tax through
                         // ordinaryTax — ordinaryTaxOf()/ltcgTaxOf() then split it
                         // correctly (ordinary bucket vs LTCG bucket).
@@ -1232,13 +1271,22 @@ export function planWithdrawals(
                         reason,
                     };
 
-                    cumulativeLTCG += rsuLTCG;
+                    // RSU short-term gains are ordinary income — advance the
+                    // running ordinary income so a later same-year ordinary
+                    // withdrawal bracket-stacks on top of it (parallel to ESPP).
+                    // Only positive STCG raises the bracket; a realized loss
+                    // doesn't lower ordinary brackets here.
+                    if (rsuSTCG > 0) {
+                        runningOrdinaryIncome += rsuSTCG;
+                    }
+
+                    cumulativeLTCG += Math.max(0, rsuLTCG);
                     remainingNetNeeded -= netReceived;
                     totalNet += netReceived;
                     totalGross += grossToWithdraw;
                     totalTax += actualTax;
-                    totalLTCG += rsuLTCG;
-                    totalSTCG += rsuSTCG;
+                    totalLTCG += reportedLTCG;
+                    totalSTCG += reportedSTCG;
 
                     if (rsuSTCG !== 0 || rsuLTCG !== 0) {
                         decisions.push({

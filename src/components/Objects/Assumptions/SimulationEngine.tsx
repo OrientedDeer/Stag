@@ -267,8 +267,14 @@ function simulateOneYearWithNewEngine(
     // is an estimated-tax prepayment subtracted from the year's tax owed.
     // Vesting reads the ORIGINAL incomes (pre-retirement-zeroing carries the RSU
     // config, so a grant keeps vesting after the salary ends).
+    // The sim's base ("current") year — today, or last year in priorYearMode.
+    // RSU FMV projection compounds currentSharePrice (TODAY's price) forward
+    // from THIS year, so the base must be the current calendar year, not the
+    // grant year. Mirrors the startYear computation in useSimulation.
+    const currentSimYear =
+        new Date().getFullYear() - (assumptions.demographics.priorYearMode ? 1 : 0);
     const rsuVestingResult = processRSUVesting(
-        incomesWithEarningsTest, accounts, year, logs
+        incomesWithEarningsTest, accounts, year, currentSimYear, logs
     );
     // Add vest income to allIncomes only — that array drives tax/FICA (via the
     // solver) and the income breakdown. It is NOT added to incomesWithEarningsTest
@@ -630,11 +636,15 @@ function simulateOneYearWithNewEngine(
     // already remitted it (by selling the withholding slice of shares at vest), so
     // it offsets the cash tax due this year. Subtracting it from totalTax means a
     // vest whose withholding ≈ its marginal tax is cash-neutral, while a user who
-    // lowers the rate sees the resulting shortfall reduce spendable cash rather
-    // than have it hidden. Floored at 0 so over-withholding never creates phantom
-    // negative tax (it would otherwise appear as spendable cash).
+    // lowers the rate sees the resulting shortfall reduce spendable cash.
+    //
+    // When the 37% sell-to-cover EXCEEDS actual tax (e.g. a post-retirement vest
+    // year with little other income), the over-withholding is a genuine refund.
+    // We floor totalTax at 0 (no phantom negative tax) AND return the excess as a
+    // cash inflow (rsuWithholdingRefund) below, instead of clamping it away.
     const rsuWithholding = rsuVestingResult.totalWithholding;
     const totalTax = Math.max(0, yearPlan.tax.total - rsuWithholding);
+    const rsuWithholdingRefund = Math.max(0, rsuWithholding - yearPlan.tax.total);
 
     // ------------------------------------------------------------------
     // SANKEY CASH ACCOUNTING (Fix A + Fix B + Fix C)
@@ -664,7 +674,11 @@ function simulateOneYearWithNewEngine(
     const totalCashAvailable =
         spendableIncome
         + withdrawalState.totalWithdrawals
-        - brokerageLTCGFromGross;
+        - brokerageLTCGFromGross
+        // Over-withholding from RSU sell-to-cover comes back as spendable cash
+        // (a tax refund). totalTax is already floored at 0; this restores the
+        // excess so it isn't silently lost.
+        + rsuWithholdingRefund;
     const totalBucketAllocationsForSankey = totalSurplusAllocations + inflowResult.totalBucketAllocations;
     // Use solver's actual expenses (yearPlan.totalExpenses) which reflects GK budget trimming,
     // not the pre-trim totalLivingExpenses. Otherwise the Sankey equation is unbalanced when

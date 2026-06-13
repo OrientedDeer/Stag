@@ -1604,8 +1604,32 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     //
     // Convergence: SS taxable is piecewise-linear and monotonic, so 2-4 iterations.
     let estimatedLTCG = 0;
+    let estimatedSTCG = 0;
     let estimatedTradWithdrawal = 0;
     let estimatedESPPOrdinaryIncome = 0;
+
+    // Realized short-term capital gains (RSU lots sold <1yr from vest) are taxed
+    // as ordinary income by the planner (reported via withdrawalOrdinaryTax), so
+    // we must NOT let calculateTotalFederalTax re-charge that ordinary tax. But
+    // positive STCG still (a) stacks under LTCG for cap-gains bracket placement,
+    // (b) feeds NIIT, and (c) feeds SS-taxability and MAGI. We therefore pass STCG
+    // into the federal helper for those effects and subtract the STCG-induced
+    // ordinary-tax delta so it isn't double-counted against the planner's
+    // withdrawalOrdinaryTax. A realized STCG LOSS is handled entirely by the
+    // planner (capped at the $3,000 annual limit), so it contributes nothing here
+    // — clamp at 0. Mirrors solveWorkingYear, which feeds realizedSTCG into NIIT/MAGI.
+    const stcgForFederal = (stcg: number): number => Math.max(0, stcg);
+    const stcgOrdinaryTaxDelta = (stcg: number): number => {
+        const positive = stcgForFederal(stcg);
+        if (positive === 0) return 0;
+        const withSTCG = TaxService.calculateTotalFederalTax(
+            allOrdinaryIncome, 0, positive, 0, preTaxDeductions, input.taxState.filingStatus, fedParams,
+        ).ordinaryTax;
+        const withoutSTCG = TaxService.calculateTotalFederalTax(
+            allOrdinaryIncome, 0, 0, 0, preTaxDeductions, input.taxState.filingStatus, fedParams,
+        ).ordinaryTax;
+        return withSTCG - withoutSTCG;
+    };
 
     // Initial federal tax: SS taxable computed without Traditional withdrawal
     // Pass allOrdinaryIncome (which includes taxable SS) with SS=0 to skip internal SS calc
@@ -1636,7 +1660,7 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
             // AGI excluding SS includes: base income + conversion + Trad withdrawal + LTCG.
             const updatedSSTaxable = TaxService.getTaxableSocialSecurityBenefits(
                 socialSecurityBenefits,
-                nonSSBaseIncome + conversionAdded + estimatedTradWithdrawal + estimatedESPPOrdinaryIncome + estimatedLTCG,
+                nonSSBaseIncome + conversionAdded + estimatedTradWithdrawal + estimatedESPPOrdinaryIncome + estimatedLTCG + stcgForFederal(estimatedSTCG),
                 0,
                 input.taxState.filingStatus
             );
@@ -1645,29 +1669,40 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
             currentSSTaxable = updatedSSTaxable;
             allOrdinaryIncome = nonSSBaseIncome + currentSSTaxable + conversionAdded;
 
-            // Federal tax: allOrdinaryIncome includes taxable SS, pass SS=0
+            // Federal tax: allOrdinaryIncome includes taxable SS, pass SS=0.
+            // STCG is included so NIIT and the LTCG bracket-stack see it; its
+            // ordinary-tax portion is backed out below (planner already charges it).
             finalFedResult = TaxService.calculateTotalFederalTax(
                 allOrdinaryIncome,
                 0, // SS=0: taxable SS already in allOrdinaryIncome
-                0, // STCG
+                stcgForFederal(estimatedSTCG),
                 estimatedLTCG,
                 preTaxDeductions,
                 input.taxState.filingStatus,
                 fedParams
             );
 
-            // State tax: exclude SS taxable (DC and most states exempt SS)
-            // Include LTCG in base (DC and most states tax gains as ordinary income)
+            // State tax: exclude SS taxable (DC and most states exempt SS).
+            // Include both LTCG and STCG in base (states tax gains as ordinary
+            // income). STCG state tax is the planner's, so this base only sets
+            // bracket position; the planner's withdrawalOrdinaryTax carries the
+            // STCG state tax. To avoid double-counting we leave STCG out of the
+            // state base (the planner already positioned it via runningOrdinaryIncome).
             finalStateTax = stateParams
                 ? TaxService.calculateTax(allOrdinaryIncome - currentSSTaxable + estimatedLTCG, preTaxDeductions, stateParams)
                 : 0;
         }
 
-        // Deficit includes authoritative LTCG tax (via finalFedResult.totalTax).
+        // Authoritative federal tax EXCLUDING the STCG ordinary tax (the planner
+        // charges that via withdrawalOrdinaryTax / its gross-up). NIIT and the
+        // LTCG bracket-stack effect of STCG are retained.
+        const fedTaxExStcgOrdinary = finalFedResult.totalTax - stcgOrdinaryTaxDelta(estimatedSTCG);
+
+        // Deficit includes authoritative LTCG tax (via fedTaxExStcgOrdinary).
         // Note: classifyIncome adds rmdAmount to spendable, so we don't subtract it again.
         const deficit =
             effectiveLivingExpenses +
-            finalFedResult.totalTax +
+            fedTaxExStcgOrdinary +
             finalStateTax +
             ficaTax +
             irmaaSurcharge -
@@ -1735,14 +1770,17 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
         // taxability (and the taxes/deficit derived from it) one iteration
         // behind the withdrawals that were sized from it.
         const newLTCG = withdrawalResult.totalLTCG;
+        const newSTCG = withdrawalResult.totalSTCG;
         const ltcgDelta = Math.abs(newLTCG - estimatedLTCG);
+        const stcgDelta = Math.abs(newSTCG - estimatedSTCG);
         const tradDelta = Math.abs(newTradWithdrawal - estimatedTradWithdrawal);
         const esppDelta = Math.abs(newESPPOrdinaryIncome - estimatedESPPOrdinaryIncome);
         estimatedLTCG = newLTCG;
+        estimatedSTCG = newSTCG;
         estimatedTradWithdrawal = newTradWithdrawal;
         estimatedESPPOrdinaryIncome = newESPPOrdinaryIncome;
 
-        if (ltcgDelta < 1 && tradDelta < 1 && esppDelta < 1) {
+        if (ltcgDelta < 1 && stcgDelta < 1 && tradDelta < 1 && esppDelta < 1) {
             converged = true;
             break;
         }
@@ -1779,17 +1817,24 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
         .filter(w => w.reason !== 'Required Minimum Distribution')
         .reduce((sum, w) => sum + w.gross, 0);
 
-    // Total tax uses authoritative federal (ordinary + LTCG + NIIT) + state (with LTCG)
-    // + withdrawal ordinary tax (Roth 5-year, Traditional, HSA) + FICA + penalties
+    // Authoritative federal tax with the STCG ordinary portion backed out (the
+    // planner charges RSU STCG ordinary tax via withdrawalOrdinaryTax). NIIT and
+    // the LTCG bracket-stack effect of STCG remain in finalFedResult.
+    const finalFedTaxExStcgOrdinary = finalFedResult.totalTax - stcgOrdinaryTaxDelta(estimatedSTCG);
+
+    // Total tax uses authoritative federal (ordinary + LTCG + NIIT, less STCG
+    // ordinary which the planner carries) + state (with LTCG) + withdrawal
+    // ordinary tax (Roth 5-year, Traditional, HSA, RSU STCG) + FICA + penalties
     // + Medicare IRMAA surcharge (from year N-2 MAGI).
-    const totalTax = finalFedResult.totalTax + finalStateTax + withdrawalOrdinaryTax + ficaTax + totalPenalties + irmaaSurcharge;
+    const totalTax = finalFedTaxExStcgOrdinary + finalStateTax + withdrawalOrdinaryTax + ficaTax + totalPenalties + irmaaSurcharge;
 
     // The year's MAGI (≈ AGI) — stored so year N+2 can read it for its IRMAA
     // lookback. Equals all ordinary income (incl. taxable SS + conversion) plus the
     // deficit-funding Traditional withdrawal, ESPP bargain element, and realized
-    // LTCG. (Tax-exempt interest, the only AGI→MAGI add-back, isn't tracked yet.)
+    // capital gains (long- AND short-term). (Tax-exempt interest, the only
+    // AGI→MAGI add-back, isn't tracked yet.)
     const yearMAGI = Math.max(0,
-        allOrdinaryIncome + estimatedTradWithdrawal + estimatedESPPOrdinaryIncome + estimatedLTCG);
+        allOrdinaryIncome + estimatedTradWithdrawal + estimatedESPPOrdinaryIncome + estimatedLTCG + stcgForFederal(estimatedSTCG));
 
     // Final cash flow.
     // LTCG tax is a pass-through: brokerage gross-up pays it directly to the government.
@@ -1828,10 +1873,15 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     // capitalGainsLT: authoritative bracket-stacked LTCG tax from calculateTotalFederalTax
     // niit: from calculateTotalFederalTax (3.8% on investment income above threshold)
     const taxSummary: YearPlanTax = {
-        federal: finalFedResult.ordinaryTax,
+        // Back out the STCG ordinary tax — it's reported under withdrawalOrdinaryTax
+        // (planner), so leaving it in finalFedResult.ordinaryTax would double-show it.
+        federal: finalFedResult.ordinaryTax - stcgOrdinaryTaxDelta(estimatedSTCG),
         state: finalStateTax,
         fica: ficaTax,
         capitalGainsLT: finalFedResult.ltcgTax,
+        // RSU short-term gains are taxed at ordinary rates and reported via
+        // withdrawalOrdinaryTax (not here) to keep the component fields summing
+        // to `total` without double-counting.
         capitalGainsST: 0,
         withdrawalOrdinaryTax,
         niit: finalFedResult.niitTax,

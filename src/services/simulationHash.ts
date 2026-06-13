@@ -1,4 +1,4 @@
-import { AnyAccount } from '../components/Objects/Accounts/models';
+import { AnyAccount, RSUAccount } from '../components/Objects/Accounts/models';
 import { AnyIncome, WorkIncome, FERSPensionIncome, CSRSPensionIncome, FutureSocialSecurityIncome } from '../components/Objects/Income/models';
 import { AnyExpense } from '../components/Objects/Expense/models';
 import { AssumptionsState } from '../components/Objects/Assumptions/AssumptionsContext';
@@ -109,6 +109,25 @@ export function getSimulationInputHash(
             amount: a.amount,
             name: a.name,
             className: a.constructor.name,
+            // RSU sale tax/eligibility depend on per-share price, the lot pool,
+            // and the sell-order / holding-period settings — editing any of these
+            // changes simulation output, so include them or the cache goes stale.
+            ...(a instanceof RSUAccount
+                ? {
+                    currentSharePrice: a.currentSharePrice,
+                    withdrawalPreference: a.withdrawalPreference,
+                    minimumHoldingDays: a.minimumHoldingDays,
+                    lots: a.lots.map(lot => ({
+                        id: lot.id,
+                        shares: lot.shares,
+                        fmvAtVest: lot.fmvAtVest,
+                        costBasis: lot.costBasis,
+                        vestDate: lot.vestDate instanceof Date
+                            ? lot.vestDate.getTime()
+                            : lot.vestDate,
+                    })),
+                }
+                : {}),
         })),
         incomes: incomes.map(serializeIncomeFields),
         expenses: expenses.map(e => ({

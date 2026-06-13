@@ -99,6 +99,11 @@ export abstract class BaseIncome implements Income {
 // 3. Concrete Classes
 
 export class WorkIncome extends BaseIncome {
+  // Non-enumerable memo for the RSU vest schedule (defined lazily via
+  // Object.defineProperty in getRSUVestSchedule so it never serializes).
+  // `declare` gives the type without emitting an enumerable class field.
+  private declare _rsuScheduleCache?: { key: string; schedule: { yearOffset: number; shares: number }[] };
+
   constructor(
     id: string,
     name: string,
@@ -368,6 +373,28 @@ export class WorkIncome extends BaseIncome {
       return [];
     }
 
+    // Memoize the tranche list, keyed on the schedule-defining inputs so a
+    // mutated field invalidates the cache. Avoids rebuilding it on every
+    // getAnnualRSUVestShares call (per account, per year, ×1000 in Monte Carlo).
+    // The cache is held on a NON-ENUMERABLE property so it never leaks into the
+    // QR / localStorage serializer (shortenKeys dumps all enumerable own keys).
+    const cacheKey = `${this.rsuVestingSchedule}|${this.rsuGrantShares}|${this.rsuVestFrequency}`;
+    const cache = this._rsuScheduleCache;
+    if (cache && cache.key === cacheKey) {
+      return cache.schedule;
+    }
+
+    const schedule = this.buildRSUVestSchedule();
+    Object.defineProperty(this, '_rsuScheduleCache', {
+      value: { key: cacheKey, schedule },
+      enumerable: false,
+      writable: true,
+      configurable: true,
+    });
+    return schedule;
+  }
+
+  private buildRSUVestSchedule(): { yearOffset: number; shares: number }[] {
     const vestingYears = this.getRSUVestingYears();
 
     if (this.rsuVestingSchedule === 'cliff-1yr') {
@@ -393,26 +420,46 @@ export class WorkIncome extends BaseIncome {
    * configured or the income has no start date.
    */
   getAnnualRSUVestShares(year: number): number {
+    return this.getRSUVestEventsForYear(year).reduce((sum, ev) => sum + ev.shares, 0);
+  }
+
+  /**
+   * Resolve the individual vest events (date + shares) that land in a given
+   * calendar year. Each tranche's vest date is the grant date advanced by its
+   * fractional yearOffset (grant month-of-year carries over), so a mid-year
+   * grant's quarterly vests bucket into the correct calendar years AND retain
+   * their real vest month — used to stamp the lot's vestDate (long-term /
+   * minimum-holding eligibility depend on the actual date, not Jan 1).
+   *
+   * Dates are constructed LOCAL (new Date(y, m, d)) — never via ISO strings —
+   * to avoid the recurring date-only UTC off-by-one.
+   */
+  getRSUVestEventsForYear(year: number): { vestDate: Date; shares: number }[] {
     if (this.rsuVestingSchedule === 'NONE' || this.rsuGrantShares <= 0) {
-      return 0;
+      return [];
     }
-    if (!this.startDate) return 0;
+    if (!this.startDate) return [];
 
-    const grantYear = new Date(this.startDate).getFullYear();
-    // Fractional year offset that maps a tranche into the requested calendar
-    // year. yearOffset is measured from the grant; a vest at offset N lands in
-    // calendar year grantYear + ceil-ish bucket. We bucket each tranche by the
-    // calendar year its vest date falls in: grant month-of-year carries over.
-    const grantMonth = new Date(this.startDate).getMonth();
+    const grant = new Date(this.startDate);
+    const grantYear = grant.getFullYear();
+    const grantMonth = grant.getMonth();
+    const grantDay = grant.getDate();
 
-    return this.getRSUVestSchedule().reduce((sum, tranche) => {
-      // Vest date = grant date + yearOffset years. Compute the calendar year it
-      // lands in using the grant's month so a mid-year grant's quarterly vests
-      // bucket into the correct calendar years.
+    const events: { vestDate: Date; shares: number }[] = [];
+    for (const tranche of this.getRSUVestSchedule()) {
+      // Vest date = grant date + yearOffset years. Resolve to an absolute
+      // month index off the grant month so the calendar bucket and the real
+      // vest month both come from the same computation.
       const totalMonths = grantMonth + Math.round(tranche.yearOffset * 12);
       const vestYear = grantYear + Math.floor(totalMonths / 12);
-      return vestYear === year ? sum + tranche.shares : sum;
-    }, 0);
+      if (vestYear !== year) continue;
+      const vestMonth = ((totalMonths % 12) + 12) % 12;
+      events.push({
+        vestDate: new Date(vestYear, vestMonth, grantDay),
+        shares: tranche.shares,
+      });
+    }
+    return events;
   }
 }
 

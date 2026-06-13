@@ -234,8 +234,8 @@ describe('processRSUVesting', () => {
     it('recognizes gross vest value as ordinary (earned) income at the vest year', () => {
         const { inc, acc } = setup(2025, 37, 100, 0);
         const logs: string[] = [];
-        // Cliff vests in grantYear + 1 = 2026.
-        const result = processRSUVesting([inc], [acc], 2026, logs);
+        // Cliff vests in grantYear + 1 = 2026. currentSimYear = 2025 (today).
+        const result = processRSUVesting([inc], [acc], 2026, 2025, logs);
         expect(result.vestIncomes.length).toBe(1);
         const vest = result.vestIncomes[0];
         // 100 shares × $100 FMV = $10,000 gross.
@@ -248,7 +248,7 @@ describe('processRSUVesting', () => {
     it('applies sell-to-cover withholding and nets the remaining shares into the lot', () => {
         const { inc, acc } = setup(2025, 40, 100, 0);
         const logs: string[] = [];
-        const result = processRSUVesting([inc], [acc], 2026, logs);
+        const result = processRSUVesting([inc], [acc], 2026, 2025, logs);
         // 40% withheld of $10,000 = $4,000 prepayment.
         expect(result.totalWithholding).toBeCloseTo(4000, 2);
         // Net shares = 100 × (1 - 0.40) = 60.
@@ -260,10 +260,11 @@ describe('processRSUVesting', () => {
     });
 
     it('compounds FMV-at-vest from the current price by expected growth', () => {
-        // Grant 2025, vest 2026 (1 year), 10% growth → FMV = 100 × 1.1 = 110.
+        // currentSimYear 2025, vest 2026 (1 year), 10% growth → FMV = 100 × 1.1 = 110.
+        // Compounds from the CURRENT sim year (today's price), NOT the grant year.
         const { inc, acc } = setup(2025, 0, 100, 10);
         const logs: string[] = [];
-        const result = processRSUVesting([inc], [acc], 2026, logs);
+        const result = processRSUVesting([inc], [acc], 2026, 2025, logs);
         const vest = result.vestIncomes[0];
         // 100 shares × $110 = $11,000.
         expect(vest.amount).toBeCloseTo(11000, 2);
@@ -273,7 +274,7 @@ describe('processRSUVesting', () => {
     it('produces nothing in a non-vesting year', () => {
         const { inc, acc } = setup(2025, 37, 100, 0);
         const logs: string[] = [];
-        const result = processRSUVesting([inc], [acc], 2025, logs); // grant year, cliff not yet vested
+        const result = processRSUVesting([inc], [acc], 2025, 2025, logs); // grant year, cliff not yet vested
         expect(result.vestIncomes.length).toBe(0);
         expect(result.totalWithholding).toBe(0);
     });

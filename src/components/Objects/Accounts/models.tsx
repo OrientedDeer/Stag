@@ -894,6 +894,19 @@ export class RSUAccount extends BaseAccount {
   }
 
   /**
+   * Public view of the lot-selling order (same sort removeSoldShares uses),
+   * so the withdrawal planner can pre-order lots identically and its reported
+   * tax matches the lots actually removed.
+   */
+  orderLotsForSale(
+    lots: RSULot[],
+    saleDate: Date,
+    lotOrder: RSUWithdrawalPreference = this.withdrawalPreference
+  ): RSULot[] {
+    return this.sortLots(lots, saleDate, lotOrder);
+  }
+
+  /**
    * Calculate tax implications of selling RSU shares.
    *
    * RSU shares were already taxed as ordinary income at vest, so a sale only
@@ -1016,11 +1029,24 @@ export class RSUAccount extends BaseAccount {
     let remaining = sharesToRemove;
     const newLots: RSULot[] = [];
     const useSaleDate = saleDate || new Date();
-    const sortedLots = this.sortLots(this.lots, useSaleDate, lotOrder);
 
-    for (const lot of sortedLots) {
+    // Only lots past minimumHoldingDays are sellable; ineligible lots are always
+    // retained untouched so this matches the planner, which sizes the sale
+    // against eligible shares only (getEligibleLots).
+    const eligibleLots = this.getEligibleLots(useSaleDate);
+    const eligibleIds = new Set(eligibleLots.map(lot => lot.id));
+    const sortedEligible = this.sortLots(eligibleLots, useSaleDate, lotOrder);
+
+    // Retain every ineligible lot as-is (they can't be sold yet).
+    for (const lot of this.lots) {
+      if (!eligibleIds.has(lot.id)) newLots.push(lot);
+    }
+
+    let sharesRemoved = 0;
+    for (const lot of sortedEligible) {
       if (remaining >= lot.shares) {
         // Use entire lot
+        sharesRemoved += lot.shares;
         remaining -= lot.shares;
       } else if (remaining > 0) {
         // Partial lot - keep the remainder (scale cost basis to remaining shares)
@@ -1030,6 +1056,7 @@ export class RSUAccount extends BaseAccount {
           shares: remainingShares,
           costBasis: lot.fmvAtVest * remainingShares,
         });
+        sharesRemoved += remaining;
         remaining = 0;
       } else {
         // Keep the lot as-is
@@ -1037,7 +1064,9 @@ export class RSUAccount extends BaseAccount {
       }
     }
 
-    const saleProceeds = sharesToRemove * salePrice;
+    // Charge proceeds for the shares actually removed (eligibility may cap the
+    // sale below the requested amount), so the balance reconciles with the lots.
+    const saleProceeds = sharesRemoved * salePrice;
     const newAmount = this.amount - saleProceeds;
 
     return new RSUAccount(
@@ -1124,6 +1153,15 @@ export class RSUAccount extends BaseAccount {
 
     const newAmount = this.amount * returnRate;
 
+    // Advance the per-share price by the same growth so the lot-pool valuation
+    // (gainPerShare / totalValue computed off currentSharePrice) tracks the
+    // compounding account balance. Otherwise a set price stays frozen while
+    // `amount` grows, and the two valuations diverge year over year.
+    const newSharePrice =
+      this.currentSharePrice !== undefined
+        ? this.currentSharePrice * returnRate
+        : this.currentSharePrice;
+
     return new RSUAccount(
       this.id,
       this.name,
@@ -1132,7 +1170,7 @@ export class RSUAccount extends BaseAccount {
       this.linkedIncomeId,
       this.customROR,
       this.stockTicker,
-      this.currentSharePrice,
+      newSharePrice,
       this.withdrawalPreference,
       this.minimumHoldingDays
     );
@@ -1292,7 +1330,11 @@ export function reconstituteAccount(data: unknown): AnyAccount | null {
             // so it is floored at 0 but NOT clamped to amount; clamping would erase the
             // unrealized loss and tax later recovery as phantom gain.
             const employerBalance = Math.max(0, Math.min(Number(data.employerBalance) || 0, amount));
-            const costBasis = Math.max(0, Number(data.costBasis ?? amount));
+            // #81: a non-numeric persisted costBasis makes Number(...) NaN, which
+            // Math.max can't sanitize → "$NaN" on the card. Fall back to `amount`
+            // when the parsed value isn't finite.
+            const parsedCostBasis = Number(data.costBasis ?? amount);
+            const costBasis = Math.max(0, Number.isFinite(parsedCostBasis) ? parsedCostBasis : amount);
             return new InvestedAccount(
                 id, name, amount,
                 employerBalance,

@@ -2,6 +2,7 @@ import { ReactElement } from 'react';
 import { NumberInput } from '../../../Layout/InputFields/NumberInput';
 import { DropdownInput } from '../../../Layout/InputFields/DropdownInput';
 import { PercentageInput } from '../../../Layout/InputFields/PercentageInput';
+import { AlertBanner } from '../../../Layout/AlertBanner';
 import type { WorkIncome, RSUVestingSchedule, RSUVestFrequency } from '../models';
 import type { AllIncomeKeys } from '../IncomeContext';
 import type { RSUAccount } from '../../Accounts/models';
@@ -78,20 +79,14 @@ export function RSUFields({ income, onFieldUpdate, rsuAccounts }: RSUFieldsProps
                             tooltip="Account where vested RSU shares will be deposited."
                         />
                     ) : (
-                        <div className="col-span-full bg-warning-tint/30 border border-warning-strong/50 rounded-lg p-3 text-xs text-warning-bright">
-                            <span className="font-semibold">No RSU Account</span>
-                            <p className="text-warning/80 mt-1">
-                                Create an RSU account in the Accounts tab to track your vested shares.
-                            </p>
-                        </div>
+                        <AlertBanner severity="warning" size="sm" title="No RSU Account" className="col-span-full">
+                            Create an RSU account in the Accounts tab to track your vested shares.
+                        </AlertBanner>
                     )}
                     {rsuAccounts.length > 0 && !income.rsuAccountId && (
-                        <div className="col-span-full bg-warning-tint/30 border border-warning-strong/50 rounded-lg p-3 text-xs text-warning-bright">
-                            <span className="font-semibold">RSU Account Not Linked</span>
-                            <p className="text-warning/80 mt-1">
-                                Select an RSU account above to track your vesting tranches.
-                            </p>
-                        </div>
+                        <AlertBanner severity="warning" size="sm" title="RSU Account Not Linked" className="col-span-full">
+                            Select an RSU account above to track your vesting tranches.
+                        </AlertBanner>
                     )}
                 </>
             )}

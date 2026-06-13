@@ -26,19 +26,22 @@ export interface RSUVestingResult {
  * Compute the projected fair-market value per share at a vest year.
  *
  * Seeds from the linked RSU account's currentSharePrice and compounds it by the
- * income's rsuExpectedStockGrowth from the grant year to the vest year. This FMV
- * is both the ordinary income per share at vest AND the lot's per-share cost
- * basis. Falls back to a $100 reference price when no current price is set, so
- * vesting still produces a meaningful (relative) projection.
+ * income's rsuExpectedStockGrowth from the SIMULATION'S CURRENT YEAR to the vest
+ * year. currentSharePrice is TODAY's price, so the compounding base is the
+ * current simulation year — NOT the grant year, which would double-count the
+ * growth already baked into today's price. This FMV is both the ordinary income
+ * per share at vest AND the lot's per-share cost basis. Falls back to a $100
+ * reference price when no current price is set, so vesting still produces a
+ * meaningful (relative) projection.
  */
 function projectFMVAtVest(
     currentSharePrice: number | undefined,
     expectedStockGrowthPct: number,
-    grantYear: number,
+    currentSimYear: number,
     vestYear: number,
 ): number {
     const basePrice = currentSharePrice && currentSharePrice > 0 ? currentSharePrice : 100;
-    const yearsElapsed = Math.max(0, vestYear - grantYear);
+    const yearsElapsed = Math.max(0, vestYear - currentSimYear);
     return basePrice * Math.pow(1 + expectedStockGrowthPct / 100, yearsElapsed);
 }
 
@@ -61,6 +64,7 @@ export function processRSUVesting(
     incomes: AnyIncome[],
     accounts: AnyAccount[],
     year: number,
+    currentSimYear: number,
     logs: string[],
 ): RSUVestingResult {
     const vestIncomes: PassiveIncome[] = [];
@@ -73,7 +77,11 @@ export function processRSUVesting(
         if (!inc.rsuAccountId) return;
         if (!inc.startDate) return;
 
-        const grossShares = inc.getAnnualRSUVestShares(year);
+        // Per-event vest dates so each lot is stamped with its REAL vest date
+        // (grant month + tranche offset), not a flat Jan-1 bucket — long-term /
+        // minimum-holding eligibility depend on the actual date.
+        const vestEvents = inc.getRSUVestEventsForYear(year);
+        const grossShares = vestEvents.reduce((sum, ev) => sum + ev.shares, 0);
         if (grossShares <= 0) return;
 
         const rsuAccount = accounts.find(
@@ -84,11 +92,12 @@ export function processRSUVesting(
             return;
         }
 
-        const grantYear = new Date(inc.startDate).getFullYear();
+        // All events in the same calendar year share the same projected FMV
+        // (compounded to `year`), so compute it once and reuse per lot.
         const fmvAtVest = projectFMVAtVest(
             rsuAccount.currentSharePrice,
             inc.rsuExpectedStockGrowth,
-            grantYear,
+            currentSimYear,
             year,
         );
 
@@ -99,7 +108,7 @@ export function processRSUVesting(
         // shares. Net-settlement is mathematically identical.
         const withholdingRate = Math.max(0, Math.min(inc.rsuWithholdingRate, 100)) / 100;
         const withholding = grossIncome * withholdingRate;
-        const netShares = grossShares * (1 - withholdingRate);
+        const netSharesTotal = grossShares * (1 - withholdingRate);
 
         totalWithholding += withholding;
 
@@ -124,24 +133,28 @@ export function processRSUVesting(
             true,
         ));
 
-        // Build the net-share lot. fmvAtVest is both the ordinary income per
-        // share AND the cost basis per share for future capital gains.
-        const lot: RSULot = {
-            id: `RSU-LOT-${year}-${inc.id}`,
-            grantDate: new Date(inc.startDate),
-            vestDate: new Date(year, 0, 1),
-            fmvAtVest,
-            shares: netShares,
-            costBasis: fmvAtVest * netShares,
-        };
-
+        // Build one net-share lot per vest event, stamped with the event's real
+        // vest date. fmvAtVest is both the ordinary income per share AND the
+        // cost basis per share for future capital gains. The withholding slice
+        // is applied per-event so the net shares sum to netSharesTotal.
         if (!rsuLots[rsuAccount.id]) rsuLots[rsuAccount.id] = [];
-        rsuLots[rsuAccount.id].push(lot);
+        vestEvents.forEach((ev, idx) => {
+            const netShares = ev.shares * (1 - withholdingRate);
+            if (netShares <= 0) return;
+            rsuLots[rsuAccount.id].push({
+                id: `RSU-LOT-${year}-${inc.id}-${idx}`,
+                grantDate: new Date(inc.startDate as Date),
+                vestDate: ev.vestDate,
+                fmvAtVest,
+                shares: netShares,
+                costBasis: fmvAtVest * netShares,
+            });
+        });
 
         logs.push(
             `[FLOW] RSU: ${inc.name} vested ${grossShares.toFixed(2)} shares @ $${fmvAtVest.toFixed(2)} ` +
             `(gross $${Math.round(grossIncome).toLocaleString()}, withheld $${Math.round(withholding).toLocaleString()} ` +
-            `at ${(withholdingRate * 100).toFixed(0)}%, net ${netShares.toFixed(2)} shares)`
+            `at ${(withholdingRate * 100).toFixed(0)}%, net ${netSharesTotal.toFixed(2)} shares across ${vestEvents.length} event(s))`
         );
     });
 

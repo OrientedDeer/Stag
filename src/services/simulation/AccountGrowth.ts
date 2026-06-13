@@ -33,9 +33,9 @@ export function processInflows(
 ): InflowResult {
     const bucketDetail: Record<string, number> = {};
     let totalEmployerMatch = 0;
-    let totalBucketAllocations = 0;
+    const totalBucketAllocations = 0;
     const esppLots: Record<string, ESPPLot[]> = {};
-    let deficitDebtPayment = 0;
+    const deficitDebtPayment = 0;
 
     // 5a. Payroll & Match
     incomesWithEarningsTest.forEach(inc => {
@@ -319,17 +319,27 @@ export function growAccounts(
             let workingAccount: RSUAccount = acc;
 
             // Apply any withdrawal (sale) recorded for this account: sell shares at
-            // the current (start-of-year) FMV per share before growth, using the
-            // account's configured lot-selling order. Conserves the RSU balance.
+            // the current per-share price before growth, using the account's
+            // configured lot-selling order. Conserves the RSU balance.
+            //
+            // Mirror the planner exactly so the lots removed here match the tax it
+            // reported: same per-share price (currentSharePrice if set, else the
+            // amount/totalShares fallback), same mid-year sale date (so
+            // minimumHoldingDays eligibility lines up), same preference order.
             const grossWithdrawn = userIn < 0 ? -userIn : 0;
             if (grossWithdrawn > 0) {
                 const totalShares = workingAccount.lots.reduce((sum, lot) => sum + lot.shares, 0);
-                const fmvPerShare = totalShares > 0 ? workingAccount.amount / totalShares : 0;
+                const fmvPerShare = workingAccount.currentSharePrice
+                    ?? (totalShares > 0 ? workingAccount.amount / totalShares : 0);
                 if (fmvPerShare > 0) {
-                    const sharesToSell = Math.min(totalShares, grossWithdrawn / fmvPerShare);
-                    workingAccount = workingAccount.removeSoldShares(
-                        sharesToSell, fmvPerShare, undefined, workingAccount.withdrawalPreference
-                    );
+                    const saleDate = new Date(year, 5, 15);
+                    const eligibleShares = workingAccount.getEligibleShares(saleDate);
+                    const sharesToSell = Math.min(eligibleShares, grossWithdrawn / fmvPerShare);
+                    if (sharesToSell > 0) {
+                        workingAccount = workingAccount.removeSoldShares(
+                            sharesToSell, fmvPerShare, saleDate, workingAccount.withdrawalPreference
+                        );
+                    }
                 }
             }
 
