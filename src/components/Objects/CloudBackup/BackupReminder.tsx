@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { CloudBackupContext } from './CloudBackupContext';
 import { useFileManager } from '../Accounts/useFileManager';
 import PassphraseModal from './PassphraseModal';
+import { jsonDateReplacer } from '../../../utils/formatters';
 
 interface BackupReminderProps {
     collapsed?: boolean;
@@ -29,7 +30,7 @@ export default function BackupReminder({ collapsed = false }: BackupReminderProp
 
     const handleSubmit = async (passphrase: string) => {
         try {
-            const plaintext = JSON.stringify(getBackupData());
+            const plaintext = JSON.stringify(getBackupData(), jsonDateReplacer);
             await backup(plaintext, passphrase);
             setModalOpen(false);
         } catch {

@@ -13,6 +13,19 @@ export function formatDateForInput(date: Date | string | undefined): string {
 }
 
 /**
+ * JSON.stringify replacer that serializes Date values as local YYYY-MM-DD
+ * instead of the default UTC toISOString(). Date-only fields (start/end dates,
+ * grant/purchase dates, …) otherwise shift a day earlier for UTC+ users on
+ * file/cloud backup round-trips, since parseDate reads the date portion locally
+ * on import (issue #73). Uses `this[key]` because Date.prototype.toJSON() has
+ * already converted the value to an ISO string by the time the replacer sees it.
+ */
+export function jsonDateReplacer(this: unknown, key: string, value: unknown): unknown {
+    const original = (this as Record<string, unknown> | undefined)?.[key];
+    return original instanceof Date ? formatDateForInput(original) : value;
+}
+
+/**
  * Get abbreviated frequency suffix for display
  */
 export function getFrequencyAbbrev(frequency: string): string {

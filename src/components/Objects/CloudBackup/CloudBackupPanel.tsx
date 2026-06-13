@@ -10,6 +10,7 @@ import { SimulationContext } from '../Assumptions/SimulationContext';
 import { BudgetContext } from '../Budget/BudgetContext';
 import PassphraseModal from './PassphraseModal';
 import QRGenerateModal from '../Accounts/QRTransfer/QRGenerateModal';
+import { jsonDateReplacer } from '../../../utils/formatters';
 import QRScanModal from '../Accounts/QRTransfer/QRScanModal';
 import { Button } from "../../Layout/Primitives";
 
@@ -65,7 +66,7 @@ export default function CloudBackupPanel({ isOpen, onClose }: CloudBackupPanelPr
     const handleBackup = async (passphrase: string) => {
         try {
             const data = getBackupData();
-            const plaintext = JSON.stringify(data);
+            const plaintext = JSON.stringify(data, jsonDateReplacer);
             await backup(plaintext, passphrase);
             setPassphraseMode(null);
             setSuccessMessage('Backup encrypted and uploaded successfully.');

@@ -1,5 +1,6 @@
 import { createContext } from 'react';
 import { BackupMetadata } from '../../../services/cloud/CloudBackupService';
+import { jsonDateReplacer } from '../../../utils/formatters';
 
 export interface CloudBackupState {
     enabled: boolean;
@@ -101,7 +102,7 @@ export function normalizeForDirtyCheck(payload: string | object): string {
         data = typeof payload === 'string' ? JSON.parse(payload) : payload;
     } catch {
         // Not valid JSON (shouldn't happen for a real backup) — hash the raw input.
-        return typeof payload === 'string' ? payload : JSON.stringify(payload);
+        return typeof payload === 'string' ? payload : JSON.stringify(payload, jsonDateReplacer);
     }
     const display = data?.assumptions?.display;
     if (display && typeof display === 'object') {
@@ -109,7 +110,11 @@ export function normalizeForDirtyCheck(payload: string | object): string {
         for (const field of PRESENTATION_ONLY_DISPLAY_FIELDS) delete strippedDisplay[field];
         data = { ...data, assumptions: { ...data.assumptions, display: strippedDisplay } };
     }
-    return JSON.stringify(data);
+    // jsonDateReplacer so the live object path (Date instances) hashes identically
+    // to the uploaded plaintext (which serializes dates as local YYYY-MM-DD). A
+    // string payload here was already parsed, so its dates are strings the
+    // replacer leaves untouched — both paths converge on the same canonical form.
+    return JSON.stringify(data, jsonDateReplacer);
 }
 
 // Single entry point so every hash site (backup, restore, live diff) normalizes

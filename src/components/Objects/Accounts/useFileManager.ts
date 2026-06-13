@@ -12,7 +12,7 @@ import { TaxState, defaultTaxState } from '../../Objects/Taxes/TaxContext';
 import { ImportKeyContext } from './ImportKeyContext';
 import { BudgetContext, BudgetState, reconstituteBudgetState } from '../Budget/BudgetContext';
 import { loadAccountMap, saveAccountMap } from '../../../services/simplefinBalances';
-import { formatDateForInput } from '../../../utils/formatters';
+import { formatDateForInput, jsonDateReplacer } from '../../../utils/formatters';
 
 export interface FullBackup {
     version: number;
@@ -66,7 +66,7 @@ export const useFileManager = () => {
     const handleGlobalExport = () => {
         const fullBackup = getBackupData();
 
-        const blob = new Blob([JSON.stringify(fullBackup, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify(fullBackup, jsonDateReplacer, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
