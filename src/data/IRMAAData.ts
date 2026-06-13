@@ -29,6 +29,7 @@
 
 import { FilingStatus } from "./TaxData";
 import { AssumptionsState } from "../components/Objects/Assumptions/AssumptionsContext";
+import { getTaxableSocialSecurityBenefits } from "../components/Objects/Taxes/taxService/socialSecurity";
 
 /** Age at which Medicare (and therefore IRMAA) eligibility begins. */
 export const MEDICARE_ELIGIBILITY_AGE = 65;
@@ -111,23 +112,93 @@ function inflationMultiplier(year: number, baseYear: number, assumptions: Assump
 }
 
 /**
- * Resolve which IRMAA tier a given MAGI falls into for a year + filing status.
- * Returns the tier index into the year's `surcharges` array.
+ * IRMAA MAGI for a household, given the income components. Centralizes the
+ * `nonSSIncome + taxableSS + LTCG` reconstruction that the conversion search,
+ * the DP, and the effective-conversion-tax helper each used to hand-rebuild.
+ *
+ * IRMAA MAGI uses the TAXABLE portion of Social Security (it's an AGI add-on),
+ * unlike ACA MAGI which uses gross SS — keeping that subtlety in one place.
+ * The taxable-SS computation mirrors calculateTotalFederalTax's (otherIncome =
+ * non-SS ordinary + LTCG, no STCG, no pre-tax deductions), so callers that pass
+ * the already-computed taxableSS from a federal-tax result get the same number.
+ *
+ * MAGI ≈ AGI today: the only AGI→MAGI add-back (tax-exempt interest) isn't
+ * tracked in the app yet. When it lands, add it here and every IRMAA path picks
+ * it up at once.
  */
-function resolveTierIndex(
-    magi: number,
+export function computeIrmaaMAGI(
+    nonSSIncome: number,
+    ssBenefits: number,
+    ltcg: number,
     filingStatus: FilingStatus,
-    schedule: IRMAASchedule,
-    multiplier: number,
 ): number {
+    const taxableSS = getTaxableSocialSecurityBenefits(
+        ssBenefits, nonSSIncome + ltcg, 0, filingStatus,
+    );
+    return nonSSIncome + taxableSS + ltcg;
+}
+
+/**
+ * A year + filing-status IRMAA schedule with its loop-invariant pieces
+ * (base-year tiers + inflation multiplier) resolved exactly once. Hot loops
+ * (the conversion coarse/fine search, the DP grid) probe `annualSurcharge` /
+ * `nextThreshold` many times per year against the SAME (year, filingStatus,
+ * multiplier), so resolving them up front avoids re-running resolveBaseYear,
+ * the IRMAA_DATA lookup, and the Math.pow inflation factor on every probe.
+ */
+export interface ResolvedIRMAASchedule {
+    /** Annual household IRMAA surcharge for a MAGI (0 outside a surcharge tier). */
+    annualSurcharge: (magi: number) => number;
+    /** Smallest tier floor strictly above a MAGI, or null at/above the top tier. */
+    nextThreshold: (magi: number) => number | null;
+}
+
+/**
+ * Resolve the IRMAA schedule for a year + filing status: the base-year tiers and
+ * the inflation multiplier are resolved once, and the returned closures reuse
+ * them across every MAGI probe. The per-call functions below delegate here, so
+ * the surcharge/threshold math has a single definition.
+ */
+export function getIRMAASchedule(
+    filingStatus: FilingStatus,
+    year: number,
+    assumptions: AssumptionsState,
+): ResolvedIRMAASchedule {
+    const baseYear = resolveBaseYear(year);
+    const schedule = IRMAA_DATA[baseYear];
+    const multiplier = inflationMultiplier(year, baseYear, assumptions);
     const thresholds = schedule.thresholds[filingStatus] ?? schedule.thresholds['Single'];
-    let tier = 0;
-    for (const entry of thresholds) {
-        if (magi >= entry.floor * multiplier) {
-            tier = entry.tier;
-        }
-    }
-    return tier;
+    const beneficiaries = filingStatus === 'Married Filing Jointly' ? 2 : 1;
+
+    return {
+        annualSurcharge(magi: number): number {
+            if (!(magi > 0)) return 0;
+
+            // Resolve which tier this MAGI falls into (highest floor at or below it).
+            let tier = 0;
+            for (const entry of thresholds) {
+                if (magi >= entry.floor * multiplier) {
+                    tier = entry.tier;
+                }
+            }
+
+            const surcharge = schedule.surcharges[tier];
+            if (!surcharge || (surcharge.partB === 0 && surcharge.partD === 0)) return 0;
+
+            const monthlyPerBeneficiary = (surcharge.partB + surcharge.partD) * multiplier;
+            return monthlyPerBeneficiary * 12 * beneficiaries;
+        },
+        nextThreshold(magi: number): number | null {
+            let next: number | null = null;
+            for (const entry of thresholds) {
+                const floor = entry.floor * multiplier;
+                if (floor > magi && (next === null || floor < next)) {
+                    next = floor;
+                }
+            }
+            return next;
+        },
+    };
 }
 
 /**
@@ -140,6 +211,9 @@ function resolveTierIndex(
  *
  * Callers are responsible for the age gate (only bill when on Medicare) and the
  * 2-year lookback (pass the MAGI from year N-2 when computing year N's surcharge).
+ *
+ * Single-probe convenience over getIRMAASchedule. Hot loops should resolve the
+ * schedule once and call its `annualSurcharge` instead of this per-call path.
  */
 export function getIRMAAAnnualSurcharge(
     magi: number,
@@ -147,25 +221,16 @@ export function getIRMAAAnnualSurcharge(
     year: number,
     assumptions: AssumptionsState,
 ): number {
-    if (!(magi > 0)) return 0;
-
-    const baseYear = resolveBaseYear(year);
-    const schedule = IRMAA_DATA[baseYear];
-    const multiplier = inflationMultiplier(year, baseYear, assumptions);
-
-    const tierIndex = resolveTierIndex(magi, filingStatus, schedule, multiplier);
-    const surcharge = schedule.surcharges[tierIndex];
-    if (!surcharge || (surcharge.partB === 0 && surcharge.partD === 0)) return 0;
-
-    const monthlyPerBeneficiary = (surcharge.partB + surcharge.partD) * multiplier;
-    const beneficiaries = filingStatus === 'Married Filing Jointly' ? 2 : 1;
-    return monthlyPerBeneficiary * 12 * beneficiaries;
+    return getIRMAASchedule(filingStatus, year, assumptions).annualSurcharge(magi);
 }
 
 /**
  * The smallest IRMAA tier floor strictly above `magi` for a year + filing status,
  * or null when `magi` is already in (or above) the top tier. Used by the conversion
  * search to locate the next surcharge cliff that a conversion might trip.
+ *
+ * Single-probe convenience over getIRMAASchedule; hot loops should resolve the
+ * schedule once and call its `nextThreshold`.
  */
 export function getNextIRMAAThreshold(
     magi: number,
@@ -173,19 +238,7 @@ export function getNextIRMAAThreshold(
     year: number,
     assumptions: AssumptionsState,
 ): number | null {
-    const baseYear = resolveBaseYear(year);
-    const schedule = IRMAA_DATA[baseYear];
-    const multiplier = inflationMultiplier(year, baseYear, assumptions);
-    const thresholds = schedule.thresholds[filingStatus] ?? schedule.thresholds['Single'];
-
-    let next: number | null = null;
-    for (const entry of thresholds) {
-        const floor = entry.floor * multiplier;
-        if (floor > magi && (next === null || floor < next)) {
-            next = floor;
-        }
-    }
-    return next;
+    return getIRMAASchedule(filingStatus, year, assumptions).nextThreshold(magi);
 }
 
 /**

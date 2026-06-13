@@ -50,7 +50,7 @@ import * as TaxService from "../../components/Objects/Taxes/TaxService";
 import { ACAOptions } from "./helpers";
 import { getDistributionPeriod, getRMDStartAge } from "../../data/RMDData";
 import { getAcaCliffThreshold } from "./TaxOptimizedWithdrawal";
-import { getIRMAAAnnualSurcharge, MEDICARE_ELIGIBILITY_AGE } from "../../data/IRMAAData";
+import { getIRMAASchedule, computeIrmaaMAGI, MEDICARE_ELIGIBILITY_AGE } from "../../data/IRMAAData";
 import { InvestedAccount } from "../../components/Objects/Accounts/models";
 
 // =============================================================================
@@ -510,8 +510,13 @@ export function buildDPYearContexts(
         }
 
         // Medicare IRMAA applies at 65+ (mutually exclusive with the ACA cliff above).
-        const irmaaSurchargeForMAGI = age >= MEDICARE_ELIGIBILITY_AGE
-            ? (magi: number) => getIRMAAAnnualSurcharge(magi, effTax.filingStatus, simYear.year, assumptions)
+        // Resolve the schedule once per year and close over it: computeYearTax calls
+        // this once per grid cell, all at the same (filingStatus, year, multiplier).
+        const irmaaSchedule = age >= MEDICARE_ELIGIBILITY_AGE
+            ? getIRMAASchedule(effTax.filingStatus, simYear.year, assumptions)
+            : undefined;
+        const irmaaSurchargeForMAGI = irmaaSchedule
+            ? (magi: number) => irmaaSchedule.annualSurcharge(magi)
             : undefined;
 
         const growthRate = getNetGrowthRate(simYear, assumptions);
@@ -637,11 +642,7 @@ function computeYearTax(
     // portion of SS (it's an AGI add-on), unlike the ACA MAGI above which uses gross SS.
     let irmaaPenalty = 0;
     if (ctx.irmaaSurchargeForMAGI) {
-        const taxableSS = ctx.ssBenefits > 0
-            ? TaxService.getTaxableSocialSecurityBenefits(
-                ctx.ssBenefits, ordinaryIncome + ctx.ltcgIncome, 0, ctx.filingStatus)
-            : 0;
-        const irmaaMagi = ordinaryIncome + taxableSS + ctx.ltcgIncome;
+        const irmaaMagi = computeIrmaaMAGI(ordinaryIncome, ctx.ssBenefits, ctx.ltcgIncome, ctx.filingStatus);
         irmaaPenalty = ctx.irmaaSurchargeForMAGI(irmaaMagi);
     }
 

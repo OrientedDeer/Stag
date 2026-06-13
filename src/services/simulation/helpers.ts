@@ -1,6 +1,7 @@
 import { AnyAccount, InvestedAccount, SavedAccount, ESPPAccount } from "../../components/Objects/Accounts/models";
 import { FilingStatus, TaxParameters } from "../../data/TaxData";
 import * as TaxService from "../../components/Objects/Taxes/TaxService";
+import { computeIrmaaMAGI } from "../../data/IRMAAData";
 
 export type TaxCategory = 'tax-deferred' | 'tax-free' | 'taxable' | 'mixed';
 
@@ -259,8 +260,8 @@ export function calculateEffectiveConversionTax(
     // taxable SS (which the conversion can push up via the torpedo) + LTCG.
     let irmaaSurchargeIncrease = 0;
     if (irmaaOptions) {
-        const irmaaMagiBefore = nonSSIncome + taxResultBefore.taxableSS + ltcgIncome;
-        const irmaaMagiAfter = nonSSIncome + conversionAmount + taxResultAfter.taxableSS + ltcgIncome;
+        const irmaaMagiBefore = computeIrmaaMAGI(nonSSIncome, totalSSBenefits, ltcgIncome, filingStatus);
+        const irmaaMagiAfter = computeIrmaaMAGI(nonSSIncome + conversionAmount, totalSSBenefits, ltcgIncome, filingStatus);
         irmaaSurchargeIncrease = Math.max(0,
             irmaaOptions.annualSurchargeForMAGI(irmaaMagiAfter) -
             irmaaOptions.annualSurchargeForMAGI(irmaaMagiBefore));

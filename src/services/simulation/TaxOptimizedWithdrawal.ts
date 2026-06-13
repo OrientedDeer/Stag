@@ -14,6 +14,7 @@ import * as TaxService from '../../components/Objects/Taxes/TaxService';
 import { TaxState } from '../../components/Objects/Taxes/TaxContext';
 import { AssumptionsState, getBirthYear } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { calculateEffectiveConversionTax, computeConversionTaxBaseline, ACAOptions, IRMAAConversionOptions } from './helpers';
+import { computeIrmaaMAGI } from '../../data/IRMAAData';
 import { getDistributionPeriod } from '../../data/RMDData';
 import { BaselineProjections, RateMatchWalkRow } from './types';
 
@@ -393,10 +394,7 @@ export function coarseToFineSearch(
     // IRMAA MAGI base includes taxable SS (and LTCG), which `currentAGI` (non-SS
     // ordinary) excludes, so reconstruct it the same way calculateEffectiveConversionTax does.
     if (irmaaOptions) {
-        const taxableSSAtZero = TaxService.getTaxableSocialSecurityBenefits(
-            socialSecurity, currentAGI + ltcgIncome, 0, taxState.filingStatus,
-        );
-        const currentIRMAAMagi = currentAGI + taxableSSAtZero + ltcgIncome;
+        const currentIRMAAMagi = computeIrmaaMAGI(currentAGI, socialSecurity, ltcgIncome, taxState.filingStatus);
         const nextThreshold = irmaaOptions.nextThresholdAbove(currentIRMAAMagi);
         if (nextThreshold !== null) {
             const cliffConversion = nextThreshold - currentIRMAAMagi;

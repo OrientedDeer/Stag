@@ -40,7 +40,7 @@ import * as TaxService from "../../components/Objects/Taxes/TaxService";
 import { getLTCGRate } from "../../components/Objects/Taxes/taxService/capitalGainsTax";
 import { calculateEffectiveConversionTax, ACAOptions, IRMAAConversionOptions } from "./helpers";
 import { getRMDStartAge } from "../../data/RMDData";
-import { getIRMAAAnnualSurcharge, getNextIRMAAThreshold, resolveIrmaaLookbackMAGI, MEDICARE_ELIGIBILITY_AGE } from "../../data/IRMAAData";
+import { getIRMAAAnnualSurcharge, getIRMAASchedule, resolveIrmaaLookbackMAGI, MEDICARE_ELIGIBILITY_AGE } from "../../data/IRMAAData";
 import {
     calculateDynamicConversionCeiling,
     coarseToFineSearch,
@@ -266,6 +266,45 @@ function ltcgTaxOf(withdrawals: PlannedWithdrawal[]): number {
     return withdrawals
         .filter(w => w.capitalGains !== undefined)
         .reduce((sum, w) => sum + (w.tax - (w.ordinaryTax ?? 0)), 0);
+}
+
+/**
+ * Compute this year's Medicare IRMAA surcharge (2-year lookback) and log it.
+ *
+ * Shared by the retirement and working-year solvers: both gate on Medicare age,
+ * resolve the lookback MAGI (year N-2, with the supplied `selfProxyMAGI` as the
+ * first-simulated-year fallback), bill the surcharge, and push the same decision
+ * log line. They differ ONLY in the self-proxy MAGI expression, which the caller
+ * passes in — so this collapses two near-identical blocks into one definition.
+ * Returns 0 when not yet on Medicare.
+ */
+function computeIrmaaForYear(
+    input: YearSolverInput,
+    selfProxyMAGI: number,
+    decisions: DecisionLogEntry[],
+): number {
+    if (input.currentAge < MEDICARE_ELIGIBILITY_AGE) return 0;
+
+    const lookbackMAGI = resolveIrmaaLookbackMAGI(
+        input.previousSimulation,
+        input.year,
+        selfProxyMAGI,
+    );
+    const irmaaSurcharge = getIRMAAAnnualSurcharge(
+        lookbackMAGI,
+        input.taxState.filingStatus,
+        input.year,
+        input.assumptions,
+    );
+    if (irmaaSurcharge > 0) {
+        decisions.push({
+            category: 'tax',
+            amount: irmaaSurcharge,
+            description: `Medicare IRMAA surcharge: $${Math.round(irmaaSurcharge).toLocaleString()} ` +
+                `(from ${input.year - 2} MAGI of $${Math.round(lookbackMAGI).toLocaleString()}).`,
+        });
+    }
+    return irmaaSurcharge;
 }
 
 /**
@@ -700,11 +739,12 @@ function planConversion(
     // via the engine's true lookback — this only shapes the conversion size.
     let irmaaConversionOptions: IRMAAConversionOptions | undefined;
     if (input.currentAge + 2 >= MEDICARE_ELIGIBILITY_AGE) {
+        // Resolve the schedule once: coarseToFineSearch probes these closures dozens
+        // of times per conversion-year, all at the same (filingStatus, year, multiplier).
+        const irmaaSchedule = getIRMAASchedule(input.taxState.filingStatus, input.year, input.assumptions);
         irmaaConversionOptions = {
-            annualSurchargeForMAGI: (magi: number) =>
-                getIRMAAAnnualSurcharge(magi, input.taxState.filingStatus, input.year, input.assumptions),
-            nextThresholdAbove: (magi: number) =>
-                getNextIRMAAThreshold(magi, input.taxState.filingStatus, input.year, input.assumptions),
+            annualSurchargeForMAGI: (magi: number) => irmaaSchedule.annualSurcharge(magi),
+            nextThresholdAbove: (magi: number) => irmaaSchedule.nextThreshold(magi),
         };
     }
 
@@ -1545,28 +1585,7 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     // stored MAGI — no within-year circularity. baseOrdinaryIncome is the
     // income-side self-proxy used only for the very first simulated year, when no
     // prior-year MAGI exists at all.
-    let irmaaSurcharge = 0;
-    if (input.currentAge >= MEDICARE_ELIGIBILITY_AGE) {
-        const lookbackMAGI = resolveIrmaaLookbackMAGI(
-            input.previousSimulation,
-            input.year,
-            baseOrdinaryIncome,
-        );
-        irmaaSurcharge = getIRMAAAnnualSurcharge(
-            lookbackMAGI,
-            input.taxState.filingStatus,
-            input.year,
-            input.assumptions,
-        );
-        if (irmaaSurcharge > 0) {
-            decisions.push({
-                category: 'tax',
-                amount: irmaaSurcharge,
-                description: `Medicare IRMAA surcharge: $${Math.round(irmaaSurcharge).toLocaleString()} ` +
-                    `(from ${input.year - 2} MAGI of $${Math.round(lookbackMAGI).toLocaleString()}).`,
-            });
-        }
-    }
+    const irmaaSurcharge = computeIrmaaForYear(input, baseOrdinaryIncome, decisions);
 
     // Iterative deficit loop: converges on LTCG and SS taxability.
     //
@@ -1951,29 +1970,8 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
     // known cash cost, so fold it into the deficit and the year's total tax. The
     // income-side MAGI (non-SS ordinary + taxable SS) is the self-proxy for the
     // very first simulated year, when no prior-year MAGI exists.
-    let irmaaSurcharge = 0;
-    if (input.currentAge >= MEDICARE_ELIGIBILITY_AGE) {
-        const incomeSideMAGI = (taxableOrdinaryBase - socialSecurityBenefits) + taxResult.taxableSS;
-        const lookbackMAGI = resolveIrmaaLookbackMAGI(
-            input.previousSimulation,
-            input.year,
-            incomeSideMAGI,
-        );
-        irmaaSurcharge = getIRMAAAnnualSurcharge(
-            lookbackMAGI,
-            input.taxState.filingStatus,
-            input.year,
-            input.assumptions,
-        );
-        if (irmaaSurcharge > 0) {
-            decisions.push({
-                category: 'tax',
-                amount: irmaaSurcharge,
-                description: `Medicare IRMAA surcharge: $${Math.round(irmaaSurcharge).toLocaleString()} ` +
-                    `(from ${input.year - 2} MAGI of $${Math.round(lookbackMAGI).toLocaleString()}).`,
-            });
-        }
-    }
+    const incomeSideMAGI = (taxableOrdinaryBase - socialSecurityBenefits) + taxResult.taxableSS;
+    const irmaaSurcharge = computeIrmaaForYear(input, incomeSideMAGI, decisions);
 
     // Calculate initial surplus/deficit
     // IMPORTANT: Must subtract pre-tax deductions (401k, HSA) and post-tax deductions
