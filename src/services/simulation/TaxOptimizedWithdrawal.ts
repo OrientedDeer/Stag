@@ -13,7 +13,7 @@ import { TaxParameters, FilingStatus } from '../../data/TaxData';
 import * as TaxService from '../../components/Objects/Taxes/TaxService';
 import { TaxState } from '../../components/Objects/Taxes/TaxContext';
 import { AssumptionsState, getBirthYear } from '../../components/Objects/Assumptions/AssumptionsContext';
-import { calculateEffectiveConversionTax, computeConversionTaxBaseline, ACAOptions } from './helpers';
+import { calculateEffectiveConversionTax, computeConversionTaxBaseline, ACAOptions, IRMAAConversionOptions } from './helpers';
 import { getDistributionPeriod } from '../../data/RMDData';
 import { BaselineProjections, RateMatchWalkRow } from './types';
 
@@ -218,7 +218,8 @@ export function getEffectiveConversionRate(
     taxState: TaxState,
     _year: number,
     stateParams: TaxParameters | null,
-    acaOptions?: ACAOptions
+    acaOptions?: ACAOptions,
+    irmaaOptions?: IRMAAConversionOptions
 ): number {
     // The "before" tax positions are conversion-independent, so compute them once
     // and reuse for both probes instead of recomputing inside each call.
@@ -232,7 +233,7 @@ export function getEffectiveConversionRate(
     );
 
     // Calculate total cost of converting conversionAmount
-    // taxIncrease includes federal tax increase + state tax + ACA subsidy loss
+    // taxIncrease includes federal tax increase + state tax + ACA subsidy loss + IRMAA
     const resultAtAmount = calculateEffectiveConversionTax(
         ordinaryIncome,
         socialSecurity,
@@ -243,6 +244,7 @@ export function getEffectiveConversionRate(
         stateParams,
         acaOptions,
         baseline,
+        irmaaOptions,
     );
 
     // Calculate total cost of converting conversionAmount + $1
@@ -256,6 +258,7 @@ export function getEffectiveConversionRate(
         stateParams,
         acaOptions,
         baseline,
+        irmaaOptions,
     );
 
     // Marginal rate = difference in total cost for $1 more conversion
@@ -299,9 +302,11 @@ export function coarseToFineSearch(
     stateParams: TaxParameters | null,
     acaOptions: ACAOptions | undefined,
     _assumptions?: AssumptionsState,  // Reserved for future inflation adjustments
-    _debugLabel?: string  // For debug logging
+    _debugLabel?: string,  // For debug logging
+    irmaaOptions?: IRMAAConversionOptions  // Medicare IRMAA cliff awareness (age 65+)
 ): CoarseToFineSearchResult {
-    const maxAmount = Math.min(traditionalBalance, SEARCH_CONFIG.maxConversionCap);
+    // `let` because the IRMAA cliff (below) tightens it as an upper bound.
+    let maxAmount = Math.min(traditionalBalance, SEARCH_CONFIG.maxConversionCap);
 
     // EDGE CASE: Check if we're already above target rate at zero conversion
     const rateAtZero = getEffectiveConversionRate(
@@ -313,7 +318,8 @@ export function coarseToFineSearch(
         taxState,
         year,
         stateParams,
-        acaOptions
+        acaOptions,
+        irmaaOptions
     );
 
 
@@ -380,6 +386,42 @@ export function coarseToFineSearch(
         }
     }
 
+    // Special case: Medicare IRMAA cliff. Like the ACA cliff above, it's a narrow
+    // surcharge step the $5k coarse scan would step over (its cost is a level shift,
+    // not a marginal-rate change at the sample points). Locate the next tier floor
+    // above the current IRMAA MAGI and check the spike at the crossing point. The
+    // IRMAA MAGI base includes taxable SS (and LTCG), which `currentAGI` (non-SS
+    // ordinary) excludes, so reconstruct it the same way calculateEffectiveConversionTax does.
+    if (irmaaOptions) {
+        const taxableSSAtZero = TaxService.getTaxableSocialSecurityBenefits(
+            socialSecurity, currentAGI + ltcgIncome, 0, taxState.filingStatus,
+        );
+        const currentIRMAAMagi = currentAGI + taxableSSAtZero + ltcgIncome;
+        const nextThreshold = irmaaOptions.nextThresholdAbove(currentIRMAAMagi);
+        if (nextThreshold !== null) {
+            const cliffConversion = nextThreshold - currentIRMAAMagi;
+            if (cliffConversion > 0 && cliffConversion <= maxAmount) {
+                // The marginal rate at cliffConversion - 1 includes the full annual
+                // surcharge spiked onto the $1 that crosses the tier, so it is
+                // (essentially) always over target. We therefore treat the cliff as a
+                // hard UPPER BOUND — cap maxAmount just below it — rather than
+                // returning here. Returning would (a) overshoot a lower bracket /
+                // SS-torpedo edge the coarse/fine search below would otherwise find,
+                // and (b) at ages 63-64 (ACA + IRMAA both active) blow past a tighter
+                // ACA cliff cap. Capping lets the search still bind on any lower edge,
+                // and falls back to this cap (via the `!edgeFound` return) when the
+                // IRMAA cliff is itself the tightest constraint.
+                const rateBeforeCliff = getEffectiveConversionRate(
+                    cliffConversion - 1, currentAGI, ltcgIncome, socialSecurity,
+                    taxParams, taxState, year, stateParams, acaOptions, irmaaOptions,
+                );
+                if (rateBeforeCliff > targetRate) {
+                    maxAmount = Math.min(maxAmount, Math.max(0, cliffConversion - 1));
+                }
+            }
+        }
+    }
+
     for (let amount = 0; amount <= maxAmount; amount += SEARCH_CONFIG.coarseStep) {
         const rate = getEffectiveConversionRate(
             amount,
@@ -390,7 +432,8 @@ export function coarseToFineSearch(
             taxState,
             year,
             stateParams,
-            acaOptions
+            acaOptions,
+            irmaaOptions
         );
 
         // Use epsilon tolerance to avoid numerical precision issues
@@ -411,7 +454,8 @@ export function coarseToFineSearch(
                 taxState,
                 year,
                 stateParams,
-                acaOptions
+                acaOptions,
+                irmaaOptions
             );
             const rateJump = rate - rateBefore;
 
@@ -452,7 +496,8 @@ export function coarseToFineSearch(
             taxState,
             year,
             stateParams,
-            acaOptions
+            acaOptions,
+            irmaaOptions
         );
 
         // We want to find the MAXIMUM conversion where rate <= target

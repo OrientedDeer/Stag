@@ -50,6 +50,7 @@ import * as TaxService from "../../components/Objects/Taxes/TaxService";
 import { ACAOptions } from "./helpers";
 import { getDistributionPeriod, getRMDStartAge } from "../../data/RMDData";
 import { getAcaCliffThreshold } from "./TaxOptimizedWithdrawal";
+import { getIRMAAAnnualSurcharge, MEDICARE_ELIGIBILITY_AGE } from "../../data/IRMAAData";
 import { InvestedAccount } from "../../components/Objects/Accounts/models";
 
 // =============================================================================
@@ -135,6 +136,14 @@ export interface DPYearContext {
     fedParams: TaxParameters;
     stateParams: TaxParameters | null;
     acaOptions?: ACAOptions;
+    /**
+     * Medicare IRMAA surcharge as a function of this year's MAGI. Set only for
+     * Medicare years (age 65+). The DP carries no MAGI history, so it attributes
+     * the surcharge to the same year's MAGI (a conversion's surcharge actually
+     * lands two years out; same-year attribution sums to the same lifetime total
+     * over the horizon and makes the DP avoid IRMAA-tripping conversions).
+     */
+    irmaaSurchargeForMAGI?: (magi: number) => number;
 
     /** Trad withdrawal for spending in baseline (excludes RMD; approximated as constant across DP plans). Phase 2: still consumed by the (in-flight 2D) solver. Phase 3 replaces this with endogenous trad-spending in evaluateCell. */
     baselineTradWithdrawal: number;
@@ -500,6 +509,11 @@ export function buildDPYearContexts(
             };
         }
 
+        // Medicare IRMAA applies at 65+ (mutually exclusive with the ACA cliff above).
+        const irmaaSurchargeForMAGI = age >= MEDICARE_ELIGIBILITY_AGE
+            ? (magi: number) => getIRMAAAnnualSurcharge(magi, effTax.filingStatus, simYear.year, assumptions)
+            : undefined;
+
         const growthRate = getNetGrowthRate(simYear, assumptions);
         const rothGrowthRate = getRothGrowthRate(simYear, assumptions);
         const rmdDivisor = age >= rmdStartAge ? getDistributionPeriod(age) : 0;
@@ -510,7 +524,10 @@ export function buildDPYearContexts(
         const baselineTaxes =
             (simYear.taxDetails.fed ?? 0)
             + (simYear.taxDetails.state ?? 0)
-            + (simYear.taxDetails.fica ?? 0);
+            + (simYear.taxDetails.fica ?? 0)
+            // IRMAA is in totalExpense too; the DP recomputes it per-plan in
+            // computeYearTax, so strip the baseline value to avoid double-counting.
+            + (simYear.taxDetails.irmaa ?? 0);
         const spendingNeed = Math.max(
             0,
             (simYear.cashflow.totalExpense ?? 0) - baselineTaxes,
@@ -535,6 +552,7 @@ export function buildDPYearContexts(
             fedParams,
             stateParams: stateParams ?? null,
             acaOptions,
+            irmaaSurchargeForMAGI,
             baselineTradWithdrawal: tradNonRMDWithdrawals,
             spendingNeed,
             baselineBrokerageAvailable,
@@ -615,7 +633,19 @@ function computeYearTax(
         }
     }
 
-    return fed + state + acaPenalty;
+    // Medicare IRMAA surcharge (Medicare years only). IRMAA MAGI uses the TAXABLE
+    // portion of SS (it's an AGI add-on), unlike the ACA MAGI above which uses gross SS.
+    let irmaaPenalty = 0;
+    if (ctx.irmaaSurchargeForMAGI) {
+        const taxableSS = ctx.ssBenefits > 0
+            ? TaxService.getTaxableSocialSecurityBenefits(
+                ctx.ssBenefits, ordinaryIncome + ctx.ltcgIncome, 0, ctx.filingStatus)
+            : 0;
+        const irmaaMagi = ordinaryIncome + taxableSS + ctx.ltcgIncome;
+        irmaaPenalty = ctx.irmaaSurchargeForMAGI(irmaaMagi);
+    }
+
+    return fed + state + acaPenalty + irmaaPenalty;
 }
 
 /**

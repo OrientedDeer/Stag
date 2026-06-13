@@ -38,8 +38,9 @@ import { classifyIncome, getTotalSSBenefits } from "./IncomeClassifier";
 import { planWithdrawals, createOrderedSnapshots, grossUpBrokerage } from "./WithdrawalPlanner";
 import * as TaxService from "../../components/Objects/Taxes/TaxService";
 import { getLTCGRate } from "../../components/Objects/Taxes/taxService/capitalGainsTax";
-import { calculateEffectiveConversionTax, ACAOptions } from "./helpers";
+import { calculateEffectiveConversionTax, ACAOptions, IRMAAConversionOptions } from "./helpers";
 import { getRMDStartAge } from "../../data/RMDData";
+import { getIRMAAAnnualSurcharge, getNextIRMAAThreshold, resolveIrmaaLookbackMAGI, MEDICARE_ELIGIBILITY_AGE } from "../../data/IRMAAData";
 import {
     calculateDynamicConversionCeiling,
     coarseToFineSearch,
@@ -101,8 +102,9 @@ export interface YearSolverInput {
     taxOptimizationEnabled: boolean;
     acaAware: boolean;
 
-    // Prior year data (for GK and conversions)
-    previousSimulation?: { year: number; accounts: AnyAccount[] }[];
+    // Prior year data (for GK and conversions). `magi` carries each prior year's
+    // MAGI so the solver can read year N-2's MAGI for the Medicare IRMAA lookback.
+    previousSimulation?: { year: number; accounts: AnyAccount[]; magi?: number }[];
 
     // GK Guardrails (optional - only passed when withdrawal strategy is active)
     gkBudget?: number;           // The GK-adjusted spending budget
@@ -689,6 +691,23 @@ function planConversion(
     // already includes taxable SS) double-counts SS. Mirror the direct conversion-
     // tax call below, which passes nonSSOrdinaryIncome.
     const adjustedNonSSBaseIncome = nonSSOrdinaryIncome + bracketSpaceForSpending;
+
+    // Medicare IRMAA conversion-awareness. A conversion this year raises this
+    // year's MAGI, which sets the Part B/D surcharge two years out; so the search
+    // should weigh it only when that surcharge year (currentAge + 2) is a Medicare
+    // year, i.e. currentAge >= 63. Uses this year's schedule (MAGI and thresholds
+    // in the same dollar-year). The actual surcharge is still deducted in year N+2
+    // via the engine's true lookback — this only shapes the conversion size.
+    let irmaaConversionOptions: IRMAAConversionOptions | undefined;
+    if (input.currentAge + 2 >= MEDICARE_ELIGIBILITY_AGE) {
+        irmaaConversionOptions = {
+            annualSurchargeForMAGI: (magi: number) =>
+                getIRMAAAnnualSurcharge(magi, input.taxState.filingStatus, input.year, input.assumptions),
+            nextThresholdAbove: (magi: number) =>
+                getNextIRMAAThreshold(magi, input.taxState.filingStatus, input.year, input.assumptions),
+        };
+    }
+
     const searchResult = coarseToFineSearch(
         ceilingResult.conversionCeiling,
         traditionalBalance - bracketSpaceForSpending,
@@ -700,7 +719,9 @@ function planConversion(
         input.year,
         null, // federal-only: state tax should not reduce conversion amount
         acaOptions,
-        input.assumptions
+        input.assumptions,
+        undefined, // debugLabel
+        irmaaConversionOptions
     );
 
     if (searchResult.amount > 0) {
@@ -1515,6 +1536,38 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
         : 0;
     const acaBaseMAGI = taxableBase + conversionPlan.additionalOrdinaryIncome;
 
+    // Medicare IRMAA surcharge (2-year lookback). Year N's Part B/D premiums are
+    // surcharged based on year N-2's MAGI; only beneficiaries on Medicare (age
+    // 65+) pay it. The lookback MAGI is FIXED before this year's withdrawals, so
+    // we treat the surcharge as a known cash cost: it's folded into the deficit
+    // (so withdrawals cover it) and into the year's total tax. A conversion this
+    // year raises THIS year's MAGI, which feeds year N+2's surcharge via the
+    // stored MAGI — no within-year circularity. baseOrdinaryIncome is the
+    // income-side self-proxy used only for the very first simulated year, when no
+    // prior-year MAGI exists at all.
+    let irmaaSurcharge = 0;
+    if (input.currentAge >= MEDICARE_ELIGIBILITY_AGE) {
+        const lookbackMAGI = resolveIrmaaLookbackMAGI(
+            input.previousSimulation,
+            input.year,
+            baseOrdinaryIncome,
+        );
+        irmaaSurcharge = getIRMAAAnnualSurcharge(
+            lookbackMAGI,
+            input.taxState.filingStatus,
+            input.year,
+            input.assumptions,
+        );
+        if (irmaaSurcharge > 0) {
+            decisions.push({
+                category: 'tax',
+                amount: irmaaSurcharge,
+                description: `Medicare IRMAA surcharge: $${Math.round(irmaaSurcharge).toLocaleString()} ` +
+                    `(from ${input.year - 2} MAGI of $${Math.round(lookbackMAGI).toLocaleString()}).`,
+            });
+        }
+    }
+
     // Iterative deficit loop: converges on LTCG and SS taxability.
     //
     // Two circular dependencies resolved by iteration:
@@ -1597,7 +1650,8 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
             effectiveLivingExpenses +
             finalFedResult.totalTax +
             finalStateTax +
-            ficaTax -
+            ficaTax +
+            irmaaSurcharge -
             incomeClassification.classified.spendable;
 
         if (deficit <= 0) {
@@ -1708,7 +1762,15 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
 
     // Total tax uses authoritative federal (ordinary + LTCG + NIIT) + state (with LTCG)
     // + withdrawal ordinary tax (Roth 5-year, Traditional, HSA) + FICA + penalties
-    const totalTax = finalFedResult.totalTax + finalStateTax + withdrawalOrdinaryTax + ficaTax + totalPenalties;
+    // + Medicare IRMAA surcharge (from year N-2 MAGI).
+    const totalTax = finalFedResult.totalTax + finalStateTax + withdrawalOrdinaryTax + ficaTax + totalPenalties + irmaaSurcharge;
+
+    // The year's MAGI (≈ AGI) — stored so year N+2 can read it for its IRMAA
+    // lookback. Equals all ordinary income (incl. taxable SS + conversion) plus the
+    // deficit-funding Traditional withdrawal, ESPP bargain element, and realized
+    // LTCG. (Tax-exempt interest, the only AGI→MAGI add-back, isn't tracked yet.)
+    const yearMAGI = Math.max(0,
+        allOrdinaryIncome + estimatedTradWithdrawal + estimatedESPPOrdinaryIncome + estimatedLTCG);
 
     // Final cash flow.
     // LTCG tax is a pass-through: brokerage gross-up pays it directly to the government.
@@ -1754,6 +1816,7 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
         capitalGainsST: 0,
         withdrawalOrdinaryTax,
         niit: finalFedResult.niitTax,
+        irmaa: irmaaSurcharge,
         penalties: totalPenalties,
         total: totalTax,
     };
@@ -1802,6 +1865,7 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
         surplusAllocations,
         deficitDebtPayment: surplusDeficitDebtPayment,
         tax: taxSummary,
+        magi: yearMAGI,
         surplus,
         unfundedDeficit,
         totalExpenses: effectiveLivingExpenses,
@@ -1882,13 +1946,42 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
 
     const totalTax = taxResult.totalTax + stateTax + ficaTax;
 
+    // Medicare IRMAA surcharge (2-year lookback). Applies to anyone on Medicare
+    // (age 65+) — including those still working — based on year N-2's MAGI. It's a
+    // known cash cost, so fold it into the deficit and the year's total tax. The
+    // income-side MAGI (non-SS ordinary + taxable SS) is the self-proxy for the
+    // very first simulated year, when no prior-year MAGI exists.
+    let irmaaSurcharge = 0;
+    if (input.currentAge >= MEDICARE_ELIGIBILITY_AGE) {
+        const incomeSideMAGI = (taxableOrdinaryBase - socialSecurityBenefits) + taxResult.taxableSS;
+        const lookbackMAGI = resolveIrmaaLookbackMAGI(
+            input.previousSimulation,
+            input.year,
+            incomeSideMAGI,
+        );
+        irmaaSurcharge = getIRMAAAnnualSurcharge(
+            lookbackMAGI,
+            input.taxState.filingStatus,
+            input.year,
+            input.assumptions,
+        );
+        if (irmaaSurcharge > 0) {
+            decisions.push({
+                category: 'tax',
+                amount: irmaaSurcharge,
+                description: `Medicare IRMAA surcharge: $${Math.round(irmaaSurcharge).toLocaleString()} ` +
+                    `(from ${input.year - 2} MAGI of $${Math.round(lookbackMAGI).toLocaleString()}).`,
+            });
+        }
+    }
+
     // Calculate initial surplus/deficit
     // IMPORTANT: Must subtract pre-tax deductions (401k, HSA) and post-tax deductions
     // (Roth 401k, after-tax contributions) from cashIn because they reduce spendable
     // cash even though they may reduce taxes or be after-tax.
     // Note: spendable already excludes reinvested income (handled by classifyIncome).
     const incomeCashIn = incomeClassification.classified.spendable - preTaxDeductions - postTaxDeductions;
-    const incomeCashOut = input.totalLivingExpenses + totalTax;
+    const incomeCashOut = input.totalLivingExpenses + totalTax + irmaaSurcharge;
     const initialDeficit = Math.max(0, incomeCashOut - incomeCashIn);
 
     // Plan withdrawals if income doesn't cover expenses
@@ -1897,6 +1990,9 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
     let withdrawalOrdinaryTax = 0;
     let totalPenalties = 0;
     let niitTax = 0;
+    let realizedLTCG = 0;
+    let realizedSTCG = 0;
+    let withdrawalOrdinaryIncome = 0;
 
     if (initialDeficit > 0) {
         const accountSnapshots = createOrderedSnapshots(
@@ -1925,8 +2021,15 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
         // NIIT (3.8%) on capital gains realized to fund the deficit. The federal
         // tax helper computes it internally from investment income; extract only
         // the NIIT so the existing planner-based ltcgTax cash handling is kept.
-        const realizedLTCG = withdrawalResult.totalLTCG;
-        const realizedSTCG = withdrawalResult.totalSTCG;
+        realizedLTCG = withdrawalResult.totalLTCG;
+        realizedSTCG = withdrawalResult.totalSTCG;
+        // Ordinary income realized by deficit withdrawals (Traditional gross +
+        // ESPP bargain element) — feeds the year's MAGI for the IRMAA lookback.
+        withdrawalOrdinaryIncome = withdrawalResult.withdrawals.reduce(
+            (s, w) => s + ((w.source === 'traditional_401k' || w.source === 'traditional_ira')
+                ? w.gross
+                : (w.ordinaryIncome ?? 0)),
+            0);
         if (realizedLTCG > 0 || realizedSTCG > 0) {
             niitTax = TaxService.calculateTotalFederalTax(
                 taxableOrdinaryBase - socialSecurityBenefits,
@@ -1944,7 +2047,13 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
 
     // Final cash flow including withdrawals
     const totalGrossWithdrawals = withdrawals.reduce((sum, w) => sum + w.gross, 0);
-    const finalTotalTax = totalTax + ltcgTax + withdrawalOrdinaryTax + niitTax + totalPenalties;
+    const finalTotalTax = totalTax + ltcgTax + withdrawalOrdinaryTax + niitTax + totalPenalties + irmaaSurcharge;
+
+    // The year's MAGI (≈ AGI) — stored for the year N+2 IRMAA lookback. Non-SS
+    // ordinary income + taxable SS + deficit-funding withdrawal income + realized gains.
+    const yearMAGI = Math.max(0,
+        (taxableOrdinaryBase - socialSecurityBenefits) + taxResult.taxableSS
+        + withdrawalOrdinaryIncome + realizedLTCG + realizedSTCG);
 
     const finalCashIn = incomeCashIn + totalGrossWithdrawals;
     const finalCashOut = input.totalLivingExpenses + finalTotalTax;
@@ -1967,6 +2076,7 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
         capitalGainsST: 0,
         withdrawalOrdinaryTax,
         niit: niitTax,
+        irmaa: irmaaSurcharge,
         penalties: totalPenalties,
         total: finalTotalTax,
     };
@@ -2015,6 +2125,7 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
         surplusAllocations,
         deficitDebtPayment: surplusDeficitDebtPayment,
         tax: taxSummary,
+        magi: yearMAGI,
         surplus,
         unfundedDeficit,
         totalExpenses: input.totalLivingExpenses,

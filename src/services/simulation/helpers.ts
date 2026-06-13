@@ -34,6 +34,25 @@ export interface ACAOptions {
     estimatedSubsidyLoss: number;  // What would be lost if cliff crossed
 }
 
+/**
+ * Medicare IRMAA awareness for conversion sizing. IRMAA is a cliff surcharge on
+ * Part B/D premiums that lands TWO YEARS after the income year. We attribute that
+ * deferred surcharge to the conversion decision now (realization-year), so the
+ * rate-match search avoids conversions that trip a tier for little benefit.
+ *
+ * Provided only on the SEARCH path (not the reported-cost path): the actual
+ * surcharge is deducted in year N+2 via the engine's true 2-year lookback, so
+ * folding it into the reported conversion tax would double-count it.
+ */
+export interface IRMAAConversionOptions {
+    /** Annual household IRMAA surcharge for a given MAGI (returns 0 outside Medicare). */
+    annualSurchargeForMAGI: (magi: number) => number;
+    /** Smallest IRMAA tier floor strictly above the given MAGI, or null when already
+     *  in the top tier. The coarse search steps in $5k and would otherwise step over
+     *  a narrow cliff, so the search probes this exact crossing point (like ACA). */
+    nextThresholdAbove: (magi: number) => number | null;
+}
+
 export interface ConversionTaxBreakdown {
     federalOrdinaryTaxCost: number;
     ssTorpedoCost: number;
@@ -41,6 +60,8 @@ export interface ConversionTaxBreakdown {
     niitCost: number;
     stateTaxCost: number;
     acaSubsidyLost: number;
+    /** Increase in the (2-years-deferred) IRMAA surcharge caused by the conversion. */
+    irmaaSurchargeIncrease: number;
 }
 
 export interface EffectiveConversionTaxResult {
@@ -124,6 +145,9 @@ export function calculateEffectiveConversionTax(
      *  are computed here (unchanged behavior); a probing search can compute them
      *  once and pass them in to avoid recomputing on every probe. */
     baseline?: ConversionTaxBaseline,
+    /** Medicare IRMAA awareness (search path only). When omitted, no IRMAA cost is
+     *  attributed — behavior is identical to before this feature. */
+    irmaaOptions?: IRMAAConversionOptions,
 ): EffectiveConversionTaxResult {
     const base = baseline ?? computeConversionTaxBaseline(
         nonSSIncome, totalSSBenefits, ltcgIncome, filingStatus, fedParams, stateParams,
@@ -227,11 +251,27 @@ export function calculateEffectiveConversionTax(
     }
 
     // =========================================================================
+    // MEDICARE IRMAA SURCHARGE (realization-year attribution)
+    // =========================================================================
+    // A conversion raises this year's MAGI, which sets the Part B/D premium
+    // surcharge two years later. We charge that surcharge delta to the conversion
+    // decision now (mirroring acaSubsidyLost). IRMAA MAGI ≈ non-SS income +
+    // taxable SS (which the conversion can push up via the torpedo) + LTCG.
+    let irmaaSurchargeIncrease = 0;
+    if (irmaaOptions) {
+        const irmaaMagiBefore = nonSSIncome + taxResultBefore.taxableSS + ltcgIncome;
+        const irmaaMagiAfter = nonSSIncome + conversionAmount + taxResultAfter.taxableSS + ltcgIncome;
+        irmaaSurchargeIncrease = Math.max(0,
+            irmaaOptions.annualSurchargeForMAGI(irmaaMagiAfter) -
+            irmaaOptions.annualSurchargeForMAGI(irmaaMagiBefore));
+    }
+
+    // =========================================================================
     // TOTALS
     // =========================================================================
     const taxBefore = taxResultBefore.totalTax;
     const taxAfter = taxResultAfter.totalTax;
-    const taxIncrease = (taxAfter - taxBefore) + stateTaxCost + acaSubsidyLost;
+    const taxIncrease = (taxAfter - taxBefore) + stateTaxCost + acaSubsidyLost + irmaaSurchargeIncrease;
     const effectiveRate = conversionAmount > 0 ? taxIncrease / conversionAmount : 0;
 
     return {
@@ -245,7 +285,8 @@ export function calculateEffectiveConversionTax(
             ltcgBumpCost,
             niitCost,
             stateTaxCost,
-            acaSubsidyLost
+            acaSubsidyLost,
+            irmaaSurchargeIncrease
         },
         crossesACACliff
     };

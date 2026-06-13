@@ -176,9 +176,10 @@ function generateYearSummaryText(simYear: SimulationYear, age: number, accountsC
     const penalty = simYear.taxDetails.earlyWithdrawalPenalty ?? 0;
     const fedIncomeTax = Math.max(0, simYear.taxDetails.fed - penalty);
     lines.push(`  Federal Income: ${fmt(fedIncomeTax)} | State: ${fmt(simYear.taxDetails.state)} | FICA: ${fmt(simYear.taxDetails.fica)}`);
-    lines.push(`  Cap Gains Tax: ${fmt(simYear.taxDetails.capitalGains)} | Withdrawal Tax: ${fmt(simYear.taxDetails.withdrawalOrdinaryTax)} | NIIT: ${fmt(simYear.taxDetails.niit)} | Early-Withdraw Penalty: ${fmt(penalty)}`);
+    const irmaa = simYear.taxDetails.irmaa ?? 0;
+    lines.push(`  Cap Gains Tax: ${fmt(simYear.taxDetails.capitalGains)} | Withdrawal Tax: ${fmt(simYear.taxDetails.withdrawalOrdinaryTax)} | NIIT: ${fmt(simYear.taxDetails.niit)} | IRMAA: ${fmt(irmaa)} | Early-Withdraw Penalty: ${fmt(penalty)}`);
     const totalTax = simYear.taxDetails.fed + simYear.taxDetails.state + simYear.taxDetails.fica +
-        simYear.taxDetails.capitalGains + simYear.taxDetails.withdrawalOrdinaryTax + simYear.taxDetails.niit;
+        simYear.taxDetails.capitalGains + simYear.taxDetails.withdrawalOrdinaryTax + simYear.taxDetails.niit + irmaa;
     lines.push(`  Total: ${fmt(totalTax)}`);
     lines.push('');
 
@@ -618,6 +619,12 @@ function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYear
                                     <span className="font-mono">{toCurrencyShort(simYear.taxDetails.niit)}</span>
                                 </div>
                             )}
+                            {(simYear.taxDetails.irmaa ?? 0) > 0 && (
+                                <div className="flex justify-between text-cat-orange">
+                                    <span>Medicare IRMAA (Part B/D surcharge)</span>
+                                    <span className="font-mono">{toCurrencyShort(simYear.taxDetails.irmaa ?? 0)}</span>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
@@ -842,7 +849,7 @@ function SimulationDebugTab() {
             interestIncome: Array<{ name: string; amount: number }>;
             withdrawalDetail: Record<string, number>;
             bucketDetail: Record<string, number>;
-            taxDetails: { fed: number; state: number; fica: number; capitalGains: number; withdrawalOrdinaryTax: number; earlyWithdrawalPenalty?: number };
+            taxDetails: { fed: number; state: number; fica: number; capitalGains: number; withdrawalOrdinaryTax: number; irmaa?: number; earlyWithdrawalPenalty?: number };
             logs: string[];
         }> = [];
 
@@ -997,6 +1004,7 @@ function SimulationDebugTab() {
                     fica: simYear.taxDetails.fica,
                     capitalGains: simYear.taxDetails.capitalGains,
                     withdrawalOrdinaryTax: simYear.taxDetails.withdrawalOrdinaryTax || 0,
+                    irmaa: simYear.taxDetails.irmaa ?? 0,
                     earlyWithdrawalPenalty: simYear.taxDetails.earlyWithdrawalPenalty,
                 },
                 logs: simYear.logs || [],
@@ -1408,6 +1416,12 @@ function SimulationDebugTab() {
                                     {toCurrencyShort(selectedYearData.taxDetails.withdrawalOrdinaryTax)}
                                 </span>
                             </div>
+                            <div>
+                                <span className="text-content-muted">Medicare IRMAA:</span>
+                                <span className={`ml-2 font-mono ${(selectedYearData.taxDetails.irmaa ?? 0) > 0 ? 'text-cat-orange' : 'text-content-subtle'}`}>
+                                    {toCurrencyShort(selectedYearData.taxDetails.irmaa ?? 0)}
+                                </span>
+                            </div>
                         </div>
                             );
                         })()}
@@ -1760,7 +1774,7 @@ function TaxDebugTab() {
     // early-withdrawal penalty; capitalGains, niit, and withdrawalOrdinaryTax are
     // separate line items that all add into total.
     const lifetimeTaxes = useMemo(() => {
-        const empty = { total: 0, federal: 0, state: 0, fica: 0, capitalGains: 0, withdrawalOrdinary: 0, niit: 0, penalty: 0 };
+        const empty = { total: 0, federal: 0, state: 0, fica: 0, capitalGains: 0, withdrawalOrdinary: 0, niit: 0, irmaa: 0, penalty: 0 };
         const years = simulation.filter(y => !y.isEndOfYearProjection);
         if (years.length === 0) return empty;
         return years.reduce((acc, s) => {
@@ -1770,15 +1784,17 @@ function TaxDebugTab() {
             const cg = s.taxDetails.capitalGains;
             const wot = s.taxDetails.withdrawalOrdinaryTax ?? 0;
             const niit = s.taxDetails.niit ?? 0;
+            const irmaa = s.taxDetails.irmaa ?? 0;
             const penalty = s.taxDetails.earlyWithdrawalPenalty ?? 0;
             return {
-                total: acc.total + fed + state + fica + cg + wot + niit,
+                total: acc.total + fed + state + fica + cg + wot + niit + irmaa,
                 federal: acc.federal + fed,
                 state: acc.state + state,
                 fica: acc.fica + fica,
                 capitalGains: acc.capitalGains + cg,
                 withdrawalOrdinary: acc.withdrawalOrdinary + wot,
                 niit: acc.niit + niit,
+                irmaa: acc.irmaa + irmaa,
                 penalty: acc.penalty + penalty,
             };
         }, empty);
@@ -1924,6 +1940,11 @@ function TaxDebugTab() {
                     <div className="bg-surface-overlay/50 rounded-lg p-3">
                         <div className="text-xs text-content-muted">NIIT</div>
                         <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.niit)}</div>
+                    </div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">Medicare IRMAA</div>
+                        <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.irmaa)}</div>
+                        <div className="text-xs text-content-subtle">Part B/D surcharge, age 65+</div>
                     </div>
                     <div className="bg-surface-overlay/50 rounded-lg p-3">
                         <div className="text-xs text-content-muted">Early-Withdraw Penalty</div>

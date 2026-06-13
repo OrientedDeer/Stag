@@ -90,9 +90,18 @@ export interface SimulationYear {
         capitalGains: number; // Capital gains tax on brokerage/ESPP withdrawals only
         withdrawalOrdinaryTax: number; // Tax on Roth earnings (5-year rule), Traditional, HSA non-medical
         niit: number; // Net Investment Income Tax (3.8%)
+        irmaa?: number; // Medicare Part B/D IRMAA surcharge (age 65+, from year N-2 MAGI). Separate line item; added into totals everywhere totals are summed.
         earlyWithdrawalPenalty?: number; // 10% early-withdrawal penalty (Traditional pre-59.5, Roth conversion 5-year rule). Already included in `fed`; surfaced separately for diagnostics.
         longTermCapitalGains?: number; // LTCG amount realized this year (for AGI-equivalent denominator in effective-rate calcs). Surfaces WithdrawalState.longTermCapitalGains.
     };
+    /**
+     * Modified Adjusted Gross Income for the year (≈ AGI + tax-exempt interest;
+     * tax-exempt interest isn't tracked yet so this is ≈ AGI). Stored so a later
+     * year can read year N-2's MAGI to set its Medicare IRMAA surcharge (2-year
+     * lookback). Includes ordinary income, taxable SS, Roth conversions,
+     * Traditional/RMD withdrawals, and realized capital gains.
+     */
+    magi?: number;
     logs: string[];
     // Withdrawal strategy tracking (for multi-year calculations)
     strategyWithdrawal?: WithdrawalResult;
@@ -437,6 +446,9 @@ export interface YearPlanTax {
     /** Tax on Roth earnings (5-year rule), Traditional withdrawals, HSA non-medical */
     withdrawalOrdinaryTax: number;
     niit: number;
+    /** Medicare Part B/D IRMAA surcharge for the year (0 unless age 65+ with a
+     *  qualifying year N-2 MAGI). Already folded into `total`. */
+    irmaa: number;
     penalties: number;
     total: number;
 }
@@ -576,6 +588,12 @@ export interface YearPlan {
 
     /** Tax summary */
     tax: YearPlanTax;
+
+    /**
+     * The year's MAGI (≈ AGI). Stored on the SimulationYear so a later year can
+     * read year N-2's MAGI for the Medicare IRMAA 2-year lookback.
+     */
+    magi: number;
 
     /** Net surplus (positive) or unfunded deficit (negative) */
     surplus: number;

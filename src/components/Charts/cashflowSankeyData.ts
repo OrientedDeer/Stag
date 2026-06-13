@@ -27,6 +27,7 @@ export interface SankeyTaxBreakdown {
     capitalGains?: number;
     withdrawalOrdinaryTax?: number;
     niit?: number;
+    irmaa?: number;
 }
 
 export interface SankeyRothConversion {
@@ -194,7 +195,7 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
         const totalReinvested = reinvestedIncomeItems.reduce((s, i) => s + i.amount, 0);
 
         const mortgageInterestAndEscrow = totalMortgagePayment - totalPrincipal;
-        const totalTaxes = taxes.fed + taxes.state + taxes.fica + (taxes.capitalGains || 0) + (taxes.withdrawalOrdinaryTax || 0) + (taxes.niit || 0);
+        const totalTaxes = taxes.fed + taxes.state + taxes.fica + (taxes.capitalGains || 0) + (taxes.withdrawalOrdinaryTax || 0) + (taxes.niit || 0) + (taxes.irmaa || 0);
         const totalBucketSavings = Object.values(bucketAllocations).reduce((a, b) => a + b, 0);
 
         // Brokerage LTCG paid out of the gross-up never lands as user cash — the
@@ -326,6 +327,7 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
             if (taxes.fica >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'FICA Tax', color: 'var(--c-warning-solid)', label: 'FICA Tax' });
             if ((taxes.capitalGains || 0) >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Cap Gains Tax', color: 'var(--c-warning-solid)', label: 'Cap Gains Tax' });
             if ((taxes.niit || 0) >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'NIIT', color: 'var(--c-warning-strong)', label: 'NIIT' });
+            if ((taxes.irmaa || 0) >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'IRMAA', color: 'var(--c-warning-strong)', label: 'IRMAA' });
             if ((taxes.withdrawalOrdinaryTax || 0) >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Withdrawal Tax', color: 'var(--c-cat-purple-soft)', label: 'Withdrawal Tax' });
         }
 
@@ -434,6 +436,7 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
             if (taxes.fica >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Taxes', target: 'FICA Tax', value: taxes.fica });
             if ((taxes.capitalGains || 0) >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Taxes', target: 'Cap Gains Tax', value: taxes.capitalGains! });
             if ((taxes.niit || 0) >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Taxes', target: 'NIIT', value: taxes.niit! });
+            if ((taxes.irmaa || 0) >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Taxes', target: 'IRMAA', value: taxes.irmaa! });
             if ((taxes.withdrawalOrdinaryTax || 0) >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Taxes', target: 'Withdrawal Tax', value: taxes.withdrawalOrdinaryTax! });
         }
 

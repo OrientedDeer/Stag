@@ -412,6 +412,18 @@ export const runSimulation = (
             withdrawalOrdinaryTax: 0,
             niit: 0
         },
+        // MAGI ≈ AGI for the current year. Stored so a later year's Medicare IRMAA
+        // lookback (year N reads year N-2) has a real basis rather than a proxy.
+        // AGI counts only the TAXABLE portion of Social Security, not gross SS, so
+        // subtract the non-taxable SS: AGI = (gross − preTax − grossSS) + taxableSS.
+        magi: (() => {
+            const grossSS = TaxService.getSocialSecurityBenefits(resolvedIncomes, startYear);
+            const nonSSAgi = currentGross - currentPreTax - grossSS;
+            const taxableSS = TaxService.getTaxableSocialSecurityBenefits(
+                grossSS, Math.max(0, nonSSAgi), 0, taxState.filingStatus,
+            );
+            return Math.max(0, nonSSAgi + taxableSS);
+        })(),
         logs: ["Baseline Year 0 initialized from current context data."]
     };
 
