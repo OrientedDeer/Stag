@@ -22,6 +22,41 @@ const CARD_SECTION_GRID = "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 
 
 const fmt = (n: number) => formatCompactCurrency(n, { forceExact: true });
 
+/** A labeled value cell used in the holdings/cost-basis summary grids. */
+function StatCell({ label, value, className = "text-white font-medium", wrapperClassName }: {
+    label: string;
+    value: ReactElement | string | number;
+    className?: string;
+    wrapperClassName?: string;
+}): ReactElement {
+    return (
+        <div className={wrapperClassName}>
+            <div className="text-content-muted">{label}</div>
+            <div className={className}>{value}</div>
+        </div>
+    );
+}
+
+/** Cost-basis-relative gain/loss cell: green/red value with an optional percentage. */
+function GainLossCell({ label, gain, basis }: { label: string; gain: number; basis: number }): ReactElement {
+    return (
+        <StatCell
+            label={label}
+            className={`font-medium ${gain >= 0 ? 'text-positive' : 'text-negative'}`}
+            value={
+                <>
+                    {fmt(gain)}
+                    {basis > 0 && (
+                        <span className="text-xs ml-1">
+                            ({((gain / basis) * 100).toFixed(1)}%)
+                        </span>
+                    )}
+                </>
+            }
+        />
+    );
+}
+
 /** Paystub-style one-liner for the collapsed Growth & Fees section. */
 function getGrowthFeesSummary(customROR: number | undefined, expenseRatio: number): string {
     const ror = customROR !== undefined ? `${customROR}% custom` : "Global return";
@@ -615,29 +650,9 @@ function BrokerageHoldingsSummary({ account }: { account: InvestedAccount }): Re
         <div className="col-span-full bg-surface-overlay/50 border border-border-default rounded-lg p-4">
             <h4 className="text-sm font-semibold text-white mb-3">Cost Basis Breakdown</h4>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-                <div>
-                    <div className="text-content-muted">Current Value</div>
-                    <div className="text-white font-medium">
-                        {account.amount.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
-                    </div>
-                </div>
-                <div>
-                    <div className="text-content-muted">Principal (Cost Basis)</div>
-                    <div className="text-white font-medium">
-                        {principal.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
-                    </div>
-                </div>
-                <div>
-                    <div className="text-content-muted">Unrealized Gain/Loss</div>
-                    <div className={`font-medium ${unrealizedGain >= 0 ? 'text-positive' : 'text-negative'}`}>
-                        {unrealizedGain.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
-                        {principal > 0 && (
-                            <span className="text-xs ml-1">
-                                ({((unrealizedGain / principal) * 100).toFixed(1)}%)
-                            </span>
-                        )}
-                    </div>
-                </div>
+                <StatCell label="Current Value" value={fmt(account.amount)} />
+                <StatCell label="Principal (Cost Basis)" value={fmt(principal)} />
+                <GainLossCell label="Unrealized Gain/Loss" gain={unrealizedGain} basis={principal} />
             </div>
         </div>
     );
@@ -649,37 +664,15 @@ function ESPPHoldingsSummary({ account }: { account: ESPPAccount }): ReactElemen
         <div className="col-span-full bg-surface-overlay/50 border border-border-default rounded-lg p-4">
             <h4 className="text-sm font-semibold text-white mb-3">ESPP Holdings Summary</h4>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                <div>
-                    <div className="text-content-muted">Total Lots</div>
-                    <div className="text-white font-medium">{account.lots.length}</div>
-                </div>
-                <div>
-                    <div className="text-content-muted">Total Shares</div>
-                    <div className="text-white font-medium">{account.totalShares.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
-                </div>
-                <div>
-                    <div className="text-content-muted">Cost Basis</div>
-                    <div className="text-white font-medium">
-                        {account.totalCostBasis.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
-                    </div>
-                </div>
-                <div>
-                    <div className="text-content-muted">Unrealized Gain</div>
-                    <div className={`font-medium ${account.unrealizedGains >= 0 ? 'text-positive' : 'text-negative'}`}>
-                        {account.unrealizedGains.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
-                        {account.totalCostBasis > 0 && (
-                            <span className="text-xs ml-1">
-                                ({((account.unrealizedGains / account.totalCostBasis) * 100).toFixed(1)}%)
-                            </span>
-                        )}
-                    </div>
-                </div>
-                <div className="col-span-2">
-                    <div className="text-content-muted">Lot Status</div>
-                    <div className="text-white font-medium">
-                        {counts.qualifying} qualifying, {counts.disqualifying} disqualifying
-                    </div>
-                </div>
+                <StatCell label="Total Lots" value={account.lots.length} />
+                <StatCell label="Total Shares" value={account.totalShares.toLocaleString(undefined, { maximumFractionDigits: 2 })} />
+                <StatCell label="Cost Basis" value={fmt(account.totalCostBasis)} />
+                <GainLossCell label="Unrealized Gain" gain={account.unrealizedGains} basis={account.totalCostBasis} />
+                <StatCell
+                    label="Lot Status"
+                    value={`${counts.qualifying} qualifying, ${counts.disqualifying} disqualifying`}
+                    wrapperClassName="col-span-2"
+                />
             </div>
         </div>
     );
@@ -875,31 +868,10 @@ function RSUHoldingsSummary({ account }: { account: RSUAccount }): ReactElement 
         <div className="col-span-full bg-surface-overlay/50 border border-border-default rounded-lg p-4">
             <h4 className="text-sm font-semibold text-white mb-3">RSU Holdings Summary</h4>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                <div>
-                    <div className="text-content-muted">Total Lots</div>
-                    <div className="text-white font-medium">{account.lots.length}</div>
-                </div>
-                <div>
-                    <div className="text-content-muted">Total Shares</div>
-                    <div className="text-white font-medium">{account.totalShares.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
-                </div>
-                <div>
-                    <div className="text-content-muted">Cost Basis</div>
-                    <div className="text-white font-medium">
-                        {account.totalCostBasis.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
-                    </div>
-                </div>
-                <div>
-                    <div className="text-content-muted">Unrealized Gain/Loss</div>
-                    <div className={`font-medium ${unrealizedGain >= 0 ? 'text-positive' : 'text-negative'}`}>
-                        {unrealizedGain.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
-                        {account.totalCostBasis > 0 && (
-                            <span className="text-xs ml-1">
-                                ({((unrealizedGain / account.totalCostBasis) * 100).toFixed(1)}%)
-                            </span>
-                        )}
-                    </div>
-                </div>
+                <StatCell label="Total Lots" value={account.lots.length} />
+                <StatCell label="Total Shares" value={account.totalShares.toLocaleString(undefined, { maximumFractionDigits: 2 })} />
+                <StatCell label="Cost Basis" value={fmt(account.totalCostBasis)} />
+                <GainLossCell label="Unrealized Gain/Loss" gain={unrealizedGain} basis={account.totalCostBasis} />
             </div>
         </div>
     );

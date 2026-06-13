@@ -3,6 +3,8 @@
  *
  * Finding 7: PropertyAccount drops `apr` on increment AND reconstitute
  * Finding 9: reconstituteAccount coerces customROR null → 0 instead of undefined
+ * #81 (wave-1 finding 7): a non-numeric persisted costBasis makes Number(...) NaN,
+ *   and Math.max(0, NaN) === NaN, rendering "$NaN" on the brokerage card.
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -195,5 +197,81 @@ describe('Finding 9 – reconstituteAccount: customROR null → undefined', () =
 
             expect(result.customROR).toBeUndefined();
         });
+    });
+});
+
+// ─── #81 (wave-1 finding 7) ─────────────────────────────────────────────────
+
+describe('#81 – reconstituteAccount: InvestedAccount costBasis NaN guard', () => {
+    it('costBasis: non-numeric string falls back to amount (not NaN)', () => {
+        const serialized = {
+            className: 'InvestedAccount',
+            id: 'nan1',
+            name: 'Brokerage',
+            amount: 50_000,
+            costBasis: 'corrupted', // Number('corrupted') === NaN
+        };
+
+        const result = reconstituteAccount(serialized) as InvestedAccount;
+
+        // BUG: before fix, Math.max(0, NaN) === NaN → "$NaN" for Principal and Gain/Loss
+        expect(result.costBasis).toBe(50_000);
+        expect(Number.isFinite(result.costBasis)).toBe(true);
+    });
+
+    it('costBasis: null falls back to amount via ?? (not 0)', () => {
+        const serialized = {
+            className: 'InvestedAccount',
+            id: 'nan2',
+            name: 'Brokerage',
+            amount: 30_000,
+            costBasis: null, // ?? amount, then finite
+        };
+
+        const result = reconstituteAccount(serialized) as InvestedAccount;
+
+        expect(result.costBasis).toBe(30_000);
+    });
+
+    it('costBasis: NaN literal falls back to amount', () => {
+        const serialized = {
+            className: 'InvestedAccount',
+            id: 'nan3',
+            name: 'Brokerage',
+            amount: 12_345,
+            costBasis: NaN,
+        };
+
+        const result = reconstituteAccount(serialized) as InvestedAccount;
+
+        expect(result.costBasis).toBe(12_345);
+    });
+
+    it('costBasis: valid numeric value round-trips (including underwater > amount)', () => {
+        const serialized = {
+            className: 'InvestedAccount',
+            id: 'nan4',
+            name: 'Brokerage',
+            amount: 40_000,
+            costBasis: 60_000, // underwater position — valid, must NOT clamp to amount
+        };
+
+        const result = reconstituteAccount(serialized) as InvestedAccount;
+
+        expect(result.costBasis).toBe(60_000);
+    });
+
+    it('costBasis: negative value still floors at 0', () => {
+        const serialized = {
+            className: 'InvestedAccount',
+            id: 'nan5',
+            name: 'Brokerage',
+            amount: 10_000,
+            costBasis: -5_000,
+        };
+
+        const result = reconstituteAccount(serialized) as InvestedAccount;
+
+        expect(result.costBasis).toBe(0);
     });
 });
