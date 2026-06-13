@@ -570,7 +570,10 @@ function ESPPAccountFields({ account, onFieldUpdate, onAddLot, onEditLot, onDele
 
 function BrokerageHoldingsSummary({ account }: { account: InvestedAccount }): ReactElement {
     const principal = account.costBasis;
-    const unrealizedGain = account.unrealizedGains;
+    // True gain/loss for display: account.unrealizedGains floors at 0 (correct
+    // for the tax/withdrawal basis-vs-gains split), but the card should show a
+    // loss when the account is underwater (current value below cost basis).
+    const unrealizedGain = account.amount - account.costBasis;
     return (
         <div className="col-span-full bg-surface-overlay/50 border border-border-default rounded-lg p-4">
             <h4 className="text-sm font-semibold text-white mb-3">Cost Basis Breakdown</h4>
@@ -588,7 +591,7 @@ function BrokerageHoldingsSummary({ account }: { account: InvestedAccount }): Re
                     </div>
                 </div>
                 <div>
-                    <div className="text-content-muted">Unrealized Gain</div>
+                    <div className="text-content-muted">Unrealized Gain/Loss</div>
                     <div className={`font-medium ${unrealizedGain >= 0 ? 'text-positive' : 'text-negative'}`}>
                         {unrealizedGain.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
                         {principal > 0 && (
