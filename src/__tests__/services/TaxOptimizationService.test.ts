@@ -798,6 +798,25 @@ describe('getOrdinaryAGI', () => {
         expect(agi).toBe(0);
     });
 
+    it('folds long-term capital gains into SS provisional income (more SS taxable)', () => {
+        const ssYear = (): SimulationYear => {
+            const sy = baseYear(2040);
+            sy.incomes = [new CurrentSocialSecurityIncome('ss1', 'Social Security', 40000, 'Annually',
+                new Date('2040-01-01'), new Date('2040-12-31'))];
+            return sy;
+        };
+        // $40k SS alone: provisional $20k < $25k → no SS taxable → ordinary AGI 0.
+        expect(getOrdinaryAGI(ssYear(), 70, filingStatus)).toBe(0);
+
+        // Same year + $40k LTCG: provisional jumps to $60k, pushing SS into taxability.
+        // The LTCG itself stays off the ordinary AGI (separate schedule).
+        const withLTCG = ssYear();
+        withLTCG.taxDetails.longTermCapitalGains = 40000;
+        const agi = getOrdinaryAGI(withLTCG, 70, filingStatus);
+        expect(agi).toBeGreaterThan(0);
+        expect(agi).toBeLessThanOrEqual(0.85 * 40000); // at most 85% of the benefit
+    });
+
     it('excludes the modeled conversion by default, includes it when asked', () => {
         const simYear = baseYear(2040);
         simYear.accounts = [new InvestedAccount('t1', 'My Trad', 500000, 0, 0, 0.1, 'Traditional 401k')];

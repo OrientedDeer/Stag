@@ -377,7 +377,15 @@ export function getOrdinaryAGI(
         0,
         incomeFromObjects - ssBenefits + rmd + traditionalNonRMDWithdrawals + conversion - preTaxDeductions
     );
-    const taxableSS = TaxService.getTaxableSocialSecurityBenefits(ssBenefits, agiExcludingSS, 0, filingStatus);
+
+    // Long-term capital gains are taxed on a separate schedule (not ordinary income),
+    // but they DO count toward the IRS "combined income" that determines how much SS
+    // is taxable — mirror the engine (YearSolver) and include them there only, not in
+    // the returned ordinary AGI.
+    const ltcgForProvisional = simYear.taxDetails.longTermCapitalGains ?? 0;
+    const taxableSS = TaxService.getTaxableSocialSecurityBenefits(
+        ssBenefits, agiExcludingSS + ltcgForProvisional, 0, filingStatus
+    );
     return agiExcludingSS + taxableSS;
 }
 
@@ -487,18 +495,18 @@ export function generateTaxProjections(
         const age = simYear.year - getBirthYear(assumptions.milestones);
 
         // Build a complete tax base for the year so the effective rate is meaningful.
-        // getGrossIncome() only counts income *objects* (work, SS, pension, passive,
-        // RMDs). It doesn't include Roth conversions or non-RMD Traditional withdrawals,
-        // both of which are taxed as ordinary income. Without these, retirement years
-        // with big conversions or spending withdrawals get tiny "income" but real tax,
-        // producing nonsensical effective rates (e.g. 500%).
+        // getGrossIncome() only counts income *objects* (work, SS, pension, passive).
+        // It misses RMDs (filtered out of simYear.incomes), Roth conversions, and
+        // non-RMD Traditional withdrawals — all taxed as ordinary income. Without these,
+        // retirement years with big RMDs/conversions/withdrawals get tiny "income" but
+        // real tax, producing nonsensical effective rates (e.g. 500%).
         const incomeFromObjects = TaxService.getGrossIncome(simYear.incomes, simYear.year);
         const conversionAmount = simYear.rothConversion?.amount ?? 0;
+        const rmd = simYear.rmdDetails?.totalWithdrawn ?? 0;
 
         // Traditional non-RMD withdrawals: cross-reference withdrawalDetail (keyed by
         // account name) against the year's accounts to find Traditional 401(k)/IRA.
-        // RMDs are no longer in withdrawalDetail (they're surfaced as income via
-        // PassiveIncome objects), so this sum is already RMD-free — no subtraction needed.
+        // RMDs are not in withdrawalDetail, so this sum is already RMD-free.
         const traditionalAccountNames = new Set(
             simYear.accounts
                 .filter((acc): acc is InvestedAccount =>
@@ -514,7 +522,7 @@ export function generateTaxProjections(
             }
         }
 
-        const grossIncome = incomeFromObjects + conversionAmount + traditionalNonRMDWithdrawals;
+        const grossIncome = incomeFromObjects + rmd + conversionAmount + traditionalNonRMDWithdrawals;
 
         const preTaxDeductions = TaxService.getPreTaxExemptions(simYear.incomes, simYear.year, age);
         const totalTax = simYear.taxDetails.fed + simYear.taxDetails.state + simYear.taxDetails.fica;
