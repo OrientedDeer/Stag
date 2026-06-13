@@ -36,7 +36,10 @@ export default defineConfig(({ mode }) => {
     globals: true,
     environment: 'jsdom',
     setupFiles: path.resolve(__dirname, './src/setupTests.ts'),
-    exclude: ['**/node_modules/**', '**/e2e/**'],
+    // Exclude git worktrees under .claude/ — parallel agents check out full
+    // copies of the repo there, and vitest would otherwise run their (often
+    // half-finished) test files alongside the real suite.
+    exclude: ['**/node_modules/**', '**/e2e/**', '**/.claude/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

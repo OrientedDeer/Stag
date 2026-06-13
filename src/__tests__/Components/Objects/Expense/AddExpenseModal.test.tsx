@@ -157,7 +157,8 @@ describe('AddExpenseModal goal plan preview', () => {
         expect(preview).toHaveTextContent(
             `Sets aside ${monthly} (${monthYear(TODAY)} → ${monthYear(target)}) into a new '(unnamed) (fund)' account. The $10,000 is spent at the target date.`
         );
-        expect(preview).toHaveClass('bg-blue-900/20', 'border-blue-700/50', 'text-blue-400');
+        // Rendered as an info-severity AlertBanner (semantic token, not raw blue — #70).
+        expect(screen.getByText(/Sets aside/).closest('.text-info-bright')).toBeInTheDocument();
     });
 
     it('updates the preview live when the amount changes', () => {
@@ -218,7 +219,8 @@ describe('AddExpenseModal goal plan preview', () => {
         expect(warning).toHaveTextContent(
             'Target is less than a month away — the full $10,000 is due immediately.'
         );
-        expect(warning).toHaveClass('bg-yellow-900/30', 'border-yellow-700/50', 'text-yellow-300');
+        // Rendered as a warning-severity AlertBanner (semantic token, not raw yellow — #70).
+        expect(screen.getByText(/Target is less than a month away/).closest('.text-warning-bright')).toBeInTheDocument();
         expect(screen.queryByText(/Sets aside/)).not.toBeInTheDocument();
 
         // Exactly one month out: the "monthly plan" is the whole total — still a lump
