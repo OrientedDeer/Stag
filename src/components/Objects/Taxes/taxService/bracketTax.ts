@@ -23,7 +23,7 @@ const NIIT_THRESHOLDS: Record<FilingStatus, number> = {
     'Married Filing Separately': 125000,
 };
 
-/** NIIT rate */
+/** NIIT rate (default; params.niitRate overrides it, e.g. for future-year calibration) */
 const NIIT_RATE = 0.038;
 
 /**
@@ -143,7 +143,7 @@ export function calculateTotalFederalTax(
 
         if (magiExcess > 0) {
             const niitBase = Math.min(netInvestmentIncome, magiExcess);
-            niitTax = niitBase * NIIT_RATE;
+            niitTax = niitBase * (params.niitRate ?? NIIT_RATE);
         }
     }
 

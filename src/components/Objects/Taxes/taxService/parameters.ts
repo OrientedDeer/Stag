@@ -11,6 +11,10 @@ import {
     defaultAssumptions,
 } from "../../Assumptions/AssumptionsContext";
 
+/** Net Investment Income Tax rate (3.8%); default when params.niitRate is unset.
+ *  Mirrors NIIT_RATE in bracketTax.ts — kept in sync so calibration can scale it. */
+const DEFAULT_NIIT_RATE = 0.038;
+
 /** Tax years when TCJA SALT cap was in effect ($10k/$5k MFS) */
 const TCJA_SALT_START_YEAR = 2018;
 const TCJA_SALT_END_YEAR = 2024;
@@ -87,16 +91,24 @@ function findNearestYear(
  * brackets:
  *  - Bracket SHIFT (assumptions.macro.taxBracketShiftPct): an additive
  *    ±N-percentage-point change to every FEDERAL rate, for years on/after the
- *    start year (default next year, so the current snapshot stays current-law).
- *    Models "future rates will be higher/lower" / a TCJA sunset.
+ *    start year (default next year). The CURRENT calendar year — the
+ *    projection's baseline / year-0 snapshot — is never shifted, even if the
+ *    user configures the current year as the start, so this year's taxes always
+ *    stay current-law. Models "future rates will be higher/lower" / a TCJA sunset.
  *  - CALIBRATION (assumptions.macro.taxCalibration, a runtime field the engine
  *    injects for future years): a multiplicative scale on FEDERAL and STATE
  *    rates. Because tax is linear in the marginal rates, scaling them scales
  *    the bill exactly — this carries a user's current-year override forward as
  *    a % with no cash-balance risk.
  *
- * rate' = clamp((rate + shiftDelta) × calFactor, 0, 1). Thresholds and LTCG
- * brackets are untouched. No-op when neither applies.
+ * Ordinary rate' = clamp((rate + shiftDelta) × calFactor, 0, 1). The additive
+ * shift is ordinary-income-only; CALIBRATION must also scale the preferential
+ * LTCG brackets and the flat NIIT rate so that the invariant
+ * "calibrated total federal = factor × total federal" holds for ALL income —
+ * not just ordinary. (Total federal = ordinaryTax + ltcgTax + niitTax; scaling
+ * only the ordinary brackets would silently shrink the carried-forward %
+ * whenever capital gains / NIIT are present.) Thresholds are untouched. No-op
+ * when neither adjustment applies.
  */
 function applyRateAdjustments(
     params: TaxParameters | undefined,
@@ -123,13 +135,30 @@ function applyRateAdjustments(
     const calFactor = cal ? (authority === "federal" ? cal.fed : cal.state) : 1;
 
     if (shiftDelta === 0 && calFactor === 1) return params;
-    return {
+
+    const adjusted: TaxParameters = {
         ...params,
         brackets: params.brackets.map(b => ({
             ...b,
             rate: Math.min(1, Math.max(0, (b.rate + shiftDelta) * calFactor)),
         })),
     };
+
+    // Calibration also scales preferential LTCG brackets and the NIIT rate so
+    // the bill scales exactly for capital gains / NIIT income too. The additive
+    // shift must NOT touch these (ordinary-income-only); they only change when
+    // calFactor !== 1.
+    if (calFactor !== 1) {
+        if (adjusted.capitalGainsBrackets) {
+            adjusted.capitalGainsBrackets = adjusted.capitalGainsBrackets.map(b => ({
+                ...b,
+                rate: Math.min(1, Math.max(0, b.rate * calFactor)),
+            }));
+        }
+        adjusted.niitRate = (params.niitRate ?? DEFAULT_NIIT_RATE) * calFactor;
+    }
+
+    return adjusted;
 }
 
 export function getTaxParameters(

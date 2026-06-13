@@ -33,6 +33,11 @@ export interface TaxParameters {
   medicareTaxRate: number;
   // Long-term capital gains brackets (based on taxable income thresholds)
   capitalGainsBrackets?: TaxBracket[];
+  // Net Investment Income Tax rate (3.8%). Optional override; when unset,
+  // bracketTax.ts falls back to its NIIT_RATE constant. The future-year
+  // calibration injects a scaled value here so the NIIT portion of the bill
+  // scales with the carried-forward override % (federal only).
+  niitRate?: number;
 
   // State-specific fields (all optional, for state use):
   socialSecurityTreatment?: SocialSecurityTreatment;
