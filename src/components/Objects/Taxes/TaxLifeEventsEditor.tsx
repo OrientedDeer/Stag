@@ -53,6 +53,7 @@ export function TaxLifeEventsEditor({ events, onChange, milestones, stateOptions
 
     const addEvent = () => {
         if (!value) return;
+        if (!triggerDate && !triggerMilestoneId) return;
         const event: TaxLifeEvent = {
             id: `tax-${Date.now()}`,
             kind,
@@ -114,7 +115,7 @@ export function TaxLifeEventsEditor({ events, onChange, milestones, stateOptions
                     />
                     <div className="flex gap-2 justify-end">
                         <Button onClick={resetForm} variant="secondary" size="sm">Cancel</Button>
-                        <Button onClick={addEvent} variant="positive" size="sm">Add</Button>
+                        <Button onClick={addEvent} variant="positive" size="sm" disabled={!value || (!triggerDate && !triggerMilestoneId)}>Add</Button>
                     </div>
                 </div>
             ) : (

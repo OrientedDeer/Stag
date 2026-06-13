@@ -39,6 +39,7 @@ export default function TaxesTab() {
     // current-year estimate always uses current law; this only affects the
     // projection. Mode is local UI state so typing the % to 0 doesn't collapse
     // the inputs out from under the user.
+    const engineStartYear = assumptions.demographics.priorYearMode ? new Date().getFullYear() - 1 : new Date().getFullYear();
     const shiftPct = assumptions.macro.taxBracketShiftPct ?? 0;
     const shiftStartYear = assumptions.macro.taxBracketShiftStartYear ?? 0;
     const nextYear = new Date().getFullYear() + 1;
@@ -96,15 +97,17 @@ export default function TaxesTab() {
 
     // The engine's computed (un-overridden) tax, used to show the % by which an
     // override differs — the amount calibration carries into future years.
+    // Uses engineStartYear (the simulation's actual start year) so the displayed
+    // percentage matches the factor the engine applies to the projection.
     const computedFedNoOverride = useMemo(
-        () => calculateFederalTaxFromIncomes({ ...state, fedOverride: null }, incomes, expenses, 0, taxYear, assumptions),
+        () => calculateFederalTaxFromIncomes({ ...state, fedOverride: null }, incomes, expenses, 0, engineStartYear, assumptions),
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [filingStatus, deductionMethod, stateResidency, incomes, expenses, taxYear, assumptions]
+        [filingStatus, deductionMethod, stateResidency, incomes, expenses, engineStartYear, assumptions]
     );
     const computedStateNoOverride = useMemo(
-        () => calculateStateTax({ ...state, stateOverride: null }, incomes, expenses, taxYear, assumptions),
+        () => calculateStateTax({ ...state, stateOverride: null }, incomes, expenses, engineStartYear, assumptions),
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [filingStatus, stateResidency, deductionMethod, incomes, expenses, taxYear, assumptions]
+        [filingStatus, stateResidency, deductionMethod, incomes, expenses, engineStartYear, assumptions]
     );
     const pctLabel = (override: number | null, computed: number): string | null => {
         if (override === null || computed <= 1) return null;

@@ -44,4 +44,50 @@ describe('TaxLifeEventsEditor', () => {
         fireEvent.click(screen.getByRole('button', { name: /Remove/ }));
         expect(onChange).toHaveBeenCalledWith([]);
     });
+
+    /**
+     * Bug #7: editor can add a no-op tax event.
+     *
+     * When there is no valid value to commit (stateOptions and filingOptions are
+     * both empty, so value='' on the first render of the add form), the "Add"
+     * button must be disabled so the user gets clear feedback that no event can
+     * be saved.  Before the fix the Button had no disabled prop — it looked
+     * clickable even though addEvent returned early — so toBeDisabled() failed.
+     * After the fix, disabled={!value || (!triggerDate && !triggerMilestoneId)}
+     * evaluates to true and the button carries the HTML disabled attribute.
+     *
+     * Approach: disabled-button fallback (documented).  Toggling TriggerSelector
+     * into a state where both triggerDate AND triggerMilestoneId are undefined is
+     * not achievable in jsdom because TriggerSelector's handleModeChange always
+     * calls onMilestoneChange(defaultMilestoneId) when switching to milestone
+     * mode, so the milestoneId is never left undefined by the component itself.
+     * The !value branch of the disabled condition is therefore the reliable test
+     * surface: it fires when there are no options to choose from, produces a
+     * disabled button (not just a silently no-op click), and correctly represents
+     * the intent — the button should be visually inert whenever nothing valid
+     * can be committed.
+     */
+    it('disables the Add button when there is no valid value to commit', () => {
+        const onChange = vi.fn();
+        render(
+            <TaxLifeEventsEditor
+                events={[]}
+                onChange={onChange}
+                milestones={[]}
+                stateOptions={[]}   // no states → value defaults to ''
+                filingOptions={[]}
+            />
+        );
+
+        fireEvent.click(screen.getByText('+ Add a tax change'));
+
+        const addButton = screen.getByRole('button', { name: 'Add' });
+        // The Add button must be disabled — clicking it should not create a
+        // no-op event with an empty value.
+        expect(addButton).toBeDisabled();
+
+        // Confirm onChange is also not called even if addEvent fires.
+        fireEvent.click(addButton);
+        expect(onChange).not.toHaveBeenCalled();
+    });
 });
