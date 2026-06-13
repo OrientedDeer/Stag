@@ -30,29 +30,48 @@ interface SlicePoint {
     data: { x: number; y: number };
 }
 
+interface Props {
+    /**
+     * Visible year window to share with the page's main projection chart so the
+     * two line up. The future end is clamped to `yearRange[1]`; the actual
+     * (reality) line keeps its earlier history so the past-vs-prediction
+     * comparison isn't clipped.
+     */
+    yearRange?: [number, number];
+}
+
 /**
  * "The projection chart gains memory" (#63): overlays the actual net-worth path
  * (from recorded balances) on the current projection and on past frozen
  * projections, so you can see how predictions held up. Predictions accrue
  * monthly — early on this shows mostly the current projection vs reality.
  */
-export function ProjectionMemoryChart(): ReactElement {
+export function ProjectionMemoryChart({ yearRange }: Props = {}): ReactElement {
     const { accounts, amountHistory } = useContext(AccountContext);
     const { simulation } = useContext(SimulationContext);
     const { theme, resolve } = useChartTheme();
 
     const { lineData, vintageIds, hasData } = useMemo(() => {
+        const [rangeStart, rangeEnd] = yearRange ?? [-Infinity, Infinity];
+        // Forward-looking series share the page's window; the actual line keeps
+        // its past so reality-vs-prediction stays visible.
+        const inWindow = (x: number) => x >= rangeStart && x <= rangeEnd;
+        const beforeEnd = (x: number) => x <= rangeEnd;
+
         const snapshots = loadProjectionHistory();
-        const actual = actualNetWorthByYear(accounts, amountHistory);
-        const current = extractNetWorthCurve(simulation);
+        const actual = actualNetWorthByYear(accounts, amountHistory).filter(p => beforeEnd(p.year));
+        const current = extractNetWorthCurve(simulation).filter(p => inWindow(p.year));
 
         const series: { id: string; data: { x: number; y: number }[] }[] = [];
         const vIds: string[] = [];
-        // Past frozen projections first (drawn faint, behind).
+        // Past frozen projections first (drawn faint, behind). Skip any with no
+        // points left in the window.
         for (const snap of snapshots) {
+            const data = snap.netWorthByYear.filter(p => inWindow(p.year)).map(p => ({ x: p.year, y: p.netWorth }));
+            if (data.length === 0) continue;
             const id = `Predicted ${snap.capturedYearMonth}`;
             vIds.push(id);
-            series.push({ id, data: snap.netWorthByYear.map(p => ({ x: p.year, y: p.netWorth })) });
+            series.push({ id, data });
         }
         if (current.length > 0) {
             series.push({ id: 'Projected (now)', data: current.map(p => ({ x: p.year, y: p.netWorth })) });
@@ -61,7 +80,7 @@ export function ProjectionMemoryChart(): ReactElement {
             series.push({ id: 'Actual', data: actual.map(p => ({ x: p.year, y: p.netWorth })) });
         }
         return { lineData: series, vintageIds: vIds, hasData: actual.length > 0 || current.length > 0 };
-    }, [accounts, amountHistory, simulation]);
+    }, [accounts, amountHistory, simulation, yearRange]);
 
     const SliceTooltip = ({ slice }: { slice: { points: readonly SlicePoint[] } }) => {
         const pts = slice.points;

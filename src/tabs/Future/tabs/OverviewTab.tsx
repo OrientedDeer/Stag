@@ -540,7 +540,7 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
             </div>
 
             <div className="mt-4">
-                <ProjectionMemoryChart />
+                <ProjectionMemoryChart yearRange={activeRange} />
             </div>
         </div>
     );
