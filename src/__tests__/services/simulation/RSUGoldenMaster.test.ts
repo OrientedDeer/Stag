@@ -14,8 +14,8 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import { RSUAccount, RSULot, AnyAccount, SavedAccount } from '../../../components/Objects/Accounts/models';
-import { AnyIncome, WorkIncome } from '../../../components/Objects/Income/models';
+import { RSUAccount, RSULot, AnyAccount, SavedAccount, InvestedAccount } from '../../../components/Objects/Accounts/models';
+import { AnyIncome, WorkIncome, SocialSecurityIncome } from '../../../components/Objects/Income/models';
 import { OtherExpense } from '../../../components/Objects/Expense/models';
 import {
     AssumptionsState,
@@ -25,6 +25,7 @@ import {
 import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { solveYear, YearSolverInput } from '../../../services/simulation/YearSolver';
 import { simulateOneYear } from '../../../components/Objects/Assumptions/SimulationEngine';
+import * as TaxService from '../../../components/Objects/Taxes/TaxService';
 import { PlannedWithdrawal } from '../../../services/simulation/types';
 
 const YEAR = 2026;
@@ -39,10 +40,10 @@ function assumptions(): AssumptionsState {
     };
 }
 
-function taxState(): TaxState {
+function taxState(stateResidency: string = 'Texas'): TaxState {
     return {
         filingStatus: 'Single',
-        stateResidency: 'Texas',
+        stateResidency,
         deductionMethod: 'Standard',
         fedOverride: null,
         ficaOverride: null,
@@ -69,6 +70,10 @@ function buildInput(over: {
     withdrawalPreference?: RSUAccount['withdrawalPreference'];
     extraAccounts?: AnyAccount[];
     incomes?: AnyIncome[];
+    stateResidency?: string;
+    // Explicit withdrawal order by account id. Defaults to accounts' own order
+    // (RSU first, then extras).
+    withdrawalOrder?: string[];
 }): YearSolverInput {
     const rsu = new RSUAccount(
         'rsu-1', 'Company RSU',
@@ -78,6 +83,9 @@ function buildInput(over: {
         over.withdrawalPreference ?? 'fifo', over.minimumHoldingDays ?? 0,
     );
     const accounts: AnyAccount[] = [rsu, ...(over.extraAccounts ?? [])];
+    const withdrawalOrder = over.withdrawalOrder
+        ? over.withdrawalOrder.map(accountId => ({ accountId }))
+        : accounts.map(a => ({ accountId: a.id }));
     return {
         year: YEAR,
         currentAge: YEAR - 1962, // 64
@@ -87,8 +95,8 @@ function buildInput(over: {
         totalLivingExpenses: over.livingExpenses,
         rmdAmount: 0,
         accounts,
-        withdrawalOrder: accounts.map(a => ({ accountId: a.id })),
-        taxState: taxState(),
+        withdrawalOrder,
+        taxState: taxState(over.stateResidency),
         assumptions: assumptions(),
         taxOptimizationEnabled: false,
         acaAware: false,
@@ -187,6 +195,126 @@ describe('RSU retirement-year golden master (YearSolver)', () => {
         expect(plan.tax.total).toBeGreaterThan(-1200);
     });
 
+    // =========================================================================
+    // Issue #84 — pin the STCG ordinary-tax BACK-OUT under all four interactions
+    // =========================================================================
+    // The earlier pins all use Texas / no SS / no Traditional draw / sub-NIIT
+    // income, so YearSolver.solveRetirementYear's `stcgOrdinaryTaxDelta` back-out
+    // never exercises its real paths. This test drives ONE retirement year with
+    // every dimension live at once and pins the exact dollars, so a future change
+    // that double-counts the STCG ordinary tax (federal/total too high) or
+    // over-subtracts it (NIIT, LTCG-stack, or SS-taxability effect of the STCG
+    // dropped) fails loudly.
+    //
+    // Scenario (Single, age 64, 2026):
+    //   - STATE = California (taxes the STCG as ordinary income; exempts SS).
+    //   - Social Security = $2,500/mo = $30,000/yr → taxable-SS coupling is LIVE
+    //     and gain-sensitive (see ssTaxable assertions below).
+    //   - Traditional IRA = $20,000, drawn FIRST → its ordinary income stacks
+    //     UNDER the STCG (the planner advances runningOrdinaryIncome by the
+    //     Traditional draw before the RSU sale, so the STCG is taxed on top).
+    //   - One SHORT-TERM RSU lot (vested Dec 2025), 1,000 sh, $40 basis, $300
+    //     price → up to $260/sh STCG. Living expenses $250k force a large sale,
+    //     pushing MAGI above the $200k NIIT threshold so NIIT actually bites.
+    //
+    // The Traditional ($20k) is too small to cover the deficit, so the planner
+    // sells RSU for the remainder and realizes ~$205,917 of STCG.
+    it('mixed retirement year: pins STCG back-out under CA tax / SS / Traditional / NIIT', () => {
+        const buildMixed = (stateResidency: string) => buildInput({
+            lots: [stLot()],
+            sharePrice: 300,
+            livingExpenses: 250000,
+            // Small Traditional balance so the ordinary draw is modest — this keeps
+            // the no-gain SS taxability BELOW the 85% cap, so the STCG genuinely
+            // MOVES taxable SS (proven in the assertions below).
+            extraAccounts: [new InvestedAccount(
+                'trad-1', 'Traditional IRA', 20000, 0, 0, 0.1, 'Traditional IRA', true, 0.2, 20000,
+            )],
+            // SS active all of 2026 (start well before, no end) → full $30,000/yr.
+            incomes: [new SocialSecurityIncome(
+                'ss-1', 'Social Security', 2500, 'Monthly', 64, undefined, new Date(2020, 0, 1),
+            )],
+            // Traditional drawn FIRST so its ordinary income stacks under the STCG.
+            withdrawalOrder: ['trad-1', 'rsu-1'],
+            stateResidency,
+        });
+
+        const plan = solveYear(buildMixed('California'));
+        const g = gains(plan.withdrawals);
+
+        // The whole deficit is funded (no unfunded shortfall) and the solver converged.
+        expect(plan.unfundedDeficit).toBe(0);
+        expect(plan.converged).toBe(true);
+
+        // ---- All four interaction paths are non-zero & gain-driven ----------
+
+        // (1) Traditional draw: the full $20k balance, drawn as ordinary income.
+        const tradGross = plan.withdrawals
+            .filter(w => w.source === 'traditional_ira')
+            .reduce((s, w) => s + w.gross, 0);
+        expect(Math.round(tradGross)).toBe(20000);
+
+        // (2) STCG realized (short-term only — the lot is < 1yr from vest).
+        expect(g.lt).toBe(0);
+        expect(g.st).toBeGreaterThan(200000);
+        expect(g.net).toBeLessThanOrEqual(g.gross + 1e-6);
+
+        // (3) NIIT bites: MAGI ($251,417) is above the $200k Single threshold, and
+        //     the STCG is the net investment income that drives it.
+        expect(plan.tax.niit).toBeGreaterThan(0);
+
+        // (4) State tax taxes the gain. CA's tax on the STCG + Traditional draw
+        //     flows through withdrawalOrdinaryTax (the planner charges it), so the
+        //     gain-sensitive state cost shows up as the CA-vs-TX total delta. Texas
+        //     (no state income tax) is the control.
+        const txPlan = solveYear(buildMixed('Texas'));
+        const stateTaxEffect = plan.tax.total - txPlan.tax.total;
+        expect(stateTaxEffect).toBeGreaterThan(0);
+        expect(Math.round(stateTaxEffect)).toBe(GOLD.mixed.stateTaxEffect);
+
+        // (5) Taxable-SS coupling is LIVE and moved by the gain. Combined income
+        //     WITHOUT the STCG (just the $20k Traditional draw) leaves SS only
+        //     partially taxable; WITH the STCG it pins to the 85% cap. The back-out
+        //     must NOT drop this effect.
+        const ssTaxableNoGain = TaxService.getTaxableSocialSecurityBenefits(30000, tradGross, 0, 'Single');
+        const ssTaxableWithGain = TaxService.getTaxableSocialSecurityBenefits(30000, tradGross + g.st, 0, 'Single');
+        expect(Math.round(ssTaxableNoGain)).toBe(GOLD.mixed.taxableSSNoGain); // 5,350 (well below the cap)
+        expect(Math.round(ssTaxableWithGain)).toBe(GOLD.mixed.taxableSSWithGain); // 25,500 (= 0.85 × $30k cap)
+        expect(ssTaxableWithGain).toBeGreaterThan(ssTaxableNoGain);
+
+        // ---- INVARIANT RECONCILIATION (the heart of the regression test) ------
+        // solveRetirementYear assembles total tax as:
+        //   total = finalFedTaxExStcgOrdinary  (= finalFedResult.totalTax − stcgOrdinaryTaxDelta)
+        //         + finalStateTax              (income-side state line; $0 here, SS-exempt)
+        //         + withdrawalOrdinaryTax      (planner: STCG ordinary + Traditional ordinary + their CA state tax)
+        //         + fica + penalties + irmaa   (all $0 here)
+        // The taxSummary surfaces this as:
+        //   tax.federal  = finalFedResult.ordinaryTax − stcgOrdinaryTaxDelta   (STCG ordinary backed out)
+        //   tax.niit     = finalFedResult.niitTax                              (STCG's NIIT RETAINED)
+        //   tax.state    = finalStateTax                                       (income-side only)
+        //   tax.withdrawalOrdinaryTax                                          (carries the STCG ordinary tax)
+        // so tax.total == tax.federal + tax.capitalGainsLT + tax.niit
+        //               + tax.state + tax.withdrawalOrdinaryTax + tax.fica + tax.penalties.
+        // If the back-out double-counted the STCG ordinary tax, tax.federal (and
+        // tax.total) would jump by ~$1.2k+. If it over-subtracted, niit/LTCG-stack
+        // would vanish. This identity + the pins below lock both failure modes out.
+        const componentSum =
+            plan.tax.federal + plan.tax.capitalGainsLT + plan.tax.niit +
+            plan.tax.state + plan.tax.withdrawalOrdinaryTax + plan.tax.fica + plan.tax.penalties;
+        expect(componentSum).toBeCloseTo(plan.tax.total, 4);
+
+        // ---- GOLDEN PINS — exact verified-correct engine output --------------
+        expect(Math.round(g.gross)).toBe(GOLD.mixed.rsuGross);
+        expect(Math.round(g.st)).toBe(GOLD.mixed.stcg);
+        expect(Math.round(plan.magi ?? 0)).toBe(GOLD.mixed.magi);
+        expect(Math.round(plan.tax.federal)).toBe(GOLD.mixed.fedOrdinary);
+        expect(Math.round(plan.tax.niit)).toBe(GOLD.mixed.niit);
+        expect(Math.round(plan.tax.state)).toBe(GOLD.mixed.stateLine);
+        expect(Math.round(plan.tax.withdrawalOrdinaryTax)).toBe(GOLD.mixed.withdrawalOrdinaryTax);
+        expect(Math.round(plan.tax.capitalGainsST)).toBe(0); // STCG tax lives in withdrawalOrdinaryTax
+        expect(Math.round(plan.tax.total)).toBe(GOLD.mixed.total);
+    });
+
 });
 
 describe('RSU sell-to-cover over-withholding refund (engine path)', () => {
@@ -259,7 +387,36 @@ describe('RSU sell-to-cover over-withholding refund (engine path)', () => {
 //  gross = $31,915, and — the core review fix #1 — that STCG now appears in MAGI
 //  ($31,915) and would feed NIIT (here $0, below threshold). Net never exceeds
 //  gross. STCG tax flows through withdrawalOrdinaryTax (== total here).
+//
+//  MIXED (issue #84): Single, CALIFORNIA, age 64, $30,000/yr SS, $20,000
+//  Traditional IRA drawn first, one short-term RSU lot (1,000 sh, $40 basis,
+//  $300 price), $250,000 living expenses. The Traditional draw ($20k) can't
+//  cover the deficit, so the planner sells RSU for the rest → $205,917 STCG.
+//  MAGI = taxable SS ($25,500) + Traditional ($20,000) + STCG ($205,917) =
+//  $251,417 → above the $200k NIIT threshold. The federal helper's internal
+//  NIIT MAGI excludes the planner-side Traditional draw (it's carried in
+//  withdrawalOrdinaryTax), so niitBase = min($205,917, ($25,500+$205,917)−$200k)
+//  = $31,417 → NIIT = $31,417 × 3.8% = $1,194. tax.federal ($940) is the
+//  ordinary tax on the $25,500 taxable SS alone (the STCG ordinary tax is BACKED
+//  OUT and instead lives in withdrawalOrdinaryTax = $35,463, which also carries
+//  the Traditional ordinary tax and CA state tax on both). tax.state is the
+//  income-side line ($0 — CA exempts SS); the gain's CA state cost surfaces as
+//  the $9,748 CA-vs-Texas total delta. Taxable SS is gain-driven: $5,350 without
+//  the STCG, $25,500 (85% cap) with it.
 const GOLD = {
     lt: { gross: 50000, ltcg: 30000, magi: 30000, ltcgTax: 0, niit: 0, total: 0 },
     st: { gross: 53191, stcg: 31915, magi: 31915, niit: 0, total: 3191 },
+    mixed: {
+        rsuGross: 237597,
+        stcg: 205917,
+        magi: 251417,
+        fedOrdinary: 940,
+        niit: 1194,
+        stateLine: 0,
+        withdrawalOrdinaryTax: 35463,
+        total: 37597,
+        stateTaxEffect: 9748,
+        taxableSSNoGain: 5350,
+        taxableSSWithGain: 25500,
+    },
 };
