@@ -110,6 +110,14 @@ export interface AssumptionsState {
     /** Year the bracket shift takes effect. Defaults to next year (so this
      *  year's taxes stay current-law); set e.g. 2026 to model TCJA. */
     taxBracketShiftStartYear?: number;
+    /**
+     * Runtime-only: per-component multiplicative tax calibration the engine
+     * injects for future projected years (derived from a current-year override
+     * — see TaxState.calibrateFutureYears). getTaxParameters scales federal /
+     * state marginal rates by it. Never set in defaults, dispatched, or
+     * persisted — the engine puts it on a throwaway assumptions copy.
+     */
+    taxCalibration?: { fed: number; state: number };
   };
   income: {
     salaryGrowth: number;        // e.g., 3.0

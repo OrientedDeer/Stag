@@ -83,32 +83,51 @@ function findNearestYear(
 }
 
 /**
- * Apply the "future tax regime" bracket shift
- * (assumptions.macro.taxBracketShiftPct): bump every FEDERAL ordinary-income
- * marginal rate by N percentage points, clamped to [0, 1], for years on/after
- * the start year. No-op for state tax, a zero shift, or years before the start
- * (default: next year, so the current-year snapshot stays current-law).
- * Thresholds and LTCG brackets are untouched — this models "future rates will
- * be higher/lower" / a TCJA-style sunset, not bracket-creep.
+ * Apply the two future-tax rate adjustments to a params object's ordinary
+ * brackets:
+ *  - Bracket SHIFT (assumptions.macro.taxBracketShiftPct): an additive
+ *    ±N-percentage-point change to every FEDERAL rate, for years on/after the
+ *    start year (default next year, so the current snapshot stays current-law).
+ *    Models "future rates will be higher/lower" / a TCJA sunset.
+ *  - CALIBRATION (assumptions.macro.taxCalibration, a runtime field the engine
+ *    injects for future years): a multiplicative scale on FEDERAL and STATE
+ *    rates. Because tax is linear in the marginal rates, scaling them scales
+ *    the bill exactly — this carries a user's current-year override forward as
+ *    a % with no cash-balance risk.
+ *
+ * rate' = clamp((rate + shiftDelta) × calFactor, 0, 1). Thresholds and LTCG
+ * brackets are untouched. No-op when neither applies.
  */
-function applyBracketShift(
+function applyRateAdjustments(
     params: TaxParameters | undefined,
     year: number,
     authority: "federal" | "state",
     assumptions: AssumptionsState,
 ): TaxParameters | undefined {
-    if (!params || authority !== "federal") return params;
-    const pct = assumptions.macro.taxBracketShiftPct ?? 0;
-    if (!pct) return params;
-    const configuredStart = assumptions.macro.taxBracketShiftStartYear ?? 0;
-    const startYear = configuredStart > 0 ? configuredStart : new Date().getFullYear() + 1;
-    if (year < startYear) return params;
-    const delta = pct / 100;
+    if (!params) return params;
+
+    // Federal-only additive shift, gated by start year.
+    let shiftDelta = 0;
+    if (authority === "federal") {
+        const pct = assumptions.macro.taxBracketShiftPct ?? 0;
+        if (pct) {
+            const configuredStart = assumptions.macro.taxBracketShiftStartYear ?? 0;
+            const startYear = configuredStart > 0 ? configuredStart : new Date().getFullYear() + 1;
+            if (year >= startYear) shiftDelta = pct / 100;
+        }
+    }
+
+    // Multiplicative calibration (present only on the engine's future-year
+    // assumptions copy, so no year gate is needed here).
+    const cal = assumptions.macro.taxCalibration;
+    const calFactor = cal ? (authority === "federal" ? cal.fed : cal.state) : 1;
+
+    if (shiftDelta === 0 && calFactor === 1) return params;
     return {
         ...params,
         brackets: params.brackets.map(b => ({
             ...b,
-            rate: Math.min(1, Math.max(0, b.rate + delta)),
+            rate: Math.min(1, Math.max(0, (b.rate + shiftDelta) * calFactor)),
         })),
     };
 }
@@ -123,7 +142,7 @@ export function getTaxParameters(
         macro: { ...defaultAssumptions.macro, inflationAdjusted: false },
     }
 ): TaxParameters | undefined {
-    const shift = (p: TaxParameters | undefined) => applyBracketShift(p, year, authority, assumptions);
+    const shift = (p: TaxParameters | undefined) => applyRateAdjustments(p, year, authority, assumptions);
     let inflation = assumptions.macro.inflationRate / 100;
     // The default-param above only fills in when the WHOLE assumptions arg is
     // undefined; a partial object missing inflationRate yields NaN, which would

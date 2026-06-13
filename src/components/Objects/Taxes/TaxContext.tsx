@@ -18,6 +18,15 @@ export interface TaxState {
   fedOverride: number | null;
   ficaOverride: number | null;
   stateOverride: number | null;
+  /**
+   * When true, the % by which an override differs from the engine's computed
+   * tax for the current year is carried into every future projected year (fed
+   * and state; FICA excluded). Implemented as a multiplicative scale on the
+   * marginal rates — federal/state tax is linear in the rates, so scaling them
+   * scales the bill exactly, and because it's a parameter change it flows
+   * through the simulation's gross-up sizing with no cash-balance risk.
+   */
+  calibrateFutureYears?: boolean;
   year: number;
 }
 
@@ -28,6 +37,7 @@ type Action =
   | { type: 'SET_FED_OVERRIDE'; payload: number | null }
   | { type: 'SET_FICA_OVERRIDE'; payload: number | null }
   | { type: 'SET_STATE_OVERRIDE'; payload: number | null }
+  | { type: 'SET_CALIBRATE_FUTURE'; payload: boolean }
   | { type: 'SET_YEAR'; payload: number }
   | { type: 'SET_BULK_DATA'; payload: TaxState };
 
@@ -49,6 +59,7 @@ function taxReducer(state: TaxState, action: Action): TaxState {
     case 'SET_FED_OVERRIDE': return { ...state, fedOverride: action.payload };
     case 'SET_FICA_OVERRIDE': return { ...state, ficaOverride: action.payload };
     case 'SET_STATE_OVERRIDE': return { ...state, stateOverride: action.payload };
+    case 'SET_CALIBRATE_FUTURE': return { ...state, calibrateFutureYears: action.payload };
     case 'SET_YEAR': return { ...state, year: action.payload };
     case 'SET_BULK_DATA': return { ...action.payload };
     default: return state;

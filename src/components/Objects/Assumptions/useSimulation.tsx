@@ -282,16 +282,36 @@ export const runSimulation = (
 
     // Dollar tax overrides apply to the CURRENT year only (year 0, computed
     // above with the overrides intact). Every projected (future) year uses a
-    // scoped copy with the overrides cleared — so a current-year correction
-    // (notably a FICA override, the only one the projection's tax path actually
-    // honored) no longer pins a flat amount across decades. Carrying a
-    // correction forward as a percentage is the next step (calibration).
+    // scoped copy with the overrides cleared, so a current-year correction no
+    // longer pins a flat amount across decades.
     const futureTaxState: TaxState = {
         ...taxState,
         fedOverride: null,
         ficaOverride: null,
         stateOverride: null,
     };
+
+    // Calibration (opt-in): carry the current-year correction forward as a %.
+    // Derive the per-component factor = override ÷ engine's computed-without-
+    // override for this year, and inject it as a runtime field the future-year
+    // getTaxParameters reads to SCALE the marginal rates. Tax is linear in the
+    // rates, so this scales the bill exactly and flows through gross-up sizing
+    // with no cash-balance risk. FICA is excluded (mechanical); a ~zero
+    // computed base (retirement) is guarded so the ratio can't blow up.
+    let futureAssumptions = assumptions;
+    if (taxState.calibrateFutureYears) {
+        const computedFed = taxState.fedOverride !== null
+            ? TaxService.calculateFederalTaxFromIncomes({ ...taxState, fedOverride: null }, resolvedIncomes, expenses, 0, startYear, assumptions)
+            : 0;
+        const computedState = taxState.stateOverride !== null
+            ? TaxService.calculateStateTax({ ...taxState, stateOverride: null }, resolvedIncomes, expenses, startYear, assumptions)
+            : 0;
+        const fedFactor = taxState.fedOverride !== null && computedFed > 1 ? taxState.fedOverride / computedFed : 1;
+        const stateFactor = taxState.stateOverride !== null && computedState > 1 ? taxState.stateOverride / computedState : 1;
+        if (fedFactor !== 1 || stateFactor !== 1) {
+            futureAssumptions = { ...assumptions, macro: { ...assumptions.macro, taxCalibration: { fed: fedFactor, state: stateFactor } } };
+        }
+    }
 
     const currentLivingExpenses = expenses.reduce((sum, exp) => sum + exp.getAnnualAmount(startYear), 0);
 
@@ -501,7 +521,7 @@ export const runSimulation = (
                 simulationYear - 1, // sub-sim starts AFTER previous year, ends at rmdYear
                 subAccounts, subIncomes, subExpenses,
                 subTimeline, subActiveMilestones, subReachYears,
-                assumptions, futureTaxState, birthYear,
+                futureAssumptions, futureTaxState, birthYear,
             );
         }
         : undefined;
@@ -515,7 +535,7 @@ export const runSimulation = (
         timeline,
         previousActiveMilestones: [],
         milestoneReachYears: new Map(),
-        assumptions,
+        assumptions: futureAssumptions,
         taxState: futureTaxState,
         yearlyReturns,
         conversionMode,

@@ -19,6 +19,7 @@ import {
 import { CurrencyInput } from "../../components/Layout/InputFields/CurrencyInput";
 import { DropdownInput } from "../../components/Layout/InputFields/DropdownInput";
 import { NumberInput } from "../../components/Layout/InputFields/NumberInput";
+import { ToggleInput } from "../../components/Layout/InputFields/ToggleInput";
 import { DeductionMethod } from "../../components/Objects/Taxes/TaxContext";
 import { Panel } from "../../components/Layout/Primitives";
 import { Tooltip } from "../../components/Layout/InputFields/Tooltip";
@@ -68,6 +69,7 @@ export default function TaxesTab() {
         fedOverride,
         ficaOverride,
         stateOverride,
+        calibrateFutureYears,
         year: taxYear,
     } = state;
 
@@ -89,6 +91,26 @@ export default function TaxesTab() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [filingStatus, ficaOverride, incomes, taxYear, assumptions]
     );
+
+    // The engine's computed (un-overridden) tax, used to show the % by which an
+    // override differs — the amount calibration carries into future years.
+    const computedFedNoOverride = useMemo(
+        () => calculateFederalTaxFromIncomes({ ...state, fedOverride: null }, incomes, expenses, 0, taxYear, assumptions),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [filingStatus, deductionMethod, stateResidency, incomes, expenses, taxYear, assumptions]
+    );
+    const computedStateNoOverride = useMemo(
+        () => calculateStateTax({ ...state, stateOverride: null }, incomes, expenses, taxYear, assumptions),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [filingStatus, stateResidency, deductionMethod, incomes, expenses, taxYear, assumptions]
+    );
+    const pctLabel = (override: number | null, computed: number): string | null => {
+        if (override === null || computed <= 1) return null;
+        const pct = (override / computed - 1) * 100;
+        return `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`;
+    };
+    const fedCalLabel = pctLabel(fedOverride, computedFedNoOverride);
+    const stateCalLabel = pctLabel(stateOverride, computedStateNoOverride);
     const annualGross = useMemo(() => getGrossIncome(incomes, taxYear), [incomes, taxYear]);
 
     const stateItemized = useMemo(
@@ -164,7 +186,12 @@ export default function TaxesTab() {
         dispatch({ type: 'SET_FED_OVERRIDE', payload: null });
         dispatch({ type: 'SET_FICA_OVERRIDE', payload: null });
         dispatch({ type: 'SET_STATE_OVERRIDE', payload: null });
+        dispatch({ type: 'SET_CALIBRATE_FUTURE', payload: false });
     }, [dispatch]);
+    const onCalibrateChange = useCallback(
+        (enabled: boolean) => dispatch({ type: 'SET_CALIBRATE_FUTURE', payload: enabled }),
+        [dispatch]
+    );
 
     const yearOptions = useMemo(
         () => Object.keys(TAX_DATABASE.federal).map(y => ({ value: y, label: y })).reverse(),
@@ -322,6 +349,24 @@ export default function TaxesTab() {
                                                 onChange={onStateOverrideChange}
                                             />
                                         </div>
+
+                                        {(fedOverride !== null || stateOverride !== null) && (
+                                            <div className="pt-1 space-y-2">
+                                                <ToggleInput
+                                                    label="Carry correction into future years"
+                                                    enabled={!!calibrateFutureYears}
+                                                    setEnabled={onCalibrateChange}
+                                                    tooltip="Apply the % your override differs from the calculated tax to every future projected year (federal & state — not FICA). Assumes the gap is a persistent feature of your situation, not a one-off like a home sale this year."
+                                                />
+                                                {calibrateFutureYears && (fedCalLabel || stateCalLabel) && (
+                                                    <p className="text-[11px] text-info italic leading-tight">
+                                                        Future tax scaled by your correction
+                                                        {fedCalLabel ? ` — federal ${fedCalLabel}` : ''}
+                                                        {stateCalLabel ? `, state ${stateCalLabel}` : ''}.
+                                                    </p>
+                                                )}
+                                            </div>
+                                        )}
 
                                         {(fedOverride !== null || ficaOverride !== null || stateOverride !== null) && (
                                             <button
