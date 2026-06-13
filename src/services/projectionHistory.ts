@@ -1,5 +1,7 @@
 import { SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
 import { getAccountTotals } from '../tabs/Future/tabs/FutureUtils';
+import { AnyAccount, DebtAccount, DeficitDebtAccount } from '../components/Objects/Accounts/models';
+import type { AmountHistoryEntry } from '../components/Objects/Accounts/AccountContext';
 
 /**
  * A frozen record of what the projection predicted at a moment in time, so we
@@ -75,6 +77,47 @@ export function captureSnapshot(
     };
     const next = [...existing, snapshot];
     return next.length > MAX_SNAPSHOTS ? next.slice(next.length - MAX_SNAPSHOTS) : next;
+}
+
+/**
+ * Reconstruct ACTUAL net worth per past year from recorded account balances
+ * (amountHistory), to overlay against the frozen predictions. For each year
+ * that has any balance update, takes the latest update in that year and sums
+ * the most-recent-on-or-before balance for every account, debts negative.
+ *
+ * Signing matches the snapshot's predicted curve (getAccountTotals): debt
+ * accounts subtract, everything else adds. It intentionally does NOT reconstruct
+ * a property's historical loan (not tracked in amountHistory) or apply vesting —
+ * the overlay is a trend comparison, and both lines use the same definition.
+ * The year is parsed from the date string directly to avoid the UTC off-by-one.
+ */
+export function actualNetWorthByYear(
+    accounts: AnyAccount[],
+    amountHistory: Record<string, AmountHistoryEntry[]>,
+): { year: number; netWorth: number }[] {
+    const latestDatePerYear = new Map<number, string>();
+    for (const hist of Object.values(amountHistory)) {
+        for (const e of hist) {
+            const year = parseInt(e.date.slice(0, 4), 10);
+            if (!Number.isFinite(year)) continue;
+            const cur = latestDatePerYear.get(year);
+            if (!cur || e.date > cur) latestDatePerYear.set(year, e.date);
+        }
+    }
+    return [...latestDatePerYear.keys()]
+        .sort((a, b) => a - b)
+        .map(year => {
+            const asOf = latestDatePerYear.get(year)!;
+            let netWorth = 0;
+            for (const acc of accounts) {
+                const hist = amountHistory[acc.id];
+                if (!hist || hist.length === 0) continue;
+                const entry = [...hist].reverse().find(e => e.date <= asOf);
+                if (!entry) continue;
+                netWorth += (acc instanceof DebtAccount || acc instanceof DeficitDebtAccount) ? -entry.num : entry.num;
+            }
+            return { year, netWorth };
+        });
 }
 
 /** Load history, capture this month's snapshot if needed, persist, return it. */

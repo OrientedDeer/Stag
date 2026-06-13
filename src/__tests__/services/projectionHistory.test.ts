@@ -3,7 +3,7 @@
  * month so we can later compare predictions to reality.
  */
 import { describe, it, expect } from 'vitest';
-import { captureSnapshot, extractNetWorthCurve, ProjectionSnapshot } from '../../services/projectionHistory';
+import { captureSnapshot, extractNetWorthCurve, actualNetWorthByYear, ProjectionSnapshot } from '../../services/projectionHistory';
 import { SavedAccount, DebtAccount } from '../../components/Objects/Accounts/models';
 import type { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 
@@ -70,5 +70,39 @@ describe('captureSnapshot', () => {
         expect(history.length).toBe(120);
         // oldest dropped: first kept is 10 months in
         expect(history[0].capturedYearMonth).toBe(`${2026}-11`);
+    });
+});
+
+describe('actualNetWorthByYear', () => {
+    const accounts = [
+        new SavedAccount('cash', 'Cash', 0, 0),
+        new DebtAccount('loan', 'Loan', 0, 'EXP', 5),
+    ];
+
+    it('sums the latest balance per year, debts negative', () => {
+        const history = {
+            cash: [{ date: '2025-03-01', num: 100000 }, { date: '2025-09-01', num: 110000 }, { date: '2026-02-01', num: 130000 }],
+            loan: [{ date: '2025-03-01', num: 20000 }, { date: '2026-01-15', num: 15000 }],
+        };
+        expect(actualNetWorthByYear(accounts, history)).toEqual([
+            { year: 2025, netWorth: 110000 - 20000 }, // latest 2025 entries: cash 110k (Sep), loan 20k (Mar, latest ≤ Sep)
+            { year: 2026, netWorth: 130000 - 15000 },
+        ]);
+    });
+
+    it('carries an account forward when it has no entry in a later year', () => {
+        const history = {
+            cash: [{ date: '2025-06-01', num: 50000 }],
+            loan: [{ date: '2026-06-01', num: 8000 }],
+        };
+        // 2026: cash carries its 2025 balance (latest ≤ 2026-06-01), loan is 8k
+        expect(actualNetWorthByYear(accounts, history)).toEqual([
+            { year: 2025, netWorth: 50000 },
+            { year: 2026, netWorth: 50000 - 8000 },
+        ]);
+    });
+
+    it('returns empty when there is no history', () => {
+        expect(actualNetWorthByYear(accounts, {})).toEqual([]);
     });
 });

@@ -4,6 +4,7 @@ import { ChartTooltipPortal } from '../../../components/Charts/ChartTooltipPorta
 import { ResponsiveLine } from '@nivo/line';
 import { useChartTheme } from '../../../components/Charts/useChartTheme';
 import { ChartFrame } from "../../../components/Charts/ChartFrame";
+import { ProjectionMemoryChart } from "../../../components/Charts/ProjectionMemoryChart";
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { SavedAccount, InvestedAccount, PropertyAccount, DebtAccount, DeficitDebtAccount } from '../../../components/Objects/Accounts/models';
 import { formatCompactCurrency } from './FutureUtils';
@@ -531,6 +532,10 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                     }}
                 /></ChartFrame>
                 )}
+            </div>
+
+            <div className="mt-4">
+                <ProjectionMemoryChart />
             </div>
         </div>
     );
