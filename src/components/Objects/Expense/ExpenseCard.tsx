@@ -34,18 +34,9 @@ import { CardSection } from "../../Layout/CardSection.js";
 import { ExpandableCard } from "../../Layout/ExpandableCard.js";
 import { getFrequencyAbbrev, formatDateForInput } from "../../../utils/formatters.js";
 import { GOAL_TYPE_LABELS, DEFAULT_GOAL_INTERVAL_YEARS } from "./goalKinds.js";
+import { ANNUAL_MODE_LABELS, MONTH_NAMES } from "./annualCadence.js";
 
 import { Button } from "../../Layout/Primitives";
-// Annual-cadence option labels (shared shape with AddExpenseModal). Month is
-// stored 1-12; the select uses names. Mode is stored 'lump'|'sinkingFund'.
-const MONTH_NAMES = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
-];
-const ANNUAL_MODE_LABELS: Record<'lump' | 'sinkingFund', string> = {
-    lump: "Pay in due month",
-    sinkingFund: "Save monthly",
-};
 
 function getExpenseDescriptor(expense: AnyExpense): string {
     if (expense instanceof RentExpense) return "RENT";

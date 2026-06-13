@@ -17,6 +17,7 @@ import {
 	type GoalType,
 } from "./models";
 import { GOAL_TYPE_OPTIONS, DEFAULT_GOAL_INTERVAL_YEARS } from "./goalKinds";
+import { ANNUAL_MODE_OPTIONS, MONTH_OPTIONS, type AnnualMode } from "./annualCadence";
 import { useReceiptToast } from "../../Layout/Overlays/ReceiptToast";
 import { AccountDispatchContext } from "../Accounts/AccountContext";
 import { DebtAccount, PropertyAccount, SavedAccount } from "../../Objects/Accounts/models";
@@ -80,18 +81,6 @@ interface AddExpenseModalProps {
 
 type TaxDeductibleOption = "Yes" | "No" | "Itemized";
 type InterestType = "Compounding" | "Simple";
-
-type AnnualMode = "lump" | "sinkingFund";
-
-const MONTH_OPTIONS = [
-	"January", "February", "March", "April", "May", "June",
-	"July", "August", "September", "October", "November", "December",
-].map((label, i) => ({ value: String(i + 1), label }));
-
-const ANNUAL_MODE_OPTIONS: { value: AnnualMode; label: string }[] = [
-	{ value: "lump", label: "Pay in due month" },
-	{ value: "sinkingFund", label: "Save monthly" },
-];
 
 interface ExpenseFormState {
 	name: string;
