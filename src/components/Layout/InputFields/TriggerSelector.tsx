@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, ReactElement } from 'react';
 import { CustomMilestone } from '../../../services/simulation/types';
 import { BUILTIN_MILESTONE_IDS } from '../../Objects/Assumptions/AssumptionsContext';
 import { formatDateForInput } from '../../../utils/formatters';
+import { DateInput } from './DateInput';
 
 interface TriggerSelectorProps {
     id: string;
@@ -42,16 +43,6 @@ export function TriggerSelector({
     };
 
     const [mode, setMode] = useState<TriggerMode>(getCurrentMode);
-
-    // Local buffer that drives the native date <input>. The input is controlled
-    // by this string rather than the `date` prop directly, so React never resets
-    // the field mid-keystroke when an incomplete value isn't pushed upward — that
-    // reset is what blocked typing a multi-digit year. We mirror every keystroke
-    // here and only propagate complete dates to the parent (see handleDateInput).
-    const [dateInputStr, setDateInputStr] = useState<string>(() => formatDateForInput(date));
-    useEffect(() => {
-        setDateInputStr(formatDateForInput(date));
-    }, [date]);
 
     // Reflect external prop changes, but never yank the user out of the mode
     // they're actively editing just because the value is momentarily empty
@@ -124,23 +115,6 @@ export function TriggerSelector({
                 onMilestoneChange(defaultMilestoneId);
             }
         }
-    };
-
-    const handleDateInput = (dateString: string) => {
-        // A native <input type="date"> emits intermediate values while you type a
-        // multi-digit year: with a month/day already present, the first keystroke
-        // "2" yields a *complete, valid* date "0002-06-09". Committing that resets
-        // the controlled value and ejects you from the year segment, so the second
-        // digit has nothing to build on. It also reports "" when a segment is
-        // wholly empty (which would flip the selector to Milestone mode).
-        //
-        // So: ignore empty/incomplete input, and only commit once the year is a
-        // full 4-digit value. Use the Milestone tab to represent "no fixed date".
-        if (!dateString) return;
-        const [y, m, d] = dateString.split('-').map(Number);
-        if (!y || !m || !d) return;
-        if (y < 1000) return; // year still being typed (e.g. 2 → 20 → 202 → 2026)
-        onDateChange(new Date(y, m - 1, d));
     };
 
     const handleMilestoneSelect = (selectedId: string) => {
@@ -220,15 +194,11 @@ export function TriggerSelector({
                     {/* Content based on mode */}
                     <div className="p-3">
                         {mode === 'date' && (
-                            <input
+                            <DateInput
                                 id={`${id}-date-input`}
-                                type="date"
-                                value={dateInputStr}
-                                onChange={(e) => {
-                                    setDateInputStr(e.target.value);
-                                    handleDateInput(e.target.value);
-                                }}
-                                className="w-full px-3 py-2 bg-surface-overlay border border-border-default rounded-lg text-content-default text-sm focus:border-accent-soft focus:ring-1 focus:ring-accent-soft"
+                                value={date}
+                                onChange={onDateChange}
+                                autoFocus
                             />
                         )}
 
