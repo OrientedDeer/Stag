@@ -14,7 +14,9 @@ import {
 	CharityExpense,
 	OtherExpense,
 	getGoalMonthlySetAside,
+	type GoalType,
 } from "./models";
+import { GOAL_TYPE_OPTIONS, DEFAULT_GOAL_INTERVAL_YEARS } from "./goalKinds";
 import { useReceiptToast } from "../../Layout/Overlays/ReceiptToast";
 import { AccountDispatchContext } from "../Accounts/AccountContext";
 import { DebtAccount, PropertyAccount, SavedAccount } from "../../Objects/Accounts/models";
@@ -89,13 +91,6 @@ const MONTH_OPTIONS = [
 const ANNUAL_MODE_OPTIONS: { value: AnnualMode; label: string }[] = [
 	{ value: "lump", label: "Pay in due month" },
 	{ value: "sinkingFund", label: "Save monthly" },
-];
-
-type GoalType = "recurring" | "targetDate";
-
-const GOAL_TYPE_OPTIONS: { value: GoalType; label: string }[] = [
-	{ value: "recurring", label: "Recurring every N years" },
-	{ value: "targetDate", label: "Save by date" },
 ];
 
 interface ExpenseFormState {
@@ -215,7 +210,7 @@ function getInitialFormState(frequency: ExpenseFrequency = 'Monthly'): ExpenseFo
 		dueMonth: new Date().getMonth() + 1,
 		annualMode: 'lump',
 		goalType: 'recurring',
-		intervalYears: 10,
+		intervalYears: DEFAULT_GOAL_INTERVAL_YEARS,
 		// "Save by date" goals default ~1 year out, not the End-of-Plan milestone.
 		goalTargetDate: oneYearOut,
 		goalTargetMilestoneId: undefined,

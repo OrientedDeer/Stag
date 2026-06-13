@@ -33,6 +33,7 @@ import { AlertBanner } from "../../Layout/AlertBanner.js";
 import { CardSection } from "../../Layout/CardSection.js";
 import { ExpandableCard } from "../../Layout/ExpandableCard.js";
 import { getFrequencyAbbrev, formatDateForInput } from "../../../utils/formatters.js";
+import { GOAL_TYPE_LABELS, DEFAULT_GOAL_INTERVAL_YEARS } from "./goalKinds.js";
 
 import { Button } from "../../Layout/Primitives";
 // Annual-cadence option labels (shared shape with AddExpenseModal). Month is
@@ -45,16 +46,6 @@ const ANNUAL_MODE_LABELS: Record<'lump' | 'sinkingFund', string> = {
     lump: "Pay in due month",
     sinkingFund: "Save monthly",
 };
-
-// Goal "kind" labels (shared shape with AddExpenseModal's GOAL_TYPE_OPTIONS).
-// Stored as 'recurring' | 'targetDate'; the select shows the readable label.
-const GOAL_TYPE_LABELS: Record<'recurring' | 'targetDate', string> = {
-    recurring: "Recurring every N years",
-    targetDate: "Save by date",
-};
-// Default recurrence applied when switching a goal to 'recurring' that has no
-// interval yet (mirrors AddExpenseModal's intervalYears default).
-const DEFAULT_GOAL_INTERVAL_YEARS = 10;
 
 function getExpenseDescriptor(expense: AnyExpense): string {
     if (expense instanceof RentExpense) return "RENT";
