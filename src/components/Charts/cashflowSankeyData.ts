@@ -63,11 +63,30 @@ interface SankeyLink {
     value: number;
 }
 
+/**
+ * One constituent source object behind a Sankey node, used by the click-to-drill
+ * detail panel. `value` is the dollar amount this source contributes to the node;
+ * the panel derives each item's share of the node total.
+ */
+export interface SankeyProvenanceItem {
+    label: string;
+    value: number;
+}
+
+/**
+ * Maps a node id to the underlying source objects that compose it. Only
+ * composite nodes (aggregators like Gross Pay, Taxes, an expense category)
+ * get an entry; leaf source nodes are omitted because they have no breakdown.
+ */
+export type SankeyProvenance = Record<string, SankeyProvenanceItem[]>;
+
 export interface BuildCashflowSankeyResult {
     data: { nodes: SankeyNode[]; links: SankeyLink[] };
     error: string | null;
     debugData: { nodes: SankeyNode[]; links: SankeyLink[] } | null;
     imbalances: SankeyImbalance[];
+    /** Node id → constituent source objects, for the drill-down panel. */
+    provenance: SankeyProvenance;
 }
 
 export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildCashflowSankeyResult {
@@ -500,7 +519,77 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
         }
 
         if (uniqueNodes.length === 0 || validLinks.length === 0) {
-            return { data: { nodes: [], links: [] }, error: null, debugData: null, imbalances: [] };
+            return { data: { nodes: [], links: [] }, error: null, debugData: null, imbalances: [], provenance: {} };
+        }
+
+        // --- Provenance: node id → constituent source objects ---
+        // Powers the click-to-drill detail panel. Built from the same per-source
+        // values used above (cashflowDetail when available), so the breakdown
+        // never drifts from the rendered flows. Only composite nodes with real
+        // sub-structure get an entry; leaf source nodes are omitted.
+        const provenance: SankeyProvenance = {};
+        const addProvenance = (nodeId: string, items: SankeyProvenanceItem[]) => {
+            const filtered = items.filter(i => i.value >= MIN_DISPLAY_THRESHOLD);
+            if (filtered.length > 0) provenance[nodeId] = filtered;
+        };
+
+        // Gross Pay: every income line that feeds it (work, other, reinvested,
+        // withdrawals, conversion sources, plus the aggregated employer match).
+        const grossPayItems: SankeyProvenanceItem[] = [
+            ...workIncomeItems.map(i => ({ label: i.name, value: i.amount })),
+            ...(totalEmployerMatch >= MIN_DISPLAY_THRESHOLD
+                ? [{ label: 'Employer Contrib.', value: totalEmployerMatch }]
+                : []),
+            ...otherIncomeItems.map(i => ({ label: i.name, value: i.amount })),
+            ...reinvestedIncomeItems.map(i => ({ label: i.name, value: i.amount })),
+            ...withdrawalItems.map(([name, amount]) => ({ label: `From ${name}`, value: amount })),
+            ...conversionSourceItems.map(([name, amount]) => ({ label: `Convert ${name}`, value: amount })),
+        ];
+        addProvenance('Gross Pay', grossPayItems);
+
+        // Taxes: the individual tax components that the chart also breaks out as
+        // child nodes. Listed here so a single click on the umbrella node shows
+        // the full split.
+        addProvenance('Taxes', [
+            { label: 'Federal Tax', value: taxes.fed },
+            { label: 'State Tax', value: taxes.state },
+            { label: 'FICA Tax', value: taxes.fica },
+            { label: 'Cap Gains Tax', value: taxes.capitalGains || 0 },
+            { label: 'NIIT', value: taxes.niit || 0 },
+            { label: 'IRMAA', value: taxes.irmaa || 0 },
+            { label: 'Withdrawal Tax', value: taxes.withdrawalOrdinaryTax || 0 },
+        ]);
+
+        // 401k / Roth / Employer Contributions split employee vs. employer money.
+        addProvenance('401k Savings', [
+            { label: 'Your contributions', value: employee401k },
+            { label: 'Employer match', value: totalEmployerMatchForTrad },
+        ]);
+        addProvenance('Roth Savings', [
+            { label: 'Your contributions', value: employeeRoth },
+            { label: 'Employer match', value: totalEmployerMatchForRoth },
+        ]);
+        addProvenance('Employer Contributions', [
+            { label: 'Pre-tax match', value: totalEmployerMatchForTrad },
+            { label: 'Roth match', value: totalEmployerMatchForRoth },
+        ]);
+
+        // Net Pay: where the take-home cash goes (savings, expenses, remaining).
+        const netPayItems: SankeyProvenanceItem[] = [
+            { label: 'Roth Savings', value: totalRothSavings },
+            { label: 'Principal Payments', value: totalPrincipal },
+            { label: 'Mortgage Payments', value: mortgageInterestAndEscrow },
+            ...bucketItems.map(item => ({ label: item.name, value: item.amount })),
+            ...sortedExpenseCategories.map(cat => ({ label: cat, value: expenseCatTotals.get(cat) || 0 })),
+            ...(remaining > 1 ? [{ label: 'Remaining', value: remaining }] : []),
+            ...conversionDestItems.map(([name, amount]) => ({ label: `To ${name}`, value: amount * conversionScale })),
+            ...reinvestedIncomeItems.map(item => ({ label: `→ ${item.accountName}`, value: item.amount })),
+        ];
+        addProvenance('Net Pay', netPayItems);
+
+        // Only keep provenance for nodes that actually rendered.
+        for (const id of Object.keys(provenance)) {
+            if (!nodeIds.has(id)) delete provenance[id];
         }
 
         const result = { nodes: uniqueNodes, links: validLinks };
@@ -525,7 +614,7 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
             }
         }
 
-        return { data: result, error: null, debugData: result, imbalances };
+        return { data: result, error: null, debugData: result, imbalances, provenance };
     } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
         return {
@@ -533,6 +622,7 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
             error: message,
             debugData: null,
             imbalances: [],
+            provenance: {},
         };
     }
 }

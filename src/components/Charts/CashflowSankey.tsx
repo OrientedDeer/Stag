@@ -14,9 +14,29 @@ import {
     SankeyImbalance,
     SankeyRothConversion,
     SankeyTaxBreakdown,
+    SankeyProvenanceItem,
 } from './cashflowSankeyData';
 
 export type { SankeyImbalance } from './cashflowSankeyData';
+
+/** A node selected for the provenance drill-down panel. */
+interface SelectedSankeyNode {
+    id: string;
+    label: string;
+    value: number;
+}
+
+/**
+ * The shape Nivo hands to the Sankey `onClick`. It fires for both nodes and
+ * links; links carry `source`/`target`, which lets us filter to node clicks.
+ */
+interface SankeyClickTarget {
+    id?: string;
+    label?: string;
+    value?: number;
+    source?: unknown;
+    target?: unknown;
+}
 
 interface CashflowSankeyProps {
     incomes: AnyIncome[];
@@ -74,7 +94,7 @@ const CashflowSankeyInner = ({
         return formatCompactCurrency(value, { forceExact });
     }, [forceExact]);
 
-    const { data, error, debugData, imbalances } = useMemo(
+    const { data, error, debugData, imbalances, provenance } = useMemo(
         () => buildCashflowSankeyData({
             incomes,
             expenses,
@@ -98,6 +118,30 @@ const CashflowSankeyInner = ({
 
     const containerRef = useRef<HTMLDivElement>(null);
     const [containerWidth, setContainerWidth] = useState(800);
+
+    // Node clicked for the provenance drill-down panel. A stale selection (one
+    // whose node no longer exists after the data changed, e.g. a different year)
+    // is dropped during render via `selectedProvenance` below rather than reset
+    // in an effect — that also covers callers that pass inline default props
+    // (e.g. {}) and mint a fresh `data` object every render.
+    const [selectedNode, setSelectedNode] = useState<SelectedSankeyNode | null>(null);
+
+    const handleNodeClick = useCallback((target: SankeyClickTarget) => {
+        // Nivo's onClick fires for both nodes and links; links carry source/target.
+        // Ignore link clicks — provenance is a node-level concept.
+        if (!target || target.source || target.target || typeof target.id !== 'string') return;
+        // Only composite nodes have a breakdown; ignore clicks on leaf nodes.
+        if (!provenance[target.id]) {
+            setSelectedNode(null);
+            return;
+        }
+        const id = target.id;
+        setSelectedNode(prev =>
+            prev?.id === id
+                ? null
+                : { id, label: target.label ?? id, value: target.value ?? 0 },
+        );
+    }, [provenance]);
 
     useEffect(() => {
         const updateWidth = () => {
@@ -145,6 +189,9 @@ const CashflowSankeyInner = ({
     // Reset key forces the error boundary to retry when data changes
     const resetKey = `${incomes.length}-${expenses.length}-${year}-${Object.keys(withdrawals).length}`;
 
+    // Drop a stale selection whose node no longer exists in the current data.
+    const selectedProvenance = selectedNode ? provenance[selectedNode.id] : undefined;
+
     return (
         <SankeyErrorBoundary height={height} resetKey={resetKey}>
             <div ref={containerRef} style={{ height: `${height}px` }}>
@@ -152,6 +199,7 @@ const CashflowSankeyInner = ({
                     data={data}
                     margin={margins}
                     align="justify"
+                    onClick={(node: SankeyClickTarget) => handleNodeClick(node)}
                     colors={(node: any) => resolve(node.color)}
                     nodeOpacity={1}
                     nodeThickness={isNarrow ? 12 : 15}
@@ -195,7 +243,69 @@ const CashflowSankeyInner = ({
                     }}
                 /></ChartFrame>
             </div>
+            {selectedNode && selectedProvenance && (
+                <SankeyDetailPanel
+                    label={selectedNode.label}
+                    total={selectedNode.value}
+                    items={selectedProvenance}
+                    formatValue={currencyFormatter}
+                    onClose={() => setSelectedNode(null)}
+                />
+            )}
         </SankeyErrorBoundary>
+    );
+};
+
+interface SankeyDetailPanelProps {
+    label: string;
+    total: number;
+    items: SankeyProvenanceItem[];
+    formatValue: (value: number) => string;
+    onClose: () => void;
+}
+
+/**
+ * Drill-down panel rendered below the Sankey when a composite node is clicked.
+ * Lists the constituent source objects with their amount and share of the node.
+ */
+const SankeyDetailPanel = ({ label, total, items, formatValue, onClose }: SankeyDetailPanelProps) => {
+    const sorted = [...items].sort((a, b) => b.value - a.value);
+    const sum = sorted.reduce((s, i) => s + i.value, 0);
+    // Prefer the node's own value for shares; fall back to the item sum if the
+    // node value is unavailable (e.g. a consumer that doesn't supply it).
+    const denominator = total > 0 ? total : sum;
+
+    return (
+        <div className="mt-3 bg-surface-raised border border-border-default rounded-lg p-4">
+            <div className="flex items-start justify-between gap-3 mb-3">
+                <div>
+                    <div className="text-sm font-bold text-content-bright">{label}</div>
+                    <div className="text-lg font-mono text-positive font-medium">{formatValue(total > 0 ? total : sum)}</div>
+                </div>
+                <button
+                    type="button"
+                    onClick={onClose}
+                    aria-label="Close detail panel"
+                    className="text-content-muted hover:text-content-emphasis text-lg leading-none px-1"
+                >
+                    &times;
+                </button>
+            </div>
+            <ul className="space-y-1.5">
+                {sorted.map((item, idx) => {
+                    const share = denominator > 0 ? (item.value / denominator) * 100 : 0;
+                    return (
+                        <li key={`${item.label}-${idx}`} className="flex items-center justify-between gap-3 text-sm">
+                            <span className="text-content-default truncate">{item.label}</span>
+                            <span className="flex items-baseline gap-2 shrink-0">
+                                <span className="font-mono text-content-emphasis">{formatValue(item.value)}</span>
+                                <span className="text-xs text-content-muted w-10 text-right">{share.toFixed(0)}%</span>
+                            </span>
+                        </li>
+                    );
+                })}
+            </ul>
+        </div>
     );
 };
 
