@@ -259,7 +259,7 @@ export function generateRecommendations(
 
     // 4. Roth Conversion Windows (if has traditional balance)
     if (hasTraditionalBalance) {
-        const windows = findRothConversionWindows(simulation, assumptions);
+        const windows = findRothConversionWindows(simulation, assumptions, taxState);
         // Calculate retirement tax rate for the recommendation
         const retirementAge = getRetirementAge(assumptions.milestones);
         const retirementYear = getBirthYear(assumptions.milestones) + retirementAge;
@@ -333,7 +333,8 @@ export function getMedianRetirementTaxRate(simulation: SimulationYear[], retirem
  */
 export function findRothConversionWindows(
     simulation: SimulationYear[],
-    assumptions: AssumptionsState
+    assumptions: AssumptionsState,
+    taxState?: TaxState
 ): RothConversionOpportunity[] {
     const opportunities: RothConversionOpportunity[] = [];
     const retirementAge = getRetirementAge(assumptions.milestones);
@@ -358,7 +359,7 @@ export function findRothConversionWindows(
         // Get federal tax parameters
         const fedParams = TaxService.getTaxParameters(
             simYear.year,
-            'Single', // Simplified - should come from taxState
+            taxState?.filingStatus ?? 'Single',
             'federal',
             undefined,
             assumptions
@@ -1100,7 +1101,7 @@ export function analyzeConversionPlan(
     }
 
     // No active schedule — estimate the opportunity for the teaser
-    const windows = findRothConversionWindows(simulation, assumptions);
+    const windows = findRothConversionWindows(simulation, assumptions, taxState);
     if (windows.length === 0) {
         return {
             hasActiveSchedule: false,
