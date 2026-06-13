@@ -53,7 +53,7 @@ function segmentsToDate(seg: SegmentState): Date | undefined {
     if (seg.year.length < 4) return undefined; // year still being typed
     if (m < 1 || m > 12) return undefined;
     if (d < 1 || d > 31) return undefined;
-    if (y < 1) return undefined;
+    if (y < 1000) return undefined; // reject fat-fingered ancient years (e.g. "0023"); matches the old TriggerSelector floor
     const date = new Date(y, m - 1, d);
     // Reject overflow (e.g. Feb 30 rolls forward to March) by round-tripping.
     if (date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) {

@@ -292,6 +292,10 @@ const SankeyDetailPanel = ({ label, total, items, formatValue, onClose }: Sankey
                 </button>
             </div>
             <ul className="space-y-1.5">
+                {/* key includes idx on purpose: provenance labels derive from
+                    user-named objects (income/bucket names) and can repeat, so
+                    label alone can collide. These rows are stateless text, so the
+                    reorder churn from an index key is harmless. */}
                 {sorted.map((item, idx) => {
                     const share = denominator > 0 ? (item.value / denominator) * 100 : 0;
                     return (

@@ -75,6 +75,15 @@ describe('DateInput', () => {
         expect(onChange).not.toHaveBeenCalled();
     });
 
+    it('does not fire onChange for a fat-fingered ancient year (0023)', () => {
+        const onChange = vi.fn();
+        render(<DateInput label="Trigger" value={undefined} onChange={onChange} />);
+        fireEvent.change(month(), { target: { value: '6' } });
+        fireEvent.change(day(), { target: { value: '9' } });
+        fireEvent.change(year(), { target: { value: '0023' } });
+        expect(onChange).not.toHaveBeenCalled();
+    });
+
     it('strips non-digit characters from input', () => {
         render(<DateInput label="Trigger" value={undefined} onChange={() => {}} />);
         fireEvent.change(month(), { target: { value: 'a1b' } });
