@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import ExpenseCard from '../../../../components/Objects/Expense/ExpenseCard';
-import { MortgageExpense, LoanExpense } from '../../../../components/Objects/Expense/models';
+import { MortgageExpense, LoanExpense, OtherExpense } from '../../../../components/Objects/Expense/models';
 
 // ExpenseCard's contexts (Expense/Account/Assumptions) all have safe defaults,
 // so these render-only tests need no providers — sections and the expandable
@@ -108,6 +108,54 @@ describe('ExpenseCard collapsible sections', () => {
             fireEvent.click(screen.getByRole('button', { name: /Loan details/ }));
             expect(screen.getByLabelText(/Interest Type/, { selector: 'select' })).toBeInTheDocument();
             expect(screen.getByLabelText(/APR/, { selector: 'input' })).toBeInTheDocument();
+        });
+    });
+
+    describe('long-term goal kind (issue #67)', () => {
+        function makeRecurringGoal(): OtherExpense {
+            const goal = new OtherExpense('goal-1', 'Roof', 12_000, 'Monthly', new Date(2026, 0, 1));
+            goal.goalType = 'recurring';
+            goal.intervalYears = 10;
+            goal.goalAccountId = 'acc-roof-fund';
+            return goal;
+        }
+
+        function makeTargetDateGoal(): OtherExpense {
+            const goal = new OtherExpense(
+                'goal-2', 'Car', 24_000, 'Monthly',
+                new Date(2026, 0, 1), new Date(2028, 0, 1),
+            );
+            goal.goalType = 'targetDate';
+            goal.goalAccountId = 'acc-car-fund';
+            return goal;
+        }
+
+        it('exposes an editable Goal Type select and the interval input for recurring goals', () => {
+            render(<ExpenseCard expense={makeRecurringGoal()} />);
+            expandCard('Roof');
+
+            // Kind is editable (a select), not the old read-only set-aside text.
+            const select = screen.getByLabelText(/Goal Type/, { selector: 'select' }) as HTMLSelectElement;
+            expect(select.value).toBe('Recurring every N years');
+
+            // Recurring goals show the recurrence editor and the live set-aside.
+            expect(screen.getByLabelText(/Every \(years\)/, { selector: 'input' })).toBeInTheDocument();
+            // 12,000 / (10 * 12) = $100/mo.
+            expect(screen.getByText('$100/mo')).toBeInTheDocument();
+        });
+
+        it('shows a Target date trigger and hides the interval input for save-by-date goals', () => {
+            render(<ExpenseCard expense={makeTargetDateGoal()} />);
+            expandCard('Car');
+
+            const select = screen.getByLabelText(/Goal Type/, { selector: 'select' }) as HTMLSelectElement;
+            expect(select.value).toBe('Save by date');
+
+            // No recurrence editor for target-date goals; the End trigger is the target.
+            expect(screen.queryByLabelText(/Every \(years\)/)).not.toBeInTheDocument();
+            expect(screen.getByText('Target date')).toBeInTheDocument();
+            // 24,000 / 24 months = $1,000/mo.
+            expect(screen.getByText('$1,000/mo')).toBeInTheDocument();
         });
     });
 });

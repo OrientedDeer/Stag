@@ -46,6 +46,16 @@ const ANNUAL_MODE_LABELS: Record<'lump' | 'sinkingFund', string> = {
     sinkingFund: "Save monthly",
 };
 
+// Goal "kind" labels (shared shape with AddExpenseModal's GOAL_TYPE_OPTIONS).
+// Stored as 'recurring' | 'targetDate'; the select shows the readable label.
+const GOAL_TYPE_LABELS: Record<'recurring' | 'targetDate', string> = {
+    recurring: "Recurring every N years",
+    targetDate: "Save by date",
+};
+// Default recurrence applied when switching a goal to 'recurring' that has no
+// interval yet (mirrors AddExpenseModal's intervalYears default).
+const DEFAULT_GOAL_INTERVAL_YEARS = 10;
+
 function getExpenseDescriptor(expense: AnyExpense): string {
     if (expense instanceof RentExpense) return "RENT";
     if (expense instanceof MortgageExpense) return "MORTGAGE";
@@ -190,6 +200,19 @@ function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
         }
     };
 
+    // Switch a goal's kind in place. Funding is fully derived from the goal's
+    // current fields (getGoalMonthlySetAside / getGoalFundMonthlyCap), and the
+    // linked sinking-fund account is untouched, so no already-funded money is
+    // lost — only the set-aside formula changes (interval vs target horizon).
+    // When switching to 'recurring' with no interval yet, seed a sensible
+    // default so the set-aside isn't 0 until the user types one.
+    const handleGoalTypeChange = (next: 'recurring' | 'targetDate'): void => {
+        handleFieldUpdate("goalType", next);
+        if (next === 'recurring' && !(expense.intervalYears && expense.intervalYears > 0)) {
+            handleFieldUpdate("intervalYears", DEFAULT_GOAL_INTERVAL_YEARS);
+        }
+    };
+
     // Display amount calculation
     const getDisplayAmount = (): string => {
         if (expense instanceof RentExpense || expense instanceof MortgageExpense || expense instanceof LoanExpense) {
@@ -254,14 +277,37 @@ function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
                 )}
 
                 {isGoal ? (
-                    // Derived live from amount + dates/interval — edits to the
-                    // goal update this (and the funding) automatically.
-                    <StyledDisplay
-                        label="Set-aside"
-                        value={`$${getGoalMonthlySetAside(expense).toLocaleString(undefined, { maximumFractionDigits: 0 })}/mo${
-                            expense.goalType === "recurring" ? ` · every ${expense.intervalYears ?? "?"} yr` : ""
-                        }`}
-                    />
+                    <>
+                        {/* Kind is editable after creation: switching swaps the
+                            set-aside formula without touching the funded balance. */}
+                        <StyledSelect
+                            id={`${expense.id}-goal-type`}
+                            label="Goal Type"
+                            value={GOAL_TYPE_LABELS[expense.goalType ?? "recurring"]}
+                            onChange={(e) => handleGoalTypeChange(
+                                e.target.value === GOAL_TYPE_LABELS.targetDate ? "targetDate" : "recurring"
+                            )}
+                            tooltip="Recurring: a big-ticket item replaced every N years (e.g. roof). Save by date: a one-time goal funded by a target date."
+                            options={[GOAL_TYPE_LABELS.recurring, GOAL_TYPE_LABELS.targetDate]}
+                        />
+
+                        {expense.goalType === "recurring" && (
+                            <NumberInput
+                                id={`${expense.id}-interval-years`}
+                                label="Every (years)"
+                                value={expense.intervalYears ?? DEFAULT_GOAL_INTERVAL_YEARS}
+                                onChange={(val) => handleFieldUpdate("intervalYears", val)}
+                                tooltip="How often this expense recurs, in years."
+                            />
+                        )}
+
+                        {/* Derived live from amount + dates/interval — edits to the
+                            goal update this (and the funding) automatically. */}
+                        <StyledDisplay
+                            label="Set-aside"
+                            value={`$${getGoalMonthlySetAside(expense).toLocaleString(undefined, { maximumFractionDigits: 0 })}/mo`}
+                        />
+                    </>
                 ) : (
                     <>
                         <StyledSelect
