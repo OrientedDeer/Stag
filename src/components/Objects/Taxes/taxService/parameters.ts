@@ -118,14 +118,27 @@ function applyRateAdjustments(
 ): TaxParameters | undefined {
     if (!params) return params;
 
-    // Federal-only additive shift, gated by start year.
+    // Federal-only additive shift, gated by start year. The shift can NEVER
+    // take effect on the current calendar year (the projection's baseline /
+    // year-0 snapshot) — even if the user configures the current calendar year
+    // as the start — so this year's taxes always stay current-law. A configured
+    // current-year start is therefore treated as next year. (Historical years
+    // strictly before the current year are never produced by the forward
+    // projector; they remain governed by the configured start so an explicit
+    // back-test start still applies.)
     let shiftDelta = 0;
     if (authority === "federal") {
         const pct = assumptions.macro.taxBracketShiftPct ?? 0;
         if (pct) {
+            const currentYear = new Date().getFullYear();
             const configuredStart = assumptions.macro.taxBracketShiftStartYear ?? 0;
-            const startYear = configuredStart > 0 ? configuredStart : new Date().getFullYear() + 1;
-            if (year >= startYear) shiftDelta = pct / 100;
+            const startYear = configuredStart > 0 ? configuredStart : currentYear + 1;
+            // The current calendar year (the projection's baseline / year-0
+            // snapshot) must always stay current-law, so suppress the shift on
+            // it even when the user configures the current year as the start.
+            // Historical years (a back-test start strictly in the past) still
+            // shift per the configured start.
+            if (year >= startYear && year !== currentYear) shiftDelta = pct / 100;
         }
     }
 

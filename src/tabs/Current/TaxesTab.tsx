@@ -315,9 +315,9 @@ export default function TaxesTab() {
                                                 label="Starting year"
                                                 value={shiftStartYear > 0 ? shiftStartYear : nextYear}
                                                 onChange={onShiftStartYearChange}
-                                                min={new Date().getFullYear()}
+                                                min={new Date().getFullYear() + 1}
                                                 max={new Date().getFullYear() + 60}
-                                                tooltip="The first year the adjustment applies. Defaults to next year; set e.g. 2026 to model the TCJA sunset."
+                                                tooltip="The first year the adjustment applies. Defaults to next year (this year always stays current-law)."
                                             />
                                         </>
                                     )}

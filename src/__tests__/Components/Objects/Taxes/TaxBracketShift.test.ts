@@ -55,4 +55,20 @@ describe('federal bracket shift', () => {
         const b = getTaxParameters(2024, 'Single', 'federal', undefined, withShift(0, 2020))!;
         expect(b.brackets.map(x => x.rate)).toEqual(a.brackets.map(x => x.rate));
     });
+
+    it('never shifts the current calendar year, even if configured to start now (BUG #2)', () => {
+        const CY = new Date().getFullYear();
+        const base = getTaxParameters(CY, 'Single', 'federal', undefined, noShift)!;
+        // Configuring the shift to start in the CURRENT year must NOT shift the
+        // current year — "this year's taxes stay current-law."
+        const currentYearWithShift = getTaxParameters(CY, 'Single', 'federal', undefined, withShift(10, CY))!;
+        expect(currentYearWithShift.brackets.map(b => b.rate)).toEqual(base.brackets.map(b => b.rate));
+
+        // But next year IS shifted (the clamp pushes a current-year start to next year).
+        const nextBase = getTaxParameters(CY + 1, 'Single', 'federal', undefined, noShift)!;
+        const nextYearWithShift = getTaxParameters(CY + 1, 'Single', 'federal', undefined, withShift(10, CY))!;
+        nextYearWithShift.brackets.forEach((b, i) => {
+            expect(b.rate).toBeCloseTo(Math.min(1, nextBase.brackets[i].rate + 0.10), 6);
+        });
+    });
 });
