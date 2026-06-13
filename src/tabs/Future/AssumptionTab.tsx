@@ -7,6 +7,8 @@ import { DropdownInput } from "../../components/Layout/InputFields/DropdownInput
 import { ToggleInput } from "../../components/Layout/InputFields/ToggleInput";
 import MilestoneModal from "../../components/Objects/Assumptions/MilestoneModal";
 import { Panel } from "../../components/Layout/Primitives";
+import { AlertBanner } from "../../components/Layout/AlertBanner";
+import { computeGKRateSuggestion } from "../../services/gkRateSuggestion";
 
 export default function AssumptionTab() {
   const { state, dispatch } = useContext(AssumptionsContext);
@@ -22,6 +24,15 @@ export default function AssumptionTab() {
   }, [expenses]);
 
   const birthYear = useMemo(() => getBirthYear(state.milestones), [state.milestones]);
+
+  // Under Guyton-Klinger, surface a tip when the user's planned year-1
+  // retirement spending implies a higher initial withdrawal rate than the one
+  // configured. A too-low rate caps spending and produces amber budget-cap
+  // markers throughout retirement. `null` when there's nothing worth flagging.
+  const gkRateSuggestion = useMemo(
+    () => computeGKRateSuggestion(simulation, state),
+    [simulation, state],
+  );
 
   // Derive milestoneId → year-reached from the cached simulation. Each
   // SimulationYear carries the milestone events that fired that year; the
@@ -174,6 +185,29 @@ export default function AssumptionTab() {
                         />
                         )}
                     </div>
+
+                    {/* GK initial-rate suggestion: planned spending implies a higher rate */}
+                    {state.investments.withdrawalStrategy === 'Guyton Klinger' && gkRateSuggestion && (
+                        <AlertBanner severity="warning" size="sm" title="Your spending implies a higher initial rate">
+                            <p>
+                                Your year-1 retirement spending works out to about{' '}
+                                <span className="font-semibold">{gkRateSuggestion.impliedRate.toFixed(1)}%</span> of your
+                                portfolio at retirement — above your set rate of{' '}
+                                <span className="font-semibold">{gkRateSuggestion.configuredRate.toFixed(1)}%</span>.
+                                Guyton-Klinger will cap spending to the lower rate, which shows up as amber budget-cap
+                                markers throughout retirement. Consider raising your initial rate.
+                            </p>
+                            <button
+                                onClick={() => dispatch({
+                                    type: 'UPDATE_INVESTMENTS',
+                                    payload: { withdrawalRate: gkRateSuggestion.suggestedRate },
+                                })}
+                                className="mt-2 inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium bg-warning-solid/80 hover:bg-warning-solid text-white transition-colors"
+                            >
+                                Set rate to {gkRateSuggestion.suggestedRate.toFixed(1)}%
+                            </button>
+                        </AlertBanner>
+                    )}
 
                     {/* Strategy Description */}
                     <div className="text-xs text-content-muted bg-surface-overlay/50 rounded-lg p-3">
