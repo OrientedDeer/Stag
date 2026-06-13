@@ -121,6 +121,24 @@ function csvToTransactions(csvText: string): Transaction[] {
     return out;
 }
 
+/**
+ * Advance the Budget tab's "Last import" indicator. OverviewTab.tsx shows the
+ * newest savedCSVFormats[].lastUsed; only the browser import flow normally
+ * bumps it, so the headless feed would leave it frozen. Touch the most-recent
+ * saved format so the indicator tracks the nightly run.
+ */
+function bumpLastImport(blob: MergeBlob): void {
+    const formats = blob.budget?.importSettings?.savedCSVFormats;
+    if (!formats?.length) {
+        console.warn('  NOTE: no saved CSV formats — "Last import" cannot advance (seed it with one in-app import).');
+        return;
+    }
+    const newest = formats.reduce((a, b) =>
+        new Date(b.lastUsed).getTime() > new Date(a.lastUsed).getTime() ? b : a);
+    newest.lastUsed = new Date();
+    console.log(`  bumped "Last import" via saved format "${newest.name}"`);
+}
+
 /** One full attempt: GET → decrypt → merge → re-encrypt → PUT. Returns false on 409 (retry). */
 async function mergeOnce(): Promise<boolean> {
     const doc = await getDoc();
@@ -152,6 +170,7 @@ async function mergeOnce(): Promise<boolean> {
         console.log(`balances: updated ${report.updated.length}`, report.updated);
         if (report.flagged.length) console.log('  flagged:', report.flagged);
     }
+    bumpLastImport(blob);
     blob.version = 2;
 
     const reEncrypted = JSON.stringify(await encrypt(JSON.stringify(blob), PASS));
