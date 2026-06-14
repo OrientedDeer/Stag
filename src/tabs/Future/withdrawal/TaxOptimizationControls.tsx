@@ -33,6 +33,8 @@ function TaxOptimizationControlsInner({
     }, [onUpdateInvestments]);
 
     const minRateGapPct = (investments.rothConversionMinRateGap ?? 0.05) * 100;
+    // Default 'self-liquidate' (ratified, #89): spend-down is the sensible default;
+    // the user can switch to 'leave to heirs'.
     const userSituation = investments.rothConversionUserSituation ?? 'self-liquidate';
 
     return (

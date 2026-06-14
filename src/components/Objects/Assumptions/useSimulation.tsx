@@ -803,6 +803,9 @@ export const runSimulationWithOptimization = (
         const effectiveDpObjective = dpObjective ?? {
             objectiveMode: 'max-wealth' as const,
             terminalValuation: 'bracket-aware' as const,
+            // Default 'self-liquidate' (ratified product decision, #89): spend-down. The
+            // UI default sets this explicitly; the ?? covers legacy assumptions missing
+            // the field. User can switch to 'bequeath'.
             userSituation: assumptions.investments.rothConversionUserSituation ?? 'self-liquidate',
         };
         // Reserve-aware spending (Change 2) executes only for the bracket-aware
