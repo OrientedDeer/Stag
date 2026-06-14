@@ -793,16 +793,25 @@ export const runSimulationWithOptimization = (
                     a instanceof InvestedAccount && a.taxType === 'Roth IRA')
                 .reduce((sum, a) => sum + a.vestedAmount, 0);
         }
+        // Production dp-precomputed = max-wealth with the bracket-aware terminal
+        // valuation (#89), parameterized by the user's self-liquidate-vs-bequeath
+        // choice. A caller-supplied `dpObjective` (tests) overrides this so the
+        // legacy min-tax / flat-τ paths stay reachable for regression coverage.
+        const effectiveDpObjective = dpObjective ?? {
+            objectiveMode: 'max-wealth' as const,
+            terminalValuation: 'bracket-aware' as const,
+            userSituation: assumptions.investments.rothConversionUserSituation ?? 'self-liquidate',
+        };
         // Reserve-aware spending (Change 2) executes only for the bracket-aware
         // variant — same condition that drives the DP's internal harvest.
-        const reserveAwareExec = dpObjective?.terminalValuation === 'bracket-aware';
+        const reserveAwareExec = effectiveDpObjective.terminalValuation === 'bracket-aware';
 
         const dpPlan: DPPlan = planConversionsViaDP({
             contexts,
             currentTradBalance: startingTradBalance,
             currentRothBalance: startingRothBalance,
             backloadDelta: assumptions.investments.rothConversionDPBackloadDelta,
-        }, dpObjective);
+        }, effectiveDpObjective);
 
         // Pass 3 — final sim executing the DP plan. The DP strategy in YearSolver
         // looks up `input.dpConversionPlan` per year. conversionMode is moot for DP.
