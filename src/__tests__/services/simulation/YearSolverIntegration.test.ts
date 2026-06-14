@@ -35,6 +35,7 @@ function createTestAssumptions(overrides: {
         milestones: createBuiltinMilestones(birthYear, retirementAge, 95),
         investments: {
             ...defaultAssumptions.investments,
+            rothConversionStrategy: 'rate-match', // pin: rate-match under test (default flipped to dp-precomputed, #89)
             taxOptimizationEnabled: overrides.taxOptimizationEnabled ?? false,
             returnRates: { ror: 0 }, // 0% return for simpler math
         },

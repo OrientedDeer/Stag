@@ -672,7 +672,10 @@ export const runSimulationWithOptimization = (
         userSituation?: 'self-liquidate' | 'bequeath';
     },
 ): SimulationYear[] => {
-    const strategy = assumptions.investments.rothConversionStrategy ?? 'rate-match';
+    // DEFAULT flipped to bracket-aware DP (#89). rate-match stays a selectable
+    // non-default fallback (one-line revert here + AssumptionsContext to restore,
+    // or to a full delete / "conservative mode" later).
+    const strategy = assumptions.investments.rothConversionStrategy ?? 'dp-precomputed';
     const taxOptOn = assumptions.investments.taxOptimizationEnabled;
 
     // Always run a full-horizon std-ded-only baseline up front. Used for:

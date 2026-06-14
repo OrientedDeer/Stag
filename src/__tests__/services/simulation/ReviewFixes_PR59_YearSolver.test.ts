@@ -84,6 +84,7 @@ describe('PR #59 #2 — ESPP ordinary income participates in the convergence che
             macro: { ...defaultAssumptions.macro, inflationAdjusted: false },
             investments: {
                 ...defaultAssumptions.investments,
+            rothConversionStrategy: 'rate-match', // pin: rate-match under test (default flipped to dp-precomputed, #89)
                 taxOptimizationEnabled: false,
                 returnRates: { ror: 7 },
             },
@@ -196,6 +197,7 @@ describe('PR #59 #3 — ACA-cliff estimateMAGI excludes SS from the state tax ba
             macro: { ...defaultAssumptions.macro, inflationAdjusted: false },
             investments: {
                 ...defaultAssumptions.investments,
+            rothConversionStrategy: 'rate-match', // pin: rate-match under test (default flipped to dp-precomputed, #89)
                 taxOptimizationEnabled: true,
                 acaAware: true,
                 returnRates: { ror: 7 },

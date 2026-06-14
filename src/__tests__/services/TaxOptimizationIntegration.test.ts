@@ -83,6 +83,7 @@ describe('Tax Optimization Integration Tests', () => {
             ...defaultAssumptions.investments,
             returnRates: { ror: 6 },
             taxOptimizationEnabled,
+            rothConversionStrategy: 'rate-match', // pin: rate-match algorithm under test (default flipped to dp-precomputed, #89)
         },
         withdrawalStrategy: [
             { id: 'ws-savings', name: 'Savings', accountId: 'acc-savings' },
@@ -575,6 +576,7 @@ describe('Tax Optimization Integration Tests', () => {
                 ...defaultAssumptions.investments,
                 returnRates: { ror: 7 },
                 taxOptimizationEnabled: true,
+                rothConversionStrategy: 'rate-match', // pin: this exercises the rate-match algorithm (default flipped to dp-precomputed, #89)
                 withdrawalStrategy: 'Guyton Klinger',
                 withdrawalRate: 4,
             },

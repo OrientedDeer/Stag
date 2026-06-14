@@ -213,7 +213,7 @@ export const defaultAssumptions: AssumptionsState = {
     gkLowerGuardrail: 0.8,      // Boost when rate < target * 0.8
     gkAdjustmentPercent: 10,    // 10% adjustment (per actual GK rules)
     autoRothConversions: false, // Auto-convert Traditional to Roth in retirement
-    rothConversionStrategy: 'rate-match', // 'rate-match' (default) | 'dp-precomputed' (max after-tax wealth)
+    rothConversionStrategy: 'dp-precomputed', // DEFAULT: max after-tax wealth (#89). 'rate-match' retained as a non-default conservative fallback.
     rothConversionUserSituation: 'self-liquidate', // dp-precomputed: 'self-liquidate' (default) | 'bequeath'
     rothConversionMinRateGap: 0.05, // 5pp minimum savings to justify a non-free conversion (rate-match algorithm)
     rothConversionDPBackloadDelta: 0.015, // 1.5%/yr default — legacy min-tax DP back-load preference
