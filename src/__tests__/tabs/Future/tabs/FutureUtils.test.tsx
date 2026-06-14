@@ -7,7 +7,7 @@ import {
   formatCompactCurrency,
   findFinancialIndependenceYear,
 } from '../../../../tabs/Future/tabs/FutureUtils';
-import { SavedAccount, InvestedAccount, DebtAccount, AnyAccount } from '../../../../components/Objects/Accounts/models';
+import { SavedAccount, InvestedAccount, DebtAccount, ESPPAccount, RSUAccount, AnyAccount, ESPPLot, RSULot } from '../../../../components/Objects/Accounts/models';
 import { SimulationYear } from '../../../../components/Objects/Assumptions/SimulationEngine';
 import { AssumptionsState, defaultAssumptions } from '../../../../components/Objects/Assumptions/AssumptionsContext';
 
@@ -109,6 +109,29 @@ describe('FutureUtils', () => {
       ];
       const r = computeAfterTaxNetWorth(accounts, 0.20, 0.20); // 50k gains * 20%
       expect(r.deferredCapGainsTax).toBeCloseTo(10000);
+    });
+
+    it('taxes ESPP and RSU unrealized gains at the LTCG rate (not ordinary)', () => {
+      const rsuLot: RSULot = {
+        id: 'l1', grantDate: new Date(2020, 0, 1), vestDate: new Date(2021, 0, 1),
+        fmvAtVest: 60, shares: 1000, costBasis: 60000,
+      };
+      const esppLot: ESPPLot = {
+        id: 'e1', grantDate: new Date(2020, 0, 1), purchaseDate: new Date(2020, 6, 1),
+        fmvAtGrant: 50, fmvAtPurchase: 60, purchasePrice: 51, shares: 1000,
+        totalCost: 51000, discountAmount: 9,
+      };
+      const accounts: AnyAccount[] = [
+        new RSUAccount('rsu1', 'RSU', 100000, [rsuLot]),    // 40k unrealized gains
+        new ESPPAccount('espp1', 'ESPP', 80000, [esppLot]), // 29k unrealized gains
+      ];
+      // ordinaryRate is irrelevant here — there's no tax-deferred balance.
+      const r = computeAfterTaxNetWorth(accounts, 0.22);
+
+      expect(r.netWorth).toBe(180000);
+      expect(r.deferredOrdinaryTax).toBe(0);
+      expect(r.deferredCapGainsTax).toBeCloseTo((40000 + 29000) * 0.15); // 10,350
+      expect(r.afterTaxNetWorth).toBeCloseTo(180000 - 10350);
     });
   });
 

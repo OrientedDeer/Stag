@@ -58,8 +58,11 @@ export interface AfterTaxNetWorth {
  * growth is kept in full (Roth), taxed lightly (brokerage), or taxed at
  * ordinary rates (Traditional) — and the gap widens the longer it compounds.
  *
- * @param ordinaryRate projected effective ordinary tax rate at withdrawal (the
- *        sim's own getMedianRetirementTaxRate), e.g. 0.18.
+ * @param ordinaryRate rate applied to the WHOLE tax-deferred balance. Callers in
+ *        #68 pass the RMD-era MARGINAL rate (getProjectedRMDMarginalRate, ~0.22),
+ *        deliberately — it's the rate the Traditional faces when RMDs force it
+ *        out, which keeps the metric consistent with the Roth-conversion engine.
+ *        Do NOT swap this for an effective rate; that was tried and reverted.
  * @param ltcgRate     capital-gains rate on unrealized gains (default 15%).
  */
 export function computeAfterTaxNetWorth(

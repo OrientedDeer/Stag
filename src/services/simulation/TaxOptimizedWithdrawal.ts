@@ -15,7 +15,7 @@ import { TaxState } from '../../components/Objects/Taxes/TaxContext';
 import { AssumptionsState, getBirthYear } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { calculateEffectiveConversionTax, computeConversionTaxBaseline, ACAOptions, IRMAAConversionOptions } from './helpers';
 import { computeIrmaaMAGI } from '../../data/IRMAAData';
-import { getDistributionPeriod } from '../../data/RMDData';
+import { getDistributionPeriod, PEAK_RMD_DIVISOR } from '../../data/RMDData';
 import { BaselineProjections, RateMatchWalkRow } from './types';
 
 // Re-export for convenience
@@ -673,7 +673,6 @@ export function computeRateMatchedConversion(
         };
     }
 
-    const PEAK_RMD_DIVISOR = 15;
     const stdDed = currentTaxParams.standardDeduction;
     const growthFactor = Math.pow(1 + growthRate, yearsUntilRMD);
     // Baseline projected Traditional balance at RMD age. When the caller supplies a
@@ -986,7 +985,6 @@ export function calculateDynamicConversionCeiling(
     // STEP 2: Determine peak RMD bracket from baseline
     // =========================================================================
 
-    const PEAK_RMD_DIVISOR = 15;  // Approximates age ~87 (mid-retirement)
     const peakRMD = baselineBalance / PEAK_RMD_DIVISOR;
 
     // Look up tax parameters for the RMD year, not the current year. peakRMD,

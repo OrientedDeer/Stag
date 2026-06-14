@@ -64,6 +64,14 @@ const UNIFORM_LIFETIME_TABLE: Record<number, number> = {
 };
 
 /**
+ * Divisor used to approximate a "peak" mid-retirement RMD (balance / divisor),
+ * corresponding to roughly age ~87. Shared so the Roth-conversion optimizer's
+ * ceiling projection and the #68 after-tax net-worth haircut stay consistent —
+ * if this is ever retuned, both move together.
+ */
+export const PEAK_RMD_DIVISOR = 15;
+
+/**
  * Get the RMD starting age based on birth year
  * SECURE Act 2.0 rules:
  * - Born 1950 or earlier: Age 72

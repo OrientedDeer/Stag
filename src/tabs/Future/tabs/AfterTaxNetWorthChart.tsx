@@ -59,10 +59,16 @@ export function AfterTaxNetWorthChart({ simulationData }: { simulationData: Simu
     const minYear = realYears.length > 0 ? realYears[0].year : new Date().getFullYear();
     const maxYear = realYears.length > 0 ? realYears[realYears.length - 1].year : minYear + 10;
     const [range, setRange] = useState<[number, number] | null>(null);
-    const activeRange = useMemo<[number, number]>(
-        () => range ?? [minYear, Math.min(maxYear, minYear + 32)],
-        [range, minYear, maxYear],
-    );
+    // Reconcile a stored range with the current projection bounds during render
+    // (it can fall outside them after a data import / life-expectancy change).
+    // Deriving here — rather than resetting state in an effect — keeps the chart
+    // from rendering an empty slice. If the range no longer overlaps the bounds at
+    // all, reset to the default window; otherwise clamp the overlap into range.
+    const activeRange = useMemo<[number, number]>(() => {
+        const fallback: [number, number] = [minYear, Math.min(maxYear, minYear + 32)];
+        if (!range || range[1] < minYear || range[0] > maxYear) return fallback;
+        return [Math.max(minYear, range[0]), Math.min(maxYear, range[1])];
+    }, [range, minYear, maxYear]);
     useArrowKeyAdjust(
         activeRange,
         (v) => setRange(v as [number, number]),
@@ -108,13 +114,27 @@ export function AfterTaxNetWorthChart({ simulationData }: { simulationData: Simu
             .map(p => String(p.year));
     }, [points]);
 
-    // End-of-projection snapshot for the headline banner.
+    // Headline reflects the TRUE end of the projection (the last real year, not
+    // the visible slider end), so the figures don't silently change as you scrub
+    // and they show the plan's end-state — where the gap is widest. Guarded so it
+    // only renders coherent numbers: positive net worth that still leaves
+    // something after the deferred tax (avoids pct > 100% / negative net worth).
     const headline = useMemo(() => {
-        const last = points[points.length - 1];
-        if (!last || last.DeferredTax <= 0) return null;
-        const pct = last.NetWorth > 0 ? last.DeferredTax / last.NetWorth : 0;
-        return { ...last, pct };
-    }, [points]);
+        const last = realYears[realYears.length - 1];
+        if (!last) return null;
+        const { netWorth, afterTaxNetWorth, deferredTax, deferredOrdinaryTax, deferredCapGainsTax } =
+            computeAfterTaxNetWorth(last.accounts, tradRate);
+        if (netWorth <= 0 || deferredTax <= 0 || afterTaxNetWorth <= 0) return null;
+        return {
+            year: last.year,
+            netWorth,
+            afterTax: afterTaxNetWorth,
+            deferredTax,
+            deferredOrdinaryTax,
+            deferredCapGainsTax,
+            pct: deferredTax / netWorth,
+        };
+    }, [realYears, tradRate]);
 
     const Tooltip = ({ slice }: SliceArg) => {
         if (!slice?.points?.length) return null;
@@ -161,12 +181,16 @@ export function AfterTaxNetWorthChart({ simulationData }: { simulationData: Simu
                 <AlertBanner severity="info" size="sm" title="Not all of it is yours to spend">
                     <p className="text-sm">
                         By {headline.year}, about{' '}
-                        <span className="font-semibold text-info-bright">{formatCompactCurrency(headline.DeferredTax, { forceExact })}</span>{' '}
+                        <span className="font-semibold text-info-bright">{formatCompactCurrency(headline.deferredTax, { forceExact })}</span>{' '}
                         ({(headline.pct * 100).toFixed(0)}%) of your{' '}
-                        {formatCompactCurrency(headline.NetWorth, { forceExact })} net worth is taxes you haven't paid yet —
-                        leaving <span className="font-semibold text-info-bright">{formatCompactCurrency(headline.AfterTax, { forceExact })}</span> after-tax.
-                        That discounts the Traditional balance at <span className="font-semibold text-info-bright">~{(headline.rate * 100).toFixed(0)}%</span> —
-                        the marginal rate it's taxed at when RMDs force it out. A dollar in a Traditional account isn't a dollar in a Roth.
+                        {formatCompactCurrency(headline.netWorth, { forceExact })} net worth is taxes you haven't paid yet —
+                        leaving <span className="font-semibold text-info-bright">{formatCompactCurrency(headline.afterTax, { forceExact })}</span> after-tax.
+                        {headline.deferredOrdinaryTax > 0 ? (
+                            <> That discounts the Traditional balance at <span className="font-semibold text-info-bright">~{(tradRate * 100).toFixed(0)}%</span> —
+                            the marginal rate it's taxed at when RMDs force it out. A dollar in a Traditional account isn't a dollar in a Roth.</>
+                        ) : (
+                            <> That's deferred capital-gains tax on unrealized gains in your taxable accounts — even money you've already paid income tax on still owes tax on its growth.</>
+                        )}
                     </p>
                 </AlertBanner>
             )}

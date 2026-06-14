@@ -17,7 +17,7 @@ import {
     getHSALimit,
     calculateContributionTaxSavings
 } from '../data/ContributionLimits';
-import { getRMDStartAge, getDistributionPeriod } from '../data/RMDData';
+import { getRMDStartAge, getDistributionPeriod, PEAK_RMD_DIVISOR } from '../data/RMDData';
 
 // ============================================================================
 // Constants
@@ -327,9 +327,6 @@ export function getMedianRetirementTaxRate(simulation: SimulationYear[], retirem
         : effectiveRates[mid];
 }
 
-// Mirrors TaxOptimizedWithdrawal's peak-RMD projection (mid-retirement divisor).
-const PEAK_RMD_DIVISOR = 15;
-
 /**
  * Projected combined (federal + state) marginal tax rate the Traditional balance
  * actually faces when withdrawn in this plan — i.e. the rate RMDs land in (#68).
@@ -342,9 +339,12 @@ const PEAK_RMD_DIVISOR = 15;
  * "cost to spend it now" rate made the metric fight the optimizer — raising the
  * DP back-load δ (fewer conversions) perversely raised after-tax net worth.
  *
- * Primary: the median combined marginal rate across the simulation's RMD-era
- * years where Traditional is still being drawn (getOrdinaryAGI already folds in
- * the actual RMD + taxable SS). Fallback: when the Traditional is fully drained
+ * Primary: a BALANCE-WEIGHTED combined marginal rate across the simulation's
+ * RMD-era years where Traditional is still being drawn (getOrdinaryAGI already
+ * folds in the actual RMD + taxable SS). Weighting by the Traditional balance
+ * keeps high-balance early-RMD years dominant — a plain mean/median would let
+ * late, nearly-drained low-bracket years drag the single applied rate below what
+ * the bulk of the balance actually faced. Fallback: when the Traditional drains
  * before RMD age (e.g. aggressive conversions empty it), value the PEAK balance
  * at the rate a hypothetical RMD off it would face — so the haircut doesn't
  * collapse to 0% and flatter the drained plan. Returns null only when there is
@@ -365,46 +365,47 @@ export function getProjectedRMDMarginalRate(
     const combinedMarginalAt = (year: number, ordinaryIncome: number): number => {
         const fedParams = TaxService.getTaxParameters(year, fs, 'federal', undefined, assumptions);
         const stateParams = TaxService.getTaxParameters(year, fs, 'state', taxState.stateResidency, assumptions);
-        const fedRate = fedParams ? TaxService.getMarginalTaxRate(Math.max(0, ordinaryIncome - fedParams.standardDeduction), fedParams).rate : 0;
+        const fedRate = fedParams ? TaxService.getMarginalTaxRate(Math.max(0, ordinaryIncome - (fedParams.standardDeduction || 0)), fedParams).rate : 0;
         const stateRate = stateParams ? TaxService.getMarginalTaxRate(Math.max(0, ordinaryIncome - (stateParams.standardDeduction || 0)), stateParams).rate : 0;
         return fedRate + stateRate;
     };
 
-    const rates: number[] = [];
-    let peak: { year: number; balance: number; otherAGI: number } | null = null;
+    let weightedRateSum = 0;
+    let weightSum = 0;
+    let peakSimYear: SimulationYear | null = null;
+    let peakBalance = 0;
 
     for (const simYear of simulation) {
         if (simYear.isEndOfYearProjection) continue;
         const tradBalance = getTraditionalBalance(simYear);
         if (tradBalance <= 0) continue;
 
-        // getOrdinaryAGI already includes the actual RMD + taxable SS for the year.
-        const age = simYear.year - birthYear;
-        const agi = getOrdinaryAGI(simYear, age, fs);
-
-        // RMD-era year: the marginal at (agi − std deduction) is the rate the top
-        // Traditional dollars hit.
+        // RMD-era year: getOrdinaryAGI already includes the actual RMD + taxable
+        // SS, so the marginal at (agi − std deduction) is the rate the top
+        // Traditional dollars hit. Weight by the balance being taxed.
         if (simYear.year >= rmdStartYear) {
-            rates.push(combinedMarginalAt(simYear.year, agi));
+            const age = simYear.year - birthYear;
+            const rate = combinedMarginalAt(simYear.year, getOrdinaryAGI(simYear, age, fs));
+            weightedRateSum += rate * tradBalance;
+            weightSum += tradBalance;
         }
 
-        // Track the peak Traditional balance and its non-RMD income for the fallback.
-        const otherAGI = Math.max(0, agi - (simYear.rmdDetails?.totalWithdrawn ?? 0));
-        if (!peak || tradBalance > peak.balance) {
-            peak = { year: simYear.year, balance: tradBalance, otherAGI };
+        // Track the peak Traditional balance for the fallback (cheap — no AGI yet).
+        if (tradBalance > peakBalance) {
+            peakBalance = tradBalance;
+            peakSimYear = simYear;
         }
     }
 
-    if (rates.length > 0) {
-        rates.sort((a, b) => a - b);
-        const mid = Math.floor(rates.length / 2);
-        return rates.length % 2 === 0 ? (rates[mid - 1] + rates[mid]) / 2 : rates[mid];
-    }
+    if (weightSum > 0) return weightedRateSum / weightSum;
 
     // Fallback: Traditional drains before RMD age. Value its peak balance at the
-    // marginal rate a hypothetical RMD off that balance would face.
-    if (!peak) return null;
-    return combinedMarginalAt(peak.year, peak.otherAGI + peak.balance / PEAK_RMD_DIVISOR);
+    // marginal rate a hypothetical RMD off that balance would face. getOrdinaryAGI
+    // runs only here (not per-year) since the peak's income is only needed now.
+    if (!peakSimYear) return null;
+    const peakAge = peakSimYear.year - birthYear;
+    const otherAGI = Math.max(0, getOrdinaryAGI(peakSimYear, peakAge, fs) - (peakSimYear.rmdDetails?.totalWithdrawn ?? 0));
+    return combinedMarginalAt(peakSimYear.year, otherAGI + peakBalance / PEAK_RMD_DIVISOR);
 }
 
 /**
