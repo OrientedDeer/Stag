@@ -217,9 +217,13 @@ export function createAccountSnapshot(account: AnyAccount, snapshotDate?: Date):
             gainRatio = account.amount > 0 ? Math.max(0, unrealizedGains / account.amount) : 0;
 
             // Per-lot holding-period split (#75). FIFO order (oldest purchaseYear
-            // first) matches the model's actual lot removal; a lot is short-term
-            // iff held < 1 year. Absent → planner falls back to the proportional
-            // gainRatio (all long-term, the prior behavior).
+            // first) matches the model's actual lot removal. Long-term iff held
+            // >= 2 calendar years — the same year-granularity convention as
+            // calculateLotAwareWithdrawal (models.tsx): >= 1 would misclassify a
+            // Dec→Jan (~1-month) hold as long-term, AND would make the feature
+            // inert, since withdrawals are planned before the current-year lot is
+            // appended so the newest plan-time lot is purchaseYear = currentYear-1.
+            // Absent → planner falls back to the proportional gainRatio (all LTCG).
             if (account.lots && account.lots.length > 0) {
                 const currentYear = (snapshotDate ?? new Date()).getFullYear();
                 brokerageLots = [...account.lots]
@@ -228,7 +232,7 @@ export function createAccountSnapshot(account: AnyAccount, snapshotDate?: Date):
                         purchaseYear: lot.purchaseYear,
                         totalValue: lot.currentValue,
                         gain: Math.max(0, lot.currentValue - lot.costBasis),
-                        isLongTerm: currentYear - lot.purchaseYear >= 1,
+                        isLongTerm: currentYear - lot.purchaseYear >= 2,
                     }));
             }
         }
@@ -353,6 +357,37 @@ function splitBrokerageGainsFIFO(
         remaining -= valueToUse;
     }
     return { stcg, ltcg };
+}
+
+/**
+ * Largest gross brokerage sale (FIFO) whose realized gain stays within
+ * `gainBudget`. Sizes the ACA-cliff cap consistently with the FIFO realization —
+ * sizing from the aggregate gain ratio understates how much gain the oldest
+ * (higher-ratio) lots realize, which would breach the cliff the cap protects (#75).
+ */
+function grossForGainBudget(
+    gainBudget: number,
+    lots: NonNullable<AccountBalanceSnapshot['brokerageLots']>,
+): number {
+    let gross = 0;
+    let gainSoFar = 0;
+    for (const lot of lots) {
+        const lotGainRatio = lot.totalValue > 0 ? lot.gain / lot.totalValue : 0;
+        if (lotGainRatio <= 0) {
+            gross += lot.totalValue; // no gain → free to sell, no MAGI impact
+            continue;
+        }
+        const remaining = gainBudget - gainSoFar;
+        if (remaining <= 0) break;
+        if (lot.gain <= remaining) {
+            gross += lot.totalValue;
+            gainSoFar += lot.gain;
+        } else {
+            gross += remaining / lotGainRatio;
+            break;
+        }
+    }
+    return gross;
 }
 
 /**
@@ -722,14 +757,14 @@ export function planWithdrawals(
                 const brokerageLots = snapshot.brokerageLots;
                 const actualGainRatio = snapshot.gainRatio;
 
-                // STCG (lots held <1yr) is taxed as ordinary income; LTCG at the LTCG
-                // rate (#75). FIFO matches the model's lot removal. Without lot data,
-                // fall back to the prior all-LTCG proportional model.
-                const brokerageOrdinaryRate = getMarginalRate(runningOrdinaryIncome) + getStateRate(runningOrdinaryIncome);
+                // STCG (lots held < 2yr at year granularity) is taxed as ordinary
+                // income at the running marginal rate; LTCG at the LTCG rate (#75).
+                // FIFO matches the model's lot removal. Without lot data, fall back to
+                // the prior all-LTCG proportional model.
                 const realizeBrokerage = (gross: number): { stcg: number; ltcg: number; tax: number; net: number } => {
                     if (brokerageLots && brokerageLots.length > 0) {
                         const { stcg, ltcg } = splitBrokerageGainsFIFO(gross, brokerageLots);
-                        const tax = stcg * brokerageOrdinaryRate + ltcg * ltcgRate;
+                        const tax = stcg * marginalRate + ltcg * ltcgRate;
                         return { stcg, ltcg, tax, net: gross - tax };
                     }
                     const ltcg = gross * actualGainRatio;
@@ -745,7 +780,7 @@ export function planWithdrawals(
                     let poolTax = 0;
                     for (const lot of brokerageLots) {
                         poolValue += lot.totalValue;
-                        poolTax += lot.gain * (lot.isLongTerm ? ltcgRate : brokerageOrdinaryRate);
+                        poolTax += lot.gain * (lot.isLongTerm ? ltcgRate : marginalRate);
                     }
                     const effRate = poolValue > 0 ? poolTax / poolValue : 0;
                     grossToWithdraw = Math.min(remainingNetNeeded / Math.max(0.01, 1 - effRate), effectiveVestedBalance);
@@ -771,10 +806,13 @@ export function planWithdrawals(
                         );
 
                         // Convert realized-gains headroom to max safe gross withdrawal.
-                        // Total gains ≈ gross × gainRatio (gainRatio covers short + long),
-                        // so gross = gains / gainRatio.
+                        // With lots, size it FIFO-consistently (the oldest lots realize
+                        // more gain per gross than the account average, so the aggregate
+                        // gainRatio would understate it and breach the cliff — #75 review).
                         let maxSafeGross: number;
-                        if (actualGainRatio > 0) {
+                        if (brokerageLots && brokerageLots.length > 0) {
+                            maxSafeGross = grossForGainBudget(magiHeadroom, brokerageLots);
+                        } else if (actualGainRatio > 0) {
                             maxSafeGross = magiHeadroom / actualGainRatio;
                         } else {
                             maxSafeGross = grossToWithdraw; // No gains, no MAGI impact
@@ -910,7 +948,9 @@ export function planWithdrawals(
                     }
                 }
 
-                const brokerageStcgTax = Math.max(0, actualSTCG) * brokerageOrdinaryRate;
+                // Brokerage per-lot gains are floored at 0, so actualSTCG >= 0 always
+                // (no Math.max guard needed, unlike RSU's underwater-lot path).
+                const brokerageStcgTax = actualSTCG * marginalRate;
                 withdrawal = {
                     source: 'brokerage',
                     accountId: snapshot.accountId,
@@ -1360,6 +1400,9 @@ export function planWithdrawals(
                     }
 
                     cumulativeLTCG += Math.max(0, rsuLTCG);
+                    // RSU STCG is in MAGI too, so a later brokerage ACA-cliff check
+                    // must count it (#75 review #4).
+                    cumulativeSTCG += Math.max(0, rsuSTCG);
                     remainingNetNeeded -= netReceived;
                     totalNet += netReceived;
                     totalGross += grossToWithdraw;

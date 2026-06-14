@@ -673,7 +673,8 @@ export interface AccountBalanceSnapshot {
         totalValue: number;
         /** Unrealized gain in the lot, floored at 0 (no brokerage loss realization). */
         gain: number;
-        /** True if held >=1yr (currentYear - purchaseYear >= 1), false for short-term. */
+        /** Long-term iff currentYear - purchaseYear >= 2 (year-granularity convention,
+         *  matching models.tsx); false → short-term, taxed at ordinary rates. */
         isLongTerm: boolean;
     }[];
 }
