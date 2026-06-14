@@ -243,10 +243,13 @@ function runSimulationLoop(args: {
     dpConversionPlan?: Map<number, number>;
     /** Per-year DP solver debug strings; keyed by simulation year. */
     dpDebugByYear?: Map<number, string[]>;
+    /** Change 2 (#89): cap trad-spending at the std-ded 0% slice (bracket-aware DP only). */
+    dpReserveAwareSpending?: boolean;
 }): void {
     let { currentAccounts, currentIncomes, currentExpenses, previousActiveMilestones } = args;
     const { milestoneReachYears, timeline, assumptions, taxState, yearlyReturns,
-            previousSimYear, yearsToRun, conversionMode, baselineProvider, dpConversionPlan, dpDebugByYear } = args;
+            previousSimYear, yearsToRun, conversionMode, baselineProvider, dpConversionPlan, dpDebugByYear,
+            dpReserveAwareSpending } = args;
 
     for (let i = 1; i <= yearsToRun; i++) {
         const simulationYear = previousSimYear + i;
@@ -277,6 +280,7 @@ function runSimulationLoop(args: {
             conversionMode,
             dpConversionPlan,
             dpDebugByYear,
+            dpReserveAwareSpending,
         );
 
         timeline.push(result);
@@ -318,8 +322,11 @@ export const runSimulation = (
     /** MortgageExpense id → principal $ to subtract from its loan_balance on
      *  the synthetic EOY row (mortgages don't live on a DebtAccount). */
     eoyMortgageReductions?: Record<string, number>,
+    /** Change 2 (#89): cap trad-spending at the std-ded 0% slice (bracket-aware DP only).
+     *  Appended last so existing positional callers are unaffected. */
+    dpReserveAwareSpending?: boolean,
 ): SimulationYear[] => {
-        
+
     // Calculate start year and current age from birth year
     // If priorYearMode is enabled, start simulation from last year (for verified data entry)
     const currentYear = new Date().getFullYear();
@@ -619,6 +626,7 @@ export const runSimulation = (
         baselineProvider,
         dpConversionPlan,
         dpDebugByYear,
+        dpReserveAwareSpending,
     });
 
     return timeline;
@@ -651,6 +659,18 @@ export const runSimulationWithOptimization = (
     eoyContributionAdditions?: Record<string, number>,
     eoyDebtReductions?: Record<string, number>,
     eoyMortgageReductions?: Record<string, number>,
+    /**
+     * PROTOTYPE (#89) — experimental DP objective override, plumbed only to let
+     * tests A/B the max-wealth objective through the executed sim. Omitted (the
+     * production/app call site) ⇒ 'min-tax' ⇒ byte-identical to today. Not wired
+     * to any UI; see RothConversionDP.planConversionsViaDP.
+     */
+    dpObjective?: {
+        objectiveMode?: 'min-tax' | 'max-wealth';
+        terminalTaxRate?: number;
+        terminalValuation?: 'flat' | 'bracket-aware';
+        userSituation?: 'self-liquidate' | 'bequeath';
+    },
 ): SimulationYear[] => {
     const strategy = assumptions.investments.rothConversionStrategy ?? 'rate-match';
     const taxOptOn = assumptions.investments.taxOptimizationEnabled;
@@ -773,16 +793,19 @@ export const runSimulationWithOptimization = (
                     a instanceof InvestedAccount && a.taxType === 'Roth IRA')
                 .reduce((sum, a) => sum + a.vestedAmount, 0);
         }
+        // Reserve-aware spending (Change 2) executes only for the bracket-aware
+        // variant — same condition that drives the DP's internal harvest.
+        const reserveAwareExec = dpObjective?.terminalValuation === 'bracket-aware';
+
         const dpPlan: DPPlan = planConversionsViaDP({
             contexts,
             currentTradBalance: startingTradBalance,
             currentRothBalance: startingRothBalance,
             backloadDelta: assumptions.investments.rothConversionDPBackloadDelta,
-        });
+        }, dpObjective);
 
-        // Pass 3 — final sim with the DP plan. The DP strategy in YearSolver
-        // looks up `input.dpConversionPlan` per year. conversionMode is moot
-        // for DP (it does not use the rate-match bracket walker).
+        // Pass 3 — final sim executing the DP plan. The DP strategy in YearSolver
+        // looks up `input.dpConversionPlan` per year. conversionMode is moot for DP.
         const finalTimeline = runSimulation(
             yearsToRun, accounts, incomes, expenses, assumptions, taxState,
             yearlyReturns, referenceDate,
@@ -793,6 +816,7 @@ export const runSimulationWithOptimization = (
             eoyContributionAdditions,
             eoyDebtReductions,
             eoyMortgageReductions,
+            /* dpReserveAwareSpending */ reserveAwareExec,
         );
 
         // Append solver summary to year-0 logs so the user can see DP setup

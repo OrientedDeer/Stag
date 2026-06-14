@@ -132,6 +132,14 @@ export interface YearSolverInput {
     // them to its decisions so they surface in the year inspector. Only set
     // when the DP strategy is in use.
     dpDebugByYear?: Map<number, string[]>;
+    // Change 2 (#89, bracket-aware): when true, planConversionDP caps the
+    // trad-spending reservation (bracketSpaceForSpending) at the standard-
+    // deduction 0%-exit slice, funding spending above it from Roth/brokerage
+    // instead of pulling Traditional at a positive rate. Keeps the executed
+    // trad trajectory consistent with the DP's terminal valuation (which credits
+    // the cheap slice as surviving to exit at ~0%). Set only by the bracket-aware
+    // DP variant; rate-match (planConversion) never reads it.
+    dpReserveAwareSpending?: boolean;
 }
 
 export interface ConversionPlan {
@@ -1149,6 +1157,17 @@ function planConversionDP(
                 const grossForDeficit = rothBoundDeficit / Math.max(0.5, 1 - totalEffectiveRate);
                 bracketSpaceForSpending = Math.min(grossForDeficit, bracketSpacePerYear, traditionalBalance);
 
+                // Change 2 (#89): reserve-aware spending. Don't pull a Trad dollar
+                // for spending at a POSITIVE rate when it could instead exit at 0%
+                // (std-deduction harvest) — cap the reservation at the 0%-exit slice
+                // and let the waterfall fund the rest from Roth/brokerage. Keeps the
+                // executed Trad consistent with the bracket-aware terminal valuation.
+                // Trad-spending within the std-ded headroom (genuinely free) stays.
+                if (input.dpReserveAwareSpending) {
+                    const stdDedHeadroom = Math.max(0, fedParams.standardDeduction - baseOrdinaryIncome);
+                    bracketSpaceForSpending = Math.min(bracketSpaceForSpending, stdDedHeadroom);
+                }
+
                 decisions.push({
                     category: 'conversion',
                     amount: bracketSpaceForSpending,
@@ -1157,7 +1176,8 @@ function planConversionDP(
                         `of $${Math.round(spendingDeficit).toLocaleString()} total, ` +
                         `brokerage covers $${Math.round(brokerageCoverage).toLocaleString()}, ` +
                         `marginal rate ${(marginalResult.rate * 100).toFixed(1)}% ` +
-                        `vs ${(conversionCeiling * 100).toFixed(0)}% ceiling).`,
+                        `vs ${(conversionCeiling * 100).toFixed(0)}% ceiling` +
+                        `${input.dpReserveAwareSpending ? ', reserve-aware: capped at std-ded 0% slice' : ''}).`,
                 });
             }
         }
