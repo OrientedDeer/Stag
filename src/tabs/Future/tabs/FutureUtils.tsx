@@ -1,4 +1,4 @@
-import { AnyAccount, DebtAccount, InvestedAccount, PropertyAccount } from '../../../components/Objects/Accounts/models';
+import { AnyAccount, DebtAccount, ESPPAccount, InvestedAccount, PropertyAccount, RSUAccount } from '../../../components/Objects/Accounts/models';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { AssumptionsState } from '../../../components/Objects/Assumptions/AssumptionsContext';
 
@@ -23,6 +23,86 @@ export function getAccountTotals(accounts: AnyAccount[]): { assets: number; liab
 
 export function calculateNetWorth(accounts: AnyAccount[]): number {
     return getAccountTotals(accounts).netWorth;
+}
+
+/**
+ * Capital-gains rate applied to unrealized gains in taxable accounts when
+ * estimating after-tax net worth. A representative long-term rate — most
+ * retirees realizing gains land in the 15% LTCG bracket.
+ */
+export const ASSUMED_LTCG_RATE = 0.15;
+
+export interface AfterTaxNetWorth {
+    /** Nominal net worth (assets − liabilities), unchanged. */
+    netWorth: number;
+    /** Net worth after subtracting estimated taxes still owed to access it. */
+    afterTaxNetWorth: number;
+    /** Total estimated deferred tax (ordinary + capital gains). */
+    deferredTax: number;
+    /** Ordinary-income tax owed on tax-deferred (Traditional) balances. */
+    deferredOrdinaryTax: number;
+    /** LTCG tax owed on unrealized gains in taxable accounts. */
+    deferredCapGainsTax: number;
+}
+
+/**
+ * Estimate after-tax net worth: nominal net worth minus the taxes a person
+ * would still owe to actually access the money.
+ *
+ * The point this surfaces: a dollar in a Traditional 401k is NOT a dollar in a
+ * Roth. The *entire* Traditional balance — original pre-tax contributions AND
+ * every dollar of growth on top — comes out as ordinary income, so it's worth
+ * less than its face value. Taxable (brokerage / ESPP / RSU) balances owe LTCG
+ * on their growth — even the bucket people assume is fully theirs gets taxed on
+ * gains. Roth, HSA, cash, and property are taken at face. So the same $1 of
+ * growth is kept in full (Roth), taxed lightly (brokerage), or taxed at
+ * ordinary rates (Traditional) — and the gap widens the longer it compounds.
+ *
+ * @param ordinaryRate projected effective ordinary tax rate at withdrawal (the
+ *        sim's own getMedianRetirementTaxRate), e.g. 0.18.
+ * @param ltcgRate     capital-gains rate on unrealized gains (default 15%).
+ */
+export function computeAfterTaxNetWorth(
+    accounts: AnyAccount[],
+    ordinaryRate: number,
+    ltcgRate: number = ASSUMED_LTCG_RATE,
+): AfterTaxNetWorth {
+    const { netWorth } = getAccountTotals(accounts);
+
+    let deferredOrdinaryTax = 0;
+    let deferredCapGainsTax = 0;
+
+    for (const acc of accounts) {
+        if (acc instanceof InvestedAccount) {
+            switch (acc.taxType) {
+                case 'Traditional 401k':
+                case 'Traditional IRA':
+                    // Whole balance (contributions + growth) is ordinary income on the way out.
+                    deferredOrdinaryTax += acc.amount * ordinaryRate;
+                    break;
+                case 'Brokerage':
+                    // Only the growth is taxed, at LTCG rates.
+                    deferredCapGainsTax += acc.unrealizedGains * ltcgRate;
+                    break;
+                // Roth 401k / Roth IRA / HSA: no further tax.
+            }
+        } else if (acc instanceof ESPPAccount || acc instanceof RSUAccount) {
+            // Taxable equity comp: gains since vest/purchase owe capital gains.
+            // (ESPP bargain-element ordinary tax is approximated as LTCG here.)
+            deferredCapGainsTax += acc.unrealizedGains * ltcgRate;
+        }
+        // SavedAccount (cash), PropertyAccount, DebtAccount: taken at face value.
+    }
+
+    const deferredTax = deferredOrdinaryTax + deferredCapGainsTax;
+
+    return {
+        netWorth,
+        afterTaxNetWorth: netWorth - deferredTax,
+        deferredTax,
+        deferredOrdinaryTax,
+        deferredCapGainsTax,
+    };
 }
 
 export function formatCurrency(value: number): string {

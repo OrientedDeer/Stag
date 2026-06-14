@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   getAccountTotals,
   calculateNetWorth,
+  computeAfterTaxNetWorth,
   formatCurrency,
   formatCompactCurrency,
   findFinancialIndependenceYear,
@@ -56,6 +57,58 @@ describe('FutureUtils', () => {
         expect(assets).toBe(0);
         expect(liabilities).toBe(20000);
         expect(netWorth).toBe(-20000);
+    });
+  });
+
+  describe('computeAfterTaxNetWorth', () => {
+    // InvestedAccount positional args:
+    // (id, name, amount, employerBalance, tenureYears, expenseRatio, taxType,
+    //  isContributionEligible, vestedPerYear, costBasis, ...)
+    it('discounts the FULL Traditional balance (contributions + growth) by the ordinary rate', () => {
+      const accounts: AnyAccount[] = [
+        new SavedAccount('s1', 'Cash', 10000),
+        new InvestedAccount('t1', '401k', 100000, 0, 0, 0, 'Traditional 401k', true, 0),
+        new InvestedAccount('r1', 'Roth', 100000, 0, 0, 0, 'Roth IRA', true, 0),
+      ];
+      const r = computeAfterTaxNetWorth(accounts, 0.20);
+
+      expect(r.netWorth).toBe(210000);
+      expect(r.deferredOrdinaryTax).toBeCloseTo(20000); // 100k * 20%, whole balance
+      expect(r.deferredCapGainsTax).toBe(0);            // Roth + cash owe nothing
+      expect(r.deferredTax).toBeCloseTo(20000);
+      expect(r.afterTaxNetWorth).toBeCloseTo(190000);
+    });
+
+    it('taxes only brokerage unrealized GAINS, at the LTCG rate (basis already taxed)', () => {
+      const accounts: AnyAccount[] = [
+        // amount 100k, costBasis 60k => 40k unrealized gains
+        new InvestedAccount('b1', 'Brokerage', 100000, 0, 0, 0, 'Brokerage', true, 0, 60000),
+      ];
+      const r = computeAfterTaxNetWorth(accounts, 0.20); // default 15% LTCG
+
+      expect(r.deferredOrdinaryTax).toBe(0);
+      expect(r.deferredCapGainsTax).toBeCloseTo(6000);  // 40k * 15%
+      expect(r.afterTaxNetWorth).toBeCloseTo(94000);
+    });
+
+    it('treats Roth, HSA, cash, and property as fully owned (no deferred tax)', () => {
+      const accounts: AnyAccount[] = [
+        new InvestedAccount('h1', 'HSA', 50000, 0, 0, 0, 'HSA', true, 0),
+        new InvestedAccount('r1', 'Roth 401k', 80000, 0, 0, 0, 'Roth 401k', true, 0),
+        new SavedAccount('s1', 'Cash', 20000),
+      ];
+      const r = computeAfterTaxNetWorth(accounts, 0.25);
+
+      expect(r.deferredTax).toBe(0);
+      expect(r.afterTaxNetWorth).toBe(150000);
+    });
+
+    it('honors a custom LTCG rate', () => {
+      const accounts: AnyAccount[] = [
+        new InvestedAccount('b1', 'Brokerage', 100000, 0, 0, 0, 'Brokerage', true, 0, 50000),
+      ];
+      const r = computeAfterTaxNetWorth(accounts, 0.20, 0.20); // 50k gains * 20%
+      expect(r.deferredCapGainsTax).toBeCloseTo(10000);
     });
   });
 

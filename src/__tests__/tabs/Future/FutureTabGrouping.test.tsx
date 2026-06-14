@@ -22,6 +22,7 @@ vi.mock('../../../tabs/Future/tabs/TaxOptimizationTab', () => ({ TaxOptimization
 vi.mock('../../../tabs/Future/tabs/ScenarioComparisonTab', () => ({ ScenarioComparisonTab: () => <div data-testid="stub-scenarios" /> }));
 vi.mock('../../../tabs/Future/tabs/FinancialRatiosTab', () => ({ FinancialRatiosTab: () => <div data-testid="stub-ratios" /> }));
 vi.mock('../../../components/Charts/AssetsStreamChart', () => ({ AssetsStreamChart: () => <div data-testid="stub-assets-chart" /> }));
+vi.mock('../../../tabs/Future/tabs/AfterTaxNetWorthChart', () => ({ AfterTaxNetWorthChart: () => <div data-testid="stub-aftertax-chart" /> }));
 // Pin the input hash so the stale-simulation auto-recalc never fires.
 vi.mock('../../../services/simulationHash', () => ({ getSimulationInputHash: () => 'test-hash' }));
 

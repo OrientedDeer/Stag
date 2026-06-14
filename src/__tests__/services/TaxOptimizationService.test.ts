@@ -14,6 +14,7 @@ import {
     analyzeTaxSituation,
     generateRecommendations,
     getMedianRetirementTaxRate,
+    getProjectedRMDMarginalRate,
     findRothConversionWindows,
     getOrdinaryAGI,
     getIncomeThresholdForRate,
@@ -81,7 +82,11 @@ function createMockSimulationYear(overrides: Partial<{
     stateTax: number;
     ficaTax: number;
     rothConversionTaxCost: number;
-    incomes: any[];
+    magi: number;
+    longTermCapitalGains: number;
+    livingExpenses: number;
+    rmdWithdrawn: number;
+    incomes: SimulationYear['incomes'];
 }>): SimulationYear {
     const year = overrides.year ?? 2025;
     const totalIncome = overrides.totalIncome ?? 100000;
@@ -94,10 +99,14 @@ function createMockSimulationYear(overrides: Partial<{
         incomes: overrides.incomes ?? [],
         expenses: [],
         accounts: [],
+        magi: overrides.magi,
+        rmdDetails: overrides.rmdWithdrawn !== undefined
+            ? { totalRMD: overrides.rmdWithdrawn, totalWithdrawn: overrides.rmdWithdrawn, accountBreakdown: [], shortfall: 0, penalty: 0 }
+            : undefined,
         cashflow: {
             totalIncome,
             totalExpense: 50000,
-            livingExpenses: 40000,
+            livingExpenses: overrides.livingExpenses ?? 40000,
             discretionary: 10000,
             investedUser: 10000,
             investedMatch: 5000,
@@ -117,6 +126,7 @@ function createMockSimulationYear(overrides: Partial<{
             capitalGains: 0,
             withdrawalOrdinaryTax: 0,
             niit: 0,
+            longTermCapitalGains: overrides.longTermCapitalGains,
         },
         logs: [],
         rothConversion: overrides.rothConversionTaxCost !== undefined ? {
@@ -754,6 +764,52 @@ describe('getMedianRetirementTaxRate', () => {
             // Math.max(0, baseTax) should clamp negative to 0
             expect(result).toBe(0);
         });
+    });
+});
+
+// ============================================================================
+// getProjectedRMDMarginalRate Tests
+// ============================================================================
+
+describe('getProjectedRMDMarginalRate', () => {
+    // Single filer in a no-income-tax state isolates the federal bracket math.
+    const taxState = createTestTaxState({ filingStatus: 'Single', stateResidency: 'FL' });
+    // Born 1955 → RMD start age 73 → RMD years begin 2028.
+    const assumptions = createTestAssumptions({ birthYear: 1955 });
+
+    function rmdYear(year: number, tradBalance: number, rmd: number): SimulationYear {
+        const y = createMockSimulationYear({ year, incomes: [], rmdWithdrawn: rmd });
+        y.accounts = [new InvestedAccount('t1', 'Trad', tradBalance, 0, 0, 0.1, 'Traditional 401k')];
+        return y;
+    }
+
+    it('returns null when there is no Traditional balance anywhere in the projection', () => {
+        const y = createMockSimulationYear({ year: 2030, incomes: [] }); // accounts: []
+        expect(getProjectedRMDMarginalRate([y], assumptions, taxState)).toBeNull();
+    });
+
+    it('falls back to the peak balance hypothetical-RMD rate when Traditional drains before RMD age', () => {
+        // Pre-RMD year (2025 < 2028) holding a large Traditional that never reaches
+        // an RMD-era year: the haircut must NOT collapse to 0% — value the peak
+        // balance at the rate a hypothetical RMD off it would face.
+        const rate = getProjectedRMDMarginalRate([rmdYear(2025, 2_000_000, 0)], assumptions, taxState);
+        expect(rate).not.toBeNull();
+        expect(rate!).toBeGreaterThan(0.15);
+        expect(rate!).toBeLessThan(0.35);
+    });
+
+    it('returns the marginal bracket the RMD income lands in', () => {
+        // ~$100k RMD (single) lands in the 22% federal bracket.
+        const rate = getProjectedRMDMarginalRate([rmdYear(2030, 2_000_000, 100_000)], assumptions, taxState);
+        expect(rate).not.toBeNull();
+        expect(rate!).toBeGreaterThan(0.18);
+        expect(rate!).toBeLessThan(0.30);
+    });
+
+    it('rises with a larger Traditional / RMD (higher bracket)', () => {
+        const small = getProjectedRMDMarginalRate([rmdYear(2030, 800_000, 40_000)], assumptions, taxState)!;
+        const large = getProjectedRMDMarginalRate([rmdYear(2030, 6_000_000, 300_000)], assumptions, taxState)!;
+        expect(large).toBeGreaterThan(small);
     });
 });
 

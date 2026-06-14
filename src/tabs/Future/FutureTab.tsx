@@ -22,6 +22,7 @@ import { colorMapForKeys } from '../../components/Charts/chartColors';
 
 // --- Tabs ---
 import { OverviewTab } from './tabs/OverviewTab';
+import { AfterTaxNetWorthChart } from './tabs/AfterTaxNetWorthChart';
 import { CashflowTab } from './tabs/CashflowTabs';
 import { DebtTab } from './tabs/DebtTab';
 import { DataTab } from './tabs/DataTab';
@@ -65,8 +66,11 @@ const AssetsTab = React.memo(({ simulationData }: { simulationData: SimulationYe
     const colors = useMemo(() => colorMapForKeys(keys), [keys]);
 
     return (
-        <div className="h-125 w-full">
-            <AssetsStreamChart data={data} keys={keys} colors={colors} />
+        <div className="flex flex-col gap-6 w-full">
+            <div className="h-125 w-full">
+                <AssetsStreamChart data={data} keys={keys} colors={colors} />
+            </div>
+            <AfterTaxNetWorthChart simulationData={simulationData} />
         </div>
     );
 });
