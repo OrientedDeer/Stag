@@ -1030,14 +1030,28 @@ function bracketAwareTradExitValue(
     fedParams: TaxParameters,
     filing: FilingStatus,
     userSituation: 'self-liquidate' | 'bequeath',
+    /**
+     * Self-liquidate fix (#89 torpedo): the residual is consumed IN LIFE, so its
+     * drawdown stacks on the retiree's persisting late-life Social Security and
+     * fixed (pension/passive) income — each withdrawal bears its MARGINAL tax on
+     * top of that base, INCLUDING SS-inclusion (the torpedo). The old SS=0 path
+     * under-priced the exit and made the DP under-convert in SS-heavy plans. These
+     * default to 0, which keeps the prior behavior; bequeath ignores them.
+     */
+    ssBenefit: number = 0,
+    fixedIncome: number = 0,
 ): number {
     if (B < 1) return 0;
     if (userSituation === 'bequeath') return B * (1 - HEIR_EXIT_RATE);
+    // Tax on the persisting income alone — the residual withdrawal bears only the
+    // marginal tax above this base (so SS/fixed income aren't taxed to the residual).
+    const baseTax = TaxService.calculateTotalFederalTax(fixedIncome, ssBenefit, 0, 0, 0, filing, fedParams).totalTax;
     let bal = B, pv = 0, age = terminalAge, t = 0;
     while (bal > 100 && t < 45) {
         const div = Math.max(2, getDistributionPeriod(Math.min(age, 115)));
         const w = Math.min(bal, bal / div);
-        const tax = TaxService.calculateTotalFederalTax(w, 0, 0, 0, 0, filing, fedParams).totalTax;
+        const taxWith = TaxService.calculateTotalFederalTax(fixedIncome + w, ssBenefit, 0, 0, 0, filing, fedParams).totalTax;
+        const tax = Math.max(0, taxWith - baseTax); // marginal tax attributable to the withdrawal
         pv += (w - tax) / Math.pow(1 + g, t);
         bal = (bal - w) * (1 + g);
         age++; t++;
@@ -1132,9 +1146,14 @@ export function planConversionsViaDP(
     // constant τ. Both feed the V-table base case and the no-candidate fallback.
     const lastCtx = contexts[horizonYears - 1];
     const terminalAge = lastCtx.age + 1;
+    // Self-liquidate stacks the residual drawdown on the retiree's persisting
+    // late-life income — last-year SS + non-SS fixed income (pension/passive,
+    // excl. RMD/conversion). Bequeath ignores these (heir drains it standalone).
     const tradTerminalAt = (tradBal: number): number =>
         terminalValuation === 'bracket-aware'
-            ? bracketAwareTradExitValue(tradBal, terminalAge, lastCtx.growthRate, lastCtx.fedParams, lastCtx.filingStatus, userSituation)
+            ? bracketAwareTradExitValue(
+                tradBal, terminalAge, lastCtx.growthRate, lastCtx.fedParams, lastCtx.filingStatus,
+                userSituation, lastCtx.ssBenefits, lastCtx.nonSSOrdinaryIncomeExclRMD)
             : tradBal * (1 - tau);
     const terminalValue = (tradBal: number, rothBal: number) => rothBal + tradTerminalAt(tradBal);
 
