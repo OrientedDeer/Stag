@@ -136,6 +136,7 @@ export function createAccountSnapshot(account: AnyAccount, snapshotDate?: Date):
     let conversionHistory: { year: number; amount: number }[] | undefined;
     let esppLots: AccountBalanceSnapshot['esppLots'];
     let rsuLots: AccountBalanceSnapshot['rsuLots'];
+    let brokerageLots: AccountBalanceSnapshot['brokerageLots'];
 
     if (account instanceof RSUAccount) {
         // RSU: pre-compute per-lot capital-gains data. RSU shares were already
@@ -214,6 +215,22 @@ export function createAccountSnapshot(account: AnyAccount, snapshotDate?: Date):
         if (accountType === 'brokerage') {
             const unrealizedGains = account.amount - account.costBasis;
             gainRatio = account.amount > 0 ? Math.max(0, unrealizedGains / account.amount) : 0;
+
+            // Per-lot holding-period split (#75). FIFO order (oldest purchaseYear
+            // first) matches the model's actual lot removal; a lot is short-term
+            // iff held < 1 year. Absent → planner falls back to the proportional
+            // gainRatio (all long-term, the prior behavior).
+            if (account.lots && account.lots.length > 0) {
+                const currentYear = (snapshotDate ?? new Date()).getFullYear();
+                brokerageLots = [...account.lots]
+                    .sort((a, b) => a.purchaseYear - b.purchaseYear)
+                    .map(lot => ({
+                        purchaseYear: lot.purchaseYear,
+                        totalValue: lot.currentValue,
+                        gain: Math.max(0, lot.currentValue - lot.costBasis),
+                        isLongTerm: currentYear - lot.purchaseYear >= 1,
+                    }));
+            }
         }
 
         // Track Roth contribution basis
@@ -234,6 +251,7 @@ export function createAccountSnapshot(account: AnyAccount, snapshotDate?: Date):
         conversionHistory,
         esppLots,
         rsuLots,
+        brokerageLots,
     };
 }
 
@@ -309,6 +327,32 @@ export function grossUpBrokerage(
     const tax = ltcg * ltcgRate;
 
     return { gross, tax, ltcg };
+}
+
+/**
+ * Split the realized gain on a brokerage sale of `gross` into short- and
+ * long-term by walking the FIFO-ordered lots (oldest first — the order the
+ * account model actually sells in), so the tax estimate matches the lots
+ * growAccounts removes (#75). Per-lot gains are already floored at 0 (no
+ * brokerage loss realization), mirroring the aggregate gainRatio's floor.
+ */
+function splitBrokerageGainsFIFO(
+    gross: number,
+    lots: NonNullable<AccountBalanceSnapshot['brokerageLots']>,
+): { stcg: number; ltcg: number } {
+    let remaining = gross;
+    let stcg = 0;
+    let ltcg = 0;
+    for (const lot of lots) {
+        if (remaining <= 0) break;
+        const valueToUse = Math.min(lot.totalValue, remaining);
+        const ratio = lot.totalValue > 0 ? valueToUse / lot.totalValue : 0;
+        const gain = lot.gain * ratio;
+        if (lot.isLongTerm) ltcg += gain;
+        else stcg += gain;
+        remaining -= valueToUse;
+    }
+    return { stcg, ltcg };
 }
 
 /**
@@ -567,6 +611,7 @@ export function planWithdrawals(
     // and feeds it through the authoritative federal tax + MAGI.
     let totalSTCG = 0;
     let cumulativeLTCG = 0; // Tracks LTCG from brokerage/ESPP for ACA MAGI headroom
+    let cumulativeSTCG = 0; // Tracks brokerage STCG realized this loop (also in MAGI) — #75
     let runningOrdinaryIncome = currentOrdinaryIncome;
 
     // ACA cliff: track Roth amounts pre-consumed by look-ahead substitution
@@ -674,35 +719,63 @@ export function planWithdrawals(
             }
 
             case 'brokerage': {
-                const result = grossUpBrokerage(remainingNetNeeded, snapshot.gainRatio, ltcgRate);
-                let grossToWithdraw = Math.min(result.gross, effectiveVestedBalance);
-
-                // Recalculate for actual amount if capped
+                const brokerageLots = snapshot.brokerageLots;
                 const actualGainRatio = snapshot.gainRatio;
-                let actualLTCG = grossToWithdraw * actualGainRatio;
-                let actualTax = actualLTCG * ltcgRate;
-                let netReceived = grossToWithdraw - actualTax;
+
+                // STCG (lots held <1yr) is taxed as ordinary income; LTCG at the LTCG
+                // rate (#75). FIFO matches the model's lot removal. Without lot data,
+                // fall back to the prior all-LTCG proportional model.
+                const brokerageOrdinaryRate = getMarginalRate(runningOrdinaryIncome) + getStateRate(runningOrdinaryIncome);
+                const realizeBrokerage = (gross: number): { stcg: number; ltcg: number; tax: number; net: number } => {
+                    if (brokerageLots && brokerageLots.length > 0) {
+                        const { stcg, ltcg } = splitBrokerageGainsFIFO(gross, brokerageLots);
+                        const tax = stcg * brokerageOrdinaryRate + ltcg * ltcgRate;
+                        return { stcg, ltcg, tax, net: gross - tax };
+                    }
+                    const ltcg = gross * actualGainRatio;
+                    const tax = ltcg * ltcgRate;
+                    return { stcg: 0, ltcg, tax, net: gross - tax };
+                };
+
+                // Size the gross from a blended effective rate across the lot pool
+                // (mirrors RSU), or the single-rate algebraic gross-up without lots.
+                let grossToWithdraw: number;
+                if (brokerageLots && brokerageLots.length > 0) {
+                    let poolValue = 0;
+                    let poolTax = 0;
+                    for (const lot of brokerageLots) {
+                        poolValue += lot.totalValue;
+                        poolTax += lot.gain * (lot.isLongTerm ? ltcgRate : brokerageOrdinaryRate);
+                    }
+                    const effRate = poolValue > 0 ? poolTax / poolValue : 0;
+                    grossToWithdraw = Math.min(remainingNetNeeded / Math.max(0.01, 1 - effRate), effectiveVestedBalance);
+                } else {
+                    grossToWithdraw = Math.min(grossUpBrokerage(remainingNetNeeded, actualGainRatio, ltcgRate).gross, effectiveVestedBalance);
+                }
+
+                let { stcg: actualSTCG, ltcg: actualLTCG, tax: actualTax, net: netReceived } = realizeBrokerage(grossToWithdraw);
 
                 // =================================================================
                 // ACA CLIFF CHECK: Cap brokerage withdrawal if LTCG would breach cliff
                 // Substitute tax-free Roth withdrawals for the remainder
                 // =================================================================
                 if (acaWithdrawalOptions && grossToWithdraw > 0) {
-                    const projectedMAGI = acaWithdrawalOptions.currentMAGI + cumulativeLTCG + actualLTCG;
+                    // Both STCG and LTCG land in MAGI, so the cliff check counts both (#75).
+                    const projectedMAGI = acaWithdrawalOptions.currentMAGI + cumulativeLTCG + cumulativeSTCG + actualLTCG + actualSTCG;
 
                     if (projectedMAGI > acaWithdrawalOptions.acaCliffThreshold) {
-                        // Calculate how much LTCG headroom we have
+                        // Calculate how much realized-gains headroom we have
                         const magiHeadroom = Math.max(0,
                             acaWithdrawalOptions.acaCliffThreshold - ACA_WITHDRAWAL_BUFFER
-                            - acaWithdrawalOptions.currentMAGI - cumulativeLTCG
+                            - acaWithdrawalOptions.currentMAGI - cumulativeLTCG - cumulativeSTCG
                         );
 
-                        // Convert LTCG headroom to max safe gross withdrawal
-                        // LTCG = gross × gainRatio, so gross = LTCG / gainRatio
+                        // Convert realized-gains headroom to max safe gross withdrawal.
+                        // Total gains ≈ gross × gainRatio (gainRatio covers short + long),
+                        // so gross = gains / gainRatio.
                         let maxSafeGross: number;
                         if (actualGainRatio > 0) {
-                            const maxSafeLTCG = magiHeadroom;
-                            maxSafeGross = maxSafeLTCG / actualGainRatio;
+                            maxSafeGross = magiHeadroom / actualGainRatio;
                         } else {
                             maxSafeGross = grossToWithdraw; // No gains, no MAGI impact
                         }
@@ -711,10 +784,8 @@ export function planWithdrawals(
                         const originalNet = netReceived;
                         grossToWithdraw = Math.max(0, Math.min(grossToWithdraw, maxSafeGross));
 
-                        // Recalculate with capped amount
-                        actualLTCG = grossToWithdraw * actualGainRatio;
-                        actualTax = actualLTCG * ltcgRate;
-                        netReceived = grossToWithdraw - actualTax;
+                        // Recalculate the short/long split with the capped amount.
+                        ({ stcg: actualSTCG, ltcg: actualLTCG, tax: actualTax, net: netReceived } = realizeBrokerage(grossToWithdraw));
 
                         // Calculate deficit still needing coverage from Roth
                         const netShortfall = originalNet - netReceived;
@@ -839,24 +910,34 @@ export function planWithdrawals(
                     }
                 }
 
+                const brokerageStcgTax = Math.max(0, actualSTCG) * brokerageOrdinaryRate;
                 withdrawal = {
                     source: 'brokerage',
                     accountId: snapshot.accountId,
                     accountName: snapshot.accountName,
                     gross: grossToWithdraw,
                     net: netReceived,
-                    capitalGains: { shortTerm: 0, longTerm: actualLTCG },
+                    capitalGains: { shortTerm: actualSTCG, longTerm: actualLTCG },
+                    // STCG is taxed at ordinary rates — route its tax through ordinaryTax
+                    // so ordinaryTaxOf()/ltcgTaxOf() split it correctly (#75).
+                    ordinaryTax: brokerageStcgTax,
                     penalty: 0,
                     tax: actualTax,
                     reason,
                 };
 
+                // STCG is ordinary income — advance running ordinary income so a later
+                // same-year ordinary withdrawal bracket-stacks on top of it (mirrors RSU).
+                if (actualSTCG > 0) runningOrdinaryIncome += actualSTCG;
+
                 cumulativeLTCG += actualLTCG;
+                cumulativeSTCG += actualSTCG;
                 remainingNetNeeded -= netReceived;
                 totalNet += netReceived;
                 totalGross += grossToWithdraw;
                 totalTax += actualTax;
                 totalLTCG += actualLTCG;
+                totalSTCG += actualSTCG;
                 break;
             }
 

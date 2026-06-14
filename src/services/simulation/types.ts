@@ -660,6 +660,22 @@ export interface AccountBalanceSnapshot {
         isLongTerm: boolean;
         totalValue: number;
     }[];
+    /**
+     * For brokerage: per-lot holding-period data, FIFO-ordered (oldest purchaseYear
+     * first — the order the account model actually sells in). Lets the planner split
+     * a realized gain short- vs long-term instead of treating it all as LTCG (#75).
+     * Absent when the account has no lot tracking, in which case the planner falls
+     * back to the aggregate `gainRatio` (all long-term).
+     */
+    brokerageLots?: {
+        purchaseYear: number;
+        /** Current market value of the lot (the gross sellable from it). */
+        totalValue: number;
+        /** Unrealized gain in the lot, floored at 0 (no brokerage loss realization). */
+        gain: number;
+        /** True if held >=1yr (currentYear - purchaseYear >= 1), false for short-term. */
+        isLongTerm: boolean;
+    }[];
 }
 
 /**
