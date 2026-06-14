@@ -1,8 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import ExpenseCard from '../../../../components/Objects/Expense/ExpenseCard';
 import { MortgageExpense, LoanExpense, OtherExpense } from '../../../../components/Objects/Expense/models';
+import { ExpenseDispatchContext } from '../../../../components/Objects/Expense/ExpenseContext';
 
 // ExpenseCard's contexts (Expense/Account/Assumptions) all have safe defaults,
 // so these render-only tests need no providers — sections and the expandable
@@ -156,6 +157,33 @@ describe('ExpenseCard collapsible sections', () => {
             expect(screen.getByText('Target date')).toBeInTheDocument();
             // 24,000 / 24 months = $1,000/mo.
             expect(screen.getByText('$1,000/mo')).toBeInTheDocument();
+        });
+
+        // #87: switching a goal's kind to 'recurring' must clear any leftover end
+        // marker, so a stale targetDate endDate can't silently halt the recurring
+        // lump / mark the goal done. (Guards the #67 fix from regressing.)
+        it('switching a targetDate goal to recurring clears endDate + endMilestoneId', () => {
+            const dispatch = vi.fn();
+            const goal = makeTargetDateGoal();   // carries endDate 2028-01-01
+            goal.endMilestoneId = 'ms-stale';    // and a leftover end milestone
+            render(
+                <ExpenseDispatchContext.Provider value={dispatch}>
+                    <ExpenseCard expense={goal} />
+                </ExpenseDispatchContext.Provider>,
+            );
+            expandCard('Car');
+
+            fireEvent.change(
+                screen.getByLabelText(/Goal Type/, { selector: 'select' }),
+                { target: { value: 'Recurring every N years' } },
+            );
+
+            const fields = dispatch.mock.calls
+                .filter(c => c[0]?.type === 'UPDATE_EXPENSE_FIELD')
+                .map(c => c[0].payload);
+            expect(fields).toContainEqual({ id: goal.id, field: 'goalType', value: 'recurring' });
+            expect(fields).toContainEqual({ id: goal.id, field: 'endDate', value: undefined });
+            expect(fields).toContainEqual({ id: goal.id, field: 'endMilestoneId', value: undefined });
         });
     });
 });

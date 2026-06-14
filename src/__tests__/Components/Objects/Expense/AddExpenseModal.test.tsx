@@ -303,3 +303,58 @@ describe('AddExpenseModal goal creation receipt', () => {
         expect(screen.queryByText(/Sets aside/)).not.toBeInTheDocument();
     });
 });
+
+// #87: a recurring goal recurs forever unless it carries a deliberate "stop
+// replacing it" endDate (set via the recurring End field). These lock in that
+// the CREATE path never injects a *stale* endDate onto a recurring goal — in
+// particular it never leaks the targetDate target into a recurring goal's
+// endDate. (The model-level semantics are covered in models.test.tsx; this is
+// the missing create-flow invariant.)
+describe('AddExpenseModal goal create — no stale recurring endDate (issue #87)', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.setSystemTime(TODAY);
+        expenseDispatch.mockClear();
+        accountDispatch.mockClear();
+    });
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    const createdGoal = () => {
+        const call = expenseDispatch.mock.calls.find(c => c[0]?.type === 'ADD_EXPENSE');
+        expect(call).toBeTruthy();
+        return call![0].payload;
+    };
+
+    it('a default recurring goal is created with no endDate (recurs forever)', () => {
+        renderGoalModal();
+        pickOtherType();
+        setName('Roof');
+        setAmount(12000);
+        // Goal Type defaults to 'recurring'; the End field is untouched.
+        fireEvent.click(screen.getByRole('button', { name: 'Add Expense' }));
+
+        const goal = createdGoal();
+        expect(goal.goalType).toBe('recurring');
+        expect(goal.endDate).toBeUndefined();
+    });
+
+    it('switching targetDate→recurring does not leak the target date into endDate', () => {
+        renderGoalModal();
+        pickOtherType();
+        setName('Roof');
+        setAmount(12000);
+        // Set a target date as a targetDate goal, then switch back to recurring.
+        setGoalType('targetDate');
+        setTargetDate('2030-01-01');
+        setGoalType('recurring');
+        fireEvent.click(screen.getByRole('button', { name: 'Add Expense' }));
+
+        const goal = createdGoal();
+        expect(goal.goalType).toBe('recurring');
+        // The recurring branch uses form.endDate (the deliberate stop-date),
+        // NOT form.goalTargetDate — so the 2030 target must not survive here.
+        expect(goal.endDate).toBeUndefined();
+    });
+});
