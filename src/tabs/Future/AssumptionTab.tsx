@@ -186,8 +186,10 @@ export default function AssumptionTab() {
                         )}
                     </div>
 
-                    {/* GK initial-rate suggestion: planned spending implies a higher rate */}
-                    {state.investments.withdrawalStrategy === 'Guyton Klinger' && gkRateSuggestion && (
+                    {/* GK initial-rate suggestion: planned spending implies a higher rate.
+                        computeGKRateSuggestion already returns null for any non-GK strategy,
+                        so a non-null suggestion implies Guyton-Klinger is active. */}
+                    {gkRateSuggestion && (
                         <AlertBanner severity="warning" size="sm" title="Your spending implies a higher initial rate">
                             <p>
                                 Your year-1 retirement spending works out to about{' '}

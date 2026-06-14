@@ -1,6 +1,7 @@
 import { AnyExpense, MortgageExpense, LoanExpense } from "../../components/Objects/Expense/models";
 import { AnyIncome, WorkIncome } from "../../components/Objects/Income/models";
-import { AnyAccount, InvestedAccount, SavedAccount, ESPPAccount, RSUAccount } from "../../components/Objects/Accounts/models";
+import { AnyAccount } from "../../components/Objects/Accounts/models";
+import { sumInvestedAssets } from "../../components/Objects/Accounts/accountUtils";
 import { AssumptionsState, getRetirementAge, getLifeExpectancy, getBirthYear } from "../../components/Objects/Assumptions/AssumptionsContext";
 import { calculateStrategyWithdrawal, WithdrawalResult } from "../WithdrawalStrategies";
 import { SimulationYear } from "./types";
@@ -98,12 +99,7 @@ export function calculateStrategyTarget(
         return undefined;
     }
 
-    const totalInvestedAssets = accounts.reduce((sum, acc) => {
-        if (acc instanceof InvestedAccount || acc instanceof SavedAccount || acc instanceof ESPPAccount || acc instanceof RSUAccount) {
-            return sum + acc.amount;
-        }
-        return sum;
-    }, 0);
+    const totalInvestedAssets = sumInvestedAssets(accounts);
 
     const previousStrategyResult = previousSimulation.length > 0
         ? previousSimulation[previousSimulation.length - 1].strategyWithdrawal

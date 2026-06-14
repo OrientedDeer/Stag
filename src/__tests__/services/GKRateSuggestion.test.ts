@@ -11,6 +11,7 @@ import {
 } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { SimulationYear } from '../../services/simulation/types';
 import { WithdrawalResult } from '../../services/WithdrawalStrategies';
+import { InvestedAccount } from '../../components/Objects/Accounts/models';
 
 const BIRTH_YEAR = 1990;
 const RETIREMENT_AGE = 65;
@@ -60,7 +61,7 @@ function makeYear(opts: {
         expenses: [],
         accounts:
             opts.accountTotal !== undefined
-                ? ([{ id: 'a1', amount: opts.accountTotal }] as unknown as SimulationYear['accounts'])
+                ? [new InvestedAccount('a1', 'Test', opts.accountTotal)]
                 : [],
         cashflow: {
             totalIncome: 0,
@@ -203,6 +204,17 @@ describe('computeGKRateSuggestion', () => {
         const result = computeGKRateSuggestion(sim, makeAssumptions({ withdrawalRate: 4.0 }));
         expect(result!.impliedRate).toBeCloseTo(4.73, 5);
         expect(result!.suggestedRate).toBe(4.8);
+    });
+
+    it('does not over-bump a clean 0.1% rate that float arithmetic perturbs', () => {
+        // 58_000 / 1M = 5.8% exactly, but (58000/1_000_000)*100 evaluates to
+        // 5.800000000000001 in IEEE-754. A naive Math.ceil(x*10)/10 would bump
+        // it to 5.9% (and disagree with the 5.8% the banner shows); the epsilon
+        // guard keeps it at 5.8%.
+        const sim = [makeYear({ year: RETIREMENT_YEAR, livingExpenses: 58000, initialPortfolio: 1_000_000 })];
+        const result = computeGKRateSuggestion(sim, makeAssumptions({ withdrawalRate: 4.0 }));
+        expect(result).not.toBeNull();
+        expect(result!.suggestedRate).toBe(5.8);
     });
 
     it('uses the reconstructed pre-cap spending so a capped year still flags', () => {

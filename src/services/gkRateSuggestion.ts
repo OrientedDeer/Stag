@@ -4,6 +4,7 @@ import {
     getBirthYear,
     getRetirementAge,
 } from "../components/Objects/Assumptions/AssumptionsContext";
+import { sumInvestedAssets } from "../components/Objects/Accounts/accountUtils";
 
 /**
  * Minimum gap (in percentage points) between the implied initial withdrawal
@@ -61,16 +62,18 @@ export function getRetirementYearSpendingAndPortfolio(
 
     // Planned (pre-cap) living expenses: reported living expenses already
     // reflect any budget-cap trim, so add back what the cap wanted to cut.
-    const requiredAdjustment = yearData.strategyAdjustment?.guardrailTriggered !== 'prosperity'
-        ? yearData.strategyAdjustment?.requiredAdjustment ?? 0
-        : 0;
+    // `requiredAdjustment` is the dollar amount the cap wanted to trim and is 0
+    // for non-cut years — prosperity *increases* are tracked in actualAdjustment,
+    // never here — so this reconstructs the user's original planned spend.
+    const requiredAdjustment = yearData.strategyAdjustment?.requiredAdjustment ?? 0;
     const plannedSpending = yearData.cashflow.livingExpenses + requiredAdjustment;
 
     // Portfolio at retirement: prefer the engine's own figure, else sum the
-    // year's account snapshot balances.
+    // year's invested-asset balances using the SAME set the engine sizes the
+    // withdrawal budget against (so the denominator can't drift).
     const portfolioAtRetirement =
         yearData.strategyWithdrawal?.initialPortfolio
-        ?? yearData.accounts.reduce((sum, acc) => sum + (acc.amount ?? 0), 0);
+        ?? sumInvestedAssets(yearData.accounts);
 
     if (portfolioAtRetirement <= 0) return null;
 
@@ -117,8 +120,10 @@ export function computeGKRateSuggestion(
     }
 
     // Round up to the nearest 0.1% so the applied rate actually covers the
-    // implied spend (rounding down could leave it fractionally short).
-    const suggestedRate = Math.ceil(impliedRate * 10) / 10;
+    // implied spend (rounding down could leave it fractionally short). Subtract
+    // a tiny epsilon first so binary-float noise (e.g. 5.8 arriving as
+    // 5.800000000000001) doesn't bump a clean tenth up an extra 0.1%.
+    const suggestedRate = Math.ceil(impliedRate * 10 - 1e-9) / 10;
 
     return {
         configuredRate,
