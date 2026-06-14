@@ -1,5 +1,6 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { useArrowKeyAdjust } from '../../../hooks/useKeyboardShortcuts';
+import React, { useMemo } from 'react';
+import { useContainerWidth } from '../../../hooks/useContainerWidth';
+import { useTimelineRange } from '../../../hooks/useTimelineRange';
 import { ChartTooltipPortal } from '../../../components/Charts/ChartTooltipPortal';
 import { ResponsiveLine } from '@nivo/line';
 import { useChartTheme } from '../../../components/Charts/useChartTheme';
@@ -15,8 +16,6 @@ import { getFRA } from '../../../data/SocialSecurityData';
 import { FutureSocialSecurityIncome } from '../../../components/Objects/Income/models';
 import { getEarnedIncome } from '../../../components/Objects/Taxes/TaxService';
 import { useAssumptions, getBirthYear } from '../../../components/Objects/Assumptions/AssumptionsContext';
-
-const MIN_CHART_WIDTH = 300;
 
 /**
  * Check if user is subject to Social Security earnings test
@@ -57,44 +56,33 @@ function checkEarningsTest(
   return { applies: false };
 }
 
+/** Per-point data embedded in the net-worth chart, read back in the slice tooltip. */
+interface OverviewPoint {
+    year: number;
+    yearLabel: string;
+    isEOY: boolean;
+    Invested: number;
+    Saved: number;
+    Property: number;
+    Debt: number;
+}
+
+interface OverviewSliceArg {
+    slice?: { points?: ReadonlyArray<{ data: OverviewPoint }> };
+}
+
 export const OverviewTab = React.memo(({ simulationData }: { simulationData: SimulationYear[] }) => {
     const { assumptions } = useAssumptions();
     const { resolve } = useChartTheme();
     const forceExact = assumptions.display?.useCompactCurrency === false;
-    const containerRef = useRef<HTMLDivElement>(null);
-    const [containerWidth, setContainerWidth] = useState<number | null>(null);
-
-    // Track container width to prevent negative SVG dimensions
-    useEffect(() => {
-        const container = containerRef.current;
-        if (!container) return;
-
-        const observer = new ResizeObserver((entries) => {
-            for (const entry of entries) {
-                setContainerWidth(entry.contentRect.width);
-            }
-        });
-
-        observer.observe(container);
-
-        return () => observer.disconnect();
-    }, []);
-
-    const isNarrow = containerWidth !== null && containerWidth < MIN_CHART_WIDTH;
-    const isMeasured = containerWidth !== null;
+    const { containerRef, containerWidth, isMeasured, isNarrow } = useContainerWidth();
 
     // 1. Determine Min/Max Years from Data (or defaults if empty)
     const minYear = simulationData.length > 0 ? simulationData[0].year : new Date().getFullYear();
     const maxYear = simulationData.length > 0 ? simulationData[simulationData.length - 1].year : minYear + 10;
 
-    // 2. State for Range Slider (Defaults to full range)
-    const [range, setRange] = useState<[number, number] | null>(null);
-    const activeRange = range ?? [minYear,  Math.min(maxYear, minYear + 32)];
-    useArrowKeyAdjust(
-        activeRange,
-        (v) => setRange(v as [number, number]),
-        { min: minYear, max: maxYear, step: 1, containerRef }
-    );
+    // 2. Range Slider state (defaults to the full range, capped at +32 years).
+    const { activeRange, setRange } = useTimelineRange(minYear, maxYear, containerRef);
 
     // 3. Filter Data based on Slider
     const filteredData = useMemo(() => {
@@ -151,7 +139,7 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                 Debt: -Math.abs(debt)
             };
         });
-    }, [filteredData]);
+    }, [filteredData, hasEOYPoint, baselineYear]);
 
     const lineData = useMemo(() => {
         const keys = ['Invested', 'Saved', 'Property', 'Debt'] as const;
@@ -205,7 +193,7 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
     }, [rawData, containerWidth]);
 
     // 5. Custom Tooltip
-    const CustomTooltip = ({ slice }: any) => {
+    const CustomTooltip = ({ slice }: OverviewSliceArg) => {
         if (!slice?.points?.length) return null;
 
         // Access data from the first point (all points share the same embedded data)

@@ -1,18 +1,17 @@
-import { useMemo, useRef, useState, useEffect, useContext } from 'react';
+import { useMemo, useContext } from 'react';
 import { ResponsiveLine } from '@nivo/line';
 import { ChartTooltipPortal } from '../../../components/Charts/ChartTooltipPortal';
 import { useChartTheme } from '../../../components/Charts/useChartTheme';
 import { ChartFrame } from '../../../components/Charts/ChartFrame';
 import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider';
-import { useArrowKeyAdjust } from '../../../hooks/useKeyboardShortcuts';
+import { useContainerWidth } from '../../../hooks/useContainerWidth';
+import { useTimelineRange } from '../../../hooks/useTimelineRange';
 import { AlertBanner } from '../../../components/Layout/AlertBanner';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { useAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxContext } from '../../../components/Objects/Taxes/TaxContext';
 import { getProjectedRMDMarginalRate } from '../../../services/TaxOptimizationService';
 import { computeAfterTaxNetWorth, formatCompactCurrency } from './FutureUtils';
-
-const MIN_CHART_WIDTH = 300;
 
 interface AfterTaxPoint {
     year: number;
@@ -39,41 +38,13 @@ export function AfterTaxNetWorthChart({ simulationData }: { simulationData: Simu
     const { resolve } = useChartTheme();
     const forceExact = assumptions.display?.useCompactCurrency === false;
 
-    const containerRef = useRef<HTMLDivElement>(null);
-    const [containerWidth, setContainerWidth] = useState<number | null>(null);
-    useEffect(() => {
-        const el = containerRef.current;
-        if (!el) return;
-        const observer = new ResizeObserver((entries) => {
-            for (const entry of entries) setContainerWidth(entry.contentRect.width);
-        });
-        observer.observe(el);
-        return () => observer.disconnect();
-    }, []);
-    const isMeasured = containerWidth !== null;
-    const isNarrow = containerWidth !== null && containerWidth < MIN_CHART_WIDTH;
+    const { containerRef, isMeasured, isNarrow } = useContainerWidth();
 
-    // Real (non-EOY) projection years, and a Timeline range slider over them —
-    // matching the per-chart range control used elsewhere on the Future tabs.
+    // Real (non-EOY) projection years, with a Timeline range slider over them.
     const realYears = useMemo(() => simulationData.filter(y => !y.isEndOfYearProjection), [simulationData]);
     const minYear = realYears.length > 0 ? realYears[0].year : new Date().getFullYear();
     const maxYear = realYears.length > 0 ? realYears[realYears.length - 1].year : minYear + 10;
-    const [range, setRange] = useState<[number, number] | null>(null);
-    // Reconcile a stored range with the current projection bounds during render
-    // (it can fall outside them after a data import / life-expectancy change).
-    // Deriving here — rather than resetting state in an effect — keeps the chart
-    // from rendering an empty slice. If the range no longer overlaps the bounds at
-    // all, reset to the default window; otherwise clamp the overlap into range.
-    const activeRange = useMemo<[number, number]>(() => {
-        const fallback: [number, number] = [minYear, Math.min(maxYear, minYear + 32)];
-        if (!range || range[1] < minYear || range[0] > maxYear) return fallback;
-        return [Math.max(minYear, range[0]), Math.min(maxYear, range[1])];
-    }, [range, minYear, maxYear]);
-    useArrowKeyAdjust(
-        activeRange,
-        (v) => setRange(v as [number, number]),
-        { min: minYear, max: maxYear, step: 1, containerRef },
-    );
+    const { activeRange, setRange } = useTimelineRange(minYear, maxYear, containerRef);
 
     // One rate for the whole balance: the marginal rate the Traditional faces when
     // RMDs force it out (see getProjectedRMDMarginalRate). This is the rate the
