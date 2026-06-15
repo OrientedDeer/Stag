@@ -3,6 +3,7 @@ import { createContext, useReducer, useContext, ReactNode, useMemo } from 'react
 import { useDebouncedLocalStorage } from '../../../hooks/useDebouncedLocalStorage';
 import { EarningsRecord } from '../../../services/SocialSecurityCalculator';
 import { CustomMilestone } from '../../../services/simulation/types';
+import { RothConversionStrategy, DEFAULT_ROTH_CONVERSION_STRATEGY } from './rothConversionStrategy';
 
 // Built-in milestone IDs that cannot be removed
 export const BUILTIN_MILESTONE_IDS = {
@@ -145,7 +146,7 @@ export interface AssumptionsState {
     // 'rate-match' = bracket-walk that compares this year's marginal to projected RMD-age marginal.
     // 'dp-precomputed' = backward-induction DP solved once over the full horizon, maximizing
     //   after-tax terminal wealth with a bracket-aware terminal valuation (#89).
-    rothConversionStrategy?: 'rate-match' | 'dp-precomputed';
+    rothConversionStrategy?: RothConversionStrategy;
     // dp-precomputed only: what happens to Traditional surviving to the horizon, which sets how
     // aggressively the DP converts. 'self-liquidate' (default) = you draw it down yourself at real
     // brackets (std-ded slice at 0%) → low exit rate → keep a reserve, convert conservatively.
@@ -213,7 +214,7 @@ export const defaultAssumptions: AssumptionsState = {
     gkLowerGuardrail: 0.8,      // Boost when rate < target * 0.8
     gkAdjustmentPercent: 10,    // 10% adjustment (per actual GK rules)
     autoRothConversions: false, // Auto-convert Traditional to Roth in retirement
-    rothConversionStrategy: 'dp-precomputed', // DEFAULT: max after-tax wealth (#89). 'rate-match' retained as a non-default conservative fallback.
+    rothConversionStrategy: DEFAULT_ROTH_CONVERSION_STRATEGY, // max after-tax wealth (#89); 'rate-match' is the non-default conservative fallback. Default literal lives on this constant.
     rothConversionUserSituation: 'self-liquidate', // DEFAULT (ratified product decision, #89): plan to spend it down yourself. User can switch to 'bequeath'.
     rothConversionMinRateGap: 0.05, // 5pp minimum savings to justify a non-free conversion (rate-match algorithm)
     rothConversionDPBackloadDelta: 0.015, // 1.5%/yr default — legacy min-tax DP back-load preference

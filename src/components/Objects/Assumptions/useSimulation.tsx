@@ -5,10 +5,11 @@ import { AnyAccount, InvestedAccount, SavedAccount, DebtAccount, DeficitDebtAcco
 import { AnyIncome } from '../Income/models';
 import { AnyExpense, MortgageExpense } from '../Expense/models';
 import { AssumptionsState, getLifeExpectancy, getBirthYear, getRetirementAge } from './AssumptionsContext';
+import { resolveRothConversionStrategy } from './rothConversionStrategy';
 import { TaxState, resolveTaxEventsForYear } from '../Taxes/TaxContext';
 import { BaselineProjections } from '../../../services/simulation/types';
 import { getRMDStartAge } from '../../../data/RMDData';
-import { buildDPYearContexts, planConversionsViaDP, DPPlan } from '../../../services/simulation/RothConversionDP';
+import { buildDPYearContexts, planConversionsViaDP, DPPlan, DPObjectiveOptions } from '../../../services/simulation/RothConversionDP';
 
 /**
  * Scope a TaxState for FUTURE (projected) years. Dollar tax overrides
@@ -652,23 +653,18 @@ export const runSimulationWithOptimization = (
     eoyDebtReductions?: Record<string, number>,
     eoyMortgageReductions?: Record<string, number>,
     /**
-     * PROTOTYPE (#89) — experimental DP objective override, plumbed only to let
-     * tests A/B the max-wealth objective through the executed sim. Omitted (the
-     * production/app call site) ⇒ 'min-tax' ⇒ byte-identical to today. Not wired
-     * to any UI; see RothConversionDP.planConversionsViaDP.
+     * DP objective override (#89). When OMITTED (the production/app call site), production
+     * DERIVES the live default below (`effectiveDpObjective`): max-wealth + bracket-aware
+     * terminal, parameterized by the user's self-liquidate-vs-bequeath choice. A caller may
+     * pass this to A/B the legacy objectives (min-tax / flat-τ) through the executed sim —
+     * those are retained for regression tests only, no production caller selects them.
+     * See RothConversionDP.planConversionsViaDP.
      */
-    dpObjective?: {
-        objectiveMode?: 'min-tax' | 'max-wealth';
-        terminalTaxRate?: number;
-        terminalValuation?: 'flat' | 'bracket-aware';
-        userSituation?: 'self-liquidate' | 'bequeath';
-        terminalCola?: number;
-    },
+    dpObjective?: DPObjectiveOptions,
 ): SimulationYear[] => {
-    // DEFAULT flipped to bracket-aware DP (#89). rate-match stays a selectable
-    // non-default fallback (one-line revert here + AssumptionsContext to restore,
-    // or to a full delete / "conservative mode" later).
-    const strategy = assumptions.investments.rothConversionStrategy ?? 'dp-precomputed';
+    // DEFAULT is bracket-aware DP (#89); rate-match is the non-default fallback. The default
+    // is resolved through the shared helper (single source of truth in AssumptionsContext).
+    const strategy = resolveRothConversionStrategy(assumptions.investments.rothConversionStrategy);
     const taxOptOn = assumptions.investments.taxOptimizationEnabled;
 
     // Always run a full-horizon std-ded-only baseline up front. Used for:
@@ -815,17 +811,11 @@ export const runSimulationWithOptimization = (
 
         // Pass 3 — final sim executing the DP plan. The DP strategy in YearSolver
         // looks up `input.dpConversionPlan` per year. conversionMode is moot for DP.
-        // Pin the RESOLVED strategy ('dp-precomputed') so the executor's
-        // selectConversionStrategy reads it: when the user's field is unset (legacy
-        // data) we still resolved to dp-precomputed via the default and built the plan,
-        // but passing raw `assumptions` (undefined field) would make YearSolver fall
-        // back to rate-match and silently DISCARD dpPlan.
-        const executorAssumptions: AssumptionsState = {
-            ...assumptions,
-            investments: { ...assumptions.investments, rothConversionStrategy: 'dp-precomputed' },
-        };
+        // No strategy re-pin needed: selectConversionStrategy resolves an unset field to the
+        // dp-precomputed default, so the built dpPlan executes whether the field is
+        // 'dp-precomputed' or undefined (legacy data).
         const finalTimeline = runSimulation(
-            yearsToRun, accounts, incomes, expenses, executorAssumptions, taxState,
+            yearsToRun, accounts, incomes, expenses, assumptions, taxState,
             yearlyReturns, referenceDate,
             /* conversionMode */ 'rate-match',
             /* useRollingBaseline */ false,

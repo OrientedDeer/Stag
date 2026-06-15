@@ -6,6 +6,7 @@ import { AnyAccount } from '../components/Objects/Accounts/models';
 import { AnyIncome } from '../components/Objects/Income/models';
 import { AnyExpense } from '../components/Objects/Expense/models';
 import { AssumptionsState, getLifeExpectancy, getBirthYear } from '../components/Objects/Assumptions/AssumptionsContext';
+import { resolveRothConversionStrategy } from '../components/Objects/Assumptions/rothConversionStrategy';
 import { TaxState } from '../components/Objects/Taxes/TaxContext';
 
 /**
@@ -34,7 +35,7 @@ function buildMcConversionPlan(
     yearsToRun: number, accounts: AnyAccount[], incomes: AnyIncome[], expenses: AnyExpense[],
     assumptions: AssumptionsState, taxState: TaxState,
 ): McConversionPlan {
-    const strategy = assumptions.investments.rothConversionStrategy ?? 'dp-precomputed';
+    const strategy = resolveRothConversionStrategy(assumptions.investments.rothConversionStrategy);
     if (strategy !== 'dp-precomputed' || !assumptions.investments.taxOptimizationEnabled) {
         return {};
     }
@@ -66,15 +67,11 @@ function runSingleScenario(
 
     // Single-pass per path (MC's purpose is return-variance analysis, not re-optimizing
     // conversions per path). Replay the pre-solved DP plan (open-loop) when present;
-    // otherwise runSimulation's per-year strategy (rate-match) runs as before. The
-    // executor strategy is pinned to the resolved value so a legacy-unset
-    // rothConversionStrategy doesn't make YearSolver fall back to rate-match and discard
-    // the plan (see the same fix in runSimulationWithOptimization Pass 3).
-    const execAssumptions: AssumptionsState = mcPlan.plan
-        ? { ...assumptions, investments: { ...assumptions.investments, rothConversionStrategy: 'dp-precomputed' } }
-        : assumptions;
+    // otherwise runSimulation's per-year strategy runs as before. No strategy re-pin needed:
+    // selectConversionStrategy resolves an unset field to the dp-precomputed default, so the
+    // replayed plan executes whether the field is 'dp-precomputed' or undefined (legacy).
     const timeline = runSimulation(
-        yearsToRun, accounts, incomes, expenses, execAssumptions, taxState, yearlyReturns,
+        yearsToRun, accounts, incomes, expenses, assumptions, taxState, yearlyReturns,
         undefined, 'rate-match', false, mcPlan.plan, undefined, undefined, undefined, undefined,
     );
 

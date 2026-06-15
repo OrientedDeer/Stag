@@ -21,6 +21,7 @@ import { AnyExpense } from "../../components/Objects/Expense/models";
 import { TaxParameters } from "../../data/TaxData";
 import { TaxState } from "../../components/Objects/Taxes/TaxContext";
 import { AssumptionsState } from "../../components/Objects/Assumptions/AssumptionsContext";
+import { RothConversionStrategy, resolveRothConversionStrategy } from "../../components/Objects/Assumptions/rothConversionStrategy";
 import {
     YearPlan,
     PlannedWithdrawal,
@@ -169,10 +170,12 @@ export type ConversionStrategy = (
  * no-conversion plan for the year.
  */
 function selectConversionStrategy(
-    strategyName: 'rate-match' | 'dp-precomputed' | undefined,
+    strategyName: RothConversionStrategy | undefined,
 ): ConversionStrategy {
-    if (strategyName === 'dp-precomputed') return planConversionDP;
-    return planConversion;
+    // Resolve the default HERE (the single executor dispatch) so an unset (legacy) strategy
+    // dispatches to the DP plan rather than silently falling back to rate-match and
+    // discarding a built plan. This is why callers no longer need to re-pin the strategy.
+    return resolveRothConversionStrategy(strategyName) === 'dp-precomputed' ? planConversionDP : planConversion;
 }
 
 // =============================================================================

@@ -1116,48 +1116,54 @@ export function bracketAwareTradExitValue(
 }
 
 /**
+ * Objective options for {@link planConversionsViaDP} (#89). PRODUCTION DEFAULT (derived in
+ * useSimulation): `objectiveMode: 'max-wealth'` + `terminalValuation: 'bracket-aware'`, which
+ * maximizes PV of after-tax terminal wealth and values residual Traditional at its true
+ * graduated exit rate, parameterized by `userSituation`. The four objective touch-points
+ * (terminal base case, per-year accumuland, optimizer direction, discount factor) flip on
+ * `objectiveMode`.
+ *
+ * `objectiveMode: 'min-tax'` (the legacy lifetime-tax objective) and `terminalValuation:
+ * 'flat'` (flat (1−τ) haircut, `terminalTaxRate`) are RETAINED ONLY for regression tests that
+ * A/B the old behavior — no production caller selects them. Omitting the options entirely
+ * defaults to min-tax/flat-τ; production always passes the derived max-wealth options.
+ */
+export interface DPObjectiveOptions {
+    objectiveMode?: 'min-tax' | 'max-wealth';
+    /** Flat-τ terminal: residual Trad valued at (1−τ). Used when terminalValuation='flat'. */
+    terminalTaxRate?: number;
+    /**
+     * 'flat' (default) = the original flat-τ terminal. 'bracket-aware' = value residual Trad
+     * at its TRUE exit rate (graduated: std-ded slice at 0%, then brackets), so the effective
+     * conversion ceiling adapts to plan shape + user situation instead of a constant τ.
+     */
+    terminalValuation?: 'flat' | 'bracket-aware';
+    /**
+     * For 'bracket-aware' only — what happens to Trad surviving to the horizon:
+     *  'self-liquidate' (default): retiree/estate draws it down at real brackets, std-ded
+     *    slice at 0% → low exit (~5–13%) → DP won't convert cheap dollars to dodge it
+     *    (converges to rate-match's conservatism).
+     *  'bequeath': working heir drains it (SECURE 10-yr) at a high flat rate → DP converts
+     *    anything below that rate (drains aggressively).
+     */
+    userSituation?: 'self-liquidate' | 'bequeath';
+    /**
+     * COLA / inflation rate for the bracket-aware terminal drawdown (#10): grows the
+     * persisting SS + fixed income each drawdown year so it stays consistent with the nominal
+     * inflation-adjusted engine. Default 0 (freeze nominal); production derives it from the
+     * macro inflation assumption.
+     */
+    terminalCola?: number;
+}
+
+/**
  * Run the DP backward sweep + forward extract, producing a per-year plan.
  */
 export function planConversionsViaDP(
     inputs: DPInputs,
-    /**
-     * PROTOTYPE (#89) — parallel objective mode. Omitted / 'min-tax' keeps the
-     * shipped lifetime-tax behavior byte-identical (production callers pass
-     * nothing). 'max-wealth' switches the four objective touch-points (terminal
-     * base case, per-year accumuland, optimizer direction, discount factor) to
-     * maximize PV of after-tax terminal wealth instead. `terminalTaxRate` (τ) is
-     * the assumed terminal effective rate on residual Traditional; undecided —
-     * passed per call during validation. Not yet threaded into DPInputs/DPPlan
-     * or any production path.
-     */
-    opts?: {
-        objectiveMode?: 'min-tax' | 'max-wealth';
-        /** Flat-τ terminal: residual Trad valued at (1−τ). Used when terminalValuation='flat'. */
-        terminalTaxRate?: number;
-        /**
-         * 'flat' (default) = the original flat-τ terminal. 'bracket-aware' = value
-         * residual Trad at its TRUE exit rate (graduated: std-ded slice at 0%, then
-         * brackets), so the effective conversion ceiling adapts to plan shape +
-         * user situation instead of a constant τ.
-         */
-        terminalValuation?: 'flat' | 'bracket-aware';
-        /**
-         * For 'bracket-aware' only — what happens to Trad surviving to the horizon:
-         *  'self-liquidate' (default): retiree/estate draws it down at real brackets,
-         *    std-ded slice at 0% → low exit (~5–13%) → DP won't convert cheap dollars
-         *    to dodge it (converges to rate-match's conservatism).
-         *  'bequeath': working heir drains it (SECURE 10-yr) at a high flat rate → DP
-         *    converts anything below that rate (drains aggressively).
-         */
-        userSituation?: 'self-liquidate' | 'bequeath';
-        /**
-         * COLA / inflation rate for the bracket-aware terminal drawdown (#10): grows the
-         * persisting SS + fixed income each drawdown year so it stays consistent with the
-         * nominal inflation-adjusted engine. Default 0 (freeze nominal); production derives
-         * it from the macro inflation assumption.
-         */
-        terminalCola?: number;
-    },
+    /** Objective config; see {@link DPObjectiveOptions}. Omitted ⇒ legacy min-tax/flat-τ
+     *  (direct / test callers); production passes the derived max-wealth options. */
+    opts?: DPObjectiveOptions,
 ): DPPlan {
     const startedAt = performance.now();
     const { contexts, currentTradBalance, currentRothBalance } = inputs;
