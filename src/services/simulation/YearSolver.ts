@@ -1157,15 +1157,29 @@ function planConversionDP(
                 const grossForDeficit = rothBoundDeficit / Math.max(0.5, 1 - totalEffectiveRate);
                 bracketSpaceForSpending = Math.min(grossForDeficit, bracketSpacePerYear, traditionalBalance);
 
-                // Change 2 (#89): reserve-aware spending. Don't pull a Trad dollar
-                // for spending at a POSITIVE rate when it could instead exit at 0%
-                // (std-deduction harvest) — cap the reservation at the 0%-exit slice
-                // and let the waterfall fund the rest from Roth/brokerage. Keeps the
-                // executed Trad consistent with the bracket-aware terminal valuation.
-                // Trad-spending within the std-ded headroom (genuinely free) stays.
+                // Change 2 (#89): reserve-aware spending. Prefer to fund spending from
+                // the 0%-exit (std-deduction harvest) Trad slice rather than pulling Trad
+                // at a POSITIVE rate — keeps the executed Trad consistent with the
+                // bracket-aware terminal valuation.
+                //
+                // #5 fix: the cap may only trim Trad spend that a CHEAPER source can
+                // backfill — never so much that the waterfall drains tax-free Roth. We're
+                // inside the `rothBoundDeficit > 0` branch, i.e. brokerage is already
+                // exhausted, so the only alternative to spending Trad here is draining
+                // Roth. That's never wealth-optimal (Trad exits at a positive rate, Roth
+                // never does) and the spend already passed gateOk (marginal ≤ the future
+                // RMD-age ceiling). So floor the reservation at the Trad needed to keep
+                // the spend off Roth; the std-ded cap only binds to the extent leftover
+                // brokerage can cover the trimmed amount (≈0 in this branch, nonzero only
+                // in the defensive case brokerage barely missed the full deficit).
                 if (input.dpReserveAwareSpending) {
                     const stdDedHeadroom = Math.max(0, fedParams.standardDeduction - baseOrdinaryIncome);
-                    bracketSpaceForSpending = Math.min(bracketSpaceForSpending, stdDedHeadroom);
+                    const brokerageBackfill = Math.max(0, brokerageCoverage - spendingDeficit);
+                    const minTradToAvoidRothDrain = Math.max(0, bracketSpaceForSpending - brokerageBackfill);
+                    bracketSpaceForSpending = Math.min(
+                        bracketSpaceForSpending,
+                        Math.max(stdDedHeadroom, minTradToAvoidRothDrain),
+                    );
                 }
 
                 decisions.push({

@@ -1,7 +1,7 @@
 import { MonteCarloConfig, ScenarioResult, MonteCarloSummary } from './MonteCarloTypes';
 import { SeededRandom } from './RandomGenerator';
 import { analyzeScenario, summarizeScenarios } from './MonteCarloAggregator';
-import { runSimulation } from '../components/Objects/Assumptions/useSimulation';
+import { runSimulation, runSimulationWithOptimization } from '../components/Objects/Assumptions/useSimulation';
 import { AnyAccount } from '../components/Objects/Accounts/models';
 import { AnyIncome } from '../components/Objects/Income/models';
 import { AnyExpense } from '../components/Objects/Expense/models';
@@ -21,6 +21,29 @@ import { TaxState } from '../components/Objects/Taxes/TaxContext';
  * @param taxState - Tax configuration
  * @returns ScenarioResult for this scenario
  */
+/**
+ * Pre-solved DP conversion plan reused across all MC paths (open-loop). The DP is
+ * a precomputed strategy: unlike rate-match it needs a plan built up front, so a raw
+ * single-pass runSimulation under the dp-precomputed default would convert $0. We
+ * solve it ONCE deterministically (cheap relative to the per-path loop) and replay the
+ * fixed per-year amounts on every path. Undefined when the strategy isn't dp-precomputed
+ * (or tax optimization is off), in which case runSimulation's per-year rate-match runs.
+ */
+interface McConversionPlan { plan?: Map<number, number>; reserveAware: boolean; }
+function buildMcConversionPlan(
+    yearsToRun: number, accounts: AnyAccount[], incomes: AnyIncome[], expenses: AnyExpense[],
+    assumptions: AssumptionsState, taxState: TaxState,
+): McConversionPlan {
+    const strategy = assumptions.investments.rothConversionStrategy ?? 'dp-precomputed';
+    if (strategy !== 'dp-precomputed' || !assumptions.investments.taxOptimizationEnabled) {
+        return { reserveAware: false };
+    }
+    const det = runSimulationWithOptimization(yearsToRun, accounts, incomes, expenses, assumptions, taxState);
+    const plan = new Map<number, number>();
+    for (const y of det) if ((y.rothConversion?.amount ?? 0) > 0) plan.set(y.year, y.rothConversion!.amount);
+    return { plan, reserveAware: true }; // production dp-precomputed derives the bracket-aware terminal
+}
+
 function runSingleScenario(
     scenarioId: number,
     rng: SeededRandom,
@@ -30,7 +53,8 @@ function runSingleScenario(
     incomes: AnyIncome[],
     expenses: AnyExpense[],
     assumptions: AssumptionsState,
-    taxState: TaxState
+    taxState: TaxState,
+    mcPlan: McConversionPlan,
 ): ScenarioResult {
     // Generate random returns for this scenario
     // Use the configured mean/stdDev for return distribution
@@ -40,18 +64,18 @@ function runSingleScenario(
         config.returnStdDev
     );
 
-    // Use single-pass simulation for Monte Carlo: MC's purpose is return-variance
-    // analysis, not conversion optimization. The iterative two-pass optimizer would
-    // multiply per-iteration cost 3-5×, which is meaningful at 1000+ scenarios for
-    // little gain — random returns dominate the conversion-plan signal anyway.
+    // Single-pass per path (MC's purpose is return-variance analysis, not re-optimizing
+    // conversions per path). Replay the pre-solved DP plan (open-loop) when present;
+    // otherwise runSimulation's per-year strategy (rate-match) runs as before. The
+    // executor strategy is pinned to the resolved value so a legacy-unset
+    // rothConversionStrategy doesn't make YearSolver fall back to rate-match and discard
+    // the plan (see the same fix in runSimulationWithOptimization Pass 3).
+    const execAssumptions: AssumptionsState = mcPlan.plan
+        ? { ...assumptions, investments: { ...assumptions.investments, rothConversionStrategy: 'dp-precomputed' } }
+        : assumptions;
     const timeline = runSimulation(
-        yearsToRun,
-        accounts,
-        incomes,
-        expenses,
-        assumptions,
-        taxState,
-        yearlyReturns
+        yearsToRun, accounts, incomes, expenses, execAssumptions, taxState, yearlyReturns,
+        undefined, 'rate-match', false, mcPlan.plan, undefined, undefined, undefined, undefined, mcPlan.reserveAware,
     );
 
     // Analyze and return the result
@@ -93,6 +117,9 @@ export async function runMonteCarloSimulation(
         getLifeExpectancy(assumptions.milestones) - (new Date().getFullYear() - getBirthYear(assumptions.milestones))
     );
 
+    // Build the DP conversion plan ONCE (open-loop), replayed on every path below.
+    const mcPlan = buildMcConversionPlan(yearsToRun, accounts, incomes, expenses, assumptions, taxState);
+
     // Chunk size for yielding to UI
     const CHUNK_SIZE = 10;
 
@@ -107,7 +134,8 @@ export async function runMonteCarloSimulation(
             incomes,
             expenses,
             assumptions,
-            taxState
+            taxState,
+            mcPlan
         );
 
         scenarios.push(result);
@@ -145,6 +173,8 @@ export function runMonteCarloSimulationSync(
         getLifeExpectancy(assumptions.milestones) - (new Date().getFullYear() - getBirthYear(assumptions.milestones))
     );
 
+    const mcPlan = buildMcConversionPlan(yearsToRun, accounts, incomes, expenses, assumptions, taxState);
+
     for (let i = 0; i < config.numScenarios; i++) {
         const result = runSingleScenario(
             i,
@@ -155,7 +185,8 @@ export function runMonteCarloSimulationSync(
             incomes,
             expenses,
             assumptions,
-            taxState
+            taxState,
+            mcPlan
         );
 
         scenarios.push(result);

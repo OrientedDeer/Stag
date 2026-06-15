@@ -855,25 +855,36 @@ function DPInfoSection({ delta }: { delta: number }) {
             <p className="text-content-emphasis text-sm leading-relaxed">
                 The DP solves a backward-induction over the full retirement horizon
                 with state <span className="font-mono">(year, traditional balance, roth balance)</span>,
-                picking the per-year conversion that minimizes total lifetime tax
-                (federal + state + ACA-cliff penalty + infeasibility penalty). It
-                runs once per simulation and the per-year amounts are looked up below.
+                picking the per-year conversion that maximizes after-tax terminal
+                wealth. The residual Traditional balance is valued with a bracket-aware
+                terminal valuation — at its true graduated exit rate, not a flat
+                guess — net of federal + state tax, ACA-cliff penalties, and any
+                infeasibility penalty. It runs once per simulation and the per-year
+                amounts are looked up below.
+            </p>
+            <p className="text-content-emphasis text-sm leading-relaxed mt-2">
+                The per-year discount factor is <span className="font-mono">1/(1+growthRate)</span>,
+                so dollars are compared at a consistent point in time as balances grow.
+                The user-facing knob on the Withdrawal tab is the
+                <span className="font-semibold text-white"> spend-it-down vs. leave-to-heirs</span>{' '}
+                choice (<span className="font-mono">self-liquidate</span> /
+                <span className="font-mono"> bequeath</span>), which sets how the
+                terminal Traditional balance is valued — not a back-load preference.
             </p>
             <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
                 <div>
-                    <div className="text-content-subtle">Back-load preference δ</div>
+                    <div className="text-content-subtle">δ (legacy diagnostic)</div>
                     <div className="text-content-emphasis font-mono">{deltaPct}% / yr</div>
                 </div>
                 <div>
-                    <div className="text-content-subtle">Discount factor</div>
+                    <div className="text-content-subtle">1/(1+δ)</div>
                     <div className="text-content-emphasis font-mono">{(1 / (1 + delta)).toFixed(4)}</div>
                 </div>
             </div>
             <p className="text-xs text-content-subtle mt-3">
-                δ &gt; 0 makes future tax look slightly cheaper than present tax, biasing
-                the plan toward later conversions at the cost of some lifetime-tax
-                efficiency. δ = 0 is lifetime-optimal (mildly front-loaded). Adjust on
-                the Withdrawal tab.
+                δ is a retained diagnostic from the old min-lifetime-tax objective; it
+                no longer drives the default after-tax-wealth DP and is not adjustable
+                from the Withdrawal tab.
             </p>
         </section>
     );

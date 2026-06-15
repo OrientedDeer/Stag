@@ -124,10 +124,25 @@ const ACA_SUBSIDY_LOSS_DEFAULT = 12_000;
  * waterfall. Without this, the DP would happily pick "drain trad to zero
  * early so RMDs are 0 forever" because no future tax dominates a real
  * lifetime — but that plan is bankrupt at age 70. Penalty makes infeasible
- * plans strictly dominated. Tunable: $10/$1 unmet is heavy enough that the
- * solver will choose any feasible alternative.
+ * plans strictly dominated. Tunable: $10/$1 unmet is heavy enough relative to
+ * the min-tax accumuland (yearly tax, thousands) that the solver will choose
+ * any feasible alternative.
  */
 const INFEASIBILITY_PENALTY_PER_DOLLAR = 10;
+/**
+ * Max-wealth accumuland is terminal WEALTH (hundreds of thousands to millions),
+ * so the $10 min-tax penalty no longer dominates — an aggressive plan whose
+ * terminal-wealth gain exceeds 10×unmet would be chosen with a year unfunded
+ * (a ruin). This per-dollar penalty is sized to dwarf any within-cell wealth
+ * difference (bounded by ~one year's conversion effect), so any cell with a real
+ * shortfall is strictly worst. Gated by a $1 threshold so floating-point residue
+ * on feasible cells isn't penalized.
+ */
+const MAX_WEALTH_INFEASIBILITY_PENALTY = 1e6;
+const MAX_WEALTH_UNMET_THRESHOLD = 1; // dollars; below this = feasible (FP residue)
+/** Max-wealth ruin penalty: dominating above the $1 threshold, zero below it. */
+const maxWealthUnmetPenalty = (unmet: number): number =>
+    unmet > MAX_WEALTH_UNMET_THRESHOLD ? unmet * MAX_WEALTH_INFEASIBILITY_PENALTY : 0;
 
 // =============================================================================
 // TYPES
@@ -788,6 +803,7 @@ function evaluateCell(
     fromRoth: number;
     fromBrokerage: number;
     unmetNeed: number;
+    ordinarySurplus: number;
 } {
     const rmd = ctx.rmdDivisor > 0 ? tradBalance / ctx.rmdDivisor : 0;
     const ordIncomeExclTradSpend = ctx.nonSSOrdinaryIncomeExclRMD + rmd + conversion;
@@ -850,6 +866,16 @@ function evaluateCell(
     const sourced = fromBrokerage + fromRoth + tradSpending;
     const unmetNeed = Math.max(0, totalNeedFinal - sourced);
 
+    // Surplus years (forced ordinary income — SS + RMD + fixed — exceeds spending +
+    // tax) deposit the after-tax leftover to brokerage/savings. Brokerage isn't a DP
+    // state variable (exogenous-brokerage approx, #7), so the max-wealth objective
+    // credits this surplus as a +wealth term SYMMETRIC to the `-fromBrokerage` leak
+    // (#4). Without it, low-conversion paths that throw off big RMD surpluses lose that
+    // wealth, biasing the DP toward over-converting. Mutually exclusive with
+    // fromBrokerage: a surplus year has no gap to source. PV-correct because growth at
+    // g exactly cancels the max-wealth 1/(1+g) discount.
+    const ordinarySurplus = Math.max(0, cashFromOrdinary - ctx.spendingNeed - yearTax);
+
     const conversionMarginal = Math.max(0, yearTax - taxBaseline);
     const tradNext = Math.max(0, tradBalance - conversion - rmd - tradSpending) * (1 + ctx.growthRate);
     const rothNext = Math.max(0, rothBalance + conversion - fromRoth) * (1 + ctx.rothGrowthRate);
@@ -863,6 +889,7 @@ function evaluateCell(
         fromRoth,
         fromBrokerage,
         unmetNeed,
+        ordinarySurplus,
     };
 }
 
@@ -1000,11 +1027,11 @@ function determineGridScales(
 /**
  * Assumed effective rate at which Traditional surviving to the horizon exits when
  * BEQUEATHED to a working heir (SECURE Act 10-year drain, stacked on the heir's own
- * income). Also used as the tail-remainder rate in the self-liquidate path for any
- * balance still unspent after the drawdown window. Approximated flat — the heir's
- * bracket isn't modeled, only that it's high.
+ * income). Approximated flat — the heir's bracket isn't modeled, only that it's high.
+ * (The self-liquidate tail remainder uses the drawdown's own blended rate instead, #14.)
+ * Exported for the #89 regression test so it scores the same exit assumption.
  */
-const HEIR_EXIT_RATE = 0.32;
+export const HEIR_EXIT_RATE = 0.32;
 
 /**
  * Bracket-aware exit VALUE (in horizon-year dollars) of a residual Traditional
@@ -1022,8 +1049,10 @@ const HEIR_EXIT_RATE = 0.32;
  *
  * Mirrors the harvest-aware valuation used in the offline measurement, lifted into
  * the solver so the objective the DP optimizes equals the objective we score on.
+ * Exported so the #89 regression test scores the residual with the SAME function the
+ * DP optimizes against (no drifting re-implementation).
  */
-function bracketAwareTradExitValue(
+export function bracketAwareTradExitValue(
     B: number,
     terminalAge: number,
     g: number,
@@ -1040,24 +1069,42 @@ function bracketAwareTradExitValue(
      */
     ssBenefit: number = 0,
     fixedIncome: number = 0,
+    /**
+     * COLA / inflation rate (#10): the persisting SS + fixed income grow with it each
+     * drawdown year, mirroring the nominal inflation-adjusted engine (the residual
+     * compounds at nominal g). 0 = freeze nominal (pre-#10 behavior; callers/tests that
+     * don't pass it are unchanged).
+     */
+    cola: number = 0,
 ): number {
     if (B < 1) return 0;
     if (userSituation === 'bequeath') return B * (1 - HEIR_EXIT_RATE);
-    // Tax on the persisting income alone — the residual withdrawal bears only the
-    // marginal tax above this base (so SS/fixed income aren't taxed to the residual).
-    const baseTax = TaxService.calculateTotalFederalTax(fixedIncome, ssBenefit, 0, 0, 0, filing, fedParams).totalTax;
     let bal = B, pv = 0, age = terminalAge, t = 0;
+    let grossW = 0, totalTax = 0;
+    let ss = ssBenefit, fixed = fixedIncome; // grown by COLA each year below
     while (bal > 100 && t < 45) {
         const div = Math.max(2, getDistributionPeriod(Math.min(age, 115)));
         const w = Math.min(bal, bal / div);
-        const taxWith = TaxService.calculateTotalFederalTax(fixedIncome + w, ssBenefit, 0, 0, 0, filing, fedParams).totalTax;
+        // The residual withdrawal bears only the MARGINAL tax above the persisting
+        // income base (so SS/fixed income aren't taxed to the residual). Recomputed per
+        // year because the base grows with COLA.
+        const baseTax = TaxService.calculateTotalFederalTax(fixed, ss, 0, 0, 0, filing, fedParams).totalTax;
+        const taxWith = TaxService.calculateTotalFederalTax(fixed + w, ss, 0, 0, 0, filing, fedParams).totalTax;
         const tax = Math.max(0, taxWith - baseTax); // marginal tax attributable to the withdrawal
         pv += (w - tax) / Math.pow(1 + g, t);
+        grossW += w; totalTax += tax;
         bal = (bal - w) * (1 + g);
+        ss *= (1 + cola); fixed *= (1 + cola); // COLA growth of persisting income (#10)
         age++; t++;
     }
-    // Anything still unspent after the window exits at the high (bequeath) rate.
-    if (bal > 100) pv += (bal * (1 - HEIR_EXIT_RATE)) / Math.pow(1 + g, t);
+    // Tail remainder (only when the residual outran its RMD fraction over the 45-yr
+    // window). Self-liquidate values it at the drawdown's OWN blended exit rate (#14) —
+    // NOT the heir rate, which contradicts the self-liquidate premise. (Bequeath already
+    // returned above.)
+    if (bal > 100) {
+        const tailRate = grossW > 0 ? Math.min(0.5, totalTax / grossW) : 0;
+        pv += (bal * (1 - tailRate)) / Math.pow(1 + g, t);
+    }
     return pv;
 }
 
@@ -1096,6 +1143,13 @@ export function planConversionsViaDP(
          *    converts anything below that rate (drains aggressively).
          */
         userSituation?: 'self-liquidate' | 'bequeath';
+        /**
+         * COLA / inflation rate for the bracket-aware terminal drawdown (#10): grows the
+         * persisting SS + fixed income each drawdown year so it stays consistent with the
+         * nominal inflation-adjusted engine. Default 0 (freeze nominal); production derives
+         * it from the macro inflation assumption.
+         */
+        terminalCola?: number;
     },
 ): DPPlan {
     const startedAt = performance.now();
@@ -1108,6 +1162,20 @@ export function planConversionsViaDP(
     const tau = opts?.terminalTaxRate ?? 0.22;
     const terminalValuation = opts?.terminalValuation ?? 'flat';
     const userSituation = opts?.userSituation ?? 'self-liquidate';
+    const terminalCola = opts?.terminalCola ?? 0;
+
+    // Single source of truth for the per-year objective accumuland (#12), so the
+    // backward sweep, forward extract, and debug curve can't drift apart. Max-wealth:
+    // surplus-cash credit − brokerage leak − ruin penalty (#4/#2). Min-tax: year tax +
+    // infeasibility penalty. The remaining two flip points — the ±Infinity "worst"
+    // sentinel and the argmin/argmax comparison — stay inline (trivially symmetric and
+    // marked CHANGE 3 at each site); only the multi-term accumuland warranted lifting.
+    const yearAccumuland = (cell: {
+        yearTax: number; fromBrokerage: number; ordinarySurplus: number; unmetNeed: number;
+    }): number =>
+        isMaxWealth
+            ? cell.ordinarySurplus - cell.fromBrokerage - maxWealthUnmetPenalty(cell.unmetNeed)
+            : cell.yearTax + cell.unmetNeed * INFEASIBILITY_PENALTY_PER_DOLLAR;
 
     const horizonYears = contexts.length;
 
@@ -1153,8 +1221,21 @@ export function planConversionsViaDP(
         terminalValuation === 'bracket-aware'
             ? bracketAwareTradExitValue(
                 tradBal, terminalAge, lastCtx.growthRate, lastCtx.fedParams, lastCtx.filingStatus,
-                userSituation, lastCtx.ssBenefits, lastCtx.nonSSOrdinaryIncomeExclRMD)
+                userSituation, lastCtx.ssBenefits, lastCtx.nonSSOrdinaryIncomeExclRMD, terminalCola)
             : tradBal * (1 - tau);
+    // Terminal wealth = Roth + residual-Trad exit value ONLY (#7). Brokerage and savings
+    // are NOT terminal state variables here — the DP's state is (trad, roth), keeping the
+    // V-table 2-D. That omission is argmax-EQUIVALENT for choosing the conversion
+    // schedule, because brokerage enters the objective through PER-YEAR flows instead of
+    // a terminal balance: every year the cell charges `-fromBrokerage` when a conversion's
+    // tax (or a spending gap) is funded from brokerage, and credits `+ordinarySurplus`
+    // when forced income overflows to brokerage (#4). A conversion's only effect on
+    // brokerage is the tax it pulls, which is exactly that per-year leak — so adding the
+    // terminal brokerage BALANCE would shift every cell by a near-constant (the
+    // schedule-invariant baseline brokerage trajectory) and not change which schedule
+    // wins. Savings is a small fixed buffer with no conversion interaction, likewise
+    // omitted. (Realized total wealth, incl. brokerage+savings, is still what the #89
+    // regression test scores — see RothConversionBracketAware.test.ts.)
     const terminalValue = (tradBal: number, rothBal: number) => rothBal + tradTerminalAt(tradBal);
 
     // Tail IRMAA skip (#76): drop the same-year IRMAA term for the last
@@ -1303,6 +1384,10 @@ export function planConversionsViaDP(
     // depend on (t, tradIdx) — recomputing them per rothIdx wastes work.
     // We hoist them outside the rothIdx loop.
     // -----------------------------------------------------------------
+    // Reusable initial-guess-tax buffer (#13): fully overwritten per (t, bi) before
+    // it's read, so a single allocation serves the whole O(T·B·C) sweep instead of a
+    // fresh `new Array` each (t, bi).
+    const initialTaxByCi: number[] = new Array(CONVERSION_BUCKETS + 1);
     for (let t = horizonYears - 1; t >= 0; t--) {
         // Use the tail-IRMAA-skipped context for pricing (see solveContexts).
         const ctx = solveContexts[t];
@@ -1328,9 +1413,6 @@ export function planConversionsViaDP(
 
             const rmdAtB = ctx.rmdDivisor > 0 ? b / ctx.rmdDivisor : 0;
             const cMax = Math.max(0, b - rmdAtB);
-            // Baseline (no-conversion, no-trad-spending) tax — only used for
-            // the marginal diagnostic. Doesn't depend on rothIdx.
-            const taxBaseline = computeYearTax(ctx.nonSSOrdinaryIncomeExclRMD + rmdAtB, ctx);
 
             // Hoist the roth-INDEPENDENT initial-guess tax out of the rothIdx
             // loop. For a fixed (bi, ci), the conversion `c` and RMD are fixed
@@ -1340,8 +1422,7 @@ export function planConversionsViaDP(
             // compute it once per (bi, ci) here and reuse it for every ri.
             // The fixed-point inside evaluateCell still recomputes tax when
             // trad-spending > 0 (the genuinely roth-dependent path), so
-            // results are numerically identical.
-            const initialTaxByCi: number[] = new Array(CONVERSION_BUCKETS + 1);
+            // results are numerically identical. (Buffer reused across (t,bi), #13.)
             {
                 let ci = 0;
                 for (; ci <= CONVERSION_BUCKETS; ci++) {
@@ -1351,6 +1432,10 @@ export function planConversionsViaDP(
                     if (c >= cMax) break;
                 }
             }
+            // Baseline (no-conversion, no-trad-spending) tax for the marginal
+            // diagnostic — IS the ci=0 initial-guess tax (c=0), so reuse it instead
+            // of a second identical computeYearTax call (#13). Doesn't depend on rothIdx.
+            const taxBaseline = initialTaxByCi[0];
 
             for (let ri = 0; ri <= ROTH_BUCKETS; ri++) {
                 const r = ri * dRoth_t;
@@ -1361,7 +1446,7 @@ export function planConversionsViaDP(
 
                 for (let ci = 0; ci <= CONVERSION_BUCKETS; ci++) {
                     const c = Math.min(ci * dCByYear[t], cMax);
-                    const { yearTax, tradNext, rothNext, unmetNeed, fromBrokerage } =
+                    const { yearTax, tradNext, rothNext, unmetNeed, fromBrokerage, ordinarySurplus } =
                         evaluateCell(b, r, c, ctx, taxBaseline, initialTaxByCi[ci]);
 
                     const futureCost = interpV2D(
@@ -1374,16 +1459,10 @@ export function planConversionsViaDP(
                     // subtracting yearTax too would double-count. fromBrokerage is
                     // the only outflow that leaves the tracked (trad,roth) system
                     // without landing in terminal V. (min-tax path unchanged.)
-                    let totalCost: number;
-                    if (isMaxWealth) {
-                        const yearValue = -fromBrokerage - unmetNeed * INFEASIBILITY_PENALTY_PER_DOLLAR;
-                        totalCost = yearValue + df * futureCost;
-                        if (totalCost > bestCost) bestCost = totalCost;
-                    } else {
-                        const yearCost = yearTax + unmetNeed * INFEASIBILITY_PENALTY_PER_DOLLAR;
-                        totalCost = yearCost + df * futureCost;
-                        if (totalCost < bestCost) bestCost = totalCost;
-                    }
+                    const totalCost =
+                        yearAccumuland({ yearTax, fromBrokerage, ordinarySurplus, unmetNeed }) + df * futureCost;
+                    // CHANGE 3 — argmax for max-wealth, argmin for min-tax.
+                    if (isMaxWealth ? totalCost > bestCost : totalCost < bestCost) bestCost = totalCost;
 
                     if (c >= cMax) break;
                 }
@@ -1457,17 +1536,15 @@ export function planConversionsViaDP(
 
         for (let ci = 0; ci <= CONVERSION_BUCKETS; ci++) {
             const c = Math.min(ci * dCByYear[t], cMax);
-            const { yearTax, conversionMarginal, tradNext, rothNext, tradSpending, fromRoth, fromBrokerage, unmetNeed } =
+            const { yearTax, conversionMarginal, tradNext, rothNext, tradSpending, fromRoth, fromBrokerage, unmetNeed, ordinarySurplus } =
                 evaluateCell(trad, roth, c, ctx, taxBaseline);
 
             const futureCost = interpV2D(
                 Vnext, tradNext, rothNext,
                 dB_next, dRoth_next, TRAD_BUCKETS, ROTH_BUCKETS,
             );
-            // CHANGE 2 mirror — accumuland matches the backward sweep.
-            const yearCost = isMaxWealth
-                ? -fromBrokerage - unmetNeed * INFEASIBILITY_PENALTY_PER_DOLLAR
-                : yearTax + unmetNeed * INFEASIBILITY_PENALTY_PER_DOLLAR;
+            // CHANGE 2 mirror — accumuland matches the backward sweep (shared helper, #12).
+            const yearCost = yearAccumuland({ yearTax, fromBrokerage, ordinarySurplus, unmetNeed });
             const totalCost = yearCost + df * futureCost;
 
             if (ci === 0) {
@@ -1559,9 +1636,7 @@ export function planConversionsViaDP(
                 Vnext, r.tradNext, r.rothNext,
                 dB_next, dRoth_next, TRAD_BUCKETS, ROTH_BUCKETS,
             );
-            const yc = isMaxWealth
-                ? -r.fromBrokerage - r.unmetNeed * INFEASIBILITY_PENALTY_PER_DOLLAR
-                : r.yearTax + r.unmetNeed * INFEASIBILITY_PENALTY_PER_DOLLAR;
+            const yc = yearAccumuland(r); // shared accumuland (#12)
             const dFut = df * fc;
             const total = yc + dFut;
             curveParts.push(

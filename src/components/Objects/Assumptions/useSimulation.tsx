@@ -670,6 +670,7 @@ export const runSimulationWithOptimization = (
         terminalTaxRate?: number;
         terminalValuation?: 'flat' | 'bracket-aware';
         userSituation?: 'self-liquidate' | 'bequeath';
+        terminalCola?: number;
     },
 ): SimulationYear[] => {
     // DEFAULT flipped to bracket-aware DP (#89). rate-match stays a selectable
@@ -807,6 +808,10 @@ export const runSimulationWithOptimization = (
             // UI default sets this explicitly; the ?? covers legacy assumptions missing
             // the field. User can switch to 'bequeath'.
             userSituation: assumptions.investments.rothConversionUserSituation ?? 'self-liquidate',
+            // COLA for the terminal drawdown (#10): grow the residual's persisting SS +
+            // fixed income with inflation each year, matching the nominal engine (SS
+            // income increments by this same rate — see Income models' increment()).
+            terminalCola: assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate / 100 : 0,
         };
         // Reserve-aware spending (Change 2) executes only for the bracket-aware
         // variant — same condition that drives the DP's internal harvest.
@@ -821,8 +826,17 @@ export const runSimulationWithOptimization = (
 
         // Pass 3 — final sim executing the DP plan. The DP strategy in YearSolver
         // looks up `input.dpConversionPlan` per year. conversionMode is moot for DP.
+        // Pin the RESOLVED strategy ('dp-precomputed') so the executor's
+        // selectConversionStrategy reads it: when the user's field is unset (legacy
+        // data) we still resolved to dp-precomputed via the default and built the plan,
+        // but passing raw `assumptions` (undefined field) would make YearSolver fall
+        // back to rate-match and silently DISCARD dpPlan.
+        const executorAssumptions: AssumptionsState = {
+            ...assumptions,
+            investments: { ...assumptions.investments, rothConversionStrategy: 'dp-precomputed' },
+        };
         const finalTimeline = runSimulation(
-            yearsToRun, accounts, incomes, expenses, assumptions, taxState,
+            yearsToRun, accounts, incomes, expenses, executorAssumptions, taxState,
             yearlyReturns, referenceDate,
             /* conversionMode */ 'rate-match',
             /* useRollingBaseline */ false,

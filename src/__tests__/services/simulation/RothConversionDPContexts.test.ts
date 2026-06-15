@@ -351,11 +351,14 @@ describe('runSimulationWithOptimization — DP plan honors future tax state', { 
         const moveTotal = totalConverted(moveSim);
 
         expect(stayTotal).toBeGreaterThan(50_000);
-        // The DP plan must respond to the scheduled state move. Threshold recalibrated
-        // 20k→10k: the SS-aware bracket-aware terminal (#89, now the dp-precomputed
-        // default) shifted the move-vs-stay delta from ~22k to ~15k — still a clear
-        // ~30% response on a >50k total, just below the old min-tax-era threshold.
-        expect(Math.abs(moveTotal - stayTotal)).toBeGreaterThan(10_000);
+        // The DP plan must respond to the scheduled state move. Threshold restored to a
+        // STRONG bound (>100k, was briefly relaxed to 10k). The surplus-cash fix (#4)
+        // now prices a conversion's tax even in surplus years — previously conversions
+        // there looked free, masking the state-tax difference and muting the response to
+        // ~15k. With the tax visible, CA-vs-TX conversion cost registers and the
+        // move-vs-stay delta is ~$400k (observed stay≈$5.5M / move≈$5.9M) — a robust,
+        // unambiguous response well clear of the bound.
+        expect(Math.abs(moveTotal - stayTotal)).toBeGreaterThan(100_000);
     });
 });
 

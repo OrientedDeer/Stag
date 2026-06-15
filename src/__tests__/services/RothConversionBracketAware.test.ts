@@ -21,8 +21,13 @@ import { FoodExpense } from '../../components/Objects/Expense/models';
 import { runSimulationWithOptimization } from '../../components/Objects/Assumptions/useSimulation';
 import { SimulationYear } from '../../services/simulation/types';
 import * as TaxService from '../../components/Objects/Taxes/TaxService';
-import { getDistributionPeriod } from '../../data/RMDData';
+import { bracketAwareTradExitValue } from '../../services/simulation/RothConversionDP';
 import { TAX_DATABASE, FilingStatus } from '../../data/TaxData';
+
+/** Standard LTCG rate applied to brokerage unrealized gains in the realized-wealth
+ *  score. A fixed mid-bracket assumption; only needs to be applied consistently across
+ *  the compared runs. */
+const LTCG_RATE = 0.15;
 
 const BIRTH_YEAR = 1985;
 const RETIRE_AGE = 45;
@@ -73,9 +78,22 @@ function run(invOverrides: Partial<AssumptionsState['investments']>, dpObjective
 const sumInv = (y: SimulationYear, tt: string, f: 'vestedAmount' | 'costBasis') => y.accounts.filter((a): a is InvestedAccount => a instanceof InvestedAccount && a.taxType === tt).reduce((x, a) => x + (a[f] ?? 0), 0);
 const terminalTrad = (res: SimulationYear[]) => sumInv(res[res.length - 1], 'Traditional IRA', 'vestedAmount');
 
-/** Harvest-aware after-tax terminal wealth (residual Trad RMD'd out at real brackets,
- *  stacked on the retiree's late-life SS + fixed income — the same valuation the DP
- *  optimizes). Brokerage net of LTCG; Roth + savings at face. */
+/**
+ * Realized total after-tax terminal wealth: Roth + the residual Trad's bracket-aware
+ * self-liquidate exit value + brokerage net of LTCG + savings at face.
+ *
+ * The residual Trad is valued with the PRODUCTION `bracketAwareTradExitValue` (#15) —
+ * not a re-implemented drawdown loop with a hardcoded tail rate — so this score can't
+ * drift from what the DP actually optimizes (e.g. the #10 COLA and #14 tail-rate
+ * changes flow through automatically).
+ *
+ * Note (#9): this is the USER-FACING realized wealth, a superset of the DP's internal
+ * objective. The DP maximizes a discounted, brokerage-leak-charged proxy (terminal
+ * roth + tradExit minus per-year brokerage taps), which can't be reconstructed from
+ * terminal balances alone. Realized total wealth is the faithful, honest regression
+ * target for "did the plan convert past the wealth peak" — and it's applied identically
+ * to both compared runs, so the ≥ comparison is sound.
+ */
 function afterTaxWealth(res: SimulationYear[]): number {
     const y = res[res.length - 1];
     const ss = TaxService.getSocialSecurityBenefits(y.incomes, y.year);
@@ -84,11 +102,9 @@ function afterTaxWealth(res: SimulationYear[]): number {
     const bv = sumInv(y, 'Brokerage', 'vestedAmount'), bb = sumInv(y, 'Brokerage', 'costBasis');
     const savings = y.accounts.filter((a): a is SavedAccount => a instanceof SavedAccount).reduce((x, a) => x + ((a as unknown as { amount?: number }).amount ?? 0), 0);
     const fed = TAX_DATABASE.federal[2024][FILING];
-    const baseTax = TaxService.calculateTotalFederalTax(fixed, ss, 0, 0, 0, FILING, fed).totalTax;
-    let bal = trad, pv = 0, age = LIFE_EXP, t = 0;
-    while (bal > 100 && t < 45) { const div = Math.max(2, getDistributionPeriod(Math.min(age, 115))); const w = Math.min(bal, bal / div); const tax = Math.max(0, TaxService.calculateTotalFederalTax(fixed + w, ss, 0, 0, 0, FILING, fed).totalTax - baseTax); pv += (w - tax) / Math.pow(1 + G, t); bal = (bal - w) * (1 + G); age++; t++; }
-    if (bal > 100) pv += bal * 0.68 / Math.pow(1 + G, t);
-    return roth + pv + (bv - Math.max(0, bv - bb) * 0.15) + savings;
+    // COLA = the sim's 2.5% inflationAdjusted setting (grows SS/fixed across the drawdown).
+    const tradExit = bracketAwareTradExitValue(trad, LIFE_EXP, G, fed, FILING, 'self-liquidate', ss, fixed, 0.025);
+    return roth + tradExit + (bv - Math.max(0, bv - bb) * LTCG_RATE) + savings;
 }
 
 describe('#89 bracket-aware DP Roth conversion — wealth-optimality', { timeout: 120_000 }, () => {
@@ -106,14 +122,24 @@ describe('#89 bracket-aware DP Roth conversion — wealth-optimality', { timeout
         expect(wBracketAware).toBeGreaterThanOrEqual(wFullDrain);
     });
 
-    it('production DEFAULT strategy (unset → flipped to dp-precomputed) routes to bracket-aware, not min-tax over-drain', () => {
-        // Omit rothConversionStrategy entirely → it falls through to the flipped
-        // default. Must behave like bracket-aware (reserve retained), not the
-        // min-tax full-drain.
+    it('production DEFAULT strategy (unset → flipped to dp-precomputed) routes THROUGH the bracket-aware DP, not rate-match (#3)', () => {
+        // Unset rothConversionStrategy entirely → it must fall through to the flipped
+        // dp-precomputed default AND actually build+execute the DP plan. The #3 bug
+        // resolved the strategy for PLANNING but handed the raw (unset) assumptions to
+        // the Pass-3 executor, which fell back to rate-match and silently DISCARDED the
+        // DP plan. The old `> min-tax-drain` assertion couldn't see that — rate-match
+        // also beats the full drain. So we now assert the unset default reproduces the
+        // EXPLICIT bracket-aware DP run (identical derived objective: max-wealth /
+        // bracket-aware / self-liquidate / 2.5% COLA), which only holds if the executor
+        // ran the DP plan rather than rate-match.
         const def = assumptions();
         delete (def.investments as Partial<AssumptionsState['investments']>).rothConversionStrategy;
-        const res = runSimulationWithOptimization(YEARS, accounts(), incomes(), expenses(), def, taxState, undefined, new Date('2025-06-15'));
-        expect(terminalTrad(res)).toBeGreaterThan(terminalTrad(run({}, { objectiveMode: 'min-tax' })));
+        const defaultRun = runSimulationWithOptimization(YEARS, accounts(), incomes(), expenses(), def, taxState, undefined, new Date('2025-06-15'));
+        const explicitDp = run({}, { objectiveMode: 'max-wealth', terminalValuation: 'bracket-aware', userSituation: 'self-liquidate', terminalCola: 0.025 });
+        // Same DP plan executed → terminal Trad matches (rate-match would diverge sharply).
+        expect(Math.abs(terminalTrad(defaultRun) - terminalTrad(explicitDp))).toBeLessThan(1);
+        // …and clearly not the min-tax full-drain.
+        expect(terminalTrad(defaultRun)).toBeGreaterThan(terminalTrad(run({}, { objectiveMode: 'min-tax' })));
     });
 
     it('userSituation adapts: bequeath converts more aggressively than self-liquidate', () => {

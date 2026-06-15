@@ -57,6 +57,7 @@ const KEY_MAP: Record<string, string> = {
     useCompactCurrency: 'cc', showExperimentalFeatures: 'ef', hsaEligible: 'he',
     // Assumptions - Roth conversion / tax optimization flags
     rothConversionStrategy: 'rs', rothConversionMinRateGap: 'rg', rothConversionDPBackloadDelta: 'rd',
+    rothConversionUserSituation: 'ru',
     taxOptimizationEnabled: 'to', acaAware: 'aa',
     // Assumptions - top-level arrays (priorEarnings, milestones, and the Burn-Order
     // withdrawal-strategy array which is flattened under the synthetic `burnOrder` key
@@ -144,6 +145,7 @@ const ASSUMPTIONS_DEFAULTS: Record<string, unknown> = {
     rothConversionStrategy: 'rate-match',
     rothConversionMinRateGap: 0.05,
     rothConversionDPBackloadDelta: 0.015,
+    rothConversionUserSituation: 'self-liquidate',
     taxOptimizationEnabled: false,
     acaAware: true,
     // Demographics
@@ -362,6 +364,7 @@ export function expandAssumptions(flat: Record<string, unknown>): Record<string,
             rothConversionStrategy: flat.rothConversionStrategy ?? ASSUMPTIONS_DEFAULTS.rothConversionStrategy,
             rothConversionMinRateGap: flat.rothConversionMinRateGap ?? ASSUMPTIONS_DEFAULTS.rothConversionMinRateGap,
             rothConversionDPBackloadDelta: flat.rothConversionDPBackloadDelta ?? ASSUMPTIONS_DEFAULTS.rothConversionDPBackloadDelta,
+            rothConversionUserSituation: flat.rothConversionUserSituation ?? ASSUMPTIONS_DEFAULTS.rothConversionUserSituation,
             taxOptimizationEnabled: flat.taxOptimizationEnabled ?? ASSUMPTIONS_DEFAULTS.taxOptimizationEnabled,
             acaAware: flat.acaAware ?? ASSUMPTIONS_DEFAULTS.acaAware,
         },
