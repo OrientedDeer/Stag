@@ -9,7 +9,6 @@ import {
     getAcaCliffThreshold,
     getEffectiveConversionRate,
     coarseToFineSearch,
-    calculateEffectiveRateConversionLimit,
     projectBalanceAtRMD,
     calculateDynamicConversionCeiling,
     computeRateMatchedConversion,
@@ -424,207 +423,6 @@ describe('coarseToFineSearch', () => {
             );
 
             expect(result.amount).toBeLessThanOrEqual(SEARCH_CONFIG.maxConversionCap);
-        });
-    });
-});
-
-// =============================================================================
-// Task 12: calculateEffectiveRateConversionLimit() tests
-// =============================================================================
-
-describe('calculateEffectiveRateConversionLimit', () => {
-    const year = 2024;
-
-    const singleTaxState: TaxState = {
-        filingStatus: 'Single',
-        stateResidency: 'Virginia',
-        deductionMethod: 'Standard',
-        fedOverride: null,
-        ficaOverride: null,
-        stateOverride: null,
-        year: year,
-    };
-
-    const mfjTaxState: TaxState = {
-        filingStatus: 'Married Filing Jointly',
-        stateResidency: 'Virginia',
-        deductionMethod: 'Standard',
-        fedOverride: null,
-        ficaOverride: null,
-        stateOverride: null,
-        year: year,
-    };
-
-    const getSingleParams = () => TaxService.getTaxParameters(year, 'Single', 'federal')!;
-    const getMFJParams = () => TaxService.getTaxParameters(year, 'Married Filing Jointly', 'federal')!;
-
-    describe('fast-path when SS=0 and LTCG=0 (gap years)', () => {
-        it('uses simple bracket math for gap years', () => {
-            const taxParams = getSingleParams();
-            // Gap year scenario: retired but before SS starts
-            const result = calculateEffectiveRateConversionLimit(
-                30_000,         // currentAGI
-                0,              // socialSecurityBenefits = 0 (gap year)
-                0,              // ltcgIncome = 0
-                0.22,           // targetEffectiveRate
-                100_000,        // traditionalBalance
-                taxParams,
-                singleTaxState,
-                year,
-                null,
-                undefined
-            );
-
-            // Should return bracket space calculation result
-            // From $30k gross, taxable = $15.4k
-            // Space to FILL 22% bracket (up to its ceiling at 24% threshold $100,525) = $100,525 - $15,400 = ~$85k
-            expect(result.maxConversion).toBeGreaterThan(80_000);
-            expect(result.maxConversion).toBeLessThan(90_000);
-            expect(result.edgeType).toBe('BRACKET_EDGE');
-        });
-
-        it('returns correct bracket space for MFJ gap year', () => {
-            const taxParams = getMFJParams();
-            const result = calculateEffectiveRateConversionLimit(
-                50_000,         // currentAGI
-                0,              // No SS
-                0,              // No LTCG
-                0.22,           // Target 22%
-                200_000,        // traditionalBalance
-                taxParams,
-                mfjTaxState,
-                year,
-                null,
-                undefined
-            );
-
-            // MFJ 22% bracket: $94,300 - $201,050 taxable
-            // From $50k gross, taxable = $50k - $29.2k = $20.8k
-            // Space to FILL 22% bracket (up to $201,050) = $201,050 - $20,800 = ~$180k
-            expect(result.maxConversion).toBeGreaterThan(175_000);
-            expect(result.maxConversion).toBeLessThan(185_000);
-        });
-    });
-
-    describe('uses coarse-to-fine when SS > 0', () => {
-        it('uses coarse-to-fine search with Social Security', () => {
-            const taxParams = getSingleParams();
-            const result = calculateEffectiveRateConversionLimit(
-                20_000,         // currentAGI
-                30_000,         // SS benefits - triggers torpedo zone
-                0,              // No LTCG
-                0.22,           // Target 22%
-                100_000,        // traditionalBalance
-                taxParams,
-                singleTaxState,
-                year,
-                null,
-                undefined
-            );
-
-            // With SS torpedo, conversion limit should be reduced
-            // compared to naive bracket space calculation
-            expect(result.maxConversion).toBeDefined();
-            expect(result.effectiveRateAtMax).toBeDefined();
-        });
-    });
-
-    describe('uses coarse-to-fine when LTCG > 0', () => {
-        it('uses coarse-to-fine search with capital gains', () => {
-            const taxParams = getSingleParams();
-            const result = calculateEffectiveRateConversionLimit(
-                40_000,         // currentAGI - near 0% LTCG threshold
-                0,              // No SS
-                20_000,         // LTCG that might get bumped to 15%
-                0.22,           // Target 22%
-                100_000,        // traditionalBalance
-                taxParams,
-                singleTaxState,
-                year,
-                null,
-                undefined
-            );
-
-            expect(result.maxConversion).toBeDefined();
-        });
-    });
-
-    describe('returns much less than naive bracket space when SS torpedo active', () => {
-        it('conversion limit is significantly reduced with SS torpedo', () => {
-            const taxParams = getSingleParams();
-
-            // First get the naive bracket space (no SS)
-            const naiveResult = calculateEffectiveRateConversionLimit(
-                20_000,
-                0,              // No SS
-                0,
-                0.22,
-                100_000,
-                taxParams,
-                singleTaxState,
-                year,
-                null,
-                undefined
-            );
-
-            // Now with SS torpedo active
-            const torpedoResult = calculateEffectiveRateConversionLimit(
-                20_000,
-                35_000,         // SS triggers torpedo
-                0,
-                0.22,
-                100_000,
-                taxParams,
-                singleTaxState,
-                year,
-                null,
-                undefined
-            );
-
-            // SS torpedo should significantly reduce the conversion limit
-            // The torpedo makes effective rate jump, hitting 22% earlier
-            expect(torpedoResult.maxConversion).toBeLessThan(naiveResult.maxConversion);
-        });
-    });
-
-    describe('effective rate at returned limit equals target rate (within epsilon)', () => {
-        it('rate at limit fills the target bracket', () => {
-            const taxParams = getSingleParams();
-            const targetRate = 0.22;
-            const result = calculateEffectiveRateConversionLimit(
-                30_000,
-                0,
-                0,
-                targetRate,
-                100_000,
-                taxParams,
-                singleTaxState,
-                year,
-                null,
-                undefined
-            );
-
-            // Verify the rate just BEFORE the limit is at or below target
-            // (At exactly the limit, we're at the bracket boundary where marginal rate jumps to next bracket)
-            const rateJustBeforeLimit = getEffectiveConversionRate(
-                result.maxConversion - 100,  // $100 below the limit
-                30_000,
-                0,
-                0,
-                taxParams,
-                singleTaxState,
-                year,
-                null,
-                undefined
-            );
-
-            // Rate just before limit should be at target rate (last dollar taxed at 22%)
-            expect(rateJustBeforeLimit).toBeLessThanOrEqual(targetRate + SEARCH_CONFIG.epsilon);
-
-            // The maxConversion should fill the entire target bracket
-            // For single filer: 22% bracket is $47,150 - $100,525 taxable
-            // From $30k AGI, taxable = $15.4k, space to fill 22% = $100,525 - $15,400 = ~$85k
-            expect(result.maxConversion).toBeGreaterThan(80_000);
         });
     });
 });
@@ -1385,7 +1183,7 @@ describe('calculateDynamicConversionCeiling', () => {
 
         it('produces the same ceiling at age 35 vs age 55 for the same RMD-year target balance', () => {
             const assumptions = buildAssumptions();
-            const filingStatus: 'Single' = 'Single';
+            const filingStatus = 'Single' as const;
             const rmdStartAge = 75;
             const rmdYear = 2065; // age 75 for someone born in 1990
 
@@ -1437,7 +1235,7 @@ describe('calculateDynamicConversionCeiling', () => {
         it('without assumptions parameter, falls back to legacy (current-year-bracket) behavior', () => {
             // This test pins the legacy behavior so callers that don't pass assumptions get
             // backwards-compatible results. The fix is opt-in via the assumptions parameter.
-            const filingStatus: 'Single' = 'Single';
+            const filingStatus = 'Single' as const;
             const taxState: TaxState = {
                 filingStatus, stateResidency: 'TX', deductionMethod: 'Standard',
                 fedOverride: null, ficaOverride: null, stateOverride: null,

@@ -49,23 +49,6 @@ export type EdgeType =
     | 'ALREADY_AT_CEILING'; // Already at or above target rate at zero conversion
 
 /**
- * Result of calculating how much can be converted before exceeding target effective rate
- */
-export interface EffectiveRateLimitResult {
-    /** Maximum conversion amount before exceeding target rate */
-    maxConversion: number;
-
-    /** The effective marginal rate at the max conversion amount */
-    effectiveRateAtMax: number;
-
-    /** The nominal tax bracket at the max conversion amount */
-    bracketAtMax: number;
-
-    /** What caused the limit (SS torpedo, LTCG bump, or bracket edge) */
-    edgeType: EdgeType | null;
-}
-
-/**
  * Result of dynamic conversion ceiling calculation
  */
 export interface ConversionCeilingResult {
@@ -134,16 +117,6 @@ export const SEARCH_CONFIG = {
  * We cap at 32% because prepaying 35%+ tax on conversions is rarely beneficial.
  */
 export const MAX_CONVERSION_BRACKET = 0.32;
-
-/**
- * Get bracket progression from tax parameters, capped at MAX_CONVERSION_BRACKET.
- * We cap at 32% because prepaying 35%+ tax on conversions is rarely beneficial.
- */
-export function getBracketProgression(taxParams: TaxParameters): number[] {
-    return taxParams.brackets
-        .map(b => b.rate)
-        .filter(rate => rate <= MAX_CONVERSION_BRACKET);
-}
 
 /**
  * Get the RMD divisor for a given age.
@@ -514,95 +487,6 @@ export function coarseToFineSearch(
         amount: low,
         converged: iterations < SEARCH_CONFIG.maxIterations,
         edgeType
-    };
-}
-
-/**
- * Calculate how much can be converted before effective marginal rate exceeds a target rate.
- *
- * Uses coarse-to-fine search to handle the complexities of the SS tax torpedo
- * (effective rates can be much higher than nominal brackets) and other
- * discontinuities like LTCG bump zones.
- *
- * Properly handles SS torpedo, LTCG bump, NIIT, state tax, and ACA cliff
- * via calculateEffectiveConversionTax.
- *
- * @param currentAGI - AGI before conversion (gross income)
- * @param socialSecurityBenefits - Total SS benefits
- * @param ltcgIncome - Long-term capital gains (for bump zone detection)
- * @param targetEffectiveRate - Stop when effective rate exceeds this
- * @param traditionalBalance - Available Traditional IRA/401k balance
- * @param taxParams - Federal tax parameters
- * @param taxState - Tax state (filing status, etc.)
- * @param year - Tax year
- * @param stateParams - State tax parameters (null if no state tax)
- * @param acaOptions - ACA subsidy awareness options (undefined if not applicable)
- * @param assumptions - Optional assumptions for inflation adjustments
- * @returns Result with maxConversion, effectiveRateAtMax, bracketAtMax, and edgeType
- *
- * Test-only entry point. Production calls coarseToFineSearch directly; this
- * wrapper exists so Bug-C/D regression tests and the refactor-sanity suite
- * can probe the search at a single point with a target effective rate.
- *
- * @public
- */
-export function calculateEffectiveRateConversionLimit(
-    currentAGI: number,
-    socialSecurityBenefits: number,
-    ltcgIncome: number,
-    targetEffectiveRate: number,
-    traditionalBalance: number,
-    taxParams: TaxParameters,
-    taxState: TaxState,
-    year: number,
-    stateParams: TaxParameters | null,
-    acaOptions: ACAOptions | undefined,
-    assumptions?: AssumptionsState
-): EffectiveRateLimitResult {
-    // Use coarse-to-fine search to find max conversion staying below target effective rate
-    const searchResult = coarseToFineSearch(
-        targetEffectiveRate,
-        traditionalBalance,
-        currentAGI,
-        socialSecurityBenefits,
-        ltcgIncome,
-        taxParams,
-        taxState,
-        year,
-        stateParams,
-        acaOptions,
-        assumptions
-    );
-
-    // Calculate the effective rate at the found amount
-    const effectiveRateAtMax = getEffectiveConversionRate(
-        searchResult.amount,
-        currentAGI,
-        ltcgIncome,
-        socialSecurityBenefits,
-        taxParams,
-        taxState,
-        year,
-        stateParams,
-        acaOptions
-    );
-
-    // Find nominal bracket at the conversion amount
-    // Approximate by looking at total income
-    const totalIncome = currentAGI + searchResult.amount;
-    const taxableAtMax = Math.max(0, totalIncome - taxParams.standardDeduction);
-    let bracketAtMax = 0;
-    for (const bracket of taxParams.brackets) {
-        if (taxableAtMax >= bracket.threshold) {
-            bracketAtMax = bracket.rate;
-        }
-    }
-
-    return {
-        maxConversion: searchResult.amount,
-        effectiveRateAtMax,
-        bracketAtMax,
-        edgeType: searchResult.edgeType
     };
 }
 
