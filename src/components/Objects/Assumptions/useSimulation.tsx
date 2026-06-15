@@ -243,13 +243,10 @@ function runSimulationLoop(args: {
     dpConversionPlan?: Map<number, number>;
     /** Per-year DP solver debug strings; keyed by simulation year. */
     dpDebugByYear?: Map<number, string[]>;
-    /** Change 2 (#89): cap trad-spending at the std-ded 0% slice (bracket-aware DP only). */
-    dpReserveAwareSpending?: boolean;
 }): void {
     let { currentAccounts, currentIncomes, currentExpenses, previousActiveMilestones } = args;
     const { milestoneReachYears, timeline, assumptions, taxState, yearlyReturns,
-            previousSimYear, yearsToRun, conversionMode, baselineProvider, dpConversionPlan, dpDebugByYear,
-            dpReserveAwareSpending } = args;
+            previousSimYear, yearsToRun, conversionMode, baselineProvider, dpConversionPlan, dpDebugByYear } = args;
 
     for (let i = 1; i <= yearsToRun; i++) {
         const simulationYear = previousSimYear + i;
@@ -280,7 +277,6 @@ function runSimulationLoop(args: {
             conversionMode,
             dpConversionPlan,
             dpDebugByYear,
-            dpReserveAwareSpending,
         );
 
         timeline.push(result);
@@ -322,9 +318,6 @@ export const runSimulation = (
     /** MortgageExpense id → principal $ to subtract from its loan_balance on
      *  the synthetic EOY row (mortgages don't live on a DebtAccount). */
     eoyMortgageReductions?: Record<string, number>,
-    /** Change 2 (#89): cap trad-spending at the std-ded 0% slice (bracket-aware DP only).
-     *  Appended last so existing positional callers are unaffected. */
-    dpReserveAwareSpending?: boolean,
 ): SimulationYear[] => {
 
     // Calculate start year and current age from birth year
@@ -626,7 +619,6 @@ export const runSimulation = (
         baselineProvider,
         dpConversionPlan,
         dpDebugByYear,
-        dpReserveAwareSpending,
     });
 
     return timeline;
@@ -813,9 +805,6 @@ export const runSimulationWithOptimization = (
             // income increments by this same rate — see Income models' increment()).
             terminalCola: assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate / 100 : 0,
         };
-        // Reserve-aware spending (Change 2) executes only for the bracket-aware
-        // variant — same condition that drives the DP's internal harvest.
-        const reserveAwareExec = effectiveDpObjective.terminalValuation === 'bracket-aware';
 
         const dpPlan: DPPlan = planConversionsViaDP({
             contexts,
@@ -845,7 +834,6 @@ export const runSimulationWithOptimization = (
             eoyContributionAdditions,
             eoyDebtReductions,
             eoyMortgageReductions,
-            /* dpReserveAwareSpending */ reserveAwareExec,
         );
 
         // Append solver summary to year-0 logs so the user can see DP setup

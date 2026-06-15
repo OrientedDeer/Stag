@@ -161,7 +161,6 @@ function simulateOneYearWithNewEngine(
     conversionMode: 'rate-match' | 'std-ded-only' = 'rate-match',
     dpConversionPlan?: Map<number, number>,
     dpDebugByYear?: Map<number, string[]>,
-    dpReserveAwareSpending?: boolean,
 ): SimulationYear {
     const logs: string[] = [];
     logs.push('[V2 Engine] Using new YearSolver-based simulation');
@@ -440,7 +439,6 @@ function simulateOneYearWithNewEngine(
         conversionMode,
         dpConversionPlan,
         dpDebugByYear,
-        dpReserveAwareSpending,
     };
 
     const yearPlan = solveYear(solverInput);
@@ -823,12 +821,11 @@ export function simulateOneYear(
     conversionMode: 'rate-match' | 'std-ded-only' = 'rate-match',
     dpConversionPlan?: Map<number, number>,
     dpDebugByYear?: Map<number, string[]>,
-    dpReserveAwareSpending?: boolean,
 ): SimulationYear {
     return simulateOneYearWithNewEngine(
         year, incomes, expenses, accounts, assumptions, taxState,
         previousSimulation, returnOverride, previousActiveMilestones,
         previousMilestoneReachYears, baselineProjections, conversionMode,
-        dpConversionPlan, dpDebugByYear, dpReserveAwareSpending,
+        dpConversionPlan, dpDebugByYear,
     );
 }

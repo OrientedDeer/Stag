@@ -29,19 +29,19 @@ import { TaxState } from '../components/Objects/Taxes/TaxContext';
  * fixed per-year amounts on every path. Undefined when the strategy isn't dp-precomputed
  * (or tax optimization is off), in which case runSimulation's per-year rate-match runs.
  */
-interface McConversionPlan { plan?: Map<number, number>; reserveAware: boolean; }
+interface McConversionPlan { plan?: Map<number, number>; }
 function buildMcConversionPlan(
     yearsToRun: number, accounts: AnyAccount[], incomes: AnyIncome[], expenses: AnyExpense[],
     assumptions: AssumptionsState, taxState: TaxState,
 ): McConversionPlan {
     const strategy = assumptions.investments.rothConversionStrategy ?? 'dp-precomputed';
     if (strategy !== 'dp-precomputed' || !assumptions.investments.taxOptimizationEnabled) {
-        return { reserveAware: false };
+        return {};
     }
     const det = runSimulationWithOptimization(yearsToRun, accounts, incomes, expenses, assumptions, taxState);
     const plan = new Map<number, number>();
     for (const y of det) if ((y.rothConversion?.amount ?? 0) > 0) plan.set(y.year, y.rothConversion!.amount);
-    return { plan, reserveAware: true }; // production dp-precomputed derives the bracket-aware terminal
+    return { plan };
 }
 
 function runSingleScenario(
@@ -75,7 +75,7 @@ function runSingleScenario(
         : assumptions;
     const timeline = runSimulation(
         yearsToRun, accounts, incomes, expenses, execAssumptions, taxState, yearlyReturns,
-        undefined, 'rate-match', false, mcPlan.plan, undefined, undefined, undefined, undefined, mcPlan.reserveAware,
+        undefined, 'rate-match', false, mcPlan.plan, undefined, undefined, undefined, undefined,
     );
 
     // Analyze and return the result

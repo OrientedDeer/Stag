@@ -132,14 +132,6 @@ export interface YearSolverInput {
     // them to its decisions so they surface in the year inspector. Only set
     // when the DP strategy is in use.
     dpDebugByYear?: Map<number, string[]>;
-    // Change 2 (#89, bracket-aware): when true, planConversionDP caps the
-    // trad-spending reservation (bracketSpaceForSpending) at the standard-
-    // deduction 0%-exit slice, funding spending above it from Roth/brokerage
-    // instead of pulling Traditional at a positive rate. Keeps the executed
-    // trad trajectory consistent with the DP's terminal valuation (which credits
-    // the cheap slice as surviving to exit at ~0%). Set only by the bracket-aware
-    // DP variant; rate-match (planConversion) never reads it.
-    dpReserveAwareSpending?: boolean;
 }
 
 export interface ConversionPlan {
@@ -1157,30 +1149,14 @@ function planConversionDP(
                 const grossForDeficit = rothBoundDeficit / Math.max(0.5, 1 - totalEffectiveRate);
                 bracketSpaceForSpending = Math.min(grossForDeficit, bracketSpacePerYear, traditionalBalance);
 
-                // Change 2 (#89): reserve-aware spending. Prefer to fund spending from
-                // the 0%-exit (std-deduction harvest) Trad slice rather than pulling Trad
-                // at a POSITIVE rate — keeps the executed Trad consistent with the
-                // bracket-aware terminal valuation.
-                //
-                // #5 fix: the cap may only trim Trad spend that a CHEAPER source can
-                // backfill — never so much that the waterfall drains tax-free Roth. We're
-                // inside the `rothBoundDeficit > 0` branch, i.e. brokerage is already
-                // exhausted, so the only alternative to spending Trad here is draining
-                // Roth. That's never wealth-optimal (Trad exits at a positive rate, Roth
-                // never does) and the spend already passed gateOk (marginal ≤ the future
-                // RMD-age ceiling). So floor the reservation at the Trad needed to keep
-                // the spend off Roth; the std-ded cap only binds to the extent leftover
-                // brokerage can cover the trimmed amount (≈0 in this branch, nonzero only
-                // in the defensive case brokerage barely missed the full deficit).
-                if (input.dpReserveAwareSpending) {
-                    const stdDedHeadroom = Math.max(0, fedParams.standardDeduction - baseOrdinaryIncome);
-                    const brokerageBackfill = Math.max(0, brokerageCoverage - spendingDeficit);
-                    const minTradToAvoidRothDrain = Math.max(0, bracketSpaceForSpending - brokerageBackfill);
-                    bracketSpaceForSpending = Math.min(
-                        bracketSpaceForSpending,
-                        Math.max(stdDedHeadroom, minTradToAvoidRothDrain),
-                    );
-                }
+                // NOTE: an earlier "reserve-aware spending" experiment (#89 Change 2)
+                // capped this reservation at the std-deduction 0% slice. It was removed:
+                // the cap only ran here (brokerage already exhausted, rothBoundDeficit>0),
+                // where trimming Trad spend can only push the gap onto tax-free Roth —
+                // never wealth-optimal (Trad exits at a positive rate, Roth never does),
+                // and the spend already passed gateOk (marginal ≤ the future RMD-age
+                // ceiling). The bracket-aware terminal already prices the residual, so no
+                // extra reservation cap is warranted.
 
                 decisions.push({
                     category: 'conversion',
@@ -1190,8 +1166,7 @@ function planConversionDP(
                         `of $${Math.round(spendingDeficit).toLocaleString()} total, ` +
                         `brokerage covers $${Math.round(brokerageCoverage).toLocaleString()}, ` +
                         `marginal rate ${(marginalResult.rate * 100).toFixed(1)}% ` +
-                        `vs ${(conversionCeiling * 100).toFixed(0)}% ceiling` +
-                        `${input.dpReserveAwareSpending ? ', reserve-aware: capped at std-ded 0% slice' : ''}).`,
+                        `vs ${(conversionCeiling * 100).toFixed(0)}% ceiling).`,
                 });
             }
         }
