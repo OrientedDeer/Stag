@@ -58,6 +58,17 @@ import { getIRALimit } from "../../data/ContributionLimits";
 const DEFAULT_GROWTH_RATE = 0.07;
 const DEFAULT_EMERGENCY_FUND_TARGET = 30000;
 
+// #93 Monte Carlo adaptive overlay: upper clamp on the realized/expected
+// Traditional-balance ratio used to scale the precomputed conversion. A bull
+// path can grow Traditional well past the plan's expectation; capping the
+// scale-up at 1.5× keeps the path from over-converting into high brackets the
+// bracket-aware DP deliberately avoided (the plan's amount is already the
+// wealth-optimal target for the central path). The downside is uncapped (ratio
+// floors at 0), since trimming conversions on a crash is exactly the desired
+// left-tail behavior. At ratio = 1 (on-track) the scale is the identity, so the
+// rule reduces to the precomputed plan.
+const MC_ADAPTIVE_RATIO_CAP = 1.5;
+
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -133,6 +144,15 @@ export interface YearSolverInput {
     // them to its decisions so they surface in the year inspector. Only set
     // when the DP strategy is in use.
     dpDebugByYear?: Map<number, string[]>;
+    // Monte Carlo non-anticipative adaptive overlay (#93). Per-year EXPECTED
+    // start-of-year Traditional balance from the deterministic projection the
+    // dpConversionPlan was solved against. Set ONLY on the MC path; undefined in
+    // production/deterministic runs (so those are byte-for-byte unchanged). When
+    // present, planConversionDP scales the precomputed amount by the ratio of the
+    // path's REALIZED start-of-year Traditional balance to this expected balance
+    // — see planConversionDP for the rule. Non-anticipative: uses only the
+    // balance realized up to this year, never future returns.
+    mcAdaptiveExpectedTrad?: Map<number, number>;
 }
 
 export interface ConversionPlan {
@@ -1178,7 +1198,42 @@ function planConversionDP(
     // Look up the precomputed conversion amount. Clamp to (traditional - reserved
     // for spending) so the conversion doesn't compete with the spending withdrawal.
     const availableTradForConversion = Math.max(0, traditionalBalance - bracketSpaceForSpending);
-    const targetConversion = input.dpConversionPlan?.get(input.year) ?? 0;
+    const plannedConversion = input.dpConversionPlan?.get(input.year) ?? 0;
+
+    // --- #93 Monte Carlo NON-ANTICIPATIVE adaptive overlay -------------------
+    // Production/deterministic runs leave `mcAdaptiveExpectedTrad` undefined, so
+    // `targetConversion === plannedConversion` and behavior is byte-for-byte the
+    // precomputed plan. On an MC path it IS set: scale the planned amount by the
+    // ratio of the path's REALIZED start-of-year Traditional balance to the
+    // EXPECTED balance the plan was solved against. This is a strict
+    // GENERALIZATION of dp-precomputed — when the realized path tracks the
+    // projection (returns ≈ the plan's RoR) the ratio is 1 and we convert exactly
+    // the planned amount; the rule only diverges as realized balances drift. On a
+    // drawdown path (ratio < 1) it scales the conversion DOWN, so an early-crash
+    // path no longer drains stressed liquid assets to pay tax on a conversion an
+    // adaptive retiree would trim — the left-tail behavior #93 targets. The ratio
+    // is clamped to [0, MC_ADAPTIVE_RATIO_CAP] so an extreme bull run can't
+    // over-convert into brackets the DP avoided. Strictly non-anticipative:
+    // `traditionalBalance` reflects only returns realized through this year.
+    let targetConversion = plannedConversion;
+    const expectedTrad = input.mcAdaptiveExpectedTrad?.get(input.year);
+    if (expectedTrad !== undefined && plannedConversion > 0) {
+        // expectedTrad <= 0 means the plan expected no Traditional here (so it
+        // would not have scheduled a conversion); guard the divide and skip.
+        const ratio = expectedTrad > 1
+            ? Math.max(0, Math.min(MC_ADAPTIVE_RATIO_CAP, traditionalBalance / expectedTrad))
+            : 0;
+        targetConversion = plannedConversion * ratio;
+        decisions.push({
+            category: 'conversion',
+            description: `[#93 MC adaptive] realized Trad $${Math.round(traditionalBalance).toLocaleString()} ` +
+                `vs expected $${Math.round(expectedTrad).toLocaleString()} → ratio ${ratio.toFixed(3)}; ` +
+                `scaled planned conversion $${Math.round(plannedConversion).toLocaleString()} ` +
+                `→ $${Math.round(targetConversion).toLocaleString()}.`,
+        });
+    }
+    // -------------------------------------------------------------------------
+
     const conversionAmount = Math.max(0, Math.min(targetConversion, availableTradForConversion));
 
     if (conversionAmount <= 0) {

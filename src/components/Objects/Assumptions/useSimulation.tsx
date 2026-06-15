@@ -244,10 +244,14 @@ function runSimulationLoop(args: {
     dpConversionPlan?: Map<number, number>;
     /** Per-year DP solver debug strings; keyed by simulation year. */
     dpDebugByYear?: Map<number, string[]>;
+    /** #93 MC non-anticipative adaptive overlay: per-year expected start-of-year
+     *  Traditional balance from the deterministic projection. MC path only. */
+    mcAdaptiveExpectedTrad?: Map<number, number>;
 }): void {
     let { currentAccounts, currentIncomes, currentExpenses, previousActiveMilestones } = args;
     const { milestoneReachYears, timeline, assumptions, taxState, yearlyReturns,
-            previousSimYear, yearsToRun, conversionMode, baselineProvider, dpConversionPlan, dpDebugByYear } = args;
+            previousSimYear, yearsToRun, conversionMode, baselineProvider, dpConversionPlan, dpDebugByYear,
+            mcAdaptiveExpectedTrad } = args;
 
     for (let i = 1; i <= yearsToRun; i++) {
         const simulationYear = previousSimYear + i;
@@ -278,6 +282,7 @@ function runSimulationLoop(args: {
             conversionMode,
             dpConversionPlan,
             dpDebugByYear,
+            mcAdaptiveExpectedTrad,
         );
 
         timeline.push(result);
@@ -319,6 +324,14 @@ export const runSimulation = (
     /** MortgageExpense id → principal $ to subtract from its loan_balance on
      *  the synthetic EOY row (mortgages don't live on a DebtAccount). */
     eoyMortgageReductions?: Record<string, number>,
+    /** #93 Monte Carlo NON-ANTICIPATIVE adaptive overlay. Per-year EXPECTED
+     *  start-of-year Traditional balance from the deterministic projection the
+     *  `dpConversionPlan` was solved against. Set ONLY by the MC engine; the
+     *  production/deterministic call sites leave it undefined, so the executed
+     *  conversions are byte-for-byte the precomputed plan. When present, the DP
+     *  conversion strategy scales each year's planned amount by realized/expected
+     *  Traditional balance — see YearSolver.planConversionDP. */
+    mcAdaptiveExpectedTrad?: Map<number, number>,
 ): SimulationYear[] => {
 
     // Calculate start year and current age from birth year
@@ -620,6 +633,7 @@ export const runSimulation = (
         baselineProvider,
         dpConversionPlan,
         dpDebugByYear,
+        mcAdaptiveExpectedTrad,
     });
 
     return timeline;
