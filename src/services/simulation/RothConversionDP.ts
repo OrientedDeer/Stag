@@ -872,8 +872,12 @@ function evaluateCell(
     // credits this surplus as a +wealth term SYMMETRIC to the `-fromBrokerage` leak
     // (#4). Without it, low-conversion paths that throw off big RMD surpluses lose that
     // wealth, biasing the DP toward over-converting. Mutually exclusive with
-    // fromBrokerage: a surplus year has no gap to source. PV-correct because growth at
-    // g exactly cancels the max-wealth 1/(1+g) discount.
+    // fromBrokerage: a surplus year has no gap to source. Credited at face PV because
+    // growth at g exactly cancels the max-wealth 1/(1+g) discount — which implicitly
+    // treats the reinvested surplus as growing tax-free like Roth; real brokerage growth
+    // is taxed, so this slightly OVER-credits surplus years. Second-order vs the
+    // over-conversion it fixes; an explicit brokerage drag would need brokerage as a 3rd
+    // DP state (declined — see #7).
     const ordinarySurplus = Math.max(0, cashFromOrdinary - ctx.spendingNeed - yearTax);
 
     const conversionMarginal = Math.max(0, yearTax - taxBaseline);
@@ -1073,7 +1077,10 @@ export function bracketAwareTradExitValue(
      * COLA / inflation rate (#10): the persisting SS + fixed income grow with it each
      * drawdown year, mirroring the nominal inflation-adjusted engine (the residual
      * compounds at nominal g). 0 = freeze nominal (pre-#10 behavior; callers/tests that
-     * don't pass it are unchanged).
+     * don't pass it are unchanged). NOTE: income grows with COLA but `fedParams` brackets
+     * stay at the terminal year's nominal thresholds across the 45-yr drawdown, so some
+     * bracket creep remains in the valuation — an improvement over frozen-nominal income,
+     * still approximate (inflating the brackets too would need a year-indexed param set).
      */
     cola: number = 0,
 ): number {
