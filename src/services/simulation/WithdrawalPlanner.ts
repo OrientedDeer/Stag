@@ -431,20 +431,51 @@ function sellLotsWithGainSplit(
 }
 
 /**
- * Blended effective tax-per-gross-dollar across a normalized lot pool, used to
- * size the gross-up: gross ≈ net / (1 - effectiveRate). Mirrors the per-case
- * sizing the three equity-comp blocks used before #90 unified them — each lot's
- * gain is taxed at its own ST/LT rate, plus any bargain-element ordinary income.
+ * Size a lot sale to deliver `netNeeded` in one pass (#91 item #1).
+ *
+ * The pre-#91 sizing used a pool-BLENDED effective rate (gross ≈ net / (1 −
+ * blendedRate)). On a PARTIAL sale the FIFO/preference walk stops inside the
+ * oldest lots, whose own rate differs from the pool average, so the realized net
+ * landed slightly under the deficit (e.g. ~$49,758 vs $50k) — self-correcting
+ * across YearSolver's deficit iterations but imprecise per pass. Instead we
+ * bisect the gross on the EXACT realized net from `sellLotsWithGainSplit` (which
+ * already walks the lots and prices the true ST/LT/ordinary split + loss floor),
+ * so the sized gross delivers `netNeeded` over the lots actually reached. Mirrors
+ * the Traditional gross-up's binary search.
+ *
+ * `maxGross` caps the sale at what's sellable (vested balance / lot-value sum).
+ * If even that can't cover the deficit, return it — the shortfall self-corrects
+ * across YearSolver's deficit iterations (matching the old fall-short behavior).
+ * net(gross) is monotonic non-decreasing in gross (every lot adds more gross than
+ * tax since each rate < 1, and the loss floor only ever lowers tax), so the
+ * search is well-posed.
  */
-function blendedLotRate(lots: NormalizedLot[], rates: LotSaleRates): number {
-    let poolValue = 0;
-    let poolTax = 0;
-    for (const lot of lots) {
-        poolValue += lot.value;
-        poolTax += lot.gain * (lot.isLongTerm ? rates.ltcgRate : rates.ordinaryRate);
-        poolTax += lot.ordinaryIncome * rates.ordinaryRate;
+function sizeLotSaleForNet(
+    lots: NormalizedLot[],
+    netNeeded: number,
+    rates: LotSaleRates,
+    maxGross: number,
+    floorLossTax: boolean = false,
+): number {
+    if (netNeeded <= 0 || maxGross <= 0) return 0;
+    const netAtGross = (g: number): number =>
+        g - sellLotsWithGainSplit(lots, g, rates, floorLossTax).tax;
+    // Can't raise enough even selling everything available → take the max.
+    if (netAtGross(maxGross) <= netNeeded) return maxGross;
+    // net(netNeeded) ≤ netNeeded (tax ≥ 0) and net(maxGross) > netNeeded, so the
+    // solution is bracketed by [netNeeded, maxGross].
+    let lo = Math.min(netNeeded, maxGross);
+    let hi = maxGross;
+    let best = hi;
+    for (let iter = 0; iter < 60; iter++) {
+        const mid = (lo + hi) / 2;
+        const net = netAtGross(mid);
+        best = mid;
+        if (Math.abs(net - netNeeded) < 0.0001) break;
+        if (net < netNeeded) lo = mid;
+        else hi = mid;
     }
-    return poolValue > 0 ? poolTax / poolValue : 0;
+    return best;
 }
 
 /**
@@ -872,10 +903,11 @@ export function planWithdrawals(
                     return sellLotsWithGainSplit(lots, gross, lotRates);
                 };
 
-                // Size the gross from a blended effective rate across the lot pool
-                // (mirrors RSU), or the single-rate algebraic gross-up without lots.
+                // Size the gross so the lots actually walked deliver the deficit
+                // net (#91 item #1, mirrors RSU/ESPP), or the single-rate algebraic
+                // gross-up without lots.
                 let grossToWithdraw: number = hasLots
-                    ? Math.min(remainingNetNeeded / grossUpDivisor(blendedLotRate(normalizedLots, lotRates)), effectiveVestedBalance)
+                    ? sizeLotSaleForNet(normalizedLots, remainingNetNeeded, lotRates, effectiveVestedBalance)
                     : Math.min(grossUpBrokerage(remainingNetNeeded, actualGainRatio, ltcgRate).gross, effectiveVestedBalance);
 
                 let { stcg: actualSTCG, ltcg: actualLTCG, tax: actualTax } = realizeBrokerage(grossToWithdraw);
@@ -1270,14 +1302,13 @@ export function planWithdrawals(
                         isLongTerm: true,
                     }));
 
-                    // Estimate gross from the blended effective rate, clamped to the
-                    // sellable balance AND to the lot-value sum (the walk can never
-                    // raise more than the lots hold).
+                    // Size the gross so the walked lots deliver the deficit net
+                    // (#91 item #1), capped at the sellable balance AND the lot-value
+                    // sum (the walk can never raise more than the lots hold).
                     const lotValueSum = normalizedLots.reduce((s, l) => s + l.value, 0);
-                    const targetGross = Math.min(
-                        remainingNetNeeded / grossUpDivisor(blendedLotRate(normalizedLots, lotRates)),
-                        effectiveVestedBalance,
-                        lotValueSum,
+                    const targetGross = sizeLotSaleForNet(
+                        normalizedLots, remainingNetNeeded, lotRates,
+                        Math.min(effectiveVestedBalance, lotValueSum),
                     );
 
                     if (targetGross <= 0) {
@@ -1378,13 +1409,15 @@ export function planWithdrawals(
                         isLongTerm: lot.isLongTerm,
                     }));
 
-                    // Blended effective tax-per-gross-dollar sizing (mirrors ESPP),
-                    // clamped to the sellable balance AND to the lot-value sum.
+                    // Size the gross so the walked lots deliver the deficit net
+                    // (#91 item #1, mirrors ESPP), capped at the sellable balance AND
+                    // the lot-value sum. floorLossTax=true: underwater lots can't
+                    // refund cash into the sale net (so net never exceeds gross).
                     const lotValueSum = normalizedLots.reduce((s, l) => s + l.value, 0);
-                    const targetGross = Math.min(
-                        remainingNetNeeded / grossUpDivisor(blendedLotRate(normalizedLots, lotRates)),
-                        effectiveVestedBalance,
-                        lotValueSum,
+                    const targetGross = sizeLotSaleForNet(
+                        normalizedLots, remainingNetNeeded, lotRates,
+                        Math.min(effectiveVestedBalance, lotValueSum),
+                        true,
                     );
 
                     if (targetGross <= 0) {

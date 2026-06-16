@@ -105,3 +105,32 @@ describe('#75: brokerage realizes short-term capital gains (FIFO)', () => {
         expect(currentMAGI + realizedGain).toBeLessThanOrEqual(cliff);
     });
 });
+
+describe('#91 item #1: net-targeted lot-sale sizing (no partial-sale undershoot)', () => {
+    it('delivers the full deficit net on a partial sale through a high-gain FIFO lot', () => {
+        // Old high-gain lot ahead of a newer low-gain lot. A partial sale walks
+        // only into the first (0.99-gain) lot, whose effective rate is far above
+        // the pool average (gainRatio 0.5). The pre-#91 sizing used the pool-blended
+        // rate (gross = net / (1 − blendedRate)), so it sized as if the lower
+        // average rate applied and the realized net landed well under the deficit
+        // (~$46k for a $50k ask). sizeLotSaleForNet bisects on the realized net, so
+        // the sale now delivers the requested deficit even on a partial walk.
+        const oldHighGain: BrokerageLot = { purchaseYear: YEAR - 3, costBasis: 1000, currentValue: 100000 };   // 0.99 gain, LT
+        const newerLowGain: BrokerageLot = { purchaseYear: YEAR - 2, costBasis: 99000, currentValue: 100000 }; // 0.01 gain, LT
+        const snap = createAccountSnapshot(brokerage([oldHighGain, newerLowGain]), snapDate);
+
+        const deficit = 50000;
+        const result = planWithdrawals(deficit, [snap], 66, YEAR, txState(), 100000, undefined);
+
+        const w = result.withdrawals.find(x => x.source === 'brokerage');
+        expect(w).toBeDefined();
+        // Partial sale: stops inside the first (high-gain) lot, so realized LTCG per
+        // gross is well above the pool average — the case the old estimate misjudged.
+        expect(w!.gross).toBeLessThan(100000);
+        expect(w!.capitalGains!.longTerm).toBeGreaterThan(0);
+        // The realized net hits the deficit (the old blended estimate undershot by
+        // ~$4k). Bisection converges net to within a fraction of a dollar.
+        expect(Math.abs(w!.net - deficit)).toBeLessThan(1);
+        expect(Math.abs(result.totalNet - deficit)).toBeLessThan(1);
+    });
+});
