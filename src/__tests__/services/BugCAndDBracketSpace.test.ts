@@ -400,10 +400,16 @@ describe('Bug D: bracketSpacePerYear calculation', () => {
                 undefined
             );
 
-            // If amount is around $14k, then the original bug was caused by
-            // currentAGI being ~$192k when it should have been much lower
-            // This test documents the relationship, not necessarily a pass/fail
-            expect(result.amount).toBeDefined();
+            // The bug report's "~$14k" was an estimate; the live coarseToFineSearch
+            // at these exact inputs (2026 Single, 24% ceiling, $192k AGI, $1M
+            // balance) returns ≈ $25,859 of bracket space. Pin a non-brittle window
+            // around the real value so this stays meaningful coverage (not a vacuous
+            // toBeDefined) without breaking on small bracket/rounding shifts.
+            expect(result.amount).toBeGreaterThan(15_000);
+            expect(result.amount).toBeLessThan(40_000);
+            // Sanity: limited space confirms the original bug was a too-high AGI,
+            // not a search defect.
+            expect(result.converged).toBe(true);
         });
     });
 });

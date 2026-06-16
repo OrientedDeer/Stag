@@ -332,6 +332,67 @@ describe('coarseToFineSearch', () => {
         });
     });
 
+    // =========================================================================
+    // SS torpedo reduces the converted amount (regression for the removed
+    // "Test 2.5" that asserted the SS torpedo strictly LOWERS the search result).
+    //
+    // When Social Security is present, converting more Traditional dollars drags
+    // additional SS into taxability, so the effective marginal rate hits the
+    // target ceiling at a SMALLER conversion than with no SS. Same inputs,
+    // SS=0 vs a torpedo-triggering SS, at a 22% target with a generous balance.
+    //
+    // Empirically verified (2024 Single, target 0.22, balance $500k, AGI $10k):
+    //   SS=0     -> amount ≈ 105,078
+    //   SS=35k   -> amount ≈  28,515
+    // The inequality is robust across AGI ($0-$20k) and SS ($30k-$40k); we assert
+    // the relationship and positivity rather than pinning exact dollars.
+    // =========================================================================
+    describe('SS torpedo reduces converted amount', () => {
+        it('strictly lowers the converted amount vs the same inputs with no SS', () => {
+            const taxParams = getSingleParams();
+            const targetRate = 0.22;
+            const traditionalBalance = 500_000; // generous — not the binding constraint
+            const currentAGI = 10_000;
+            const torpedoSS = 35_000; // positions the SS-taxability ramp under the ceiling
+
+            const noSS = coarseToFineSearch(
+                targetRate,
+                traditionalBalance,
+                currentAGI,
+                0,              // socialSecurity = 0
+                0,              // ltcgIncome
+                taxParams,
+                singleTaxState,
+                year,
+                null,
+                undefined
+            );
+
+            const withSS = coarseToFineSearch(
+                targetRate,
+                traditionalBalance,
+                currentAGI,
+                torpedoSS,      // torpedo-triggering SS
+                0,              // ltcgIncome
+                taxParams,
+                singleTaxState,
+                year,
+                null,
+                undefined
+            );
+
+            // Both should converge and allow a positive conversion...
+            expect(noSS.converged).toBe(true);
+            expect(withSS.converged).toBe(true);
+            expect(noSS.amount).toBeGreaterThan(0);
+            expect(withSS.amount).toBeGreaterThan(0);
+
+            // ...but the SS torpedo pulls the rate to the ceiling sooner, so the
+            // converted amount with SS is strictly LESS than without SS.
+            expect(withSS.amount).toBeLessThan(noSS.amount);
+        });
+    });
+
     describe('convergence', () => {
         it('converges within maxIterations', () => {
             const taxParams = getSingleParams();
