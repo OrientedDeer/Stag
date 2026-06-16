@@ -4,6 +4,7 @@ import { analyzeScenario, summarizeScenarios } from './MonteCarloAggregator';
 import { runSimulation, runSimulationWithOptimization } from '../components/Objects/Assumptions/useSimulation';
 import { AnyAccount, InvestedAccount } from '../components/Objects/Accounts/models';
 import { SimulationYear } from './simulation/types';
+import { getTotalTraditionalBalance } from './simulation/YearSolver';
 import { AnyIncome } from '../components/Objects/Income/models';
 import { AnyExpense } from '../components/Objects/Expense/models';
 import { AssumptionsState, getLifeExpectancy, getBirthYear } from '../components/Objects/Assumptions/AssumptionsContext';
@@ -70,6 +71,17 @@ function tradBalanceOf(year: SimulationYear): number {
  * realized balances drift. This keeps the MC median consistent with the deterministic
  * projection shown elsewhere. NON-ANTICIPATIVE: the ratio uses only the balance realized
  * up to the current year — never future returns.
+ *
+ * LIMITATIONS (documented tradeoffs of the cheap non-anticipative design, not bugs):
+ * - Trims do NOT compound cleanly across consecutive crash years. `expectedTrad` is the
+ *   deterministic baseline that assumed FULL (un-trimmed) prior conversions, so once an
+ *   earlier year is trimmed, realized Traditional is HIGHER than the baseline and later
+ *   crash-year ratios are biased up — later years are under-trimmed.
+ * - The overlay only SCALES existing plan-conversion years; it never ADDS conversion years
+ *   (expectedTradByYear/plan are populated only where the deterministic DP converted, and
+ *   planConversionDP gates on plannedConversion > 0). So sustained bull paths under-convert
+ *   vs a wealth-level re-optimization, and the median-consistency guarantee is tight only
+ *   near the central path — upper-percentile bands understate conversions.
  */
 interface McConversionPlan {
     plan?: Map<number, number>;
@@ -102,11 +114,7 @@ function buildMcConversionPlan(
         // Traditional balance — the same start-of-year state the path begins from.
         const expectedTrad = prior
             ? tradBalanceOf(prior)
-            : accounts
-                .filter((a): a is InvestedAccount =>
-                    a instanceof InvestedAccount &&
-                    (a.taxType === 'Traditional 401k' || a.taxType === 'Traditional IRA'))
-                .reduce((sum, a) => sum + a.vestedAmount, 0);
+            : getTotalTraditionalBalance(accounts);
         expectedTradByYear.set(y.year, expectedTrad);
     }
     return { plan, expectedTradByYear };

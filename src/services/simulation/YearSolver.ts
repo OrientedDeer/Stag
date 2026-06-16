@@ -60,13 +60,16 @@ const DEFAULT_EMERGENCY_FUND_TARGET = 30000;
 
 // #93 Monte Carlo adaptive overlay: upper clamp on the realized/expected
 // Traditional-balance ratio used to scale the precomputed conversion. A bull
-// path can grow Traditional well past the plan's expectation; capping the
-// scale-up at 1.5× keeps the path from over-converting into high brackets the
-// bracket-aware DP deliberately avoided (the plan's amount is already the
-// wealth-optimal target for the central path). The downside is uncapped (ratio
-// floors at 0), since trimming conversions on a crash is exactly the desired
-// left-tail behavior. At ratio = 1 (on-track) the scale is the identity, so the
-// rule reduces to the precomputed plan.
+// path can grow Traditional well past the plan's expectation. There is NO
+// per-path bracket check, so scaling a bracket-filling conversion up by the
+// ratio DOES push past the bracket edge the DP stopped at — the 1.5× cap only
+// BOUNDS that over-conversion, it does not PREVENT it. A true per-path bracket
+// guard was rejected: it would reintroduce the per-year bracket-aware re-solve
+// cost #93 exists to avoid. So the overlay is a strict generalization of the
+// open-loop plan only on the DOWNSIDE (ratio < 1 trims conversions, the desired
+// left-tail behavior, uncapped down to 0); on the upside it can convert past
+// the DP's bracket, just by a bounded amount. At ratio = 1 (on-track) the scale
+// is the identity, so the rule reduces to the precomputed plan.
 const MC_ADAPTIVE_RATIO_CAP = 1.5;
 
 // =============================================================================
@@ -202,7 +205,7 @@ function selectConversionStrategy(
 // HELPER FUNCTIONS
 // =============================================================================
 
-function getTotalTraditionalBalance(accounts: AnyAccount[]): number {
+export function getTotalTraditionalBalance(accounts: AnyAccount[]): number {
     return accounts
         .filter(a => a instanceof InvestedAccount &&
             (a.taxType === 'Traditional 401k' || a.taxType === 'Traditional IRA'))
