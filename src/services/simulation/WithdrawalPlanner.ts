@@ -366,6 +366,10 @@ export interface LotSaleResult {
     /** Total tax on the sale (STCG + LTCG + bargain-element ordinary), floored so
      *  losses never refund cash into the sale net. */
     tax: number;
+    /** Ordinary tax on the STCG bucket (floored when floorLossTax), already
+     *  included in `tax`; surfaced so callers can populate the withdrawal's
+     *  ordinaryTax field without recomputing. */
+    stcgTax: number;
 }
 
 /**
@@ -423,7 +427,7 @@ function sellLotsWithGainSplit(
     const ordinaryTax = ordinaryIncome * rates.ordinaryRate;
     const tax = stcgTax + ltcgTax + ordinaryTax;
 
-    return { gross: targetGross, stcg, ltcg, ordinaryIncome, tax };
+    return { gross: targetGross, stcg, ltcg, ordinaryIncome, tax, stcgTax };
 }
 
 /**
@@ -1398,20 +1402,19 @@ export function planWithdrawals(
                     const grossToWithdraw = sale.gross;
                     const rsuSTCG = sale.stcg;
                     const rsuLTCG = sale.ltcg;
-                    // STCG tax charged against the sale (floored at 0). Recompute the
-                    // floored STCG tax for the withdrawal's ordinaryTax field — the
-                    // helper folds it into `tax` but routes nothing back per-bucket.
-                    const stcgTax = Math.max(0, rsuSTCG * rsuOrdinaryRate);
+                    // STCG tax charged against the sale (floored at 0), surfaced by
+                    // the helper so the withdrawal's ordinaryTax field needn't
+                    // recompute it.
+                    const stcgTax = sale.stcgTax;
                     const actualTax = sale.tax;
                     const netReceived = grossToWithdraw - actualTax;
-                    // Report the raw realized gains/losses for this sale. The
-                    // §1211(b) $3,000 net-loss limit is applied ONCE on the year's
-                    // aggregate (totalSTCG + totalLTCG) just before this planner
-                    // returns — capping here per-sale or per-bucket let an underwater
-                    // pool, or N underwater accounts, pipe a loss many times the limit
-                    // into the (unfloored) SS-taxability and state-tax bases.
-                    const reportedSTCG = rsuSTCG;
-                    const reportedLTCG = rsuLTCG;
+                    // The raw realized gains/losses (rsuSTCG/rsuLTCG) flow straight
+                    // through. The §1211(b) $3,000 net-loss limit is applied ONCE on
+                    // the year's aggregate (totalSTCG + totalLTCG) just before this
+                    // planner returns — capping here per-sale or per-bucket let an
+                    // underwater pool, or N underwater accounts, pipe a loss many
+                    // times the limit into the (unfloored) SS-taxability and
+                    // state-tax bases.
 
                     withdrawal = {
                         source: 'rsu',
@@ -1419,7 +1422,7 @@ export function planWithdrawals(
                         accountName: snapshot.accountName,
                         gross: grossToWithdraw,
                         net: netReceived,
-                        capitalGains: { shortTerm: reportedSTCG, longTerm: reportedLTCG },
+                        capitalGains: { shortTerm: rsuSTCG, longTerm: rsuLTCG },
                         // STCG is taxed at ordinary rates, so route its tax through
                         // ordinaryTax — ordinaryTaxOf()/ltcgTaxOf() then split it
                         // correctly (ordinary bucket vs LTCG bucket).
@@ -1446,8 +1449,8 @@ export function planWithdrawals(
                     totalNet += netReceived;
                     totalGross += grossToWithdraw;
                     totalTax += actualTax;
-                    totalLTCG += reportedLTCG;
-                    totalSTCG += reportedSTCG;
+                    totalLTCG += rsuLTCG;
+                    totalSTCG += rsuSTCG;
 
                     if (rsuSTCG !== 0 || rsuLTCG !== 0) {
                         decisions.push({
