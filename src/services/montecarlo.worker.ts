@@ -46,12 +46,14 @@ self.onmessage = async (e: MessageEvent): Promise<void> => {
             ts: req.taxState,
             y: new Date().getFullYear(),
         });
+        post({ type: 'phase', phase: 'solving' });
         let plan = await getCachedPlan(cacheKey);
         if (!plan) {
             plan = solveMcConversionPlan(req.config, accounts, incomes, expenses, req.assumptions, req.taxState);
             await putCachedPlan(cacheKey, plan); // no-op when there's no policy (non-DP)
         }
 
+        post({ type: 'phase', phase: 'running' });
         const summary = await runMonteCarloSimulation(
             req.config, accounts, incomes, expenses, req.assumptions, req.taxState,
             (pct) => post({ type: 'progress', pct }),

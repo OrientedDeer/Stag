@@ -210,4 +210,40 @@ describe('#98 MC closed-loop conversion policy — on-track path', () => {
         const mcTotal = [...mcConversions.values()].reduce((s, a) => s + a, 0);
         expect(Math.abs(mcTotal - detTotal) / detTotal).toBeLessThan(0.03);
     });
+
+    it('adapts per path: a bull path converts more than a crash path', { timeout: 60000 }, () => {
+        const incomes = makeIncomes();
+        const expenses = makeExpenses();
+        const assumptions = makeAssumptions();
+        const taxState = makeTaxState();
+
+        // A volatile run so paths genuinely diverge. The closed-loop policy looks
+        // up the conversion at each path's realized (trad, roth): a bull path grows
+        // Traditional and converts MORE; a crash path shrinks it and converts LESS.
+        // The #93 scalar overlay could not ADD conversion on sustained bull paths —
+        // this is the behavior #98 fixes.
+        const config: MonteCarloConfig = {
+            enabled: true,
+            numScenarios: 50,
+            seed: 24680,
+            returnMean: 7,
+            returnStdDev: 18,
+            preset: 'custom',
+        };
+        const mc = runMonteCarloSimulationSync(
+            config, makeAccounts(), incomes, expenses, assumptions, taxState,
+        );
+
+        const sumConv = (tl: SimulationYear[]) =>
+            [...conversionsByYear(tl).values()].reduce((s, a) => s + a, 0);
+        const bullTotal = sumConv(mc.bestCase.timeline);
+        const crashTotal = sumConv(mc.worstCase.timeline);
+
+        // The policy fired, and the bull path converted strictly more than the crash path.
+        expect(bullTotal).toBeGreaterThan(0);
+        expect(bullTotal).toBeGreaterThan(crashTotal);
+        // Sanity on the summary.
+        expect(mc.successRate).toBeGreaterThanOrEqual(0);
+        expect(mc.successRate).toBeLessThanOrEqual(100);
+    });
 });

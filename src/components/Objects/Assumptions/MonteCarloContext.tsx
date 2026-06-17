@@ -22,13 +22,15 @@ function monteCarloReducer(state: MonteCarloState, action: MonteCarloAction): Mo
         case 'UPDATE_CONFIG':
             return { ...state, config: { ...state.config, ...action.payload } };
         case 'START_SIMULATION':
-            return { ...state, isRunning: true, progress: 0, error: null };
+            return { ...state, isRunning: true, progress: 0, phase: 'solving', error: null };
         case 'UPDATE_PROGRESS':
             return { ...state, progress: action.payload };
+        case 'SET_PHASE':
+            return { ...state, phase: action.payload };
         case 'COMPLETE_SIMULATION':
-            return { ...state, isRunning: false, progress: 100, summary: action.payload, error: null };
+            return { ...state, isRunning: false, progress: 100, phase: 'idle', summary: action.payload, error: null };
         case 'SIMULATION_ERROR':
-            return { ...state, isRunning: false, progress: 0, error: action.payload };
+            return { ...state, isRunning: false, progress: 0, phase: 'idle', error: action.payload };
         case 'RESET':
             return { ...initialMonteCarloState, config: state.config };
         default:
@@ -88,6 +90,7 @@ export function MonteCarloProvider({ children }: { children: ReactNode }): React
     ) => {
         dispatch({ type: 'START_SIMULATION' });
         const onProgress = (progress: number) => dispatch({ type: 'UPDATE_PROGRESS', payload: progress });
+        const onPhase = (phase: 'solving' | 'running') => dispatch({ type: 'SET_PHASE', payload: phase });
         try {
             // Run off the main thread (#98) so the ~20s policy solve + path loop
             // don't freeze the UI. Fall back to the main-thread engine if the
@@ -95,9 +98,12 @@ export function MonteCarloProvider({ children }: { children: ReactNode }): React
             let summary;
             try {
                 summary = await runMonteCarloInWorker(
-                    state.config, accounts, incomes, expenses, assumptions, taxState, onProgress,
+                    state.config, accounts, incomes, expenses, assumptions, taxState, onProgress, onPhase,
                 );
             } catch {
+                // Main-thread fallback blocks the UI, so the phase label can't
+                // animate; mark 'running' for correctness.
+                dispatch({ type: 'SET_PHASE', payload: 'running' });
                 summary = await runMonteCarloSimulation(
                     state.config, accounts, incomes, expenses, assumptions, taxState, onProgress,
                 );
@@ -162,6 +168,7 @@ export const useMonteCarloResults = () => {
         summary: state.summary,
         isRunning: state.isRunning,
         progress: state.progress,
+        phase: state.phase,
         error: state.error,
         resetResults,
     };

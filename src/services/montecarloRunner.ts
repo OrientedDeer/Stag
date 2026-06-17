@@ -63,6 +63,7 @@ export function runMonteCarloInWorker(
     assumptions: AssumptionsState,
     taxState: TaxState,
     onProgress?: (pct: number) => void,
+    onPhase?: (phase: 'solving' | 'running') => void,
 ): Promise<MonteCarloSummary> {
     return new Promise<MonteCarloSummary>((resolve, reject) => {
         let worker: Worker;
@@ -74,7 +75,9 @@ export function runMonteCarloInWorker(
         }
         worker.onmessage = (e: MessageEvent<McWorkerResponse>) => {
             const msg = e.data;
-            if (msg.type === 'progress') {
+            if (msg.type === 'phase') {
+                onPhase?.(msg.phase);
+            } else if (msg.type === 'progress') {
                 onProgress?.(msg.pct);
             } else if (msg.type === 'done') {
                 worker.terminate();

@@ -69,7 +69,7 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
     const { state: taxState } = useContext(TaxContext);
     const forceExact = assumptions.display?.useCompactCurrency === false;
 
-    const { config, summary, isRunning, progress, error } = state;
+    const { config, summary, isRunning, progress, phase, error } = state;
     const inflationAdjusted = assumptions.macro?.inflationAdjusted ?? true;
 
     // Normalize preset - handle old values from before simplification
@@ -296,21 +296,36 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
                                 : 'bg-positive-solid hover:bg-positive-soft text-white'
                             }`}
                     >
-                        {isRunning ? 'Running...' : 'Run Simulation'}
+                        {isRunning ? (phase === 'solving' ? 'Solving…' : 'Running…') : 'Run Simulation'}
                     </button>
 
-                    {/* Progress Bar */}
+                    {/* Progress Bar. During the one-time policy solve (#98) the
+                        per-scenario % can't advance, so show an indeterminate
+                        pulse + label; switch to the % bar for the path loop. */}
                     {isRunning && (
                         <div className="flex-1 flex items-center gap-3">
-                            <div className="flex-1 h-2 bg-surface-input rounded-full overflow-hidden">
-                                <div
-                                    className="h-full bg-positive-soft transition-all duration-100"
-                                    style={{ width: `${progress}%` }}
-                                />
-                            </div>
-                            <span className="text-content-muted text-sm tabular-nums">
-                                {Math.round(progress)}%
-                            </span>
+                            {phase === 'solving' ? (
+                                <>
+                                    <div className="flex-1 h-2 bg-surface-input rounded-full overflow-hidden">
+                                        <div className="h-full w-full bg-positive-soft animate-pulse" />
+                                    </div>
+                                    <span className="text-content-muted text-sm">
+                                        Solving conversion policy…
+                                    </span>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="flex-1 h-2 bg-surface-input rounded-full overflow-hidden">
+                                        <div
+                                            className="h-full bg-positive-soft transition-all duration-100"
+                                            style={{ width: `${progress}%` }}
+                                        />
+                                    </div>
+                                    <span className="text-content-muted text-sm tabular-nums">
+                                        Running paths… {Math.round(progress)}%
+                                    </span>
+                                </>
+                            )}
                         </div>
                     )}
 

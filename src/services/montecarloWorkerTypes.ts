@@ -23,6 +23,7 @@ export interface McWorkerRequest {
 
 /** Messages the worker posts back. */
 export type McWorkerResponse =
+    | { type: 'phase'; phase: 'solving' | 'running' }
     | { type: 'progress'; pct: number }
     | { type: 'done'; summary: MonteCarloSummary }
     | { type: 'error'; message: string };

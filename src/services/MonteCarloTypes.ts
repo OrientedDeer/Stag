@@ -161,6 +161,12 @@ export interface MonteCarloSummary {
 /**
  * State for Monte Carlo context
  */
+/**
+ * Run phase (#98). 'solving' = the one-time stochastic-DP policy solve (the
+ * per-scenario progress bar doesn't move during it); 'running' = the path loop.
+ */
+export type MonteCarloPhase = 'idle' | 'solving' | 'running';
+
 export interface MonteCarloState {
     /** Current configuration */
     config: MonteCarloConfig;
@@ -170,6 +176,8 @@ export interface MonteCarloState {
     isRunning: boolean;
     /** Progress percentage (0-100) */
     progress: number;
+    /** Which phase the run is in (for the progress label). */
+    phase: MonteCarloPhase;
     /** Error message if simulation failed */
     error: string | null;
 }
@@ -182,6 +190,7 @@ export const initialMonteCarloState: MonteCarloState = {
     summary: null,
     isRunning: false,
     progress: 0,
+    phase: 'idle',
     error: null,
 };
 
@@ -192,6 +201,7 @@ export type MonteCarloAction =
     | { type: 'UPDATE_CONFIG'; payload: Partial<MonteCarloConfig> }
     | { type: 'START_SIMULATION' }
     | { type: 'UPDATE_PROGRESS'; payload: number }
+    | { type: 'SET_PHASE'; payload: MonteCarloPhase }
     | { type: 'COMPLETE_SIMULATION'; payload: MonteCarloSummary }
     | { type: 'SIMULATION_ERROR'; payload: string }
     | { type: 'RESET' };
