@@ -9,7 +9,7 @@ import { resolveRothConversionStrategy } from './rothConversionStrategy';
 import { TaxState, resolveTaxEventsForYear } from '../Taxes/TaxContext';
 import { BaselineProjections } from '../../../services/simulation/types';
 import { getRMDStartAge } from '../../../data/RMDData';
-import { buildDPYearContexts, planConversionsViaDP, DPPlan, DPInputs, DPObjectiveOptions, DPPolicy } from '../../../services/simulation/RothConversionDP';
+import { buildDPYearContexts, planConversionsViaDP, DPPlan, DPInputs, DPObjectiveOptions, DPPolicy, QuadratureNodes } from '../../../services/simulation/RothConversionDP';
 import { buildTradValuation, terminalAfterTaxNetWorth } from '../../../tabs/Future/tabs/FutureUtils';
 
 /**
@@ -823,7 +823,7 @@ export const buildMcConversionPolicy = (
     taxState: TaxState,
     returnMean: number,
     returnStdDev: number,
-    nodes?: number,
+    nodes?: QuadratureNodes,
 ): DPPlan | undefined => {
     const strategy = resolveRothConversionStrategy(assumptions.investments.rothConversionStrategy);
     if (strategy !== 'dp-precomputed' || !assumptions.investments.taxOptimizationEnabled) {
