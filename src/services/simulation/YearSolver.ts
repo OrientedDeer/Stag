@@ -35,6 +35,7 @@ import {
     BaselineProjections,
 } from "./types";
 import { WithdrawalResult } from "../WithdrawalStrategies";
+import { DPPolicy, lookupConversionPolicy } from "./RothConversionDP";
 import { classifyIncome, getTotalSSBenefits } from "./IncomeClassifier";
 import { planWithdrawals, createOrderedSnapshots, grossUpBrokerage } from "./WithdrawalPlanner";
 import * as TaxService from "../../components/Objects/Taxes/TaxService";
@@ -156,6 +157,14 @@ export interface YearSolverInput {
     // — see planConversionDP for the rule. Non-anticipative: uses only the
     // balance realized up to this year, never future returns.
     mcAdaptiveExpectedTrad?: Map<number, number>;
+    // Closed-loop conversion POLICY (#98). Set ONLY on the MC path (supersedes the
+    // #93 mcAdaptiveExpectedTrad overlay when present); undefined in
+    // production/deterministic runs. When set, planConversionDP looks up the
+    // conversion at the path's REALIZED (Traditional, Roth) state — re-optimizing
+    // the amount AND whether to convert from each realized state, fixing #93's
+    // bull-path overrun / can't-add-years / trim-drift. Non-anticipative: the
+    // policy integrates over the return distribution, never a path's realized future.
+    mcConversionPolicy?: DPPolicy;
 }
 
 export interface ConversionPlan {
@@ -215,6 +224,17 @@ export function getTotalTraditionalBalance(accounts: AnyAccount[]): number {
 function getTotalBrokerageBalance(accounts: AnyAccount[]): number {
     return accounts
         .filter(a => a instanceof InvestedAccount && a.taxType === 'Brokerage')
+        .reduce((sum, a) => sum + (a as InvestedAccount).vestedAmount, 0);
+}
+
+/**
+ * Total Roth IRA balance — the realized Roth state for the #98 policy lookup.
+ * Matches the DP's roth state (RothConversionDP keys its policy on Roth IRA
+ * balances only, excluding Roth 401k, mirroring buildDPYearContexts).
+ */
+export function getTotalRothBalance(accounts: AnyAccount[]): number {
+    return accounts
+        .filter(a => a instanceof InvestedAccount && a.taxType === 'Roth IRA')
         .reduce((sum, a) => sum + (a as InvestedAccount).vestedAmount, 0);
 }
 
@@ -1203,39 +1223,59 @@ function planConversionDP(
     const availableTradForConversion = Math.max(0, traditionalBalance - bracketSpaceForSpending);
     const plannedConversion = input.dpConversionPlan?.get(input.year) ?? 0;
 
-    // --- #93 Monte Carlo NON-ANTICIPATIVE adaptive overlay -------------------
-    // Production/deterministic runs leave `mcAdaptiveExpectedTrad` undefined, so
-    // `targetConversion === plannedConversion` and behavior is byte-for-byte the
-    // precomputed plan. On an MC path it IS set: scale the planned amount by the
-    // ratio of the path's REALIZED start-of-year Traditional balance to the
-    // EXPECTED balance the plan was solved against. This is a strict
-    // GENERALIZATION of dp-precomputed — when the realized path tracks the
-    // projection (returns ≈ the plan's RoR) the ratio is 1 and we convert exactly
-    // the planned amount; the rule only diverges as realized balances drift. On a
-    // drawdown path (ratio < 1) it scales the conversion DOWN, so an early-crash
-    // path no longer drains stressed liquid assets to pay tax on a conversion an
-    // adaptive retiree would trim — the left-tail behavior #93 targets. The ratio
-    // is clamped to [0, MC_ADAPTIVE_RATIO_CAP] so an extreme bull run can't
-    // over-convert into brackets the DP avoided. Strictly non-anticipative:
-    // `traditionalBalance` reflects only returns realized through this year.
     let targetConversion = plannedConversion;
-    const expectedTrad = input.mcAdaptiveExpectedTrad?.get(input.year);
-    if (expectedTrad !== undefined && plannedConversion > 0) {
-        // expectedTrad <= 0 means the plan expected no Traditional here (so it
-        // would not have scheduled a conversion); guard the divide and skip.
-        const ratio = expectedTrad > 1
-            ? Math.max(0, Math.min(MC_ADAPTIVE_RATIO_CAP, traditionalBalance / expectedTrad))
-            : 0;
-        targetConversion = plannedConversion * ratio;
-        decisions.push({
-            category: 'conversion',
-            description: `[#93 MC adaptive] realized Trad $${Math.round(traditionalBalance).toLocaleString()} ` +
-                `vs expected $${Math.round(expectedTrad).toLocaleString()} → ratio ${ratio.toFixed(3)}; ` +
-                `scaled planned conversion $${Math.round(plannedConversion).toLocaleString()} ` +
-                `→ $${Math.round(targetConversion).toLocaleString()}.`,
-        });
+    if (input.mcConversionPolicy) {
+        // --- #98 closed-loop POLICY lookup (supersedes the #93 overlay) ------
+        // The policy — solved ONCE by integrating the return distribution into the
+        // DP — gives the optimal conversion as a function of (year, trad, roth)
+        // state. Look it up at the path's REALIZED (Traditional, Roth IRA) balances:
+        // a per-path re-optimization of BOTH the amount and whether to convert, with
+        // no re-solve. Fixes the #93 overlay's bull-path bracket overrun, can't-add-
+        // years, and trim-compounding drift. Non-anticipative: the policy never sees
+        // a path's realized future, and these balances reflect only returns realized
+        // through this year. Pre-retirement years have no policy entry (undefined) →
+        // targetConversion stays at the (zero) planned amount.
+        const rothBalance = getTotalRothBalance(input.accounts);
+        const rawPolicy = lookupConversionPolicy(
+            input.mcConversionPolicy, input.year, traditionalBalance, rothBalance);
+        if (rawPolicy !== undefined) {
+            targetConversion = Math.max(0, rawPolicy);
+            if (targetConversion > 0) {
+                decisions.push({
+                    category: 'conversion',
+                    description: `[#98 MC policy] realized Trad $${Math.round(traditionalBalance).toLocaleString()}, ` +
+                        `Roth $${Math.round(rothBalance).toLocaleString()} → policy conversion ` +
+                        `$${Math.round(targetConversion).toLocaleString()}.`,
+                });
+            }
+        }
+    } else if (input.mcAdaptiveExpectedTrad) {
+        // --- #93 Monte Carlo NON-ANTICIPATIVE adaptive overlay (legacy) ------
+        // Retained for callers that still pass the scalar overlay. On an MC path it
+        // scales the planned amount by the ratio of the path's REALIZED start-of-year
+        // Traditional balance to the EXPECTED balance the plan was solved against. A
+        // strict GENERALIZATION of dp-precomputed — on-track (ratio 1) converts
+        // exactly the plan; a drawdown path (ratio < 1) trims conversions so it
+        // doesn't drain stressed liquid assets to pay conversion tax. Clamped to
+        // [0, MC_ADAPTIVE_RATIO_CAP] so a bull run can't over-convert. Strictly
+        // non-anticipative: `traditionalBalance` reflects only returns through this year.
+        const expectedTrad = input.mcAdaptiveExpectedTrad.get(input.year);
+        if (expectedTrad !== undefined && plannedConversion > 0) {
+            // expectedTrad <= 0 means the plan expected no Traditional here (so it
+            // would not have scheduled a conversion); guard the divide and skip.
+            const ratio = expectedTrad > 1
+                ? Math.max(0, Math.min(MC_ADAPTIVE_RATIO_CAP, traditionalBalance / expectedTrad))
+                : 0;
+            targetConversion = plannedConversion * ratio;
+            decisions.push({
+                category: 'conversion',
+                description: `[#93 MC adaptive] realized Trad $${Math.round(traditionalBalance).toLocaleString()} ` +
+                    `vs expected $${Math.round(expectedTrad).toLocaleString()} → ratio ${ratio.toFixed(3)}; ` +
+                    `scaled planned conversion $${Math.round(plannedConversion).toLocaleString()} ` +
+                    `→ $${Math.round(targetConversion).toLocaleString()}.`,
+            });
+        }
     }
-    // -------------------------------------------------------------------------
 
     const conversionAmount = Math.max(0, Math.min(targetConversion, availableTradForConversion));
 

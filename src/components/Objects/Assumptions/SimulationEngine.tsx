@@ -25,6 +25,7 @@ import { evaluateAllMilestones, isActiveByMilestone, MilestoneContext } from "..
 import { InvestedAccount, SavedAccount, ESPPAccount, RSUAccount } from "../Accounts/models";
 import { processRSUVesting } from "../../../services/simulation/RSUVesting";
 import { solveYear, YearSolverInput } from "../../../services/simulation/YearSolver";
+import { DPPolicy } from "../../../services/simulation/RothConversionDP";
 import { YearPlan } from "../../../services/simulation/types";
 import { buildCashflowDetail } from "../../../services/simulation/CashflowDetailBuilder";
 
@@ -157,6 +158,9 @@ export interface SimulateOneYearOptions {
      *  Traditional balance from the deterministic projection. MC path only;
      *  undefined in production. */
     mcAdaptiveExpectedTrad?: Map<number, number>;
+    /** #98 closed-loop conversion policy (supersedes the #93 overlay). MC path
+     *  only; undefined in production. */
+    mcConversionPolicy?: DPPolicy;
 }
 
 /**
@@ -186,6 +190,7 @@ function simulateOneYearWithNewEngine(
         dpConversionPlan,
         dpDebugByYear,
         mcAdaptiveExpectedTrad,
+        mcConversionPolicy,
     } = options;
     const logs: string[] = [];
     logs.push('[V2 Engine] Using new YearSolver-based simulation');
@@ -465,6 +470,7 @@ function simulateOneYearWithNewEngine(
         dpConversionPlan,
         dpDebugByYear,
         mcAdaptiveExpectedTrad,
+        mcConversionPolicy,
     };
 
     const yearPlan = solveYear(solverInput);

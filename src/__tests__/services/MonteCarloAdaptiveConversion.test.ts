@@ -1,39 +1,49 @@
 /**
- * #93 — Monte Carlo NON-ANTICIPATIVE adaptive Roth-conversion rule.
+ * #98 — Monte Carlo closed-loop conversion POLICY (replaced the #93 scalar overlay).
  *
- * The MC engine pre-solves the bracket-aware max-wealth DP once against the
- * user's projection RoR, then replays it per path through an adaptive overlay
- * (YearSolver.planConversionDP): each year the planned conversion is scaled by
- * the ratio of the path's REALIZED start-of-year Traditional balance to the
- * EXPECTED balance the plan assumed. The overlay must be a strict
- * GENERALIZATION of the open-loop plan:
+ * The MC engine solves a STOCHASTIC DP once (integrating the return distribution
+ * MC draws) to produce a policy: conversion as a function of (year, trad, roth)
+ * state. Each path looks the policy up at its REALIZED state each year
+ * (YearSolver.planConversionDP via lookupConversionPolicy) — no per-path re-solve.
  *
- *   ON-TRACK PATH (returns ≈ the plan's RoR)  ⇒  ratio == 1 every year
- *                                             ⇒  scaled == planned conversion.
+ * On an ON-TRACK path (flat returns = the projection RoR) we pin two properties:
  *
- * This test pins that property end-to-end through the public MC API. We build a
- * DP-enabled retiree, read the deterministic plan's per-year conversions, then
- * run a single MC path whose flat returns (stdDev = 0) exactly equal the
- * projection RoR — the realized balances track the projection, so the adaptive
- * overlay must reproduce the deterministic conversions year-for-year.
+ *  1. WIRING (exact): the conversion the sim applies each year equals the policy
+ *     looked up at that path's realized start-of-year (Traditional, Roth IRA)
+ *     balances. This proves the MC path is genuinely policy-driven — the amount
+ *     comes from the policy at the realized state, not a scaled fixed plan.
+ *
+ *  2. REDUCES TO THE DETERMINISTIC OPTIMUM (within interpolation granularity):
+ *     the same years convert and the amounts match the deterministic DP schedule
+ *     within a small tolerance. Unlike the old #93 overlay (which reused the
+ *     exact plan map, so on-track matched to the dollar), #98 reads a policy
+ *     TABLE by bilinear interpolation, so on-track agreement is bucket-level —
+ *     an accepted #98 approximation, not a regression.
  *
  * Inflation-adjusted is OFF and every account's expense ratio is 0, so the MC
  * per-year override return (config.returnMean, applied flat) equals the
- * deterministic per-account growth rate (returnRates.ror) — i.e. the path is
- * genuinely on-track, not just "close".
+ * deterministic per-account growth rate (returnRates.ror) — the path is genuinely
+ * on-track (meanShift 0, volatility 0 ⇒ the stochastic solve reduces to the
+ * deterministic DP).
  */
 import { describe, it, expect } from 'vitest';
 
 import { runMonteCarloSimulationSync } from '../../services/MonteCarloEngine';
 import { MonteCarloConfig } from '../../services/MonteCarloTypes';
-import { runSimulationWithOptimization } from '../../components/Objects/Assumptions/useSimulation';
-import { InvestedAccount, SavedAccount } from '../../components/Objects/Accounts/models';
+import {
+    runSimulationWithOptimization,
+    buildMcConversionPolicy,
+} from '../../components/Objects/Assumptions/useSimulation';
+import { lookupConversionPolicy } from '../../services/simulation/RothConversionDP';
+import { InvestedAccount, SavedAccount, AnyAccount } from '../../components/Objects/Accounts/models';
 import { SocialSecurityIncome } from '../../components/Objects/Income/models';
 import { OtherExpense } from '../../components/Objects/Expense/models';
 import {
     AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
+    getLifeExpectancy,
+    getBirthYear,
 } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../components/Objects/Taxes/TaxContext';
 import { SimulationYear } from '../../services/simulation/types';
@@ -114,25 +124,40 @@ function conversionsByYear(timeline: SimulationYear[]): Map<number, number> {
     return m;
 }
 
-describe('#93 MC adaptive conversion overlay — generalization of the precomputed plan', () => {
-    it('reproduces the deterministic DP conversions on an on-track (flat-RoR) MC path', { timeout: 60000 }, () => {
-        const accounts = makeAccounts();
+const totalTrad = (accts: AnyAccount[]): number => accts
+    .filter((a): a is InvestedAccount => a instanceof InvestedAccount &&
+        (a.taxType === 'Traditional 401k' || a.taxType === 'Traditional IRA'))
+    .reduce((s, a) => s + a.vestedAmount, 0);
+const totalRothIra = (accts: AnyAccount[]): number => accts
+    .filter((a): a is InvestedAccount => a instanceof InvestedAccount && a.taxType === 'Roth IRA')
+    .reduce((s, a) => s + a.vestedAmount, 0);
+
+describe('#98 MC closed-loop conversion policy — on-track path', () => {
+    it('is policy-driven and reduces to the deterministic optimum', { timeout: 60000 }, () => {
         const incomes = makeIncomes();
         const expenses = makeExpenses();
         const assumptions = makeAssumptions();
         const taxState = makeTaxState();
 
-        // 1) Deterministic projection (uses returnRates.ror) — the open-loop plan.
+        // Horizon the MC engine uses internally (life expectancy − current age).
+        const yearsToRun = Math.max(0,
+            getLifeExpectancy(assumptions.milestones)
+            - (new Date().getFullYear() - getBirthYear(assumptions.milestones)));
+
+        // 1) Deterministic projection (open-loop schedule) — the optimum to reduce to.
         const det = runSimulationWithOptimization(
-            30, makeAccounts(), incomes, expenses, assumptions, taxState,
+            yearsToRun, makeAccounts(), incomes, expenses, assumptions, taxState,
         );
         const detConversions = conversionsByYear(det);
+        expect(detConversions.size).toBeGreaterThan(0); // else the test is vacuous.
 
-        // Guard: the fixture must actually schedule conversions, else the test is vacuous.
-        expect(detConversions.size).toBeGreaterThan(0);
+        // 2) The closed-loop policy the MC engine will solve & look up (σ = 0).
+        const policyPlan = buildMcConversionPolicy(
+            yearsToRun, makeAccounts(), incomes, expenses, assumptions, taxState, ROR, 0,
+        );
+        expect(policyPlan?.policy).toBeDefined();
 
-        // 2) Single MC path with flat returns == ROR (stdDev 0 ⇒ every year is exactly
-        //    the projection RoR ⇒ the path tracks the projection ⇒ ratio == 1).
+        // 3) Single on-track MC path (flat returns == ROR).
         const config: MonteCarloConfig = {
             enabled: true,
             numScenarios: 1,
@@ -142,17 +167,47 @@ describe('#93 MC adaptive conversion overlay — generalization of the precomput
             preset: 'custom',
         };
         const mc = runMonteCarloSimulationSync(
-            config, accounts, incomes, expenses, assumptions, taxState,
+            config, makeAccounts(), incomes, expenses, assumptions, taxState,
         );
-        // With one scenario, worst == median == best — all are the on-track path.
-        const mcConversions = conversionsByYear(mc.medianCase.timeline);
+        const timeline = mc.medianCase.timeline; // one scenario ⇒ this IS the on-track path.
+        const mcConversions = conversionsByYear(timeline);
 
-        // 3) The adaptive overlay must reduce to the plan: identical conversion years
-        //    and identical amounts (within a rounding dollar).
+        // --- Property 1: WIRING (exact). The applied conversion == the policy
+        // looked up at the path's realized start-of-year (Trad, Roth IRA) state.
+        // start-of-year(year N) = end-of-year(N-1); for the first sim year it's
+        // the initial accounts.
+        const sotByYear = new Map<number, AnyAccount[]>();
+        for (let i = 0; i < timeline.length; i++) {
+            sotByYear.set(timeline[i].year, i === 0 ? makeAccounts() : timeline[i - 1].accounts);
+        }
+        for (const [year, mcAmt] of mcConversions) {
+            const sot = sotByYear.get(year)!;
+            const looked = lookupConversionPolicy(
+                policyPlan!.policy!, year, totalTrad(sot), totalRothIra(sot)) ?? 0;
+            // Applied = min(policy lookup, available Trad). The fixture's Trad
+            // dwarfs the conversion, so the clamp never binds ⇒ exact to $1.
+            expect(Math.abs(mcAmt - looked)).toBeLessThanOrEqual(1);
+        }
+
+        // --- Property 2: REDUCES TO THE DETERMINISTIC OPTIMUM (bucket-level).
+        // Same conversion years.
         expect([...mcConversions.keys()].sort()).toEqual([...detConversions.keys()].sort());
+        // Per-year amounts agree within policy interpolation granularity — about
+        // one conversion bucket (dC = MAX_CONVERSION_CAP / CONVERSION_BUCKETS =
+        // $500k/200 = $2.5k here). NOT $1 like the old #93 exact-map reuse: #98
+        // interpolates a policy TABLE, so per-year agreement is bucket-level (the
+        // aggregate guard below keeps the jitter unbiased).
         for (const [year, detAmt] of detConversions) {
             const mcAmt = mcConversions.get(year) ?? 0;
-            expect(Math.abs(mcAmt - detAmt)).toBeLessThanOrEqual(1);
+            expect(Math.abs(mcAmt - detAmt)).toBeLessThanOrEqual(Math.max(3000, detAmt * 0.05));
         }
+        // Aggregate conversion stays close. The early (large) conversion years
+        // match the deterministic optimum to the dollar; divergence is confined to
+        // the late small-conversion tail, where the real-sim (trad, roth) walk has
+        // drifted from the DP's internal walk and bucket interpolation rounds the
+        // small amounts — a mild ~1.8% under-conversion here, well within 3%.
+        const detTotal = [...detConversions.values()].reduce((s, a) => s + a, 0);
+        const mcTotal = [...mcConversions.values()].reduce((s, a) => s + a, 0);
+        expect(Math.abs(mcTotal - detTotal) / detTotal).toBeLessThan(0.03);
     });
 });

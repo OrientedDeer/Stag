@@ -1,14 +1,12 @@
 import { MonteCarloConfig, ScenarioResult, MonteCarloSummary } from './MonteCarloTypes';
 import { SeededRandom } from './RandomGenerator';
 import { analyzeScenario, summarizeScenarios } from './MonteCarloAggregator';
-import { runSimulation, runSimulationWithOptimization } from '../components/Objects/Assumptions/useSimulation';
-import { AnyAccount, InvestedAccount } from '../components/Objects/Accounts/models';
-import { SimulationYear } from './simulation/types';
-import { getTotalTraditionalBalance } from './simulation/YearSolver';
+import { runSimulation, buildMcConversionPolicy } from '../components/Objects/Assumptions/useSimulation';
+import { AnyAccount } from '../components/Objects/Accounts/models';
+import { DPPolicy } from './simulation/RothConversionDP';
 import { AnyIncome } from '../components/Objects/Income/models';
 import { AnyExpense } from '../components/Objects/Expense/models';
 import { AssumptionsState, getLifeExpectancy, getBirthYear } from '../components/Objects/Assumptions/AssumptionsContext';
-import { resolveRothConversionStrategy } from '../components/Objects/Assumptions/rothConversionStrategy';
 import { TaxState } from '../components/Objects/Taxes/TaxContext';
 
 /**
@@ -24,100 +22,46 @@ import { TaxState } from '../components/Objects/Taxes/TaxContext';
  * @param taxState - Tax configuration
  * @returns ScenarioResult for this scenario
  */
-/** Total Traditional (pre-tax 401k + IRA) balance in a SimulationYear's EOY accounts. */
-function tradBalanceOf(year: SimulationYear): number {
-    return year.accounts
-        .filter((a): a is InvestedAccount =>
-            a instanceof InvestedAccount &&
-            (a.taxType === 'Traditional 401k' || a.taxType === 'Traditional IRA'))
-        .reduce((sum, a) => sum + a.vestedAmount, 0);
-}
-
 /**
- * Pre-solved DP conversion plan reused across all MC paths, with a NON-ANTICIPATIVE
- * adaptive overlay (#93).
+ * Closed-loop DP conversion POLICY, solved ONCE per run and reused on every MC
+ * path (#98, replaces the #93 scalar-ratio overlay).
  *
- * THE PLAN (open-loop core). The DP is a precomputed strategy: unlike rate-match it
- * needs a plan built up front, so a raw single-pass runSimulation under the
- * dp-precomputed default would convert $0. We solve it ONCE deterministically against
- * the user's projection RoR (cheap relative to the per-path loop) and reuse it on every
- * path. Undefined when the strategy isn't dp-precomputed (or tax optimization is off),
- * in which case runSimulation's per-year rate-match runs.
+ * THE POLICY. The DP is turned STOCHASTIC: it integrates the return distribution
+ * MC actually draws (Normal(mean, stdDev)) into the V-table transition and solves
+ * once to produce the optimal conversion as a FUNCTION of (year, trad, roth)
+ * state — see useSimulation.buildMcConversionPolicy / RothConversionDP. Each MC
+ * path then LOOKS UP the policy at its realized state each year
+ * (YearSolver.planConversionDP via lookupConversionPolicy) — a per-path
+ * re-optimization of both the amount AND whether to convert, with no re-solve.
  *
- * THE ADAPTIVE OVERLAY (#93). Replaying FIXED per-year dollar amounts on every path is
- * open-loop and least faithful on the left tail: on an early-crash path it still fires
- * "convert $X", draining stressed liquid assets to pay conversion tax — behavior an
- * adaptive retiree would trim. Instead of re-solving the DP per path per year (~30k
- * solves/run, rejected), we capture from the SAME deterministic solve the EXPECTED
- * start-of-year Traditional balance the plan assumed each year (`expectedTradByYear`),
- * and hand it to the simulation. Per year, the DP conversion strategy scales the planned
- * amount by the ratio of the path's REALIZED start-of-year Traditional balance to that
- * expected balance (clamped, see YearSolver.planConversionDP / MC_ADAPTIVE_RATIO_CAP).
+ * WHY (vs the #93 overlay it replaces). #93 scaled a single deterministic plan by
+ * realized/expected Traditional balance (clamped [0,1.5]) — cheap but it could
+ * over-convert past the DP's bracket on bull paths, never ADD conversion years,
+ * and under-trim across consecutive crashes. The policy re-optimizes from each
+ * realized state, fixing all three. It stays non-anticipative by construction:
+ * the policy integrates over the return DISTRIBUTION, never a path's realized
+ * future, and each path advances on its own draw.
  *
- * WHERE ON THE CHEAP↔RICHER SPECTRUM. This sits in the MIDDLE: richer than a binary
- * "skip conversions in drawdown years" gate (it scales continuously by realized
- * depletion), but far cheaper than a per-year bracket-aware re-solve — it costs one map
- * lookup + one multiply per conversion year and adds ZERO extra simulations beyond the
- * single deterministic solve already done here. The realized Traditional balance is the
- * right signal because it tracks BOTH the conversion source AND portfolio stress: a
- * crash shrinks Traditional, so the rule converts proportionally less, which in turn
- * pulls proportionally less tax from the stressed liquid accounts.
- *
- * GENERALIZATION GUARANTEE. The expected balances come from the deterministic projection
- * that produced the plan, so on a path whose returns track that projection the realized
- * balance equals the expected balance, the ratio is 1, and the scaled amount equals the
- * planned amount EXACTLY. The overlay is therefore a strict generalization of the
- * open-loop plan: identical conversions on the central/on-track path, diverging only as
- * realized balances drift. This keeps the MC median consistent with the deterministic
- * projection shown elsewhere. NON-ANTICIPATIVE: the ratio uses only the balance realized
- * up to the current year — never future returns.
- *
- * LIMITATIONS (documented tradeoffs of the cheap non-anticipative design, not bugs):
- * - Trims do NOT compound cleanly across consecutive crash years. `expectedTrad` is the
- *   deterministic baseline that assumed FULL (un-trimmed) prior conversions, so once an
- *   earlier year is trimmed, realized Traditional is HIGHER than the baseline and later
- *   crash-year ratios are biased up — later years are under-trimmed.
- * - The overlay only SCALES existing plan-conversion years; it never ADDS conversion years
- *   (expectedTradByYear/plan are populated only where the deterministic DP converted, and
- *   planConversionDP gates on plannedConversion > 0). So sustained bull paths under-convert
- *   vs a wealth-level re-optimization, and the median-consistency guarantee is tight only
- *   near the central path — upper-percentile bands understate conversions.
+ * `plan` is the policy's central (mean-trajectory) schedule, threaded as
+ * `dpConversionPlan` so pre-retirement / no-policy years behave as before.
+ * Undefined `policy` ⇒ strategy isn't dp-precomputed (or tax opt off) ⇒ MC falls
+ * back to per-year rate-match.
  */
 interface McConversionPlan {
     plan?: Map<number, number>;
-    /** Expected start-of-year Traditional balance per conversion year (#93). */
-    expectedTradByYear?: Map<number, number>;
+    /** Closed-loop conversion policy looked up per path/year (#98). */
+    policy?: DPPolicy;
 }
 function buildMcConversionPlan(
     yearsToRun: number, accounts: AnyAccount[], incomes: AnyIncome[], expenses: AnyExpense[],
-    assumptions: AssumptionsState, taxState: TaxState,
+    assumptions: AssumptionsState, taxState: TaxState, config: MonteCarloConfig,
 ): McConversionPlan {
-    const strategy = resolveRothConversionStrategy(assumptions.investments.rothConversionStrategy);
-    if (strategy !== 'dp-precomputed' || !assumptions.investments.taxOptimizationEnabled) {
-        return {};
-    }
-    const det = runSimulationWithOptimization(yearsToRun, accounts, incomes, expenses, assumptions, taxState);
-    const plan = new Map<number, number>();
-    // Index the deterministic timeline by year so we can read the prior year's
-    // END-OF-YEAR Traditional balance = the conversion year's START-OF-YEAR balance
-    // (SimulationYear records EOY state; planConversionDP reads start-of-year, i.e.
-    // pre-conversion, balance).
-    const detByYear = new Map<number, SimulationYear>();
-    for (const y of det) detByYear.set(y.year, y);
-    const expectedTradByYear = new Map<number, number>();
-    for (const y of det) {
-        if ((y.rothConversion?.amount ?? 0) <= 0) continue;
-        plan.set(y.year, y.rothConversion!.amount);
-        const prior = detByYear.get(y.year - 1);
-        // Start-of-year Trad = end-of-prior-year Trad. If no prior year is in the
-        // timeline (conversion in the very first sim year), fall back to today's
-        // Traditional balance — the same start-of-year state the path begins from.
-        const expectedTrad = prior
-            ? tradBalanceOf(prior)
-            : getTotalTraditionalBalance(accounts);
-        expectedTradByYear.set(y.year, expectedTrad);
-    }
-    return { plan, expectedTradByYear };
+    const dpPlan = buildMcConversionPolicy(
+        yearsToRun, accounts, incomes, expenses, assumptions, taxState,
+        config.returnMean, config.returnStdDev,
+    );
+    if (!dpPlan) return {};
+    return { plan: dpPlan.conversionsByYear, policy: dpPlan.policy };
 }
 
 function runSingleScenario(
@@ -141,20 +85,18 @@ function runSingleScenario(
     );
 
     // Single-pass per path (MC's purpose is return-variance analysis, not a per-path DP
-    // re-solve). Reuse the pre-solved DP plan when present, but apply it through the #93
-    // NON-ANTICIPATIVE adaptive overlay: `mcPlan.expectedTradByYear` lets the DP strategy
-    // scale each year's planned conversion by realized/expected Traditional balance, so a
-    // crash path trims conversions while an on-track path converts exactly the plan (the
-    // overlay reduces to the open-loop plan when the ratio is 1 — see buildMcConversionPlan).
-    // Without a DP plan (rate-match / opt-off) the extra map is undefined and ignored. No
-    // strategy re-pin needed: selectConversionStrategy resolves an unset field to the
-    // dp-precomputed default, so the plan executes whether the field is 'dp-precomputed' or
-    // undefined (legacy).
+    // re-solve). The pre-solved closed-loop POLICY (#98) is looked up per year at this
+    // path's REALIZED (trad, roth) state — re-optimizing the conversion from each state,
+    // not scaling a fixed plan. `dpConversionPlan` carries the policy's central schedule
+    // for pre-retirement / no-policy years. Without a policy (rate-match / opt-off) both
+    // are undefined and ignored. No strategy re-pin needed: selectConversionStrategy
+    // resolves an unset field to the dp-precomputed default, so the policy executes whether
+    // the field is 'dp-precomputed' or undefined (legacy).
     const timeline = runSimulation(
         yearsToRun, accounts, incomes, expenses, assumptions, taxState, yearlyReturns,
         {
             dpConversionPlan: mcPlan.plan,
-            mcAdaptiveExpectedTrad: mcPlan.expectedTradByYear,
+            mcConversionPolicy: mcPlan.policy,
         },
     );
 
@@ -197,8 +139,8 @@ export async function runMonteCarloSimulation(
         getLifeExpectancy(assumptions.milestones) - (new Date().getFullYear() - getBirthYear(assumptions.milestones))
     );
 
-    // Build the DP conversion plan ONCE (open-loop), replayed on every path below.
-    const mcPlan = buildMcConversionPlan(yearsToRun, accounts, incomes, expenses, assumptions, taxState);
+    // Solve the closed-loop conversion POLICY ONCE (#98), looked up per path below.
+    const mcPlan = buildMcConversionPlan(yearsToRun, accounts, incomes, expenses, assumptions, taxState, config);
 
     // Chunk size for yielding to UI
     const CHUNK_SIZE = 10;
@@ -253,7 +195,7 @@ export function runMonteCarloSimulationSync(
         getLifeExpectancy(assumptions.milestones) - (new Date().getFullYear() - getBirthYear(assumptions.milestones))
     );
 
-    const mcPlan = buildMcConversionPlan(yearsToRun, accounts, incomes, expenses, assumptions, taxState);
+    const mcPlan = buildMcConversionPlan(yearsToRun, accounts, incomes, expenses, assumptions, taxState, config);
 
     for (let i = 0; i < config.numScenarios; i++) {
         const result = runSingleScenario(
