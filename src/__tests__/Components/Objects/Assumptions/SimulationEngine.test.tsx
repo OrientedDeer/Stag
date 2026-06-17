@@ -1330,7 +1330,12 @@ describe('Simulation Engine', () => {
                 milestones: createBuiltinMilestones(1958, 55, 90), // Retired at 55 (early retiree), age 67 in 2025
                 investments: {
                     ...cleanAssumptions.investments,
-                    taxOptimizationEnabled: true
+                    taxOptimizationEnabled: true,
+                    // Pin to rate-match: this test characterizes the per-year bracket-fill
+                    // logic that decides conversions inside a single simulateOneYear call.
+                    // The post-#89 default (dp-precomputed) is open-loop and needs a
+                    // precomputed plan, which a bare simulateOneYear call can't supply.
+                    rothConversionStrategy: 'rate-match'
                 },
                 withdrawalStrategy: [
                     { id: 'ws-trad-1', accountId: 'trad-1', name: 'Traditional 401k' },
@@ -1464,7 +1469,11 @@ describe('Simulation Engine', () => {
                 investments: {
                     ...cleanAssumptions.investments,
                     taxOptimizationEnabled: true,
-                    returnRates: { ror: 7 } // 7% return to project balance growth
+                    returnRates: { ror: 7 }, // 7% return to project balance growth
+                    // Pin to rate-match: this test characterizes the per-year bracket-fill
+                    // (fill the bracket below peak RMD) that runs inside a single
+                    // simulateOneYear call; the dp-precomputed default needs a plan up front.
+                    rothConversionStrategy: 'rate-match'
                 },
                 withdrawalStrategy: [
                     { id: 'ws-trad-1', accountId: 'trad-1', name: 'Traditional 401k' },
