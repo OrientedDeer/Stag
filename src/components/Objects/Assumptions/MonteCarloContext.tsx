@@ -5,6 +5,7 @@ import {
     MonteCarloConfig,
     MonteCarloState,
     MonteCarloAction,
+    MonteCarloSummary,
     defaultMonteCarloConfig,
     initialMonteCarloState,
 } from '../../../services/MonteCarloTypes';
@@ -95,12 +96,17 @@ export function MonteCarloProvider({ children }: { children: ReactNode }): React
             // Run off the main thread (#98) so the ~20s policy solve + path loop
             // don't freeze the UI. Fall back to the main-thread engine if the
             // worker can't be constructed or it errors, so MC always works.
-            let summary;
+            let summary: MonteCarloSummary;
             try {
                 summary = await runMonteCarloInWorker(
                     state.config, accounts, incomes, expenses, assumptions, taxState, onProgress, onPhase,
                 );
-            } catch {
+            } catch (workerErr) {
+                // A permanently-broken worker is otherwise invisible (we silently
+                // run on the main thread); surface it in dev so it's diagnosable.
+                if (import.meta.env.DEV) {
+                    console.warn('Monte Carlo worker unavailable; running on the main thread instead:', workerErr);
+                }
                 // Main-thread fallback blocks the UI, so the phase label can't
                 // animate; mark 'running' for correctness.
                 dispatch({ type: 'SET_PHASE', payload: 'running' });

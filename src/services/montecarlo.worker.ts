@@ -17,13 +17,10 @@ import { reconstituteAccount } from '../components/Objects/Accounts/models';
 import { reconstituteIncome } from '../components/Objects/Income/models';
 import { reconstituteExpense } from '../components/Objects/Expense/models';
 import type { McWorkerRequest, McWorkerResponse } from './montecarloWorkerTypes';
+import { notNull } from '../utils/notNull';
 
 const post = (msg: McWorkerResponse): void =>
     (self as unknown as { postMessage: (m: McWorkerResponse) => void }).postMessage(msg);
-
-function notNull<T>(x: T | null): x is T {
-    return x !== null;
-}
 
 self.onmessage = async (e: MessageEvent): Promise<void> => {
     const req = e.data as McWorkerRequest;
@@ -34,11 +31,14 @@ self.onmessage = async (e: MessageEvent): Promise<void> => {
 
         // Cache key: everything the policy depends on, EXCLUDING seed and
         // numScenarios (they don't change the policy), so re-running with only
-        // those changed is an instant cache hit. Hashed off the raw cloned request
-        // (stable shapes); the current year guards against day-to-day drift.
+        // those changed is an instant cache hit. Hashed off the raw cloned request:
+        // relies on stable structured-clone field ordering, and is collision-guarded
+        // downstream by policyCache's full-key recheck. Rounding rm/rs to 4 decimals
+        // absorbs float noise (benign extra misses otherwise); the current year
+        // guards against day-to-day drift.
         const cacheKey = JSON.stringify({
-            rm: req.config.returnMean,
-            rs: req.config.returnStdDev,
+            rm: Number(req.config.returnMean.toFixed(4)),
+            rs: Number(req.config.returnStdDev.toFixed(4)),
             a: req.accounts,
             i: req.incomes,
             e: req.expenses,

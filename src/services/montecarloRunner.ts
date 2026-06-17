@@ -16,10 +16,7 @@ import type { SimulationYear } from './simulation/types';
 import type { AssumptionsState } from '../components/Objects/Assumptions/AssumptionsContext';
 import type { TaxState } from '../components/Objects/Taxes/TaxContext';
 import type { McWorkerRequest, McWorkerResponse } from './montecarloWorkerTypes';
-
-function notNull<T>(x: T | null): x is T {
-    return x !== null;
-}
+import { notNull } from '../utils/notNull';
 
 /** Rebuild the class instances in one timeline (structured clone strips methods). */
 function reconstituteTimeline(timeline: SimulationYear[]): SimulationYear[] {
@@ -66,6 +63,16 @@ export function runMonteCarloInWorker(
     onPhase?: (phase: 'solving' | 'running') => void,
 ): Promise<MonteCarloSummary> {
     return new Promise<MonteCarloSummary>((resolve, reject) => {
+        // The first of {done, error message, onerror} to fire wins — guards against
+        // double-terminate / double-settle when both onmessage('error') and onerror
+        // fire for one failure (a settled Promise ignores later calls, but we must
+        // not terminate twice or run the 'done' handler after an error).
+        let settled = false;
+        const settle = (fn: () => void): void => {
+            if (settled) return;
+            settled = true;
+            fn();
+        };
         let worker: Worker;
         try {
             worker = new Worker(new URL('./montecarlo.worker.ts', import.meta.url), { type: 'module' });
@@ -80,16 +87,29 @@ export function runMonteCarloInWorker(
             } else if (msg.type === 'progress') {
                 onProgress?.(msg.pct);
             } else if (msg.type === 'done') {
-                worker.terminate();
-                resolve(reconstituteSummary(msg.summary));
+                // Reconstitution can throw — reject (don't let the Promise hang
+                // forever, which would pin the UI's isRunning to true).
+                settle(() => {
+                    worker.terminate();
+                    try {
+                        const summary = reconstituteSummary(msg.summary);
+                        resolve(summary);
+                    } catch (err) {
+                        reject(err instanceof Error ? err : new Error(String(err)));
+                    }
+                });
             } else {
-                worker.terminate();
-                reject(new Error(msg.message));
+                settle(() => {
+                    worker.terminate();
+                    reject(new Error(msg.message));
+                });
             }
         };
         worker.onerror = (ev: ErrorEvent) => {
-            worker.terminate();
-            reject(new Error(ev.message || 'Monte Carlo worker error'));
+            settle(() => {
+                worker.terminate();
+                reject(new Error(ev.message || 'Monte Carlo worker error'));
+            });
         };
         const req: McWorkerRequest = {
             config,
