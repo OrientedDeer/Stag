@@ -11,7 +11,8 @@
  * summary is posted back and re-reconstituted on the main thread
  * (see montecarloRunner.reconstituteSummary).
  */
-import { runMonteCarloSimulation } from './MonteCarloEngine';
+import { runMonteCarloSimulation, solveMcConversionPlan } from './MonteCarloEngine';
+import { getCachedPlan, putCachedPlan } from './policyCache';
 import { reconstituteAccount } from '../components/Objects/Accounts/models';
 import { reconstituteIncome } from '../components/Objects/Income/models';
 import { reconstituteExpense } from '../components/Objects/Expense/models';
@@ -30,9 +31,31 @@ self.onmessage = async (e: MessageEvent): Promise<void> => {
         const accounts = req.accounts.map(reconstituteAccount).filter(notNull);
         const incomes = req.incomes.map(reconstituteIncome).filter(notNull);
         const expenses = req.expenses.map(reconstituteExpense).filter(notNull);
+
+        // Cache key: everything the policy depends on, EXCLUDING seed and
+        // numScenarios (they don't change the policy), so re-running with only
+        // those changed is an instant cache hit. Hashed off the raw cloned request
+        // (stable shapes); the current year guards against day-to-day drift.
+        const cacheKey = JSON.stringify({
+            rm: req.config.returnMean,
+            rs: req.config.returnStdDev,
+            a: req.accounts,
+            i: req.incomes,
+            e: req.expenses,
+            as: req.assumptions,
+            ts: req.taxState,
+            y: new Date().getFullYear(),
+        });
+        let plan = await getCachedPlan(cacheKey);
+        if (!plan) {
+            plan = solveMcConversionPlan(req.config, accounts, incomes, expenses, req.assumptions, req.taxState);
+            await putCachedPlan(cacheKey, plan); // no-op when there's no policy (non-DP)
+        }
+
         const summary = await runMonteCarloSimulation(
             req.config, accounts, incomes, expenses, req.assumptions, req.taxState,
             (pct) => post({ type: 'progress', pct }),
+            plan,
         );
         post({ type: 'done', summary });
     } catch (err) {
