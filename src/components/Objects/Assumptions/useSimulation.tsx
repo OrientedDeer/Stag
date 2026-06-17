@@ -279,11 +279,13 @@ function runSimulationLoop(args: {
             returnOverride,
             previousActiveMilestones,
             milestoneReachYears,
-            baseline,
-            conversionMode,
-            dpConversionPlan,
-            dpDebugByYear,
-            mcAdaptiveExpectedTrad,
+            {
+                baselineProjections: baseline,
+                conversionMode,
+                dpConversionPlan,
+                dpDebugByYear,
+                mcAdaptiveExpectedTrad,
+            },
         );
 
         timeline.push(result);

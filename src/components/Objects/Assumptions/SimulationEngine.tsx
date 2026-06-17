@@ -139,6 +139,27 @@ function activeFundedGoals(milestoneFilteredExpenses: AnyExpense[]): AnyExpense[
 }
 
 /**
+ * Per-year conversion-decision knobs for `simulateOneYear` /
+ * `simulateOneYearWithNewEngine`. Bagged into one object (#99 follow-up to #97)
+ * so the trailing optional Maps can't silently misalign positionally — two of
+ * them (`dpConversionPlan`, `mcAdaptiveExpectedTrad`) share the
+ * `Map<number, number>` type, so a positional swap would NOT be caught by the
+ * type checker. Fed straight into YearSolverInput.
+ */
+export interface SimulateOneYearOptions {
+    /** Per-year sub-sim baseline projections feeding the conversion ceiling. */
+    baselineProjections?: BaselineProjections;
+    /** Conversion-decision mode for the rate-match path. Default 'rate-match'. */
+    conversionMode?: 'rate-match' | 'std-ded-only';
+    dpConversionPlan?: Map<number, number>;
+    dpDebugByYear?: Map<number, string[]>;
+    /** #93 MC non-anticipative adaptive overlay: per-year expected start-of-year
+     *  Traditional balance from the deterministic projection. MC path only;
+     *  undefined in production. */
+    mcAdaptiveExpectedTrad?: Map<number, number>;
+}
+
+/**
  * Simulate one year using the new YearSolver-based engine.
  *
  * This is the V2 engine that uses:
@@ -157,14 +178,15 @@ function simulateOneYearWithNewEngine(
     returnOverride?: number,
     previousActiveMilestones: string[] = [],
     previousMilestoneReachYears: Map<string, number> = new Map(),
-    baselineProjections?: BaselineProjections,
-    conversionMode: 'rate-match' | 'std-ded-only' = 'rate-match',
-    dpConversionPlan?: Map<number, number>,
-    dpDebugByYear?: Map<number, string[]>,
-    /** #93 MC non-anticipative adaptive overlay: per-year expected start-of-year
-     *  Traditional balance from the deterministic projection. MC path only. */
-    mcAdaptiveExpectedTrad?: Map<number, number>,
+    options: SimulateOneYearOptions = {},
 ): SimulationYear {
+    const {
+        baselineProjections,
+        conversionMode = 'rate-match',
+        dpConversionPlan,
+        dpDebugByYear,
+        mcAdaptiveExpectedTrad,
+    } = options;
     const logs: string[] = [];
     logs.push('[V2 Engine] Using new YearSolver-based simulation');
 
@@ -821,18 +843,11 @@ export function simulateOneYear(
     returnOverride?: number,
     previousActiveMilestones: string[] = [],
     previousMilestoneReachYears: Map<string, number> = new Map(),
-    baselineProjections?: BaselineProjections,
-    conversionMode: 'rate-match' | 'std-ded-only' = 'rate-match',
-    dpConversionPlan?: Map<number, number>,
-    dpDebugByYear?: Map<number, string[]>,
-    /** #93 MC non-anticipative adaptive overlay (per-year expected start-of-year
-     *  Traditional balance). MC path only; undefined in production. */
-    mcAdaptiveExpectedTrad?: Map<number, number>,
+    options: SimulateOneYearOptions = {},
 ): SimulationYear {
     return simulateOneYearWithNewEngine(
         year, incomes, expenses, accounts, assumptions, taxState,
         previousSimulation, returnOverride, previousActiveMilestones,
-        previousMilestoneReachYears, baselineProjections, conversionMode,
-        dpConversionPlan, dpDebugByYear, mcAdaptiveExpectedTrad,
+        previousMilestoneReachYears, options,
     );
 }
