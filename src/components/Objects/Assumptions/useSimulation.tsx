@@ -10,6 +10,7 @@ import { TaxState, resolveTaxEventsForYear } from '../Taxes/TaxContext';
 import { BaselineProjections } from '../../../services/simulation/types';
 import { getRMDStartAge } from '../../../data/RMDData';
 import { buildDPYearContexts, planConversionsViaDP, DPPlan, DPInputs, DPObjectiveOptions, DPPolicy, QuadratureNodes } from '../../../services/simulation/RothConversionDP';
+import { getTotalBrokerageBalance, getTotalTraditionalBalance, getTotalRothBalance } from '../../../services/simulation/YearSolver';
 import { buildTradValuation, terminalAfterTaxNetWorth } from '../../../tabs/Future/tabs/FutureUtils';
 
 /**
@@ -245,16 +246,13 @@ function runSimulationLoop(args: {
     dpConversionPlan?: Map<number, number>;
     /** Per-year DP solver debug strings; keyed by simulation year. */
     dpDebugByYear?: Map<number, string[]>;
-    /** #93 MC non-anticipative adaptive overlay: per-year expected start-of-year
-     *  Traditional balance from the deterministic projection. MC path only. */
-    mcAdaptiveExpectedTrad?: Map<number, number>;
-    /** #98 closed-loop conversion policy (supersedes the #93 overlay). MC path only. */
+    /** #98 closed-loop conversion policy. MC path only. */
     mcConversionPolicy?: DPPolicy;
 }): void {
     let { currentAccounts, currentIncomes, currentExpenses, previousActiveMilestones } = args;
     const { milestoneReachYears, timeline, assumptions, taxState, yearlyReturns,
             previousSimYear, yearsToRun, conversionMode, baselineProvider, dpConversionPlan, dpDebugByYear,
-            mcAdaptiveExpectedTrad, mcConversionPolicy } = args;
+            mcConversionPolicy } = args;
 
     for (let i = 1; i <= yearsToRun; i++) {
         const simulationYear = previousSimYear + i;
@@ -286,7 +284,6 @@ function runSimulationLoop(args: {
                 conversionMode,
                 dpConversionPlan,
                 dpDebugByYear,
-                mcAdaptiveExpectedTrad,
                 mcConversionPolicy,
             },
         );
@@ -332,19 +329,10 @@ export interface RunSimulationOptions {
     /** MortgageExpense id → principal $ to subtract from its loan_balance on
      *  the synthetic EOY row (mortgages don't live on a DebtAccount). */
     eoyMortgageReductions?: Record<string, number>;
-    /** #93 Monte Carlo NON-ANTICIPATIVE adaptive overlay. Per-year EXPECTED
-     *  start-of-year Traditional balance from the deterministic projection the
-     *  `dpConversionPlan` was solved against. Set ONLY by the MC engine; the
-     *  production/deterministic call sites leave it undefined, so the executed
-     *  conversions are byte-for-byte the precomputed plan. When present, the DP
-     *  conversion strategy scales each year's planned amount by realized/expected
-     *  Traditional balance — see YearSolver.planConversionDP. */
-    mcAdaptiveExpectedTrad?: Map<number, number>;
-    /** #98 closed-loop conversion POLICY (supersedes `mcAdaptiveExpectedTrad`).
-     *  Set ONLY by the MC engine; the production/deterministic call sites leave it
-     *  undefined. When present, the DP conversion strategy looks up the conversion
-     *  at the path's realized (Traditional, Roth) state instead of scaling a fixed
-     *  plan — see YearSolver.planConversionDP. */
+    /** #98 closed-loop conversion POLICY. Set ONLY by the MC engine; the
+     *  production/deterministic call sites leave it undefined. When present, the DP
+     *  conversion strategy looks up the conversion at the path's realized
+     *  (Traditional, Roth) state — see YearSolver.planConversionDP. */
     mcConversionPolicy?: DPPolicy;
 }
 
@@ -367,7 +355,6 @@ export const runSimulation = (
         eoyContributionAdditions,
         eoyDebtReductions,
         eoyMortgageReductions,
-        mcAdaptiveExpectedTrad,
         mcConversionPolicy,
     } = options;
 
@@ -670,7 +657,6 @@ export const runSimulation = (
         baselineProvider,
         dpConversionPlan,
         dpDebugByYear,
-        mcAdaptiveExpectedTrad,
         mcConversionPolicy,
     });
 
@@ -702,15 +688,9 @@ function buildDpSolveInputs(
     // fallback handles the already-retired-today case where no prior baseline
     // year exists. Mirrors the trad/roth fallback below.
     const preRetirementSimYearForBrokerage = baselineTimeline.find(y => y.year === retirementYear - 1);
-    const startingBrokerageBalance = preRetirementSimYearForBrokerage
-        ? preRetirementSimYearForBrokerage.accounts
-            .filter((a): a is InvestedAccount =>
-                a instanceof InvestedAccount && a.taxType === 'Brokerage')
-            .reduce((sum, a) => sum + a.vestedAmount, 0)
-        : accounts
-            .filter((a): a is InvestedAccount =>
-                a instanceof InvestedAccount && a.taxType === 'Brokerage')
-            .reduce((sum, a) => sum + a.vestedAmount, 0);
+    const startingBrokerageBalance = getTotalBrokerageBalance(
+        (preRetirementSimYearForBrokerage ?? { accounts }).accounts,
+    );
 
     // The final sim (Pass 3) runs against the SAME future-year tax state and
     // calibrated assumptions that runSimulation derives internally. Derive
@@ -749,31 +729,14 @@ function buildDpSolveInputs(
     // year 0's flows). If the user retires in the very first sim year
     // (no pre-retirement records), fall back to today's account balances.
     const preRetirementSimYear = baselineTimeline.find(y => y.year === retirementYear - 1);
-    let startingTradBalance: number;
-    let startingRothBalance: number;
-    if (preRetirementSimYear) {
-        startingTradBalance = preRetirementSimYear.accounts
-            .filter((a): a is InvestedAccount =>
-                a instanceof InvestedAccount &&
-                (a.taxType === 'Traditional 401k' || a.taxType === 'Traditional IRA'))
-            .reduce((sum, a) => sum + a.vestedAmount, 0);
-        startingRothBalance = preRetirementSimYear.accounts
-            .filter((a): a is InvestedAccount =>
-                a instanceof InvestedAccount && a.taxType === 'Roth IRA')
-            .reduce((sum, a) => sum + a.vestedAmount, 0);
-    } else {
-        // Already retired (or retiring in year 0): no prior baseline year
-        // exists. Use today's actual balances.
-        startingTradBalance = accounts
-            .filter((a): a is InvestedAccount =>
-                a instanceof InvestedAccount &&
-                (a.taxType === 'Traditional 401k' || a.taxType === 'Traditional IRA'))
-            .reduce((sum, a) => sum + a.vestedAmount, 0);
-        startingRothBalance = accounts
-            .filter((a): a is InvestedAccount =>
-                a instanceof InvestedAccount && a.taxType === 'Roth IRA')
-            .reduce((sum, a) => sum + a.vestedAmount, 0);
-    }
+    // Pull from the pre-retirement baseline row when it exists (captures
+    // pre-retirement growth + 401k contributions); otherwise fall back to today's
+    // actual balances (already retired / retiring in year 0). Same tax-type filters
+    // and vested-balance weighting as the YearSolver helpers, so the DP inputs are
+    // identical to the prior inlined sums.
+    const startingBalanceAccounts = (preRetirementSimYear ?? { accounts }).accounts;
+    const startingTradBalance = getTotalTraditionalBalance(startingBalanceAccounts);
+    const startingRothBalance = getTotalRothBalance(startingBalanceAccounts);
     // Production dp-precomputed = max-wealth with the bracket-aware terminal
     // valuation (#89), parameterized by the user's self-liquidate-vs-bequeath
     // choice. A caller-supplied `dpObjective` (tests) overrides this so the
@@ -844,10 +807,33 @@ export const buildMcConversionPolicy = (
     );
     // Re-center the DP's per-account deterministic rates on the MC draw mean and
     // add the MC volatility as the common shock. `meanShift` is the gap between
-    // the MC mean and the deterministic base rate (ror + inflation), in decimal;
-    // matching how MC applies overrideReturnRate as (R − ER)/100.
-    const rorBase = (assumptions.investments.returnRates.ror ?? 7)
-        + (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0);
+    // the MC mean and the deterministic base rate, in decimal; matching how MC
+    // applies overrideReturnRate as (R − ER)/100.
+    //
+    // CRITICAL (#98 review): `ctx.growthRate` is the TRADITIONAL-BALANCE-WEIGHTED
+    // average of per-account `(customROR ?? globalRoR) + inflation − expenseRatio`
+    // (see getNetGrowthRate in RothConversionDP.ts). Monte Carlo's
+    // InvestedAccount.increment grows every account at `(returnMean − ER)/100`,
+    // IGNORING customROR when an override is present. So a flat `rorBase` built
+    // from the GLOBAL ror would center the policy on the wrong drift whenever any
+    // Traditional account carries a customROR ≠ global. Instead build `rorBase`
+    // as the Traditional-balance-weighted average of `(customROR ?? globalRoR)`
+    // (+ inflation), using the SAME tax-type filter and balance weighting as
+    // getNetGrowthRate but WITHOUT subtracting ER (ER stays inside ctx.growthRate).
+    // Then `ctx.growthRate + meanShift == (returnMean − weighted-ER)/100` exact on
+    // the Traditional axis. The Roth axis reuses this same scalar meanShift, so a
+    // residual remains only when the Roth accounts' customROR blend differs from
+    // the Traditional accounts' — an accepted second-order approximation.
+    const globalRoR = assumptions.investments.returnRates.ror ?? 7;
+    const inflation = assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0;
+    const tradAccounts = accounts.filter((a): a is InvestedAccount =>
+        a instanceof InvestedAccount &&
+        (a.taxType === 'Traditional 401k' || a.taxType === 'Traditional IRA'));
+    const tradTotal = tradAccounts.reduce((s, a) => s + a.vestedAmount, 0);
+    const weightedRoR = tradTotal > 0
+        ? tradAccounts.reduce((sum, a) => sum + (a.customROR ?? globalRoR) * a.vestedAmount, 0) / tradTotal
+        : globalRoR;
+    const rorBase = weightedRoR + inflation;
     return planConversionsViaDP(dpInputs, {
         ...effectiveDpObjective,
         returnDistribution: {

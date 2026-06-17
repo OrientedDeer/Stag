@@ -142,10 +142,9 @@ function activeFundedGoals(milestoneFilteredExpenses: AnyExpense[]): AnyExpense[
 /**
  * Per-year conversion-decision knobs for `simulateOneYear` /
  * `simulateOneYearWithNewEngine`. Bagged into one object (#99 follow-up to #97)
- * so the trailing optional Maps can't silently misalign positionally — two of
- * them (`dpConversionPlan`, `mcAdaptiveExpectedTrad`) share the
- * `Map<number, number>` type, so a positional swap would NOT be caught by the
- * type checker. Fed straight into YearSolverInput.
+ * so the trailing optional Maps can't silently misalign positionally — e.g.
+ * `dpConversionPlan` and `dpDebugByYear` would not be caught by the type checker
+ * on a positional swap. Fed straight into YearSolverInput.
  */
 export interface SimulateOneYearOptions {
     /** Per-year sub-sim baseline projections feeding the conversion ceiling. */
@@ -154,12 +153,7 @@ export interface SimulateOneYearOptions {
     conversionMode?: 'rate-match' | 'std-ded-only';
     dpConversionPlan?: Map<number, number>;
     dpDebugByYear?: Map<number, string[]>;
-    /** #93 MC non-anticipative adaptive overlay: per-year expected start-of-year
-     *  Traditional balance from the deterministic projection. MC path only;
-     *  undefined in production. */
-    mcAdaptiveExpectedTrad?: Map<number, number>;
-    /** #98 closed-loop conversion policy (supersedes the #93 overlay). MC path
-     *  only; undefined in production. */
+    /** #98 closed-loop conversion policy. MC path only; undefined in production. */
     mcConversionPolicy?: DPPolicy;
 }
 
@@ -189,7 +183,6 @@ function simulateOneYearWithNewEngine(
         conversionMode = 'rate-match',
         dpConversionPlan,
         dpDebugByYear,
-        mcAdaptiveExpectedTrad,
         mcConversionPolicy,
     } = options;
     const logs: string[] = [];
@@ -469,7 +462,6 @@ function simulateOneYearWithNewEngine(
         conversionMode,
         dpConversionPlan,
         dpDebugByYear,
-        mcAdaptiveExpectedTrad,
         mcConversionPolicy,
     };
 

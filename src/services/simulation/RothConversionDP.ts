@@ -822,6 +822,15 @@ function evaluateCell(
      * results are numerically identical.
      */
     precomputedInitialTax?: number,
+    /**
+     * When true, skip growing the pre-growth end-of-year balances — return
+     * `tradNext = tradPre` and `rothNext = rothPre` (the two multiplies). The
+     * STOCHASTIC backward sweep (#98) discards tradNext/rothNext (it grows
+     * `tradPre`/`rothPre` by each return-quadrature node instead), so the
+     * deterministic growth is dead work on that hot path. Deterministic callers
+     * read tradNext/rothNext and must NOT pass this (default false ⇒ unchanged).
+     */
+    skipGrowth: boolean = false,
 ): {
     yearTax: number;
     conversionMarginal: number;
@@ -920,8 +929,10 @@ function evaluateCell(
     // `tradPre`/`rothPre` by each return-quadrature node and takes the expectation.
     const tradPre = Math.max(0, tradBalance - conversion - rmd - tradSpending);
     const rothPre = Math.max(0, rothBalance + conversion - fromRoth);
-    const tradNext = tradPre * (1 + ctx.growthRate);
-    const rothNext = rothPre * (1 + ctx.rothGrowthRate);
+    // The stochastic sweep (skipGrowth) grows tradPre/rothPre per quadrature node
+    // and ignores these, so skip the two multiplies on that hot path.
+    const tradNext = skipGrowth ? tradPre : tradPre * (1 + ctx.growthRate);
+    const rothNext = skipGrowth ? rothPre : rothPre * (1 + ctx.rothGrowthRate);
 
     return {
         yearTax,
@@ -1072,24 +1083,31 @@ export function buildShockQuadrature(stdDev: number, nodes: QuadratureNodes = 7)
 
 /**
  * Look up the closed-loop conversion policy (#98) at a realized
- * `(year, trad, roth)` state via bilinear interpolation. Returns `undefined`
- * when the year has no policy entry (e.g. pre-retirement years, or a
- * deterministic plan with no policy). The result is clamped to the gross
- * feasible range `[0, trad]` so the contract is safe for every caller (you can't
- * convert more Traditional than you have, or a negative amount); callers refine
- * with the RMD-aware ceiling. Note: interpolating the argmax conversion across
- * grid cells yields an in-between amount near bracket edges — an accepted
- * smoothing approximation (a non-conversion year stays $0 since its whole
- * neighborhood is 0).
+ * `(year, trad, roth)` state via NEAREST-NEIGHBOR (nearest grid cell). Returns
+ * `undefined` when the year has no policy entry (e.g. pre-retirement years, or a
+ * deterministic plan with no policy). The result is clamped to the gross feasible
+ * range `[0, trad]` so the contract is safe for every caller (you can't convert
+ * more Traditional than you have, or a negative amount); callers refine with the
+ * RMD-aware ceiling.
+ *
+ * Nearest-neighbor (not bilinear) so the lookup only ever returns a conversion
+ * amount the DP ACTUALLY chose at some grid cell — never a synthesized in-between
+ * amount near a bracket edge. Both callers see this: the MC per-path lookup in
+ * YearSolver and the stochastic central-schedule forward walk below. The nearest
+ * index uses the same clamping convention as interpV2DByIndex (negative → 0,
+ * over-max → buckets).
  */
 export function lookupConversionPolicy(
     policy: DPPolicy, year: number, trad: number, roth: number,
 ): number | undefined {
     const entry = policy.byYear.get(year);
     if (!entry) return undefined;
-    const raw = interpV2D(
-        entry.table, trad, roth, entry.dB, entry.dRoth, policy.tradBuckets, policy.rothBuckets,
-    );
+    // dB/dRoth are > 0 by construction (MIN_BALANCE_RANGE floor in determineGridScales).
+    const tiRaw = entry.dB > 0 ? Math.round(trad / entry.dB) : 0;
+    const riRaw = entry.dRoth > 0 ? Math.round(roth / entry.dRoth) : 0;
+    const ti = tiRaw < 0 ? 0 : (tiRaw > policy.tradBuckets ? policy.tradBuckets : tiRaw);
+    const ri = riRaw < 0 ? 0 : (riRaw > policy.rothBuckets ? policy.rothBuckets : riRaw);
+    const raw = entry.table[ti * (policy.rothBuckets + 1) + ri];
     return Math.max(0, Math.min(raw, Math.max(0, trad)));
 }
 
@@ -1464,13 +1482,23 @@ export function planConversionsViaDP(
     );
 
     // Stochastic solve (#98): size the grid to the MC mean path (drift = meanShift)
-    // with extra headroom (~+2σ) so a typical year's up-shock doesn't land past the
-    // next year's grid edge and get silently clamped by interpV2D. The rare
-    // outermost node can still clamp — bounded, low-weight, and covering it fully
-    // would wreck bulk resolution. Deterministic solve passes 0 / default → grid
-    // unchanged.
+    // with extra UP-headroom so a sustained bull run doesn't compound past the next
+    // year's grid edge and get silently clamped by interpV2D (under-converting — the
+    // opposite of #98's goal). A flat +2σ only covers ONE year's up-shock; over a
+    // multi-year horizon the up-shocks ACCUMULATE, so the buffer is scaled by
+    // √horizon (random-walk std-dev growth), capped so a long horizon can't coarsen
+    // the fixed-bucket grid resolution to uselessness. The rare outermost node can
+    // still clamp — bounded, low-weight. Deterministic solve (quad null) passes 0 /
+    // BALANCE_HEADROOM_FACTOR → grid byte-for-byte unchanged.
     const gridDrift = stochastic ? meanShift : 0;
-    const gridHeadroom = quad ? BALANCE_HEADROOM_FACTOR + 2 * quad.stdDev : BALANCE_HEADROOM_FACTOR;
+    const STOCH_HEADROOM_SIGMA_K = 2;       // σ multiplier (per √year)
+    const STOCH_HEADROOM_SIGMA_CAP = 1.5;   // max σ-buffer added on top of BALANCE_HEADROOM_FACTOR
+    const gridHeadroom = quad
+        ? BALANCE_HEADROOM_FACTOR + Math.min(
+            STOCH_HEADROOM_SIGMA_CAP,
+            STOCH_HEADROOM_SIGMA_K * quad.stdDev * Math.sqrt(horizonYears),
+        )
+        : BALANCE_HEADROOM_FACTOR;
     const { dBByYear, dRothByYear, dCByYear } = determineGridScales(
         contexts, currentTradBalance, currentRothBalance, gridDrift, gridHeadroom,
     );
@@ -1694,8 +1722,12 @@ export function planConversionsViaDP(
 
                 for (let ci = 0; ci <= CONVERSION_BUCKETS; ci++) {
                     const c = Math.min(ci * dCByYear[t], cMax);
+                    // skipGrowth only when stochastic (quad present): that branch reads
+                    // tradPre/rothPre and grows them per node, so tradNext/rothNext are
+                    // dead. The deterministic branch (quad null) reads tradNext/rothNext,
+                    // so it must keep growth → byte-for-byte unchanged.
                     const { yearTax, tradPre, rothPre, tradNext, rothNext, unmetNeed, fromBrokerage, ordinarySurplus } =
-                        evaluateCell(b, r, c, ctx, taxBaseline, initialTaxByCi[ci]);
+                        evaluateCell(b, r, c, ctx, taxBaseline, initialTaxByCi[ci], !!quad);
 
                     // Future value: deterministic per-account lookup, or — when a
                     // return distribution is supplied (#98) — the expectation over
@@ -1804,7 +1836,9 @@ export function planConversionsViaDP(
             // refine with the RMD-aware ceiling.
             const cRaw = lookupConversionPolicy(policy, ctx.year, trad, roth) ?? 0;
             const c = Math.min(cRaw, cMaxFwd);
-            const { tradPre, rothPre } = evaluateCell(trad, roth, c, ctx, taxBaseline);
+            // Stochastic central walk reads only tradPre/rothPre (it steps the
+            // trajectory at the mean rate below), so skip the dead growth multiplies.
+            const { tradPre, rothPre } = evaluateCell(trad, roth, c, ctx, taxBaseline, undefined, true);
             conversionsByYear.set(ctx.year, c);
             perYearAmounts.push({ year: ctx.year, age: ctx.age, amount: c, estimatedTradBalance: trad });
             // Lightweight per-year debug for the stochastic mean path (#98): the
@@ -1826,7 +1860,12 @@ export function planConversionsViaDP(
         }
     }
 
-    for (let t = 0; !stochastic && t < horizonYears; t++) {
+    // Deterministic forward extract (diagnostic-heavy argmax re-walk). Gated by a
+    // clear `if (!stochastic)` guard rather than a `!stochastic &&` short-circuit
+    // baked into the for-condition (#98 review readability). The stochastic central
+    // schedule is emitted above via the policy walk. Body is golden-mastered.
+    if (!stochastic) {
+    for (let t = 0; t < horizonYears; t++) {
         // Price against the tail-IRMAA-skipped context so the forward extract
         // matches the backward sweep's V-table (see solveContexts).
         const ctx = solveContexts[t];
@@ -2067,6 +2106,7 @@ export function planConversionsViaDP(
 
         trad = bestTradNext;
         roth = bestRothNext;
+    }
     }
 
     const elapsedMs = performance.now() - startedAt;
