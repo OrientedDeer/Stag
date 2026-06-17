@@ -199,7 +199,7 @@ function runFullHorizon(): number {
         createAssumptions(),
         createTaxState(),
         YEARLY_RETURNS,
-        REFERENCE_DATE,
+        { referenceDate: REFERENCE_DATE },
     );
     return timeline.length;
 }
@@ -213,7 +213,7 @@ function runFullHorizon(): number {
 {
     const timeline = runSimulation(
         YEARS_TO_RUN, createAccounts(), createIncomes(), createExpenses(),
-        createAssumptions(), createTaxState(), YEARLY_RETURNS, REFERENCE_DATE,
+        createAssumptions(), createTaxState(), YEARLY_RETURNS, { referenceDate: REFERENCE_DATE },
     );
     const simYears = timeline.filter(y => !y.isEndOfYearProjection);
     const lastYear = simYears[simYears.length - 1];

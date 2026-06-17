@@ -182,7 +182,7 @@ describe('Tax Optimization Integration Tests', () => {
             assumptions,
             taxState,
             undefined,
-            new Date(2025, 11, 31)
+            { referenceDate: new Date(2025, 11, 31) }
         );
 
         expect(simulation.length).toBeGreaterThan(0);
@@ -199,7 +199,7 @@ describe('Tax Optimization Integration Tests', () => {
             assumptions,
             taxState,
             undefined,
-            new Date(2025, 11, 31)
+            { referenceDate: new Date(2025, 11, 31) }
         );
 
         expect(simulation.length).toBeGreaterThan(0);
@@ -518,7 +518,7 @@ describe('Tax Optimization Integration Tests', () => {
                 assumptions,
                 taxState,
                 undefined,
-                new Date(2025, 11, 31)
+                { referenceDate: new Date(2025, 11, 31) }
             );
 
             expect(simulation.length).toBe(tradYearsToSimulate);

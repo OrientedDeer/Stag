@@ -171,7 +171,7 @@ describe('Critical Simulation Logic', () => {
         ];
 
         // --- EXECUTE ---
-        const result = runSimulation(2, accounts, income, expenses, zeroGrowthAssumptions, mockTaxState, undefined, new Date(2025, 11, 31));
+        const result = runSimulation(2, accounts, income, expenses, zeroGrowthAssumptions, mockTaxState, undefined, { referenceDate: new Date(2025, 11, 31) });
         const year1 = result[1];
 
         // --- ASSERT ---
@@ -209,7 +209,7 @@ describe('Critical Simulation Logic', () => {
         const longDurationHint = 50;
 
         // --- EXECUTE ---
-        const result = runSimulation(longDurationHint, [], [], [], cliffAssumptions, mockTaxState, undefined, new Date(2025, 11, 31));
+        const result = runSimulation(longDurationHint, [], [], [], cliffAssumptions, mockTaxState, undefined, { referenceDate: new Date(2025, 11, 31) });
 
         // --- ASSERT ---
         // The simulation runs from age 30 up to and *including* age 40.
@@ -254,7 +254,7 @@ describe('Critical Simulation Logic', () => {
         ];
 
         // --- EXECUTE ---
-        const result = runSimulation(2, accounts, income, expenses, fixedCapAssumptions, mockTaxState, undefined, new Date(2025, 11, 31));
+        const result = runSimulation(2, accounts, income, expenses, fixedCapAssumptions, mockTaxState, undefined, { referenceDate: new Date(2025, 11, 31) });
         const year1 = result[1];
 
         // --- ASSERT ---

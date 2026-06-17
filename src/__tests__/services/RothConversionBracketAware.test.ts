@@ -232,7 +232,7 @@ describe('#89 over-conversion guard — DP at the interior wealth peak', { timeo
         const scoreScaled = (k: number): number => {
             const scaled = new Map<number, number>();
             for (const [yr, amt] of plan) scaled.set(yr, amt * k);
-            const res = runSimulation(YRS, accS2(), incS2(), expS2(), exec, taxState, undefined, refS2, 'rate-match', false, scaled);
+            const res = runSimulation(YRS, accS2(), incS2(), expS2(), exec, taxState, undefined, { referenceDate: refS2, conversionMode: 'rate-match', useRollingBaseline: false, dpConversionPlan: scaled });
             return score(res);
         };
         const grid = [0.5, 0.75, 1.0, 1.25, 1.5];

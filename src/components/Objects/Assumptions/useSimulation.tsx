@@ -300,6 +300,42 @@ function runSimulationLoop(args: {
     }
 }
 
+/**
+ * Trailing optional bag for `runSimulation`. The leading args (years, accounts,
+ * incomes, expenses, assumptions, taxState, yearlyReturns) stay positional; every
+ * optional knob lives here so call sites are self-documenting and inserting a new
+ * option can't silently shift an existing one into the wrong slot (#97). Threaded
+ * down through `runSimulationLoop` → `simulateOneYear` to the solver.
+ */
+export interface RunSimulationOptions {
+    referenceDate?: Date;
+    /** Conversion-decision mode for the rate-match path. Default 'rate-match'. */
+    conversionMode?: 'rate-match' | 'std-ded-only';
+    /** Run a forward sub-sim each year to derive the conversion ceiling baseline. */
+    useRollingBaseline?: boolean;
+    dpConversionPlan?: Map<number, number>;
+    dpDebugByYear?: Map<number, string[]>;
+    /** accountId → extra dollars to add to the synthetic EOY projection row.
+     *  Populated by callers from `computeEOYBudgetContributions` so that
+     *  non-payroll priority contributions (Brokerage / IRA / HSA / Savings)
+     *  show up in the Projected Dec point. */
+    eoyContributionAdditions?: Record<string, number>;
+    /** DebtAccount id → principal $ to subtract from the synthetic EOY row,
+     *  so loan balances reflect amortization through year-end. */
+    eoyDebtReductions?: Record<string, number>;
+    /** MortgageExpense id → principal $ to subtract from its loan_balance on
+     *  the synthetic EOY row (mortgages don't live on a DebtAccount). */
+    eoyMortgageReductions?: Record<string, number>;
+    /** #93 Monte Carlo NON-ANTICIPATIVE adaptive overlay. Per-year EXPECTED
+     *  start-of-year Traditional balance from the deterministic projection the
+     *  `dpConversionPlan` was solved against. Set ONLY by the MC engine; the
+     *  production/deterministic call sites leave it undefined, so the executed
+     *  conversions are byte-for-byte the precomputed plan. When present, the DP
+     *  conversion strategy scales each year's planned amount by realized/expected
+     *  Traditional balance — see YearSolver.planConversionDP. */
+    mcAdaptiveExpectedTrad?: Map<number, number>;
+}
+
 export const runSimulation = (
     yearsToRun: number = 30,
     accounts: AnyAccount[],
@@ -308,31 +344,19 @@ export const runSimulation = (
     assumptions: AssumptionsState,
     taxState: TaxState,
     yearlyReturns?: number[],
-    referenceDate?: Date,
-    conversionMode: 'rate-match' | 'std-ded-only' = 'rate-match',
-    useRollingBaseline: boolean = false,
-    dpConversionPlan?: Map<number, number>,
-    dpDebugByYear?: Map<number, string[]>,
-    /** accountId → extra dollars to add to the synthetic EOY projection row.
-     *  Populated by callers from `computeEOYBudgetContributions` so that
-     *  non-payroll priority contributions (Brokerage / IRA / HSA / Savings)
-     *  show up in the Projected Dec point. */
-    eoyContributionAdditions?: Record<string, number>,
-    /** DebtAccount id → principal $ to subtract from the synthetic EOY row,
-     *  so loan balances reflect amortization through year-end. */
-    eoyDebtReductions?: Record<string, number>,
-    /** MortgageExpense id → principal $ to subtract from its loan_balance on
-     *  the synthetic EOY row (mortgages don't live on a DebtAccount). */
-    eoyMortgageReductions?: Record<string, number>,
-    /** #93 Monte Carlo NON-ANTICIPATIVE adaptive overlay. Per-year EXPECTED
-     *  start-of-year Traditional balance from the deterministic projection the
-     *  `dpConversionPlan` was solved against. Set ONLY by the MC engine; the
-     *  production/deterministic call sites leave it undefined, so the executed
-     *  conversions are byte-for-byte the precomputed plan. When present, the DP
-     *  conversion strategy scales each year's planned amount by realized/expected
-     *  Traditional balance — see YearSolver.planConversionDP. */
-    mcAdaptiveExpectedTrad?: Map<number, number>,
+    options: RunSimulationOptions = {},
 ): SimulationYear[] => {
+    const {
+        referenceDate,
+        conversionMode = 'rate-match',
+        useRollingBaseline = false,
+        dpConversionPlan,
+        dpDebugByYear,
+        eoyContributionAdditions,
+        eoyDebtReductions,
+        eoyMortgageReductions,
+        mcAdaptiveExpectedTrad,
+    } = options;
 
     // Calculate start year and current age from birth year
     // If priorYearMode is enabled, start simulation from last year (for verified data entry)
@@ -696,14 +720,14 @@ export const runSimulationWithOptimization = (
     };
     const stdDedBaselineTimeline = runSimulation(
         yearsToRun, accounts, incomes, expenses, baselineAssumptions, taxState,
-        yearlyReturns, referenceDate,
-        /* conversionMode */ 'std-ded-only',
-        /* useRollingBaseline */ false,
-        /* dpConversionPlan */ undefined,
-        /* dpDebugByYear */ undefined,
-        eoyContributionAdditions,
-        eoyDebtReductions,
-        eoyMortgageReductions,
+        yearlyReturns,
+        {
+            referenceDate,
+            conversionMode: 'std-ded-only',
+            eoyContributionAdditions,
+            eoyDebtReductions,
+            eoyMortgageReductions,
+        },
     );
     const stdDedBaselineLifetimeTax = stdDedBaselineTimeline.reduce((total, year) => {
         return total
@@ -830,14 +854,15 @@ export const runSimulationWithOptimization = (
         // 'dp-precomputed' or undefined (legacy data).
         const finalTimeline = runSimulation(
             yearsToRun, accounts, incomes, expenses, assumptions, taxState,
-            yearlyReturns, referenceDate,
-            /* conversionMode */ 'rate-match',
-            /* useRollingBaseline */ false,
-            /* dpConversionPlan */ dpPlan.conversionsByYear,
-            /* dpDebugByYear */ dpPlan.diagnostics.perYearDebug,
-            eoyContributionAdditions,
-            eoyDebtReductions,
-            eoyMortgageReductions,
+            yearlyReturns,
+            {
+                referenceDate,
+                dpConversionPlan: dpPlan.conversionsByYear,
+                dpDebugByYear: dpPlan.diagnostics.perYearDebug,
+                eoyContributionAdditions,
+                eoyDebtReductions,
+                eoyMortgageReductions,
+            },
         );
 
         // Append solver summary to year-0 logs so the user can see DP setup
@@ -866,14 +891,14 @@ export const runSimulationWithOptimization = (
     // Default: rate-match with rolling per-year sub-sim baselines.
     const finalTimeline = runSimulation(
         yearsToRun, accounts, incomes, expenses, assumptions, taxState,
-        yearlyReturns, referenceDate,
-        /* conversionMode */ 'rate-match',
-        /* useRollingBaseline */ true,
-        /* dpConversionPlan */ undefined,
-        /* dpDebugByYear */ undefined,
-        eoyContributionAdditions,
-        eoyDebtReductions,
-        eoyMortgageReductions,
+        yearlyReturns,
+        {
+            referenceDate,
+            useRollingBaseline: true,
+            eoyContributionAdditions,
+            eoyDebtReductions,
+            eoyMortgageReductions,
+        },
     );
     if (finalTimeline.length > 0) {
         finalTimeline[0].stdDedBaselineLifetimeTax = stdDedBaselineLifetimeTax;

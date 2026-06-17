@@ -152,8 +152,10 @@ function runSingleScenario(
     // undefined (legacy).
     const timeline = runSimulation(
         yearsToRun, accounts, incomes, expenses, assumptions, taxState, yearlyReturns,
-        undefined, 'rate-match', false, mcPlan.plan, undefined, undefined, undefined, undefined,
-        mcPlan.expectedTradByYear,
+        {
+            dpConversionPlan: mcPlan.plan,
+            mcAdaptiveExpectedTrad: mcPlan.expectedTradByYear,
+        },
     );
 
     // Analyze and return the result

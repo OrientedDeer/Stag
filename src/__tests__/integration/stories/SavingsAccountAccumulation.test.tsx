@@ -145,7 +145,7 @@ describe('Story: Savings Account Accumulation', () => {
             assumptions,
             taxState,
             undefined,
-            new Date(2025, 11, 31)
+            { referenceDate: new Date(2025, 11, 31) }
         );
 
         // With 2 savings accounts, there should be at most 2 interest incomes per year
@@ -174,7 +174,7 @@ describe('Story: Savings Account Accumulation', () => {
             assumptions,
             taxState,
             undefined,
-            new Date(2025, 11, 31) // December — no partial-year adjustment
+            { referenceDate: new Date(2025, 11, 31) } // December — no partial-year adjustment
         );
 
         // Check interest calculation for each year
@@ -192,7 +192,7 @@ describe('Story: Savings Account Accumulation', () => {
             assumptions,
             taxState,
             undefined,
-            new Date(2025, 11, 31) // December — no partial-year adjustment
+            { referenceDate: new Date(2025, 11, 31) } // December — no partial-year adjustment
         );
 
         // Check compound growth: each year balance = prev * 1.05
@@ -233,7 +233,7 @@ describe('Story: Savings Account Accumulation', () => {
             { ...assumptions, milestones: createBuiltinMilestones(birthYear, 30, 90) },
             taxState,
             undefined,
-            new Date(2025, 11, 31)
+            { referenceDate: new Date(2025, 11, 31) }
         );
 
         // Year 2 should have interest income in the incomes array (taxable)
@@ -295,7 +295,7 @@ describe('Story: Savings Account Accumulation', () => {
             retiredAssumptions,
             taxState,
             undefined,
-            new Date(2025, 11, 31)
+            { referenceDate: new Date(2025, 11, 31) }
         );
 
         // Year 2 should have federal tax > 0
@@ -381,7 +381,7 @@ describe('Story: Savings Account Accumulation', () => {
             assumptions,
             taxState,
             undefined,
-            new Date(2025, 11, 31) // December — no partial-year adjustment
+            { referenceDate: new Date(2025, 11, 31) } // December — no partial-year adjustment
         );
 
         // Check year 2 interest incomes

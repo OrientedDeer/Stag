@@ -69,7 +69,7 @@ describe('Simulation Engine', () => {
             cleanAssumptions,
             mockTaxState,
             undefined,
-            new Date(2025, 11, 31) // December — no partial-year adjustment
+            { referenceDate: new Date(2025, 11, 31) } // December — no partial-year adjustment
         );
 
         // --- ASSERT ---
