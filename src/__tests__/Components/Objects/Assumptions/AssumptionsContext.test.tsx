@@ -609,6 +609,36 @@ describe('AssumptionsContext', () => {
       expect(state.income.socialSecurityFundingPercent).toBe(defaultAssumptions.income.socialSecurityFundingPercent);
     });
 
+    it('migrates the retired rate-match Roth strategy to std-ded-only', () => {
+      localStorageMock.getItem.mockReturnValueOnce(JSON.stringify({
+        investments: { rothConversionStrategy: 'rate-match' },
+      }));
+      let state!: AssumptionsState;
+      const TestComponent = () => { ({ state } = useContext(AssumptionsContext)); return null; };
+      render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
+      expect(state.investments.rothConversionStrategy).toBe('std-ded-only');
+    });
+
+    it('leaves a saved dp-precomputed Roth strategy untouched', () => {
+      localStorageMock.getItem.mockReturnValueOnce(JSON.stringify({
+        investments: { rothConversionStrategy: 'dp-precomputed' },
+      }));
+      let state!: AssumptionsState;
+      const TestComponent = () => { ({ state } = useContext(AssumptionsContext)); return null; };
+      render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
+      expect(state.investments.rothConversionStrategy).toBe('dp-precomputed');
+    });
+
+    it('migrates the retired bequeath situation to self-liquidate', () => {
+      localStorageMock.getItem.mockReturnValueOnce(JSON.stringify({
+        investments: { rothConversionUserSituation: 'bequeath' },
+      }));
+      let state!: AssumptionsState;
+      const TestComponent = () => { ({ state } = useContext(AssumptionsContext)); return null; };
+      render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
+      expect(state.investments.rothConversionUserSituation).toBe('self-liquidate');
+    });
+
     it('should fill in missing top-level sections with defaults', () => {
       // Simulate data missing entire sections
       const partialData = {

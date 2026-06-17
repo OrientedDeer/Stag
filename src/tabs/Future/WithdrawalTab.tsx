@@ -12,7 +12,6 @@ import { AnyAccount, ESPPAccount, RSUAccount, SavedAccount, InvestedAccount } fr
 import { formatCompactCurrency } from './tabs/FutureUtils';
 import { getRMDStartAge } from '../../data/RMDData';
 import { runSimulationWithOptimization } from '../../components/Objects/Assumptions/useSimulation';
-import { SimulationYear } from '../../services/simulation/types';
 import { Phase } from '../../services/simulation/TaxOptimizedWithdrawal';
 import { getSimulationInputHash } from '../../services/simulationHash';
 import { useReceiptToast } from '../../components/Layout/Overlays/ReceiptToast';
@@ -20,15 +19,6 @@ import { HelpSection } from './withdrawal/HelpSection';
 import { TaxOptimizationControls } from './withdrawal/TaxOptimizationControls';
 import { OptimizationSummaryCard, OptimizationSummary, ComparisonResult } from './withdrawal/OptimizationSummaryCard';
 import { WithdrawalBucketList, BucketDetail } from './withdrawal/WithdrawalBucketList';
-
-// Helper to calculate lifetime taxes from simulation
-function calculateLifetimeTaxes(simulation: SimulationYear[]): number {
-    return simulation.reduce((total, year) => {
-        const yearTaxes = year.taxDetails.fed + year.taxDetails.state +
-                         year.taxDetails.fica + year.taxDetails.capitalGains;
-        return total + yearTaxes;
-    }, 0);
-}
 
 // Helper to get tax treatment badge for an account
 const getTaxBadge = (account: AnyAccount | undefined): { label: string; color: string } => {
@@ -133,24 +123,22 @@ export default function WithdrawalTab() {
     const formatMoney = useCallback((amount: number) =>
         formatCompactCurrency(amount, { forceExact }), [forceExact]);
 
-    // Tax comparison: auto-populated from the std-ded baseline lifetime tax
-    // stashed on the simulation's year 0 (computed once per recalc inside
-    // runSimulationWithOptimization).
-    const [comparisonResult, setComparisonResult] = useState<ComparisonResult | null>(null);
-
-    useEffect(() => {
-        if (simulation.length === 0) return;
-        const baselineTax = simulation[0].stdDedBaselineLifetimeTax;
-        if (baselineTax === undefined) {
-            setComparisonResult(null);
-            return;
-        }
-        const actualTax = calculateLifetimeTaxes(simulation);
-        setComparisonResult({
-            taxesWithStrategy: actualTax,
-            taxesStdDedOnly: baselineTax,
-            savings: baselineTax - actualTax,
-        });
+    // After-tax-wealth comparison (#94): both the strategy's and the std-ded baseline's
+    // AFTER-TAX terminal net worth are computed once per recalc inside
+    // runSimulationWithOptimization (one situation-based Traditional valuation, applied to
+    // both, with the baseline invariant to the selected strategy) and stashed on year 0.
+    // The old metric measured lifetime-tax-saved, which only sees the conversion's COST and
+    // mis-ranked the max-wealth DP below the conservative (now std-ded-only) alternative.
+    const comparisonResult = useMemo<ComparisonResult | null>(() => {
+        if (simulation.length === 0) return null;
+        const strategyAfterTax = simulation[0].strategyTerminalAfterTaxNW;
+        const baselineAfterTax = simulation[0].stdDedBaselineTerminalAfterTaxNW;
+        if (strategyAfterTax === undefined || baselineAfterTax === undefined) return null;
+        return {
+            afterTaxWithStrategy: strategyAfterTax,
+            afterTaxStdDedOnly: baselineAfterTax,
+            gain: strategyAfterTax - baselineAfterTax,
+        };
     }, [simulation]);
 
     const optimizationSummary = useMemo<OptimizationSummary | null>(() => {

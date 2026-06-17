@@ -146,14 +146,17 @@ export interface SimulationYear {
      */
     dpTrace?: DPYearTrace;
     /**
-     * Lifetime sum of (federal + state + FICA + capital gains) tax under the
-     * std-ded-only conversion baseline — i.e., what taxes would be if only
-     * the always-free standard-deduction-headroom conversions ran. Set on
-     * year 0 of the simulation result so the Withdrawal tab's comparison
-     * panel can display "your strategy vs free conversions only" without
-     * re-running an extra sim.
+     * After-tax terminal (end-of-plan) net worth under the std-ded-only conversion baseline
+     * and under the selected strategy, BOTH discounted with the same situation-based
+     * Traditional valuation (graduated self-liquidate / flat heir — see buildTradValuation).
+     * Set on year 0 so the Withdrawal tab can show "After-Tax Wealth Gained" (#94) — the
+     * #89-consistent figure that prices the conversion's payoff (a Roth-heavier terminal
+     * mix with sheltered growth), not just the up-front tax cost the old lifetime-tax metric
+     * saw. The ruler is built from the strategy-independent baseline timeline, so the
+     * baseline figure is invariant to the selected strategy.
      */
-    stdDedBaselineLifetimeTax?: number;
+    stdDedBaselineTerminalAfterTaxNW?: number;
+    strategyTerminalAfterTaxNW?: number;
     // Marks a synthetic "projected end of current year" data point inserted between Year 0 and Year 1
     isEndOfYearProjection?: boolean;
 }

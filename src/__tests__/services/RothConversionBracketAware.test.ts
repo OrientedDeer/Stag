@@ -151,6 +151,53 @@ describe('#89 bracket-aware DP Roth conversion — wealth-optimality', { timeout
 });
 
 // =============================================================================
+// #94 / card-side of #95 — the Withdrawal-tab "After-Tax Wealth Gained" readout.
+// runSimulationWithOptimization stashes, on year 0, the after-tax terminal net worth
+// of BOTH the std-ded baseline and the selected strategy, scored with ONE situation-
+// based Traditional valuation built from the strategy-INDEPENDENT baseline timeline.
+// These guard the two acceptance criteria the prior attempt failed:
+//   (2) the reference baseline is invariant to the selected strategy — to the dollar;
+//   (1) the max-wealth DP never reads below the conservative rate-match.
+// =============================================================================
+describe('#94 after-tax-wealth readout — stashed terminal net worths', { timeout: 120_000 }, () => {
+    it('baseline after-tax NW is invariant to the selected strategy (DP vs std-ded-only), to the dollar', () => {
+        const dp = run({ rothConversionStrategy: 'dp-precomputed' })[0].stdDedBaselineTerminalAfterTaxNW;
+        const sd = run({ rothConversionStrategy: 'std-ded-only' })[0].stdDedBaselineTerminalAfterTaxNW;
+        expect(dp).toBeDefined();
+        expect(sd).toBeDefined();
+        expect(dp!).toBeGreaterThan(0);
+        // The std-ded baseline sim + the ruler depend only on the situation, not the
+        // selected strategy, so this must match exactly (no ~$10k drift like attempt-1).
+        expect(Math.abs(dp! - sd!)).toBeLessThan(1);
+    });
+
+    it('the std-ded-only strategy reads exactly the baseline (After-Tax Wealth Gained = $0)', () => {
+        // The std-ded-only strategy IS the comparison baseline, so its strategy figure must
+        // equal the baseline figure to the dollar — a gain of zero, by construction.
+        const sd = run({ rothConversionStrategy: 'std-ded-only' })[0];
+        expect(sd.strategyTerminalAfterTaxNW!).toBeCloseTo(sd.stdDedBaselineTerminalAfterTaxNW!, 6);
+    });
+
+    it('does not rank the conservative std-ded-only option above the max-wealth DP', () => {
+        const dp = run({ rothConversionStrategy: 'dp-precomputed' })[0];
+        const sd = run({ rothConversionStrategy: 'std-ded-only' })[0];
+        expect(dp.strategyTerminalAfterTaxNW!).toBeGreaterThan(sd.strategyTerminalAfterTaxNW!);
+        // "After-Tax Wealth Gained" = strategy − baseline must be positive for the DP here.
+        expect(dp.strategyTerminalAfterTaxNW!).toBeGreaterThan(dp.stdDedBaselineTerminalAfterTaxNW!);
+    });
+
+    it('switching situation (self-liquidate ↔ bequeath) moves the baseline figure', () => {
+        // Same selected strategy + accounts; only the exit situation changes. The std-ded
+        // baseline carries a large residual Traditional, so valuing it at the graduated
+        // self-drawdown rate vs the flat 32% heir rate must produce a materially different
+        // after-tax figure (criterion #3 — the situation toggle is legible).
+        const selfLiq = run({ rothConversionUserSituation: 'self-liquidate' })[0].stdDedBaselineTerminalAfterTaxNW;
+        const bequeath = run({ rothConversionUserSituation: 'bequeath' })[0].stdDedBaselineTerminalAfterTaxNW;
+        expect(Math.abs(selfLiq! - bequeath!)).toBeGreaterThan(1);
+    });
+});
+
+// =============================================================================
 // #89 OVER-CONVERSION GUARD — the DP must sit at the after-tax-wealth PEAK, not
 // merely ≥ the full-drain alternative. The bare ">= full-drain" test above passes
 // even if the DP over-converts SOMEWHERE BETWEEN the true peak and full-drain (the

@@ -7,15 +7,21 @@
  */
 
 /** Which algorithm decides the per-year Roth conversion amount when auto-conversions are on.
- *  'rate-match' = bracket-walk vs projected RMD-age marginal. 'dp-precomputed' = whole-horizon
- *  backward-induction DP that maximizes after-tax terminal wealth (bracket-aware terminal). */
-export type RothConversionStrategy = 'rate-match' | 'dp-precomputed';
+ *  - 'dp-precomputed' (default): whole-horizon backward-induction DP that maximizes after-tax
+ *    terminal wealth (bracket-aware terminal).
+ *  - 'std-ded-only': convert only the always-free standard-deduction headroom each year (no tax
+ *    cost) — the conservative floor offered in the UI.
+ *  - 'rate-match': per-year bracket walk vs the projected RMD-age marginal rate. LEGACY/internal
+ *    only — no longer offered in the UI (persisted values migrate to 'std-ded-only'; see
+ *    migrateAssumptions). Retained because the bracket-walk algorithm + its engine tests still
+ *    exercise it via the `conversionMode` param. */
+export type RothConversionStrategy = 'rate-match' | 'std-ded-only' | 'dp-precomputed';
 
 /**
  * SINGLE SOURCE OF TRUTH for the strategy default (#89): the max-after-tax-wealth,
- * bracket-aware DP. rate-match is the non-default conservative fallback. Used both as the
- * declared default in `defaultAssumptions` and as the fallback in
- * `resolveRothConversionStrategy`, so the default literal lives in exactly one place.
+ * bracket-aware DP. 'std-ded-only' is the conservative alternative; 'rate-match' is legacy
+ * (UI-removed). Used both as the declared default in `defaultAssumptions` and as the fallback
+ * in `resolveRothConversionStrategy`, so the default literal lives in exactly one place.
  */
 export const DEFAULT_ROTH_CONVERSION_STRATEGY: RothConversionStrategy = 'dp-precomputed';
 

@@ -1,41 +1,33 @@
 import { memo, useCallback } from 'react';
 import { AssumptionsState } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { ToggleInput } from '../../../components/Layout/InputFields/ToggleInput';
-import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider';
 import { Panel } from "../../../components/Layout/Primitives";
 
 type InvestmentsPatch = Partial<AssumptionsState['investments']>;
+type SelectableStrategy = 'dp-precomputed' | 'std-ded-only';
 
 interface TaxOptimizationControlsProps {
     investments: AssumptionsState['investments'];
     onUpdateInvestments: (payload: InvestmentsPatch) => void;
 }
 
-const formatRateGap = (v: number) => `${v.toFixed(1)}pp gap`;
-
 function TaxOptimizationControlsInner({
     investments,
     onUpdateInvestments,
 }: TaxOptimizationControlsProps) {
     const taxOptimizationEnabled = investments.taxOptimizationEnabled;
-    const strategy = investments.rothConversionStrategy ?? 'rate-match';
+    // Only two selectable strategies now: the max-wealth DP (default) and the conservative
+    // standard-deduction-only floor. Legacy 'rate-match' (UI-removed) coalesces to std-ded-only
+    // for display — persisted values are migrated on load (migrateAssumptions), so this only
+    // matters for a not-yet-resaved session.
+    const strategy: SelectableStrategy =
+        (investments.rothConversionStrategy ?? 'dp-precomputed') === 'dp-precomputed'
+            ? 'dp-precomputed'
+            : 'std-ded-only';
 
     const setTaxOptimization = useCallback((enabled: boolean) => {
         onUpdateInvestments({ taxOptimizationEnabled: enabled });
     }, [onUpdateInvestments]);
-
-    const commitMinRateGap = useCallback((displayPct: number) => {
-        onUpdateInvestments({ rothConversionMinRateGap: displayPct / 100 });
-    }, [onUpdateInvestments]);
-
-    const setUserSituation = useCallback((situation: 'self-liquidate' | 'bequeath') => {
-        onUpdateInvestments({ rothConversionUserSituation: situation });
-    }, [onUpdateInvestments]);
-
-    const minRateGapPct = (investments.rothConversionMinRateGap ?? 0.05) * 100;
-    // Default 'self-liquidate' (ratified, #89): spend-down is the sensible default;
-    // the user can switch to 'leave to heirs'.
-    const userSituation = investments.rothConversionUserSituation ?? 'self-liquidate';
 
     return (
         <Panel className="mb-6 bg-surface-raised/50">
@@ -63,12 +55,11 @@ function TaxOptimizationControlsInner({
                             </span>
                         </div>
                         <div className="flex gap-2">
-                            {(['rate-match', 'dp-precomputed'] as const).map(option => {
+                            {([
+                                ['dp-precomputed', 'Maximize after-tax wealth', 'Whole-horizon optimizer that maximizes after-tax wealth.'],
+                                ['std-ded-only', 'Standard deduction only', 'Convert only the always-free standard-deduction headroom each year — no tax cost.'],
+                            ] as const).map(([option, optionLabel, optionDesc]) => {
                                 const active = strategy === option;
-                                const optionLabel = option === 'rate-match' ? 'Rate match' : 'Maximize after-tax wealth';
-                                const optionDesc = option === 'rate-match'
-                                    ? 'Per-year bracket walk vs. projected RMD-age rate.'
-                                    : 'Whole-horizon DP that maximizes after-tax wealth.';
                                 return (
                                     <button
                                         key={option}
@@ -87,94 +78,6 @@ function TaxOptimizationControlsInner({
                             })}
                         </div>
                     </label>
-                    {strategy === 'rate-match' && (
-                    <RangeSlider
-                        label="Conversion aggressiveness"
-                        value={minRateGapPct}
-                        min={0}
-                        max={20}
-                        step={1}
-                        formatTooltip={formatRateGap}
-                        onChange={commitMinRateGap}
-                    />
-                    )}
-                    {strategy === 'rate-match' && (
-                    <details className="mt-2 group">
-                        <summary className="text-xs text-content-muted cursor-pointer hover:text-content-default select-none list-none flex items-center gap-1">
-                            More info
-                            <svg
-                                className="w-3 h-3 transition-transform duration-200 group-open:rotate-180"
-                                fill="currentColor"
-                                viewBox="0 0 20 20"
-                            >
-                                <path
-                                    fillRule="evenodd"
-                                    d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                                    clipRule="evenodd"
-                                />
-                            </svg>
-                        </summary>
-                        <p className="text-xs text-content-subtle mt-2">
-                            Minimum percentage-point savings between today's rate and projected RMD-age rate
-                            required to convert. Lower = more aggressive (converts even when small savings).
-                            Higher = more conservative (only converts on big savings). Default 5pp.
-                        </p>
-                        <p className="text-xs text-content-subtle mt-2">
-                            Risks of a lower gap:
-                        </p>
-                        <ul className="text-xs text-content-subtle mt-1 ml-5 list-disc space-y-0.5">
-                            <li>
-                                <span className="text-content-muted">Sequence of returns:</span> a market
-                                crash after a conversion locks in tax paid on dollars that may never
-                                recover.
-                            </li>
-                            <li>
-                                <span className="text-content-muted">Growth too high:</span> lower real
-                                returns mean a smaller future RMD bracket than projected, so you save
-                                less.
-                            </li>
-                            <li>
-                                <span className="text-content-muted">Future tax brackets drop:</span> if
-                                rates fall, today's conversion was overpriced.
-                            </li>
-                        </ul>
-                    </details>
-                    )}
-                    {strategy === 'dp-precomputed' && (
-                    <label className="block">
-                        <span className="text-sm font-medium text-content-emphasis">
-                            What happens to leftover Traditional?
-                        </span>
-                        <p className="text-xs text-content-muted mt-0.5 mb-2">
-                            Sets how aggressively to convert: leftover you'll spend down yourself comes
-                            out cheaply (keep more), leftover an heir inherits comes out at their high
-                            rate (convert more now).
-                        </p>
-                        <div className="flex gap-2">
-                            {([
-                                ['self-liquidate', 'Spend it down', "I'll draw it down in retirement (std-deduction & low brackets)."],
-                                ['bequeath', 'Leave to heirs', 'It passes to a working heir who drains it within 10 years.'],
-                            ] as const).map(([value, label, desc]) => {
-                                const active = userSituation === value;
-                                return (
-                                    <button
-                                        key={value}
-                                        type="button"
-                                        onClick={() => setUserSituation(value)}
-                                        className={`flex-1 text-left px-3 py-2 rounded-md border transition-colors ${
-                                            active
-                                                ? 'bg-info-tint/30 border-info-strong/50 text-info-bright'
-                                                : 'bg-surface-raised/40 border-border-subtle text-content-default hover:border-border-default'
-                                        }`}
-                                    >
-                                        <div className="text-sm font-medium">{label}</div>
-                                        <div className="text-xs text-content-muted mt-0.5">{desc}</div>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </label>
-                    )}
                 </div>
             )}
         </Panel>

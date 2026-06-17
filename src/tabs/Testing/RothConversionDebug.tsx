@@ -37,7 +37,7 @@ function limitingFactorLabel(factor: ConversionLimitingFactor | undefined): stri
     }
 }
 
-function headlineReason(year: SimulationYear, strategy: 'rate-match' | 'dp-precomputed'): string {
+function headlineReason(year: SimulationYear, strategy: 'rate-match' | 'std-ded-only' | 'dp-precomputed'): string {
     const target = year.taxOptimizationTarget;
     if (!target) return 'no optimization target was computed';
     const factor = target.limitingFactor;
@@ -1160,7 +1160,7 @@ export default function RothConversionDebugTab() {
     const rmdYear = birthYear + rmdStartAge;
     const minRateGap = assumptions.investments?.rothConversionMinRateGap ?? 0.05;
     const effectiveBackloadDelta = assumptions.investments?.rothConversionDPBackloadDelta ?? DP_BACKLOAD_DELTA;
-    const strategy = assumptions.investments?.rothConversionStrategy ?? 'rate-match';
+    const strategy = assumptions.investments?.rothConversionStrategy ?? 'dp-precomputed';
 
     // Filter to relevant years (retirement → pre-RMD).
     const relevantYears = useMemo(

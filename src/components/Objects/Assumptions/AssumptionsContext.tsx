@@ -408,6 +408,22 @@ export function migrateAssumptions(saved: unknown, defaults: AssumptionsState): 
   delete (migrated.demographics as Record<string, unknown>).retirementAge;
   delete (migrated.demographics as Record<string, unknown>).lifeExpectancy;
 
+  // Retire the 'rate-match' Roth-conversion strategy: it either tracked the free
+  // standard-deduction floor or over-converted and lost after-tax wealth, so it's no longer
+  // offered. Land legacy selections on its conservative successor, 'std-ded-only', so the
+  // engine and the (rate-match-less) UI stay consistent.
+  if (migrated.investments.rothConversionStrategy === 'rate-match') {
+    migrated.investments.rothConversionStrategy = 'std-ded-only';
+  }
+
+  // Retire the 'bequeath' (leave-to-heirs) situation from the UI — the explainer overhead
+  // wasn't worth it. Self-liquidate is now the only exit assumption; migrate legacy bequeath
+  // selections so the engine and UI agree. ('bequeath' stays valid internally for the DP /
+  // bracketAwareTradExitValue and their tests.)
+  if (migrated.investments.rothConversionUserSituation === 'bequeath') {
+    migrated.investments.rothConversionUserSituation = 'self-liquidate';
+  }
+
   return migrated;
 }
 

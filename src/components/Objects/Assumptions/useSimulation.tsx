@@ -10,6 +10,7 @@ import { TaxState, resolveTaxEventsForYear } from '../Taxes/TaxContext';
 import { BaselineProjections } from '../../../services/simulation/types';
 import { getRMDStartAge } from '../../../data/RMDData';
 import { buildDPYearContexts, planConversionsViaDP, DPPlan, DPObjectiveOptions } from '../../../services/simulation/RothConversionDP';
+import { buildTradValuation, terminalAfterTaxNetWorth } from '../../../tabs/Future/tabs/FutureUtils';
 
 /**
  * Scope a TaxState for FUTURE (projected) years. Dollar tax overrides
@@ -729,13 +730,26 @@ export const runSimulationWithOptimization = (
             eoyMortgageReductions,
         },
     );
-    const stdDedBaselineLifetimeTax = stdDedBaselineTimeline.reduce((total, year) => {
-        return total
-            + (year.taxDetails.fed ?? 0)
-            + (year.taxDetails.state ?? 0)
-            + (year.taxDetails.fica ?? 0)
-            + (year.taxDetails.capitalGains ?? 0);
-    }, 0);
+    // After-tax terminal net worth of the std-ded baseline, for the Withdrawal-tab
+    // "After-Tax Wealth Gained" comparison (#94). Build ONE situation-based discount ruler
+    // from the strategy-INDEPENDENT baseline timeline and reuse it for both the baseline and
+    // the selected strategy's terminal balances (below), so the comparison is apples-to-apples
+    // and the baseline figure is invariant to the selected strategy — only the self-liquidate
+    // ↔ bequeath toggle moves it.
+    const tradValuationRuler = buildTradValuation(stdDedBaselineTimeline, assumptions, taxState);
+    const stdDedBaselineTerminalAfterTaxNW = terminalAfterTaxNetWorth(stdDedBaselineTimeline, tradValuationRuler);
+
+    if (strategy === 'std-ded-only' && taxOptOn) {
+        // 'std-ded-only' strategy: the executed plan IS the std-ded baseline we just ran
+        // (convert only the free standard-deduction headroom each year). Reuse it directly
+        // rather than re-running — the selected strategy and the comparison baseline are the
+        // same sim, so "After-Tax Wealth Gained" is $0 by construction.
+        if (stdDedBaselineTimeline.length > 0) {
+            stdDedBaselineTimeline[0].stdDedBaselineTerminalAfterTaxNW = stdDedBaselineTerminalAfterTaxNW;
+            stdDedBaselineTimeline[0].strategyTerminalAfterTaxNW = stdDedBaselineTerminalAfterTaxNW;
+        }
+        return stdDedBaselineTimeline;
+    }
 
     if (strategy === 'dp-precomputed' && taxOptOn) {
         // DP path: reuse the std-ded baseline above (already computed) for
@@ -879,10 +893,12 @@ export const runSimulationWithOptimization = (
             if (trace) year.dpTrace = trace;
         }
 
-        // Stash the std-ded baseline lifetime tax on year 0 for the live
-        // Withdrawal-tab comparison panel.
+        // Stash both after-tax terminal net worths on year 0 for the live Withdrawal-tab
+        // comparison panel (#94). Same ruler as the baseline above, applied to this
+        // strategy's terminal balances.
         if (finalTimeline.length > 0) {
-            finalTimeline[0].stdDedBaselineLifetimeTax = stdDedBaselineLifetimeTax;
+            finalTimeline[0].stdDedBaselineTerminalAfterTaxNW = stdDedBaselineTerminalAfterTaxNW;
+            finalTimeline[0].strategyTerminalAfterTaxNW = terminalAfterTaxNetWorth(finalTimeline, tradValuationRuler);
         }
 
         return finalTimeline;
@@ -901,7 +917,8 @@ export const runSimulationWithOptimization = (
         },
     );
     if (finalTimeline.length > 0) {
-        finalTimeline[0].stdDedBaselineLifetimeTax = stdDedBaselineLifetimeTax;
+        finalTimeline[0].stdDedBaselineTerminalAfterTaxNW = stdDedBaselineTerminalAfterTaxNW;
+        finalTimeline[0].strategyTerminalAfterTaxNW = terminalAfterTaxNetWorth(finalTimeline, tradValuationRuler);
     }
     return finalTimeline;
 };
