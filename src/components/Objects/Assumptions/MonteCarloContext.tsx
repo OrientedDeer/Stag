@@ -9,6 +9,7 @@ import {
     initialMonteCarloState,
 } from '../../../services/MonteCarloTypes';
 import { runMonteCarloSimulation } from '../../../services/MonteCarloEngine';
+import { runMonteCarloInWorker } from '../../../services/montecarloRunner';
 import { createRandomSeed } from '../../../services/RandomGenerator';
 import { AnyAccount } from '../Accounts/models';
 import { AnyIncome } from '../Income/models';
@@ -86,16 +87,21 @@ export function MonteCarloProvider({ children }: { children: ReactNode }): React
         taxState: TaxState
     ) => {
         dispatch({ type: 'START_SIMULATION' });
+        const onProgress = (progress: number) => dispatch({ type: 'UPDATE_PROGRESS', payload: progress });
         try {
-            const summary = await runMonteCarloSimulation(
-                state.config,
-                accounts,
-                incomes,
-                expenses,
-                assumptions,
-                taxState,
-                (progress) => dispatch({ type: 'UPDATE_PROGRESS', payload: progress })
-            );
+            // Run off the main thread (#98) so the ~20s policy solve + path loop
+            // don't freeze the UI. Fall back to the main-thread engine if the
+            // worker can't be constructed or it errors, so MC always works.
+            let summary;
+            try {
+                summary = await runMonteCarloInWorker(
+                    state.config, accounts, incomes, expenses, assumptions, taxState, onProgress,
+                );
+            } catch {
+                summary = await runMonteCarloSimulation(
+                    state.config, accounts, incomes, expenses, assumptions, taxState, onProgress,
+                );
+            }
             dispatch({ type: 'COMPLETE_SIMULATION', payload: summary });
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Simulation failed';
