@@ -142,9 +142,8 @@ function activeFundedGoals(milestoneFilteredExpenses: AnyExpense[]): AnyExpense[
 /**
  * Per-year conversion-decision knobs for `simulateOneYear` /
  * `simulateOneYearWithNewEngine`. Bagged into one object (#99 follow-up to #97)
- * so the trailing optional Maps can't silently misalign positionally — e.g.
- * `dpConversionPlan` and `dpDebugByYear` would not be caught by the type checker
- * on a positional swap. Fed straight into YearSolverInput.
+ * so the trailing optional fields are passed by name and can't silently misalign
+ * positionally. Fed straight into YearSolverInput.
  */
 export interface SimulateOneYearOptions {
     /** Per-year sub-sim baseline projections feeding the conversion ceiling. */
