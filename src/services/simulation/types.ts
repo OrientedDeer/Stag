@@ -172,6 +172,14 @@ export interface SimulationYear {
      * disabled manual selector is honest (the UI already claims the order is managed automatically).
      */
     chosenWithdrawalOrder?: { accountId: string; name: string }[];
+    /**
+     * Set on year 0 alongside chosenWithdrawalOrder: the after-tax-wealth gain from the chosen
+     * withdrawal order vs the user's stored order, at FULL co-optimization (each order scored with
+     * its own optimal conversion plan on the same ruler) — i.e. best.nw − userOrder.nw. 0 when the
+     * user's order already wins. This is the economic PAYOFF of the order optimization (distinct from
+     * the conversion gain); surfaced so it's observable for the Withdrawal tab and regression tests.
+     */
+    orderOptimizationGain?: number;
     // Marks a synthetic "projected end of current year" data point inserted between Year 0 and Year 1
     isEndOfYearProjection?: boolean;
 }

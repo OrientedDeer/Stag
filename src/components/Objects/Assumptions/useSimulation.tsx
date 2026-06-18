@@ -1061,6 +1061,7 @@ export const runSimulationWithOptimization = (
                 // fill — a "fill to headroom" plan can request far more than the Traditional can supply.
                 const executedTotal = finalTimeline.reduce((s, y) => s + (y.isEndOfYearProjection ? 0 : (y.rothConversion?.amount ?? 0)), 0);
                 finalTimeline[0].chosenWithdrawalOrder = best.order.map(w => ({ accountId: w.accountId, name: w.name }));
+                finalTimeline[0].orderOptimizationGain = orderGain; // economic payoff of the order choice (best vs user order, co-optimized)
                 finalTimeline[0].logs.push(
                     `[joint optimizer] full-searched ${candidateOrders.length} candidate order(s) ` +
                     `(${totalSims} engine sims); chose order ` +
