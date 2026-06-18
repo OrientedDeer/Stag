@@ -981,6 +981,10 @@ export const runSimulationWithOptimization = (
         //   • LEGACY DP (explicit dpObjective): retained for regression tests that A/B
         //     the min-tax / flat-τ / bracket-aware objectives, and for comparison.
         let finalTimeline: SimulationYear[];
+        // In the DEFAULT branch the winning timeline is already scored on the ruler (best.nw), so we
+        // carry that value out to avoid recomputing terminalAfterTaxNetWorth below. Stays undefined on
+        // the legacy branch, which has no pre-scored result and computes the terminal NW standalone.
+        let defaultBranchTerminalAfterTaxNW: number | undefined;
 
         if (dpObjective === undefined) {
             // JOINT CONVERSION + DRAWDOWN-ORDER OPTIMIZER. Tax Optimization's UI promises it picks the
@@ -992,13 +996,14 @@ export const runSimulationWithOptimization = (
             // Every candidate is scored with the SAME ruler (tradValuationRuler, built once above from the
             // strategy-independent baseline) — the load-bearing requirement for a valid cross-order comparison.
             //
-            // Affordable + correct (≤ 2 conversion searches): always FULL-search the user's order so the
-            // result can never regress below the manual order; cheaply RANK the alternatives by their own
-            // aggressive legacy-DP plan; full-search only the top challenger; switch only if its DE-CONVERTED
-            // search beats the user's. Rank-cheap / decide-on-the-search is load-bearing — a std-ded proxy
-            // under-converts and hides a Traditional-preserving order's value (high-SS profiles), while a
-            // legacy-DP proxy over-converts and over-rates an order (no-SS profiles); the full search is the
-            // unbiased tiebreak. When the user's order wins, the result matches the single-order engine.
+            // generateCandidateWithdrawalOrders returns at most 3 orders (the user's + 2 tax-aware
+            // sequences), so we simply FULL-SEARCH EVERY candidate on the real engine and keep the one
+            // with the highest after-tax terminal net worth. No biased probe-and-rank: a probe by a
+            // single aggressive legacy-DP plan over-rates an order in a no-SS regime and a std-ded proxy
+            // under-rates a Traditional-preserving order in a high-SS regime, so the only sound tiebreak
+            // is the full de-converted search itself. The user's order is always in the candidate set, so
+            // the result can never regress below the manual order; when it wins, the result matches the
+            // single-order engine.
             const candidateOrders = generateCandidateWithdrawalOrders(accounts, assumptions.withdrawalStrategy);
             const buildArtifacts = (order: typeof assumptions.withdrawalStrategy) => {
                 const isUser = order === assumptions.withdrawalStrategy;
@@ -1017,7 +1022,7 @@ export const runSimulationWithOptimization = (
                 yearsToRun, accounts, incomes, expenses, aOrder, taxState, yearlyReturns,
                 { referenceDate, dpConversionPlan: plan, eoyContributionAdditions, eoyDebtReductions, eoyMortgageReductions },
             );
-            // A full conversion engine-search under one order's artifacts → {nw, timeline, total, label, sims}.
+            // A full conversion engine-search under one order's artifacts → {order, timeline, nw, label, sims, dpPlan}.
             const fullSearch = (art: ReturnType<typeof buildArtifacts>) => {
                 const scorePlan = (plan: Map<number, number>) => {
                     const tl = runUnderOrder(art.aOrder, plan);
@@ -1030,30 +1035,23 @@ export const runSimulationWithOptimization = (
                 return {
                     order: art.order, timeline: s.winningTimeline,
                     nw: terminalAfterTaxNetWorth(s.winningTimeline, tradValuationRuler),
-                    total: [...s.conversionsByYear.values()].reduce((a, v) => a + v, 0),
                     label: s.diagnostics.bestLabel, sims: s.diagnostics.sims + 1,
+                    dpPlan: art.dpPlan, // the order's DP plan — its traces feed the debug screen for the winner
                 };
             };
-            // Incumbent: the user's order, FULL-searched → the shipped result can never regress below it.
+            // Full-search EVERY candidate order and keep the highest after-tax NW. The user's order is
+            // first in the candidate set, so the result can never regress below the manual order.
             const userResult = fullSearch(buildArtifacts(assumptions.withdrawalStrategy));
             let best = userResult;
             let totalSims = userResult.sims;
-            // Rank the alternatives cheaply (aggressive legacy-DP plan, scored on the one ruler); full-search
-            // ONLY the top challenger and switch only if its de-converted result beats the user's by > $1.
-            let topChallenger: ReturnType<typeof buildArtifacts> | null = null;
-            let topChallengerProbe = -Infinity;
             for (const order of candidateOrders) {
                 if (order === assumptions.withdrawalStrategy) continue;
-                const art = buildArtifacts(order);
-                const probe = terminalAfterTaxNetWorth(runUnderOrder(art.aOrder, art.dpPlan.conversionsByYear), tradValuationRuler);
-                if (probe > topChallengerProbe) { topChallengerProbe = probe; topChallenger = art; }
-            }
-            if (topChallenger) {
-                const challengerResult = fullSearch(topChallenger);
-                totalSims += challengerResult.sims;
-                if (challengerResult.nw > best.nw + 1) best = challengerResult; // the de-converted truth decides
+                const result = fullSearch(buildArtifacts(order));
+                totalSims += result.sims;
+                if (result.nw > best.nw + 1) best = result; // the de-converted truth decides; ties keep the incumbent
             }
             finalTimeline = best.timeline;
+            defaultBranchTerminalAfterTaxNW = best.nw; // finalTimeline === best.timeline, already scored on the ruler
             if (finalTimeline.length > 0) {
                 const orderChanged = best.order !== assumptions.withdrawalStrategy;
                 const orderGain = best.nw - userResult.nw; // full-search value of the chosen order alone
@@ -1062,12 +1060,21 @@ export const runSimulationWithOptimization = (
                 const executedTotal = finalTimeline.reduce((s, y) => s + (y.isEndOfYearProjection ? 0 : (y.rothConversion?.amount ?? 0)), 0);
                 finalTimeline[0].chosenWithdrawalOrder = best.order.map(w => ({ accountId: w.accountId, name: w.name }));
                 finalTimeline[0].logs.push(
-                    `[joint optimizer] full-searched the user order + the best of ${candidateOrders.length - 1} ` +
-                    `alternative order(s) (${totalSims} engine sims); chose order ` +
+                    `[joint optimizer] full-searched ${candidateOrders.length} candidate order(s) ` +
+                    `(${totalSims} engine sims); chose order ` +
                     `${best.order.map(w => w.name).join(' → ')}${orderChanged ? '' : ' (user order)'}; ` +
                     `order-optimization gain $${Math.round(orderGain).toLocaleString()}; ` +
                     `conversions: ${best.label} (total converted $${Math.round(executedTotal).toLocaleString()}).`,
                 );
+                // Restore the Roth-conversion debug screen (RothConversionDebug reads selectedYear.dpTrace):
+                // attach the WINNING order's DP analysis. NOTE the executed plan is the engine-direct search
+                // result, which may differ from the DP plan — so dpTrace shows the DP's analysis, not the
+                // executed conversions. (We don't re-sim just to populate dpDebugByYear; trace + summary is enough.)
+                for (const year of finalTimeline) {
+                    const trace = best.dpPlan.diagnostics.perYearTraces.get(year.year);
+                    if (trace) year.dpTrace = trace;
+                }
+                finalTimeline[0].logs.push(...best.dpPlan.diagnostics.summaryLogs);
             }
         } else {
             // LEGACY DP path — reached only with an explicit dpObjective (regression tests).
@@ -1096,10 +1103,11 @@ export const runSimulationWithOptimization = (
 
         // Stash both after-tax terminal net worths on year 0 for the live Withdrawal-tab
         // comparison panel (#94). Same ruler as the baseline above, applied to this
-        // strategy's terminal balances.
-        const strategyTerminalAfterTaxNW = finalTimeline.length > 0
-            ? terminalAfterTaxNetWorth(finalTimeline, tradValuationRuler)
-            : 0;
+        // strategy's terminal balances. The default branch already scored its winning timeline on
+        // the ruler (best.nw), so reuse it; only the legacy branch computes it standalone here.
+        const strategyTerminalAfterTaxNW = finalTimeline.length === 0
+            ? 0
+            : (defaultBranchTerminalAfterTaxNW ?? terminalAfterTaxNetWorth(finalTimeline, tradValuationRuler));
         if (finalTimeline.length > 0) {
             finalTimeline[0].stdDedBaselineTerminalAfterTaxNW = stdDedBaselineTerminalAfterTaxNW;
             finalTimeline[0].strategyTerminalAfterTaxNW = strategyTerminalAfterTaxNW;

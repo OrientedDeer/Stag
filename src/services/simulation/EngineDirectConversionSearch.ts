@@ -32,7 +32,16 @@ import { AnyAccount, SavedAccount, InvestedAccount } from '../../components/Obje
 
 export interface WithdrawalOrderItem { id: string; name: string; accountId: string; }
 
-/** Classify an account into a drawdown "tax bucket" for candidate-order generation. */
+/**
+ * Classify an account into a drawdown "tax bucket" for candidate-order generation.
+ *
+ * NOT a duplicate of `classifyAccountTaxCategory` (helpers.ts): that one is a 3-way tax-treatment
+ * split ('tax-deferred' | 'tax-free' | 'taxable') used for the conversion-cost math. Order
+ * generation needs a finer 4-way bucketing — it must separate CASH from ROTH (both 'tax-free'
+ * there) and BROKERAGE from CASH, because the candidate sequences hinge on the relative drawdown
+ * position of cash, taxable, Traditional, and Roth. The tax-category classifier can't express that,
+ * so a dedicated bucketer is required here.
+ */
 function withdrawalBucketOf(account: AnyAccount | undefined): 'cash' | 'brokerage' | 'traditional' | 'roth' | 'other' {
     if (account instanceof SavedAccount) return 'cash';
     if (account instanceof InvestedAccount) {
@@ -115,8 +124,6 @@ export interface EngineSearchDiagnostics {
     sims: number;
     bestHeadroom: number | null;
     bestLabel: string;
-    /** Scored grid/seed candidates (refine evaluations omitted), for the debug screen. */
-    candidates: { label: string; headroom: number | null; total: number; afterTaxNW: number }[];
 }
 
 export interface EngineSearchResult {
@@ -126,12 +133,11 @@ export interface EngineSearchResult {
     diagnostics: EngineSearchDiagnostics;
 }
 
-const planTotal = (p: Map<number, number>): number => [...p.values()].reduce((s, v) => s + v, 0);
-
 /** Extract a year→conversion$ plan from an executed timeline (e.g. the std-ded baseline). */
 export function extractConversionPlan(timeline: SimulationYear[]): Map<number, number> {
     const plan = new Map<number, number>();
     for (const y of timeline) {
+        if (y.isEndOfYearProjection) continue; // skip the synthetic end-of-year projection row
         const amt = y.rothConversion?.amount ?? 0;
         if (amt > 0) plan.set(y.year, amt);
     }
@@ -177,58 +183,59 @@ export function searchConversionPlanByEngine(
     const { baseline, seedPlans = [] } = opts;
 
     let sims = 0;
-    const diag: EngineSearchDiagnostics['candidates'] = [];
     // Seed with the pre-scored std-ded baseline (its TRUE score + timeline) — the result is
     // ≥ the baseline by construction, so the downstream feasibility floor never fires.
     let best: { headroom: number | null; plan: Map<number, number>; score: ConversionPlanScore; label: string } =
         { headroom: null, plan: baseline.plan, score: { afterTaxNW: baseline.afterTaxNW, timeline: baseline.timeline }, label: 'std-ded-baseline' };
-    diag.push({ label: best.label, headroom: null, total: planTotal(baseline.plan), afterTaxNW: baseline.afterTaxNW });
 
-    const consider = (label: string, headroom: number | null, plan: Map<number, number>, record: boolean): ConversionPlanScore => {
+    const consider = (label: string, headroom: number | null, plan: Map<number, number>): ConversionPlanScore => {
         const score = scorePlan(plan);
         sims++;
-        if (record) diag.push({ label, headroom, total: planTotal(plan), afterTaxNW: score.afterTaxNW });
         if (score.afterTaxNW > best.score.afterTaxNW) best = { headroom, plan, score, label };
         return score;
     };
 
     // Seed candidates (e.g. the legacy DP plan) — guarantees the result is ≥ each of them.
-    for (const s of seedPlans) consider(s.label, null, s.plan, true);
+    for (const s of seedPlans) consider(s.label, null, s.plan);
 
     // Nothing to vary year-over-year → baseline / seeds are the whole search.
     if (contexts.length === 0) {
         return {
             conversionsByYear: best.plan,
             winningTimeline: best.score.timeline,
-            diagnostics: { sims, bestHeadroom: best.headroom, bestLabel: best.label, candidates: diag },
+            diagnostics: { sims, bestHeadroom: best.headroom, bestLabel: best.label },
         };
     }
 
     // Bracket-aligned fill-to-headroom grid.
     const grid = headroomGrid(contexts);
-    for (const h of grid) consider(`h=${Math.round(h).toLocaleString()}`, h, fillToHeadroomPlan(contexts, h), true);
+    for (const h of grid) consider(`h=${Math.round(h).toLocaleString()}`, h, fillToHeadroomPlan(contexts, h));
 
     // Golden-section refine over the continuous headroom, in the interval bracketing the best
-    // grid point — finds the precise peak between two bracket tops. Skipped if a non-grid
-    // candidate (baseline / a seed) is winning.
-    if (best.headroom !== null && best.headroom > 0) {
+    // grid point — finds the precise peak between two bracket tops. Skipped only if a non-grid
+    // candidate (baseline / a seed) is winning. When the h=0 grid point wins we STILL refine over
+    // (0, firstBracketTop): the peak between the standard deduction and the first bracket top lives
+    // there, and gating on best.headroom > 0 would never probe it.
+    if (best.headroom !== null) {
         const idx = grid.indexOf(best.headroom);
         const lo = idx > 0 ? grid[idx - 1] : 0;
-        const hi = idx >= 0 && idx < grid.length - 1 ? grid[idx + 1] : best.headroom * 1.5;
+        // Upper bound: the next grid top above the winner; for the h=0 case that's grid[1] (the first
+        // positive bracket top). Fall back to a small positive width only when no higher top exists.
+        const hi = idx >= 0 && idx < grid.length - 1 ? grid[idx + 1] : Math.max(best.headroom * 1.5, 1_000);
         const phi = (Math.sqrt(5) - 1) / 2;
         let a = lo, c = hi;
         let x1 = c - phi * (c - a), x2 = a + phi * (c - a);
-        let f1 = consider(`h=${Math.round(x1).toLocaleString()}`, x1, fillToHeadroomPlan(contexts, x1), false).afterTaxNW;
-        let f2 = consider(`h=${Math.round(x2).toLocaleString()}`, x2, fillToHeadroomPlan(contexts, x2), false).afterTaxNW;
+        let f1 = consider(`h=${Math.round(x1).toLocaleString()}`, x1, fillToHeadroomPlan(contexts, x1)).afterTaxNW;
+        let f2 = consider(`h=${Math.round(x2).toLocaleString()}`, x2, fillToHeadroomPlan(contexts, x2)).afterTaxNW;
         for (let i = 0; i < 4; i++) {
             if (f1 >= f2) {
                 c = x2; x2 = x1; f2 = f1;
                 x1 = c - phi * (c - a);
-                f1 = consider(`h=${Math.round(x1).toLocaleString()}`, x1, fillToHeadroomPlan(contexts, x1), false).afterTaxNW;
+                f1 = consider(`h=${Math.round(x1).toLocaleString()}`, x1, fillToHeadroomPlan(contexts, x1)).afterTaxNW;
             } else {
                 a = x1; x1 = x2; f1 = f2;
                 x2 = a + phi * (c - a);
-                f2 = consider(`h=${Math.round(x2).toLocaleString()}`, x2, fillToHeadroomPlan(contexts, x2), false).afterTaxNW;
+                f2 = consider(`h=${Math.round(x2).toLocaleString()}`, x2, fillToHeadroomPlan(contexts, x2)).afterTaxNW;
             }
         }
     }
@@ -236,6 +243,6 @@ export function searchConversionPlanByEngine(
     return {
         conversionsByYear: best.plan,
         winningTimeline: best.score.timeline,
-        diagnostics: { sims, bestHeadroom: best.headroom, bestLabel: best.label, candidates: diag },
+        diagnostics: { sims, bestHeadroom: best.headroom, bestLabel: best.label },
     };
 }
