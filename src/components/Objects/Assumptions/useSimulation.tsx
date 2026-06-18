@@ -868,6 +868,7 @@ export const buildMcConversionPolicy = (
             plan: extractConversionPlan(baselineTimeline),
         },
         seedPlans: [{ label: 'legacy-dp', plan: stochasticPlan.conversionsByYear }],
+        startingTradBalance: dpInputs.currentTradBalance,
     });
     // h* = the optimum's taxable-income headroom above the standard deduction:
     //   • a fill-to-h grid point won → that headroom (cap at it);
@@ -1031,6 +1032,7 @@ export const runSimulationWithOptimization = (
                 const s = searchConversionPlanByEngine(art.dpInputs.contexts, scorePlan, {
                     baseline: { afterTaxNW: terminalAfterTaxNetWorth(art.baselineO, tradValuationRuler), timeline: art.baselineO, plan: extractConversionPlan(art.baselineO) },
                     seedPlans: [{ label: 'legacy-dp', plan: art.dpPlan.conversionsByYear }],
+                    startingTradBalance: art.dpInputs.currentTradBalance,
                 });
                 return {
                     order: art.order, timeline: s.winningTimeline,

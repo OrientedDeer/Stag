@@ -7,6 +7,7 @@ import { ExpenseContext } from '../../../components/Objects/Expense/ExpenseConte
 import { useAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxContext } from '../../../components/Objects/Taxes/TaxContext';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
+import { applyChosenWithdrawalOrder } from '../../../services/simulation/EngineDirectConversionSearch';
 import { calculateNetWorth, formatCompactCurrency } from './FutureUtils';
 import { YearlyPercentile, RETURN_PRESETS, ReturnPresetKey, getPresetReturnMean } from '../../../services/MonteCarloTypes';
 import { HISTORICAL_STATS } from '../../../data/HistoricalReturns';
@@ -158,7 +159,12 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
 
     // Handle running simulation
     const handleRun = async () => {
-        await runSimulation(accounts, incomes, expenses, assumptions, taxState);
+        // Run MC under the SAME withdrawal order the deterministic projection chose (#1), so the MC
+        // bands and the chart's deterministic line model the same drawdown. The joint optimizer records
+        // its pick on year 0 (chosenWithdrawalOrder); when absent (manual order / tax-opt off) this is a
+        // no-op and MC uses the user's stored order.
+        const mcAssumptions = applyChosenWithdrawalOrder(assumptions, simulationData[0]?.chosenWithdrawalOrder);
+        await runSimulation(accounts, incomes, expenses, mcAssumptions, taxState);
     };
 
     // Format success rate with color

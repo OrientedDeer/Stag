@@ -104,6 +104,36 @@ export function generateCandidateWithdrawalOrders<T extends WithdrawalOrderItem>
     });
 }
 
+/**
+ * Reorder an assumptions object's `withdrawalStrategy` to the optimizer-CHOSEN order (#1) — e.g.
+ * `SimulationYear.chosenWithdrawalOrder`, the order the deterministic projection actually ran.
+ * Monte Carlo runs every path off the passed assumptions, so threading the chosen order through
+ * here makes the MC bands drain in the SAME order as the deterministic chart instead of always the
+ * user's stored order.
+ *
+ * `chosenOrder` is a lossy `{accountId, name}` projection, so we map its accountIds back to the
+ * full strategy items; any item NOT named in the chosen order is appended in its original relative
+ * position (defensive — the optimizer reorders, it never drops accounts). Returns the SAME object
+ * reference when there is no chosen order or it already matches, so the Monte-Carlo policy cache
+ * key (hashed off `assumptions`) is unchanged in the common user-order-wins case.
+ */
+export function applyChosenWithdrawalOrder<
+    W extends { accountId: string },
+    A extends { withdrawalStrategy: W[] },
+>(assumptions: A, chosenOrder: ReadonlyArray<{ accountId: string }> | undefined): A {
+    if (!chosenOrder || chosenOrder.length === 0) return assumptions;
+    const byId = new Map(assumptions.withdrawalStrategy.map(w => [w.accountId, w]));
+    const picked = chosenOrder
+        .map(c => byId.get(c.accountId))
+        .filter((w): w is W => w !== undefined);
+    const remaining = assumptions.withdrawalStrategy.filter(
+        w => !chosenOrder.some(c => c.accountId === w.accountId));
+    const reordered = [...picked, ...remaining];
+    const unchanged = reordered.length === assumptions.withdrawalStrategy.length
+        && reordered.every((w, i) => w.accountId === assumptions.withdrawalStrategy[i].accountId);
+    return unchanged ? assumptions : { ...assumptions, withdrawalStrategy: reordered };
+}
+
 export type ConversionPlanScore = { afterTaxNW: number; timeline: SimulationYear[] };
 /** Run a candidate conversion plan through the real engine and return its after-tax terminal NW + timeline. */
 export type ConversionPlanScorer = (plan: Map<number, number>) => ConversionPlanScore;
@@ -117,6 +147,12 @@ export interface EngineSearchOptions {
     baseline: { afterTaxNW: number; timeline: SimulationYear[]; plan: Map<number, number> };
     /** Extra seed candidate plans (e.g. the legacy DP plan), scored alongside the grid. */
     seedPlans?: { label: string; plan: Map<number, number> }[];
+    /**
+     * Traditional balance entering the horizon (= dpInputs.currentTradBalance, the start-of-first-
+     * context-year balance). Used as the prior-year-end RMD basis for the first context in the
+     * fill-to-headroom family (#5), matching the engine's realized-RMD basis.
+     */
+    startingTradBalance: number;
 }
 
 export interface EngineSearchDiagnostics {
@@ -149,11 +185,20 @@ export function extractConversionPlan(timeline: SimulationYear[]): Map<number, n
  * otherOrdinaryIncome = non-SS ordinary (excl. conversion) + the baseline RMD. SS is left out
  * of the ceiling math (its taxable interaction is non-linear); the real-engine score handles the
  * exact effect, so the family only needs to span aggressiveness monotonically.
+ *
+ * RMD basis (#5): the engine computes year Y's RMD on the PRIOR-year-end Traditional balance
+ * (Dec 31 of Y−1), so the calibration income here uses the previous context's baselineTradBalance
+ * (= start of this year) — or `startingTradBalance` (the balance entering the horizon) for the
+ * first context. This matches the realized non-SS ordinary income YearSolver applies the MC cap
+ * against, so an on-track path reduces to the deterministic optimum h* rather than to a
+ * one-year-of-growth mis-estimate of the RMD (which used this year's END balance before).
  */
-function fillToHeadroomPlan(contexts: DPYearContext[], headroom: number): Map<number, number> {
+function fillToHeadroomPlan(contexts: DPYearContext[], headroom: number, startingTradBalance: number): Map<number, number> {
     const plan = new Map<number, number>();
-    for (const ctx of contexts) {
-        const baselineRMD = ctx.rmdDivisor > 0 ? (ctx.baselineTradBalance ?? 0) / ctx.rmdDivisor : 0;
+    for (let i = 0; i < contexts.length; i++) {
+        const ctx = contexts[i];
+        const priorYearEndTrad = i > 0 ? (contexts[i - 1].baselineTradBalance ?? 0) : startingTradBalance;
+        const baselineRMD = ctx.rmdDivisor > 0 ? priorYearEndTrad / ctx.rmdDivisor : 0;
         const otherOrdinary = ctx.nonSSOrdinaryIncomeExclRMD + baselineRMD;
         const ceiling = ctx.fedParams.standardDeduction + headroom;
         const conv = Math.max(0, ceiling - otherOrdinary);
@@ -180,7 +225,9 @@ export function searchConversionPlanByEngine(
     scorePlan: ConversionPlanScorer,
     opts: EngineSearchOptions,
 ): EngineSearchResult {
-    const { baseline, seedPlans = [] } = opts;
+    const { baseline, seedPlans = [], startingTradBalance } = opts;
+    // Fill-to-headroom with the engine's prior-year-end RMD basis baked in (#5).
+    const fillPlan = (h: number): Map<number, number> => fillToHeadroomPlan(contexts, h, startingTradBalance);
 
     let sims = 0;
     // Seed with the pre-scored std-ded baseline (its TRUE score + timeline) — the result is
@@ -209,7 +256,7 @@ export function searchConversionPlanByEngine(
 
     // Bracket-aligned fill-to-headroom grid.
     const grid = headroomGrid(contexts);
-    for (const h of grid) consider(`h=${Math.round(h).toLocaleString()}`, h, fillToHeadroomPlan(contexts, h));
+    for (const h of grid) consider(`h=${Math.round(h).toLocaleString()}`, h, fillPlan(h));
 
     // Golden-section refine over the continuous headroom, in the interval bracketing the best
     // grid point — finds the precise peak between two bracket tops. Skipped only if a non-grid
@@ -225,17 +272,17 @@ export function searchConversionPlanByEngine(
         const phi = (Math.sqrt(5) - 1) / 2;
         let a = lo, c = hi;
         let x1 = c - phi * (c - a), x2 = a + phi * (c - a);
-        let f1 = consider(`h=${Math.round(x1).toLocaleString()}`, x1, fillToHeadroomPlan(contexts, x1)).afterTaxNW;
-        let f2 = consider(`h=${Math.round(x2).toLocaleString()}`, x2, fillToHeadroomPlan(contexts, x2)).afterTaxNW;
+        let f1 = consider(`h=${Math.round(x1).toLocaleString()}`, x1, fillPlan(x1)).afterTaxNW;
+        let f2 = consider(`h=${Math.round(x2).toLocaleString()}`, x2, fillPlan(x2)).afterTaxNW;
         for (let i = 0; i < 4; i++) {
             if (f1 >= f2) {
                 c = x2; x2 = x1; f2 = f1;
                 x1 = c - phi * (c - a);
-                f1 = consider(`h=${Math.round(x1).toLocaleString()}`, x1, fillToHeadroomPlan(contexts, x1)).afterTaxNW;
+                f1 = consider(`h=${Math.round(x1).toLocaleString()}`, x1, fillPlan(x1)).afterTaxNW;
             } else {
                 a = x1; x1 = x2; f1 = f2;
                 x2 = a + phi * (c - a);
-                f2 = consider(`h=${Math.round(x2).toLocaleString()}`, x2, fillToHeadroomPlan(contexts, x2)).afterTaxNW;
+                f2 = consider(`h=${Math.round(x2).toLocaleString()}`, x2, fillPlan(x2)).afterTaxNW;
             }
         }
     }
