@@ -145,8 +145,20 @@ describe('#98 MC closed-loop conversion policy — on-track path', () => {
             - (new Date().getFullYear() - getBirthYear(assumptions.milestones)));
 
         // 1) Deterministic projection (open-loop schedule) — the optimum to reduce to.
+        // NOTE (#89 root fix): the deterministic DEFAULT is now the engine-direct search.
+        // The MC closed-loop policy is still DP-solved (buildMcConversionPolicy), so the
+        // on-track path reduces to the LEGACY-DP deterministic schedule — run here with the
+        // same auto-derived objective buildDpSolveInputs uses. (Aligning the MC policy with
+        // the engine-direct search is a tracked follow-up; until then they intentionally differ.)
+        const dpObjective = {
+            objectiveMode: 'max-wealth' as const,
+            terminalValuation: 'bracket-aware' as const,
+            userSituation: assumptions.investments.rothConversionUserSituation ?? ('self-liquidate' as const),
+            terminalCola: assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate / 100 : 0,
+        };
         const det = runSimulationWithOptimization(
             yearsToRun, makeAccounts(), incomes, expenses, assumptions, taxState,
+            undefined, undefined, undefined, undefined, undefined, dpObjective,
         );
         const detConversions = conversionsByYear(det);
         expect(detConversions.size).toBeGreaterThan(0); // else the test is vacuous.

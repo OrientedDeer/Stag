@@ -10,6 +10,7 @@ import { TaxState, resolveTaxEventsForYear } from '../Taxes/TaxContext';
 import { BaselineProjections } from '../../../services/simulation/types';
 import { getRMDStartAge } from '../../../data/RMDData';
 import { buildDPYearContexts, planConversionsViaDP, DPPlan, DPInputs, DPObjectiveOptions, DPPolicy, QuadratureNodes } from '../../../services/simulation/RothConversionDP';
+import { searchConversionPlanByEngine, extractConversionPlan } from '../../../services/simulation/EngineDirectConversionSearch';
 import { getTotalBrokerageBalance, getTotalTraditionalBalance, getTotalRothBalance } from '../../../services/simulation/YearSolver';
 import { buildTradValuation, terminalAfterTaxNetWorth } from '../../../tabs/Future/tabs/FutureUtils';
 
@@ -932,50 +933,74 @@ export const runSimulationWithOptimization = (
     }
 
     if (strategy === 'dp-precomputed' && taxOptOn) {
-        // DP path: reuse the std-ded baseline above (already computed) for
-        // context building and the DP forward sweep.
-        const baselineTimeline = stdDedBaselineTimeline;
+        // Conversion plan for the dp-precomputed strategy. Two paths:
+        //   • DEFAULT (no explicit dpObjective): the #89 ROOT FIX — an engine-direct
+        //     search that picks conversions by scoring candidate plans on the REAL
+        //     engine (after-tax terminal NW), rather than the DP's internal terminal
+        //     valuation (which over-converts on low/no-SS, large-Traditional profiles —
+        //     see docs/roth-review/00-cookbook-review-synthesis.md §5). The std-ded
+        //     baseline plan is one of the candidates, so the result is ≥ the baseline
+        //     BY CONSTRUCTION → the feasibility floor below never fires for this path.
+        //   • LEGACY DP (explicit dpObjective): retained for regression tests that A/B
+        //     the min-tax / flat-τ / bracket-aware objectives, and for comparison.
+        let finalTimeline: SimulationYear[];
 
-        // Pass 2 — solve the DP over the baseline trajectory. Setup (contexts,
-        // starting balances, objective) is shared with the MC policy solve via
-        // buildDpSolveInputs; the deterministic projection passes no return
-        // distribution, so it solves the open-loop schedule as before.
-        const { dpInputs, effectiveDpObjective } = buildDpSolveInputs(
-            accounts, incomes, expenses, assumptions, taxState, baselineTimeline, dpObjective,
-        );
-
-        const dpPlan: DPPlan = planConversionsViaDP(dpInputs, effectiveDpObjective);
-
-        // Pass 3 — final sim executing the DP plan. The DP strategy in YearSolver
-        // looks up `input.dpConversionPlan` per year. conversionMode is moot for DP.
-        // No strategy re-pin needed: selectConversionStrategy resolves an unset field to the
-        // dp-precomputed default, so the built dpPlan executes whether the field is
-        // 'dp-precomputed' or undefined (legacy data).
-        const finalTimeline = runSimulation(
-            yearsToRun, accounts, incomes, expenses, assumptions, taxState,
-            yearlyReturns,
-            {
-                referenceDate,
-                dpConversionPlan: dpPlan.conversionsByYear,
-                dpDebugByYear: dpPlan.diagnostics.perYearDebug,
-                eoyContributionAdditions,
-                eoyDebtReductions,
-                eoyMortgageReductions,
-            },
-        );
-
-        // Append solver summary to year-0 logs so the user can see DP setup
-        // (grid, totals) in the year inspector for the simulation start year.
-        if (finalTimeline.length > 0) {
-            finalTimeline[0].logs.push(...dpPlan.diagnostics.summaryLogs);
-        }
-
-        // Attach structured per-year DP traces to their matching SimulationYear
-        // records so the Roth debug screen can render the cost-curve, waterfall,
-        // and balance-flow sections without re-parsing log text.
-        for (const year of finalTimeline) {
-            const trace = dpPlan.diagnostics.perYearTraces.get(year.year);
-            if (trace) year.dpTrace = trace;
+        if (dpObjective === undefined) {
+            // buildDpSolveInputs builds the per-year income/RMD/tax contexts (reusing the
+            // std-ded baseline) and derives the production max-wealth objective.
+            const { dpInputs, effectiveDpObjective } = buildDpSolveInputs(
+                accounts, incomes, expenses, assumptions, taxState, stdDedBaselineTimeline,
+            );
+            // The DP plan is no longer TRUSTED as the optimizer — it's ONE candidate the
+            // engine-direct search scores on the real engine and overrides when beaten (it
+            // over-converts on low/no-SS large-Traditional profiles). Including it guarantees
+            // the shipped result is ≥ the DP; the std-ded baseline candidate guarantees ≥ baseline.
+            const dpPlan = planConversionsViaDP(dpInputs, effectiveDpObjective);
+            const stdDedPlan = extractConversionPlan(stdDedBaselineTimeline);
+            // Score a candidate plan by EXECUTING it on the real engine and valuing the
+            // terminal position with the same situation ruler the baseline used (#94).
+            const scorePlan = (plan: Map<number, number>) => {
+                const tl = runSimulation(
+                    yearsToRun, accounts, incomes, expenses, assumptions, taxState, yearlyReturns,
+                    { referenceDate, dpConversionPlan: plan, eoyContributionAdditions, eoyDebtReductions, eoyMortgageReductions },
+                );
+                return { afterTaxNW: terminalAfterTaxNetWorth(tl, tradValuationRuler), timeline: tl };
+            };
+            const search = searchConversionPlanByEngine(dpInputs.contexts, scorePlan, {
+                baseline: { afterTaxNW: stdDedBaselineTerminalAfterTaxNW, timeline: stdDedBaselineTimeline, plan: stdDedPlan },
+                seedPlans: [{ label: 'legacy-dp', plan: dpPlan.conversionsByYear }],
+            });
+            finalTimeline = search.winningTimeline; // reuse the winning candidate's sim — no extra run
+            if (finalTimeline.length > 0) {
+                const total = [...search.conversionsByYear.values()].reduce((s, v) => s + v, 0);
+                finalTimeline[0].logs.push(
+                    `[engine-direct search #89] scored ${search.diagnostics.sims + 1} conversion plans on the real engine; ` +
+                    `chose ${search.diagnostics.bestLabel} (total converted $${Math.round(total).toLocaleString()}) as the after-tax-wealth maximizer.`,
+                );
+            }
+        } else {
+            // LEGACY DP path — reached only with an explicit dpObjective (regression tests).
+            const { dpInputs, effectiveDpObjective } = buildDpSolveInputs(
+                accounts, incomes, expenses, assumptions, taxState, stdDedBaselineTimeline, dpObjective,
+            );
+            const dpPlan: DPPlan = planConversionsViaDP(dpInputs, effectiveDpObjective);
+            finalTimeline = runSimulation(
+                yearsToRun, accounts, incomes, expenses, assumptions, taxState,
+                yearlyReturns,
+                {
+                    referenceDate,
+                    dpConversionPlan: dpPlan.conversionsByYear,
+                    dpDebugByYear: dpPlan.diagnostics.perYearDebug,
+                    eoyContributionAdditions,
+                    eoyDebtReductions,
+                    eoyMortgageReductions,
+                },
+            );
+            if (finalTimeline.length > 0) finalTimeline[0].logs.push(...dpPlan.diagnostics.summaryLogs);
+            for (const year of finalTimeline) {
+                const trace = dpPlan.diagnostics.perYearTraces.get(year.year);
+                if (trace) year.dpTrace = trace;
+            }
         }
 
         // Stash both after-tax terminal net worths on year 0 for the live Withdrawal-tab
@@ -989,13 +1014,15 @@ export const runSimulationWithOptimization = (
             finalTimeline[0].strategyTerminalAfterTaxNW = strategyTerminalAfterTaxNW;
         }
 
-        // FEASIBILITY FLOOR (#89). The max-wealth DP must never leave the household worse off
-        // (on after-tax terminal net worth) than the trivial, always-feasible std-ded-only
-        // baseline. On certain profiles — large Traditional + low/no Social Security drawn down
-        // through the standard taxable→Traditional→Roth order — the DP's terminal valuation can
-        // over-value draining the residual and convert PAST the wealth peak (draining Traditional
-        // toward $0), ending BELOW the baseline. When that happens, fall back to the std-ded-only
-        // plan, which is strictly better here. This is the cookbook's "feasibility-floor property".
+        // FEASIBILITY FLOOR (#89) — now a BACKSTOP. The DEFAULT engine-direct search includes the
+        // std-ded plan in its candidate set, so its result is ≥ the baseline by construction and this
+        // never fires for it; the floor still guards the LEGACY DP path (explicit dpObjective). The
+        // optimizer must never leave the household worse off (on after-tax terminal net worth) than
+        // the trivial, always-feasible std-ded-only baseline. The legacy DP's terminal valuation can,
+        // on large Traditional + low/no Social Security profiles drawn down trad-first, over-value
+        // draining the residual and convert PAST the wealth peak (draining Traditional toward $0),
+        // ending BELOW the baseline; when it does, fall back to the std-ded-only plan, which is
+        // strictly better here. This is the cookbook's "feasibility-floor property".
         //
         // SOLVENCY-GATED: only engage when the std-ded baseline is itself solvent (its final year
         // carries no deficit-debt). On a household that depletes even under the minimal baseline,
