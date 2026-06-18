@@ -36,6 +36,9 @@ coverage/
 
 # Personal scenario tests (real financial data)
 **/*-personal-scenario*
+docs/personal/
+**/*.personal.test.ts
+**/scenario-user*.test.ts
 **/TEAM_HANDOFF.md
 
 # Personal research notes
