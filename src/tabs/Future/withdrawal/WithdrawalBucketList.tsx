@@ -3,6 +3,7 @@ import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea
 import { AnyAccount } from '../../../components/Objects/Accounts/models';
 import { Panel } from "../../../components/Layout/Primitives";
 import { Tooltip } from '../../../components/Layout/InputFields/Tooltip';
+import { AlertBanner } from '../../../components/Layout/AlertBanner';
 
 export interface AccountTimeline {
     tappedYear?: number;
@@ -29,6 +30,12 @@ interface WithdrawalBucketListProps {
     buckets: BucketDetail[];
     onDragEnd: (result: DropResult) => void;
     formatMoney: (amount: number) => string;
+    /**
+     * The withdrawal order the joint optimizer CHOSE (year 0's `chosenWithdrawalOrder`),
+     * surfaced so the disabled manual selector is honest about what's running. Only present
+     * when Tax Optimization manages the order and the dp-precomputed path ran; undefined otherwise.
+     */
+    chosenWithdrawalOrder?: { accountId: string; name: string }[];
 }
 
 // One-line "Tapped age X → depleted age Y" consequence, derived from the sim.
@@ -77,20 +84,31 @@ function WithdrawalBucketListInner({
     buckets,
     onDragEnd,
     formatMoney,
+    chosenWithdrawalOrder,
 }: WithdrawalBucketListProps) {
     if (taxOptimizationEnabled) {
         return (
-            <Panel padding="lg" className="bg-surface-raised/30 text-center">
-                <svg className="w-12 h-12 mx-auto text-content-faint mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                </svg>
-                <p className="text-content-muted text-sm">
-                    Manual withdrawal ordering is disabled when Tax Optimization is enabled.
-                </p>
-                <p className="text-content-subtle text-xs mt-2">
-                    The system automatically determines the optimal withdrawal order each year based on your tax situation.
-                </p>
-            </Panel>
+            <>
+                <Panel padding="lg" className="bg-surface-raised/30 text-center">
+                    <svg className="w-12 h-12 mx-auto text-content-faint mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                    <p className="text-content-muted text-sm">
+                        Manual withdrawal ordering is disabled when Tax Optimization is enabled.
+                    </p>
+                    <p className="text-content-subtle text-xs mt-2">
+                        The system automatically determines the optimal withdrawal order each year based on your tax situation.
+                    </p>
+                </Panel>
+
+                {chosenWithdrawalOrder && chosenWithdrawalOrder.length > 0 && (
+                    <div className="mt-4">
+                        <AlertBanner severity="info" size="sm" title="Tax Optimization chose this withdrawal order">
+                            {chosenWithdrawalOrder.map(w => w.name).join(' → ')}
+                        </AlertBanner>
+                    </div>
+                )}
+            </>
         );
     }
 

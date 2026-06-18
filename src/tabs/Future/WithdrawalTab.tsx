@@ -382,6 +382,7 @@ export default function WithdrawalTab() {
                     buckets={bucketsWithDetails}
                     onDragEnd={onDragEnd}
                     formatMoney={formatMoney}
+                    chosenWithdrawalOrder={simulation[0]?.chosenWithdrawalOrder}
                 />
             </div>
         </div>
