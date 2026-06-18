@@ -144,21 +144,13 @@ describe('#98 MC closed-loop conversion policy — on-track path', () => {
             getLifeExpectancy(assumptions.milestones)
             - (new Date().getFullYear() - getBirthYear(assumptions.milestones)));
 
-        // 1) Deterministic projection (open-loop schedule) — the optimum to reduce to.
-        // NOTE (#89 root fix): the deterministic DEFAULT is now the engine-direct search.
-        // The MC closed-loop policy is still DP-solved (buildMcConversionPolicy), so the
-        // on-track path reduces to the LEGACY-DP deterministic schedule — run here with the
-        // same auto-derived objective buildDpSolveInputs uses. (Aligning the MC policy with
-        // the engine-direct search is a tracked follow-up; until then they intentionally differ.)
-        const dpObjective = {
-            objectiveMode: 'max-wealth' as const,
-            terminalValuation: 'bracket-aware' as const,
-            userSituation: assumptions.investments.rothConversionUserSituation ?? ('self-liquidate' as const),
-            terminalCola: assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate / 100 : 0,
-        };
+        // 1) Deterministic projection — the optimum the on-track policy reduces to.
+        // The MC closed-loop policy is now CAPPED at the deterministic engine-search optimum
+        // (#89 MC fix in buildMcConversionPolicy), so on an on-track path it reduces to the
+        // deterministic DEFAULT (the engine-direct search) — NOT the raw legacy DP it used to.
+        // Use the default (no dpObjective override).
         const det = runSimulationWithOptimization(
             yearsToRun, makeAccounts(), incomes, expenses, assumptions, taxState,
-            undefined, undefined, undefined, undefined, undefined, dpObjective,
         );
         const detConversions = conversionsByYear(det);
         expect(detConversions.size).toBeGreaterThan(0); // else the test is vacuous.
@@ -196,9 +188,12 @@ describe('#98 MC closed-loop conversion policy — on-track path', () => {
             const sot = sotByYear.get(year)!;
             const looked = lookupConversionPolicy(
                 policyPlan!.policy!, year, totalTrad(sot), totalRothIra(sot)) ?? 0;
-            // Applied = min(policy lookup, available Trad). The fixture's Trad
-            // dwarfs the conversion, so the clamp never binds ⇒ exact to $1.
-            expect(Math.abs(mcAmt - looked)).toBeLessThanOrEqual(1);
+            // Applied = min(policy lookup, #89 MC cap, available Trad). The #89 cap (fill to the
+            // engine-search optimum) can TRIM the raw lookup in over-conversion-prone years, so the
+            // lookup is an UPPER BOUND on the applied amount, not an exact match. (The cap's exact
+            // binding + downside-safety is pinned in mc-cap-validation.test.ts.) Trad still dwarfs
+            // the conversion, so the availability clamp never binds.
+            expect(mcAmt).toBeLessThanOrEqual(looked + 1);
         }
 
         // --- Property 2: REDUCES TO THE DETERMINISTIC OPTIMUM (bucket-level).

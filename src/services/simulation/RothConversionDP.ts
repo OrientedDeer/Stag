@@ -332,6 +332,16 @@ export interface DPPolicy {
      * optimal conversion $ for that cell, plus the year's grid bucket widths.
      */
     byYear: Map<number, { table: Float64Array; dB: number; dRoth: number }>;
+    /**
+     * #89 MC over-conversion cap. The deterministic engine-search optimum expressed as a
+     * taxable-income headroom above the standard deduction (h*): each MC path caps its policy
+     * conversion so realized taxable income ≤ stdDed + capHeadroom (see YearSolver.planConversionDP),
+     * preventing the stochastic policy from over-converting past the validated peak on low/no-SS
+     * large-Traditional profiles. `undefined` ⇒ NO cap — the legacy DP won the deterministic search,
+     * so the policy is already at/under the optimum there (e.g. real-SS profiles) and capping would
+     * neuter its #98 bull-path adaptivity.
+     */
+    capHeadroom?: number;
 }
 
 export interface DPPlan {

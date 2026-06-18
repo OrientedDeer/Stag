@@ -1216,6 +1216,17 @@ function planConversionDP(
             input.mcConversionPolicy, input.year, traditionalBalance, rothBalance);
         if (rawPolicy !== undefined) {
             targetConversion = Math.max(0, rawPolicy);
+            // #89 MC over-conversion cap: bound the per-path policy at the deterministic
+            // engine-search optimum — fill realized taxable income only to stdDed + capHeadroom —
+            // so the stochastic policy can't over-convert past the validated peak on the low/no-SS
+            // large-Traditional corner. Uses REALIZED non-SS ordinary income (incl. this path's
+            // realized RMD), so the bound adapts per path. undefined capHeadroom (the legacy DP won
+            // the deterministic search → policy already at/under the optimum, e.g. real-SS) ⇒ no cap.
+            const capHeadroom = input.mcConversionPolicy.capHeadroom;
+            if (capHeadroom !== undefined) {
+                const capAmount = Math.max(0, fedParams.standardDeduction + capHeadroom - nonSSOrdinaryIncome);
+                targetConversion = Math.min(targetConversion, capAmount);
+            }
             if (targetConversion > 0) {
                 decisions.push({
                     category: 'conversion',

@@ -835,7 +835,8 @@ export const buildMcConversionPolicy = (
         ? tradAccounts.reduce((sum, a) => sum + (a.customROR ?? globalRoR) * a.vestedAmount, 0) / tradTotal
         : globalRoR;
     const rorBase = weightedRoR + inflation;
-    return planConversionsViaDP(dpInputs, {
+    // Solve the stochastic closed-loop policy — the #98 table each MC path looks up.
+    const stochasticPlan = planConversionsViaDP(dpInputs, {
         ...effectiveDpObjective,
         returnDistribution: {
             stdDev: returnStdDev / 100,
@@ -843,6 +844,42 @@ export const buildMcConversionPolicy = (
             nodes,
         },
     });
+
+    // #89 MC over-conversion cap. Derive the deterministic engine-search optimum (h*) and ride it on
+    // the policy so each path caps its conversion at fill-to-(stdDed + h*) (YearSolver.planConversionDP),
+    // preventing the stochastic policy from over-converting past the validated peak on low/no-SS
+    // large-Traditional profiles — while leaving it untouched where the DP is already optimal
+    // (real-SS → DP wins the search → no cap). Perf note: the DP candidate is the stochastic policy's
+    // CENTRAL schedule, so the MC setup needs no second (deterministic) DP solve — only the
+    // engine-search's forward sims. h* uses the same precise search as the deterministic default, so an
+    // on-track path reduces to that default.
+    const ruler = buildTradValuation(baselineTimeline, assumptions, taxState);
+    const scorePlan = (plan: Map<number, number>) => {
+        const tl = runSimulation(
+            yearsToRun, accounts, incomes, expenses, assumptions, taxState, undefined,
+            { dpConversionPlan: plan },
+        );
+        return { afterTaxNW: terminalAfterTaxNetWorth(tl, ruler), timeline: tl };
+    };
+    const search = searchConversionPlanByEngine(dpInputs.contexts, scorePlan, {
+        baseline: {
+            afterTaxNW: terminalAfterTaxNetWorth(baselineTimeline, ruler),
+            timeline: baselineTimeline,
+            plan: extractConversionPlan(baselineTimeline),
+        },
+        seedPlans: [{ label: 'legacy-dp', plan: stochasticPlan.conversionsByYear }],
+    });
+    // h* = the optimum's taxable-income headroom above the standard deduction:
+    //   • a fill-to-h grid point won → that headroom (cap at it);
+    //   • the std-ded baseline won → 0 (tight cap — the over-conversion corner);
+    //   • the DP (policy central) won → undefined ⇒ NO cap (policy already at/under the optimum,
+    //     e.g. real-SS; capping would neuter the #98 bull-path adaptivity).
+    const capHeadroom: number | undefined =
+        search.diagnostics.bestLabel === 'legacy-dp' ? undefined
+            : search.diagnostics.bestLabel === 'std-ded-baseline' ? 0
+                : (search.diagnostics.bestHeadroom ?? undefined);
+    if (stochasticPlan.policy) stochasticPlan.policy.capHeadroom = capHeadroom;
+    return stochasticPlan;
 };
 
 /**
