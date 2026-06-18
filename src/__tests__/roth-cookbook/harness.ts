@@ -480,13 +480,22 @@ function baseAssumptions(
 }
 
 /**
- * SS-HEAVY / TORPEDO PROFILE.
- * MFJ, large Traditional (~$1.5M), real Social Security (~$60k/yr from 67), modest
- * brokerage, ~5% growth, already retired today. This is the household where the SS
- * torpedo pins the marginal exit rate high while the average exit rate falls — the
- * profile most prone to UNDER-conversion if the falling curve is priced at the pinned
- * marginal, and to OVER-conversion if priced naively. Current age ~62 so there are real
- * gap years (62→66) before SS at 67 and RMDs at 75.
+ * "SS-HEAVY" IS A MISNOMER — this fixture actually delivers ~$0 Social Security, and that
+ * is its PURPOSE: it is the $0-SS, large-Traditional ($1.5M), trad-first OVER-conversion
+ * corner. With no torpedo the residual Traditional exits cheaply, so a naive optimizer
+ * over-converts past the wealth peak. (See RothConversionFeasibilityFloor.test.ts, which
+ * uses this as the over-converter and labels it "$0 SS".)
+ *
+ * WHY $0 SS despite the $5,000/mo PIA set below: at the claiming age the engine RECOMPUTES
+ * the SS PIA from the household's earnings history (IncomeProjection.ts ~218/237,
+ * calculateAIME) and OVERWRITES the hand-set calculatedPIA. With no demographics.priorEarnings
+ * and no in-sim work income (retired), the recomputed PIA ≈ 0 — so the configured $5k/mo is
+ * never paid (only a partial first year, before the projection zeroes it). Do NOT "fix" this
+ * to pay $60k; it would destroy the over-converter corner the tests rely on. For a REAL
+ * torpedo, supply demographics.priorEarnings (see makeRealSSLargeTradScenario in
+ * RothConversionFeasibilityFloor.test.ts) or use CurrentSocialSecurityIncome.
+ *
+ * MFJ, ~5% growth, already retired at 62; gap years 62→66, RMDs at 75.
  */
 export function makeSSHeavyScenario(): Scenario {
     const currentYear = new Date().getFullYear();
@@ -521,8 +530,9 @@ export function makeSSHeavyScenario(): Scenario {
     // Cash buffer.
     const cash = new SavedAccount('acc-cash', 'Cash', 50_000, 0);
 
-    // Real SS ~$60k/yr (≈$5,000/mo PIA) claimed at 67. Pre-calculated (calculationYear past)
-    // so the engine activates it at the claiming age, mirroring the RMDCompliance idiom.
+    // CONFIGURED $5,000/mo but DELIVERS ~$0: the engine recomputes PIA from the (empty)
+    // earnings history at claiming age and overwrites this value (see the function docstring).
+    // This is intentional — the fixture is the $0-SS over-converter corner.
     const ss = new FutureSocialSecurityIncome('inc-ss', 'Social Security', 67, 5_000, currentYear - 1);
 
     // Living expenses ~$80k/yr (forces some Traditional/brokerage draw alongside conversions).
