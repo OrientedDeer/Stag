@@ -115,11 +115,6 @@ describe('#89 MC over-conversion cap — neutralizes over-conversion without reg
         const cappedScore = scoreMc(sc, capped, solved.plan, cfg);
         const uncappedScore = scoreMc(sc, uncapped, solved.plan, cfg);
 
-        // eslint-disable-next-line no-console
-        console.log(`[mc-cap] over-converter capped vs uncapped — median $${Math.round(cappedScore.median).toLocaleString()} vs $${Math.round(uncappedScore.median).toLocaleString()}; ` +
-            `p10 $${Math.round(cappedScore.p10).toLocaleString()} vs $${Math.round(uncappedScore.p10).toLocaleString()}; ` +
-            `medianConv $${Math.round(cappedScore.medianConv).toLocaleString()} vs $${Math.round(uncappedScore.medianConv).toLocaleString()}`);
-
         // The cap binds: the over-converting policy converts strictly less once capped.
         expect(cappedScore.medianConv).toBeLessThan(uncappedScore.medianConv);
         // Downside NOT regressed (same seed ⇒ paired; over-conversion hurt, so capped should win or tie).
@@ -139,9 +134,6 @@ describe('#89 MC over-conversion cap — neutralizes over-conversion without reg
         const uncapped: DPPolicy = { ...capped, capHeadroom: undefined };
         const cappedScore = scoreMc(sc, capped, solved.plan, cfg);
         const uncappedScore = scoreMc(sc, uncapped, solved.plan, cfg);
-        // eslint-disable-next-line no-console
-        console.log(`[mc-cap] low-bracket capped vs uncapped (capHeadroom=${capped.capHeadroom}) — median $${Math.round(cappedScore.median).toLocaleString()} vs $${Math.round(uncappedScore.median).toLocaleString()}; ` +
-            `p10 $${Math.round(cappedScore.p10).toLocaleString()} vs $${Math.round(uncappedScore.p10).toLocaleString()}`);
         const tol = (x: number) => Math.max(1, Math.abs(x) * 1e-4);
         expect(cappedScore.median).toBeGreaterThanOrEqual(uncappedScore.median - tol(uncappedScore.median));
         expect(cappedScore.p10).toBeGreaterThanOrEqual(uncappedScore.p10 - tol(uncappedScore.p10));
