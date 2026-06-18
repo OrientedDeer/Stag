@@ -981,9 +981,47 @@ export const runSimulationWithOptimization = (
         // Stash both after-tax terminal net worths on year 0 for the live Withdrawal-tab
         // comparison panel (#94). Same ruler as the baseline above, applied to this
         // strategy's terminal balances.
+        const strategyTerminalAfterTaxNW = finalTimeline.length > 0
+            ? terminalAfterTaxNetWorth(finalTimeline, tradValuationRuler)
+            : 0;
         if (finalTimeline.length > 0) {
             finalTimeline[0].stdDedBaselineTerminalAfterTaxNW = stdDedBaselineTerminalAfterTaxNW;
-            finalTimeline[0].strategyTerminalAfterTaxNW = terminalAfterTaxNetWorth(finalTimeline, tradValuationRuler);
+            finalTimeline[0].strategyTerminalAfterTaxNW = strategyTerminalAfterTaxNW;
+        }
+
+        // FEASIBILITY FLOOR (#89). The max-wealth DP must never leave the household worse off
+        // (on after-tax terminal net worth) than the trivial, always-feasible std-ded-only
+        // baseline. On certain profiles — large Traditional + low/no Social Security drawn down
+        // through the standard taxable→Traditional→Roth order — the DP's terminal valuation can
+        // over-value draining the residual and convert PAST the wealth peak (draining Traditional
+        // toward $0), ending BELOW the baseline. When that happens, fall back to the std-ded-only
+        // plan, which is strictly better here. This is the cookbook's "feasibility-floor property".
+        //
+        // SOLVENCY-GATED: only engage when the std-ded baseline is itself solvent (its final year
+        // carries no deficit-debt). On a household that depletes even under the minimal baseline,
+        // the after-tax-NW comparison is dominated by deficit-debt noise and there is no better
+        // feasible plan to fall back to, so the DP plan is returned untouched.
+        //
+        // This caps the downside at the (conservative) std-ded baseline; it does NOT move the plan
+        // to the true wealth peak — the baseline mildly under-converts vs the peak. The root fix is
+        // to size conversions by a direct engine search rather than the DP's internal terminal
+        // valuation (docs/roth-review/00-cookbook-review-synthesis.md §5). Deterministic projection
+        // only; the Monte-Carlo closed-loop policy is unaffected.
+        const baselineSolvent = stdDedBaselineTimeline.length > 0
+            && !stdDedBaselineTimeline[stdDedBaselineTimeline.length - 1].accounts.some(
+                a => a instanceof DeficitDebtAccount && a.amount > 0);
+        const floorEps = Math.max(1, Math.abs(stdDedBaselineTerminalAfterTaxNW) * 1e-6);
+        if (finalTimeline.length > 0
+            && baselineSolvent
+            && strategyTerminalAfterTaxNW < stdDedBaselineTerminalAfterTaxNW - floorEps) {
+            const shortfall = stdDedBaselineTerminalAfterTaxNW - strategyTerminalAfterTaxNW;
+            stdDedBaselineTimeline[0].stdDedBaselineTerminalAfterTaxNW = stdDedBaselineTerminalAfterTaxNW;
+            stdDedBaselineTimeline[0].strategyTerminalAfterTaxNW = stdDedBaselineTerminalAfterTaxNW;
+            stdDedBaselineTimeline[0].feasibilityFloorApplied = true;
+            stdDedBaselineTimeline[0].logs.push(
+                `[feasibility floor] DP plan's after-tax terminal net worth was $${Math.round(shortfall).toLocaleString()} below the standard-deduction-only baseline (the DP over-converted on this profile); fell back to std-ded-only conversions.`,
+            );
+            return stdDedBaselineTimeline;
         }
 
         return finalTimeline;

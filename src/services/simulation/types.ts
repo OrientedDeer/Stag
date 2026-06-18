@@ -157,6 +157,13 @@ export interface SimulationYear {
      */
     stdDedBaselineTerminalAfterTaxNW?: number;
     strategyTerminalAfterTaxNW?: number;
+    /**
+     * Set true on year 0 when the #89 feasibility floor engaged: the DP-precomputed plan
+     * scored BELOW the std-ded-only baseline on after-tax terminal net worth (it over-
+     * converted), so runSimulationWithOptimization fell back to the std-ded-only plan. Lets
+     * the Withdrawal/debug UI surface "optimizer fell back to standard-deduction-only".
+     */
+    feasibilityFloorApplied?: boolean;
     // Marks a synthetic "projected end of current year" data point inserted between Year 0 and Year 1
     isEndOfYearProjection?: boolean;
 }
