@@ -113,7 +113,16 @@ function fixture(name: string, build: () => Scenario): Fixture {
         const engine = optimize(sc);
         const dp = legacyDp(sc);
         const plan = executedConversionsByYear(engine);
-        const sweep = plan.size > 0 ? scalingSweep(sc, plan, [0.25, 0.5, 0.75, 1, 1.25, 1.5]) : null;
+        // The engine-direct search ALSO optimizes the withdrawal order, so the shipped plan was generated
+        // under engine[0].chosenWithdrawalOrder — not necessarily sc's stored order. The scaling sweep must
+        // re-run the plan under THAT order: scaling a Traditional-preserving plan under a trad-first order
+        // would spuriously look over-converted (the Traditional is spent for living AND converted). Reorder
+        // sc's withdrawalStrategy to match the chosen order so the sweep tests the plan as it actually ships.
+        const chosen = engine[0].chosenWithdrawalOrder;
+        const scSweep: Scenario = chosen
+            ? { ...sc, assumptions: { ...sc.assumptions, withdrawalStrategy: chosen.map(c => sc.assumptions.withdrawalStrategy.find(w => w.accountId === c.accountId)!).filter(Boolean) } }
+            : sc;
+        const sweep = plan.size > 0 ? scalingSweep(scSweep, plan, [0.25, 0.5, 0.75, 1, 1.25, 1.5]) : null;
         f = { sc, engine, dp, sweep };
         cache.set(name, f);
     }

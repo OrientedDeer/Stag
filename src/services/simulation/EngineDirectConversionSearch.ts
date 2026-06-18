@@ -28,6 +28,72 @@
  */
 import { DPYearContext } from './RothConversionDP';
 import { SimulationYear } from './types';
+import { AnyAccount, SavedAccount, InvestedAccount } from '../../components/Objects/Accounts/models';
+
+export interface WithdrawalOrderItem { id: string; name: string; accountId: string; }
+
+/** Classify an account into a drawdown "tax bucket" for candidate-order generation. */
+function withdrawalBucketOf(account: AnyAccount | undefined): 'cash' | 'brokerage' | 'traditional' | 'roth' | 'other' {
+    if (account instanceof SavedAccount) return 'cash';
+    if (account instanceof InvestedAccount) {
+        if (account.taxType === 'Brokerage') return 'brokerage';
+        if (account.taxType.startsWith('Traditional')) return 'traditional';
+        if (account.taxType.startsWith('Roth')) return 'roth';
+    }
+    return 'other';
+}
+
+/**
+ * Candidate withdrawal orders for the joint conversion + drawdown-order optimizer.
+ *
+ * Tax Optimization's UI promises it picks the best withdrawal order, but the engine used to
+ * always run the user's stored order — silently wasting, on some profiles, the cheap post-SS
+ * standard-deduction conversion band (a large Traditional spent for living before it can be
+ * converted at 0%). This reorders the user's withdrawalStrategy entries by tax bucket along a
+ * few tax-aware sequences. The user's OWN order is always included first, so the optimizer can
+ * never do worse than the manual order. The engine scores each candidate on the real engine and
+ * picks the best PER scenario — the optimum is scenario-specific (Roth-before-Traditional wins
+ * for high-SS/large-Traditional/long-horizon profiles, the conventional order for others), so
+ * nothing is hardcoded.
+ */
+export function generateCandidateWithdrawalOrders<T extends WithdrawalOrderItem>(
+    accounts: AnyAccount[],
+    baseStrategy: T[],
+): T[][] {
+    const byId = new Map(accounts.map(a => [a.id, a]));
+    const rankIn = (accountId: string, seq: string[]): number => {
+        const i = seq.indexOf(withdrawalBucketOf(byId.get(accountId)));
+        return i < 0 ? seq.length : i; // unknown buckets sort to the end
+    };
+    // Candidates always spend CASH first and TAXABLE (brokerage) before either tax-advantaged bucket —
+    // spending tax-free/deferred money ahead of taxable assets forfeits shielded growth and is
+    // essentially never optimal. The lever that matters for conversion optimization is the RELATIVE
+    // order of Roth vs Traditional: spending Roth first PRESERVES Traditional so it can be converted
+    // cheaply (e.g. the post-SS 0% band); the conventional order spends Traditional first. We do NOT
+    // emit a "Roth before brokerage" order — it isn't economically sound, and under aggressive
+    // conversions in a no-SS regime a brokerage-heavy terminal makes orders mis-compare on the ruler.
+    const TYPE_SEQUENCES: string[][] = [
+        ['cash', 'brokerage', 'traditional', 'roth'], // conventional: taxable → tax-deferred → tax-free
+        ['cash', 'brokerage', 'roth', 'traditional'], // Traditional-preserving: spend Roth before Trad to free the post-SS 0% conversion band
+    ];
+    const candidates: T[][] = [baseStrategy]; // the user's own order — guarantees no regression
+    for (const seq of TYPE_SEQUENCES) {
+        // Explicit stable sort (decorate with original index) so equal buckets keep user order.
+        const sorted = baseStrategy
+            .map((item, idx) => ({ item, idx }))
+            .sort((a, b) => (rankIn(a.item.accountId, seq) - rankIn(b.item.accountId, seq)) || (a.idx - b.idx))
+            .map(x => x.item);
+        candidates.push(sorted);
+    }
+    // Dedupe by accountId sequence (the user's order may already equal a generated one).
+    const seen = new Set<string>();
+    return candidates.filter(c => {
+        const key = c.map(x => x.accountId).join('>');
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+}
 
 export type ConversionPlanScore = { afterTaxNW: number; timeline: SimulationYear[] };
 /** Run a candidate conversion plan through the real engine and return its after-tax terminal NW + timeline. */

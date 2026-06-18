@@ -164,6 +164,14 @@ export interface SimulationYear {
      * the Withdrawal/debug UI surface "optimizer fell back to standard-deduction-only".
      */
     feasibilityFloorApplied?: boolean;
+    /**
+     * Set on year 0 by the joint conversion + drawdown-order optimizer: the withdrawal order the
+     * optimizer CHOSE when Tax Optimization is on. It scores candidate orders on the real engine
+     * (the consistent after-tax ruler) and picks the best for the scenario, rather than blindly
+     * running the user's stored order. Lets the Withdrawal tab show "optimizer chose: …" so the
+     * disabled manual selector is honest (the UI already claims the order is managed automatically).
+     */
+    chosenWithdrawalOrder?: { accountId: string; name: string }[];
     // Marks a synthetic "projected end of current year" data point inserted between Year 0 and Year 1
     isEndOfYearProjection?: boolean;
 }

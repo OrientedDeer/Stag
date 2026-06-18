@@ -10,7 +10,7 @@ import { TaxState, resolveTaxEventsForYear } from '../Taxes/TaxContext';
 import { BaselineProjections } from '../../../services/simulation/types';
 import { getRMDStartAge } from '../../../data/RMDData';
 import { buildDPYearContexts, planConversionsViaDP, DPPlan, DPInputs, DPObjectiveOptions, DPPolicy, QuadratureNodes } from '../../../services/simulation/RothConversionDP';
-import { searchConversionPlanByEngine, extractConversionPlan } from '../../../services/simulation/EngineDirectConversionSearch';
+import { searchConversionPlanByEngine, extractConversionPlan, generateCandidateWithdrawalOrders } from '../../../services/simulation/EngineDirectConversionSearch';
 import { getTotalBrokerageBalance, getTotalTraditionalBalance, getTotalRothBalance } from '../../../services/simulation/YearSolver';
 import { buildTradValuation, terminalAfterTaxNetWorth } from '../../../tabs/Future/tabs/FutureUtils';
 
@@ -143,8 +143,8 @@ export function extractBaselineProjections(
     // Get pension at RMD year (already has COLA applied)
     const pensionAtRMD = rmdYearData.incomes
         .filter(inc =>
-            (inc as any).className === 'FERSPensionIncome' ||
-            (inc as any).className === 'CSRSPensionIncome')
+            inc.className === 'FERSPensionIncome' ||
+            inc.className === 'CSRSPensionIncome')
         .reduce((sum, inc) => sum + (inc.getAnnualAmount?.(rmdYear) ?? 0), 0);
 
     // Get passive income at RMD year (rental, dividends, interest — excludes RMD-sourced).
@@ -152,8 +152,8 @@ export function extractBaselineProjections(
     // is consistent with what the ceiling calculator expects.
     const passiveAtRMD = rmdYearData.incomes
         .filter(inc =>
-            (inc as any).className === 'PassiveIncome' &&
-            (inc as any).sourceType !== 'RMD')
+            inc.className === 'PassiveIncome' &&
+            (inc as { sourceType?: string }).sourceType !== 'RMD')
         .reduce((sum, inc) => sum + (inc.getAnnualAmount?.(rmdYear) ?? 0), 0);
 
     return { traditionalBalanceAtRMD, ssAtRMD, pensionAtRMD, passiveAtRMD, rmdYear };
@@ -983,36 +983,90 @@ export const runSimulationWithOptimization = (
         let finalTimeline: SimulationYear[];
 
         if (dpObjective === undefined) {
-            // buildDpSolveInputs builds the per-year income/RMD/tax contexts (reusing the
-            // std-ded baseline) and derives the production max-wealth objective.
-            const { dpInputs, effectiveDpObjective } = buildDpSolveInputs(
-                accounts, incomes, expenses, assumptions, taxState, stdDedBaselineTimeline,
-            );
-            // The DP plan is no longer TRUSTED as the optimizer — it's ONE candidate the
-            // engine-direct search scores on the real engine and overrides when beaten (it
-            // over-converts on low/no-SS large-Traditional profiles). Including it guarantees
-            // the shipped result is ≥ the DP; the std-ded baseline candidate guarantees ≥ baseline.
-            const dpPlan = planConversionsViaDP(dpInputs, effectiveDpObjective);
-            const stdDedPlan = extractConversionPlan(stdDedBaselineTimeline);
-            // Score a candidate plan by EXECUTING it on the real engine and valuing the
-            // terminal position with the same situation ruler the baseline used (#94).
-            const scorePlan = (plan: Map<number, number>) => {
-                const tl = runSimulation(
-                    yearsToRun, accounts, incomes, expenses, assumptions, taxState, yearlyReturns,
-                    { referenceDate, dpConversionPlan: plan, eoyContributionAdditions, eoyDebtReductions, eoyMortgageReductions },
+            // JOINT CONVERSION + DRAWDOWN-ORDER OPTIMIZER. Tax Optimization's UI promises it picks the
+            // best withdrawal order, but the engine used to always run the user's stored order — wasting,
+            // on some profiles, the cheap post-SS standard-deduction conversion band (a large Traditional
+            // spent for living before it can be converted at 0%). Now we ALSO optimize the order. The
+            // optimal order is scenario-specific (Roth-before-Traditional wins for high-SS / large-Traditional
+            // / long-horizon profiles, the conventional order for others), so it's PICKED, not hardcoded.
+            // Every candidate is scored with the SAME ruler (tradValuationRuler, built once above from the
+            // strategy-independent baseline) — the load-bearing requirement for a valid cross-order comparison.
+            //
+            // Affordable + correct (≤ 2 conversion searches): always FULL-search the user's order so the
+            // result can never regress below the manual order; cheaply RANK the alternatives by their own
+            // aggressive legacy-DP plan; full-search only the top challenger; switch only if its DE-CONVERTED
+            // search beats the user's. Rank-cheap / decide-on-the-search is load-bearing — a std-ded proxy
+            // under-converts and hides a Traditional-preserving order's value (high-SS profiles), while a
+            // legacy-DP proxy over-converts and over-rates an order (no-SS profiles); the full search is the
+            // unbiased tiebreak. When the user's order wins, the result matches the single-order engine.
+            const candidateOrders = generateCandidateWithdrawalOrders(accounts, assumptions.withdrawalStrategy);
+            const buildArtifacts = (order: typeof assumptions.withdrawalStrategy) => {
+                const isUser = order === assumptions.withdrawalStrategy;
+                const aOrder: AssumptionsState = isUser ? assumptions : { ...assumptions, withdrawalStrategy: order };
+                const baselineO = isUser ? stdDedBaselineTimeline : runSimulation(
+                    yearsToRun, accounts, incomes, expenses,
+                    { ...aOrder, investments: { ...aOrder.investments, rothConversionStrategy: 'rate-match' } },
+                    taxState, yearlyReturns,
+                    { referenceDate, conversionMode: 'std-ded-only', eoyContributionAdditions, eoyDebtReductions, eoyMortgageReductions },
                 );
-                return { afterTaxNW: terminalAfterTaxNetWorth(tl, tradValuationRuler), timeline: tl };
+                const { dpInputs, effectiveDpObjective } = buildDpSolveInputs(accounts, incomes, expenses, aOrder, taxState, baselineO);
+                const dpPlan = planConversionsViaDP(dpInputs, effectiveDpObjective);
+                return { order, aOrder, baselineO, dpInputs, dpPlan };
             };
-            const search = searchConversionPlanByEngine(dpInputs.contexts, scorePlan, {
-                baseline: { afterTaxNW: stdDedBaselineTerminalAfterTaxNW, timeline: stdDedBaselineTimeline, plan: stdDedPlan },
-                seedPlans: [{ label: 'legacy-dp', plan: dpPlan.conversionsByYear }],
-            });
-            finalTimeline = search.winningTimeline; // reuse the winning candidate's sim — no extra run
+            const runUnderOrder = (aOrder: AssumptionsState, plan: Map<number, number>) => runSimulation(
+                yearsToRun, accounts, incomes, expenses, aOrder, taxState, yearlyReturns,
+                { referenceDate, dpConversionPlan: plan, eoyContributionAdditions, eoyDebtReductions, eoyMortgageReductions },
+            );
+            // A full conversion engine-search under one order's artifacts → {nw, timeline, total, label, sims}.
+            const fullSearch = (art: ReturnType<typeof buildArtifacts>) => {
+                const scorePlan = (plan: Map<number, number>) => {
+                    const tl = runUnderOrder(art.aOrder, plan);
+                    return { afterTaxNW: terminalAfterTaxNetWorth(tl, tradValuationRuler), timeline: tl };
+                };
+                const s = searchConversionPlanByEngine(art.dpInputs.contexts, scorePlan, {
+                    baseline: { afterTaxNW: terminalAfterTaxNetWorth(art.baselineO, tradValuationRuler), timeline: art.baselineO, plan: extractConversionPlan(art.baselineO) },
+                    seedPlans: [{ label: 'legacy-dp', plan: art.dpPlan.conversionsByYear }],
+                });
+                return {
+                    order: art.order, timeline: s.winningTimeline,
+                    nw: terminalAfterTaxNetWorth(s.winningTimeline, tradValuationRuler),
+                    total: [...s.conversionsByYear.values()].reduce((a, v) => a + v, 0),
+                    label: s.diagnostics.bestLabel, sims: s.diagnostics.sims + 1,
+                };
+            };
+            // Incumbent: the user's order, FULL-searched → the shipped result can never regress below it.
+            const userResult = fullSearch(buildArtifacts(assumptions.withdrawalStrategy));
+            let best = userResult;
+            let totalSims = userResult.sims;
+            // Rank the alternatives cheaply (aggressive legacy-DP plan, scored on the one ruler); full-search
+            // ONLY the top challenger and switch only if its de-converted result beats the user's by > $1.
+            let topChallenger: ReturnType<typeof buildArtifacts> | null = null;
+            let topChallengerProbe = -Infinity;
+            for (const order of candidateOrders) {
+                if (order === assumptions.withdrawalStrategy) continue;
+                const art = buildArtifacts(order);
+                const probe = terminalAfterTaxNetWorth(runUnderOrder(art.aOrder, art.dpPlan.conversionsByYear), tradValuationRuler);
+                if (probe > topChallengerProbe) { topChallengerProbe = probe; topChallenger = art; }
+            }
+            if (topChallenger) {
+                const challengerResult = fullSearch(topChallenger);
+                totalSims += challengerResult.sims;
+                if (challengerResult.nw > best.nw + 1) best = challengerResult; // the de-converted truth decides
+            }
+            finalTimeline = best.timeline;
             if (finalTimeline.length > 0) {
-                const total = [...search.conversionsByYear.values()].reduce((s, v) => s + v, 0);
+                const orderChanged = best.order !== assumptions.withdrawalStrategy;
+                const orderGain = best.nw - userResult.nw; // full-search value of the chosen order alone
+                // Report EXECUTED conversions (what the engine actually moved), not the plan's intended
+                // fill — a "fill to headroom" plan can request far more than the Traditional can supply.
+                const executedTotal = finalTimeline.reduce((s, y) => s + (y.isEndOfYearProjection ? 0 : (y.rothConversion?.amount ?? 0)), 0);
+                finalTimeline[0].chosenWithdrawalOrder = best.order.map(w => ({ accountId: w.accountId, name: w.name }));
                 finalTimeline[0].logs.push(
-                    `[engine-direct search #89] scored ${search.diagnostics.sims + 1} conversion plans on the real engine; ` +
-                    `chose ${search.diagnostics.bestLabel} (total converted $${Math.round(total).toLocaleString()}) as the after-tax-wealth maximizer.`,
+                    `[joint optimizer] full-searched the user order + the best of ${candidateOrders.length - 1} ` +
+                    `alternative order(s) (${totalSims} engine sims); chose order ` +
+                    `${best.order.map(w => w.name).join(' → ')}${orderChanged ? '' : ' (user order)'}; ` +
+                    `order-optimization gain $${Math.round(orderGain).toLocaleString()}; ` +
+                    `conversions: ${best.label} (total converted $${Math.round(executedTotal).toLocaleString()}).`,
                 );
             }
         } else {
