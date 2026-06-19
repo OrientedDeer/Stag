@@ -14,37 +14,46 @@ import { CashflowDetail } from '../../services/simulation/types';
 const MIN_DISPLAY_THRESHOLD = 0.005;
 
 /**
- * Build the rows for a drill-down panel so they RECONCILE to the node total.
+ * Collapse a node's constituent rows for the drill-down panel.
  *
- * Items at/above `MIN_DISPLAY_THRESHOLD` are listed individually; everything
- * below it is rolled into a single synthetic "Other (+N smaller)" remainder
- * row. Additionally, if the listed rows still fall short of `nodeTotal` by more
- * than the threshold (e.g. the node total carries flows we don't itemize), the
- * shortfall is folded into the same remainder row so the rows always sum to the
- * node total. Without this the panel could list rows that visibly sum to less
- * than the headline figure.
+ * Items whose magnitude is at/above `MIN_DISPLAY_THRESHOLD` are listed
+ * individually (including any negatives — those are real contributors, not
+ * noise). Tiny *positive* items below the threshold are rolled into a single
+ * synthetic "Other (+N smaller)" row, but only when their combined sum is itself
+ * worth a row; otherwise they're dropped as rounding dust. Non-finite values
+ * (NaN/Infinity) are always dropped so the panel never renders "$NaN".
  *
- * Exported for unit testing the reconciliation invariant.
+ * The rows are built purely from `items` — the helper does NOT fabricate a
+ * remainder to match an external node total. The provenance lists are built from
+ * the same per-source values the chart renders (so items already sum to the node
+ * by construction); genuine inflow/outflow drift is surfaced separately by the
+ * engine's imbalance detector, not papered over here.
+ *
+ * Exported for unit testing.
  */
 export function reconcileProvenanceItems(
     items: SankeyProvenanceItem[],
-    nodeTotal: number,
 ): SankeyProvenanceItem[] {
-    const big = items.filter(i => i.value >= MIN_DISPLAY_THRESHOLD);
-    const smallItems = items.filter(i => i.value < MIN_DISPLAY_THRESHOLD && i.value > 0);
-    const smallCount = smallItems.length;
-    const smallSum = smallItems.reduce((s, i) => s + i.value, 0);
+    const listed: SankeyProvenanceItem[] = [];
+    let smallCount = 0;
+    let smallSum = 0;
 
-    const bigSum = big.reduce((s, i) => s + i.value, 0);
-    // Residual the listed rows don't account for (clamped to ≥0 — we never show a
-    // negative "Other"; an over-count just means no remainder row is needed).
-    const shortfall = Math.max(0, nodeTotal - bigSum - smallSum);
-    const remainder = smallSum + shortfall;
+    for (const item of items) {
+        const v = item.value;
+        if (!Number.isFinite(v)) continue; // drop NaN/Infinity — unrenderable
+        if (Math.abs(v) >= MIN_DISPLAY_THRESHOLD) {
+            listed.push(item); // real row (incl. meaningful negatives)
+        } else if (v > 0) {
+            smallCount += 1; // tiny positive — fold into "Other"
+            smallSum += v;
+        }
+        // |v| < threshold and v <= 0: negligible, drop.
+    }
 
-    if (remainder < MIN_DISPLAY_THRESHOLD) return big;
-
-    const label = smallCount > 0 ? `Other (+${smallCount} smaller)` : 'Other';
-    return [...big, { label, value: remainder, isRemainder: true }];
+    if (smallSum >= MIN_DISPLAY_THRESHOLD) {
+        listed.push({ label: `Other (+${smallCount} smaller)`, value: smallSum, isRemainder: true });
+    }
+    return listed;
 }
 
 export interface SankeyImbalance {
@@ -85,13 +94,13 @@ export interface BuildCashflowSankeyInput {
     livingExpenses?: number;
 }
 
-interface SankeyNode {
+export interface SankeyNode {
     id: string;
     color: string;
     label: string;
 }
 
-interface SankeyLink {
+export interface SankeyLink {
     source: string;
     target: string;
     value: number;
@@ -588,17 +597,22 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
         // showing — Sources (flows in), Destinations (flows out), or Breakdown
         // (a same-column sub-split) — instead of silently flipping between them.
         // Rows are reconciled (see reconcileProvenanceItems) so sub-threshold
-        // contributors roll into an explicit "Other" row and the listed rows
-        // always sum to the node total passed here.
+        // contributors roll into an explicit "Other" row.
+        //
+        // A node is only drillable when it has at least one real (non-remainder)
+        // row: a node whose total just clears the display threshold but whose
+        // every constituent is sub-threshold would otherwise become "clickable"
+        // with nothing but an "Other 100%" row, which isn't a useful breakdown.
         const provenance: SankeyProvenance = {};
         const addProvenance = (
             nodeId: string,
             direction: SankeyProvenanceDirection,
             items: SankeyProvenanceItem[],
-            nodeTotal: number,
         ) => {
-            const reconciled = reconcileProvenanceItems(items, nodeTotal);
-            if (reconciled.length > 0) provenance[nodeId] = { direction, items: reconciled };
+            const reconciled = reconcileProvenanceItems(items);
+            if (reconciled.some(i => !i.isRemainder)) {
+                provenance[nodeId] = { direction, items: reconciled };
+            }
         };
 
         // Gross Pay: every income line that feeds it (work, other, reinvested,
@@ -613,7 +627,7 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
             ...withdrawalItems.map(([name, amount]) => ({ label: `From ${name}`, value: amount })),
             ...conversionSourceItems.map(([name, amount]) => ({ label: `Convert ${name}`, value: amount })),
         ];
-        addProvenance('Gross Pay', 'sources', grossPayItems, grossPayNodeValue);
+        addProvenance('Gross Pay', 'sources', grossPayItems);
 
         // Taxes: the individual tax components that the chart also breaks out as
         // child nodes. Listed here so a single click on the umbrella node shows
@@ -626,21 +640,21 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
             { label: 'NIIT', value: taxes.niit || 0 },
             { label: 'IRMAA', value: taxes.irmaa || 0 },
             { label: 'Withdrawal Tax', value: taxes.withdrawalOrdinaryTax || 0 },
-        ], totalTaxes);
+        ]);
 
         // 401k / Roth / Employer Contributions split employee vs. employer money.
         addProvenance('401k Savings', 'breakdown', [
             { label: 'Your contributions', value: employee401k },
             { label: 'Employer match', value: totalEmployerMatchForTrad },
-        ], totalTradSavings);
+        ]);
         addProvenance('Roth Savings', 'breakdown', [
             { label: 'Your contributions', value: employeeRoth },
             { label: 'Employer match', value: totalEmployerMatchForRoth },
-        ], totalRothSavings);
+        ]);
         addProvenance('Employer Contributions', 'breakdown', [
             { label: 'Pre-tax match', value: totalEmployerMatchForTrad },
             { label: 'Roth match', value: totalEmployerMatchForRoth },
-        ], totalEmployerMatch);
+        ]);
 
         // Net Pay: where the take-home cash goes (savings, expenses, remaining).
         const netPayItems: SankeyProvenanceItem[] = [
@@ -653,8 +667,7 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
             ...conversionDestItems.map(([name, amount]) => ({ label: `To ${name}`, value: amount * conversionScale })),
             ...reinvestedIncomeItems.map(item => ({ label: `→ ${item.accountName}`, value: item.amount })),
         ];
-        // Net Pay's outflows close the balance, so they sum to netPayFlow.
-        addProvenance('Net Pay', 'destinations', netPayItems, netPayFlow);
+        addProvenance('Net Pay', 'destinations', netPayItems);
 
         // Only keep provenance for nodes that actually rendered.
         for (const id of Object.keys(provenance)) {

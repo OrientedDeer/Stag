@@ -132,13 +132,38 @@ describe('CashflowSankey provenance drill-down', () => {
         expect(screen.queryByLabelText('Close detail panel')).toBeNull();
     });
 
-    it('toggles the panel closed when the same node is clicked again', () => {
+    it('toggles the panel closed when the same node is clicked again', async () => {
         renderChart();
-        fireEvent.click(screen.getByTestId('node-Gross Pay'));
+        const node = screen.getByTestId('node-Gross Pay');
+        fireEvent.click(node);
         expect(screen.getByLabelText('Close detail panel')).toBeTruthy();
 
-        fireEvent.click(screen.getByTestId('node-Gross Pay'));
+        // Wait for the deferred outside-click listener to attach (it's armed on a
+        // setTimeout(0) so the opening click doesn't self-close). This is what
+        // makes the bug reproducible: a real re-click fires mousedown BEFORE
+        // click, and a naive outside-dismiss would close-then-reopen.
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        // Re-click the SAME node as the browser would: mousedown then click. The
+        // node lives inside the chart container (treated as "inside"), so the
+        // outside-dismiss must NOT fire — the click toggles the panel closed and
+        // it must stay closed.
+        fireEvent.mouseDown(node);
+        fireEvent.click(node);
         expect(screen.queryByLabelText('Close detail panel')).toBeNull();
+    });
+
+    it('dismisses on a mousedown truly outside the chart and panel', async () => {
+        renderChart();
+        fireEvent.click(screen.getByTestId('node-Gross Pay'));
+        expect(screen.getByRole('dialog')).toBeTruthy();
+
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        // A press on the document body (outside both the popover and the chart
+        // container) dismisses the panel.
+        fireEvent.mouseDown(document.body);
+        expect(screen.queryByRole('dialog')).toBeNull();
     });
 
     it('does not open a panel for a leaf source node', () => {

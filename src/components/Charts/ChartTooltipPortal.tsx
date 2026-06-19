@@ -1,5 +1,6 @@
 import { createPortal } from 'react-dom';
 import { ReactNode, useEffect, useRef, useState } from 'react';
+import { placePopover } from './popoverPosition';
 
 interface ChartTooltipPortalProps {
     children: ReactNode;
@@ -33,14 +34,16 @@ export const ChartTooltipPortal = ({ children }: ChartTooltipPortalProps) => {
             rafId = null;
             const el = tooltipRef.current;
             if (!el) return;
-            const w = el.offsetWidth || 300;
-            const h = el.offsetHeight || 200;
-            let left = pendingX + 15;
-            let top = pendingY + 15;
-            if (left + w > window.innerWidth - 10) left = pendingX - w - 15;
-            if (top + h > window.innerHeight - 10) top = pendingY - h - 15;
-            if (left < 10) left = 10;
-            if (top < 10) top = 10;
+            // Cursor-following tooltip: offset on BOTH axes (flip on overflow).
+            const { left, top } = placePopover({
+                anchorX: pendingX,
+                anchorY: pendingY,
+                width: el.offsetWidth || 300,
+                height: el.offsetHeight || 200,
+                viewportWidth: window.innerWidth,
+                viewportHeight: window.innerHeight,
+                verticalMode: 'offset',
+            });
             el.style.left = `${left}px`;
             el.style.top = `${top}px`;
             el.style.visibility = 'visible';
