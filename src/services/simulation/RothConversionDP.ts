@@ -800,13 +800,25 @@ function growBalance(
 /**
  * Per-quadrature-node growth factors for one account at one year — the
  * `1 + rate + meanShift + shock` multipliers the stochastic transition applies
- * to a pre-growth balance, floored at 0 (a single year can't lose more than
- * 100% — a balance can't go negative). The shocks are zero-mean by construction.
+ * to a pre-growth balance. The shocks are zero-mean by construction, so the
+ * UNFLOORED factors have weighted mean exactly `1 + rate + meanShift`.
  *
- * Returns BALANCE-space factors; index-space callers (the backward sweep) fold
- * in `1/dB`. Shared by the backward sweep and the unified forward extract so the
- * two stay in lock-step. (#105 renormalizes these to keep `E[factor]` unbiased
- * once the floor binds at very high σ.)
+ * A single year can't lose more than 100% (a balance can't go negative), so we
+ * floor each factor at 0. But once that floor BINDS (a node's shock drops below
+ * −(1+rate+meanShift)), clipping those nodes from negative up to 0 lifts the
+ * weighted mean above `1 + rate + meanShift` — biasing the backward V-table
+ * expectation to grow faster than the σ=0 forward central step and weakening the
+ * "on-track path reproduces the central schedule" property (#105). When the floor
+ * binds we rescale the floored factors so `E[factor]` lands back exactly on the
+ * central step's value (`max(0, 1+rate+meanShift)`, matching the floored mean-
+ * path step); scaling non-negative factors by a positive constant keeps them ≥ 0.
+ *
+ * The floor only binds at very high σ (≳0.28 at n=7); when it does NOT bind we
+ * return the raw factors untouched, so every existing low/normal-vol output is
+ * byte-for-byte unchanged — `max(0, base+s)` with `base+s ≥ 0` is just `base+s`,
+ * and no rescale runs. Returns BALANCE-space factors; index-space callers (the
+ * backward sweep) fold in `1/dB`. Shared by the backward sweep and the unified
+ * forward extract so the two stay in lock-step.
  */
 function buildNodeGrowthFactors(
     rate: number,
@@ -814,7 +826,22 @@ function buildNodeGrowthFactors(
     meanShift: number,
 ): number[] {
     const base = 1 + rate + meanShift;
-    return quad.shocks.map(s => Math.max(0, base + s));
+    const raw = quad.shocks.map(s => base + s);
+    // Fast path: floor never binds ⇒ identical to the old `max(0, base+s)`, and
+    // (since the unfloored mean is already 1+rate+meanShift) no rescale needed.
+    if (!raw.some(f => f < 0)) return raw;
+    const floored = raw.map(f => (f < 0 ? 0 : f));
+    // Renormalize the floored factors back to the central-step mean so a σ=0
+    // ("on-track") path that reads this V-table reproduces the central schedule.
+    // Degenerate when the target mean is itself non-positive (pathological
+    // meanShift < −1) or the floored mean collapses to 0 — nothing to scale to.
+    const target = base < 0 ? 0 : base;
+    if (target <= 0) return floored;
+    let mean = 0;
+    for (let k = 0; k < quad.weights.length; k++) mean += quad.weights[k] * floored[k];
+    if (mean <= 0) return floored;
+    const scale = target / mean;
+    return floored.map(f => f * scale);
 }
 
 /**
