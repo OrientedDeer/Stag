@@ -1574,8 +1574,14 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     }
 
     // Create account snapshots in withdrawal order (before the loop - these don't change)
+    // #111: in a retirement drawdown, also reach any sellable account the configured
+    // order omits (e.g. a Traditional balance ignored by a Roth-only order) so a real
+    // spending shortfall taps it instead of fabricating deficit debt. The working-year
+    // path (solveWorkingYear) is deliberately NOT changed — its initialDeficit
+    // conflates tax with spending and would mishandle RSU withholding. No-op when the
+    // order already lists every account (the golden masters and all scenarios).
     let accountSnapshots = createOrderedSnapshots(
-        input.accounts, input.withdrawalOrder, input.currentAge, input.year
+        input.accounts, input.withdrawalOrder, input.currentAge, input.year, true,
     );
 
     // Reserve the RMD against the Traditional account it draws from. The RMD already
