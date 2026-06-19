@@ -38,8 +38,17 @@
  * - 5-year Roth-conversion withdrawal rule: not modeled.
  * - IRMAA: not in the codebase yet; will flow through automatically
  *   once `calculateEffectiveConversionTax` learns about it.
- * - Monte-Carlo path divergence: handled at the call site by re-running
- *   the DP per path.
+ * - Monte-Carlo path divergence: the deterministic projection uses the
+ *   open-loop schedule (`conversionsByYear`). Monte Carlo instead solves a
+ *   STOCHASTIC version of this DP once (#98): pass `returnDistribution` in the
+ *   objective options and the backward transition integrates the return
+ *   distribution into the V-table (expectation over Gauss-Hermite quadrature
+ *   nodes) instead of growing by a single deterministic rate. That solve emits
+ *   a closed-loop POLICY (`DPPlan.policy`) — the argmax conversion per
+ *   `(year, trad, roth)` cell — which each MC path looks up at its realized
+ *   state (`lookupConversionPolicy`), re-optimizing per path with no re-solve.
+ *   Omitting `returnDistribution` leaves the deterministic single-rate
+ *   transition byte-for-byte unchanged.
  */
 
 import { TaxParameters, FilingStatus } from "../../data/TaxData";
@@ -124,10 +133,25 @@ const ACA_SUBSIDY_LOSS_DEFAULT = 12_000;
  * waterfall. Without this, the DP would happily pick "drain trad to zero
  * early so RMDs are 0 forever" because no future tax dominates a real
  * lifetime — but that plan is bankrupt at age 70. Penalty makes infeasible
- * plans strictly dominated. Tunable: $10/$1 unmet is heavy enough that the
- * solver will choose any feasible alternative.
+ * plans strictly dominated. Tunable: $10/$1 unmet is heavy enough relative to
+ * the min-tax accumuland (yearly tax, thousands) that the solver will choose
+ * any feasible alternative.
  */
 const INFEASIBILITY_PENALTY_PER_DOLLAR = 10;
+/**
+ * Max-wealth accumuland is terminal WEALTH (hundreds of thousands to millions),
+ * so the $10 min-tax penalty no longer dominates — an aggressive plan whose
+ * terminal-wealth gain exceeds 10×unmet would be chosen with a year unfunded
+ * (a ruin). This per-dollar penalty is sized to dwarf any within-cell wealth
+ * difference (bounded by ~one year's conversion effect), so any cell with a real
+ * shortfall is strictly worst. Gated by a $1 threshold so floating-point residue
+ * on feasible cells isn't penalized.
+ */
+const MAX_WEALTH_INFEASIBILITY_PENALTY = 1e6;
+const MAX_WEALTH_UNMET_THRESHOLD = 1; // dollars; below this = feasible (FP residue)
+/** Max-wealth ruin penalty: dominating above the $1 threshold, zero below it. */
+const maxWealthUnmetPenalty = (unmet: number): number =>
+    unmet > MAX_WEALTH_UNMET_THRESHOLD ? unmet * MAX_WEALTH_INFEASIBILITY_PENALTY : 0;
 
 // =============================================================================
 // TYPES
@@ -293,9 +317,38 @@ export interface DPDiagnostics {
     perYearTraces: Map<number, DPYearTrace>;
 }
 
+/**
+ * Closed-loop conversion POLICY emitted by the stochastic solve (#98): the
+ * argmax conversion as a function of `(year, trad, roth)` state. Each MC path
+ * looks this up at its realized state via {@link lookupConversionPolicy} —
+ * no per-path re-solve. Only populated when `returnDistribution` is passed.
+ */
+export interface DPPolicy {
+    tradBuckets: number;
+    rothBuckets: number;
+    /**
+     * Per simulation year: the conversion table (flat Float64Array, stride
+     * `rothBuckets + 1`, indexed `tradIdx*(rothBuckets+1) + rothIdx`) holding the
+     * optimal conversion $ for that cell, plus the year's grid bucket widths.
+     */
+    byYear: Map<number, { table: Float64Array; dB: number; dRoth: number }>;
+    /**
+     * #89 MC over-conversion cap. The deterministic engine-search optimum expressed as a
+     * taxable-income headroom above the standard deduction (h*): each MC path caps its policy
+     * conversion so realized taxable income ≤ stdDed + capHeadroom (see YearSolver.planConversionDP),
+     * preventing the stochastic policy from over-converting past the validated peak on low/no-SS
+     * large-Traditional profiles. `undefined` ⇒ NO cap — the legacy DP won the deterministic search,
+     * so the policy is already at/under the optimum there (e.g. real-SS profiles) and capping would
+     * neuter its #98 bull-path adaptivity.
+     */
+    capHeadroom?: number;
+}
+
 export interface DPPlan {
     conversionsByYear: Map<number, number>;
     diagnostics: DPDiagnostics;
+    /** Closed-loop policy — only set when the solve integrated a return distribution (#98). */
+    policy?: DPPolicy;
 }
 
 // =============================================================================
@@ -726,6 +779,72 @@ function computeYearTax(
 }
 
 /**
+ * Grow `evaluateCell`'s pre-growth end-of-year balances to next-year
+ * (post-growth) balances at the deterministic per-account rates — the legacy
+ * single-rate transition the deterministic backward sweep and forward extract
+ * use to look up V[t+1]. The stochastic solve (#98) does NOT call this; it grows
+ * `tradPre`/`rothPre` by each return-quadrature node instead. Kept in one place
+ * so the three deterministic call sites stay in lock-step.
+ */
+function growBalance(
+    tradPre: number,
+    rothPre: number,
+    ctx: DPYearContext,
+): { tradNext: number; rothNext: number } {
+    return {
+        tradNext: tradPre * (1 + ctx.growthRate),
+        rothNext: rothPre * (1 + ctx.rothGrowthRate),
+    };
+}
+
+/**
+ * Per-quadrature-node growth factors for one account at one year — the
+ * `1 + rate + meanShift + shock` multipliers the stochastic transition applies
+ * to a pre-growth balance. The shocks are zero-mean by construction, so the
+ * UNFLOORED factors have weighted mean exactly `1 + rate + meanShift`.
+ *
+ * A single year can't lose more than 100% (a balance can't go negative), so we
+ * floor each factor at 0. But once that floor BINDS (a node's shock drops below
+ * −(1+rate+meanShift)), clipping those nodes from negative up to 0 lifts the
+ * weighted mean above `1 + rate + meanShift` — biasing the backward V-table
+ * expectation to grow faster than the σ=0 forward central step and weakening the
+ * "on-track path reproduces the central schedule" property (#105). When the floor
+ * binds we rescale the floored factors so `E[factor]` lands back exactly on the
+ * central step's value (`max(0, 1+rate+meanShift)`, matching the floored mean-
+ * path step); scaling non-negative factors by a positive constant keeps them ≥ 0.
+ *
+ * The floor only binds at very high σ (≳0.28 at n=7); when it does NOT bind we
+ * return the raw factors untouched, so every existing low/normal-vol output is
+ * byte-for-byte unchanged — `max(0, base+s)` with `base+s ≥ 0` is just `base+s`,
+ * and no rescale runs. Returns BALANCE-space factors; index-space callers (the
+ * backward sweep) fold in `1/dB`. Shared by the backward sweep and the unified
+ * forward extract so the two stay in lock-step.
+ */
+function buildNodeGrowthFactors(
+    rate: number,
+    quad: ReturnQuadrature,
+    meanShift: number,
+): number[] {
+    const base = 1 + rate + meanShift;
+    const raw = quad.shocks.map(s => base + s);
+    // Fast path: floor never binds ⇒ identical to the old `max(0, base+s)`, and
+    // (since the unfloored mean is already 1+rate+meanShift) no rescale needed.
+    if (!raw.some(f => f < 0)) return raw;
+    const floored = raw.map(f => (f < 0 ? 0 : f));
+    // Renormalize the floored factors back to the central-step mean so a σ=0
+    // ("on-track") path that reads this V-table reproduces the central schedule.
+    // Degenerate when the target mean is itself non-positive (pathological
+    // meanShift < −1) or the floored mean collapses to 0 — nothing to scale to.
+    const target = base < 0 ? 0 : base;
+    if (target <= 0) return floored;
+    let mean = 0;
+    for (let k = 0; k < quad.weights.length; k++) mean += quad.weights[k] * floored[k];
+    if (mean <= 0) return floored;
+    const scale = target / mean;
+    return floored.map(f => f * scale);
+}
+
+/**
  * Single-cell evaluation (3D-ready): given (tradBalance, rothBalance,
  * conversion, ctx), simulate the year's spending waterfall and tax in
  * one shot.
@@ -744,7 +863,10 @@ function computeYearTax(
  * - `yearTax`: actual federal + state + ACA tax (no infeasibility penalty;
  *   the solver applies that separately via `unmetNeed`).
  * - `conversionMarginal`: yearTax − taxBaseline (diagnostic only).
- * - `tradNext`, `rothNext`: end-of-year balances after flows + growth.
+ * - `tradPre`, `rothPre`: end-of-year balances after flows but BEFORE growth.
+ *   Both the stochastic backward sweep (grows them per quadrature node) and
+ *   the deterministic callers (grow them once at the per-account rate via
+ *   `growBalance`) take it from here — `evaluateCell` no longer grows them.
  * - `tradSpending`, `fromRoth`, `fromBrokerage`: waterfall breakdown for
  *   diagnostics.
  * - `unmetNeed`: dollars of `totalNeed` the waterfall couldn't source
@@ -782,12 +904,15 @@ function evaluateCell(
 ): {
     yearTax: number;
     conversionMarginal: number;
-    tradNext: number;
-    rothNext: number;
+    /** End-of-year Trad BEFORE growth (= trad − conversion − rmd − tradSpending, floored at 0). */
+    tradPre: number;
+    /** End-of-year Roth BEFORE growth (= roth + conversion − fromRoth, floored at 0). */
+    rothPre: number;
     tradSpending: number;
     fromRoth: number;
     fromBrokerage: number;
     unmetNeed: number;
+    ordinarySurplus: number;
 } {
     const rmd = ctx.rmdDivisor > 0 ? tradBalance / ctx.rmdDivisor : 0;
     const ordIncomeExclTradSpend = ctx.nonSSOrdinaryIncomeExclRMD + rmd + conversion;
@@ -850,19 +975,39 @@ function evaluateCell(
     const sourced = fromBrokerage + fromRoth + tradSpending;
     const unmetNeed = Math.max(0, totalNeedFinal - sourced);
 
+    // Surplus years (forced ordinary income — SS + RMD + fixed — exceeds spending +
+    // tax) deposit the after-tax leftover to brokerage/savings. Brokerage isn't a DP
+    // state variable (exogenous-brokerage approx, #7), so the max-wealth objective
+    // credits this surplus as a +wealth term SYMMETRIC to the `-fromBrokerage` leak
+    // (#4). Without it, low-conversion paths that throw off big RMD surpluses lose that
+    // wealth, biasing the DP toward over-converting. Mutually exclusive with
+    // fromBrokerage: a surplus year has no gap to source. Credited at face PV because
+    // growth at g exactly cancels the max-wealth 1/(1+g) discount — which implicitly
+    // treats the reinvested surplus as growing tax-free like Roth; real brokerage growth
+    // is taxed, so this slightly OVER-credits surplus years. Second-order vs the
+    // over-conversion it fixes; an explicit brokerage drag would need brokerage as a 3rd
+    // DP state (declined — see #7).
+    const ordinarySurplus = Math.max(0, cashFromOrdinary - ctx.spendingNeed - yearTax);
+
     const conversionMarginal = Math.max(0, yearTax - taxBaseline);
-    const tradNext = Math.max(0, tradBalance - conversion - rmd - tradSpending) * (1 + ctx.growthRate);
-    const rothNext = Math.max(0, rothBalance + conversion - fromRoth) * (1 + ctx.rothGrowthRate);
+    // Pre-growth end-of-year balances. The deterministic transition grows them
+    // by the per-account rates (via `growBalance` at the call site); the
+    // stochastic solve (#98) instead grows them by each return-quadrature node
+    // and takes the expectation. evaluateCell returns the pre-growth balances
+    // and leaves growth to whichever branch consumes them.
+    const tradPre = Math.max(0, tradBalance - conversion - rmd - tradSpending);
+    const rothPre = Math.max(0, rothBalance + conversion - fromRoth);
 
     return {
         yearTax,
         conversionMarginal,
-        tradNext,
-        rothNext,
+        tradPre,
+        rothPre,
         tradSpending,
         fromRoth,
         fromBrokerage,
         unmetNeed,
+        ordinarySurplus,
     };
 }
 
@@ -885,11 +1030,29 @@ function interpV2D(
     tradBuckets: number,
     rothBuckets: number,
 ): number {
+    // Convert balances to fractional grid indices, then delegate. The hot
+    // stochastic sweep skips this and calls interpV2DByIndex directly with
+    // indices it computes by MULTIPLYING precomputed reciprocals (#98 perf).
     const trad = tradBalance < 0 ? 0 : tradBalance;
     const roth = rothBalance < 0 ? 0 : rothBalance;
+    return interpV2DByIndex(V, trad / dB, roth / dRoth, tradBuckets, rothBuckets);
+}
 
-    let tIdx = trad / dB;
-    let rIdx = roth / dRoth;
+/**
+ * Bilinear lookup at pre-computed fractional grid indices (`tIdx = trad/dB`,
+ * `rIdx = roth/dRoth`). Lets the per-cell quadrature fold the per-year `1/dB`
+ * division into a hoisted factor and multiply in the inner loop. Negative inputs
+ * are clamped by the caller (or below, defensively).
+ */
+function interpV2DByIndex(
+    V: Float64Array,
+    tIdxIn: number,
+    rIdxIn: number,
+    tradBuckets: number,
+    rothBuckets: number,
+): number {
+    let tIdx = tIdxIn < 0 ? 0 : tIdxIn;
+    let rIdx = rIdxIn < 0 ? 0 : rIdxIn;
     if (tIdx > tradBuckets) tIdx = tradBuckets;
     if (rIdx > rothBuckets) rIdx = rothBuckets;
 
@@ -910,6 +1073,104 @@ function interpV2D(
     const v0 = v00 * (1 - rFrac) + v01 * rFrac;
     const v1 = v10 * (1 - rFrac) + v11 * rFrac;
     return v0 * (1 - tFrac) + v1 * tFrac;
+}
+
+// =============================================================================
+// STOCHASTIC RETURN QUADRATURE (#98)
+// =============================================================================
+
+/**
+ * Physicists' Gauss-Hermite abscissae/weights (weight function e^{-x²}), for
+ * n ∈ {5, 7, 9}. Used to integrate a function of a Normal return draw:
+ *   E[f(R)] = (1/√π) Σ wᵢ f(μ + σ√2·xᵢ),   R ~ Normal(μ, σ).
+ * Σ wᵢ = √π, so the normalized weights (wᵢ/√π) sum to 1. Hardcoded (rather than
+ * Golub–Welsch at runtime) — these few orders are standard and dependency-free.
+ */
+const GAUSS_HERMITE: Record<number, { x: number[]; w: number[] }> = {
+    5: {
+        x: [-2.020182870456086, -0.958572464613819, 0, 0.958572464613819, 2.020182870456086],
+        w: [0.019953242059046, 0.393619323152241, 0.945308720482942, 0.393619323152241, 0.019953242059046],
+    },
+    7: {
+        x: [-2.651961356835233, -1.673551628767471, -0.816287882858965, 0,
+            0.816287882858965, 1.673551628767471, 2.651961356835233],
+        w: [0.000971781245100, 0.054515582819127, 0.425607252610128, 0.810264617556807,
+            0.425607252610128, 0.054515582819127, 0.000971781245100],
+    },
+    9: {
+        x: [-3.190993201781528, -2.266580584531843, -1.468553289216668, -0.723551018752838, 0,
+            0.723551018752838, 1.468553289216668, 2.266580584531843, 3.190993201781528],
+        w: [0.000039606977263, 0.004943624275537, 0.088474527394377, 0.432651559002556, 0.720235215606051,
+            0.432651559002556, 0.088474527394377, 0.004943624275537, 0.000039606977263],
+    },
+};
+
+/**
+ * A discretized ZERO-MEAN return shock for the stochastic DP transition. The
+ * shock is COMMON to all accounts in a given year (mirroring Monte Carlo's
+ * single portfolio-level draw); each account's per-node growth factor is
+ * `1 + accountRate + meanShift + shockᵢ`, where `accountRate` is the account's
+ * deterministic net rate (`ctx.growthRate`/`ctx.rothGrowthRate`). Keeping the
+ * shock zero-mean and adding it to the per-account rate makes the σ=0 limit
+ * reduce to the deterministic transition exactly, per account.
+ */
+/** Gauss-Hermite quadrature node counts with a hardcoded abscissae/weight table. */
+export type QuadratureNodes = 5 | 7 | 9;
+
+export interface ReturnQuadrature {
+    /** Zero-mean return shocks (decimal) per node = `stdDev·√2·xᵢ`. */
+    shocks: number[];
+    /** Probability weights per node; sum to 1. */
+    weights: number[];
+    /** The decimal return volatility this quadrature was built for (grid sizing). */
+    stdDev: number;
+}
+
+/**
+ * Build a Gauss-Hermite shock quadrature for the stochastic transition.
+ * `stdDev` is the DECIMAL return volatility (0.15 = 15%), matching the units of
+ * `ctx.growthRate` — the caller (MonteCarloEngine) converts its percent-valued
+ * config. `nodes` ∈ {5,7,9} (typed, so an unsupported count is a compile error
+ * rather than a silent fall-back); defaults to 7. The mean is carried separately
+ * as `meanShift` (see DPObjectiveOptions.returnDistribution).
+ */
+export function buildShockQuadrature(stdDev: number, nodes: QuadratureNodes = 7): ReturnQuadrature {
+    const table = GAUSS_HERMITE[nodes];
+    const SQRT_PI = Math.sqrt(Math.PI);
+    const SQRT_2 = Math.SQRT2;
+    const shocks = table.x.map(xi => stdDev * SQRT_2 * xi);
+    const weights = table.w.map(wi => wi / SQRT_PI);
+    return { shocks, weights, stdDev };
+}
+
+/**
+ * Look up the closed-loop conversion policy (#98) at a realized
+ * `(year, trad, roth)` state via NEAREST-NEIGHBOR (nearest grid cell). Returns
+ * `undefined` when the year has no policy entry (e.g. pre-retirement years, or a
+ * deterministic plan with no policy). The result is clamped to the gross feasible
+ * range `[0, trad]` so the contract is safe for every caller (you can't convert
+ * more Traditional than you have, or a negative amount); callers refine with the
+ * RMD-aware ceiling.
+ *
+ * Nearest-neighbor (not bilinear) so the lookup only ever returns a conversion
+ * amount the DP ACTUALLY chose at some grid cell — never a synthesized in-between
+ * amount near a bracket edge. Both callers see this: the MC per-path lookup in
+ * YearSolver and the stochastic central-schedule forward walk below. The nearest
+ * index uses the same clamping convention as interpV2DByIndex (negative → 0,
+ * over-max → buckets).
+ */
+export function lookupConversionPolicy(
+    policy: DPPolicy, year: number, trad: number, roth: number,
+): number | undefined {
+    const entry = policy.byYear.get(year);
+    if (!entry) return undefined;
+    // dB/dRoth are > 0 by construction (MIN_BALANCE_RANGE floor in determineGridScales).
+    const tiRaw = entry.dB > 0 ? Math.round(trad / entry.dB) : 0;
+    const riRaw = entry.dRoth > 0 ? Math.round(roth / entry.dRoth) : 0;
+    const ti = tiRaw < 0 ? 0 : (tiRaw > policy.tradBuckets ? policy.tradBuckets : tiRaw);
+    const ri = riRaw < 0 ? 0 : (riRaw > policy.rothBuckets ? policy.rothBuckets : riRaw);
+    const raw = entry.table[ti * (policy.rothBuckets + 1) + ri];
+    return Math.max(0, Math.min(raw, Math.max(0, trad)));
 }
 
 // =============================================================================
@@ -943,6 +1204,19 @@ function determineGridScales(
     contexts: DPYearContext[],
     currentTradBalance: number,
     currentRothBalance: number,
+    /**
+     * Extra per-year drift added to each account's growth rate (#98 stochastic
+     * solve passes `meanShift` so the grid follows the MC mean path, not the
+     * deterministic RoR — otherwise meanShift>0 overruns the grid and interpV2D
+     * silently clamps the value function). 0 ⇒ deterministic (grid unchanged).
+     */
+    driftPerYear: number = 0,
+    /**
+     * Headroom multiplier on each year's reachable max. The stochastic solve
+     * widens this beyond BALANCE_HEADROOM_FACTOR (≈ +2σ) so a typical year's
+     * up-shock doesn't land past the next year's grid edge.
+     */
+    headroomFactor: number = BALANCE_HEADROOM_FACTOR,
 ): { dBByYear: number[]; dRothByYear: number[]; dCByYear: number[] } {
     const horizonYears = contexts.length;
     const tradMaxByYear: number[] = new Array(horizonYears + 1);
@@ -950,13 +1224,14 @@ function determineGridScales(
     tradMaxByYear[0] = currentTradBalance;
     rothMaxByYear[0] = currentRothBalance;
 
-    // Trad-max trajectory: no conversions, no spending.
+    // Trad-max trajectory: no conversions, no spending. Grow at the (drift-shifted)
+    // rate so the stochastic mean path is covered.
     {
         let trad = currentTradBalance;
         for (let t = 0; t < horizonYears; t++) {
             const ctx = contexts[t];
             const rmd = ctx.rmdDivisor > 0 ? trad / ctx.rmdDivisor : 0;
-            trad = Math.max(0, trad - rmd) * (1 + ctx.growthRate);
+            trad = Math.max(0, trad - rmd) * (1 + ctx.growthRate + driftPerYear);
             tradMaxByYear[t + 1] = trad;
         }
     }
@@ -969,17 +1244,17 @@ function determineGridScales(
             const ctx = contexts[t];
             const rmd = ctx.rmdDivisor > 0 ? trad / ctx.rmdDivisor : 0;
             const conv = Math.min(MAX_CONVERSION_CAP, Math.max(0, trad - rmd));
-            trad = Math.max(0, trad - conv - rmd) * (1 + ctx.growthRate);
-            roth = (roth + conv) * (1 + ctx.rothGrowthRate);
+            trad = Math.max(0, trad - conv - rmd) * (1 + ctx.growthRate + driftPerYear);
+            roth = (roth + conv) * (1 + ctx.rothGrowthRate + driftPerYear);
             rothMaxByYear[t + 1] = roth;
         }
     }
 
     const dBByYear = tradMaxByYear.map(v =>
-        Math.max(MIN_BALANCE_RANGE, v * BALANCE_HEADROOM_FACTOR) / TRAD_BUCKETS
+        Math.max(MIN_BALANCE_RANGE, v * headroomFactor) / TRAD_BUCKETS
     );
     const dRothByYear = rothMaxByYear.map(v =>
-        Math.max(MIN_BALANCE_RANGE, v * BALANCE_HEADROOM_FACTOR) / ROTH_BUCKETS
+        Math.max(MIN_BALANCE_RANGE, v * headroomFactor) / ROTH_BUCKETS
     );
 
     // Per-year conversion grid: each year's dC scales to that year's
@@ -998,13 +1273,196 @@ function determineGridScales(
 }
 
 /**
+ * Assumed effective rate at which Traditional surviving to the horizon exits when
+ * BEQUEATHED to a working heir (SECURE Act 10-year drain, stacked on the heir's own
+ * income). Approximated flat — the heir's bracket isn't modeled, only that it's high.
+ * (The self-liquidate tail remainder uses the drawdown's own blended rate instead, #14.)
+ * Exported for the #89 regression test so it scores the same exit assumption.
+ */
+export const HEIR_EXIT_RATE = 0.32;
+
+/**
+ * Bracket-aware exit VALUE (in horizon-year dollars) of a residual Traditional
+ * balance `B` at the horizon — the heart of Change 1 (#89). Instead of a flat
+ * (1−τ) haircut, value the residual at the best rate it can actually leave at:
+ *
+ *  - 'self-liquidate': draw `B` down post-horizon on the RMD schedule at REAL
+ *    brackets with no other income, so the std-deduction slice each year exits at
+ *    0% and the rest fills low brackets. After-tax proceeds discounted back to the
+ *    horizon at `g`. Small balances exit at ~0–8%, large balances (RMDs overflow
+ *    into high brackets) approach the top rate — i.e. the value is GRADUATED, which
+ *    is what makes the DP's effective conversion ceiling adapt to plan shape.
+ *  - 'bequeath': flat (1−HEIR_EXIT_RATE) — a working heir drains it at a high rate,
+ *    so the DP should convert anything cheaper than that.
+ *
+ * Mirrors the harvest-aware valuation used in the offline measurement, lifted into
+ * the solver so the objective the DP optimizes equals the objective we score on.
+ * Exported so the #89 regression test scores the residual with the SAME function the
+ * DP optimizes against (no drifting re-implementation).
+ */
+export function bracketAwareTradExitValue(
+    B: number,
+    terminalAge: number,
+    g: number,
+    fedParams: TaxParameters,
+    filing: FilingStatus,
+    userSituation: 'self-liquidate' | 'bequeath',
+    /**
+     * Self-liquidate fix (#89 torpedo): the residual is consumed IN LIFE, so its
+     * drawdown stacks on the retiree's persisting late-life Social Security and
+     * fixed (pension/passive) income — each withdrawal bears its MARGINAL tax on
+     * top of that base, INCLUDING SS-inclusion (the torpedo). The old SS=0 path
+     * under-priced the exit and made the DP under-convert in SS-heavy plans. These
+     * default to 0, which keeps the prior behavior; bequeath ignores them.
+     */
+    ssBenefit: number = 0,
+    fixedIncome: number = 0,
+    /**
+     * COLA / inflation rate (#10): the persisting SS + fixed income grow with it each
+     * drawdown year, mirroring the nominal inflation-adjusted engine (the residual
+     * compounds at nominal g). 0 = freeze nominal (pre-#10 behavior; callers/tests that
+     * don't pass it are unchanged). NOTE: income grows with COLA but `fedParams` brackets
+     * stay at the terminal year's nominal thresholds across the 45-yr drawdown, so some
+     * bracket creep remains in the valuation — an improvement over frozen-nominal income,
+     * still approximate (inflating the brackets too would need a year-indexed param set).
+     */
+    cola: number = 0,
+): number {
+    if (B < 1) return 0;
+    if (userSituation === 'bequeath') return B * (1 - HEIR_EXIT_RATE);
+    let bal = B, pv = 0, age = terminalAge, t = 0;
+    let grossW = 0, totalTax = 0;
+    let ss = ssBenefit, fixed = fixedIncome; // grown by COLA each year below
+    while (bal > 100 && t < 45) {
+        const div = Math.max(2, getDistributionPeriod(Math.min(age, 115)));
+        const w = Math.min(bal, bal / div);
+        // The residual withdrawal bears only the MARGINAL tax above the persisting
+        // income base (so SS/fixed income aren't taxed to the residual). Recomputed per
+        // year because the base grows with COLA.
+        const baseTax = TaxService.calculateTotalFederalTax(fixed, ss, 0, 0, 0, filing, fedParams).totalTax;
+        const taxWith = TaxService.calculateTotalFederalTax(fixed + w, ss, 0, 0, 0, filing, fedParams).totalTax;
+        const tax = Math.max(0, taxWith - baseTax); // marginal tax attributable to the withdrawal
+        pv += (w - tax) / Math.pow(1 + g, t);
+        grossW += w; totalTax += tax;
+        bal = (bal - w) * (1 + g);
+        ss *= (1 + cola); fixed *= (1 + cola); // COLA growth of persisting income (#10)
+        age++; t++;
+    }
+    // Tail remainder (only when the residual outran its RMD fraction over the 45-yr
+    // window). Self-liquidate values it at the drawdown's OWN blended exit rate (#14) —
+    // NOT the heir rate, which contradicts the self-liquidate premise. (Bequeath already
+    // returned above.)
+    if (bal > 100) {
+        const tailRate = grossW > 0 ? Math.min(0.5, totalTax / grossW) : 0;
+        pv += (bal * (1 - tailRate)) / Math.pow(1 + g, t);
+    }
+    return pv;
+}
+
+/**
+ * Objective options for {@link planConversionsViaDP} (#89). PRODUCTION DEFAULT (derived in
+ * useSimulation): `objectiveMode: 'max-wealth'` + `terminalValuation: 'bracket-aware'`, which
+ * maximizes PV of after-tax terminal wealth and values residual Traditional at its true
+ * graduated exit rate, parameterized by `userSituation`. The four objective touch-points
+ * (terminal base case, per-year accumuland, optimizer direction, discount factor) flip on
+ * `objectiveMode`.
+ *
+ * `objectiveMode: 'min-tax'` (the legacy lifetime-tax objective) and `terminalValuation:
+ * 'flat'` (flat (1−τ) haircut, `terminalTaxRate`) are RETAINED ONLY for regression tests that
+ * A/B the old behavior — no production caller selects them. Omitting the options entirely
+ * defaults to min-tax/flat-τ; production always passes the derived max-wealth options.
+ */
+export interface DPObjectiveOptions {
+    objectiveMode?: 'min-tax' | 'max-wealth';
+    /** Flat-τ terminal: residual Trad valued at (1−τ). Used when terminalValuation='flat'. */
+    terminalTaxRate?: number;
+    /**
+     * 'flat' (default) = the original flat-τ terminal. 'bracket-aware' = value residual Trad
+     * at its TRUE exit rate (graduated: std-ded slice at 0%, then brackets), so the effective
+     * conversion ceiling adapts to plan shape + user situation instead of a constant τ.
+     */
+    terminalValuation?: 'flat' | 'bracket-aware';
+    /**
+     * For 'bracket-aware' only — what happens to Trad surviving to the horizon:
+     *  'self-liquidate' (default): retiree/estate draws it down at real brackets, std-ded
+     *    slice at 0% → low exit (~5–13%) → DP won't convert cheap dollars to dodge it
+     *    (converges to rate-match's conservatism).
+     *  'bequeath': working heir drains it (SECURE 10-yr) at a high flat rate → DP converts
+     *    anything below that rate (drains aggressively).
+     */
+    userSituation?: 'self-liquidate' | 'bequeath';
+    /**
+     * COLA / inflation rate for the bracket-aware terminal drawdown (#10): grows the
+     * persisting SS + fixed income each drawdown year so it stays consistent with the nominal
+     * inflation-adjusted engine. Default 0 (freeze nominal); production derives it from the
+     * macro inflation assumption.
+     */
+    terminalCola?: number;
+    /**
+     * STOCHASTIC solve (#98). When set, the backward transition integrates a
+     * return distribution into the V-table (expectation over Gauss-Hermite nodes)
+     * and the solve emits a closed-loop `DPPolicy`. The model is a COMMON
+     * zero-mean shock (volatility `stdDev`, DECIMAL e.g. 0.15) applied each node
+     * to BOTH accounts — mirroring Monte Carlo's single portfolio draw — around
+     * each account's own deterministic rate plus `meanShift`. `meanShift`
+     * (DECIMAL, default 0) re-centers the per-account rates on the Monte Carlo
+     * mean: `meanShift = (mcReturnMean − (ror + inflation))/100`, so the policy is
+     * optimal for the returns MC actually draws (which can differ from the
+     * deterministic projection RoR). `nodes` ∈ {5,7,9}, default 7. Omitted ⇒
+     * deterministic per-account transition, no policy (byte-for-byte the legacy
+     * behavior); `stdDev=0, meanShift=0` reproduces it exactly.
+     */
+    returnDistribution?: { stdDev: number; meanShift?: number; nodes?: QuadratureNodes };
+}
+
+/**
  * Run the DP backward sweep + forward extract, producing a per-year plan.
  */
-export function planConversionsViaDP(inputs: DPInputs): DPPlan {
+export function planConversionsViaDP(
+    inputs: DPInputs,
+    /** Objective config; see {@link DPObjectiveOptions}. Omitted ⇒ legacy min-tax/flat-τ
+     *  (direct / test callers); production passes the derived max-wealth options. */
+    opts?: DPObjectiveOptions,
+): DPPlan {
     const startedAt = performance.now();
     const { contexts, currentTradBalance, currentRothBalance } = inputs;
     const delta = inputs.backloadDelta ?? DP_BACKLOAD_DELTA;
     const discountFactor = 1 / (1 + delta);
+
+    const objectiveMode = opts?.objectiveMode ?? 'min-tax';
+    const isMaxWealth = objectiveMode === 'max-wealth';
+    const tau = opts?.terminalTaxRate ?? 0.22;
+    const terminalValuation = opts?.terminalValuation ?? 'flat';
+    const userSituation = opts?.userSituation ?? 'self-liquidate';
+    const terminalCola = opts?.terminalCola ?? 0;
+
+    // Stochastic solve (#98). When a return distribution is supplied, the
+    // backward transition grows the pre-growth balances by each node's per-account
+    // factor (deterministic rate + meanShift + common shock) and takes the
+    // probability-weighted expectation of the future value, and we record the
+    // argmax conversion per cell to emit a closed-loop policy. The discount uses
+    // the (shifted) trad mean rate per year (1/(1+growthRate+meanShift)) — under
+    // the stochastic model the reinvested-surplus credit cancels in expectation,
+    // mirroring the deterministic 1/(1+g). Omitted ⇒ the deterministic
+    // per-account path below runs exactly as before.
+    const quad = opts?.returnDistribution
+        ? buildShockQuadrature(opts.returnDistribution.stdDev, opts.returnDistribution.nodes)
+        : null;
+    const stochastic = quad !== null;
+    const meanShift = opts?.returnDistribution?.meanShift ?? 0;
+
+    // Single source of truth for the per-year objective accumuland (#12), so the
+    // backward sweep, forward extract, and debug curve can't drift apart. Max-wealth:
+    // surplus-cash credit − brokerage leak − ruin penalty (#4/#2). Min-tax: year tax +
+    // infeasibility penalty. The remaining two flip points — the ±Infinity "worst"
+    // sentinel and the argmin/argmax comparison — stay inline (trivially symmetric and
+    // marked CHANGE 3 at each site); only the multi-term accumuland warranted lifting.
+    const yearAccumuland = (cell: {
+        yearTax: number; fromBrokerage: number; ordinarySurplus: number; unmetNeed: number;
+    }): number =>
+        isMaxWealth
+            ? cell.ordinarySurplus - cell.fromBrokerage - maxWealthUnmetPenalty(cell.unmetNeed)
+            : cell.yearTax + cell.unmetNeed * INFEASIBILITY_PENALTY_PER_DOLLAR;
 
     const horizonYears = contexts.length;
 
@@ -1036,6 +1494,37 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
         };
     }
 
+    // Terminal valuation (max-wealth only). Flat-τ: roth + trad·(1−τ).
+    // Bracket-aware (Change 1, #89): roth + the GRADUATED exit value of the
+    // residual Trad — std-ded slice at 0%, then brackets — so the DP's effective
+    // conversion ceiling tracks the residual's true exit rate per plan/user, not a
+    // constant τ. Both feed the V-table base case and the no-candidate fallback.
+    const lastCtx = contexts[horizonYears - 1];
+    const terminalAge = lastCtx.age + 1;
+    // Self-liquidate stacks the residual drawdown on the retiree's persisting
+    // late-life income — last-year SS + non-SS fixed income (pension/passive,
+    // excl. RMD/conversion). Bequeath ignores these (heir drains it standalone).
+    const tradTerminalAt = (tradBal: number): number =>
+        terminalValuation === 'bracket-aware'
+            ? bracketAwareTradExitValue(
+                tradBal, terminalAge, lastCtx.growthRate, lastCtx.fedParams, lastCtx.filingStatus,
+                userSituation, lastCtx.ssBenefits, lastCtx.nonSSOrdinaryIncomeExclRMD, terminalCola)
+            : tradBal * (1 - tau);
+    // Terminal wealth = Roth + residual-Trad exit value ONLY (#7). Brokerage and savings
+    // are NOT terminal state variables here — the DP's state is (trad, roth), keeping the
+    // V-table 2-D. That omission is argmax-EQUIVALENT for choosing the conversion
+    // schedule, because brokerage enters the objective through PER-YEAR flows instead of
+    // a terminal balance: every year the cell charges `-fromBrokerage` when a conversion's
+    // tax (or a spending gap) is funded from brokerage, and credits `+ordinarySurplus`
+    // when forced income overflows to brokerage (#4). A conversion's only effect on
+    // brokerage is the tax it pulls, which is exactly that per-year leak — so adding the
+    // terminal brokerage BALANCE would shift every cell by a near-constant (the
+    // schedule-invariant baseline brokerage trajectory) and not change which schedule
+    // wins. Savings is a small fixed buffer with no conversion interaction, likewise
+    // omitted. (Realized total wealth, incl. brokerage+savings, is still what the #89
+    // regression test scores — see RothConversionBracketAware.test.ts.)
+    const terminalValue = (tradBal: number, rothBal: number) => rothBal + tradTerminalAt(tradBal);
+
     // Tail IRMAA skip (#76): drop the same-year IRMAA term for the last
     // IRMAA_HORIZON_EDGE_YEARS horizon years. A conversion there would bill its
     // surcharge two years out — past the horizon — so the real engine never
@@ -1054,8 +1543,26 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
             : ctx
     );
 
+    // Stochastic solve (#98): size the grid to the MC mean path (drift = meanShift)
+    // with extra UP-headroom so a sustained bull run doesn't compound past the next
+    // year's grid edge and get silently clamped by interpV2D (under-converting — the
+    // opposite of #98's goal). A flat +2σ only covers ONE year's up-shock; over a
+    // multi-year horizon the up-shocks ACCUMULATE, so the buffer is scaled by
+    // √horizon (random-walk std-dev growth), capped so a long horizon can't coarsen
+    // the fixed-bucket grid resolution to uselessness. The rare outermost node can
+    // still clamp — bounded, low-weight. Deterministic solve (quad null) passes 0 /
+    // BALANCE_HEADROOM_FACTOR → grid byte-for-byte unchanged.
+    const gridDrift = stochastic ? meanShift : 0;
+    const STOCH_HEADROOM_SIGMA_K = 2;       // σ multiplier (per √year)
+    const STOCH_HEADROOM_SIGMA_CAP = 1.5;   // max σ-buffer added on top of BALANCE_HEADROOM_FACTOR
+    const gridHeadroom = quad
+        ? BALANCE_HEADROOM_FACTOR + Math.min(
+            STOCH_HEADROOM_SIGMA_CAP,
+            STOCH_HEADROOM_SIGMA_K * quad.stdDev * Math.sqrt(horizonYears),
+        )
+        : BALANCE_HEADROOM_FACTOR;
     const { dBByYear, dRothByYear, dCByYear } = determineGridScales(
-        contexts, currentTradBalance, currentRothBalance,
+        contexts, currentTradBalance, currentRothBalance, gridDrift, gridHeadroom,
     );
     // Legacy/representative scalars: max-of-horizon. Some diagnostics
     // consumers (and tests) reference `dB`, `dRoth`, `maxBalance`,
@@ -1078,11 +1585,17 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
     const fmt$ = (n: number) => '$' + Math.round(n).toLocaleString();
     const vTableMB =
         ((TRAD_BUCKETS + 1) * (ROTH_BUCKETS + 1) * (horizonYears + 1) * 8) / (1024 * 1024);
+    // Stochastic solve also retains a policy slab per year (~the V-table size minus
+    // the terminal slice), held alive via policy.byYear (#98) — count it (#11).
+    const policyMB = stochastic
+        ? ((TRAD_BUCKETS + 1) * (ROTH_BUCKETS + 1) * horizonYears * 8) / (1024 * 1024) : 0;
     summaryLogs.push(
-        `[DEBUG DP] solver: δ=${(delta * 100).toFixed(2)}%, df=${discountFactor.toFixed(4)}, ` +
+        `[DEBUG DP] solver: objective=${objectiveMode}` +
+        `${isMaxWealth ? ` (τ=${(tau * 100).toFixed(0)}%, df=1/(1+growthRate) per year)` : `, δ=${(delta * 100).toFixed(2)}%, df=${discountFactor.toFixed(4)}`}, ` +
         `tradBuckets=${TRAD_BUCKETS}, rothBuckets=${ROTH_BUCKETS}, convBuckets=${CONVERSION_BUCKETS}, ` +
         `maxConversion=${fmt$(maxConversion)} (dC=${fmt$(dC)}), horizon=${horizonYears} years, ` +
-        `V-table 2D ≈ ${vTableMB.toFixed(2)} MB`,
+        `V-table 2D ≈ ${vTableMB.toFixed(2)} MB` +
+        (stochastic ? ` + policy ≈ ${policyMB.toFixed(2)} MB` : ''),
     );
     // Per-year grid scales. Each year `t` has its own dB[t]/dRoth[t]
     // sized to that year's reachable (trad, roth) range. Early years
@@ -1148,18 +1661,54 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
         V[t] = new Float64Array(V_SIZE);
     }
 
+    // CHANGE 1 (max-wealth) — terminal slice: fill instead of zero. The min-tax
+    // terminal is all-zeros ("no future tax"); the max-wealth terminal is the
+    // after-tax wealth of the residual (trad, roth) state, in horizon-year
+    // dollars, as a function of the V-table grid coordinates at the horizon
+    // scale. Left zero for min-tax so that path is unchanged.
+    if (isMaxWealth) {
+        const Vterm = V[horizonYears];
+        const dB_T = dBByYear[horizonYears];
+        const dRoth_T = dRothByYear[horizonYears];
+        // Precompute the (possibly expensive, drawdown-loop) Trad terminal value
+        // once per trad bucket — it's independent of roth, which adds linearly.
+        const tradVal = new Float64Array(TRAD_BUCKETS + 1);
+        for (let bi = 0; bi <= TRAD_BUCKETS; bi++) tradVal[bi] = tradTerminalAt(bi * dB_T);
+        for (let bi = 0; bi <= TRAD_BUCKETS; bi++) {
+            const tv = tradVal[bi];
+            for (let ri = 0; ri <= ROTH_BUCKETS; ri++) {
+                Vterm[bi * V_STRIDE + ri] = tv + ri * dRoth_T;
+            }
+        }
+    }
+
+    // Policy tables (#98, stochastic only): per year `t`, the argmax conversion
+    // for each (tradIdx, rothIdx) cell. Same layout/stride as V. Allocated only
+    // for the stochastic solve so the deterministic path's memory is unchanged.
+    const policyTables: Float64Array[] | null = stochastic
+        ? Array.from({ length: horizonYears }, () => new Float64Array(V_SIZE))
+        : null;
+
     // -----------------------------------------------------------------
     // Backward sweep — 3D state (year, tradIdx, rothIdx).
     //
     // For each (t, tradIdx, rothIdx) cell, iterate over conversion buckets,
-    // evaluate the cell to get (yearTax, tradNext, rothNext, unmetNeed),
-    // then look up V[t+1] at (tradNext, rothNext) via bilinear interpolation
-    // in trad and roth. The minimum total-cost conversion wins.
+    // evaluate the cell to get (yearTax, tradPre, rothPre, unmetNeed), grow the
+    // pre-growth balances to next-year (deterministic: growBalance; stochastic:
+    // per quadrature node), then look up V[t+1] at those grown balances via
+    // bilinear interpolation in trad and roth. The minimum total-cost conversion
+    // (max-wealth: maximum) wins. The stochastic
+    // solve (#98) instead takes the expected future over the return quadrature
+    // and records the winning conversion into `policyTables[t]`.
     //
     // Phase 4 caveat: the inner conversion loop and `taxBaseline` only
     // depend on (t, tradIdx) — recomputing them per rothIdx wastes work.
     // We hoist them outside the rothIdx loop.
     // -----------------------------------------------------------------
+    // Reusable initial-guess-tax buffer (#13): fully overwritten per (t, bi) before
+    // it's read, so a single allocation serves the whole O(T·B·C) sweep instead of a
+    // fresh `new Array` each (t, bi).
+    const initialTaxByCi: number[] = new Array(CONVERSION_BUCKETS + 1);
     for (let t = horizonYears - 1; t >= 0; t--) {
         // Use the tail-IRMAA-skipped context for pricing (see solveContexts).
         const ctx = solveContexts[t];
@@ -1169,15 +1718,42 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
         const dRoth_t = dRothByYear[t];
         const dB_next = dBByYear[t + 1];
         const dRoth_next = dRothByYear[t + 1];
+        // CHANGE 4 (max-wealth) — discount factor as the units fix. Terminal V is
+        // in horizon-year (grown) dollars; the per-year leak (fromBrokerage) is in
+        // year-t dollars. Discount the future value by 1/(1+r) per step so the two
+        // combine in consistent PV, where r is the rate the balance grids grow at.
+        // The model carries per-account net rates (trad growthRate / rothGrowthRate)
+        // and brokerage is exogenous with no explicit rate, so we use this year's
+        // trad growthRate as the single-rate proxy — see header note; all three are
+        // ~RoR+inflation−ER, so the choice doesn't move the pathology result. δ's
+        // min-tax back-load tilt is intentionally dropped here (df is purely 1/(1+r)).
+        // Stochastic (#98): discount at the (shifted) trad mean rate, the same
+        // single-rate proxy choice (meanShift re-centers on the MC mean). The
+        // denominator is floored (#5) so a pathological meanShift < −1 can't make
+        // df ±Infinity/negative and corrupt the sweep.
+        const meanGrowthDenom = Math.max(0.01, 1 + ctx.growthRate + meanShift);
+        const df = stochastic
+            ? 1 / meanGrowthDenom
+            : (isMaxWealth ? 1 / (1 + ctx.growthRate) : discountFactor);
+        // Per-node growth factors for this year (#98), hoisted out of the cell
+        // loops: a common zero-mean shock added to each account's own rate +
+        // meanShift, floored at 0 (a balance can't grow negative — and the floored
+        // mean is renormalized back to 1+rate+meanShift when the floor binds, #105,
+        // a no-op at normal vol). Divide by the next year's bucket width HERE so the
+        // inner loop multiplies a precomputed index factor instead of dividing per
+        // node per cell (#9 hot-path perf).
+        const invDBNext = 1 / dB_next;
+        const invDRothNext = 1 / dRoth_next;
+        const facTradIdx = quad
+            ? buildNodeGrowthFactors(ctx.growthRate, quad, meanShift).map(f => f * invDBNext) : null;
+        const facRothIdx = quad
+            ? buildNodeGrowthFactors(ctx.rothGrowthRate, quad, meanShift).map(f => f * invDRothNext) : null;
 
         for (let bi = 0; bi <= TRAD_BUCKETS; bi++) {
             const b = bi * dB_t;
 
             const rmdAtB = ctx.rmdDivisor > 0 ? b / ctx.rmdDivisor : 0;
             const cMax = Math.max(0, b - rmdAtB);
-            // Baseline (no-conversion, no-trad-spending) tax — only used for
-            // the marginal diagnostic. Doesn't depend on rothIdx.
-            const taxBaseline = computeYearTax(ctx.nonSSOrdinaryIncomeExclRMD + rmdAtB, ctx);
 
             // Hoist the roth-INDEPENDENT initial-guess tax out of the rothIdx
             // loop. For a fixed (bi, ci), the conversion `c` and RMD are fixed
@@ -1187,8 +1763,7 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
             // compute it once per (bi, ci) here and reuse it for every ri.
             // The fixed-point inside evaluateCell still recomputes tax when
             // trad-spending > 0 (the genuinely roth-dependent path), so
-            // results are numerically identical.
-            const initialTaxByCi: number[] = new Array(CONVERSION_BUCKETS + 1);
+            // results are numerically identical. (Buffer reused across (t,bi), #13.)
             {
                 let ci = 0;
                 for (; ci <= CONVERSION_BUCKETS; ci++) {
@@ -1198,33 +1773,96 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
                     if (c >= cMax) break;
                 }
             }
+            // Baseline (no-conversion, no-trad-spending) tax for the marginal
+            // diagnostic — IS the ci=0 initial-guess tax (c=0), so reuse it instead
+            // of a second identical computeYearTax call (#13). Doesn't depend on rothIdx.
+            const taxBaseline = initialTaxByCi[0];
 
             for (let ri = 0; ri <= ROTH_BUCKETS; ri++) {
                 const r = ri * dRoth_t;
 
-                let bestCost = Infinity;
+                // CHANGE 3 (max-wealth) — optimizer direction. Sentinel "worst"
+                // flips +Inf→−Inf and the comparison min→max below.
+                let bestCost = isMaxWealth ? -Infinity : Infinity;
+                let bestC = 0;
 
                 for (let ci = 0; ci <= CONVERSION_BUCKETS; ci++) {
                     const c = Math.min(ci * dCByYear[t], cMax);
-                    const { yearTax, tradNext, rothNext, unmetNeed } =
+                    // evaluateCell returns the pre-growth balances; the stochastic
+                    // branch (quad present) grows them per quadrature node, the
+                    // deterministic branch (quad null) grows them once via growBalance
+                    // below — byte-for-byte unchanged from the prior tradNext/rothNext.
+                    const { yearTax, tradPre, rothPre, unmetNeed, fromBrokerage, ordinarySurplus } =
                         evaluateCell(b, r, c, ctx, taxBaseline, initialTaxByCi[ci]);
 
-                    const futureCost = interpV2D(
-                        Vnext, tradNext, rothNext,
-                        dB_next, dRoth_next, TRAD_BUCKETS, ROTH_BUCKETS,
-                    );
-                    const yearCost = yearTax + unmetNeed * INFEASIBILITY_PENALTY_PER_DOLLAR;
-                    const totalCost = yearCost + discountFactor * futureCost;
-
-                    if (totalCost < bestCost) bestCost = totalCost;
+                    // Future value: deterministic per-account lookup, or — when a
+                    // return distribution is supplied (#98) — the expectation over
+                    // the quadrature, growing the pre-growth balances by each node's
+                    // per-account factor (common shock, mirroring MC's single
+                    // portfolio draw). The per-cell tax (yearAccumuland) is
+                    // return-independent, so only this interp runs per node.
+                    let futureCost: number;
+                    if (quad && facTradIdx && facRothIdx) {
+                        futureCost = 0;
+                        for (let k = 0; k < quad.weights.length; k++) {
+                            // facTradIdx/facRothIdx already fold in 1/dB_next, so this
+                            // is grid index = pre-growth balance × factor (no divide).
+                            futureCost += quad.weights[k] * interpV2DByIndex(
+                                Vnext, tradPre * facTradIdx[k], rothPre * facRothIdx[k],
+                                TRAD_BUCKETS, ROTH_BUCKETS,
+                            );
+                        }
+                    } else {
+                        const { tradNext, rothNext } = growBalance(tradPre, rothPre, ctx);
+                        futureCost = interpV2D(
+                            Vnext, tradNext, rothNext,
+                            dB_next, dRoth_next, TRAD_BUCKETS, ROTH_BUCKETS,
+                        );
+                    }
+                    // CHANGE 2 (max-wealth) — per-year accumuland: charge the
+                    // brokerage leak, NOT yearTax. IRA-funded tax already depletes
+                    // trad/roth via the waterfall → counted in terminal V;
+                    // subtracting yearTax too would double-count. fromBrokerage is
+                    // the only outflow that leaves the tracked (trad,roth) system
+                    // without landing in terminal V. (min-tax path unchanged.)
+                    const totalCost =
+                        yearAccumuland({ yearTax, fromBrokerage, ordinarySurplus, unmetNeed }) + df * futureCost;
+                    // CHANGE 3 — argmax for max-wealth, argmin for min-tax.
+                    if (isMaxWealth ? totalCost > bestCost : totalCost < bestCost) {
+                        bestCost = totalCost;
+                        bestC = c;
+                    }
 
                     if (c >= cMax) break;
                 }
 
-                Vt[bi * V_STRIDE + ri] = bestCost === Infinity ? taxBaseline : bestCost;
+                // No-candidate fallback (defensive; the ci=0 cell is always
+                // evaluated so this never fires). Mirror the objective's units:
+                // terminal wealth for max-wealth, baseline tax for min-tax.
+                const noCandidate = isMaxWealth ? bestCost === -Infinity : bestCost === Infinity;
+                Vt[bi * V_STRIDE + ri] = noCandidate
+                    ? (isMaxWealth ? terminalValue(b, r) : taxBaseline)
+                    : bestCost;
+                // Record the winning conversion for the closed-loop policy (#98).
+                if (policyTables) policyTables[t][bi * V_STRIDE + ri] = bestC;
             }
         }
     }
+
+    // Assemble the closed-loop policy (#98) keyed by simulation year — BEFORE the
+    // forward extract, so the stochastic central walk reads it through the SAME
+    // lookupConversionPolicy the MC path uses (no divergent inlined interp math).
+    const policy: DPPolicy | undefined = policyTables
+        ? {
+            tradBuckets: TRAD_BUCKETS,
+            rothBuckets: ROTH_BUCKETS,
+            byYear: new Map(
+                contexts.map((ctx, t) => [ctx.year, {
+                    table: policyTables[t], dB: dBByYear[t], dRoth: dRothByYear[t],
+                }]),
+            ),
+        }
+        : undefined;
 
     // -----------------------------------------------------------------
     // Forward extract: walk the policy from current state.
@@ -1249,99 +1887,194 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
         `If startingTrad matches baselineTrad@(firstYear-1) ⇒ correct (start-of-retirement). ` +
         `If startingTrad matches baselineTrad@firstYear ⇒ off-by-one (DP is starting from end-of-retirement-year baseline).`;
 
+    // ONE forward extract for both paths (#106). Per year we run a shared
+    // prologue (rmd / cMax / taxBaseline), pick the conversion via a strategy
+    // (argmax for the deterministic plan, policy lookup along the mean path for
+    // the stochastic plan), build the full DPYearTrace + inspector debug, then
+    // step the central trajectory. The strategy differs ONLY in:
+    //   • how the year's conversion + per-cell future-cost are chosen, and
+    //   • how the central state advances (deterministic per-account rate vs the
+    //     mean-rate + meanShift step).
+    // Both the deterministic AND stochastic conversion outputs are byte-identical
+    // to the two loops this replaced; the stochastic path now also gets the
+    // structured trace it previously lacked (#104).
+
+    // Future value of a cell's pre-growth balances — the SAME computation the
+    // backward sweep used. Deterministic = a degenerate 1-node quadrature
+    // (`growBalance` → bilinear V[t+1]); stochastic = the probability-weighted
+    // expectation over the return quadrature (the per-year `1/dB`/`1/dRoth` fold
+    // is rebuilt here for the forward walk, which runs only `horizonYears` times).
+    const transitionExpectation = (
+        tradPre: number, rothPre: number, ctx: DPYearContext, t: number,
+    ): number => {
+        const Vnext = V[t + 1];
+        if (quad) {
+            const facT = buildNodeGrowthFactors(ctx.growthRate, quad, meanShift);
+            const facR = buildNodeGrowthFactors(ctx.rothGrowthRate, quad, meanShift);
+            const invDBNext = 1 / dBByYear[t + 1];
+            const invDRothNext = 1 / dRothByYear[t + 1];
+            let fc = 0;
+            for (let k = 0; k < quad.weights.length; k++) {
+                fc += quad.weights[k] * interpV2DByIndex(
+                    Vnext, tradPre * facT[k] * invDBNext, rothPre * facR[k] * invDRothNext,
+                    TRAD_BUCKETS, ROTH_BUCKETS,
+                );
+            }
+            return fc;
+        }
+        const { tradNext, rothNext } = growBalance(tradPre, rothPre, ctx);
+        return interpV2D(
+            Vnext, tradNext, rothNext,
+            dBByYear[t + 1], dRothByYear[t + 1], TRAD_BUCKETS, ROTH_BUCKETS,
+        );
+    };
+
+    // Advance the central state one year. Deterministic = the per-account rate
+    // (`growBalance`); stochastic = each account's mean rate (shock = 0) with the
+    // meanShift, floored (#5) so a pathological meanShift can't drive balances
+    // negative. These post-growth balances are both next year's entering state
+    // and the trace's tradNext/rothNext.
+    const centralStep = (
+        tradPre: number, rothPre: number, ctx: DPYearContext,
+    ): { tradNext: number; rothNext: number } =>
+        stochastic
+            ? {
+                tradNext: tradPre * Math.max(0, 1 + ctx.growthRate + meanShift),
+                rothNext: rothPre * Math.max(0, 1 + ctx.rothGrowthRate + meanShift),
+            }
+            : growBalance(tradPre, rothPre, ctx);
+
+    // Pick the year's conversion and report the chosen cell's full evaluation +
+    // its (discounted) future and total cost, so the shared trace builder below
+    // is strategy-agnostic. Deterministic re-runs the per-cell argmax (golden-
+    // mastered); stochastic reads the emitted policy via the SAME
+    // lookupConversionPolicy an MC path uses (so a σ=0 path reproduces it).
+    type SelectedYear = {
+        c: number;
+        cell: ReturnType<typeof evaluateCell>;
+        futureCost: number;
+        discountedFuture: number;
+        totalCost: number;
+        /** c=0 diagnostics (argmax path only; the policy path leaves them at the chosen cell). */
+        costAtZero: number;
+        yearTaxAtZero: number;
+        futureAtZero: number;
+    };
+    const selectConversion = (
+        ctx: DPYearContext, t: number, df: number,
+        cMax: number, taxBaseline: number,
+    ): SelectedYear => {
+        if (stochastic && policy) {
+            // Policy lookup (already clamped to [0, trad]), refined by the
+            // RMD-aware ceiling; evaluate that single conversion.
+            const cRaw = lookupConversionPolicy(policy, ctx.year, trad, roth) ?? 0;
+            const c = Math.min(cRaw, cMax);
+            const cell = evaluateCell(trad, roth, c, ctx, taxBaseline);
+            const futureCost = transitionExpectation(cell.tradPre, cell.rothPre, ctx, t);
+            const yearCost = yearAccumuland(cell);
+            const totalCost = yearCost + df * futureCost;
+            return {
+                c, cell, futureCost, discountedFuture: df * futureCost, totalCost,
+                costAtZero: totalCost, yearTaxAtZero: cell.yearTax, futureAtZero: futureCost,
+            };
+        }
+        // Deterministic argmax over conversion buckets.
+        let bestC = 0;
+        let bestCost = isMaxWealth ? -Infinity : Infinity; // CHANGE 3 mirror.
+        let bestCell = evaluateCell(trad, roth, 0, ctx, taxBaseline);
+        let bestFuture = 0;
+        let costAtZero = isMaxWealth ? -Infinity : Infinity;
+        let yearTaxAtZero = 0;
+        let futureAtZero = 0;
+        for (let ci = 0; ci <= CONVERSION_BUCKETS; ci++) {
+            const c = Math.min(ci * dCByYear[t], cMax);
+            const cell = evaluateCell(trad, roth, c, ctx, taxBaseline);
+            const futureCost = transitionExpectation(cell.tradPre, cell.rothPre, ctx, t);
+            // CHANGE 2 mirror — accumuland matches the backward sweep (shared helper, #12).
+            const totalCost = yearAccumuland(cell) + df * futureCost;
+
+            if (ci === 0) {
+                costAtZero = totalCost;
+                yearTaxAtZero = cell.yearTax;
+                futureAtZero = futureCost;
+            }
+            // CHANGE 3 mirror — argmax for max-wealth, argmin for min-tax.
+            const improves = isMaxWealth ? totalCost > bestCost : totalCost < bestCost;
+            if (improves) {
+                bestCost = totalCost;
+                bestC = c;
+                bestCell = cell;
+                bestFuture = futureCost;
+            }
+            if (c >= cMax) break;
+        }
+        return {
+            c: bestC, cell: bestCell, futureCost: bestFuture,
+            discountedFuture: df * bestFuture, totalCost: bestCost,
+            costAtZero, yearTaxAtZero, futureAtZero,
+        };
+    };
+
     for (let t = 0; t < horizonYears; t++) {
         // Price against the tail-IRMAA-skipped context so the forward extract
         // matches the backward sweep's V-table (see solveContexts).
         const ctx = solveContexts[t];
-        const Vnext = V[t + 1];
-        const dB_next = dBByYear[t + 1];
-        const dRoth_next = dRothByYear[t + 1];
+        // CHANGE 4 mirror — same per-year discount as the backward sweep, so the
+        // extracted policy is scored on the identical objective the V-table was
+        // built with. Stochastic discounts at the (shifted) mean rate, floored
+        // (#5), matching the backward sweep's meanGrowthDenom.
+        const df = stochastic
+            ? 1 / Math.max(0.01, 1 + ctx.growthRate + meanShift)
+            : (isMaxWealth ? 1 / (1 + ctx.growthRate) : discountFactor);
 
         const rmdAtB = ctx.rmdDivisor > 0 ? trad / ctx.rmdDivisor : 0;
         const cMax = Math.max(0, trad - rmdAtB);
         const taxBaseline = computeYearTax(ctx.nonSSOrdinaryIncomeExclRMD + rmdAtB, ctx);
 
-        let bestC = 0;
-        let bestCost = Infinity;
-        let bestTradNext = trad;
-        let bestRothNext = roth;
-        let bestYearTax = 0;
-        let bestMarginal = 0;
-        let bestTradSpending = 0;
-        let bestFromRoth = 0;
-        let bestFromBrokerage = 0;
-        let bestUnmetNeed = 0;
-        // For the diagnostic table: cost @ c=0 vs cost @ a non-zero candidate.
-        let costAtZero = Infinity;
-        let yearTaxAtZero = 0;
-        let futureAtZero = 0;
-        let bestFuture = 0;
+        const sel = selectConversion(ctx, t, df, cMax, taxBaseline);
+        const chosenC = sel.c;
+        const cell = sel.cell;
+        const { tradNext, rothNext } = centralStep(cell.tradPre, cell.rothPre, ctx);
 
-        for (let ci = 0; ci <= CONVERSION_BUCKETS; ci++) {
-            const c = Math.min(ci * dCByYear[t], cMax);
-            const { yearTax, conversionMarginal, tradNext, rothNext, tradSpending, fromRoth, fromBrokerage, unmetNeed } =
-                evaluateCell(trad, roth, c, ctx, taxBaseline);
-
-            const futureCost = interpV2D(
-                Vnext, tradNext, rothNext,
-                dB_next, dRoth_next, TRAD_BUCKETS, ROTH_BUCKETS,
-            );
-            const yearCost = yearTax + unmetNeed * INFEASIBILITY_PENALTY_PER_DOLLAR;
-            const totalCost = yearCost + discountFactor * futureCost;
-
-            if (ci === 0) {
-                costAtZero = totalCost;
-                yearTaxAtZero = yearTax;
-                futureAtZero = futureCost;
-            }
-
-            if (totalCost < bestCost) {
-                bestCost = totalCost;
-                bestC = c;
-                bestTradNext = tradNext;
-                bestRothNext = rothNext;
-                bestYearTax = yearTax;
-                bestMarginal = conversionMarginal;
-                bestFuture = futureCost;
-                bestTradSpending = tradSpending;
-                bestFromRoth = fromRoth;
-                bestFromBrokerage = fromBrokerage;
-                bestUnmetNeed = unmetNeed;
-            }
-
-            if (c >= cMax) break;
-        }
-
-        conversionsByYear.set(ctx.year, bestC);
+        conversionsByYear.set(ctx.year, chosenC);
         perYearAmounts.push({
             year: ctx.year,
             age: ctx.age,
-            amount: bestC,
+            amount: chosenC,
             estimatedTradBalance: trad,
         });
 
         // Per-year debug emitted to the year inspector via planConversionDP.
+        // Built for BOTH the argmax and the policy walk; the stochastic path is
+        // tagged "DP policy" and notes it read the emitted policy along the mean
+        // return path (#104 — previously it got only a single lightweight line).
         const debugLines: string[] = [];
         if (t === 0) {
             // Surface the setup info on the first conversion year so the user
             // can spot starting-balance issues right in the inspector.
             debugLines.push(startingDebug);
         }
+        const solverTag = stochastic ? 'DP policy' : 'DP solver';
         debugLines.push(
-            `[DEBUG DP solver] year=${ctx.year} age=${ctx.age}: ` +
+            `[DEBUG ${solverTag}] year=${ctx.year} age=${ctx.age}: ` +
             `tradEntering=${fmt$(trad)}, rmdAtB=${fmt$(rmdAtB)}, cMax=${fmt$(cMax)}, ` +
-            `taxBaseline=${fmt$(taxBaseline)}`,
+            `taxBaseline=${fmt$(taxBaseline)}` +
+            (stochastic ? ` (policy lookup along mean path, meanShift=${(meanShift * 100).toFixed(2)}%)` : ''),
         );
         debugLines.push(
-            `[DEBUG DP solver] year=${ctx.year}: chose c=${fmt$(bestC)} ` +
-            `(yearTax=${fmt$(bestYearTax)}, marginal=${fmt$(bestMarginal)}, ` +
-            `discountedFuture=${fmt$(discountFactor * bestFuture)}, totalCost=${fmt$(bestCost)}, ` +
-            `tradNext=${fmt$(bestTradNext)}, rothNext=${fmt$(bestRothNext)})`,
+            `[DEBUG ${solverTag}] year=${ctx.year}: chose c=${fmt$(chosenC)} ` +
+            `(yearTax=${fmt$(cell.yearTax)}, marginal=${fmt$(cell.conversionMarginal)}, ` +
+            `discountedFuture=${fmt$(sel.discountedFuture)}, totalCost=${fmt$(sel.totalCost)}, ` +
+            `tradNext=${fmt$(tradNext)}, rothNext=${fmt$(rothNext)})`,
         );
-        debugLines.push(
-            `[DEBUG DP solver] year=${ctx.year}: c=0 totalCost=${fmt$(costAtZero)} ` +
-            `(yearTax=${fmt$(yearTaxAtZero)}, discountedFuture=${fmt$(discountFactor * futureAtZero)})`,
-        );
+        if (!stochastic) {
+            // c=0 vs chosen comparison — only meaningful for the argmax walk
+            // (the policy path evaluates a single conversion).
+            debugLines.push(
+                `[DEBUG DP solver] year=${ctx.year}: c=0 totalCost=${fmt$(sel.costAtZero)} ` +
+                `(yearTax=${fmt$(sel.yearTaxAtZero)}, discountedFuture=${fmt$(df * sel.futureAtZero)})`,
+            );
+        }
         // Cost-curve sample at FEDERAL BRACKET BOUNDARIES so each segment in
         // the rate-analysis table represents a single bracket — marginals
         // read 10% → 12% → 22% → 24% → 32% → 35% as expected, instead of
@@ -1362,7 +2095,7 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
             0,
             stdDedBoundaryC,
             ...bracketSampleCs,
-            bestC,
+            chosenC,
             cMax,
         ]
             .filter(c => c >= 0 && c <= cMax)
@@ -1372,25 +2105,27 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
         const costCurve: DPYearTrace['costCurve'] = [];
         for (const sampleC of sampleCs) {
             const r = evaluateCell(trad, roth, sampleC, ctx, taxBaseline);
-            const fc = interpV2D(
-                Vnext, r.tradNext, r.rothNext,
-                dB_next, dRoth_next, TRAD_BUCKETS, ROTH_BUCKETS,
-            );
-            const yc = r.yearTax + r.unmetNeed * INFEASIBILITY_PENALTY_PER_DOLLAR;
-            const dFut = discountFactor * fc;
+            // Trace's tradNext/rothNext follow the central trajectory (the same
+            // step the chosen cell takes), so deterministic uses growBalance and
+            // stochastic uses the mean-rate step — consistent with the displayed
+            // walk. The future-cost uses the strategy's expectation.
+            const { tradNext: sTradNext, rothNext: sRothNext } = centralStep(r.tradPre, r.rothPre, ctx);
+            const fc = transitionExpectation(r.tradPre, r.rothPre, ctx, t);
+            const yc = yearAccumuland(r); // shared accumuland (#12)
+            const dFut = df * fc;
             const total = yc + dFut;
             curveParts.push(
                 `c=${fmt$(sampleC)}→total=${fmt$(total)}` +
                 ` (yearTax=${fmt$(r.yearTax)}, dFut=${fmt$(dFut)}, ` +
-                `tradNext=${fmt$(r.tradNext)}, rothNext=${fmt$(r.rothNext)})`,
+                `tradNext=${fmt$(sTradNext)}, rothNext=${fmt$(sRothNext)})`,
             );
             costCurve.push({
                 c: sampleC,
                 yearTax: r.yearTax,
                 discountedFuture: dFut,
                 totalCost: total,
-                tradNext: r.tradNext,
-                rothNext: r.rothNext,
+                tradNext: sTradNext,
+                rothNext: sRothNext,
             });
         }
         debugLines.push(
@@ -1403,14 +2138,14 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
         // brokerage → roth → trad in the real-sim withdrawal order.
         const cashFromOrd =
             ctx.nonSSOrdinaryIncomeExclRMD + ctx.ssBenefits + rmdAtB;
-        const gap = Math.max(0, ctx.spendingNeed + bestYearTax - cashFromOrd);
+        const gap = Math.max(0, ctx.spendingNeed + cell.yearTax - cashFromOrd);
         debugLines.push(
             `[DEBUG DP waterfall] year=${ctx.year}: ` +
-            `spendingNeed=${fmt$(ctx.spendingNeed)} + yearTax=${fmt$(bestYearTax)} − ` +
+            `spendingNeed=${fmt$(ctx.spendingNeed)} + yearTax=${fmt$(cell.yearTax)} − ` +
             `cashFromOrdinary=${fmt$(cashFromOrd)} = gap=${fmt$(gap)} → ` +
-            `fromBrokerage=${fmt$(bestFromBrokerage)} (cap=${fmt$(ctx.baselineBrokerageAvailable)}), ` +
-            `fromRoth=${fmt$(bestFromRoth)} (cap=${fmt$(roth)}), ` +
-            `tradSpending=${fmt$(bestTradSpending)}, unmetNeed=${fmt$(bestUnmetNeed)}`,
+            `fromBrokerage=${fmt$(cell.fromBrokerage)} (cap=${fmt$(ctx.baselineBrokerageAvailable)}), ` +
+            `fromRoth=${fmt$(cell.fromRoth)} (cap=${fmt$(roth)}), ` +
+            `tradSpending=${fmt$(cell.tradSpending)}, unmetNeed=${fmt$(cell.unmetNeed)}`,
         );
         // Forward-sweep decomposition: shows exactly how DP is propagating
         // trad and roth jointly under the chosen plan.
@@ -1418,18 +2153,18 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
         // tradNext = tradAfterFlows × (1 + growthRate)
         // rothAfterFlows = rothEntering + conversion − fromRoth
         // rothNext = max(0, rothAfterFlows) × (1 + rothGrowthRate)
-        const tradAfterFlows = trad - bestC - rmdAtB - bestTradSpending;
-        const rothAfterFlows = roth + bestC - bestFromRoth;
+        const tradAfterFlows = trad - chosenC - rmdAtB - cell.tradSpending;
+        const rothAfterFlows = roth + chosenC - cell.fromRoth;
         debugLines.push(
             `[DEBUG DP forward] year=${ctx.year}: ` +
-            `tradEntering=${fmt$(trad)} − c=${fmt$(bestC)} − rmd=${fmt$(rmdAtB)} − ` +
-            `tradSpending=${fmt$(bestTradSpending)} ` +
-            `= ${fmt$(tradAfterFlows)} × (1 + ${(ctx.growthRate * 100).toFixed(2)}%) = tradNext=${fmt$(bestTradNext)}`,
+            `tradEntering=${fmt$(trad)} − c=${fmt$(chosenC)} − rmd=${fmt$(rmdAtB)} − ` +
+            `tradSpending=${fmt$(cell.tradSpending)} ` +
+            `= ${fmt$(tradAfterFlows)} × (1 + ${(ctx.growthRate * 100).toFixed(2)}%) = tradNext=${fmt$(tradNext)}`,
         );
         debugLines.push(
             `[DEBUG DP forward roth] year=${ctx.year}: ` +
-            `rothEntering=${fmt$(roth)} + c=${fmt$(bestC)} − fromRoth=${fmt$(bestFromRoth)} ` +
-            `= ${fmt$(rothAfterFlows)} × (1 + ${(ctx.rothGrowthRate * 100).toFixed(2)}%) = rothNext=${fmt$(bestRothNext)}`,
+            `rothEntering=${fmt$(roth)} + c=${fmt$(chosenC)} − fromRoth=${fmt$(cell.fromRoth)} ` +
+            `= ${fmt$(rothAfterFlows)} × (1 + ${(ctx.rothGrowthRate * 100).toFixed(2)}%) = rothNext=${fmt$(rothNext)}`,
         );
         // Baseline trajectory snapshot (std-ded-only sub-sim). The 3D solver
         // tracks both trad and roth jointly under DP's own plan, so divergence
@@ -1446,29 +2181,33 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
         );
         perYearDebug.set(ctx.year, debugLines);
 
-        // Structured trace for the Roth debug screen.
+        // Structured trace for the Roth debug screen — now built for BOTH the
+        // deterministic argmax walk and the stochastic policy walk (#104). The
+        // stochastic walk previously emitted only a debug line, leaving the
+        // cost-curve / waterfall / balance-flow screen blank for MC policy plans.
+        // The deterministic trace is byte-identical to the old argmax loop's.
         const trace: DPYearTrace = {
             year: ctx.year,
             age: ctx.age,
-            chosenC: bestC,
-            yearTax: bestYearTax,
-            conversionMarginal: bestMarginal,
-            discountedFuture: discountFactor * bestFuture,
-            totalCost: bestCost,
+            chosenC,
+            yearTax: cell.yearTax,
+            conversionMarginal: cell.conversionMarginal,
+            discountedFuture: sel.discountedFuture,
+            totalCost: sel.totalCost,
             tradEntering: trad,
             rothEntering: roth,
             rmdAtEntering: rmdAtB,
             cMax,
             taxBaselineNoConv: taxBaseline,
-            tradNext: bestTradNext,
-            rothNext: bestRothNext,
+            tradNext,
+            rothNext,
             spendingNeed: ctx.spendingNeed,
             cashFromOrdinary: cashFromOrd,
             gap,
-            fromBrokerage: bestFromBrokerage,
-            fromRoth: bestFromRoth,
-            tradSpending: bestTradSpending,
-            unmetNeed: bestUnmetNeed,
+            fromBrokerage: cell.fromBrokerage,
+            fromRoth: cell.fromRoth,
+            tradSpending: cell.tradSpending,
+            unmetNeed: cell.unmetNeed,
             baselineBrokerageCap: ctx.baselineBrokerageAvailable,
             costCurve,
             baselineTrad: ctx.baselineTradBalance,
@@ -1480,8 +2219,8 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
         };
         perYearTraces.set(ctx.year, trace);
 
-        trad = bestTradNext;
-        roth = bestRothNext;
+        trad = tradNext;
+        roth = rothNext;
     }
 
     const elapsedMs = performance.now() - startedAt;
@@ -1489,11 +2228,15 @@ export function planConversionsViaDP(inputs: DPInputs): DPPlan {
     const yearsConverting = Array.from(conversionsByYear.values()).filter(a => a > 0).length;
     summaryLogs.push(
         `[DEBUG DP] result: totalConverted=${fmt$(totalConverted)} across ${yearsConverting}/${horizonYears} years, ` +
-        `elapsed=${elapsedMs.toFixed(1)}ms`,
+        `elapsed=${elapsedMs.toFixed(1)}ms` + (quad ? ` (stochastic policy; nodes=${quad.weights.length}, meanShift=${(meanShift * 100).toFixed(2)}%)` : ''),
     );
+
+    // `policy` was assembled above (before the forward extract) so the central
+    // walk could read it through lookupConversionPolicy.
 
     return {
         conversionsByYear,
+        policy,
         diagnostics: {
             backloadDelta: delta,
             tradBuckets: TRAD_BUCKETS,

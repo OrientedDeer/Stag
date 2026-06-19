@@ -94,6 +94,32 @@ function classifyAccount(account: AnyAccount): WithdrawalAccountType {
 }
 
 /**
+ * Is this account a SELLABLE asset — can the engine raise cash from it to cover a
+ * spending shortfall? True for savings, brokerage, Roth/Traditional, ESPP and RSU;
+ * FALSE for property and debt (illiquid / not a positive drawable asset).
+ *
+ * When Tax Optimization is ON, the algorithm owns the withdrawal order and every
+ * sellable account is a first-class participant — an account absent from the
+ * user's manual order is not a last resort but a full candidate. This function's
+ * "fallback tier" role therefore applies only to the NON-tax-opt manual-order path,
+ * where it prevents the engine from fabricating deficit debt before tapping a real
+ * asset the order happened to omit.
+ *
+ * NOTE: classifyAccount() can't gate this — its default branch returns 'savings'
+ * for ANY account, so a PropertyAccount/DebtAccount would be miscounted sellable.
+ *
+ * Exported as the single source of truth: the tax-opt joint optimizer
+ * (EngineDirectConversionSearch.withAllSellableAccounts) reuses this same predicate
+ * so the two paths can't drift on a future account type.
+ */
+export function isSellableAccount(account: AnyAccount): boolean {
+    return account instanceof SavedAccount
+        || account instanceof InvestedAccount
+        || account instanceof ESPPAccount
+        || account instanceof RSUAccount;
+}
+
+/**
  * Check if account type incurs early withdrawal penalty.
  */
 function hasEarlyWithdrawalPenalty(
@@ -260,6 +286,38 @@ export function createAccountSnapshot(account: AnyAccount, snapshotDate?: Date):
 }
 
 /**
+ * Snapshot each account in `accounts` and bucket the results into three
+ * categories using the standard withdrawal-order rules:
+ *   - savings:       SavedAccount instances (penalty-free, moved after non-penalized)
+ *   - penalized:     accounts that incur an early withdrawal penalty at `currentAge`
+ *   - nonPenalized:  everything else (brokerage, Roth, Traditional past penalty age, etc.)
+ *
+ * Input order is preserved within each bucket. Callers flatten as
+ * `[...nonPenalized, ...savings, ...penalized]` to produce the canonical
+ * non-penalized → savings → penalized sequence.
+ */
+function categorizeSnapshots(
+    accounts: AnyAccount[],
+    snapshotDate: Date | undefined,
+    currentAge: number,
+): { nonPenalized: AccountBalanceSnapshot[]; savings: AccountBalanceSnapshot[]; penalized: AccountBalanceSnapshot[] } {
+    const nonPenalized: AccountBalanceSnapshot[] = [];
+    const savings: AccountBalanceSnapshot[] = [];
+    const penalized: AccountBalanceSnapshot[] = [];
+    for (const account of accounts) {
+        const snapshot = createAccountSnapshot(account, snapshotDate);
+        if (snapshot.accountType === 'savings') {
+            savings.push(snapshot);
+        } else if (hasEarlyWithdrawalPenalty(snapshot.accountType, currentAge)) {
+            penalized.push(snapshot);
+        } else {
+            nonPenalized.push(snapshot);
+        }
+    }
+    return { nonPenalized, savings, penalized };
+}
+
+/**
  * Create snapshots for all accounts in withdrawal order.
  * Savings is moved to end of non-penalized accounts.
  */
@@ -267,34 +325,50 @@ export function createOrderedSnapshots(
     accounts: AnyAccount[],
     withdrawalOrder: { accountId: string }[],
     currentAge: number,
-    year?: number
+    year?: number,
+    /**
+     * #111: when true, append snapshots for every SELLABLE account the
+     * `withdrawalOrder` does NOT list (savings / brokerage / Roth / Traditional /
+     * ESPP / RSU — never property or debt) as a safety-net tier AFTER the ordered
+     * accounts. Lets a retirement drawdown reach a balance the configured order
+     * ignores (e.g. a Traditional account left out of a Roth-only order) before the
+     * engine fabricates deficit debt. Off by default — the normal/working-year path
+     * and the scenario unit tests are unchanged — and a no-op when the order already
+     * lists every account.
+     *
+     * Note: when Tax Optimization is ON, the algorithm owns the withdrawal order and
+     * every sellable account is already a first-class participant. This fallback tier
+     * is therefore the safety net specifically for the NON-tax-opt manual-order path.
+     */
+    includeUnorderedSellable: boolean = false,
 ): AccountBalanceSnapshot[] {
-    const snapshots: AccountBalanceSnapshot[] = [];
-    const savingsSnapshots: AccountBalanceSnapshot[] = [];
-    const penalizedSnapshots: AccountBalanceSnapshot[] = [];
-
     // Use mid-year date for ESPP disposition calculations
     const snapshotDate = year ? new Date(year, 5, 15) : undefined;
 
-    // Process in user's configured order
+    // Ordered tier: resolve withdrawalOrder to accounts (skip unknown ids), collect
+    // the ids seen so the fallback tier can filter to the remainder.
+    const orderedIds = new Set<string>();
+    const orderedAccounts: AnyAccount[] = [];
     for (const bucket of withdrawalOrder) {
         const account = accounts.find(a => a.id === bucket.accountId);
         if (!account) continue;
-
-        const snapshot = createAccountSnapshot(account, snapshotDate);
-
-        // Separate into categories
-        if (snapshot.accountType === 'savings') {
-            savingsSnapshots.push(snapshot);
-        } else if (hasEarlyWithdrawalPenalty(snapshot.accountType, currentAge)) {
-            penalizedSnapshots.push(snapshot);
-        } else {
-            snapshots.push(snapshot);
-        }
+        orderedIds.add(account.id);
+        orderedAccounts.push(account);
     }
 
+    const { nonPenalized, savings, penalized } = categorizeSnapshots(orderedAccounts, snapshotDate, currentAge);
     // Final order: non-penalized → savings → penalized
-    return [...snapshots, ...savingsSnapshots, ...penalizedSnapshots];
+    const orderedResult = [...nonPenalized, ...savings, ...penalized];
+    if (!includeUnorderedSellable) return orderedResult;
+
+    // #111 fallback tier: any sellable account the order didn't list, categorized
+    // the same way (penalty-free → savings → penalized) and appended AFTER the
+    // user's entire order — a safety net so the drawdown liquidates a real asset
+    // before processDeficitDebt can fabricate debt.
+    const fallbackAccounts = accounts.filter(a => !orderedIds.has(a.id) && isSellableAccount(a));
+    const { nonPenalized: fbNonPenalized, savings: fbSavings, penalized: fbPenalized } =
+        categorizeSnapshots(fallbackAccounts, snapshotDate, currentAge);
+    return [...orderedResult, ...fbNonPenalized, ...fbSavings, ...fbPenalized];
 }
 
 // =============================================================================
@@ -334,29 +408,148 @@ export function grossUpBrokerage(
 }
 
 /**
- * Split the realized gain on a brokerage sale of `gross` into short- and
- * long-term by walking the FIFO-ordered lots (oldest first — the order the
- * account model actually sells in), so the tax estimate matches the lots
- * growAccounts removes (#75). Per-lot gains are already floored at 0 (no
- * brokerage loss realization), mirroring the aggregate gainRatio's floor.
+ * Normalized lot shape shared by the brokerage / ESPP / RSU lot-sale path (#90).
+ * Every equity-comp source maps onto these four fields:
+ *  - value:          gross market value sellable from the lot (the cash raised).
+ *  - ordinaryIncome: ordinary income realized on sale (ESPP bargain element).
+ *                    Brokerage and RSU sales realize none (0).
+ *  - gain:           capital gain/loss, short- or long-term per `isLongTerm`.
+ *                    Brokerage lots are floored at 0; RSU lots may be negative
+ *                    (underwater); ESPP carries only its LTCG appreciation here.
+ *  - isLongTerm:     long-term iff true, else short-term (taxed at ordinary).
  */
-function splitBrokerageGainsFIFO(
-    gross: number,
-    lots: NonNullable<AccountBalanceSnapshot['brokerageLots']>,
-): { stcg: number; ltcg: number } {
-    let remaining = gross;
+export interface NormalizedLot {
+    value: number;
+    ordinaryIncome: number;
+    gain: number;
+    isLongTerm: boolean;
+}
+
+export interface LotSaleRates {
+    /** Ordinary marginal rate (federal + state) for STCG and bargain-element income. */
+    ordinaryRate: number;
+    /** Long-term capital-gains rate. */
+    ltcgRate: number;
+}
+
+export interface LotSaleResult {
+    gross: number;
+    stcg: number;
+    ltcg: number;
+    ordinaryIncome: number;
+    /** Total tax on the sale (STCG + LTCG + bargain-element ordinary), floored so
+     *  losses never refund cash into the sale net. */
+    tax: number;
+    /** Ordinary tax on the STCG bucket (floored when floorLossTax), already
+     *  included in `tax`; surfaced so callers can populate the withdrawal's
+     *  ordinaryTax field without recomputing. */
+    stcgTax: number;
+}
+
+/**
+ * Unified lot-sale routine for brokerage / ESPP / RSU withdrawals (#90).
+ *
+ * Walks FIFO / preference-ordered `lots` up to `targetGross` (the blended-rate
+ * gross estimate, already clamped to the account's sellable balance), splitting
+ * the realized gain short- vs long-term and accumulating any bargain-element
+ * ordinary income. Reproduces the three former per-case routines exactly:
+ *  - gross is reported as `targetGross` (brokerage sized gross from balance and
+ *    reported it directly; RSU/ESPP clamp `targetGross` to the lot-value sum
+ *    before the call, so for them `targetGross` already equals the walked sum).
+ *  - bargain-element ordinary income (ESPP) is taxed at `ordinaryRate`; brokerage
+ *    and RSU carry none.
+ *  - `floorLossTax` controls underwater handling and is the ONE behavioral knob
+ *    that differs across the three sources:
+ *      • true  (RSU): STCG tax is floored at 0 and a net long-term LOSS contributes
+ *        no negative tax — so an underwater lot can't refund cash into the sale
+ *        net. (§1211(b) is applied once on the year's aggregate by the caller.)
+ *      • false (brokerage / ESPP): STCG/LTCG tax is linear and signed. Brokerage
+ *        gains are floored ≥ 0 at snapshot time so the sign never matters there;
+ *        ESPP LTCG can be negative (a disqualifying-disposition loss) and was
+ *        always allowed to reduce the sale's tax — preserved here.
+ *
+ * Returns raw (unfloored) realized gains/losses; only the *tax* obeys the floor.
+ */
+function sellLotsWithGainSplit(
+    lots: NormalizedLot[],
+    targetGross: number,
+    rates: LotSaleRates,
+    floorLossTax: boolean = false,
+): LotSaleResult {
+    let remaining = targetGross;
     let stcg = 0;
     let ltcg = 0;
+    let ordinaryIncome = 0;
     for (const lot of lots) {
         if (remaining <= 0) break;
-        const valueToUse = Math.min(lot.totalValue, remaining);
-        const ratio = lot.totalValue > 0 ? valueToUse / lot.totalValue : 0;
+        const valueToUse = Math.min(lot.value, remaining);
+        const ratio = lot.value > 0 ? valueToUse / lot.value : 0;
         const gain = lot.gain * ratio;
         if (lot.isLongTerm) ltcg += gain;
         else stcg += gain;
+        ordinaryIncome += lot.ordinaryIncome * ratio;
         remaining -= valueToUse;
     }
-    return { stcg, ltcg };
+
+    // Tax: STCG + bargain-element income at the ordinary rate, LTCG at the LTCG
+    // rate. With floorLossTax (RSU), the STCG tax floors at 0 and a net LT loss
+    // contributes no tax so a loss never refunds cash into the sale net; otherwise
+    // (brokerage/ESPP) the cap-gains tax is signed and a loss reduces tax linearly.
+    const rawStcgTax = stcg * rates.ordinaryRate;
+    const stcgTax = floorLossTax ? Math.max(0, rawStcgTax) : rawStcgTax;
+    const ltcgTax = floorLossTax ? (ltcg > 0 ? ltcg * rates.ltcgRate : 0) : ltcg * rates.ltcgRate;
+    const ordinaryTax = ordinaryIncome * rates.ordinaryRate;
+    const tax = stcgTax + ltcgTax + ordinaryTax;
+
+    return { gross: targetGross, stcg, ltcg, ordinaryIncome, tax, stcgTax };
+}
+
+/**
+ * Size a lot sale to deliver `netNeeded` in one pass (#91 item #1).
+ *
+ * The pre-#91 sizing used a pool-BLENDED effective rate (gross ≈ net / (1 −
+ * blendedRate)). On a PARTIAL sale the FIFO/preference walk stops inside the
+ * oldest lots, whose own rate differs from the pool average, so the realized net
+ * landed slightly under the deficit (e.g. ~$49,758 vs $50k) — self-correcting
+ * across YearSolver's deficit iterations but imprecise per pass. Instead we
+ * bisect the gross on the EXACT realized net from `sellLotsWithGainSplit` (which
+ * already walks the lots and prices the true ST/LT/ordinary split + loss floor),
+ * so the sized gross delivers `netNeeded` over the lots actually reached. Mirrors
+ * the Traditional gross-up's binary search.
+ *
+ * `maxGross` caps the sale at what's sellable (vested balance / lot-value sum).
+ * If even that can't cover the deficit, return it — the shortfall self-corrects
+ * across YearSolver's deficit iterations (matching the old fall-short behavior).
+ * net(gross) is monotonic non-decreasing in gross (every lot adds more gross than
+ * tax since each rate < 1, and the loss floor only ever lowers tax), so the
+ * search is well-posed.
+ */
+function sizeLotSaleForNet(
+    lots: NormalizedLot[],
+    netNeeded: number,
+    rates: LotSaleRates,
+    maxGross: number,
+    floorLossTax: boolean = false,
+): number {
+    if (netNeeded <= 0 || maxGross <= 0) return 0;
+    const netAtGross = (g: number): number =>
+        g - sellLotsWithGainSplit(lots, g, rates, floorLossTax).tax;
+    // Can't raise enough even selling everything available → take the max.
+    if (netAtGross(maxGross) <= netNeeded) return maxGross;
+    // net(netNeeded) ≤ netNeeded (tax ≥ 0) and net(maxGross) > netNeeded, so the
+    // solution is bracketed by [netNeeded, maxGross].
+    let lo = Math.min(netNeeded, maxGross);
+    let hi = maxGross;
+    let best = hi;
+    for (let iter = 0; iter < 60; iter++) {
+        const mid = (lo + hi) / 2;
+        const net = netAtGross(mid);
+        best = mid;
+        if (Math.abs(net - netNeeded) < 0.0001) break;
+        if (net < netNeeded) lo = mid;
+        else hi = mid;
+    }
+    return best;
 }
 
 /**
@@ -756,39 +949,43 @@ export function planWithdrawals(
             case 'brokerage': {
                 const brokerageLots = snapshot.brokerageLots;
                 const actualGainRatio = snapshot.gainRatio;
+                const lotRates: LotSaleRates = { ordinaryRate: marginalRate, ltcgRate };
 
-                // STCG (lots held < 2yr at year granularity) is taxed as ordinary
-                // income at the running marginal rate; LTCG at the LTCG rate (#75).
-                // FIFO matches the model's lot removal. Without lot data, fall back to
-                // the prior all-LTCG proportional model.
-                const realizeBrokerage = (gross: number): { stcg: number; ltcg: number; tax: number; net: number } => {
-                    if (brokerageLots && brokerageLots.length > 0) {
-                        const { stcg, ltcg } = splitBrokerageGainsFIFO(gross, brokerageLots);
-                        const tax = stcg * marginalRate + ltcg * ltcgRate;
-                        return { stcg, ltcg, tax, net: gross - tax };
-                    }
-                    const ltcg = gross * actualGainRatio;
-                    const tax = ltcg * ltcgRate;
-                    return { stcg: 0, ltcg, tax, net: gross - tax };
+                // Normalize the brokerage lots onto the shared lot shape (#90): no
+                // ordinary income on a brokerage sale, per-lot gains floored at 0,
+                // ST/LT per the model's year-granularity hold convention. STCG (lots
+                // held < 2yr) is taxed at the running marginal rate, LTCG at the LTCG
+                // rate (#75). FIFO matches the model's lot removal.
+                const hasLots = !!(brokerageLots && brokerageLots.length > 0);
+                const normalizedLots: NormalizedLot[] = hasLots
+                    ? brokerageLots!.map(lot => ({
+                        value: lot.totalValue,
+                        ordinaryIncome: 0,
+                        gain: lot.gain,
+                        isLongTerm: lot.isLongTerm,
+                    }))
+                    : [];
+
+                // Without lot data, fall back to the prior all-LTCG proportional
+                // model. A single synthetic full-LTCG lot sized to `gross` runs the
+                // same FIFO helper, so the no-lots realize math is no longer expressed
+                // twice (#91 item #10): gain = gross × gainRatio, all long-term.
+                const realizeBrokerage = (gross: number): LotSaleResult => {
+                    const lots: NormalizedLot[] = hasLots
+                        ? normalizedLots
+                        : [{ value: gross, ordinaryIncome: 0, gain: gross * actualGainRatio, isLongTerm: true }];
+                    return sellLotsWithGainSplit(lots, gross, lotRates);
                 };
 
-                // Size the gross from a blended effective rate across the lot pool
-                // (mirrors RSU), or the single-rate algebraic gross-up without lots.
-                let grossToWithdraw: number;
-                if (brokerageLots && brokerageLots.length > 0) {
-                    let poolValue = 0;
-                    let poolTax = 0;
-                    for (const lot of brokerageLots) {
-                        poolValue += lot.totalValue;
-                        poolTax += lot.gain * (lot.isLongTerm ? ltcgRate : marginalRate);
-                    }
-                    const effRate = poolValue > 0 ? poolTax / poolValue : 0;
-                    grossToWithdraw = Math.min(remainingNetNeeded / Math.max(0.01, 1 - effRate), effectiveVestedBalance);
-                } else {
-                    grossToWithdraw = Math.min(grossUpBrokerage(remainingNetNeeded, actualGainRatio, ltcgRate).gross, effectiveVestedBalance);
-                }
+                // Size the gross so the lots actually walked deliver the deficit
+                // net (#91 item #1, mirrors RSU/ESPP), or the single-rate algebraic
+                // gross-up without lots.
+                let grossToWithdraw: number = hasLots
+                    ? sizeLotSaleForNet(normalizedLots, remainingNetNeeded, lotRates, effectiveVestedBalance)
+                    : Math.min(grossUpBrokerage(remainingNetNeeded, actualGainRatio, ltcgRate).gross, effectiveVestedBalance);
 
-                let { stcg: actualSTCG, ltcg: actualLTCG, tax: actualTax, net: netReceived } = realizeBrokerage(grossToWithdraw);
+                let { stcg: actualSTCG, ltcg: actualLTCG, tax: actualTax } = realizeBrokerage(grossToWithdraw);
+                let netReceived = grossToWithdraw - actualTax;
 
                 // =================================================================
                 // ACA CLIFF CHECK: Cap brokerage withdrawal if LTCG would breach cliff
@@ -823,7 +1020,8 @@ export function planWithdrawals(
                         grossToWithdraw = Math.max(0, Math.min(grossToWithdraw, maxSafeGross));
 
                         // Recalculate the short/long split with the capped amount.
-                        ({ stcg: actualSTCG, ltcg: actualLTCG, tax: actualTax, net: netReceived } = realizeBrokerage(grossToWithdraw));
+                        ({ stcg: actualSTCG, ltcg: actualLTCG, tax: actualTax } = realizeBrokerage(grossToWithdraw));
+                        netReceived = grossToWithdraw - actualTax;
 
                         // Calculate deficit still needing coverage from Roth
                         const netShortfall = originalNet - netReceived;
@@ -1163,69 +1361,40 @@ export function planWithdrawals(
 
                 // Use pre-computed lot data if available
                 if (esppLots && esppLots.length > 0) {
-                    // Blended effective-tax sizing. The bargain element is taxed as
-                    // ordinary income (marginal + state), only the post-bargain
-                    // appreciation is LTCG. Sizing the gross against just
-                    // gainRatio*ltcgRate (as before) ignored the ordinary tax on the
-                    // bargain element AND wrongly applied the lower LTCG rate to the
-                    // ordinary-taxed portion, so the sale under-delivered net cash.
-                    // Derive the pool's tax-per-gross-dollar from the lot data and
-                    // gross up against the blended rate.
-                    const esppMarginalRate = getMarginalRate(runningOrdinaryIncome);
-                    const esppStateRate = getStateRate(runningOrdinaryIncome);
-                    const esppCombinedOrdinaryRate = esppMarginalRate + esppStateRate;
+                    // Normalize ESPP lots onto the shared lot shape (#90). The bargain
+                    // element is ordinary income (marginal + state); only the
+                    // post-bargain appreciation is LTCG (always long-term here). Sizing
+                    // the gross against just gainRatio*ltcgRate (the old fallback)
+                    // ignored the ordinary tax on the bargain element AND wrongly
+                    // applied the lower LTCG rate to the ordinary-taxed portion, so the
+                    // sale under-delivered net cash; the blended rate fixes that.
+                    const lotRates: LotSaleRates = { ordinaryRate: marginalRate, ltcgRate };
+                    const normalizedLots: NormalizedLot[] = esppLots.map(lot => ({
+                        value: lot.totalValue,
+                        ordinaryIncome: lot.shares * lot.ordinaryIncomePerShare,
+                        gain: lot.shares * lot.ltcgPerShare,
+                        isLongTerm: true,
+                    }));
 
-                    let poolValue = 0;
-                    let poolOrdinaryTax = 0;
-                    let poolLtcgTax = 0;
-                    for (const lot of esppLots) {
-                        poolValue += lot.totalValue;
-                        poolOrdinaryTax += lot.shares * lot.ordinaryIncomePerShare * esppCombinedOrdinaryRate;
-                        poolLtcgTax += lot.shares * lot.ltcgPerShare * ltcgRate;
-                    }
-                    const effectiveTaxPerGrossDollar = poolValue > 0
-                        ? (poolOrdinaryTax + poolLtcgTax) / poolValue
-                        : 0;
-
-                    // Estimate gross needed using the blended effective rate.
-                    // Clamp the denominator defensively so a near-100% blended rate
-                    // can't produce a negative/exploding gross.
-                    const esppDenominator = Math.max(0.01, 1 - effectiveTaxPerGrossDollar);
-                    const estimatedGross = Math.min(
-                        remainingNetNeeded / esppDenominator,
-                        effectiveVestedBalance
+                    // Size the gross so the walked lots deliver the deficit net
+                    // (#91 item #1), capped at the sellable balance AND the lot-value
+                    // sum (the walk can never raise more than the lots hold).
+                    const lotValueSum = normalizedLots.reduce((s, l) => s + l.value, 0);
+                    const targetGross = sizeLotSaleForNet(
+                        normalizedLots, remainingNetNeeded, lotRates,
+                        Math.min(effectiveVestedBalance, lotValueSum),
                     );
 
-                    // Walk lots in order, consuming shares until we have enough
-                    let grossToWithdraw = 0;
-                    let esppOrdinaryIncome = 0;
-                    let esppLTCG = 0;
-                    let remainingGrossNeeded = estimatedGross;
-
-                    for (const lot of esppLots) {
-                        if (remainingGrossNeeded <= 0) break;
-
-                        const lotValue = lot.totalValue;
-                        const valueToUse = Math.min(lotValue, remainingGrossNeeded);
-                        const shareRatio = lotValue > 0 ? valueToUse / lotValue : 0;
-                        const sharesUsed = lot.shares * shareRatio;
-
-                        grossToWithdraw += valueToUse;
-                        esppOrdinaryIncome += sharesUsed * lot.ordinaryIncomePerShare;
-                        esppLTCG += sharesUsed * lot.ltcgPerShare;
-                        remainingGrossNeeded -= valueToUse;
-                    }
-
-                    if (grossToWithdraw <= 0) {
+                    if (targetGross <= 0) {
                         continue; // Skip to next account if no value to withdraw
                     }
 
-                    // Calculate taxes: ordinary income at marginal rate, LTCG at cap gains rate.
-                    // Reuse the blended-rate inputs computed above for the gross-up.
-                    const ordinaryTax = esppOrdinaryIncome * esppCombinedOrdinaryRate;
-                    const ltcgTax = esppLTCG * ltcgRate;
-                    const actualTax = ordinaryTax + ltcgTax;
-
+                    const sale = sellLotsWithGainSplit(normalizedLots, targetGross, lotRates);
+                    const grossToWithdraw = sale.gross;
+                    const esppOrdinaryIncome = sale.ordinaryIncome;
+                    const esppLTCG = sale.ltcg;
+                    const ordinaryTax = esppOrdinaryIncome * marginalRate;
+                    const actualTax = sale.tax;
                     const netReceived = grossToWithdraw - actualTax;
 
                     withdrawal = {
@@ -1301,78 +1470,58 @@ export function planWithdrawals(
                 // gains/losses: short-term at the ordinary marginal rate, long-term
                 // at the LTCG rate. Underwater lots carry negative gains (losses).
                 if (rsuLots && rsuLots.length > 0) {
-                    const rsuOrdinaryRate = getMarginalRate(runningOrdinaryIncome) + getStateRate(runningOrdinaryIncome);
+                    const rsuOrdinaryRate = marginalRate;
+                    const lotRates: LotSaleRates = { ordinaryRate: rsuOrdinaryRate, ltcgRate };
 
-                    // Blended effective tax-per-gross-dollar across the pool, using
-                    // each lot's ST/LT classification (mirrors the ESPP sizing).
-                    let poolValue = 0;
-                    let poolTax = 0;
-                    for (const lot of rsuLots) {
-                        poolValue += lot.totalValue;
-                        const lotGain = lot.shares * lot.gainPerShare;
-                        poolTax += lotGain * (lot.isLongTerm ? ltcgRate : rsuOrdinaryRate);
-                    }
-                    const effectiveTaxPerGrossDollar = poolValue > 0 ? poolTax / poolValue : 0;
-                    const rsuDenominator = Math.max(0.01, 1 - effectiveTaxPerGrossDollar);
-                    const estimatedGross = Math.min(
-                        remainingNetNeeded / rsuDenominator,
-                        effectiveVestedBalance
+                    // Normalize RSU lots onto the shared lot shape (#90): no ordinary
+                    // income on sale (taxed at vest), per-lot gains may be negative
+                    // (underwater), ST taxed at the ordinary rate / LT at the LTCG rate.
+                    const normalizedLots: NormalizedLot[] = rsuLots.map(lot => ({
+                        value: lot.totalValue,
+                        ordinaryIncome: 0,
+                        gain: lot.shares * lot.gainPerShare,
+                        isLongTerm: lot.isLongTerm,
+                    }));
+
+                    // Size the gross so the walked lots deliver the deficit net
+                    // (#91 item #1, mirrors ESPP), capped at the sellable balance AND
+                    // the lot-value sum. floorLossTax=true: underwater lots can't
+                    // refund cash into the sale net (so net never exceeds gross).
+                    const lotValueSum = normalizedLots.reduce((s, l) => s + l.value, 0);
+                    const targetGross = sizeLotSaleForNet(
+                        normalizedLots, remainingNetNeeded, lotRates,
+                        Math.min(effectiveVestedBalance, lotValueSum),
+                        true,
                     );
 
-                    // Walk lots in order, consuming shares until we have enough.
-                    let grossToWithdraw = 0;
-                    let rsuSTCG = 0;
-                    let rsuLTCG = 0;
-                    let remainingGrossNeeded = estimatedGross;
-
-                    for (const lot of rsuLots) {
-                        if (remainingGrossNeeded <= 0) break;
-
-                        const lotValue = lot.totalValue;
-                        const valueToUse = Math.min(lotValue, remainingGrossNeeded);
-                        const shareRatio = lotValue > 0 ? valueToUse / lotValue : 0;
-                        const sharesUsed = lot.shares * shareRatio;
-                        const lotGain = sharesUsed * lot.gainPerShare;
-
-                        grossToWithdraw += valueToUse;
-                        if (lot.isLongTerm) {
-                            rsuLTCG += lotGain;
-                        } else {
-                            rsuSTCG += lotGain;
-                        }
-                        remainingGrossNeeded -= valueToUse;
-                    }
-
-                    if (grossToWithdraw <= 0) {
+                    if (targetGross <= 0) {
                         continue; // Skip to next account if no value to withdraw
                     }
 
-                    // Short-term gains are taxed at ordinary rates; long-term at
-                    // the LTCG rate. Underwater lots carry negative gains (losses).
-                    // Two invariants must hold for a sale:
+                    // Underwater lots carry negative gains (losses). Two invariants
+                    // hold for a sale (enforced by floorLossTax=true in the helper):
                     //  1. A sale's net proceeds can NEVER exceed its gross — a loss
-                    //     refund arrives at tax time, not as extra sale cash, so we
-                    //     floor the per-sale tax at 0 for withdrawal sizing.
+                    //     refund arrives at tax time, not as extra sale cash, so the
+                    //     per-sale tax is floored at 0 for withdrawal sizing.
                     //  2. A net capital LOSS only ever offsets up to $3,000 of other
-                    //     income (no uncapped refund, no carry-forward modeled).
-                    // Positive gains: each bucket taxed at its own rate. If buckets
-                    // net to a loss, no negative tax leaks into the sale net.
-                    const rawStcgTax = rsuSTCG * rsuOrdinaryRate;
-                    const rawLtcgTax = rsuLTCG > 0 ? rsuLTCG * ltcgRate : 0;
-                    // Tax actually charged against the sale: positive-gain tax only,
-                    // floored at 0 (losses don't refund cash here).
-                    const stcgTax = Math.max(0, rawStcgTax);
-                    const ltcgTax = rawLtcgTax;
-                    const actualTax = stcgTax + ltcgTax;
+                    //     income (applied ONCE on the year's aggregate below).
+                    const sale = sellLotsWithGainSplit(normalizedLots, targetGross, lotRates, true);
+                    const grossToWithdraw = sale.gross;
+                    const rsuSTCG = sale.stcg;
+                    const rsuLTCG = sale.ltcg;
+                    // STCG tax charged against the sale (floored at 0), surfaced by
+                    // the helper so the withdrawal's ordinaryTax field needn't
+                    // recompute it.
+                    const stcgTax = sale.stcgTax;
+                    const actualTax = sale.tax;
                     const netReceived = grossToWithdraw - actualTax;
-                    // Report the raw realized gains/losses for this sale. The
-                    // §1211(b) $3,000 net-loss limit is applied ONCE on the year's
-                    // aggregate (totalSTCG + totalLTCG) just before this planner
-                    // returns — capping here per-sale or per-bucket let an underwater
-                    // pool, or N underwater accounts, pipe a loss many times the limit
-                    // into the (unfloored) SS-taxability and state-tax bases.
-                    const reportedSTCG = rsuSTCG;
-                    const reportedLTCG = rsuLTCG;
+                    // The raw realized gains/losses (rsuSTCG/rsuLTCG) flow straight
+                    // through. The §1211(b) $3,000 net-loss limit is applied ONCE on
+                    // the year's aggregate (totalSTCG + totalLTCG) just before this
+                    // planner returns — capping here per-sale or per-bucket let an
+                    // underwater pool, or N underwater accounts, pipe a loss many
+                    // times the limit into the (unfloored) SS-taxability and
+                    // state-tax bases.
 
                     withdrawal = {
                         source: 'rsu',
@@ -1380,7 +1529,7 @@ export function planWithdrawals(
                         accountName: snapshot.accountName,
                         gross: grossToWithdraw,
                         net: netReceived,
-                        capitalGains: { shortTerm: reportedSTCG, longTerm: reportedLTCG },
+                        capitalGains: { shortTerm: rsuSTCG, longTerm: rsuLTCG },
                         // STCG is taxed at ordinary rates, so route its tax through
                         // ordinaryTax — ordinaryTaxOf()/ltcgTaxOf() then split it
                         // correctly (ordinary bucket vs LTCG bucket).
@@ -1407,8 +1556,8 @@ export function planWithdrawals(
                     totalNet += netReceived;
                     totalGross += grossToWithdraw;
                     totalTax += actualTax;
-                    totalLTCG += reportedLTCG;
-                    totalSTCG += reportedSTCG;
+                    totalLTCG += rsuLTCG;
+                    totalSTCG += rsuSTCG;
 
                     if (rsuSTCG !== 0 || rsuLTCG !== 0) {
                         decisions.push({

@@ -25,6 +25,7 @@ import { evaluateAllMilestones, isActiveByMilestone, MilestoneContext } from "..
 import { InvestedAccount, SavedAccount, ESPPAccount, RSUAccount } from "../Accounts/models";
 import { processRSUVesting } from "../../../services/simulation/RSUVesting";
 import { solveYear, YearSolverInput } from "../../../services/simulation/YearSolver";
+import { DPPolicy } from "../../../services/simulation/RothConversionDP";
 import { YearPlan } from "../../../services/simulation/types";
 import { buildCashflowDetail } from "../../../services/simulation/CashflowDetailBuilder";
 
@@ -139,6 +140,23 @@ function activeFundedGoals(milestoneFilteredExpenses: AnyExpense[]): AnyExpense[
 }
 
 /**
+ * Per-year conversion-decision knobs for `simulateOneYear` /
+ * `simulateOneYearWithNewEngine`. Bagged into one object (#99 follow-up to #97)
+ * so the trailing optional fields are passed by name and can't silently misalign
+ * positionally. Fed straight into YearSolverInput.
+ */
+export interface SimulateOneYearOptions {
+    /** Per-year sub-sim baseline projections feeding the conversion ceiling. */
+    baselineProjections?: BaselineProjections;
+    /** Conversion-decision mode for the rate-match path. Default 'rate-match'. */
+    conversionMode?: 'rate-match' | 'std-ded-only';
+    dpConversionPlan?: Map<number, number>;
+    dpDebugByYear?: Map<number, string[]>;
+    /** #98 closed-loop conversion policy. MC path only; undefined in production. */
+    mcConversionPolicy?: DPPolicy;
+}
+
+/**
  * Simulate one year using the new YearSolver-based engine.
  *
  * This is the V2 engine that uses:
@@ -157,11 +175,15 @@ function simulateOneYearWithNewEngine(
     returnOverride?: number,
     previousActiveMilestones: string[] = [],
     previousMilestoneReachYears: Map<string, number> = new Map(),
-    baselineProjections?: BaselineProjections,
-    conversionMode: 'rate-match' | 'std-ded-only' = 'rate-match',
-    dpConversionPlan?: Map<number, number>,
-    dpDebugByYear?: Map<number, string[]>,
+    options: SimulateOneYearOptions = {},
 ): SimulationYear {
+    const {
+        baselineProjections,
+        conversionMode = 'rate-match',
+        dpConversionPlan,
+        dpDebugByYear,
+        mcConversionPolicy,
+    } = options;
     const logs: string[] = [];
     logs.push('[V2 Engine] Using new YearSolver-based simulation');
 
@@ -439,6 +461,7 @@ function simulateOneYearWithNewEngine(
         conversionMode,
         dpConversionPlan,
         dpDebugByYear,
+        mcConversionPolicy,
     };
 
     const yearPlan = solveYear(solverInput);
@@ -817,15 +840,11 @@ export function simulateOneYear(
     returnOverride?: number,
     previousActiveMilestones: string[] = [],
     previousMilestoneReachYears: Map<string, number> = new Map(),
-    baselineProjections?: BaselineProjections,
-    conversionMode: 'rate-match' | 'std-ded-only' = 'rate-match',
-    dpConversionPlan?: Map<number, number>,
-    dpDebugByYear?: Map<number, string[]>,
+    options: SimulateOneYearOptions = {},
 ): SimulationYear {
     return simulateOneYearWithNewEngine(
         year, incomes, expenses, accounts, assumptions, taxState,
         previousSimulation, returnOverride, previousActiveMilestones,
-        previousMilestoneReachYears, baselineProjections, conversionMode,
-        dpConversionPlan, dpDebugByYear,
+        previousMilestoneReachYears, options,
     );
 }

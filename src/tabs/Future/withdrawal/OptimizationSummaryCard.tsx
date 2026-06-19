@@ -15,9 +15,12 @@ export interface OptimizationSummary {
 }
 
 export interface ComparisonResult {
-    taxesWithStrategy: number;
-    taxesStdDedOnly: number;
-    savings: number;
+    /** After-tax terminal (end-of-plan) net worth under the active strategy (#94). */
+    afterTaxWithStrategy: number;
+    /** After-tax terminal net worth under the std-ded-conversions-only baseline. */
+    afterTaxStdDedOnly: number;
+    /** afterTaxWithStrategy − afterTaxStdDedOnly: after-tax wealth the strategy adds. */
+    gain: number;
 }
 
 interface OptimizationSummaryCardProps {
@@ -110,32 +113,35 @@ function OptimizationSummaryCardInner({
                 </div>
             )}
 
-            {/* Tax Savings Comparison — auto-updates with every simulation recalc */}
+            {/* After-Tax Wealth Comparison — auto-updates with every simulation recalc */}
             <div className="mt-4 pt-4 border-t border-positive-strong/50">
                 <div className="flex items-center justify-between mb-2">
-                    <h4 className="text-sm font-semibold text-content-default">Lifetime Tax Comparison</h4>
+                    <h4 className="text-sm font-semibold text-content-default">After-Tax Wealth Comparison</h4>
                 </div>
 
                 {comparisonResult ? (
                     <div className="bg-surface-overlay/50 rounded-lg p-3 space-y-2 text-sm">
                         <div className="flex justify-between">
-                            <span className="text-content-muted">Your strategy:</span>
-                            <span className="text-white">{formatMoney(comparisonResult.taxesWithStrategy)}</span>
+                            <span className="text-content-muted">Your strategy (end after-tax):</span>
+                            <span className="text-white">{formatMoney(comparisonResult.afterTaxWithStrategy)}</span>
                         </div>
                         <div className="flex justify-between">
                             <span className="text-content-muted">Std-ded conversions only:</span>
-                            <span className="text-white">{formatMoney(comparisonResult.taxesStdDedOnly)}</span>
+                            <span className="text-white">{formatMoney(comparisonResult.afterTaxStdDedOnly)}</span>
                         </div>
                         <div className="flex justify-between pt-2 border-t border-border-default">
-                            <span className="text-content-default font-medium">Lifetime Tax Savings:</span>
-                            <span className={`font-bold ${comparisonResult.savings > 0 ? 'text-positive' : comparisonResult.savings < 0 ? 'text-negative' : 'text-content-muted'}`}>
-                                {comparisonResult.savings > 0 ? '+' : ''}{formatMoney(comparisonResult.savings)}
+                            <span className="text-content-default font-medium">After-Tax Wealth Gained:</span>
+                            <span className={`font-bold ${comparisonResult.gain > 0 ? 'text-positive' : comparisonResult.gain < 0 ? 'text-negative' : 'text-content-muted'}`}>
+                                {comparisonResult.gain > 0 ? '+' : ''}{formatMoney(comparisonResult.gain)}
                             </span>
                         </div>
                         <p className="pt-2 text-xs text-content-subtle">
-                            Reference: a simulation that converts only the always-free
-                            standard-deduction headroom each year (no tax cost). Anyone using
-                            auto-Roth would do this as a floor.
+                            End-of-plan net worth after the tax still owed to access every account,
+                            vs. a simulation that converts only the always-free standard-deduction
+                            headroom each year. Leftover Traditional is valued at the graduated rate
+                            you'd actually draw it down at in retirement. A strategy can pay more tax
+                            up front yet leave more after-tax wealth by shifting growth into a
+                            tax-free Roth.
                         </p>
                     </div>
                 ) : (
@@ -144,13 +150,6 @@ function OptimizationSummaryCardInner({
                     </p>
                 )}
             </div>
-
-            <p className="mt-4 text-xs text-content-subtle">
-                Roth conversions are sized by rate-match: each year, fill brackets where today's
-                rate is at least the configured gap below the projected RMD-age rate. Conversions
-                taper naturally as the projected RMD bracket drops. Withdrawals are automatically
-                ordered to minimize taxes.
-            </p>
         </div>
     );
 }

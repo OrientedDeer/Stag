@@ -1,6 +1,10 @@
 import { AnyAccount, DebtAccount, ESPPAccount, InvestedAccount, PropertyAccount, RSUAccount } from '../../../components/Objects/Accounts/models';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
-import { AssumptionsState } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsState, getBirthYear } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { getProjectedRMDMarginalRate } from '../../../services/TaxOptimizationService';
+import { bracketAwareTradExitValue, HEIR_EXIT_RATE } from '../../../services/simulation/RothConversionDP';
+import * as TaxService from '../../../components/Objects/Taxes/TaxService';
 
 export function getAccountTotals(accounts: AnyAccount[]): { assets: number; liabilities: number; netWorth: number } {
     let assets = 0;
@@ -64,16 +68,27 @@ export interface AfterTaxNetWorth {
  *        out, which keeps the metric consistent with the Roth-conversion engine.
  *        Do NOT swap this for an effective rate; that was tried and reverted.
  * @param ltcgRate     capital-gains rate on unrealized gains (default 15%).
+ * @param tradDeferredTax OPTIONAL aggregate override for the Traditional deferred-tax
+ *        term (#94). When supplied it's called with the AGGREGATE Traditional balance and
+ *        returns the after-tax VALUE KEPT on it (the deferred tax is then `balance − value`),
+ *        generalizing the flat `balance × (1 − ordinaryRate)`. Callers pass a SITUATION-based
+ *        exit valuation (`buildTradValuation` → graduated self-liquidate or the flat heir rate
+ *        for bequeath) applied identically to every strategy's balances, so the residual
+ *        Traditional is valued by how it actually exits rather than by which optimizer produced
+ *        it. Aggregate (not per-account) because the graduated exit is non-linear in balance.
+ *        Omitted ⇒ identical behavior to the flat per-account `ordinaryRate`.
  */
 export function computeAfterTaxNetWorth(
     accounts: AnyAccount[],
     ordinaryRate: number,
     ltcgRate: number = ASSUMED_LTCG_RATE,
+    tradDeferredTax?: (totalTradBalance: number) => number,
 ): AfterTaxNetWorth {
     const { netWorth } = getAccountTotals(accounts);
 
     let deferredOrdinaryTax = 0;
     let deferredCapGainsTax = 0;
+    let totalTradBalance = 0;
 
     for (const acc of accounts) {
         if (acc instanceof InvestedAccount) {
@@ -81,7 +96,10 @@ export function computeAfterTaxNetWorth(
                 case 'Traditional 401k':
                 case 'Traditional IRA':
                     // Whole balance (contributions + growth) is ordinary income on the way out.
-                    deferredOrdinaryTax += acc.amount * ordinaryRate;
+                    // With a situation-based valuation supplied, the deferred tax is computed on
+                    // the AGGREGATE balance below; otherwise apply the flat per-account rate.
+                    totalTradBalance += acc.amount;
+                    if (!tradDeferredTax) deferredOrdinaryTax += acc.amount * ordinaryRate;
                     break;
                 case 'Brokerage':
                     // Only the growth is taxed, at LTCG rates.
@@ -97,6 +115,13 @@ export function computeAfterTaxNetWorth(
         // SavedAccount (cash), PropertyAccount, DebtAccount: taken at face value.
     }
 
+    if (tradDeferredTax) {
+        // Situation-based (#94): deferred ordinary tax = the graduated exit tax on the WHOLE
+        // Traditional balance (face − supplied after-tax exit value), clamped to ≥ 0 so a
+        // rounding undershoot can't credit a "negative tax".
+        deferredOrdinaryTax = Math.max(0, totalTradBalance - tradDeferredTax(totalTradBalance));
+    }
+
     const deferredTax = deferredOrdinaryTax + deferredCapGainsTax;
 
     return {
@@ -106,6 +131,76 @@ export function computeAfterTaxNetWorth(
         deferredOrdinaryTax,
         deferredCapGainsTax,
     };
+}
+
+/**
+ * Build the Traditional deferred-tax valuation + a representative fallback rate for a
+ * timeline. This is the ruler the Withdrawal-tab "After-Tax Wealth Gained" comparison
+ * scores every strategy with (#94 / card-side of #95).
+ *
+ * The valuation is SITUATION-based, NOT strategy-based: the after-tax value of a Traditional
+ * balance is a property of the balance and the retiree's exit plan — not of which conversion
+ * optimizer produced it. The caller (useSimulation) builds ONE ruler from the strategy-
+ * independent std-ded baseline timeline and applies it to both the baseline and the selected
+ * strategy's terminal balances, so the comparison is apples-to-apples and the reference
+ * baseline stays invariant to the selected strategy.
+ *   - self-liquidate: the graduated rate the residual actually exits at on self-drawdown
+ *     (`bracketAwareTradExitValue` — std-ded slice at 0%, then climbing brackets; balance-
+ *     dependent). Uses THIS timeline's own terminal-year age + persisting SS/fixed income as
+ *     the base the drawdown stacks on (the SS torpedo, #89). Falls back to the flat projected-
+ *     RMD rate only if terminal tax params can't be resolved.
+ *   - bequeath: the heir's flat `HEIR_EXIT_RATE` (a working heir drains it within 10 years
+ *     with no low-bracket runway). `tradDeferredTax` returns the after-tax VALUE KEPT
+ *     `b·(1−heir)` — computeAfterTaxNetWorth derives the tax as `balance − value`, so
+ *     returning the tax here would invert it (tax at 1−heir).
+ *
+ * Returns `{ rate, tradDeferredTax }`; pass both straight into `computeAfterTaxNetWorth`.
+ */
+export function buildTradValuation(
+    simulation: SimulationYear[],
+    assumptions: AssumptionsState,
+    taxState: TaxState,
+): { rate: number; tradDeferredTax?: (totalTradBalance: number) => number } {
+    const projectedRMDRate = getProjectedRMDMarginalRate(simulation, assumptions, taxState) ?? 0;
+
+    const userSituation = assumptions.investments.rothConversionUserSituation ?? 'self-liquidate';
+    if (userSituation === 'bequeath') {
+        return { rate: HEIR_EXIT_RATE, tradDeferredTax: (b: number) => b * (1 - HEIR_EXIT_RATE) };
+    }
+
+    const realYears = simulation.filter(y => !y.isEndOfYearProjection);
+    const last = realYears[realYears.length - 1];
+    if (!last) return { rate: projectedRMDRate };
+    const birthYear = getBirthYear(assumptions.milestones);
+    const terminalAge = last.year - birthYear + 1;
+    const fedParams = TaxService.getTaxParameters(last.year, taxState.filingStatus, 'federal', undefined, assumptions);
+    if (!fedParams) return { rate: projectedRMDRate };
+    const g = (assumptions.investments.returnRates.ror ?? 7) / 100
+        + (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate / 100 : 0);
+    const ss = TaxService.getSocialSecurityBenefits(last.incomes, last.year);
+    const fixed = Math.max(0, TaxService.getGrossIncome(last.incomes, last.year) - ss);
+    const cola = assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate / 100 : 0;
+    return {
+        rate: projectedRMDRate,
+        tradDeferredTax: (b: number) =>
+            bracketAwareTradExitValue(b, terminalAge, g, fedParams, taxState.filingStatus, 'self-liquidate', ss, fixed, cola),
+    };
+}
+
+/**
+ * After-tax net worth of a timeline's terminal (last real) year, valued with a supplied
+ * situation-based ruler (#94). `ruler` is built once via `buildTradValuation` from a strategy-
+ * independent source so the same valuation scores every timeline. Returns 0 for an empty
+ * timeline (no terminal year to value).
+ */
+export function terminalAfterTaxNetWorth(
+    simulation: SimulationYear[],
+    ruler: { rate: number; tradDeferredTax?: (totalTradBalance: number) => number },
+): number {
+    const realYears = simulation.filter(y => !y.isEndOfYearProjection);
+    const last = realYears[realYears.length - 1];
+    if (!last) return 0;
+    return computeAfterTaxNetWorth(last.accounts, ruler.rate, undefined, ruler.tradDeferredTax).afterTaxNetWorth;
 }
 
 export function formatCurrency(value: number): string {

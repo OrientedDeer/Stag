@@ -36,10 +36,28 @@ coverage/
 
 # Personal scenario tests (real financial data)
 **/*-personal-scenario*
+docs/personal/
+**/*.personal.test.ts
+**/scenario-user*.test.ts
 **/TEAM_HANDOFF.md
 
 # Personal research notes
 NOTES.md
+
+# Roth conversion cookbook investigation — throwaway analysis scratch (delete before pushing).
+# Generated from the real-data investigation; keep out of git. Does NOT cover the
+# committed harness.ts / mc-cap-validation.test.ts or docs/roth-conversion-89-signoff.md.
+docs/roth-conversion-cookbook.md
+docs/roth-conversion-findings.md
+docs/roth-review/
+src/__tests__/roth-cookbook/cost-*.test.ts
+src/__tests__/roth-cookbook/diag-*.test.ts
+src/__tests__/roth-cookbook/falling-*.test.ts
+src/__tests__/roth-cookbook/harness.smoke.test.ts
+src/__tests__/roth-cookbook/mc-faithfulness.test.ts
+src/__tests__/roth-cookbook/mc-policy-overconversion.test.ts
+src/__tests__/roth-cookbook/mc-success-anomaly.test.ts
+src/__tests__/roth-cookbook/tax-acct-levers.test.ts
 
 # React DevTools profile dumps
 docs/profiling-data.*.json

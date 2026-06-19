@@ -1,8 +1,9 @@
 import { MonteCarloConfig, ScenarioResult, MonteCarloSummary } from './MonteCarloTypes';
 import { SeededRandom } from './RandomGenerator';
 import { analyzeScenario, summarizeScenarios } from './MonteCarloAggregator';
-import { runSimulation } from '../components/Objects/Assumptions/useSimulation';
+import { runSimulation, buildMcConversionPolicy } from '../components/Objects/Assumptions/useSimulation';
 import { AnyAccount } from '../components/Objects/Accounts/models';
+import { DPPolicy } from './simulation/RothConversionDP';
 import { AnyIncome } from '../components/Objects/Income/models';
 import { AnyExpense } from '../components/Objects/Expense/models';
 import { AssumptionsState, getLifeExpectancy, getBirthYear } from '../components/Objects/Assumptions/AssumptionsContext';
@@ -21,6 +22,69 @@ import { TaxState } from '../components/Objects/Taxes/TaxContext';
  * @param taxState - Tax configuration
  * @returns ScenarioResult for this scenario
  */
+/**
+ * Closed-loop DP conversion POLICY, solved ONCE per run and reused on every MC
+ * path (#98, replaces the #93 scalar-ratio overlay).
+ *
+ * THE POLICY. The DP is turned STOCHASTIC: it integrates the return distribution
+ * MC actually draws (Normal(mean, stdDev)) into the V-table transition and solves
+ * once to produce the optimal conversion as a FUNCTION of (year, trad, roth)
+ * state — see useSimulation.buildMcConversionPolicy / RothConversionDP. Each MC
+ * path then LOOKS UP the policy at its realized state each year
+ * (YearSolver.planConversionDP via lookupConversionPolicy) — a per-path
+ * re-optimization of both the amount AND whether to convert, with no re-solve.
+ *
+ * WHY (vs the #93 overlay it replaces). #93 scaled a single deterministic plan by
+ * realized/expected Traditional balance (clamped [0,1.5]) — cheap but it could
+ * over-convert past the DP's bracket on bull paths, never ADD conversion years,
+ * and under-trim across consecutive crashes. The policy re-optimizes from each
+ * realized state, fixing all three. It stays non-anticipative by construction:
+ * the policy integrates over the return DISTRIBUTION, never a path's realized
+ * future, and each path advances on its own draw.
+ *
+ * `plan` is the policy's central (mean-trajectory) schedule, threaded as
+ * `dpConversionPlan` so pre-retirement / no-policy years behave as before.
+ * Undefined `policy` ⇒ strategy isn't dp-precomputed (or tax opt off) ⇒ MC falls
+ * back to per-year rate-match.
+ */
+export interface McConversionPlan {
+    plan?: Map<number, number>;
+    /** Closed-loop conversion policy looked up per path/year (#98). */
+    policy?: DPPolicy;
+}
+function buildMcConversionPlan(
+    yearsToRun: number, accounts: AnyAccount[], incomes: AnyIncome[], expenses: AnyExpense[],
+    assumptions: AssumptionsState, taxState: TaxState, config: MonteCarloConfig,
+): McConversionPlan {
+    const dpPlan = buildMcConversionPolicy(
+        yearsToRun, accounts, incomes, expenses, assumptions, taxState,
+        config.returnMean, config.returnStdDev,
+    );
+    if (!dpPlan) return {};
+    return { plan: dpPlan.conversionsByYear, policy: dpPlan.policy };
+}
+
+/** Simulation horizon = life expectancy − current age (≥ 0). */
+export function mcYearsToRun(assumptions: AssumptionsState): number {
+    return Math.max(0,
+        getLifeExpectancy(assumptions.milestones) - (new Date().getFullYear() - getBirthYear(assumptions.milestones)),
+    );
+}
+
+/**
+ * Solve the MC conversion plan/policy standalone (#98). Lets the worker compute
+ * the policy once, cache it (policyCache), and pass it back via `precomputedPlan`
+ * so the run doesn't re-solve. Returns {} when the strategy isn't dp-precomputed.
+ */
+export function solveMcConversionPlan(
+    config: MonteCarloConfig, accounts: AnyAccount[], incomes: AnyIncome[], expenses: AnyExpense[],
+    assumptions: AssumptionsState, taxState: TaxState,
+): McConversionPlan {
+    return buildMcConversionPlan(
+        mcYearsToRun(assumptions), accounts, incomes, expenses, assumptions, taxState, config,
+    );
+}
+
 function runSingleScenario(
     scenarioId: number,
     rng: SeededRandom,
@@ -30,7 +94,8 @@ function runSingleScenario(
     incomes: AnyIncome[],
     expenses: AnyExpense[],
     assumptions: AssumptionsState,
-    taxState: TaxState
+    taxState: TaxState,
+    mcPlan: McConversionPlan,
 ): ScenarioResult {
     // Generate random returns for this scenario
     // Use the configured mean/stdDev for return distribution
@@ -40,18 +105,20 @@ function runSingleScenario(
         config.returnStdDev
     );
 
-    // Use single-pass simulation for Monte Carlo: MC's purpose is return-variance
-    // analysis, not conversion optimization. The iterative two-pass optimizer would
-    // multiply per-iteration cost 3-5×, which is meaningful at 1000+ scenarios for
-    // little gain — random returns dominate the conversion-plan signal anyway.
+    // Single-pass per path (MC's purpose is return-variance analysis, not a per-path DP
+    // re-solve). The pre-solved closed-loop POLICY (#98) is looked up per year at this
+    // path's REALIZED (trad, roth) state — re-optimizing the conversion from each state,
+    // not scaling a fixed plan. `dpConversionPlan` carries the policy's central schedule
+    // for pre-retirement / no-policy years. Without a policy (rate-match / opt-off) both
+    // are undefined and ignored. No strategy re-pin needed: selectConversionStrategy
+    // resolves an unset field to the dp-precomputed default, so the policy executes whether
+    // the field is 'dp-precomputed' or undefined (legacy).
     const timeline = runSimulation(
-        yearsToRun,
-        accounts,
-        incomes,
-        expenses,
-        assumptions,
-        taxState,
-        yearlyReturns
+        yearsToRun, accounts, incomes, expenses, assumptions, taxState, yearlyReturns,
+        {
+            dpConversionPlan: mcPlan.plan,
+            mcConversionPolicy: mcPlan.policy,
+        },
     );
 
     // Analyze and return the result
@@ -83,15 +150,19 @@ export async function runMonteCarloSimulation(
     expenses: AnyExpense[],
     assumptions: AssumptionsState,
     taxState: TaxState,
-    onProgress?: ProgressCallback
+    onProgress?: ProgressCallback,
+    /** Pre-solved (and possibly cached) plan/policy; skips the in-run solve (#98). */
+    precomputedPlan?: McConversionPlan,
 ): Promise<MonteCarloSummary> {
     const rng = new SeededRandom(config.seed);
     const scenarios: ScenarioResult[] = [];
 
-    // Calculate years to run based on life expectancy
-    const yearsToRun = Math.max(0,
-        getLifeExpectancy(assumptions.milestones) - (new Date().getFullYear() - getBirthYear(assumptions.milestones))
-    );
+    const yearsToRun = mcYearsToRun(assumptions);
+
+    // Solve the closed-loop conversion POLICY ONCE (#98), looked up per path below
+    // — unless the caller pre-solved/cached it (worker path).
+    const mcPlan = precomputedPlan
+        ?? buildMcConversionPlan(yearsToRun, accounts, incomes, expenses, assumptions, taxState, config);
 
     // Chunk size for yielding to UI
     const CHUNK_SIZE = 10;
@@ -107,7 +178,8 @@ export async function runMonteCarloSimulation(
             incomes,
             expenses,
             assumptions,
-            taxState
+            taxState,
+            mcPlan
         );
 
         scenarios.push(result);
@@ -136,14 +208,16 @@ export function runMonteCarloSimulationSync(
     incomes: AnyIncome[],
     expenses: AnyExpense[],
     assumptions: AssumptionsState,
-    taxState: TaxState
+    taxState: TaxState,
+    precomputedPlan?: McConversionPlan,
 ): MonteCarloSummary {
     const rng = new SeededRandom(config.seed);
     const scenarios: ScenarioResult[] = [];
 
-    const yearsToRun = Math.max(0,
-        getLifeExpectancy(assumptions.milestones) - (new Date().getFullYear() - getBirthYear(assumptions.milestones))
-    );
+    const yearsToRun = mcYearsToRun(assumptions);
+
+    const mcPlan = precomputedPlan
+        ?? buildMcConversionPlan(yearsToRun, accounts, incomes, expenses, assumptions, taxState, config);
 
     for (let i = 0; i < config.numScenarios; i++) {
         const result = runSingleScenario(
@@ -155,7 +229,8 @@ export function runMonteCarloSimulationSync(
             incomes,
             expenses,
             assumptions,
-            taxState
+            taxState,
+            mcPlan
         );
 
         scenarios.push(result);

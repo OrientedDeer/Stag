@@ -21,6 +21,7 @@ import { AnyExpense } from "../../components/Objects/Expense/models";
 import { TaxParameters } from "../../data/TaxData";
 import { TaxState } from "../../components/Objects/Taxes/TaxContext";
 import { AssumptionsState } from "../../components/Objects/Assumptions/AssumptionsContext";
+import { RothConversionStrategy, resolveRothConversionStrategy } from "../../components/Objects/Assumptions/rothConversionStrategy";
 import {
     YearPlan,
     PlannedWithdrawal,
@@ -34,6 +35,7 @@ import {
     BaselineProjections,
 } from "./types";
 import { WithdrawalResult } from "../WithdrawalStrategies";
+import { DPPolicy, lookupConversionPolicy } from "./RothConversionDP";
 import { classifyIncome, getTotalSSBenefits } from "./IncomeClassifier";
 import { planWithdrawals, createOrderedSnapshots, grossUpBrokerage } from "./WithdrawalPlanner";
 import * as TaxService from "../../components/Objects/Taxes/TaxService";
@@ -132,6 +134,13 @@ export interface YearSolverInput {
     // them to its decisions so they surface in the year inspector. Only set
     // when the DP strategy is in use.
     dpDebugByYear?: Map<number, string[]>;
+    // Closed-loop conversion POLICY (#98). Set ONLY on the MC path; undefined in
+    // production/deterministic runs. When set, planConversionDP looks up the
+    // conversion at the path's REALIZED (Traditional, Roth) state — re-optimizing
+    // the amount AND whether to convert from each realized state, fixing #93's
+    // bull-path overrun / can't-add-years / trim-drift. Non-anticipative: the
+    // policy integrates over the return distribution, never a path's realized future.
+    mcConversionPolicy?: DPPolicy;
 }
 
 export interface ConversionPlan {
@@ -169,26 +178,39 @@ export type ConversionStrategy = (
  * no-conversion plan for the year.
  */
 function selectConversionStrategy(
-    strategyName: 'rate-match' | 'dp-precomputed' | undefined,
+    strategyName: RothConversionStrategy | undefined,
 ): ConversionStrategy {
-    if (strategyName === 'dp-precomputed') return planConversionDP;
-    return planConversion;
+    // Resolve the default HERE (the single executor dispatch) so an unset (legacy) strategy
+    // dispatches to the DP plan rather than silently falling back to rate-match and
+    // discarding a built plan. This is why callers no longer need to re-pin the strategy.
+    return resolveRothConversionStrategy(strategyName) === 'dp-precomputed' ? planConversionDP : planConversion;
 }
 
 // =============================================================================
 // HELPER FUNCTIONS
 // =============================================================================
 
-function getTotalTraditionalBalance(accounts: AnyAccount[]): number {
+export function getTotalTraditionalBalance(accounts: AnyAccount[]): number {
     return accounts
         .filter(a => a instanceof InvestedAccount &&
             (a.taxType === 'Traditional 401k' || a.taxType === 'Traditional IRA'))
         .reduce((sum, a) => sum + (a as InvestedAccount).vestedAmount, 0);
 }
 
-function getTotalBrokerageBalance(accounts: AnyAccount[]): number {
+export function getTotalBrokerageBalance(accounts: AnyAccount[]): number {
     return accounts
         .filter(a => a instanceof InvestedAccount && a.taxType === 'Brokerage')
+        .reduce((sum, a) => sum + (a as InvestedAccount).vestedAmount, 0);
+}
+
+/**
+ * Total Roth IRA balance — the realized Roth state for the #98 policy lookup.
+ * Matches the DP's roth state (RothConversionDP keys its policy on Roth IRA
+ * balances only, excluding Roth 401k, mirroring buildDPYearContexts).
+ */
+export function getTotalRothBalance(accounts: AnyAccount[]): number {
+    return accounts
+        .filter(a => a instanceof InvestedAccount && a.taxType === 'Roth IRA')
         .reduce((sum, a) => sum + (a as InvestedAccount).vestedAmount, 0);
 }
 
@@ -1149,6 +1171,15 @@ function planConversionDP(
                 const grossForDeficit = rothBoundDeficit / Math.max(0.5, 1 - totalEffectiveRate);
                 bracketSpaceForSpending = Math.min(grossForDeficit, bracketSpacePerYear, traditionalBalance);
 
+                // NOTE: an earlier "reserve-aware spending" experiment (#89 Change 2)
+                // capped this reservation at the std-deduction 0% slice. It was removed:
+                // the cap only ran here (brokerage already exhausted, rothBoundDeficit>0),
+                // where trimming Trad spend can only push the gap onto tax-free Roth —
+                // never wealth-optimal (Trad exits at a positive rate, Roth never does),
+                // and the spend already passed gateOk (marginal ≤ the future RMD-age
+                // ceiling). The bracket-aware terminal already prices the residual, so no
+                // extra reservation cap is warranted.
+
                 decisions.push({
                     category: 'conversion',
                     amount: bracketSpaceForSpending,
@@ -1166,7 +1197,47 @@ function planConversionDP(
     // Look up the precomputed conversion amount. Clamp to (traditional - reserved
     // for spending) so the conversion doesn't compete with the spending withdrawal.
     const availableTradForConversion = Math.max(0, traditionalBalance - bracketSpaceForSpending);
-    const targetConversion = input.dpConversionPlan?.get(input.year) ?? 0;
+    const plannedConversion = input.dpConversionPlan?.get(input.year) ?? 0;
+
+    let targetConversion = plannedConversion;
+    if (input.mcConversionPolicy) {
+        // --- #98 closed-loop POLICY lookup (supersedes the #93 overlay) ------
+        // The policy — solved ONCE by integrating the return distribution into the
+        // DP — gives the optimal conversion as a function of (year, trad, roth)
+        // state. Look it up at the path's REALIZED (Traditional, Roth IRA) balances:
+        // a per-path re-optimization of BOTH the amount and whether to convert, with
+        // no re-solve. Avoids the open-loop scaling failure modes (bull-path bracket
+        // overrun, can't-add-conversion-years, trim-compounding drift). Non-anticipative:
+        // the policy never sees a path's realized future, and these balances reflect only
+        // returns realized through this year. Pre-retirement years have no policy entry
+        // (undefined) → targetConversion stays at the (zero) planned amount.
+        const rothBalance = getTotalRothBalance(input.accounts);
+        const rawPolicy = lookupConversionPolicy(
+            input.mcConversionPolicy, input.year, traditionalBalance, rothBalance);
+        if (rawPolicy !== undefined) {
+            targetConversion = Math.max(0, rawPolicy);
+            // #89 MC over-conversion cap: bound the per-path policy at the deterministic
+            // engine-search optimum — fill realized taxable income only to stdDed + capHeadroom —
+            // so the stochastic policy can't over-convert past the validated peak on the low/no-SS
+            // large-Traditional corner. Uses REALIZED non-SS ordinary income (incl. this path's
+            // realized RMD), so the bound adapts per path. undefined capHeadroom (the legacy DP won
+            // the deterministic search → policy already at/under the optimum, e.g. real-SS) ⇒ no cap.
+            const capHeadroom = input.mcConversionPolicy.capHeadroom;
+            if (capHeadroom !== undefined) {
+                const capAmount = Math.max(0, fedParams.standardDeduction + capHeadroom - nonSSOrdinaryIncome);
+                targetConversion = Math.min(targetConversion, capAmount);
+            }
+            if (targetConversion > 0) {
+                decisions.push({
+                    category: 'conversion',
+                    description: `[#98 MC policy] realized Trad $${Math.round(traditionalBalance).toLocaleString()}, ` +
+                        `Roth $${Math.round(rothBalance).toLocaleString()} → policy conversion ` +
+                        `$${Math.round(targetConversion).toLocaleString()}.`,
+                });
+            }
+        }
+    }
+
     const conversionAmount = Math.max(0, Math.min(targetConversion, availableTradForConversion));
 
     if (conversionAmount <= 0) {
@@ -1503,8 +1574,25 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     }
 
     // Create account snapshots in withdrawal order (before the loop - these don't change)
+    // includeUnorderedSellable=true: in a retirement drawdown, also reach any sellable
+    // account the withdrawal ORDER omits (e.g. a Traditional balance ignored by a Roth-only
+    // order) so a real spending shortfall taps it instead of fabricating deficit debt.
+    //
+    // Two distinct cases use this:
+    //   • Under TAX OPTIMIZATION the algorithm OWNS the order — the manual order and any
+    //     account exclusions don't bind, so the optimizer already folds every sellable account
+    //     into the order it scores and runs (useSimulation's joint optimizer; see
+    //     withAllSellableAccounts). For that path `input.withdrawalOrder` already lists every
+    //     sellable account, so this flag is a no-op there.
+    //   • For the NON-tax-opt MANUAL-order path, the user's order is honored as-is and an
+    //     order-omitted account would otherwise never be tapped; this flag is the SAFETY NET
+    //     (#111) that lets a genuine shortfall reach it rather than borrowing.
+    //
+    // The working-year path (solveWorkingYear) is deliberately NOT changed — its initialDeficit
+    // conflates tax with spending and would mishandle RSU withholding. No-op when the order
+    // already lists every account (the golden masters and all scenarios).
     let accountSnapshots = createOrderedSnapshots(
-        input.accounts, input.withdrawalOrder, input.currentAge, input.year
+        input.accounts, input.withdrawalOrder, input.currentAge, input.year, true,
     );
 
     // Reserve the RMD against the Traditional account it draws from. The RMD already

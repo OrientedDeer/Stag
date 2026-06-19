@@ -17,6 +17,12 @@ export default defineConfig(({ mode }) => {
     keepNames: true, // This prevents class names from being minified (e.g. SavedAccount -> S)
   },
   // -----------------------
+  // ES-module workers so the Monte Carlo worker (#98) can use the same code-split
+  // ESM imports as the main bundle (the simulation engine). Dev serves
+  // `{ type: 'module' }` workers natively; the build needs this to emit ESM.
+  worker: {
+    format: 'es',
+  },
   build: {
     chunkSizeWarningLimit: 1000, 
     rollupOptions: {

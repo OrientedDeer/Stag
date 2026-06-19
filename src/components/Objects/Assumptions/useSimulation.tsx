@@ -5,10 +5,14 @@ import { AnyAccount, InvestedAccount, SavedAccount, DebtAccount, DeficitDebtAcco
 import { AnyIncome } from '../Income/models';
 import { AnyExpense, MortgageExpense } from '../Expense/models';
 import { AssumptionsState, getLifeExpectancy, getBirthYear, getRetirementAge } from './AssumptionsContext';
+import { resolveRothConversionStrategy } from './rothConversionStrategy';
 import { TaxState, resolveTaxEventsForYear } from '../Taxes/TaxContext';
 import { BaselineProjections } from '../../../services/simulation/types';
 import { getRMDStartAge } from '../../../data/RMDData';
-import { buildDPYearContexts, planConversionsViaDP, DPPlan } from '../../../services/simulation/RothConversionDP';
+import { buildDPYearContexts, planConversionsViaDP, DPPlan, DPInputs, DPObjectiveOptions, DPPolicy, QuadratureNodes } from '../../../services/simulation/RothConversionDP';
+import { searchConversionPlanByEngine, extractConversionPlan, generateCandidateWithdrawalOrders, withAllSellableAccounts } from '../../../services/simulation/EngineDirectConversionSearch';
+import { getTotalBrokerageBalance, getTotalTraditionalBalance, getTotalRothBalance } from '../../../services/simulation/YearSolver';
+import { buildTradValuation, terminalAfterTaxNetWorth } from '../../../tabs/Future/tabs/FutureUtils';
 
 /**
  * Scope a TaxState for FUTURE (projected) years. Dollar tax overrides
@@ -139,8 +143,8 @@ export function extractBaselineProjections(
     // Get pension at RMD year (already has COLA applied)
     const pensionAtRMD = rmdYearData.incomes
         .filter(inc =>
-            (inc as any).className === 'FERSPensionIncome' ||
-            (inc as any).className === 'CSRSPensionIncome')
+            inc.className === 'FERSPensionIncome' ||
+            inc.className === 'CSRSPensionIncome')
         .reduce((sum, inc) => sum + (inc.getAnnualAmount?.(rmdYear) ?? 0), 0);
 
     // Get passive income at RMD year (rental, dividends, interest — excludes RMD-sourced).
@@ -148,8 +152,8 @@ export function extractBaselineProjections(
     // is consistent with what the ceiling calculator expects.
     const passiveAtRMD = rmdYearData.incomes
         .filter(inc =>
-            (inc as any).className === 'PassiveIncome' &&
-            (inc as any).sourceType !== 'RMD')
+            inc.className === 'PassiveIncome' &&
+            (inc as { sourceType?: string }).sourceType !== 'RMD')
         .reduce((sum, inc) => sum + (inc.getAnnualAmount?.(rmdYear) ?? 0), 0);
 
     return { traditionalBalanceAtRMD, ssAtRMD, pensionAtRMD, passiveAtRMD, rmdYear };
@@ -243,10 +247,13 @@ function runSimulationLoop(args: {
     dpConversionPlan?: Map<number, number>;
     /** Per-year DP solver debug strings; keyed by simulation year. */
     dpDebugByYear?: Map<number, string[]>;
+    /** #98 closed-loop conversion policy. MC path only. */
+    mcConversionPolicy?: DPPolicy;
 }): void {
     let { currentAccounts, currentIncomes, currentExpenses, previousActiveMilestones } = args;
     const { milestoneReachYears, timeline, assumptions, taxState, yearlyReturns,
-            previousSimYear, yearsToRun, conversionMode, baselineProvider, dpConversionPlan, dpDebugByYear } = args;
+            previousSimYear, yearsToRun, conversionMode, baselineProvider, dpConversionPlan, dpDebugByYear,
+            mcConversionPolicy } = args;
 
     for (let i = 1; i <= yearsToRun; i++) {
         const simulationYear = previousSimYear + i;
@@ -273,10 +280,13 @@ function runSimulationLoop(args: {
             returnOverride,
             previousActiveMilestones,
             milestoneReachYears,
-            baseline,
-            conversionMode,
-            dpConversionPlan,
-            dpDebugByYear,
+            {
+                baselineProjections: baseline,
+                conversionMode,
+                dpConversionPlan,
+                dpDebugByYear,
+                mcConversionPolicy,
+            },
         );
 
         timeline.push(result);
@@ -294,6 +304,39 @@ function runSimulationLoop(args: {
     }
 }
 
+/**
+ * Trailing optional bag for `runSimulation`. The leading args (years, accounts,
+ * incomes, expenses, assumptions, taxState, yearlyReturns) stay positional; every
+ * optional knob lives here so call sites are self-documenting and inserting a new
+ * option can't silently shift an existing one into the wrong slot (#97). Threaded
+ * down through `runSimulationLoop` → `simulateOneYear` to the solver.
+ */
+export interface RunSimulationOptions {
+    referenceDate?: Date;
+    /** Conversion-decision mode for the rate-match path. Default 'rate-match'. */
+    conversionMode?: 'rate-match' | 'std-ded-only';
+    /** Run a forward sub-sim each year to derive the conversion ceiling baseline. */
+    useRollingBaseline?: boolean;
+    dpConversionPlan?: Map<number, number>;
+    dpDebugByYear?: Map<number, string[]>;
+    /** accountId → extra dollars to add to the synthetic EOY projection row.
+     *  Populated by callers from `computeEOYBudgetContributions` so that
+     *  non-payroll priority contributions (Brokerage / IRA / HSA / Savings)
+     *  show up in the Projected Dec point. */
+    eoyContributionAdditions?: Record<string, number>;
+    /** DebtAccount id → principal $ to subtract from the synthetic EOY row,
+     *  so loan balances reflect amortization through year-end. */
+    eoyDebtReductions?: Record<string, number>;
+    /** MortgageExpense id → principal $ to subtract from its loan_balance on
+     *  the synthetic EOY row (mortgages don't live on a DebtAccount). */
+    eoyMortgageReductions?: Record<string, number>;
+    /** #98 closed-loop conversion POLICY. Set ONLY by the MC engine; the
+     *  production/deterministic call sites leave it undefined. When present, the DP
+     *  conversion strategy looks up the conversion at the path's realized
+     *  (Traditional, Roth) state — see YearSolver.planConversionDP. */
+    mcConversionPolicy?: DPPolicy;
+}
+
 export const runSimulation = (
     yearsToRun: number = 30,
     accounts: AnyAccount[],
@@ -302,24 +345,20 @@ export const runSimulation = (
     assumptions: AssumptionsState,
     taxState: TaxState,
     yearlyReturns?: number[],
-    referenceDate?: Date,
-    conversionMode: 'rate-match' | 'std-ded-only' = 'rate-match',
-    useRollingBaseline: boolean = false,
-    dpConversionPlan?: Map<number, number>,
-    dpDebugByYear?: Map<number, string[]>,
-    /** accountId → extra dollars to add to the synthetic EOY projection row.
-     *  Populated by callers from `computeEOYBudgetContributions` so that
-     *  non-payroll priority contributions (Brokerage / IRA / HSA / Savings)
-     *  show up in the Projected Dec point. */
-    eoyContributionAdditions?: Record<string, number>,
-    /** DebtAccount id → principal $ to subtract from the synthetic EOY row,
-     *  so loan balances reflect amortization through year-end. */
-    eoyDebtReductions?: Record<string, number>,
-    /** MortgageExpense id → principal $ to subtract from its loan_balance on
-     *  the synthetic EOY row (mortgages don't live on a DebtAccount). */
-    eoyMortgageReductions?: Record<string, number>,
+    options: RunSimulationOptions = {},
 ): SimulationYear[] => {
-        
+    const {
+        referenceDate,
+        conversionMode = 'rate-match',
+        useRollingBaseline = false,
+        dpConversionPlan,
+        dpDebugByYear,
+        eoyContributionAdditions,
+        eoyDebtReductions,
+        eoyMortgageReductions,
+        mcConversionPolicy,
+    } = options;
+
     // Calculate start year and current age from birth year
     // If priorYearMode is enabled, start simulation from last year (for verified data entry)
     const currentYear = new Date().getFullYear();
@@ -619,9 +658,229 @@ export const runSimulation = (
         baselineProvider,
         dpConversionPlan,
         dpDebugByYear,
+        mcConversionPolicy,
     });
 
     return timeline;
+};
+
+/**
+ * Build the DP solve inputs (per-year contexts, starting balances, objective)
+ * from a std-ded-only baseline timeline. Shared by the deterministic projection
+ * (`runSimulationWithOptimization`) and the Monte Carlo policy solve
+ * (`buildMcConversionPolicy`) so the two solve against identical contexts —
+ * the only difference is whether a `returnDistribution` is layered on (#98).
+ * Extracted verbatim from runSimulationWithOptimization; behavior-preserving.
+ */
+function buildDpSolveInputs(
+    accounts: AnyAccount[],
+    incomes: AnyIncome[],
+    expenses: AnyExpense[],
+    assumptions: AssumptionsState,
+    taxState: TaxState,
+    baselineTimeline: SimulationYear[],
+    dpObjective?: DPObjectiveOptions,
+): { dpInputs: DPInputs; effectiveDpObjective: DPObjectiveOptions } {
+    const birthYear = getBirthYear(assumptions.milestones);
+    const retirementYear = birthYear + getRetirementAge(assumptions.milestones);
+
+    // Brokerage balance entering retirementYear (= end of retirementYear − 1).
+    // buildDPYearContexts looks this up from baseline when available; this
+    // fallback handles the already-retired-today case where no prior baseline
+    // year exists. Mirrors the trad/roth fallback below.
+    const preRetirementSimYearForBrokerage = baselineTimeline.find(y => y.year === retirementYear - 1);
+    const startingBrokerageBalance = getTotalBrokerageBalance(
+        (preRetirementSimYearForBrokerage ?? { accounts }).accounts,
+    );
+
+    // The final sim (Pass 3) runs against the SAME future-year tax state and
+    // calibrated assumptions that runSimulation derives internally. Derive
+    // them here too so the DP optimizes against the rates/events it will
+    // actually execute against — not the un-calibrated year-0 tax state.
+    //   #4 (calibration): dpAssumptions carries assumptions.macro.taxCalibration
+    //       when TaxState.calibrateFutureYears is on, so getTaxParameters
+    //       inside buildDPYearContexts scales the brackets to match.
+    //   #3 (scheduled tax events): dpTaxState clears dollar overrides (which
+    //       getTaxParameters ignores anyway) so the DP's future-year tax
+    //       state matches the executed one; the per-year filing/state move
+    //       itself is resolved inside buildDPYearContexts via taxEvents.
+    const currentYear = new Date().getFullYear();
+    const startYear = assumptions.demographics.priorYearMode ? currentYear - 1 : currentYear;
+    const startAge = startYear - birthYear;
+    const resolvedIncomes = resolveIncomes(incomes, startYear, startAge);
+    const dpAssumptions = deriveFutureAssumptions(assumptions, taxState, resolvedIncomes, expenses, startYear);
+    const dpTaxState = scopeFutureTaxState(taxState);
+
+    const contexts = buildDPYearContexts(
+        baselineTimeline, dpAssumptions, dpTaxState, retirementYear, startingBrokerageBalance,
+    );
+
+    // Critical: the DP only solves retirement years onward, so its forward
+    // sweep needs the trad balance AT RETIREMENT, not today. Pulling
+    // accounts.vestedAmount here would feed today's balance into year 0
+    // of the contexts (= retirement year), missing pre-retirement growth
+    // and 401k contributions. Pull from the baseline timeline instead —
+    // that's already simulated through the full pre-retirement period.
+    //
+    // SimulationYear records END-of-year state, so we look up
+    // (retirementYear - 1) to get end-of-(year-before-retirement), which
+    // equals start-of-retirement-year — the correct t=0 state for the DP
+    // forward sweep. Looking up retirementYear directly produces an
+    // off-by-one (DP starts from end-of-retirement-year, double-counts
+    // year 0's flows). If the user retires in the very first sim year
+    // (no pre-retirement records), fall back to today's account balances.
+    const preRetirementSimYear = baselineTimeline.find(y => y.year === retirementYear - 1);
+    // Pull from the pre-retirement baseline row when it exists (captures
+    // pre-retirement growth + 401k contributions); otherwise fall back to today's
+    // actual balances (already retired / retiring in year 0). Same tax-type filters
+    // and vested-balance weighting as the YearSolver helpers, so the DP inputs are
+    // identical to the prior inlined sums.
+    const startingBalanceAccounts = (preRetirementSimYear ?? { accounts }).accounts;
+    const startingTradBalance = getTotalTraditionalBalance(startingBalanceAccounts);
+    const startingRothBalance = getTotalRothBalance(startingBalanceAccounts);
+    // Production dp-precomputed = max-wealth with the bracket-aware terminal
+    // valuation (#89), parameterized by the user's self-liquidate-vs-bequeath
+    // choice. A caller-supplied `dpObjective` (tests) overrides this so the
+    // legacy min-tax / flat-τ paths stay reachable for regression coverage.
+    const effectiveDpObjective = dpObjective ?? {
+        objectiveMode: 'max-wealth' as const,
+        terminalValuation: 'bracket-aware' as const,
+        // Default 'self-liquidate' (ratified product decision, #89): spend-down. The
+        // UI default sets this explicitly; the ?? covers legacy assumptions missing
+        // the field. User can switch to 'bequeath'.
+        userSituation: assumptions.investments.rothConversionUserSituation ?? 'self-liquidate',
+        // COLA for the terminal drawdown (#10): grow the residual's persisting SS +
+        // fixed income with inflation each year, matching the nominal engine (SS
+        // income increments by this same rate — see Income models' increment()).
+        terminalCola: assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate / 100 : 0,
+    };
+
+    return {
+        dpInputs: {
+            contexts,
+            currentTradBalance: startingTradBalance,
+            currentRothBalance: startingRothBalance,
+            backloadDelta: assumptions.investments.rothConversionDPBackloadDelta,
+        },
+        effectiveDpObjective,
+    };
+}
+
+/**
+ * Solve the Monte Carlo conversion POLICY once per run (#98). Runs the
+ * deterministic std-ded baseline for the exogenous contexts, then solves the
+ * STOCHASTIC DP — re-centering each account's rate on the MC mean (`meanShift`)
+ * and integrating the MC volatility (`returnStdDev`) — to emit a closed-loop
+ * policy each MC path looks up at its realized state. Returns the full DPPlan
+ * (its `policy` is the closed-loop table; its `conversionsByYear` is the central
+ * schedule). Returns `undefined` when the strategy isn't dp-precomputed (or tax
+ * optimization is off), in which case MC falls back to per-path rate-match.
+ *
+ * `returnMean`/`returnStdDev` are PERCENT (the MonteCarloConfig units).
+ */
+export const buildMcConversionPolicy = (
+    yearsToRun: number,
+    accounts: AnyAccount[],
+    incomes: AnyIncome[],
+    expenses: AnyExpense[],
+    assumptions: AssumptionsState,
+    taxState: TaxState,
+    returnMean: number,
+    returnStdDev: number,
+    nodes?: QuadratureNodes,
+): DPPlan | undefined => {
+    const strategy = resolveRothConversionStrategy(assumptions.investments.rothConversionStrategy);
+    if (strategy !== 'dp-precomputed' || !assumptions.investments.taxOptimizationEnabled) {
+        return undefined;
+    }
+    // Deterministic std-ded baseline supplies the exogenous (income / spending /
+    // tax / RMD) contexts — the same baseline the deterministic projection uses.
+    const baselineAssumptions: AssumptionsState = {
+        ...assumptions,
+        investments: { ...assumptions.investments, rothConversionStrategy: 'rate-match' },
+    };
+    const baselineTimeline = runSimulation(
+        yearsToRun, accounts, incomes, expenses, baselineAssumptions, taxState, undefined,
+        { conversionMode: 'std-ded-only' },
+    );
+    const { dpInputs, effectiveDpObjective } = buildDpSolveInputs(
+        accounts, incomes, expenses, assumptions, taxState, baselineTimeline,
+    );
+    // Re-center the DP's per-account deterministic rates on the MC draw mean and
+    // add the MC volatility as the common shock. `meanShift` is the gap between
+    // the MC mean and the deterministic base rate, in decimal; matching how MC
+    // applies overrideReturnRate as (R − ER)/100.
+    //
+    // CRITICAL (#98 review): `ctx.growthRate` is the TRADITIONAL-BALANCE-WEIGHTED
+    // average of per-account `(customROR ?? globalRoR) + inflation − expenseRatio`
+    // (see getNetGrowthRate in RothConversionDP.ts). Monte Carlo's
+    // InvestedAccount.increment grows every account at `(returnMean − ER)/100`,
+    // IGNORING customROR when an override is present. So a flat `rorBase` built
+    // from the GLOBAL ror would center the policy on the wrong drift whenever any
+    // Traditional account carries a customROR ≠ global. Instead build `rorBase`
+    // as the Traditional-balance-weighted average of `(customROR ?? globalRoR)`
+    // (+ inflation), using the SAME tax-type filter and balance weighting as
+    // getNetGrowthRate but WITHOUT subtracting ER (ER stays inside ctx.growthRate).
+    // Then `ctx.growthRate + meanShift == (returnMean − weighted-ER)/100` exact on
+    // the Traditional axis. The Roth axis reuses this same scalar meanShift, so a
+    // residual remains only when the Roth accounts' customROR blend differs from
+    // the Traditional accounts' — an accepted second-order approximation.
+    const globalRoR = assumptions.investments.returnRates.ror ?? 7;
+    const inflation = assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0;
+    const tradAccounts = accounts.filter((a): a is InvestedAccount =>
+        a instanceof InvestedAccount &&
+        (a.taxType === 'Traditional 401k' || a.taxType === 'Traditional IRA'));
+    const tradTotal = tradAccounts.reduce((s, a) => s + a.vestedAmount, 0);
+    const weightedRoR = tradTotal > 0
+        ? tradAccounts.reduce((sum, a) => sum + (a.customROR ?? globalRoR) * a.vestedAmount, 0) / tradTotal
+        : globalRoR;
+    const rorBase = weightedRoR + inflation;
+    // Solve the stochastic closed-loop policy — the #98 table each MC path looks up.
+    const stochasticPlan = planConversionsViaDP(dpInputs, {
+        ...effectiveDpObjective,
+        returnDistribution: {
+            stdDev: returnStdDev / 100,
+            meanShift: (returnMean - rorBase) / 100,
+            nodes,
+        },
+    });
+
+    // #89 MC over-conversion cap. Derive the deterministic engine-search optimum (h*) and ride it on
+    // the policy so each path caps its conversion at fill-to-(stdDed + h*) (YearSolver.planConversionDP),
+    // preventing the stochastic policy from over-converting past the validated peak on low/no-SS
+    // large-Traditional profiles — while leaving it untouched where the DP is already optimal
+    // (real-SS → DP wins the search → no cap). Perf note: the DP candidate is the stochastic policy's
+    // CENTRAL schedule, so the MC setup needs no second (deterministic) DP solve — only the
+    // engine-search's forward sims. h* uses the same precise search as the deterministic default, so an
+    // on-track path reduces to that default.
+    const ruler = buildTradValuation(baselineTimeline, assumptions, taxState);
+    const scorePlan = (plan: Map<number, number>) => {
+        const tl = runSimulation(
+            yearsToRun, accounts, incomes, expenses, assumptions, taxState, undefined,
+            { dpConversionPlan: plan },
+        );
+        return { afterTaxNW: terminalAfterTaxNetWorth(tl, ruler), timeline: tl };
+    };
+    const search = searchConversionPlanByEngine(dpInputs.contexts, scorePlan, {
+        baseline: {
+            afterTaxNW: terminalAfterTaxNetWorth(baselineTimeline, ruler),
+            timeline: baselineTimeline,
+            plan: extractConversionPlan(baselineTimeline),
+        },
+        seedPlans: [{ label: 'legacy-dp', plan: stochasticPlan.conversionsByYear }],
+        startingTradBalance: dpInputs.currentTradBalance,
+    });
+    // h* = the optimum's taxable-income headroom above the standard deduction:
+    //   • a fill-to-h grid point won → that headroom (cap at it);
+    //   • the std-ded baseline won → 0 (tight cap — the over-conversion corner);
+    //   • the DP (policy central) won → undefined ⇒ NO cap (policy already at/under the optimum,
+    //     e.g. real-SS; capping would neuter the #98 bull-path adaptivity).
+    const capHeadroom: number | undefined =
+        search.diagnostics.bestLabel === 'legacy-dp' ? undefined
+            : search.diagnostics.bestLabel === 'std-ded-baseline' ? 0
+                : (search.diagnostics.bestHeadroom ?? undefined);
+    if (stochasticPlan.policy) stochasticPlan.policy.capHeadroom = capHeadroom;
+    return stochasticPlan;
 };
 
 /**
@@ -651,8 +910,19 @@ export const runSimulationWithOptimization = (
     eoyContributionAdditions?: Record<string, number>,
     eoyDebtReductions?: Record<string, number>,
     eoyMortgageReductions?: Record<string, number>,
+    /**
+     * DP objective override (#89). When OMITTED (the production/app call site), production
+     * DERIVES the live default below (`effectiveDpObjective`): max-wealth + bracket-aware
+     * terminal, parameterized by the user's self-liquidate-vs-bequeath choice. A caller may
+     * pass this to A/B the legacy objectives (min-tax / flat-τ) through the executed sim —
+     * those are retained for regression tests only, no production caller selects them.
+     * See RothConversionDP.planConversionsViaDP.
+     */
+    dpObjective?: DPObjectiveOptions,
 ): SimulationYear[] => {
-    const strategy = assumptions.investments.rothConversionStrategy ?? 'rate-match';
+    // DEFAULT is bracket-aware DP (#89); rate-match is the non-default fallback. The default
+    // is resolved through the shared helper (single source of truth in AssumptionsContext).
+    const strategy = resolveRothConversionStrategy(assumptions.investments.rothConversionStrategy);
     const taxOptOn = assumptions.investments.taxOptimizationEnabled;
 
     // Always run a full-horizon std-ded-only baseline up front. Used for:
@@ -670,149 +940,235 @@ export const runSimulationWithOptimization = (
     };
     const stdDedBaselineTimeline = runSimulation(
         yearsToRun, accounts, incomes, expenses, baselineAssumptions, taxState,
-        yearlyReturns, referenceDate,
-        /* conversionMode */ 'std-ded-only',
-        /* useRollingBaseline */ false,
-        /* dpConversionPlan */ undefined,
-        /* dpDebugByYear */ undefined,
-        eoyContributionAdditions,
-        eoyDebtReductions,
-        eoyMortgageReductions,
-    );
-    const stdDedBaselineLifetimeTax = stdDedBaselineTimeline.reduce((total, year) => {
-        return total
-            + (year.taxDetails.fed ?? 0)
-            + (year.taxDetails.state ?? 0)
-            + (year.taxDetails.fica ?? 0)
-            + (year.taxDetails.capitalGains ?? 0);
-    }, 0);
-
-    if (strategy === 'dp-precomputed' && taxOptOn) {
-        // DP path: reuse the std-ded baseline above (already computed) for
-        // context building and the DP forward sweep.
-        const baselineTimeline = stdDedBaselineTimeline;
-
-        // Pass 2 — solve the DP over the baseline trajectory.
-        const birthYear = getBirthYear(assumptions.milestones);
-        const retirementYear = birthYear + getRetirementAge(assumptions.milestones);
-
-        // Brokerage balance entering retirementYear (= end of retirementYear − 1).
-        // buildDPYearContexts looks this up from baseline when available; this
-        // fallback handles the already-retired-today case where no prior baseline
-        // year exists. Mirrors the trad/roth fallback below.
-        const preRetirementSimYearForBrokerage = baselineTimeline.find(y => y.year === retirementYear - 1);
-        const startingBrokerageBalance = preRetirementSimYearForBrokerage
-            ? preRetirementSimYearForBrokerage.accounts
-                .filter((a): a is InvestedAccount =>
-                    a instanceof InvestedAccount && a.taxType === 'Brokerage')
-                .reduce((sum, a) => sum + a.vestedAmount, 0)
-            : accounts
-                .filter((a): a is InvestedAccount =>
-                    a instanceof InvestedAccount && a.taxType === 'Brokerage')
-                .reduce((sum, a) => sum + a.vestedAmount, 0);
-
-        // The final sim (Pass 3) runs against the SAME future-year tax state and
-        // calibrated assumptions that runSimulation derives internally. Derive
-        // them here too so the DP optimizes against the rates/events it will
-        // actually execute against — not the un-calibrated year-0 tax state.
-        //   #4 (calibration): dpAssumptions carries assumptions.macro.taxCalibration
-        //       when TaxState.calibrateFutureYears is on, so getTaxParameters
-        //       inside buildDPYearContexts scales the brackets to match.
-        //   #3 (scheduled tax events): dpTaxState clears dollar overrides (which
-        //       getTaxParameters ignores anyway) so the DP's future-year tax
-        //       state matches the executed one; the per-year filing/state move
-        //       itself is resolved inside buildDPYearContexts via taxEvents.
-        const currentYear = new Date().getFullYear();
-        const startYear = assumptions.demographics.priorYearMode ? currentYear - 1 : currentYear;
-        const startAge = startYear - birthYear;
-        const resolvedIncomes = resolveIncomes(incomes, startYear, startAge);
-        const dpAssumptions = deriveFutureAssumptions(assumptions, taxState, resolvedIncomes, expenses, startYear);
-        const dpTaxState = scopeFutureTaxState(taxState);
-
-        const contexts = buildDPYearContexts(
-            baselineTimeline, dpAssumptions, dpTaxState, retirementYear, startingBrokerageBalance,
-        );
-
-        // Critical: the DP only solves retirement years onward, so its forward
-        // sweep needs the trad balance AT RETIREMENT, not today. Pulling
-        // accounts.vestedAmount here would feed today's balance into year 0
-        // of the contexts (= retirement year), missing pre-retirement growth
-        // and 401k contributions. Pull from the baseline timeline instead —
-        // that's already simulated through the full pre-retirement period.
-        //
-        // SimulationYear records END-of-year state, so we look up
-        // (retirementYear - 1) to get end-of-(year-before-retirement), which
-        // equals start-of-retirement-year — the correct t=0 state for the DP
-        // forward sweep. Looking up retirementYear directly produces an
-        // off-by-one (DP starts from end-of-retirement-year, double-counts
-        // year 0's flows). If the user retires in the very first sim year
-        // (no pre-retirement records), fall back to today's account balances.
-        const preRetirementSimYear = baselineTimeline.find(y => y.year === retirementYear - 1);
-        let startingTradBalance: number;
-        let startingRothBalance: number;
-        if (preRetirementSimYear) {
-            startingTradBalance = preRetirementSimYear.accounts
-                .filter((a): a is InvestedAccount =>
-                    a instanceof InvestedAccount &&
-                    (a.taxType === 'Traditional 401k' || a.taxType === 'Traditional IRA'))
-                .reduce((sum, a) => sum + a.vestedAmount, 0);
-            startingRothBalance = preRetirementSimYear.accounts
-                .filter((a): a is InvestedAccount =>
-                    a instanceof InvestedAccount && a.taxType === 'Roth IRA')
-                .reduce((sum, a) => sum + a.vestedAmount, 0);
-        } else {
-            // Already retired (or retiring in year 0): no prior baseline year
-            // exists. Use today's actual balances.
-            startingTradBalance = accounts
-                .filter((a): a is InvestedAccount =>
-                    a instanceof InvestedAccount &&
-                    (a.taxType === 'Traditional 401k' || a.taxType === 'Traditional IRA'))
-                .reduce((sum, a) => sum + a.vestedAmount, 0);
-            startingRothBalance = accounts
-                .filter((a): a is InvestedAccount =>
-                    a instanceof InvestedAccount && a.taxType === 'Roth IRA')
-                .reduce((sum, a) => sum + a.vestedAmount, 0);
-        }
-        const dpPlan: DPPlan = planConversionsViaDP({
-            contexts,
-            currentTradBalance: startingTradBalance,
-            currentRothBalance: startingRothBalance,
-            backloadDelta: assumptions.investments.rothConversionDPBackloadDelta,
-        });
-
-        // Pass 3 — final sim with the DP plan. The DP strategy in YearSolver
-        // looks up `input.dpConversionPlan` per year. conversionMode is moot
-        // for DP (it does not use the rate-match bracket walker).
-        const finalTimeline = runSimulation(
-            yearsToRun, accounts, incomes, expenses, assumptions, taxState,
-            yearlyReturns, referenceDate,
-            /* conversionMode */ 'rate-match',
-            /* useRollingBaseline */ false,
-            /* dpConversionPlan */ dpPlan.conversionsByYear,
-            /* dpDebugByYear */ dpPlan.diagnostics.perYearDebug,
+        yearlyReturns,
+        {
+            referenceDate,
+            conversionMode: 'std-ded-only',
             eoyContributionAdditions,
             eoyDebtReductions,
             eoyMortgageReductions,
-        );
+        },
+    );
+    // After-tax terminal net worth of the std-ded baseline, for the Withdrawal-tab
+    // "After-Tax Wealth Gained" comparison (#94). Build ONE situation-based discount ruler
+    // from the strategy-INDEPENDENT baseline timeline and reuse it for both the baseline and
+    // the selected strategy's terminal balances (below), so the comparison is apples-to-apples
+    // and the baseline figure is invariant to the selected strategy — only the self-liquidate
+    // ↔ bequeath toggle moves it.
+    const tradValuationRuler = buildTradValuation(stdDedBaselineTimeline, assumptions, taxState);
+    const stdDedBaselineTerminalAfterTaxNW = terminalAfterTaxNetWorth(stdDedBaselineTimeline, tradValuationRuler);
 
-        // Append solver summary to year-0 logs so the user can see DP setup
-        // (grid, totals) in the year inspector for the simulation start year.
-        if (finalTimeline.length > 0) {
-            finalTimeline[0].logs.push(...dpPlan.diagnostics.summaryLogs);
+    if (strategy === 'std-ded-only' && taxOptOn) {
+        // 'std-ded-only' strategy: the executed plan IS the std-ded baseline we just ran
+        // (convert only the free standard-deduction headroom each year). Reuse it directly
+        // rather than re-running — the selected strategy and the comparison baseline are the
+        // same sim, so "After-Tax Wealth Gained" is $0 by construction.
+        if (stdDedBaselineTimeline.length > 0) {
+            stdDedBaselineTimeline[0].stdDedBaselineTerminalAfterTaxNW = stdDedBaselineTerminalAfterTaxNW;
+            stdDedBaselineTimeline[0].strategyTerminalAfterTaxNW = stdDedBaselineTerminalAfterTaxNW;
+        }
+        return stdDedBaselineTimeline;
+    }
+
+    if (strategy === 'dp-precomputed' && taxOptOn) {
+        // Conversion plan for the dp-precomputed strategy. Two paths:
+        //   • DEFAULT (no explicit dpObjective): the #89 ROOT FIX — an engine-direct
+        //     search that picks conversions by scoring candidate plans on the REAL
+        //     engine (after-tax terminal NW), rather than the DP's internal terminal
+        //     valuation (which over-converts on low/no-SS, large-Traditional profiles —
+        //     see docs/roth-review/00-cookbook-review-synthesis.md §5). The std-ded
+        //     baseline plan is one of the candidates, so the result is ≥ the baseline
+        //     BY CONSTRUCTION → the feasibility floor below never fires for this path.
+        //   • LEGACY DP (explicit dpObjective): retained for regression tests that A/B
+        //     the min-tax / flat-τ / bracket-aware objectives, and for comparison.
+        let finalTimeline: SimulationYear[];
+        // In the DEFAULT branch the winning timeline is already scored on the ruler (best.nw), so we
+        // carry that value out to avoid recomputing terminalAfterTaxNetWorth below. Stays undefined on
+        // the legacy branch, which has no pre-scored result and computes the terminal NW standalone.
+        let defaultBranchTerminalAfterTaxNW: number | undefined;
+
+        if (dpObjective === undefined) {
+            // JOINT CONVERSION + DRAWDOWN-ORDER OPTIMIZER. Tax Optimization's UI promises it picks the
+            // best withdrawal order, but the engine used to always run the user's stored order — wasting,
+            // on some profiles, the cheap post-SS standard-deduction conversion band (a large Traditional
+            // spent for living before it can be converted at 0%). Now we ALSO optimize the order. The
+            // optimal order is scenario-specific (Roth-before-Traditional wins for high-SS / large-Traditional
+            // / long-horizon profiles, the conventional order for others), so it's PICKED, not hardcoded.
+            // Every candidate is scored with the SAME ruler (tradValuationRuler, built once above from the
+            // strategy-independent baseline) — the load-bearing requirement for a valid cross-order comparison.
+            //
+            // generateCandidateWithdrawalOrders returns at most 3 orders (the user's + 2 tax-aware
+            // sequences), so we simply FULL-SEARCH EVERY candidate on the real engine and keep the one
+            // with the highest after-tax terminal net worth. No biased probe-and-rank: a probe by a
+            // single aggressive legacy-DP plan over-rates an order in a no-SS regime and a std-ded proxy
+            // under-rates a Traditional-preserving order in a high-SS regime, so the only sound tiebreak
+            // is the full de-converted search itself. The user's order is always in the candidate set, so
+            // the result can never regress below the manual order; when it wins, the result matches the
+            // single-order engine.
+            // Under Tax Optimization the algorithm OWNS the withdrawal order, so the user's manual order
+            // and any account EXCLUSIONS do not bind: an account the user left OUT of the order must still
+            // be a first-class participant the optimizer can place and score. Augment the user's order with
+            // synthesized entries for every sellable account it omits BEFORE generating candidates, so each
+            // candidate (the user-derived order #0 and the two tax-aware sequences) covers all sellable
+            // accounts. withAllSellableAccounts returns the SAME reference when nothing is omitted (the common
+            // case), so this is byte-for-byte unchanged whenever the order already lists every account — and
+            // `fullStrategy` then serves as the user-derived anchor for the no-regression guarantee below.
+            const fullStrategy = withAllSellableAccounts(
+                accounts, assumptions.withdrawalStrategy,
+                (a) => ({ id: `synth-${a.id}`, name: a.name, accountId: a.id }),
+            );
+            const candidateOrders = generateCandidateWithdrawalOrders(accounts, fullStrategy);
+            // We can reuse the already-computed std-ded baseline (and `assumptions` verbatim) for the
+            // user-derived anchor ONLY when augmenting added nothing — otherwise the anchor drains under
+            // `fullStrategy`, a different order, and must run its own baseline. In the common (nothing-omitted)
+            // case this is true and the path is byte-for-byte identical to before.
+            const canReuseUserBaseline = fullStrategy === assumptions.withdrawalStrategy;
+            const buildArtifacts = (order: typeof assumptions.withdrawalStrategy) => {
+                const isUser = order === fullStrategy;
+                const aOrder: AssumptionsState = (isUser && canReuseUserBaseline)
+                    ? assumptions : { ...assumptions, withdrawalStrategy: order };
+                const baselineO = (isUser && canReuseUserBaseline) ? stdDedBaselineTimeline : runSimulation(
+                    yearsToRun, accounts, incomes, expenses,
+                    { ...aOrder, investments: { ...aOrder.investments, rothConversionStrategy: 'rate-match' } },
+                    taxState, yearlyReturns,
+                    { referenceDate, conversionMode: 'std-ded-only', eoyContributionAdditions, eoyDebtReductions, eoyMortgageReductions },
+                );
+                const { dpInputs, effectiveDpObjective } = buildDpSolveInputs(accounts, incomes, expenses, aOrder, taxState, baselineO);
+                const dpPlan = planConversionsViaDP(dpInputs, effectiveDpObjective);
+                return { order, aOrder, baselineO, dpInputs, dpPlan };
+            };
+            const runUnderOrder = (aOrder: AssumptionsState, plan: Map<number, number>) => runSimulation(
+                yearsToRun, accounts, incomes, expenses, aOrder, taxState, yearlyReturns,
+                { referenceDate, dpConversionPlan: plan, eoyContributionAdditions, eoyDebtReductions, eoyMortgageReductions },
+            );
+            // A full conversion engine-search under one order's artifacts → {order, timeline, nw, label, sims, dpPlan}.
+            const fullSearch = (art: ReturnType<typeof buildArtifacts>) => {
+                const scorePlan = (plan: Map<number, number>) => {
+                    const tl = runUnderOrder(art.aOrder, plan);
+                    return { afterTaxNW: terminalAfterTaxNetWorth(tl, tradValuationRuler), timeline: tl };
+                };
+                const s = searchConversionPlanByEngine(art.dpInputs.contexts, scorePlan, {
+                    baseline: { afterTaxNW: terminalAfterTaxNetWorth(art.baselineO, tradValuationRuler), timeline: art.baselineO, plan: extractConversionPlan(art.baselineO) },
+                    seedPlans: [{ label: 'legacy-dp', plan: art.dpPlan.conversionsByYear }],
+                    startingTradBalance: art.dpInputs.currentTradBalance,
+                });
+                return {
+                    order: art.order, timeline: s.winningTimeline,
+                    nw: terminalAfterTaxNetWorth(s.winningTimeline, tradValuationRuler),
+                    label: s.diagnostics.bestLabel, sims: s.diagnostics.sims + 1,
+                    dpPlan: art.dpPlan, // the order's DP plan — its traces feed the debug screen for the winner
+                };
+            };
+            // Full-search EVERY candidate order and keep the highest after-tax NW. The user's order is
+            // first in the candidate set, so the result can never regress below the manual order.
+            const userResult = fullSearch(buildArtifacts(fullStrategy));
+            let best = userResult;
+            let totalSims = userResult.sims;
+            for (const order of candidateOrders) {
+                if (order === fullStrategy) continue;
+                const result = fullSearch(buildArtifacts(order));
+                totalSims += result.sims;
+                if (result.nw > best.nw + 1) best = result; // the de-converted truth decides; ties keep the incumbent
+            }
+            finalTimeline = best.timeline;
+            defaultBranchTerminalAfterTaxNW = best.nw; // finalTimeline === best.timeline, already scored on the ruler
+            if (finalTimeline.length > 0) {
+                const orderChanged = best.order !== fullStrategy;
+                const orderGain = best.nw - userResult.nw; // full-search value of the chosen order alone
+                // Report EXECUTED conversions (what the engine actually moved), not the plan's intended
+                // fill — a "fill to headroom" plan can request far more than the Traditional can supply.
+                const executedTotal = finalTimeline.reduce((s, y) => s + (y.isEndOfYearProjection ? 0 : (y.rothConversion?.amount ?? 0)), 0);
+                finalTimeline[0].chosenWithdrawalOrder = best.order.map(w => ({ accountId: w.accountId, name: w.name }));
+                finalTimeline[0].orderOptimizationGain = orderGain; // economic payoff of the order choice (best vs user order, co-optimized)
+                finalTimeline[0].logs.push(
+                    `[joint optimizer] full-searched ${candidateOrders.length} candidate order(s) ` +
+                    `(${totalSims} engine sims); chose order ` +
+                    `${best.order.map(w => w.name).join(' → ')}${orderChanged ? '' : ' (user order)'}; ` +
+                    `order-optimization gain $${Math.round(orderGain).toLocaleString()}; ` +
+                    `conversions: ${best.label} (total converted $${Math.round(executedTotal).toLocaleString()}).`,
+                );
+                // Restore the Roth-conversion debug screen (RothConversionDebug reads selectedYear.dpTrace):
+                // attach the WINNING order's DP analysis. NOTE the executed plan is the engine-direct search
+                // result, which may differ from the DP plan — so dpTrace shows the DP's analysis, not the
+                // executed conversions. (We don't re-sim just to populate dpDebugByYear; trace + summary is enough.)
+                for (const year of finalTimeline) {
+                    const trace = best.dpPlan.diagnostics.perYearTraces.get(year.year);
+                    if (trace) year.dpTrace = trace;
+                }
+                finalTimeline[0].logs.push(...best.dpPlan.diagnostics.summaryLogs);
+            }
+        } else {
+            // LEGACY DP path — reached only with an explicit dpObjective (regression tests).
+            const { dpInputs, effectiveDpObjective } = buildDpSolveInputs(
+                accounts, incomes, expenses, assumptions, taxState, stdDedBaselineTimeline, dpObjective,
+            );
+            const dpPlan: DPPlan = planConversionsViaDP(dpInputs, effectiveDpObjective);
+            finalTimeline = runSimulation(
+                yearsToRun, accounts, incomes, expenses, assumptions, taxState,
+                yearlyReturns,
+                {
+                    referenceDate,
+                    dpConversionPlan: dpPlan.conversionsByYear,
+                    dpDebugByYear: dpPlan.diagnostics.perYearDebug,
+                    eoyContributionAdditions,
+                    eoyDebtReductions,
+                    eoyMortgageReductions,
+                },
+            );
+            if (finalTimeline.length > 0) finalTimeline[0].logs.push(...dpPlan.diagnostics.summaryLogs);
+            for (const year of finalTimeline) {
+                const trace = dpPlan.diagnostics.perYearTraces.get(year.year);
+                if (trace) year.dpTrace = trace;
+            }
         }
 
-        // Attach structured per-year DP traces to their matching SimulationYear
-        // records so the Roth debug screen can render the cost-curve, waterfall,
-        // and balance-flow sections without re-parsing log text.
-        for (const year of finalTimeline) {
-            const trace = dpPlan.diagnostics.perYearTraces.get(year.year);
-            if (trace) year.dpTrace = trace;
+        // Stash both after-tax terminal net worths on year 0 for the live Withdrawal-tab
+        // comparison panel (#94). Same ruler as the baseline above, applied to this
+        // strategy's terminal balances. The default branch already scored its winning timeline on
+        // the ruler (best.nw), so reuse it; only the legacy branch computes it standalone here.
+        const strategyTerminalAfterTaxNW = finalTimeline.length === 0
+            ? 0
+            : (defaultBranchTerminalAfterTaxNW ?? terminalAfterTaxNetWorth(finalTimeline, tradValuationRuler));
+        if (finalTimeline.length > 0) {
+            finalTimeline[0].stdDedBaselineTerminalAfterTaxNW = stdDedBaselineTerminalAfterTaxNW;
+            finalTimeline[0].strategyTerminalAfterTaxNW = strategyTerminalAfterTaxNW;
         }
 
-        // Stash the std-ded baseline lifetime tax on year 0 for the live
-        // Withdrawal-tab comparison panel.
-        if (finalTimeline.length > 0) {
-            finalTimeline[0].stdDedBaselineLifetimeTax = stdDedBaselineLifetimeTax;
+        // FEASIBILITY FLOOR (#89) — now a BACKSTOP. The DEFAULT engine-direct search includes the
+        // std-ded plan in its candidate set, so its result is ≥ the baseline by construction and this
+        // never fires for it; the floor still guards the LEGACY DP path (explicit dpObjective). The
+        // optimizer must never leave the household worse off (on after-tax terminal net worth) than
+        // the trivial, always-feasible std-ded-only baseline. The legacy DP's terminal valuation can,
+        // on large Traditional + low/no Social Security profiles drawn down trad-first, over-value
+        // draining the residual and convert PAST the wealth peak (draining Traditional toward $0),
+        // ending BELOW the baseline; when it does, fall back to the std-ded-only plan, which is
+        // strictly better here. This is the cookbook's "feasibility-floor property".
+        //
+        // SOLVENCY-GATED: only engage when the std-ded baseline is itself solvent (its final year
+        // carries no deficit-debt). On a household that depletes even under the minimal baseline,
+        // the after-tax-NW comparison is dominated by deficit-debt noise and there is no better
+        // feasible plan to fall back to, so the DP plan is returned untouched.
+        //
+        // This caps the downside at the (conservative) std-ded baseline; it does NOT move the plan
+        // to the true wealth peak — the baseline mildly under-converts vs the peak. The root fix is
+        // to size conversions by a direct engine search rather than the DP's internal terminal
+        // valuation (docs/roth-review/00-cookbook-review-synthesis.md §5). Deterministic projection
+        // only; the Monte-Carlo closed-loop policy is unaffected.
+        const baselineSolvent = stdDedBaselineTimeline.length > 0
+            && !stdDedBaselineTimeline[stdDedBaselineTimeline.length - 1].accounts.some(
+                a => a instanceof DeficitDebtAccount && a.amount > 0);
+        const floorEps = Math.max(1, Math.abs(stdDedBaselineTerminalAfterTaxNW) * 1e-6);
+        if (finalTimeline.length > 0
+            && baselineSolvent
+            && strategyTerminalAfterTaxNW < stdDedBaselineTerminalAfterTaxNW - floorEps) {
+            const shortfall = stdDedBaselineTerminalAfterTaxNW - strategyTerminalAfterTaxNW;
+            stdDedBaselineTimeline[0].stdDedBaselineTerminalAfterTaxNW = stdDedBaselineTerminalAfterTaxNW;
+            stdDedBaselineTimeline[0].strategyTerminalAfterTaxNW = stdDedBaselineTerminalAfterTaxNW;
+            stdDedBaselineTimeline[0].feasibilityFloorApplied = true;
+            stdDedBaselineTimeline[0].logs.push(
+                `[feasibility floor] DP plan's after-tax terminal net worth was $${Math.round(shortfall).toLocaleString()} below the standard-deduction-only baseline (the DP over-converted on this profile); fell back to std-ded-only conversions.`,
+            );
+            return stdDedBaselineTimeline;
         }
 
         return finalTimeline;
@@ -821,17 +1177,18 @@ export const runSimulationWithOptimization = (
     // Default: rate-match with rolling per-year sub-sim baselines.
     const finalTimeline = runSimulation(
         yearsToRun, accounts, incomes, expenses, assumptions, taxState,
-        yearlyReturns, referenceDate,
-        /* conversionMode */ 'rate-match',
-        /* useRollingBaseline */ true,
-        /* dpConversionPlan */ undefined,
-        /* dpDebugByYear */ undefined,
-        eoyContributionAdditions,
-        eoyDebtReductions,
-        eoyMortgageReductions,
+        yearlyReturns,
+        {
+            referenceDate,
+            useRollingBaseline: true,
+            eoyContributionAdditions,
+            eoyDebtReductions,
+            eoyMortgageReductions,
+        },
     );
     if (finalTimeline.length > 0) {
-        finalTimeline[0].stdDedBaselineLifetimeTax = stdDedBaselineLifetimeTax;
+        finalTimeline[0].stdDedBaselineTerminalAfterTaxNW = stdDedBaselineTerminalAfterTaxNW;
+        finalTimeline[0].strategyTerminalAfterTaxNW = terminalAfterTaxNetWorth(finalTimeline, tradValuationRuler);
     }
     return finalTimeline;
 };

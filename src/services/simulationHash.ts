@@ -137,6 +137,25 @@ export function getSimulationInputHash(
             className: e.constructor.name,
             startMilestoneId: e.startMilestoneId,
             endMilestoneId: e.endMilestoneId,
+            // Goal / cadence fields that steer the simulation but aren't captured
+            // by getAnnualAmount() (a goal reports $0 there — it's funded as a
+            // sinking-fund set-aside instead). Editing any of these changes sim
+            // output, so they must invalidate the cache:
+            //  - startDate     : when the expense/goal saving window opens
+            //  - endDate        : a targetDate goal's target / a recurring goal's
+            //                     "stop replacing it" date (also a loan's end)
+            //  - dueMonth       : which month an annual expense / goal lump fires
+            //  - goalType       : 'targetDate' vs 'recurring' (whether endDate applies)
+            //  - intervalYears  : recurrence horizon driving a recurring goal's set-aside
+            //  - goalAccountId  : the sinking-fund account a goal's funding routes to
+            // Dates are local-midnight date-only values; serialize via getTime()
+            // (one-to-one, timezone-safe) rather than toISOString().
+            startDate: e.startDate instanceof Date ? e.startDate.getTime() : e.startDate,
+            endDate: e.endDate instanceof Date ? e.endDate.getTime() : e.endDate,
+            dueMonth: e.dueMonth,
+            goalType: e.goalType,
+            intervalYears: e.intervalYears,
+            goalAccountId: e.goalAccountId,
         })),
         assumptions: {
             demographics: assumptions.demographics,

@@ -146,14 +146,40 @@ export interface SimulationYear {
      */
     dpTrace?: DPYearTrace;
     /**
-     * Lifetime sum of (federal + state + FICA + capital gains) tax under the
-     * std-ded-only conversion baseline — i.e., what taxes would be if only
-     * the always-free standard-deduction-headroom conversions ran. Set on
-     * year 0 of the simulation result so the Withdrawal tab's comparison
-     * panel can display "your strategy vs free conversions only" without
-     * re-running an extra sim.
+     * After-tax terminal (end-of-plan) net worth under the std-ded-only conversion baseline
+     * and under the selected strategy, BOTH discounted with the same situation-based
+     * Traditional valuation (graduated self-liquidate / flat heir — see buildTradValuation).
+     * Set on year 0 so the Withdrawal tab can show "After-Tax Wealth Gained" (#94) — the
+     * #89-consistent figure that prices the conversion's payoff (a Roth-heavier terminal
+     * mix with sheltered growth), not just the up-front tax cost the old lifetime-tax metric
+     * saw. The ruler is built from the strategy-independent baseline timeline, so the
+     * baseline figure is invariant to the selected strategy.
      */
-    stdDedBaselineLifetimeTax?: number;
+    stdDedBaselineTerminalAfterTaxNW?: number;
+    strategyTerminalAfterTaxNW?: number;
+    /**
+     * Set true on year 0 when the #89 feasibility floor engaged: the DP-precomputed plan
+     * scored BELOW the std-ded-only baseline on after-tax terminal net worth (it over-
+     * converted), so runSimulationWithOptimization fell back to the std-ded-only plan. Lets
+     * the Withdrawal/debug UI surface "optimizer fell back to standard-deduction-only".
+     */
+    feasibilityFloorApplied?: boolean;
+    /**
+     * Set on year 0 by the joint conversion + drawdown-order optimizer: the withdrawal order the
+     * optimizer CHOSE when Tax Optimization is on. It scores candidate orders on the real engine
+     * (the consistent after-tax ruler) and picks the best for the scenario, rather than blindly
+     * running the user's stored order. Lets the Withdrawal tab show "optimizer chose: …" so the
+     * disabled manual selector is honest (the UI already claims the order is managed automatically).
+     */
+    chosenWithdrawalOrder?: { accountId: string; name: string }[];
+    /**
+     * Set on year 0 alongside chosenWithdrawalOrder: the after-tax-wealth gain from the chosen
+     * withdrawal order vs the user's stored order, at FULL co-optimization (each order scored with
+     * its own optimal conversion plan on the same ruler) — i.e. best.nw − userOrder.nw. 0 when the
+     * user's order already wins. This is the economic PAYOFF of the order optimization (distinct from
+     * the conversion gain); surfaced so it's observable for the Withdrawal tab and regression tests.
+     */
+    orderOptimizationGain?: number;
     // Marks a synthetic "projected end of current year" data point inserted between Year 0 and Year 1
     isEndOfYearProjection?: boolean;
 }

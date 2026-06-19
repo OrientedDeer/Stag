@@ -3,6 +3,7 @@ import { createContext, useReducer, useContext, ReactNode, useMemo } from 'react
 import { useDebouncedLocalStorage } from '../../../hooks/useDebouncedLocalStorage';
 import { EarningsRecord } from '../../../services/SocialSecurityCalculator';
 import { CustomMilestone } from '../../../services/simulation/types';
+import { RothConversionStrategy, DEFAULT_ROTH_CONVERSION_STRATEGY } from './rothConversionStrategy';
 
 // Built-in milestone IDs that cannot be removed
 export const BUILTIN_MILESTONE_IDS = {
@@ -143,8 +144,14 @@ export interface AssumptionsState {
     autoRothConversions: boolean; // Automatically convert Traditional to Roth in low-tax years
     // Which algorithm decides the per-year conversion amount when auto-conversions are on.
     // 'rate-match' = bracket-walk that compares this year's marginal to projected RMD-age marginal.
-    // 'dp-precomputed' = experimental backward-induction DP solved once over the full horizon.
-    rothConversionStrategy?: 'rate-match' | 'dp-precomputed';
+    // 'dp-precomputed' = backward-induction DP solved once over the full horizon, maximizing
+    //   after-tax terminal wealth with a bracket-aware terminal valuation (#89).
+    rothConversionStrategy?: RothConversionStrategy;
+    // dp-precomputed only: what happens to Traditional surviving to the horizon, which sets how
+    // aggressively the DP converts. 'self-liquidate' (default) = you draw it down yourself at real
+    // brackets (std-ded slice at 0%) → low exit rate → keep a reserve, convert conservatively.
+    // 'bequeath' = a working heir drains it (SECURE 10-yr) at a high rate → convert aggressively.
+    rothConversionUserSituation?: 'self-liquidate' | 'bequeath';
     // Rate-match conversion: minimum percentage-point gap between current marginal
     // rate and projected RMD-age marginal rate to justify converting that bracket.
     // Higher = more conservative (skip conversions with smaller savings).
@@ -207,9 +214,10 @@ export const defaultAssumptions: AssumptionsState = {
     gkLowerGuardrail: 0.8,      // Boost when rate < target * 0.8
     gkAdjustmentPercent: 10,    // 10% adjustment (per actual GK rules)
     autoRothConversions: false, // Auto-convert Traditional to Roth in retirement
-    rothConversionStrategy: 'rate-match', // 'rate-match' (default) | 'dp-precomputed' (experimental)
+    rothConversionStrategy: DEFAULT_ROTH_CONVERSION_STRATEGY, // max after-tax wealth (#89); 'rate-match' is the non-default conservative fallback. Default literal lives on this constant.
+    rothConversionUserSituation: 'self-liquidate', // DEFAULT (ratified product decision, #89): plan to spend it down yourself. User can switch to 'bequeath'.
     rothConversionMinRateGap: 0.05, // 5pp minimum savings to justify a non-free conversion (rate-match algorithm)
-    rothConversionDPBackloadDelta: 0.015, // 1.5%/yr default — DP-precomputed back-load preference
+    rothConversionDPBackloadDelta: 0.015, // 1.5%/yr default — legacy min-tax DP back-load preference
     taxOptimizationEnabled: false, // Disabled by default - use manual withdrawal order
     acaAware: true, // Limit Roth conversions to stay under ACA subsidy cliff (pre-65)
   },
@@ -399,6 +407,22 @@ export function migrateAssumptions(saved: unknown, defaults: AssumptionsState): 
   delete (migrated.demographics as Record<string, unknown>).birthYear;
   delete (migrated.demographics as Record<string, unknown>).retirementAge;
   delete (migrated.demographics as Record<string, unknown>).lifeExpectancy;
+
+  // Retire the 'rate-match' Roth-conversion strategy: it either tracked the free
+  // standard-deduction floor or over-converted and lost after-tax wealth, so it's no longer
+  // offered. Land legacy selections on its conservative successor, 'std-ded-only', so the
+  // engine and the (rate-match-less) UI stay consistent.
+  if (migrated.investments.rothConversionStrategy === 'rate-match') {
+    migrated.investments.rothConversionStrategy = 'std-ded-only';
+  }
+
+  // Retire the 'bequeath' (leave-to-heirs) situation from the UI — the explainer overhead
+  // wasn't worth it. Self-liquidate is now the only exit assumption; migrate legacy bequeath
+  // selections so the engine and UI agree. ('bequeath' stays valid internally for the DP /
+  // bracketAwareTradExitValue and their tests.)
+  if (migrated.investments.rothConversionUserSituation === 'bequeath') {
+    migrated.investments.rothConversionUserSituation = 'self-liquidate';
+  }
 
   return migrated;
 }

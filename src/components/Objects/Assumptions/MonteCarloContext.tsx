@@ -5,10 +5,12 @@ import {
     MonteCarloConfig,
     MonteCarloState,
     MonteCarloAction,
+    MonteCarloSummary,
     defaultMonteCarloConfig,
     initialMonteCarloState,
 } from '../../../services/MonteCarloTypes';
 import { runMonteCarloSimulation } from '../../../services/MonteCarloEngine';
+import { runMonteCarloInWorker } from '../../../services/montecarloRunner';
 import { createRandomSeed } from '../../../services/RandomGenerator';
 import { AnyAccount } from '../Accounts/models';
 import { AnyIncome } from '../Income/models';
@@ -21,13 +23,15 @@ function monteCarloReducer(state: MonteCarloState, action: MonteCarloAction): Mo
         case 'UPDATE_CONFIG':
             return { ...state, config: { ...state.config, ...action.payload } };
         case 'START_SIMULATION':
-            return { ...state, isRunning: true, progress: 0, error: null };
+            return { ...state, isRunning: true, progress: 0, phase: 'solving', error: null };
         case 'UPDATE_PROGRESS':
             return { ...state, progress: action.payload };
+        case 'SET_PHASE':
+            return { ...state, phase: action.payload };
         case 'COMPLETE_SIMULATION':
-            return { ...state, isRunning: false, progress: 100, summary: action.payload, error: null };
+            return { ...state, isRunning: false, progress: 100, phase: 'idle', summary: action.payload, error: null };
         case 'SIMULATION_ERROR':
-            return { ...state, isRunning: false, progress: 0, error: action.payload };
+            return { ...state, isRunning: false, progress: 0, phase: 'idle', error: action.payload };
         case 'RESET':
             return { ...initialMonteCarloState, config: state.config };
         default:
@@ -86,16 +90,30 @@ export function MonteCarloProvider({ children }: { children: ReactNode }): React
         taxState: TaxState
     ) => {
         dispatch({ type: 'START_SIMULATION' });
+        const onProgress = (progress: number) => dispatch({ type: 'UPDATE_PROGRESS', payload: progress });
+        const onPhase = (phase: 'solving' | 'running') => dispatch({ type: 'SET_PHASE', payload: phase });
         try {
-            const summary = await runMonteCarloSimulation(
-                state.config,
-                accounts,
-                incomes,
-                expenses,
-                assumptions,
-                taxState,
-                (progress) => dispatch({ type: 'UPDATE_PROGRESS', payload: progress })
-            );
+            // Run off the main thread (#98) so the ~20s policy solve + path loop
+            // don't freeze the UI. Fall back to the main-thread engine if the
+            // worker can't be constructed or it errors, so MC always works.
+            let summary: MonteCarloSummary;
+            try {
+                summary = await runMonteCarloInWorker(
+                    state.config, accounts, incomes, expenses, assumptions, taxState, onProgress, onPhase,
+                );
+            } catch (workerErr) {
+                // A permanently-broken worker is otherwise invisible (we silently
+                // run on the main thread); surface it in dev so it's diagnosable.
+                if (import.meta.env.DEV) {
+                    console.warn('Monte Carlo worker unavailable; running on the main thread instead:', workerErr);
+                }
+                // Main-thread fallback blocks the UI, so the phase label can't
+                // animate; mark 'running' for correctness.
+                dispatch({ type: 'SET_PHASE', payload: 'running' });
+                summary = await runMonteCarloSimulation(
+                    state.config, accounts, incomes, expenses, assumptions, taxState, onProgress,
+                );
+            }
             dispatch({ type: 'COMPLETE_SIMULATION', payload: summary });
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Simulation failed';
@@ -156,6 +174,7 @@ export const useMonteCarloResults = () => {
         summary: state.summary,
         isRunning: state.isRunning,
         progress: state.progress,
+        phase: state.phase,
         error: state.error,
         resetResults,
     };

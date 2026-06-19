@@ -7,6 +7,7 @@ import { ExpenseContext } from '../../../components/Objects/Expense/ExpenseConte
 import { useAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxContext } from '../../../components/Objects/Taxes/TaxContext';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
+import { applyChosenWithdrawalOrder } from '../../../services/simulation/EngineDirectConversionSearch';
 import { calculateNetWorth, formatCompactCurrency } from './FutureUtils';
 import { YearlyPercentile, RETURN_PRESETS, ReturnPresetKey, getPresetReturnMean } from '../../../services/MonteCarloTypes';
 import { HISTORICAL_STATS } from '../../../data/HistoricalReturns';
@@ -69,7 +70,7 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
     const { state: taxState } = useContext(TaxContext);
     const forceExact = assumptions.display?.useCompactCurrency === false;
 
-    const { config, summary, isRunning, progress, error } = state;
+    const { config, summary, isRunning, progress, phase, error } = state;
     const inflationAdjusted = assumptions.macro?.inflationAdjusted ?? true;
 
     // Normalize preset - handle old values from before simplification
@@ -84,12 +85,22 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
     const ror = assumptions.investments?.returnRates?.ror ?? 0;
     useEffect(() => {
         if (normalizedPreset !== 'custom') {
-            // For named presets, always sync to the expected value
-            const expectedMean = getPresetReturnMean(normalizedPreset, inflationAdjusted);
+            // For named presets, always sync to the expected value. When inflation
+            // is on, the nominal mean is derived from the sim inflation rate
+            // (returnMeanReal + inflationRate), so dragging the inflation rate
+            // re-runs this effect and re-syncs the displayed Mean Return (#109).
+            const expectedMean = getPresetReturnMean(normalizedPreset, inflationAdjusted, inflationRate);
+            const inflationTrackingChanged =
+                config.lastInflationAdjusted !== inflationAdjusted ||
+                config.lastInflationRate !== inflationRate;
             if (config.returnMean !== expectedMean) {
-                updateConfig({ returnMean: expectedMean, lastInflationAdjusted: inflationAdjusted });
-            } else if (config.lastInflationAdjusted !== inflationAdjusted) {
-                updateConfig({ lastInflationAdjusted: inflationAdjusted });
+                updateConfig({
+                    returnMean: expectedMean,
+                    lastInflationAdjusted: inflationAdjusted,
+                    lastInflationRate: inflationRate,
+                });
+            } else if (inflationTrackingChanged) {
+                updateConfig({ lastInflationAdjusted: inflationAdjusted, lastInflationRate: inflationRate });
             }
         } else {
             // For custom, sync to assumptions: ror + inflation (if toggle on), else just ror.
@@ -124,7 +135,7 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
         const customMean = inflationAdjusted ? ror + inflationRate : ror;
         const returnMean = presetKey === 'custom'
             ? Math.round(customMean * 10) / 10
-            : getPresetReturnMean(presetKey, inflationAdjusted);
+            : getPresetReturnMean(presetKey, inflationAdjusted, inflationRate);
         updateConfig({
             preset: presetKey,
             returnMean,
@@ -139,7 +150,7 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
     const handleReturnMeanChange = (value: number) => {
         const newConfig: { returnMean: number; preset?: ReturnPresetKey } = { returnMean: value };
         // Switch to custom if value doesn't match current preset
-        const expectedMean = getPresetReturnMean(normalizedPreset, inflationAdjusted);
+        const expectedMean = getPresetReturnMean(normalizedPreset, inflationAdjusted, inflationRate);
         if (value !== expectedMean) {
             newConfig.preset = 'custom';
         }
@@ -158,7 +169,12 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
 
     // Handle running simulation
     const handleRun = async () => {
-        await runSimulation(accounts, incomes, expenses, assumptions, taxState);
+        // Run MC under the SAME withdrawal order the deterministic projection chose (#1), so the MC
+        // bands and the chart's deterministic line model the same drawdown. The joint optimizer records
+        // its pick on year 0 (chosenWithdrawalOrder); when absent (manual order / tax-opt off) this is a
+        // no-op and MC uses the user's stored order.
+        const mcAssumptions = applyChosenWithdrawalOrder(assumptions, simulationData[0]?.chosenWithdrawalOrder);
+        await runSimulation(accounts, incomes, expenses, mcAssumptions, taxState);
     };
 
     // Format success rate with color
@@ -223,7 +239,7 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
                             {RETURN_PRESETS[normalizedPreset].description}
                             {normalizedPreset !== 'custom' && (
                                 <span className="text-content-muted">
-                                    {' '}Using {inflationAdjusted ? 'nominal' : 'real'} returns ({getPresetReturnMean(normalizedPreset, inflationAdjusted)}%).
+                                    {' '}Using {inflationAdjusted ? 'nominal' : 'real'} returns ({getPresetReturnMean(normalizedPreset, inflationAdjusted, inflationRate)}%).
                                 </span>
                             )}
                         </p>
@@ -296,21 +312,36 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
                                 : 'bg-positive-solid hover:bg-positive-soft text-white'
                             }`}
                     >
-                        {isRunning ? 'Running...' : 'Run Simulation'}
+                        {isRunning ? (phase === 'solving' ? 'Solving…' : 'Running…') : 'Run Simulation'}
                     </button>
 
-                    {/* Progress Bar */}
+                    {/* Progress Bar. During the one-time policy solve (#98) the
+                        per-scenario % can't advance, so show an indeterminate
+                        pulse + label; switch to the % bar for the path loop. */}
                     {isRunning && (
                         <div className="flex-1 flex items-center gap-3">
-                            <div className="flex-1 h-2 bg-surface-input rounded-full overflow-hidden">
-                                <div
-                                    className="h-full bg-positive-soft transition-all duration-100"
-                                    style={{ width: `${progress}%` }}
-                                />
-                            </div>
-                            <span className="text-content-muted text-sm tabular-nums">
-                                {Math.round(progress)}%
-                            </span>
+                            {phase === 'solving' ? (
+                                <>
+                                    <div className="flex-1 h-2 bg-surface-input rounded-full overflow-hidden">
+                                        <div className="h-full w-full bg-positive-soft animate-pulse" />
+                                    </div>
+                                    <span className="text-content-muted text-sm">
+                                        Solving conversion policy…
+                                    </span>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="flex-1 h-2 bg-surface-input rounded-full overflow-hidden">
+                                        <div
+                                            className="h-full bg-positive-soft transition-all duration-100"
+                                            style={{ width: `${progress}%` }}
+                                        />
+                                    </div>
+                                    <span className="text-content-muted text-sm tabular-nums">
+                                        Running paths… {Math.round(progress)}%
+                                    </span>
+                                </>
+                            )}
                         </div>
                     )}
 
