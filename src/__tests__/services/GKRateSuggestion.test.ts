@@ -172,16 +172,39 @@ describe('computeGKRateSuggestion', () => {
         expect(result).toBeNull();
     });
 
-    it('flags when implied rate meaningfully exceeds the configured rate', () => {
-        // 50k / 1M = 5% implied vs 4% configured → gap 1pp > threshold.
+    it('flags raise when implied rate meaningfully exceeds the configured rate', () => {
+        // 50k / 1M = 5% implied vs 4% configured → gap +1pp > threshold.
         const sim = [makeYear({ year: RETIREMENT_YEAR, livingExpenses: 50000, initialPortfolio: 1_000_000 })];
         const result = computeGKRateSuggestion(sim, makeAssumptions({ withdrawalRate: 4.0 }));
         expect(result).not.toBeNull();
+        expect(result!.direction).toBe('raise');
         expect(result!.configuredRate).toBe(4.0);
         expect(result!.impliedRate).toBeCloseTo(5.0, 5);
         expect(result!.suggestedRate).toBe(5.0);
         expect(result!.plannedSpending).toBe(50000);
         expect(result!.portfolioAtRetirement).toBe(1_000_000);
+    });
+
+    it('flags lower when the configured rate meaningfully exceeds the implied rate', () => {
+        // 30k / 1M = 3% implied vs 5% configured → gap -2pp, |gap| > threshold.
+        const sim = [makeYear({ year: RETIREMENT_YEAR, livingExpenses: 30000, initialPortfolio: 1_000_000 })];
+        const result = computeGKRateSuggestion(sim, makeAssumptions({ withdrawalRate: 5.0 }));
+        expect(result).not.toBeNull();
+        expect(result!.direction).toBe('lower');
+        expect(result!.configuredRate).toBe(5.0);
+        expect(result!.impliedRate).toBeCloseTo(3.0, 5);
+        expect(result!.suggestedRate).toBe(3.0);
+        expect(result!.plannedSpending).toBe(30000);
+        expect(result!.portfolioAtRetirement).toBe(1_000_000);
+    });
+
+    it('rounds the lower-direction suggested rate DOWN so it does not overshoot the plan', () => {
+        // 36_700 / 1M = 3.67% implied vs 5% configured → floor to 3.6%.
+        const sim = [makeYear({ year: RETIREMENT_YEAR, livingExpenses: 36700, initialPortfolio: 1_000_000 })];
+        const result = computeGKRateSuggestion(sim, makeAssumptions({ withdrawalRate: 5.0 }));
+        expect(result!.direction).toBe('lower');
+        expect(result!.impliedRate).toBeCloseTo(3.67, 5);
+        expect(result!.suggestedRate).toBe(3.6);
     });
 
     it('does not flag when the implied rate is within the threshold of the configured rate', () => {
@@ -191,22 +214,23 @@ describe('computeGKRateSuggestion', () => {
         expect(result).toBeNull();
     });
 
-    it('does not flag when the implied rate is below the configured rate', () => {
-        // 30k / 1M = 3% implied vs 4% configured.
-        const sim = [makeYear({ year: RETIREMENT_YEAR, livingExpenses: 30000, initialPortfolio: 1_000_000 })];
+    it('does not flag a too-high rate that is within the threshold band', () => {
+        // 39.8k / 1M = 3.98% implied vs 4% configured → gap -0.02pp, |gap| < 0.25pp.
+        const sim = [makeYear({ year: RETIREMENT_YEAR, livingExpenses: 39800, initialPortfolio: 1_000_000 })];
         const result = computeGKRateSuggestion(sim, makeAssumptions({ withdrawalRate: 4.0 }));
         expect(result).toBeNull();
     });
 
-    it('rounds the suggested rate UP to the nearest 0.1% so it covers the spend', () => {
+    it('rounds the raise-direction suggested rate UP to the nearest 0.1% so it covers the spend', () => {
         // 47_300 / 1M = 4.73% → ceil to 4.8%.
         const sim = [makeYear({ year: RETIREMENT_YEAR, livingExpenses: 47300, initialPortfolio: 1_000_000 })];
         const result = computeGKRateSuggestion(sim, makeAssumptions({ withdrawalRate: 4.0 }));
+        expect(result!.direction).toBe('raise');
         expect(result!.impliedRate).toBeCloseTo(4.73, 5);
         expect(result!.suggestedRate).toBe(4.8);
     });
 
-    it('does not over-bump a clean 0.1% rate that float arithmetic perturbs', () => {
+    it('does not over-bump a clean 0.1% rate that float arithmetic perturbs (raise)', () => {
         // 58_000 / 1M = 5.8% exactly, but (58000/1_000_000)*100 evaluates to
         // 5.800000000000001 in IEEE-754. A naive Math.ceil(x*10)/10 would bump
         // it to 5.9% (and disagree with the 5.8% the banner shows); the epsilon
@@ -214,7 +238,21 @@ describe('computeGKRateSuggestion', () => {
         const sim = [makeYear({ year: RETIREMENT_YEAR, livingExpenses: 58000, initialPortfolio: 1_000_000 })];
         const result = computeGKRateSuggestion(sim, makeAssumptions({ withdrawalRate: 4.0 }));
         expect(result).not.toBeNull();
+        expect(result!.direction).toBe('raise');
         expect(result!.suggestedRate).toBe(5.8);
+    });
+
+    it('does not under-drop a clean 0.1% rate that float arithmetic perturbs (lower)', () => {
+        // 29_000 / 1M = 2.9% exactly, but (29000/1_000_000)*100 evaluates to
+        // 2.9000000000000004 in IEEE-754. A naive Math.floor(x*10)/10 keeps 2.9
+        // here, but a value that lands just BELOW a tenth would drop a spurious
+        // 0.1%; the +epsilon guard keeps a clean tenth on the tenth. Set rate 5%
+        // → too-high → lower direction.
+        const sim = [makeYear({ year: RETIREMENT_YEAR, livingExpenses: 29000, initialPortfolio: 1_000_000 })];
+        const result = computeGKRateSuggestion(sim, makeAssumptions({ withdrawalRate: 5.0 }));
+        expect(result).not.toBeNull();
+        expect(result!.direction).toBe('lower');
+        expect(result!.suggestedRate).toBe(2.9);
     });
 
     it('uses the reconstructed pre-cap spending so a capped year still flags', () => {
@@ -229,16 +267,27 @@ describe('computeGKRateSuggestion', () => {
             }),
         ];
         const result = computeGKRateSuggestion(sim, makeAssumptions({ withdrawalRate: 4.0 }));
+        expect(result!.direction).toBe('raise');
         expect(result!.impliedRate).toBeCloseTo(5.2, 5);
         expect(result!.suggestedRate).toBe(5.2);
     });
 
-    it('honors a custom threshold argument', () => {
-        // 4.2% implied vs 4% set → gap 0.2pp. Passes default (0.25) → null; fails 0.1 → flagged.
+    it('honors a custom threshold argument (raise direction)', () => {
+        // 4.2% implied vs 4% set → gap +0.2pp. Passes default (0.25) → null; fails 0.1 → flagged.
         const sim = [makeYear({ year: RETIREMENT_YEAR, livingExpenses: 42000, initialPortfolio: 1_000_000 })];
         expect(computeGKRateSuggestion(sim, makeAssumptions({ withdrawalRate: 4.0 }))).toBeNull();
         const flagged = computeGKRateSuggestion(sim, makeAssumptions({ withdrawalRate: 4.0 }), 0.1);
         expect(flagged).not.toBeNull();
+        expect(flagged!.direction).toBe('raise');
+    });
+
+    it('honors a custom threshold argument (lower direction)', () => {
+        // 3.8% implied vs 4% set → gap -0.2pp. Passes default (0.25) → null; fails 0.1 → flagged.
+        const sim = [makeYear({ year: RETIREMENT_YEAR, livingExpenses: 38000, initialPortfolio: 1_000_000 })];
+        expect(computeGKRateSuggestion(sim, makeAssumptions({ withdrawalRate: 4.0 }))).toBeNull();
+        const flagged = computeGKRateSuggestion(sim, makeAssumptions({ withdrawalRate: 4.0 }), 0.1);
+        expect(flagged).not.toBeNull();
+        expect(flagged!.direction).toBe('lower');
     });
 
     it('exposes the default threshold constant', () => {

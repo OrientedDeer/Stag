@@ -186,19 +186,39 @@ export default function AssumptionTab() {
                         )}
                     </div>
 
-                    {/* GK initial-rate suggestion: planned spending implies a higher rate.
-                        computeGKRateSuggestion already returns null for any non-GK strategy,
-                        so a non-null suggestion implies Guyton-Klinger is active. */}
+                    {/* GK initial-rate suggestion: planned spending implies a different rate
+                        than the one set. computeGKRateSuggestion already returns null for any
+                        non-GK strategy, so a non-null suggestion implies Guyton-Klinger is active.
+                        `direction` distinguishes too-low ('raise') from too-high ('lower'). */}
                     {gkRateSuggestion && (
-                        <AlertBanner severity="warning" size="sm" title="Your spending implies a higher initial rate">
-                            <p>
-                                Your year-1 retirement spending works out to about{' '}
-                                <span className="font-semibold">{gkRateSuggestion.impliedRate.toFixed(1)}%</span> of your
-                                portfolio at retirement — above your set rate of{' '}
-                                <span className="font-semibold">{gkRateSuggestion.configuredRate.toFixed(1)}%</span>.
-                                Guyton-Klinger will cap spending to the lower rate, which shows up as amber budget-cap
-                                markers throughout retirement. Consider raising your initial rate.
-                            </p>
+                        <AlertBanner
+                            severity="warning"
+                            size="sm"
+                            title={
+                                gkRateSuggestion.direction === 'raise'
+                                    ? 'Your spending implies a higher initial rate'
+                                    : 'Your spending implies a lower initial rate'
+                            }
+                        >
+                            {gkRateSuggestion.direction === 'raise' ? (
+                                <p>
+                                    Your year-1 retirement spending works out to about{' '}
+                                    <span className="font-semibold">{gkRateSuggestion.impliedRate.toFixed(1)}%</span> of your
+                                    portfolio at retirement — above your set rate of{' '}
+                                    <span className="font-semibold">{gkRateSuggestion.configuredRate.toFixed(1)}%</span>.
+                                    Guyton-Klinger will cap spending to the lower rate, which shows up as amber budget-cap
+                                    markers throughout retirement. Consider raising your initial rate.
+                                </p>
+                            ) : (
+                                <p>
+                                    Your year-1 retirement spending only works out to about{' '}
+                                    <span className="font-semibold">{gkRateSuggestion.impliedRate.toFixed(1)}%</span> of your
+                                    portfolio at retirement — below your set rate of{' '}
+                                    <span className="font-semibold">{gkRateSuggestion.configuredRate.toFixed(1)}%</span>.
+                                    Guyton-Klinger's prosperity guardrail will keep boosting spending above your planned
+                                    budget to hit the higher rate. Consider lowering your initial rate.
+                                </p>
+                            )}
                             <button
                                 onClick={() => dispatch({
                                     type: 'UPDATE_INVESTMENTS',

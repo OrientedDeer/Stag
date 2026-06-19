@@ -14,6 +14,14 @@ import { sumInvestedAssets } from "../components/Objects/Accounts/accountUtils";
 export const GK_RATE_SUGGESTION_THRESHOLD_PP = 0.25;
 
 export interface GKRateSuggestion {
+    /**
+     * Which way the configured rate is off relative to planned spending:
+     * - `'raise'`: implied rate is higher than configured — the rate is too LOW,
+     *   so Guyton-Klinger caps spending (amber budget-cap markers).
+     * - `'lower'`: implied rate is lower than configured — the rate is too HIGH,
+     *   so the prosperity guardrail keeps boosting spending above the plan.
+     */
+    direction: 'raise' | 'lower';
     /** Configured Guyton-Klinger initial withdrawal rate (%), e.g. 4. */
     configuredRate: number;
     /**
@@ -21,7 +29,11 @@ export interface GKRateSuggestion {
      * implies against the portfolio at retirement.
      */
     impliedRate: number;
-    /** `impliedRate` rounded to a sensible apply value (0.1%). */
+    /**
+     * `impliedRate` rounded to a sensible apply value (0.1%). Rounded UP for the
+     * `'raise'` case (so the rate covers the planned spend) and DOWN for the
+     * `'lower'` case (so the rate doesn't overshoot it).
+     */
     suggestedRate: number;
     /** Year-1 retirement planned (pre-cap) living expenses used as numerator. */
     plannedSpending: number;
@@ -85,13 +97,17 @@ export function getRetirementYearSpendingAndPortfolio(
  *
  * The implied initial rate = year-1 retirement planned spending ÷ portfolio at
  * retirement. When Guyton-Klinger (guardrails) is the active strategy and that
- * implied rate meaningfully exceeds the configured initial rate, the configured
- * rate is too low: the planned budget can't be funded at that rate, so the
- * simulation caps spending and stamps amber budget-cap markers throughout
- * retirement.
+ * implied rate diverges meaningfully from the configured initial rate, the
+ * configured rate is off in one of two ways:
+ *  - implied > configured (`direction: 'raise'`): the rate is too LOW — the
+ *    planned budget can't be funded at that rate, so the simulation caps
+ *    spending and stamps amber budget-cap markers throughout retirement.
+ *  - implied < configured (`direction: 'lower'`): the rate is too HIGH — the
+ *    prosperity guardrail keeps firing and boosts spending above the plan.
  *
  * Returns the suggestion only when it's worth surfacing (GK active and the gap
- * exceeds `GK_RATE_SUGGESTION_THRESHOLD_PP`); otherwise returns `null`.
+ * in EITHER direction exceeds `GK_RATE_SUGGESTION_THRESHOLD_PP`); otherwise
+ * returns `null`.
  *
  * Pure: takes simulation results + assumptions, no React/context.
  */
@@ -113,19 +129,32 @@ export function computeGKRateSuggestion(
 
     const impliedRate = (plannedSpending / portfolioAtRetirement) * 100;
     const configuredRate = assumptions.investments.withdrawalRate;
+    const gap = impliedRate - configuredRate;
 
-    // Only flag when the implied rate meaningfully exceeds the configured rate.
-    if (impliedRate - configuredRate <= thresholdPP) {
+    // Only flag when the implied rate meaningfully DIVERGES from the configured
+    // rate — in either direction. Within the threshold band the rates agree
+    // closely enough that GK won't systematically cap or boost spending.
+    if (Math.abs(gap) <= thresholdPP) {
         return null;
     }
 
-    // Round up to the nearest 0.1% so the applied rate actually covers the
-    // implied spend (rounding down could leave it fractionally short). Subtract
-    // a tiny epsilon first so binary-float noise (e.g. 5.8 arriving as
-    // 5.800000000000001) doesn't bump a clean tenth up an extra 0.1%.
-    const suggestedRate = Math.ceil(impliedRate * 10 - 1e-9) / 10;
+    const direction: 'raise' | 'lower' = gap > 0 ? 'raise' : 'lower';
+
+    // Round to the nearest 0.1%, biased so the applied rate lands on the safe
+    // side of the implied spend:
+    //  - 'raise' (rate too low): round UP so the rate covers the implied spend
+    //    (rounding down could leave it fractionally short).
+    //  - 'lower' (rate too high): round DOWN so the rate doesn't overshoot the
+    //    plan and keep the prosperity guardrail firing.
+    // The ±1e-9 epsilon absorbs IEEE-754 noise (e.g. 5.8 arriving as
+    // 5.800000000000001) so a clean tenth isn't nudged an extra 0.1%.
+    const suggestedRate =
+        direction === 'raise'
+            ? Math.ceil(impliedRate * 10 - 1e-9) / 10
+            : Math.floor(impliedRate * 10 + 1e-9) / 10;
 
     return {
+        direction,
         configuredRate,
         impliedRate,
         suggestedRate,
