@@ -69,6 +69,25 @@ describe('generateCandidateWithdrawalOrders', () => {
             for (const item of c) expect(item.name).toBeTruthy();
         }
     });
+
+    it('NEVER spends Roth or Traditional before cash/brokerage in any candidate (guards the bogus-gain mix bug)', () => {
+        // Regression guard for the "+$5.4M Roth-before-brokerage" artifact: an economically-unsound
+        // order that PRESERVES taxable brokerage (spending a tax-advantaged bucket first) ends the
+        // horizon brokerage-heavy, and the ONE shared ruler then mis-compares that mix into a spurious
+        // gain. The generator must never emit such an order — cash + taxable brokerage are always spent
+        // before BOTH tax-advantaged buckets; only the Roth-vs-Traditional relative order is a real
+        // lever. The other tests assert good candidates are PRESENT; this asserts bad ones are ABSENT,
+        // so re-adding a roth-before-brokerage sequence to TYPE_SEQUENCES would fail here (not pass green).
+        const cands = generateCandidateWithdrawalOrders(accts(), userOrder);
+        expect(cands.length).toBeGreaterThan(0);
+        for (const c of cands) {
+            const pos = (id: string) => c.findIndex(x => x.accountId === id);
+            expect(pos('cash')).toBeLessThan(pos('roth'));
+            expect(pos('cash')).toBeLessThan(pos('trad'));
+            expect(pos('brk')).toBeLessThan(pos('roth'));
+            expect(pos('brk')).toBeLessThan(pos('trad'));
+        }
+    });
 });
 
 describe('joint optimizer wires through runSimulationWithOptimization', { timeout: 240_000 }, () => {
