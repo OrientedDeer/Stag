@@ -96,8 +96,14 @@ function classifyAccount(account: AnyAccount): WithdrawalAccountType {
 /**
  * Is this account a SELLABLE asset — can the engine raise cash from it to cover a
  * spending shortfall? True for savings, brokerage, Roth/Traditional, ESPP and RSU;
- * FALSE for property and debt (illiquid / not a positive drawable asset). Used by
- * #111's "use an account the order ignored" fallback tier.
+ * FALSE for property and debt (illiquid / not a positive drawable asset).
+ *
+ * When Tax Optimization is ON, the algorithm owns the withdrawal order and every
+ * sellable account is a first-class participant — an account absent from the
+ * user's manual order is not a last resort but a full candidate. This function's
+ * "fallback tier" role therefore applies only to the NON-tax-opt manual-order path,
+ * where it prevents the engine from fabricating deficit debt before tapping a real
+ * asset the order happened to omit.
  *
  * NOTE: classifyAccount() can't gate this — its default branch returns 'savings'
  * for ANY account, so a PropertyAccount/DebtAccount would be miscounted sellable.
@@ -276,6 +282,38 @@ export function createAccountSnapshot(account: AnyAccount, snapshotDate?: Date):
 }
 
 /**
+ * Snapshot each account in `accounts` and bucket the results into three
+ * categories using the standard withdrawal-order rules:
+ *   - savings:       SavedAccount instances (penalty-free, moved after non-penalized)
+ *   - penalized:     accounts that incur an early withdrawal penalty at `currentAge`
+ *   - nonPenalized:  everything else (brokerage, Roth, Traditional past penalty age, etc.)
+ *
+ * Input order is preserved within each bucket. Callers flatten as
+ * `[...nonPenalized, ...savings, ...penalized]` to produce the canonical
+ * non-penalized → savings → penalized sequence.
+ */
+function categorizeSnapshots(
+    accounts: AnyAccount[],
+    snapshotDate: Date | undefined,
+    currentAge: number,
+): { nonPenalized: AccountBalanceSnapshot[]; savings: AccountBalanceSnapshot[]; penalized: AccountBalanceSnapshot[] } {
+    const nonPenalized: AccountBalanceSnapshot[] = [];
+    const savings: AccountBalanceSnapshot[] = [];
+    const penalized: AccountBalanceSnapshot[] = [];
+    for (const account of accounts) {
+        const snapshot = createAccountSnapshot(account, snapshotDate);
+        if (snapshot.accountType === 'savings') {
+            savings.push(snapshot);
+        } else if (hasEarlyWithdrawalPenalty(snapshot.accountType, currentAge)) {
+            penalized.push(snapshot);
+        } else {
+            nonPenalized.push(snapshot);
+        }
+    }
+    return { nonPenalized, savings, penalized };
+}
+
+/**
  * Create snapshots for all accounts in withdrawal order.
  * Savings is moved to end of non-penalized accounts.
  */
@@ -287,63 +325,45 @@ export function createOrderedSnapshots(
     /**
      * #111: when true, append snapshots for every SELLABLE account the
      * `withdrawalOrder` does NOT list (savings / brokerage / Roth / Traditional /
-     * ESPP / RSU — never property or debt) as a last-resort tier AFTER the ordered
+     * ESPP / RSU — never property or debt) as a safety-net tier AFTER the ordered
      * accounts. Lets a retirement drawdown reach a balance the configured order
      * ignores (e.g. a Traditional account left out of a Roth-only order) before the
      * engine fabricates deficit debt. Off by default — the normal/working-year path
      * and the scenario unit tests are unchanged — and a no-op when the order already
      * lists every account.
+     *
+     * Note: when Tax Optimization is ON, the algorithm owns the withdrawal order and
+     * every sellable account is already a first-class participant. This fallback tier
+     * is therefore the safety net specifically for the NON-tax-opt manual-order path.
      */
     includeUnorderedSellable: boolean = false,
 ): AccountBalanceSnapshot[] {
-    const snapshots: AccountBalanceSnapshot[] = [];
-    const savingsSnapshots: AccountBalanceSnapshot[] = [];
-    const penalizedSnapshots: AccountBalanceSnapshot[] = [];
-
     // Use mid-year date for ESPP disposition calculations
     const snapshotDate = year ? new Date(year, 5, 15) : undefined;
 
-    // Process in user's configured order
+    // Ordered tier: resolve withdrawalOrder to accounts (skip unknown ids), collect
+    // the ids seen so the fallback tier can filter to the remainder.
     const orderedIds = new Set<string>();
+    const orderedAccounts: AnyAccount[] = [];
     for (const bucket of withdrawalOrder) {
         const account = accounts.find(a => a.id === bucket.accountId);
         if (!account) continue;
         orderedIds.add(account.id);
-
-        const snapshot = createAccountSnapshot(account, snapshotDate);
-
-        // Separate into categories
-        if (snapshot.accountType === 'savings') {
-            savingsSnapshots.push(snapshot);
-        } else if (hasEarlyWithdrawalPenalty(snapshot.accountType, currentAge)) {
-            penalizedSnapshots.push(snapshot);
-        } else {
-            snapshots.push(snapshot);
-        }
+        orderedAccounts.push(account);
     }
 
+    const { nonPenalized, savings, penalized } = categorizeSnapshots(orderedAccounts, snapshotDate, currentAge);
     // Final order: non-penalized → savings → penalized
-    const orderedResult = [...snapshots, ...savingsSnapshots, ...penalizedSnapshots];
+    const orderedResult = [...nonPenalized, ...savings, ...penalized];
     if (!includeUnorderedSellable) return orderedResult;
 
     // #111 fallback tier: any sellable account the order didn't list, categorized
     // the same way (penalty-free → savings → penalized) and appended AFTER the
-    // user's entire order — a last resort so the drawdown liquidates a real asset
+    // user's entire order — a safety net so the drawdown liquidates a real asset
     // before processDeficitDebt can fabricate debt.
-    const fbNonPenalized: AccountBalanceSnapshot[] = [];
-    const fbSavings: AccountBalanceSnapshot[] = [];
-    const fbPenalized: AccountBalanceSnapshot[] = [];
-    for (const account of accounts) {
-        if (orderedIds.has(account.id) || !isSellableAccount(account)) continue;
-        const snapshot = createAccountSnapshot(account, snapshotDate);
-        if (snapshot.accountType === 'savings') {
-            fbSavings.push(snapshot);
-        } else if (hasEarlyWithdrawalPenalty(snapshot.accountType, currentAge)) {
-            fbPenalized.push(snapshot);
-        } else {
-            fbNonPenalized.push(snapshot);
-        }
-    }
+    const fallbackAccounts = accounts.filter(a => !orderedIds.has(a.id) && isSellableAccount(a));
+    const { nonPenalized: fbNonPenalized, savings: fbSavings, penalized: fbPenalized } =
+        categorizeSnapshots(fallbackAccounts, snapshotDate, currentAge);
     return [...orderedResult, ...fbNonPenalized, ...fbSavings, ...fbPenalized];
 }
 
