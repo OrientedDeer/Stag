@@ -779,6 +779,25 @@ function computeYearTax(
 }
 
 /**
+ * Grow `evaluateCell`'s pre-growth end-of-year balances to next-year
+ * (post-growth) balances at the deterministic per-account rates — the legacy
+ * single-rate transition the deterministic backward sweep and forward extract
+ * use to look up V[t+1]. The stochastic solve (#98) does NOT call this; it grows
+ * `tradPre`/`rothPre` by each return-quadrature node instead. Kept in one place
+ * so the three deterministic call sites stay in lock-step.
+ */
+function growBalance(
+    tradPre: number,
+    rothPre: number,
+    ctx: DPYearContext,
+): { tradNext: number; rothNext: number } {
+    return {
+        tradNext: tradPre * (1 + ctx.growthRate),
+        rothNext: rothPre * (1 + ctx.rothGrowthRate),
+    };
+}
+
+/**
  * Single-cell evaluation (3D-ready): given (tradBalance, rothBalance,
  * conversion, ctx), simulate the year's spending waterfall and tax in
  * one shot.
@@ -797,7 +816,10 @@ function computeYearTax(
  * - `yearTax`: actual federal + state + ACA tax (no infeasibility penalty;
  *   the solver applies that separately via `unmetNeed`).
  * - `conversionMarginal`: yearTax − taxBaseline (diagnostic only).
- * - `tradNext`, `rothNext`: end-of-year balances after flows + growth.
+ * - `tradPre`, `rothPre`: end-of-year balances after flows but BEFORE growth.
+ *   Both the stochastic backward sweep (grows them per quadrature node) and
+ *   the deterministic callers (grow them once at the per-account rate via
+ *   `growBalance`) take it from here — `evaluateCell` no longer grows them.
  * - `tradSpending`, `fromRoth`, `fromBrokerage`: waterfall breakdown for
  *   diagnostics.
  * - `unmetNeed`: dollars of `totalNeed` the waterfall couldn't source
@@ -832,15 +854,6 @@ function evaluateCell(
      * results are numerically identical.
      */
     precomputedInitialTax?: number,
-    /**
-     * When true, skip growing the pre-growth end-of-year balances — return
-     * `tradNext = tradPre` and `rothNext = rothPre` (the two multiplies). The
-     * STOCHASTIC backward sweep (#98) discards tradNext/rothNext (it grows
-     * `tradPre`/`rothPre` by each return-quadrature node instead), so the
-     * deterministic growth is dead work on that hot path. Deterministic callers
-     * read tradNext/rothNext and must NOT pass this (default false ⇒ unchanged).
-     */
-    skipGrowth: boolean = false,
 ): {
     yearTax: number;
     conversionMarginal: number;
@@ -848,10 +861,6 @@ function evaluateCell(
     tradPre: number;
     /** End-of-year Roth BEFORE growth (= roth + conversion − fromRoth, floored at 0). */
     rothPre: number;
-    /** `tradPre` grown by the deterministic per-account rate (legacy single-rate transition). */
-    tradNext: number;
-    /** `rothPre` grown by the deterministic per-account rate (legacy single-rate transition). */
-    rothNext: number;
     tradSpending: number;
     fromRoth: number;
     fromBrokerage: number;
@@ -935,22 +944,18 @@ function evaluateCell(
 
     const conversionMarginal = Math.max(0, yearTax - taxBaseline);
     // Pre-growth end-of-year balances. The deterministic transition grows them
-    // by the per-account rates below; the stochastic solve (#98) instead grows
-    // `tradPre`/`rothPre` by each return-quadrature node and takes the expectation.
+    // by the per-account rates (via `growBalance` at the call site); the
+    // stochastic solve (#98) instead grows them by each return-quadrature node
+    // and takes the expectation. evaluateCell returns the pre-growth balances
+    // and leaves growth to whichever branch consumes them.
     const tradPre = Math.max(0, tradBalance - conversion - rmd - tradSpending);
     const rothPre = Math.max(0, rothBalance + conversion - fromRoth);
-    // The stochastic sweep (skipGrowth) grows tradPre/rothPre per quadrature node
-    // and ignores these, so skip the two multiplies on that hot path.
-    const tradNext = skipGrowth ? tradPre : tradPre * (1 + ctx.growthRate);
-    const rothNext = skipGrowth ? rothPre : rothPre * (1 + ctx.rothGrowthRate);
 
     return {
         yearTax,
         conversionMarginal,
         tradPre,
         rothPre,
-        tradNext,
-        rothNext,
         tradSpending,
         fromRoth,
         fromBrokerage,
@@ -1641,9 +1646,11 @@ export function planConversionsViaDP(
     // Backward sweep — 3D state (year, tradIdx, rothIdx).
     //
     // For each (t, tradIdx, rothIdx) cell, iterate over conversion buckets,
-    // evaluate the cell to get (yearTax, tradNext, rothNext, unmetNeed),
-    // then look up V[t+1] at (tradNext, rothNext) via bilinear interpolation
-    // in trad and roth. The minimum total-cost conversion wins. The stochastic
+    // evaluate the cell to get (yearTax, tradPre, rothPre, unmetNeed), grow the
+    // pre-growth balances to next-year (deterministic: growBalance; stochastic:
+    // per quadrature node), then look up V[t+1] at those grown balances via
+    // bilinear interpolation in trad and roth. The minimum total-cost conversion
+    // (max-wealth: maximum) wins. The stochastic
     // solve (#98) instead takes the expected future over the return quadrature
     // and records the winning conversion into `policyTables[t]`.
     //
@@ -1732,12 +1739,12 @@ export function planConversionsViaDP(
 
                 for (let ci = 0; ci <= CONVERSION_BUCKETS; ci++) {
                     const c = Math.min(ci * dCByYear[t], cMax);
-                    // skipGrowth only when stochastic (quad present): that branch reads
-                    // tradPre/rothPre and grows them per node, so tradNext/rothNext are
-                    // dead. The deterministic branch (quad null) reads tradNext/rothNext,
-                    // so it must keep growth → byte-for-byte unchanged.
-                    const { yearTax, tradPre, rothPre, tradNext, rothNext, unmetNeed, fromBrokerage, ordinarySurplus } =
-                        evaluateCell(b, r, c, ctx, taxBaseline, initialTaxByCi[ci], !!quad);
+                    // evaluateCell returns the pre-growth balances; the stochastic
+                    // branch (quad present) grows them per quadrature node, the
+                    // deterministic branch (quad null) grows them once via growBalance
+                    // below — byte-for-byte unchanged from the prior tradNext/rothNext.
+                    const { yearTax, tradPre, rothPre, unmetNeed, fromBrokerage, ordinarySurplus } =
+                        evaluateCell(b, r, c, ctx, taxBaseline, initialTaxByCi[ci]);
 
                     // Future value: deterministic per-account lookup, or — when a
                     // return distribution is supplied (#98) — the expectation over
@@ -1757,6 +1764,7 @@ export function planConversionsViaDP(
                             );
                         }
                     } else {
+                        const { tradNext, rothNext } = growBalance(tradPre, rothPre, ctx);
                         futureCost = interpV2D(
                             Vnext, tradNext, rothNext,
                             dB_next, dRoth_next, TRAD_BUCKETS, ROTH_BUCKETS,
@@ -1847,8 +1855,8 @@ export function planConversionsViaDP(
             const cRaw = lookupConversionPolicy(policy, ctx.year, trad, roth) ?? 0;
             const c = Math.min(cRaw, cMaxFwd);
             // Stochastic central walk reads only tradPre/rothPre (it steps the
-            // trajectory at the mean rate below), so skip the dead growth multiplies.
-            const { tradPre, rothPre } = evaluateCell(trad, roth, c, ctx, taxBaseline, undefined, true);
+            // trajectory at the mean rate below); evaluateCell no longer grows them.
+            const { tradPre, rothPre } = evaluateCell(trad, roth, c, ctx, taxBaseline);
             conversionsByYear.set(ctx.year, c);
             perYearAmounts.push({ year: ctx.year, age: ctx.age, amount: c, estimatedTradBalance: trad });
             // Lightweight per-year debug for the stochastic mean path (#98): the
@@ -1910,8 +1918,9 @@ export function planConversionsViaDP(
 
         for (let ci = 0; ci <= CONVERSION_BUCKETS; ci++) {
             const c = Math.min(ci * dCByYear[t], cMax);
-            const { yearTax, conversionMarginal, tradNext, rothNext, tradSpending, fromRoth, fromBrokerage, unmetNeed, ordinarySurplus } =
+            const { yearTax, conversionMarginal, tradPre, rothPre, tradSpending, fromRoth, fromBrokerage, unmetNeed, ordinarySurplus } =
                 evaluateCell(trad, roth, c, ctx, taxBaseline);
+            const { tradNext, rothNext } = growBalance(tradPre, rothPre, ctx);
 
             const futureCost = interpV2D(
                 Vnext, tradNext, rothNext,
@@ -2006,8 +2015,9 @@ export function planConversionsViaDP(
         const costCurve: DPYearTrace['costCurve'] = [];
         for (const sampleC of sampleCs) {
             const r = evaluateCell(trad, roth, sampleC, ctx, taxBaseline);
+            const { tradNext, rothNext } = growBalance(r.tradPre, r.rothPre, ctx);
             const fc = interpV2D(
-                Vnext, r.tradNext, r.rothNext,
+                Vnext, tradNext, rothNext,
                 dB_next, dRoth_next, TRAD_BUCKETS, ROTH_BUCKETS,
             );
             const yc = yearAccumuland(r); // shared accumuland (#12)
@@ -2016,15 +2026,15 @@ export function planConversionsViaDP(
             curveParts.push(
                 `c=${fmt$(sampleC)}→total=${fmt$(total)}` +
                 ` (yearTax=${fmt$(r.yearTax)}, dFut=${fmt$(dFut)}, ` +
-                `tradNext=${fmt$(r.tradNext)}, rothNext=${fmt$(r.rothNext)})`,
+                `tradNext=${fmt$(tradNext)}, rothNext=${fmt$(rothNext)})`,
             );
             costCurve.push({
                 c: sampleC,
                 yearTax: r.yearTax,
                 discountedFuture: dFut,
                 totalCost: total,
-                tradNext: r.tradNext,
-                rothNext: r.rothNext,
+                tradNext,
+                rothNext,
             });
         }
         debugLines.push(
