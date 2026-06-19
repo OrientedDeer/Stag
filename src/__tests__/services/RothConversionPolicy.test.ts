@@ -24,29 +24,21 @@ import {
     DPYearContext,
     DPObjectiveOptions,
 } from '../../services/simulation/RothConversionDP';
-import * as TaxService from '../../components/Objects/Taxes/TaxService';
+import { makeDPContext } from './simulation/dpFixtures';
 
-const FED = TaxService.getTaxParameters(2025, 'Single', 'federal')!;
-
-/** Build a synthetic retiree-year context (low fixed income, pre-RMD). */
+/**
+ * Build a synthetic retiree-year context (low fixed income, pre-RMD). This
+ * suite's profile adds a spending need + brokerage to fund conversion tax on
+ * top of the shared `makeDPContext` field list
+ * (src/__tests__/services/simulation/dpFixtures.ts) — single / 2025 params /
+ * 5% growth are the shared defaults, so only the spending fields differ.
+ */
 function makeCtx(year: number, age: number, overrides: Partial<DPYearContext> = {}): DPYearContext {
-    return {
-        year,
-        age,
-        nonSSOrdinaryIncomeExclRMD: 0,
-        ssBenefits: 0,
-        ltcgIncome: 0,
-        filingStatus: 'Single',
-        fedParams: FED,
-        stateParams: null,
-        baselineTradWithdrawal: 0,
+    return makeDPContext(year, age, {
         spendingNeed: 40_000,
         baselineBrokerageAvailable: 300_000,
-        rothGrowthRate: 0.05,
-        growthRate: 0.05,
-        rmdDivisor: 0,
         ...overrides,
-    };
+    });
 }
 
 /** 12-year pre-RMD horizon, large Traditional, brokerage to fund conversion tax. */
@@ -109,9 +101,12 @@ describe('#98 stochastic conversion policy', () => {
         const firstYear = 2025;
         const fromSchedule = stoch.conversionsByYear.get(firstYear) ?? 0;
         const fromLookup = lookupConversionPolicy(stoch.policy!, firstYear, START_TRAD, START_ROTH);
+        // year 2025 is always in the policy map by construction, so this must be
+        // defined; assert the numeric closeness on the non-null value directly
+        // (no `?? 0` fallback, which would silently pass a missing entry).
         expect(fromLookup).toBeDefined();
         // Same interpolation, same state, no binding clamp at year 0 ⇒ within $1.
-        expect(Math.abs((fromLookup ?? 0) - fromSchedule)).toBeLessThanOrEqual(1);
+        expect(Math.abs(fromLookup! - fromSchedule)).toBeLessThanOrEqual(1);
     });
 
     it('a volatile solve still produces a complete policy and converts', { timeout: 60_000 }, () => {
@@ -122,10 +117,20 @@ describe('#98 stochastic conversion policy', () => {
         expect(stoch.policy).toBeDefined();
         expect(stoch.policy!.byYear.size).toBe(12);
         expect(totalConverted(stoch.conversionsByYear)).toBeGreaterThan(0);
-        // Policy lookup is finite and non-negative across the reachable state grid.
-        const c = lookupConversionPolicy(stoch.policy!, 2027, 700_000, 120_000);
-        expect(c).toBeDefined();
-        expect(Number.isFinite(c!)).toBe(true);
-        expect(c!).toBeGreaterThanOrEqual(0);
+
+        // Load-bearing self-consistency (vs. the old isFinite/≥0 check, which a
+        // non-negative interpolation table satisfies structurally): the emitted
+        // central schedule must be an actual walk of the stored policy table, so
+        // looking the policy up at the FIRST-YEAR starting state reproduces the
+        // schedule's first-year conversion — even under volatility. A divergent
+        // inline forward computation would break this within the $1 tolerance.
+        const firstYear = 2025;
+        const fromSchedule = stoch.conversionsByYear.get(firstYear);
+        expect(fromSchedule).toBeDefined();
+        const fromLookup = lookupConversionPolicy(stoch.policy!, firstYear, START_TRAD, START_ROTH);
+        expect(fromLookup).toBeDefined();
+        expect(Math.abs(fromLookup! - fromSchedule!)).toBeLessThanOrEqual(1);
+        // And the lookup honors the RMD-aware ceiling clamp (≤ entering trad).
+        expect(fromLookup!).toBeLessThanOrEqual(START_TRAD);
     });
 });

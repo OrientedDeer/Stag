@@ -14,34 +14,29 @@ import {
 import { TAX_DATABASE } from '../../../data/TaxData';
 import { getIRMAASchedule } from '../../../data/IRMAAData';
 import { defaultAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { makeDPContext } from './dpFixtures';
 
 // ---------------------------------------------------------------------------
 // Synthetic context builders
 // ---------------------------------------------------------------------------
 
+// This suite's profile: MFJ, 2024 federal params, modest fixed ordinary income,
+// no other expenses (so DP optimizes against tax alone), no brokerage, Roth
+// grows at the same 7% rate as trad. Built on the shared `makeDPContext` field
+// list (src/__tests__/services/simulation/dpFixtures.ts) so a DPYearContext
+// shape change updates one place. year/age default to 2030/65 here; the shared
+// helper takes them positionally.
 function makeContext(overrides: Partial<DPYearContext> = {}): DPYearContext {
-    const fedParams = TAX_DATABASE.federal[2024]['Married Filing Jointly'];
-    return {
-        year: 2030,
-        age: 65,
+    const { year = 2030, age = 65, ...rest } = overrides;
+    return makeDPContext(year, age, {
         nonSSOrdinaryIncomeExclRMD: 30_000,
-        ssBenefits: 0,
-        ltcgIncome: 0,
         filingStatus: 'Married Filing Jointly',
-        fedParams,
-        stateParams: null,
+        fedParams: TAX_DATABASE.federal[2024]['Married Filing Jointly'],
         acaOptions: undefined,
-        baselineTradWithdrawal: 0,
-        // Phase 2 fields. Synthetic defaults: no other expenses (so DP only
-        // optimizes against tax), no brokerage, Roth grows at the same rate
-        // as trad. Tests that exercise these paths can override.
-        spendingNeed: 0,
-        baselineBrokerageAvailable: 0,
         rothGrowthRate: 0.07,
         growthRate: 0.07,
-        rmdDivisor: 0,
-        ...overrides,
-    };
+        ...rest,
+    });
 }
 
 /** 30-year retirement, age 65 → 94. RMDs from 73 onward. */
