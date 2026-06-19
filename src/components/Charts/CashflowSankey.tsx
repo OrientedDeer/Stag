@@ -1,4 +1,5 @@
-import { memo, useMemo, useContext, useCallback, useState, useEffect, useRef } from 'react';
+import { memo, useMemo, useContext, useCallback, useState, useEffect, useRef, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { ResponsiveSankey } from '@nivo/sankey';
 import { AnyIncome } from '../Objects/Income/models';
 import { AnyExpense } from '../Objects/Expense/models';
@@ -15,20 +16,39 @@ import {
     SankeyRothConversion,
     SankeyTaxBreakdown,
     SankeyProvenanceItem,
+    SankeyProvenanceDirection,
 } from './cashflowSankeyData';
 
 export type { SankeyImbalance } from './cashflowSankeyData';
+
+/** Human-readable header for each provenance direction. */
+const DIRECTION_LABEL: Record<SankeyProvenanceDirection, string> = {
+    sources: 'Sources',
+    destinations: 'Destinations',
+    breakdown: 'Breakdown',
+};
+
+/** One-line hint under the header clarifying what the rows mean. */
+const DIRECTION_HINT: Record<SankeyProvenanceDirection, string> = {
+    sources: 'What flows in',
+    destinations: 'Where it flows',
+    breakdown: 'Sub-split of this node',
+};
 
 /** A node selected for the provenance drill-down panel. */
 interface SelectedSankeyNode {
     id: string;
     label: string;
     value: number;
+    /** Click position in viewport (client) coordinates; the popover anchors here. */
+    anchorX: number;
+    anchorY: number;
 }
 
 /**
  * The shape Nivo hands to the Sankey `onClick`. It fires for both nodes and
  * links; links carry `source`/`target`, which lets us filter to node clicks.
+ * `x/y/width/height` are the node's SVG bounds within the chart's inner area.
  */
 interface SankeyClickTarget {
     id?: string;
@@ -36,6 +56,10 @@ interface SankeyClickTarget {
     value?: number;
     source?: unknown;
     target?: unknown;
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
 }
 
 interface CashflowSankeyProps {
@@ -116,6 +140,11 @@ const CashflowSankeyInner = ({
         }
     }, [imbalances, onBalanceCheck]);
 
+    // Node ids that have a drill-down breakdown — used to render the clickable
+    // affordance (cursor + hover ring) on exactly those nodes. Declared before
+    // the early returns below so the hook order stays stable.
+    const drillableIds = useMemo(() => new Set(Object.keys(provenance)), [provenance]);
+
     const containerRef = useRef<HTMLDivElement>(null);
     const [containerWidth, setContainerWidth] = useState(800);
 
@@ -126,7 +155,7 @@ const CashflowSankeyInner = ({
     // (e.g. {}) and mint a fresh `data` object every render.
     const [selectedNode, setSelectedNode] = useState<SelectedSankeyNode | null>(null);
 
-    const handleNodeClick = useCallback((target: SankeyClickTarget) => {
+    const handleNodeClick = useCallback((target: SankeyClickTarget, event?: { clientX: number; clientY: number }) => {
         // Nivo's onClick fires for both nodes and links; links carry source/target.
         // Ignore link clicks — provenance is a node-level concept.
         if (!target || target.source || target.target || typeof target.id !== 'string') return;
@@ -136,10 +165,22 @@ const CashflowSankeyInner = ({
             return;
         }
         const id = target.id;
+
+        // Anchor the popover at the click point (viewport coords). If no event is
+        // available (e.g. a synthetic/test invocation), fall back to the centre of
+        // the chart container so the popover still appears tied to the chart.
+        let anchorX = event?.clientX ?? 0;
+        let anchorY = event?.clientY ?? 0;
+        if (event == null && containerRef.current) {
+            const rect = containerRef.current.getBoundingClientRect();
+            anchorX = rect.left + rect.width / 2;
+            anchorY = rect.top + rect.height / 2;
+        }
+
         setSelectedNode(prev =>
             prev?.id === id
                 ? null
-                : { id, label: target.label ?? id, value: target.value ?? 0 },
+                : { id, label: target.label ?? id, value: target.value ?? 0, anchorX, anchorY },
         );
     }, [provenance]);
 
@@ -199,7 +240,8 @@ const CashflowSankeyInner = ({
                     data={data}
                     margin={margins}
                     align="justify"
-                    onClick={(node: SankeyClickTarget) => handleNodeClick(node)}
+                    onClick={(node: SankeyClickTarget, event) => handleNodeClick(node, event)}
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Nivo's colors accessor omits `color`/`label` from its param type even though they're populated at call time; `any` avoids fighting the library's types.
                     colors={(node: any) => resolve(node.color)}
                     nodeOpacity={1}
                     nodeThickness={isNarrow ? 12 : 15}
@@ -210,10 +252,23 @@ const CashflowSankeyInner = ({
                     linkOpacity={0.15}
                     labelTextColor="var(--c-content-emphasis)"
                     valueFormat={currencyFormatter}
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see colors accessor above; Nivo omits `label` from the param type.
                     label={(node: any) => node.label}
                     labelPosition="outside"
                     labelPadding={isNarrow ? 8 : 16}
                     sort="input"
+                    // Insert a custom layer above the nodes that draws the
+                    // drill-down affordance (pointer cursor + hover ring) and
+                    // handles clicks for nodes that have a breakdown.
+                    layers={['links', 'nodes', 'labels', 'legends', (props: { nodes: readonly DrillableNode[] }) => (
+                        <DrillableNodeOverlay
+                            nodes={props.nodes}
+                            drillableIds={drillableIds}
+                            ringColor={resolve('var(--c-accent-soft)')}
+                            formatValue={currencyFormatter}
+                            onNodeClick={handleNodeClick}
+                        />
+                    )]}
                     nodeTooltip={({ node }) => (
                         <div className="bg-surface-raised p-3 rounded-lg border border-border-default shadow-2xl max-w-87.5">
                             <div className="flex items-center gap-2 mb-1">
@@ -247,7 +302,10 @@ const CashflowSankeyInner = ({
                 <SankeyDetailPanel
                     label={selectedNode.label}
                     total={selectedNode.value}
-                    items={selectedProvenance}
+                    direction={selectedProvenance.direction}
+                    items={selectedProvenance.items}
+                    anchorX={selectedNode.anchorX}
+                    anchorY={selectedNode.anchorY}
                     formatValue={currencyFormatter}
                     onClose={() => setSelectedNode(null)}
                 />
@@ -256,37 +314,187 @@ const CashflowSankeyInner = ({
     );
 };
 
+/** The subset of Nivo's computed node datum the overlay needs. */
+interface DrillableNode {
+    id: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    label: string;
+    value: number;
+}
+
+interface DrillableNodeOverlayProps {
+    nodes: readonly DrillableNode[];
+    drillableIds: Set<string>;
+    ringColor: string;
+    formatValue: (value: number) => string;
+    onNodeClick: (target: SankeyClickTarget, event: { clientX: number; clientY: number }) => void;
+}
+
+/**
+ * Transparent SVG overlay drawn above the Sankey nodes. For nodes that have a
+ * drill-down breakdown it shows a pointer cursor and a hover ring, and forwards
+ * clicks to open the detail panel — giving users an affordance for which nodes
+ * are clickable. Non-drillable nodes are skipped entirely (no overlay rect over
+ * them), so they keep their plain cursor and Nivo's own hover tooltip.
+ *
+ * Since the overlay rect sits on top of the node it intercepts the node's hover,
+ * so a native <title> restates the value and signals clickability on hover.
+ */
+const DrillableNodeOverlay = ({ nodes, drillableIds, ringColor, formatValue, onNodeClick }: DrillableNodeOverlayProps) => {
+    const [hoveredId, setHoveredId] = useState<string | null>(null);
+    return (
+        <>
+            {nodes.filter(n => drillableIds.has(n.id)).map(node => {
+                const isHovered = hoveredId === node.id;
+                return (
+                    <rect
+                        key={node.id}
+                        x={node.x - 2}
+                        y={node.y - 2}
+                        width={node.width + 4}
+                        height={node.height + 4}
+                        rx={4}
+                        ry={4}
+                        fill="transparent"
+                        stroke={ringColor}
+                        strokeWidth={isHovered ? 2 : 0}
+                        style={{ cursor: 'pointer' }}
+                        onMouseEnter={() => setHoveredId(node.id)}
+                        onMouseLeave={() => setHoveredId(prev => (prev === node.id ? null : prev))}
+                        onClick={(e) => onNodeClick(
+                            { id: node.id, label: node.label, value: node.value, x: node.x, y: node.y, width: node.width, height: node.height },
+                            { clientX: e.clientX, clientY: e.clientY },
+                        )}
+                    >
+                        <title>{`${node.label}: ${formatValue(node.value)} — click to break down`}</title>
+                    </rect>
+                );
+            })}
+        </>
+    );
+};
+
 interface SankeyDetailPanelProps {
     label: string;
     total: number;
+    direction: SankeyProvenanceDirection;
     items: SankeyProvenanceItem[];
+    anchorX: number;
+    anchorY: number;
     formatValue: (value: number) => string;
     onClose: () => void;
 }
 
+const POPOVER_WIDTH = 288; // matches w-72
+const POPOVER_GAP = 14; // distance from the click point
+const VIEWPORT_MARGIN = 10;
+
 /**
- * Drill-down panel rendered below the Sankey when a composite node is clicked.
- * Lists the constituent source objects with their amount and share of the node.
+ * Drill-down popover anchored next to the clicked Sankey node. Lists the
+ * constituent rows with their amount and share of the node total, headed by an
+ * explicit direction label (Sources / Destinations / Breakdown). Rendered via a
+ * portal in fixed positioning so it escapes the chart's overflow/stacking
+ * context, with viewport-edge clamping so it stays on-screen. Dismisses on
+ * outside-click, Escape, and the close button; focuses itself on open.
  */
-const SankeyDetailPanel = ({ label, total, items, formatValue, onClose }: SankeyDetailPanelProps) => {
-    const sorted = [...items].sort((a, b) => b.value - a.value);
+const SankeyDetailPanel = ({ label, total, direction, items, anchorX, anchorY, formatValue, onClose }: SankeyDetailPanelProps) => {
+    const sorted = [...items].sort((a, b) => {
+        // Keep the synthetic "Other" remainder row last regardless of size.
+        if (a.isRemainder) return 1;
+        if (b.isRemainder) return -1;
+        return b.value - a.value;
+    });
     const sum = sorted.reduce((s, i) => s + i.value, 0);
     // Prefer the node's own value for shares; fall back to the item sum if the
     // node value is unavailable (e.g. a consumer that doesn't supply it).
     const denominator = total > 0 ? total : sum;
 
-    return (
-        <div className="mt-3 bg-surface-raised border border-border-default rounded-lg p-4">
-            <div className="flex items-start justify-between gap-3 mb-3">
-                <div>
-                    <div className="text-sm font-bold text-content-bright">{label}</div>
+    const panelRef = useRef<HTMLDivElement>(null);
+
+    // Position after layout so we can measure the panel's real height and clamp
+    // it within the viewport. Prefer placing to the right of the click; flip left
+    // if it would overflow, then clamp vertically. Written directly to the
+    // element's style (rather than React state) so positioning the popover
+    // doesn't trigger an extra render — mirrors ChartTooltipPortal. The panel
+    // starts at visibility:hidden to avoid a one-frame flash at the raw anchor.
+    useLayoutEffect(() => {
+        const el = panelRef.current;
+        if (!el) return;
+        const w = el.offsetWidth || POPOVER_WIDTH;
+        const h = el.offsetHeight || 200;
+
+        let left = anchorX + POPOVER_GAP;
+        if (left + w > window.innerWidth - VIEWPORT_MARGIN) {
+            left = anchorX - w - POPOVER_GAP; // flip to the left of the click
+        }
+        if (left < VIEWPORT_MARGIN) left = VIEWPORT_MARGIN;
+
+        let top = anchorY - h / 2; // vertically centre on the click
+        if (top + h > window.innerHeight - VIEWPORT_MARGIN) top = window.innerHeight - VIEWPORT_MARGIN - h;
+        if (top < VIEWPORT_MARGIN) top = VIEWPORT_MARGIN;
+
+        el.style.left = `${left}px`;
+        el.style.top = `${top}px`;
+        el.style.visibility = 'visible';
+        // Focus on open for keyboard accessibility (also serves the "focus the
+        // panel, Esc closes" requirement).
+        el.focus();
+    }, [anchorX, anchorY, items, label]);
+
+    // Dismiss on Escape and on a click outside the panel.
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onClose();
+        };
+        const onPointerDown = (e: MouseEvent) => {
+            if (panelRef.current && !panelRef.current.contains(e.target as Node)) onClose();
+        };
+        document.addEventListener('keydown', onKey);
+        // Defer the outside-click listener a tick so the click that opened the
+        // panel doesn't immediately close it.
+        const id = window.setTimeout(() => document.addEventListener('mousedown', onPointerDown), 0);
+        return () => {
+            document.removeEventListener('keydown', onKey);
+            window.clearTimeout(id);
+            document.removeEventListener('mousedown', onPointerDown);
+        };
+    }, [onClose]);
+
+    return createPortal(
+        <div
+            ref={panelRef}
+            role="dialog"
+            aria-label={`${label} ${DIRECTION_LABEL[direction]}`}
+            tabIndex={-1}
+            style={{
+                position: 'fixed',
+                // Real left/top + visibility are written by the layout effect
+                // after measuring; start hidden at the anchor to avoid a flash.
+                left: anchorX,
+                top: anchorY,
+                width: POPOVER_WIDTH,
+                visibility: 'hidden',
+                zIndex: 9999,
+            }}
+            className="bg-surface-overlay border border-border-default rounded-lg p-4 shadow-2xl focus:outline-none focus:ring-2 focus:ring-border-faint"
+        >
+            <div className="flex items-start justify-between gap-3 mb-2">
+                <div className="min-w-0">
+                    <div className="flex items-baseline gap-2">
+                        <span className="text-xs uppercase tracking-wider font-semibold text-content-muted">{DIRECTION_LABEL[direction]}</span>
+                        <span className="text-[10px] text-content-faint">{DIRECTION_HINT[direction]}</span>
+                    </div>
+                    <div className="text-sm font-bold text-content-bright truncate">{label}</div>
                     <div className="text-lg font-mono text-positive font-medium">{formatValue(total > 0 ? total : sum)}</div>
                 </div>
                 <button
                     type="button"
                     onClick={onClose}
                     aria-label="Close detail panel"
-                    className="text-content-muted hover:text-content-emphasis text-lg leading-none px-1"
+                    className="text-content-muted hover:text-content-emphasis text-lg leading-none px-1 shrink-0"
                 >
                     &times;
                 </button>
@@ -300,7 +508,7 @@ const SankeyDetailPanel = ({ label, total, items, formatValue, onClose }: Sankey
                     const share = denominator > 0 ? (item.value / denominator) * 100 : 0;
                     return (
                         <li key={`${item.label}-${idx}`} className="flex items-center justify-between gap-3 text-sm">
-                            <span className="text-content-default truncate">{item.label}</span>
+                            <span className={`truncate ${item.isRemainder ? 'text-content-muted italic' : 'text-content-default'}`}>{item.label}</span>
                             <span className="flex items-baseline gap-2 shrink-0">
                                 <span className="font-mono text-content-emphasis">{formatValue(item.value)}</span>
                                 <span className="text-xs text-content-muted w-10 text-right">{share.toFixed(0)}%</span>
@@ -309,7 +517,8 @@ const SankeyDetailPanel = ({ label, total, items, formatValue, onClose }: Sankey
                     );
                 })}
             </ul>
-        </div>
+        </div>,
+        document.body,
     );
 };
 

@@ -18,16 +18,18 @@ interface MockNode { id: string; label: string; color: string }
 
 // Mock Nivo's ResponsiveSankey: render each node as a clickable button so a
 // test can drive the chart's `onClick` (the real chart wires it to the
-// provenance drill-down panel).
+// provenance drill-down panel). Forwards the click's coordinates as the second
+// arg, mirroring Nivo's `(node, event)` handler signature, so the panel's
+// anchored-popover positioning path is exercised.
 vi.mock('@nivo/sankey', () => ({
-    ResponsiveSankey: ({ data, onClick }: { data: { nodes: MockNode[] }; onClick?: (n: unknown) => void }) => (
+    ResponsiveSankey: ({ data, onClick }: { data: { nodes: MockNode[] }; onClick?: (n: unknown, e: unknown) => void }) => (
         <div data-testid="mock-sankey">
             {data.nodes.map((node: MockNode) => (
                 <button
                     key={node.id}
                     data-testid={`node-${node.id}`}
-                    // Mirror the shape Nivo passes for a node click.
-                    onClick={() => onClick?.({ ...node, value: 0, formattedValue: '' })}
+                    // Mirror the shape Nivo passes for a node click (datum + event).
+                    onClick={(e) => onClick?.({ ...node, value: 100000, formattedValue: '' }, { clientX: e.clientX, clientY: e.clientY })}
                 >
                     {node.label}
                 </button>
@@ -101,21 +103,24 @@ describe('CashflowSankey provenance drill-down', () => {
         fireEvent.click(screen.getByTestId('node-Gross Pay'));
 
         // Panel shows the three income sources that compose Gross Pay.
-        const closeBtn = screen.getByLabelText('Close detail panel');
-        const panel = closeBtn.closest('div')!.parentElement!;
+        const panel = screen.getByRole('dialog');
         expect(within(panel).getByText('Job A')).toBeTruthy();
         expect(within(panel).getByText('Job B')).toBeTruthy();
         expect(within(panel).getByText('Social Security')).toBeTruthy();
+        // Gross Pay reads its inputs, so the header labels it "Sources".
+        expect(within(panel).getByText('Sources')).toBeTruthy();
     });
 
     it('breaks Taxes down into its components', () => {
         renderChart();
         fireEvent.click(screen.getByTestId('node-Taxes'));
 
-        const panel = screen.getByLabelText('Close detail panel').closest('div')!.parentElement!;
+        const panel = screen.getByRole('dialog');
         expect(within(panel).getByText('Federal Tax')).toBeTruthy();
         expect(within(panel).getByText('State Tax')).toBeTruthy();
         expect(within(panel).getByText('FICA Tax')).toBeTruthy();
+        // Taxes is a same-column sub-split, so the header labels it "Breakdown".
+        expect(within(panel).getByText('Breakdown')).toBeTruthy();
     });
 
     it('dismisses the panel when the close button is clicked', () => {
@@ -141,5 +146,25 @@ describe('CashflowSankey provenance drill-down', () => {
         // "Job A" is a leaf income node — it has no provenance breakdown.
         fireEvent.click(screen.getByTestId('node-Job A'));
         expect(screen.queryByLabelText('Close detail panel')).toBeNull();
+    });
+
+    it('labels Net Pay as Destinations (where take-home flows)', () => {
+        renderChart();
+        fireEvent.click(screen.getByTestId('node-Net Pay'));
+
+        const panel = screen.getByRole('dialog');
+        // Net Pay shows downstream outputs, so the header labels it "Destinations".
+        expect(within(panel).getByText('Destinations')).toBeTruthy();
+        // Food expense is one of the take-home destinations.
+        expect(within(panel).getByText('Food')).toBeTruthy();
+    });
+
+    it('dismisses the panel on Escape', () => {
+        renderChart();
+        fireEvent.click(screen.getByTestId('node-Gross Pay'));
+        expect(screen.getByRole('dialog')).toBeTruthy();
+
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByRole('dialog')).toBeNull();
     });
 });
