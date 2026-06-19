@@ -2017,48 +2017,37 @@ export function planConversionsViaDP(
             estimatedTradBalance: trad,
         });
 
-        // Stochastic policy walk: emit only the lightweight entering-state line
-        // (the deterministic loop's cost-curve / waterfall / structured trace are
-        // built below for the argmax path). The structured trace for stochastic
-        // plans is added in #104; here #106 keeps the stochastic OUTPUT identical
-        // to the pre-unification policy walk.
-        if (stochastic) {
-            const debugLines: string[] = [];
-            if (t === 0) debugLines.push(startingDebug);
-            debugLines.push(
-                `[DEBUG DP policy] year=${ctx.year} age=${ctx.age}: ` +
-                `tradEntering=${fmt$(trad)}, rothEntering=${fmt$(roth)}, rmd=${fmt$(rmdAtB)}, ` +
-                `chose c=${fmt$(chosenC)} (policy lookup along mean path, meanShift=${(meanShift * 100).toFixed(2)}%)`,
-            );
-            perYearDebug.set(ctx.year, debugLines);
-            trad = tradNext;
-            roth = rothNext;
-            continue;
-        }
-
         // Per-year debug emitted to the year inspector via planConversionDP.
+        // Built for BOTH the argmax and the policy walk; the stochastic path is
+        // tagged "DP policy" and notes it read the emitted policy along the mean
+        // return path (#104 — previously it got only a single lightweight line).
         const debugLines: string[] = [];
         if (t === 0) {
             // Surface the setup info on the first conversion year so the user
             // can spot starting-balance issues right in the inspector.
             debugLines.push(startingDebug);
         }
+        const solverTag = stochastic ? 'DP policy' : 'DP solver';
         debugLines.push(
-            `[DEBUG DP solver] year=${ctx.year} age=${ctx.age}: ` +
+            `[DEBUG ${solverTag}] year=${ctx.year} age=${ctx.age}: ` +
             `tradEntering=${fmt$(trad)}, rmdAtB=${fmt$(rmdAtB)}, cMax=${fmt$(cMax)}, ` +
-            `taxBaseline=${fmt$(taxBaseline)}`,
+            `taxBaseline=${fmt$(taxBaseline)}` +
+            (stochastic ? ` (policy lookup along mean path, meanShift=${(meanShift * 100).toFixed(2)}%)` : ''),
         );
         debugLines.push(
-            `[DEBUG DP solver] year=${ctx.year}: chose c=${fmt$(chosenC)} ` +
+            `[DEBUG ${solverTag}] year=${ctx.year}: chose c=${fmt$(chosenC)} ` +
             `(yearTax=${fmt$(cell.yearTax)}, marginal=${fmt$(cell.conversionMarginal)}, ` +
             `discountedFuture=${fmt$(sel.discountedFuture)}, totalCost=${fmt$(sel.totalCost)}, ` +
             `tradNext=${fmt$(tradNext)}, rothNext=${fmt$(rothNext)})`,
         );
-        // c=0 vs chosen comparison for the argmax walk.
-        debugLines.push(
-            `[DEBUG DP solver] year=${ctx.year}: c=0 totalCost=${fmt$(sel.costAtZero)} ` +
-            `(yearTax=${fmt$(sel.yearTaxAtZero)}, discountedFuture=${fmt$(df * sel.futureAtZero)})`,
-        );
+        if (!stochastic) {
+            // c=0 vs chosen comparison — only meaningful for the argmax walk
+            // (the policy path evaluates a single conversion).
+            debugLines.push(
+                `[DEBUG DP solver] year=${ctx.year}: c=0 totalCost=${fmt$(sel.costAtZero)} ` +
+                `(yearTax=${fmt$(sel.yearTaxAtZero)}, discountedFuture=${fmt$(df * sel.futureAtZero)})`,
+            );
+        }
         // Cost-curve sample at FEDERAL BRACKET BOUNDARIES so each segment in
         // the rate-analysis table represents a single bracket — marginals
         // read 10% → 12% → 22% → 24% → 32% → 35% as expected, instead of
@@ -2165,9 +2154,11 @@ export function planConversionsViaDP(
         );
         perYearDebug.set(ctx.year, debugLines);
 
-        // Structured trace for the Roth debug screen (deterministic argmax walk).
-        // Byte-identical to what the old standalone deterministic loop produced.
-        // (#104 extends this to the stochastic policy walk too.)
+        // Structured trace for the Roth debug screen — now built for BOTH the
+        // deterministic argmax walk and the stochastic policy walk (#104). The
+        // stochastic walk previously emitted only a debug line, leaving the
+        // cost-curve / waterfall / balance-flow screen blank for MC policy plans.
+        // The deterministic trace is byte-identical to the old argmax loop's.
         const trace: DPYearTrace = {
             year: ctx.year,
             age: ctx.age,

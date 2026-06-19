@@ -134,3 +134,66 @@ describe('#98 stochastic conversion policy', () => {
         expect(fromLookup!).toBeLessThanOrEqual(START_TRAD);
     });
 });
+
+describe('#104 stochastic DP emits structured perYearTraces', () => {
+    // Before #104/#106 the stochastic ("policy") walk emitted only a lightweight
+    // [DEBUG DP policy] line and built NO DPYearTrace, so the Roth conversion
+    // debug SCREEN (cost-curve / waterfall / balance-flow) rendered blank for any
+    // Monte-Carlo path-policy plan. These tests pin that the stochastic walk now
+    // populates the same structured trace the deterministic walk does.
+    it('a returnDistribution plan yields one populated DPYearTrace per horizon year', { timeout: 60_000 }, () => {
+        const contexts = makeContexts();
+        const stoch = planConversionsViaDP(
+            { contexts, currentTradBalance: START_TRAD, currentRothBalance: START_ROTH },
+            { ...MAX_WEALTH, returnDistribution: { stdDev: 0.15, meanShift: 0, nodes: 7 } },
+        );
+        const traces = stoch.diagnostics.perYearTraces;
+        // Core regression guard: non-empty, one per year (was 0 before #104).
+        expect(traces.size).toBe(contexts.length);
+
+        // The fixture must actually convert, else "traces exist" is hollow.
+        expect(totalConverted(stoch.conversionsByYear)).toBeGreaterThan(0);
+
+        for (const ctx of contexts) {
+            const trace = traces.get(ctx.year);
+            expect(trace, `missing trace for year ${ctx.year}`).toBeDefined();
+            // The trace must reflect the ACTUAL chosen plan, not a placeholder:
+            // chosenC equals what the central schedule recorded for the year.
+            expect(trace!.chosenC).toBe(stoch.conversionsByYear.get(ctx.year));
+            // The debug screen renders the cost curve and the per-year waterfall;
+            // both must be populated for the screen to be non-blank.
+            expect(trace!.costCurve.length).toBeGreaterThan(0);
+            expect(trace!.age).toBe(ctx.age);
+            // Baseline (conversion=0) tax is a tax: ≥ 0 (can be $0 in a low-income
+            // early year whose ordinary income is under the standard deduction).
+            expect(trace!.taxBaselineNoConv).toBeGreaterThanOrEqual(0);
+            // Entering balances are real numbers (the walk tracks state forward).
+            expect(Number.isFinite(trace!.tradEntering)).toBe(true);
+            expect(Number.isFinite(trace!.rothEntering)).toBe(true);
+            expect(Number.isFinite(trace!.tradNext)).toBe(true);
+        }
+
+        // First-year entering state is exactly the starting balances handed in.
+        const firstTrace = traces.get(2025)!;
+        expect(firstTrace.tradEntering).toBe(START_TRAD);
+        expect(firstTrace.rothEntering).toBe(START_ROTH);
+        // Each cost-curve sample carries the chosen conversion among its points.
+        expect(firstTrace.costCurve.some(p => p.c === firstTrace.chosenC)).toBe(true);
+    });
+
+    it('deterministic and stochastic both emit traces (parity — neither path is blank)', { timeout: 60_000 }, () => {
+        const contexts = makeContexts();
+        const det = planConversionsViaDP(
+            { contexts, currentTradBalance: START_TRAD, currentRothBalance: START_ROTH },
+            MAX_WEALTH,
+        );
+        const stoch = planConversionsViaDP(
+            { contexts, currentTradBalance: START_TRAD, currentRothBalance: START_ROTH },
+            { ...MAX_WEALTH, returnDistribution: { stdDev: 0.18, meanShift: 0.03, nodes: 7 } },
+        );
+        // The deterministic path always built traces; #104 brings the stochastic
+        // path to parity (same count, both full).
+        expect(det.diagnostics.perYearTraces.size).toBe(contexts.length);
+        expect(stoch.diagnostics.perYearTraces.size).toBe(contexts.length);
+    });
+});
