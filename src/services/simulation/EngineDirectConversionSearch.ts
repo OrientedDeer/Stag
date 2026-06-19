@@ -28,9 +28,42 @@
  */
 import { DPYearContext } from './RothConversionDP';
 import { SimulationYear } from './types';
-import { AnyAccount, SavedAccount, InvestedAccount } from '../../components/Objects/Accounts/models';
+import { AnyAccount, SavedAccount, InvestedAccount, PropertyAccount, DebtAccount } from '../../components/Objects/Accounts/models';
 
 export interface WithdrawalOrderItem { id: string; name: string; accountId: string; }
+
+/**
+ * A "sellable" account is anything the drawdown can liquidate to cover spending — i.e. every account
+ * EXCEPT real property and debt (DeficitDebtAccount extends DebtAccount, so it's covered too).
+ */
+export function isSellableAccount(account: AnyAccount): boolean {
+    return !(account instanceof PropertyAccount || account instanceof DebtAccount);
+}
+
+/**
+ * Augment a withdrawal order so it covers EVERY sellable account, not just the ones the user listed.
+ *
+ * Under Tax Optimization the algorithm OWNS the withdrawal order (the UI disables the manual editor),
+ * so the user's manual order is a starting point, not a constraint — and any account the user EXCLUDED
+ * from the order must still be a first-class participant the optimizer can place and score. This returns
+ * `baseStrategy` with the user's relative order preserved, followed by SYNTHESIZED entries for any
+ * sellable account not already present. The append position is incidental: `generateCandidateWithdrawalOrders`
+ * sorts the result by tax bucket for the two tax-aware sequences, so the omitted accounts land in their
+ * tax-correct slot there; in the user's-order candidate (#0) they trail the user's listed accounts.
+ *
+ * No-op (returns `baseStrategy` unchanged) when the order already lists every sellable account — the
+ * common case, so this never perturbs scenarios that fully specify their order.
+ */
+export function withAllSellableAccounts<T extends WithdrawalOrderItem>(
+    accounts: AnyAccount[],
+    baseStrategy: T[],
+    makeItem: (account: AnyAccount) => T,
+): T[] {
+    const listed = new Set(baseStrategy.map(w => w.accountId));
+    const omitted = accounts.filter(a => isSellableAccount(a) && !listed.has(a.id));
+    if (omitted.length === 0) return baseStrategy;
+    return [...baseStrategy, ...omitted.map(makeItem)];
+}
 
 /**
  * Classify an account into a drawdown "tax bucket" for candidate-order generation.

@@ -10,7 +10,7 @@ import { TaxState, resolveTaxEventsForYear } from '../Taxes/TaxContext';
 import { BaselineProjections } from '../../../services/simulation/types';
 import { getRMDStartAge } from '../../../data/RMDData';
 import { buildDPYearContexts, planConversionsViaDP, DPPlan, DPInputs, DPObjectiveOptions, DPPolicy, QuadratureNodes } from '../../../services/simulation/RothConversionDP';
-import { searchConversionPlanByEngine, extractConversionPlan, generateCandidateWithdrawalOrders } from '../../../services/simulation/EngineDirectConversionSearch';
+import { searchConversionPlanByEngine, extractConversionPlan, generateCandidateWithdrawalOrders, withAllSellableAccounts } from '../../../services/simulation/EngineDirectConversionSearch';
 import { getTotalBrokerageBalance, getTotalTraditionalBalance, getTotalRothBalance } from '../../../services/simulation/YearSolver';
 import { buildTradValuation, terminalAfterTaxNetWorth } from '../../../tabs/Future/tabs/FutureUtils';
 
@@ -1005,11 +1005,29 @@ export const runSimulationWithOptimization = (
             // is the full de-converted search itself. The user's order is always in the candidate set, so
             // the result can never regress below the manual order; when it wins, the result matches the
             // single-order engine.
-            const candidateOrders = generateCandidateWithdrawalOrders(accounts, assumptions.withdrawalStrategy);
+            // Under Tax Optimization the algorithm OWNS the withdrawal order, so the user's manual order
+            // and any account EXCLUSIONS do not bind: an account the user left OUT of the order must still
+            // be a first-class participant the optimizer can place and score. Augment the user's order with
+            // synthesized entries for every sellable account it omits BEFORE generating candidates, so each
+            // candidate (the user-derived order #0 and the two tax-aware sequences) covers all sellable
+            // accounts. withAllSellableAccounts returns the SAME reference when nothing is omitted (the common
+            // case), so this is byte-for-byte unchanged whenever the order already lists every account — and
+            // `fullStrategy` then serves as the user-derived anchor for the no-regression guarantee below.
+            const fullStrategy = withAllSellableAccounts(
+                accounts, assumptions.withdrawalStrategy,
+                (a) => ({ id: `synth-${a.id}`, name: a.name, accountId: a.id }),
+            );
+            const candidateOrders = generateCandidateWithdrawalOrders(accounts, fullStrategy);
+            // We can reuse the already-computed std-ded baseline (and `assumptions` verbatim) for the
+            // user-derived anchor ONLY when augmenting added nothing — otherwise the anchor drains under
+            // `fullStrategy`, a different order, and must run its own baseline. In the common (nothing-omitted)
+            // case this is true and the path is byte-for-byte identical to before.
+            const canReuseUserBaseline = fullStrategy === assumptions.withdrawalStrategy;
             const buildArtifacts = (order: typeof assumptions.withdrawalStrategy) => {
-                const isUser = order === assumptions.withdrawalStrategy;
-                const aOrder: AssumptionsState = isUser ? assumptions : { ...assumptions, withdrawalStrategy: order };
-                const baselineO = isUser ? stdDedBaselineTimeline : runSimulation(
+                const isUser = order === fullStrategy;
+                const aOrder: AssumptionsState = (isUser && canReuseUserBaseline)
+                    ? assumptions : { ...assumptions, withdrawalStrategy: order };
+                const baselineO = (isUser && canReuseUserBaseline) ? stdDedBaselineTimeline : runSimulation(
                     yearsToRun, accounts, incomes, expenses,
                     { ...aOrder, investments: { ...aOrder.investments, rothConversionStrategy: 'rate-match' } },
                     taxState, yearlyReturns,
@@ -1043,11 +1061,11 @@ export const runSimulationWithOptimization = (
             };
             // Full-search EVERY candidate order and keep the highest after-tax NW. The user's order is
             // first in the candidate set, so the result can never regress below the manual order.
-            const userResult = fullSearch(buildArtifacts(assumptions.withdrawalStrategy));
+            const userResult = fullSearch(buildArtifacts(fullStrategy));
             let best = userResult;
             let totalSims = userResult.sims;
             for (const order of candidateOrders) {
-                if (order === assumptions.withdrawalStrategy) continue;
+                if (order === fullStrategy) continue;
                 const result = fullSearch(buildArtifacts(order));
                 totalSims += result.sims;
                 if (result.nw > best.nw + 1) best = result; // the de-converted truth decides; ties keep the incumbent
@@ -1055,7 +1073,7 @@ export const runSimulationWithOptimization = (
             finalTimeline = best.timeline;
             defaultBranchTerminalAfterTaxNW = best.nw; // finalTimeline === best.timeline, already scored on the ruler
             if (finalTimeline.length > 0) {
-                const orderChanged = best.order !== assumptions.withdrawalStrategy;
+                const orderChanged = best.order !== fullStrategy;
                 const orderGain = best.nw - userResult.nw; // full-search value of the chosen order alone
                 // Report EXECUTED conversions (what the engine actually moved), not the plan's intended
                 // fill — a "fill to headroom" plan can request far more than the Traditional can supply.
