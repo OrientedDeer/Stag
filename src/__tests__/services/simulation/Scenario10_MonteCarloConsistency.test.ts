@@ -496,7 +496,11 @@ describe('Scenario 10: Level 4 - Monte Carlo Simulation', () => {
         };
     }
 
-    it('should produce identical results with same seed across two runs', () => {
+    // 60s timeout (matches the repo's MC-test convention): this is the only case that runs MC
+    // TWICE, and the #89 MC over-conversion cap added an engine-search to the policy solve, so two
+    // UNCACHED solves can exceed the 5s default under parallel-suite load. Real usage caches the
+    // policy (solved once); determinism itself is unaffected (verified — passes standalone).
+    it('should produce identical results with same seed across two runs', { timeout: 60000 }, () => {
         // Per spec: Same seed produces identical results across two runs
         const accounts1 = createModerateScenarioAccounts();
         const accounts2 = createModerateScenarioAccounts();

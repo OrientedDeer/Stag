@@ -240,7 +240,7 @@ describe('Long-Horizon Stability: Complex Scenario with Debt', () => {
             assumptions,
             taxState,
             undefined,
-            new Date(2025, 11, 31) // December — no partial-year adjustment
+            { referenceDate: new Date(2025, 11, 31) } // December — no partial-year adjustment
         );
 
         expect(simulation.length, 'Simulation should run').toBeGreaterThan(30);

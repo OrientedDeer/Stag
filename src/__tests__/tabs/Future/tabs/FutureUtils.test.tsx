@@ -133,6 +133,43 @@ describe('FutureUtils', () => {
       expect(r.deferredCapGainsTax).toBeCloseTo((40000 + 29000) * 0.15); // 10,350
       expect(r.afterTaxNetWorth).toBeCloseTo(180000 - 10350);
     });
+
+    describe('situation-based tradDeferredTax callback (#94)', () => {
+      // The callback returns the after-tax VALUE KEPT on the aggregate Traditional balance;
+      // computeAfterTaxNetWorth derives the deferred tax as `balance − value`. This guards the
+      // inversion trap (returning the tax instead of the value kept would tax at 1 − rate).
+      it('computes deferred ordinary tax on the AGGREGATE balance, ignoring the flat per-account rate', () => {
+        const accounts: AnyAccount[] = [
+          new InvestedAccount('t1', '401k', 100000, 0, 0, 0, 'Traditional 401k', true, 0),
+          new InvestedAccount('t2', 'IRA', 100000, 0, 0, 0, 'Traditional IRA', true, 0),
+        ];
+        // Bequeath-style flat heir valuation: value kept = b * (1 − 0.32).
+        const r = computeAfterTaxNetWorth(accounts, 0.99 /* must be ignored */, undefined, b => b * (1 - 0.32));
+
+        expect(r.deferredOrdinaryTax).toBeCloseTo(200000 * 0.32); // 64,000 on the $200k aggregate
+        expect(r.afterTaxNetWorth).toBeCloseTo(200000 - 64000);
+      });
+
+      it('clamps the deferred ordinary tax at 0 when the valuation exceeds face (rounding undershoot)', () => {
+        const accounts: AnyAccount[] = [
+          new InvestedAccount('t1', '401k', 100000, 0, 0, 0, 'Traditional 401k', true, 0),
+        ];
+        const r = computeAfterTaxNetWorth(accounts, 0.20, undefined, b => b * 1.01);
+        expect(r.deferredOrdinaryTax).toBe(0);
+        expect(r.afterTaxNetWorth).toBe(100000);
+      });
+
+      it('still taxes brokerage gains at LTCG while the callback governs Traditional', () => {
+        const accounts: AnyAccount[] = [
+          new InvestedAccount('t1', '401k', 100000, 0, 0, 0, 'Traditional 401k', true, 0),
+          new InvestedAccount('b1', 'Brokerage', 100000, 0, 0, 0, 'Brokerage', true, 0, 60000), // 40k gains
+        ];
+        const r = computeAfterTaxNetWorth(accounts, 0.20, undefined, b => b * (1 - 0.10));
+        expect(r.deferredOrdinaryTax).toBeCloseTo(100000 * 0.10); // 10,000
+        expect(r.deferredCapGainsTax).toBeCloseTo(40000 * 0.15);  // 6,000
+        expect(r.afterTaxNetWorth).toBeCloseTo(200000 - 10000 - 6000);
+      });
+    });
   });
 
   describe('formatCurrency', () => {

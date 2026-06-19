@@ -15,9 +15,11 @@ import { FutureSocialSecurityIncome } from '../../components/Objects/Income/mode
 import { FoodExpense } from '../../components/Objects/Expense/models';
 import { runSimulationWithOptimization } from '../../components/Objects/Assumptions/useSimulation';
 
-// 2D-state DP: end-to-end runs (baseline + DP solve + final sim) take up
-// to ~30s with the current grid. Default vitest 5s timeout would flake.
-describe('DP-precomputed Roth conversion strategy — end-to-end', { timeout: 60_000 }, () => {
+// End-to-end runs (baseline + DP solve + engine-direct search + final sim) are heavy: the #89
+// joint optimizer full-searches every candidate withdrawal order on the real engine, so a single
+// dp-precomputed run is several full-horizon sims. 240s matches the sibling heavy-DP suites
+// (JointDrawdownOrderOptimizer 240s, RothConversionFeasibilityFloor 300s); 60s flaked under load.
+describe('DP-precomputed Roth conversion strategy — end-to-end', { timeout: 240_000 }, () => {
     const birthYear = 1985;
     const retirementAge = 40; // FIRE: early retiree
     const lifeExpectancy = 95;

@@ -43,15 +43,38 @@ function createMockIncome(overrides: Partial<{ id: string; name: string; amount:
 }
 
 /**
- * Minimal mock expense that matches AnyExpense interface expectations
+ * Minimal mock expense that matches AnyExpense interface expectations.
+ *
+ * Goal/cadence fields (startDate, endDate, dueMonth, goalType, intervalYears,
+ * goalAccountId) are overridable so the sensitivity tests can flip a single one
+ * and assert it changes the hash — these steer the sim but aren't reflected by
+ * getAnnualAmount() (a goal reports $0 there).
  */
-function createMockExpense(overrides: Partial<{ id: string; name: string; amount: number }> = {}) {
+function createMockExpense(
+    overrides: Partial<{
+        id: string;
+        name: string;
+        amount: number;
+        startDate: Date | undefined;
+        endDate: Date | undefined;
+        dueMonth: number | undefined;
+        goalType: 'recurring' | 'targetDate' | undefined;
+        intervalYears: number | undefined;
+        goalAccountId: string | undefined;
+    }> = {}
+) {
     const amount = overrides.amount ?? 2000;
     return {
         id: overrides.id ?? 'exp-1',
         name: overrides.name ?? 'Test Expense',
         startMilestoneId: undefined,
         endMilestoneId: undefined,
+        startDate: overrides.startDate,
+        endDate: overrides.endDate,
+        dueMonth: overrides.dueMonth,
+        goalType: overrides.goalType,
+        intervalYears: overrides.intervalYears,
+        goalAccountId: overrides.goalAccountId,
         getAnnualAmount: () => amount,
         constructor: { name: 'MockExpense' },
     };
@@ -324,6 +347,120 @@ describe('getSimulationInputHash', () => {
             const hash2 = getSimulationInputHash(accounts as any, incomes as any, expenses2 as any, assumptions, taxState);
 
             expect(hash1).not.toBe(hash2);
+        });
+
+        // Regression for #101: goalType / endDate / dueMonth / startDate (and the
+        // related goal fields) feed the sim but weren't hashed, so editing them
+        // left the cached result stale with no auto-refresh.
+        it('should return different hash when expense startDate changes', () => {
+            const accounts = [createMockAccount()];
+            const incomes = [createMockIncome()];
+            // Two expenses differing ONLY in startDate.
+            const expenses1 = [createMockExpense({ startDate: new Date(2030, 0, 1) })];
+            const expenses2 = [createMockExpense({ startDate: new Date(2035, 0, 1) })];
+            const assumptions = createMockAssumptions();
+            const taxState = createMockTaxState();
+
+            const hash1 = getSimulationInputHash(accounts as any, incomes as any, expenses1 as any, assumptions, taxState);
+            const hash2 = getSimulationInputHash(accounts as any, incomes as any, expenses2 as any, assumptions, taxState);
+
+            expect(hash1).not.toBe(hash2);
+        });
+
+        it('should return different hash when expense endDate changes', () => {
+            const accounts = [createMockAccount()];
+            const incomes = [createMockIncome()];
+            // Two expenses differing ONLY in endDate (a goal's target date).
+            const expenses1 = [createMockExpense({ endDate: new Date(2040, 0, 1) })];
+            const expenses2 = [createMockExpense({ endDate: new Date(2045, 0, 1) })];
+            const assumptions = createMockAssumptions();
+            const taxState = createMockTaxState();
+
+            const hash1 = getSimulationInputHash(accounts as any, incomes as any, expenses1 as any, assumptions, taxState);
+            const hash2 = getSimulationInputHash(accounts as any, incomes as any, expenses2 as any, assumptions, taxState);
+
+            expect(hash1).not.toBe(hash2);
+        });
+
+        it('should return different hash when expense dueMonth changes', () => {
+            const accounts = [createMockAccount()];
+            const incomes = [createMockIncome()];
+            // Two expenses differing ONLY in dueMonth.
+            const expenses1 = [createMockExpense({ dueMonth: 1 })];
+            const expenses2 = [createMockExpense({ dueMonth: 7 })];
+            const assumptions = createMockAssumptions();
+            const taxState = createMockTaxState();
+
+            const hash1 = getSimulationInputHash(accounts as any, incomes as any, expenses1 as any, assumptions, taxState);
+            const hash2 = getSimulationInputHash(accounts as any, incomes as any, expenses2 as any, assumptions, taxState);
+
+            expect(hash1).not.toBe(hash2);
+        });
+
+        it('should return different hash when expense goalType changes', () => {
+            const accounts = [createMockAccount()];
+            const incomes = [createMockIncome()];
+            // Two expenses differing ONLY in goalType.
+            const expenses1 = [createMockExpense({ goalType: 'targetDate' })];
+            const expenses2 = [createMockExpense({ goalType: 'recurring' })];
+            const assumptions = createMockAssumptions();
+            const taxState = createMockTaxState();
+
+            const hash1 = getSimulationInputHash(accounts as any, incomes as any, expenses1 as any, assumptions, taxState);
+            const hash2 = getSimulationInputHash(accounts as any, incomes as any, expenses2 as any, assumptions, taxState);
+
+            expect(hash1).not.toBe(hash2);
+        });
+
+        it('should return different hash when goal intervalYears changes', () => {
+            const accounts = [createMockAccount()];
+            const incomes = [createMockIncome()];
+            // Two recurring goals differing ONLY in intervalYears (changes the
+            // sinking-fund set-aside and the purchase cadence).
+            const expenses1 = [createMockExpense({ goalType: 'recurring', intervalYears: 5 })];
+            const expenses2 = [createMockExpense({ goalType: 'recurring', intervalYears: 10 })];
+            const assumptions = createMockAssumptions();
+            const taxState = createMockTaxState();
+
+            const hash1 = getSimulationInputHash(accounts as any, incomes as any, expenses1 as any, assumptions, taxState);
+            const hash2 = getSimulationInputHash(accounts as any, incomes as any, expenses2 as any, assumptions, taxState);
+
+            expect(hash1).not.toBe(hash2);
+        });
+
+        it('should return different hash when goalAccountId changes', () => {
+            const accounts = [createMockAccount()];
+            const incomes = [createMockIncome()];
+            // Two goals routing their sinking-fund to different accounts.
+            const expenses1 = [createMockExpense({ goalType: 'targetDate', goalAccountId: 'acc-A' })];
+            const expenses2 = [createMockExpense({ goalType: 'targetDate', goalAccountId: 'acc-B' })];
+            const assumptions = createMockAssumptions();
+            const taxState = createMockTaxState();
+
+            const hash1 = getSimulationInputHash(accounts as any, incomes as any, expenses1 as any, assumptions, taxState);
+            const hash2 = getSimulationInputHash(accounts as any, incomes as any, expenses2 as any, assumptions, taxState);
+
+            expect(hash1).not.toBe(hash2);
+        });
+
+        it('should return the SAME hash for identical expenses (no false invalidation)', () => {
+            const accounts = [createMockAccount()];
+            const incomes = [createMockIncome()];
+            // Same goal fields on both sides ⇒ stable hash (cache stays valid).
+            const make = () => [createMockExpense({
+                startDate: new Date(2030, 0, 1),
+                endDate: new Date(2040, 0, 1),
+                dueMonth: 7,
+                goalType: 'targetDate' as const,
+                goalAccountId: 'acc-A',
+            })];
+            const assumptions = createMockAssumptions();
+            const taxState = createMockTaxState();
+
+            const hash1 = getSimulationInputHash(accounts as any, incomes as any, make() as any, assumptions, taxState);
+            const hash2 = getSimulationInputHash(accounts as any, incomes as any, make() as any, assumptions, taxState);
+
+            expect(hash1).toBe(hash2);
         });
     });
 

@@ -115,6 +115,7 @@ function createScenarioAssumptions(): AssumptionsState {
         milestones: createBuiltinMilestones(BIRTH_YEAR, 60, 95), // Retired at 60
         investments: {
             ...defaultAssumptions.investments,
+            rothConversionStrategy: 'rate-match', // pin: rate-match under test (default flipped to dp-precomputed, #89)
             taxOptimizationEnabled: true,
             returnRates: { ror: 7 },
         },
