@@ -9,6 +9,7 @@ import { ToggleInput } from "../../Layout/InputFields/ToggleInput.js";
 import { NumberInput } from "../../Layout/InputFields/NumberInput.js";
 import { NameInput } from "../../Layout/InputFields/NameInput.js";
 import { DropdownInput } from "../../Layout/InputFields/DropdownInput.js";
+import { Tooltip } from "../../Layout/InputFields/Tooltip.js";
 import DeleteAccountControl from './DeleteAccountUI.js';
 import { EditHistoryModal } from "./EditHistoryModal.js";
 import AddESPPLotModal from "./AddESPPLotModal.js";
@@ -355,6 +356,18 @@ function InvestedAccountFields({ account, onFieldUpdate }: InvestedAccountFields
                     <BrokerageHoldingsSummary account={account} />
                 </>
             )}
+            {account.taxType === 'Roth IRA' && (
+                <>
+                    <CurrencyInput
+                        id={`${account.id}-roth-contributions`}
+                        label="Contributions to Date"
+                        value={account.costBasis}
+                        onChange={(val) => onFieldUpdate("costBasis", val)}
+                        tooltip="Total you've contributed (plus any converted amounts). Everything above this is earnings. Sets the starting split — contributions are withdrawable anytime, earnings are locked until 59½."
+                    />
+                    <RothHoldingsSummary account={account} />
+                </>
+            )}
             <StyledSelect
                 id={`${account.id}-tax-type`}
                 label="Tax Type"
@@ -653,6 +666,43 @@ function BrokerageHoldingsSummary({ account }: { account: InvestedAccount }): Re
                 <StatCell label="Current Value" value={fmt(account.amount)} />
                 <StatCell label="Principal (Cost Basis)" value={fmt(principal)} />
                 <GainLossCell label="Unrealized Gain/Loss" gain={unrealizedGain} basis={principal} />
+            </div>
+        </div>
+    );
+}
+
+function RothHoldingsSummary({ account }: { account: InvestedAccount }): ReactElement {
+    const contributions = account.regularContributions;
+    const converted = account.totalConversionBasis;
+    // True earnings for display: account.unrealizedGains floors at 0 (correct for
+    // the withdrawal basis split), but show a loss when the account is underwater.
+    const earnings = account.amount - account.costBasis;
+    // Collapse the conversion layer to a clean 2-way split when there are no conversions.
+    const hasConversions = converted > 0.5;
+    return (
+        <div className="col-span-full bg-surface-overlay/50 border border-border-default rounded-lg p-4">
+            <div className="flex items-center gap-1.5 mb-3">
+                <h4 className="text-sm font-semibold text-white">Withdrawal Breakdown</h4>
+                <Tooltip text="Roth withdrawal rules: contributions come out anytime tax- and penalty-free; each conversion has its own 5-year clock; earnings are locked until 59½." />
+            </div>
+            <div className={`grid grid-cols-2 ${hasConversions ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4 text-sm`}>
+                <StatCell label="Current Value" value={fmt(account.amount)} />
+                <StatCell
+                    label="Contributions"
+                    value={fmt(contributions)}
+                    className="text-positive font-medium"
+                />
+                {hasConversions && (
+                    <StatCell
+                        label="Converted"
+                        value={fmt(converted)}
+                        className="text-content-default font-medium"
+                    />
+                )}
+                <GainLossCell label="Earnings" gain={earnings} basis={account.costBasis} />
+            </div>
+            <div className="mt-3 text-xs text-content-muted">
+                Contributions are withdrawable anytime; {hasConversions ? 'each conversion clears after 5 years; ' : ''}earnings are locked until 59½.
             </div>
         </div>
     );
