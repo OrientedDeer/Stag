@@ -28,17 +28,12 @@
  */
 import { DPYearContext } from './RothConversionDP';
 import { SimulationYear } from './types';
-import { AnyAccount, SavedAccount, InvestedAccount, PropertyAccount, DebtAccount } from '../../components/Objects/Accounts/models';
+import { AnyAccount, SavedAccount, InvestedAccount } from '../../components/Objects/Accounts/models';
+// Single source of truth for "can the drawdown liquidate this?" — defined alongside the
+// #111 fallback tier so the tax-opt optimizer and the manual-order safety net can't diverge.
+import { isSellableAccount } from './WithdrawalPlanner';
 
 export interface WithdrawalOrderItem { id: string; name: string; accountId: string; }
-
-/**
- * A "sellable" account is anything the drawdown can liquidate to cover spending — i.e. every account
- * EXCEPT real property and debt (DeficitDebtAccount extends DebtAccount, so it's covered too).
- */
-export function isSellableAccount(account: AnyAccount): boolean {
-    return !(account instanceof PropertyAccount || account instanceof DebtAccount);
-}
 
 /**
  * Augment a withdrawal order so it covers EVERY sellable account, not just the ones the user listed.

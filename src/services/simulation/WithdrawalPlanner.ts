@@ -107,8 +107,12 @@ function classifyAccount(account: AnyAccount): WithdrawalAccountType {
  *
  * NOTE: classifyAccount() can't gate this — its default branch returns 'savings'
  * for ANY account, so a PropertyAccount/DebtAccount would be miscounted sellable.
+ *
+ * Exported as the single source of truth: the tax-opt joint optimizer
+ * (EngineDirectConversionSearch.withAllSellableAccounts) reuses this same predicate
+ * so the two paths can't drift on a future account type.
  */
-function isSellableAccount(account: AnyAccount): boolean {
+export function isSellableAccount(account: AnyAccount): boolean {
     return account instanceof SavedAccount
         || account instanceof InvestedAccount
         || account instanceof ESPPAccount

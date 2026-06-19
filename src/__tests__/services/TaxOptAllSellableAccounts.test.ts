@@ -13,8 +13,14 @@ import {
     AnyAccount, InvestedAccount, SavedAccount, PropertyAccount, DebtAccount, DeficitDebtAccount,
 } from '../../components/Objects/Accounts/models';
 import {
-    withAllSellableAccounts, isSellableAccount, generateCandidateWithdrawalOrders, WithdrawalOrderItem,
+    withAllSellableAccounts, generateCandidateWithdrawalOrders, WithdrawalOrderItem,
 } from '../../services/simulation/EngineDirectConversionSearch';
+import { isSellableAccount } from '../../services/simulation/WithdrawalPlanner';
+import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { FutureSocialSecurityIncome } from '../../components/Objects/Income/models';
+import { FoodExpense } from '../../components/Objects/Expense/models';
+import { runSimulationWithOptimization } from '../../components/Objects/Assumptions/useSimulation';
 
 // Cash, brokerage, Traditional, Roth (all sellable) + a property and a debt (NOT sellable).
 const accts = (): AnyAccount[] => [
@@ -120,5 +126,54 @@ describe('candidate orders cover all sellable accounts under tax-opt', () => {
         // omitted sellables (brokerage, traditional). This is the no-regression anchor.
         expect(candidates[0].slice(0, 2).map(x => x.accountId)).toEqual(['cash', 'roth']);
         expect(new Set(candidates[0].map(x => x.accountId))).toEqual(new Set(['cash', 'brk', 'trad', 'roth']));
+    });
+});
+
+// ===========================================================================
+// SIM-LEVEL: the augmentation must actually flow through runSimulationWithOptimization
+// (the #89 joint optimizer: chosenWithdrawalOrder / orderOptimizationGain / MC), not just
+// the candidate generator. Under tax-opt an account the user EXCLUDED from the order must
+// end up in the order the engine chooses and runs.
+// ===========================================================================
+describe('tax-opt folds an order-EXCLUDED account into the chosen order (runSimulationWithOptimization)', { timeout: 240_000 }, () => {
+    const NOW = new Date().getFullYear();
+    const BY = NOW - 60, RA = 60, LE = 90;
+    const simAccts = (): AnyAccount[] => [
+        new SavedAccount('cash', 'Cash', 50_000, 2),
+        new InvestedAccount('brk', 'Brokerage', 400_000, 0, 10, 0.05, 'Brokerage', true, 0.2, 300_000),
+        new InvestedAccount('trad', 'Traditional 401k', 1_000_000, 0, 10, 0.05, 'Traditional 401k', true, 0.2, 1_000_000),
+        new InvestedAccount('roth', 'Roth IRA', 100_000, 0, 10, 0.05, 'Roth IRA', true, 0.2, 100_000),
+    ];
+    // The user left the $1M Traditional 401k OUT of the burn order. Under tax-opt that exclusion
+    // must NOT bind — the optimizer has to fold it in as a first-class participant.
+    const orderExcludingTrad = [
+        { id: 'w1', name: 'Cash', accountId: 'cash' },
+        { id: 'w2', name: 'Brokerage', accountId: 'brk' },
+        { id: 'w4', name: 'Roth IRA', accountId: 'roth' },
+    ];
+    const assumptions: AssumptionsState = {
+        ...defaultAssumptions,
+        demographics: {},
+        milestones: createBuiltinMilestones(BY, RA, LE),
+        income: { ...defaultAssumptions.income, salaryGrowth: 0 },
+        macro: { ...defaultAssumptions.macro, inflationRate: 2.5, inflationAdjusted: true },
+        investments: {
+            ...defaultAssumptions.investments, returnRates: { ror: 7 },
+            taxOptimizationEnabled: true, autoRothConversions: true, rothConversionStrategy: 'dp-precomputed',
+        },
+        withdrawalStrategy: orderExcludingTrad,
+    };
+    const taxState: TaxState = { filingStatus: 'Single', stateResidency: 'Texas', deductionMethod: 'Standard', fedOverride: null, ficaOverride: null, stateOverride: null, year: NOW };
+    const incomes = () => [new FutureSocialSecurityIncome('inc-ss', 'Social Security', 67, 4_000, NOW)];
+    const expenses = () => [new FoodExpense('exp', 'Living', 70_000, 'Annually', new Date(`${NOW}-01-01`))];
+
+    it('the chosen order contains the excluded Traditional (exclusion does not bind under tax-opt)', () => {
+        const res = runSimulationWithOptimization(LE - (NOW - BY), simAccts(), incomes(), expenses(), assumptions, taxState);
+        const chosen = res[0].chosenWithdrawalOrder;
+        expect(chosen).toBeDefined();
+        // All four sellable accounts are present even though the user listed only three.
+        expect(chosen!.map(o => o.accountId).sort()).toEqual(['brk', 'cash', 'roth', 'trad']);
+        // No-regression floor: the chosen plan never scores below the std-ded baseline.
+        expect(res[0].strategyTerminalAfterTaxNW!).toBeGreaterThanOrEqual(res[0].stdDedBaselineTerminalAfterTaxNW! - 1);
     });
 });
