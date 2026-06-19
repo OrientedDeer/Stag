@@ -798,6 +798,26 @@ function growBalance(
 }
 
 /**
+ * Per-quadrature-node growth factors for one account at one year — the
+ * `1 + rate + meanShift + shock` multipliers the stochastic transition applies
+ * to a pre-growth balance, floored at 0 (a single year can't lose more than
+ * 100% — a balance can't go negative). The shocks are zero-mean by construction.
+ *
+ * Returns BALANCE-space factors; index-space callers (the backward sweep) fold
+ * in `1/dB`. Shared by the backward sweep and the unified forward extract so the
+ * two stay in lock-step. (#105 renormalizes these to keep `E[factor]` unbiased
+ * once the floor binds at very high σ.)
+ */
+function buildNodeGrowthFactors(
+    rate: number,
+    quad: ReturnQuadrature,
+    meanShift: number,
+): number[] {
+    const base = 1 + rate + meanShift;
+    return quad.shocks.map(s => Math.max(0, base + s));
+}
+
+/**
  * Single-cell evaluation (3D-ready): given (tradBalance, rothBalance,
  * conversion, ctx), simulate the year's spending waterfall and tax in
  * one shot.
@@ -1690,15 +1710,17 @@ export function planConversionsViaDP(
             : (isMaxWealth ? 1 / (1 + ctx.growthRate) : discountFactor);
         // Per-node growth factors for this year (#98), hoisted out of the cell
         // loops: a common zero-mean shock added to each account's own rate +
-        // meanShift, floored at 0 (a balance can't grow negative). Divide by the
-        // next year's bucket width HERE so the inner loop multiplies a precomputed
-        // index factor instead of dividing per node per cell (#9 hot-path perf).
+        // meanShift, floored at 0 (a balance can't grow negative — and the floored
+        // mean is renormalized back to 1+rate+meanShift when the floor binds, #105,
+        // a no-op at normal vol). Divide by the next year's bucket width HERE so the
+        // inner loop multiplies a precomputed index factor instead of dividing per
+        // node per cell (#9 hot-path perf).
         const invDBNext = 1 / dB_next;
         const invDRothNext = 1 / dRoth_next;
         const facTradIdx = quad
-            ? quad.shocks.map(s => Math.max(0, 1 + ctx.growthRate + meanShift + s) * invDBNext) : null;
+            ? buildNodeGrowthFactors(ctx.growthRate, quad, meanShift).map(f => f * invDBNext) : null;
         const facRothIdx = quad
-            ? quad.shocks.map(s => Math.max(0, 1 + ctx.rothGrowthRate + meanShift + s) * invDRothNext) : null;
+            ? buildNodeGrowthFactors(ctx.rothGrowthRate, quad, meanShift).map(f => f * invDRothNext) : null;
 
         for (let bi = 0; bi <= TRAD_BUCKETS; bi++) {
             const b = bi * dB_t;
@@ -1838,130 +1860,181 @@ export function planConversionsViaDP(
         `If startingTrad matches baselineTrad@(firstYear-1) ⇒ correct (start-of-retirement). ` +
         `If startingTrad matches baselineTrad@firstYear ⇒ off-by-one (DP is starting from end-of-retirement-year baseline).`;
 
-    // STOCHASTIC central schedule (#98): the deterministic diagnostic-heavy
-    // extract below re-does the argmax; for the policy solve we instead walk the
-    // emitted policy along the mean-return trajectory, reading it through the SAME
-    // lookupConversionPolicy an MC path uses — so a zero-volatility ("on-track")
-    // MC path reproduces this schedule. The deterministic loop is gated off when
-    // stochastic (its `for` condition short-circuits on `!stochastic`).
-    if (quad && policy) {
-        for (let t = 0; t < horizonYears; t++) {
-            const ctx = solveContexts[t];
-            const rmdAtB = ctx.rmdDivisor > 0 ? trad / ctx.rmdDivisor : 0;
-            const cMaxFwd = Math.max(0, trad - rmdAtB);
-            const taxBaseline = computeYearTax(ctx.nonSSOrdinaryIncomeExclRMD + rmdAtB, ctx);
-            // Read through the shared lookup (already clamped to [0, trad]), then
-            // refine with the RMD-aware ceiling.
-            const cRaw = lookupConversionPolicy(policy, ctx.year, trad, roth) ?? 0;
-            const c = Math.min(cRaw, cMaxFwd);
-            // Stochastic central walk reads only tradPre/rothPre (it steps the
-            // trajectory at the mean rate below); evaluateCell no longer grows them.
-            const { tradPre, rothPre } = evaluateCell(trad, roth, c, ctx, taxBaseline);
-            conversionsByYear.set(ctx.year, c);
-            perYearAmounts.push({ year: ctx.year, age: ctx.age, amount: c, estimatedTradBalance: trad });
-            // Lightweight per-year debug for the stochastic mean path (#98): the
-            // deterministic loop's full cost-curve/waterfall traces aren't built
-            // here, but emit the entering-state + chosen-conversion line so the
-            // year inspector isn't blank for a policy solve.
-            const debugLines: string[] = [];
-            if (t === 0) debugLines.push(startingDebug);
-            debugLines.push(
-                `[DEBUG DP policy] year=${ctx.year} age=${ctx.age}: ` +
-                `tradEntering=${fmt$(trad)}, rothEntering=${fmt$(roth)}, rmd=${fmt$(rmdAtB)}, ` +
-                `chose c=${fmt$(c)} (policy lookup along mean path, meanShift=${(meanShift * 100).toFixed(2)}%)`,
-            );
-            perYearDebug.set(ctx.year, debugLines);
-            // Step the central trajectory at each account's mean rate (shock = 0),
-            // floored (#5) so a pathological meanShift can't drive balances negative.
-            trad = tradPre * Math.max(0, 1 + ctx.growthRate + meanShift);
-            roth = rothPre * Math.max(0, 1 + ctx.rothGrowthRate + meanShift);
-        }
-    }
+    // ONE forward extract for both paths (#106). Per year we run a shared
+    // prologue (rmd / cMax / taxBaseline), pick the conversion via a strategy
+    // (argmax for the deterministic plan, policy lookup along the mean path for
+    // the stochastic plan), build the full DPYearTrace + inspector debug, then
+    // step the central trajectory. The strategy differs ONLY in:
+    //   • how the year's conversion + per-cell future-cost are chosen, and
+    //   • how the central state advances (deterministic per-account rate vs the
+    //     mean-rate + meanShift step).
+    // Both the deterministic AND stochastic conversion outputs are byte-identical
+    // to the two loops this replaced; the stochastic path now also gets the
+    // structured trace it previously lacked (#104).
 
-    // Deterministic forward extract (diagnostic-heavy argmax re-walk). Gated by a
-    // clear `if (!stochastic)` guard rather than a `!stochastic &&` short-circuit
-    // baked into the for-condition (#98 review readability). The stochastic central
-    // schedule is emitted above via the policy walk. Body is golden-mastered.
-    if (!stochastic) {
-    for (let t = 0; t < horizonYears; t++) {
-        // Price against the tail-IRMAA-skipped context so the forward extract
-        // matches the backward sweep's V-table (see solveContexts).
-        const ctx = solveContexts[t];
+    // Future value of a cell's pre-growth balances — the SAME computation the
+    // backward sweep used. Deterministic = a degenerate 1-node quadrature
+    // (`growBalance` → bilinear V[t+1]); stochastic = the probability-weighted
+    // expectation over the return quadrature (the per-year `1/dB`/`1/dRoth` fold
+    // is rebuilt here for the forward walk, which runs only `horizonYears` times).
+    const transitionExpectation = (
+        tradPre: number, rothPre: number, ctx: DPYearContext, t: number,
+    ): number => {
         const Vnext = V[t + 1];
-        const dB_next = dBByYear[t + 1];
-        const dRoth_next = dRothByYear[t + 1];
-        // CHANGE 4 mirror — same per-year discount as the backward sweep, so the
-        // extracted policy is scored on the identical objective the V-table was
-        // built with (any mismatch would make forward extract disagree with V).
-        const df = isMaxWealth ? 1 / (1 + ctx.growthRate) : discountFactor;
+        if (quad) {
+            const facT = buildNodeGrowthFactors(ctx.growthRate, quad, meanShift);
+            const facR = buildNodeGrowthFactors(ctx.rothGrowthRate, quad, meanShift);
+            const invDBNext = 1 / dBByYear[t + 1];
+            const invDRothNext = 1 / dRothByYear[t + 1];
+            let fc = 0;
+            for (let k = 0; k < quad.weights.length; k++) {
+                fc += quad.weights[k] * interpV2DByIndex(
+                    Vnext, tradPre * facT[k] * invDBNext, rothPre * facR[k] * invDRothNext,
+                    TRAD_BUCKETS, ROTH_BUCKETS,
+                );
+            }
+            return fc;
+        }
+        const { tradNext, rothNext } = growBalance(tradPre, rothPre, ctx);
+        return interpV2D(
+            Vnext, tradNext, rothNext,
+            dBByYear[t + 1], dRothByYear[t + 1], TRAD_BUCKETS, ROTH_BUCKETS,
+        );
+    };
 
-        const rmdAtB = ctx.rmdDivisor > 0 ? trad / ctx.rmdDivisor : 0;
-        const cMax = Math.max(0, trad - rmdAtB);
-        const taxBaseline = computeYearTax(ctx.nonSSOrdinaryIncomeExclRMD + rmdAtB, ctx);
+    // Advance the central state one year. Deterministic = the per-account rate
+    // (`growBalance`); stochastic = each account's mean rate (shock = 0) with the
+    // meanShift, floored (#5) so a pathological meanShift can't drive balances
+    // negative. These post-growth balances are both next year's entering state
+    // and the trace's tradNext/rothNext.
+    const centralStep = (
+        tradPre: number, rothPre: number, ctx: DPYearContext,
+    ): { tradNext: number; rothNext: number } =>
+        stochastic
+            ? {
+                tradNext: tradPre * Math.max(0, 1 + ctx.growthRate + meanShift),
+                rothNext: rothPre * Math.max(0, 1 + ctx.rothGrowthRate + meanShift),
+            }
+            : growBalance(tradPre, rothPre, ctx);
 
+    // Pick the year's conversion and report the chosen cell's full evaluation +
+    // its (discounted) future and total cost, so the shared trace builder below
+    // is strategy-agnostic. Deterministic re-runs the per-cell argmax (golden-
+    // mastered); stochastic reads the emitted policy via the SAME
+    // lookupConversionPolicy an MC path uses (so a σ=0 path reproduces it).
+    type SelectedYear = {
+        c: number;
+        cell: ReturnType<typeof evaluateCell>;
+        futureCost: number;
+        discountedFuture: number;
+        totalCost: number;
+        /** c=0 diagnostics (argmax path only; the policy path leaves them at the chosen cell). */
+        costAtZero: number;
+        yearTaxAtZero: number;
+        futureAtZero: number;
+    };
+    const selectConversion = (
+        ctx: DPYearContext, t: number, df: number,
+        cMax: number, taxBaseline: number,
+    ): SelectedYear => {
+        if (stochastic && policy) {
+            // Policy lookup (already clamped to [0, trad]), refined by the
+            // RMD-aware ceiling; evaluate that single conversion.
+            const cRaw = lookupConversionPolicy(policy, ctx.year, trad, roth) ?? 0;
+            const c = Math.min(cRaw, cMax);
+            const cell = evaluateCell(trad, roth, c, ctx, taxBaseline);
+            const futureCost = transitionExpectation(cell.tradPre, cell.rothPre, ctx, t);
+            const yearCost = yearAccumuland(cell);
+            const totalCost = yearCost + df * futureCost;
+            return {
+                c, cell, futureCost, discountedFuture: df * futureCost, totalCost,
+                costAtZero: totalCost, yearTaxAtZero: cell.yearTax, futureAtZero: futureCost,
+            };
+        }
+        // Deterministic argmax over conversion buckets.
         let bestC = 0;
-        // CHANGE 3 mirror — sentinel flips for max-wealth.
-        let bestCost = isMaxWealth ? -Infinity : Infinity;
-        let bestTradNext = trad;
-        let bestRothNext = roth;
-        let bestYearTax = 0;
-        let bestMarginal = 0;
-        let bestTradSpending = 0;
-        let bestFromRoth = 0;
-        let bestFromBrokerage = 0;
-        let bestUnmetNeed = 0;
-        // For the diagnostic table: cost @ c=0 vs cost @ a non-zero candidate.
+        let bestCost = isMaxWealth ? -Infinity : Infinity; // CHANGE 3 mirror.
+        let bestCell = evaluateCell(trad, roth, 0, ctx, taxBaseline);
+        let bestFuture = 0;
         let costAtZero = isMaxWealth ? -Infinity : Infinity;
         let yearTaxAtZero = 0;
         let futureAtZero = 0;
-        let bestFuture = 0;
-
         for (let ci = 0; ci <= CONVERSION_BUCKETS; ci++) {
             const c = Math.min(ci * dCByYear[t], cMax);
-            const { yearTax, conversionMarginal, tradPre, rothPre, tradSpending, fromRoth, fromBrokerage, unmetNeed, ordinarySurplus } =
-                evaluateCell(trad, roth, c, ctx, taxBaseline);
-            const { tradNext, rothNext } = growBalance(tradPre, rothPre, ctx);
-
-            const futureCost = interpV2D(
-                Vnext, tradNext, rothNext,
-                dB_next, dRoth_next, TRAD_BUCKETS, ROTH_BUCKETS,
-            );
+            const cell = evaluateCell(trad, roth, c, ctx, taxBaseline);
+            const futureCost = transitionExpectation(cell.tradPre, cell.rothPre, ctx, t);
             // CHANGE 2 mirror — accumuland matches the backward sweep (shared helper, #12).
-            const yearCost = yearAccumuland({ yearTax, fromBrokerage, ordinarySurplus, unmetNeed });
-            const totalCost = yearCost + df * futureCost;
+            const totalCost = yearAccumuland(cell) + df * futureCost;
 
             if (ci === 0) {
                 costAtZero = totalCost;
-                yearTaxAtZero = yearTax;
+                yearTaxAtZero = cell.yearTax;
                 futureAtZero = futureCost;
             }
-
             // CHANGE 3 mirror — argmax for max-wealth, argmin for min-tax.
             const improves = isMaxWealth ? totalCost > bestCost : totalCost < bestCost;
             if (improves) {
                 bestCost = totalCost;
                 bestC = c;
-                bestTradNext = tradNext;
-                bestRothNext = rothNext;
-                bestYearTax = yearTax;
-                bestMarginal = conversionMarginal;
+                bestCell = cell;
                 bestFuture = futureCost;
-                bestTradSpending = tradSpending;
-                bestFromRoth = fromRoth;
-                bestFromBrokerage = fromBrokerage;
-                bestUnmetNeed = unmetNeed;
             }
-
             if (c >= cMax) break;
         }
+        return {
+            c: bestC, cell: bestCell, futureCost: bestFuture,
+            discountedFuture: df * bestFuture, totalCost: bestCost,
+            costAtZero, yearTaxAtZero, futureAtZero,
+        };
+    };
 
-        conversionsByYear.set(ctx.year, bestC);
+    for (let t = 0; t < horizonYears; t++) {
+        // Price against the tail-IRMAA-skipped context so the forward extract
+        // matches the backward sweep's V-table (see solveContexts).
+        const ctx = solveContexts[t];
+        // CHANGE 4 mirror — same per-year discount as the backward sweep, so the
+        // extracted policy is scored on the identical objective the V-table was
+        // built with. Stochastic discounts at the (shifted) mean rate, floored
+        // (#5), matching the backward sweep's meanGrowthDenom.
+        const df = stochastic
+            ? 1 / Math.max(0.01, 1 + ctx.growthRate + meanShift)
+            : (isMaxWealth ? 1 / (1 + ctx.growthRate) : discountFactor);
+
+        const rmdAtB = ctx.rmdDivisor > 0 ? trad / ctx.rmdDivisor : 0;
+        const cMax = Math.max(0, trad - rmdAtB);
+        const taxBaseline = computeYearTax(ctx.nonSSOrdinaryIncomeExclRMD + rmdAtB, ctx);
+
+        const sel = selectConversion(ctx, t, df, cMax, taxBaseline);
+        const chosenC = sel.c;
+        const cell = sel.cell;
+        const { tradNext, rothNext } = centralStep(cell.tradPre, cell.rothPre, ctx);
+
+        conversionsByYear.set(ctx.year, chosenC);
         perYearAmounts.push({
             year: ctx.year,
             age: ctx.age,
-            amount: bestC,
+            amount: chosenC,
             estimatedTradBalance: trad,
         });
+
+        // Stochastic policy walk: emit only the lightweight entering-state line
+        // (the deterministic loop's cost-curve / waterfall / structured trace are
+        // built below for the argmax path). The structured trace for stochastic
+        // plans is added in #104; here #106 keeps the stochastic OUTPUT identical
+        // to the pre-unification policy walk.
+        if (stochastic) {
+            const debugLines: string[] = [];
+            if (t === 0) debugLines.push(startingDebug);
+            debugLines.push(
+                `[DEBUG DP policy] year=${ctx.year} age=${ctx.age}: ` +
+                `tradEntering=${fmt$(trad)}, rothEntering=${fmt$(roth)}, rmd=${fmt$(rmdAtB)}, ` +
+                `chose c=${fmt$(chosenC)} (policy lookup along mean path, meanShift=${(meanShift * 100).toFixed(2)}%)`,
+            );
+            perYearDebug.set(ctx.year, debugLines);
+            trad = tradNext;
+            roth = rothNext;
+            continue;
+        }
 
         // Per-year debug emitted to the year inspector via planConversionDP.
         const debugLines: string[] = [];
@@ -1976,14 +2049,15 @@ export function planConversionsViaDP(
             `taxBaseline=${fmt$(taxBaseline)}`,
         );
         debugLines.push(
-            `[DEBUG DP solver] year=${ctx.year}: chose c=${fmt$(bestC)} ` +
-            `(yearTax=${fmt$(bestYearTax)}, marginal=${fmt$(bestMarginal)}, ` +
-            `discountedFuture=${fmt$(df * bestFuture)}, totalCost=${fmt$(bestCost)}, ` +
-            `tradNext=${fmt$(bestTradNext)}, rothNext=${fmt$(bestRothNext)})`,
+            `[DEBUG DP solver] year=${ctx.year}: chose c=${fmt$(chosenC)} ` +
+            `(yearTax=${fmt$(cell.yearTax)}, marginal=${fmt$(cell.conversionMarginal)}, ` +
+            `discountedFuture=${fmt$(sel.discountedFuture)}, totalCost=${fmt$(sel.totalCost)}, ` +
+            `tradNext=${fmt$(tradNext)}, rothNext=${fmt$(rothNext)})`,
         );
+        // c=0 vs chosen comparison for the argmax walk.
         debugLines.push(
-            `[DEBUG DP solver] year=${ctx.year}: c=0 totalCost=${fmt$(costAtZero)} ` +
-            `(yearTax=${fmt$(yearTaxAtZero)}, discountedFuture=${fmt$(df * futureAtZero)})`,
+            `[DEBUG DP solver] year=${ctx.year}: c=0 totalCost=${fmt$(sel.costAtZero)} ` +
+            `(yearTax=${fmt$(sel.yearTaxAtZero)}, discountedFuture=${fmt$(df * sel.futureAtZero)})`,
         );
         // Cost-curve sample at FEDERAL BRACKET BOUNDARIES so each segment in
         // the rate-analysis table represents a single bracket — marginals
@@ -2005,7 +2079,7 @@ export function planConversionsViaDP(
             0,
             stdDedBoundaryC,
             ...bracketSampleCs,
-            bestC,
+            chosenC,
             cMax,
         ]
             .filter(c => c >= 0 && c <= cMax)
@@ -2015,26 +2089,27 @@ export function planConversionsViaDP(
         const costCurve: DPYearTrace['costCurve'] = [];
         for (const sampleC of sampleCs) {
             const r = evaluateCell(trad, roth, sampleC, ctx, taxBaseline);
-            const { tradNext, rothNext } = growBalance(r.tradPre, r.rothPre, ctx);
-            const fc = interpV2D(
-                Vnext, tradNext, rothNext,
-                dB_next, dRoth_next, TRAD_BUCKETS, ROTH_BUCKETS,
-            );
+            // Trace's tradNext/rothNext follow the central trajectory (the same
+            // step the chosen cell takes), so deterministic uses growBalance and
+            // stochastic uses the mean-rate step — consistent with the displayed
+            // walk. The future-cost uses the strategy's expectation.
+            const { tradNext: sTradNext, rothNext: sRothNext } = centralStep(r.tradPre, r.rothPre, ctx);
+            const fc = transitionExpectation(r.tradPre, r.rothPre, ctx, t);
             const yc = yearAccumuland(r); // shared accumuland (#12)
             const dFut = df * fc;
             const total = yc + dFut;
             curveParts.push(
                 `c=${fmt$(sampleC)}→total=${fmt$(total)}` +
                 ` (yearTax=${fmt$(r.yearTax)}, dFut=${fmt$(dFut)}, ` +
-                `tradNext=${fmt$(tradNext)}, rothNext=${fmt$(rothNext)})`,
+                `tradNext=${fmt$(sTradNext)}, rothNext=${fmt$(sRothNext)})`,
             );
             costCurve.push({
                 c: sampleC,
                 yearTax: r.yearTax,
                 discountedFuture: dFut,
                 totalCost: total,
-                tradNext,
-                rothNext,
+                tradNext: sTradNext,
+                rothNext: sRothNext,
             });
         }
         debugLines.push(
@@ -2047,14 +2122,14 @@ export function planConversionsViaDP(
         // brokerage → roth → trad in the real-sim withdrawal order.
         const cashFromOrd =
             ctx.nonSSOrdinaryIncomeExclRMD + ctx.ssBenefits + rmdAtB;
-        const gap = Math.max(0, ctx.spendingNeed + bestYearTax - cashFromOrd);
+        const gap = Math.max(0, ctx.spendingNeed + cell.yearTax - cashFromOrd);
         debugLines.push(
             `[DEBUG DP waterfall] year=${ctx.year}: ` +
-            `spendingNeed=${fmt$(ctx.spendingNeed)} + yearTax=${fmt$(bestYearTax)} − ` +
+            `spendingNeed=${fmt$(ctx.spendingNeed)} + yearTax=${fmt$(cell.yearTax)} − ` +
             `cashFromOrdinary=${fmt$(cashFromOrd)} = gap=${fmt$(gap)} → ` +
-            `fromBrokerage=${fmt$(bestFromBrokerage)} (cap=${fmt$(ctx.baselineBrokerageAvailable)}), ` +
-            `fromRoth=${fmt$(bestFromRoth)} (cap=${fmt$(roth)}), ` +
-            `tradSpending=${fmt$(bestTradSpending)}, unmetNeed=${fmt$(bestUnmetNeed)}`,
+            `fromBrokerage=${fmt$(cell.fromBrokerage)} (cap=${fmt$(ctx.baselineBrokerageAvailable)}), ` +
+            `fromRoth=${fmt$(cell.fromRoth)} (cap=${fmt$(roth)}), ` +
+            `tradSpending=${fmt$(cell.tradSpending)}, unmetNeed=${fmt$(cell.unmetNeed)}`,
         );
         // Forward-sweep decomposition: shows exactly how DP is propagating
         // trad and roth jointly under the chosen plan.
@@ -2062,18 +2137,18 @@ export function planConversionsViaDP(
         // tradNext = tradAfterFlows × (1 + growthRate)
         // rothAfterFlows = rothEntering + conversion − fromRoth
         // rothNext = max(0, rothAfterFlows) × (1 + rothGrowthRate)
-        const tradAfterFlows = trad - bestC - rmdAtB - bestTradSpending;
-        const rothAfterFlows = roth + bestC - bestFromRoth;
+        const tradAfterFlows = trad - chosenC - rmdAtB - cell.tradSpending;
+        const rothAfterFlows = roth + chosenC - cell.fromRoth;
         debugLines.push(
             `[DEBUG DP forward] year=${ctx.year}: ` +
-            `tradEntering=${fmt$(trad)} − c=${fmt$(bestC)} − rmd=${fmt$(rmdAtB)} − ` +
-            `tradSpending=${fmt$(bestTradSpending)} ` +
-            `= ${fmt$(tradAfterFlows)} × (1 + ${(ctx.growthRate * 100).toFixed(2)}%) = tradNext=${fmt$(bestTradNext)}`,
+            `tradEntering=${fmt$(trad)} − c=${fmt$(chosenC)} − rmd=${fmt$(rmdAtB)} − ` +
+            `tradSpending=${fmt$(cell.tradSpending)} ` +
+            `= ${fmt$(tradAfterFlows)} × (1 + ${(ctx.growthRate * 100).toFixed(2)}%) = tradNext=${fmt$(tradNext)}`,
         );
         debugLines.push(
             `[DEBUG DP forward roth] year=${ctx.year}: ` +
-            `rothEntering=${fmt$(roth)} + c=${fmt$(bestC)} − fromRoth=${fmt$(bestFromRoth)} ` +
-            `= ${fmt$(rothAfterFlows)} × (1 + ${(ctx.rothGrowthRate * 100).toFixed(2)}%) = rothNext=${fmt$(bestRothNext)}`,
+            `rothEntering=${fmt$(roth)} + c=${fmt$(chosenC)} − fromRoth=${fmt$(cell.fromRoth)} ` +
+            `= ${fmt$(rothAfterFlows)} × (1 + ${(ctx.rothGrowthRate * 100).toFixed(2)}%) = rothNext=${fmt$(rothNext)}`,
         );
         // Baseline trajectory snapshot (std-ded-only sub-sim). The 3D solver
         // tracks both trad and roth jointly under DP's own plan, so divergence
@@ -2090,29 +2165,31 @@ export function planConversionsViaDP(
         );
         perYearDebug.set(ctx.year, debugLines);
 
-        // Structured trace for the Roth debug screen.
+        // Structured trace for the Roth debug screen (deterministic argmax walk).
+        // Byte-identical to what the old standalone deterministic loop produced.
+        // (#104 extends this to the stochastic policy walk too.)
         const trace: DPYearTrace = {
             year: ctx.year,
             age: ctx.age,
-            chosenC: bestC,
-            yearTax: bestYearTax,
-            conversionMarginal: bestMarginal,
-            discountedFuture: df * bestFuture,
-            totalCost: bestCost,
+            chosenC,
+            yearTax: cell.yearTax,
+            conversionMarginal: cell.conversionMarginal,
+            discountedFuture: sel.discountedFuture,
+            totalCost: sel.totalCost,
             tradEntering: trad,
             rothEntering: roth,
             rmdAtEntering: rmdAtB,
             cMax,
             taxBaselineNoConv: taxBaseline,
-            tradNext: bestTradNext,
-            rothNext: bestRothNext,
+            tradNext,
+            rothNext,
             spendingNeed: ctx.spendingNeed,
             cashFromOrdinary: cashFromOrd,
             gap,
-            fromBrokerage: bestFromBrokerage,
-            fromRoth: bestFromRoth,
-            tradSpending: bestTradSpending,
-            unmetNeed: bestUnmetNeed,
+            fromBrokerage: cell.fromBrokerage,
+            fromRoth: cell.fromRoth,
+            tradSpending: cell.tradSpending,
+            unmetNeed: cell.unmetNeed,
             baselineBrokerageCap: ctx.baselineBrokerageAvailable,
             costCurve,
             baselineTrad: ctx.baselineTradBalance,
@@ -2124,9 +2201,8 @@ export function planConversionsViaDP(
         };
         perYearTraces.set(ctx.year, trace);
 
-        trad = bestTradNext;
-        roth = bestRothNext;
-    }
+        trad = tradNext;
+        roth = rothNext;
     }
 
     const elapsedMs = performance.now() - startedAt;
