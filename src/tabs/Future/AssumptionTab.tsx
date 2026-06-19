@@ -25,10 +25,11 @@ export default function AssumptionTab() {
 
   const birthYear = useMemo(() => getBirthYear(state.milestones), [state.milestones]);
 
-  // Under Guyton-Klinger, surface a tip when the user's planned year-1
-  // retirement spending implies a higher initial withdrawal rate than the one
-  // configured. A too-low rate caps spending and produces amber budget-cap
-  // markers throughout retirement. `null` when there's nothing worth flagging.
+  // Under Guyton-Klinger, surface a tip when the user's planned year-1 retirement
+  // spending implies an initial withdrawal rate that differs meaningfully from the
+  // configured one, in EITHER direction. Too low ('raise'): GK caps spending and
+  // produces amber budget-cap markers. Too high ('lower'): the prosperity guardrail
+  // keeps boosting spending above plan. `null` when there's nothing worth flagging.
   const gkRateSuggestion = useMemo(
     () => computeGKRateSuggestion(simulation, state),
     [simulation, state],

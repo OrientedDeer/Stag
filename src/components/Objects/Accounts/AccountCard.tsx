@@ -672,8 +672,13 @@ function BrokerageHoldingsSummary({ account }: { account: InvestedAccount }): Re
 }
 
 function RothHoldingsSummary({ account }: { account: InvestedAccount }): ReactElement {
-    const contributions = account.regularContributions;
-    const converted = account.totalConversionBasis;
+    // Derive the split so the three cells always reconcile to Current Value — even
+    // for an imported account whose costBasis (set via the Contributions input) is
+    // below its conversion basis: clamp Converted to costBasis, then Contributions
+    // is the remainder. Normal case (costBasis >= conversion basis) is unchanged:
+    // `contributions` then equals `account.regularContributions`. (#100 review)
+    const converted = Math.min(account.totalConversionBasis, account.costBasis);
+    const contributions = account.costBasis - converted;
     // True earnings for display: account.unrealizedGains floors at 0 (correct for
     // the withdrawal basis split), but show a loss when the account is underwater.
     const earnings = account.amount - account.costBasis;
