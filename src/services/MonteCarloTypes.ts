@@ -34,9 +34,15 @@ export interface ReturnPreset {
     key: ReturnPresetKey;
     label: string;
     description: string;
-    /** Return mean when inflation adjustment is OFF (nominal returns) */
+    /**
+     * Seed nominal return used only as the initial default in
+     * {@link defaultMonteCarloConfig}. The displayed/synced nominal return is
+     * NOT this static value — it is derived as `returnMeanReal + simInflation`
+     * (see {@link getPresetReturnMean}) so the preset tracks the same inflation
+     * rate the rest of the simulation runs on, rather than a frozen historic CPI.
+     */
     returnMeanNominal: number;
-    /** Return mean when inflation adjustment is ON (real returns) */
+    /** Real (inflation-OFF) return mean. Also the base for the derived nominal. */
     returnMeanReal: number;
     returnStdDev: number;
 }
@@ -76,13 +82,34 @@ export const RETURN_PRESETS: Record<ReturnPresetKey, ReturnPreset> = {
 };
 
 /**
- * Get the appropriate return mean based on inflation adjustment setting
- * When inflation adjustment is ON, use nominal returns (simulation adjusts for inflation)
- * When inflation adjustment is OFF, use real returns (already inflation-adjusted)
+ * Get the appropriate return mean for a preset given the inflation setting.
+ *
+ * When inflation adjustment is OFF, the simulation runs in real dollars, so the
+ * preset's real return is used directly.
+ *
+ * When inflation adjustment is ON, the simulation runs in nominal dollars driven
+ * by the *sim* inflation rate (`simInflationRate`), so the nominal return is
+ * derived as `returnMeanReal + simInflationRate` — mirroring how the Custom
+ * preset computes `ror + inflationRate`. Previously this returned the static
+ * `returnMeanNominal`, which baked in a frozen historic CPI and ignored the sim
+ * inflation rate (issue #109).
+ *
+ * @param simInflationRate The sim inflation rate (percent, e.g. 2 for 2%). Only
+ *   used when `inflationAdjusted` is true. Defaults to 0 so a missing rate
+ *   degrades to the real return rather than throwing.
  */
-export function getPresetReturnMean(preset: ReturnPresetKey, inflationAdjusted: boolean): number {
+export function getPresetReturnMean(
+    preset: ReturnPresetKey,
+    inflationAdjusted: boolean,
+    simInflationRate: number = 0
+): number {
     const presetData = RETURN_PRESETS[preset];
-    return inflationAdjusted ? presetData.returnMeanNominal : presetData.returnMeanReal;
+    if (!inflationAdjusted) {
+        return presetData.returnMeanReal;
+    }
+    // Derive nominal from the sim inflation rate; round to 1 decimal to match the
+    // displayed precision and the Custom path's rounding.
+    return Math.round((presetData.returnMeanReal + simInflationRate) * 10) / 10;
 }
 
 /**

@@ -85,12 +85,22 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
     const ror = assumptions.investments?.returnRates?.ror ?? 0;
     useEffect(() => {
         if (normalizedPreset !== 'custom') {
-            // For named presets, always sync to the expected value
-            const expectedMean = getPresetReturnMean(normalizedPreset, inflationAdjusted);
+            // For named presets, always sync to the expected value. When inflation
+            // is on, the nominal mean is derived from the sim inflation rate
+            // (returnMeanReal + inflationRate), so dragging the inflation rate
+            // re-runs this effect and re-syncs the displayed Mean Return (#109).
+            const expectedMean = getPresetReturnMean(normalizedPreset, inflationAdjusted, inflationRate);
+            const inflationTrackingChanged =
+                config.lastInflationAdjusted !== inflationAdjusted ||
+                config.lastInflationRate !== inflationRate;
             if (config.returnMean !== expectedMean) {
-                updateConfig({ returnMean: expectedMean, lastInflationAdjusted: inflationAdjusted });
-            } else if (config.lastInflationAdjusted !== inflationAdjusted) {
-                updateConfig({ lastInflationAdjusted: inflationAdjusted });
+                updateConfig({
+                    returnMean: expectedMean,
+                    lastInflationAdjusted: inflationAdjusted,
+                    lastInflationRate: inflationRate,
+                });
+            } else if (inflationTrackingChanged) {
+                updateConfig({ lastInflationAdjusted: inflationAdjusted, lastInflationRate: inflationRate });
             }
         } else {
             // For custom, sync to assumptions: ror + inflation (if toggle on), else just ror.
@@ -125,7 +135,7 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
         const customMean = inflationAdjusted ? ror + inflationRate : ror;
         const returnMean = presetKey === 'custom'
             ? Math.round(customMean * 10) / 10
-            : getPresetReturnMean(presetKey, inflationAdjusted);
+            : getPresetReturnMean(presetKey, inflationAdjusted, inflationRate);
         updateConfig({
             preset: presetKey,
             returnMean,
@@ -140,7 +150,7 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
     const handleReturnMeanChange = (value: number) => {
         const newConfig: { returnMean: number; preset?: ReturnPresetKey } = { returnMean: value };
         // Switch to custom if value doesn't match current preset
-        const expectedMean = getPresetReturnMean(normalizedPreset, inflationAdjusted);
+        const expectedMean = getPresetReturnMean(normalizedPreset, inflationAdjusted, inflationRate);
         if (value !== expectedMean) {
             newConfig.preset = 'custom';
         }
@@ -229,7 +239,7 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
                             {RETURN_PRESETS[normalizedPreset].description}
                             {normalizedPreset !== 'custom' && (
                                 <span className="text-content-muted">
-                                    {' '}Using {inflationAdjusted ? 'nominal' : 'real'} returns ({getPresetReturnMean(normalizedPreset, inflationAdjusted)}%).
+                                    {' '}Using {inflationAdjusted ? 'nominal' : 'real'} returns ({getPresetReturnMean(normalizedPreset, inflationAdjusted, inflationRate)}%).
                                 </span>
                             )}
                         </p>
