@@ -93,6 +93,50 @@ export function getRetirementYearSpendingAndPortfolio(
 }
 
 /**
+ * Round an implied initial rate (%) to the nearest 0.1%, biased so the applied
+ * rate lands on the safe side of the implied spend:
+ *  - `'raise'` (rate too low): round UP so the rate covers the implied spend
+ *    (rounding down could leave it fractionally short).
+ *  - `'lower'` (rate too high): round DOWN so the rate doesn't overshoot the
+ *    plan and keep the prosperity guardrail firing.
+ * The ±1e-9 epsilon absorbs IEEE-754 noise (e.g. 5.8 arriving as
+ * 5.800000000000001) so a clean tenth isn't nudged an extra 0.1%.
+ */
+function roundSuggestedRate(impliedRate: number, direction: 'raise' | 'lower'): number {
+    return direction === 'raise'
+        ? Math.ceil(impliedRate * 10 - 1e-9) / 10
+        : Math.floor(impliedRate * 10 + 1e-9) / 10;
+}
+
+/**
+ * Strategy-AGNOSTIC suggested initial withdrawal rate (%): the rate the user's
+ * year-1 retirement planned spending implies against the portfolio at
+ * retirement, rounded UP to the nearest 0.1% so it covers the spend.
+ *
+ * Unlike {@link computeGKRateSuggestion}, this does NOT gate on the active
+ * strategy or on any threshold — it's the raw "what rate funds my plan?" value.
+ * Used to seed the rate when the user first switches to Guyton-Klinger (at which
+ * point the cached simulation still reflects the prior strategy, so
+ * `computeGKRateSuggestion` would return `null`). Returns `null` when the
+ * retirement-year spending/portfolio can't be derived.
+ *
+ * Pure: takes simulation results + assumptions, no React/context.
+ */
+export function suggestedInitialRate(
+    simulation: SimulationYear[],
+    assumptions: AssumptionsState,
+): number | null {
+    const retirement = getRetirementYearSpendingAndPortfolio(simulation, assumptions);
+    if (!retirement) return null;
+
+    const { plannedSpending, portfolioAtRetirement } = retirement;
+    if (plannedSpending <= 0) return null;
+
+    const impliedRate = (plannedSpending / portfolioAtRetirement) * 100;
+    return roundSuggestedRate(impliedRate, 'raise');
+}
+
+/**
  * Compute a Guyton-Klinger initial-withdrawal-rate suggestion.
  *
  * The implied initial rate = year-1 retirement planned spending ÷ portfolio at
@@ -139,19 +183,7 @@ export function computeGKRateSuggestion(
     }
 
     const direction: 'raise' | 'lower' = gap > 0 ? 'raise' : 'lower';
-
-    // Round to the nearest 0.1%, biased so the applied rate lands on the safe
-    // side of the implied spend:
-    //  - 'raise' (rate too low): round UP so the rate covers the implied spend
-    //    (rounding down could leave it fractionally short).
-    //  - 'lower' (rate too high): round DOWN so the rate doesn't overshoot the
-    //    plan and keep the prosperity guardrail firing.
-    // The ±1e-9 epsilon absorbs IEEE-754 noise (e.g. 5.8 arriving as
-    // 5.800000000000001) so a clean tenth isn't nudged an extra 0.1%.
-    const suggestedRate =
-        direction === 'raise'
-            ? Math.ceil(impliedRate * 10 - 1e-9) / 10
-            : Math.floor(impliedRate * 10 + 1e-9) / 10;
+    const suggestedRate = roundSuggestedRate(impliedRate, direction);
 
     return {
         direction,

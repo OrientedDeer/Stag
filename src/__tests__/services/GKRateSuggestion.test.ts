@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
     computeGKRateSuggestion,
     getRetirementYearSpendingAndPortfolio,
+    suggestedInitialRate,
     GK_RATE_SUGGESTION_THRESHOLD_PP,
 } from '../../services/gkRateSuggestion';
 import {
@@ -292,5 +293,47 @@ describe('computeGKRateSuggestion', () => {
 
     it('exposes the default threshold constant', () => {
         expect(GK_RATE_SUGGESTION_THRESHOLD_PP).toBeGreaterThan(0);
+    });
+});
+
+describe('suggestedInitialRate', () => {
+    it('returns the implied rate rounded UP to the nearest 0.1%', () => {
+        // 47_300 / 1M = 4.73% → ceil to 4.8%.
+        const sim = [makeYear({ year: RETIREMENT_YEAR, livingExpenses: 47300, initialPortfolio: 1_000_000 })];
+        expect(suggestedInitialRate(sim, makeAssumptions())).toBe(4.8);
+    });
+
+    it('is strategy-AGNOSTIC: works while the cached sim still reflects a non-GK strategy', () => {
+        // This is the seed-on-switch path: at the instant GK is selected the
+        // cached run is still Fixed Real, so computeGKRateSuggestion would be
+        // null — but suggestedInitialRate still yields the rate.
+        const sim = [makeYear({ year: RETIREMENT_YEAR, livingExpenses: 50000, initialPortfolio: 1_000_000 })];
+        expect(computeGKRateSuggestion(sim, makeAssumptions({ strategy: 'Fixed Real' }))).toBeNull();
+        expect(suggestedInitialRate(sim, makeAssumptions({ strategy: 'Fixed Real' }))).toBe(5.0);
+    });
+
+    it('reconstructs pre-cap planned spending (adds back the budget-cap trim)', () => {
+        // Reported 40k after a 12k cap → planned 52k → 5.2%.
+        const sim = [
+            makeYear({
+                year: RETIREMENT_YEAR,
+                livingExpenses: 40000,
+                initialPortfolio: 1_000_000,
+                requiredAdjustment: 12000,
+                guardrailTriggered: 'none',
+            }),
+        ];
+        expect(suggestedInitialRate(sim, makeAssumptions())).toBe(5.2);
+    });
+
+    it('returns null when retirement-year spending/portfolio cannot be derived', () => {
+        expect(suggestedInitialRate([], makeAssumptions())).toBeNull();
+        const noRetYear = [makeYear({ year: RETIREMENT_YEAR - 5, livingExpenses: 50000, initialPortfolio: 1_000_000 })];
+        expect(suggestedInitialRate(noRetYear, makeAssumptions())).toBeNull();
+    });
+
+    it('returns null when planned spending is non-positive', () => {
+        const sim = [makeYear({ year: RETIREMENT_YEAR, livingExpenses: 0, initialPortfolio: 1_000_000 })];
+        expect(suggestedInitialRate(sim, makeAssumptions())).toBeNull();
     });
 });

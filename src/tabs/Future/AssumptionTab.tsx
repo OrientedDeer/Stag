@@ -1,5 +1,5 @@
 import { useContext, useState, useMemo } from "react";
-import { AssumptionsContext, getBirthYear } from "../../components/Objects/Assumptions/AssumptionsContext";
+import { AssumptionsContext, getBirthYear, defaultAssumptions } from "../../components/Objects/Assumptions/AssumptionsContext";
 import { ExpenseContext } from "../../components/Objects/Expense/ExpenseContext";
 import { SimulationContext } from "../../components/Objects/Assumptions/SimulationContext";
 import { PercentageInput } from "../../components/Layout/InputFields/PercentageInput";
@@ -8,7 +8,7 @@ import { ToggleInput } from "../../components/Layout/InputFields/ToggleInput";
 import MilestoneModal from "../../components/Objects/Assumptions/MilestoneModal";
 import { Panel } from "../../components/Layout/Primitives";
 import { AlertBanner } from "../../components/Layout/AlertBanner";
-import { computeGKRateSuggestion } from "../../services/gkRateSuggestion";
+import { computeGKRateSuggestion, suggestedInitialRate } from "../../services/gkRateSuggestion";
 
 export default function AssumptionTab() {
   const { state, dispatch } = useContext(AssumptionsContext);
@@ -33,6 +33,35 @@ export default function AssumptionTab() {
     () => computeGKRateSuggestion(simulation, state),
     [simulation, state],
   );
+
+  // Handle a withdrawal-strategy change. When the user switches INTO
+  // Guyton-Klinger and hasn't customized the rate (still the 4.0 default),
+  // proactively seed the initial rate from their planned spending ÷ portfolio
+  // at retirement so the default 4% doesn't silently cap their budget. A
+  // deliberately-set rate (anything ≠ the default) is never overwritten — the
+  // tip handles that case instead. Fires only on the transition into GK, in a
+  // single atomic dispatch (the reducer merges the partial payload).
+  const handleStrategyChange = (
+    val: 'None' | 'Needs Based' | 'Fixed Real' | 'Percentage' | 'Guyton Klinger',
+  ) => {
+    const switchingIntoGK =
+      val === 'Guyton Klinger' && state.investments.withdrawalStrategy !== 'Guyton Klinger';
+    const rateIsDefault =
+      state.investments.withdrawalRate === defaultAssumptions.investments.withdrawalRate;
+
+    if (switchingIntoGK && rateIsDefault) {
+      const seeded = suggestedInitialRate(simulation, state);
+      if (seeded !== null) {
+        dispatch({
+          type: 'UPDATE_INVESTMENTS',
+          payload: { withdrawalStrategy: val, withdrawalRate: seeded },
+        });
+        return;
+      }
+    }
+
+    dispatch({ type: 'UPDATE_INVESTMENTS', payload: { withdrawalStrategy: val } });
+  };
 
   // Derive milestoneId → year-reached from the cached simulation. Each
   // SimulationYear carries the milestone events that fired that year; the
@@ -175,7 +204,7 @@ export default function AssumptionTab() {
                             label="Strategy"
                             value={state.investments.withdrawalStrategy}
                             options={['None', 'Needs Based', 'Fixed Real', 'Percentage', 'Guyton Klinger']}
-                            onChange={(val) => dispatch({ type: 'UPDATE_INVESTMENTS', payload: { withdrawalStrategy: val as 'None' | 'Needs Based' | 'Fixed Real' | 'Percentage' | 'Guyton Klinger' } })}
+                            onChange={(val) => handleStrategyChange(val as 'None' | 'Needs Based' | 'Fixed Real' | 'Percentage' | 'Guyton Klinger')}
                         />
                         {state.investments.withdrawalStrategy !== 'None' && state.investments.withdrawalStrategy !== 'Needs Based' && (
                         <PercentageInput
