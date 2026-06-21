@@ -15,27 +15,50 @@ class ResizeObserverMock {
 (globalThis as { ResizeObserver: unknown }).ResizeObserver = ResizeObserverMock;
 
 interface MockNode { id: string; label: string; color: string }
+interface MockLink { source: string; target: string; value: number }
 
-// Mock Nivo's ResponsiveSankey: render each node as a clickable button so a
-// test can drive the chart's `onClick` (the real chart wires it to the
-// provenance drill-down panel). Forwards the click's coordinates as the second
-// arg, mirroring Nivo's `(node, event)` handler signature, so the panel's
-// anchored-popover positioning path is exercised.
+// Mock Nivo's ResponsiveSankey: render each node AND each link as a clickable
+// button so a test can drive the chart's `onClick` (the real chart wires it to
+// the drill-down panel). Forwards the click's coordinates as the second arg,
+// mirroring Nivo's `(datum, event)` handler signature, so the panel's anchored-
+// popover positioning path is exercised. Link clicks pass the source/target as
+// node datum objects ({ id, label }), matching what Nivo hands a link onClick.
 vi.mock('@nivo/sankey', () => ({
-    ResponsiveSankey: ({ data, onClick }: { data: { nodes: MockNode[] }; onClick?: (n: unknown, e: unknown) => void }) => (
-        <div data-testid="mock-sankey">
-            {data.nodes.map((node: MockNode) => (
-                <button
-                    key={node.id}
-                    data-testid={`node-${node.id}`}
-                    // Mirror the shape Nivo passes for a node click (datum + event).
-                    onClick={(e) => onClick?.({ ...node, value: 100000, formattedValue: '' }, { clientX: e.clientX, clientY: e.clientY })}
-                >
-                    {node.label}
-                </button>
-            ))}
-        </div>
-    ),
+    ResponsiveSankey: ({ data, onClick }: { data: { nodes: MockNode[]; links: MockLink[] }; onClick?: (n: unknown, e: unknown) => void }) => {
+        const labelById = new Map(data.nodes.map(n => [n.id, n.label]));
+        return (
+            <div data-testid="mock-sankey">
+                {data.nodes.map((node: MockNode) => (
+                    <button
+                        key={node.id}
+                        data-testid={`node-${node.id}`}
+                        // Mirror the shape Nivo passes for a node click (datum + event).
+                        onClick={(e) => onClick?.({ ...node, value: 100000, formattedValue: '' }, { clientX: e.clientX, clientY: e.clientY })}
+                    >
+                        {node.label}
+                    </button>
+                ))}
+                {(data.links ?? []).map((link: MockLink) => (
+                    <button
+                        key={`${link.source}->${link.target}`}
+                        data-testid={`link-${link.source}->${link.target}`}
+                        // Mirror the shape Nivo passes for a link click.
+                        onClick={(e) => onClick?.(
+                            {
+                                source: { id: link.source, label: labelById.get(link.source) },
+                                target: { id: link.target, label: labelById.get(link.target) },
+                                value: link.value,
+                                formattedValue: '',
+                            },
+                            { clientX: e.clientX, clientY: e.clientY },
+                        )}
+                    >
+                        link
+                    </button>
+                ))}
+            </div>
+        );
+    },
 }));
 
 const mockAssumptions = {
@@ -98,7 +121,7 @@ describe('CashflowSankey provenance drill-down', () => {
         renderChart();
 
         // No panel until a node is clicked.
-        expect(screen.queryByText('Close detail panel')).toBeNull();
+        expect(screen.queryByRole('dialog')).toBeNull();
 
         fireEvent.click(screen.getByTestId('node-Gross Pay'));
 
@@ -123,54 +146,117 @@ describe('CashflowSankey provenance drill-down', () => {
         expect(within(panel).getByText('Breakdown')).toBeTruthy();
     });
 
-    it('dismisses the panel when the close button is clicked', () => {
-        renderChart();
-        fireEvent.click(screen.getByTestId('node-Gross Pay'));
-        expect(screen.getByLabelText('Close detail panel')).toBeTruthy();
-
-        fireEvent.click(screen.getByLabelText('Close detail panel'));
-        expect(screen.queryByLabelText('Close detail panel')).toBeNull();
-    });
-
-    it('toggles the panel closed when the same node is clicked again', async () => {
+    it('toggles the panel closed when the same node is clicked again', () => {
         renderChart();
         const node = screen.getByTestId('node-Gross Pay');
         fireEvent.click(node);
-        expect(screen.getByLabelText('Close detail panel')).toBeTruthy();
+        expect(screen.getByRole('dialog')).toBeTruthy();
 
-        // Wait for the deferred outside-click listener to attach (it's armed on a
-        // setTimeout(0) so the opening click doesn't self-close). This is what
-        // makes the bug reproducible: a real re-click fires mousedown BEFORE
-        // click, and a naive outside-dismiss would close-then-reopen.
-        await new Promise(resolve => setTimeout(resolve, 0));
-
-        // Re-click the SAME node as the browser would: mousedown then click. The
-        // node lives inside the chart container (treated as "inside"), so the
-        // outside-dismiss must NOT fire — the click toggles the panel closed and
-        // it must stay closed.
-        fireEvent.mouseDown(node);
+        // Re-clicking the SAME node flags the click as a selection, so the
+        // outside-click handler skips it and the toggle closes the panel — it must
+        // stay closed (not close-then-reopen).
         fireEvent.click(node);
-        expect(screen.queryByLabelText('Close detail panel')).toBeNull();
+        expect(screen.queryByRole('dialog')).toBeNull();
     });
 
-    it('dismisses on a mousedown truly outside the chart and panel', async () => {
+    it('dismisses on a press truly outside the chart and panel', async () => {
         renderChart();
         fireEvent.click(screen.getByTestId('node-Gross Pay'));
         expect(screen.getByRole('dialog')).toBeTruthy();
 
+        // Wait for the deferred outside-press listener (useClickOutside) to attach.
         await new Promise(resolve => setTimeout(resolve, 0));
 
-        // A press on the document body (outside both the popover and the chart
-        // container) dismisses the panel.
+        // A press on the document body (outside both the popover and the chart)
+        // dismisses the panel.
         fireEvent.mouseDown(document.body);
         expect(screen.queryByRole('dialog')).toBeNull();
     });
 
-    it('does not open a panel for a leaf source node', () => {
+    it('dismisses when clicking the chart\'s own empty area (not a node/link)', () => {
         renderChart();
-        // "Job A" is a leaf income node — it has no provenance breakdown.
+        fireEvent.click(screen.getByTestId('node-Gross Pay'));
+        expect(screen.getByRole('dialog')).toBeTruthy();
+
+        // Clicking empty chart space — inside the chart container but not on a node
+        // or link — closes the panel (previously this was treated as "inside" and
+        // left the panel open, which felt inconsistent).
+        fireEvent.click(screen.getByTestId('mock-sankey'));
+        expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('switches to a different node without closing (selection click is not a dismissal)', () => {
+        renderChart();
+        fireEvent.click(screen.getByTestId('node-Gross Pay'));
+        expect(within(screen.getByRole('dialog')).getByText('Sources')).toBeTruthy();
+
+        // Clicking a different node while the panel is open must SWITCH, not close.
+        fireEvent.click(screen.getByTestId('node-Taxes'));
+        const panel = screen.getByRole('dialog');
+        expect(within(panel).getByText('Breakdown')).toBeTruthy();
+        expect(within(panel).getByText('Federal Tax')).toBeTruthy();
+    });
+
+    it('reopens after a background-click close', () => {
+        renderChart();
+        fireEvent.click(screen.getByTestId('node-Gross Pay'));
+        expect(screen.getByRole('dialog')).toBeTruthy();
+
+        fireEvent.click(screen.getByTestId('mock-sankey'));
+        expect(screen.queryByRole('dialog')).toBeNull();
+
+        // A node click after dismissal must open the panel again.
+        fireEvent.click(screen.getByTestId('node-Taxes'));
+        expect(screen.getByRole('dialog')).toBeTruthy();
+    });
+
+    it('opens a flow panel for a leaf source node (its single connection)', () => {
+        renderChart();
+        // "Job A" is a leaf income node — no breakdown, but a single outflow into
+        // Gross Pay. Clicking it traces that flow instead of doing nothing.
         fireEvent.click(screen.getByTestId('node-Job A'));
-        expect(screen.queryByLabelText('Close detail panel')).toBeNull();
+
+        const panel = screen.getByRole('dialog');
+        expect(panel.getAttribute('aria-label')).toBe('Job A to Gross Pay flow');
+        expect(within(panel).getByText('Flow')).toBeTruthy();
+        // Job A is part of Gross Pay's inflow, so its share of Gross Pay shows.
+        expect(within(panel).getByText('of Gross Pay')).toBeTruthy();
+    });
+
+    it('opens a flow panel when a link is clicked', () => {
+        renderChart();
+        // No panel until something is clicked.
+        expect(screen.queryByRole('dialog')).toBeNull();
+
+        // The Job A → Gross Pay link traces that one flow.
+        fireEvent.click(screen.getByTestId('link-Job A->Gross Pay'));
+
+        const panel = screen.getByRole('dialog');
+        expect(panel.getAttribute('aria-label')).toBe('Job A to Gross Pay flow');
+        expect(within(panel).getByText('Flow')).toBeTruthy();
+        // Job A is one of three income lines feeding Gross Pay, so its share is < 100%.
+        expect(within(panel).getByText('of Gross Pay')).toBeTruthy();
+    });
+
+    it('toggles the flow panel closed when the same link is clicked again', () => {
+        renderChart();
+        const link = screen.getByTestId('link-Job A->Gross Pay');
+        fireEvent.click(link);
+        expect(screen.getByRole('dialog')).toBeTruthy();
+
+        fireEvent.click(link);
+        expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('opens a flow panel for a leaf destination (expense) node', () => {
+        renderChart();
+        // "Food" is a leaf expense node fed only by Net Pay — clicking it traces
+        // that flow and shows its share of Net Pay's outflow.
+        fireEvent.click(screen.getByTestId('node-Food'));
+
+        const panel = screen.getByRole('dialog');
+        expect(panel.getAttribute('aria-label')).toBe('Net Pay to Food flow');
+        expect(within(panel).getByText('of Net Pay')).toBeTruthy();
     });
 
     it('labels Net Pay as Destinations (where take-home flows)', () => {
