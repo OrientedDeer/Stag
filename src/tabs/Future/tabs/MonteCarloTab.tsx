@@ -172,8 +172,14 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
         // Run MC under the SAME withdrawal order the deterministic projection chose (#1), so the MC
         // bands and the chart's deterministic line model the same drawdown. The joint optimizer records
         // its pick on year 0 (chosenWithdrawalOrder); when absent (manual order / tax-opt off) this is a
-        // no-op and MC uses the user's stored order.
-        const mcAssumptions = applyChosenWithdrawalOrder(assumptions, simulationData[0]?.chosenWithdrawalOrder);
+        // no-op and MC uses the user's stored order. The chosen order may name sellable accounts the user
+        // OMITTED from their strategy (the optimizer owns the order under Tax Optimization); pass the live
+        // account ids so those keep their chosen position instead of being dropped and re-appended at the tail.
+        const mcAssumptions = applyChosenWithdrawalOrder(
+            assumptions,
+            simulationData[0]?.chosenWithdrawalOrder,
+            new Set(accounts.map(a => a.id)),
+        );
         await runSimulation(accounts, incomes, expenses, mcAssumptions, taxState);
     };
 

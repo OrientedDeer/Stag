@@ -53,4 +53,29 @@ describe('applyChosenWithdrawalOrder (#1)', () => {
         // 'zzz' is dropped; 'b' moves first; 'a'/'c' keep their relative order after.
         expect(res.withdrawalStrategy.map(w => w.accountId)).toEqual(['b', 'a', 'c']);
     });
+
+    it('keeps an omitted-but-real account in its CHOSEN position via a synthesized stub', () => {
+        // The optimizer owns the order under Tax Optimization and can place a sellable account the
+        // user left OUT of withdrawalStrategy ('d'). Its accountId is real (in validAccountIds) but
+        // has no item in the user's strategy — it must survive in its chosen slot, not be dropped and
+        // re-appended at the tail. Regression for the MC/chart drawdown-order desync.
+        const res = applyChosenWithdrawalOrder(
+            assumptions,
+            [{ accountId: 'a' }, { accountId: 'd', name: 'Traditional IRA' }, { accountId: 'c' }, { accountId: 'b' }],
+            new Set(['a', 'b', 'c', 'd']),
+        );
+        expect(res.withdrawalStrategy.map(w => w.accountId)).toEqual(['a', 'd', 'c', 'b']);
+        // The omitted account is a synthesized stub carrying the chosen name + real accountId.
+        expect(res.withdrawalStrategy[1]).toMatchObject({ accountId: 'd', name: 'Traditional IRA' });
+    });
+
+    it('drops a STALE chosen id even when validAccountIds is supplied', () => {
+        // 'zzz' is not a current account (absent from the set), so it is dropped, not synthesized.
+        const res = applyChosenWithdrawalOrder(
+            assumptions,
+            [{ accountId: 'zzz' }, { accountId: 'b' }],
+            new Set(['a', 'b', 'c']),
+        );
+        expect(res.withdrawalStrategy.map(w => w.accountId)).toEqual(['b', 'a', 'c']);
+    });
 });

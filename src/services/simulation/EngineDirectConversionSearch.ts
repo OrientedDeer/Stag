@@ -144,15 +144,38 @@ export function generateCandidateWithdrawalOrders<T extends WithdrawalOrderItem>
  * position (defensive — the optimizer reorders, it never drops accounts). Returns the SAME object
  * reference when there is no chosen order or it already matches, so the Monte-Carlo policy cache
  * key (hashed off `assumptions`) is unchanged in the common user-order-wins case.
+ *
+ * The optimizer's chosen order can also include sellable accounts the user OMITTED from
+ * `withdrawalStrategy` — `withAllSellableAccounts` synthesizes those upstream with the REAL
+ * `accountId`, and they persist into `chosenWithdrawalOrder`. Without `validAccountIds` such ids
+ * have no item in `byId` and were silently dropped, so MC drained only the user-listed accounts
+ * (the omitted account then resurfaced at the #111 fallback-tier TAIL, not the chosen position) —
+ * desyncing the MC bands from the deterministic chart they're meant to match. Pass `validAccountIds`
+ * (the set of currently-existing account ids) to re-synthesize a stub for any chosen id that maps to
+ * a real account, preserving its chosen position end-to-end. Genuinely STALE ids (accounts since
+ * deleted) are absent from the set and stay dropped, as do all callers that omit the set.
  */
 export function applyChosenWithdrawalOrder<
     W extends { accountId: string },
     A extends { withdrawalStrategy: W[] },
->(assumptions: A, chosenOrder: ReadonlyArray<{ accountId: string }> | undefined): A {
+>(
+    assumptions: A,
+    chosenOrder: ReadonlyArray<{ accountId: string; name?: string }> | undefined,
+    validAccountIds?: ReadonlySet<string>,
+): A {
     if (!chosenOrder || chosenOrder.length === 0) return assumptions;
     const byId = new Map(assumptions.withdrawalStrategy.map(w => [w.accountId, w]));
     const picked = chosenOrder
-        .map(c => byId.get(c.accountId))
+        .map(c => {
+            const existing = byId.get(c.accountId);
+            if (existing) return existing;
+            // Re-synthesize an omitted-but-real account (matches withAllSellableAccounts's shape) so it
+            // keeps its chosen position; only when the caller vouches the id is a current account.
+            if (validAccountIds?.has(c.accountId)) {
+                return { id: `synth-${c.accountId}`, name: c.name ?? '', accountId: c.accountId } as unknown as W;
+            }
+            return undefined;
+        })
         .filter((w): w is W => w !== undefined);
     const remaining = assumptions.withdrawalStrategy.filter(
         w => !chosenOrder.some(c => c.accountId === w.accountId));
