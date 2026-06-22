@@ -6,20 +6,15 @@ import {
 } from "../components/Objects/Assumptions/AssumptionsContext";
 import { sumInvestedAssets } from "../components/Objects/Accounts/accountUtils";
 
-/**
- * Minimum gap (in percentage points) between the implied initial withdrawal
- * rate and the configured rate before we surface a suggestion. Keeps the tip
- * from firing on rounding noise / trivial differences.
- */
-export const GK_RATE_SUGGESTION_THRESHOLD_PP = 0.25;
-
 export interface GKRateSuggestion {
     /**
-     * Which way the configured rate is off relative to planned spending:
+     * Which way the configured initial rate is off relative to planned spending,
+     * i.e. where it sits versus the rate the plan actually implies:
      * - `'raise'`: implied rate is higher than configured — the rate is too LOW,
-     *   so Guyton-Klinger caps spending (amber budget-cap markers).
+     *   so the guardrail band is centered below your spending (you start near/over
+     *   the upper guardrail).
      * - `'lower'`: implied rate is lower than configured — the rate is too HIGH,
-     *   so the prosperity guardrail keeps boosting spending above the plan.
+     *   so the band is centered above your spending.
      */
     direction: 'raise' | 'lower';
     /** Configured Guyton-Klinger initial withdrawal rate (%), e.g. 4. */
@@ -30,9 +25,10 @@ export interface GKRateSuggestion {
      */
     impliedRate: number;
     /**
-     * `impliedRate` rounded to a sensible apply value (0.1%). Rounded UP for the
-     * `'raise'` case (so the rate covers the planned spend) and DOWN for the
-     * `'lower'` case (so the rate doesn't overshoot it).
+     * The rate to apply: `impliedRate` rounded UP to the nearest 0.1% — the
+     * smallest tenth that still fully funds the planned spend. This is the SAME
+     * value shown in the tip and set by the button, so the displayed and applied
+     * numbers always agree.
      */
     suggestedRate: number;
     /** Year-1 retirement planned (pre-cap) living expenses used as numerator. */
@@ -49,10 +45,12 @@ export interface GKRateSuggestion {
  * - Synthetic end-of-year projection rows are skipped so we land on a real
  *   plan year.
  * - "Planned spending" reconstructs the spending the user actually intended
- *   before any Guyton-Klinger / budget cap trimmed it: the year's reported
+ *   before any strategy adjustment trimmed it: the year's reported
  *   `livingExpenses` already reflect the trimmed amount, so we add back the
- *   `strategyAdjustment.requiredAdjustment` (the dollar amount the budget cap
- *   wanted to cut). This is the spend that drives the amber budget-cap markers.
+ *   `strategyAdjustment.requiredAdjustment` (the dollar amount trimmed). Under
+ *   plan-anchored Guyton-Klinger the retirement year is usually within-band
+ *   (nothing trimmed, so the add-back is 0); it only matters on a guardrail-cut
+ *   year or for the budget-cap strategies (Fixed Real / Percentage).
  * - "Portfolio at retirement" prefers the engine's own
  *   `strategyWithdrawal.initialPortfolio` (the portfolio it sized the initial
  *   withdrawal against); falls back to summing the year's account snapshot.
@@ -93,19 +91,18 @@ export function getRetirementYearSpendingAndPortfolio(
 }
 
 /**
- * Round an implied initial rate (%) to the nearest 0.1%, biased so the applied
- * rate lands on the safe side of the implied spend:
- *  - `'raise'` (rate too low): round UP so the rate covers the implied spend
- *    (rounding down could leave it fractionally short).
- *  - `'lower'` (rate too high): round DOWN so the rate doesn't overshoot the
- *    plan and keep the prosperity guardrail firing.
- * The ±1e-9 epsilon absorbs IEEE-754 noise (e.g. 5.8 arriving as
- * 5.800000000000001) so a clean tenth isn't nudged an extra 0.1%.
+ * The rate to apply for a given implied rate: round UP to the nearest 0.1% — the
+ * smallest tenth that still fully funds the planned spend (rounding to nearest
+ * could land below it and leave the rate fractionally short).
+ *
+ * One value drives both the displayed tip and the applied rate, so they always
+ * agree. It is also idempotent (ceil of a tenth is that tenth), so once applied
+ * the configured rate equals it and the tip clears instead of re-firing in the
+ * opposite direction. The -1e-9 epsilon absorbs IEEE-754 noise (e.g. 5.8
+ * arriving as 5.800000000000001) so a clean tenth isn't nudged an extra 0.1%.
  */
-function roundSuggestedRate(impliedRate: number, direction: 'raise' | 'lower'): number {
-    return direction === 'raise'
-        ? Math.ceil(impliedRate * 10 - 1e-9) / 10
-        : Math.floor(impliedRate * 10 + 1e-9) / 10;
+function fundingRate(impliedRate: number): number {
+    return Math.ceil(impliedRate * 10 - 1e-9) / 10;
 }
 
 /**
@@ -133,24 +130,24 @@ export function suggestedInitialRate(
     if (plannedSpending <= 0) return null;
 
     const impliedRate = (plannedSpending / portfolioAtRetirement) * 100;
-    return roundSuggestedRate(impliedRate, 'raise');
+    return fundingRate(impliedRate);
 }
 
 /**
  * Compute a Guyton-Klinger initial-withdrawal-rate suggestion.
  *
  * The implied initial rate = year-1 retirement planned spending ÷ portfolio at
- * retirement. When Guyton-Klinger (guardrails) is the active strategy and that
- * implied rate diverges meaningfully from the configured initial rate, the
- * configured rate is off in one of two ways:
- *  - implied > configured (`direction: 'raise'`): the rate is too LOW — the
- *    planned budget can't be funded at that rate, so the simulation caps
- *    spending and stamps amber budget-cap markers throughout retirement.
- *  - implied < configured (`direction: 'lower'`): the rate is too HIGH — the
- *    prosperity guardrail keeps firing and boosts spending above the plan.
+ * retirement. The configured rate centers the Guyton-Klinger guardrail band, so
+ * when it diverges from the implied rate the band is off-center relative to your
+ * actual spending:
+ *  - implied > configured (`direction: 'raise'`): the rate is too LOW — your plan
+ *    sits near/above the upper guardrail, so a capital-preservation cut can fire
+ *    early. Raising the rate re-centers the band on your spending.
+ *  - implied < configured (`direction: 'lower'`): the rate is too HIGH — your plan
+ *    sits near/below the lower guardrail, so a prosperity boost can fire early.
  *
- * Returns the suggestion only when it's worth surfacing (GK active and the gap
- * in EITHER direction exceeds `GK_RATE_SUGGESTION_THRESHOLD_PP`); otherwise
+ * Returns the suggestion only when it's worth surfacing: GK active and the
+ * configured rate rounds to a different 0.1% than the funding rate. Otherwise
  * returns `null`.
  *
  * Pure: takes simulation results + assumptions, no React/context.
@@ -158,7 +155,6 @@ export function suggestedInitialRate(
 export function computeGKRateSuggestion(
     simulation: SimulationYear[],
     assumptions: AssumptionsState,
-    thresholdPP: number = GK_RATE_SUGGESTION_THRESHOLD_PP,
 ): GKRateSuggestion | null {
     // Only relevant when Guyton-Klinger is the active strategy.
     if (assumptions.investments.withdrawalStrategy !== 'Guyton Klinger') {
@@ -173,17 +169,22 @@ export function computeGKRateSuggestion(
 
     const impliedRate = (plannedSpending / portfolioAtRetirement) * 100;
     const configuredRate = assumptions.investments.withdrawalRate;
-    const gap = impliedRate - configuredRate;
+    // One value for both the tip text and the applied rate, so they agree.
+    const suggestedRate = fundingRate(impliedRate);
 
-    // Only flag when the implied rate meaningfully DIVERGES from the configured
-    // rate — in either direction. Within the threshold band the rates agree
-    // closely enough that GK won't systematically cap or boost spending.
-    if (Math.abs(gap) <= thresholdPP) {
+    // Flag whenever the configured rate rounds to a DIFFERENT 0.1% than the rate
+    // that funds the plan — i.e. whenever GK would actually cap (rate too low) or
+    // systematically inflate (rate too high) spending at the precision you can
+    // set. A percentage-point gap threshold is the wrong unit: on a large
+    // portfolio even a sub-0.1pp gap is a real dollar cut, so the comparison must
+    // be in rate-resolution terms, not a pp band. Comparing the rounded funding
+    // rate also guarantees applying the suggestion clears the tip — suggestedRate
+    // then equals configuredRate.
+    if (Math.abs(suggestedRate - configuredRate) < 0.05) {
         return null;
     }
 
-    const direction: 'raise' | 'lower' = gap > 0 ? 'raise' : 'lower';
-    const suggestedRate = roundSuggestedRate(impliedRate, direction);
+    const direction: 'raise' | 'lower' = suggestedRate > configuredRate ? 'raise' : 'lower';
 
     return {
         direction,

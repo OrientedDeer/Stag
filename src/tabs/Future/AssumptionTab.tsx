@@ -232,8 +232,8 @@ export default function AssumptionTab() {
                         >
                             {gkRateSuggestion.direction === 'raise' ? (
                                 <p>
-                                    Your year-1 retirement spending works out to about{' '}
-                                    <span className="font-semibold">{gkRateSuggestion.impliedRate.toFixed(1)}%</span> of your
+                                    Your year-1 retirement spending needs an initial rate of about{' '}
+                                    <span className="font-semibold">{gkRateSuggestion.suggestedRate.toFixed(1)}%</span> of your
                                     portfolio at retirement — above your set rate of{' '}
                                     <span className="font-semibold">{gkRateSuggestion.configuredRate.toFixed(1)}%</span>.
                                     Guyton-Klinger will cap spending to the lower rate, which shows up as amber budget-cap
@@ -241,8 +241,8 @@ export default function AssumptionTab() {
                                 </p>
                             ) : (
                                 <p>
-                                    Your year-1 retirement spending only works out to about{' '}
-                                    <span className="font-semibold">{gkRateSuggestion.impliedRate.toFixed(1)}%</span> of your
+                                    Your year-1 retirement spending only needs an initial rate of about{' '}
+                                    <span className="font-semibold">{gkRateSuggestion.suggestedRate.toFixed(1)}%</span> of your
                                     portfolio at retirement — below your set rate of{' '}
                                     <span className="font-semibold">{gkRateSuggestion.configuredRate.toFixed(1)}%</span>.
                                     Guyton-Klinger's prosperity guardrail will keep boosting spending above your planned

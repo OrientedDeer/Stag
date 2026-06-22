@@ -3,7 +3,6 @@ import {
     computeGKRateSuggestion,
     getRetirementYearSpendingAndPortfolio,
     suggestedInitialRate,
-    GK_RATE_SUGGESTION_THRESHOLD_PP,
 } from '../../services/gkRateSuggestion';
 import {
     defaultAssumptions,
@@ -199,27 +198,70 @@ describe('computeGKRateSuggestion', () => {
         expect(result!.portfolioAtRetirement).toBe(1_000_000);
     });
 
-    it('rounds the lower-direction suggested rate DOWN so it does not overshoot the plan', () => {
-        // 36_700 / 1M = 3.67% implied vs 5% configured → floor to 3.6%.
+    it('rounds the suggested rate UP to the funding tenth even in the lower direction', () => {
+        // 36_700 / 1M = 3.67% implied vs 5% configured → ceil to 3.7% (smallest
+        // 0.1% that funds the plan), still well below the configured 5% → lower.
         const sim = [makeYear({ year: RETIREMENT_YEAR, livingExpenses: 36700, initialPortfolio: 1_000_000 })];
         const result = computeGKRateSuggestion(sim, makeAssumptions({ withdrawalRate: 5.0 }));
         expect(result!.direction).toBe('lower');
         expect(result!.impliedRate).toBeCloseTo(3.67, 5);
-        expect(result!.suggestedRate).toBe(3.6);
+        expect(result!.suggestedRate).toBe(3.7);
     });
 
-    it('does not flag when the implied rate is within the threshold of the configured rate', () => {
-        // 40.5k / 1M = 4.05% implied vs 4% configured → gap 0.05pp < 0.25pp.
-        const sim = [makeYear({ year: RETIREMENT_YEAR, livingExpenses: 40500, initialPortfolio: 1_000_000 })];
-        const result = computeGKRateSuggestion(sim, makeAssumptions({ withdrawalRate: 4.0 }));
-        expect(result).toBeNull();
+    it('shows the same rate it applies (banner % equals the button %)', () => {
+        // 40_300 / 1M = 4.03% implied vs 3.5% configured. Regression guard for the
+        // display/apply mismatch: the suggestion is the single funding tenth 4.1%
+        // (ceil of 4.03), NOT a nearest-rounded 4.0% in the text with 4.1% on the
+        // button. The banner shows suggestedRate, so the two always agree.
+        const sim = [makeYear({ year: RETIREMENT_YEAR, livingExpenses: 40300, initialPortfolio: 1_000_000 })];
+        const result = computeGKRateSuggestion(sim, makeAssumptions({ withdrawalRate: 3.5 }));
+        expect(result!.direction).toBe('raise');
+        expect(result!.impliedRate).toBeCloseTo(4.03, 5);
+        expect(result!.suggestedRate).toBe(4.1);
     });
 
-    it('does not flag a too-high rate that is within the threshold band', () => {
-        // 39.8k / 1M = 3.98% implied vs 4% configured → gap -0.02pp, |gap| < 0.25pp.
+    it('clears (no re-fire) once the suggested rate is applied', () => {
+        // Apply the 4.1% suggestion from the case above, then recompute: the gap
+        // is now under threshold and the suggestion is a no-op, so it returns null
+        // rather than flipping to "lower" (the old ceil/floor split ping-ponged).
+        const sim = [makeYear({ year: RETIREMENT_YEAR, livingExpenses: 40300, initialPortfolio: 1_000_000 })];
+        expect(computeGKRateSuggestion(sim, makeAssumptions({ withdrawalRate: 4.1 }))).toBeNull();
+    });
+
+    it('flags a sub-0.1pp shortfall that is still a real dollar cut on a large portfolio', () => {
+        // Regression for the budget-cut-with-no-warning bug. Pre-cap spend
+        // 83_000 / 2_000_000 = 4.15% implied vs 4.1% configured — only a 0.05pp
+        // gap, but on a $2M portfolio that's a $1,000 cut at 4.1%. A pp threshold
+        // hid it; comparing the rounded funding tenth (4.2 vs 4.1) flags it.
+        const sim = [makeYear({
+            year: RETIREMENT_YEAR,
+            livingExpenses: 80000,
+            initialPortfolio: 2_000_000,
+            requiredAdjustment: 3000,
+            guardrailTriggered: 'none',
+        })];
+        const result = computeGKRateSuggestion(sim, makeAssumptions({ withdrawalRate: 4.1 }));
+        expect(result).not.toBeNull();
+        expect(result!.direction).toBe('raise');
+        expect(result!.impliedRate).toBeCloseTo(4.15, 2);
+        expect(result!.suggestedRate).toBe(4.2);
+    });
+
+    it('does not flag when the configured rate already rounds to the funding tenth', () => {
+        // 39.8k / 1M = 3.98% implied → funding tenth ceil = 4.0% = configured, so
+        // the rate already covers the plan (slight over-fund, no cut) → no tip.
         const sim = [makeYear({ year: RETIREMENT_YEAR, livingExpenses: 39800, initialPortfolio: 1_000_000 })];
         const result = computeGKRateSuggestion(sim, makeAssumptions({ withdrawalRate: 4.0 }));
         expect(result).toBeNull();
+    });
+
+    it('flags a too-low rate even when the shortfall is well under a tenth', () => {
+        // 40.5k / 1M = 4.05% implied vs 4.0% configured → funding tenth 4.1% ≠ 4.0%,
+        // and at 4.0% the plan is under-funded (a real cut), so it flags.
+        const sim = [makeYear({ year: RETIREMENT_YEAR, livingExpenses: 40500, initialPortfolio: 1_000_000 })];
+        const result = computeGKRateSuggestion(sim, makeAssumptions({ withdrawalRate: 4.0 }));
+        expect(result!.direction).toBe('raise');
+        expect(result!.suggestedRate).toBe(4.1);
     });
 
     it('rounds the raise-direction suggested rate UP to the nearest 0.1% so it covers the spend', () => {
@@ -243,11 +285,10 @@ describe('computeGKRateSuggestion', () => {
         expect(result!.suggestedRate).toBe(5.8);
     });
 
-    it('does not under-drop a clean 0.1% rate that float arithmetic perturbs (lower)', () => {
+    it('does not over-bump a clean 0.1% rate that float arithmetic perturbs (lower direction)', () => {
         // 29_000 / 1M = 2.9% exactly, but (29000/1_000_000)*100 evaluates to
-        // 2.9000000000000004 in IEEE-754. A naive Math.floor(x*10)/10 keeps 2.9
-        // here, but a value that lands just BELOW a tenth would drop a spurious
-        // 0.1%; the +epsilon guard keeps a clean tenth on the tenth. Set rate 5%
+        // 2.9000000000000004 in IEEE-754. A naive Math.ceil(x*10)/10 would bump it
+        // to 3.0%; the -epsilon guard keeps the clean tenth at 2.9%. Set rate 5%
         // → too-high → lower direction.
         const sim = [makeYear({ year: RETIREMENT_YEAR, livingExpenses: 29000, initialPortfolio: 1_000_000 })];
         const result = computeGKRateSuggestion(sim, makeAssumptions({ withdrawalRate: 5.0 }));
@@ -273,26 +314,11 @@ describe('computeGKRateSuggestion', () => {
         expect(result!.suggestedRate).toBe(5.2);
     });
 
-    it('honors a custom threshold argument (raise direction)', () => {
-        // 4.2% implied vs 4% set → gap +0.2pp. Passes default (0.25) → null; fails 0.1 → flagged.
-        const sim = [makeYear({ year: RETIREMENT_YEAR, livingExpenses: 42000, initialPortfolio: 1_000_000 })];
+    it('does not flag a too-high rate that is still within the funding tenth', () => {
+        // 3.92k → 3.92% implied → funding tenth ceil = 4.0% = configured, so the
+        // small over-fund is ignored (no cut to prevent) → no tip.
+        const sim = [makeYear({ year: RETIREMENT_YEAR, livingExpenses: 39200, initialPortfolio: 1_000_000 })];
         expect(computeGKRateSuggestion(sim, makeAssumptions({ withdrawalRate: 4.0 }))).toBeNull();
-        const flagged = computeGKRateSuggestion(sim, makeAssumptions({ withdrawalRate: 4.0 }), 0.1);
-        expect(flagged).not.toBeNull();
-        expect(flagged!.direction).toBe('raise');
-    });
-
-    it('honors a custom threshold argument (lower direction)', () => {
-        // 3.8% implied vs 4% set → gap -0.2pp. Passes default (0.25) → null; fails 0.1 → flagged.
-        const sim = [makeYear({ year: RETIREMENT_YEAR, livingExpenses: 38000, initialPortfolio: 1_000_000 })];
-        expect(computeGKRateSuggestion(sim, makeAssumptions({ withdrawalRate: 4.0 }))).toBeNull();
-        const flagged = computeGKRateSuggestion(sim, makeAssumptions({ withdrawalRate: 4.0 }), 0.1);
-        expect(flagged).not.toBeNull();
-        expect(flagged!.direction).toBe('lower');
-    });
-
-    it('exposes the default threshold constant', () => {
-        expect(GK_RATE_SUGGESTION_THRESHOLD_PP).toBeGreaterThan(0);
     });
 });
 
