@@ -9,10 +9,11 @@ import OverviewTab from './OverviewTab';
 import HistoryTab from './HistoryTab';
 import TrendsTab from './TrendsTab';
 import TransactionsTab from './TransactionsTab';
+import ReconcileTab from './ReconcileTab';
 import SettingsTab from './SettingsTab';
 import { Panel, Button } from "../../components/Layout/Primitives";
 
-const tabs = ['Overview', 'Spending', 'Transactions', 'History', 'Trends', 'Settings'];
+const tabs = ['Overview', 'Spending', 'Transactions', 'Reconcile', 'History', 'Trends', 'Settings'];
 
 export default function BudgetTab() {
     const { months, selectedMonth, selectedYear, dispatch } = useContext(BudgetContext);
@@ -142,6 +143,7 @@ export default function BudgetTab() {
                         {activeTab === 'Overview' && <OverviewTab />}
                         {activeTab === 'Spending' && <SpendingTab />}
                         {activeTab === 'Transactions' && <TransactionsTab />}
+                        {activeTab === 'Reconcile' && <ReconcileTab />}
                         {activeTab === 'History' && <HistoryTab />}
                         {activeTab === 'Trends' && <TrendsTab />}
                         {activeTab === 'Settings' && <SettingsTab />}

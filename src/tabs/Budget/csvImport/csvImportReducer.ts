@@ -18,6 +18,10 @@ export interface CSVImportState {
     formatName: string;
     saveFormat: boolean;
 
+    // Source/card label stamped onto every imported transaction (defaults to
+    // the CSV format name; editable in the preview stage).
+    assignSource: string;
+
     // Preview-stage outputs
     transactions: Transaction[];
     duplicates: Transaction[];
@@ -42,6 +46,7 @@ export const initialCSVImportState: CSVImportState = {
     useDebitCredit: false,
     formatName: '',
     saveFormat: true,
+    assignSource: '',
     transactions: [],
     duplicates: [],
     autoCategorizedCount: 0,
@@ -74,6 +79,7 @@ export type CSVImportAction =
     | { type: 'SET_USE_DEBIT_CREDIT'; value: boolean }
     | { type: 'SET_FORMAT_NAME'; value: string }
     | { type: 'SET_SAVE_FORMAT'; value: boolean }
+    | { type: 'SET_ASSIGN_SOURCE'; value: string }
     | {
           type: 'PREVIEW_READY';
           transactions: Transaction[];
@@ -119,6 +125,9 @@ export function csvImportReducer(state: CSVImportState, action: CSVImportAction)
                 transactions: action.transactions,
                 autoCategorizedCount: action.autoCategorizedCount,
                 duplicates: action.duplicates,
+                // Default the source tag to the matched format's name unless the
+                // user already typed one.
+                assignSource: state.assignSource || action.matchedFormat.name,
                 error: null,
                 stage: 'preview',
             };
@@ -138,12 +147,18 @@ export function csvImportReducer(state: CSVImportState, action: CSVImportAction)
         case 'SET_SAVE_FORMAT':
             return { ...state, saveFormat: action.value };
 
+        case 'SET_ASSIGN_SOURCE':
+            return { ...state, assignSource: action.value };
+
         case 'PREVIEW_READY':
             return {
                 ...state,
                 transactions: action.transactions,
                 autoCategorizedCount: action.autoCategorizedCount,
                 duplicates: action.duplicates,
+                // Default the source tag to the format name the user entered
+                // during mapping unless they already set one explicitly.
+                assignSource: state.assignSource || state.formatName,
                 error: null,
                 stage: 'preview',
             };

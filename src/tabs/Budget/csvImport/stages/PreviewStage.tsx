@@ -11,6 +11,8 @@ interface PreviewStageProps {
     autoCategorizedCount: number;
     matchedFormat: SavedCSVMapping | null;
     matchConfidence: number;
+    assignSource: string;
+    sourceSuggestions: string[];
     dispatch: Dispatch<CSVImportAction>;
     handleImport: () => void;
 }
@@ -21,6 +23,8 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
     autoCategorizedCount,
     matchedFormat,
     matchConfidence,
+    assignSource,
+    sourceSuggestions,
     dispatch,
     handleImport,
 }) => {
@@ -78,6 +82,29 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
                         </tbody>
                     </table>
                 </div>
+            </div>
+
+            {/* Source / card tag */}
+            <div>
+                <label htmlFor="import-source" className="block text-sm font-medium text-content-muted mb-1">
+                    Tag as source / card
+                </label>
+                <input
+                    type="text"
+                    id="import-source"
+                    name="import-source"
+                    list="import-source-suggestions"
+                    placeholder="e.g. Rewards Card"
+                    value={assignSource}
+                    onChange={(e) => dispatch({ type: 'SET_ASSIGN_SOURCE', value: e.target.value })}
+                    className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-white focus:border-accent-soft focus:outline-none"
+                />
+                <datalist id="import-source-suggestions">
+                    {sourceSuggestions.map(s => <option key={s} value={s} />)}
+                </datalist>
+                <p className="text-xs text-content-subtle mt-1">
+                    Stamps every imported transaction with this label so you can reconcile it against a statement. Defaults to the format name; clear it to skip.
+                </p>
             </div>
 
             {/* Summary */}

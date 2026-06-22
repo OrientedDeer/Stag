@@ -179,9 +179,10 @@ export function useCSVImportFlow({
     const handleImport = useCallback(() => {
         if (state.transactions.length === 0) return;
 
-        const toImport = state.transactions.filter(
-            (t) => !state.duplicates.some((d) => d.id === t.id)
-        );
+        const assignSource = state.assignSource.trim() || undefined;
+        const toImport = state.transactions
+            .filter((t) => !state.duplicates.some((d) => d.id === t.id))
+            .map((t) => (assignSource ? { ...t, source: assignSource } : t));
 
         // Group by month/year so each transaction lands in the correct snapshot
         const byMonth: Record<string, Transaction[]> = {};

@@ -23,6 +23,7 @@ import {
     groupContributionsByPriority,
     groupIncomeByCategory,
 } from './transactions/utils';
+import { getKnownSources } from './reconcile/reconcileUtils';
 import { useBulkSelection } from './transactions/useBulkSelection';
 import { useCollapsedCategories } from './transactions/useCollapsedCategories';
 import { useTransactionEditor } from './transactions/useTransactionEditor';
@@ -50,6 +51,15 @@ export default function TransactionsTab() {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [groupByCategory, setGroupByCategory] = useState(true);
     const [bulkCategory, setBulkCategory] = useState('');
+    const [bulkSource, setBulkSource] = useState('');
+
+    // Autocomplete pool for the "source / card" tag: labels already used on
+    // transactions plus the user's account names (so an existing account is
+    // one click) — deduped and sorted.
+    const sourceSuggestions = useMemo(() => {
+        const merged = new Set<string>([...getKnownSources(months), ...accounts.map(a => a.name)]);
+        return Array.from(merged).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    }, [months, accounts]);
 
     // Pull expected annual bucket allocations from the simulation. Year 0
     // (current year) is the baseline with empty bucketDetail, so prefer next
@@ -127,6 +137,12 @@ export default function TransactionsTab() {
         setBulkCategory('');
     };
 
+    const handleBulkApplySource = () => {
+        editor.bulkSetSource(bulk.selectedIds, bulkSource);
+        bulk.clear();
+        setBulkSource('');
+    };
+
     const handleRowEdit = useCallback((id: string) => setEditingId(id), []);
     const handleRowCancel = useCallback(() => setEditingId(null), []);
     const handleRowUpdate = useCallback((id: string, updates: Partial<Transaction>) => {
@@ -152,6 +168,7 @@ export default function TransactionsTab() {
             activeExpenses={activeExpenses}
             accounts={accounts}
             priorities={priorities}
+            sourceSuggestions={sourceSuggestions}
             isEditing={editingId === t.id}
             isSelected={bulk.selectedIds.has(t.id)}
             onEdit={handleRowEdit}
@@ -184,6 +201,10 @@ export default function TransactionsTab() {
                 bulkCategory={bulkCategory}
                 setBulkCategory={setBulkCategory}
                 onBulkApply={handleBulkApply}
+                bulkSource={bulkSource}
+                setBulkSource={setBulkSource}
+                onBulkApplySource={handleBulkApplySource}
+                sourceSuggestions={sourceSuggestions}
                 onClearSelection={bulk.clear}
                 activeExpenses={activeExpenses}
                 hasAnyTransactions={transactions.length > 0}
@@ -199,6 +220,7 @@ export default function TransactionsTab() {
                     activeExpenses={activeExpenses}
                     accounts={accounts}
                     priorities={priorities}
+                    sourceSuggestions={sourceSuggestions}
                     onSubmit={handleAdd}
                     onCancel={() => setShowAddForm(false)}
                 />

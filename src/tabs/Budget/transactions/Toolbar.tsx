@@ -27,6 +27,10 @@ interface ToolbarProps {
     bulkCategory: string;
     setBulkCategory: (value: string) => void;
     onBulkApply: () => void;
+    bulkSource: string;
+    setBulkSource: (value: string) => void;
+    onBulkApplySource: () => void;
+    sourceSuggestions: string[];
     onClearSelection: () => void;
     activeExpenses: AnyExpense[];
     hasAnyTransactions: boolean;
@@ -59,6 +63,10 @@ function ToolbarInner({
     bulkCategory,
     setBulkCategory,
     onBulkApply,
+    bulkSource,
+    setBulkSource,
+    onBulkApplySource,
+    sourceSuggestions,
     onClearSelection,
     activeExpenses,
     hasAnyTransactions,
@@ -161,6 +169,24 @@ function ToolbarInner({
                             variant="primary" className="text-white"
                         >
                             Apply
+                        </Button>
+                        <input
+                            type="text"
+                            name="bulk-source"
+                            list="bulk-source-suggestions"
+                            placeholder="Source / card"
+                            value={bulkSource}
+                            onChange={(e) => setBulkSource(e.target.value)}
+                            className="w-36 bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-white focus:border-accent-soft focus:outline-none"
+                        />
+                        <datalist id="bulk-source-suggestions">
+                            {sourceSuggestions.map(s => <option key={s} value={s} />)}
+                        </datalist>
+                        <Button
+                            onClick={onBulkApplySource}
+                            variant="secondary"
+                        >
+                            Set source
                         </Button>
                         <button
                             onClick={onClearSelection}

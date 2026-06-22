@@ -17,6 +17,7 @@ interface AddTransactionFormProps {
     activeExpenses: AnyExpense[];
     accounts: AnyAccount[];
     priorities: PriorityBucket[];
+    sourceSuggestions: string[];
     onSubmit: () => void;
     onCancel: () => void;
 }
@@ -32,6 +33,7 @@ export function AddTransactionForm({
     activeExpenses,
     accounts,
     priorities,
+    sourceSuggestions,
     onSubmit,
     onCancel,
 }: AddTransactionFormProps) {
@@ -172,6 +174,25 @@ export function AddTransactionForm({
                     </select>
                 </div>
             )}
+
+            <div className="mt-4">
+                <label htmlFor="txn-source" className="block text-xs text-content-muted mb-1">
+                    Source / card (optional)
+                </label>
+                <input
+                    type="text"
+                    id="txn-source"
+                    name="txn-source"
+                    list="txn-source-suggestions"
+                    placeholder="e.g. Rewards Card"
+                    value={formData.source}
+                    onChange={(e) => update('source', e.target.value)}
+                    className="w-full md:w-72 bg-surface-raised border border-border-default rounded-lg px-3 py-2 text-white text-sm focus:border-positive-soft focus:outline-none"
+                />
+                <datalist id="txn-source-suggestions">
+                    {sourceSuggestions.map(s => <option key={s} value={s} />)}
+                </datalist>
+            </div>
 
             <div className="flex gap-2 mt-4">
                 <Button

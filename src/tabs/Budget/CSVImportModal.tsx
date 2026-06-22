@@ -1,6 +1,8 @@
 import React, { useReducer, useCallback, useContext, useMemo } from 'react';
 import { BudgetContext } from '../../components/Objects/Budget/BudgetContext';
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
+import { AccountContext } from '../../components/Objects/Accounts/AccountContext';
+import { getKnownSources } from './reconcile/reconcileUtils';
 import { useModalAccessibility } from '../../hooks/useModalAccessibility';
 import {
     csvImportReducer,
@@ -29,6 +31,7 @@ const CSVImportModal: React.FC<CSVImportModalProps> = ({ isOpen, onClose }) => {
         months,
     } = useContext(BudgetContext);
     const { expenses } = useContext(ExpenseContext);
+    const { accounts } = useContext(AccountContext);
 
     const [state, dispatch] = useReducer(csvImportReducer, initialCSVImportState);
 
@@ -36,6 +39,11 @@ const CSVImportModal: React.FC<CSVImportModalProps> = ({ isOpen, onClose }) => {
         const snapshot = months.find((m) => m.month === selectedMonth && m.year === selectedYear);
         return snapshot?.transactions || [];
     }, [months, selectedMonth, selectedYear]);
+
+    const sourceSuggestions = useMemo(() => {
+        const merged = new Set<string>([...getKnownSources(months), ...accounts.map((a) => a.name)]);
+        return Array.from(merged).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    }, [months, accounts]);
 
     const actions = useCSVImportFlow({
         state,
@@ -122,6 +130,8 @@ const CSVImportModal: React.FC<CSVImportModalProps> = ({ isOpen, onClose }) => {
                             autoCategorizedCount={state.autoCategorizedCount}
                             matchedFormat={state.matchedFormat}
                             matchConfidence={state.matchConfidence}
+                            assignSource={state.assignSource}
+                            sourceSuggestions={sourceSuggestions}
                             dispatch={dispatch}
                             handleImport={actions.handleImport}
                         />

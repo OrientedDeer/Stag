@@ -18,6 +18,7 @@ export interface NewTransactionForm {
     isCredit: boolean;
     creditType: 'income' | 'reimbursement' | 'transfer';
     incomeCategory: IncomeCategory | '';
+    source: string; // free-text card/account label this transaction came from (optional; '' = none)
 }
 
 function emptyForm(): NewTransactionForm {
@@ -29,6 +30,7 @@ function emptyForm(): NewTransactionForm {
         isCredit: false,
         creditType: 'income',
         incomeCategory: '',
+        source: '',
     };
 }
 
@@ -107,6 +109,7 @@ export function useTransactionEditor(selectedMonth: number, selectedYear: number
 
         const snapshot = currentSnapshot || getOrCreateMonth(selectedMonth, selectedYear);
         const amount = parseFloat(formData.amount);
+        const source = formData.source.trim() || undefined;
         let newTransaction: Transaction;
 
         if (formData.isCredit) {
@@ -115,6 +118,7 @@ export function useTransactionEditor(selectedMonth: number, selectedYear: number
                 date: new Date(formData.date + 'T00:00:00'),
                 description: formData.description,
                 amount: Math.abs(amount),
+                source,
             };
             if (formData.creditType === 'transfer') {
                 newTransaction = { ...base, isTransfer: true };
@@ -144,6 +148,7 @@ export function useTransactionEditor(selectedMonth: number, selectedYear: number
                 expenseId: (isTransfer || isContribution) ? undefined : (formData.expenseId || undefined),
                 isTransfer: isTransfer || isContribution,
                 targetAccountId,
+                source,
             };
         }
 
@@ -151,8 +156,10 @@ export function useTransactionEditor(selectedMonth: number, selectedYear: number
             type: 'ADD_TRANSACTION',
             payload: { monthId: snapshot.id, transaction: newTransaction },
         });
-        resetForm();
-    }, [formData, currentSnapshot, getOrCreateMonth, selectedMonth, selectedYear, dispatch, resetForm]);
+        // Keep the chosen source sticky so adding several rows from the same
+        // card/statement doesn't require re-selecting it each time.
+        setFormData({ ...emptyForm(), source: formData.source });
+    }, [formData, currentSnapshot, getOrCreateMonth, selectedMonth, selectedYear, dispatch]);
 
     const update = useCallback((transactionId: string, updates: Partial<Transaction>) => {
         if (!currentSnapshot) return;
@@ -256,6 +263,22 @@ export function useTransactionEditor(selectedMonth: number, selectedYear: number
         });
     }, [currentSnapshot, dispatch, maybeCreateCategoryRule]);
 
+    const bulkSetSource = useCallback((selectedIds: Set<string>, source: string) => {
+        if (!currentSnapshot || selectedIds.size === 0) return;
+
+        const cleaned = source.trim() || undefined;
+        selectedIds.forEach(transactionId => {
+            dispatch({
+                type: 'UPDATE_TRANSACTION',
+                payload: {
+                    monthId: currentSnapshot.id,
+                    transactionId,
+                    updates: { source: cleaned },
+                },
+            });
+        });
+    }, [currentSnapshot, dispatch]);
+
     return {
         currentSnapshot,
         formData,
@@ -266,5 +289,6 @@ export function useTransactionEditor(selectedMonth: number, selectedYear: number
         remove,
         clearAllForMonth,
         bulkSetCategory,
+        bulkSetSource,
     };
 }

@@ -17,6 +17,7 @@ interface TransactionRowProps {
     activeExpenses: AnyExpense[];
     accounts: AnyAccount[];
     priorities: PriorityBucket[];
+    sourceSuggestions: string[];
     isEditing: boolean;
     isSelected: boolean;
     onEdit: (id: string) => void;
@@ -35,6 +36,7 @@ function TransactionRowInner({
     activeExpenses,
     accounts,
     priorities,
+    sourceSuggestions,
     isEditing,
     isSelected,
     onEdit,
@@ -66,6 +68,7 @@ function TransactionRowInner({
     );
     const [editIncomeCategory, setEditIncomeCategory] = useState<IncomeCategory | ''>(transaction.incomeCategory || '');
     const [editTargetAccountId, setEditTargetAccountId] = useState(transaction.targetAccountId || '');
+    const [editSource, setEditSource] = useState(transaction.source || '');
 
     const dateStr = new Date(transaction.date).toLocaleDateString('en-US', {
         month: 'short',
@@ -74,6 +77,7 @@ function TransactionRowInner({
 
     const handleSave = () => {
         const amount = parseFloat(editAmount) || 0;
+        const source = editSource.trim() || undefined;
 
         if (isCredit) {
             if (editCreditType === 'transfer') {
@@ -87,6 +91,7 @@ function TransactionRowInner({
                     incomeCategory: undefined,
                     targetAccountId: undefined,
                     isPossibleCredit: false,
+                    source,
                 });
             } else if (editCreditType === 'contribution') {
                 onUpdate(transaction.id, {
@@ -99,6 +104,7 @@ function TransactionRowInner({
                     incomeCategory: undefined,
                     targetAccountId: editTargetAccountId || undefined,
                     isPossibleCredit: false,
+                    source,
                 });
             } else if (editCreditType === 'reimbursement') {
                 onUpdate(transaction.id, {
@@ -111,6 +117,7 @@ function TransactionRowInner({
                     incomeCategory: undefined,
                     targetAccountId: undefined,
                     isPossibleCredit: false,
+                    source,
                 });
             } else {
                 onUpdate(transaction.id, {
@@ -123,6 +130,7 @@ function TransactionRowInner({
                     incomeCategory: editIncomeCategory || undefined,
                     targetAccountId: undefined,
                     isPossibleCredit: false,
+                    source,
                 });
             }
         } else {
@@ -140,6 +148,7 @@ function TransactionRowInner({
                 incomeCategory: undefined,
                 targetAccountId,
                 isPossibleCredit: false,
+                source,
             });
         }
     };
@@ -277,6 +286,18 @@ function TransactionRowInner({
                                 )}
                             </select>
                         )}
+                        <input
+                            type="text"
+                            name="edit-txn-source"
+                            list="edit-txn-source-suggestions"
+                            placeholder="Source / card"
+                            value={editSource}
+                            onChange={(e) => setEditSource(e.target.value)}
+                            className="w-36 bg-surface-raised border border-border-strong rounded px-2 py-1.5 text-sm text-white focus:border-positive-soft focus:outline-none"
+                        />
+                        <datalist id="edit-txn-source-suggestions">
+                            {sourceSuggestions.map(s => <option key={s} value={s} />)}
+                        </datalist>
                         <button
                             onClick={handleSave}
                             className="px-3 py-1.5 bg-positive-solid hover:bg-positive-soft text-white rounded text-xs font-medium"
@@ -345,6 +366,14 @@ function TransactionRowInner({
                     {transaction.isReimbursement && (
                         <span className="inline-flex items-center px-1.5 py-0.5 bg-positive-tint/50 border border-positive-strong/50 rounded text-xs text-positive">
                             Reimb
+                        </span>
+                    )}
+                    {transaction.source && (
+                        <span
+                            className="inline-flex items-center px-1.5 py-0.5 bg-surface-input border border-border-strong rounded text-xs text-content-muted"
+                            title={`Source: ${transaction.source}`}
+                        >
+                            {transaction.source}
                         </span>
                     )}
                     {transaction.isPossibleCredit && (
