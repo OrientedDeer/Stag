@@ -114,6 +114,36 @@ describe('applyTransactions', () => {
         expect(credit.isPossibleCredit).toBe(true);
     });
 
+    it('makeTransaction carries a trimmed source; blank/whitespace/absent → undefined', () => {
+        expect(makeTransaction({ id: 'a', date: '2026-04-01', amount: -20, description: 'STORE', source: '  Rewards Card  ' }).source)
+            .toBe('Rewards Card');
+        expect(makeTransaction({ id: 'b', date: '2026-04-01', amount: -20, description: 'STORE', source: '   ' }).source)
+            .toBeUndefined();
+        expect(makeTransaction({ id: 'c', date: '2026-04-01', amount: -20, description: 'STORE' }).source)
+            .toBeUndefined();
+    });
+
+    it('preserves source through categorize → dedup → month-bucket', () => {
+        const blob = v2Blob();
+        const incoming = [
+            // Matches the 'whole foods' rule -> still categorized AND keeps its source.
+            makeTransaction({ id: 's1', date: '2026-01-09', amount: -18.5, description: 'WHOLE FOODS MARKET', source: 'Rewards Card' }),
+            // Different month -> creates Feb snapshot; distinct card label survives.
+            makeTransaction({ id: 's2', date: '2026-02-02', amount: -75.0, description: 'SHELL GAS', source: 'Travel Card' }),
+        ];
+
+        const report = applyTransactions(blob, incoming, { dedup: 'id' });
+        expect(report.added).toBe(2);
+
+        const jan = blob.budget!.months.find(m => m.month === 1 && m.year === 2026)!;
+        const feb = blob.budget!.months.find(m => m.month === 2 && m.year === 2026)!;
+        const s1 = jan.transactions.find(t => t.id === 's1')!;
+        const s2 = feb.transactions.find(t => t.id === 's2')!;
+        expect(s1.source).toBe('Rewards Card');
+        expect(s1.expenseId).toBe('groceries'); // categorization still applied
+        expect(s2.source).toBe('Travel Card');
+    });
+
     it('mints distinct month ids when one merge creates several months in a tick (Finding #10)', () => {
         // generateMonthId used to be `MONTH-${Date.now()}-${rand(1000)}`, which
         // collided when several months were created in one synchronous merge.

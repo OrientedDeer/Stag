@@ -94,9 +94,11 @@ function csvToTransactions(csvText: string): Transaction[] {
         date: col(headers, 'Date'),
         description: col(headers, 'Description'),
         amount: col(headers, 'Amount'),
+        source: col(headers, 'Source'),
         id: col(headers, 'Id'),
     };
     for (const [k, v] of Object.entries(idx)) {
+        if (k === 'source') continue; // optional — older feeds omit the Source column
         if (v === -1) throw new Error(`transactions.csv is missing the "${k}" column`);
     }
     const out: Transaction[] = [];
@@ -114,6 +116,7 @@ function csvToTransactions(csvText: string): Transaction[] {
                 date: r[idx.date].trim(),
                 description: r[idx.description] ?? '',
                 amount,
+                source: idx.source >= 0 ? r[idx.source] : undefined, // optional per-row card/account label
             }),
         );
     }

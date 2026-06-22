@@ -98,6 +98,9 @@ export interface NewTransactionInput {
     description: string;
     /** Signed amount in Stag's convention: money out = negative. */
     amount: number;
+    /** Free-text account/card label this row came from (the stag-feed CSV's
+     *  `Source` column). Optional — older feeds omit it. */
+    source?: string;
 }
 
 export interface ApplyTransactionsOptions {
@@ -120,6 +123,11 @@ export interface ApplyTransactionsOptions {
  *   - incomeCategory via detectIncomeCategory for credits.
  * expenseId is left for applyCategories; isReimbursement/isTransfer/accountId/
  * statementDate default off, exactly as applyMapping leaves them.
+ *
+ * `source` is the per-row CSV value (the headless equivalent of the manual
+ * import flow's per-batch `assignSource`). Unlike applyMapping — which has no
+ * source concept — this path carries a per-row source so a single feed can mix
+ * cards and still reconcile each one.
  */
 export function makeTransaction(input: NewTransactionInput): Transaction {
     const isPossibleCredit = input.amount > 0;
@@ -130,6 +138,7 @@ export function makeTransaction(input: NewTransactionInput): Transaction {
         amount: input.amount,
         isPossibleCredit,
         incomeCategory: isPossibleCredit ? (detectIncomeCategory(input.description) ?? undefined) : undefined,
+        source: input.source?.trim() || undefined,
     };
 }
 
