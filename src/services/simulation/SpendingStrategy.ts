@@ -81,8 +81,13 @@ export function applyLifestyleCreep(
 }
 
 /**
- * Calculate withdrawal strategy target for all strategies (GK, Fixed Real, Percentage).
- * Returns undefined for 'None' and 'Needs Based' strategies.
+ * Calculate the withdrawal strategy budget for the budget-cap strategies
+ * (Fixed Real, Percentage). Returns undefined for 'None' / 'Needs Based'.
+ *
+ * NOTE: Guyton-Klinger no longer routes through here. GK is now plan-anchored and
+ * handled directly in SimulationEngine (`evaluateGuytonKlingerGuardrail`): it
+ * spends the itemized plan within the ±20% band and applies a ±10% discretionary
+ * adjustment only on a guardrail breach — there is no annual budget cap.
  */
 export function calculateStrategyTarget(
     accounts: AnyAccount[],
@@ -145,55 +150,3 @@ export function calculateStrategyTarget(
     return result;
 }
 
-/**
- * Increase discretionary expenses to match budget when budget > current expenses.
- * Any surplus beyond discretionary goes to brokerage.
- *
- * This implements "prosperity spending" - when the withdrawal strategy budget
- * exceeds current expenses, we increase discretionary spending up to the budget,
- * and any remaining surplus is invested.
- */
-export function applyProsperitySpending(
-    expenses: AnyExpense[],
-    currentTotalExpenses: number,
-    budgetTarget: number,
-    year: number,
-    logs: string[]
-): { adjustedExpenses: AnyExpense[]; surplusToInvest: number; prosperityApplied: boolean } {
-    // If budget doesn't exceed expenses, no prosperity to apply
-    if (budgetTarget <= currentTotalExpenses) {
-        return { adjustedExpenses: expenses, surplusToInvest: 0, prosperityApplied: false };
-    }
-
-    const surplus = budgetTarget - currentTotalExpenses;
-    const totalDiscretionary = calculateTotalDiscretionary(expenses, year);
-
-    // If no discretionary expenses, invest the entire surplus
-    if (totalDiscretionary <= 0) {
-        logs.push(`[FLOW] Prosperity: Budget $${budgetTarget.toLocaleString(undefined, { maximumFractionDigits: 0 })} exceeds expenses $${currentTotalExpenses.toLocaleString(undefined, { maximumFractionDigits: 0 })} by $${surplus.toLocaleString(undefined, { maximumFractionDigits: 0 })}, but no discretionary expenses to increase. Surplus will be invested.`);
-        return { adjustedExpenses: expenses, surplusToInvest: surplus, prosperityApplied: false };
-    }
-
-    // Calculate how much we can increase discretionary expenses
-    // Cap increase at 100% of current discretionary (doubling max)
-    const maxIncrease = totalDiscretionary; // Can double discretionary spending
-    const actualIncrease = Math.min(surplus, maxIncrease);
-    const surplusAfterIncrease = surplus - actualIncrease;
-
-    // Apply proportional increase to all discretionary expenses
-    const increaseRatio = 1 + (actualIncrease / totalDiscretionary);
-    const adjustedExpenses = expenses.map(exp => {
-        if (exp.isDiscretionary) {
-            return exp.adjustAmount(increaseRatio);
-        }
-        return exp;
-    });
-
-    logs.push(`[FLOW] Prosperity: Budget $${budgetTarget.toLocaleString(undefined, { maximumFractionDigits: 0 })} exceeds expenses $${currentTotalExpenses.toLocaleString(undefined, { maximumFractionDigits: 0 })} → discretionary increased by $${actualIncrease.toLocaleString(undefined, { maximumFractionDigits: 0 })} (${((increaseRatio - 1) * 100).toFixed(0)}%)`);
-
-    if (surplusAfterIncrease > 0) {
-        logs.push(`[FLOW] Remaining surplus of $${surplusAfterIncrease.toLocaleString(undefined, { maximumFractionDigits: 0 })} will be invested`);
-    }
-
-    return { adjustedExpenses, surplusToInvest: surplusAfterIncrease, prosperityApplied: true };
-}

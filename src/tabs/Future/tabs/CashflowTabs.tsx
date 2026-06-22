@@ -76,7 +76,15 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: Sim
          <div ref={containerRef} className="flex flex-col gap-4">
             {/* Info banners - min-h prevents chart from shifting when banners appear/disappear */}
             <div className="min-h-[52px] flex flex-col gap-2 justify-end">
-            {gkTriggered === 'capital-preservation' && (
+            {gkTriggered === 'capital-preservation' && yearData.strategyAdjustment?.warning && (
+                <div className="p-3 bg-negative-tint/20 border border-negative-strong/50 rounded-lg text-sm">
+                    <div className="flex items-start gap-2">
+                        <span className="text-negative font-semibold">Plan Failed (Guyton-Klinger):</span>
+                        <span className="text-content-default">{yearData.strategyAdjustment.warning}</span>
+                    </div>
+                </div>
+            )}
+            {gkTriggered === 'capital-preservation' && !yearData.strategyAdjustment?.warning && (
                 <div className="p-3 bg-warning-tint/20 border border-warning-strong/50 rounded-lg text-sm">
                     <div className="flex items-start gap-2">
                         <span className="text-warning font-semibold">Capital Preservation Rule:</span>

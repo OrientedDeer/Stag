@@ -4,7 +4,7 @@
 import { AnyAccount } from "../../Objects/Accounts/models";
 import { AnyExpense, MortgageExpense, LoanExpense, isLongTermGoal, isGoalDueInYear, getGoalFundAnnualSetAside, goalEndsBeforeYear } from "../Expense/models";
 import { AnyIncome, WorkIncome, PassiveIncome } from "../../Objects/Income/models";
-import { AssumptionsState, getBirthYear, BUILTIN_MILESTONE_IDS } from "./AssumptionsContext";
+import { AssumptionsState, getBirthYear, getLifeExpectancy, BUILTIN_MILESTONE_IDS } from "./AssumptionsContext";
 import { TaxState } from "../../Objects/Taxes/TaxContext";
 import * as TaxService from "../../Objects/Taxes/TaxService";
 
@@ -25,6 +25,8 @@ import { evaluateAllMilestones, isActiveByMilestone, MilestoneContext } from "..
 import { InvestedAccount, SavedAccount, ESPPAccount, RSUAccount } from "../Accounts/models";
 import { processRSUVesting } from "../../../services/simulation/RSUVesting";
 import { solveYear, YearSolverInput } from "../../../services/simulation/YearSolver";
+import { evaluateGuytonKlingerGuardrail, computeGKDiscretionaryAdjustment, WithdrawalResult } from "../../../services/WithdrawalStrategies";
+import { sumInvestedAssets } from "../Accounts/accountUtils";
 import { DPPolicy } from "../../../services/simulation/RothConversionDP";
 import { YearPlan } from "../../../services/simulation/types";
 import { buildCashflowDetail } from "../../../services/simulation/CashflowDetailBuilder";
@@ -347,7 +349,7 @@ function simulateOneYearWithNewEngine(
     }
     const totalGoalFunding = [...goalFundCredits.values()].reduce((s, v) => s + v, 0);
 
-    const totalLivingExpenses = nextExpenses.reduce((sum, exp) => {
+    let totalLivingExpenses = nextExpenses.reduce((sum, exp) => {
         if (exp instanceof MortgageExpense) {
             return sum + exp.calculateAnnualAmortization(year).totalPayment;
         }
@@ -360,9 +362,83 @@ function simulateOneYearWithNewEngine(
     // ------------------------------------------------------------------
     // WITHDRAWAL STRATEGY TARGET (for GK, Fixed Real, etc.)
     // ------------------------------------------------------------------
-    const strategyWithdrawalResult = isRetired
-        ? calculateStrategyTarget(accounts, assumptions, previousSimulation, year, currentAge, logs)
-        : undefined;
+    // Plan-anchored Guyton-Klinger: within the guardrail band the user simply
+    // spends their itemized plan (no annual budget-cap trim). Only when the plan's
+    // withdrawal rate crosses the configured initial rate ±20% do we apply a
+    // one-step ±10% adjustment to DISCRETIONARY spending — which persists forward
+    // because the adjusted expense objects carry into next year. Fixed Real /
+    // Percentage keep the budget-cap path (calculateStrategyTarget + gkBudget).
+    const withdrawalStrategyName = assumptions.investments.withdrawalStrategy;
+    let strategyWithdrawalResult: WithdrawalResult | undefined;
+    let gkStrategyAdjustment: SimulationYear['strategyAdjustment'] = undefined;
+
+    if (isRetired && withdrawalStrategyName === 'Guyton Klinger') {
+        const gkPortfolio = sumInvestedAssets(accounts);
+        const yearsRemaining = getLifeExpectancy(assumptions.milestones) - currentAge;
+        const discretionaryBefore = calculateTotalDiscretionary(nextExpenses, year);
+        const ev = evaluateGuytonKlingerGuardrail({
+            plannedSpending: totalLivingExpenses,
+            portfolio: gkPortfolio,
+            withdrawalRate: assumptions.investments.withdrawalRate,
+            upperGuardrail: assumptions.investments.gkUpperGuardrail,
+            lowerGuardrail: assumptions.investments.gkLowerGuardrail,
+            yearsRemaining,
+        });
+
+        if (ev.guardrailTriggered !== 'none') {
+            // Canonical GK ±X% is X% of the WITHDRAWAL (total spending), absorbed
+            // entirely by discretionary (fixed costs can't flex). A cut that exceeds
+            // available discretionary can't be met → the plan can't preserve capital.
+            const isCut = ev.guardrailTriggered === 'capital-preservation';
+            const adj = computeGKDiscretionaryAdjustment({
+                guardrailTriggered: ev.guardrailTriggered,
+                totalSpending: totalLivingExpenses,
+                discretionary: discretionaryBefore,
+                adjustmentPercent: assumptions.investments.gkAdjustmentPercent,
+            });
+
+            if (adj.ratio !== 1) {
+                nextExpenses = nextExpenses.map(exp =>
+                    exp.isDiscretionary ? exp.adjustAmount(adj.ratio) : exp
+                );
+                // Re-total after the discretionary adjustment so the solver funds the
+                // adjusted plan and the downstream fixed/discretionary split matches.
+                totalLivingExpenses = nextExpenses.reduce((sum, exp) => {
+                    if (exp instanceof MortgageExpense) return sum + exp.calculateAnnualAmortization(year).totalPayment;
+                    if (exp instanceof LoanExpense) return sum + exp.calculateAnnualAmortization(year).totalPayment;
+                    return sum + exp.getAnnualAmount(year);
+                }, 0) + totalGoalFunding;
+            }
+
+            gkStrategyAdjustment = {
+                guardrailTriggered: ev.guardrailTriggered,
+                requiredAdjustment: adj.targetAdjustment,
+                actualAdjustment: adj.appliedAdjustment,
+                discretionaryAvailable: discretionaryBefore,
+                warning: adj.failed
+                    ? `Plan unsustainable: Guyton-Klinger needed to cut $${Math.round(adj.targetAdjustment).toLocaleString()} (${assumptions.investments.gkAdjustmentPercent}% of spending) but only $${Math.round(discretionaryBefore).toLocaleString()} of discretionary spending was available. Fixed costs can't be cut, so spending can't drop enough to preserve capital.`
+                    : (!isCut && discretionaryBefore <= 0 ? 'No discretionary spending to increase.' : undefined),
+            };
+            const verb = isCut ? 'CUT' : 'FLOW';
+            logs.push(`[${verb}] GK ${isCut ? 'Capital Preservation' : 'Prosperity'}: rate ${ev.planRate.toFixed(2)}% crossed the ${isCut ? 'upper' : 'lower'} guardrail → discretionary ${isCut ? 'reduced' : 'increased'} by $${Math.round(adj.appliedAdjustment).toLocaleString()} (target ${assumptions.investments.gkAdjustmentPercent}% of spending = $${Math.round(adj.targetAdjustment).toLocaleString()})${adj.failed ? ` — SHORTFALL $${Math.round(adj.shortfall).toLocaleString()}: can't cut fixed costs, plan unsustainable` : ''}`);
+        }
+
+        // Recorded so gkRateSuggestion (initialPortfolio), Excel export, and the
+        // chart markers keep working; `amount` is the spent plan, not a cap.
+        strategyWithdrawalResult = {
+            amount: totalLivingExpenses,
+            baseAmount: totalLivingExpenses,
+            initialPortfolio: gkPortfolio,
+            guardrailTriggered: ev.guardrailTriggered,
+            targetWithdrawalRate: assumptions.investments.withdrawalRate,
+            currentWithdrawalRate: ev.planRate,
+        };
+
+        logs.push(`[INFO] Retirement withdrawal strategy: Guyton Klinger`);
+        logs.push(`  Plan spending: $${Math.round(totalLivingExpenses).toLocaleString()}  |  Portfolio: $${Math.round(gkPortfolio).toLocaleString()}  |  Effective rate: ${ev.planRate.toFixed(2)}%`);
+    } else if (isRetired) {
+        strategyWithdrawalResult = calculateStrategyTarget(accounts, assumptions, previousSimulation, year, currentAge, logs);
+    }
 
     // ------------------------------------------------------------------
     // PROCESS RMDs
@@ -450,7 +526,9 @@ function simulateOneYearWithNewEngine(
         acaAware: currentAge < 65 && (assumptions.investments.acaAware !== false),
         previousSimulation: previousSimulation.map(s => ({ year: s.year, accounts: s.accounts, magi: s.magi })),
         // GK Guardrails: Pass budget and expense breakdown when strategy is active
-        gkBudget: strategyWithdrawalResult?.amount,
+        // GK is plan-anchored (no budget cap — any ±10% adjustment is already baked
+        // into nextExpenses above); only Fixed Real / Percentage pass a capping budget.
+        gkBudget: withdrawalStrategyName === 'Guyton Klinger' ? undefined : strategyWithdrawalResult?.amount,
         fixedExpenses,
         discretionaryExpenses,
         // Per-year sub-sim baseline projections. Used by the conversion ceiling
@@ -492,7 +570,12 @@ function simulateOneYearWithNewEngine(
     // (like the Sankey chart) get consistent data without needing corrections.
     let strategyAdjustmentResult: SimulationYear['strategyAdjustment'] = undefined;
 
-    if (yearPlan.totalExpenses < totalLivingExpenses) {
+    if (withdrawalStrategyName === 'Guyton Klinger') {
+        // Plan-anchored GK applies (and records) its ±10% discretionary adjustment
+        // up-front, only on a guardrail breach — there is no post-solver budget-cap
+        // trim to mirror here.
+        strategyAdjustmentResult = gkStrategyAdjustment;
+    } else if (yearPlan.totalExpenses < totalLivingExpenses) {
         const trimAmount = totalLivingExpenses - yearPlan.totalExpenses;
         const totalDiscretionary = calculateTotalDiscretionary(nextExpenses, year);
         if (totalDiscretionary > 0) {

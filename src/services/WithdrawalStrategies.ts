@@ -210,6 +210,127 @@ export function calculateGuytonKlingerWithdrawal(
   };
 }
 
+/** Result of a plan-anchored Guyton-Klinger guardrail evaluation. */
+export interface GKGuardrailEvaluation {
+  /** Which guardrail (if any) the plan's withdrawal rate breached this year. */
+  guardrailTriggered: GuardrailTrigger;
+  /** The plan's effective withdrawal rate (%) = plannedSpending / portfolio × 100. */
+  planRate: number;
+}
+
+/**
+ * Plan-anchored Guyton-Klinger guardrail DECISION (which guardrail the plan's
+ * withdrawal rate crossed this year). It does NOT size the adjustment — the
+ * caller does, because the canonical ±10% is 10% of the *withdrawal / total
+ * spending*, but it must be absorbed by discretionary alone (you can't cut
+ * fixed costs like housing). The caller therefore computes a dollar amount =
+ * adjustmentPercent × total spending and applies it to discretionary; if a cut
+ * exceeds available discretionary, the plan can't comply (a failure).
+ *
+ * Unlike {@link calculateGuytonKlingerWithdrawal} (a single inflation-tracked
+ * withdrawal number used by the historical backtest), this evaluates the user's
+ * itemized plan against the band:
+ * - rate > center × upper, and the 15-year rule is satisfied (`yearsRemaining`
+ *   undefined or > 15) → capital-preservation.
+ * - rate > center × upper but within 15 years of life expectancy → none.
+ * - rate < center × lower → prosperity.
+ * - otherwise → none.
+ *
+ * Pure: no side effects.
+ */
+export function evaluateGuytonKlingerGuardrail(params: {
+  plannedSpending: number;
+  portfolio: number;
+  withdrawalRate: number; // band center (configured initial rate, e.g. 4)
+  upperGuardrail?: number;
+  lowerGuardrail?: number;
+  yearsRemaining?: number;
+}): GKGuardrailEvaluation {
+  const {
+    plannedSpending,
+    portfolio,
+    withdrawalRate,
+    upperGuardrail = DEFAULT_GK_UPPER_GUARDRAIL,
+    lowerGuardrail = DEFAULT_GK_LOWER_GUARDRAIL,
+    yearsRemaining,
+  } = params;
+
+  if (portfolio <= 0) {
+    return { guardrailTriggered: 'none', planRate: 0 };
+  }
+
+  const planRate = (plannedSpending / portfolio) * 100;
+  const center = withdrawalRate;
+
+  if (planRate > center * upperGuardrail) {
+    // Capital Preservation Rule — only applies with more than 15 years left.
+    const canApplyCapitalPreservation = yearsRemaining === undefined || yearsRemaining > GK_15_YEAR_RULE_THRESHOLD;
+    return { guardrailTriggered: canApplyCapitalPreservation ? 'capital-preservation' : 'none', planRate };
+  }
+
+  if (planRate < center * lowerGuardrail) {
+    return { guardrailTriggered: 'prosperity', planRate };
+  }
+
+  return { guardrailTriggered: 'none', planRate };
+}
+
+/** How a Guyton-Klinger guardrail adjustment lands on discretionary spending. */
+export interface GKDiscretionaryAdjustment {
+  /** Multiply each discretionary expense by this (1 = no change). */
+  ratio: number;
+  /** The intended adjustment: adjustmentPercent% of TOTAL spending (canonical GK). */
+  targetAdjustment: number;
+  /** Dollars actually moved out of / into discretionary. */
+  appliedAdjustment: number;
+  /** Cut dollars that could NOT be absorbed by discretionary (cuts only). */
+  shortfall: number;
+  /** True when a cut needed more than the available discretionary — the plan can't comply. */
+  failed: boolean;
+}
+
+/**
+ * Size a Guyton-Klinger guardrail adjustment and land it on discretionary.
+ *
+ * Canonical GK moves the WITHDRAWAL (≈ total spending) by `adjustmentPercent`%.
+ * In this app the only flexible spending is discretionary (fixed costs — housing,
+ * debt — can't be cut), so the full dollar move comes out of (cut) or goes into
+ * (boost) discretionary:
+ * - cut needs `targetAdjustment` removed from discretionary; if that exceeds the
+ *   discretionary available, only what's there is cut and the remainder is a
+ *   `shortfall` → `failed` (you can't reduce spending enough to preserve capital).
+ * - boost adds `targetAdjustment` to discretionary (never fails).
+ *
+ * Returns a `ratio` to scale each discretionary expense by. Pure.
+ */
+export function computeGKDiscretionaryAdjustment(params: {
+  guardrailTriggered: GuardrailTrigger;
+  totalSpending: number;
+  discretionary: number;
+  adjustmentPercent?: number;
+}): GKDiscretionaryAdjustment {
+  const {
+    guardrailTriggered,
+    totalSpending,
+    discretionary,
+    adjustmentPercent = DEFAULT_GK_ADJUSTMENT_PERCENT,
+  } = params;
+
+  if (guardrailTriggered === 'none') {
+    return { ratio: 1, targetAdjustment: 0, appliedAdjustment: 0, shortfall: 0, failed: false };
+  }
+
+  const targetAdjustment = (adjustmentPercent / 100) * totalSpending;
+  const isCut = guardrailTriggered === 'capital-preservation';
+  const appliedAdjustment = isCut ? Math.min(targetAdjustment, discretionary) : targetAdjustment;
+  const shortfall = isCut ? targetAdjustment - appliedAdjustment : 0;
+  const failed = shortfall > 0.5;
+  const newDiscretionary = isCut ? discretionary - appliedAdjustment : discretionary + appliedAdjustment;
+  const ratio = discretionary > 0 ? newDiscretionary / discretionary : 1;
+
+  return { ratio, targetAdjustment, appliedAdjustment, shortfall, failed };
+}
+
 /**
  * Extended parameters for withdrawal calculation
  */

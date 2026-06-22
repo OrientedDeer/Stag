@@ -6,8 +6,7 @@
  * Unit tests pin the candidate-order generator (fast, deterministic). One integration test
  * confirms the optimizer wires through (sets chosenWithdrawalOrder + the feasibility floor still
  * holds). A PAYOFF test pins the economic value on a synthetic order-sensitive scenario (so the
- * committed suite guards the gain, not just the wiring — the real high-SS dollar figure lives in a
- * gitignored *.personal test).
+ * committed suite guards the gain, not just the wiring).
  */
 import { describe, it, expect } from 'vitest';
 import { AnyAccount, InvestedAccount, SavedAccount } from '../../components/Objects/Accounts/models';

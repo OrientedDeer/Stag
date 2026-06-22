@@ -4,6 +4,8 @@ import {
   calculatePercentageWithdrawal,
   calculateGuytonKlingerWithdrawal,
   calculateStrategyWithdrawal,
+  evaluateGuytonKlingerGuardrail,
+  computeGKDiscretionaryAdjustment,
   WithdrawalResult,
 } from '../../services/WithdrawalStrategies';
 
@@ -355,6 +357,98 @@ describe('Withdrawal Strategies', () => {
       // $40,000 * (1.03)^30 = $97,090.76
       const expected = 40000 * Math.pow(1.03, 30);
       expect(result.amount).toBeCloseTo(expected, 0);
+    });
+  });
+
+  describe('evaluateGuytonKlingerGuardrail (plan-anchored decision)', () => {
+    const base = { withdrawalRate: 4, portfolio: 1_000_000 }; // band [3.2%, 4.8%]
+
+    it('returns none when the plan rate is within the band', () => {
+      const ev = evaluateGuytonKlingerGuardrail({ ...base, plannedSpending: 40000 }); // 4.0%
+      expect(ev.guardrailTriggered).toBe('none');
+      expect(ev.planRate).toBeCloseTo(4.0, 5);
+    });
+
+    it('flags capital-preservation above the upper guardrail', () => {
+      const ev = evaluateGuytonKlingerGuardrail({ ...base, plannedSpending: 50000, yearsRemaining: 30 }); // 5.0%
+      expect(ev.guardrailTriggered).toBe('capital-preservation');
+      expect(ev.planRate).toBeCloseTo(5.0, 5);
+    });
+
+    it('suppresses the cut within 15 years of life expectancy (15-year rule)', () => {
+      const ev = evaluateGuytonKlingerGuardrail({ ...base, plannedSpending: 50000, yearsRemaining: 10 });
+      expect(ev.guardrailTriggered).toBe('none');
+    });
+
+    it('flags prosperity below the lower guardrail', () => {
+      const ev = evaluateGuytonKlingerGuardrail({ ...base, plannedSpending: 30000 }); // 3.0%
+      expect(ev.guardrailTriggered).toBe('prosperity');
+      expect(ev.planRate).toBeCloseTo(3.0, 5);
+    });
+
+    it('returns none / rate 0 for a non-positive portfolio (no NaN)', () => {
+      const ev = evaluateGuytonKlingerGuardrail({ withdrawalRate: 4, portfolio: 0, plannedSpending: 40000 });
+      expect(ev.guardrailTriggered).toBe('none');
+      expect(ev.planRate).toBe(0);
+      expect(Number.isFinite(ev.planRate)).toBe(true);
+    });
+
+    it('honors a custom (tighter) upper guardrail', () => {
+      // center 4%, custom upper 1.1 → 4.4%; 4.5% breaches it.
+      const ev = evaluateGuytonKlingerGuardrail({
+        ...base, plannedSpending: 45000, upperGuardrail: 1.1, yearsRemaining: 30,
+      });
+      expect(ev.guardrailTriggered).toBe('capital-preservation');
+    });
+  });
+
+  describe('computeGKDiscretionaryAdjustment (10% of spending, absorbed by discretionary)', () => {
+    it('no-ops when no guardrail is triggered', () => {
+      const a = computeGKDiscretionaryAdjustment({ guardrailTriggered: 'none', totalSpending: 100000, discretionary: 40000 });
+      expect(a).toEqual({ ratio: 1, targetAdjustment: 0, appliedAdjustment: 0, shortfall: 0, failed: false });
+    });
+
+    it('cut: removes 10% of TOTAL spending from discretionary (a much larger % of discretionary)', () => {
+      // 10% of $100k = $10k cut, taken from $40k discretionary → discretionary drops 25% to $30k.
+      const a = computeGKDiscretionaryAdjustment({ guardrailTriggered: 'capital-preservation', totalSpending: 100000, discretionary: 40000 });
+      expect(a.targetAdjustment).toBeCloseTo(10000, 5);
+      expect(a.appliedAdjustment).toBeCloseTo(10000, 5);
+      expect(a.shortfall).toBe(0);
+      expect(a.failed).toBe(false);
+      expect(a.ratio).toBeCloseTo(0.75, 5); // 30k / 40k
+    });
+
+    it('cut FAILS when the required cut exceeds available discretionary', () => {
+      // Needs $10k cut, only $5k discretionary → cuts all $5k, $5k shortfall, plan fails.
+      const a = computeGKDiscretionaryAdjustment({ guardrailTriggered: 'capital-preservation', totalSpending: 100000, discretionary: 5000 });
+      expect(a.targetAdjustment).toBeCloseTo(10000, 5);
+      expect(a.appliedAdjustment).toBeCloseTo(5000, 5);
+      expect(a.shortfall).toBeCloseTo(5000, 5);
+      expect(a.failed).toBe(true);
+      expect(a.ratio).toBe(0); // discretionary cut to zero
+    });
+
+    it('cut with zero discretionary fails entirely (nothing to cut)', () => {
+      const a = computeGKDiscretionaryAdjustment({ guardrailTriggered: 'capital-preservation', totalSpending: 100000, discretionary: 0 });
+      expect(a.appliedAdjustment).toBe(0);
+      expect(a.shortfall).toBeCloseTo(10000, 5);
+      expect(a.failed).toBe(true);
+      expect(a.ratio).toBe(1); // nothing to scale
+    });
+
+    it('boost: adds 10% of total spending to discretionary, never fails', () => {
+      const a = computeGKDiscretionaryAdjustment({ guardrailTriggered: 'prosperity', totalSpending: 100000, discretionary: 40000 });
+      expect(a.targetAdjustment).toBeCloseTo(10000, 5);
+      expect(a.appliedAdjustment).toBeCloseTo(10000, 5);
+      expect(a.failed).toBe(false);
+      expect(a.ratio).toBeCloseTo(1.25, 5); // 50k / 40k
+    });
+
+    it('honors a custom adjustment percent', () => {
+      // 20% of $100k = $20k cut from $40k discretionary → ratio 0.5.
+      const a = computeGKDiscretionaryAdjustment({ guardrailTriggered: 'capital-preservation', totalSpending: 100000, discretionary: 40000, adjustmentPercent: 20 });
+      expect(a.targetAdjustment).toBeCloseTo(20000, 5);
+      expect(a.ratio).toBeCloseTo(0.5, 5);
     });
   });
 });
