@@ -275,8 +275,9 @@ export function applyTransactions(
  *                          otherwise flagged 'unmapped' and skipped.
  * Each applied account gets BOTH writes: account.amount and a history snapshot.
  *
- * `date` defaults to the UTC run-date, matching the in-app reducer (idempotent
- * per day). Pass an explicit date only if you intend to own same-date dedup.
+ * `date` defaults to the LOCAL run-date (localToday / formatDateForInput),
+ * matching the in-app reducer (idempotent per day). Pass an explicit date only
+ * if you intend to own same-date dedup.
  */
 export function applyBalances(
     blob: MergeBlob,

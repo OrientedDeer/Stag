@@ -1436,7 +1436,11 @@ describe('qrUtils', () => {
       expect(result['0'][0][1]).toBe(10000);
     });
 
-    it('should round num values to integers', () => {
+    it('should preserve cents in num values (no rounding)', () => {
+      // Regression for the QR cents-loss fix: compactHistory used to Math.round
+      // the snapshot amount, so a balance carrying cents diverged from the live
+      // account.amount (which is never rounded) after a QR round-trip. The value
+      // is now stored verbatim.
       const accounts = [{ id: 'acct-abc' }];
       const history = {
         'acct-abc': [
@@ -1446,7 +1450,7 @@ describe('qrUtils', () => {
 
       const result = compactHistory(history, accounts);
 
-      expect(result['0'][0][1]).toBe(10001); // Rounded
+      expect(result['0'][0][1]).toBe(10000.75); // Cents preserved
     });
 
     it('should preserve correct index order matching accounts array', () => {

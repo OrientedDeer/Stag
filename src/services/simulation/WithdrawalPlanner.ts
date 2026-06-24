@@ -905,6 +905,27 @@ export function planWithdrawals(
         .map(c => ({ year: c.year, amount: c.amount }))
         .sort((a, b) => a.year - b.year);
 
+    // Roth 401k conversion layers are per-account (not pooled like roth_ira). But
+    // the ACA look-ahead and the main deficit loop can BOTH drain the same
+    // roth_401k in one call, and grossUpRoth mutates `conv.amount` in place to walk
+    // the 5-year-penalty layers FIFO. If each pass were handed a fresh copy of
+    // conversionHistory, the oldest (penalty-free, > 5yr) layer would be re-exposed
+    // as full in the second pass, so the < 5yr penalty-bearing layer it should have
+    // hit is skipped and the reported penalty is understated. Mirror
+    // pooledRothConversions: build ONE shared, in-place-mutated array per
+    // roth_401k accountId (oldest first) and hand the SAME array to both passes.
+    const roth401kConversions = new Map<string, { year: number; amount: number }[]>();
+    for (const s of accountOrder) {
+        if (s.accountType !== 'roth_401k' || roth401kConversions.has(s.accountId)) continue;
+        roth401kConversions.set(
+            s.accountId,
+            (s.conversionHistory ?? [])
+                .filter(c => c.amount > 0)
+                .map(c => ({ year: c.year, amount: c.amount }))
+                .sort((a, b) => a.year - b.year),
+        );
+    }
+
     // Process each account in order
     for (const snapshot of accountOrder) {
         if (remainingNetNeeded <= 0) break;
@@ -1053,20 +1074,22 @@ export function planWithdrawals(
                                 // LIVE reference to the account model's array, and snapshots are reused
                                 // across YearSolver's deficit iterations (and the model persists across
                                 // simulation years). grossUpRoth decrements conv.amount in place, so we
-                                // must pass a deep COPY here (mirroring pooledRothConversions) to avoid
-                                // corrupting the account's conversion basis / 5-year-penalty accounting
-                                // on later iterations and years. Combined with the main loop's
-                                // acaRothConsumed/effectiveVestedBalance guard on balance, this prevents
-                                // double-spend without mutating the model.
+                                // pass a per-account working COPY built ONCE (roth401kConversions,
+                                // mirroring pooledRothConversions) rather than the model's array — this
+                                // avoids corrupting the account's conversion basis / 5-year-penalty
+                                // accounting on later iterations and years. Crucially the SAME copy is
+                                // handed to the main loop below, so a layer drained here is not re-exposed
+                                // there: without that sharing the oldest (penalty-free) layer would be
+                                // counted twice and the 5-year penalty understated. Combined with the main
+                                // loop's acaRothConsumed/effectiveVestedBalance guard on balance, this
+                                // prevents double-spend without mutating the model.
                                 const isPooledRoth = rothSnapshot.accountType === 'roth_ira';
                                 const acaContribAvailable = isPooledRoth
                                     ? Math.max(0, Math.min(remainingPoolBasis, rothSnapshot.vestedBalance) - alreadyConsumed)
                                     : Math.max(0, (rothSnapshot.rothContributions ?? 0) - alreadyConsumed);
                                 const acaConversionsForCall = isPooledRoth
                                     ? pooledRothConversions
-                                    : (rothSnapshot.conversionHistory ?? [])
-                                        .map(c => ({ year: c.year, amount: c.amount }))
-                                        .sort((a, b) => a.year - b.year);
+                                    : (roth401kConversions.get(rothSnapshot.accountId) ?? []);
 
                                 const rothResult = grossUpRoth(
                                     Math.min(stillNeeded, availableRoth),
@@ -1261,9 +1284,14 @@ export function planWithdrawals(
                 const contribAvailable = isPooled
                     ? Math.max(0, Math.min(remainingPoolBasis, snapshot.vestedBalance) - acaAlreadyConsumed)
                     : Math.max(0, (snapshot.rothContributions ?? 0) - acaAlreadyConsumed);
+                // Use the SAME conversion array the ACA look-ahead drained (pooled for
+                // roth_ira, per-account `roth401kConversions` for roth_401k). grossUpRoth
+                // mutated it in place there, so a layer already spent is not re-exposed
+                // here — that shared drain is what keeps the 5-year penalty from being
+                // understated when both passes hit the same account in one year.
                 const conversionsForCall = isPooled
                     ? pooledRothConversions
-                    : (snapshot.conversionHistory ? snapshot.conversionHistory.map(c => ({ year: c.year, amount: c.amount })).sort((a, b) => a.year - b.year) : []);
+                    : (roth401kConversions.get(snapshot.accountId) ?? []);
 
                 const result = grossUpRoth(
                     remainingNetNeeded,

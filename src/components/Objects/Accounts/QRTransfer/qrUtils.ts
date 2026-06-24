@@ -454,9 +454,13 @@ export function compactHistory(
         const index = idToIndex.get(accountId);
         if (index === undefined) continue;
 
+        // Store the raw amount (cents included) rather than rounding to whole
+        // dollars — the JSON backup keeps cents, so rounding here made QR
+        // round-trips diverge from the live balance. Legacy whole-dollar
+        // payloads decode unchanged, so this stays backward-compatible.
         result[String(index)] = entries.map(entry => [
             dateToDays(entry.date),
-            Math.round(entry.num)
+            entry.num
         ]);
     }
 

@@ -45,7 +45,9 @@ export default defineConfig(({ mode }) => {
     // Exclude git worktrees under .claude/ — parallel agents check out full
     // copies of the repo there, and vitest would otherwise run their (often
     // half-finished) test files alongside the real suite.
-    exclude: ['**/node_modules/**', '**/e2e/**', '**/.claude/**'],
+    // selfhost/ is a separate backend project with its own node:test runner
+    // (`npm test` in selfhost/backend); its *.test.ts must not run under vitest.
+    exclude: ['**/node_modules/**', '**/e2e/**', '**/.claude/**', '**/selfhost/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

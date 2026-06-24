@@ -213,13 +213,7 @@ export const ScenarioProvider = ({ children }: { children: ReactNode }) => {
         dispatch({ type: 'LOAD_SCENARIOS', payload: scenarios });
     }, []);
 
-    // Save to localStorage whenever scenarios change
-    useEffect(() => {
-        // Skip initial empty state
-        if (state.scenarios.length > 0) {
-            // This is handled by individual save/delete operations
-        }
-    }, [state.scenarios]);
+    // Persistence is handled inline by each save/delete/rename/import operation.
 
     /**
      * Save current application state as a new scenario

@@ -28,8 +28,14 @@ export class SeededRandom {
      * @param stdDev - Standard deviation of the distribution
      */
     normal(mean: number, stdDev: number): number {
-        const u1 = this.next();
+        let u1 = this.next();
         const u2 = this.next();
+
+        // next() can return exactly 0 for some seeds (Mulberry32 state hitting 0),
+        // which would make Math.log(u1) = -Infinity and poison the result with
+        // -Infinity/NaN. Clamp only the degenerate 0 draw to the smallest positive
+        // double so ordinary draws (and their golden-master output) are unchanged.
+        if (u1 === 0) u1 = Number.MIN_VALUE;
 
         // Box-Muller transform
         const z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);

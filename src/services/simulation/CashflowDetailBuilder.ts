@@ -50,6 +50,15 @@ interface BuildCashflowDetailInput {
      * the match, breaking inflow=outflow for high earners at the combined 401k limit).
      */
     employerInflows?: Record<string, number>;
+    /**
+     * The ACTUAL employee 401k deferral the sim deposited, keyed by destination
+     * account id (InflowResult.userContributions) — already §415(c)-trimmed by
+     * AccountGrowth.processInflows. When present, userPreTax401k / userRoth401k are
+     * derived from this map (split by the destination account's taxType) instead of
+     * summing the raw `inc.preTax401k/roth401k`, which ignores the trim and overstates
+     * the Sankey's deferral when two jobs share one 401k beyond §415(c).
+     */
+    userContributions?: Record<string, number>;
 }
 
 /**
@@ -60,7 +69,7 @@ interface BuildCashflowDetailInput {
  * to re-derive it (and drift from the sim's actual values).
  */
 export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDetail {
-    const { incomes, expenses, accounts, insurance, year, brokerageLTCGFromGross, employerInflows } = input;
+    const { incomes, expenses, accounts, insurance, year, brokerageLTCGFromGross, employerInflows, userContributions } = input;
 
     const incomeBySource: CashflowIncomeSource[] = [];
     let userPreTax401k = 0;
@@ -77,8 +86,13 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
             if (amount >= MIN_AMOUNT) {
                 incomeBySource.push({ name: inc.name, amount, kind: 'work' });
             }
-            userPreTax401k += inc.getProratedAnnual(inc.preTax401k, year);
-            userRoth401k += inc.getProratedAnnual(inc.roth401k, year);
+            // When the sim's actual deposited deferral is available (userContributions),
+            // derive the deferral from it below instead of summing raw per-income fields,
+            // which ignore the §415(c) trim. Otherwise fall back to the raw recompute.
+            if (!userContributions) {
+                userPreTax401k += inc.getProratedAnnual(inc.preTax401k, year);
+                userRoth401k += inc.getProratedAnnual(inc.roth401k, year);
+            }
 
             if (inc.matchAccountId && !employerInflows) {
                 const match = inc.getEffectiveAnnualEmployerMatch(year);
@@ -147,6 +161,24 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
                 employerMatchRoth += match;
             } else {
                 employerMatchPreTax += match;
+            }
+        }
+    }
+
+    // Likewise for the employee deferral: when the deposited (already §415(c)-trimmed)
+    // amount is available, split it pre-tax/Roth by each destination account's taxType.
+    // This is what AccountGrowth actually moved into the 401k, so the Sankey's Net-Pay
+    // deferral matches the deposit even when two jobs share one 401k over the limit.
+    if (userContributions) {
+        for (const [accountId, deferral] of Object.entries(userContributions)) {
+            if (deferral < MIN_AMOUNT) continue;
+            const account = accounts.find(a => a.id === accountId);
+            const isRoth = account instanceof InvestedAccount &&
+                (account.taxType === 'Roth 401k' || account.taxType === 'Roth IRA');
+            if (isRoth) {
+                userRoth401k += deferral;
+            } else {
+                userPreTax401k += deferral;
             }
         }
     }

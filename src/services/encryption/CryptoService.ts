@@ -13,7 +13,7 @@ export interface EncryptedBackup {
     iv: string;         // base64, random 12 bytes
     ciphertext: string; // base64, encrypted data
     timestamp: string;  // ISO 8601 UTC
-    checksum: string;   // SHA-256 hex of plaintext for post-decrypt verification
+    checksum: string;   // SHA-256 hex of the ciphertext (NOT plaintext) for corruption detection
 }
 
 const ITERATIONS = 600_000; // OWASP recommendation for PBKDF2-SHA256
@@ -88,7 +88,14 @@ export async function encrypt(plaintext: string, passphrase: string): Promise<En
         encoded
     );
 
-    const checksum = await sha256Hex(plaintext);
+    const ciphertext = arrayBufferToBase64(cipherBuffer);
+
+    // Checksum is over the CIPHERTEXT, not the plaintext. Hashing the plaintext
+    // would leak a confirmation/dictionary oracle to the backend (which persists
+    // this envelope), breaking the zero-knowledge guarantee on low-entropy backups.
+    // The AES-256-GCM auth tag already detects tampering; this only flags at-rest
+    // corruption of the stored ciphertext before we attempt an expensive decrypt.
+    const checksum = await sha256Hex(ciphertext);
 
     return {
         version: 1,
@@ -97,7 +104,7 @@ export async function encrypt(plaintext: string, passphrase: string): Promise<En
         iterations: ITERATIONS,
         salt: arrayBufferToBase64(salt.buffer),
         iv: arrayBufferToBase64(iv.buffer),
-        ciphertext: arrayBufferToBase64(cipherBuffer),
+        ciphertext,
         timestamp: new Date().toISOString(),
         checksum,
     };
@@ -105,13 +112,22 @@ export async function encrypt(plaintext: string, passphrase: string): Promise<En
 
 /**
  * Decrypt an encrypted backup envelope with the given passphrase.
- * Verifies checksum after decryption to ensure data integrity.
+ * Verifies the ciphertext checksum (corruption detection) and relies on the
+ * AES-256-GCM auth tag to reject any tampered or wrong-passphrase data.
  * Throws on wrong passphrase or data corruption.
  */
 export async function decrypt(envelope: EncryptedBackup, passphrase: string): Promise<string> {
     const salt = new Uint8Array(base64ToArrayBuffer(envelope.salt));
     const iv = new Uint8Array(base64ToArrayBuffer(envelope.iv));
     const ciphertext = base64ToArrayBuffer(envelope.ciphertext);
+
+    // Verify the ciphertext checksum up front. New envelopes hash the ciphertext.
+    // A mismatch here means either corruption or a legacy envelope (checksum =
+    // SHA-256 of plaintext); we don't reject solely on this, since the GCM auth
+    // tag is the authoritative integrity check and the legacy case is handled
+    // post-decrypt below.
+    const ciphertextChecksumOk =
+        !envelope.checksum || (await sha256Hex(envelope.ciphertext)) === envelope.checksum;
 
     const iterations = envelope.iterations || ITERATIONS;
     const key = await deriveKey(passphrase, salt, iterations);
@@ -129,10 +145,13 @@ export async function decrypt(envelope: EncryptedBackup, passphrase: string): Pr
 
     const plaintext = new TextDecoder().decode(plainBuffer);
 
-    // Verify checksum if present
-    if (envelope.checksum) {
-        const actualChecksum = await sha256Hex(plaintext);
-        if (actualChecksum !== envelope.checksum) {
+    // If the ciphertext checksum didn't match, this is either a legacy envelope
+    // (checksum = SHA-256 of plaintext) or corruption. Decryption succeeded, so the
+    // GCM tag already vouches for the ciphertext; only reject if it's also not a
+    // valid legacy plaintext checksum.
+    if (envelope.checksum && !ciphertextChecksumOk) {
+        const legacyPlaintextChecksum = await sha256Hex(plaintext);
+        if (legacyPlaintextChecksum !== envelope.checksum) {
             throw new Error('Checksum mismatch. Data may be corrupted.');
         }
     }

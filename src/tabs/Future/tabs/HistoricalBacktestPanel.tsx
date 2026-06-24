@@ -16,6 +16,62 @@ interface HistoricalBacktestPanelProps {
   simulationData: SimulationYear[];
 }
 
+type WithdrawalStrategyName = 'None' | 'Needs Based' | 'Fixed Real' | 'Percentage' | 'Guyton Klinger';
+
+/** The withdrawal-strategy slice the backtest panel reads off `assumptions.investments`. */
+interface BacktestStrategyAssumptions {
+  withdrawalStrategy?: WithdrawalStrategyName;
+  withdrawalRate?: number;
+  gkUpperGuardrail?: number;
+  gkLowerGuardrail?: number;
+  gkAdjustmentPercent?: number;
+}
+
+interface ResolvedBacktestStrategySettings {
+  withdrawalStrategy: WithdrawalStrategyName;
+  withdrawalRate: number;
+  gkUpperGuardrail: number;
+  gkLowerGuardrail: number;
+  gkAdjustmentPercent: number;
+}
+
+/**
+ * Resolve the backtest's withdrawal-strategy settings from the assumptions
+ * investments slice, applying defaults only when a field is genuinely missing.
+ *
+ * Uses `??` (not `||`) so an explicit 0 — reachable by clearing a
+ * PercentageInput, which emits `onChange(0)` — survives instead of being
+ * coerced back to the default in both the config that runs and the label.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- pure settings-resolution helper exported for unit testing alongside this panel component
+export function resolveBacktestStrategySettings(
+  investments: BacktestStrategyAssumptions | undefined,
+): ResolvedBacktestStrategySettings {
+  return {
+    withdrawalStrategy: investments?.withdrawalStrategy ?? 'Fixed Real',
+    withdrawalRate: investments?.withdrawalRate ?? 4,
+    gkUpperGuardrail: investments?.gkUpperGuardrail ?? 1.2,
+    gkLowerGuardrail: investments?.gkLowerGuardrail ?? 0.8,
+    gkAdjustmentPercent: investments?.gkAdjustmentPercent ?? 10,
+  };
+}
+
+/**
+ * Build the Guyton-Klinger adjustment label. The upper and lower guardrails are
+ * independent config fields, so render both bounds rather than mirroring the
+ * upper figure (which is wrong for asymmetric guardrails).
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- pure label-formatting helper exported for unit testing alongside this panel component
+export function formatGuardrailAdjustmentLabel({
+  gkAdjustmentPercent,
+  gkUpperGuardrail,
+  gkLowerGuardrail,
+}: Pick<ResolvedBacktestStrategySettings, 'gkAdjustmentPercent' | 'gkUpperGuardrail' | 'gkLowerGuardrail'>): string {
+  const upperPct = Math.round((gkUpperGuardrail - 1) * 100);
+  const lowerPct = Math.round((1 - gkLowerGuardrail) * 100);
+  return `(±${gkAdjustmentPercent}% adjustments at +${upperPct}% / -${lowerPct}% guardrails)`;
+}
+
 /**
  * Historical Backtesting Panel Component
  * Tests retirement plans against actual historical market data
@@ -61,12 +117,15 @@ export const HistoricalBacktestPanel = React.memo(({ simulationData }: Historica
     };
   }, [simulationData, assumptions.milestones, assumptions.demographics?.priorYearMode]);
 
-  // Get withdrawal strategy settings from assumptions
-  const withdrawalStrategy = assumptions.investments?.withdrawalStrategy || 'Fixed Real';
-  const withdrawalRateFromAssumptions = assumptions.investments?.withdrawalRate || 4;
-  const gkUpperGuardrail = assumptions.investments?.gkUpperGuardrail || 1.2;
-  const gkLowerGuardrail = assumptions.investments?.gkLowerGuardrail || 0.8;
-  const gkAdjustmentPercent = assumptions.investments?.gkAdjustmentPercent || 10;
+  // Get withdrawal strategy settings from assumptions. Uses `??` so an explicit
+  // 0 (e.g. a cleared PercentageInput) is preserved instead of falling back.
+  const {
+    withdrawalStrategy,
+    withdrawalRate: withdrawalRateFromAssumptions,
+    gkUpperGuardrail,
+    gkLowerGuardrail,
+    gkAdjustmentPercent,
+  } = resolveBacktestStrategySettings(assumptions.investments);
 
   // Configuration state - now includes withdrawal strategy settings
   const [config, setConfig] = useState<BacktestConfig>({
@@ -159,7 +218,7 @@ export const HistoricalBacktestPanel = React.memo(({ simulationData }: Historica
       <p className="text-content-muted text-sm mb-4">
         Using <span className="text-positive font-medium">{config.withdrawalStrategy}</span> withdrawal strategy
         {config.withdrawalStrategy === 'Guyton Klinger' && (
-          <span className="text-content-muted"> (±{gkAdjustmentPercent}% adjustments at ±{Math.round((gkUpperGuardrail - 1) * 100)}% guardrails)</span>
+          <span className="text-content-muted"> {formatGuardrailAdjustmentLabel({ gkAdjustmentPercent, gkUpperGuardrail, gkLowerGuardrail })}</span>
         )}
       </p>
 

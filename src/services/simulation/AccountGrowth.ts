@@ -12,6 +12,14 @@ export interface InflowResult {
     esppLots: Record<string, ESPPLot[]>;
     discretionaryCash: number;
     deficitDebtPayment: number;
+    /**
+     * The §415(c)-TRIMMED employee 401k deferral actually deposited this year,
+     * keyed by destination account id. Threaded out (alongside employerInflows)
+     * so the Sankey can show the deposited deferral instead of recomputing the
+     * raw, untrimmed `inc.preTax401k/roth401k` (which overstates the deposit and
+     * breaks Net-Pay inflow=outflow when two jobs share one 401k over §415(c)).
+     */
+    userContributions: Record<string, number>;
     logs: string[];
 }
 
@@ -37,13 +45,24 @@ export function processInflows(
     const esppLots: Record<string, ESPPLot[]> = {};
     const deficitDebtPayment = 0;
 
+    // Per-account POSITIVE contributions routed to each 401k THIS YEAR (employee
+    // deferral + employer match), tracked independently of withdrawalState.userInflows.
+    // The §415(c) running total must use these, not the net userInflows balance:
+    // when a destination account is also drained this year (RMD / in-service
+    // withdrawal / Roth conversion), executeYearPlan/processRMDs have already written
+    // a NEGATIVE userInflows entry, which would understate prior additions and let the
+    // §415(c) trim under-fire (account over-funded above the combined limit).
+    const contributionsToAccount: Record<string, number> = {};
+
     // 5a. Payroll & Match
     incomesWithEarningsTest.forEach(inc => {
         if (inc instanceof WorkIncome && inc.matchAccountId) {
             const activeMultiplier = getIncomeActiveMultiplier(inc, year);
             if (activeMultiplier === 0) return;
 
-            const currentSelf = withdrawalState.userInflows[inc.matchAccountId] || 0;
+            // Prior POSITIVE additions to this account this year (NOT the net
+            // userInflows balance — see contributionsToAccount note above).
+            const currentSelf = contributionsToAccount[inc.matchAccountId] || 0;
             const currentMatch = withdrawalState.employerInflows[inc.matchAccountId] || 0;
 
             // preTax401k/roth401k are per pay period; getProratedAnnual converts to the
@@ -57,10 +76,11 @@ export function processInflows(
             // level (get401kLimit / getEffective401k); this is the separate,
             // higher combined cap. Excess is removed from the employer match
             // first, since the employee's own deferrals are already capped and
-            // are the participant's money. We clamp using the additions already
-            // routed to this account this year (currentSelf/currentMatch) plus
-            // this income's new contributions, so multiple incomes feeding one
-            // account share a single limit.
+            // are the participant's money. We clamp using the POSITIVE additions
+            // already routed to this account this year (currentSelf/currentMatch)
+            // plus this income's new contributions, so multiple incomes feeding one
+            // account share a single limit — and so a same-year drain (negative
+            // userInflows) can't mask additions and let the trim under-fire.
             const limit415c = get415cLimit(year, currentAge, assumptions.macro.inflationAdjusted);
             let trimmedSelf = selfContribution;
             const totalAdditions = currentSelf + currentMatch + selfContribution + employerMatch;
@@ -88,8 +108,15 @@ export function processInflows(
 
             totalEmployerMatch += employerMatch;
 
-            withdrawalState.userInflows[inc.matchAccountId] = currentSelf + trimmedSelf;
+            // Apply to userInflows ADDITIVELY so any pre-existing same-year drain
+            // (negative entry from a withdrawal/RMD/conversion) is preserved in the
+            // net balance growAccounts will apply.
+            withdrawalState.userInflows[inc.matchAccountId] =
+                (withdrawalState.userInflows[inc.matchAccountId] || 0) + trimmedSelf;
             withdrawalState.employerInflows[inc.matchAccountId] = currentMatch + employerMatch;
+
+            // Track POSITIVE additions separately for the §415(c) running total.
+            contributionsToAccount[inc.matchAccountId] = currentSelf + trimmedSelf;
         }
     });
 
@@ -209,6 +236,7 @@ export function processInflows(
         esppLots,
         discretionaryCash,
         deficitDebtPayment,
+        userContributions: contributionsToAccount,
         logs
     };
 }

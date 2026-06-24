@@ -101,14 +101,15 @@ const WAGE_INDEX_FACTORS: Record<number, number> = {
   2020: 55628.60,
   2021: 58177.46,
   2022: 63795.13,
-  2023: 66621.80, // Estimated based on SSA projections
-  2024: 68000.00, // Estimated
-  2025: 69700.00, // Projected (assume ~2.5% annual growth)
-  2026: 71400.00,
-  2027: 73200.00,
-  2028: 75000.00,
-  2029: 76900.00,
-  2030: 78800.00,
+  2023: 66621.80,
+  2024: 69846.57,
+  // Projected from the 2024 actual at ~2.5% annual growth; SSA values for these years not yet published.
+  2025: 71592.73,
+  2026: 73382.55,
+  2027: 75217.11,
+  2028: 77097.54,
+  2029: 79024.98,
+  2030: 81000.60,
 };
 
 /**
@@ -149,12 +150,13 @@ const BEND_POINTS: Record<number, { first: number; second: number }> = {
   2022: { first: 1024, second: 6172 },
   2023: { first: 1115, second: 6721 },
   2024: { first: 1174, second: 7078 },
-  2025: { first: 1200, second: 7240 }, // Projected based on wage growth
-  2026: { first: 1230, second: 7420 },
-  2027: { first: 1260, second: 7600 },
-  2028: { first: 1290, second: 7790 },
-  2029: { first: 1325, second: 7990 },
-  2030: { first: 1360, second: 8200 },
+  2025: { first: 1226, second: 7391 },
+  2026: { first: 1286, second: 7749 },
+  // Projected from the 2026 actual at ~2.5% annual growth; SSA values for these years not yet published.
+  2027: { first: 1318, second: 7943 },
+  2028: { first: 1351, second: 8142 },
+  2029: { first: 1385, second: 8346 },
+  2030: { first: 1420, second: 8555 },
 };
 
 /**

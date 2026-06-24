@@ -74,6 +74,11 @@ export function getMarginalTaxRate(
  * @param year - Tax year
  * @param assumptions - Assumptions for inflation adjustment
  * @param includesFICA - Whether to include FICA taxes (true for earned income)
+ * @param earnedIncome - FICA-eligible earned income, net of FICA exemptions, used for the
+ *   Social-Security wage-base test. Defaults to grossIncome (correct when all income is
+ *   earned wages). Pass the earned base explicitly when grossIncome also carries non-earned
+ *   income (SS, pension, passive) — otherwise that non-earned income inflates the wage-base
+ *   comparison and wrongly drops the 6.2% SS rate for a still-working person below the base.
  * @returns Combined marginal rate breakdown
  */
 export function getCombinedMarginalRate(
@@ -83,6 +88,7 @@ export function getCombinedMarginalRate(
     year: number,
     assumptions: AssumptionsState,
     includesFICA: boolean = true,
+    earnedIncome: number = grossIncome,
 ): {
     federal: number;
     state: number;
@@ -109,8 +115,14 @@ export function getCombinedMarginalRate(
     // 0.0145 + 0.009 = 0.0235.
     let ficaRate = 0;
     if (includesFICA && fedParams) {
-        const ssWageBase = fedParams.socialSecurityWageBase || 168600;
-        if (grossIncome < ssWageBase) {
+        const ssWageBase = fedParams.socialSecurityWageBase ?? 168600;
+        // The 6.2% SS portion drops off only once EARNED income (net of FICA
+        // exemptions) clears the wage base — mirroring calculateFicaTax, which
+        // tests its taxableBase, not total gross. Comparing the full grossIncome
+        // here would wrongly drop SS for a still-working person whose non-earned
+        // income (SS/pension/passive) pushes gross above the base while wages stay
+        // below it.
+        if (earnedIncome < ssWageBase) {
             ficaRate = fedParams.socialSecurityTaxRate + fedParams.medicareTaxRate;
         } else {
             ficaRate = fedParams.medicareTaxRate;

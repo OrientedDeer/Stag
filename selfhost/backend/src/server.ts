@@ -60,6 +60,47 @@ async function couch(
 // Google `sub` is a numeric string; encode defensively for use in the URL path.
 const docPath = (sub: string) => `/${BACKUP_DB}/${encodeURIComponent(sub)}`;
 
+// Create the backup database idempotently. CouchDB 3 auto-creates only its
+// system DBs (_users/_replicator/_global_changes), never an app DB — so without
+// this a fresh deploy 404s on the very first backup write. PUT /<db> returns
+// 201 (created) on first run and 412 (already exists) thereafter; both are fine.
+// We retry because the backend usually wins the boot race against CouchDB.
+async function ensureBackupDb(): Promise<void> {
+  const maxAttempts = 30;
+  const dbPath = `/${encodeURIComponent(BACKUP_DB)}`;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    let status: number;
+    let json: any;
+    try {
+      ({ status, json } = await couch("PUT", dbPath));
+    } catch (err) {
+      // Connection refused while CouchDB is still booting — expected early on.
+      if (attempt === maxAttempts) {
+        console.error(`  backup db:      FAILED to reach CouchDB after ${maxAttempts} attempts`);
+        throw err;
+      }
+      await new Promise((r) => setTimeout(r, 1000));
+      continue;
+    }
+
+    if (status === 201 || status === 412) {
+      console.log(
+        `  backup db:      "${BACKUP_DB}" ${status === 201 ? "created" : "already present"}`
+      );
+      return;
+    }
+    // 401/403 means bad CouchDB creds — no amount of retrying fixes that.
+    if (status === 401 || status === 403) {
+      throw new Error(`CouchDB rejected db creation (${status}): check COUCHDB_USER/PASSWORD`);
+    }
+    console.warn(`  backup db:      PUT /${BACKUP_DB} -> ${status} ${JSON.stringify(json)} (retrying)`);
+    if (attempt === maxAttempts) {
+      throw new Error(`could not create db "${BACKUP_DB}": last status ${status}`);
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+}
+
 interface AuthedRequest extends Request {
   sub?: string;
 }
@@ -70,7 +111,10 @@ app.disable("x-powered-by");
 
 // Accept generous bodies; we enforce the precise 5 MB limit on the blob itself
 // below (JSON-string escaping can inflate a 5 MB blob past 5 MB on the wire).
-app.use(express.json({ limit: "12mb" }));
+// NOTE: this parser is mounted only on the authenticated POST route (after
+// requireGoogle), NOT globally — so an unauthenticated client can't make us
+// buffer + parse a 12 MB body before we reject it. It runs after the auth check.
+const parseJsonBody = express.json({ limit: "12mb" });
 
 // CORS: allow exactly the Stag app's public origin. The `cors` middleware also
 // answers the OPTIONS preflight that a cross-origin Authorization header triggers.
@@ -114,8 +158,8 @@ app.get("/backup", requireGoogle, async (req: AuthedRequest, res) => {
   return res.json({ blob: json.blob, rev: json._rev, timestamp: json.timestamp, size: json.size });
 });
 
-// POST /backup
-app.post("/backup", requireGoogle, async (req: AuthedRequest, res) => {
+// POST /backup — requireGoogle runs FIRST; only then do we parse the body.
+app.post("/backup", requireGoogle, parseJsonBody, async (req: AuthedRequest, res) => {
   const blob = req.body?.blob;
   const rev: string | null = req.body?.rev ?? null;
   if (typeof blob !== "string") return res.status(400).json({ error: "blob must be a string" });
@@ -134,6 +178,13 @@ app.post("/backup", requireGoogle, async (req: AuthedRequest, res) => {
   const { status, json } = await couch("PUT", docPath(req.sub!), doc);
   if (status === 201 || status === 200) return res.json({ rev: json.rev, timestamp: doc.timestamp });
   if (status === 409) return res.status(409).json({ error: "stale rev" });
+  // A 404 here means the backup DB itself is missing (it should have been
+  // created at startup) — surface it as a config error, not a generic store
+  // error, and try to self-heal so the next write succeeds.
+  if (status === 404) {
+    ensureBackupDb().catch(() => {});
+    return res.status(503).json({ error: "backup database missing — initializing, retry shortly" });
+  }
   return res.status(502).json({ error: "store error" });
 });
 
@@ -157,4 +208,9 @@ app.listen(PORT, () => {
   console.log(`  google client:  ${GOOGLE_CLIENT_ID ? "set" : "UNSET — /backup will 503"}`);
   console.log(`  cors origin:    ${CORS_ORIGIN || "UNSET — cross-origin blocked"}`);
   console.log(`  max blob bytes: ${MAX_BLOB_BYTES}`);
+  // Idempotently provision the backup DB (retries past CouchDB's boot race).
+  // Failure here is logged but non-fatal: the POST route also self-heals on 404.
+  ensureBackupDb().catch((err) =>
+    console.error(`  backup db:      could not provision "${BACKUP_DB}": ${err?.message || err}`)
+  );
 });

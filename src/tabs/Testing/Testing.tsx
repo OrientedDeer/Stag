@@ -17,7 +17,7 @@ import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext'
 import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
 import { BudgetContext } from '../../components/Objects/Budget/BudgetContext';
 import { computeEOYBudgetContributions } from '../../services/eoyContributionProjection';
-import { WorkIncome, FutureSocialSecurityIncome, CurrentSocialSecurityIncome, PassiveIncome, FERSPensionIncome, CSRSPensionIncome, getIncomeActiveMultiplier } from '../../components/Objects/Income/models';
+import { WorkIncome, SocialSecurityIncome, FutureSocialSecurityIncome, CurrentSocialSecurityIncome, PassiveIncome, FERSPensionIncome, CSRSPensionIncome, getIncomeActiveMultiplier } from '../../components/Objects/Income/models';
 import { runSimulationWithOptimization } from '../../components/Objects/Assumptions/useSimulation';
 import { getSimulationInputHash } from '../../services/simulationHash';
 import {
@@ -83,6 +83,28 @@ const toCurrency = (num: number) =>
 const toCurrencyShort = (num: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(num);
 
+// True for any Social Security income: the base SocialSecurityIncome plus the two
+// concrete variants (Current/Future). These are sibling classes that each extend
+// BaseIncome directly — SocialSecurityIncome is NOT a superclass of the other two —
+// so each must be matched explicitly. Also matches by `className` so reconstituted
+// (deserialized) objects are caught even if their prototype chain was not restored.
+// eslint-disable-next-line react-refresh/only-export-components -- exported for unit testing; this is a pure helper, not a component
+export function isSocialSecurity(inc: { className?: string }): boolean {
+    if (
+        inc instanceof SocialSecurityIncome ||
+        inc instanceof FutureSocialSecurityIncome ||
+        inc instanceof CurrentSocialSecurityIncome
+    ) {
+        return true;
+    }
+    const className = inc.className;
+    return (
+        className === 'SocialSecurityIncome' ||
+        className === 'FutureSocialSecurityIncome' ||
+        className === 'CurrentSocialSecurityIncome'
+    );
+}
+
 // ============================================================================
 // COPY-FRIENDLY TEXT SUMMARY
 // ============================================================================
@@ -125,7 +147,7 @@ function generateYearSummaryText(simYear: SimulationYear, age: number, accountsC
             if (inc.hsaContribution > 0) parts.push(`hsa: ${fmt(inc.hsaContribution)}`);
             const detail = parts.length > 0 ? ` (${parts.join(', ')})` : '';
             lines.push(`  Work: ${inc.name} — ${fmt(amount)}${detail}`);
-        } else if (className === 'FutureSocialSecurityIncome' || className === 'CurrentSocialSecurityIncome') {
+        } else if (isSocialSecurity(inc)) {
             lines.push(`  Social Security: ${inc.name} — ${fmt(amount)}`);
         } else if (className === 'FERSPensionIncome' || className === 'CSRSPensionIncome') {
             lines.push(`  Pension: ${inc.name} — ${fmt(amount)}`);
@@ -314,7 +336,7 @@ function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYear
                 insurance: inc.insurance,
                 hsa: inc.hsaContribution
             };
-        } else if (className === 'FutureSocialSecurityIncome' || className === 'CurrentSocialSecurityIncome') {
+        } else if (isSocialSecurity(inc)) {
             category = 'Social Security';
         } else if (className === 'FERSPensionIncome' || className === 'CSRSPensionIncome') {
             category = 'Pension';
@@ -885,7 +907,7 @@ function SimulationDebugTab() {
                         contrib401k: inc.getProratedAnnual(inc.preTax401k + inc.roth401k, simYear.year),
                         employerMatch: inc.getEffectiveAnnualEmployerMatch(simYear.year),
                     });
-                } else if (inc instanceof FutureSocialSecurityIncome || inc instanceof CurrentSocialSecurityIncome) {
+                } else if (isSocialSecurity(inc)) {
                     socialSecurityIncome += inc.getProratedAnnual(inc.amount, simYear.year);
                 } else if (inc instanceof PassiveIncome && inc.sourceType === 'Interest') {
                     interestIncome.push({
@@ -2162,9 +2184,7 @@ function SocialSecurityDebugTab() {
 
     // Find Social Security income objects
     const ssIncomes = useMemo(() => {
-        return incomes.filter(inc =>
-            inc instanceof FutureSocialSecurityIncome || inc instanceof CurrentSocialSecurityIncome
-        );
+        return incomes.filter(inc => isSocialSecurity(inc));
     }, [incomes]);
 
     // Build prior earnings from inputs
@@ -4160,7 +4180,7 @@ function RothAnalysisDebugTab() {
 
             // Phase detection
             const hasRMD = simYear.rmdDetails && simYear.rmdDetails.totalRMD > 0;
-            const hasSS = simYear.incomes.some(inc => inc instanceof FutureSocialSecurityIncome || inc instanceof CurrentSocialSecurityIncome);
+            const hasSS = simYear.incomes.some(inc => isSocialSecurity(inc));
             const hasPension = simYear.incomes.some(inc => inc instanceof FERSPensionIncome || inc instanceof CSRSPensionIncome);
 
             let phase: PhaseType = 'Working';

@@ -49,6 +49,13 @@ export function parseSSAXml(xmlString: string): SSAEarningsImport {
 
   const earnings: EarningsRecord[] = [];
 
+  // Future years are dropped here so the import's "future year(s) will be
+  // ignored" warning is honored: an edited/crafted statement with a future
+  // FicaEarnings record would otherwise reach calculateAIME's top-35 and
+  // inflate AIME/PIA above reality. Derived from local time (not UTC) per the
+  // date-local convention used across the app.
+  const currentYear = new Date().getFullYear();
+
   // Find all Earnings elements (handles both osss:Earnings and Earnings)
   // querySelectorAll with local-name() doesn't work, so we try both patterns
   let earningsElements: Element[] = Array.from(doc.querySelectorAll('Earnings'));
@@ -74,8 +81,9 @@ export function parseSSAXml(xmlString: string): SSAEarningsImport {
 
     // Filter out invalid entries:
     // - year must be valid
+    // - year must not be in the future (see currentYear note above)
     // - earnings must be positive (-1 means "not yet recorded")
-    if (year > 0 && ficaEarnings > 0) {
+    if (year > 0 && year <= currentYear && ficaEarnings > 0) {
       earnings.push({ year, amount: ficaEarnings });
     }
   });

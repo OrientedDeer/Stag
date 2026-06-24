@@ -1732,9 +1732,14 @@ export function planConversionsViaDP(
         // denominator is floored (#5) so a pathological meanShift < −1 can't make
         // df ±Infinity/negative and corrupt the sweep.
         const meanGrowthDenom = Math.max(0.01, 1 + ctx.growthRate + meanShift);
+        // Deterministic max-wealth denominator floored the same way (#5) so a
+        // pathological net rate ≤ −100% (e.g. a hand-edited customROR=-100, or
+        // -95 with a 6% ER) can't make df +Infinity (at −100%) or negative
+        // (below −100%) and fill the V-table with Inf/NaN.
+        const detGrowthDenom = Math.max(0.01, 1 + ctx.growthRate);
         const df = stochastic
             ? 1 / meanGrowthDenom
-            : (isMaxWealth ? 1 / (1 + ctx.growthRate) : discountFactor);
+            : (isMaxWealth ? 1 / detGrowthDenom : discountFactor);
         // Per-node growth factors for this year (#98), hoisted out of the cell
         // loops: a common zero-mean shock added to each account's own rate +
         // meanShift, floored at 0 (a balance can't grow negative — and the floored
@@ -2025,7 +2030,8 @@ export function planConversionsViaDP(
         // (#5), matching the backward sweep's meanGrowthDenom.
         const df = stochastic
             ? 1 / Math.max(0.01, 1 + ctx.growthRate + meanShift)
-            : (isMaxWealth ? 1 / (1 + ctx.growthRate) : discountFactor);
+            // Floored the same way as the backward sweep (#5) — see detGrowthDenom there.
+            : (isMaxWealth ? 1 / Math.max(0.01, 1 + ctx.growthRate) : discountFactor);
 
         const rmdAtB = ctx.rmdDivisor > 0 ? trad / ctx.rmdDivisor : 0;
         const cMax = Math.max(0, trad - rmdAtB);

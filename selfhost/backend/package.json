@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/server.js",
-    "dev": "tsc -w"
+    "dev": "tsc -w",
+    "test": "tsc -p tsconfig.test.json && node --test dist/server.test.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
