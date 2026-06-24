@@ -147,6 +147,9 @@ export function runSingleBacktest(
 
   // For withdrawal strategy tracking
   let previousWithdrawalResult: WithdrawalResult | undefined;
+  // Prior year's portfolio total return (%), for the Guyton-Klinger Withdrawal Rule
+  // down-year inflation freeze. undefined in year 1 (no prior year yet).
+  let previousNominalReturn: number | undefined;
   const useStrategy = withdrawalStrategy && withdrawalStrategy !== 'None' && withdrawalStrategy !== 'Needs Based' && withdrawalRate !== undefined;
 
   for (let i = 0; i < retirementYears; i++) {
@@ -176,6 +179,7 @@ export function runSingleBacktest(
         gkLowerGuardrail,
         gkAdjustmentPercent,
         yearsRemaining: retirementYears - i, // For GK 15-year rule
+        lastYearReturn: previousNominalReturn, // For GK Withdrawal Rule down-year freeze
       });
 
       withdrawal = result.amount;
@@ -206,6 +210,10 @@ export function runSingleBacktest(
       withdrawal,
       guardrailTriggered,
     });
+
+    // Remember this year's return so next year's GK Withdrawal Rule can see
+    // whether the prior year was a down year (negative total return).
+    previousNominalReturn = nominalReturn;
 
     // Track lowest balance
     if (balance < lowestBalance) {

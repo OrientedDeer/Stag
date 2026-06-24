@@ -68,6 +68,7 @@ import {
     getFERSCOLA,
     checkCSRSEligibility,
     calculateCSRSBasicBenefit,
+    getDisplayedCSRSBenefit,
     getCSRSCOLA,
     PENSION_SYSTEM_COMPARISON
 } from '../../data/PensionData';
@@ -3135,7 +3136,10 @@ function PensionDebugTab() {
         return csrsPensions.map(pension => {
             const eligibility = checkCSRSEligibility(pension.retirementAge, pension.yearsOfService);
             const baseBenefit = calculateCSRSBasicBenefit(pension.yearsOfService, pension.high3Salary);
-            const reducedBenefit = baseBenefit * (1 - eligibility.reductionPercent / 100);
+            // Use the shared helper for the displayed (early-retirement-reduced) benefit
+            // so this chart stays in lockstep with the sim's CSRS benefit;
+            // eligibility/baseBenefit are still surfaced for the eligibility readout below.
+            const reducedBenefit = getDisplayedCSRSBenefit(pension.yearsOfService, pension.high3Salary, pension.retirementAge);
 
             // Simulate COLA growth (only if showing nominal dollars)
             const colaProjection: Array<{ age: number; year: number; cola: number; benefit: number }> = [];
@@ -3287,8 +3291,10 @@ function PensionDebugTab() {
                 // CSRS
                 const eligibility = checkCSRSEligibility(retireAge, yearsAtRetirement);
                 const baseBenefit = calculateCSRSBasicBenefit(yearsAtRetirement, high3);
-                const reductionFactor = 1 - eligibility.reductionPercent / 100;
-                const annualBenefit = baseBenefit * reductionFactor;
+                // Route the headline benefit through the shared helper so the explorer
+                // can't drift from the sim's CSRS number; baseBenefit/reductionPercent
+                // are still surfaced below for the per-component breakdown.
+                const annualBenefit = getDisplayedCSRSBenefit(yearsAtRetirement, high3, retireAge);
 
                 // Calculate lifetime benefit
                 const yearsReceiving = lifeExpectancy - retireAge;

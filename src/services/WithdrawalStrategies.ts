@@ -48,6 +48,14 @@ export interface GuytonKlingerParams {
   lowerGuardrail?: number;    // Default 0.8 (20% below target rate)
   adjustmentPercent?: number; // Default 10 (10% cut/increase when guardrails trigger)
   yearsRemaining?: number;    // Years until life expectancy (for 15-year rule)
+  /**
+   * Prior year's portfolio TOTAL return as a percent (e.g. -10 for -10%).
+   * Drives the canonical GK "Withdrawal Rule" inflation freeze: the annual
+   * inflation increase is skipped following a year with a negative total return,
+   * but only while the current withdrawal rate is above the initial target rate.
+   * Omit (undefined) to preserve legacy behavior (always inflation-adjust).
+   */
+  lastYearReturn?: number;
   isFirstYear: boolean;       // If true, calculate initial withdrawal
 }
 
@@ -123,6 +131,9 @@ export function calculatePercentageWithdrawal(
  * Based on the actual Guyton-Klinger rules from financial research:
  * - Capital Preservation Rule (bad markets): Cut withdrawal by 10% when rate > target * 1.2
  * - Prosperity Rule (good markets): Increase withdrawal by 10% when rate < target * 0.8
+ * - Withdrawal Rule (down-year freeze): skip the annual inflation increase following
+ *   a year with a negative total return, but only while the current withdrawal rate
+ *   is ABOVE the initial target rate (when below target you can afford the raise).
  * - Normal: Adjust for inflation only
  *
  * Key behaviors:
@@ -130,6 +141,10 @@ export function calculatePercentageWithdrawal(
  * - Capital Preservation only applies if > 15 years until life expectancy
  * - Default guardrails: 0.8 to 1.2 (±20% from target rate)
  * - Default adjustment: 10% cut or increase
+ *
+ * NOTE: We deliberately do NOT implement the optional 6% inflation-cap variant of
+ * the Withdrawal Rule (cap the annual raise at 6% rather than freezing it) — only
+ * the canonical down-year freeze is modeled here.
  *
  * Sources:
  * - White Coat Investor: https://www.whitecoatinvestor.com/guyton-klinger-guardrails-approach-for-retirement/
@@ -147,6 +162,7 @@ export function calculateGuytonKlingerWithdrawal(
     lowerGuardrail = DEFAULT_GK_LOWER_GUARDRAIL,
     adjustmentPercent = DEFAULT_GK_ADJUSTMENT_PERCENT,
     yearsRemaining,
+    lastYearReturn,
     isFirstYear,
   } = params;
 
@@ -169,8 +185,19 @@ export function calculateGuytonKlingerWithdrawal(
     : 0;
   const targetRate = withdrawalRate;
 
-  // Default: adjust for inflation only
-  let newWithdrawal = baseWithdrawal * (1 + inflationRate / 100);
+  // Withdrawal Rule (down-year inflation freeze): canonical GK skips the annual
+  // inflation increase following a year whose portfolio total return was negative,
+  // but ONLY while the current withdrawal rate is above the initial target rate
+  // (below target, the portfolio can comfortably absorb the raise). When
+  // lastYearReturn is undefined we can't know the year was down, so we don't freeze.
+  const freezeInflation =
+    lastYearReturn !== undefined &&
+    lastYearReturn < 0 &&
+    currentWithdrawalRate > targetRate;
+  const inflationMultiplier = freezeInflation ? 1 : 1 + inflationRate / 100;
+
+  // Default: adjust for inflation only (or freeze it, per the Withdrawal Rule)
+  let newWithdrawal = baseWithdrawal * inflationMultiplier;
   let guardrailTriggered: GuardrailTrigger = 'none';
 
   // Check guardrails
@@ -184,8 +211,10 @@ export function calculateGuytonKlingerWithdrawal(
       newWithdrawal = baseWithdrawal * (1 - adjustmentPercent / 100);
       guardrailTriggered = 'capital-preservation';
     } else {
-      // Within 15 years of life expectancy - just inflation adjust
-      newWithdrawal = baseWithdrawal * (1 + inflationRate / 100);
+      // Within 15 years of life expectancy - capital preservation is suppressed,
+      // so fall back to a normal inflation adjustment (subject to the down-year
+      // Withdrawal Rule freeze, which applies here since the rate is above target).
+      newWithdrawal = baseWithdrawal * inflationMultiplier;
     }
   } else if (currentWithdrawalRate < targetRate * lowerGuardrail) {
     // Prosperity Rule: Portfolio has grown significantly
@@ -346,6 +375,8 @@ export interface WithdrawalParams {
   gkLowerGuardrail?: number;
   gkAdjustmentPercent?: number;
   yearsRemaining?: number;  // Years until life expectancy
+  /** Prior year's portfolio total return (%) for the GK Withdrawal Rule down-year freeze. */
+  lastYearReturn?: number;
 }
 
 /**
@@ -386,6 +417,7 @@ export function calculateStrategyWithdrawal(
     gkLowerGuardrail,
     gkAdjustmentPercent,
     yearsRemaining,
+    lastYearReturn,
   } = params;
 
   const isFirstYear = years === 0;
@@ -415,6 +447,7 @@ export function calculateStrategyWithdrawal(
         lowerGuardrail: gkLowerGuardrail,
         adjustmentPercent: gkAdjustmentPercent,
         yearsRemaining,
+        lastYearReturn,
         isFirstYear,
       });
 

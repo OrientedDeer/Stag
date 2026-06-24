@@ -2,13 +2,12 @@ import { TaxType } from "../../Objects/Accounts/models";
 import { AssumptionsState } from '../Assumptions/AssumptionsContext';
 import { get401kLimit, getHSALimit } from '../../../data/ContributionLimits';
 import {
-  calculateCSRSBasicBenefit,
   getFERSCOLA,
   getCSRSCOLA,
   checkFERSEligibility,
-  checkCSRSEligibility,
   calculateFERSSupplement,
   getDisplayedFERSBenefit,
+  getDisplayedCSRSBenefit,
 } from '../../../data/PensionData';
 import { parseDate, parseDateRequired, hasClassName, extractBaseFields, getActiveWindowMultiplier, isWindowActiveInCurrentMonth } from "../modelUtils";
 // isActiveRSUGrant lives in a leaf .ts module so importing the pure predicate
@@ -897,21 +896,17 @@ export class CSRSPensionIncome extends BaseIncome {
   /**
    * Calculate the CSRS pension benefit
    * Called by SimulationEngine when retirement is reached
+   *
+   * Delegates to getDisplayedCSRSBenefit so the simulation and the displayed
+   * estimate share a single source of truth for the basic-benefit +
+   * early-retirement reduction math (no risk of one drifting from the other).
    */
   calculateBenefit(): number {
-    const baseBenefit = calculateCSRSBasicBenefit(
+    return getDisplayedCSRSBenefit(
       this.yearsOfService,
-      this.high3Salary
+      this.high3Salary,
+      this.retirementAge
     );
-
-    // Check for early retirement reduction
-    const eligibility = checkCSRSEligibility(
-      this.retirementAge,
-      this.yearsOfService
-    );
-
-    const reductionFactor = 1 - (eligibility.reductionPercent / 100);
-    return baseBenefit * reductionFactor;
   }
 
   increment(assumptions: AssumptionsState): CSRSPensionIncome {

@@ -186,6 +186,95 @@ describe('Withdrawal Strategies', () => {
       expect(result.guardrailTriggered).toBe('capital-preservation');
     });
 
+    describe('Withdrawal Rule freeze (no inflation bump after a down year)', () => {
+      // Canonical GK: skip the annual inflation increase following a year whose
+      // portfolio total return was negative, AND only when the current withdrawal
+      // rate is above the initial target rate.
+
+      it('(a) down year + above-initial rate → FREEZE (no inflation raise)', () => {
+        // baseWithdrawal $40k on a $950k portfolio = 4.21% > 4% target, and within
+        // the upper guardrail (4.8%), so the normal branch would inflation-adjust.
+        // Last year's return was negative → the Withdrawal Rule freezes the raise.
+        const result = calculateGuytonKlingerWithdrawal({
+          currentPortfolio: 950000,
+          baseWithdrawal: 40000,
+          withdrawalRate: 4,
+          inflationRate: 3,
+          lastYearReturn: -10, // down year
+          isFirstYear: false,
+        });
+
+        // No raise: withdrawal stays flat at $40,000 (not $41,200).
+        expect(result.amount).toBe(40000);
+        expect(result.guardrailTriggered).toBe('none');
+      });
+
+      it('(b) down year + below-initial rate → still RAISE (freeze does not apply)', () => {
+        // baseWithdrawal $40k on a $1.2M portfolio = 3.33% < 4% target. Even though
+        // last year was down, the rate is at/below the initial rate, so the freeze
+        // does NOT apply and the normal inflation raise proceeds.
+        // (3.33% is within the lower guardrail 3.2%, so no prosperity trigger.)
+        const result = calculateGuytonKlingerWithdrawal({
+          currentPortfolio: 1200000,
+          baseWithdrawal: 40000,
+          withdrawalRate: 4,
+          inflationRate: 3,
+          lastYearReturn: -10, // down year
+          isFirstYear: false,
+        });
+
+        // Normal inflation raise: $40,000 * 1.03 = $41,200.
+        expect(result.amount).toBeCloseTo(41200, 0);
+        expect(result.guardrailTriggered).toBe('none');
+      });
+
+      it('(c) up year + above-initial rate → RAISE (freeze only triggers on a down year)', () => {
+        // Same above-initial rate as case (a), but last year's return was positive,
+        // so the freeze does not apply and the normal inflation raise proceeds.
+        const result = calculateGuytonKlingerWithdrawal({
+          currentPortfolio: 950000,
+          baseWithdrawal: 40000,
+          withdrawalRate: 4,
+          inflationRate: 3,
+          lastYearReturn: 8, // up year
+          isFirstYear: false,
+        });
+
+        // Normal inflation raise: $40,000 * 1.03 = $41,200.
+        expect(result.amount).toBeCloseTo(41200, 0);
+        expect(result.guardrailTriggered).toBe('none');
+      });
+
+      it('omitting lastYearReturn preserves legacy behavior (always raises)', () => {
+        // Backward compatibility: with no return info we cannot know the year was
+        // down, so we keep the inflation raise (no freeze).
+        const result = calculateGuytonKlingerWithdrawal({
+          currentPortfolio: 950000,
+          baseWithdrawal: 40000,
+          withdrawalRate: 4,
+          inflationRate: 3,
+          isFirstYear: false,
+        });
+
+        expect(result.amount).toBeCloseTo(41200, 0);
+      });
+
+      it('does not affect the capital-preservation cut (down year above the guardrail still cuts)', () => {
+        // $40k on $500k = 8% > 4.8% upper guardrail → still a 10% cut, not a freeze.
+        const result = calculateGuytonKlingerWithdrawal({
+          currentPortfolio: 500000,
+          baseWithdrawal: 40000,
+          withdrawalRate: 4,
+          inflationRate: 3,
+          lastYearReturn: -20,
+          isFirstYear: false,
+        });
+
+        expect(result.amount).toBe(36000);
+        expect(result.guardrailTriggered).toBe('capital-preservation');
+      });
+    });
+
     it('should skip Capital Preservation when within 15 years of life expectancy', () => {
       // Portfolio dropped triggering upper guardrail
       const result = calculateGuytonKlingerWithdrawal({

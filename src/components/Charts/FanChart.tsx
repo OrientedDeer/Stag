@@ -9,6 +9,52 @@ import { calculateNetWorth } from '../../tabs/Future/tabs/FutureUtils';
 
 const MIN_CHART_WIDTH = 300;
 
+/**
+ * Compute the y-axis domain for the fan chart from the percentile values
+ * (and optional deterministic line). Excludes best/worst outliers by design.
+ *
+ * Guards against a degenerate domain: when every plotted value is equal
+ * (e.g. a $0-in-every-year portfolio), `max === min` and the multiplicative
+ * padding collapses to 0, which makes d3-scale render all bands/lines as a
+ * single centered horizontal line. In that case widen the domain with an
+ * absolute fallback so the chart keeps a real height.
+ */
+export const computeFanChartYBounds = (
+    percentiles: PercentileData,
+    deterministicLine?: YearlyPercentile[],
+): { min: number; max: number } => {
+    const allValues: number[] = [];
+
+    // Include percentile data
+    percentiles.p10.forEach(p => allValues.push(p.netWorth));
+    percentiles.p90.forEach(p => allValues.push(p.netWorth));
+
+    // Include deterministic line if present
+    if (deterministicLine) {
+        deterministicLine.forEach(p => allValues.push(p.netWorth));
+    }
+
+    if (allValues.length === 0) {
+        return { min: 0, max: 100000 };
+    }
+
+    const min = Math.min(...allValues);
+    let max = Math.max(...allValues);
+
+    // Degenerate domain: all values equal. Widen with an absolute fallback so
+    // d3-scale doesn't collapse the bands to a centered horizontal line.
+    if (max === min) {
+        max = min + Math.max(1, Math.abs(min) * 0.1);
+    }
+
+    // Add minimal padding
+    const padding = (max - min) * 0.02;
+    return {
+        min: min - padding,
+        max: max + padding,
+    };
+};
+
 interface FanChartProps {
     percentiles: PercentileData;
     deterministicLine?: YearlyPercentile[];
@@ -187,32 +233,10 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
     }, [percentiles]);
 
     // Calculate y-axis bounds from percentile data only (excludes best/worst outliers)
-    const yBounds = useMemo(() => {
-        const allValues: number[] = [];
-
-        // Include percentile data
-        percentiles.p10.forEach(p => allValues.push(p.netWorth));
-        percentiles.p90.forEach(p => allValues.push(p.netWorth));
-
-        // Include deterministic line if present
-        if (deterministicLine) {
-            deterministicLine.forEach(p => allValues.push(p.netWorth));
-        }
-
-        if (allValues.length === 0) {
-            return { min: 0, max: 100000 };
-        }
-
-        const min = Math.min(...allValues);
-        const max = Math.max(...allValues);
-
-        // Add minimal padding
-        const padding = (max - min) * 0.02;
-        return {
-            min: min - padding,
-            max: max + padding,
-        };
-    }, [percentiles, deterministicLine]);
+    const yBounds = useMemo(
+        () => computeFanChartYBounds(percentiles, deterministicLine),
+        [percentiles, deterministicLine],
+    );
 
     // Calculate x-axis tick values to prevent label overlap
     const xTickValues = useMemo(() => {

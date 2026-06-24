@@ -1,7 +1,7 @@
 import { AnyIncome, WorkIncome, FutureSocialSecurityIncome, FERSPensionIncome, CSRSPensionIncome, PassiveIncome } from "../../components/Objects/Income/models";
 import { AnyAccount, SavedAccount } from "../../components/Objects/Accounts/models";
 import { AssumptionsState, getRetirementAge, getLifeExpectancy, getBirthYear } from "../../components/Objects/Assumptions/AssumptionsContext";
-import { calculateHigh3, checkFERSEligibility, checkCSRSEligibility, calculateFERSBasicBenefit, calculateCSRSBasicBenefit, calculateFERSSupplement, getDisplayedFERSBenefit } from "../../data/PensionData";
+import { calculateHigh3, checkFERSEligibility, checkCSRSEligibility, calculateFERSBasicBenefit, calculateCSRSBasicBenefit, calculateFERSSupplement, getDisplayedFERSBenefit, getDisplayedCSRSBenefit } from "../../data/PensionData";
 import { calculateAIME, extractEarningsFromSimulation, calculateEarningsTestReduction } from "../SocialSecurityCalculator";
 import { getFRA } from "../../data/SocialSecurityData";
 import * as TaxService from "../../components/Objects/Taxes/TaxService";
@@ -190,8 +190,11 @@ export function projectIncomes(
                     const baseBenefit = calculateCSRSBasicBenefit(inc.yearsOfService, high3);
 
                     const eligibility = checkCSRSEligibility(inc.retirementAge, inc.yearsOfService);
-                    const reductionFactor = 1 - (eligibility.reductionPercent / 100);
-                    const actualBenefit = baseBenefit * reductionFactor;
+                    // Displayed (early-retirement-reduced) benefit via the shared helper
+                    // so this sim value cannot drift from the Testing-tab estimate. Equals
+                    // baseBenefit × (1 - reductionPercent/100); baseBenefit/eligibility
+                    // are kept for the logs below.
+                    const actualBenefit = getDisplayedCSRSBenefit(inc.yearsOfService, high3, inc.retirementAge);
 
                     logs.push(`[PENSION] CSRS Pension started: High-3 calculated as $${high3.toLocaleString()}/yr from ${salaryHistory.length} years of salary history`);
                     if (eligibility.reductionPercent > 0) {

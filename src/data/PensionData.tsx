@@ -309,6 +309,29 @@ export function checkCSRSEligibility(
 }
 
 /**
+ * Annual CSRS benefit as the simulation runs it: the basic benefit with the
+ * early-retirement reduction applied. Mirrors
+ * CSRSPensionIncome.calculateBenefit() so the displayed estimate matches the sim.
+ *
+ * Unlike FERS, CSRS eligibility (and therefore the reduction) does not depend on
+ * birth year, so no birthYear parameter is needed.
+ *
+ * @param yearsOfService Total years of creditable federal service
+ * @param high3Salary Average of highest 3 consecutive years of basic pay
+ * @param retirementAge Age at retirement
+ * @returns Annual pension amount after the early-retirement reduction
+ */
+export function getDisplayedCSRSBenefit(
+  yearsOfService: number,
+  high3Salary: number,
+  retirementAge: number
+): number {
+  const baseBenefit = calculateCSRSBasicBenefit(yearsOfService, high3Salary);
+  const { reductionPercent } = checkCSRSEligibility(retirementAge, yearsOfService);
+  return baseBenefit * (1 - reductionPercent / 100);
+}
+
+/**
  * CSRS COLA (Cost of Living Adjustment)
  *
  * CSRS retirees receive full CPI-based COLA regardless of age.
