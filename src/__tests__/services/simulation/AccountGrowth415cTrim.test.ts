@@ -385,4 +385,52 @@ describe('Sankey employee-deferral §415(c) trim (Issue 2)', () => {
         expect(detail.userPreTax401k).toBeCloseTo(18000, 2);
         expect(detail.userRoth401k).toBeCloseTo(4000, 2);
     });
+
+    it('does not vanish/double-count deferral when two jobs SHARE an income id (import collision)', () => {
+        // QR/JSON import reconstitutes incomes with id="" (the model default), so two
+        // restored jobs feeding one 401k collide on the empty-string key. The engine's
+        // per-income map (keyed by inc.id) then holds only the LAST writer's split, and
+        // the per-income attribution loop — which reads that map once PER income — adds
+        // the survivor's split for BOTH jobs: one job's deferral vanishes, the other
+        // double-counts, and Net-Pay inflow ≠ outflow.
+        //
+        // Asymmetric kinds make the bug visible: j1 defers 30k PRE-TAX, j2 defers 10k
+        // ROTH, both into ONE trad 401k, both id="". The map ends as {pre:0, roth:10k}
+        // (j2 overwrote j1). The broken per-income loop yields 0 pre-tax + 20k Roth
+        // (= 20k) instead of the deposited 40k. The fix detects the colliding feeder ids
+        // and falls back to the per-ACCOUNT split (not keyed by id), which recovers the
+        // real 30k pre-tax / 10k Roth.
+        const account = new InvestedAccount('trad', 'Traditional 401k', 100000, 0, 0, 0, 'Traditional 401k');
+        const j1 = work401k('', 200000, 30000, 0, 0, 'trad');   // pre-tax, empty id
+        const j2 = work401k('', 200000, 0, 10000, 0, 'trad');   // roth, empty id (collides)
+
+        const ws = createWithdrawalState();
+        const inflowResult = processInflows([j1, j2], [account], assumptions, YEAR, ws, 0, undefined, 0, AGE, []);
+
+        // No §415(c) breach (40k < 70k, no match): the whole 40k is deposited.
+        const depositedTotal = inflowResult.userContributions.trad;
+        expect(depositedTotal).toBeCloseTo(40000, 2);
+        // The per-income map collided on "" — it holds ONLY j2's split, proving the
+        // tier-1 source is unusable here and the builder must fall back.
+        expect(inflowResult.userContributionsByIncome[''].preTax).toBeCloseTo(0, 2);
+        expect(inflowResult.userContributionsByIncome[''].roth).toBeCloseTo(10000, 2);
+
+        const detail = buildCashflowDetail({
+            incomes: [j1, j2],
+            expenses: [],
+            accounts: [account],
+            insurance: 0,
+            year: YEAR,
+            brokerageLTCGFromGross: 0,
+            employerInflows: ws.employerInflows,
+            userContributions: inflowResult.userContributions,
+            userContributionsByIncome: inflowResult.userContributionsByIncome,
+        });
+
+        // Net-Pay deferral inflow equals the deposited total — nothing vanished or
+        // double-counted — and the per-account fallback recovers the 30k/10k split.
+        expect(detail.userPreTax401k + detail.userRoth401k).toBeCloseTo(depositedTotal, 2);
+        expect(detail.userPreTax401k).toBeCloseTo(30000, 2);
+        expect(detail.userRoth401k).toBeCloseTo(10000, 2);
+    });
 });

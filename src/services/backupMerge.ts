@@ -25,6 +25,7 @@ import { applyCategories, detectDuplicates, detectIncomeCategory } from './CSVIm
 import { autoMatchAccount } from './simplefinBalances';
 import { generateId } from '../utils/id';
 import { formatDateForInput } from '../utils/formatters';
+import { distributeProportional } from '../utils/distribute';
 import type { Transaction, CategoryMapping, MonthlySnapshot, BudgetState } from '../components/Objects/Budget/BudgetTypes';
 
 // --- The structural subset of a decrypted FullBackup these helpers read/mutate ---
@@ -327,18 +328,11 @@ export function applyBalances(
             continue;
         }
         const weights = present.map(id => Math.abs(accountById.get(id)!.amount ?? 0));
-        const totalWeight = weights.reduce((s, w) => s + w, 0);
 
-        let allocated = 0;
-        present.forEach((id, i) => {
-            // Last account absorbs the rounding remainder so the split sums exactly.
-            const isLast = i === present.length - 1;
-            const share = isLast
-                ? round2(row.balance - allocated)
-                : round2(totalWeight > 0 ? row.balance * (weights[i] / totalWeight) : row.balance / present.length);
-            allocated = round2(allocated + share);
-            applyOne(id, share);
-        });
+        // Split by current-balance weight; the last account absorbs the rounding
+        // remainder (round2 at every step) so the per-account shares sum exactly.
+        const shares = distributeProportional(row.balance, weights, round2);
+        present.forEach((id, i) => applyOne(id, shares[i]));
         report.flagged.push({ account: row.account, reason: 'multi-target-split' });
     }
 

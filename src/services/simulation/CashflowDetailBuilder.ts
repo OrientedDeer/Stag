@@ -21,8 +21,15 @@ import {
     CashflowIncomeKind,
     CashflowIncomeSource,
 } from "./types";
+import { distributeProportional } from "../../utils/distribute";
 
 const MIN_AMOUNT = 0.005;
+
+/** A 401k account whose deferrals land as Roth (Roth 401k or Roth IRA). */
+function isRothAccount(acc: AnyAccount | undefined): boolean {
+    return acc instanceof InvestedAccount &&
+        (acc.taxType === 'Roth 401k' || acc.taxType === 'Roth IRA');
+}
 
 interface BuildCashflowDetailInput {
     /** Active incomes after earnings test, including RMD-sourced PassiveIncomes (shown as income). */
@@ -87,6 +94,31 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
     let employerMatchPreTax = 0;
     let employerMatchRoth = 0;
 
+    // Pick the employee-deferral attribution tier ONCE, so the per-income raw
+    // fallback below and the deferral block agree on a single source:
+    //
+    //   tier-1 PER-INCOME (userContributionsByIncome) — the engine's §415(c)-
+    //     trimmed deferral already split pre-tax/Roth per income. Used only when
+    //     it's non-empty AND no two WorkIncome 401k feeders SHARE an income id:
+    //     the map is keyed by inc.id, so colliding ids (e.g. QR/JSON import
+    //     reconstitutes incomes with id="") clobber one job's split and the
+    //     per-income loop would then add the survivor's split for BOTH jobs —
+    //     one deferral vanishes, the other double-counts, Net-Pay in≠out.
+    //   tier-2 PER-ACCOUNT (userContributions) — the trimmed TOTAL per destination
+    //     account, re-split across the incomes feeding it. The explicit fallback
+    //     when tier-1 is empty (#2) or has colliding ids (#1).
+    //   tier-3 RAW — sum the untrimmed inc.preTax401k/roth401k (callers that pass
+    //     neither map, e.g. legacy/non-trimmed paths).
+    const hasPerIncome = !!userContributionsByIncome && Object.keys(userContributionsByIncome).length > 0;
+    const hasPerAccount = !!userContributions && Object.keys(userContributions).length > 0;
+    const feederIds = incomes
+        .filter((inc): inc is WorkIncome => inc instanceof WorkIncome && !!inc.matchAccountId)
+        .map(inc => inc.id);
+    const hasDuplicateFeederId = new Set(feederIds).size !== feederIds.length;
+    const usePerIncome = hasPerIncome && !hasDuplicateFeederId;
+    const usePerAccount = !usePerIncome && hasPerAccount;
+    const useRawDeferral = !usePerIncome && !usePerAccount;
+
     for (const inc of incomes) {
         const amount = inc.getProratedAnnual ? inc.getProratedAnnual(inc.amount, year) : 0;
 
@@ -97,10 +129,10 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
                 incomeBySource.push({ name: inc.name, amount, kind: 'work' });
             }
             // When the sim's actual deposited deferral is available (per-income
-            // userContributionsByIncome, or the per-account userContributions),
-            // derive the deferral from it below instead of summing raw per-income
-            // fields, which ignore the §415(c) trim. Otherwise fall back to raw.
-            if (!userContributions && !userContributionsByIncome) {
+            // or per-account, chosen above), derive the deferral from it below
+            // instead of summing raw per-income fields, which ignore the §415(c)
+            // trim. Otherwise (tier-3) fall back to raw.
+            if (useRawDeferral) {
                 userPreTax401k += inc.getProratedAnnual(inc.preTax401k, year);
                 userRoth401k += inc.getProratedAnnual(inc.roth401k, year);
             }
@@ -109,9 +141,7 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
                 const match = inc.getEffectiveAnnualEmployerMatch(year);
                 if (match >= MIN_AMOUNT) {
                     const matchAccount = accounts.find(a => a.id === inc.matchAccountId);
-                    const isRoth = matchAccount instanceof InvestedAccount &&
-                        (matchAccount.taxType === 'Roth 401k' || matchAccount.taxType === 'Roth IRA');
-                    if (isRoth) {
+                    if (isRothAccount(matchAccount)) {
                         employerMatchRoth += match;
                     } else {
                         employerMatchPreTax += match;
@@ -166,9 +196,7 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
         for (const [accountId, match] of Object.entries(employerInflows)) {
             if (match < MIN_AMOUNT) continue;
             const matchAccount = accounts.find(a => a.id === accountId);
-            const isRoth = matchAccount instanceof InvestedAccount &&
-                (matchAccount.taxType === 'Roth 401k' || matchAccount.taxType === 'Roth IRA');
-            if (isRoth) {
+            if (isRothAccount(matchAccount)) {
                 employerMatchRoth += match;
             } else {
                 employerMatchPreTax += match;
@@ -176,24 +204,28 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
         }
     }
 
-    // Employee-deferral attribution, most-exact first:
+    // Employee-deferral attribution, most-exact first (tier chosen above):
     //
     // 1. PER-INCOME (userContributionsByIncome): the §415(c)-trimmed deferral already
     //    split pre-tax/Roth per income by the engine — sum it straight. Exact even
     //    when several jobs feed one over-limit 401k and the trim lands on a SPECIFIC
     //    job (the last processed) rather than on a raw-ratio share of the account.
-    if (userContributionsByIncome) {
+    //    Skipped (→ tier-2) when two 401k-feeding jobs share an income id, since the
+    //    map is keyed by id and one job's split would be read for both.
+    if (usePerIncome) {
         for (const inc of incomes) {
             if (!(inc instanceof WorkIncome)) continue;
-            const split = userContributionsByIncome[inc.id];
+            const split = userContributionsByIncome![inc.id];
             if (!split) continue;
             userPreTax401k += split.preTax;
             userRoth401k += split.roth;
         }
-    } else if (userContributions) {
-    // 2. PER-ACCOUNT (userContributions): only the trimmed TOTAL per destination
-    // account is known, so split it pre-tax/Roth so the Sankey's Net-Pay deferral
-    // matches the deposit even when two jobs share one 401k over the limit.
+    } else if (usePerAccount) {
+    // 2. PER-ACCOUNT (userContributions): the explicit fallback when the per-income
+    // map is unusable — empty (#2) or has colliding 401k-feeder ids (#1, e.g. two
+    // imported jobs both reconstituted with id=""). Only the trimmed TOTAL per
+    // destination account is known here, so split it pre-tax/Roth so the Sankey's
+    // Net-Pay deferral matches the deposit even when two jobs share one 401k.
     //
     // The deposited TOTAL is keyed by DESTINATION account, but a single income can
     // defer BOTH pre-tax and Roth into one account (AccountGrowth sums inc.preTax401k
@@ -204,6 +236,8 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
     // deferral, preserving the trimmed total) and split each income's share by its OWN
     // raw inc.preTax401k : inc.roth401k. An income that defers only one kind is
     // unchanged; a deposit with no matching income falls back to the account taxType.
+    // (Per-feeder shares are NOT keyed by income id, so this stays correct even when
+    // the colliding ids that forced us here repeat across the feeders.)
         // Pre-bucket the WorkIncome feeders by destination account ONCE (and the
         // accounts by id) so the per-deposit loop is a Map lookup instead of an
         // incomes.filter() + accounts.find() per deposit.
@@ -216,11 +250,9 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
         }
         const accountById = new Map(accounts.map(a => [a.id, a]));
 
-        for (const [accountId, deferral] of Object.entries(userContributions)) {
+        for (const [accountId, deferral] of Object.entries(userContributions!)) {
             if (deferral < MIN_AMOUNT) continue;
-            const account = accountById.get(accountId);
-            const accountIsRoth = account instanceof InvestedAccount &&
-                (account.taxType === 'Roth 401k' || account.taxType === 'Roth IRA');
+            const accountIsRoth = isRothAccount(accountById.get(accountId));
 
             // Incomes deferring into this account, with their RAW (untrimmed) annual
             // pre-tax/Roth split. The deposited total is shared in proportion to each
@@ -242,17 +274,14 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
                 continue;
             }
 
-            // Distribute the trimmed deposit across feeders by raw weight; give the
-            // last feeder the remainder so the per-flow amounts sum to `deferral` exactly.
-            let allocated = 0;
+            // Distribute the trimmed deposit across feeders by raw weight (last feeder
+            // absorbs the remainder so the shares sum to `deferral` exactly), then
+            // split each feeder's share by its own raw pre-tax : Roth ratio.
+            const shares = distributeProportional(deferral, feeders.map(f => f.raw));
             feeders.forEach((f, i) => {
-                const isLast = i === feeders.length - 1;
-                const share = isLast ? deferral - allocated : deferral * (f.raw / totalRaw);
-                allocated += share;
-                // Split this feeder's share by its own raw pre-tax : Roth ratio.
-                const rothPortion = share * (f.roth / f.raw);
+                const rothPortion = shares[i] * (f.roth / f.raw);
                 userRoth401k += rothPortion;
-                userPreTax401k += share - rothPortion;
+                userPreTax401k += shares[i] - rothPortion;
             });
         }
     }
@@ -290,23 +319,23 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
             if (emittedGoalFunds.has(exp.goalAccountId)) continue; // fund already split once
             emittedGoalFunds.add(exp.goalAccountId);
 
-            const fundTotal = getGoalFundAnnualSetAside(expenses, exp.goalAccountId, year) ?? 0;
+            // Goals sharing this fund (in expense order), filtered ONCE. Each goal's
+            // EXACT own annual set-aside (monthly × that goal's months-active this
+            // year) comes from getGoalFundAnnualSetAside on a single-goal array. The
+            // fund total IS the sum of those per-goal set-asides (that's exactly what
+            // getGoalFundAnnualSetAside(expenses, …) sums internally), so we derive it
+            // here from this one scan instead of running a second full pass.
+            const sharingGoals = expenses
+                .filter(e => isLongTermGoal(e) && e.goalAccountId === exp.goalAccountId)
+                .map(goal => ({
+                    goal,
+                    share: getGoalFundAnnualSetAside([goal], exp.goalAccountId!, year) ?? 0,
+                }));
+
+            const fundTotal = sharingGoals.reduce((sum, g) => sum + g.share, 0);
             if (fundTotal < MIN_AMOUNT) continue;
 
-            // Goals sharing this fund (in expense order), filtered ONCE and reused.
-            // getGoalFundAnnualSetAside already ran this same predicate internally;
-            // filtering once here keeps the per-goal split provably consistent with
-            // the fund total it returned (and avoids a second full pass).
-            const sharingGoals = expenses.filter(
-                e => isLongTermGoal(e) && e.goalAccountId === exp.goalAccountId,
-            );
-
-            sharingGoals.forEach(goal => {
-                // Each goal's EXACT own annual set-aside: monthly × that goal's
-                // months-active this year, via getGoalFundAnnualSetAside on a
-                // single-goal array (which applies the months-active factor). These
-                // sum to fundTotal by construction — no weighting approximation.
-                const share = getGoalFundAnnualSetAside([goal], exp.goalAccountId, year) ?? 0;
+            sharingGoals.forEach(({ goal, share }) => {
                 if (share < MIN_AMOUNT) return; // an inactive goal (0 months) is dropped
                 // Each goal keeps its own labeled node ("Car (goal)") — clearer in
                 // the chart than a generic "Goals" bucket, and the "(goal)" suffix

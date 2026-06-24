@@ -15,8 +15,10 @@ import { getFicaTaxableBase } from '../../../../components/Objects/Taxes/taxServ
 import { WorkIncome, PassiveIncome } from '../../../../components/Objects/Income/models';
 
 const YEAR = 2025;
-const start = new Date('2025-01-01');
-const end = new Date('2025-12-31');
+// Local construction (not new Date('YYYY-MM-DD'), which parses as UTC) per the
+// repo's date-local convention — avoids a latent off-by-one on the annual window.
+const start = new Date(2025, 0, 1);
+const end = new Date(2025, 11, 31);
 
 /** $amount of earned wages with $insurance (and optionally $hsa) FICA-exempt. */
 function wages(amount: number, insurance = 0, hsa = 0): WorkIncome {

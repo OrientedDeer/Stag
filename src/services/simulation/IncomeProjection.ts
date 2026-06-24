@@ -1,7 +1,7 @@
 import { AnyIncome, WorkIncome, FutureSocialSecurityIncome, FERSPensionIncome, CSRSPensionIncome, PassiveIncome } from "../../components/Objects/Income/models";
 import { AnyAccount, SavedAccount } from "../../components/Objects/Accounts/models";
 import { AssumptionsState, getRetirementAge, getLifeExpectancy, getBirthYear } from "../../components/Objects/Assumptions/AssumptionsContext";
-import { calculateHigh3, checkFERSEligibility, checkCSRSEligibility, calculateFERSBasicBenefit, calculateCSRSBasicBenefit, calculateFERSSupplement } from "../../data/PensionData";
+import { calculateHigh3, checkFERSEligibility, checkCSRSEligibility, calculateFERSBasicBenefit, calculateCSRSBasicBenefit, calculateFERSSupplement, getDisplayedFERSBenefit } from "../../data/PensionData";
 import { calculateAIME, extractEarningsFromSimulation, calculateEarningsTestReduction } from "../SocialSecurityCalculator";
 import { getFRA } from "../../data/SocialSecurityData";
 import * as TaxService from "../../components/Objects/Taxes/TaxService";
@@ -112,8 +112,11 @@ export function projectIncomes(
                     const high3 = calculateHigh3(salaryHistory);
                     const baseBenefit = calculateFERSBasicBenefit(inc.yearsOfService, high3, inc.retirementAge);
                     const eligibility = checkFERSEligibility(inc.retirementAge, inc.yearsOfService, inc.birthYear);
-                    const reductionFactor = 1 - (eligibility.reductionPercent / 100);
-                    const actualBenefit = baseBenefit * reductionFactor;
+                    // Displayed (MRA+10-reduced) benefit via the shared helper so this
+                    // sim value cannot drift from the Testing-tab estimate. Equals
+                    // baseBenefit × (1 - reductionPercent/100); baseBenefit/eligibility
+                    // are kept for the logs below.
+                    const actualBenefit = getDisplayedFERSBenefit(inc.yearsOfService, high3, inc.retirementAge, inc.birthYear);
 
                     // Auto-compute the FERS MRA-to-62 supplement on activation. Auto
                     // pensions leave `fersSupplement` at its default 0, so deriving it

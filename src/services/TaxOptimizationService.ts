@@ -179,18 +179,26 @@ export function analyzeTaxSituation(
 ): TaxAnalysis {
     const { year, incomes } = simulationYear;
     const age = year - getBirthYear(assumptions.milestones);
+    const retirementAge = getRetirementAge(assumptions.milestones);
 
     // Get gross income and deductions
     const grossIncome = TaxService.getGrossIncome(incomes, year);
     const preTaxDeductions = TaxService.getPreTaxExemptions(incomes, year, age);
+
+    // FICA only applies to working years — mirror generateTaxProjections so the
+    // two Tax-Optimization surfaces agree on FICA inclusion for a retired year
+    // that still carries residual wages (otherwise this surface would tack a
+    // ~7.65pt FICA marginal onto a retired rate the projection correctly omits).
+    const includesFICA = age < retirementAge;
 
     // FICA-eligible EARNED base for the marginal-rate FICA test, mirroring
     // calculateFicaTax: earned wages net of FICA exemptions. Passing this (rather
     // than letting earnedIncome default to grossIncome) keeps the 6.2% SS / 0.9%
     // surtax thresholds tied to wages, not total gross — so a still-working person
     // whose SS/pension/passive income pushes gross past a threshold while wages
-    // stay below it doesn't wrongly lose the SS marginal component.
-    const earnedBase = getFicaTaxableBase(incomes, year);
+    // stay below it doesn't wrongly lose the SS marginal component. Only read when
+    // FICA is included (working years), so the retired tail skips the traversal.
+    const earnedBase = includesFICA ? getFicaTaxableBase(incomes, year) : 0;
 
     // Get tax amounts from simulation (already calculated)
     const federalTax = simulationYear.taxDetails.fed;
@@ -208,7 +216,7 @@ export function analyzeTaxSituation(
         taxState,
         year,
         assumptions,
-        true, // Include FICA for earned income
+        includesFICA,
         earnedBase
     );
 

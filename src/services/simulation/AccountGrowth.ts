@@ -142,15 +142,14 @@ export function processInflows(
             // pre-tax : Roth ratio (preserving the trimmed total). An income that
             // defers only one kind is unchanged; this is what the Sankey reads so
             // the pre-tax/Roth split matches the income the engine actually trimmed.
-            if (trimmedSelf >= 0) {
-                const rothPortion = selfContribution > 0
-                    ? trimmedSelf * (annualRoth / selfContribution)
-                    : 0;
-                contributionsByIncome[inc.id] = {
-                    preTax: trimmedSelf - rothPortion,
-                    roth: rothPortion,
-                };
-            }
+            // (trimmedSelf is a Math.max(0, …) of non-negatives, so it's always ≥ 0.)
+            const rothPortion = selfContribution > 0
+                ? trimmedSelf * (annualRoth / selfContribution)
+                : 0;
+            contributionsByIncome[inc.id] = {
+                preTax: trimmedSelf - rothPortion,
+                roth: rothPortion,
+            };
         }
     });
 

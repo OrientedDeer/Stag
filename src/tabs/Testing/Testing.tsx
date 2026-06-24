@@ -27,7 +27,6 @@ import {
     getGrossIncome,
     getPreTaxExemptions,
     getEarnedIncome,
-    getFicaExemptions,
     getSocialSecurityBenefits,
     getTaxableSocialSecurityBenefits,
     getItemizedDeductions,
@@ -64,12 +63,14 @@ import {
     getFERSMRA,
     checkFERSEligibility,
     calculateFERSBasicBenefit,
+    getDisplayedFERSBenefit,
     getFERSCOLA,
     checkCSRSEligibility,
     calculateCSRSBasicBenefit,
     getCSRSCOLA,
     PENSION_SYSTEM_COMPARISON
 } from '../../data/PensionData';
+import { getFicaTaxableBase } from '../../components/Objects/Taxes/taxService/ficaTax';
 import { SavedAccount, InvestedAccount, DebtAccount, DeficitDebtAccount, PropertyAccount, ESPPAccount, RSUAccount, AnyAccount } from '../../components/Objects/Accounts/models';
 import { formatCompactCurrency } from '../Future/tabs/FutureUtils';
 import { SimulationYear } from '../../services/simulation/types';
@@ -1724,9 +1725,10 @@ function TaxDebugTab() {
             }
             const stateTaxableIncome = stateParams ? Math.max(0, stateAdjustedGross - (stateParams.standardDeduction || 0)) : 0;
 
-            // FICA — derive SS vs Medicare split for display
-            const ficaExemptions = getFicaExemptions(incomes, year);
-            const ficaTaxableBase = Math.max(0, earnedIncome - ficaExemptions);
+            // FICA — derive SS vs Medicare split for display. Use the shared
+            // getFicaTaxableBase so this readout cannot drift from the FICA the
+            // engine actually charges.
+            const ficaTaxableBase = getFicaTaxableBase(incomes, year);
             const ssWageBase = fedParams.socialSecurityWageBase;
             const ssTax = Math.min(ficaTaxableBase, ssWageBase) * fedParams.socialSecurityTaxRate;
             const medicareTax = ficaTaxableBase * fedParams.medicareTaxRate;
@@ -3091,7 +3093,10 @@ function PensionDebugTab() {
             const mra = getFERSMRA(birthYear);
             const eligibility = checkFERSEligibility(pension.retirementAge, pension.yearsOfService, birthYear);
             const baseBenefit = calculateFERSBasicBenefit(pension.yearsOfService, pension.high3Salary, pension.retirementAge);
-            const reducedBenefit = baseBenefit * (1 - eligibility.reductionPercent / 100);
+            // Use the shared helper for the displayed (MRA+10-reduced) benefit so this
+            // chart stays in lockstep with the sim's FERS benefit; eligibility/baseBenefit
+            // are still surfaced for the eligibility readout below.
+            const reducedBenefit = getDisplayedFERSBenefit(pension.yearsOfService, pension.high3Salary, pension.retirementAge, birthYear);
 
             // Simulate COLA growth (only if showing nominal dollars)
             const colaProjection: Array<{ age: number; year: number; cola: number; benefit: number }> = [];
