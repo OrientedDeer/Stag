@@ -6,7 +6,7 @@ import { AlertBanner } from '../../../Layout/AlertBanner';
 import type { WorkIncome, RSUVestingSchedule, RSUVestFrequency } from '../models';
 import type { AllIncomeKeys } from '../IncomeContext';
 import type { RSUAccount } from '../../Accounts/models';
-import { getRSUPriceValidationMessage } from '../incomeCardUtils';
+import { getRSUPriceValidationMessage, getRSUMilestoneStartWarning } from '../incomeCardUtils';
 
 interface RSUFieldsProps {
     income: WorkIncome;
@@ -16,6 +16,7 @@ interface RSUFieldsProps {
 
 export function RSUFields({ income, onFieldUpdate, rsuAccounts }: RSUFieldsProps): ReactElement {
     const priceValidationMessage = getRSUPriceValidationMessage(income, rsuAccounts);
+    const milestoneStartWarning = getRSUMilestoneStartWarning(income);
     return (
         <>
             <DropdownInput
@@ -93,6 +94,11 @@ export function RSUFields({ income, onFieldUpdate, rsuAccounts }: RSUFieldsProps
                     {priceValidationMessage && (
                         <AlertBanner severity="error" size="sm" title="Current Share Price Required" className="col-span-full">
                             {priceValidationMessage}
+                        </AlertBanner>
+                    )}
+                    {milestoneStartWarning && (
+                        <AlertBanner severity="warning" size="sm" title="RSUs Need a Fixed Start Date" className="col-span-full">
+                            {milestoneStartWarning}
                         </AlertBanner>
                     )}
                 </>

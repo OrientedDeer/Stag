@@ -11,6 +11,11 @@ import {
   getDisplayedFERSBenefit,
 } from '../../../data/PensionData';
 import { parseDate, parseDateRequired, hasClassName, extractBaseFields, getActiveWindowMultiplier, isWindowActiveInCurrentMonth } from "../modelUtils";
+// isActiveRSUGrant lives in a leaf .ts module so importing the pure predicate
+// elsewhere doesn't pull in the model graph or trip react-refresh on this .tsx.
+// Imported here only for this file's own internal use (NOT re-exported — a
+// non-component re-export from a .tsx would re-trigger react-refresh).
+import { isActiveRSUGrant } from "./rsuGrant";
 
 export type ContributionGrowthStrategy = 'FIXED' | 'GROW_WITH_SALARY' | 'TRACK_ANNUAL_MAX';
 export type AutoMax401kOption = 'disabled' | 'custom' | 'traditional' | 'roth';
@@ -20,19 +25,6 @@ export type ESPPContributionType = 'NONE' | 'PERCENTAGE' | 'FIXED';
 export type RSUVestingSchedule = 'NONE' | 'cliff-1yr' | 'graded-3yr' | 'graded-4yr';
 export type RSUVestFrequency = 'quarterly' | 'semi-annual' | 'annual';
 
-/**
- * True when a WorkIncome has an RSU grant worth vesting: a real schedule and a
- * positive share count. The single source of truth for the "RSU active" guard —
- * the engine (RSUVesting), the model (getRSUVestSchedule / getRSUVestEventsForYear),
- * and the card validation all share this so the boolean can't drift. Takes a
- * structural shape so interface-typed callers (RSUVesting, incomeCardUtils) work
- * without an instanceof narrow.
- */
-export function isActiveRSUGrant(
-  income: { rsuVestingSchedule: RSUVestingSchedule; rsuGrantShares: number }
-): boolean {
-  return income.rsuVestingSchedule !== 'NONE' && income.rsuGrantShares > 0;
-}
 export type PensionSystem = 'NONE' | 'FERS' | 'CSRS';
 export type EmployerMatchType = 'fixed' | 'percent';
 

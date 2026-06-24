@@ -78,9 +78,12 @@ it('both importers re-export the single shared csvToTransactions', () => {
 it('all three blob-writing importers re-export the single shared serializeBlob', () => {
     expect(serializeBlobFile).toBe(serializeBlobShared);
     expect(serializeBlobCouch).toBe(serializeBlobShared);
-    // The balances importer used to re-serialize with a bare JSON.stringify(blob)
-    // (no jsonDateReplacer) — latent issue #73. It must now route through the same
-    // shared helper as the others.
+    // The balances importer used to re-serialize with a bare JSON.stringify(blob).
+    // Its blob is a pure JSON tree (no live Date), so that produced identical bytes
+    // here — but routing through the shared serializeBlob keeps all importers in
+    // lockstep with the in-app backup path, so a future change can't land on the
+    // transaction/Couch paths and silently miss the balances one. This identity is
+    // the real guard: reverting importBalances to a bare JSON.stringify breaks it.
     expect(serializeBlobBalances).toBe(serializeBlobShared);
 });
 
@@ -130,35 +133,41 @@ describe('serializeBlob — transaction date round-trip (issue #73)', () => {
     });
 });
 
-describe('importBalances serializeBlob — date-only Date round-trip (latent issue #73)', () => {
+describe('importBalances serializeBlob — string-date snapshots survive the re-encrypt', () => {
     // The balances importer re-encrypts the merged blob through its re-exported
-    // serializeBlob(). A bare JSON.stringify(blob) would default a date-only Date to
-    // UTC toISOString(); at local-midnight on a UTC+10 runner that reports the PRIOR
-    // day. This proves the balances path applies jsonDateReplacer (emits local
-    // 'YYYY-MM-DD') so the day never shifts.
+    // serializeBlob(). Its blob is a pure JSON tree (JSON.parse of the decrypted
+    // backup) mutated only by applyBalances, which writes string `{date,num}`
+    // amountHistory snapshots and numeric amounts — it never creates a live Date.
+    // So there's no Date for jsonDateReplacer to convert here, and serializeBlob is
+    // byte-identical to JSON.stringify on this path. The genuine protection is the
+    // identity assertion above (serializeBlobBalances === serializeBlobShared); this
+    // block just confirms the string-date snapshots the importer actually produces
+    // round-trip through that shared serializer with no day shift. (Fabricating a
+    // `new Date()` field the importer never emits would assert nothing about the
+    // real path — only re-exercise the helper.)
 
-    // A boundary date: local midnight 2026-06-01 in UTC+10 is 2026-05-31T14:00Z, so
-    // a bare UTC serialization would slip into the prior day AND the prior month.
-    function blobWithDate(): MergeBlob {
+    // A boundary date: the 1st of a month is where any stray UTC shift would slip
+    // into the prior month, so it's the strictest passthrough check.
+    function blobWithBalanceSnapshot(): MergeBlob {
         return {
             version: 2,
-            // A real Date object placed where the in-app blob carries one (e.g. an
-            // updatedAt/snapshot timestamp). jsonDateReplacer keys off the live Date
-            // value, not its already-ISO-stringified default form.
-            snapshotDate: new Date(2026, 5, 1), // 2026-06-01, local midnight
+            // The exact shape applyBalances writes: a date-only STRING + numeric num.
+            amountHistory: {
+                'acct-1': [{ date: '2026-06-01', num: 12345 }],
+            },
         } as unknown as MergeBlob;
     }
 
-    it('the balances re-serialization emits the LOCAL YYYY-MM-DD (no UTC day shift)', () => {
-        const reloaded = JSON.parse(serializeBlobBalances(blobWithDate())) as Record<string, unknown>;
-        // Applied jsonDateReplacer → a local 'YYYY-MM-DD' string, same calendar day.
-        expect(reloaded.snapshotDate).toBe('2026-06-01');
-    });
-
-    it('control: a bare JSON.stringify shifts the day to UTC — the bug the fix prevents', () => {
-        const reloaded = JSON.parse(JSON.stringify(blobWithDate())) as Record<string, unknown>;
-        // Default toISOString() reports 2026-05-31T14:00:00.000Z — the prior day/month.
-        expect(reloaded.snapshotDate).toBe('2026-05-31T14:00:00.000Z');
+    it('round-trips the snapshot string date unchanged through the shared serializer', () => {
+        const reloaded = JSON.parse(serializeBlobBalances(blobWithBalanceSnapshot())) as MergeBlob;
+        const point = reloaded.amountHistory!['acct-1'][0];
+        // parseDate reads 'YYYY-MM-DD' locally — assert calendar components, not a
+        // TZ-derived literal, so the test is offset-agnostic if the pinned TZ moves.
+        const d = parseDate(point.date)!;
+        expect(d.getFullYear()).toBe(2026);
+        expect(d.getMonth()).toBe(5); // June (0-based) — never slips to May
+        expect(d.getDate()).toBe(1);
+        expect(point.num).toBe(12345);
     });
 });
 

@@ -57,7 +57,15 @@ async function run(): Promise<void> {
     const report = applyBalances(blob, rows /*, { date }*/);
     blob.version = 2;
 
-    // 3. re-encrypt, enforce the size cap, write the new blob file
+    // 3. re-encrypt, enforce the size cap, write the new blob file.
+    //    Route the re-encrypt through the shared serializeBlob so every importer
+    //    stays in lockstep with the in-app backup path. The balances blob is a
+    //    pure JSON tree (JSON.parse of the decrypted backup) mutated only by
+    //    applyBalances, which writes string `{date,num}` snapshots and numeric
+    //    amounts — it never creates a live Date. So here serializeBlob is
+    //    byte-identical to JSON.stringify and jsonDateReplacer has nothing to
+    //    convert: this is a consistency guard against future drift, not an
+    //    active date-shift fix on the balances path.
     const reEncrypted = JSON.stringify(await encrypt(serializeBlob(blob), pass));
     const size = Buffer.byteLength(reEncrypted, 'utf8');
     if (size > MAX_BACKUP_SIZE) {

@@ -10,8 +10,8 @@ import {
     WindfallIncome,
     INCOME_COLORS_BACKGROUND,
     IncomeFrequency,
-    isActiveRSUGrant,
 } from './models';
+import { isActiveRSUGrant } from './rsuGrant';
 import { formatCompactCurrency } from '../../../tabs/Future/tabs/FutureUtils';
 import { get401kLimit, getHSALimit } from '../../../data/ContributionLimits';
 import { getFrequencyAbbrev } from '../../../utils/formatters';
@@ -168,4 +168,35 @@ export function getRSUPriceValidationMessage(
     }
 
     return null;
+}
+
+/**
+ * Notice for a milestone-started WorkIncome that carries a fully-configured RSU
+ * grant. Such an income starts when its `startMilestoneId` fires (its `startDate`
+ * is left undefined), but RSU vesting needs a FIXED grant date to compute when
+ * each tranche lands — the engine derives every vest date as `startDate +
+ * yearOffset` (WorkIncome.getRSUVestEventsForYear) and bails on `!startDate`
+ * (RSUVesting.processRSUVesting). The milestone only gates the salary in/out per
+ * year; it never resolves a concrete start date. So the grant's salary projects,
+ * but its RSUs silently project $0 with no way to schedule the vests.
+ *
+ * This is a genuine design limitation, NOT a missing share price — so it gets its
+ * own warning rather than the price-required banner. Returns a user-facing
+ * message, or null when this isn't the case. Pure so it's testable. Fires only
+ * when: WorkIncome + an active RSU grant + a milestone start + NO fixed startDate.
+ */
+export function getRSUMilestoneStartWarning(income: AnyIncome): string | null {
+    if (!(income instanceof WorkIncome)) return null;
+    // Only relevant once an RSU grant is actually configured.
+    if (!isActiveRSUGrant(income)) return null;
+    // A fixed start date is the grant date the engine vests against — if one is
+    // set, vesting works normally and this notice doesn't apply.
+    if (income.startDate) return null;
+    // Only flag the milestone-started case (a half-built grant with neither a
+    // start date nor a milestone isn't yet a projectable income).
+    if (!income.startMilestoneId) return null;
+
+    return 'This income starts at a milestone with no fixed start date. RSU '
+        + 'vesting needs a fixed start date to schedule each vest, so these grants '
+        + "won't be projected until one is set.";
 }
