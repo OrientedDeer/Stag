@@ -433,4 +433,81 @@ describe('Sankey employee-deferral §415(c) trim (Issue 2)', () => {
         expect(detail.userPreTax401k).toBeCloseTo(30000, 2);
         expect(detail.userRoth401k).toBeCloseTo(10000, 2);
     });
+
+    it('does not double-count when a 401k feeder and a MATCHLESS side gig share id="" (incomplete-guard case)', () => {
+        // The collision case the old feeder-only guard MISSED: a 401k feeder and a
+        // matchless side gig BOTH reconstituted with id="". The side gig has no
+        // matchAccountId, so processInflows never records a split for it — the
+        // per-income map holds ONLY the feeder's entry under "". The old consumer
+        // loop read map[inc.id] once PER WorkIncome, so the side gig (id="") read the
+        // feeder's split a SECOND time and the Net-Pay deferral DOUBLED (60k vs 30k).
+        //
+        // The fix sums the per-income map's VALUES (one entry, counted once) instead
+        // of looping incomes, so the matchless gig can't re-read the feeder's split.
+        const account = new InvestedAccount('trad', 'Traditional 401k', 100000, 0, 0, 0, 'Traditional 401k');
+        const feeder = work401k('', 200000, 30000, 0, 0, 'trad');   // 401k feeder, empty id
+        const sideGig = work401k('', 40000, 0, 0, 0, '');           // matchless, empty id (collides)
+
+        const ws = createWithdrawalState();
+        const inflowResult = processInflows([feeder, sideGig], [account], assumptions, YEAR, ws, 0, undefined, 0, AGE, []);
+
+        // Only the feeder deferred; the whole 30k is deposited.
+        const depositedTotal = inflowResult.userContributions.trad;
+        expect(depositedTotal).toBeCloseTo(30000, 2);
+
+        const detail = buildCashflowDetail({
+            incomes: [feeder, sideGig],
+            expenses: [],
+            accounts: [account],
+            insurance: 0,
+            year: YEAR,
+            brokerageLTCGFromGross: 0,
+            employerInflows: ws.employerInflows,
+            userContributions: inflowResult.userContributions,
+            userContributionsByIncome: inflowResult.userContributionsByIncome,
+        });
+
+        // Net-Pay deferral inflow equals the single deposited deferral — the matchless
+        // gig did NOT double the feeder's 30k.
+        expect(detail.userPreTax401k + detail.userRoth401k).toBeCloseTo(depositedTotal, 2);
+        expect(detail.userPreTax401k).toBeCloseTo(30000, 2);
+        expect(detail.userRoth401k).toBeCloseTo(0, 2);
+    });
+
+    it('shows $0 deferral when an active income has preTax401k>0 but an EMPTY matchAccountId and the maps are provided (#2 regression)', () => {
+        // The wave-6 regression: an active income with preTax401k>0 but a CLEARED
+        // matchAccountId (the linked account was deleted → IncomeCard sets it to '').
+        // processInflows deposits NOTHING (no destination), so it passes EMPTY deposit
+        // maps. The old guard keyed tier choice on Object.keys(map).length>0, so an
+        // empty-but-PROVIDED map fell through to the RAW deferral and the Sankey showed
+        // the full $18k that was never deposited. Gating on "was the map passed at all"
+        // makes the deferral $0, matching the engine.
+        const account = new InvestedAccount('trad', 'Traditional 401k', 100000, 0, 0, 0, 'Traditional 401k');
+        // matchAccountId='' → no 401k destination; preTax401k=18k is configured but undeposited.
+        const orphan = work401k('orphan', 200000, 18000, 0, 0, '');
+
+        const ws = createWithdrawalState();
+        const inflowResult = processInflows([orphan], [account], assumptions, YEAR, ws, 0, undefined, 0, AGE, []);
+
+        // The engine deposited nothing — both maps are PROVIDED but EMPTY.
+        expect(Object.keys(inflowResult.userContributions).length).toBe(0);
+        expect(Object.keys(inflowResult.userContributionsByIncome).length).toBe(0);
+
+        const detail = buildCashflowDetail({
+            incomes: [orphan],
+            expenses: [],
+            accounts: [account],
+            insurance: 0,
+            year: YEAR,
+            brokerageLTCGFromGross: 0,
+            employerInflows: ws.employerInflows,
+            userContributions: inflowResult.userContributions,
+            userContributionsByIncome: inflowResult.userContributionsByIncome,
+        });
+
+        // No deposit happened, so the Sankey's 401k deferral inflow must be 0 — NOT
+        // the raw 18k.
+        expect(detail.userPreTax401k).toBeCloseTo(0, 2);
+        expect(detail.userRoth401k).toBeCloseTo(0, 2);
+    });
 });

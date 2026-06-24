@@ -3249,7 +3249,10 @@ function PensionDebugTab() {
                 const eligibility = checkFERSEligibility(retireAge, yearsAtRetirement, birthYear);
                 const baseBenefit = calculateFERSBasicBenefit(yearsAtRetirement, high3, retireAge);
                 const reductionFactor = (1 - eligibility.reductionPercent / 100);
-                const annualBenefit = baseBenefit * reductionFactor;
+                // Route the headline benefit through the shared helper so the explorer
+                // can't drift from the sim's FERS number; baseBenefit/reductionPercent
+                // are still surfaced below for the per-component breakdown.
+                const annualBenefit = getDisplayedFERSBenefit(yearsAtRetirement, high3, retireAge, birthYear);
 
                 // Calculate lifetime benefit
                 // If inflationAdjusted (real dollars): don't apply COLA growth (COLA ~ inflation, so real value stays flat)

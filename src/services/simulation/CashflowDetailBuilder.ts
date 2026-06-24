@@ -7,6 +7,7 @@ import {
     FutureSocialSecurityIncome,
     FERSPensionIncome,
     CSRSPensionIncome,
+    getIncomeActiveMultiplier,
 } from "../../components/Objects/Income/models";
 import {
     AnyExpense,
@@ -98,21 +99,41 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
     // fallback below and the deferral block agree on a single source:
     //
     //   tier-1 PER-INCOME (userContributionsByIncome) — the engine's §415(c)-
-    //     trimmed deferral already split pre-tax/Roth per income. Used only when
-    //     it's non-empty AND no two WorkIncome 401k feeders SHARE an income id:
-    //     the map is keyed by inc.id, so colliding ids (e.g. QR/JSON import
-    //     reconstitutes incomes with id="") clobber one job's split and the
-    //     per-income loop would then add the survivor's split for BOTH jobs —
-    //     one deferral vanishes, the other double-counts, Net-Pay in≠out.
+    //     trimmed deferral already split pre-tax/Roth per income. The map is keyed
+    //     by inc.id; reconstituteIncome now mints a deterministic, unique id when
+    //     an imported income lacks one, so distinct jobs no longer collide on id=""
+    //     here. As a backstop for the genuinely-ambiguous corner (two byte-identical
+    //     incomes both missing an id → same content-derived id), this tier is still
+    //     skipped when two WorkIncomes that ACTUALLY FEED the per-income map share an
+    //     id: a colliding key clobbers one job's split and the per-income loop (read
+    //     once per income) would add the survivor's split for both — one deferral
+    //     vanishes, the other double-counts, Net-Pay in≠out.
     //   tier-2 PER-ACCOUNT (userContributions) — the trimmed TOTAL per destination
     //     account, re-split across the incomes feeding it. The explicit fallback
-    //     when tier-1 is empty (#2) or has colliding ids (#1).
+    //     when tier-1 has colliding ids, OR when the per-income map was provided but
+    //     this income is absent from it (e.g. a 401k routed to a deleted account).
     //   tier-3 RAW — sum the untrimmed inc.preTax401k/roth401k (callers that pass
-    //     neither map, e.g. legacy/non-trimmed paths).
-    const hasPerIncome = !!userContributionsByIncome && Object.keys(userContributionsByIncome).length > 0;
-    const hasPerAccount = !!userContributions && Object.keys(userContributions).length > 0;
+    //     NEITHER map, e.g. the Dashboard / legacy non-trimmed paths).
+    //
+    // Tier choice gates on whether each map was PASSED (!== undefined), not on its
+    // length: a caller that ran the engine but deposited nothing (every deferral
+    // trimmed away, or an active income whose matchAccountId was cleared) passes an
+    // EMPTY map — and that income's deferral is genuinely $0, which the per-income /
+    // per-account path yields. Only a caller that passes no map at all (undefined)
+    // wants the raw deferral; an empty-but-provided map must NOT fall through to raw
+    // (that would show a full deferral the engine never deposited).
+    const hasPerIncome = userContributionsByIncome !== undefined;
+    const hasPerAccount = userContributions !== undefined;
+    // Collision set: only WorkIncomes that actually WRITE userContributionsByIncome —
+    // i.e. have a matchAccountId AND are active this year (getIncomeActiveMultiplier
+    // > 0). processInflows early-returns on an inactive feeder (activeMultiplier 0)
+    // and never records its split, so including it here would be a false positive
+    // that needlessly downgrades exact per-income attribution to the per-account path.
     const feederIds = incomes
-        .filter((inc): inc is WorkIncome => inc instanceof WorkIncome && !!inc.matchAccountId)
+        .filter((inc): inc is WorkIncome =>
+            inc instanceof WorkIncome &&
+            !!inc.matchAccountId &&
+            getIncomeActiveMultiplier(inc, year) > 0)
         .map(inc => inc.id);
     const hasDuplicateFeederId = new Set(feederIds).size !== feederIds.length;
     const usePerIncome = hasPerIncome && !hasDuplicateFeederId;
@@ -207,16 +228,18 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
     // Employee-deferral attribution, most-exact first (tier chosen above):
     //
     // 1. PER-INCOME (userContributionsByIncome): the §415(c)-trimmed deferral already
-    //    split pre-tax/Roth per income by the engine — sum it straight. Exact even
-    //    when several jobs feed one over-limit 401k and the trim lands on a SPECIFIC
-    //    job (the last processed) rather than on a raw-ratio share of the account.
-    //    Skipped (→ tier-2) when two 401k-feeding jobs share an income id, since the
-    //    map is keyed by id and one job's split would be read for both.
+    //    split pre-tax/Roth per income by the engine. Sum the map's VALUES directly
+    //    (one entry per income that actually deferred) rather than looping incomes and
+    //    reading map[inc.id]: the value-sum IS the deposited deferral and counts each
+    //    entry exactly once, so it can't double-count when two incomes on the consumer
+    //    side share an id (a colliding "" key holds a single entry). Exact even when
+    //    several jobs feed one over-limit 401k and the trim lands on a SPECIFIC job
+    //    (the last processed) rather than on a raw-ratio share. This tier is skipped
+    //    (→ tier-2) when two 401k-feeding jobs share an id, because then the engine's
+    //    OWN map already lost one job's split (it too is keyed by id) and the surviving
+    //    entry is the wrong total — the per-account re-split recovers it.
     if (usePerIncome) {
-        for (const inc of incomes) {
-            if (!(inc instanceof WorkIncome)) continue;
-            const split = userContributionsByIncome![inc.id];
-            if (!split) continue;
+        for (const split of Object.values(userContributionsByIncome!)) {
             userPreTax401k += split.preTax;
             userRoth401k += split.roth;
         }
@@ -265,7 +288,10 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
                 })
                 .filter(f => f.raw >= MIN_AMOUNT);
 
-            const totalRaw = feeders.reduce((sum, f) => sum + f.raw, 0);
+            // Build the raw-weight array once and reuse it for both the
+            // explains-the-deposit guard and the proportional split.
+            const rawWeights = feeders.map(f => f.raw);
+            const totalRaw = rawWeights.reduce((sum, w) => sum + w, 0);
             if (feeders.length === 0 || totalRaw < MIN_AMOUNT) {
                 // No income explains this deposit (dangling/edge) — fall back to the
                 // account's taxType so the deposited total is still represented.
@@ -277,7 +303,7 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
             // Distribute the trimmed deposit across feeders by raw weight (last feeder
             // absorbs the remainder so the shares sum to `deferral` exactly), then
             // split each feeder's share by its own raw pre-tax : Roth ratio.
-            const shares = distributeProportional(deferral, feeders.map(f => f.raw));
+            const shares = distributeProportional(deferral, rawWeights);
             feeders.forEach((f, i) => {
                 const rothPortion = shares[i] * (f.roth / f.raw);
                 userRoth401k += rothPortion;

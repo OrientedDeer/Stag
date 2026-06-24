@@ -4,6 +4,7 @@ import { DropdownInput } from '../../components/Layout/InputFields/DropdownInput
 import { CurrencyInput } from '../../components/Layout/InputFields/CurrencyInput';
 import { formatCurrency } from '../../components/Objects/Budget/budgetUtils';
 import { useModalAccessibility } from '../../hooks/useModalAccessibility';
+import { distributeProportional } from '../../utils/distribute';
 import {
     parseBalancesCSV,
     autoMatchAccount,
@@ -52,21 +53,14 @@ const ImportBalancesModal: React.FC<ImportBalancesModalProps> = ({ isOpen, onClo
     // (even split if they're all empty). Last account absorbs the rounding remainder.
     const splitByWeight = useCallback(
         (total: number, ids: string[]): Record<string, number> => {
-            const out: Record<string, number> = {};
-            if (ids.length === 0) return out;
+            if (ids.length === 0) return {};
             const raw = ids.map((id) => Math.abs(accountById.get(id)?.amount ?? 0));
             const sum = raw.reduce((a, b) => a + b, 0);
             const weights = sum > 0 ? raw : ids.map(() => 1);
-            const wsum = weights.reduce((a, b) => a + b, 0);
-            let allocated = 0;
+            const shares = distributeProportional(total, weights, round2);
+            const out: Record<string, number> = {};
             ids.forEach((id, i) => {
-                if (i === ids.length - 1) {
-                    out[id] = round2(total - allocated);
-                } else {
-                    const v = round2((total * weights[i]) / wsum);
-                    out[id] = v;
-                    allocated += v;
-                }
+                out[id] = shares[i];
             });
             return out;
         },

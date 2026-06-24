@@ -113,6 +113,46 @@ function mixedWageAndPassiveYear(): SimulationYear {
     };
 }
 
+/**
+ * Retired person with NO wages: $120k passive (non-earned) income only. The FICA
+ * earned base is $0, so FICA must not apply — this is the natural retiree case
+ * where the earned-wages gate yields a 0% FICA marginal without any age test.
+ */
+function passiveOnlyRetiredYear(): SimulationYear {
+    const passive = new PassiveIncome(
+        'p1', 'Rental', 120000, 'Annually',
+        'No', // NOT earned income
+        'Rental',
+        new Date('2025-01-01'), new Date('2025-12-31'),
+    );
+
+    return {
+        year: 2025,
+        incomes: [passive],
+        expenses: [],
+        accounts: [],
+        cashflow: {
+            totalIncome: 120000,
+            totalExpense: 0,
+            livingExpenses: 0,
+            discretionary: 0,
+            investedUser: 0,
+            investedMatch: 0,
+            totalInvested: 0,
+            bucketAllocations: 0,
+            bucketDetail: {},
+            withdrawals: 0,
+            withdrawalDetail: {},
+        },
+        taxDetails: {
+            fed: 20000, state: 0, fica: 0,
+            preTax: 0, insurance: 0, postTax: 0, capitalGains: 0,
+            withdrawalOrdinaryTax: 0, niit: 0,
+        },
+        logs: [],
+    };
+}
+
 describe('Tax Optimization FICA marginal rate uses EARNED income (regression)', () => {
     it('analyzeTaxSituation keeps the 6.2% SS marginal when wages < wage base but gross > base', () => {
         const result = analyzeTaxSituation(
@@ -180,16 +220,19 @@ describe('getCombinedMarginalRate surtax keys off earnedIncome (consistency with
     });
 });
 
-describe('analyzeTaxSituation and generateTaxProjections agree on FICA inclusion by age', () => {
-    // generateTaxProjections is age-aware (includesFICA = age < retirementAge).
-    // analyzeTaxSituation must use the SAME age test so the two surfaces don't
-    // disagree on a retired year that still carries residual wages — otherwise
-    // analyzeTaxSituation would tack a ~7.65pt FICA marginal onto a retired
-    // person's rate that generateTaxProjections (correctly) omits.
-    it('a retired year with residual wages excludes FICA from BOTH surfaces', () => {
+describe('analyzeTaxSituation and generateTaxProjections gate FICA on earned WAGES, not age', () => {
+    // FICA (Social Security + Medicare payroll tax) has NO age cap — it is charged
+    // on earned WAGES at any age. calculateFicaTax gates on getFicaTaxableBase
+    // (earned wages net of FICA exemptions), never on age. So both surfaces must
+    // include the FICA marginal whenever there are FICA-eligible earned wages,
+    // regardless of whether the person is past retirement age. Gating on age
+    // understated the marginal by ~7.65pt for anyone still earning W-2 wages past
+    // retirement (e.g. retire 65, still working at 70).
+    it('a RETIRED-age year WITH residual wages still includes FICA on BOTH surfaces', () => {
         const simYear = mixedWageAndPassiveYear(); // $100k residual wages in 2025
 
-        // Born 1955 → age 70 in 2025, retired → FICA must NOT be applied.
+        // Born 1955 → age 70 in 2025, past retirement (65). Wages are still FICA-
+        // taxable at 70, so the FICA marginal must NOT be dropped.
         const analysis = analyzeTaxSituation(
             simYear,
             retiredNoInflationAssumptions,
@@ -203,15 +246,37 @@ describe('analyzeTaxSituation and generateTaxProjections agree on FICA inclusion
 
         expect(projections).toHaveLength(1);
 
-        // Retired → no FICA marginal on either surface.
-        expect(analysis.marginalRate.fica).toBe(0);
+        // Earned base $100k < wage base → 6.2% SS + 1.45% Medicare = 7.65%, even
+        // though age 70 is past retirement.
+        expect(analysis.marginalRate.fica).toBeCloseTo(0.0765, 6);
 
-        // And the combined marginal rates must agree (both fed-only, since the
-        // state is Texas with no income tax and FICA is excluded for both).
+        // The combined marginal rates must agree across the two surfaces (both
+        // fed + the same 7.65% FICA; Texas has no state income tax).
         expect(analysis.marginalRate.combined).toBeCloseTo(projections[0].marginalRate, 6);
     });
 
-    it('a working year with residual wages includes FICA in BOTH surfaces', () => {
+    it('a RETIRED-age year WITHOUT wages excludes FICA on BOTH surfaces', () => {
+        const simYear = passiveOnlyRetiredYear(); // age 70, $0 wages, $120k passive
+
+        const analysis = analyzeTaxSituation(
+            simYear,
+            retiredNoInflationAssumptions,
+            createTaxState(),
+        );
+        const projections = generateTaxProjections(
+            [simYear],
+            retiredNoInflationAssumptions,
+            createTaxState(),
+        );
+
+        expect(projections).toHaveLength(1);
+
+        // No earned wages → earnedBase 0 → no FICA marginal on either surface.
+        expect(analysis.marginalRate.fica).toBe(0);
+        expect(analysis.marginalRate.combined).toBeCloseTo(projections[0].marginalRate, 6);
+    });
+
+    it('a WORKING-age year with residual wages includes FICA in BOTH surfaces', () => {
         const simYear = mixedWageAndPassiveYear();
 
         // Born 1980 → age 45 in 2025, working → FICA applies on both surfaces.

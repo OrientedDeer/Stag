@@ -179,26 +179,26 @@ export function analyzeTaxSituation(
 ): TaxAnalysis {
     const { year, incomes } = simulationYear;
     const age = year - getBirthYear(assumptions.milestones);
-    const retirementAge = getRetirementAge(assumptions.milestones);
 
     // Get gross income and deductions
     const grossIncome = TaxService.getGrossIncome(incomes, year);
     const preTaxDeductions = TaxService.getPreTaxExemptions(incomes, year, age);
-
-    // FICA only applies to working years — mirror generateTaxProjections so the
-    // two Tax-Optimization surfaces agree on FICA inclusion for a retired year
-    // that still carries residual wages (otherwise this surface would tack a
-    // ~7.65pt FICA marginal onto a retired rate the projection correctly omits).
-    const includesFICA = age < retirementAge;
 
     // FICA-eligible EARNED base for the marginal-rate FICA test, mirroring
     // calculateFicaTax: earned wages net of FICA exemptions. Passing this (rather
     // than letting earnedIncome default to grossIncome) keeps the 6.2% SS / 0.9%
     // surtax thresholds tied to wages, not total gross — so a still-working person
     // whose SS/pension/passive income pushes gross past a threshold while wages
-    // stay below it doesn't wrongly lose the SS marginal component. Only read when
-    // FICA is included (working years), so the retired tail skips the traversal.
-    const earnedBase = includesFICA ? getFicaTaxableBase(incomes, year) : 0;
+    // stay below it doesn't wrongly lose the SS marginal component.
+    const earnedBase = getFicaTaxableBase(incomes, year);
+
+    // FICA is gated on whether there are FICA-eligible earned WAGES, NOT on age.
+    // calculateFicaTax charges Social Security / Medicare payroll tax on the earned
+    // wage base with no age cap — someone still drawing W-2 wages past retirement
+    // age genuinely pays ~7.65% FICA. A retiree with zero wages → earnedBase 0 →
+    // no FICA marginal naturally. Gating on age understated the marginal by ~7.65pt
+    // for anyone working past retirement and biased 401k/bracket advice.
+    const includesFICA = earnedBase > 0;
 
     // Get tax amounts from simulation (already calculated)
     const federalTax = simulationYear.taxDetails.fed;
@@ -630,10 +630,13 @@ export function generateTaxProjections(
         // FICA-eligible EARNED base (wages net of FICA exemptions), mirroring
         // calculateFicaTax. Pass it explicitly so the 6.2% SS / 0.9% surtax
         // thresholds key off wages, not total gross — see analyzeTaxSituation.
-        // Only read when FICA is included (working years), so skip the two
-        // income traversals for the retired tail.
-        const includesFICA = age < retirementAge; // FICA only for working years
-        const earnedBase = includesFICA ? getFicaTaxableBase(simYear.incomes, simYear.year) : 0;
+        const earnedBase = getFicaTaxableBase(simYear.incomes, simYear.year);
+
+        // FICA is gated on FICA-eligible earned WAGES, NOT age — Social Security /
+        // Medicare payroll tax has no age cap, so wages earned past retirement age
+        // are still FICA-taxed (~7.65%). A retiree with no wages → earnedBase 0 →
+        // no FICA marginal. See analyzeTaxSituation.
+        const includesFICA = earnedBase > 0;
 
         const marginal = TaxService.getCombinedMarginalRate(
             incomeFromObjects,

@@ -1033,13 +1033,63 @@ export const CATEGORY_PALETTES: Record<IncomeCategory, string[]> = {
 	Windfall: PALETTE_STEPS.map(i => `bg-chart-Red-${i}`),
 };
 
+/**
+ * Deterministic 32-bit string hash (djb2-style, base-36). Identical to the one
+ * in simulationHash.ts but inlined here to keep this module free of an import
+ * cycle (simulationHash imports from this file). Used only to mint a STABLE id
+ * from an income's own content when the deserialized id is empty.
+ */
+function hashIncomeContent(str: string): string {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash) + str.charCodeAt(i);
+        hash = hash & hash; // 32-bit
+    }
+    return (hash >>> 0).toString(36);
+}
+
+/**
+ * Mint a deterministic, content-derived id for an income whose deserialized id
+ * is empty/missing (QR/JSON imports and very old backups can lack one). The id
+ * must be:
+ *  - DETERMINISTIC across reconstitutions of the SAME data, so getSimulationInputHash
+ *    (which serializes income.id) is identical across reloads — a fresh RANDOM id
+ *    would make the hash differ every load and trip a spurious staleness banner.
+ *  - UNIQUE across DISTINCT imported incomes, so every inc.id-keyed consumer
+ *    (CashflowDetailBuilder's per-income deferral map, RSU/ESPP lot ids) attributes
+ *    each income separately instead of one clobbering another on a shared "" key.
+ * It's derived from the income's identifying content (class + name + amount +
+ * frequency + dates), which differs between distinct jobs. Two byte-identical
+ * incomes that both lack an id still collide — a genuinely-ambiguous corner the
+ * consumer guards still backstop — but that's vanishingly rare and harmless
+ * (interchangeable rows), whereas the common "two different imported jobs" case
+ * is now resolved at the source.
+ */
+function deriveStableIncomeId(data: Record<string, unknown>): string {
+    const fingerprint = JSON.stringify([
+        data.className,
+        data.name,
+        data.amount,
+        data.frequency,
+        data.startDate,
+        data.end_date,
+    ]);
+    return `inc-${hashIncomeContent(fingerprint)}`;
+}
+
 export function reconstituteIncome(data: unknown): AnyIncome | null {
     if (!hasClassName(data)) return null;
 
     const startDate = parseDateRequired(data.startDate);
     const endDate = parseDate(data.end_date);
     const frequency = (data.frequency as IncomeFrequency) || 'Monthly';
-    const { id, name, amount } = extractBaseFields(data, 'Unnamed Income');
+    const base = extractBaseFields(data, 'Unnamed Income');
+    const { name, amount } = base;
+    // A missing/empty deserialized id (old backups, QR/JSON imports) would otherwise
+    // leave every imported income sharing id="" — corrupting inc.id-keyed consumers.
+    // Mint a deterministic, content-derived id so the same data reconstitutes to the
+    // same id (stable simulation hash) while distinct incomes stay unique.
+    const id = base.id || deriveStableIncomeId(data);
     const earned_income = (data.earned_income as "Yes" | "No") || "No";
     const startMilestoneId = data.startMilestoneId ? String(data.startMilestoneId) : undefined;
     const endMilestoneId = data.endMilestoneId ? String(data.endMilestoneId) : undefined;
