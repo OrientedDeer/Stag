@@ -827,6 +827,7 @@ function simulateOneYearWithNewEngine(
         brokerageLTCGFromGross,
         employerInflows: withdrawalState.employerInflows,
         userContributions: inflowResult.userContributions,
+        userContributionsByIncome: inflowResult.userContributionsByIncome,
     });
 
     // ------------------------------------------------------------------

@@ -301,6 +301,71 @@ describe('Sankey employee-deferral §415(c) trim (Issue 2)', () => {
         expect(detail.userPreTax401k + detail.userRoth401k).toBeCloseTo(depositedTotal, 2);
     });
 
+    it('attributes the per-job trimmed split when two jobs of DIFFERENT kinds share one over-limit 401k', () => {
+        // j1 defers 40k PRE-TAX, j2 defers 40k ROTH, both into ONE Traditional 401k.
+        // Combined 80k > 70k §415(c). The engine processes j1 first (40k pre-tax, under
+        // the limit), then j2 breaches and is trimmed to 30k. So the engine actually
+        // deposits 40k pre-tax + 30k Roth (the LAST job feeding the account eats the trim).
+        //
+        // The raw-ratio split (40:40 = 50/50) would wrongly show 35k pre-tax + 35k Roth.
+        // Attributing from the per-income TRIMMED deferral must reflect the engine's
+        // real 40k/30k split.
+        const account = new InvestedAccount('trad', 'Traditional 401k', 100000, 0, 0, 0, 'Traditional 401k');
+        const j1 = work401k('j1', 200000, 40000, 0, 0, 'trad');     // pre-tax
+        const j2 = work401k('j2', 200000, 0, 40000, 0, 'trad');     // roth
+
+        const ws = createWithdrawalState();
+        const inflowResult = processInflows([j1, j2], [account], assumptions, YEAR, ws, 0, undefined, 0, AGE, []);
+
+        // Engine deposited the trimmed total (70k) into the single account.
+        expect(inflowResult.userContributions.trad).toBeCloseTo(limit415c, 2);
+
+        const detail = buildCashflowDetail({
+            incomes: [j1, j2],
+            expenses: [],
+            accounts: [account],
+            insurance: 0,
+            year: YEAR,
+            brokerageLTCGFromGross: 0,
+            employerInflows: ws.employerInflows,
+            userContributions: inflowResult.userContributions,
+            // The per-income trimmed deferral the engine actually deposited.
+            userContributionsByIncome: inflowResult.userContributionsByIncome,
+        });
+
+        // j1's 40k pre-tax survives whole; j2's 40k Roth is trimmed to 30k.
+        expect(detail.userPreTax401k).toBeCloseTo(40000, 2);
+        expect(detail.userRoth401k).toBeCloseTo(30000, 2);
+        expect(detail.userPreTax401k + detail.userRoth401k).toBeCloseTo(limit415c, 2);
+    });
+
+    it('per-income split stays byte-identical to the raw-ratio path in the untrimmed common case', () => {
+        // No §415(c) breach. Two jobs, mixed kinds, into one account but under the limit:
+        // the per-income trimmed amounts equal the raw deferrals, so the result must match
+        // exactly what the raw-ratio path produces (common case unchanged).
+        const account = new InvestedAccount('trad', 'Traditional 401k', 100000, 0, 0, 0, 'Traditional 401k');
+        const j1 = work401k('j1', 200000, 20000, 0, 0, 'trad');     // pre-tax
+        const j2 = work401k('j2', 200000, 0, 5000, 0, 'trad');      // roth
+
+        const ws = createWithdrawalState();
+        const inflowResult = processInflows([j1, j2], [account], assumptions, YEAR, ws, 0, undefined, 0, AGE, []);
+
+        const detail = buildCashflowDetail({
+            incomes: [j1, j2],
+            expenses: [],
+            accounts: [account],
+            insurance: 0,
+            year: YEAR,
+            brokerageLTCGFromGross: 0,
+            employerInflows: ws.employerInflows,
+            userContributions: inflowResult.userContributions,
+            userContributionsByIncome: inflowResult.userContributionsByIncome,
+        });
+
+        expect(detail.userPreTax401k).toBeCloseTo(20000, 2);
+        expect(detail.userRoth401k).toBeCloseTo(5000, 2);
+    });
+
     it('falls back to raw per-income fields when userContributions is omitted (back-compat)', () => {
         // Callers that do not pass userContributions (e.g. legacy or non-trimmed
         // paths) keep the prior behavior: deferral summed from raw inc fields.

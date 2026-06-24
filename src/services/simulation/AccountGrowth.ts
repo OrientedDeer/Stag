@@ -20,6 +20,16 @@ export interface InflowResult {
      * breaks Net-Pay inflow=outflow when two jobs share one 401k over §415(c)).
      */
     userContributions: Record<string, number>;
+    /**
+     * The §415(c)-TRIMMED employee deferral the engine actually deposited, split
+     * pre-tax vs Roth PER INCOME (keyed by income id). The per-account total in
+     * userContributions can't say WHICH job ate the trim when two jobs feed one
+     * 401k over the limit — the trim falls on the income processed last, not on a
+     * raw-ratio share. The Sankey attributes its pre-tax/Roth deferral from this so
+     * the split matches the engine even in that corner. Each income's pre+roth sums
+     * to its real deposit; summed over incomes it equals userContributions.
+     */
+    userContributionsByIncome: Record<string, { preTax: number; roth: number }>;
     logs: string[];
 }
 
@@ -56,6 +66,12 @@ export function processInflows(
     // §415(c) trim under-fire (account over-funded above the combined limit).
     const contributionsToAccount: Record<string, number> = {};
 
+    // Per-INCOME §415(c)-trimmed deferral, split pre-tax vs Roth (keyed by income
+    // id). The per-account total can't say which income ate the trim when several
+    // jobs feed one 401k over the limit; the Sankey reads this to attribute the
+    // pre-tax/Roth deferral the way the engine actually deposited it.
+    const contributionsByIncome: Record<string, { preTax: number; roth: number }> = {};
+
     // 5a. Payroll & Match
     incomesWithEarningsTest.forEach(inc => {
         if (inc instanceof WorkIncome && inc.matchAccountId) {
@@ -69,7 +85,9 @@ export function processInflows(
 
             // preTax401k/roth401k are per pay period; getProratedAnnual converts to the
             // annual deposit (and already folds in the active-period multiplier).
-            const selfContribution = inc.getProratedAnnual(inc.preTax401k + inc.roth401k, year);
+            const annualPreTax = inc.getProratedAnnual(inc.preTax401k, year);
+            const annualRoth = inc.getProratedAnnual(inc.roth401k, year);
+            const selfContribution = annualPreTax + annualRoth;
             let employerMatch = inc.getEffectiveAnnualEmployerMatch() * activeMultiplier;
 
             // Bug #11: enforce the §415(c) combined annual-additions limit
@@ -119,6 +137,20 @@ export function processInflows(
 
             // Track POSITIVE additions separately for the §415(c) running total.
             contributionsToAccount[inc.matchAccountId] = currentSelf + trimmedSelf;
+
+            // Record this income's TRIMMED deferral, split by its own raw
+            // pre-tax : Roth ratio (preserving the trimmed total). An income that
+            // defers only one kind is unchanged; this is what the Sankey reads so
+            // the pre-tax/Roth split matches the income the engine actually trimmed.
+            if (trimmedSelf >= 0) {
+                const rothPortion = selfContribution > 0
+                    ? trimmedSelf * (annualRoth / selfContribution)
+                    : 0;
+                contributionsByIncome[inc.id] = {
+                    preTax: trimmedSelf - rothPortion,
+                    roth: rothPortion,
+                };
+            }
         }
     });
 
@@ -239,6 +271,7 @@ export function processInflows(
         discretionaryCash,
         deficitDebtPayment,
         userContributions: contributionsToAccount,
+        userContributionsByIncome: contributionsByIncome,
         logs
     };
 }

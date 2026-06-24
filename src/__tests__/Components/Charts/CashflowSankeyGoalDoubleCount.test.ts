@@ -97,6 +97,53 @@ describe('CashflowDetailBuilder — shared goal fund double-count', () => {
         expect(detail.expensesByCategory['Car (goal)']).toBeCloseTo(3000, 5);
     });
 
+    it('weights each shared-fund goal node by its OWN months-active window (corner)', () => {
+        // Two goals share one fund but have DIFFERENT active windows this year:
+        //  - Car: active all 12 months → $3000 set-aside this year.
+        //  - Boat: a targetDate goal whose target is THIS January, so it has 0 active
+        //    saving months this year (the lump is due, nothing more is set aside).
+        // The fund total counts Car's $3000 only. The per-goal split must give Car the
+        // whole $3000 and Boat $0 — NOT a monthly-weighted slice to the inactive Boat.
+        const sharedFund = 'fund-shared';
+        const goalCar = makeGoal('goal-car', 'Car', sharedFund); // recurring, 12 mo active
+
+        // Boat: targetDate with the target in January of YEAR → 0 active months this year.
+        const goalBoat = new OtherExpense(
+            'goal-boat',
+            'Boat',
+            6000,
+            'Monthly',
+            new Date(YEAR - 1, 0, 1),     // started a year ago
+        );
+        goalBoat.goalType = 'targetDate';
+        goalBoat.endDate = new Date(YEAR, 0, 1); // target January of YEAR → 0 months active
+        goalBoat.goalAccountId = sharedFund;
+
+        const expenses = [goalCar, goalBoat];
+
+        const engineSetAside = getGoalFundAnnualSetAside(expenses, sharedFund, YEAR)!;
+        expect(engineSetAside).toBeCloseTo(3000, 5); // Car's $3000 only; Boat contributes 0
+
+        const detail = buildCashflowDetail({
+            incomes: [],
+            expenses,
+            accounts: [],
+            insurance: 0,
+            year: YEAR,
+            brokerageLTCGFromGross: 0,
+        });
+
+        // Car gets its exact own set-aside ($3000); the inactive Boat gets $0 and its
+        // (zero) node is dropped. The per-goal nodes sum to the engine total exactly.
+        expect(detail.expensesByCategory['Car (goal)']).toBeCloseTo(3000, 5);
+        expect(detail.expensesByCategory['Boat (goal)']).toBeUndefined();
+
+        const goalCategoryTotal = Object.entries(detail.expensesByCategory)
+            .filter(([cat]) => cat.endsWith('(goal)'))
+            .reduce((sum, [, amt]) => sum + amt, 0);
+        expect(goalCategoryTotal).toBeCloseTo(engineSetAside, 5);
+    });
+
     it('keeps separate funds independent (no cross-contamination)', () => {
         const goalCar = makeGoal('goal-car', 'Car', 'fund-car');
         const goalBoat = makeGoal('goal-boat', 'Boat', 'fund-boat');

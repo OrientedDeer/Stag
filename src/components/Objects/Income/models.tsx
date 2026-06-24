@@ -2,13 +2,13 @@ import { TaxType } from "../../Objects/Accounts/models";
 import { AssumptionsState } from '../Assumptions/AssumptionsContext';
 import { get401kLimit, getHSALimit } from '../../../data/ContributionLimits';
 import {
-  calculateFERSBasicBenefit,
   calculateCSRSBasicBenefit,
   getFERSCOLA,
   getCSRSCOLA,
   checkFERSEligibility,
   checkCSRSEligibility,
   calculateFERSSupplement,
+  getDisplayedFERSBenefit,
 } from '../../../data/PensionData';
 import { parseDate, parseDateRequired, hasClassName, extractBaseFields, getActiveWindowMultiplier, isWindowActiveInCurrentMonth } from "../modelUtils";
 
@@ -775,23 +775,18 @@ export class FERSPensionIncome extends BaseIncome {
   /**
    * Calculate the FERS pension benefit
    * Called by SimulationEngine when retirement is reached
+   *
+   * Delegates to getDisplayedFERSBenefit so the simulation and the displayed
+   * estimate share a single source of truth for the basic-benefit + MRA+10
+   * reduction math (no risk of one drifting from the other).
    */
   calculateBenefit(): number {
-    const baseBenefit = calculateFERSBasicBenefit(
+    return getDisplayedFERSBenefit(
       this.yearsOfService,
       this.high3Salary,
-      this.retirementAge
-    );
-
-    // Check for early retirement reduction (MRA+10)
-    const eligibility = checkFERSEligibility(
       this.retirementAge,
-      this.yearsOfService,
       this.birthYear
     );
-
-    const reductionFactor = 1 - (eligibility.reductionPercent / 100);
-    return baseBenefit * reductionFactor;
   }
 
   /**

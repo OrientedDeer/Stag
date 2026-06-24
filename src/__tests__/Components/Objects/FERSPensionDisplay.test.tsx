@@ -5,7 +5,11 @@ import { FERSPensionFields as CardFERSPensionFields }
     from '../../../components/Objects/Income/card/FERSPensionFields';
 import { FERSPensionFields as FormFERSPensionFields }
     from '../../../components/Objects/Income/FERSPensionFields';
-import { getDisplayedFERSBenefit } from '../../../data/PensionData';
+import {
+    getDisplayedFERSBenefit,
+    calculateFERSBasicBenefit,
+    checkFERSEligibility,
+} from '../../../data/PensionData';
 import { getInitialFormState } from '../../../components/Objects/Income/incomeFormTypes';
 import { FERSPensionIncome } from '../../../components/Objects/Income/models';
 
@@ -88,6 +92,57 @@ describe('FERS pension display estimate (Issue 1: MRA+10 reduction)', () => {
         expect(getByText('$15,000/yr')).toBeTruthy();
         expect(queryByText('$20,000/yr')).toBeNull();
     });
+});
+
+describe('getDisplayedFERSBenefit === FERSPensionIncome.calculateBenefit() (drift guard)', () => {
+    // calculateBenefit() delegates to getDisplayedFERSBenefit so the sim and the
+    // displayed estimate share one source of truth. These cases recompute the
+    // expected initial benefit INDEPENDENTLY from the primitive helpers
+    // (basic-benefit × MRA+10 reduction) so any future divergence — on either the
+    // model method or the display helper — fails loudly here.
+    const cases = [
+        // [yearsOfService, high3, retirementAge, birthYear, label]
+        [20, 100_000, 57, 1970, 'MRA+10, 25% reduction (57 → 5yr under 62)'],
+        [10, 80_000, 57, 1970, 'MRA+10, minimum 10yr service'],
+        [30, 120_000, 57, 1970, 'MRA with 30yr, unreduced'],
+        [25, 90_000, 60, 1970, 'age 60 with 20+yr, unreduced'],
+        [25, 90_000, 62, 1965, 'age 62 with 20+yr, 1.1% multiplier'],
+        [5, 70_000, 62, 1960, 'age 62 with exactly 5yr, 1.0% multiplier'],
+        [15, 85_000, 56, 1960, 'older MRA (1960 → 56), MRA+10 reduction'],
+        [12, 60_000, 56, 1955, 'older MRA (1955 → 56), reduced'],
+        [22, 110_000, 64, 1955, 'past 62 with 20+yr, 1.1% multiplier'],
+        [8, 75_000, 50, 1970, 'not eligible (age 50, 8yr) — eligibility false, 0% reduction'],
+    ] as const;
+
+    it.each(cases)(
+        'matches across the input matrix: yos=%d high3=%d age=%d birth=%d (%s)',
+        (yearsOfService, high3, retirementAge, birthYear) => {
+            const income = new FERSPensionIncome(
+                'fers-matrix',
+                'FERS',
+                yearsOfService,
+                high3,
+                retirementAge,
+                birthYear
+            );
+
+            const displayed = getDisplayedFERSBenefit(
+                yearsOfService,
+                high3,
+                retirementAge,
+                birthYear
+            );
+
+            // Independent reference: basic benefit × MRA+10 reduction factor.
+            const baseBenefit = calculateFERSBasicBenefit(yearsOfService, high3, retirementAge);
+            const { reductionPercent } = checkFERSEligibility(retirementAge, yearsOfService, birthYear);
+            const expected = baseBenefit * (1 - reductionPercent / 100);
+
+            expect(displayed).toBeCloseTo(expected, 6);
+            expect(income.calculateBenefit()).toBeCloseTo(expected, 6);
+            expect(income.calculateBenefit()).toBeCloseTo(displayed, 6);
+        }
+    );
 });
 
 describe('FERS COLA tooltip (Issue 2: all three bands + age-62 gate)', () => {

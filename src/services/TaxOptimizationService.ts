@@ -12,6 +12,7 @@ import { TaxParameters } from '../data/TaxData';
 import { AnyIncome, WorkIncome } from '../components/Objects/Income/models';
 import { InvestedAccount } from '../components/Objects/Accounts/models';
 import * as TaxService from '../components/Objects/Taxes/TaxService';
+import { getFicaTaxableBase } from '../components/Objects/Taxes/taxService/ficaTax';
 import {
     get401kLimit,
     getHSALimit,
@@ -189,10 +190,7 @@ export function analyzeTaxSituation(
     // surtax thresholds tied to wages, not total gross — so a still-working person
     // whose SS/pension/passive income pushes gross past a threshold while wages
     // stay below it doesn't wrongly lose the SS marginal component.
-    const earnedBase = Math.max(
-        0,
-        TaxService.getEarnedIncome(incomes, year) - TaxService.getFicaExemptions(incomes, year)
-    );
+    const earnedBase = getFicaTaxableBase(incomes, year);
 
     // Get tax amounts from simulation (already calculated)
     const federalTax = simulationYear.taxDetails.fed;
@@ -624,11 +622,10 @@ export function generateTaxProjections(
         // FICA-eligible EARNED base (wages net of FICA exemptions), mirroring
         // calculateFicaTax. Pass it explicitly so the 6.2% SS / 0.9% surtax
         // thresholds key off wages, not total gross — see analyzeTaxSituation.
-        const earnedBase = Math.max(
-            0,
-            TaxService.getEarnedIncome(simYear.incomes, simYear.year)
-                - TaxService.getFicaExemptions(simYear.incomes, simYear.year)
-        );
+        // Only read when FICA is included (working years), so skip the two
+        // income traversals for the retired tail.
+        const includesFICA = age < retirementAge; // FICA only for working years
+        const earnedBase = includesFICA ? getFicaTaxableBase(simYear.incomes, simYear.year) : 0;
 
         const marginal = TaxService.getCombinedMarginalRate(
             incomeFromObjects,
@@ -636,7 +633,7 @@ export function generateTaxProjections(
             taxState,
             simYear.year,
             assumptions,
-            age < retirementAge, // FICA only for working years
+            includesFICA,
             earnedBase
         );
 

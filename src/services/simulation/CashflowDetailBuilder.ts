@@ -14,7 +14,6 @@ import {
     CLASS_TO_CATEGORY,
     isLongTermGoal,
     getGoalFundAnnualSetAside,
-    getGoalMonthlySetAside,
 } from "../../components/Objects/Expense/models";
 import { AnyAccount, InvestedAccount } from "../../components/Objects/Accounts/models";
 import {
@@ -61,6 +60,15 @@ interface BuildCashflowDetailInput {
      * overstates the Sankey's deferral when two jobs share one 401k beyond §415(c).
      */
     userContributions?: Record<string, number>;
+    /**
+     * The §415(c)-TRIMMED employee deferral split pre-tax vs Roth PER INCOME
+     * (InflowResult.userContributionsByIncome, keyed by income id). When present,
+     * the pre-tax/Roth deferral is summed straight from these per-income amounts —
+     * exact even when several jobs feed one over-limit 401k and the trim lands on a
+     * specific job rather than a raw-ratio share. Falls back to the per-account
+     * userContributions redistribution (then to raw fields) when omitted.
+     */
+    userContributionsByIncome?: Record<string, { preTax: number; roth: number }>;
 }
 
 /**
@@ -71,7 +79,7 @@ interface BuildCashflowDetailInput {
  * to re-derive it (and drift from the sim's actual values).
  */
 export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDetail {
-    const { incomes, expenses, accounts, insurance, year, brokerageLTCGFromGross, employerInflows, userContributions } = input;
+    const { incomes, expenses, accounts, insurance, year, brokerageLTCGFromGross, employerInflows, userContributions, userContributionsByIncome } = input;
 
     const incomeBySource: CashflowIncomeSource[] = [];
     let userPreTax401k = 0;
@@ -88,10 +96,11 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
             if (amount >= MIN_AMOUNT) {
                 incomeBySource.push({ name: inc.name, amount, kind: 'work' });
             }
-            // When the sim's actual deposited deferral is available (userContributions),
-            // derive the deferral from it below instead of summing raw per-income fields,
-            // which ignore the §415(c) trim. Otherwise fall back to the raw recompute.
-            if (!userContributions) {
+            // When the sim's actual deposited deferral is available (per-income
+            // userContributionsByIncome, or the per-account userContributions),
+            // derive the deferral from it below instead of summing raw per-income
+            // fields, which ignore the §415(c) trim. Otherwise fall back to raw.
+            if (!userContributions && !userContributionsByIncome) {
                 userPreTax401k += inc.getProratedAnnual(inc.preTax401k, year);
                 userRoth401k += inc.getProratedAnnual(inc.roth401k, year);
             }
@@ -167,8 +176,23 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
         }
     }
 
-    // Likewise for the employee deferral: when the deposited (already §415(c)-trimmed)
-    // amount is available, split it pre-tax/Roth so the Sankey's Net-Pay deferral
+    // Employee-deferral attribution, most-exact first:
+    //
+    // 1. PER-INCOME (userContributionsByIncome): the §415(c)-trimmed deferral already
+    //    split pre-tax/Roth per income by the engine — sum it straight. Exact even
+    //    when several jobs feed one over-limit 401k and the trim lands on a SPECIFIC
+    //    job (the last processed) rather than on a raw-ratio share of the account.
+    if (userContributionsByIncome) {
+        for (const inc of incomes) {
+            if (!(inc instanceof WorkIncome)) continue;
+            const split = userContributionsByIncome[inc.id];
+            if (!split) continue;
+            userPreTax401k += split.preTax;
+            userRoth401k += split.roth;
+        }
+    } else if (userContributions) {
+    // 2. PER-ACCOUNT (userContributions): only the trimmed TOTAL per destination
+    // account is known, so split it pre-tax/Roth so the Sankey's Net-Pay deferral
     // matches the deposit even when two jobs share one 401k over the limit.
     //
     // The deposited TOTAL is keyed by DESTINATION account, but a single income can
@@ -180,19 +204,28 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
     // deferral, preserving the trimmed total) and split each income's share by its OWN
     // raw inc.preTax401k : inc.roth401k. An income that defers only one kind is
     // unchanged; a deposit with no matching income falls back to the account taxType.
-    if (userContributions) {
+        // Pre-bucket the WorkIncome feeders by destination account ONCE (and the
+        // accounts by id) so the per-deposit loop is a Map lookup instead of an
+        // incomes.filter() + accounts.find() per deposit.
+        const feedersByAccount = new Map<string, WorkIncome[]>();
+        for (const inc of incomes) {
+            if (!(inc instanceof WorkIncome) || !inc.matchAccountId) continue;
+            const bucket = feedersByAccount.get(inc.matchAccountId);
+            if (bucket) bucket.push(inc);
+            else feedersByAccount.set(inc.matchAccountId, [inc]);
+        }
+        const accountById = new Map(accounts.map(a => [a.id, a]));
+
         for (const [accountId, deferral] of Object.entries(userContributions)) {
             if (deferral < MIN_AMOUNT) continue;
-            const account = accounts.find(a => a.id === accountId);
+            const account = accountById.get(accountId);
             const accountIsRoth = account instanceof InvestedAccount &&
                 (account.taxType === 'Roth 401k' || account.taxType === 'Roth IRA');
 
             // Incomes deferring into this account, with their RAW (untrimmed) annual
             // pre-tax/Roth split. The deposited total is shared in proportion to each
             // income's raw deferral; within a share, kinds split by that raw ratio.
-            const feeders = incomes
-                .filter((inc): inc is WorkIncome =>
-                    inc instanceof WorkIncome && inc.matchAccountId === accountId)
+            const feeders = (feedersByAccount.get(accountId) ?? [])
                 .map(inc => {
                     const pre = inc.getProratedAnnual(inc.preTax401k, year);
                     const roth = inc.getProratedAnnual(inc.roth401k, year);
@@ -236,16 +269,16 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
 
     const expensesByCategory: Record<string, number> = {};
     // getGoalFundAnnualSetAside SUMS the set-aside across EVERY goal sharing a
-    // fund, so the FUND total must be counted once — never once per goal.
-    // SimulationEngine does exactly this (its per-fund goalFundCredits map, keyed
-    // by accountId), so living expenses count the set-aside once. We still want
-    // EACH goal the user created to keep its own labeled node ("Car (goal)",
-    // "Boat (goal)") in the chart, so the fund's single total is SPLIT across the
-    // goals that share it — the per-goal amounts sum to the fund total exactly
-    // once. Split weight is each goal's monthly set-aside; this is exact when the
-    // sharing goals have the same active window (the common case) and an
-    // approximation only when their start/end windows differ (the months-active
-    // factor that would make it exact isn't exported from the Expense models).
+    // fund (each goal's monthly set-aside × that goal's own months-active), so the
+    // FUND total must be counted once — never once per goal. SimulationEngine does
+    // exactly this (its per-fund goalFundCredits map, keyed by accountId), so living
+    // expenses count the set-aside once. We still want EACH goal the user created to
+    // keep its own labeled node ("Car (goal)", "Boat (goal)") in the chart, so the
+    // fund's total is split across the sharing goals by giving each goal its OWN
+    // exact annual set-aside — getGoalFundAnnualSetAside on a single-goal array. The
+    // fund total IS the sum of those per-goal set-asides, so the per-goal nodes sum
+    // to the fund total with no weighting drift, and a goal not funding this year
+    // (months-active = 0) correctly contributes $0 instead of siphoning a slice.
     const emittedGoalFunds = new Set<string>();
     for (const exp of expenses) {
         if (exp instanceof MortgageExpense) continue;
@@ -260,29 +293,21 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
             const fundTotal = getGoalFundAnnualSetAside(expenses, exp.goalAccountId, year) ?? 0;
             if (fundTotal < MIN_AMOUNT) continue;
 
-            // Goals sharing this fund (in expense order). One goal → it gets the
-            // whole fund total. Several → split proportionally by monthly set-aside.
+            // Goals sharing this fund (in expense order), filtered ONCE and reused.
+            // getGoalFundAnnualSetAside already ran this same predicate internally;
+            // filtering once here keeps the per-goal split provably consistent with
+            // the fund total it returned (and avoids a second full pass).
             const sharingGoals = expenses.filter(
                 e => isLongTermGoal(e) && e.goalAccountId === exp.goalAccountId,
             );
-            const totalWeight = sharingGoals.reduce(
-                (sum, g) => sum + getGoalMonthlySetAside(g),
-                0,
-            );
 
-            let allocated = 0;
-            sharingGoals.forEach((goal, i) => {
-                // Distribute the fund's single total by each goal's weight; give the
-                // last sharing goal the remainder so the per-goal nodes sum to
-                // fundTotal exactly (no rounding drift). A zero-weight goal gets $0.
-                const isLast = i === sharingGoals.length - 1;
-                const share = isLast
-                    ? fundTotal - allocated
-                    : totalWeight > 0
-                        ? fundTotal * (getGoalMonthlySetAside(goal) / totalWeight)
-                        : 0;
-                allocated += share;
-                if (share < MIN_AMOUNT) return;
+            sharingGoals.forEach(goal => {
+                // Each goal's EXACT own annual set-aside: monthly × that goal's
+                // months-active this year, via getGoalFundAnnualSetAside on a
+                // single-goal array (which applies the months-active factor). These
+                // sum to fundTotal by construction — no weighting approximation.
+                const share = getGoalFundAnnualSetAside([goal], exp.goalAccountId, year) ?? 0;
+                if (share < MIN_AMOUNT) return; // an inactive goal (0 months) is dropped
                 // Each goal keeps its own labeled node ("Car (goal)") — clearer in
                 // the chart than a generic "Goals" bucket, and the "(goal)" suffix
                 // avoids colliding with a regular expense of the same name.
