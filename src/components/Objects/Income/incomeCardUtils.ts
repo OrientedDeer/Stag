@@ -10,6 +10,7 @@ import {
     WindfallIncome,
     INCOME_COLORS_BACKGROUND,
     IncomeFrequency,
+    isActiveRSUGrant,
 } from './models';
 import { formatCompactCurrency } from '../../../tabs/Future/tabs/FutureUtils';
 import { get401kLimit, getHSALimit } from '../../../data/ContributionLimits';
@@ -134,9 +135,11 @@ export function computeContributionWarnings(
  * producing a misleading $0 projection.
  *
  * Returns a user-facing required-field message, or null when the config is
- * valid (no vesting schedule, or a linked account that carries a price). Pure
- * so it's testable. `0` counts as unset, matching the account card's
- * `currentSharePrice ?? derived` convention.
+ * valid (no vesting schedule, no fixed start date, or a linked account that
+ * carries a price). Pure so it's testable. `0` counts as unset, matching the
+ * account card's `currentSharePrice ?? derived` convention. A grant with no
+ * startDate (milestone-started) returns null: the engine recognizes no vest
+ * without one, so the $0 is the start date, not the price.
  */
 export function getRSUPriceValidationMessage(
     income: AnyIncome,
@@ -144,7 +147,13 @@ export function getRSUPriceValidationMessage(
 ): string | null {
     if (!(income instanceof WorkIncome)) return null;
     // Only validate once vesting is actually configured.
-    if (income.rsuVestingSchedule === 'NONE' || income.rsuGrantShares <= 0) return null;
+    if (!isActiveRSUGrant(income)) return null;
+
+    // A milestone-started grant has no fixed startDate, and the engine recognizes
+    // NO vest without one (RSUVesting: `if (!inc.startDate) return`), so a $0
+    // projection there is the missing start date, not the missing price — adding a
+    // price wouldn't help. Don't misdiagnose it with a "price required" banner.
+    if (!income.startDate) return null;
 
     // No linked account is a separate condition the RSU section already flags.
     if (!income.rsuAccountId) return null;

@@ -32,7 +32,7 @@ import { decrypt, encrypt, EncryptedBackup } from '../src/services/encryption/Cr
 import { parseBalancesCSV } from '../src/services/simplefinBalances';
 import { applyTransactions, applyBalances, MergeBlob } from '../src/services/backupMerge';
 import { csvToTransactions } from './csvToTransactions';
-import { flagReasonCounts, serializeBlob, stagVerbose } from './importShared';
+import { env, flagReasonCounts, MAX_BACKUP_SIZE, serializeBlob, stagVerbose } from './importShared';
 
 // Re-exported so the test can pull the shared parser/helpers through this module
 // too. The implementations live in side-effect-free modules (csvToTransactions.ts,
@@ -40,25 +40,12 @@ import { flagReasonCounts, serializeBlob, stagVerbose } from './importShared';
 export { csvToTransactions };
 export { flagReasonCounts, serializeBlob };
 
-const MAX_BACKUP_SIZE = 5 * 1024 * 1024; // mirror the browser / backend cap
-
 // Opt-in: the detailed dumps (account names, balances, SimpleFIN keys, the
 // per-user doc id) are sensitive and would otherwise land in journald/cron-mail/CI
 // logs in cleartext — contradicting the zero-knowledge posture. Default to counts
 // + flag-reason breakdown only; STAG_VERBOSE=1 to surface detail when debugging.
 const VERBOSE = stagVerbose();
 
-function env(name: string): string {
-    const v = process.env[name];
-    if (!v) {
-        // Under the test runner the module is imported only for its pure helpers
-        // (csvToTransactions); the live config/run path never executes, so don't
-        // require the CouchDB env vars just to import. vitest sets VITEST.
-        if (process.env.VITEST) return '';
-        throw new Error(`Missing required env var: ${name}`);
-    }
-    return v;
-}
 function optEnv(name: string): string | undefined {
     return process.env[name] || undefined;
 }

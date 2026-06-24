@@ -1,5 +1,5 @@
 import { AnyAccount, RSUAccount, RSULot } from "../../components/Objects/Accounts/models";
-import { AnyIncome, WorkIncome, PassiveIncome, getIncomeActiveMultiplier } from "../../components/Objects/Income/models";
+import { AnyIncome, WorkIncome, PassiveIncome, getIncomeActiveMultiplier, isActiveRSUGrant } from "../../components/Objects/Income/models";
 
 export interface RSUVestingResult {
     /**
@@ -78,7 +78,7 @@ export function processRSUVesting(
 
     incomes.forEach(inc => {
         if (!(inc instanceof WorkIncome)) return;
-        if (inc.rsuVestingSchedule === 'NONE' || inc.rsuGrantShares <= 0) return;
+        if (!isActiveRSUGrant(inc)) return;
         if (!inc.rsuAccountId) return;
         if (!inc.startDate) return;
 

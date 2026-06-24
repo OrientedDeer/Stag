@@ -14,9 +14,7 @@ import {
     makeTransaction,
     MergeBlob,
 } from '../src/services/backupMerge';
-import { serializeBlob } from './importShared';
-
-const MAX_BACKUP_SIZE = 5 * 1024 * 1024; // mirror the browser / backend cap
+import { MAX_BACKUP_SIZE, serializeBlob } from './importShared';
 
 async function run(): Promise<void> {
     // --- secrets (TODO: load from your secret store, never hard-code) ---

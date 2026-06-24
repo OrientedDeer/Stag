@@ -27,7 +27,7 @@ import process from 'node:process';
 import { decrypt, encrypt, EncryptedBackup } from '../src/services/encryption/CryptoService';
 import { applyTransactions, MergeBlob } from '../src/services/backupMerge';
 import { csvToTransactions } from './csvToTransactions';
-import { serializeBlob } from './importShared';
+import { env, MAX_BACKUP_SIZE, serializeBlob } from './importShared';
 
 // Re-exported so callers (and the test) can pull the shared parser/serializer
 // through this module. The implementations live in side-effect-free modules
@@ -35,14 +35,6 @@ import { serializeBlob } from './importShared';
 // those files' headers for why they must be side-effect-free.
 export { csvToTransactions };
 export { serializeBlob };
-
-const MAX_BACKUP_SIZE = 5 * 1024 * 1024; // mirror the browser / backend cap
-
-function env(name: string): string {
-    const v = process.env[name];
-    if (!v) throw new Error(`Missing required env var: ${name}`);
-    return v;
-}
 
 async function run(): Promise<void> {
     const pass = env('STAG_PASS');
@@ -63,7 +55,7 @@ async function run(): Promise<void> {
     const reEncrypted = JSON.stringify(await encrypt(serializeBlob(blob), pass));
     const size = Buffer.byteLength(reEncrypted, 'utf8');
     if (size > MAX_BACKUP_SIZE) {
-        throw new Error(`Encrypted blob is ${(size / 1024 / 1024).toFixed(2)} MB; exceeds 5 MB cap — refusing to write.`);
+        throw new Error(`Encrypted blob ${(size / 1048576).toFixed(2)} MB exceeds 5 MB cap — refusing to write.`);
     }
     writeFileSync(outPath, reEncrypted);
 

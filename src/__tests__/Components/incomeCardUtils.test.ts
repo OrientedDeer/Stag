@@ -233,12 +233,17 @@ describe('getRSUPriceValidationMessage', () => {
         rsuVestingSchedule: 'NONE' | 'cliff-1yr' | 'graded-3yr' | 'graded-4yr';
         rsuGrantShares: number;
         rsuAccountId: string | null;
+        startDate: Date | undefined;
     }> = {}): WorkIncome {
         const w = makeWorkIncome();
         w.rsuVestingSchedule = overrides.rsuVestingSchedule ?? 'cliff-1yr';
         w.rsuGrantShares = overrides.rsuGrantShares ?? 1000;
         // Use `in` so an explicit `rsuAccountId: null` isn't clobbered by ??.
         w.rsuAccountId = 'rsuAccountId' in overrides ? overrides.rsuAccountId ?? null : 'rsu-acct-1';
+        // A fixed start date is the grant date the engine vests against. Default to
+        // one so the price-required banner can actually fire; tests that exercise the
+        // milestone-started (no startDate) path pass `startDate: undefined`.
+        w.startDate = 'startDate' in overrides ? overrides.startDate : new Date(2024, 0, 1);
         return w;
     }
 
@@ -284,6 +289,28 @@ describe('getRSUPriceValidationMessage', () => {
     it('fires when the linked account has a $0 share price (0 counts as unset)', () => {
         const w = makeRSUWorkIncome();
         expect(getRSUPriceValidationMessage(w, [makeRSUAccount(0)])).not.toBeNull();
+    });
+
+    it('still fires for a blank price when the income HAS a fixed start date (regression)', () => {
+        // The banner is only legitimate when a missing price is genuinely the cause —
+        // i.e. the engine WOULD vest (startDate present) but can't value it.
+        const w = makeRSUWorkIncome({ startDate: new Date(2024, 0, 1) });
+        const msg = getRSUPriceValidationMessage(w, [makeRSUAccount(undefined)]);
+        expect(msg).not.toBeNull();
+        expect(msg).toContain('Current Share Price');
+    });
+
+    it('returns null for a milestone-started grant (no startDate) even with a blank price', () => {
+        // Milestone-started WorkIncome has no fixed startDate, so the engine
+        // recognizes NO vest at all (RSUVesting: `if (!inc.startDate) return`).
+        // The $0 projection there is the missing start date, not the price —
+        // a banner saying "set a price, otherwise $0" would misdiagnose the cause.
+        const w = makeRSUWorkIncome({ startDate: undefined });
+        expect(w.startDate).toBeUndefined();
+        expect(w.rsuGrantShares).toBeGreaterThan(0);
+        expect(getRSUPriceValidationMessage(w, [makeRSUAccount(undefined)])).toBeNull();
+        // ...and a $0 price is likewise not the cause for a milestone-started grant.
+        expect(getRSUPriceValidationMessage(w, [makeRSUAccount(0)])).toBeNull();
     });
 
     it('passes once a positive share price is set on the linked account', () => {

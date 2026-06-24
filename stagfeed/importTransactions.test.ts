@@ -34,7 +34,10 @@ import {
     flagReasonCounts as flagReasonCountsCouch,
     bumpLastImport,
 } from './couchImport';
-import { flagReasonCounts as flagReasonCountsFile } from './importBalances';
+import {
+    flagReasonCounts as flagReasonCountsFile,
+    serializeBlob as serializeBlobBalances,
+} from './importBalances';
 import { csvToTransactions as csvToTransactionsShared } from './csvToTransactions';
 import {
     flagReasonCounts as flagReasonCountsShared,
@@ -72,9 +75,13 @@ it('both importers re-export the single shared csvToTransactions', () => {
     expect(csvToTransactionsCouch).toBe(csvToTransactionsShared);
 });
 
-it('both importers re-export the single shared serializeBlob', () => {
+it('all three blob-writing importers re-export the single shared serializeBlob', () => {
     expect(serializeBlobFile).toBe(serializeBlobShared);
     expect(serializeBlobCouch).toBe(serializeBlobShared);
+    // The balances importer used to re-serialize with a bare JSON.stringify(blob)
+    // (no jsonDateReplacer) — latent issue #73. It must now route through the same
+    // shared helper as the others.
+    expect(serializeBlobBalances).toBe(serializeBlobShared);
 });
 
 it('both balance importers re-export the single shared flagReasonCounts', () => {
@@ -120,6 +127,38 @@ describe('serializeBlob — transaction date round-trip (issue #73)', () => {
         expect(byId['tx-1'].getDate()).toBe(2);
         expect(byId['tx-2'].getMonth()).toBe(5); // July 1 slipped back into June
         expect(byId['tx-2'].getDate()).toBe(30);
+    });
+});
+
+describe('importBalances serializeBlob — date-only Date round-trip (latent issue #73)', () => {
+    // The balances importer re-encrypts the merged blob through its re-exported
+    // serializeBlob(). A bare JSON.stringify(blob) would default a date-only Date to
+    // UTC toISOString(); at local-midnight on a UTC+10 runner that reports the PRIOR
+    // day. This proves the balances path applies jsonDateReplacer (emits local
+    // 'YYYY-MM-DD') so the day never shifts.
+
+    // A boundary date: local midnight 2026-06-01 in UTC+10 is 2026-05-31T14:00Z, so
+    // a bare UTC serialization would slip into the prior day AND the prior month.
+    function blobWithDate(): MergeBlob {
+        return {
+            version: 2,
+            // A real Date object placed where the in-app blob carries one (e.g. an
+            // updatedAt/snapshot timestamp). jsonDateReplacer keys off the live Date
+            // value, not its already-ISO-stringified default form.
+            snapshotDate: new Date(2026, 5, 1), // 2026-06-01, local midnight
+        } as unknown as MergeBlob;
+    }
+
+    it('the balances re-serialization emits the LOCAL YYYY-MM-DD (no UTC day shift)', () => {
+        const reloaded = JSON.parse(serializeBlobBalances(blobWithDate())) as Record<string, unknown>;
+        // Applied jsonDateReplacer → a local 'YYYY-MM-DD' string, same calendar day.
+        expect(reloaded.snapshotDate).toBe('2026-06-01');
+    });
+
+    it('control: a bare JSON.stringify shifts the day to UTC — the bug the fix prevents', () => {
+        const reloaded = JSON.parse(JSON.stringify(blobWithDate())) as Record<string, unknown>;
+        // Default toISOString() reports 2026-05-31T14:00:00.000Z — the prior day/month.
+        expect(reloaded.snapshotDate).toBe('2026-05-31T14:00:00.000Z');
     });
 });
 

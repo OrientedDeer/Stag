@@ -23,25 +23,17 @@ import process from 'node:process';
 import { decrypt, encrypt, EncryptedBackup } from '../src/services/encryption/CryptoService';
 import { parseBalancesCSV } from '../src/services/simplefinBalances';
 import { applyBalances, MergeBlob } from '../src/services/backupMerge';
-import { flagReasonCounts, stagVerbose } from './importShared';
+import { env, flagReasonCounts, MAX_BACKUP_SIZE, serializeBlob, stagVerbose } from './importShared';
 
-// Re-exported so the test can pull the shared helper through this module too. The
-// implementation lives in importShared.ts (side-effect-free) so the balance and
+// Re-exported so the test can pull the shared helpers through this module too. The
+// implementations live in importShared.ts (side-effect-free) so the balance and
 // Couch importers stay in lockstep — see that file's header.
-export { flagReasonCounts };
-
-const MAX_BACKUP_SIZE = 5 * 1024 * 1024; // mirror the browser / backend cap
+export { flagReasonCounts, serializeBlob };
 
 // Opt-in: the detailed per-account dump (names, balances, SimpleFIN keys) is
 // sensitive and would otherwise land in journald/cron-mail/CI logs in cleartext.
 // Default to counts + flag-reason breakdown only; STAG_VERBOSE=1 to see detail.
 const VERBOSE = stagVerbose();
-
-function env(name: string): string {
-    const v = process.env[name];
-    if (!v) throw new Error(`Missing required env var: ${name}`);
-    return v;
-}
 
 async function run(): Promise<void> {
     const pass = env('STAG_PASS');
@@ -66,10 +58,10 @@ async function run(): Promise<void> {
     blob.version = 2;
 
     // 3. re-encrypt, enforce the size cap, write the new blob file
-    const reEncrypted = JSON.stringify(await encrypt(JSON.stringify(blob), pass));
+    const reEncrypted = JSON.stringify(await encrypt(serializeBlob(blob), pass));
     const size = Buffer.byteLength(reEncrypted, 'utf8');
     if (size > MAX_BACKUP_SIZE) {
-        throw new Error(`Encrypted blob is ${(size / 1024 / 1024).toFixed(2)} MB; exceeds 5 MB cap — refusing to write.`);
+        throw new Error(`Encrypted blob ${(size / 1048576).toFixed(2)} MB exceeds 5 MB cap — refusing to write.`);
     }
     writeFileSync(outPath, reEncrypted);
 

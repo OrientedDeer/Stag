@@ -19,6 +19,20 @@ export type ESPPContributionType = 'NONE' | 'PERCENTAGE' | 'FIXED';
 // not supported — graded-4yr-quarterly covers the dominant real-world case.
 export type RSUVestingSchedule = 'NONE' | 'cliff-1yr' | 'graded-3yr' | 'graded-4yr';
 export type RSUVestFrequency = 'quarterly' | 'semi-annual' | 'annual';
+
+/**
+ * True when a WorkIncome has an RSU grant worth vesting: a real schedule and a
+ * positive share count. The single source of truth for the "RSU active" guard —
+ * the engine (RSUVesting), the model (getRSUVestSchedule / getRSUVestEventsForYear),
+ * and the card validation all share this so the boolean can't drift. Takes a
+ * structural shape so interface-typed callers (RSUVesting, incomeCardUtils) work
+ * without an instanceof narrow.
+ */
+export function isActiveRSUGrant(
+  income: { rsuVestingSchedule: RSUVestingSchedule; rsuGrantShares: number }
+): boolean {
+  return income.rsuVestingSchedule !== 'NONE' && income.rsuGrantShares > 0;
+}
 export type PensionSystem = 'NONE' | 'FERS' | 'CSRS';
 export type EmployerMatchType = 'fixed' | 'percent';
 
@@ -369,7 +383,7 @@ export class WorkIncome extends BaseIncome {
    * The grant is the WorkIncome's start date (startDate).
    */
   getRSUVestSchedule(): { yearOffset: number; shares: number }[] {
-    if (this.rsuVestingSchedule === 'NONE' || this.rsuGrantShares <= 0) {
+    if (!isActiveRSUGrant(this)) {
       return [];
     }
 
@@ -435,7 +449,7 @@ export class WorkIncome extends BaseIncome {
    * to avoid the recurring date-only UTC off-by-one.
    */
   getRSUVestEventsForYear(year: number): { vestDate: Date; shares: number }[] {
-    if (this.rsuVestingSchedule === 'NONE' || this.rsuGrantShares <= 0) {
+    if (!isActiveRSUGrant(this)) {
       return [];
     }
     if (!this.startDate) return [];

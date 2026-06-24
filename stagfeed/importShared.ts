@@ -19,6 +19,30 @@ import type { BalanceMergeReport, MergeBlob } from '../src/services/backupMerge'
 import { jsonDateReplacer } from '../src/utils/formatters';
 
 /**
+ * Backup size cap, mirroring the browser / backend write guard. Declared once here
+ * so every headless importer enforces the identical numeric limit (5 MB) — the cap
+ * and its over-size error string had already drifted across the four importers.
+ */
+export const MAX_BACKUP_SIZE = 5 * 1024 * 1024;
+
+/**
+ * Required-env-var reader: returns the value or throws a uniform "Missing required
+ * env var" error. Shared so all importers reject a missing var identically (instead
+ * of re-declaring the same helper three times). Under the test runner the live
+ * config/run path never executes — modules are imported only for their pure
+ * helpers — so return '' rather than throwing when vitest sets VITEST, matching the
+ * prior couchImport behavior that let the module import without CouchDB env vars.
+ */
+export function env(name: string): string {
+    const v = process.env[name];
+    if (!v) {
+        if (process.env.VITEST) return '';
+        throw new Error(`Missing required env var: ${name}`);
+    }
+    return v;
+}
+
+/**
  * Whether the importers should surface sensitive detail (account names, balances,
  * SimpleFIN keys, the per-user doc id) in their logs. Opt-in via STAG_VERBOSE=1;
  * default off so those values don't land in journald/cron-mail/CI logs in cleartext
