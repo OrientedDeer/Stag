@@ -20,6 +20,7 @@ import {
     getESPPSummary,
     getPensionSummary
 } from './workIncomeSummaries';
+import { hasConfiguredDeferral, getDeferralDestinationMessageFor } from './incomeCardUtils';
 
 interface WorkIncomeFieldsProps {
     form: IncomeFormState;
@@ -46,20 +47,15 @@ export const WorkIncomeFields: React.FC<WorkIncomeFieldsProps> = ({
 }) => {
     // A configured deferral (auto-max or a positive custom amount) needs a
     // destination account, independent of any employer match — without one the
-    // deferral lowers taxes but is never deposited (issue #123).
-    const hasDeferral =
-        form.autoMax401k === 'traditional' ||
-        form.autoMax401k === 'roth' ||
-        (form.autoMax401k === 'custom' && (form.preTax401k > 0 || form.roth401k > 0));
-    const deferralDestinationMessage = hasDeferral && !form.matchAccountId
-        ? (contributionAccounts.length > 0
-            ? 'Choose a Destination Account for your 401k contributions — the '
-                + 'deferral lowers your taxes but is never deposited without one, so it '
-                + 'silently disappears from your net worth.'
-            : 'Create a 401k account in the Accounts tab and select it as the '
-                + 'Destination Account — your 401k deferral lowers your taxes but is '
-                + 'never deposited without one, so it silently disappears from your net worth.')
-        : null;
+    // deferral lowers taxes but is never deposited (issue #123). Both `hasDeferral`
+    // and the validation come from the shared helpers so the modal and the card
+    // agree, including on the dangling-id (deleted-account) case the modal used to
+    // miss: `form` satisfies the structural DeferralConfig shape.
+    const hasDeferral = hasConfiguredDeferral(form);
+    const deferralDestinationMessage = getDeferralDestinationMessageFor(
+        form,
+        contributionAccounts
+    );
     return (
         <>
         <CardSection
@@ -133,17 +129,24 @@ export const WorkIncomeFields: React.FC<WorkIncomeFieldsProps> = ({
                     )}
                 </>
             )}
-            {deferralDestinationMessage && (
-                <AlertBanner
-                    severity="error"
-                    size="sm"
-                    title="Destination Account Required"
-                    className="col-span-full"
-                >
-                    {deferralDestinationMessage}
-                </AlertBanner>
-            )}
         </CardSection>
+
+        {/* The deferral-destination warning lives OUTSIDE the collapsed 401k section
+            so it stays visible even while that section is collapsed — a dangling id
+            (destination account deleted) only survives in the collapsed state, since
+            expanding the section mounts the Destination dropdown which auto-heals an
+            id that's no longer in its options. Mirrors the card variant, which also
+            renders its warnings outside the sections so a collapse can't hide them. */}
+        {deferralDestinationMessage && (
+            <AlertBanner
+                severity="error"
+                size="sm"
+                title="Destination Account Required"
+                className="col-span-full"
+            >
+                {deferralDestinationMessage}
+            </AlertBanner>
+        )}
 
         <CardSection
             id="add-income-section-benefits"

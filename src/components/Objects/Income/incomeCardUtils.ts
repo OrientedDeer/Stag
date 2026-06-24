@@ -8,6 +8,7 @@ import {
     WindfallIncome,
     INCOME_COLORS_BACKGROUND,
     IncomeFrequency,
+    AutoMax401kOption,
     isSocialSecurity,
 } from './models';
 import { isActiveRSUGrant } from './rsuGrant';
@@ -201,13 +202,34 @@ export function getRSUMilestoneStartWarning(income: AnyIncome): string | null {
 }
 
 /**
- * True when a WorkIncome is configured to defer salary into a 401k this year —
+ * Structural shape of the 401k-deferral config the validation reads. Both the
+ * `WorkIncome` model (card side) and the `IncomeFormState` (Add Income modal)
+ * satisfy it, so one implementation serves both editors without duplicating the
+ * logic per shape.
+ */
+export interface DeferralConfig {
+    autoMax401k: AutoMax401kOption;
+    preTax401k: number;
+    roth401k: number;
+    matchAccountId: string;
+}
+
+/** Minimal account shape the destination lookup needs — just the id. */
+interface DeferralDestinationAccount {
+    id: string;
+}
+
+/**
+ * True when a work income is configured to defer salary into a 401k this year —
  * either an explicit custom pre-tax/Roth amount, or an auto-max mode. Excludes
  * the 'disabled' mode and a 'custom' mode with $0 in both buckets (no deferral).
  * The employer match is intentionally NOT a deferral: it's the user's own money
  * leaving their paycheck that needs a home.
+ *
+ * Structural so both the `WorkIncome` instance (card) and the `IncomeFormState`
+ * form object (modal) can call it instead of re-deriving `hasDeferral` inline.
  */
-function hasConfiguredDeferral(income: WorkIncome): boolean {
+export function hasConfiguredDeferral(income: DeferralConfig): boolean {
     if (income.autoMax401k === 'disabled') return false;
     if (income.autoMax401k === 'traditional' || income.autoMax401k === 'roth') return true;
     // custom mode: only a positive amount in either bucket is a real deferral.
@@ -215,30 +237,31 @@ function hasConfiguredDeferral(income: WorkIncome): boolean {
 }
 
 /**
- * Required-field validation for the 401k deferral destination. A WorkIncome that
- * defers salary (pre-tax or Roth 401k) needs a destination account so the money
- * actually lands somewhere. The tax engine reduces taxable income for the deferral
- * regardless of `matchAccountId` (`getPreTaxExemptions`), but `AccountGrowth`
- * gates the actual deposit on `matchAccountId` — so a deferral with an empty or
- * dangling destination gets the tax break but is NEVER deposited, silently
- * leaking out of net worth (issue #123).
+ * Shared, shape-agnostic core of the deferral-destination validation. Operates on
+ * the structural `DeferralConfig` so the card's `WorkIncome` instance and the
+ * modal's `IncomeFormState` form object converge on ONE implementation — including
+ * the dangling-id check (an id that's set but resolves to no current account).
+ *
+ * A work income that defers salary (pre-tax or Roth 401k) needs a destination
+ * account so the money actually lands somewhere. The tax engine reduces taxable
+ * income for the deferral regardless of `matchAccountId` (`getPreTaxExemptions`),
+ * but `AccountGrowth` gates the actual deposit on `matchAccountId` — so a deferral
+ * with an empty OR dangling destination gets the tax break but is NEVER deposited,
+ * silently leaking out of net worth (issue #123).
  *
  * Returns a user-facing required-field message, or null when the config is valid:
  * no deferral configured, or a deferral with a destination that resolves to a real
- * contribution-eligible account. Pure so it's testable. A dangling id (account
- * deleted) returns a message just like an empty one — the deposit silently fails
- * either way.
+ * contribution-eligible account. Pure so it's testable.
  */
-export function getDeferralDestinationValidationMessage(
-    income: AnyIncome,
-    contributionAccounts: InvestedAccount[]
+export function getDeferralDestinationMessageFor(
+    config: DeferralConfig,
+    contributionAccounts: DeferralDestinationAccount[]
 ): string | null {
-    if (!(income instanceof WorkIncome)) return null;
     // Only validate once a deferral is actually configured.
-    if (!hasConfiguredDeferral(income)) return null;
+    if (!hasConfiguredDeferral(config)) return null;
 
     // An empty destination means the deduction applies but nothing is deposited.
-    if (!income.matchAccountId) {
+    if (!config.matchAccountId) {
         return contributionAccounts.length > 0
             ? 'Choose a Destination Account for your 401k contributions — the '
                 + 'deferral lowers your taxes but is never deposited without one, so it '
@@ -250,7 +273,7 @@ export function getDeferralDestinationValidationMessage(
 
     // A dangling id (the account was deleted) deposits nowhere either — the engine
     // only grows accounts that still exist.
-    const linked = contributionAccounts.find((acc) => acc.id === income.matchAccountId);
+    const linked = contributionAccounts.find((acc) => acc.id === config.matchAccountId);
     if (!linked) {
         return 'The Destination Account for your 401k contributions no longer '
             + 'exists. Select a current account — otherwise the deferral lowers your '
@@ -258,4 +281,20 @@ export function getDeferralDestinationValidationMessage(
     }
 
     return null;
+}
+
+/**
+ * Card-side entry point: validates the 401k deferral destination for a
+ * `WorkIncome` instance. Guards the income type, then delegates to the shared,
+ * shape-agnostic `getDeferralDestinationMessageFor` so the modal's form-shaped
+ * variant reuses the exact same logic (incl. the dangling-id check). Returns null
+ * for non-WorkIncome. A dangling id (account deleted) returns a message just like
+ * an empty one — the deposit silently fails either way.
+ */
+export function getDeferralDestinationValidationMessage(
+    income: AnyIncome,
+    contributionAccounts: InvestedAccount[]
+): string | null {
+    if (!(income instanceof WorkIncome)) return null;
+    return getDeferralDestinationMessageFor(income, contributionAccounts);
 }

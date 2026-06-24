@@ -6,7 +6,12 @@ import {
 
 export function getGrossIncome(incomes: AnyIncome[], year: number): number {
     return incomes.reduce((acc, inc) => {
-        let total = inc.getProratedAnnual(inc.amount, year);
+        // Guard the prototype method (mirrors getSocialSecurityBenefits): this
+        // iterates ALL incomes with no instanceof filter, so a method-less
+        // className-only object (raw mock-fixture / worker literal with no restored
+        // prototype) could reach here. ?.() ?? 0 makes such an object contribute 0
+        // instead of throwing; method-bearing real instances are unaffected.
+        let total = inc.getProratedAnnual?.(inc.amount, year) ?? 0;
         if (inc instanceof WorkIncome && inc.taxType === "Roth 401k") {
             // getEffectiveAnnualEmployerMatch returns an already-annual value (and
             // handles both 'fixed' and 'percent' match types), so it's added outside
@@ -50,6 +55,10 @@ export function getPreTaxExemptions(
     useStoredValue: boolean = false,
 ): number {
     return incomes
+        // `instanceof WorkIncome` already excludes method-less className-only
+        // objects (no restored prototype ⇒ fails instanceof), so getProratedAnnual
+        // is guaranteed present here — no ?.() guard needed (unlike the
+        // instanceof-less siblings getGrossIncome / getEarnedIncome).
         .filter((inc) => inc instanceof WorkIncome)
         .reduce((acc, inc) => {
             const preTax401k = resolveEffective401k(inc, year, age, useStoredValue, "preTax");
@@ -83,6 +92,8 @@ export function getPostTaxExemptions(
     useStoredValue: boolean = false,
 ): number {
     return incomes
+        // instanceof filter excludes method-less className-only objects, so
+        // getProratedAnnual is guaranteed present — no ?.() guard needed.
         .filter((inc) => inc instanceof WorkIncome)
         .reduce((acc, inc) => {
             const roth401k = resolveEffective401k(inc, year, age, useStoredValue, "roth");
@@ -92,6 +103,8 @@ export function getPostTaxExemptions(
 
 export function getFicaExemptions(incomes: AnyIncome[], year: number): number {
     return incomes
+        // instanceof filter excludes method-less className-only objects, so
+        // getProratedAnnual is guaranteed present — no ?.() guard needed.
         .filter((inc) => inc instanceof WorkIncome)
         .reduce((acc, inc) => {
             return (
@@ -104,9 +117,13 @@ export function getFicaExemptions(incomes: AnyIncome[], year: number): number {
 
 export function getEarnedIncome(incomes: AnyIncome[], year: number): number {
     return incomes
+        // Filtered by a DATA field (earned_income), not instanceof, so a method-less
+        // className-only object could pass the filter — guard the prototype method
+        // (mirrors getSocialSecurityBenefits / getGrossIncome) so it contributes 0
+        // instead of throwing.
         .filter((inc) => inc.earned_income === "Yes")
         .reduce((acc, inc) => {
-            return acc + inc.getProratedAnnual(inc.amount, year);
+            return acc + (inc.getProratedAnnual?.(inc.amount, year) ?? 0);
         }, 0);
 }
 

@@ -8,6 +8,8 @@ import {
     getRSUPriceValidationMessage,
     getRSUMilestoneStartWarning,
     getDeferralDestinationValidationMessage,
+    getDeferralDestinationMessageFor,
+    hasConfiguredDeferral,
 } from '../../components/Objects/Income/incomeCardUtils';
 import {
     WorkIncome,
@@ -489,5 +491,77 @@ describe('getDeferralDestinationValidationMessage', () => {
     it('returns null when an auto-max deferral points at a real account', () => {
         const w = makeDeferralWorkIncome({ autoMax401k: 'traditional', matchAccountId: '401k-2' });
         expect(getDeferralDestinationValidationMessage(w, ACCOUNTS)).toBeNull();
+    });
+});
+
+describe('hasConfiguredDeferral (shared predicate)', () => {
+    // Structural shape both a WorkIncome instance and the modal's IncomeFormState
+    // satisfy — the predicate must agree across both editors.
+    const cfg = (over: Partial<{
+        autoMax401k: 'disabled' | 'custom' | 'traditional' | 'roth';
+        preTax401k: number;
+        roth401k: number;
+    }> = {}) => ({
+        autoMax401k: over.autoMax401k ?? 'custom',
+        preTax401k: over.preTax401k ?? 0,
+        roth401k: over.roth401k ?? 0,
+        matchAccountId: '',
+    });
+
+    it('is false when disabled', () => {
+        expect(hasConfiguredDeferral(cfg({ autoMax401k: 'disabled' }))).toBe(false);
+    });
+
+    it('is false for a custom mode with $0 in both buckets', () => {
+        expect(hasConfiguredDeferral(cfg({ autoMax401k: 'custom', preTax401k: 0, roth401k: 0 }))).toBe(false);
+    });
+
+    it('is true for the auto-max modes regardless of bucket amounts', () => {
+        expect(hasConfiguredDeferral(cfg({ autoMax401k: 'traditional' }))).toBe(true);
+        expect(hasConfiguredDeferral(cfg({ autoMax401k: 'roth' }))).toBe(true);
+    });
+
+    it('is true for a custom mode with a positive amount in either bucket', () => {
+        expect(hasConfiguredDeferral(cfg({ autoMax401k: 'custom', preTax401k: 100 }))).toBe(true);
+        expect(hasConfiguredDeferral(cfg({ autoMax401k: 'custom', roth401k: 100 }))).toBe(true);
+    });
+});
+
+describe('getDeferralDestinationMessageFor (shared form-shape core)', () => {
+    // The modal passes a plain form object, NOT a WorkIncome instance. These
+    // exercise the same structural shape the modal feeds in, proving the dangling
+    // and empty cases fire identically to the instance-guarded card path.
+    const cfg = (over: Partial<{
+        autoMax401k: 'disabled' | 'custom' | 'traditional' | 'roth';
+        preTax401k: number;
+        roth401k: number;
+        matchAccountId: string;
+    }> = {}) => ({
+        autoMax401k: over.autoMax401k ?? 'custom',
+        preTax401k: over.preTax401k ?? 0,
+        roth401k: over.roth401k ?? 0,
+        matchAccountId: over.matchAccountId ?? '',
+    });
+    const ACCOUNTS = [{ id: '401k-1' }, { id: '401k-2' }];
+
+    it('returns null when no deferral is configured', () => {
+        expect(getDeferralDestinationMessageFor(cfg({ autoMax401k: 'disabled' }), ACCOUNTS)).toBeNull();
+        expect(getDeferralDestinationMessageFor(cfg({ preTax401k: 0, roth401k: 0 }), ACCOUNTS)).toBeNull();
+    });
+
+    it('fires on an empty destination (the form variant of the #123 leak)', () => {
+        const msg = getDeferralDestinationMessageFor(cfg({ preTax401k: 1000, matchAccountId: '' }), ACCOUNTS);
+        expect(msg).not.toBeNull();
+        expect(msg).toContain('Destination Account');
+    });
+
+    it('fires on a DANGLING destination (id set but account deleted) — the modal bug', () => {
+        const msg = getDeferralDestinationMessageFor(cfg({ preTax401k: 1000, matchAccountId: 'deleted-acct' }), ACCOUNTS);
+        expect(msg).not.toBeNull();
+        expect(msg).toContain('no longer exists');
+    });
+
+    it('returns null for a deferral pointing at a real account', () => {
+        expect(getDeferralDestinationMessageFor(cfg({ preTax401k: 1000, matchAccountId: '401k-1' }), ACCOUNTS)).toBeNull();
     });
 });

@@ -246,6 +246,19 @@ export function getTaxParameters(
             // Dollar-amount fields spread in via ...baseYearParams stay nominal
             // unless re-inflated here. seniorAge / *Rate fields are NOT dollars,
             // so they are intentionally left untouched.
+            //
+            // The regular 65+ additional standard deduction (seniorDeduction,
+            // IRC §63(f)) IS inflation-indexed by statute, so it is re-inflated.
+            // By contrast the OBBBA "senior bonus" fields — seniorBonusDeduction
+            // ($6,000/person) and seniorBonusPhaseoutThreshold ($75k/$150k MAGI)
+            // — are STATUTORY-FIXED dollar amounts for tax years 2025–2028 (IRC
+            // §151(d)(5); the bonus carries no inflation-adjustment clause, unlike
+            // §63(f)). They are therefore INTENTIONALLY left nominal (spread in via
+            // ...baseYearParams, NOT re-inflated). This only matters for projected
+            // years > max_year, which are 2027–2028 — still inside the bonus window,
+            // where the fixed amounts are correct. (After 2028 the bonus sunsets and
+            // federalTax.ts gates it off entirely, so its inflated/nominal value is
+            // moot then.)
             ...(baseYearParams.seniorDeduction !== undefined && {
                 seniorDeduction: Math.round(
                     baseYearParams.seniorDeduction * inflationMultiplier

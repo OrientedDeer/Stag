@@ -13,7 +13,7 @@ import type {
 import type { AllIncomeKeys } from '../IncomeContext';
 import type { InvestedAccount, ESPPAccount, RSUAccount } from '../../Accounts/models';
 import type { ContributionWarning } from '../incomeCardUtils';
-import { getDeferralDestinationValidationMessage } from '../incomeCardUtils';
+import { getDeferralDestinationValidationMessage, hasConfiguredDeferral } from '../incomeCardUtils';
 import { ESPPFields } from './ESPPFields';
 import { RSUFields } from './RSUFields';
 
@@ -84,11 +84,9 @@ export function WorkIncomeFields({
     onMatchAccountChange,
 }: WorkIncomeFieldsProps): ReactElement {
     // A configured deferral (auto-max or a positive custom amount) needs a
-    // destination account, independent of any employer match.
-    const hasDeferral =
-        income.autoMax401k === 'traditional' ||
-        income.autoMax401k === 'roth' ||
-        (income.autoMax401k === 'custom' && (income.preTax401k > 0 || income.roth401k > 0));
+    // destination account, independent of any employer match. Shared with the modal
+    // via the exported predicate so both editors stay in lockstep.
+    const hasDeferral = hasConfiguredDeferral(income);
     const deferralDestinationMessage = getDeferralDestinationValidationMessage(
         income,
         contributionAccounts

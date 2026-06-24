@@ -23,19 +23,31 @@ const SENIOR_BONUS_START_YEAR = 2025;
 const SENIOR_BONUS_END_YEAR = 2028;
 
 /**
- * Federal extra deduction for taxpayers age >= seniorAge.
+ * Federal extra deductions for taxpayers age >= seniorAge, split into the two
+ * IRS components that attach to DIFFERENT bases:
  *
- * Mirrors the state senior-deduction mechanism in stateTax.ts: per-person
- * amounts double for MFJ when `seniorDeductionPerPerson` is true (the single-age
- * model can only assume both spouses meet the threshold). Returns the combined
- * (regular 65+ + OBBBA senior bonus) extra deduction to add on top of the
- * standard / itemized deduction.
+ *  - `regular`: the permanent 65+ ADDITIONAL STANDARD deduction (IRC §63(f),
+ *    $2,000–$2,050 single / $1,600–$1,650 per spouse). This is part of the
+ *    STANDARD deduction — a filer who ITEMIZES does NOT get it. Returned so the
+ *    caller can add it on the standard path ONLY.
+ *  - `bonus`: the OBBBA "senior bonus" (IRC §151(d)(5), $6,000/person, tax years
+ *    2025–2028). This is a SEPARATE deduction available to BOTH itemizers and
+ *    non-itemizers, so the caller adds it on BOTH the standard and itemized
+ *    paths. Phases out at `seniorBonusPhaseoutRate` of (MAGI − threshold),
+ *    floored at $0.
+ *
+ * Per-person amounts double for MFJ when `seniorDeductionPerPerson` is true (the
+ * single-age model can only assume both spouses meet the threshold). This splits
+ * what stateTax.ts folds together because, unlike the federal rules, a state's
+ * senior add-on is a single component applied uniformly to both bases.
  *
  * @param fedParams - Federal tax parameters (carry the senior fields)
  * @param filingStatus - Filing status (drives the MFJ per-person doubling)
  * @param age - Taxpayer age in the tax year (undefined ⇒ no senior deduction)
  * @param year - Tax year (gates the OBBBA bonus to 2025–2028)
  * @param magi - MAGI proxy (≈ AGI) for the OBBBA bonus phaseout
+ * @returns `{ regular, bonus }` — regular = standard-path-only add-on, bonus =
+ *          available on both paths.
  */
 function getFederalSeniorDeduction(
     fedParams: TaxParameters,
@@ -43,34 +55,35 @@ function getFederalSeniorDeduction(
     age: number | undefined,
     year: number,
     magi: number,
-): number {
-    if (age === undefined) return 0;
+): { regular: number; bonus: number } {
+    if (age === undefined) return { regular: 0, bonus: 0 };
     const seniorAge = fedParams.seniorAge ?? 65;
-    if (age < seniorAge) return 0;
+    if (age < seniorAge) return { regular: 0, bonus: 0 };
 
     const isMFJ = filingStatus === 'Married Filing Jointly';
     const perPersonMultiplier = fedParams.seniorDeductionPerPerson && isMFJ ? 2 : 1;
 
-    // Regular (permanent) 65+ additional standard deduction.
-    let total = (fedParams.seniorDeduction ?? 0) * perPersonMultiplier;
+    // Regular (permanent) 65+ additional STANDARD deduction — standard path only.
+    const regular = (fedParams.seniorDeduction ?? 0) * perPersonMultiplier;
 
     // OBBBA senior bonus: $6,000/person, tax years 2025–2028, phasing out at
-    // `seniorBonusPhaseoutRate` of (MAGI − threshold), floored at $0.
+    // `seniorBonusPhaseoutRate` of (MAGI − threshold), floored at $0. Available
+    // to itemizers AND non-itemizers (added on both paths by the caller).
+    let bonus = 0;
     if (
         fedParams.seniorBonusDeduction &&
         year >= SENIOR_BONUS_START_YEAR &&
         year <= SENIOR_BONUS_END_YEAR
     ) {
-        let bonus = fedParams.seniorBonusDeduction * perPersonMultiplier;
+        bonus = fedParams.seniorBonusDeduction * perPersonMultiplier;
         const threshold = fedParams.seniorBonusPhaseoutThreshold;
         const rate = fedParams.seniorBonusPhaseoutRate;
         if (threshold !== undefined && rate !== undefined && magi > threshold) {
             bonus = Math.max(0, bonus - (magi - threshold) * rate);
         }
-        total += bonus;
     }
 
-    return total;
+    return { regular, bonus };
 }
 
 /**
@@ -126,23 +139,37 @@ export function calculateFederalTaxFromIncomes(
     // MAGI add-backs (tax-exempt interest, foreign earned income), none of which
     // this app tracks — so MAGI == AGI here. Mirrors the SS-taxability provisional
     // income build used inside bracketTax.ts.
-    const taxableSSForMagi = getTaxableSocialSecurityBenefits(
-        totalSSBenefits,
-        Math.max(0, ordinaryIncome + stcg + ltcg - totalPreTaxDeductions),
-        0, // tax-exempt interest — not tracked
-        state.filingStatus,
-    );
-    const magiProxy = Math.max(
-        0,
-        ordinaryIncome + stcg + ltcg + taxableSSForMagi - totalPreTaxDeductions,
-    );
-    const seniorDeduction = getFederalSeniorDeduction(
-        fedParams,
-        state.filingStatus,
-        age,
-        year,
-        magiProxy,
-    );
+    //
+    // Gate the (non-trivial) MAGI-proxy + taxable-SS computation behind the
+    // senior-age check: no senior deduction can apply when age is undefined or
+    // below seniorAge, so building the proxy would be wasted work in the common
+    // (working-age) case. Behavior-preserving — the proxy only feeds the senior
+    // deduction, which getFederalSeniorDeduction returns 0 for in that case.
+    const seniorAge = fedParams.seniorAge ?? 65;
+    const seniorEligible = age !== undefined && age >= seniorAge;
+    let regularSeniorDeduction = 0;
+    let bonusSeniorDeduction = 0;
+    if (seniorEligible) {
+        const taxableSSForMagi = getTaxableSocialSecurityBenefits(
+            totalSSBenefits,
+            Math.max(0, ordinaryIncome + stcg + ltcg - totalPreTaxDeductions),
+            0, // tax-exempt interest — not tracked
+            state.filingStatus,
+        );
+        const magiProxy = Math.max(
+            0,
+            ordinaryIncome + stcg + ltcg + taxableSSForMagi - totalPreTaxDeductions,
+        );
+        const senior = getFederalSeniorDeduction(
+            fedParams,
+            state.filingStatus,
+            age,
+            year,
+            magiProxy,
+        );
+        regularSeniorDeduction = senior.regular;
+        bonusSeniorDeduction = senior.bonus;
+    }
 
     // SALT cap interaction with state tax. Only needed for the Itemized / Auto
     // paths — on the Standard path `itemizedTotal` is never used, so skip the
@@ -159,13 +186,21 @@ export function calculateFederalTaxFromIncomes(
         itemizedTotal = getItemizedDeductions(expenses, year) + cappedStateTax;
     }
 
-    const calcTaxWithDeduction = (deductionAmount: number): number => {
+    // The two 65+ deductions attach to different bases (IRS rules):
+    //  - regularSeniorDeduction is part of the STANDARD deduction, so it's added
+    //    on the standard path ONLY (an itemizer does not get it).
+    //  - bonusSeniorDeduction (OBBBA $6k) is a separate deduction available to
+    //    BOTH itemizers and non-itemizers, so it's added on EITHER path.
+    // (This is the federal departure from stateTax.ts, which folds its single
+    // state senior add-on into both bases uniformly.)
+    const calcTaxWithDeduction = (
+        deductionAmount: number,
+        isStandardPath: boolean,
+    ): number => {
+        const seniorAddOn = (isStandardPath ? regularSeniorDeduction : 0) + bonusSeniorDeduction;
         const paramsWithDeduction = {
             ...fedParams,
-            // The 65+ deductions stack on top of the standard OR itemized base, so
-            // they're added inside here (matching how stateTax.ts folds the state
-            // senior deduction into both the standard and itemized variants).
-            standardDeduction: deductionAmount + seniorDeduction,
+            standardDeduction: deductionAmount + seniorAddOn,
         };
         return calculateTotalFederalTax(
             ordinaryIncome,
@@ -179,14 +214,14 @@ export function calculateFederalTaxFromIncomes(
     };
 
     if (state.deductionMethod === "Auto") {
-        const taxWithStandard = calcTaxWithDeduction(fedParams.standardDeduction);
-        const taxWithItemized = calcTaxWithDeduction(itemizedTotal);
+        const taxWithStandard = calcTaxWithDeduction(fedParams.standardDeduction, true);
+        const taxWithItemized = calcTaxWithDeduction(itemizedTotal, false);
         return Math.min(taxWithStandard, taxWithItemized);
     }
 
-    const appliedDeduction = state.deductionMethod === "Standard"
-        ? fedParams.standardDeduction
-        : itemizedTotal;
+    if (state.deductionMethod === "Standard") {
+        return calcTaxWithDeduction(fedParams.standardDeduction, true);
+    }
 
-    return calcTaxWithDeduction(appliedDeduction);
+    return calcTaxWithDeduction(itemizedTotal, false);
 }

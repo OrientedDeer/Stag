@@ -893,6 +893,92 @@ describe('TaxService: Additional Functions', () => {
                 // Larger MFJ deductions (and brackets) ⇒ lower tax than single on the same income.
                 expect(mfj).toBeLessThan(single);
             });
+
+            // -----------------------------------------------------------------
+            // IRS itemizer rule (review finding [0]): the regular 65+ ADDITIONAL
+            // STANDARD deduction (IRC §63(f)) is part of the standard deduction —
+            // an ITEMIZER does NOT get it. The OBBBA $6k senior bonus (IRC
+            // §151(d)(5)) is a SEPARATE deduction available to BOTH itemizers and
+            // non-itemizers, so it applies on either path.
+            // -----------------------------------------------------------------
+
+            // A large mortgage so the itemized base (mortgage interest + capped SALT)
+            // clearly exceeds the standard deduction. Texas (no SALT) ⇒ itemized is
+            // just first-year mortgage interest here (~$47.7k on $800k @ 6%), well
+            // above the $16,100 standard deduction. Paired with $150k income so the
+            // bonus saving stays in a single clean marginal bracket (22%): even after
+            // the ~$47.7k deduction, taxable income (~$102k senior / ~$97k) is inside
+            // the 2026 Single 22% band ($50,400–$105,700).
+            const bigItemizingMortgage = () => new MortgageExpense(
+                'm1', 'Home', 'Monthly', 1000000, 800000, 800000, 6, 30, 1.2, 0, 1, 100, 0.3, 0, 50,
+                'Itemized', 0.8, 'a1', new Date('2020-01-01'),
+            );
+            const ITEMIZE_INCOME = 150000;
+            const makeItemizeIncome = () => new WorkIncome('w1', 'Job', ITEMIZE_INCOME, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+
+            it('itemizing 65+ (2026): gets the OBBBA bonus but NOT the regular 65+ add-on', () => {
+                // Single, age 67, $150k, itemizing a large mortgage (Texas → SALT = 0).
+                const mortgage = bigItemizingMortgage();
+                const seniorItemized = calculateFederalTaxFromIncomes(
+                    createTaxState({ deductionMethod: 'Itemized' }), [makeItemizeIncome()], [mortgage], 0, 2026, assumptionsForBirthYear(1959),
+                );
+                const underItemized = calculateFederalTaxFromIncomes(
+                    createTaxState({ deductionMethod: 'Itemized' }), [makeItemizeIncome()], [mortgage], 0, 2026, assumptionsForBirthYear(1980),
+                );
+                // The ONLY deduction difference between the 67yo and the 46yo on the
+                // itemized path is the OBBBA bonus. MAGI $150k → bonus = 6000 − 6%·75000
+                // floors at $0? No: 6%·(150000−75000)=4500 → bonus = 6000 − 4500 = $1,500.
+                // The regular $2,050 add-on must NOT apply (itemizing). Both filers sit in
+                // the 22% marginal bracket, so Δtax = 1500·0.22.
+                expect(underItemized - seniorItemized).toBeCloseTo(1500 * 0.22, 0);
+            });
+
+            it('itemizing 65+: deduction gap is the bonus ONLY, never bonus + regular add-on', () => {
+                const mortgage = bigItemizingMortgage();
+                const seniorItemized = calculateFederalTaxFromIncomes(
+                    createTaxState({ deductionMethod: 'Itemized' }), [makeItemizeIncome()], [mortgage], 0, 2026, assumptionsForBirthYear(1959),
+                );
+                const underItemized = calculateFederalTaxFromIncomes(
+                    createTaxState({ deductionMethod: 'Itemized' }), [makeItemizeIncome()], [mortgage], 0, 2026, assumptionsForBirthYear(1980),
+                );
+                // The OBBBA bonus still helps an itemizer (senior tax is lower)…
+                expect(seniorItemized).toBeLessThan(underItemized);
+                // …but the gap is the bonus ($1,500·0.22) ONLY. If the regular $2,050
+                // add-on had wrongly leaked onto the itemized base, the gap would be
+                // (1,500+2,050)·0.22 — strictly larger. Assert it is NOT.
+                expect(underItemized - seniorItemized).toBeCloseTo(1500 * 0.22, 0);
+                expect(underItemized - seniorItemized).toBeLessThan((1500 + 2050) * 0.22 - 1);
+            });
+
+            it('Auto mode 65+ (2026): picks standard (regular add-on + bonus) when itemized base is small', () => {
+                // No mortgage / Texas ⇒ itemized base ≈ 0, so Auto must choose Standard,
+                // and the result must equal the explicit Standard-path 65+ tax (which
+                // includes BOTH the regular $2,050 and the bonus).
+                const income = new WorkIncome('w1', 'Job', 90000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+                const auto = calculateFederalTaxFromIncomes(
+                    createTaxState({ deductionMethod: 'Auto' }), [income], [], 0, 2026, assumptionsForBirthYear(1959),
+                );
+                const standard = calculateFederalTaxFromIncomes(
+                    createTaxState({ deductionMethod: 'Standard' }), [income], [], 0, 2026, assumptionsForBirthYear(1959),
+                );
+                expect(auto).toBeCloseTo(standard, 6);
+            });
+
+            it('itemizing under-65 (2026): unchanged — no senior deduction or bonus', () => {
+                // Regression guard: the itemizer change must not touch the under-65 path.
+                const mortgage = bigItemizingMortgage();
+                const itemized = calculateFederalTaxFromIncomes(
+                    createTaxState({ deductionMethod: 'Itemized' }), [makeItemizeIncome()], [mortgage], 0, 2026, assumptionsForBirthYear(1980),
+                );
+                // Recompute the itemized deduction the engine uses and assert the bracket math.
+                const itemizedDeduction = getItemizedDeductions([mortgage], 2026); // Texas → no SALT add
+                const taxable = ITEMIZE_INCOME - itemizedDeduction; // ~$102.3k → in the 22% band
+                // 2026 Single brackets: 10% to 12,400; 12% to 50,400; 22% to 105,700.
+                const expected = 12400 * 0.10
+                    + (50400 - 12400) * 0.12
+                    + (taxable - 50400) * 0.22;
+                expect(itemized).toBeCloseTo(expected, 0);
+            });
         });
     });
 

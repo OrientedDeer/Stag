@@ -176,3 +176,63 @@ describe('Modal WorkIncomeFields sections', () => {
         expect(screen.getByText('No ESPP Account')).toBeInTheDocument();
     });
 });
+
+describe('Modal WorkIncomeFields deferral-destination validation (#123)', () => {
+    // The modal used to hand-roll its own inline check that only fired on an
+    // EMPTY matchAccountId. It now reuses the shared validation, so a deferral
+    // pointing at a since-deleted account (a DANGLING id) must also surface the
+    // banner — otherwise the #123 net-worth leak persists silently in the modal.
+    const acct = (id: string, name: string): InvestedAccount =>
+        new InvestedAccount(id, name, 0);
+
+    // The banner renders OUTSIDE the collapsed 401k & Match section so it's visible
+    // without expanding — which matters precisely for the dangling case: expanding
+    // the section mounts the Destination dropdown, whose auto-select effect heals an
+    // id that's no longer in its options. The realistic dangling state (a deleted
+    // destination on a collapsed card) is asserted with the section left collapsed.
+
+    it('shows the Destination-Account-Required banner for a DANGLING destination id (deleted account)', () => {
+        // A pre-tax deferral whose matchAccountId points at an account that no longer
+        // exists in contributionAccounts. The old inline modal check only fired on an
+        // EMPTY id and would miss this; the shared dangling-aware helper catches it.
+        render(<Harness
+            initial={{ autoMax401k: 'custom', preTax401k: 1000, matchAccountId: 'deleted-acct' }}
+            contributionAccounts={[acct('401k-1', 'My 401k')]}
+        />);
+
+        // Visible while the 401k section is still collapsed.
+        expect(screen.getByRole('button', { name: /401k & Match/ }))
+            .toHaveAttribute('aria-expanded', 'false');
+        expect(screen.getByText('Destination Account Required')).toBeInTheDocument();
+        expect(screen.getByText(/no longer exists/)).toBeInTheDocument();
+    });
+
+    it('shows the banner for an empty destination (existing behavior preserved)', () => {
+        render(<Harness
+            initial={{ autoMax401k: 'custom', preTax401k: 1000, matchAccountId: '' }}
+            contributionAccounts={[acct('401k-1', 'My 401k')]}
+        />);
+
+        expect(screen.getByText('Destination Account Required')).toBeInTheDocument();
+        // The empty-id message, not the dangling one.
+        expect(screen.getByText(/Choose a Destination Account/)).toBeInTheDocument();
+    });
+
+    it('does NOT show the banner when the destination resolves to a real account', () => {
+        render(<Harness
+            initial={{ autoMax401k: 'custom', preTax401k: 1000, matchAccountId: '401k-1' }}
+            contributionAccounts={[acct('401k-1', 'My 401k')]}
+        />);
+
+        expect(screen.queryByText('Destination Account Required')).not.toBeInTheDocument();
+    });
+
+    it('does NOT show the banner when no deferral is configured (disabled)', () => {
+        render(<Harness
+            initial={{ autoMax401k: 'disabled', matchAccountId: 'deleted-acct' }}
+            contributionAccounts={[acct('401k-1', 'My 401k')]}
+        />);
+
+        expect(screen.queryByText('Destination Account Required')).not.toBeInTheDocument();
+    });
+});
