@@ -10,7 +10,7 @@
  * - Conversion Income: Roth conversions - taxable but NOT spendable (it's a transfer)
  */
 
-import { AnyIncome, PassiveIncome, WorkIncome, SocialSecurityIncome, CurrentSocialSecurityIncome, FutureSocialSecurityIncome, FERSPensionIncome, CSRSPensionIncome, WindfallIncome } from "../../components/Objects/Income/models";
+import { AnyIncome, PassiveIncome, WorkIncome, FERSPensionIncome, CSRSPensionIncome, WindfallIncome, isSocialSecurity } from "../../components/Objects/Income/models";
 import { ClassifiedIncome, IncomeClassificationResult, DecisionLogEntry } from "./types";
 
 /**
@@ -52,10 +52,11 @@ export function classifyIncome(
             // Work income is always spendable
             spendable += annualAmount;
             breakdown.wages += annualAmount;
-        } else if (income instanceof SocialSecurityIncome ||
-            income instanceof CurrentSocialSecurityIncome ||
-            income instanceof FutureSocialSecurityIncome) {
-            // Social Security is always spendable
+        } else if (isSocialSecurity(income)) {
+            // Social Security is always spendable. Use the canonical className-aware
+            // predicate so reconstituted (plain-JSON, prototype-stripped) SS income —
+            // e.g. a sim year rehydrated from cache or marshalled across a worker —
+            // classifies the same as a live instance and isn't misbucketed as passive.
             spendable += annualAmount;
             breakdown.socialSecurity += annualAmount;
         } else if (income instanceof FERSPensionIncome) {
@@ -151,10 +152,13 @@ export function classifyIncome(
 export function getTotalSSBenefits(incomes: AnyIncome[], year: number): number {
     let total = 0;
     for (const income of incomes) {
-        if (income instanceof SocialSecurityIncome ||
-            income instanceof CurrentSocialSecurityIncome ||
-            income instanceof FutureSocialSecurityIncome) {
-            total += income.getAnnualAmount(year);
+        // Canonical className-aware predicate so reconstituted SS income counts too.
+        if (isSocialSecurity(income)) {
+            // Guard the prototype method: the className-aware predicate also matches
+            // method-less className-only objects (raw mock-fixture / worker literals).
+            // A method-bearing object yields its real amount; a method-less one adds 0
+            // instead of throwing.
+            total += income.getAnnualAmount?.(year) ?? 0;
         }
     }
     return total;

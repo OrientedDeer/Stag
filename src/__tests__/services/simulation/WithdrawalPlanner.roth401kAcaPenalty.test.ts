@@ -27,27 +27,14 @@
  * < 5yr penalty-bearing layer the real account history would have hit, so the
  * reported penalty (which flows into YearSolver totalTax) is understated.
  *
- * Scenario (this test)
- * --------------------
- * Age 55 (< 59.5). Brokerage with a 95% gain ratio and currentMAGI parked just
- * under the cliff, so any brokerage LTCG breaches it — the entire brokerage draw
- * is capped to $0 and the whole deficit is pushed onto the roth_401k look-ahead.
- *
- * roth_401k: $100k balance, $0 contribution basis, conversion layers
- *   - $5,000 from 2015  (held 10yr -> penalty-free)
- *   - $95,000 from 2023 (held 2yr  -> 10% penalty under 59.5)
- *
- * Net needed $45,000:
- *   Look-ahead draws $45,000 gross = $5,000 penalty-free + $40,000 penalty-bearing
- *     -> penalty $4,000, net $41,000 (a $4,000 residual remains, because the
- *        penalty eats into the net delivered).
- *   Main loop then draws the $4,000 residual. With a SHARED layer it would draw
- *     the penalty-bearing layer ($4,000 -> $400 penalty). With the bug it draws
- *     a REFRESHED $5,000 penalty-free layer -> $0 penalty.
- *
- * Total roth gross drawn = $49,000. The real (single) conversion history is
- * $5,000 penalty-free + $44,000 penalty-bearing, so the CORRECT total penalty is
- * $4,400. The bug reports $4,000 (the penalty-free layer counted twice).
+ * BUG #119's fix (this update)
+ * ----------------------------
+ * grossUpRoth now grosses up a PENALIZED conversion-layer draw by its own 10%
+ * penalty (gross = remaining / 0.9), decrementing its NET counter by the NET
+ * delivered rather than the GROSS drawn. So a single-pass conversion draw no
+ * longer leaves a ~10% residual deficit for a later YearSolver iteration to mop
+ * up. The two scenarios below cover (a) the corrected single-pass funding and
+ * (b) a genuine two-pass double-draw that still guards the bug-#9 invariant.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -104,7 +91,7 @@ function makeSnapshot(
 }
 
 describe('planWithdrawals: roth_401k ACA look-ahead + main-loop penalty accounting', () => {
-    it('does not understate the early-withdrawal penalty when both passes drain the same roth_401k', () => {
+    it('funds the whole deficit in the look-ahead with the penalty grossed up (#119) and no residual', () => {
         const snapshots: AccountBalanceSnapshot[] = [
             makeSnapshot({
                 accountId: 'brok-1',
@@ -146,36 +133,111 @@ describe('planWithdrawals: roth_401k ACA look-ahead + main-loop penalty accounti
             acaOpts,
         );
 
-        // Almost the whole deficit is funded from the roth_401k (brokerage capped
-        // to $0). A tiny residual ($400 here) is expected and unrelated to the bug
-        // under test: grossUpRoth does NOT gross-up a conversion-layer draw for its
-        // 10% penalty, so the last penalty-bearing dollars deliver net below gross.
-        // (That residual is what a later YearSolver iteration would top up; the
-        // important point for THIS test is the penalty total below.)
-        expect(result.remainingDeficit).toBeLessThan(netNeeded * 0.05);
+        // #119: the penalized conversion layer is now grossed up by its own 10%
+        // penalty, so the look-ahead alone delivers the FULL net deficit in a single
+        // pass — no ~10% residual is left over. Funding:
+        //   $5,000 penalty-free layer (net $5,000) + grossed-up penalty-bearing
+        //   layer: gross $40,000 / 0.9 = $44,444.44, penalty $4,444.44, net $40,000.
+        //   total gross $49,444.44, total net $45,000, no residual.
+        expect(result.remainingDeficit).toBeCloseTo(0, 2);
+        expect(result.totalNet).toBeCloseTo(netNeeded, 2);
 
-        // Both passes tapped the same roth_401k in this one call.
+        // The whole deficit is funded by the look-ahead; the main deficit loop never
+        // needs to draw the roth_401k again (the residual it used to top up is gone).
         const rothWs = result.withdrawals.filter(w => w.source === 'roth_401k');
         const lookAheadW = rothWs.find(w => w.reason === 'ACA cliff Roth substitution');
         const mainLoopW = rothWs.find(w => w.reason === 'Spending deficit');
         expect(lookAheadW).toBeDefined();
-        expect(mainLoopW).toBeDefined();
+        expect(mainLoopW).toBeUndefined();
 
-        // The combined gross drawn across both passes exceeds the $5k penalty-free
-        // layer, so the excess must bear the 10% penalty. The correct penalty is
-        // computed against the account's REAL (single) conversion history: only the
-        // first $5,000 of total gross is penalty-free.
+        // The combined gross drawn exceeds the $5k penalty-free layer, so the excess
+        // bears the 10% penalty. The penalty is computed against the account's REAL
+        // (single) conversion history: only the first $5,000 of total gross is
+        // penalty-free. (Guards bug #9 — the penalty-free layer is counted once.)
         const totalRothGross = rothWs.reduce((sum, w) => sum + w.gross, 0);
         const penaltyFreeLayer = 5000;
         const expectedPenalty = Math.max(0, totalRothGross - penaltyFreeLayer) * PENALTY_RATE;
 
-        // Sanity: the scenario actually exercises the double-draw (combined gross
-        // spills past the penalty-free layer), otherwise the test proves nothing.
         expect(totalRothGross).toBeGreaterThan(penaltyFreeLayer);
-
-        // The bug counts the $5k penalty-free layer in BOTH passes, so it reports
-        // less penalty than the real history would bear. With the fix the total
-        // penalty equals the penalty against the single, shared conversion history.
         expect(result.totalPenalties).toBeCloseTo(expectedPenalty, 2);
+    });
+
+    it('does not understate the penalty when the look-ahead and the main loop both drain the same roth_401k (bug #9)', () => {
+        // Force a GENUINE two-pass double-draw on the same account: park MAGI AT the
+        // cliff so the look-ahead's Roth-earnings MAGI room is $0 — it can only spend
+        // the non-MAGI conversion layers and must leave the earnings layer to the
+        // main deficit loop. Both passes therefore draw the same roth_401k, and the
+        // shared (in-place-mutated) conversion array must keep the drained
+        // penalty-bearing layer drained so it isn't re-exposed penalty-free.
+        const snapshots: AccountBalanceSnapshot[] = [
+            makeSnapshot({
+                accountId: 'brok-1',
+                accountName: 'Brokerage',
+                accountType: 'brokerage',
+                balance: 200000,
+                vestedBalance: 200000,
+                gainRatio: 0.95,
+            }),
+            makeSnapshot({
+                accountId: 'r401k-1',
+                accountName: 'Roth 401k',
+                accountType: 'roth_401k',
+                balance: 100000,
+                vestedBalance: 100000, // $5k + $50k conversions + $45k earnings
+                gainRatio: 0,
+                rothContributions: 0,
+                conversionHistory: [
+                    { year: 2015, amount: 5000 },  // held 10yr -> penalty-free
+                    { year: 2023, amount: 50000 }, // held 2yr  -> 10% penalty under 59.5
+                ],
+            }),
+        ];
+
+        // MAGI parked AT the cliff: no headroom for brokerage LTCG OR for Roth
+        // earnings (which count in MAGI under 59.5). The look-ahead caps at the
+        // non-MAGI conversion layers; the earnings tail spills to the main loop.
+        const acaOpts = { acaCliffThreshold: 62000, currentMAGI: 62000 };
+
+        const netNeeded = 60000;
+        const result = planWithdrawals(
+            netNeeded,
+            snapshots,
+            55,
+            YEAR,
+            makeTaxState(),
+            62000,
+            makeAssumptions(),
+            'Spending deficit',
+            acaOpts,
+        );
+
+        const rothWs = result.withdrawals.filter(w => w.source === 'roth_401k');
+        const lookAheadW = rothWs.find(w => w.reason === 'ACA cliff Roth substitution');
+        const mainLoopW = rothWs.find(w => w.reason === 'Spending deficit');
+
+        // Both passes drew the same roth_401k.
+        expect(lookAheadW).toBeDefined();
+        expect(mainLoopW).toBeDefined();
+
+        // The look-ahead drained both conversion layers ($5k penalty-free + $50k
+        // penalty-bearing, grossed up for the penalty). With the shared array those
+        // layers are NOT re-exposed to the main loop, which falls through to the
+        // earnings layer — so the conversion penalty is charged exactly once on the
+        // single real $50,000 penalty-bearing layer.
+        const lookAheadConversionPenalty = 50000 * PENALTY_RATE; // $5,000
+        // The main loop draws earnings (taxed + penalized); its penalty is on the
+        // earnings gross, not on a re-exposed conversion layer.
+        const mainLoopPenalty = mainLoopW!.penalty;
+        expect(lookAheadW!.penalty).toBeCloseTo(lookAheadConversionPenalty, 2);
+
+        // Total penalty = conversion penalty (counted once) + earnings penalty. The
+        // bug would have re-exposed the $5k penalty-free layer in the main loop,
+        // understating the total; here the conversion penalty is the full $5,000.
+        expect(result.totalPenalties).toBeCloseTo(lookAheadConversionPenalty + mainLoopPenalty, 2);
+
+        // Sanity: the earnings draw actually carries a penalty (it's under 59.5),
+        // confirming the second pass hit the penalized earnings layer, not a
+        // refreshed penalty-free conversion.
+        expect(mainLoopPenalty).toBeGreaterThan(0);
     });
 });

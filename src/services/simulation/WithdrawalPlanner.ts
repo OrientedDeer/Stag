@@ -752,17 +752,35 @@ function grossUpRoth(
             const yearsHeld = currentYear - conv.year;
             const penaltyApplies = age < EARLY_WITHDRAWAL_AGE && yearsHeld < 5;
 
-            const fromThisConv = Math.min(remaining, conv.amount, maxGross - grossUsed);
+            // BUG #119 FIX: `remaining` is a NET counter (seeded with netNeeded).
+            // A penalized conversion layer delivers net = gross * (1 - penaltyRate),
+            // so gross up the target by the penalty before drawing — otherwise the
+            // gross drawn would only net 90% of itself yet `remaining` was decremented
+            // by the full gross, leaving a residual deficit (~10% of the penalized
+            // draw) for a later YearSolver iteration to mop up. Penalty-free layers
+            // (>= 5yr held, or age >= 59.5) net == gross, so no gross-up is applied.
+            const grossWanted = penaltyApplies
+                ? remaining / grossUpDivisor(EARLY_WITHDRAWAL_PENALTY_RATE)
+                : remaining;
+            const fromThisConv = Math.min(grossWanted, conv.amount, maxGross - grossUsed);
             fromConversions += fromThisConv;
             grossUsed += fromThisConv;
             conv.amount -= fromThisConv;
 
+            // Net actually delivered by this layer (gross minus its own penalty).
+            // Decrement the NET counter by the NET delivered so the layer is
+            // self-consistent: when uncapped, net == the slice of `remaining` we
+            // intended to retire; when capped by conv.amount / grossRoom, `remaining`
+            // drops by the true net so the next layer/account picks up the real
+            // residual rather than over-counting the capped draw.
+            let netFromThisConv = fromThisConv;
             if (penaltyApplies) {
                 const penaltyOnConv = fromThisConv * EARLY_WITHDRAWAL_PENALTY_RATE;
                 penalty += penaltyOnConv;
+                netFromThisConv = fromThisConv - penaltyOnConv;
             }
 
-            remaining -= fromThisConv;
+            remaining -= netFromThisConv;
         }
     }
 

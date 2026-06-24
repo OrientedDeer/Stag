@@ -95,6 +95,19 @@ describe('getIncomeDescriptor', () => {
         )).toBe('SS');
     });
 
+    // Issue #125: a reconstituted (prototype-stripped) SS income matches via
+    // `className`, not `instanceof`. The old per-subclass instanceof cascade
+    // dropped these to the 'INCOME' catch-all; the canonical isSocialSecurity
+    // tags them 'SS'. One per SS sub-class.
+    it.each([
+        'SocialSecurityIncome',
+        'CurrentSocialSecurityIncome',
+        'FutureSocialSecurityIncome',
+    ])('returns SS for a reconstituted %s (className-only, no prototype)', (className) => {
+        const reconstituted = { className, name: 'Reconstituted SS', amount: 2000, frequency: 'Monthly' } as unknown as Parameters<typeof getIncomeDescriptor>[0];
+        expect(getIncomeDescriptor(reconstituted)).toBe('SS');
+    });
+
     it('returns PENSION for FERS and CSRS', () => {
         expect(getIncomeDescriptor(makeFERSPension())).toBe('PENSION');
         expect(getIncomeDescriptor(makeCSRSPension())).toBe('PENSION');
@@ -127,6 +140,18 @@ describe('getIncomeIconBg', () => {
 
     it('returns the SocialSecurity color for any SS variant', () => {
         expect(getIncomeIconBg(makeFutureSS())).toBe(INCOME_COLORS_BACKGROUND['SocialSecurity']);
+    });
+
+    // Issue #125: reconstituted SS income (className-only) must get the SS color
+    // instead of falling through to the muted catch-all.
+    it.each([
+        'SocialSecurityIncome',
+        'CurrentSocialSecurityIncome',
+        'FutureSocialSecurityIncome',
+    ])('returns the SS color for a reconstituted %s (className-only)', (className) => {
+        const reconstituted = { className, name: 'Reconstituted SS', amount: 2000, frequency: 'Monthly' } as unknown as Parameters<typeof getIncomeIconBg>[0];
+        expect(getIncomeIconBg(reconstituted)).toBe(INCOME_COLORS_BACKGROUND['SocialSecurity']);
+        expect(getIncomeIconBg(reconstituted)).not.toBe('bg-surface-muted');
     });
 });
 

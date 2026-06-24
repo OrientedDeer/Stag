@@ -2,12 +2,10 @@ import {
     AnyIncome,
     WorkIncome,
     PassiveIncome,
-    SocialSecurityIncome,
-    CurrentSocialSecurityIncome,
-    FutureSocialSecurityIncome,
     FERSPensionIncome,
     CSRSPensionIncome,
     getIncomeActiveMultiplier,
+    isSocialSecurity,
 } from "../../components/Objects/Income/models";
 import {
     AnyExpense,
@@ -194,11 +192,10 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
             }
 
             incomeBySource.push(source);
-        } else if (
-            inc instanceof SocialSecurityIncome ||
-            inc instanceof CurrentSocialSecurityIncome ||
-            inc instanceof FutureSocialSecurityIncome
-        ) {
+        } else if (isSocialSecurity(inc)) {
+            // Canonical className-aware predicate so reconstituted (prototype-stripped)
+            // SS income — e.g. a sim year marshalled across the worker boundary — is
+            // tagged 'ss' for the Sankey instead of falling through to the passive node.
             incomeBySource.push({ name: inc.name, amount, kind: 'ss' });
         } else if (inc instanceof FERSPensionIncome) {
             // Include the MRA-to-62 supplement so the Sankey matches spendable income.

@@ -1,9 +1,7 @@
 import {
     AnyIncome,
     WorkIncome,
-    SocialSecurityIncome,
-    CurrentSocialSecurityIncome,
-    FutureSocialSecurityIncome,
+    isSocialSecurity,
 } from "../../Income/models";
 
 export function getGrossIncome(incomes: AnyIncome[], year: number): number {
@@ -117,12 +115,17 @@ export function getEarnedIncome(incomes: AnyIncome[], year: number): number {
  */
 export function getSocialSecurityBenefits(incomes: AnyIncome[], year: number): number {
     return incomes
-        .filter((inc) =>
-            inc instanceof SocialSecurityIncome ||
-            inc instanceof CurrentSocialSecurityIncome ||
-            inc instanceof FutureSocialSecurityIncome,
-        )
+        // Canonical className-aware predicate: reconstituted (prototype-stripped) SS
+        // income — e.g. a cached/worker-marshalled sim year — must be recognized as a
+        // benefit. federalTax/stateTax compute nonSSGross = grossIncome − this value,
+        // so a missed SS benefit would be taxed at 100% instead of the IRS <=85% rule.
+        .filter((inc) => isSocialSecurity(inc))
         .reduce((acc, inc) => {
-            return acc + inc.getProratedAnnual(inc.amount, year);
+            // Guard the prototype method: the className-aware predicate also matches
+            // method-less className-only objects (raw mock-fixture / worker literals
+            // with no restored prototype). Mirror the sibling pension extraction in
+            // useSimulation (getAnnualAmount?.() ?? 0) so those contribute 0 instead
+            // of throwing. Method-bearing objects are unaffected (real SS amount).
+            return acc + (inc.getProratedAnnual?.(inc.amount, year) ?? 0);
         }, 0);
 }

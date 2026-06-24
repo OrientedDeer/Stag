@@ -1,8 +1,6 @@
 import {
     AnyIncome,
     WorkIncome,
-    SocialSecurityIncome,
-    CurrentSocialSecurityIncome,
     FutureSocialSecurityIncome,
     FERSPensionIncome,
     CSRSPensionIncome,
@@ -10,6 +8,7 @@ import {
     WindfallIncome,
     INCOME_COLORS_BACKGROUND,
     IncomeFrequency,
+    isSocialSecurity,
 } from './models';
 import { isActiveRSUGrant } from './rsuGrant';
 import { formatCompactCurrency } from '../../../tabs/Future/tabs/FutureUtils';
@@ -26,9 +25,9 @@ export interface ContributionWarning {
 
 export function getIncomeDescriptor(income: AnyIncome): string {
     if (income instanceof WorkIncome) return 'WORK';
-    if (income instanceof SocialSecurityIncome) return 'SS';
-    if (income instanceof CurrentSocialSecurityIncome) return 'SS';
-    if (income instanceof FutureSocialSecurityIncome) return 'SS';
+    // All three SS sub-classes share one descriptor; the canonical className-aware
+    // predicate also tags reconstituted (prototype-stripped) SS income correctly.
+    if (isSocialSecurity(income)) return 'SS';
     if (income instanceof FERSPensionIncome) return 'PENSION';
     if (income instanceof CSRSPensionIncome) return 'PENSION';
     if (income instanceof PassiveIncome) return 'PASSIVE';
@@ -38,9 +37,9 @@ export function getIncomeDescriptor(income: AnyIncome): string {
 
 export function getIncomeIconBg(income: AnyIncome): string {
     if (income instanceof WorkIncome) return INCOME_COLORS_BACKGROUND['Work'];
-    if (income instanceof SocialSecurityIncome) return INCOME_COLORS_BACKGROUND['SocialSecurity'];
-    if (income instanceof CurrentSocialSecurityIncome) return INCOME_COLORS_BACKGROUND['SocialSecurity'];
-    if (income instanceof FutureSocialSecurityIncome) return INCOME_COLORS_BACKGROUND['SocialSecurity'];
+    // All three SS sub-classes share one icon color; className-aware so reconstituted
+    // SS income gets the SS color too rather than falling through to the muted default.
+    if (isSocialSecurity(income)) return INCOME_COLORS_BACKGROUND['SocialSecurity'];
     if (income instanceof FERSPensionIncome) return INCOME_COLORS_BACKGROUND['Pension'];
     if (income instanceof CSRSPensionIncome) return INCOME_COLORS_BACKGROUND['Pension'];
     if (income instanceof PassiveIncome) return INCOME_COLORS_BACKGROUND['Passive'];
