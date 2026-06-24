@@ -689,8 +689,21 @@ export function buildDPYearContexts(
             // planConversionsViaDP nulls this when the Medicare year would fall
             // past the horizon (engine never charges it), so no horizon guard is
             // needed here.
+            //
+            // Filing status: price against the status PROJECTED FOR THE MEDICARE
+            // YEAR (year + lookback) the premium is billed in, NOT this lookback
+            // year's. If a filing-status life event fires between the lookback
+            // (ages 63-64) and Medicare (ages 65-66) years — e.g. a spouse's
+            // death MFJ → Single — the engine bills the surcharge on the
+            // Medicare-year bracket schedule, whose thresholds (and thus tier)
+            // differ from the lookback year's. Resolving effTax here would size
+            // the 63/64 conversion against the wrong schedule.
+            const medicareYear = simYear.year + IRMAA_LOOKBACK_YEARS;
+            const medicareFilingStatus = resolveTaxEventsForYear(
+                taxState, medicareYear, reachYears,
+            ).filingStatus;
             const medicareSchedule = getIRMAASchedule(
-                effTax.filingStatus, simYear.year + IRMAA_LOOKBACK_YEARS, assumptions,
+                medicareFilingStatus, medicareYear, assumptions,
             );
             irmaaSurchargeForMAGI = (magi: number) => medicareSchedule.annualSurcharge(magi);
         }

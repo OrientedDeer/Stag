@@ -30,14 +30,15 @@ import process from 'node:process';
 
 import { decrypt, encrypt, EncryptedBackup } from '../src/services/encryption/CryptoService';
 import { parseBalancesCSV } from '../src/services/simplefinBalances';
-import { applyTransactions, applyBalances, BalanceMergeReport, MergeBlob } from '../src/services/backupMerge';
-import { jsonDateReplacer } from '../src/utils/formatters';
+import { applyTransactions, applyBalances, MergeBlob } from '../src/services/backupMerge';
 import { csvToTransactions } from './csvToTransactions';
+import { flagReasonCounts, serializeBlob, stagVerbose } from './importShared';
 
-// Re-exported so the test can pull the shared parser through this module too. The
-// implementation lives in csvToTransactions.ts so both importers stay in lockstep
-// — see that file's header for why it must be side-effect-free.
+// Re-exported so the test can pull the shared parser/helpers through this module
+// too. The implementations live in side-effect-free modules (csvToTransactions.ts,
+// importShared.ts) so the importers stay in lockstep — see those files' headers.
 export { csvToTransactions };
+export { flagReasonCounts, serializeBlob };
 
 const MAX_BACKUP_SIZE = 5 * 1024 * 1024; // mirror the browser / backend cap
 
@@ -45,26 +46,7 @@ const MAX_BACKUP_SIZE = 5 * 1024 * 1024; // mirror the browser / backend cap
 // per-user doc id) are sensitive and would otherwise land in journald/cron-mail/CI
 // logs in cleartext — contradicting the zero-knowledge posture. Default to counts
 // + flag-reason breakdown only; STAG_VERBOSE=1 to surface detail when debugging.
-const VERBOSE = process.env.STAG_VERBOSE === '1';
-
-/** Tally flag reasons into a non-sensitive count map (drops the account keys). */
-export function flagReasonCounts(flagged: BalanceMergeReport['flagged']): Record<string, number> {
-    const counts: Record<string, number> = {};
-    for (const f of flagged) counts[f.reason] = (counts[f.reason] ?? 0) + 1;
-    return counts;
-}
-
-/**
- * Serialize the plaintext blob exactly as every in-app backup path does — with
- * `jsonDateReplacer`, so date-only Date values emit local 'YYYY-MM-DD' instead of
- * the default UTC toISOString(). Without this, transaction dates built at
- * local-midnight on a UTC+ runner round-trip a day earlier for browsers whose UTC
- * offset is more negative than the runner's (issue #73). Mirrors the file-based
- * importer so the nightly Couch path can't drift from the browser.
- */
-export function serializeBlob(blob: MergeBlob): string {
-    return JSON.stringify(blob, jsonDateReplacer);
-}
+const VERBOSE = stagVerbose();
 
 function env(name: string): string {
     const v = process.env[name];
@@ -126,14 +108,21 @@ async function putDoc(doc: CouchDoc): Promise<{ conflict: boolean; rev?: string 
  * bumps it, so the headless feed would leave it frozen. Touch the most-recent
  * saved format so the indicator tracks the nightly run.
  */
-function bumpLastImport(blob: MergeBlob): void {
+export function bumpLastImport(blob: MergeBlob): void {
     const formats = blob.budget?.importSettings?.savedCSVFormats;
     if (!formats?.length) {
         console.warn('  NOTE: no saved CSV formats — "Last import" cannot advance (seed it with one in-app import).');
         return;
     }
-    const newest = formats.reduce((a, b) =>
-        new Date(b.lastUsed).getTime() > new Date(a.lastUsed).getTime() ? b : a);
+    // Coerce a malformed/missing lastUsed (parses to Invalid Date → NaN) to the
+    // oldest possible time. A bare `NaN > NaN` is false, so a reduce without this
+    // would silently keep the accumulator (the first format) and stamp the wrong
+    // one whenever the current newest had a bad lastUsed.
+    const lastUsedMs = (f: { lastUsed?: unknown }): number => {
+        const t = new Date(f.lastUsed as string | number | Date).getTime();
+        return Number.isNaN(t) ? -Infinity : t;
+    };
+    const newest = formats.reduce((a, b) => (lastUsedMs(b) > lastUsedMs(a) ? b : a));
     newest.lastUsed = new Date();
     // The saved-format name is a user-chosen label — keep it out of routine logs.
     console.log(VERBOSE ? `  bumped "Last import" via saved format "${newest.name}"` : '  bumped "Last import"');

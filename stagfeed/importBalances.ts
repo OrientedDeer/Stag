@@ -22,21 +22,20 @@ import process from 'node:process';
 
 import { decrypt, encrypt, EncryptedBackup } from '../src/services/encryption/CryptoService';
 import { parseBalancesCSV } from '../src/services/simplefinBalances';
-import { applyBalances, BalanceMergeReport, MergeBlob } from '../src/services/backupMerge';
+import { applyBalances, MergeBlob } from '../src/services/backupMerge';
+import { flagReasonCounts, stagVerbose } from './importShared';
+
+// Re-exported so the test can pull the shared helper through this module too. The
+// implementation lives in importShared.ts (side-effect-free) so the balance and
+// Couch importers stay in lockstep — see that file's header.
+export { flagReasonCounts };
 
 const MAX_BACKUP_SIZE = 5 * 1024 * 1024; // mirror the browser / backend cap
 
 // Opt-in: the detailed per-account dump (names, balances, SimpleFIN keys) is
 // sensitive and would otherwise land in journald/cron-mail/CI logs in cleartext.
 // Default to counts + flag-reason breakdown only; STAG_VERBOSE=1 to see detail.
-const VERBOSE = process.env.STAG_VERBOSE === '1';
-
-/** Tally flag reasons into a non-sensitive count map (drops the account keys). */
-export function flagReasonCounts(flagged: BalanceMergeReport['flagged']): Record<string, number> {
-    const counts: Record<string, number> = {};
-    for (const f of flagged) counts[f.reason] = (counts[f.reason] ?? 0) + 1;
-    return counts;
-}
+const VERBOSE = stagVerbose();
 
 function env(name: string): string {
     const v = process.env[name];

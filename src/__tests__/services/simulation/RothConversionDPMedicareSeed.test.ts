@@ -137,6 +137,58 @@ describe('Medicare head-year IRMAA seed — early retiree lookback attribution (
         expect(c67.irmaaSurchargeForMAGI!(220_000)).toBeCloseTo(expected67, 2);
     });
 
+    it('filing-status change between 63/64 and 65: surcharge prices on the MEDICARE-YEAR status', () => {
+        // Early retiree (retire at 60 → ages 63-66 all in-horizon). The base
+        // filing status is MFJ at ages 63-64, but a filing-status life event
+        // (e.g. spouse's death) switches to Single in the age-65 year. The IRMAA
+        // surcharge the engine bills at 65/66 is set by the age-63/64 MAGI but
+        // billed against the MEDICARE YEAR's (Single) bracket schedule — whose
+        // thresholds are ~half the MFJ ones, so the same MAGI lands in a higher
+        // (often non-zero) surcharge tier. The age-63/64 lookback contexts must
+        // price the (year+2) Medicare schedule on the MEDICARE-YEAR filing status,
+        // not their own (MFJ) status.
+        const birthYear = START_YEAR - 60; // retire at 60 → ages 63-66 all in-horizon
+        const retirementYear = START_YEAR;
+        const assumptions = makeAssumptions(birthYear, 60);
+        const baseline = buildBaseline(retirementYear, 30, 20_000);
+
+        // Age 65 falls in START_YEAR + 5 (born START_YEAR - 60 → age 65 in
+        // START_YEAR + 5). Switch MFJ → Single starting that calendar year.
+        const age65Year = birthYear + 65;
+        const mfjToSingle: TaxState = {
+            ...taxState,
+            filingStatus: 'Married Filing Jointly',
+            taxEvents: [
+                { id: 'widow', kind: 'filingStatus', value: 'Single', year: age65Year },
+            ],
+        };
+
+        const contexts = buildDPYearContexts(baseline, assumptions, mfjToSingle, retirementYear, 0);
+
+        const at = (age: number) => contexts.find(c => c.age === age)!;
+        const c63 = at(63), c64 = at(64);
+
+        // The age-63 context's filing status is still MFJ (event fires at 65),
+        // but the age-65 PREMIUM it sizes against must use the Single schedule.
+        // Pick a MAGI that is below the MFJ surcharge floor but above the Single
+        // floor (after the schedule's inflation indexing to the ~2035 Medicare
+        // year) so the two schedules give DIFFERENT (and the Single one non-zero)
+        // surcharges — that's exactly the bracket the bug would misprice. The
+        // `single65 > 0` and `not.toBeCloseTo` guards below fail loudly if the
+        // indexing ever pushes the floors past this value.
+        const magi = 200_000;
+        const single65 = getIRMAASchedule('Single', c63.year + 2, assumptions).annualSurcharge(magi);
+        const mfj65 = getIRMAASchedule('Married Filing Jointly', c63.year + 2, assumptions).annualSurcharge(magi);
+        expect(single65).toBeGreaterThan(0); // sanity: $120k is in a Single surcharge tier
+        expect(single65).not.toBeCloseTo(mfj65, 2); // the two schedules really differ here
+
+        // FIX: the lookback context prices against the Medicare-year (Single)
+        // schedule, NOT its own (MFJ) status.
+        expect(c63.irmaaSurchargeForMAGI!(magi)).toBeCloseTo(single65, 2);
+        const single66 = getIRMAASchedule('Single', c64.year + 2, assumptions).annualSurcharge(magi);
+        expect(c64.irmaaSurchargeForMAGI!(magi)).toBeCloseTo(single66, 2);
+    });
+
     it('retire-at-65: ages 63-64 are pre-retirement → 65-66 keep the #76 baseline seed (NOT 0)', () => {
         // Retire at 65: ages 63-64 fall BEFORE retirement (no DP conversion), but
         // ages 65-66 ARE in-horizon. The head years must keep the baseline-MAGI

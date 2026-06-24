@@ -14,6 +14,7 @@ import {
 import { formatCompactCurrency } from '../../../tabs/Future/tabs/FutureUtils';
 import { get401kLimit, getHSALimit } from '../../../data/ContributionLimits';
 import { getFrequencyAbbrev } from '../../../utils/formatters';
+import type { RSUAccount } from '../Accounts/models';
 
 export interface ContributionWarning {
     type: string;
@@ -123,4 +124,39 @@ export function computeContributionWarnings(
     }
 
     return warnings.length > 0 ? warnings : null;
+}
+
+/**
+ * Required-field validation for the RSU section. An RSU grant with a vesting
+ * schedule needs a current share price on its linked account — without one the
+ * engine can't value the vest and silently projects $0 (it only logs a [WARN]).
+ * Requiring the price at the input layer stops the blank-price state from
+ * producing a misleading $0 projection.
+ *
+ * Returns a user-facing required-field message, or null when the config is
+ * valid (no vesting schedule, or a linked account that carries a price). Pure
+ * so it's testable. `0` counts as unset, matching the account card's
+ * `currentSharePrice ?? derived` convention.
+ */
+export function getRSUPriceValidationMessage(
+    income: AnyIncome,
+    rsuAccounts: RSUAccount[]
+): string | null {
+    if (!(income instanceof WorkIncome)) return null;
+    // Only validate once vesting is actually configured.
+    if (income.rsuVestingSchedule === 'NONE' || income.rsuGrantShares <= 0) return null;
+
+    // No linked account is a separate condition the RSU section already flags.
+    if (!income.rsuAccountId) return null;
+
+    const linked = rsuAccounts.find((acc) => acc.id === income.rsuAccountId);
+    if (!linked) return null;
+
+    if (!linked.currentSharePrice || linked.currentSharePrice <= 0) {
+        return `Set a Current Share Price on the "${linked.name}" RSU account — `
+            + 'an RSU grant with a vesting schedule needs a price to value each vest, '
+            + 'otherwise the projection shows $0.';
+    }
+
+    return null;
 }

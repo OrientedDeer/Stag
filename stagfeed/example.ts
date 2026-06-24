@@ -14,7 +14,7 @@ import {
     makeTransaction,
     MergeBlob,
 } from '../src/services/backupMerge';
-import { jsonDateReplacer } from '../src/utils/formatters';
+import { serializeBlob } from './importShared';
 
 const MAX_BACKUP_SIZE = 5 * 1024 * 1024; // mirror the browser / backend cap
 
@@ -44,12 +44,12 @@ async function run(): Promise<void> {
     blob.version = 2;
 
     // --- 4. re-encrypt and guard the size cap ---
-    // Serialize with `jsonDateReplacer` (the same helper the production importers
-    // wrap in serializeBlob), so date-only Date values emit local 'YYYY-MM-DD'
-    // instead of the default UTC toISOString(). A bare JSON.stringify(blob) shifts
-    // every transaction date a day earlier on a UTC+ runner — issue #73 — which
-    // would make this reference contradict the in-app path it claims to mirror.
-    const updatedPlaintext = JSON.stringify(blob, jsonDateReplacer);
+    // Serialize through the same shared `serializeBlob` the production importers
+    // use, so date-only Date values emit local 'YYYY-MM-DD' instead of the default
+    // UTC toISOString(). A bare JSON.stringify(blob) shifts every transaction date a
+    // day earlier on a UTC+ runner — issue #73 — which would make this reference
+    // contradict the in-app path it claims to mirror.
+    const updatedPlaintext = serializeBlob(blob);
     const reEncrypted = JSON.stringify(await encrypt(updatedPlaintext, passphrase));
     if (new Blob([reEncrypted]).size > MAX_BACKUP_SIZE) {
         throw new Error('Encrypted blob exceeds 5 MB; refusing to write.');

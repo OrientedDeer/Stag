@@ -26,27 +26,17 @@ import process from 'node:process';
 
 import { decrypt, encrypt, EncryptedBackup } from '../src/services/encryption/CryptoService';
 import { applyTransactions, MergeBlob } from '../src/services/backupMerge';
-import { jsonDateReplacer } from '../src/utils/formatters';
 import { csvToTransactions } from './csvToTransactions';
+import { serializeBlob } from './importShared';
 
-// Re-exported so callers (and the test) can pull the shared parser through this
-// module. The implementation lives in csvToTransactions.ts so both importers stay
-// in lockstep — see that file's header for why it must be side-effect-free.
+// Re-exported so callers (and the test) can pull the shared parser/serializer
+// through this module. The implementations live in side-effect-free modules
+// (csvToTransactions.ts, importShared.ts) so both importers stay in lockstep — see
+// those files' headers for why they must be side-effect-free.
 export { csvToTransactions };
+export { serializeBlob };
 
 const MAX_BACKUP_SIZE = 5 * 1024 * 1024; // mirror the browser / backend cap
-
-/**
- * Serialize the plaintext blob exactly as every in-app backup path does — with
- * `jsonDateReplacer`, so date-only Date values emit local 'YYYY-MM-DD' instead of
- * the default UTC toISOString(). Without this, a Date built at local-midnight on a
- * UTC+ runner serializes a day earlier and reloads on the wrong day/budget month
- * for UTC/US/India browsers (issue #73). Both headless importers re-encrypt
- * through this single helper so they can't drift from the browser.
- */
-export function serializeBlob(blob: MergeBlob): string {
-    return JSON.stringify(blob, jsonDateReplacer);
-}
 
 function env(name: string): string {
     const v = process.env[name];

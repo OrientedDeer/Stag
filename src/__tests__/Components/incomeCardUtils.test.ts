@@ -5,6 +5,7 @@ import {
     getDisplayAmount,
     getFrequencyDisplay,
     computeContributionWarnings,
+    getRSUPriceValidationMessage,
 } from '../../components/Objects/Income/incomeCardUtils';
 import {
     WorkIncome,
@@ -17,6 +18,7 @@ import {
     WindfallIncome,
     INCOME_COLORS_BACKGROUND,
 } from '../../components/Objects/Income/models';
+import { RSUAccount } from '../../components/Objects/Accounts/models';
 
 function makeWorkIncome(overrides: Partial<{
     preTax401k: number;
@@ -223,5 +225,69 @@ describe('computeContributionWarnings', () => {
             const k401 = warnings.find((wn) => wn.type === '401k');
             if (k401) expect(k401.annual).toBe(120_000); // (5000 + 5000) × 12
         }
+    });
+});
+
+describe('getRSUPriceValidationMessage', () => {
+    function makeRSUWorkIncome(overrides: Partial<{
+        rsuVestingSchedule: 'NONE' | 'cliff-1yr' | 'graded-3yr' | 'graded-4yr';
+        rsuGrantShares: number;
+        rsuAccountId: string | null;
+    }> = {}): WorkIncome {
+        const w = makeWorkIncome();
+        w.rsuVestingSchedule = overrides.rsuVestingSchedule ?? 'cliff-1yr';
+        w.rsuGrantShares = overrides.rsuGrantShares ?? 1000;
+        // Use `in` so an explicit `rsuAccountId: null` isn't clobbered by ??.
+        w.rsuAccountId = 'rsuAccountId' in overrides ? overrides.rsuAccountId ?? null : 'rsu-acct-1';
+        return w;
+    }
+
+    function makeRSUAccount(currentSharePrice?: number): RSUAccount {
+        const acc = new RSUAccount('rsu-acct-1', 'My RSUs', 0);
+        acc.currentSharePrice = currentSharePrice;
+        return acc;
+    }
+
+    it('returns null for non-WorkIncome', () => {
+        expect(getRSUPriceValidationMessage(makeFERSPension(), [])).toBeNull();
+        expect(getRSUPriceValidationMessage(makeFutureSS(), [])).toBeNull();
+    });
+
+    it('returns null when no vesting schedule is configured', () => {
+        const w = makeRSUWorkIncome({ rsuVestingSchedule: 'NONE' });
+        expect(getRSUPriceValidationMessage(w, [makeRSUAccount(150)])).toBeNull();
+    });
+
+    it('returns null when the grant has zero shares', () => {
+        const w = makeRSUWorkIncome({ rsuGrantShares: 0 });
+        expect(getRSUPriceValidationMessage(w, [makeRSUAccount()])).toBeNull();
+    });
+
+    it('returns null when no RSU account is linked (a separate condition the UI flags)', () => {
+        const w = makeRSUWorkIncome({ rsuAccountId: null });
+        expect(getRSUPriceValidationMessage(w, [makeRSUAccount()])).toBeNull();
+    });
+
+    it('returns null when the linked account id matches nothing', () => {
+        const w = makeRSUWorkIncome({ rsuAccountId: 'does-not-exist' });
+        expect(getRSUPriceValidationMessage(w, [makeRSUAccount(150)])).toBeNull();
+    });
+
+    it('fires when the linked account has a blank (undefined) share price', () => {
+        const w = makeRSUWorkIncome();
+        const msg = getRSUPriceValidationMessage(w, [makeRSUAccount(undefined)]);
+        expect(msg).not.toBeNull();
+        expect(msg).toContain('Current Share Price');
+        expect(msg).toContain('My RSUs');
+    });
+
+    it('fires when the linked account has a $0 share price (0 counts as unset)', () => {
+        const w = makeRSUWorkIncome();
+        expect(getRSUPriceValidationMessage(w, [makeRSUAccount(0)])).not.toBeNull();
+    });
+
+    it('passes once a positive share price is set on the linked account', () => {
+        const w = makeRSUWorkIncome();
+        expect(getRSUPriceValidationMessage(w, [makeRSUAccount(150)])).toBeNull();
     });
 });
