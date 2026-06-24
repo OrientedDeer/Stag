@@ -12,8 +12,10 @@ Stag is a personal finance planning and retirement simulation web app built with
 npm run dev          # Start development server
 npm run build        # TypeScript check + Vite production build
 npm run lint         # ESLint
+npm run typecheck    # tsc -b only (incremental; ~0.3s no-op, seconds after an edit)
 npm run test         # Vitest in watch mode
-npm run test:ci      # Vitest single run (CI)
+npm run test:ci      # Vitest single run, full suite (~250s) — pre-commit / CI only
+npm run test:changed # Vitest run, only files affected by the current git diff
 npm run test:e2e     # Playwright end-to-end tests
 npm run test:e2e:ui  # Playwright with UI
 ```
@@ -23,6 +25,11 @@ Run a single test file:
 npx vitest run src/__tests__/services/WithdrawalStrategies.test.ts
 npx playwright test e2e/import-export.spec.ts
 ```
+
+> **Don't run the full suite (~230s) after every edit.** During iteration, run
+> `npm run typecheck` (~0.3s) plus the specific test file(s) you touched, and reserve
+> `npm run test:ci` for the final pre-commit gate. See
+> [Running tests efficiently](#running-tests-efficiently) under Testing Guidelines.
 
 ## Architecture
 
@@ -100,3 +107,40 @@ Nivo charts (`@nivo/sankey`, `@nivo/line`, `@nivo/stream`, etc.) are used throug
 
 - **Investigate failures before loosening tests**: When a test fails, first investigate whether the failure indicates a real bug in the code. Do NOT immediately loosen test assertions or tolerances to make tests pass. Read the relevant source code to understand the intended behavior before deciding whether the test expectation or the code is wrong.
 - **Ask user before relaxing test constraints**: If after investigation you believe a test threshold or assertion needs to be relaxed (e.g., increasing a tolerance, raising a growth rate limit, loosening a boundary check), STOP and ask the user for approval before making the change. Explain what the test is checking, why it's failing, and why you believe relaxing it is appropriate.
+
+### Running tests efficiently
+
+The full suite is ~230s (244 files, 4200+ tests). Do **not** run it after every edit —
+that's the main source of wasted waiting. The fast loop, in order of preference:
+
+1. **`npm run typecheck` after almost every edit.** `tsc -b` is incremental: ~0.3s for a
+   no-op, a few seconds after a real change (it re-checks only the edited file + its
+   dependents). This catches type breakage across the *entire* project without running a
+   single test, so it's the cheapest, broadest safety net you have. Run it liberally.
+   - Why `tsc -b` and not `tsc --noEmit`: the root `tsconfig.json` has `files: []`, so a
+     plain `tsc`/`tsc --noEmit` checks nothing. `tsc -b` walks the project references.
+   - The configs carry `incremental: true` *specifically* so this stays fast. Don't remove
+     it: with `noEmit: true`, build mode otherwise looks for `.js` output files that never
+     exist, decides the project is "out of date," and re-type-checks everything every run
+     (~26s instead of ~0.3s). The `.tsbuildinfo` files (gitignored) are the cache.
+2. **Run the specific test file(s) for what you touched:** `npx vitest run <path/to/X.test.ts>`
+   (~1–2s each). This is the single biggest time lever for behavioral verification.
+3. **`npx vitest related <src-file…>`** — runs every test importing the given source file,
+   useful after editing a leaf module whose test files you don't know.
+4. **`npm run test:changed`** (`vitest run --changed`) — tests affected by the uncommitted
+   diff. Honest caveat: the core modules (`SimulationEngine`, the `Accounts`/`Expense`/
+   `Income` `models.tsx`, `TaxService`, the Monte Carlo worker) are imported transitively by
+   ~70% of the suite, so editing one of those makes `--changed`/`related` pull in most tests
+   anyway. For core-engine edits, lean on targeted files + `typecheck` during iteration.
+5. **`npm run test:ci`** (full suite) — reserve for the final pre-commit/pre-push gate.
+
+**Don't try to "speed up" the full suite by changing the vitest pool/isolation** — this was
+measured (2026-06-24):
+- `isolate: false` → **104 failures** from cross-file jsdom DOM contamination (components stay
+  mounted in a shared `document`). The component tests depend on a fresh DOM per file.
+- `pool: 'threads'` → **no speedup** (~234s vs ~230s) and introduced a flaky failure.
+
+The ~230s is genuine parallel work (CPU-bound test execution + the per-file jsdom
+`environment` init that isolation requires), not config overhead. `forks` + `isolate: true`
+(the vitest defaults, left unset in `vite.config.ts`) are correct. The real lever is running
+fewer files per iteration, not reconfiguring the runner.
