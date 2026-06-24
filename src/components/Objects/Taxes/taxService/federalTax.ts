@@ -23,6 +23,16 @@ const SENIOR_BONUS_START_YEAR = 2025;
 const SENIOR_BONUS_END_YEAR = 2028;
 
 /**
+ * 65+ senior-deduction eligibility: a defined age at or above the senior-age
+ * threshold (default 65). Single source for both the MAGI-proxy gate in
+ * calculateFederalTaxFromIncomes and getFederalSeniorDeduction's own early-out,
+ * so the two can't drift.
+ */
+function isSeniorEligible(fedParams: TaxParameters, age: number | undefined): boolean {
+    return age !== undefined && age >= (fedParams.seniorAge ?? 65);
+}
+
+/**
  * Federal extra deductions for taxpayers age >= seniorAge, split into the two
  * IRS components that attach to DIFFERENT bases:
  *
@@ -56,9 +66,7 @@ function getFederalSeniorDeduction(
     year: number,
     magi: number,
 ): { regular: number; bonus: number } {
-    if (age === undefined) return { regular: 0, bonus: 0 };
-    const seniorAge = fedParams.seniorAge ?? 65;
-    if (age < seniorAge) return { regular: 0, bonus: 0 };
+    if (!isSeniorEligible(fedParams, age)) return { regular: 0, bonus: 0 };
 
     const isMFJ = filingStatus === 'Married Filing Jointly';
     const perPersonMultiplier = fedParams.seniorDeductionPerPerson && isMFJ ? 2 : 1;
@@ -145,8 +153,7 @@ export function calculateFederalTaxFromIncomes(
     // below seniorAge, so building the proxy would be wasted work in the common
     // (working-age) case. Behavior-preserving — the proxy only feeds the senior
     // deduction, which getFederalSeniorDeduction returns 0 for in that case.
-    const seniorAge = fedParams.seniorAge ?? 65;
-    const seniorEligible = age !== undefined && age >= seniorAge;
+    const seniorEligible = isSeniorEligible(fedParams, age);
     let regularSeniorDeduction = 0;
     let bonusSeniorDeduction = 0;
     if (seniorEligible) {

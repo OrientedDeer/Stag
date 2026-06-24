@@ -204,17 +204,23 @@ export function WorkIncomeFields({
                         )}
                     </>
                 )}
-                {deferralDestinationMessage && (
-                    <AlertBanner
-                        severity="error"
-                        size="sm"
-                        title="Destination Account Required"
-                        className="col-span-full"
-                    >
-                        {deferralDestinationMessage}
-                    </AlertBanner>
-                )}
             </CardSection>
+
+            {/* The deferral-destination warning lives OUTSIDE the collapsed 401k
+                section so a collapse can't hide it — a dangling id (destination
+                account deleted) only survives while the section is collapsed, since
+                expanding it mounts the Destination dropdown whose mount effect
+                auto-heals an id that's no longer in its options. */}
+            {deferralDestinationMessage && (
+                <AlertBanner
+                    severity="error"
+                    size="sm"
+                    title="Destination Account Required"
+                    className="col-span-full"
+                >
+                    {deferralDestinationMessage}
+                </AlertBanner>
+            )}
 
             <CardSection
                 id={`${income.id}-section-benefits`}
