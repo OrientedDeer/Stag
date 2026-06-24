@@ -793,6 +793,107 @@ describe('TaxService: Additional Functions', () => {
             const fedTax = calculateFederalTaxFromIncomes(taxState, [income], [], 0, 2024, noInflationAssumptions);
             expect(fedTax).toBe(15000);
         });
+
+        // ---------------------------------------------------------------------
+        // Federal 65+ standard deduction + OBBBA senior bonus (#129)
+        // ---------------------------------------------------------------------
+        describe('federal 65+ standard deduction + OBBBA senior bonus (#129)', () => {
+            // age = taxYear - birthYear; createBuiltinMilestones(birthYear, retire, life)
+            const assumptionsForBirthYear = (birthYear: number): AssumptionsState => ({
+                ...noInflationAssumptions,
+                milestones: createBuiltinMilestones(birthYear, 1, 15),
+            });
+
+            it('single age 67 (2026): regular $2,050 + OBBBA bonus ($6k, partially phased out)', () => {
+                // Single, born 1959 → age 67 in 2026, $90k work income, Texas (no state tax).
+                const income = new WorkIncome('w1', 'Job', 90000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+                const taxState = createTaxState({ deductionMethod: 'Standard' });
+                const fedTax = calculateFederalTaxFromIncomes(taxState, [income], [], 0, 2026, assumptionsForBirthYear(1959));
+                // MAGI = $90k. OBBBA bonus = 6000 - 6%*(90000-75000)=6000-900 = $5,100.
+                // Senior deduction = regular $2,050 + bonus $5,100 = $7,150.
+                // Total deduction = std $16,100 + $7,150 = $23,250. Taxable = 90,000 - 23,250 = $66,750.
+                // 2026 Single: 12,400@10% + (50,400-12,400)@12% + (66,750-50,400)@22%
+                //            = 1,240 + 4,560 + 3,597 = 9,397.
+                expect(fedTax).toBeCloseTo(9397, 0);
+            });
+
+            it('MFJ both 65+ (2026): regular $1,650×2 + OBBBA bonus $6k×2 (no phaseout at $150k MAGI)', () => {
+                // MFJ, both born 1959 (single-age model assumes both spouses 65+), $150k, Texas.
+                const income = new WorkIncome('w1', 'Job', 150000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+                const taxState = createTaxState({ filingStatus: 'Married Filing Jointly', deductionMethod: 'Standard' });
+                const fedTax = calculateFederalTaxFromIncomes(taxState, [income], [], 0, 2026, assumptionsForBirthYear(1959));
+                // MAGI = $150k = MFJ threshold (not > threshold) → no phaseout → bonus = $6,000×2 = $12,000.
+                // Regular = $1,650×2 = $3,300. Senior deduction = $15,300.
+                // Total deduction = std $32,200 + $15,300 = $47,500. Taxable = 150,000 - 47,500 = $102,500.
+                // 2026 MFJ: 24,800@10% + (100,800-24,800)@12% + (102,500-100,800)@22%
+                //         = 2,480 + 9,120 + 374 = 11,974.
+                expect(fedTax).toBeCloseTo(11974, 0);
+            });
+
+            it('phaseout boundary: single age 67, $130k MAGI partially phases out the bonus', () => {
+                const income = new WorkIncome('w1', 'Job', 130000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+                const taxState = createTaxState({ deductionMethod: 'Standard' });
+                const fedTax = calculateFederalTaxFromIncomes(taxState, [income], [], 0, 2026, assumptionsForBirthYear(1959));
+                // MAGI $130k: bonus = 6000 - 6%*(130000-75000) = 6000 - 3300 = $2,700.
+                // Senior deduction = $2,050 + $2,700 = $4,750. Total deduction = 16,100 + 4,750 = $20,850.
+                // Taxable = 130,000 - 20,850 = $109,150.
+                // 1,240 + 4,560 + (105,700-50,400)@22% + (109,150-105,700)@24%
+                //       = 1,240 + 4,560 + 12,166 + 828 = 18,794.
+                expect(fedTax).toBeCloseTo(18794, 0);
+            });
+
+            it('full phaseout: single age 67, MAGI >= $175k zeroes the bonus (regular 65+ still applies)', () => {
+                // At MAGI $175k the bonus floors at $0 (6%*100k = 6000). Compare a single 67-year-old
+                // to an under-65 baseline: the difference must be exactly the regular $2,050 in deduction.
+                const income = new WorkIncome('w1', 'Job', 175000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+                const taxState = createTaxState({ deductionMethod: 'Standard' });
+                const senior = calculateFederalTaxFromIncomes(taxState, [income], [], 0, 2026, assumptionsForBirthYear(1959));
+                const underAge = calculateFederalTaxFromIncomes(taxState, [income], [], 0, 2026, assumptionsForBirthYear(1980)); // age 46
+                // Only the regular $2,050 deduction differs (bonus fully phased out).
+                // At $175k taxable income the marginal bracket is 24%, so the tax saving is 2050*0.24 = $492.
+                expect(underAge - senior).toBeCloseTo(2050 * 0.24, 0);
+            });
+
+            it('post-2028 sunset (2029): OBBBA bonus gone, regular 65+ deduction still applies', () => {
+                // noInflation → 2029 resolves to the closest table year (2026 brackets/data),
+                // but federalTax.ts gates the OBBBA bonus to 2025–2028, so only the regular
+                // $2,050 deduction applies in 2029.
+                const income = new WorkIncome('w1', 'Job', 90000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+                const taxState = createTaxState({ deductionMethod: 'Standard' });
+                const fedTax = calculateFederalTaxFromIncomes(taxState, [income], [], 0, 2029, assumptionsForBirthYear(1962)); // age 67 in 2029
+                // Total deduction = std $16,100 + regular $2,050 = $18,150. Taxable = 90,000 - 18,150 = $71,850.
+                // 1,240 + 4,560 + (71,850-50,400)@22% = 1,240 + 4,560 + 4,719 = 10,519.
+                expect(fedTax).toBeCloseTo(10519, 0);
+            });
+
+            it('under-65 (2026): no senior deduction or bonus (unchanged)', () => {
+                const income = new WorkIncome('w1', 'Job', 90000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+                const taxState = createTaxState({ deductionMethod: 'Standard' });
+                const fedTax = calculateFederalTaxFromIncomes(taxState, [income], [], 0, 2026, assumptionsForBirthYear(1980)); // age 46
+                // Std deduction $16,100 only. Taxable = 90,000 - 16,100 = $73,900.
+                // 1,240 + 4,560 + (73,900-50,400)@22% = 1,240 + 4,560 + 5,170 = 10,970.
+                expect(fedTax).toBeCloseTo(10970, 0);
+            });
+
+            it('MFS age 67 (2026): regular $1,650 NOT doubled (single person) + bonus', () => {
+                const income = new WorkIncome('w1', 'Job', 90000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+                const taxState = createTaxState({ filingStatus: 'Married Filing Separately', deductionMethod: 'Standard' });
+                const fedTax = calculateFederalTaxFromIncomes(taxState, [income], [], 0, 2026, assumptionsForBirthYear(1959));
+                // MFS regular $1,650 (no per-person doubling). MAGI $90k, threshold $75k →
+                // bonus = 6000 - 6%*(90000-75000) = $5,100. Senior deduction = 1,650 + 5,100 = $6,750.
+                // Total deduction = std $16,100 + $6,750 = $22,850. Taxable = 90,000 - 22,850 = $67,150.
+                // 1,240 + 4,560 + (67,150-50,400)@22% = 1,240 + 4,560 + 3,685 = 9,485.
+                expect(fedTax).toBeCloseTo(9485, 0);
+            });
+
+            it('MFJ both 65+ gets a strictly larger deduction than a single 65+ (per-person doubling)', () => {
+                const income = new WorkIncome('w1', 'Job', 90000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+                const single = calculateFederalTaxFromIncomes(createTaxState({ deductionMethod: 'Standard' }), [income], [], 0, 2026, assumptionsForBirthYear(1959));
+                const mfj = calculateFederalTaxFromIncomes(createTaxState({ filingStatus: 'Married Filing Jointly', deductionMethod: 'Standard' }), [income], [], 0, 2026, assumptionsForBirthYear(1959));
+                // Larger MFJ deductions (and brackets) ⇒ lower tax than single on the same income.
+                expect(mfj).toBeLessThan(single);
+            });
+        });
     });
 
     describe('FICA and State Tax with Social Security', () => {

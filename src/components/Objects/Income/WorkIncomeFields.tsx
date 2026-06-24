@@ -5,6 +5,7 @@ import { NumberInput } from "../../Layout/InputFields/NumberInput";
 import { ToggleInput } from "../../Layout/InputFields/ToggleInput";
 import { PercentageInput } from "../../Layout/InputFields/PercentageInput";
 import { CardSection } from "../../Layout/CardSection";
+import { AlertBanner } from "../../Layout/AlertBanner";
 import {
     ContributionGrowthStrategy,
     AutoMax401kOption,
@@ -42,8 +43,25 @@ export const WorkIncomeFields: React.FC<WorkIncomeFieldsProps> = ({
     updateForm,
     contributionAccounts,
     esppAccounts
-}) => (
-    <>
+}) => {
+    // A configured deferral (auto-max or a positive custom amount) needs a
+    // destination account, independent of any employer match — without one the
+    // deferral lowers taxes but is never deposited (issue #123).
+    const hasDeferral =
+        form.autoMax401k === 'traditional' ||
+        form.autoMax401k === 'roth' ||
+        (form.autoMax401k === 'custom' && (form.preTax401k > 0 || form.roth401k > 0));
+    const deferralDestinationMessage = hasDeferral && !form.matchAccountId
+        ? (contributionAccounts.length > 0
+            ? 'Choose a Destination Account for your 401k contributions — the '
+                + 'deferral lowers your taxes but is never deposited without one, so it '
+                + 'silently disappears from your net worth.'
+            : 'Create a 401k account in the Accounts tab and select it as the '
+                + 'Destination Account — your 401k deferral lowers your taxes but is '
+                + 'never deposited without one, so it silently disappears from your net worth.')
+        : null;
+    return (
+        <>
         <CardSection
             id="add-income-section-401k"
             title="401k & Match"
@@ -99,16 +117,31 @@ export const WorkIncomeFields: React.FC<WorkIncomeFieldsProps> = ({
                             <CurrencyInput label="Annual Cap" value={form.employerMatchMax} onChange={(val) => updateForm('employerMatchMax', val)} tooltip="Maximum annual employer match in dollars. This cap is fixed and does not adjust for inflation. Leave at 0 for no cap." />
                         </>
                     )}
-                    {(form.employerMatchType === 'fixed' ? form.employerMatch > 0 : form.employerMatchPercent > 0) && (
+                    {/* The destination account receives both the user's 401k deferral
+                        AND the employer match. Render it whenever EITHER is configured —
+                        a deferral with no destination gets the tax break but is never
+                        deposited, silently leaking out of net worth (issue #123). */}
+                    {(hasDeferral
+                        || (form.employerMatchType === 'fixed' ? form.employerMatch > 0 : form.employerMatchPercent > 0)) && (
                         <DropdownInput
-                            label="Match Account"
+                            label="Destination Account"
                             onChange={(val) => updateForm('matchAccountId', val)}
                             options={contributionAccounts.map(acc => ({ value: acc.id, label: acc.name }))}
                             value={form.matchAccountId}
-                            tooltip="Which 401k account receives your employer's matching contributions."
+                            tooltip="Your 401k contributions and the employer match deposit into this account."
                         />
                     )}
                 </>
+            )}
+            {deferralDestinationMessage && (
+                <AlertBanner
+                    severity="error"
+                    size="sm"
+                    title="Destination Account Required"
+                    className="col-span-full"
+                >
+                    {deferralDestinationMessage}
+                </AlertBanner>
             )}
         </CardSection>
 
@@ -207,4 +240,5 @@ export const WorkIncomeFields: React.FC<WorkIncomeFieldsProps> = ({
             />
         </CardSection>
     </>
-);
+    );
+};

@@ -48,6 +48,16 @@ export interface TaxParameters {
   seniorDeduction?: number;
   seniorAge?: number;
   seniorDeductionPerPerson?: boolean;  // If true, MFJ gets double the deduction (assumes both spouses same age)
+
+  // OBBBA "senior bonus" additional deduction (federal only), tax years 2025–2028
+  // (sunset after 2028 — gated by SENIOR_BONUS_*_YEAR in federalTax.ts). Per-person
+  // base amount (MFJ doubles when seniorDeductionPerPerson is true). Phases out at
+  // `seniorBonusPhaseoutRate` of (MAGI − seniorBonusPhaseoutThreshold), floored at $0.
+  // Consumed ONLY by federalTax.ts (mirrors how the state senior fields are consumed
+  // only by stateTax.ts).
+  seniorBonusDeduction?: number;
+  seniorBonusPhaseoutThreshold?: number;
+  seniorBonusPhaseoutRate?: number;
 }
 
 export const max_year = 2026;
@@ -148,7 +158,14 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                 ],
                 socialSecurityTaxRate: 0.062,
                 socialSecurityWageBase: 176100,
-                medicareTaxRate: 0.0145
+                medicareTaxRate: 0.0145,
+                // 2025 regular 65+ additional standard deduction: $2,000 (single/HoH).
+                seniorDeduction: 2000,
+                seniorAge: 65,
+                // OBBBA senior bonus: $6,000/person, phases out at 6% over $75k MAGI (single).
+                seniorBonusDeduction: 6000,
+                seniorBonusPhaseoutThreshold: 75000,
+                seniorBonusPhaseoutRate: 0.06
             },
             'Married Filing Jointly': {
                 standardDeduction: 31500,
@@ -168,7 +185,17 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                 ],
                 socialSecurityTaxRate: 0.062,
                 socialSecurityWageBase: 176100,
-                medicareTaxRate: 0.0145
+                medicareTaxRate: 0.0145,
+                // 2025 regular 65+ additional standard deduction: $1,600 PER SPOUSE 65+
+                // (doubled for MFJ via seniorDeductionPerPerson → $3,200 if both 65+).
+                seniorDeduction: 1600,
+                seniorAge: 65,
+                seniorDeductionPerPerson: true,
+                // OBBBA senior bonus: $6,000/person ($12,000 MFJ if both 65+), phases out
+                // at 6% over $150k MAGI (MFJ). Per-person → doubled for MFJ.
+                seniorBonusDeduction: 6000,
+                seniorBonusPhaseoutThreshold: 150000,
+                seniorBonusPhaseoutRate: 0.06
             },
             'Married Filing Separately': {
                 standardDeduction: 15750,
@@ -188,7 +215,15 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                 ],
                 socialSecurityTaxRate: 0.062,
                 socialSecurityWageBase: 176100,
-                medicareTaxRate: 0.0145
+                medicareTaxRate: 0.0145,
+                // 2025 regular 65+ additional standard deduction: $1,600 (MFS, per spouse).
+                // Single filer (one person) — not doubled.
+                seniorDeduction: 1600,
+                seniorAge: 65,
+                // OBBBA senior bonus: $6,000/person; MFS phaseout threshold is $75k MAGI.
+                seniorBonusDeduction: 6000,
+                seniorBonusPhaseoutThreshold: 75000,
+                seniorBonusPhaseoutRate: 0.06
             }
         },
         2026: {
@@ -210,7 +245,14 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                 ],
                 socialSecurityTaxRate: 0.062,
                 socialSecurityWageBase: 184500,
-                medicareTaxRate: 0.0145
+                medicareTaxRate: 0.0145,
+                // 2026 regular 65+ additional standard deduction: $2,050 (single/HoH).
+                seniorDeduction: 2050,
+                seniorAge: 65,
+                // OBBBA senior bonus: $6,000/person, phases out at 6% over $75k MAGI (single).
+                seniorBonusDeduction: 6000,
+                seniorBonusPhaseoutThreshold: 75000,
+                seniorBonusPhaseoutRate: 0.06
             },
             'Married Filing Jointly': {
                 standardDeduction: 32200,
@@ -230,7 +272,17 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                 ],
                 socialSecurityTaxRate: 0.062,
                 socialSecurityWageBase: 184500,
-                medicareTaxRate: 0.0145
+                medicareTaxRate: 0.0145,
+                // 2026 regular 65+ additional standard deduction: $1,650 PER SPOUSE 65+
+                // (doubled for MFJ via seniorDeductionPerPerson → $3,300 if both 65+).
+                seniorDeduction: 1650,
+                seniorAge: 65,
+                seniorDeductionPerPerson: true,
+                // OBBBA senior bonus: $6,000/person ($12,000 MFJ if both 65+), phases out
+                // at 6% over $150k MAGI (MFJ). Per-person → doubled for MFJ.
+                seniorBonusDeduction: 6000,
+                seniorBonusPhaseoutThreshold: 150000,
+                seniorBonusPhaseoutRate: 0.06
             },
             'Married Filing Separately': {
                 standardDeduction: 16100,
@@ -250,7 +302,15 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                 ],
                 socialSecurityTaxRate: 0.062,
                 socialSecurityWageBase: 184500,
-                medicareTaxRate: 0.0145
+                medicareTaxRate: 0.0145,
+                // 2026 regular 65+ additional standard deduction: $1,650 (MFS, per spouse).
+                // Single filer (one person) — not doubled.
+                seniorDeduction: 1650,
+                seniorAge: 65,
+                // OBBBA senior bonus: $6,000/person; MFS phaseout threshold is $75k MAGI.
+                seniorBonusDeduction: 6000,
+                seniorBonusPhaseoutThreshold: 75000,
+                seniorBonusPhaseoutRate: 0.06
             }
         }
     },

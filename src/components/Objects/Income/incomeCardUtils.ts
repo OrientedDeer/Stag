@@ -15,7 +15,7 @@ import { isActiveRSUGrant } from './rsuGrant';
 import { formatCompactCurrency } from '../../../tabs/Future/tabs/FutureUtils';
 import { get401kLimit, getHSALimit } from '../../../data/ContributionLimits';
 import { getFrequencyAbbrev } from '../../../utils/formatters';
-import type { RSUAccount } from '../Accounts/models';
+import type { RSUAccount, InvestedAccount } from '../Accounts/models';
 
 export interface ContributionWarning {
     type: string;
@@ -199,4 +199,64 @@ export function getRSUMilestoneStartWarning(income: AnyIncome): string | null {
     return 'This income starts at a milestone with no fixed start date. RSU '
         + 'vesting needs a fixed start date to schedule each vest, so these grants '
         + "won't be projected until one is set.";
+}
+
+/**
+ * True when a WorkIncome is configured to defer salary into a 401k this year —
+ * either an explicit custom pre-tax/Roth amount, or an auto-max mode. Excludes
+ * the 'disabled' mode and a 'custom' mode with $0 in both buckets (no deferral).
+ * The employer match is intentionally NOT a deferral: it's the user's own money
+ * leaving their paycheck that needs a home.
+ */
+function hasConfiguredDeferral(income: WorkIncome): boolean {
+    if (income.autoMax401k === 'disabled') return false;
+    if (income.autoMax401k === 'traditional' || income.autoMax401k === 'roth') return true;
+    // custom mode: only a positive amount in either bucket is a real deferral.
+    return income.preTax401k > 0 || income.roth401k > 0;
+}
+
+/**
+ * Required-field validation for the 401k deferral destination. A WorkIncome that
+ * defers salary (pre-tax or Roth 401k) needs a destination account so the money
+ * actually lands somewhere. The tax engine reduces taxable income for the deferral
+ * regardless of `matchAccountId` (`getPreTaxExemptions`), but `AccountGrowth`
+ * gates the actual deposit on `matchAccountId` — so a deferral with an empty or
+ * dangling destination gets the tax break but is NEVER deposited, silently
+ * leaking out of net worth (issue #123).
+ *
+ * Returns a user-facing required-field message, or null when the config is valid:
+ * no deferral configured, or a deferral with a destination that resolves to a real
+ * contribution-eligible account. Pure so it's testable. A dangling id (account
+ * deleted) returns a message just like an empty one — the deposit silently fails
+ * either way.
+ */
+export function getDeferralDestinationValidationMessage(
+    income: AnyIncome,
+    contributionAccounts: InvestedAccount[]
+): string | null {
+    if (!(income instanceof WorkIncome)) return null;
+    // Only validate once a deferral is actually configured.
+    if (!hasConfiguredDeferral(income)) return null;
+
+    // An empty destination means the deduction applies but nothing is deposited.
+    if (!income.matchAccountId) {
+        return contributionAccounts.length > 0
+            ? 'Choose a Destination Account for your 401k contributions — the '
+                + 'deferral lowers your taxes but is never deposited without one, so it '
+                + 'silently disappears from your net worth.'
+            : 'Create a 401k account in the Accounts tab and select it as the '
+                + 'Destination Account — your 401k deferral lowers your taxes but is '
+                + 'never deposited without one, so it silently disappears from your net worth.';
+    }
+
+    // A dangling id (the account was deleted) deposits nowhere either — the engine
+    // only grows accounts that still exist.
+    const linked = contributionAccounts.find((acc) => acc.id === income.matchAccountId);
+    if (!linked) {
+        return 'The Destination Account for your 401k contributions no longer '
+            + 'exists. Select a current account — otherwise the deferral lowers your '
+            + 'taxes but is never deposited, silently disappearing from your net worth.';
+    }
+
+    return null;
 }

@@ -7,6 +7,7 @@ import {
     computeContributionWarnings,
     getRSUPriceValidationMessage,
     getRSUMilestoneStartWarning,
+    getDeferralDestinationValidationMessage,
 } from '../../components/Objects/Income/incomeCardUtils';
 import {
     WorkIncome,
@@ -19,7 +20,7 @@ import {
     WindfallIncome,
     INCOME_COLORS_BACKGROUND,
 } from '../../components/Objects/Income/models';
-import { RSUAccount } from '../../components/Objects/Accounts/models';
+import { RSUAccount, InvestedAccount } from '../../components/Objects/Accounts/models';
 
 function makeWorkIncome(overrides: Partial<{
     preTax401k: number;
@@ -375,5 +376,93 @@ describe('getRSUMilestoneStartWarning', () => {
         expect(msg).not.toBeNull();
         expect(msg).toContain('milestone');
         expect(msg).toContain('fixed start date');
+    });
+});
+
+describe('getDeferralDestinationValidationMessage', () => {
+    type DeferralOverrides = Partial<{
+        autoMax401k: 'disabled' | 'custom' | 'traditional' | 'roth';
+        preTax401k: number;
+        roth401k: number;
+        matchAccountId: string;
+    }>;
+
+    function makeDeferralWorkIncome(overrides: DeferralOverrides = {}): WorkIncome {
+        const w = makeWorkIncome({
+            preTax401k: overrides.preTax401k ?? 0,
+            roth401k: overrides.roth401k ?? 0,
+        });
+        // 'custom' is the WorkIncome default; only override when asked.
+        if (overrides.autoMax401k !== undefined) w.autoMax401k = overrides.autoMax401k;
+        w.matchAccountId = overrides.matchAccountId ?? '';
+        return w;
+    }
+
+    // The helper only reads `acc.id`, so a minimal InvestedAccount is enough.
+    const acct = (id: string) => new InvestedAccount(id, `Account ${id}`, 0);
+    const ACCOUNTS = [acct('401k-1'), acct('401k-2')];
+
+    it('returns null for non-WorkIncome', () => {
+        expect(getDeferralDestinationValidationMessage(makeFERSPension(), ACCOUNTS)).toBeNull();
+        expect(getDeferralDestinationValidationMessage(makeFutureSS(), ACCOUNTS)).toBeNull();
+        const passive = new PassiveIncome('p', 'Dividends', 500, 'Monthly', 'No', 'Dividend');
+        expect(getDeferralDestinationValidationMessage(passive, ACCOUNTS)).toBeNull();
+    });
+
+    it('returns null when 401k is disabled (no deferral)', () => {
+        const w = makeDeferralWorkIncome({ autoMax401k: 'disabled', matchAccountId: '' });
+        expect(getDeferralDestinationValidationMessage(w, ACCOUNTS)).toBeNull();
+    });
+
+    it('returns null for a custom mode with $0 in both buckets (no deferral)', () => {
+        const w = makeDeferralWorkIncome({ autoMax401k: 'custom', preTax401k: 0, roth401k: 0, matchAccountId: '' });
+        expect(getDeferralDestinationValidationMessage(w, ACCOUNTS)).toBeNull();
+    });
+
+    it('fires for a pre-tax deferral with no destination (the #123 leak)', () => {
+        const w = makeDeferralWorkIncome({ preTax401k: 1000, matchAccountId: '' });
+        const msg = getDeferralDestinationValidationMessage(w, ACCOUNTS);
+        expect(msg).not.toBeNull();
+        expect(msg).toContain('Destination Account');
+    });
+
+    it('fires for a Roth deferral with no destination', () => {
+        const w = makeDeferralWorkIncome({ roth401k: 800, matchAccountId: '' });
+        expect(getDeferralDestinationValidationMessage(w, ACCOUNTS)).not.toBeNull();
+    });
+
+    it('fires for an auto-max (traditional) deferral with no destination', () => {
+        // Auto-max modes store $0 in preTax401k/roth401k but still defer at sim time.
+        const w = makeDeferralWorkIncome({ autoMax401k: 'traditional', preTax401k: 0, roth401k: 0, matchAccountId: '' });
+        expect(getDeferralDestinationValidationMessage(w, ACCOUNTS)).not.toBeNull();
+    });
+
+    it('fires for an auto-max (roth) deferral with no destination', () => {
+        const w = makeDeferralWorkIncome({ autoMax401k: 'roth', matchAccountId: '' });
+        expect(getDeferralDestinationValidationMessage(w, ACCOUNTS)).not.toBeNull();
+    });
+
+    it('fires for a deferral pointing at a dangling/deleted destination account', () => {
+        const w = makeDeferralWorkIncome({ preTax401k: 1000, matchAccountId: 'deleted-acct' });
+        const msg = getDeferralDestinationValidationMessage(w, ACCOUNTS);
+        expect(msg).not.toBeNull();
+        expect(msg).toContain('no longer exists');
+    });
+
+    it('tells the user to create an account when none are contribution-eligible', () => {
+        const w = makeDeferralWorkIncome({ preTax401k: 1000, matchAccountId: '' });
+        const msg = getDeferralDestinationValidationMessage(w, []);
+        expect(msg).not.toBeNull();
+        expect(msg).toContain('Accounts tab');
+    });
+
+    it('returns null when a custom deferral points at a real contribution account', () => {
+        const w = makeDeferralWorkIncome({ preTax401k: 1000, matchAccountId: '401k-1' });
+        expect(getDeferralDestinationValidationMessage(w, ACCOUNTS)).toBeNull();
+    });
+
+    it('returns null when an auto-max deferral points at a real account', () => {
+        const w = makeDeferralWorkIncome({ autoMax401k: 'traditional', matchAccountId: '401k-2' });
+        expect(getDeferralDestinationValidationMessage(w, ACCOUNTS)).toBeNull();
     });
 });

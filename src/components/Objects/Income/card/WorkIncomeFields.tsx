@@ -13,6 +13,7 @@ import type {
 import type { AllIncomeKeys } from '../IncomeContext';
 import type { InvestedAccount, ESPPAccount, RSUAccount } from '../../Accounts/models';
 import type { ContributionWarning } from '../incomeCardUtils';
+import { getDeferralDestinationValidationMessage } from '../incomeCardUtils';
 import { ESPPFields } from './ESPPFields';
 import { RSUFields } from './RSUFields';
 
@@ -82,6 +83,16 @@ export function WorkIncomeFields({
     contributionWarnings,
     onMatchAccountChange,
 }: WorkIncomeFieldsProps): ReactElement {
+    // A configured deferral (auto-max or a positive custom amount) needs a
+    // destination account, independent of any employer match.
+    const hasDeferral =
+        income.autoMax401k === 'traditional' ||
+        income.autoMax401k === 'roth' ||
+        (income.autoMax401k === 'custom' && (income.preTax401k > 0 || income.roth401k > 0));
+    const deferralDestinationMessage = getDeferralDestinationValidationMessage(
+        income,
+        contributionAccounts
+    );
     return (
         <>
             {/* Heavy field clusters live in collapsed sections with paystub-style
@@ -174,21 +185,36 @@ export function WorkIncomeFields({
                                 />
                             </>
                         )}
-                        {((income.employerMatchType ?? 'fixed') === 'fixed'
-                            ? income.employerMatch > 0
-                            : (income.employerMatchPercent ?? 0) > 0) && (
+                        {/* The destination account receives both the user's 401k deferral
+                            AND the employer match. Render it whenever EITHER is configured —
+                            a deferral with no destination gets the tax break but is never
+                            deposited, silently leaking out of net worth (issue #123). */}
+                        {(hasDeferral
+                            || ((income.employerMatchType ?? 'fixed') === 'fixed'
+                                ? income.employerMatch > 0
+                                : (income.employerMatchPercent ?? 0) > 0)) && (
                             <DropdownInput
-                                label="Match Account"
+                                label="Destination Account"
                                 onChange={(val) => onMatchAccountChange(val)}
                                 options={contributionAccounts.map((acc) => ({
                                     value: acc.id || '',
                                     label: acc.name,
                                 }))}
                                 value={income.matchAccountId}
-                                tooltip="Your contributions and the employer match deposit into this account; the Budget tab tracks them as payroll-routed."
+                                tooltip="Your 401k contributions and the employer match deposit into this account; the Budget tab tracks them as payroll-routed."
                             />
                         )}
                     </>
+                )}
+                {deferralDestinationMessage && (
+                    <AlertBanner
+                        severity="error"
+                        size="sm"
+                        title="Destination Account Required"
+                        className="col-span-full"
+                    >
+                        {deferralDestinationMessage}
+                    </AlertBanner>
                 )}
             </CardSection>
 

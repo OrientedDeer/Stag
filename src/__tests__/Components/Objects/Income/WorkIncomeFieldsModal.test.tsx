@@ -141,17 +141,17 @@ describe('Modal WorkIncomeFields sections', () => {
         // Default autoMax401k is 'custom', so the custom amount inputs show
         expect(screen.getByText(/Pre-Tax 401k\/403b/)).toBeInTheDocument();
         expect(screen.getByText(/Roth 401k/)).toBeInTheDocument();
-        // employerMatch > 0 reveals the match account selector
-        expect(screen.getByText('Match Account')).toBeInTheDocument();
+        // a configured deferral or employer match reveals the destination selector
+        expect(screen.getByText('Destination Account')).toBeInTheDocument();
     });
 
-    it('hides the match account selector when there is no match', () => {
+    it('hides the destination selector when there is no deferral and no match', () => {
         render(<Harness />);
 
         fireEvent.click(screen.getByRole('button', { name: /401k & Match/ }));
 
         expect(screen.getByText('401k Contributions')).toBeInTheDocument();
-        expect(screen.queryByText('Match Account')).not.toBeInTheDocument();
+        expect(screen.queryByText('Destination Account')).not.toBeInTheDocument();
     });
 
     it('routes edits through updateForm and reflects them in the collapsed summary', () => {
