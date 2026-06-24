@@ -169,6 +169,11 @@ export type ConversionStrategy = (
     stateParams: TaxParameters | null,
     surplus: number,
     spendingDeficit: number,
+    // GK-effective living expenses for the year (after Guardrails / Fixed-Real
+    // trimming). May be less than input.totalLivingExpenses. The rate-match
+    // ACA-cliff estimator uses this so its deficit/MAGI match the authoritative
+    // loop instead of overstating the deficit from the un-trimmed total.
+    effectiveLivingExpenses: number,
 ) => ConversionPlan;
 
 /**
@@ -532,7 +537,8 @@ function planConversion(
     fedParams: TaxParameters,
     stateParams: TaxParameters | null,
     surplus: number, // Cash surplus that could pay conversion tax
-    spendingDeficit: number  // pre-tax deficit estimate (expenses + roughTax - spendable - RMD)
+    spendingDeficit: number,  // pre-tax deficit estimate (expenses + roughTax - spendable - RMD)
+    effectiveLivingExpenses: number  // GK-effective living expenses (≤ totalLivingExpenses)
 ): ConversionPlan {
     const decisions: DecisionLogEntry[] = [];
     let bracketSpaceForSpending = 0;
@@ -882,7 +888,7 @@ function planConversion(
             // (and thus estimated LTCG and MAGI), letting the ACA-cliff search permit
             // a conversion that breached the cliff.
             const estimatedDeficit = Math.max(0,
-                input.totalLivingExpenses + ordinaryTax + ficaTax - spendableIncome
+                effectiveLivingExpenses + ordinaryTax + ficaTax - spendableIncome
             );
 
             // 6. Calculate LTCG using gross-up formula
@@ -1083,6 +1089,10 @@ function planConversionDP(
     stateParams: TaxParameters | null,
     surplus: number,
     spendingDeficit: number,
+    // The shared ConversionStrategy contract passes effectiveLivingExpenses as a
+    // 9th arg for the rate-match ACA-cliff estimator. The DP path has no such
+    // estimator, so it omits the param (a narrower function still satisfies the
+    // wider type) rather than carry an unused binding.
 ): ConversionPlan {
     const decisions: DecisionLogEntry[] = [];
     const traditionalBalance = getTotalTraditionalBalance(input.accounts);
@@ -1481,7 +1491,8 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
         fedParams,
         stateParams ?? null, // Convert undefined to null
         initialSurplusEstimate,
-        preliminaryDeficit
+        preliminaryDeficit,
+        effectiveLivingExpenses
     );
     decisions.push(...conversionPlan.decisions);
 
@@ -1594,6 +1605,21 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     let accountSnapshots = createOrderedSnapshots(
         input.accounts, input.withdrawalOrder, input.currentAge, input.year, true,
     );
+
+    // Keep reserved goal sinking-fund accounts out of the includeUnorderedSellable
+    // fallback tier. createOrderedSnapshots appends every sellable account the order
+    // OMITS so a spending shortfall can reach it, but a goal fund the user left out of
+    // the order is reserved for its goal — draining it for general living expenses
+    // means the goal can't be funded at its due year. We only drop a reserved account
+    // when it isn't an explicit member of the user's order; if the user deliberately
+    // placed it in the order, that choice still binds.
+    if (input.reservedAccountIds && input.reservedAccountIds.length > 0) {
+        const reserved = new Set(input.reservedAccountIds);
+        const orderedIds = new Set(input.withdrawalOrder.map(o => o.accountId));
+        accountSnapshots = accountSnapshots.filter(
+            s => !(reserved.has(s.accountId) && !orderedIds.has(s.accountId)),
+        );
+    }
 
     // Reserve the RMD against the Traditional account it draws from. The RMD already
     // claims `input.rmdAmount` from that account (recorded as a negative userInflow,

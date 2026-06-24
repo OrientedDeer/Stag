@@ -399,11 +399,20 @@ export default function PriorityTab() {
                     break;
                 }
                 case 'MAX': {
-                    const annualLimit = item.capValue || 23000;
+                    // Prefer the stored cap; otherwise fall back to the account's
+                    // live IRS limit (401k/IRA/HSA) rather than a stale hardcoded
+                    // $23k. An account with no contribution limit (e.g. a taxable
+                    // brokerage, capValue persisted as 0) plans $0 and is flagged
+                    // as needing a cap — the engine doesn't deduct a phantom max.
+                    const maxAccount = accounts.find(a => a.id === item.accountId);
+                    const liveLimit = maxAccount ? getAccountContributionLimit(maxAccount) : null;
+                    const annualLimit = item.capValue || liveLimit || 0;
                     const monthlyLimit = annualLimit / 12;
                     cost = Math.max(0, monthlyLimit);
                     label = 'Max out (IRS annual limit)';
-                    wantedNote = `Annual limit ${formatMoney(annualLimit)} ÷ 12 = ${formatMoney(monthlyLimit)}/mo`;
+                    wantedNote = annualLimit > 0
+                        ? `Annual limit ${formatMoney(annualLimit)} ÷ 12 = ${formatMoney(monthlyLimit)}/mo`
+                        : 'No contribution limit for this account — set a cap to fund it';
                     break;
                 }
             }
@@ -427,7 +436,7 @@ export default function PriorityTab() {
                 provenance,
             };
         });
-    }, [state.priorities, disposableAfterExpenses, totalMonthlyFixedExpenses, accounts, formatMoney]);
+    }, [state.priorities, disposableAfterExpenses, totalMonthlyFixedExpenses, accounts, getAccountContributionLimit, formatMoney]);
 
     const finalRemaining = waterfallItems.length > 0
         ? waterfallItems[waterfallItems.length - 1].remainingAfter

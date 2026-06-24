@@ -180,8 +180,13 @@ export function processInflows(
         for (let purchaseNum = 0; purchaseNum < 2; purchaseNum++) {
             const grantMonth = purchaseNum * 6;
             const purchaseMonth = grantMonth + 5;
-            const grantDate = new Date(Date.UTC(year, grantMonth, 1));
-            const purchaseDate = new Date(Date.UTC(year, purchaseMonth, 28));
+            // Build LOCAL date-only values (repo convention; parseDate hydrates
+            // user-entered lots the same way). Every reader — calculateDispositionType,
+            // getEligibleLots/daysSincePurchase — uses LOCAL accessors and getTime()
+            // deltas, so a UTC-midnight stamp would classify holding-period and
+            // disposition boundaries inconsistently against user lots in non-UTC zones.
+            const grantDate = new Date(year, grantMonth, 1);
+            const purchaseDate = new Date(year, purchaseMonth, 28);
 
             const fmvAtGrant = 100;
             const growthOverPeriod = Math.pow(1 + stockGrowthRate, 0.5);

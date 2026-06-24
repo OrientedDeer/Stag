@@ -1078,6 +1078,36 @@ describe('ScenarioContext', () => {
                 expect(state!.scenarios[0].metadata.name).toBe('New Name');
             });
 
+            it('should stamp a fresh updatedAt on the in-memory scenario (matches the persisted copy)', () => {
+                const scenario = createMockScenario('rename-me', 'Original Name');
+                scenario.metadata.updatedAt = '2000-01-01T00:00:00.000Z';
+                (loadScenariosFromStorage as Mock).mockReturnValue([scenario]);
+
+                let state: ScenarioState;
+                let renameScenario: any;
+
+                const TestComponent = () => {
+                    ({ state, renameScenario } = useContext(ScenarioContext));
+                    return null;
+                };
+
+                render(
+                    <ScenarioProvider>
+                        <TestComponent />
+                    </ScenarioProvider>
+                );
+
+                act(() => {
+                    renameScenario('rename-me', 'New Name');
+                });
+
+                // The state copy must NOT carry the stale timestamp.
+                expect(state!.scenarios[0].metadata.updatedAt).not.toBe('2000-01-01T00:00:00.000Z');
+                // It must equal whatever was persisted to storage (no drift).
+                const persisted = (saveScenarioToStorage as Mock).mock.calls[0][0] as SavedScenario;
+                expect(state!.scenarios[0].metadata.updatedAt).toBe(persisted.metadata.updatedAt);
+            });
+
             it('should trim whitespace from new name', () => {
                 const scenario = createMockScenario('test', 'Test');
                 (loadScenariosFromStorage as Mock).mockReturnValue([scenario]);

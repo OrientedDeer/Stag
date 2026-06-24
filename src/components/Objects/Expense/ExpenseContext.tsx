@@ -9,6 +9,7 @@ import {
     reconstituteExpense
 } from './models';
 import { usePersistedReducer } from '../../../hooks/usePersistedReducer';
+import { jsonDateReplacer } from '../../../utils/formatters';
 
 export type AllExpenseKeys = keyof RentExpense | keyof MortgageExpense | keyof LoanExpense | keyof DependentExpense | keyof TransportExpense | 'startDate' | 'endDate';
 
@@ -72,7 +73,7 @@ function expenseReducer(state: ExpenseState, action: Action): ExpenseState {
   }
 }
 
-function hydrateExpenseState(parsed: unknown, initial: ExpenseState): ExpenseState {
+export function hydrateExpenseState(parsed: unknown, initial: ExpenseState): ExpenseState {
   const data = parsed as { expenses?: unknown[] };
   const expenses = (data.expenses || [])
     .map(reconstituteExpense)
@@ -80,11 +81,14 @@ function hydrateExpenseState(parsed: unknown, initial: ExpenseState): ExpenseSta
   return { ...initial, expenses };
 }
 
-function serializeExpenseState(state: ExpenseState): string {
+export function serializeExpenseState(state: ExpenseState): string {
+  // jsonDateReplacer keeps Date-typed startDate/endDate (incl. goal targetDate) as
+  // local YYYY-MM-DD; bare JSON.stringify would emit a UTC ISO string that reloads
+  // a day earlier for UTC+ users (issue #73 on the persistence path).
   return JSON.stringify({
     ...state,
     expenses: state.expenses.map(exp => ({ ...exp, className: exp.constructor.name })),
-  });
+  }, jsonDateReplacer);
 }
 
 export const ExpenseContext = createContext<ExpenseState>({ expenses: [] });

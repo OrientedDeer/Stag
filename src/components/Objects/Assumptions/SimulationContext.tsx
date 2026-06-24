@@ -4,6 +4,7 @@ import { AnyAccount, reconstituteAccount } from '../Accounts/models';
 import { AnyIncome, reconstituteIncome } from '../Income/models';
 import { AnyExpense, reconstituteExpense } from '../Expense/models';
 import { usePersistedReducer } from '../../../hooks/usePersistedReducer';
+import { jsonDateReplacer } from '../../../utils/formatters';
 
 const STORAGE_KEY = 'user_simulation_data';
 
@@ -51,13 +52,17 @@ function reconstituteSimulationYear(yearData: unknown): SimulationYear {
   } as SimulationYear;
 }
 
-function hydrateSimulationState(parsed: unknown, initial: SimulationState): SimulationState {
+export function hydrateSimulationState(parsed: unknown, initial: SimulationState): SimulationState {
   const data = parsed as { simulation?: unknown[]; inputHash?: string | null };
   const simulation = (data.simulation || []).map(reconstituteSimulationYear);
   return { ...initial, simulation, inputHash: data.inputHash || null };
 }
 
-function serializeSimulationState(state: SimulationState): string {
+export function serializeSimulationState(state: SimulationState): string {
+  // jsonDateReplacer keeps the cached SimulationYear Date fields (nested account
+  // lot dates, income/expense start/end dates) as local YYYY-MM-DD; bare
+  // JSON.stringify would emit a UTC ISO string that reloads a day earlier for
+  // UTC+ users (issue #73 on the persistence path).
   return JSON.stringify({
     ...state,
     simulation: state.simulation.map((year) => ({
@@ -66,7 +71,7 @@ function serializeSimulationState(state: SimulationState): string {
       incomes: year.incomes.map((inc) => ({ ...inc, className: inc.constructor.name })),
       expenses: year.expenses.map((exp) => ({ ...exp, className: exp.constructor.name })),
     })),
-  });
+  }, jsonDateReplacer);
 }
 
 interface SimulationContextProps extends SimulationState {

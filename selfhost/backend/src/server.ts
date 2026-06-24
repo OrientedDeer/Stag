@@ -125,6 +125,17 @@ interface AuthedRequest extends Request {
   sub?: string;
 }
 
+// Express 4 does NOT catch a rejected promise returned from an async route
+// handler — it just drops it, so a route whose `couch()`/fetch REJECTS (a
+// refused or dropped CouchDB connection, not a non-2xx response) never sends a
+// reply and the client/tunnel hangs (Cloudflare 524). Wrap each async handler so
+// any rejection is funneled to the 4-arg error middleware below, which answers
+// 502 instead of leaving the request open.
+type AsyncHandler = (req: AuthedRequest, res: Response, next: NextFunction) => Promise<unknown>;
+const asyncHandler =
+  (fn: AsyncHandler) => (req: AuthedRequest, res: Response, next: NextFunction) =>
+    Promise.resolve(fn(req, res, next)).catch(next);
+
 // ---- app ----
 const app = express();
 app.disable("x-powered-by");
@@ -171,55 +182,86 @@ async function requireGoogle(req: AuthedRequest, res: Response, next: NextFuncti
 }
 
 // GET /backup
-app.get("/backup", requireGoogle, async (req: AuthedRequest, res) => {
-  const { status, json } = await couch("GET", docPath(req.sub!));
-  if (status === 404) return res.status(404).json({ error: "no backup" });
-  if (status !== 200) return res.status(502).json({ error: "store error" });
-  return res.json({ blob: json.blob, rev: json._rev, timestamp: json.timestamp, size: json.size });
-});
+app.get(
+  "/backup",
+  requireGoogle,
+  asyncHandler(async (req, res) => {
+    const { status, json } = await couch("GET", docPath(req.sub!));
+    if (status === 404) return res.status(404).json({ error: "no backup" });
+    if (status !== 200) return res.status(502).json({ error: "store error" });
+    return res.json({ blob: json.blob, rev: json._rev, timestamp: json.timestamp, size: json.size });
+  })
+);
 
 // POST /backup — requireGoogle runs FIRST; only then do we parse the body.
-app.post("/backup", requireGoogle, parseJsonBody, async (req: AuthedRequest, res) => {
-  const blob = req.body?.blob;
-  const rev: string | null = req.body?.rev ?? null;
-  if (typeof blob !== "string") return res.status(400).json({ error: "blob must be a string" });
+app.post(
+  "/backup",
+  requireGoogle,
+  parseJsonBody,
+  asyncHandler(async (req, res) => {
+    const blob = req.body?.blob;
+    const rev: string | null = req.body?.rev ?? null;
+    if (typeof blob !== "string") return res.status(400).json({ error: "blob must be a string" });
+    // A non-null, non-string rev is a client input error: it would be assigned to
+    // doc._rev and PUT to CouchDB, which rejects a malformed _rev with a 4xx that
+    // falls through to a generic 502 'store error'. Reject it up front as a 400.
+    if (rev !== null && typeof rev !== "string") {
+      return res.status(400).json({ error: "rev must be a string" });
+    }
 
-  const size = Buffer.byteLength(blob, "utf8");
-  if (size > MAX_BLOB_BYTES) return res.status(413).json({ error: "blob too large" });
+    const size = Buffer.byteLength(blob, "utf8");
+    if (size > MAX_BLOB_BYTES) return res.status(413).json({ error: "blob too large" });
 
-  const doc: Record<string, unknown> = {
-    _id: req.sub,
-    blob,
-    size,
-    timestamp: new Date().toISOString(),
-  };
-  if (rev) doc._rev = rev;
+    const doc: Record<string, unknown> = {
+      _id: req.sub,
+      blob,
+      size,
+      timestamp: new Date().toISOString(),
+    };
+    if (rev) doc._rev = rev;
 
-  const { status, json } = await couch("PUT", docPath(req.sub!), doc);
-  if (status === 201 || status === 200) return res.json({ rev: json.rev, timestamp: doc.timestamp });
-  if (status === 409) return res.status(409).json({ error: "stale rev" });
-  // A 404 here means the backup DB itself is missing (it should have been
-  // created at startup) — surface it as a config error, not a generic store
-  // error, and try to self-heal so the next write succeeds.
-  if (status === 404) {
-    ensureBackupDb().catch(() => {});
-    return res.status(503).json({ error: "backup database missing — initializing, retry shortly" });
-  }
-  return res.status(502).json({ error: "store error" });
-});
+    const { status, json } = await couch("PUT", docPath(req.sub!), doc);
+    if (status === 201 || status === 200) return res.json({ rev: json.rev, timestamp: doc.timestamp });
+    if (status === 409) return res.status(409).json({ error: "stale rev" });
+    // A 404 here means the backup DB itself is missing (it should have been
+    // created at startup) — surface it as a config error, not a generic store
+    // error, and try to self-heal so the next write succeeds.
+    if (status === 404) {
+      ensureBackupDb().catch(() => {});
+      return res.status(503).json({ error: "backup database missing — initializing, retry shortly" });
+    }
+    return res.status(502).json({ error: "store error" });
+  })
+);
 
 // DELETE /backup  (idempotent; 404 tolerated)
-app.delete("/backup", requireGoogle, async (req: AuthedRequest, res) => {
-  const get = await couch("GET", docPath(req.sub!));
-  if (get.status === 404) return res.status(200).json({ ok: true });
-  if (get.status !== 200) return res.status(502).json({ error: "store error" });
+app.delete(
+  "/backup",
+  requireGoogle,
+  asyncHandler(async (req, res) => {
+    const get = await couch("GET", docPath(req.sub!));
+    if (get.status === 404) return res.status(200).json({ ok: true });
+    if (get.status !== 200) return res.status(502).json({ error: "store error" });
 
-  const rev = get.json._rev;
-  const del = await couch("DELETE", `${docPath(req.sub!)}?rev=${encodeURIComponent(rev)}`);
-  if (del.status === 200 || del.status === 202 || del.status === 404) {
-    return res.status(200).json({ ok: true });
-  }
-  return res.status(502).json({ error: "store error" });
+    const rev = get.json._rev;
+    const del = await couch("DELETE", `${docPath(req.sub!)}?rev=${encodeURIComponent(rev)}`);
+    if (del.status === 200 || del.status === 202 || del.status === 404) {
+      return res.status(200).json({ ok: true });
+    }
+    return res.status(502).json({ error: "store error" });
+  })
+);
+
+// Final error middleware (4 args -> Express treats it as the error handler).
+// Catches anything the async routes reject with — chiefly a CouchDB connection
+// that REFUSED or DROPPED, where fetch rejects rather than returning a status.
+// Without this the request would hang; here we close it out with a 502 'store
+// error' (the same shape the routes use for a non-2xx CouchDB reply).
+app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
+  // If a response is already streaming, defer to Express's default handler,
+  // which closes the connection rather than corrupting the in-flight reply.
+  if (res.headersSent) return next(err);
+  res.status(502).json({ error: "store error" });
 });
 
 app.listen(PORT, () => {

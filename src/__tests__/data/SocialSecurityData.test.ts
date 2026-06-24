@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getBendPoints, getWageIndexFactor } from '../../data/SocialSecurityData';
+import { getBendPoints, getWageIndexFactor, getEarningsTestLimit } from '../../data/SocialSecurityData';
 
 /**
  * Guards the published Social Security figures baked into SocialSecurityData.tsx
@@ -8,6 +8,8 @@ import { getBendPoints, getWageIndexFactor } from '../../data/SocialSecurityData
  * Sources (official SSA, Office of the Chief Actuary):
  *   PIA bend points:  https://www.ssa.gov/oact/cola/bendpoints.html
  *   AWI series:       https://www.ssa.gov/oact/cola/awiseries.html
+ *   Earnings test:    https://www.ssa.gov/oact/cola/rtea.html
+ *                     SSA 2026 COLA fact sheet (RS 02501.025)
  *
  * For a year present in the lookup tables both functions return the stored value
  * directly (the future-projection path only runs past the latest tabulated year),
@@ -57,6 +59,27 @@ describe('SocialSecurityData published figures', () => {
     it('keeps the AWI monotonically non-decreasing across published and projected years', () => {
       for (let year = 2022; year < 2030; year++) {
         expect(getWageIndexFactor(year + 1)).toBeGreaterThanOrEqual(getWageIndexFactor(year));
+      }
+    });
+  });
+
+  describe('getEarningsTestLimit — retirement earnings test exempt amounts (SSA rtea.html)', () => {
+    it('returns the official 2026 exempt amounts', () => {
+      // Official SSA 2026 COLA fact sheet; previously a "Future projection" guess
+      // of { beforeFRA: 24000, yearOfFRA: 63700 }.
+      expect(getEarningsTestLimit(2026)).toEqual({ beforeFRA: 24480, yearOfFRA: 65160 });
+    });
+
+    it('returns the published 2025 exempt amounts', () => {
+      expect(getEarningsTestLimit(2025)).toEqual({ beforeFRA: 23400, yearOfFRA: 62160 });
+    });
+
+    it('keeps both exempt amounts monotonically non-decreasing across years', () => {
+      for (let year = 2024; year < 2030; year++) {
+        const cur = getEarningsTestLimit(year);
+        const next = getEarningsTestLimit(year + 1);
+        expect(next.beforeFRA).toBeGreaterThanOrEqual(cur.beforeFRA);
+        expect(next.yearOfFRA).toBeGreaterThanOrEqual(cur.yearOfFRA);
       }
     });
   });

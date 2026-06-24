@@ -369,28 +369,36 @@ describe('runSimulationWithOptimization — DP plan honors future tax state', { 
 // raise it). buildDPYearContexts has no MAGI history, so it pins a CONSTANT
 // surcharge for ages 65-66 from the baseline timeline's stored year−2 MAGI —
 // the surcharge ignores the Medicare year's own (possibly higher) MAGI.
+//
+// This block retires at 65 so the lookback years (ages 63-64) are PRE-retirement
+// — the case the constant baseline seed exclusively serves after Finding 2
+// (2026-06-24 review). When the lookback years are POST-retirement (early
+// retiree, DP-controlled), the cost is instead attributed to the age-63/64
+// context (conversion-sensitive) and the head year is pinned to 0; that case is
+// covered in RothConversionDPMedicareSeed.test.ts.
 // =============================================================================
 describe('buildDPYearContexts — head IRMAA seeding (#76)', () => {
-    // Retire at 62 so the contexts begin at age 62 and span the head Medicare
-    // window (ages 65-66). The baseline must also carry ages 63-64 (the lookback
-    // years) so their MAGI is available to seed.
-    const HEAD_RETIREMENT_AGE = 62;
+    // Retire at 65 so ages 65-66 are in-horizon but the lookback years (63-64)
+    // are PRE-retirement (no DP conversion) — the baseline-seed path. The baseline
+    // starts 2 years before retirement so ages 63-64 MAGI is available to seed.
+    const HEAD_RETIREMENT_AGE = 65;
     const HEAD_RETIREMENT_YEAR = BIRTH_YEAR + HEAD_RETIREMENT_AGE;
+    const HEAD_BASELINE_START_YEAR = HEAD_RETIREMENT_YEAR - 2; // age 63
     const headAssumptions: AssumptionsState = {
         ...assumptions,
         milestones: createBuiltinMilestones(BIRTH_YEAR, HEAD_RETIREMENT_AGE, 95),
     };
 
     /**
-     * Baseline spanning ages 62..72, with each year's stored `magi` controlled
-     * by `magiForAge`. Ages 63-64 are the pre-65 lookback years that seed the
-     * age-65/66 surcharge; ages 65-66 carry a deliberately HIGH own-year magi so
-     * we can prove the seed ignores it.
+     * Baseline spanning ages 63..72, with each year's stored `magi` controlled
+     * by `magiForAge`. Ages 63-64 are the PRE-retirement lookback years that seed
+     * the age-65/66 surcharge; ages 65-66 carry a deliberately HIGH own-year magi
+     * so we can prove the seed ignores it.
      */
     const buildHeadBaseline = (magiForAge: (age: number) => number): SimulationYear[] => {
         const years: SimulationYear[] = [];
         for (let i = 0; i < 11; i++) {
-            const year = HEAD_RETIREMENT_YEAR + i;
+            const year = HEAD_BASELINE_START_YEAR + i;
             const age = year - BIRTH_YEAR;
             const trad = new InvestedAccount(
                 'trad', 'Traditional IRA', 1_000_000, 0, 10, 0.0, 'Traditional IRA', true, 0.2, 1_000_000,

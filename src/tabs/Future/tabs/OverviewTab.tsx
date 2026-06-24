@@ -13,7 +13,7 @@ import { AnyExpense } from '../../../components/Objects/Expense/models';
 import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider';
 import { AlertBanner } from '../../../components/Layout/AlertBanner';
 import { getFRA } from '../../../data/SocialSecurityData';
-import { FutureSocialSecurityIncome } from '../../../components/Objects/Income/models';
+import { FutureSocialSecurityIncome, isSocialSecurity } from '../../../components/Objects/Income/models';
 import { getEarnedIncome } from '../../../components/Objects/Taxes/TaxService';
 import { useAssumptions, getBirthYear } from '../../../components/Objects/Assumptions/AssumptionsContext';
 
@@ -364,9 +364,12 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
     const missingSocialSecurity = useMemo(() => {
         if (!assumptions.income?.qualifiesForSocialSecurity) return false;
 
-        // Check if any year has FutureSocialSecurityIncome
+        // Check if any year has a Social Security income of any kind — Current
+        // (already collecting), legacy base, or Future — not just Future. Using
+        // the type-specific check showed a false "add a Future SS income"
+        // banner to users already collecting via a Current/base SS income.
         const hasSSIncome = simulationData.some(year =>
-            year.incomes.some(inc => inc instanceof FutureSocialSecurityIncome)
+            year.incomes.some(inc => isSocialSecurity(inc))
         );
 
         return !hasSSIncome;

@@ -9,6 +9,10 @@ export interface YearlyContributionLimits {
   // 401k limits
   traditional401k: number;      // Also applies to Roth 401k (combined limit)
   catchUp401k: number;          // Additional amount for age 50+
+  // SECURE 2.0 "super" catch-up for ages 60-63 (replaces, not adds to, catchUp401k
+  // for that age band). Published as a separate figure by the IRS — do NOT derive
+  // it as catchUp401k * 1.5 (the ratio only happens to hold for some years).
+  superCatchUp401k: number;
 
   // IRA limits
   traditionalIRA: number;       // Also applies to Roth IRA (combined limit)
@@ -29,6 +33,7 @@ const CONTRIBUTION_LIMITS: Record<number, YearlyContributionLimits> = {
   2024: {
     traditional401k: 23000,
     catchUp401k: 7500,
+    superCatchUp401k: 7500,     // SECURE 2.0 super catch-up not yet in effect for 2024
     traditionalIRA: 7000,
     catchUpIRA: 1000,
     hsaIndividual: 4150,
@@ -39,6 +44,7 @@ const CONTRIBUTION_LIMITS: Record<number, YearlyContributionLimits> = {
   2025: {
     traditional401k: 23500,
     catchUp401k: 7500,
+    superCatchUp401k: 11250,    // IRS Notice 2024-80 (first year of the 60-63 super catch-up)
     traditionalIRA: 7000,
     catchUpIRA: 1000,
     hsaIndividual: 4300,
@@ -47,14 +53,15 @@ const CONTRIBUTION_LIMITS: Record<number, YearlyContributionLimits> = {
     section415c: 70000,
   },
   2026: {
-    traditional401k: 24500,     // Projected
-    catchUp401k: 7500,
-    traditionalIRA: 7500,
-    catchUpIRA: 1000,
-    hsaIndividual: 4400,        // Projected
-    hsaFamily: 8750,            // Projected
+    traditional401k: 24500,     // IRS Notice 2025-67
+    catchUp401k: 8000,          // IRS Notice 2025-67 (up from 7500)
+    superCatchUp401k: 11250,    // IRS Notice 2025-67 (ages 60-63; unchanged from 2025)
+    traditionalIRA: 7500,       // IRS Notice 2025-67
+    catchUpIRA: 1100,           // IRS Notice 2025-67 (up from 1000)
+    hsaIndividual: 4400,        // Rev. Proc. 2025-19
+    hsaFamily: 8750,            // Rev. Proc. 2025-19
     catchUpHSA: 1000,
-    section415c: 71000,         // Projected
+    section415c: 72000,         // IRS Notice 2025-67
   },
 };
 
@@ -94,6 +101,7 @@ export function getContributionLimits(year: number, inflationAdjusted: boolean =
   return {
     traditional401k: Math.round(latestLimits.traditional401k * inflationFactor / 500) * 500,
     catchUp401k: latestLimits.catchUp401k,  // Catch-up tends to stay flat
+    superCatchUp401k: latestLimits.superCatchUp401k,  // 60-63 super catch-up, held flat like catchUp401k
     traditionalIRA: Math.round(latestLimits.traditionalIRA * inflationFactor / 500) * 500,
     catchUpIRA: latestLimits.catchUpIRA,
     hsaIndividual: Math.round(latestLimits.hsaIndividual * inflationFactor / 50) * 50,
@@ -109,7 +117,7 @@ export function getContributionLimits(year: number, inflationAdjusted: boolean =
 export function get401kLimit(year: number, age: number, inflationAdjusted: boolean = true): number {
   const limits = getContributionLimits(year, inflationAdjusted);
   const base = limits.traditional401k;
-  const catchUp = age >= 50 ? (age >= 60 && age <= 63 ? Math.round(limits.catchUp401k * 1.5) : limits.catchUp401k) : 0;
+  const catchUp = age >= 50 ? (age >= 60 && age <= 63 ? limits.superCatchUp401k : limits.catchUp401k) : 0;
   return base + catchUp;
 }
 
@@ -124,7 +132,7 @@ export function get401kLimit(year: number, age: number, inflationAdjusted: boole
 export function get415cLimit(year: number, age: number, inflationAdjusted: boolean = true): number {
   const limits = getContributionLimits(year, inflationAdjusted);
   const base = limits.section415c;
-  const catchUp = age >= 50 ? (age >= 60 && age <= 63 ? Math.round(limits.catchUp401k * 1.5) : limits.catchUp401k) : 0;
+  const catchUp = age >= 50 ? (age >= 60 && age <= 63 ? limits.superCatchUp401k : limits.catchUp401k) : 0;
   return base + catchUp;
 }
 

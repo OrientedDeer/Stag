@@ -28,9 +28,11 @@ import {
 import {
     csvToTransactions as csvToTransactionsCouch,
     serializeBlob as serializeBlobCouch,
+    flagReasonCounts as flagReasonCountsCouch,
 } from './couchImport';
+import { flagReasonCounts as flagReasonCountsFile } from './importBalances';
 import { csvToTransactions as csvToTransactionsShared } from './csvToTransactions';
-import { applyTransactions, type MergeBlob } from '../src/services/backupMerge';
+import { applyTransactions, type BalanceFlag, type MergeBlob } from '../src/services/backupMerge';
 import { parseDate } from '../src/components/Objects/modelUtils';
 
 const HEADER = 'Date,Description,Amount,Source,Id';
@@ -140,5 +142,33 @@ describe.each(variants)('$name — malformed Date rows (issue #3)', ({ csvToTran
         }
         // Exactly the one valid June 2026 bucket.
         expect(months.map((m) => `${m.year}-${m.month}`)).toEqual(['2026-6']);
+    });
+});
+
+// Both balance importers summarize flags as counts-by-reason for routine logs, so
+// real account names / SimpleFIN keys (BalanceFlag.account) never reach stdout
+// (journald/cron-mail/CI) in cleartext — only the non-sensitive reason enum and a
+// count. Run the assertion on both copies of the helper (file + Couch path).
+const flagReasonVariants = [
+    { name: 'importBalances.ts', flagReasonCounts: flagReasonCountsFile },
+    { name: 'couchImport.ts', flagReasonCounts: flagReasonCountsCouch },
+];
+
+describe.each(flagReasonVariants)('$name — flagReasonCounts is counts-only (no sensitive keys)', ({ flagReasonCounts }) => {
+    it('tallies by reason and never surfaces the SimpleFIN account key', () => {
+        const flagged: BalanceFlag[] = [
+            { account: 'SECRET-KEY-Roth-IRA', reason: 'unmapped' },
+            { account: 'SECRET-KEY-Checking', reason: 'unmapped' },
+            { account: 'SECRET-KEY-Brokerage', reason: 'auto-matched' },
+        ];
+        const counts = flagReasonCounts(flagged);
+        expect(counts).toEqual({ unmapped: 2, 'auto-matched': 1 });
+        // The account keys must not leak into the summary (keys or values).
+        const serialized = JSON.stringify(counts);
+        expect(serialized).not.toContain('SECRET-KEY');
+    });
+
+    it('returns an empty tally for no flags', () => {
+        expect(flagReasonCounts([])).toEqual({});
     });
 });

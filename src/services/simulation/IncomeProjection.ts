@@ -108,7 +108,15 @@ export function projectIncomes(
                     if (currentSalary > 0) salaryHistory.push(currentSalary);
                 }
 
-                if (currentAge === inc.retirementAge && salaryHistory.length > 0) {
+                // Activate on the FIRST projection year at/after the retirement age,
+                // while the benefit is still uncalculated. Using `>=` (not `===`)
+                // covers a federal employee already AT/PAST their retirement age when
+                // the plan starts: the projection loop runs currentAge = startAge+1,
+                // startAge+2, … so it would never see the exact `=== retirementAge`
+                // year and the pension would silently pay $0 forever. The
+                // `calculatedBenefit === 0` guard makes this fire exactly once; after
+                // activation, increment() carries the benefit forward with COLA.
+                if (currentAge >= inc.retirementAge && inc.calculatedBenefit === 0 && salaryHistory.length > 0) {
                     const high3 = calculateHigh3(salaryHistory);
                     const baseBenefit = calculateFERSBasicBenefit(inc.yearsOfService, high3, inc.retirementAge);
                     const eligibility = checkFERSEligibility(inc.retirementAge, inc.yearsOfService, inc.birthYear);
@@ -173,7 +181,11 @@ export function projectIncomes(
                     if (currentSalary > 0) salaryHistory.push(currentSalary);
                 }
 
-                if (currentAge === inc.retirementAge && salaryHistory.length > 0) {
+                // See the FERS note above: `>=` + `calculatedBenefit === 0` activates
+                // exactly once, including when the employee is already at/past their
+                // retirement age at plan start (the `=== retirementAge` year is never
+                // hit by the projection loop, which starts at startAge+1).
+                if (currentAge >= inc.retirementAge && inc.calculatedBenefit === 0 && salaryHistory.length > 0) {
                     const high3 = calculateHigh3(salaryHistory);
                     const baseBenefit = calculateCSRSBasicBenefit(inc.yearsOfService, high3);
 
@@ -209,15 +221,19 @@ export function projectIncomes(
             if (shouldRecalculate) {
                 try {
                     const inflationAdjusted = assumptions.macro.inflationAdjusted;
+                    // Same rate used for AIME wage-indexing and PIA bend points below,
+                    // so the SS wage-base cap projects at the same rate it's indexed by
+                    // (otherwise capped earnings and the indexing/bend points drift apart).
+                    const wageGrowthRate = assumptions.macro.inflationRate / 100;
                     const earningsHistory = extractEarningsFromSimulation(
                         previousSimulation,
                         assumptions.demographics.priorEarnings,
                         inflationAdjusted,
-                        incomes
+                        incomes,
+                        wageGrowthRate
                     );
 
                     const birthYear = getBirthYear(assumptions.milestones);
-                    const wageGrowthRate = assumptions.macro.inflationRate / 100;
                     const aimeCalc = calculateAIME(earningsHistory, year, inc.claimingAge, birthYear, wageGrowthRate, inflationAdjusted);
 
                     const fundingPercent = (assumptions.income?.socialSecurityFundingPercent ?? 100) / 100;
@@ -265,7 +281,6 @@ export function projectIncomes(
                         );
                     }
                 } catch (error) {
-                    console.error('Error calculating Social Security benefits:', error);
                     logs.push(`[WARN] Error calculating Social Security benefits: ${error}`);
                     return inc.increment(assumptions);
                 }

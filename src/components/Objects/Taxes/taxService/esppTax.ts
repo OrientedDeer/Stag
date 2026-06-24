@@ -4,7 +4,8 @@
  * ESPP shares have special tax treatment based on holding periods:
  *
  * **Qualifying Disposition** (held 2 years from grant AND 1 year from purchase):
- * - Ordinary income = lesser of: (1) discount at grant price, or (2) actual gain
+ * - Ordinary income = lesser of: (1) the grant bargain element (fmvAtGrant - purchasePrice),
+ *   or (2) actual gain
  * - Capital gains = remainder (long-term)
  *
  * **Disqualifying Disposition** (sold before meeting both holding periods):
@@ -54,8 +55,12 @@ export function calculateESPPDispositionTax(
         }
     } else if (isQualifying) {
         // Qualifying disposition
-        // Ordinary income = lesser of grant discount or actual gain
-        const grantDiscount = fmvAtGrant * 0.15 * sharesToSell; // Typical 15% discount
+        // Ordinary income = lesser of the grant bargain element or the actual gain.
+        // The bargain element is the ACTUAL discount at grant (fmvAtGrant - purchasePrice),
+        // NOT a hardcoded 15% — ESPP discounts vary (and can be measured at the lower of
+        // grant/purchase FMV under a lookback plan). Using the real discount matches the IRS
+        // rule and the disqualifying branch below (#16).
+        const grantDiscount = Math.max(0, fmvAtGrant - purchasePrice) * sharesToSell;
         ordinaryIncome = Math.min(grantDiscount, totalGain);
         longTermCapitalGains = totalGain - ordinaryIncome;
     } else {

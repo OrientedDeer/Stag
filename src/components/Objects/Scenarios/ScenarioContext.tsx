@@ -279,7 +279,11 @@ export const ScenarioProvider = ({ children }: { children: ReactNode }) => {
                 ...scenario,
                 metadata: {
                     ...scenario.metadata,
-                    name: newName.trim()
+                    name: newName.trim(),
+                    // Stamp here (not only on the persisted copy) so in-memory state
+                    // and storage agree — otherwise a later export serializes a stale
+                    // updatedAt until reload.
+                    updatedAt: new Date().toISOString()
                 }
             };
 

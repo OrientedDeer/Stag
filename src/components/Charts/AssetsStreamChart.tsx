@@ -4,7 +4,7 @@ import { RangeSlider } from '../Layout/InputFields/RangeSlider';
 import { AssumptionsContext } from '../Objects/Assumptions/AssumptionsContext';
 import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
 import { ChartTooltipPortal } from './ChartTooltipPortal';
-import { useArrowKeyAdjust } from '../../hooks/useKeyboardShortcuts';
+import { useTimelineRange } from '../../hooks/useTimelineRange';
 import { useChartTheme } from './useChartTheme';
 import { ChartFrame } from "./ChartFrame";
 
@@ -58,18 +58,15 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
   const isMeasured = containerWidth !== null;
 
   // --- RANGE SLIDER LOGIC ---
+  // Reconciles a stale stored range against the data's current year span (after a
+  // life-expectancy edit or data import) so the stream never renders an empty slice.
   const minYear = data.length > 0 ? data[0].year : 2025;
   const maxYear = data.length > 0 ? data[data.length - 1].year : 2060;
-  const [range, setRange] = useState<[number, number]>([minYear, Math.min(maxYear, minYear + 32)]);
-  useArrowKeyAdjust(
-      range,
-      (v) => setRange(v as [number, number]),
-      { min: minYear, max: maxYear, step: 1, containerRef }
-  );
+  const { activeRange, setRange } = useTimelineRange(minYear, maxYear, containerRef);
 
   const filteredData = useMemo(() => {
-    return data.filter(d => d.year >= range[0] && d.year <= range[1]);
-  }, [data, range]);
+    return data.filter(d => d.year >= activeRange[0] && d.year <= activeRange[1]);
+  }, [data, activeRange]);
 
   // Calculate x-axis tick values (indices) to prevent label overlap
   const xTickValues = useMemo(() => {
@@ -190,7 +187,7 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
         <div className="flex-1">
             <RangeSlider
                 label="Timeline"
-                value={range}
+                value={activeRange}
                 min={minYear}
                 max={maxYear}
                 onChange={setRange}

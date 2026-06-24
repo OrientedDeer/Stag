@@ -162,3 +162,10 @@ Both the dead-code phase and the audit-listed component splits are genuinely don
 - The remaining "Other refactor opportunities" entries (Roth-conversion helper extraction, raw-input sweep, assertions trim, MortgageExpense amortization helper, SimpleExpense full collapse).
 
 If the next ask is "keep cleaning," the remaining cards (AccountCard, ExpenseCard) are the closest to mechanical — both follow the same card+sub-components pattern the IncomeCard split established. The Assumptions-side `SimulationEngine` and `useSimulation` files are hot and should not be touched cold.
+
+## Pass 8 (2026-06-24 deep-review)
+
+Two dead functions surfaced by the 2026-06-24 deep-review and removed:
+
+- `estimateBenefitFromCurrentIncome` (`src/services/SocialSecurityCalculator.tsx`) — zero `src/` callers (only its own 3-test describe block referenced it). Also carried a future-earnings off-by-one (`i < yearsUntilRetirement` omitted the claiming-year earnings), so deletion beat fixing the bound. Removed the function + its 3-test block + the import.
+- `extractIncomeForRMDEstimate` (+ the `ExtractedIncomeForRMD` interface, `src/services/simulation/helpers.ts`) — no production caller; the live RMD path in `YearSolver.ts` extracts income inline and had already diverged (it includes the FERS MRA-to-62 supplement and excludes RMD-sourced PassiveIncome, neither of which the helper did) — so the helper was both dead and stale. Removed the function, the interface, the section header, and its dedicated ~1076-line test file. Sibling `estimateFixedIncomeAtRMD` is still used by YearSolver and was kept.

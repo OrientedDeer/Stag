@@ -390,6 +390,53 @@ test("ISSUE 6: a special-char BACKUP_DB is created and written at the SAME encod
   }
 });
 
+// ---- FINDING 1: a refused/dropped CouchDB connection answers 502, not a hang ----
+test("FINDING 1: an authed POST when CouchDB's connection is REFUSED responds 502, not a hang", async () => {
+  // Point the backend at a port nothing is listening on. The couch() fetch then
+  // REJECTS (ECONNREFUSED) rather than returning a non-2xx status. Before the
+  // fix, the async route's rejected promise was dropped by Express 4 and no
+  // response was ever sent — the client/tunnel hung (Cloudflare 524). With the
+  // asyncHandler + error middleware, it closes the request out with a 502.
+  const deadPort = await freePort(); // free == nothing listening -> connection refused
+  const be = await spawnBackend({ couchUrl: `http://127.0.0.1:${deadPort}`, backupDb: BACKUP_DB });
+  try {
+    // Race the request against a hard timeout: a hang (the bug) loses the race.
+    const res = await Promise.race([
+      reqTo(be.port, "POST", "/backup", {
+        headers: { "content-type": "application/json", authorization: "Bearer stub:dead-couch" },
+        body: JSON.stringify({ blob: "ciphertext", rev: null }),
+      }),
+      new Promise<{ status: number; body: string }>((_r, reject) =>
+        setTimeout(() => reject(new Error("request HUNG: no response within 4s")), 4000)
+      ),
+    ]);
+    assert.equal(res.status, 502, `expected 502 store error on refused CouchDB, got ${res.status}: ${res.body}`);
+  } finally {
+    be.kill();
+  }
+});
+
+// ---- FINDING 2: a non-string rev is a 400 client error, not a 502 store error ----
+test("FINDING 2: a non-string rev is rejected with 400, not forwarded to CouchDB (502)", async () => {
+  // The db exists (created at startup), so a malformed _rev would otherwise be
+  // PUT to CouchDB and rejected with a 4xx that falls through to a generic 502.
+  // The early type guard turns it into a clean 400 client error instead.
+  couch.failDocWriteWith404 = false;
+  const res = await reqTo(authedPort, "POST", "/backup", {
+    headers: { "content-type": "application/json", authorization: "Bearer stub:bad-rev" },
+    body: JSON.stringify({ blob: "ciphertext", rev: { x: 1 } }),
+  });
+  assert.equal(res.status, 400, `expected 400 for a non-string rev, got ${res.status}: ${res.body}`);
+  assert.match(res.body, /rev must be a string/i);
+
+  // A numeric rev is the other common shape and must also 400.
+  const res2 = await reqTo(authedPort, "POST", "/backup", {
+    headers: { "content-type": "application/json", authorization: "Bearer stub:bad-rev-2" },
+    body: JSON.stringify({ blob: "ciphertext", rev: 123 }),
+  });
+  assert.equal(res2.status, 400, `expected 400 for a numeric rev, got ${res2.status}: ${res2.body}`);
+});
+
 // ---- ISSUE 7: concurrent self-heals coalesce onto ONE ensureBackupDb loop ----
 test("ISSUE 7: a burst of POSTs during a missing-db window triggers only ONE create loop", async () => {
   const fake = new FakeCouch();

@@ -100,13 +100,40 @@ describe('TaxService: ESPP Disposition Tax', () => {
                 );
 
                 // Total gain = (90 - 85) * 100 = $500
-                // Grant discount = $100 * 0.15 * 100 = $1,500
+                // Grant discount = (100 - 85) * 100 = $1,500
                 // Ordinary income = min($1,500, $500) = $500
                 // LTCG = $500 - $500 = $0
                 expect(result.ordinaryIncome).toBe(500);
                 expect(result.longTermCapitalGains).toBe(0);
                 expect(result.shortTermCapitalGains).toBe(0);
                 expect(result.totalTaxableGain).toBe(500);
+            });
+
+            it('uses the actual grant bargain element, not a hardcoded 15% discount (#16)', () => {
+                // Scenario: a 20% grant discount (NOT 15%), so the ordinary-income
+                // portion must use the ACTUAL bargain element at grant
+                // (fmvAtGrant - purchasePrice), per IRS rules — not fmvAtGrant * 0.15.
+                // Grant FMV: $100, Purchase Price: $80 (20% discount)
+                // Sale Price: $150, Shares: 100
+                const result = calculateESPPDispositionTax(
+                    100,    // shares
+                    150,    // salePrice
+                    80,     // purchasePrice (20% discount from $100 grant FMV)
+                    100,    // fmvAtGrant
+                    100,    // fmvAtPurchase (same as grant for simplicity)
+                    true,   // qualifying
+                    true    // longTermCG
+                );
+
+                // Total gain = (150 - 80) * 100 = $7,000
+                // Grant bargain element = (100 - 80) * 100 = $2,000
+                // Ordinary income = min($2,000, $7,000) = $2,000
+                // LTCG = $7,000 - $2,000 = $5,000
+                // (A hardcoded 15% discount would wrongly give $1,500 ordinary / $5,500 LTCG.)
+                expect(result.ordinaryIncome).toBe(2000);
+                expect(result.longTermCapitalGains).toBe(5000);
+                expect(result.shortTermCapitalGains).toBe(0);
+                expect(result.totalTaxableGain).toBe(7000);
             });
         });
 

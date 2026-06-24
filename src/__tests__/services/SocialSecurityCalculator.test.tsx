@@ -5,7 +5,6 @@ import {
   applyWageIndexing,
   applyClaimingAdjustment,
   extractEarningsFromSimulation,
-  estimateBenefitFromCurrentIncome,
   calculateEarningsTestReduction,
   validateEarningsRecord,
   EarningsRecord,
@@ -313,6 +312,65 @@ describe('SocialSecurityCalculator', () => {
       expect(earnings[0].amount).toBeLessThanOrEqual(168600);
     });
 
+    it('caps earnings using the SAME wage-growth rate as AIME indexing', () => {
+      // A high earner whose salary binds the cap in a projected (post-2030) year.
+      // The cap must project at the caller's wage-growth rate, not a hardcoded 2.5%,
+      // so the earnings fed into AIME indexing/bend points are internally consistent.
+      // 2050 wage base: ~$360,300 at 2.5%, ~$583,500 at 5%.
+      const mockSimulation: SimulationYear[] = [
+        {
+          year: 2050,
+          incomes: [
+            new WorkIncome('1', 'Job', 600000, 'Annually', 'Yes', 0, 0, 0, 0, '', null, 'FIXED',
+              new Date(2050, 0, 1), undefined),
+          ],
+          expenses: [],
+          accounts: [],
+          cashflow: {} as any,
+          taxDetails: {} as any,
+          logs: [],
+        },
+      ];
+
+      const cappedAt25 = getWageBase(2050, 0.025, true);
+      const cappedAt5 = getWageBase(2050, 0.05, true);
+      // Sanity: the two rates must actually disagree for this test to be meaningful.
+      expect(cappedAt5).toBeGreaterThan(cappedAt25);
+
+      // Threading 5% wage growth should cap at the 5%-projected base, not the 2.5% one.
+      const earnings5 = extractEarningsFromSimulation(mockSimulation, undefined, true, undefined, 0.05);
+      expect(earnings5[0].amount).toBe(cappedAt5);
+      expect(earnings5[0].amount).not.toBe(cappedAt25);
+
+      // Default (no rate) still caps at the legacy 2.5% base — backward compatible.
+      const earningsDefault = extractEarningsFromSimulation(mockSimulation);
+      expect(earningsDefault[0].amount).toBe(cappedAt25);
+    });
+
+    it('caps auto-generated prior earnings using the passed wage-growth rate', () => {
+      // Job started in 2042 at $600k, simulation starts 2050. The 2042-2049 auto-generated
+      // years are also projected past 2030, so their cap must honor the same rate.
+      const mockSimulation: SimulationYear[] = [
+        {
+          year: 2050,
+          incomes: [
+            new WorkIncome('1', 'Job', 600000, 'Annually', 'Yes', 0, 0, 0, 0, '', null, 'FIXED',
+              new Date(2042, 0, 1), undefined),
+          ],
+          expenses: [],
+          accounts: [],
+          cashflow: {} as any,
+          taxDetails: {} as any,
+          logs: [],
+        },
+      ];
+
+      const earnings5 = extractEarningsFromSimulation(mockSimulation, undefined, true, undefined, 0.05);
+      const auto2045 = earnings5.find(e => e.year === 2045)!;
+      expect(auto2045.amount).toBe(getWageBase(2045, 0.05, true));
+      expect(auto2045.amount).not.toBe(getWageBase(2045, 0.025, true));
+    });
+
     it('should combine multiple work incomes in same year', () => {
       // Use Date constructor with args to ensure local time
       const mockSimulation: SimulationYear[] = [
@@ -537,60 +595,6 @@ describe('SocialSecurityCalculator', () => {
     });
   });
 
-  describe('estimateBenefitFromCurrentIncome', () => {
-    it('should estimate benefit from current salary', () => {
-      const currentAge = 30;
-      const retirementAge = 67;
-      const annualIncome = 80000;
-      const birthYear = 1994;
-
-      const estimatedBenefit = estimateBenefitFromCurrentIncome(
-        currentAge,
-        retirementAge,
-        annualIncome,
-        birthYear
-      );
-
-      // Should return a reasonable monthly benefit
-      // Note: For someone retiring in 2061 (37 years from 2024),
-      // benefits are inflated with wage growth (default 2.5% annually)
-      // Expected: ~$2,000 in 2024 dollars = ~$5,000 in 2061 nominal dollars
-      expect(estimatedBenefit).toBeGreaterThan(1000);
-      expect(estimatedBenefit).toBeLessThan(10000); // Updated for inflation-adjusted future dollars
-    });
-
-    it('should return higher benefit for higher income', () => {
-      const currentAge = 30;
-      const retirementAge = 67;
-      const birthYear = 1994;
-
-      const lowBenefit = estimateBenefitFromCurrentIncome(currentAge, retirementAge, 40000, birthYear);
-      const highBenefit = estimateBenefitFromCurrentIncome(currentAge, retirementAge, 120000, birthYear);
-
-      expect(highBenefit).toBeGreaterThan(lowBenefit);
-    });
-
-    it('should account for early vs delayed claiming', () => {
-      const currentAge = 30;
-      const annualIncome = 80000;
-      const birthYear = 1994;
-
-      const earlyBenefit = estimateBenefitFromCurrentIncome(currentAge, 62, annualIncome, birthYear);
-      const fraBenefit = estimateBenefitFromCurrentIncome(currentAge, 67, annualIncome, birthYear);
-      const delayedBenefit = estimateBenefitFromCurrentIncome(currentAge, 70, annualIncome, birthYear);
-
-      // Early claiming should be less
-      expect(earlyBenefit).toBeLessThan(fraBenefit);
-
-      // Delayed claiming should be more
-      expect(delayedBenefit).toBeGreaterThan(fraBenefit);
-
-      // Verify approximate ratios (70%, 100%, 124%)
-      expect(earlyBenefit / fraBenefit).toBeCloseTo(0.70, 1);
-      expect(delayedBenefit / fraBenefit).toBeCloseTo(1.24, 1);
-    });
-  });
-
   describe('Edge Cases', () => {
     it('should handle zero earnings gracefully', () => {
       const earnings: EarningsRecord[] = [];
@@ -780,7 +784,7 @@ describe('SocialSecurityCalculator', () => {
         const result = calculateEarningsTestReduction(
           24000,  // $24k annual SS benefit
           89520,  // $89,520 earned income
-          66.9,   // Age 66.9 (year of FRA, before reaching FRA)
+          67,     // Attained age 67 = year of FRA (year the worker reaches FRA)
           67,     // FRA = 67
           2024
         );
@@ -827,6 +831,56 @@ describe('SocialSecurityCalculator', () => {
         expect(result.appliesTest).toBe(false);
         expect(result.amountWithheld).toBe(0);
         expect(result.reducedBenefit).toBe(24000);
+      });
+
+      it('attained age 66 (FRA 67) uses the STRICT before-FRA limit, not the FRA-year one', () => {
+        // The engine passes currentAge = year - birthYear (the age the worker ATTAINS this
+        // calendar year). For a worker born 1960 (FRA 67), attained age 66 is the calendar
+        // year BEFORE they reach FRA, so the strict before-FRA limit ($1/$2 above ~$22,320)
+        // must apply — NOT the lenient FRA-year limit ($1/$3 above ~$59,520).
+        // Earn $42,320: strict → withhold ($42,320-$22,320)/2 = $10,000.
+        // The old off-by-one window (currentAge>=66 && <67) wrongly treated 66 as the FRA
+        // year, found earnings below the $59,520 FRA-year limit, and withheld $0.
+        const result = calculateEarningsTestReduction(
+          24000,  // $24k annual SS benefit
+          42320,  // $42,320 earned income
+          66,     // Attained age 66 — a full year before FRA under attained-age semantics
+          67,     // FRA = 67
+          2024
+        );
+
+        expect(result.appliesTest).toBe(true);
+        expect(result.amountWithheld).toBe(10000);
+        expect(result.reducedBenefit).toBe(14000);
+        expect(result.reason).toContain('$1 for every $2');
+        expect(result.reason).not.toContain('year of FRA');
+      });
+
+      it('attained age 67 (FRA 67) is the FRA year and uses the lenient $1/$3 limit', () => {
+        // The year the worker ATTAINS FRA (attained age === ceil(FRA)). The higher FRA-year
+        // limit (~$59,520) and 1/3 withholding apply. Earn $89,520 → ($89,520-$59,520)/3 = $10,000.
+        const result = calculateEarningsTestReduction(
+          24000,  // $24k annual SS benefit
+          89520,  // $89,520 earned income
+          67,     // Attained age 67 — the year FRA is reached
+          67,     // FRA = 67
+          2024
+        );
+
+        expect(result.appliesTest).toBe(true);
+        expect(result.amountWithheld).toBe(10000);
+        expect(result.reducedBenefit).toBe(14000);
+        expect(result.reason).toContain('$1 for every $3');
+        expect(result.reason).toContain('year of FRA');
+      });
+
+      it('attained age 68 (FRA 67) is fully past FRA — no test', () => {
+        const result = calculateEarningsTestReduction(
+          30000, 100000, 68, 67, 2024
+        );
+        expect(result.appliesTest).toBe(false);
+        expect(result.reducedBenefit).toBe(30000);
+        expect(result.amountWithheld).toBe(0);
       });
     });
   });

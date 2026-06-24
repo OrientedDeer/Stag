@@ -86,13 +86,17 @@ export interface EarningsTestResult {
  * @param importedSSAEarnings Optional earnings imported from SSA statement (source of truth - overwrites all)
  * @param inflationAdjusted If false, uses latest known wage base without projection
  * @param currentIncomes Optional current incomes to extract job start dates for auto-generating prior earnings
+ * @param wageGrowthRate Annual wage-growth rate used to project the SS wage-base cap for future
+ *   years. Must match the rate calculateAIME() uses for indexing/bend points so a high earner's
+ *   capped earnings are assembled and indexed in the same world (default: 0.025 = 2.5%).
  * @returns Array of earnings records sorted by year
  */
 export function extractEarningsFromSimulation(
   simulation: SimulationYear[],
   importedSSAEarnings?: EarningsRecord[],
   inflationAdjusted: boolean = true,
-  currentIncomes?: AnyIncome[]
+  currentIncomes?: AnyIncome[],
+  wageGrowthRate: number = 0.025
 ): EarningsRecord[] {
   const earningsMap = new Map<number, number>();
 
@@ -121,7 +125,7 @@ export function extractEarningsFromSimulation(
         // Generate earnings for each year from job start to simulation start
         for (let year = jobStartYear; year < firstSimYear; year++) {
           // Cap at SS wage base for the year
-          const wageBase = getWageBase(year, 0.025, inflationAdjusted);
+          const wageBase = getWageBase(year, wageGrowthRate, inflationAdjusted);
           const cappedEarnings = Math.min(annualSalary, wageBase);
 
           if (cappedEarnings > 0) {
@@ -146,7 +150,7 @@ export function extractEarningsFromSimulation(
     });
 
     // Cap at SS wage base for the year
-    const wageBase = getWageBase(simYear.year, 0.025, inflationAdjusted);
+    const wageBase = getWageBase(simYear.year, wageGrowthRate, inflationAdjusted);
     const cappedEarnings = Math.min(yearlyEarnings, wageBase);
 
     if (cappedEarnings > 0) {
@@ -357,66 +361,14 @@ export function calculateAIME(
 }
 
 /**
- * Helper function to calculate estimated monthly benefit from current earnings
- *
- * Simplified calculation assuming constant earnings from now until retirement.
- * Useful for quick estimates in UI.
- *
- * @param currentAge Current age
- * @param retirementAge Age planning to retire/claim
- * @param annualIncome Current annual income
- * @param birthYear Birth year for FRA calculation
- * @param inflationAdjusted If false, uses latest known values without projection
- * @returns Estimated monthly Social Security benefit
- */
-export function estimateBenefitFromCurrentIncome(
-  currentAge: number,
-  retirementAge: number,
-  annualIncome: number,
-  birthYear: number,
-  inflationAdjusted: boolean = true
-): number {
-  const currentYear = new Date().getFullYear();
-  const yearsUntilRetirement = retirementAge - currentAge;
-
-  // Build hypothetical earnings history
-  const earnings: EarningsRecord[] = [];
-
-  // Past: Assume they earned the same amount from age 22 to now (simplified)
-  const yearsWorked = Math.max(0, currentAge - 22);
-  for (let i = 0; i < yearsWorked; i++) {
-    const year = currentYear - (yearsWorked - i);
-    const wageBase = getWageBase(year, 0.025, inflationAdjusted);
-    earnings.push({
-      year: year,
-      amount: Math.min(annualIncome, wageBase),
-    });
-  }
-
-  // Future: Project same earnings until retirement
-  for (let i = 0; i < yearsUntilRetirement; i++) {
-    const year = currentYear + i;
-    const wageBase = getWageBase(year, 0.025, inflationAdjusted);
-    earnings.push({
-      year: year,
-      amount: Math.min(annualIncome, wageBase),
-    });
-  }
-
-  // Calculate AIME
-  const calculationYear = birthYear + 62; // Year of eligibility
-  const result = calculateAIME(earnings, calculationYear, retirementAge, birthYear, 0.025, inflationAdjusted);
-
-  return result.adjustedBenefit;
-}
-
-/**
  * Validate earnings record
  * Ensures earnings don't exceed SS wage base for the year
  * @param inflationAdjusted If false, uses latest known values without projection
+ * @param wageGrowthRate Annual wage-growth rate used to project the wage base for future
+ *   years; keep it consistent with the rate used to cap earnings (default: 0.025 = 2.5%).
  */
-export function validateEarningsRecord(record: EarningsRecord, inflationAdjusted: boolean = true): boolean {
-  const wageBase = getWageBase(record.year, 0.025, inflationAdjusted);
+export function validateEarningsRecord(record: EarningsRecord, inflationAdjusted: boolean = true, wageGrowthRate: number = 0.025): boolean {
+  const wageBase = getWageBase(record.year, wageGrowthRate, inflationAdjusted);
   return record.amount >= 0 && record.amount <= wageBase;
 }
 
@@ -452,8 +404,15 @@ export function calculateEarningsTestReduction(
   wageGrowthRate: number = 0.025,
   inflationAdjusted: boolean = true
 ): EarningsTestResult {
-  // No test if at or after FRA
-  if (currentAge >= fra) {
+  // `currentAge` is the age the worker ATTAINS during this calendar year (the engine
+  // computes it as `year - birthYear`). The worker reaches FRA during the year they
+  // attain ceil(FRA): e.g. FRA 67 → age 67, FRA 66.5 → age 67 (crossed mid-year), FRA 66 → age 66.
+  const fraAttainAge = Math.ceil(fra);
+
+  // No test in any year FULLY past FRA (attained age strictly above the FRA-year age).
+  // The FRA year itself (currentAge === fraAttainAge) is NOT exempt — it gets the lenient
+  // FRA-year limit + 1/3 withholding on earnings before reaching FRA.
+  if (currentAge > fraAttainAge) {
     return {
       originalBenefit: ssBenefit,
       reducedBenefit: ssBenefit,
@@ -466,9 +425,10 @@ export function calculateEarningsTestReduction(
   // Get earnings limits for this year
   const limits = getEarningsTestLimit(year, wageGrowthRate, inflationAdjusted);
 
-  // Determine if this is the year user reaches FRA
-  // Year of FRA is when you turn FRA during the year (age between fra-1 and fra)
-  const yearOfFRA = currentAge >= (fra - 1) && currentAge < fra;
+  // Year of FRA is the calendar year the worker attains FRA. Earlier years use the
+  // strict before-FRA limit ($1/$2); a full year before FRA (e.g. attained age 66 with
+  // FRA 67) is NOT the FRA year and must NOT get the lenient $1/$3 treatment.
+  const yearOfFRA = currentAge === fraAttainAge;
 
   // Select appropriate limit and withholding ratio
   const earningsLimit = yearOfFRA ? limits.yearOfFRA : limits.beforeFRA;

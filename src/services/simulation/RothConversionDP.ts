@@ -128,6 +128,18 @@ const MIN_CONVERSION_RANGE = 10_000;
 const MAX_CONVERSION_CAP = 500_000;
 const ACA_SUBSIDY_LOSS_DEFAULT = 12_000;
 /**
+ * Early-withdrawal penalty on Traditional 401k/IRA distributions taken for
+ * SPENDING before age 59.5. Mirrors WithdrawalPlanner's flat 10% (it grosses up
+ * the withdrawal by `gross * 0.10` for penalized accounts under 59.5). Roth
+ * CONVERSIONS are penalty-free and RMDs only start at 73, so only the
+ * endogenous `tradSpending` portion of the year's ordinary income is penalized
+ * here — never the conversion or RMD. NARROW: trad is last in the spending
+ * waterfall (brokerage → roth → trad), reached only when both are depleted —
+ * the early-FIRE corner — so this changes outputs only there.
+ */
+const EARLY_WITHDRAWAL_AGE = 59.5;
+const EARLY_WITHDRAWAL_PENALTY_RATE = 0.10;
+/**
  * Per-dollar penalty added to yearCost when a (year, trad, roth, conversion)
  * cell can't fund the year's totalNeed (= spendingNeed + yearTax) from the
  * waterfall. Without this, the DP would happily pick "drain trad to zero
@@ -186,22 +198,30 @@ export interface DPYearContext {
     stateParams: TaxParameters | null;
     acaOptions?: ACAOptions;
     /**
-     * Medicare IRMAA surcharge as a function of this year's MAGI. Set only for
-     * Medicare years (age 65+). The DP carries no MAGI history, so it generally
-     * attributes the surcharge to the same year's MAGI (a conversion's surcharge
-     * actually lands two years out; same-year attribution sums to the same
-     * lifetime total over the interior horizon and makes the DP avoid
-     * IRMAA-tripping conversions).
+     * Medicare IRMAA surcharge as a function of this year's MAGI. Set for Medicare
+     * years (age 65+) AND, for early retirees, the age-63/64 lookback years (see
+     * HEAD below). The DP carries no MAGI history, so it generally attributes the
+     * surcharge to the same year's MAGI (a conversion's surcharge actually lands
+     * two years out; same-year attribution sums to the same lifetime total over
+     * the interior horizon and makes the DP avoid IRMAA-tripping conversions).
      *
      * Two horizon-edge corrections approximate the real 2-year lag (#76):
-     *  - HEAD: for ages 65-66 (the first IRMAA_HORIZON_EDGE_YEARS Medicare
-     *    years), buildDPYearContexts pins this to a CONSTANT surcharge derived
-     *    from the baseline pre-65 (year−2) MAGI — it ignores its `magi` argument
-     *    — because those premiums are billed on pre-Medicare MAGI the year-65/66
-     *    conversion can't affect.
+     *  - HEAD: ages 65-66 (the first IRMAA_HORIZON_EDGE_YEARS Medicare years) are
+     *    billed on pre-Medicare (year−2) MAGI the year-65/66 conversion can't
+     *    affect. buildDPYearContexts handles two sub-cases:
+     *      • lookback (age 63/64) PRE-retirement → pin this to a CONSTANT
+     *        surcharge from the baseline (year−2) MAGI (ignores its `magi` arg).
+     *      • lookback (age 63/64) POST-retirement (DP-controlled, early retiree) →
+     *        pin the head year to 0 and instead attach a conversion-sensitive
+     *        surcharge to the age-63/64 context, pricing the (year+2) Medicare
+     *        schedule on that year's own MAGI (the conversion the DP picks there).
+     *        So the surcharge is billed exactly once, where the decision is made —
+     *        otherwise the DP sized 63-64 conversions blind to the 65-66 IRMAA
+     *        they create and over-converted (Finding 2, 2026-06-24 review).
      *  - TAIL: for the last IRMAA_HORIZON_EDGE_YEARS horizon years, the solver
      *    nulls this field (its surcharge would bill past the horizon and never
-     *    be charged by the real engine).
+     *    be charged by the real engine — also covers an age-63/64 lookback whose
+     *    Medicare year falls past the horizon).
      */
     irmaaSurchargeForMAGI?: (magi: number) => number;
 
@@ -625,27 +645,54 @@ export function buildDPYearContexts(
         if (irmaaSchedule) {
             // Head edge (#76): for the first IRMAA_HORIZON_EDGE_YEARS Medicare
             // years (ages 65-66), the surcharge is set by the pre-65 (year−2)
-            // MAGI from the baseline, NOT this year's conversion-sensitive MAGI.
-            // Pin a constant surcharge so the DP can't trip a phantom early
-            // surcharge by converting at 65-66 (the engine bills those years on
-            // age-63/64 MAGI, which the conversion can't retroactively raise).
-            // Fall back to same-year pricing when the lookback MAGI is missing
-            // (e.g. lookback year predates the baseline timeline).
+            // MAGI, NOT this year's conversion-sensitive MAGI. The engine bills
+            // those premiums on the age-63/64 MAGI, which a year-65/66 conversion
+            // can't retroactively raise.
             // Window = the IRMAA lookback (ages 65-66 are billed on age-63/64
             // MAGI), NOT the tail-skip width — they're equal today but mean
             // different things, so key off the lookback to stay correct if the
             // tail-skip width is ever tuned independently.
             const isMedicareHeadYear =
                 age < MEDICARE_ELIGIBILITY_AGE + IRMAA_LOOKBACK_YEARS;
+            // When the age-63/64 lookback year is a POST-retirement (DP-
+            // controlled) year, the DP's own conversion there drives this
+            // head-year premium — so we attribute the surcharge to the lookback
+            // year itself (conversion-sensitive, below) and pin THIS head year to
+            // 0, avoiding a double-count. The pre-retirement lookback case (early-
+            // claimer / not-yet-retired in the lookback window) keeps the #76
+            // baseline-MAGI seed: that year carries no DP conversion, so the
+            // engine bills exactly the baseline surcharge here.
+            const lookbackYear = simYear.year - IRMAA_LOOKBACK_YEARS;
+            const lookbackIsDPControlled = isMedicareHeadYear && lookbackYear >= retirementYear;
             const lookbackMagi = isMedicareHeadYear
-                ? baselineMagiByYear.get(simYear.year - IRMAA_LOOKBACK_YEARS)
+                ? baselineMagiByYear.get(lookbackYear)
                 : undefined;
-            if (isMedicareHeadYear && lookbackMagi !== undefined) {
+            if (lookbackIsDPControlled) {
+                // Cost lives on the age-63/64 context (see the pre-Medicare branch
+                // below); pin the head year so it isn't billed twice.
+                irmaaSurchargeForMAGI = () => 0;
+            } else if (isMedicareHeadYear && lookbackMagi !== undefined) {
                 const seededSurcharge = irmaaSchedule.annualSurcharge(lookbackMagi);
                 irmaaSurchargeForMAGI = () => seededSurcharge;
             } else {
                 irmaaSurchargeForMAGI = (magi: number) => irmaaSchedule.annualSurcharge(magi);
             }
+        } else if (age >= MEDICARE_ELIGIBILITY_AGE - IRMAA_LOOKBACK_YEARS) {
+            // Pre-Medicare IRMAA LOOKBACK year (ages 63-64) that is in-horizon
+            // (the build loop only reaches post-retirement years). The premium the
+            // engine charges at age 65-66 is set by THIS year's MAGI — including
+            // the DP's conversion here — so price the (year + lookback) Medicare
+            // schedule on this year's conversion-sensitive MAGI. Without this the
+            // DP sized 63-64 conversions blind to the 65-66 IRMAA they create and
+            // over-converted (the matching head years above are pinned to 0, so
+            // the surcharge is billed exactly once). The tail-skip in
+            // planConversionsViaDP nulls this when the Medicare year would fall
+            // past the horizon (engine never charges it), so no horizon guard is
+            // needed here.
+            const medicareSchedule = getIRMAASchedule(
+                effTax.filingStatus, simYear.year + IRMAA_LOOKBACK_YEARS, assumptions,
+            );
+            irmaaSurchargeForMAGI = (magi: number) => medicareSchedule.annualSurcharge(magi);
         }
 
         const growthRate = getNetGrowthRate(simYear, assumptions);
@@ -720,10 +767,20 @@ export function buildDPYearContexts(
  * from a today-conversion (lower future trad → lower future RMD → lower
  * future ordinary income → lower future absolute tax). A conversion's
  * marginal tax cost is just `yearTax(with conv) − yearTax(without conv)`.
+ *
+ * `penalizedTradSpending` is the portion of `ordinaryIncome` that comes from a
+ * Traditional withdrawal taken for SPENDING (not a conversion, not an RMD). The
+ * engine charges a flat 10% early-withdrawal penalty on it when age < 59.5
+ * (WithdrawalPlanner); we add the same here so a pre-59.5 trad-spending cell
+ * isn't priced ~10% cheaper than the engine actually bills. Defaults to 0:
+ * callers with no trad spending (initial-guess and baseline taxes) pass nothing
+ * and are byte-for-byte unchanged. Exported for unit testing the cell tax.
+ * @internal
  */
-function computeYearTax(
+export function computeYearTax(
     ordinaryIncome: number,
     ctx: DPYearContext,
+    penalizedTradSpending: number = 0,
 ): number {
     const fed = TaxService.calculateTotalFederalTax(
         ordinaryIncome,
@@ -775,7 +832,14 @@ function computeYearTax(
         irmaaPenalty = ctx.irmaaSurchargeForMAGI(irmaaMagi);
     }
 
-    return fed + state + acaPenalty + irmaaPenalty;
+    // 10% early-withdrawal penalty on pre-59.5 Traditional SPENDING (mirrors the
+    // engine's WithdrawalPlanner). Conversions/RMDs are excluded by the caller —
+    // only `penalizedTradSpending` is passed in.
+    const earlyPenalty = ctx.age < EARLY_WITHDRAWAL_AGE
+        ? penalizedTradSpending * EARLY_WITHDRAWAL_PENALTY_RATE
+        : 0;
+
+    return fed + state + acaPenalty + irmaaPenalty + earlyPenalty;
 }
 
 /**
@@ -882,8 +946,11 @@ function buildNodeGrowthFactors(
  * header. LTCG is taken from baseline as well; if a DP plan draws much
  * more from brokerage than baseline, this under-counts LTCG tax. Known
  * limitation, accepted to keep state at 3D.
+ *
+ * Exported for unit testing the cell's spending waterfall and year-tax (incl.
+ * the pre-59.5 early-withdrawal penalty on trad spending). @internal
  */
-function evaluateCell(
+export function evaluateCell(
     tradBalance: number,
     rothBalance: number,
     conversion: number,
@@ -960,7 +1027,10 @@ function evaluateCell(
         if (tradSpending === 0) break;
 
         const ordIncome = ordIncomeExclTradSpend + tradSpending;
-        const newYearTax = computeYearTax(ordIncome, ctx);
+        // tradSpending is a pre-59.5-penalized Traditional distribution for
+        // spending; computeYearTax adds the 10% early-withdrawal penalty on it
+        // when ctx.age < 59.5 (conversion/RMD inside ordIncome are NOT penalized).
+        const newYearTax = computeYearTax(ordIncome, ctx, tradSpending);
         if (Math.abs(newYearTax - yearTax) < 1) {
             yearTax = newYearTax;
             break;

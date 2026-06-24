@@ -1,9 +1,10 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { SimulationYear } from '../../../../components/Objects/Assumptions/SimulationEngine';
 import { OverviewTab } from '../../../../tabs/Future/tabs/OverviewTab';
 import { DebtAccount, InvestedAccount, PropertyAccount, SavedAccount } from '../../../../components/Objects/Accounts/models';
 import { LoanExpense, MortgageExpense } from '../../../../components/Objects/Expense/models';
+import { CurrentSocialSecurityIncome, FutureSocialSecurityIncome } from '../../../../components/Objects/Income/models';
 
 // -----------------------------------------------------------------------------
 // 1. Mocks
@@ -35,6 +36,9 @@ vi.mock('../../../../components/Layout/InputFields/RangeSlider', () => ({
   ),
 }));
 
+// Toggled by individual tests to exercise the "qualifies for SS" gate.
+let mockQualifiesForSocialSecurity = false;
+
 // Mock the AssumptionsContext
 vi.mock('../../../../components/Objects/Assumptions/AssumptionsContext', () => ({
   useAssumptions: () => ({
@@ -45,6 +49,9 @@ vi.mock('../../../../components/Objects/Assumptions/AssumptionsContext', () => (
       },
       macro: {
         inflationRate: 3,
+      },
+      income: {
+        qualifiesForSocialSecurity: mockQualifiesForSocialSecurity,
       },
       milestones: [
         { id: 'BUILTIN_BIRTH', name: 'Birth', conditions: [{ type: 'YEAR', operator: '=', value: 1990 }] },
@@ -161,5 +168,43 @@ describe('OverviewTab', () => {
         const sliderText = screen.getByTestId('mock-slider').textContent;
         expect(sliderText).toContain('Min: 2025');
         expect(sliderText).toContain('Max: 2035');
+    });
+
+    // Regression coverage for the false "Social Security Not Configured" banner
+    // (2026-06-24 review, #36): the check used `instanceof FutureSocialSecurityIncome`
+    // only, so a user already collecting via a Current SS income still saw the
+    // "add a Future Social Security income" prompt.
+    describe('missing Social Security warning', () => {
+        const WARNING = 'Social Security Not Configured';
+
+        afterEach(() => { mockQualifiesForSocialSecurity = false; });
+
+        it('shows the warning when SS is qualified but no SS income exists', () => {
+            mockQualifiesForSocialSecurity = true;
+            render(<OverviewTab simulationData={[createMockYear(2025)]} />);
+            expect(screen.getByText(WARNING)).toBeInTheDocument();
+        });
+
+        it('does NOT show the warning when a Future SS income exists', () => {
+            mockQualifiesForSocialSecurity = true;
+            const year = createMockYear(2025);
+            year.incomes.push(new FutureSocialSecurityIncome('ss1', 'Social Security', 67, 2000));
+            render(<OverviewTab simulationData={[year]} />);
+            expect(screen.queryByText(WARNING)).not.toBeInTheDocument();
+        });
+
+        it('does NOT show the warning when a Current SS income exists (the #36 bug)', () => {
+            mockQualifiesForSocialSecurity = true;
+            const year = createMockYear(2025);
+            year.incomes.push(new CurrentSocialSecurityIncome('ss1', 'Social Security', 2000, 'Monthly'));
+            render(<OverviewTab simulationData={[year]} />);
+            expect(screen.queryByText(WARNING)).not.toBeInTheDocument();
+        });
+
+        it('does NOT show the warning when the user does not qualify for SS', () => {
+            mockQualifiesForSocialSecurity = false;
+            render(<OverviewTab simulationData={[createMockYear(2025)]} />);
+            expect(screen.queryByText(WARNING)).not.toBeInTheDocument();
+        });
     });
 });

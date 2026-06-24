@@ -9,7 +9,7 @@
  */
 
 // S&P 500 Total Returns (including dividends) by year
-const SP500_RETURNS: Record<number, number> = {
+export const SP500_RETURNS: Record<number, number> = {
   1928: 43.81,
   1929: -8.30,
   1930: -25.12,
@@ -110,7 +110,7 @@ const SP500_RETURNS: Record<number, number> = {
 };
 
 // 10-Year Treasury Bond Total Returns by year
-const BOND_RETURNS: Record<number, number> = {
+export const BOND_RETURNS: Record<number, number> = {
   1928: 0.84,
   1929: 4.20,
   1930: 4.54,
@@ -354,8 +354,10 @@ export const AVAILABLE_YEARS = Object.keys(SP500_RETURNS)
   .sort((a, b) => a - b);
 
 // Get return data for a specific year
-function getYearReturns(year: number): { stocks: number; bonds: number; inflation: number } | null {
-  if (!SP500_RETURNS[year] || !BOND_RETURNS[year] || INFLATION_RATES[year] === undefined) {
+export function getYearReturns(year: number): { stocks: number; bonds: number; inflation: number } | null {
+  // Use === undefined (not falsy checks) so a legitimate 0.00% return is not
+  // mistaken for a missing year.
+  if (SP500_RETURNS[year] === undefined || BOND_RETURNS[year] === undefined || INFLATION_RATES[year] === undefined) {
     return null;
   }
   return {

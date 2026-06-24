@@ -373,6 +373,52 @@ describe('AccountGrowth', () => {
                 expect(lotWithLookback.purchasePrice).toBeLessThanOrEqual(lotWithoutLookback.purchasePrice);
             });
 
+            it('should stamp sim-projected lot dates locally (matching user-entered lots)', () => {
+                // Sim-projected ESPP lots must be built with LOCAL date constructors, the
+                // same as user-entered lots (parseDate → new Date(y, m-1, d)). Every reader
+                // (calculateDispositionType, getEligibleLots, daysSincePurchase) uses LOCAL
+                // accessors and getTime() deltas, so a lot stamped at UTC midnight and a lot
+                // stamped at local midnight classify holding-period / disposition boundaries
+                // inconsistently in any non-UTC timezone.
+                const esppAccount = new ESPPAccount('espp1', 'Company ESPP', 10000);
+                const income = createWorkIncomeWithESPP('job1', 100000, 'espp1', 10, 15, false);
+                const withdrawalState = createWithdrawalState();
+                const assumptions = createTestAssumptions();
+                const logs: string[] = [];
+
+                const result = processInflows(
+                    [income], [esppAccount], assumptions, 2025, withdrawalState,
+                    50000, undefined, 40000, 35, logs
+                );
+
+                // First period: grant month 0 (Jan), purchase month 5 (Jun).
+                const lot = result.esppLots['espp1'][0];
+                // Local-built equivalents — the engine must produce identical instants.
+                const expectedGrant = new Date(2025, 0, 1);
+                const expectedPurchase = new Date(2025, 5, 28);
+                expect(lot.grantDate.getTime()).toBe(expectedGrant.getTime());
+                expect(lot.purchaseDate.getTime()).toBe(expectedPurchase.getTime());
+
+                // And they must read back as the intended local calendar day (midnight),
+                // not the prior evening (the UTC-midnight symptom in negative-offset zones).
+                expect(lot.grantDate.getFullYear()).toBe(2025);
+                expect(lot.grantDate.getMonth()).toBe(0);
+                expect(lot.grantDate.getDate()).toBe(1);
+                expect(lot.purchaseDate.getMonth()).toBe(5);
+                expect(lot.purchaseDate.getDate()).toBe(28);
+
+                // The holding-period reader must classify the sim lot exactly like a
+                // user-built lot of the same local dates.
+                const userBuiltAccount = new ESPPAccount('espp1', 'Company ESPP', 10000, [
+                    { ...lot, grantDate: expectedGrant, purchaseDate: expectedPurchase },
+                ]);
+                const simBuiltAccount = new ESPPAccount('espp1', 'Company ESPP', 10000, [lot]);
+                const saleDate = new Date(2027, 0, 15); // > 2yr from grant, > 1yr from purchase
+                expect(simBuiltAccount.calculateDispositionType(lot, saleDate))
+                    .toBe(userBuiltAccount.calculateDispositionType(
+                        userBuiltAccount.lots[0], saleDate));
+            });
+
             it('should calculate shares based on purchase price', () => {
                 const esppAccount = new ESPPAccount('espp1', 'Company ESPP', 10000);
                 const income = createWorkIncomeWithESPP('job1', 100000, 'espp1', 10, 15, false);

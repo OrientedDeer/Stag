@@ -456,12 +456,12 @@ const EARNINGS_TEST_LIMITS: Record<number, { beforeFRA: number; yearOfFRA: numbe
   2023: { beforeFRA: 21240, yearOfFRA: 56520 },
   2024: { beforeFRA: 22320, yearOfFRA: 59520 },
   2025: { beforeFRA: 23400, yearOfFRA: 62160 },
+  2026: { beforeFRA: 24480, yearOfFRA: 65160 },  // Official: SSA 2026 COLA fact sheet
   // Future projections based on wage growth
-  2026: { beforeFRA: 24000, yearOfFRA: 63700 },
-  2027: { beforeFRA: 24600, yearOfFRA: 65300 },
-  2028: { beforeFRA: 25200, yearOfFRA: 67000 },
-  2029: { beforeFRA: 25850, yearOfFRA: 68700 },
-  2030: { beforeFRA: 26500, yearOfFRA: 70500 },
+  2027: { beforeFRA: 25100, yearOfFRA: 66800 },
+  2028: { beforeFRA: 25700, yearOfFRA: 68500 },
+  2029: { beforeFRA: 26300, yearOfFRA: 70200 },
+  2030: { beforeFRA: 27000, yearOfFRA: 72000 },
 };
 
 /**

@@ -22,9 +22,21 @@ import process from 'node:process';
 
 import { decrypt, encrypt, EncryptedBackup } from '../src/services/encryption/CryptoService';
 import { parseBalancesCSV } from '../src/services/simplefinBalances';
-import { applyBalances, MergeBlob } from '../src/services/backupMerge';
+import { applyBalances, BalanceMergeReport, MergeBlob } from '../src/services/backupMerge';
 
 const MAX_BACKUP_SIZE = 5 * 1024 * 1024; // mirror the browser / backend cap
+
+// Opt-in: the detailed per-account dump (names, balances, SimpleFIN keys) is
+// sensitive and would otherwise land in journald/cron-mail/CI logs in cleartext.
+// Default to counts + flag-reason breakdown only; STAG_VERBOSE=1 to see detail.
+const VERBOSE = process.env.STAG_VERBOSE === '1';
+
+/** Tally flag reasons into a non-sensitive count map (drops the account keys). */
+export function flagReasonCounts(flagged: BalanceMergeReport['flagged']): Record<string, number> {
+    const counts: Record<string, number> = {};
+    for (const f of flagged) counts[f.reason] = (counts[f.reason] ?? 0) + 1;
+    return counts;
+}
 
 function env(name: string): string {
     const v = process.env[name];
@@ -62,12 +74,21 @@ async function run(): Promise<void> {
     }
     writeFileSync(outPath, reEncrypted);
 
-    console.log(`updated ${report.updated.length} account(s):`, report.updated);
-    if (report.flagged.length) console.log('flagged:', report.flagged);
+    // Counts + flag-reason breakdown only (no account names, balances, or keys).
+    console.log(`updated ${report.updated.length} account(s)`);
+    if (report.flagged.length) console.log(`flagged ${report.flagged.length}:`, flagReasonCounts(report.flagged));
+    if (VERBOSE) {
+        console.log('  [verbose] updated:', report.updated);
+        if (report.flagged.length) console.log('  [verbose] flagged:', report.flagged);
+    }
     console.log(`wrote ${outPath} (${(size / 1024).toFixed(1)} KB)`);
 }
 
-run().catch((err) => {
-    console.error(err);
-    process.exitCode = 1;
-});
+// Skip the live run when imported by the test runner (e.g. to exercise the pure
+// flagReasonCounts helper); vitest sets VITEST. Mirrors couchImport.ts.
+if (!process.env.VITEST) {
+    run().catch((err) => {
+        console.error(err);
+        process.exitCode = 1;
+    });
+}

@@ -485,6 +485,10 @@ export function reconstituteBudgetState(parsed: unknown): Partial<BudgetState> {
         months,
         importSettings: {
             ...(importSettingsData as unknown as BudgetState['importSettings']),
+            // Older/hand-edited backups may omit categoryMappings; default it so the
+            // SettingsTab and the category-mapping reducers never spread/map/filter
+            // undefined (mirrors hydrateBudgetState).
+            categoryMappings: (importSettingsData.categoryMappings as CategoryMapping[]) || [],
             savedCSVFormats,
         },
     };

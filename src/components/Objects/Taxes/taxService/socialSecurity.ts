@@ -25,6 +25,16 @@ const SS_MAX_TAXABLE_RATE = 0.85;   // Maximum 85% of benefits can be taxed
  *   $32,000-$44,000: Up to 50% taxable
  *   > $44,000: Up to 85% taxable
  *
+ * MFS APPROXIMATION (#33): We apply the Single base amounts ($25k/$34k) to Married
+ * Filing Separately. That is exactly correct ONLY for a MFS taxpayer who lived APART
+ * from their spouse for the ENTIRE year. A MFS taxpayer who lived WITH their spouse at
+ * any time during the year has a $0 base amount under IRS rules (so up to 85% of
+ * benefits is taxable from the first dollar of combined income) — for that sub-case
+ * this function UNDER-taxes SS. The model has no "lived apart from spouse all year"
+ * flag, so we keep the lived-apart-correct Single thresholds rather than silently
+ * flipping every MFS filer to a $0 base (which would OVER-tax the lived-apart case).
+ * A proper fix needs a per-taxpayer "lived apart from spouse all year" toggle.
+ *
  * @param totalSSBenefits - Gross Social Security benefits received
  * @param otherIncome - All taxable income EXCEPT SS. Must include:
  *                      - Wages and salaries
@@ -55,7 +65,10 @@ export function getTaxableSocialSecurityBenefits(
     // Combined income = otherIncome + taxExemptInterest + 50% of SS Benefits
     const combinedIncome = otherIncome + taxExemptInterest + (totalSSBenefits * SS_TIER1_TAXABLE_RATE);
 
-    // Select thresholds based on filing status
+    // Select thresholds based on filing status. MFS uses the Single base amounts:
+    // correct for a MFS filer who lived apart from their spouse all year, but it
+    // under-taxes a MFS filer who lived with their spouse (IRS base $0). See the
+    // function doc comment (#33) — a proper fix needs a "lived apart" toggle.
     const useSingleThresholds = filingStatus === 'Single' || filingStatus === 'Married Filing Separately';
     const thresholds = useSingleThresholds ? SS_THRESHOLDS_SINGLE : SS_THRESHOLDS_JOINT;
 

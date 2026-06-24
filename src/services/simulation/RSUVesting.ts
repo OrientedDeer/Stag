@@ -30,9 +30,14 @@ export interface RSUVestingResult {
  * year. currentSharePrice is TODAY's price, so the compounding base is the
  * current simulation year — NOT the grant year, which would double-count the
  * growth already baked into today's price. This FMV is both the ordinary income
- * per share at vest AND the lot's per-share cost basis. Falls back to a $100
- * reference price when no current price is set, so vesting still produces a
- * meaningful (relative) projection.
+ * per share at vest AND the lot's per-share cost basis.
+ *
+ * Returns 0 when no current price is set (the UI maps a blank price to undefined
+ * and does not require it). The caller SKIPS vest recognition in that case rather
+ * than fabricating a $100/share reference — see the `fmvAtVest > 0` guard, which
+ * mirrors the RSU SALE path's `fmvPerShare > 0` guard. A fabricated FMV would
+ * recognize grossIncome = shares × $100 of taxable ordinary income from nothing,
+ * inflating AGI/FICA/SS-taxability/IRMAA/ACA and seeding a bogus cost-basis lot.
  */
 function projectFMVAtVest(
     currentSharePrice: number | undefined,
@@ -40,9 +45,9 @@ function projectFMVAtVest(
     currentSimYear: number,
     vestYear: number,
 ): number {
-    const basePrice = currentSharePrice && currentSharePrice > 0 ? currentSharePrice : 100;
+    if (!currentSharePrice || currentSharePrice <= 0) return 0;
     const yearsElapsed = Math.max(0, vestYear - currentSimYear);
-    return basePrice * Math.pow(1 + expectedStockGrowthPct / 100, yearsElapsed);
+    return currentSharePrice * Math.pow(1 + expectedStockGrowthPct / 100, yearsElapsed);
 }
 
 /**
@@ -100,6 +105,18 @@ export function processRSUVesting(
             currentSimYear,
             year,
         );
+
+        // No current share price → SKIP vest recognition rather than fabricate a
+        // $100/share reference. Mirrors the SALE path's `fmvPerShare > 0` guard:
+        // a made-up FMV would recognize ordinary income (and FICA) from nothing
+        // and seed a bogus cost-basis lot.
+        if (fmvAtVest <= 0) {
+            logs.push(
+                `[WARN] RSU: ${inc.name} has ${grossShares.toFixed(2)} shares vesting in ${year} ` +
+                `but its linked account has no current share price set — vest recognition skipped`
+            );
+            return;
+        }
 
         const grossIncome = grossShares * fmvAtVest;
 

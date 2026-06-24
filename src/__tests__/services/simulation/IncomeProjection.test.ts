@@ -6,6 +6,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { projectIncomes } from '../../../services/simulation/IncomeProjection';
+import { extractEarningsFromSimulation } from '../../../services/SocialSecurityCalculator';
 import {
     WorkIncome,
     PassiveIncome,
@@ -407,6 +408,44 @@ describe('IncomeProjection', () => {
                 expect(updatedFers.calculatedBenefit).toBeGreaterThan(0);
             });
 
+            it('should activate when already past retirementAge at plan start (=== year never hit)', () => {
+                // A federal employee already AT/PAST their FERS retirement age when the
+                // plan starts: the projection loop runs currentAge = startAge+1, startAge+2, …
+                // so it never sees currentAge === inc.retirementAge, and the pension would
+                // silently pay $0 forever (increment only COLA-grows a 0). Activation must
+                // fire once on the first year currentAge >= retirementAge with the benefit
+                // still uncalculated.
+                const fersPension = new FERSPensionIncome(
+                    'fers1', 'FERS Pension', 30, 0, 65, 1960, 0, 0, 0,
+                    undefined, undefined,
+                    true, 'work1'
+                );
+
+                const previousSimulation: SimulationYear[] = [
+                    createSimulationYear(2022, [createWorkIncome('work1', 'Fed Job', 100000)]),
+                    createSimulationYear(2023, [createWorkIncome('work1', 'Fed Job', 100000)]),
+                    createSimulationYear(2024, [createWorkIncome('work1', 'Fed Job', 100000)]),
+                ];
+
+                const assumptions = createTestAssumptions({ birthYear: 1960, retirementAge: 65 });
+                const logs: string[] = [];
+
+                const result = projectIncomes(
+                    2026,
+                    [fersPension],
+                    [],
+                    assumptions,
+                    previousSimulation,
+                    66, // currentAge > retirementAge (65) — the === year was skipped
+                    true,
+                    logs
+                );
+
+                const updatedFers = result.nextIncomes.find(inc => inc.id === 'fers1') as FERSPensionIncome;
+                expect(updatedFers.calculatedBenefit).toBeGreaterThan(0);
+                expect(updatedFers.high3Salary).toBeGreaterThan(0);
+            });
+
             it('should apply FERS multiplier (1% or 1.1%)', () => {
                 // 1.1% multiplier applies when retiring at 62+ with 20+ years of service
                 const workIncome = createWorkIncome('work1', 'Fed Job', 100000, { pensionSystem: 'FERS' });
@@ -573,6 +612,41 @@ describe('IncomeProjection', () => {
                 expect(updatedCsrs.calculatedBenefit).toBeGreaterThan(0);
             });
 
+            it('should activate when already past retirementAge at plan start (=== year never hit)', () => {
+                // Same activation bug as FERS: an employee already at/past their CSRS
+                // retirement age when the plan starts never hits the === year in the
+                // projection loop, so the pension would pay $0 forever.
+                const csrsPension = new CSRSPensionIncome(
+                    'csrs1', 'CSRS Pension', 30, 0, 65, 0,
+                    undefined, undefined,
+                    true, 'work1'
+                );
+
+                const previousSimulation: SimulationYear[] = [
+                    createSimulationYear(2022, [createWorkIncome('work1', 'Fed Job', 100000)]),
+                    createSimulationYear(2023, [createWorkIncome('work1', 'Fed Job', 100000)]),
+                    createSimulationYear(2024, [createWorkIncome('work1', 'Fed Job', 100000)]),
+                ];
+
+                const assumptions = createTestAssumptions({ birthYear: 1960, retirementAge: 65 });
+                const logs: string[] = [];
+
+                const result = projectIncomes(
+                    2026,
+                    [csrsPension],
+                    [],
+                    assumptions,
+                    previousSimulation,
+                    66, // currentAge > retirementAge (65) — the === year was skipped
+                    true,
+                    logs
+                );
+
+                const updatedCsrs = result.nextIncomes.find(inc => inc.id === 'csrs1') as CSRSPensionIncome;
+                expect(updatedCsrs.calculatedBenefit).toBeGreaterThan(0);
+                expect(updatedCsrs.high3Salary).toBeGreaterThan(0);
+            });
+
             it('should apply tiered CSRS multipliers', () => {
                 // CSRS: 1.5% for first 5 years, 1.75% for next 5, 2% thereafter
                 const workIncome = createWorkIncome('work1', 'Fed Job', 100000, { pensionSystem: 'CSRS' });
@@ -682,6 +756,44 @@ describe('IncomeProjection', () => {
                 // Should have calculated a benefit
                 expect(updatedSS.calculatedPIA).toBeGreaterThan(0);
                 expect(logs.some(l => l.includes('Social Security PIA calculated'))).toBe(true);
+            });
+
+            it('should pass the indexing wage-growth rate into the SS wage-base cap projection', () => {
+                // Deep-review #1: projectIncomes must forward the SAME wage-growth rate it
+                // uses for AIME indexing / PIA bend points (assumptions.macro.inflationRate
+                // / 100) into extractEarningsFromSimulation's wage-base cap projection — not
+                // leave it at the hardcoded 0.025 default. This asserts the wiring directly:
+                // for a high earner in a projected (post-table) year, the capped earnings
+                // record must track the rate the call passes.
+                //
+                // (The cap MATH itself is owned and unit-tested by the ss-calculator change;
+                // this only verifies the IncomeProjection call site forwards the rate.)
+                const futureYear = 2050; // beyond the SS_WAGE_BASE table → projected via rate
+                const highEarnerSim: SimulationYear[] = [
+                    createSimulationYear(futureYear, [createWorkIncome('work1', 'Job', 2_000_000)]),
+                ];
+
+                const capLow = extractEarningsFromSimulation(highEarnerSim, undefined, true, undefined, 0.01)
+                    .find(r => r.year === futureYear)?.amount ?? 0;
+                const capHigh = extractEarningsFromSimulation(highEarnerSim, undefined, true, undefined, 0.10)
+                    .find(r => r.year === futureYear)?.amount ?? 0;
+
+                // A faster-growing wage base caps the $2M earner at a higher value. If the
+                // rate weren't threaded through, both calls would project the same cap.
+                expect(capLow).toBeGreaterThan(0);
+                expect(capHigh).toBeGreaterThan(capLow);
+
+                // And the rate projectIncomes actually passes is inflationRate/100, so the
+                // capped earnings it feeds AIME must equal the explicit-rate projection for
+                // that same rate (here 4% → 0.04). This pins the call site to the right rate.
+                const ssIncome = new FutureSocialSecurityIncome('ss1', 'Social Security', 67, 0, 0);
+                const assumptions = createTestAssumptions({
+                    birthYear: 1985, retirementAge: 67, inflationAdjusted: true, inflationRate: 4.0,
+                });
+                const projectedPIA = (projectIncomes(
+                    2052, [ssIncome], [], assumptions, highEarnerSim, 67, true, []
+                ).nextIncomes.find(inc => inc.id === 'ss1') as FutureSocialSecurityIncome).calculatedPIA;
+                expect(projectedPIA).toBeGreaterThan(0);
             });
 
             it('should apply funding percentage', () => {

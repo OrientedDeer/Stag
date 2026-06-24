@@ -114,28 +114,31 @@ export const SpendingSunburst = ({
     }
 
     if (showSavings) {
-      const employeeSavings = grossIncome - totalExpenses - totalTaxes;
+      let totalPreTax = 0;
+      let totalRoth = 0;
+      let totalHSA = 0;
+      let totalMatch = 0;
+      let totalESPP = 0;
+      let totalInsurance = 0;
+
+      incomes.forEach(inc => {
+        if (inc instanceof WorkIncome) {
+          const effective = inc.getEffective401k(year, startAge);
+          totalPreTax += inc.getProratedAnnual(effective.preTax, year);
+          totalRoth += inc.getProratedAnnual(effective.roth, year);
+          totalHSA += inc.getProratedAnnual(inc.hsaContribution, year);
+          totalMatch += inc.getEffectiveAnnualEmployerMatch(year);
+          totalESPP += inc.getAnnualESPPContribution(year);
+          totalInsurance += inc.getProratedAnnual(inc.insurance, year);
+        }
+      });
+
+      // Insurance is a payroll benefit, not savings — it leaves the paycheck and
+      // doesn't accrue to the user. The sim's CashflowSankey routes it to
+      // "Benefits", so exclude it from savings here (alongside taxes/expenses).
+      const employeeSavings = grossIncome - totalExpenses - totalTaxes - totalInsurance;
       if (employeeSavings > 0) {
-        let totalPreTax = 0;
-        let totalRoth = 0;
-        let totalHSA = 0;
-        let totalMatch = 0;
-        let totalESPP = 0;
-        let totalInsurance = 0;
-
-        incomes.forEach(inc => {
-          if (inc instanceof WorkIncome) {
-            const effective = inc.getEffective401k(year, startAge);
-            totalPreTax += inc.getProratedAnnual(effective.preTax, year);
-            totalRoth += inc.getProratedAnnual(effective.roth, year);
-            totalHSA += inc.getProratedAnnual(inc.hsaContribution, year);
-            totalMatch += inc.getEffectiveAnnualEmployerMatch(year);
-            totalESPP += inc.getAnnualESPPContribution(year);
-            totalInsurance += inc.getProratedAnnual(inc.insurance, year);
-          }
-        });
-
-        const payrollAllocated = totalPreTax + totalRoth + totalHSA + totalMatch + totalESPP + totalInsurance;
+        const payrollAllocated = totalPreTax + totalRoth + totalHSA + totalMatch + totalESPP;
         let remaining = Math.max(0, employeeSavings - payrollAllocated);
 
         const savingsItems: { name: string; value: number }[] = [];
@@ -144,7 +147,6 @@ export const SpendingSunburst = ({
         if (totalHSA > 0) savingsItems.push({ name: 'HSA', value: totalHSA });
         if (totalMatch > 0) savingsItems.push({ name: 'Employer Match', value: totalMatch });
         if (totalESPP > 0) savingsItems.push({ name: 'ESPP', value: totalESPP });
-        if (totalInsurance > 0) savingsItems.push({ name: 'Insurance', value: totalInsurance });
 
         // Long-term goal set-asides are COMMITTED transfers — taken before the
         // priority waterfall, mirroring the sim engine (which counts them with

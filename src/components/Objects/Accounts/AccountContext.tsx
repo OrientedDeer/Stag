@@ -1,7 +1,7 @@
 import { createContext, ReactNode, Dispatch, useCallback, useRef } from 'react';
 import { AnyAccount, reconstituteAccount } from './models';
 import { usePersistedReducer } from '../../../hooks/usePersistedReducer';
-import { formatDateForInput } from '../../../utils/formatters';
+import { formatDateForInput, jsonDateReplacer } from '../../../utils/formatters';
 
 type AllKeys<T> = T extends unknown ? keyof T : never;
 export type AllAccountKeys = AllKeys<AnyAccount>;
@@ -133,7 +133,7 @@ function accountReducer(state: AccountState, action: Action): AccountState {
   }
 }
 
-function hydrateAccountState(parsed: unknown, initial: AccountState): AccountState {
+export function hydrateAccountState(parsed: unknown, initial: AccountState): AccountState {
   const data = parsed as { accounts?: unknown[]; amountHistory?: Record<string, AmountHistoryEntry[]> };
   const accounts = (data.accounts || [])
     .map(reconstituteAccount)
@@ -145,12 +145,15 @@ function hydrateAccountState(parsed: unknown, initial: AccountState): AccountSta
   };
 }
 
-function serializeAccountState(state: AccountState): string {
+export function serializeAccountState(state: AccountState): string {
+  // jsonDateReplacer keeps Date-typed lot fields (ESPP/RSU grantDate, purchaseDate,
+  // vestDate) as local YYYY-MM-DD; bare JSON.stringify would emit a UTC ISO string
+  // that reloads a day earlier for UTC+ users (issue #73 on the persistence path).
   return JSON.stringify({
     ...state,
     accounts: state.accounts.map(acc => ({ ...acc, className: acc.constructor.name })),
     version: CURRENT_SCHEMA_VERSION,
-  });
+  }, jsonDateReplacer);
 }
 
 interface AccountDispatch {
@@ -187,7 +190,7 @@ export function AccountProvider({ children }: { children: ReactNode }): React.Re
       accounts: stateRef.current.accounts.map(acc => ({ ...acc, className: acc.constructor.name })),
       amountHistory: stateRef.current.amountHistory,
     };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(data, jsonDateReplacer, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

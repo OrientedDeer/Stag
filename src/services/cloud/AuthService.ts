@@ -169,14 +169,20 @@ function decodeJwtPayload(jwt: string): Record<string, unknown> {
 
 /**
  * Read user info from an ID token. No verification here — the backend verifies
- * the signature before trusting the token.
+ * the signature before trusting the token. A malformed/tampered token (not a JWT)
+ * yields a sentinel rather than throwing — callers (e.g. CloudBackupProvider's
+ * mount effect) read this synchronously outside their try/catch.
  */
 export function decodeUserInfo(idToken: string): UserInfo {
-    const payload = decodeJwtPayload(idToken);
-    return {
-        email: (payload.email as string) || 'Unknown',
-        sub: payload.sub as string,
-    };
+    try {
+        const payload = decodeJwtPayload(idToken);
+        return {
+            email: (payload.email as string) || 'Unknown',
+            sub: (payload.sub as string) || '',
+        };
+    } catch {
+        return { email: 'Unknown', sub: '' };
+    }
 }
 
 /**

@@ -1,6 +1,7 @@
 import { createContext, ReactNode, Dispatch } from 'react';
 import { AnyIncome, reconstituteIncome } from './models';
 import { usePersistedReducer } from '../../../hooks/usePersistedReducer';
+import { jsonDateReplacer } from '../../../utils/formatters';
 
 type AllKeys<T> = T extends any ? keyof T : never;
 export type AllIncomeKeys = AllKeys<AnyIncome>;
@@ -57,7 +58,7 @@ function incomeReducer(state: IncomeState, action: Action): IncomeState {
   }
 }
 
-function hydrateIncomeState(parsed: unknown, initial: IncomeState): IncomeState {
+export function hydrateIncomeState(parsed: unknown, initial: IncomeState): IncomeState {
   const data = parsed as { incomes?: unknown[] };
   const incomes = (data.incomes || [])
     .map(reconstituteIncome)
@@ -65,11 +66,14 @@ function hydrateIncomeState(parsed: unknown, initial: IncomeState): IncomeState 
   return { ...initial, incomes };
 }
 
-function serializeIncomeState(state: IncomeState): string {
+export function serializeIncomeState(state: IncomeState): string {
+  // jsonDateReplacer keeps Date-typed startDate/end_date as local YYYY-MM-DD;
+  // bare JSON.stringify would emit a UTC ISO string that reloads a day earlier
+  // for UTC+ users (issue #73 on the persistence path).
   return JSON.stringify({
     ...state,
     incomes: state.incomes.map(inc => ({ ...inc, className: inc.className || inc.constructor.name })),
-  });
+  }, jsonDateReplacer);
 }
 
 export const IncomeContext = createContext<IncomeState>({ incomes: [] });

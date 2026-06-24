@@ -30,7 +30,7 @@ import process from 'node:process';
 
 import { decrypt, encrypt, EncryptedBackup } from '../src/services/encryption/CryptoService';
 import { parseBalancesCSV } from '../src/services/simplefinBalances';
-import { applyTransactions, applyBalances, MergeBlob } from '../src/services/backupMerge';
+import { applyTransactions, applyBalances, BalanceMergeReport, MergeBlob } from '../src/services/backupMerge';
 import { jsonDateReplacer } from '../src/utils/formatters';
 import { csvToTransactions } from './csvToTransactions';
 
@@ -40,6 +40,19 @@ import { csvToTransactions } from './csvToTransactions';
 export { csvToTransactions };
 
 const MAX_BACKUP_SIZE = 5 * 1024 * 1024; // mirror the browser / backend cap
+
+// Opt-in: the detailed dumps (account names, balances, SimpleFIN keys, the
+// per-user doc id) are sensitive and would otherwise land in journald/cron-mail/CI
+// logs in cleartext — contradicting the zero-knowledge posture. Default to counts
+// + flag-reason breakdown only; STAG_VERBOSE=1 to surface detail when debugging.
+const VERBOSE = process.env.STAG_VERBOSE === '1';
+
+/** Tally flag reasons into a non-sensitive count map (drops the account keys). */
+export function flagReasonCounts(flagged: BalanceMergeReport['flagged']): Record<string, number> {
+    const counts: Record<string, number> = {};
+    for (const f of flagged) counts[f.reason] = (counts[f.reason] ?? 0) + 1;
+    return counts;
+}
 
 /**
  * Serialize the plaintext blob exactly as every in-app backup path does — with
@@ -122,7 +135,8 @@ function bumpLastImport(blob: MergeBlob): void {
     const newest = formats.reduce((a, b) =>
         new Date(b.lastUsed).getTime() > new Date(a.lastUsed).getTime() ? b : a);
     newest.lastUsed = new Date();
-    console.log(`  bumped "Last import" via saved format "${newest.name}"`);
+    // The saved-format name is a user-chosen label — keep it out of routine logs.
+    console.log(VERBOSE ? `  bumped "Last import" via saved format "${newest.name}"` : '  bumped "Last import"');
 }
 
 /** One full attempt: GET → decrypt → merge → re-encrypt → PUT. Returns false on 409 (retry). */
@@ -153,8 +167,13 @@ async function mergeOnce(): Promise<boolean> {
             console.warn('  NOTE: balanceAccountMap is empty — rows rely on name auto-match.');
         }
         const report = applyBalances(blob, parsed.rows.map((r) => ({ account: r.account, balance: r.balance })));
-        console.log(`balances: updated ${report.updated.length}`, report.updated);
-        if (report.flagged.length) console.log('  flagged:', report.flagged);
+        // Counts + flag-reason breakdown only (no account names, balances, or keys).
+        console.log(`balances: updated ${report.updated.length}`);
+        if (report.flagged.length) console.log(`  flagged ${report.flagged.length}:`, flagReasonCounts(report.flagged));
+        if (VERBOSE) {
+            console.log('  [verbose] updated:', report.updated);
+            if (report.flagged.length) console.log('  [verbose] flagged:', report.flagged);
+        }
     }
     bumpLastImport(blob);
     blob.version = 2;
@@ -165,8 +184,10 @@ async function mergeOnce(): Promise<boolean> {
         throw new Error(`Encrypted blob ${(size / 1048576).toFixed(2)} MB exceeds 5 MB cap — refusing to write.`);
     }
 
+    // The doc id is the per-user Google `sub` — keep it out of routine logs.
+    const docLabel = VERBOSE ? DOC_ID : 'user doc';
     if (!WRITE) {
-        console.log(`[dry-run] merge OK; would PUT ${DOC_ID} (${(size / 1024).toFixed(1)} KB). Set STAG_WRITE=1 to commit.`);
+        console.log(`[dry-run] merge OK; would PUT ${docLabel} (${(size / 1024).toFixed(1)} KB). Set STAG_WRITE=1 to commit.`);
         return true;
     }
 
@@ -176,7 +197,7 @@ async function mergeOnce(): Promise<boolean> {
         console.warn('  409 conflict (someone wrote since our GET) — re-reading and retrying…');
         return false;
     }
-    console.log(`wrote ${DOC_ID} → rev ${put.rev} (${(size / 1024).toFixed(1)} KB)`);
+    console.log(`wrote ${docLabel} → rev ${put.rev} (${(size / 1024).toFixed(1)} KB)`);
     return true;
 }
 

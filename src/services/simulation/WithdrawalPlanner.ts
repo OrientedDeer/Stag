@@ -1051,6 +1051,22 @@ export function planWithdrawals(
                             // Look-ahead: find Roth accounts in the withdrawal order
                             let rothSubstitutionNet = 0;
 
+                            // #27: For a retiree under 59.5, Roth EARNINGS are ordinary
+                            // income and land in MAGI. The capped brokerage already
+                            // consumed the gains headroom, so any substituted Roth
+                            // earnings would re-breach the very cliff we're avoiding.
+                            // Track the MAGI headroom that remains for Roth earnings and
+                            // cap each draw so its earnings can't push MAGI back over the
+                            // cliff. (Roth contributions/conversions are NOT MAGI, so they
+                            // remain unconstrained by this guard.) At/after 59.5 earnings
+                            // are tax-free and excluded from MAGI, so no cap is needed.
+                            const earningsCountInMAGI = currentAge < 59.5;
+                            let rothEarningsMagiRoom = Math.max(0,
+                                acaWithdrawalOptions.acaCliffThreshold - ACA_WITHDRAWAL_BUFFER
+                                - acaWithdrawalOptions.currentMAGI
+                                - cumulativeLTCG - cumulativeSTCG - actualLTCG - actualSTCG
+                            );
+
                             for (const rothSnapshot of accountOrder) {
                                 if (rothSubstitutionNet >= netShortfall) break;
                                 if (rothSnapshot.accountType !== 'roth_ira' && rothSnapshot.accountType !== 'roth_401k') continue;
@@ -1091,14 +1107,33 @@ export function planWithdrawals(
                                     ? pooledRothConversions
                                     : (roth401kConversions.get(rothSnapshot.accountId) ?? []);
 
+                                // #27: cap the draw so any EARNINGS portion (ordinary
+                                // income under 59.5) stays within the remaining MAGI
+                                // headroom. grossUpRoth fills contributions -> conversions
+                                // -> earnings, and only earnings hit MAGI; so the safe gross
+                                // is the non-MAGI layers (contributions + remaining
+                                // conversions) plus the MAGI-limited earnings room. At/after
+                                // 59.5 earnings are tax-free and out of MAGI -> no cap.
+                                let maxGrossForCliff = availableRoth;
+                                if (earningsCountInMAGI) {
+                                    const conversionsAvailable = acaConversionsForCall
+                                        .reduce((sum, c) => sum + Math.max(0, c.amount), 0);
+                                    const nonMagiLayers = acaContribAvailable + conversionsAvailable;
+                                    maxGrossForCliff = Math.min(
+                                        availableRoth,
+                                        nonMagiLayers + rothEarningsMagiRoom,
+                                    );
+                                }
+                                if (maxGrossForCliff <= 0) continue;
+
                                 const rothResult = grossUpRoth(
-                                    Math.min(stillNeeded, availableRoth),
+                                    Math.min(stillNeeded, maxGrossForCliff),
                                     acaContribAvailable,
                                     acaConversionsForCall,
                                     year,
                                     currentAge,
                                     marginalRate,
-                                    availableRoth
+                                    maxGrossForCliff
                                 );
 
                                 if (isPooledRoth) {
@@ -1137,6 +1172,9 @@ export function planWithdrawals(
                                 // Roth earnings add to ordinary income if under 59.5
                                 if (rothResult.fromEarnings > 0 && currentAge < 59.5) {
                                     runningOrdinaryIncome += rothResult.fromEarnings;
+                                    // #27: those earnings consumed MAGI headroom; shrink it
+                                    // so a later Roth account in this loop can't re-breach.
+                                    rothEarningsMagiRoom = Math.max(0, rothEarningsMagiRoom - rothResult.fromEarnings);
                                 }
 
                                 decisions.push({

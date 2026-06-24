@@ -278,6 +278,34 @@ describe('processRSUVesting', () => {
         expect(result.vestIncomes.length).toBe(0);
         expect(result.totalWithholding).toBe(0);
     });
+
+    it('skips vest recognition (no fabricated $100/share income) when the linked share price is unset', () => {
+        // The UI maps a blank price field to undefined and does not require it. With
+        // no current price, the vest FMV must NOT silently fall back to $100/share —
+        // that fabricates grossIncome = shares × $100 of taxable ordinary income from
+        // nothing, inflating AGI/FICA/SS-taxability/IRMAA/ACA and seeding a bogus lot.
+        // Mirror the SALE path's `if (fmvPerShare > 0)` guard: skip recognition.
+        const { inc } = setup(2025, 37, 100, 0);
+        const acc = new RSUAccount('rsu-1', 'My RSU', 0, [], 'work-1', undefined, 'TICK', undefined);
+        const logs: string[] = [];
+        const result = processRSUVesting([inc], [acc], 2026, 2025, logs);
+
+        expect(result.vestIncomes.length).toBe(0);
+        expect(result.totalWithholding).toBe(0);
+        expect(result.rsuLots['rsu-1']).toBeUndefined();
+        expect(logs.some(l => l.includes('[WARN]') && l.toLowerCase().includes('price'))).toBe(true);
+    });
+
+    it('skips vest recognition when the linked share price is zero', () => {
+        const { inc } = setup(2025, 37, 100, 0);
+        const acc = new RSUAccount('rsu-1', 'My RSU', 0, [], 'work-1', undefined, 'TICK', 0);
+        const logs: string[] = [];
+        const result = processRSUVesting([inc], [acc], 2026, 2025, logs);
+
+        expect(result.vestIncomes.length).toBe(0);
+        expect(result.totalWithholding).toBe(0);
+        expect(result.rsuLots['rsu-1']).toBeUndefined();
+    });
 });
 
 // ===========================================================================

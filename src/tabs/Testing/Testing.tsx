@@ -17,6 +17,7 @@ import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext'
 import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
 import { BudgetContext } from '../../components/Objects/Budget/BudgetContext';
 import { computeEOYBudgetContributions } from '../../services/eoyContributionProjection';
+import { toLocalDateString } from '../Budget/transactions/utils';
 import { WorkIncome, PassiveIncome, FERSPensionIncome, CSRSPensionIncome, getIncomeActiveMultiplier, isSocialSecurity } from '../../components/Objects/Income/models';
 import { runSimulationWithOptimization } from '../../components/Objects/Assumptions/useSimulation';
 import { getSimulationInputHash } from '../../services/simulationHash';
@@ -6059,7 +6060,7 @@ function EOYProjectionDebugTab() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                     <div>
                         <div className="text-content-subtle text-xs">Today</div>
-                        <div className="text-white font-mono">{today.toISOString().slice(0, 10)}</div>
+                        <div className="text-white font-mono">{toLocalDateString(today)}</div>
                     </div>
                     <div>
                         <div className="text-content-subtle text-xs">Current month (0–11)</div>
