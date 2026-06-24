@@ -33,12 +33,31 @@ import { parseCSV } from '../src/services/CSVImportService';
 import { parseBalancesCSV } from '../src/services/simplefinBalances';
 import { applyTransactions, applyBalances, makeTransaction, MergeBlob } from '../src/services/backupMerge';
 import type { Transaction } from '../src/components/Objects/Budget/BudgetTypes';
+import { jsonDateReplacer } from '../src/utils/formatters';
 
 const MAX_BACKUP_SIZE = 5 * 1024 * 1024; // mirror the browser / backend cap
 
+/**
+ * Serialize the plaintext blob exactly as every in-app backup path does — with
+ * `jsonDateReplacer`, so date-only Date values emit local 'YYYY-MM-DD' instead of
+ * the default UTC toISOString(). Without this, transaction dates built at
+ * local-midnight on a UTC+ runner round-trip a day earlier for browsers whose UTC
+ * offset is more negative than the runner's (issue #73). Mirrors the file-based
+ * importer so the nightly Couch path can't drift from the browser.
+ */
+export function serializeBlob(blob: MergeBlob): string {
+    return JSON.stringify(blob, jsonDateReplacer);
+}
+
 function env(name: string): string {
     const v = process.env[name];
-    if (!v) throw new Error(`Missing required env var: ${name}`);
+    if (!v) {
+        // Under the test runner the module is imported only for its pure helpers
+        // (csvToTransactions); the live config/run path never executes, so don't
+        // require the CouchDB env vars just to import. vitest sets VITEST.
+        if (process.env.VITEST) return '';
+        throw new Error(`Missing required env var: ${name}`);
+    }
     return v;
 }
 function optEnv(name: string): string | undefined {
@@ -88,7 +107,7 @@ async function putDoc(doc: CouchDoc): Promise<{ conflict: boolean; rev?: string 
 function col(headers: string[], name: string): number {
     return headers.findIndex((h) => h.trim().toLowerCase() === name.toLowerCase());
 }
-function csvToTransactions(csvText: string): Transaction[] {
+export function csvToTransactions(csvText: string): Transaction[] {
     const { headers, rows } = parseCSV(csvText);
     const idx = {
         date: col(headers, 'Date'),
@@ -106,14 +125,19 @@ function csvToTransactions(csvText: string): Transaction[] {
     for (const r of rows) {
         const amount = Number(r[idx.amount]);
         const id = (r[idx.id] ?? '').trim();
-        if (!Number.isFinite(amount) || !id) {
+        // Read date defensively: a short row (fewer cells than the Date column)
+        // would make r[idx.date] undefined and .trim() throw — aborting the whole
+        // import; a present-but-blank cell would build an Invalid Date and bucket
+        // under 'NaN-NaN'. Guard before constructing.
+        const date = (r[idx.date] ?? '').trim();
+        if (!Number.isFinite(amount) || !id || !date) {
             skipped++;
             continue;
         }
         out.push(
             makeTransaction({
                 id,
-                date: r[idx.date].trim(),
+                date,
                 description: r[idx.description] ?? '',
                 amount,
                 source: idx.source >= 0 ? r[idx.source] : undefined, // optional per-row card/account label
@@ -176,7 +200,7 @@ async function mergeOnce(): Promise<boolean> {
     bumpLastImport(blob);
     blob.version = 2;
 
-    const reEncrypted = JSON.stringify(await encrypt(JSON.stringify(blob), PASS));
+    const reEncrypted = JSON.stringify(await encrypt(serializeBlob(blob), PASS));
     const size = Buffer.byteLength(reEncrypted, 'utf8');
     if (size > MAX_BACKUP_SIZE) {
         throw new Error(`Encrypted blob ${(size / 1048576).toFixed(2)} MB exceeds 5 MB cap — refusing to write.`);
@@ -205,7 +229,10 @@ async function run(): Promise<void> {
     throw new Error('Gave up after repeated 409 conflicts.');
 }
 
-run().catch((err) => {
-    console.error(err);
-    process.exitCode = 1;
-});
+// Skip the live run when imported by the test runner; vitest sets VITEST.
+if (!process.env.VITEST) {
+    run().catch((err) => {
+        console.error(err);
+        process.exitCode = 1;
+    });
+}

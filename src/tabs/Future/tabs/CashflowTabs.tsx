@@ -5,6 +5,7 @@ import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider'
 import { useArrowKeyAdjust } from '../../../hooks/useKeyboardShortcuts';
 import type { SankeyImbalance } from '../../../components/Charts/CashflowSankey';
 import type { SimulationYear } from '../../../services/simulation/types';
+import { getAcaCliffThreshold } from '../../../services/simulation/TaxOptimizedWithdrawal';
 import { calculateNetWorth, formatCompactCurrency } from './FutureUtils';
 import { Panel } from "../../../components/Layout/Primitives";
 
@@ -67,7 +68,12 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: Sim
     // ACA cliff checks
     const acaAware = assumptions.investments.acaAware !== false;
     const acaConversionLimited = yearData.taxOptimizationTarget?.limitingFactor === 'ACA_CLIFF';
-    const acaCliff = taxState.filingStatus === 'Married Filing Jointly' ? 125000 : 62500;
+    // Track the same 400% FPL cliff the engine enforces (getAcaCliffThreshold),
+    // not stale hardcoded constants — otherwise the banner stays silent for a
+    // retiree who is actually over the real (lower) cliff. Filing status is
+    // mapped the same way YearSolver derives `acaFiling`.
+    const acaFiling = taxState.filingStatus === 'Married Filing Jointly' ? 'married_filing_jointly' : 'single';
+    const acaCliff = getAcaCliffThreshold(acaFiling, previewYear);
     const nonConversionMAGI = yearData.cashflow.totalIncome - conversionAmount;
     const retirementAge = getRetirementAge(assumptions.milestones);
     const withdrawalExceedsACA = acaAware && age >= retirementAge && age < 65 && !acaConversionLimited && nonConversionMAGI > acaCliff;

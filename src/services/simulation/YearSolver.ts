@@ -2095,7 +2095,10 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
 
     const stateTax = stateParams
         ? TaxService.calculateTax(
-            taxableOrdinaryBase,  // Include reinvested income in state tax too
+            // Exclude Social Security (DC and all modeled states exempt it),
+            // mirroring the retirement path. Reinvested income is already folded
+            // into taxableOrdinaryBase and stays in the state base.
+            taxableOrdinaryBase - socialSecurityBenefits,
             preTaxDeductions,
             stateParams
         )
@@ -2167,8 +2170,14 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
                 : (w.ordinaryIncome ?? 0)),
             0);
         if (realizedLTCG > 0 || realizedSTCG > 0) {
+            // NIIT MAGI must include the deficit-funding Traditional withdrawal
+            // (it's in AGI), matching how IRMAA and SS-taxability fold it in.
+            // We add withdrawalOrdinaryIncome to the ordinary base so the internal
+            // MAGI and SS-taxability see it; only .niitTax is read here, so the
+            // inflated ordinary tax (charged separately via withdrawalOrdinaryTax)
+            // is discarded.
             niitTax = TaxService.calculateTotalFederalTax(
-                taxableOrdinaryBase - socialSecurityBenefits,
+                (taxableOrdinaryBase - socialSecurityBenefits) + withdrawalOrdinaryIncome,
                 socialSecurityBenefits,
                 realizedSTCG,
                 realizedLTCG,

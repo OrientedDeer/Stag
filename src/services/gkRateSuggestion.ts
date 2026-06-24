@@ -45,12 +45,17 @@ export interface GKRateSuggestion {
  * - Synthetic end-of-year projection rows are skipped so we land on a real
  *   plan year.
  * - "Planned spending" reconstructs the spending the user actually intended
- *   before any strategy adjustment trimmed it: the year's reported
- *   `livingExpenses` already reflect the trimmed amount, so we add back the
- *   `strategyAdjustment.requiredAdjustment` (the dollar amount trimmed). Under
- *   plan-anchored Guyton-Klinger the retirement year is usually within-band
- *   (nothing trimmed, so the add-back is 0); it only matters on a guardrail-cut
- *   year or for the budget-cap strategies (Fixed Real / Percentage).
+ *   before any strategy adjustment moved it: the year's reported `livingExpenses`
+ *   already reflect the adjusted amount, so we back out
+ *   `strategyAdjustment.requiredAdjustment` (the dollar size of the move) by
+ *   guardrail direction — ADD it back on a capital-preservation CUT (reported
+ *   spend was trimmed down), SUBTRACT it on a prosperity BOOST (reported spend was
+ *   inflated up). The engine stores the same POSITIVE `requiredAdjustment` for
+ *   both directions (SimulationEngine.tsx:415), so the sign must come from the
+ *   triggered guardrail, not the value. Under plan-anchored Guyton-Klinger the
+ *   retirement year is usually within-band (nothing moved, so the add-back is 0);
+ *   it only matters on a guardrail-cut/boost year or for the budget-cap strategies
+ *   (Fixed Real / Percentage, which only ever cut).
  * - "Portfolio at retirement" prefers the engine's own
  *   `strategyWithdrawal.initialPortfolio` (the portfolio it sized the initial
  *   withdrawal against); falls back to summing the year's account snapshot.
@@ -70,13 +75,19 @@ export function getRetirementYearSpendingAndPortfolio(
 
     if (!yearData) return null;
 
-    // Planned (pre-cap) living expenses: reported living expenses already
-    // reflect any budget-cap trim, so add back what the cap wanted to cut.
-    // `requiredAdjustment` is the dollar amount the cap wanted to trim and is 0
-    // for non-cut years — prosperity *increases* are tracked in actualAdjustment,
-    // never here — so this reconstructs the user's original planned spend.
-    const requiredAdjustment = yearData.strategyAdjustment?.requiredAdjustment ?? 0;
-    const plannedSpending = yearData.cashflow.livingExpenses + requiredAdjustment;
+    // Planned (pre-adjustment) living expenses: reported living expenses already
+    // reflect any guardrail move, so back out the move to recover the original
+    // plan. `requiredAdjustment` is the (always-positive) dollar size of the move;
+    // its SIGN comes from the triggered guardrail — a capital-preservation cut
+    // trimmed reported spend DOWN (add it back), a prosperity boost inflated it UP
+    // (subtract it). It is 0 for within-band years.
+    const adjustment = yearData.strategyAdjustment;
+    const requiredAdjustment = adjustment?.requiredAdjustment ?? 0;
+    const signedAdjustment =
+        adjustment?.guardrailTriggered === 'prosperity'
+            ? -requiredAdjustment
+            : requiredAdjustment;
+    const plannedSpending = yearData.cashflow.livingExpenses + signedAdjustment;
 
     // Portfolio at retirement: prefer the engine's own figure, else sum the
     // year's invested-asset balances using the SAME set the engine sizes the

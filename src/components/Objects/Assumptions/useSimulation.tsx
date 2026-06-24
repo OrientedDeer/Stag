@@ -60,7 +60,8 @@ export function resolveIncomes(
                     inc.esppAccountId, inc.esppExpectedStockGrowth,
                     inc.rsuVestingSchedule, inc.rsuGrantShares, inc.rsuVestFrequency,
                     inc.rsuExpectedStockGrowth, inc.rsuAccountId, inc.rsuWithholdingRate,
-                    inc.pensionSystem, inc.startMilestoneId, inc.endMilestoneId
+                    inc.pensionSystem, inc.startMilestoneId, inc.endMilestoneId,
+                    inc.employerMatchType, inc.employerMatchPercent, inc.employerMatchMax
                 );
             }
         }

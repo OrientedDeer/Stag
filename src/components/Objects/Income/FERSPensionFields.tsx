@@ -4,7 +4,8 @@ import { DropdownInput } from "../../Layout/InputFields/DropdownInput";
 import { NumberInput } from "../../Layout/InputFields/NumberInput";
 import { ToggleInput } from "../../Layout/InputFields/ToggleInput";
 import { WorkIncome } from './models';
-import { getFERSMRA, checkFERSEligibility, calculateFERSBasicBenefit } from "../../../data/PensionData";
+import { getFERSMRA, checkFERSEligibility } from "../../../data/PensionData";
+import { getDisplayedFERSBenefit } from './card/FERSPensionFields';
 import { IncomeFormState, UpdateForm } from './incomeFormTypes';
 
 interface FERSPensionFieldsProps {
@@ -75,7 +76,7 @@ export const FERSPensionFields: React.FC<FERSPensionFieldsProps> = ({
                     <span className="font-bold text-positive-bright">
                         {form.autoCalculateHigh3
                             ? "Auto Calculated"
-                            : `$${calculateFERSBasicBenefit(form.pensionYearsOfService, form.pensionHigh3Salary, form.pensionRetirementAge).toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr`
+                            : `$${getDisplayedFERSBenefit(form.pensionYearsOfService, form.pensionHigh3Salary, form.pensionRetirementAge, pensionBirthYear).toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr`
                         }
                     </span>
                 </div>
@@ -104,7 +105,7 @@ export const FERSPensionFields: React.FC<FERSPensionFieldsProps> = ({
             <div className="text-xs text-content-muted mt-2">
                 Formula: {form.pensionRetirementAge >= 62 && form.pensionYearsOfService >= 20 ? "1.1%" : "1%"} x Years x High-3.
                 {form.autoCalculateHigh3 && " High-3 will be calculated from your top 3 salary years at retirement."}
-                {!form.autoCalculateHigh3 && " COLA is reduced (CPI-1% if inflation > 3%)."}
+                {!form.autoCalculateHigh3 && " COLA: full CPI if inflation ≤ 2%, capped at 2% if 2–3%, CPI−1% if > 3%. No COLA before age 62."}
             </div>
         </div>
     </>

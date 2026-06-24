@@ -1,4 +1,4 @@
-import { AnyAccount, RSUAccount } from '../components/Objects/Accounts/models';
+import { AnyAccount, RSUAccount, ESPPAccount, InvestedAccount, SavedAccount, PropertyAccount, DebtAccount } from '../components/Objects/Accounts/models';
 import { AnyIncome, WorkIncome, FERSPensionIncome, CSRSPensionIncome, FutureSocialSecurityIncome } from '../components/Objects/Income/models';
 import { AnyExpense } from '../components/Objects/Expense/models';
 import { AssumptionsState } from '../components/Objects/Assumptions/AssumptionsContext';
@@ -37,6 +37,13 @@ function serializeIncomeFields(income: AnyIncome): Record<string, unknown> {
     if (income instanceof WorkIncome) {
         return {
             ...base,
+            // contributionGrowthStrategy branches the whole future-contribution
+            // trajectory (increment() switches on it: FIXED vs GROW_WITH_SALARY
+            // vs TRACK_ANNUAL_MAX); taxType routes the 401k/contribution tax
+            // treatment. getAnnualAmount() captures neither, so editing either
+            // would otherwise leave the hash byte-identical → no stale banner.
+            contributionGrowthStrategy: income.contributionGrowthStrategy,
+            taxType: income.taxType,
             pensionSystem: income.pensionSystem,
             preTax401k: income.preTax401k,
             roth401k: income.roth401k,
@@ -128,6 +135,60 @@ export function getSimulationInputHash(
                     })),
                 }
                 : {}),
+            // InvestedAccount: increment() reads these every year — customROR
+            // overrides the global return, expenseRatio is netted out of it,
+            // costBasis drives the basis/gains split on withdrawal, employerBalance
+            // (with tenureYears/vestedPerYear) gates vesting/RMDs, taxType picks
+            // the Roth/Trad withdrawal path, and conversionHistory carries the
+            // Roth 5-year clock. None are captured by `amount`, so editing any of
+            // them must invalidate the cache.
+            ...(a instanceof InvestedAccount
+                ? {
+                    customROR: a.customROR,
+                    expenseRatio: a.expenseRatio,
+                    costBasis: a.costBasis,
+                    employerBalance: a.employerBalance,
+                    tenureYears: a.tenureYears,
+                    vestedPerYear: a.vestedPerYear,
+                    taxType: a.taxType,
+                    conversionHistory: a.conversionHistory.map(c => ({ year: c.year, amount: c.amount })),
+                }
+                : {}),
+            // ESPP sale tax/growth depend on the same per-share/lot/order settings
+            // as RSU, plus customROR for its growth path.
+            ...(a instanceof ESPPAccount
+                ? {
+                    customROR: a.customROR,
+                    currentSharePrice: a.currentSharePrice,
+                    withdrawalPreference: a.withdrawalPreference,
+                    minimumHoldingDays: a.minimumHoldingDays,
+                    lots: a.lots.map(lot => ({
+                        id: lot.id,
+                        shares: lot.shares,
+                        fmvAtGrant: lot.fmvAtGrant,
+                        fmvAtPurchase: lot.fmvAtPurchase,
+                        purchasePrice: lot.purchasePrice,
+                        totalCost: lot.totalCost,
+                        discountAmount: lot.discountAmount,
+                        grantDate: lot.grantDate instanceof Date ? lot.grantDate.getTime() : lot.grantDate,
+                        purchaseDate: lot.purchaseDate instanceof Date ? lot.purchaseDate.getTime() : lot.purchaseDate,
+                    })),
+                }
+                : {}),
+            // apr is the per-account growth/interest rate read by increment() on
+            // these three subtypes; PropertyAccount also carries loan/ownership
+            // terms that drive equity and the linked mortgage.
+            ...(a instanceof SavedAccount ? { apr: a.apr } : {}),
+            ...(a instanceof PropertyAccount
+                ? {
+                    apr: a.apr,
+                    ownershipType: a.ownershipType,
+                    loanAmount: a.loanAmount,
+                    startingLoanBalance: a.startingLoanBalance,
+                    linkedAccountId: a.linkedAccountId,
+                }
+                : {}),
+            ...(a instanceof DebtAccount ? { apr: a.apr, linkedAccountId: a.linkedAccountId } : {}),
         })),
         incomes: incomes.map(serializeIncomeFields),
         expenses: expenses.map(e => ({

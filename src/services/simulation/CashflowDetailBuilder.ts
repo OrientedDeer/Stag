@@ -162,19 +162,33 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
     }
 
     const expensesByCategory: Record<string, number> = {};
+    // getGoalFundAnnualSetAside SUMS the set-aside across EVERY goal sharing a
+    // fund, so it must be read once per fund — never once per goal. SimulationEngine
+    // does exactly this (its per-fund goalFundCredits map, keyed by accountId), so
+    // living expenses count the set-aside once. Track which funds we've already
+    // emitted so two goals on one fund don't each write the full fund-wide sum and
+    // double-count it (which would unbalance the Expenses node by the set-aside).
+    const emittedGoalFunds = new Set<string>();
     for (const exp of expenses) {
         if (exp instanceof MortgageExpense) continue;
         // Long-term goals report $0 from getAnnualAmount, but their committed
         // set-aside IS in the sim's living expenses (SimulationEngine counts it
         // and credits the fund). Without a matching category here the Sankey's
         // Expenses node is unbalanced by exactly the set-aside.
-        const amount = isLongTermGoal(exp) && exp.goalAccountId
-            ? (getGoalFundAnnualSetAside(expenses, exp.goalAccountId, year) ?? 0)
-            : exp.getAnnualAmount(year);
+        let amount: number;
+        if (isLongTermGoal(exp) && exp.goalAccountId) {
+            if (emittedGoalFunds.has(exp.goalAccountId)) continue; // fund already credited once
+            emittedGoalFunds.add(exp.goalAccountId);
+            amount = getGoalFundAnnualSetAside(expenses, exp.goalAccountId, year) ?? 0;
+        } else {
+            amount = exp.getAnnualAmount(year);
+        }
         if (amount < MIN_AMOUNT) continue;
         // Each goal gets its own labeled node ("Car (goal)") — clearer in the
         // chart than a generic "Goals" bucket, and the "(goal)" suffix avoids
-        // colliding with a regular expense of the same name.
+        // colliding with a regular expense of the same name. When several goals
+        // share one fund the fund's whole set-aside is attributed to the first
+        // goal's label (the set-aside is per-fund, not per-goal).
         const category = isLongTermGoal(exp)
             ? `${exp.name} (goal)`
             : (CLASS_TO_CATEGORY[exp.constructor.name] || 'Other');

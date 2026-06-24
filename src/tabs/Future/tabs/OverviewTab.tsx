@@ -7,9 +7,9 @@ import { useChartTheme } from '../../../components/Charts/useChartTheme';
 import { ChartFrame } from "../../../components/Charts/ChartFrame";
 import { ProjectionMemoryChart } from "../../../components/Charts/ProjectionMemoryChart";
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
-import { SavedAccount, InvestedAccount, PropertyAccount, DebtAccount, DeficitDebtAccount } from '../../../components/Objects/Accounts/models';
+import { SavedAccount, PropertyAccount, DebtAccount, DeficitDebtAccount, AnyAccount } from '../../../components/Objects/Accounts/models';
 import { formatCompactCurrency } from './FutureUtils';
-import { MortgageExpense } from '../../../components/Objects/Expense/models';
+import { MortgageExpense, AnyExpense } from '../../../components/Objects/Expense/models';
 import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider';
 import { AlertBanner } from '../../../components/Layout/AlertBanner';
 import { getFRA } from '../../../data/SocialSecurityData';
@@ -67,6 +67,62 @@ interface OverviewPoint {
     Debt: number;
 }
 
+/** The four net-worth buckets the Overview chart plots (Debt is negative). */
+export interface OverviewBuckets {
+    Invested: number;
+    Saved: number;
+    Property: number;
+    Debt: number;
+}
+
+/**
+ * Split a year's accounts/expenses into the chart's net-worth buckets.
+ *
+ * Every non-debt asset is counted so the total matches getAccountTotals /
+ * calculateNetWorth and the Assets sub-tab. ESPP and RSU extend BaseAccount
+ * directly (not InvestedAccount), so they're folded into Invested explicitly —
+ * otherwise they'd be silently dropped and understate net worth.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- pure net-worth helper exported for unit testing alongside the tab component
+export function computeOverviewBuckets(
+    accounts: AnyAccount[],
+    expenses: AnyExpense[]
+): OverviewBuckets {
+    let invested = 0;
+    let saved = 0;
+    let property = 0;
+    let debt = 0;
+
+    for (const acc of accounts) {
+        if (acc instanceof DebtAccount) {
+            // DebtAccount / DeficitDebtAccount track loan balances and uncovered deficits.
+            debt += acc.amount;
+        } else if (acc instanceof SavedAccount) {
+            saved += acc.amount;
+        } else if (acc instanceof PropertyAccount) {
+            property += acc.amount;
+        } else {
+            // InvestedAccount, ESPPAccount, RSUAccount, and any other asset bucket.
+            invested += acc.amount;
+        }
+    }
+
+    // Include mortgage debt from expenses (linked to PropertyAccount, not DebtAccount).
+    // Note: LoanExpense is NOT counted here — DebtAccount already tracks the same linked balance.
+    for (const exp of expenses) {
+        if (exp instanceof MortgageExpense) {
+            debt += exp.loan_balance;
+        }
+    }
+
+    return {
+        Invested: invested,
+        Saved: saved,
+        Property: property,
+        Debt: -Math.abs(debt),
+    };
+}
+
 interface OverviewSliceArg {
     slice?: { points?: ReadonlyArray<{ data: OverviewPoint }> };
 }
@@ -96,32 +152,7 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
     // 4. Calculate Chart Data from Filtered Data
     const rawData = useMemo(() => {
         return filteredData.map(year => {
-            const invested = year.accounts
-                .filter(acc => acc instanceof InvestedAccount)
-                .reduce((sum, acc) => sum + (acc.amount), 0);
-
-            const saved = year.accounts
-                .filter(acc => acc instanceof SavedAccount)
-                .reduce((sum, acc) => sum + (acc.amount), 0);
-
-            const property = year.accounts
-                .filter(acc => acc instanceof PropertyAccount)
-                .reduce((sum, acc) => sum + (acc.amount), 0);
-
-            let debt = 0;
-            // Include mortgage debt from expenses (linked to PropertyAccount, not DebtAccount)
-            year.expenses.forEach(exp => {
-                if (exp instanceof MortgageExpense) {
-                    debt += (exp.loan_balance);
-                }
-            });
-            // Include debt from accounts (DebtAccount tracks loan balances, DeficitDebtAccount tracks uncovered deficits)
-            // Note: LoanExpense is NOT counted here — DebtAccount already tracks the same linked balance
-            year.accounts.forEach(acc => {
-                if (acc instanceof DebtAccount) {
-                    debt += acc.amount;
-                }
-            });
+            const buckets = computeOverviewBuckets(year.accounts, year.expenses);
 
             const yearLabel = year.isEndOfYearProjection
                 ? `Dec ${year.year}`
@@ -133,10 +164,7 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                 year: year.year,
                 yearLabel,
                 isEOY: !!year.isEndOfYearProjection,
-                Invested: invested,
-                Saved: saved,
-                Property: property,
-                Debt: -Math.abs(debt)
+                ...buckets,
             };
         });
     }, [filteredData, hasEOYPoint, baselineYear]);

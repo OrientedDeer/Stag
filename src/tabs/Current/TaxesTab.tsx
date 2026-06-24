@@ -3,7 +3,7 @@ import { IncomeContext } from "../../components/Objects/Income/IncomeContext";
 import { ExpenseContext } from "../../components/Objects/Expense/ExpenseContext";
 import { TaxContext } from "../../components/Objects/Taxes/TaxContext";
 import { AssumptionsContext, getBirthYear } from "../../components/Objects/Assumptions/AssumptionsContext";
-import { TAX_DATABASE, FilingStatus } from "../../data/TaxData";
+import { TAX_DATABASE, FilingStatus, getClosestTaxYear } from "../../data/TaxData";
 import {
     calculateFicaTax,
     getGrossIncome,
@@ -125,7 +125,12 @@ export default function TaxesTab() {
     const federalItemizedTotal = stateItemized + stateTax;
     const stateParams = TAX_DATABASE.states[stateResidency]?.[taxYear]?.[filingStatus];
     const stateStandardDeduction = stateParams?.standardDeduction ?? 0;
-    const fedParams = TAX_DATABASE.federal[taxYear][filingStatus];
+    // A backup may carry a `year` outside the tax DB's range (a forward-dated or
+    // hand-edited export); SET_BULK_DATA loads it verbatim with no clamp. Snap to
+    // the nearest table year — the same nearest-year resolution TaxService uses —
+    // so an out-of-range year doesn't deref undefined and white-screen the tab.
+    const fedTaxYear = TAX_DATABASE.federal[taxYear] ? taxYear : getClosestTaxYear(taxYear);
+    const fedParams = TAX_DATABASE.federal[fedTaxYear][filingStatus];
     const fedStandardDeduction = fedParams.standardDeduction;
 
     const effectiveDeductionMethod: 'Standard' | 'Itemized' =

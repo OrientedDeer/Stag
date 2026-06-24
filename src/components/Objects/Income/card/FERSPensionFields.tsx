@@ -11,6 +11,23 @@ import {
 import type { FERSPensionIncome, WorkIncome } from '../models';
 import type { AllIncomeKeys } from '../IncomeContext';
 
+/**
+ * Annual FERS benefit as the simulation runs it: the basic benefit with the
+ * MRA+10 early-retirement reduction applied. Mirrors
+ * FERSPensionIncome.calculateBenefit() so the displayed estimate matches the sim.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- pure FERS-benefit helper exported for reuse by the form variant and unit testing alongside this card component
+export function getDisplayedFERSBenefit(
+    yearsOfService: number,
+    high3Salary: number,
+    retirementAge: number,
+    birthYear: number
+): number {
+    const baseBenefit = calculateFERSBasicBenefit(yearsOfService, high3Salary, retirementAge);
+    const { reductionPercent } = checkFERSEligibility(retirementAge, yearsOfService, birthYear);
+    return baseBenefit * (1 - reductionPercent / 100);
+}
+
 interface FERSPensionFieldsProps {
     income: FERSPensionIncome;
     onFieldUpdate: (field: AllIncomeKeys, value: unknown) => void;
@@ -88,10 +105,11 @@ export function FERSPensionFields({
                         <span className="font-bold text-positive-bright">
                             {income.autoCalculateHigh3
                                 ? 'Auto Calculated'
-                                : `$${calculateFERSBasicBenefit(
+                                : `$${getDisplayedFERSBenefit(
                                       income.yearsOfService,
                                       income.high3Salary,
-                                      income.retirementAge
+                                      income.retirementAge,
+                                      birthYear
                                   ).toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr`}
                         </span>
                     </div>
@@ -138,7 +156,7 @@ export function FERSPensionFields({
                     Years x High-3.
                     {income.autoCalculateHigh3
                         ? ' High-3 will be calculated from your top 3 salary years at retirement.'
-                        : ' COLA is reduced (CPI-1% if inflation > 3%).'}
+                        : ' COLA: full CPI if inflation ≤ 2%, capped at 2% if 2–3%, CPI−1% if > 3%. No COLA before age 62.'}
                 </div>
             </div>
         </>

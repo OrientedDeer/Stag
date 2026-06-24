@@ -8,11 +8,14 @@ import {
 
 export function getGrossIncome(incomes: AnyIncome[], year: number): number {
     return incomes.reduce((acc, inc) => {
-        let currentIncome = inc.amount;
+        let total = inc.getProratedAnnual(inc.amount, year);
         if (inc instanceof WorkIncome && inc.taxType === "Roth 401k") {
-            currentIncome += inc.employerMatch;
+            // getEffectiveAnnualEmployerMatch returns an already-annual value (and
+            // handles both 'fixed' and 'percent' match types), so it's added outside
+            // getProratedAnnual — mirroring getPostTaxEmployerMatch.
+            total += inc.getEffectiveAnnualEmployerMatch(year);
         }
-        return acc + inc.getProratedAnnual(currentIncome, year);
+        return acc + total;
     }, 0);
 }
 

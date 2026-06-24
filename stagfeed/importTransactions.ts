@@ -28,8 +28,21 @@ import { decrypt, encrypt, EncryptedBackup } from '../src/services/encryption/Cr
 import { parseCSV } from '../src/services/CSVImportService';
 import { applyTransactions, makeTransaction, MergeBlob } from '../src/services/backupMerge';
 import type { Transaction } from '../src/components/Objects/Budget/BudgetTypes';
+import { jsonDateReplacer } from '../src/utils/formatters';
 
 const MAX_BACKUP_SIZE = 5 * 1024 * 1024; // mirror the browser / backend cap
+
+/**
+ * Serialize the plaintext blob exactly as every in-app backup path does — with
+ * `jsonDateReplacer`, so date-only Date values emit local 'YYYY-MM-DD' instead of
+ * the default UTC toISOString(). Without this, a Date built at local-midnight on a
+ * UTC+ runner serializes a day earlier and reloads on the wrong day/budget month
+ * for UTC/US/India browsers (issue #73). Both headless importers re-encrypt
+ * through this single helper so they can't drift from the browser.
+ */
+export function serializeBlob(blob: MergeBlob): string {
+    return JSON.stringify(blob, jsonDateReplacer);
+}
 
 function env(name: string): string {
     const v = process.env[name];
@@ -43,7 +56,7 @@ function col(headers: string[], name: string): number {
 }
 
 /** Parse stag-feed's transactions.csv into Stag Transactions (id = SimpleFIN id). */
-function csvToTransactions(csvText: string): Transaction[] {
+export function csvToTransactions(csvText: string): Transaction[] {
     const { headers, rows } = parseCSV(csvText);
     const idx = {
         date: col(headers, 'Date'),
@@ -62,14 +75,19 @@ function csvToTransactions(csvText: string): Transaction[] {
     for (const r of rows) {
         const amount = Number(r[idx.amount]);
         const id = (r[idx.id] ?? '').trim();
-        if (!Number.isFinite(amount) || !id) {
+        // Read date defensively: a short row (fewer cells than the Date column)
+        // would make r[idx.date] undefined and .trim() throw — aborting the whole
+        // import; a present-but-blank cell would build an Invalid Date and bucket
+        // under 'NaN-NaN'. Guard before constructing.
+        const date = (r[idx.date] ?? '').trim();
+        if (!Number.isFinite(amount) || !id || !date) {
             skipped++;
-            continue; // a row with no stable id can't be id-deduped — skip & report
+            continue; // no stable id / unparseable amount / missing date — skip & report
         }
         out.push(
             makeTransaction({
                 id, // SimpleFIN's stable txn id → exact dedup on re-fetch
-                date: r[idx.date].trim(), // 'YYYY-MM-DD' → local-midnight Date in makeTransaction
+                date, // 'YYYY-MM-DD' → local-midnight Date in makeTransaction
                 description: r[idx.description] ?? '',
                 amount,
                 source: idx.source >= 0 ? r[idx.source] : undefined, // optional per-row card/account label
@@ -96,7 +114,7 @@ async function run(): Promise<void> {
     blob.version = 2;
 
     // 3. re-encrypt, enforce the size cap, write the new blob file
-    const reEncrypted = JSON.stringify(await encrypt(JSON.stringify(blob), pass));
+    const reEncrypted = JSON.stringify(await encrypt(serializeBlob(blob), pass));
     const size = Buffer.byteLength(reEncrypted, 'utf8');
     if (size > MAX_BACKUP_SIZE) {
         throw new Error(`Encrypted blob is ${(size / 1024 / 1024).toFixed(2)} MB; exceeds 5 MB cap — refusing to write.`);
@@ -107,7 +125,10 @@ async function run(): Promise<void> {
     console.log(`wrote ${outPath} (${(size / 1024).toFixed(1)} KB)`);
 }
 
-run().catch((err) => {
-    console.error(err);
-    process.exitCode = 1;
-});
+// Skip the live run when imported by the test runner; vitest sets VITEST.
+if (!process.env.VITEST) {
+    run().catch((err) => {
+        console.error(err);
+        process.exitCode = 1;
+    });
+}
