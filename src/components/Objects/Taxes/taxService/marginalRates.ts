@@ -129,8 +129,13 @@ export function getCombinedMarginalRate(
         }
         // Mirror calculateFicaTax: the 0.9% surtax applies above a
         // filing-status threshold (shared helper keeps the two in sync).
+        // Like the SS check above, this tests EARNED income — calculateFicaTax
+        // applies the surtax to its taxableBase (earned, net of FICA exemptions),
+        // not total gross. Comparing full grossIncome here would wrongly add the
+        // surtax for someone whose non-earned income pushes gross past the
+        // threshold while wages stay below it.
         const additionalMedicareThreshold = getAdditionalMedicareThreshold(taxState.filingStatus);
-        if (grossIncome >= additionalMedicareThreshold) {
+        if (earnedIncome >= additionalMedicareThreshold) {
             ficaRate += 0.009;
         }
     }

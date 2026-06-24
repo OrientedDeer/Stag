@@ -17,7 +17,7 @@ import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext'
 import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
 import { BudgetContext } from '../../components/Objects/Budget/BudgetContext';
 import { computeEOYBudgetContributions } from '../../services/eoyContributionProjection';
-import { WorkIncome, SocialSecurityIncome, FutureSocialSecurityIncome, CurrentSocialSecurityIncome, PassiveIncome, FERSPensionIncome, CSRSPensionIncome, getIncomeActiveMultiplier } from '../../components/Objects/Income/models';
+import { WorkIncome, PassiveIncome, FERSPensionIncome, CSRSPensionIncome, getIncomeActiveMultiplier, isSocialSecurity } from '../../components/Objects/Income/models';
 import { runSimulationWithOptimization } from '../../components/Objects/Assumptions/useSimulation';
 import { getSimulationInputHash } from '../../services/simulationHash';
 import {
@@ -82,28 +82,6 @@ const toCurrency = (num: number) =>
 
 const toCurrencyShort = (num: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(num);
-
-// True for any Social Security income: the base SocialSecurityIncome plus the two
-// concrete variants (Current/Future). These are sibling classes that each extend
-// BaseIncome directly — SocialSecurityIncome is NOT a superclass of the other two —
-// so each must be matched explicitly. Also matches by `className` so reconstituted
-// (deserialized) objects are caught even if their prototype chain was not restored.
-// eslint-disable-next-line react-refresh/only-export-components -- exported for unit testing; this is a pure helper, not a component
-export function isSocialSecurity(inc: { className?: string }): boolean {
-    if (
-        inc instanceof SocialSecurityIncome ||
-        inc instanceof FutureSocialSecurityIncome ||
-        inc instanceof CurrentSocialSecurityIncome
-    ) {
-        return true;
-    }
-    const className = inc.className;
-    return (
-        className === 'SocialSecurityIncome' ||
-        className === 'FutureSocialSecurityIncome' ||
-        className === 'CurrentSocialSecurityIncome'
-    );
-}
 
 // ============================================================================
 // COPY-FRIENDLY TEXT SUMMARY

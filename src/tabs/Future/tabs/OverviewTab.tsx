@@ -8,8 +8,8 @@ import { ChartFrame } from "../../../components/Charts/ChartFrame";
 import { ProjectionMemoryChart } from "../../../components/Charts/ProjectionMemoryChart";
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { SavedAccount, PropertyAccount, DebtAccount, DeficitDebtAccount, AnyAccount } from '../../../components/Objects/Accounts/models';
-import { formatCompactCurrency } from './FutureUtils';
-import { MortgageExpense, AnyExpense } from '../../../components/Objects/Expense/models';
+import { formatCompactCurrency, getAccountTotals } from './FutureUtils';
+import { AnyExpense } from '../../../components/Objects/Expense/models';
 import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider';
 import { AlertBanner } from '../../../components/Layout/AlertBanner';
 import { getFRA } from '../../../data/SocialSecurityData';
@@ -76,27 +76,41 @@ export interface OverviewBuckets {
 }
 
 /**
- * Split a year's accounts/expenses into the chart's net-worth buckets.
+ * Split a year's accounts into the chart's net-worth buckets.
  *
- * Every non-debt asset is counted so the total matches getAccountTotals /
- * calculateNetWorth and the Assets sub-tab. ESPP and RSU extend BaseAccount
- * directly (not InvestedAccount), so they're folded into Invested explicitly —
- * otherwise they'd be silently dropped and understate net worth.
+ * The bucket total is derived the SAME way as getAccountTotals / calculateNetWorth
+ * (the Assets sub-tab, DataTab Net Worth column, and projection-history snapshots),
+ * so the Overview chart's Net Worth tooltip CANNOT disagree with those views:
+ *   - assets  = every non-debt account's balance (split into Invested / Saved /
+ *     Property for display). ESPP and RSU extend BaseAccount directly (not
+ *     InvestedAccount), so they're folded into Invested explicitly — otherwise
+ *     they'd be silently dropped and understate net worth.
+ *   - liabilities = DebtAccount/DeficitDebtAccount balances + PropertyAccount.loanAmount.
+ *
+ * Mortgage debt is taken from PropertyAccount.loanAmount (the account side),
+ * NOT from MortgageExpense.loan_balance. For a linked mortgage the engine keeps
+ * the two in sync, but sourcing the loan from the expense diverged from
+ * getAccountTotals for unlinked/imported state: an unlinked MortgageExpense
+ * subtracted the loan here while the Assets sub-tab did not, and a PropertyAccount
+ * with a loan but no linked expense overstated net worth here. Delegating the
+ * asset/liability totals to getAccountTotals removes both divergences. `expenses`
+ * is retained for call-site/signature stability but no longer read.
  */
 // eslint-disable-next-line react-refresh/only-export-components -- pure net-worth helper exported for unit testing alongside the tab component
 export function computeOverviewBuckets(
     accounts: AnyAccount[],
-    expenses: AnyExpense[]
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- retained for call-site/signature stability; net worth is now derived from accounts only
+    _expenses?: AnyExpense[]
 ): OverviewBuckets {
     let invested = 0;
     let saved = 0;
     let property = 0;
-    let debt = 0;
 
     for (const acc of accounts) {
         if (acc instanceof DebtAccount) {
-            // DebtAccount / DeficitDebtAccount track loan balances and uncovered deficits.
-            debt += acc.amount;
+            // Liabilities are summed via getAccountTotals below (keeps the bucket
+            // total identical to calculateNetWorth); skip them in the asset split.
+            continue;
         } else if (acc instanceof SavedAccount) {
             saved += acc.amount;
         } else if (acc instanceof PropertyAccount) {
@@ -107,19 +121,15 @@ export function computeOverviewBuckets(
         }
     }
 
-    // Include mortgage debt from expenses (linked to PropertyAccount, not DebtAccount).
-    // Note: LoanExpense is NOT counted here — DebtAccount already tracks the same linked balance.
-    for (const exp of expenses) {
-        if (exp instanceof MortgageExpense) {
-            debt += exp.loan_balance;
-        }
-    }
+    // Debt mirrors getAccountTotals exactly: DebtAccount balances + PropertyAccount
+    // loanAmount, ignoring expenses. Stored negative for the stacked chart.
+    const { liabilities } = getAccountTotals(accounts);
 
     return {
         Invested: invested,
         Saved: saved,
         Property: property,
-        Debt: -Math.abs(debt),
+        Debt: -Math.abs(liabilities),
     };
 }
 

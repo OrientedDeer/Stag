@@ -45,8 +45,10 @@ export function processInflows(
     const esppLots: Record<string, ESPPLot[]> = {};
     const deficitDebtPayment = 0;
 
-    // Per-account POSITIVE contributions routed to each 401k THIS YEAR (employee
-    // deferral + employer match), tracked independently of withdrawalState.userInflows.
+    // Per-account POSITIVE employee deferral routed to each 401k THIS YEAR (the
+    // §415(c)-trimmed `currentSelf + trimmedSelf` running total — employee money
+    // only; the employer match lives in withdrawalState.employerInflows and is NOT
+    // accumulated here), tracked independently of withdrawalState.userInflows.
     // The §415(c) running total must use these, not the net userInflows balance:
     // when a destination account is also drained this year (RMD / in-service
     // withdrawal / Roth conversion), executeYearPlan/processRMDs have already written

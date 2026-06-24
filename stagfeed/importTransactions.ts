@@ -25,10 +25,14 @@ import { Buffer } from 'node:buffer';
 import process from 'node:process';
 
 import { decrypt, encrypt, EncryptedBackup } from '../src/services/encryption/CryptoService';
-import { parseCSV } from '../src/services/CSVImportService';
-import { applyTransactions, makeTransaction, MergeBlob } from '../src/services/backupMerge';
-import type { Transaction } from '../src/components/Objects/Budget/BudgetTypes';
+import { applyTransactions, MergeBlob } from '../src/services/backupMerge';
 import { jsonDateReplacer } from '../src/utils/formatters';
+import { csvToTransactions } from './csvToTransactions';
+
+// Re-exported so callers (and the test) can pull the shared parser through this
+// module. The implementation lives in csvToTransactions.ts so both importers stay
+// in lockstep — see that file's header for why it must be side-effect-free.
+export { csvToTransactions };
 
 const MAX_BACKUP_SIZE = 5 * 1024 * 1024; // mirror the browser / backend cap
 
@@ -48,54 +52,6 @@ function env(name: string): string {
     const v = process.env[name];
     if (!v) throw new Error(`Missing required env var: ${name}`);
     return v;
-}
-
-/** Locate a column by header name (case-insensitive, trimmed). */
-function col(headers: string[], name: string): number {
-    return headers.findIndex((h) => h.trim().toLowerCase() === name.toLowerCase());
-}
-
-/** Parse stag-feed's transactions.csv into Stag Transactions (id = SimpleFIN id). */
-export function csvToTransactions(csvText: string): Transaction[] {
-    const { headers, rows } = parseCSV(csvText);
-    const idx = {
-        date: col(headers, 'Date'),
-        description: col(headers, 'Description'),
-        amount: col(headers, 'Amount'),
-        source: col(headers, 'Source'),
-        id: col(headers, 'Id'),
-    };
-    for (const [k, v] of Object.entries(idx)) {
-        if (k === 'source') continue; // optional — older feeds omit the Source column
-        if (v === -1) throw new Error(`transactions.csv is missing the "${k}" column`);
-    }
-
-    const out: Transaction[] = [];
-    let skipped = 0;
-    for (const r of rows) {
-        const amount = Number(r[idx.amount]);
-        const id = (r[idx.id] ?? '').trim();
-        // Read date defensively: a short row (fewer cells than the Date column)
-        // would make r[idx.date] undefined and .trim() throw — aborting the whole
-        // import; a present-but-blank cell would build an Invalid Date and bucket
-        // under 'NaN-NaN'. Guard before constructing.
-        const date = (r[idx.date] ?? '').trim();
-        if (!Number.isFinite(amount) || !id || !date) {
-            skipped++;
-            continue; // no stable id / unparseable amount / missing date — skip & report
-        }
-        out.push(
-            makeTransaction({
-                id, // SimpleFIN's stable txn id → exact dedup on re-fetch
-                date, // 'YYYY-MM-DD' → local-midnight Date in makeTransaction
-                description: r[idx.description] ?? '',
-                amount,
-                source: idx.source >= 0 ? r[idx.source] : undefined, // optional per-row card/account label
-            }),
-        );
-    }
-    if (skipped) console.warn(`  skipped ${skipped} row(s) with no id / unparseable amount`);
-    return out;
 }
 
 async function run(): Promise<void> {

@@ -183,6 +183,17 @@ export function analyzeTaxSituation(
     const grossIncome = TaxService.getGrossIncome(incomes, year);
     const preTaxDeductions = TaxService.getPreTaxExemptions(incomes, year, age);
 
+    // FICA-eligible EARNED base for the marginal-rate FICA test, mirroring
+    // calculateFicaTax: earned wages net of FICA exemptions. Passing this (rather
+    // than letting earnedIncome default to grossIncome) keeps the 6.2% SS / 0.9%
+    // surtax thresholds tied to wages, not total gross — so a still-working person
+    // whose SS/pension/passive income pushes gross past a threshold while wages
+    // stay below it doesn't wrongly lose the SS marginal component.
+    const earnedBase = Math.max(
+        0,
+        TaxService.getEarnedIncome(incomes, year) - TaxService.getFicaExemptions(incomes, year)
+    );
+
     // Get tax amounts from simulation (already calculated)
     const federalTax = simulationYear.taxDetails.fed;
     const stateTax = simulationYear.taxDetails.state;
@@ -199,7 +210,8 @@ export function analyzeTaxSituation(
         taxState,
         year,
         assumptions,
-        true // Include FICA for earned income
+        true, // Include FICA for earned income
+        earnedBase
     );
 
     // Get contribution info
@@ -609,13 +621,23 @@ export function generateTaxProjections(
         const totalTax = simYear.taxDetails.fed + simYear.taxDetails.state + simYear.taxDetails.fica;
         const effectiveRate = grossIncome > 0 ? totalTax / grossIncome : 0;
 
+        // FICA-eligible EARNED base (wages net of FICA exemptions), mirroring
+        // calculateFicaTax. Pass it explicitly so the 6.2% SS / 0.9% surtax
+        // thresholds key off wages, not total gross — see analyzeTaxSituation.
+        const earnedBase = Math.max(
+            0,
+            TaxService.getEarnedIncome(simYear.incomes, simYear.year)
+                - TaxService.getFicaExemptions(simYear.incomes, simYear.year)
+        );
+
         const marginal = TaxService.getCombinedMarginalRate(
             incomeFromObjects,
             preTaxDeductions,
             taxState,
             simYear.year,
             assumptions,
-            age < retirementAge // FICA only for working years
+            age < retirementAge, // FICA only for working years
+            earnedBase
         );
 
         const isRetired = age >= retirementAge;

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { isSocialSecurity } from '../../../tabs/Testing/Testing';
 import {
+    isSocialSecurity,
     SocialSecurityIncome,
     CurrentSocialSecurityIncome,
     FutureSocialSecurityIncome,

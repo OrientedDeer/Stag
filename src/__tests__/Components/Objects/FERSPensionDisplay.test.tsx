@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
 
-import { FERSPensionFields as CardFERSPensionFields, getDisplayedFERSBenefit }
+import { FERSPensionFields as CardFERSPensionFields }
     from '../../../components/Objects/Income/card/FERSPensionFields';
 import { FERSPensionFields as FormFERSPensionFields }
     from '../../../components/Objects/Income/FERSPensionFields';
+import { getDisplayedFERSBenefit } from '../../../data/PensionData';
 import { getInitialFormState } from '../../../components/Objects/Income/incomeFormTypes';
 import { FERSPensionIncome } from '../../../components/Objects/Income/models';
 

@@ -6,27 +6,10 @@ import { ToggleInput } from '../../../Layout/InputFields/ToggleInput';
 import {
     getFERSMRA,
     checkFERSEligibility,
-    calculateFERSBasicBenefit,
+    getDisplayedFERSBenefit,
 } from '../../../../data/PensionData';
 import type { FERSPensionIncome, WorkIncome } from '../models';
 import type { AllIncomeKeys } from '../IncomeContext';
-
-/**
- * Annual FERS benefit as the simulation runs it: the basic benefit with the
- * MRA+10 early-retirement reduction applied. Mirrors
- * FERSPensionIncome.calculateBenefit() so the displayed estimate matches the sim.
- */
-// eslint-disable-next-line react-refresh/only-export-components -- pure FERS-benefit helper exported for reuse by the form variant and unit testing alongside this card component
-export function getDisplayedFERSBenefit(
-    yearsOfService: number,
-    high3Salary: number,
-    retirementAge: number,
-    birthYear: number
-): number {
-    const baseBenefit = calculateFERSBasicBenefit(yearsOfService, high3Salary, retirementAge);
-    const { reductionPercent } = checkFERSEligibility(retirementAge, yearsOfService, birthYear);
-    return baseBenefit * (1 - reductionPercent / 100);
-}
 
 interface FERSPensionFieldsProps {
     income: FERSPensionIncome;

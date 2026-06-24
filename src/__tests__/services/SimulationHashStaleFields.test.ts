@@ -5,6 +5,7 @@ import {
   InvestedAccount,
   SavedAccount,
   ESPPAccount,
+  RSUAccount,
 } from '../../components/Objects/Accounts/models';
 import { AnyIncome, WorkIncome } from '../../components/Objects/Income/models';
 import { AnyExpense } from '../../components/Objects/Expense/models';
@@ -130,6 +131,14 @@ describe('getSimulationInputHash — result-affecting fields must invalidate sta
       // ESPP growth uses customROR when set, mirroring the RSU/Invested path.
       const before = hash([new ESPPAccount('e1', 'ESPP', 30000, [], null, undefined)], []);
       const after = hash([new ESPPAccount('e1', 'ESPP', 30000, [], null, 12)], []);
+      expect(after).not.toBe(before);
+    });
+
+    it('changes when customROR changes on an RSUAccount', () => {
+      // RSU growth uses customROR when set (RSUAccount.increment() reads it for
+      // the year-over-year return rate), mirroring the ESPP/Invested path.
+      const before = hash([new RSUAccount('r1', 'RSU', 40000, [], null, undefined)], []);
+      const after = hash([new RSUAccount('r1', 'RSU', 40000, [], null, 12)], []);
       expect(after).not.toBe(before);
     });
   });

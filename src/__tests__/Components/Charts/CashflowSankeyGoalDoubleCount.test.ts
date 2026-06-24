@@ -9,13 +9,19 @@ import {
  * Two active long-term goals that point at the SAME goal-fund account must
  * contribute their set-aside to the Sankey expense categories exactly ONCE in
  * aggregate — mirroring how SimulationEngine credits the shared fund once via
- * its per-fund `goalFundCredits` map (and counts it once in living expenses).
+ * its per-fund `goalFundCredits` map (and counts it once in living expenses) —
+ * while EACH goal keeps its own labeled node so a goal the user created never
+ * disappears from the chart.
  *
- * Regression: CashflowDetailBuilder iterated per-goal and called
- * getGoalFundAnnualSetAside (which SUMS across every goal on the fund) for each,
- * writing the combined set-aside under BOTH goal category keys — double-counting
- * it. Two $3k goals showed $12k in categories vs the engine's $6k, so Net Pay
- * outflows exceeded the net-pay flow and the imbalance detector tripped.
+ * Regression (double-count, wave 1): CashflowDetailBuilder iterated per-goal and
+ * called getGoalFundAnnualSetAside (which SUMS across every goal on the fund) for
+ * each, writing the combined set-aside under BOTH goal keys — two $3k goals
+ * showed $12k vs the engine's $6k and the imbalance detector tripped.
+ *
+ * Regression (breakdown, wave 2): the wave-1 dedup fixed the total by emitting
+ * ONLY the first goal's node, so "Boat (goal)" vanished from the chart. The fix
+ * splits the fund's single total across the sharing goals so BOTH nodes exist
+ * AND the goal-category sum still equals the engine's single fund credit.
  */
 describe('CashflowDetailBuilder — shared goal fund double-count', () => {
     const YEAR = 2030;
@@ -40,7 +46,7 @@ describe('CashflowDetailBuilder — shared goal fund double-count', () => {
         return goal;
     }
 
-    it('sums shared-fund goal categories to the engine set-aside (no double-count)', () => {
+    it('keeps both shared-fund goal nodes AND sums them to the engine set-aside (no double-count, no dropped node)', () => {
         const sharedFund = 'fund-shared';
         const goalCar = makeGoal('goal-car', 'Car', sharedFund);
         const goalBoat = makeGoal('goal-boat', 'Boat', sharedFund);
@@ -60,7 +66,7 @@ describe('CashflowDetailBuilder — shared goal fund double-count', () => {
             brokerageLTCGFromGross: 0,
         });
 
-        // The fund's whole set-aside is credited ONCE (to the first goal's label),
+        // The fund's single set-aside is SPLIT across the goals that share it,
         // mirroring the engine's per-fund goalFundCredits map. The goal categories
         // must sum to the fund's single set-aside, NOT 2× it.
         const goalCategoryTotal = Object.entries(detail.expensesByCategory)
@@ -68,12 +74,14 @@ describe('CashflowDetailBuilder — shared goal fund double-count', () => {
             .reduce((sum, [, amt]) => sum + amt, 0);
 
         expect(goalCategoryTotal).toBeCloseTo(engineSetAside, 5);
-        // The bug emitted $12k here (each goal carried the full $6k fund sum).
+        // The double-count bug emitted $12k here (each goal carried the full $6k
+        // fund sum); the dropped-node fix must not bring it back.
         expect(goalCategoryTotal).not.toBeCloseTo(2 * engineSetAside, 1);
 
-        // The shared fund is attributed to the first-encountered goal's label.
-        expect(detail.expensesByCategory['Car (goal)']).toBeCloseTo(engineSetAside, 5);
-        expect(detail.expensesByCategory['Boat (goal)']).toBeUndefined();
+        // BOTH goals the user created keep their own labeled node — neither is
+        // dropped. With equal weights the $6k fund total splits $3k / $3k.
+        expect(detail.expensesByCategory['Car (goal)']).toBeCloseTo(3000, 5);
+        expect(detail.expensesByCategory['Boat (goal)']).toBeCloseTo(3000, 5);
     });
 
     it('leaves a single goal on its own fund unchanged ($3k → $3k)', () => {

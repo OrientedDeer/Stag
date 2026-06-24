@@ -141,6 +141,28 @@ export function calculateFERSBasicBenefit(
 }
 
 /**
+ * Annual FERS benefit as the simulation runs it: the basic benefit with the
+ * MRA+10 early-retirement reduction applied. Mirrors
+ * FERSPensionIncome.calculateBenefit() so the displayed estimate matches the sim.
+ *
+ * @param yearsOfService Total years of creditable federal service
+ * @param high3Salary Average of highest 3 consecutive years of basic pay
+ * @param retirementAge Age at retirement
+ * @param birthYear Birth year (determines MRA)
+ * @returns Annual pension amount after the MRA+10 reduction
+ */
+export function getDisplayedFERSBenefit(
+  yearsOfService: number,
+  high3Salary: number,
+  retirementAge: number,
+  birthYear: number
+): number {
+  const baseBenefit = calculateFERSBasicBenefit(yearsOfService, high3Salary, retirementAge);
+  const { reductionPercent } = checkFERSEligibility(retirementAge, yearsOfService, birthYear);
+  return baseBenefit * (1 - reductionPercent / 100);
+}
+
+/**
  * FERS Supplement Calculation
  *
  * The FERS Supplement is a temporary benefit paid from retirement until age 62,

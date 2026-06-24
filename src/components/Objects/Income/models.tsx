@@ -977,6 +977,27 @@ export function isIncomeActiveInCurrentMonth(income: AnyIncome): boolean {
     return isWindowActiveInCurrentMonth({ startDate: income.startDate, endDate: income.end_date });
 }
 
+// True for any Social Security income: the base SocialSecurityIncome plus the two
+// concrete variants (Current/Future). These are sibling classes that each extend
+// BaseIncome directly — SocialSecurityIncome is NOT a superclass of the other two —
+// so each must be matched explicitly. Also matches by `className` so reconstituted
+// (deserialized) objects are caught even if their prototype chain was not restored.
+export function isSocialSecurity(inc: { className?: string }): boolean {
+    if (
+        inc instanceof SocialSecurityIncome ||
+        inc instanceof FutureSocialSecurityIncome ||
+        inc instanceof CurrentSocialSecurityIncome
+    ) {
+        return true;
+    }
+    const className = inc.className;
+    return (
+        className === 'SocialSecurityIncome' ||
+        className === 'FutureSocialSecurityIncome' ||
+        className === 'CurrentSocialSecurityIncome'
+    );
+}
+
 export const INCOME_CATEGORIES = [
   'Work',
   'SocialSecurity',

@@ -93,8 +93,10 @@ export async function encrypt(plaintext: string, passphrase: string): Promise<En
     // Checksum is over the CIPHERTEXT, not the plaintext. Hashing the plaintext
     // would leak a confirmation/dictionary oracle to the backend (which persists
     // this envelope), breaking the zero-knowledge guarantee on low-entropy backups.
-    // The AES-256-GCM auth tag already detects tampering; this only flags at-rest
-    // corruption of the stored ciphertext before we attempt an expensive decrypt.
+    // For current envelopes the AES-256-GCM auth tag is the authoritative corruption
+    // detector. This ciphertext checksum does NOT gate decryption (see decrypt()): it
+    // is recorded so a legacy plaintext-checksum envelope can be told apart from
+    // genuine corruption after a successful decrypt.
     const checksum = await sha256Hex(ciphertext);
 
     return {
@@ -121,11 +123,13 @@ export async function decrypt(envelope: EncryptedBackup, passphrase: string): Pr
     const iv = new Uint8Array(base64ToArrayBuffer(envelope.iv));
     const ciphertext = base64ToArrayBuffer(envelope.ciphertext);
 
-    // Verify the ciphertext checksum up front. New envelopes hash the ciphertext.
-    // A mismatch here means either corruption or a legacy envelope (checksum =
-    // SHA-256 of plaintext); we don't reject solely on this, since the GCM auth
-    // tag is the authoritative integrity check and the legacy case is handled
-    // post-decrypt below.
+    // Compute whether the stored checksum matches a hash of the ciphertext. New
+    // envelopes hash the ciphertext, so for them this matches. This is only a flag —
+    // it does NOT gate or short-circuit the (expensive) key derivation / decrypt
+    // below, both of which run unconditionally. It is consulted only AFTER decrypt
+    // (see further down) to tell a legacy plaintext-checksum envelope apart from
+    // genuine corruption. For current envelopes the GCM auth tag is the real
+    // corruption / tamper detector.
     const ciphertextChecksumOk =
         !envelope.checksum || (await sha256Hex(envelope.ciphertext)) === envelope.checksum;
 

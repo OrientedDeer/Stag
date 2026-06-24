@@ -29,11 +29,15 @@ import { Buffer } from 'node:buffer';
 import process from 'node:process';
 
 import { decrypt, encrypt, EncryptedBackup } from '../src/services/encryption/CryptoService';
-import { parseCSV } from '../src/services/CSVImportService';
 import { parseBalancesCSV } from '../src/services/simplefinBalances';
-import { applyTransactions, applyBalances, makeTransaction, MergeBlob } from '../src/services/backupMerge';
-import type { Transaction } from '../src/components/Objects/Budget/BudgetTypes';
+import { applyTransactions, applyBalances, MergeBlob } from '../src/services/backupMerge';
 import { jsonDateReplacer } from '../src/utils/formatters';
+import { csvToTransactions } from './csvToTransactions';
+
+// Re-exported so the test can pull the shared parser through this module too. The
+// implementation lives in csvToTransactions.ts so both importers stay in lockstep
+// — see that file's header for why it must be side-effect-free.
+export { csvToTransactions };
 
 const MAX_BACKUP_SIZE = 5 * 1024 * 1024; // mirror the browser / backend cap
 
@@ -101,51 +105,6 @@ async function putDoc(doc: CouchDoc): Promise<{ conflict: boolean; rev?: string 
     if (!res.ok) throw new Error(`CouchDB PUT ${res.status}: ${await res.text()}`);
     const j = (await res.json()) as { rev: string };
     return { conflict: false, rev: j.rev };
-}
-
-// --- CSV → Stag Transactions (id = SimpleFIN stable id), mirrors importTransactions.ts ---
-function col(headers: string[], name: string): number {
-    return headers.findIndex((h) => h.trim().toLowerCase() === name.toLowerCase());
-}
-export function csvToTransactions(csvText: string): Transaction[] {
-    const { headers, rows } = parseCSV(csvText);
-    const idx = {
-        date: col(headers, 'Date'),
-        description: col(headers, 'Description'),
-        amount: col(headers, 'Amount'),
-        source: col(headers, 'Source'),
-        id: col(headers, 'Id'),
-    };
-    for (const [k, v] of Object.entries(idx)) {
-        if (k === 'source') continue; // optional — older feeds omit the Source column
-        if (v === -1) throw new Error(`transactions.csv is missing the "${k}" column`);
-    }
-    const out: Transaction[] = [];
-    let skipped = 0;
-    for (const r of rows) {
-        const amount = Number(r[idx.amount]);
-        const id = (r[idx.id] ?? '').trim();
-        // Read date defensively: a short row (fewer cells than the Date column)
-        // would make r[idx.date] undefined and .trim() throw — aborting the whole
-        // import; a present-but-blank cell would build an Invalid Date and bucket
-        // under 'NaN-NaN'. Guard before constructing.
-        const date = (r[idx.date] ?? '').trim();
-        if (!Number.isFinite(amount) || !id || !date) {
-            skipped++;
-            continue;
-        }
-        out.push(
-            makeTransaction({
-                id,
-                date,
-                description: r[idx.description] ?? '',
-                amount,
-                source: idx.source >= 0 ? r[idx.source] : undefined, // optional per-row card/account label
-            }),
-        );
-    }
-    if (skipped) console.warn(`  skipped ${skipped} row(s) with no id / unparseable amount`);
-    return out;
 }
 
 /**

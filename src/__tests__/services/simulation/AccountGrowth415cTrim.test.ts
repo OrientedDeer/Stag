@@ -238,6 +238,69 @@ describe('Sankey employee-deferral §415(c) trim (Issue 2)', () => {
         expect(detail.userRoth401k).toBeCloseTo(5000, 2);
     });
 
+    it('splits a single income deferring BOTH pre-tax and Roth into one account by its own raw ratio', () => {
+        // One job defers 18k pre-tax + 12k Roth (30k total) into ONE 401k account.
+        // AccountGrowth sums both fields into a single deposit keyed by the destination
+        // account. Splitting the deposit purely by the account's taxType would attribute
+        // the whole 30k to one flow and make the other portion vanish from the Sankey.
+        // The split must instead follow the income's own raw preTax401k : roth401k.
+        const account = new InvestedAccount('trad', 'Traditional 401k', 100000, 0, 0, 0, 'Traditional 401k');
+        const job = work401k('j1', 200000, 18000, 12000, 0, 'trad');
+
+        const ws = createWithdrawalState();
+        const inflowResult = processInflows([job], [account], assumptions, YEAR, ws, 0, undefined, 0, AGE, []);
+
+        // Whole 30k is deposited into the single account (no §415(c) breach).
+        const depositedTotal = inflowResult.userContributions.trad;
+        expect(depositedTotal).toBeCloseTo(30000, 2);
+
+        const detail = buildCashflowDetail({
+            incomes: [job],
+            expenses: [],
+            accounts: [account],
+            insurance: 0,
+            year: YEAR,
+            brokerageLTCGFromGross: 0,
+            employerInflows: ws.employerInflows,
+            userContributions: inflowResult.userContributions,
+        });
+
+        // BOTH deferral flows must be nonzero (the Roth portion no longer disappears),
+        // they must match the income's own 18k/12k split, and sum to the deposited total.
+        expect(detail.userPreTax401k).toBeCloseTo(18000, 2);
+        expect(detail.userRoth401k).toBeCloseTo(12000, 2);
+        expect(detail.userPreTax401k + detail.userRoth401k).toBeCloseTo(depositedTotal, 2);
+    });
+
+    it('preserves the §415(c)-trimmed total when a mixed pre-tax+Roth income is trimmed', () => {
+        // One job defers 45k pre-tax + 45k Roth (90k) into ONE 401k. §415(c) (70k) trims
+        // the deposit to 70k. The two flows must still split by the raw 45:45 ratio and
+        // their sum must equal the deposited (trimmed) 70k — not the raw 90k.
+        const account = new InvestedAccount('trad', 'Traditional 401k', 100000, 0, 0, 0, 'Traditional 401k');
+        const job = work401k('j1', 300000, 45000, 45000, 0, 'trad');
+
+        const ws = createWithdrawalState();
+        const inflowResult = processInflows([job], [account], assumptions, YEAR, ws, 0, undefined, 0, AGE, []);
+        const depositedTotal = inflowResult.userContributions.trad;
+        expect(depositedTotal).toBeCloseTo(limit415c, 2); // 70k
+
+        const detail = buildCashflowDetail({
+            incomes: [job],
+            expenses: [],
+            accounts: [account],
+            insurance: 0,
+            year: YEAR,
+            brokerageLTCGFromGross: 0,
+            employerInflows: ws.employerInflows,
+            userContributions: inflowResult.userContributions,
+        });
+
+        // 45:45 raw ratio -> 35k / 35k of the trimmed 70k.
+        expect(detail.userPreTax401k).toBeCloseTo(limit415c / 2, 2);
+        expect(detail.userRoth401k).toBeCloseTo(limit415c / 2, 2);
+        expect(detail.userPreTax401k + detail.userRoth401k).toBeCloseTo(depositedTotal, 2);
+    });
+
     it('falls back to raw per-income fields when userContributions is omitted (back-compat)', () => {
         // Callers that do not pass userContributions (e.g. legacy or non-trimmed
         // paths) keep the prior behavior: deferral summed from raw inc fields.

@@ -57,17 +57,37 @@ async function couch(
   return { status: res.status, json };
 }
 
-// Google `sub` is a numeric string; encode defensively for use in the URL path.
-const docPath = (sub: string) => `/${BACKUP_DB}/${encodeURIComponent(sub)}`;
+// Both the DB-name and the doc-id (`sub`) segments are encoded for the URL path.
+// The DB name MUST be encoded the same way everywhere it appears (here and in
+// ensureBackupDb's create path) — otherwise an operator who sets a BACKUP_DB with
+// a URL-special char (e.g. CouchDB's legal `+`/`$`/`()`) would create the db at
+// one URL while every write 404s against another, so backups never persist.
+const dbSegment = encodeURIComponent(BACKUP_DB);
+const docPath = (sub: string) => `/${dbSegment}/${encodeURIComponent(sub)}`;
 
 // Create the backup database idempotently. CouchDB 3 auto-creates only its
 // system DBs (_users/_replicator/_global_changes), never an app DB — so without
 // this a fresh deploy 404s on the very first backup write. PUT /<db> returns
 // 201 (created) on first run and 412 (already exists) thereafter; both are fine.
 // We retry because the backend usually wins the boot race against CouchDB.
-async function ensureBackupDb(): Promise<void> {
+//
+// In-flight guard: a single shared promise coalesces concurrent callers (a burst
+// of POSTs during a missing-db window would otherwise each spawn their own
+// 30-attempt loop). The memo is cleared once it settles so a later genuine
+// re-create (db dropped again) can still kick off a fresh loop.
+let ensureBackupDbInFlight: Promise<void> | null = null;
+function ensureBackupDb(): Promise<void> {
+  if (!ensureBackupDbInFlight) {
+    ensureBackupDbInFlight = ensureBackupDbOnce().finally(() => {
+      ensureBackupDbInFlight = null;
+    });
+  }
+  return ensureBackupDbInFlight;
+}
+
+async function ensureBackupDbOnce(): Promise<void> {
   const maxAttempts = 30;
-  const dbPath = `/${encodeURIComponent(BACKUP_DB)}`;
+  const dbPath = `/${dbSegment}`;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     let status: number;
     let json: any;

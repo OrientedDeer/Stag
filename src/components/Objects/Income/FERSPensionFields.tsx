@@ -4,8 +4,7 @@ import { DropdownInput } from "../../Layout/InputFields/DropdownInput";
 import { NumberInput } from "../../Layout/InputFields/NumberInput";
 import { ToggleInput } from "../../Layout/InputFields/ToggleInput";
 import { WorkIncome } from './models';
-import { getFERSMRA, checkFERSEligibility } from "../../../data/PensionData";
-import { getDisplayedFERSBenefit } from './card/FERSPensionFields';
+import { getFERSMRA, checkFERSEligibility, getDisplayedFERSBenefit } from "../../../data/PensionData";
 import { IncomeFormState, UpdateForm } from './incomeFormTypes';
 
 interface FERSPensionFieldsProps {

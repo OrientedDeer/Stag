@@ -46,16 +46,22 @@ export interface GKRateSuggestion {
  *   plan year.
  * - "Planned spending" reconstructs the spending the user actually intended
  *   before any strategy adjustment moved it: the year's reported `livingExpenses`
- *   already reflect the adjusted amount, so we back out
- *   `strategyAdjustment.requiredAdjustment` (the dollar size of the move) by
- *   guardrail direction — ADD it back on a capital-preservation CUT (reported
- *   spend was trimmed down), SUBTRACT it on a prosperity BOOST (reported spend was
- *   inflated up). The engine stores the same POSITIVE `requiredAdjustment` for
- *   both directions (SimulationEngine.tsx:415), so the sign must come from the
- *   triggered guardrail, not the value. Under plan-anchored Guyton-Klinger the
- *   retirement year is usually within-band (nothing moved, so the add-back is 0);
- *   it only matters on a guardrail-cut/boost year or for the budget-cap strategies
- *   (Fixed Real / Percentage, which only ever cut).
+ *   already reflect the adjusted amount, so we back out the dollar size of the
+ *   move by guardrail direction — ADD it back on a capital-preservation CUT
+ *   (reported spend was trimmed down), SUBTRACT it on a prosperity BOOST (reported
+ *   spend was inflated up). We back out `actualAdjustment` (what the engine ACTUALLY
+ *   moved), NOT `requiredAdjustment` (the TARGET it wanted): on a partial/failed
+ *   cut — discretionary can't absorb the full target — the engine trims
+ *   `livingExpenses` by only the applied amount, so adding back the larger target
+ *   would reconstruct a plan HIGHER than the user ever set and inflate the implied
+ *   rate. On a full cut or any boost `actualAdjustment === requiredAdjustment`, so
+ *   this matches the unconstrained case exactly. The engine stores the same
+ *   POSITIVE `actualAdjustment` for both directions (SimulationEngine.tsx:416), so
+ *   the sign must come from the triggered guardrail, not the value. Under
+ *   plan-anchored Guyton-Klinger the retirement year is usually within-band
+ *   (nothing moved, so the add-back is 0); it only matters on a guardrail-cut/boost
+ *   year or for the budget-cap strategies (Fixed Real / Percentage, which only ever
+ *   cut, and likewise trim by the applied amount when fixed costs exceed budget).
  * - "Portfolio at retirement" prefers the engine's own
  *   `strategyWithdrawal.initialPortfolio` (the portfolio it sized the initial
  *   withdrawal against); falls back to summing the year's account snapshot.
@@ -77,16 +83,20 @@ export function getRetirementYearSpendingAndPortfolio(
 
     // Planned (pre-adjustment) living expenses: reported living expenses already
     // reflect any guardrail move, so back out the move to recover the original
-    // plan. `requiredAdjustment` is the (always-positive) dollar size of the move;
-    // its SIGN comes from the triggered guardrail — a capital-preservation cut
-    // trimmed reported spend DOWN (add it back), a prosperity boost inflated it UP
-    // (subtract it). It is 0 for within-band years.
+    // plan. Use `actualAdjustment` — the (always-positive) dollars the engine
+    // ACTUALLY moved — not `requiredAdjustment` (the target it wanted): on a
+    // partial/failed capital-preservation cut the engine only trims by what
+    // discretionary can absorb, so backing out the larger target would overshoot
+    // the original plan and inflate the implied rate. The SIGN comes from the
+    // triggered guardrail — a capital-preservation cut trimmed reported spend DOWN
+    // (add it back), a prosperity boost inflated it UP (subtract it). It is 0 for
+    // within-band years.
     const adjustment = yearData.strategyAdjustment;
-    const requiredAdjustment = adjustment?.requiredAdjustment ?? 0;
+    const actualAdjustment = adjustment?.actualAdjustment ?? 0;
     const signedAdjustment =
         adjustment?.guardrailTriggered === 'prosperity'
-            ? -requiredAdjustment
-            : requiredAdjustment;
+            ? -actualAdjustment
+            : actualAdjustment;
     const plannedSpending = yearData.cashflow.livingExpenses + signedAdjustment;
 
     // Portfolio at retirement: prefer the engine's own figure, else sum the

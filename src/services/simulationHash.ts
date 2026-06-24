@@ -119,8 +119,12 @@ export function getSimulationInputHash(
             // RSU sale tax/eligibility depend on per-share price, the lot pool,
             // and the sell-order / holding-period settings — editing any of these
             // changes simulation output, so include them or the cache goes stale.
+            // customROR overrides the global return in RSUAccount.increment()'s
+            // year-over-year growth (mirroring the Invested/ESPP branches), so it
+            // must invalidate the cache too.
             ...(a instanceof RSUAccount
                 ? {
+                    customROR: a.customROR,
                     currentSharePrice: a.currentSharePrice,
                     withdrawalPreference: a.withdrawalPreference,
                     minimumHoldingDays: a.minimumHoldingDays,

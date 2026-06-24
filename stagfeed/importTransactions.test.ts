@@ -29,6 +29,7 @@ import {
     csvToTransactions as csvToTransactionsCouch,
     serializeBlob as serializeBlobCouch,
 } from './couchImport';
+import { csvToTransactions as csvToTransactionsShared } from './csvToTransactions';
 import { applyTransactions, type MergeBlob } from '../src/services/backupMerge';
 import { parseDate } from '../src/components/Objects/modelUtils';
 
@@ -56,6 +57,14 @@ afterAll(() => {
 function emptyBlob(): MergeBlob {
     return { version: 2 } as MergeBlob;
 }
+
+// Both importers must delegate to the ONE shared parser (csvToTransactions.ts) so a
+// future parsing-rule change can't land on one path and miss the other. Identity
+// (not just behavioral equivalence) proves there's a single implementation.
+it('both importers re-export the single shared csvToTransactions', () => {
+    expect(csvToTransactionsFile).toBe(csvToTransactionsShared);
+    expect(csvToTransactionsCouch).toBe(csvToTransactionsShared);
+});
 
 describe.each(variants)('$name — transaction date round-trip (issue #73)', ({ csvToTransactions, serializeBlob }) => {
     // A boundary date: local midnight 2026-06-03 in UTC+10 is 2026-06-02T14:00Z,
