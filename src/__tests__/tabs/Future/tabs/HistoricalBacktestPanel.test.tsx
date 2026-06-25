@@ -124,12 +124,14 @@ describe('resolveBacktestStrategySettings — explicit 0 is preserved', () => {
 // -----------------------------------------------------------------------------
 function renderPanelWithStrategy(
   withdrawalStrategy: 'Fixed Real' | 'Guyton Klinger',
+  gkOverrides?: { gkAdjustmentPercent?: number; gkUpperGuardrail?: number; gkLowerGuardrail?: number },
 ) {
   const state = {
     ...defaultAssumptions,
     investments: {
       ...defaultAssumptions.investments,
       withdrawalStrategy,
+      ...gkOverrides,
     },
   };
   return render(
@@ -137,6 +139,19 @@ function renderPanelWithStrategy(
       <HistoricalBacktestPanel simulationData={[]} />
     </AssumptionsContext.Provider>,
   );
+}
+
+/**
+ * The note's whitespace-collapsed full text. Reading the banner's `textContent`
+ * (rather than getByText) survives the value interpolations splitting the copy
+ * into multiple text nodes, e.g. `±{gkAdjustmentPercent}%`.
+ */
+function getNoteText(): string {
+  const title = screen.getByText('How Guyton-Klinger is modeled here');
+  // The banner root (title + body) is the title's grandparent in AlertBanner's
+  // markup; its textContent holds the whole note.
+  const banner = title.closest('div')?.parentElement ?? title;
+  return (banner.textContent ?? '').replace(/\s+/g, ' ').trim();
 }
 
 describe('HistoricalBacktestPanel — GK modeling-difference note (#117)', () => {
@@ -152,5 +167,28 @@ describe('HistoricalBacktestPanel — GK modeling-difference note (#117)', () =>
     renderPanelWithStrategy('Fixed Real');
     expect(screen.queryByText(/single-track/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/budget-anchored/i)).not.toBeInTheDocument();
+  });
+
+  // Review finding [0]: the projection HALF of the note must track the live GK
+  // config too, not hardcode "±10% … ±20%". The projection's plan-anchored GK
+  // reads the SAME gkAdjustmentPercent / gkUpper/LowerGuardrail off
+  // assumptions.investments (SimulationEngine + WithdrawalStrategies), so with a
+  // non-default, asymmetric config BOTH halves of the note must reflect it.
+  it('reflects the live GK config on BOTH halves for a non-default asymmetric config', () => {
+    renderPanelWithStrategy('Guyton Klinger', {
+      gkAdjustmentPercent: 8,
+      gkUpperGuardrail: 1.25, // upper trigger = +25%
+      gkLowerGuardrail: 0.85, // lower trigger = -15%
+    });
+    const note = getNoteText();
+    // Backtest half: the move size tracks the config.
+    expect(note).toContain('±8% guardrail moves');
+    // Projection half: the discretionary move AND the asymmetric guardrail band
+    // must both come from config — never the frozen "±10% … ±20%" literals.
+    expect(note).toContain('±8% discretionary adjustment');
+    expect(note).toContain('+25% / -15%');
+    // Guard against the regression: the old hardcoded literals must be gone.
+    expect(note).not.toContain('±10% discretionary adjustment');
+    expect(note).not.toContain('±20% guardrails');
   });
 });

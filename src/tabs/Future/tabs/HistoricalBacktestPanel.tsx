@@ -229,8 +229,10 @@ export const HistoricalBacktestPanel = React.memo(({ simulationData }: Historica
             The backtest models GK as a fixed-rate (single-track) withdrawal — rate × balance,
             inflation-adjusted, with ±{gkAdjustmentPercent}% guardrail moves applied directly to the
             withdrawal — replayed across historical return/inflation sequences. This differs from the
-            projection, where GK is budget-anchored: you spend your itemized plan, with a ±10%
-            discretionary adjustment only at the ±20% guardrails.
+            projection, where GK is budget-anchored: you spend your itemized plan, with a
+            ±{gkAdjustmentPercent}% discretionary adjustment only at the
+            +{Math.round((gkUpperGuardrail - 1) * 100)}% / -{Math.round((1 - gkLowerGuardrail) * 100)}%
+            guardrails. (Both sides read the same guardrail settings.)
           </AlertBanner>
         </div>
       )}
