@@ -11,6 +11,7 @@ import {
 import { getTaxableSocialSecurityBenefits } from "./socialSecurity";
 import { getItemizedDeductions, getYesDeductions } from "./deductions";
 import { calculateTax } from "./bracketTax";
+import { seniorAdditionalDeduction } from "./seniorDeduction";
 
 /**
  * Shared core of state-tax computation.
@@ -65,17 +66,10 @@ function computeStateTaxFromGross(
     }
 
     // Senior deduction: per-person variants (e.g., Virginia) get doubled for MFJ
-    // (assumes both spouses meet the age threshold).
-    let seniorDeductionAmount = 0;
-    if (stateParams.seniorDeduction && age !== undefined) {
-        const seniorAge = stateParams.seniorAge ?? 65;
-        if (age >= seniorAge) {
-            seniorDeductionAmount = stateParams.seniorDeduction;
-            if (stateParams.seniorDeductionPerPerson && state.filingStatus === 'Married Filing Jointly') {
-                seniorDeductionAmount *= 2;
-            }
-        }
-    }
+    // (assumes both spouses meet the age threshold). Shared with federalTax.ts's
+    // regular 65+ add-on via seniorAdditionalDeduction so the rule lives in one
+    // place.
+    const seniorDeductionAmount = seniorAdditionalDeduction(stateParams, state.filingStatus, age);
 
     const itemizedTotal = getItemizedDeductions(expenses, year);
     const stateStandardDeduction = (stateParams.standardDeduction || 0) + seniorDeductionAmount;

@@ -96,3 +96,40 @@ export function getTaxableSocialSecurityBenefits(
     // Cap at 85% of total benefits
     return Math.min(totalTaxable, totalSSBenefits * SS_MAX_TAXABLE_RATE);
 }
+
+/**
+ * Taxable portion of SS from raw income COMPONENTS — the single source of the
+ * provisional-income (AGI-excluding-SS) build that drives SS taxability.
+ *
+ * The provisional base (the `otherIncome` fed to getTaxableSocialSecurityBenefits)
+ * is `max(0, ordinaryIncome + stcg + ltcg − preTaxDeductions)`, with tax-exempt
+ * interest = 0 (the app does not track it). Both bracketTax.ts's standard-path
+ * calculation and federalTax.ts's OBBBA-bonus MAGI proxy need exactly this same
+ * taxable-SS value, so they share this helper rather than each recomputing it
+ * (which previously ran getTaxableSocialSecurityBenefits twice and risked drift
+ * near the SS-taxability thresholds).
+ *
+ * @returns `{ provisionalBase, taxableSS }` — provisionalBase is the
+ *          AGI-excluding-SS amount (reusable by the caller's MAGI proxy);
+ *          taxableSS is the taxable portion of the benefits.
+ */
+export function getTaxableSocialSecurityFromComponents(
+    ordinaryIncome: number,
+    shortTermCapitalGains: number,
+    longTermCapitalGains: number,
+    preTaxDeductions: number,
+    socialSecurityBenefits: number,
+    filingStatus: FilingStatus,
+): { provisionalBase: number; taxableSS: number } {
+    const provisionalBase = Math.max(
+        0,
+        ordinaryIncome + shortTermCapitalGains + longTermCapitalGains - preTaxDeductions,
+    );
+    const taxableSS = getTaxableSocialSecurityBenefits(
+        socialSecurityBenefits,
+        provisionalBase,
+        0, // tax-exempt interest — not currently tracked
+        filingStatus,
+    );
+    return { provisionalBase, taxableSS };
+}

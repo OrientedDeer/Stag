@@ -5,7 +5,7 @@
  * federal-from-incomes orchestrator.
  */
 import { FilingStatus, TaxParameters } from "../../../../data/TaxData";
-import { getTaxableSocialSecurityBenefits } from "./socialSecurity";
+import { getTaxableSocialSecurityFromComponents } from "./socialSecurity";
 
 /** Result of the unified federal tax calculation */
 export interface TotalFederalTaxResult {
@@ -61,19 +61,19 @@ export function calculateTotalFederalTax(
     filingStatus: FilingStatus,
     params: TaxParameters,
 ): TotalFederalTaxResult {
-    // STEP 1: Provisional income for SS taxability
-    // IRS formula: Provisional Income = AGI (excluding SS) + tax-exempt interest + 50% of SS
-    // Both STCG and LTCG count toward provisional income.
-    // Pre-tax deductions (401k, HSA, etc.) reduce AGI, so they must also reduce the
-    // AGI-excluding-SS portion of provisional income before adding half of SS benefits.
-    const provisionalIncome = Math.max(0, ordinaryIncome + shortTermCapitalGains + longTermCapitalGains - preTaxDeductions) + (socialSecurityBenefits * 0.5);
-
-    // STEP 2: Taxable portion of Social Security
+    // STEP 1 + 2: Provisional income and the taxable portion of Social Security.
+    // IRS formula: Provisional Income = AGI (excluding SS) + tax-exempt interest + 50% of SS.
+    // Both STCG and LTCG count toward the AGI-excluding-SS portion; pre-tax deductions
+    // (401k, HSA, etc.) reduce it. Shared with federalTax.ts's OBBBA-bonus MAGI proxy
+    // via getTaxableSocialSecurityFromComponents so the SS-taxability math lives in one
+    // place and isn't computed twice for a senior standard-path call.
     // TODO: Verify all income types are included (LTCG, STCG, dividends, etc.)
-    const taxableSS = getTaxableSocialSecurityBenefits(
+    const { taxableSS } = getTaxableSocialSecurityFromComponents(
+        ordinaryIncome,
+        shortTermCapitalGains,
+        longTermCapitalGains,
+        preTaxDeductions,
         socialSecurityBenefits,
-        provisionalIncome - (socialSecurityBenefits * 0.5),
-        0, // taxExemptInterest - not currently tracked
         filingStatus,
     );
 

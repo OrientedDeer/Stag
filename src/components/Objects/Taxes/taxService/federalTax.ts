@@ -11,7 +11,8 @@ import {
 import { getItemizedDeductions, getYesDeductions } from "./deductions";
 import { calculateTotalFederalTax } from "./bracketTax";
 import { calculateStateTax, calculateUnifiedStateTax } from "./stateTax";
-import { getTaxableSocialSecurityBenefits } from "./socialSecurity";
+import { getTaxableSocialSecurityFromComponents } from "./socialSecurity";
+import { isSeniorEligible, seniorAdditionalDeduction } from "./seniorDeduction";
 import { FilingStatus, TaxParameters } from "../../../../data/TaxData";
 
 /**
@@ -21,16 +22,6 @@ import { FilingStatus, TaxParameters } from "../../../../data/TaxData";
  */
 const SENIOR_BONUS_START_YEAR = 2025;
 const SENIOR_BONUS_END_YEAR = 2028;
-
-/**
- * 65+ senior-deduction eligibility: a defined age at or above the senior-age
- * threshold (default 65). Single source for both the MAGI-proxy gate in
- * calculateFederalTaxFromIncomes and getFederalSeniorDeduction's own early-out,
- * so the two can't drift.
- */
-function isSeniorEligible(fedParams: TaxParameters, age: number | undefined): boolean {
-    return age !== undefined && age >= (fedParams.seniorAge ?? 65);
-}
 
 /**
  * Federal extra deductions for taxpayers age >= seniorAge, split into the two
@@ -72,7 +63,9 @@ function getFederalSeniorDeduction(
     const perPersonMultiplier = fedParams.seniorDeductionPerPerson && isMFJ ? 2 : 1;
 
     // Regular (permanent) 65+ additional STANDARD deduction — standard path only.
-    const regular = (fedParams.seniorDeduction ?? 0) * perPersonMultiplier;
+    // Shared with stateTax.ts via seniorAdditionalDeduction so the per-person
+    // doubling and eligibility rule stay in one place.
+    const regular = seniorAdditionalDeduction(fedParams, filingStatus, age);
 
     // OBBBA senior bonus: $6,000/person, tax years 2025–2028, phasing out at
     // `seniorBonusPhaseoutRate` of (MAGI − threshold), floored at $0. Available
@@ -157,10 +150,16 @@ export function calculateFederalTaxFromIncomes(
     let regularSeniorDeduction = 0;
     let bonusSeniorDeduction = 0;
     if (seniorEligible) {
-        const taxableSSForMagi = getTaxableSocialSecurityBenefits(
+        // Reuse the SAME provisional-income / taxable-SS build that
+        // calculateTotalFederalTax performs on the standard path, instead of
+        // recomputing it (which previously called getTaxableSocialSecurityBenefits
+        // a second time and risked drift near the $75k/$150k phaseout thresholds).
+        const { taxableSS: taxableSSForMagi } = getTaxableSocialSecurityFromComponents(
+            ordinaryIncome,
+            stcg,
+            ltcg,
+            totalPreTaxDeductions,
             totalSSBenefits,
-            Math.max(0, ordinaryIncome + stcg + ltcg - totalPreTaxDeductions),
-            0, // tax-exempt interest — not tracked
             state.filingStatus,
         );
         const magiProxy = Math.max(
