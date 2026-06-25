@@ -8,7 +8,6 @@ import { CSRSPensionFields as FormCSRSPensionFields }
 import {
     getDisplayedCSRSBenefit,
     calculateCSRSBasicBenefit,
-    checkCSRSEligibility,
 } from '../../../data/PensionData';
 import { getInitialFormState } from '../../../components/Objects/Income/incomeFormTypes';
 import { CSRSPensionIncome } from '../../../components/Objects/Income/models';
@@ -94,30 +93,37 @@ describe('CSRS pension display estimate (Issue #133: early-retirement reduction)
 describe('getDisplayedCSRSBenefit === CSRSPensionIncome.calculateBenefit() (drift guard)', () => {
     // calculateBenefit() delegates to getDisplayedCSRSBenefit so the sim, the
     // Testing-tab estimates, and the IncomeProjection activation share one source
-    // of truth for the CSRS basic-benefit + early-retirement reduction math. These
-    // cases recompute the expected initial benefit INDEPENDENTLY from the primitive
-    // helpers (basic-benefit × early-retirement reduction) so any future divergence
-    // — on either the model method or the display helper — fails loudly here.
+    // of truth for the CSRS basic-benefit + early-retirement reduction math.
     //
-    // Unlike FERS, CSRS eligibility does not depend on birth year, so there is no
-    // birthYear input.
+    // The expected values below are HARDCODED LITERALS, computed by hand from the
+    // published CSRS math (NOT recomputed from calculateCSRSBasicBenefit /
+    // checkCSRSEligibility). That independence is the whole point: if a regression
+    // lands in either primitive — a wrong tier breakpoint, a wrong reduction cap,
+    // a broken 80% cap — the production helper shifts but these literals don't, so
+    // the assertion fails loudly. (A reference recomputed from the same primitives
+    // would shift in lockstep and never bite.)
+    //
+    // expectedReduced = expectedBasic × (1 − reduction%). The basic-benefit tiers:
+    // first 5yr ×1.5%, yrs 6–10 ×1.75%, yrs 11+ ×2.0%, capped at 80% of High-3. The
+    // early-retirement reduction is 2%/yr under age 55, capped at 10%, and only when
+    // eligible. Unlike FERS, CSRS eligibility does not depend on birth year.
     const cases = [
-        // [yearsOfService, high3, retirementAge, label]
-        [30, 100_000, 55, 'age 55 with 30yr, unreduced'],
-        [20, 90_000, 60, 'age 60 with 20yr, unreduced'],
-        [5, 80_000, 62, 'age 62 with exactly 5yr, unreduced'],
-        [25, 100_000, 50, 'early: age 50 with 25yr, 10% capped reduction (5yr×2%)'],
-        [20, 100_000, 52, 'early: age 50+/20yr at 52, 6% reduction (3yr×2%)'],
-        [25, 95_000, 45, 'early: any-age 25yr at 45, reduction capped at 10%'],
-        [22, 120_000, 54, 'early: 22yr at 54, 2% reduction (1yr under 55)'],
-        [40, 150_000, 60, '80% cap engaged, unreduced (40yr → cap)'],
-        [45, 150_000, 50, '80% cap + early reduction stacked'],
-        [8, 70_000, 48, 'not eligible (age 48, 8yr) — eligibility false, 0% reduction'],
+        // [yearsOfService, high3, retirementAge, expectedBasic, expectedReduced, label]
+        [30, 100_000, 55, 56_250, 56_250, 'age 55 with 30yr, unreduced'],
+        [20, 90_000, 60, 32_625, 32_625, 'age 60 with 20yr, unreduced'],
+        [5, 80_000, 62, 6_000, 6_000, 'age 62 with exactly 5yr, unreduced'],
+        [25, 100_000, 50, 46_250, 41_625, 'early: age 50 with 25yr, 10% capped reduction (5yr×2%)'],
+        [20, 100_000, 52, 36_250, 34_075, 'early: age 50+/20yr at 52, 6% reduction (3yr×2%)'],
+        [25, 95_000, 45, 43_937.5, 39_543.75, 'early: any-age 25yr at 45, reduction capped at 10%'],
+        [22, 120_000, 54, 48_300, 47_334, 'early: 22yr at 54, 2% reduction (1yr under 55)'],
+        [40, 150_000, 60, 114_375, 114_375, '40yr below the 80% cap, unreduced'],
+        [45, 150_000, 50, 120_000, 108_000, '80% cap engaged + 10% early reduction stacked'],
+        [8, 70_000, 48, 8_925, 8_925, 'not eligible (age 48, 8yr) — eligibility false, 0% reduction'],
     ] as const;
 
     it.each(cases)(
-        'matches across the input matrix: yos=%d high3=%d age=%d (%s)',
-        (yearsOfService, high3, retirementAge) => {
+        'matches the hardcoded reference: yos=%d high3=%d age=%d (%s)',
+        (yearsOfService, high3, retirementAge, expectedBasic, expectedReduced) => {
             const income = new CSRSPensionIncome(
                 'csrs-matrix',
                 'CSRS',
@@ -132,15 +138,18 @@ describe('getDisplayedCSRSBenefit === CSRSPensionIncome.calculateBenefit() (drif
                 retirementAge
             );
 
-            // Independent reference: the exact reduction math the 4 former inline
-            // sites computed — basic benefit × early-retirement reduction factor.
-            const baseBenefit = calculateCSRSBasicBenefit(yearsOfService, high3);
-            const { reductionPercent } = checkCSRSEligibility(retirementAge, yearsOfService);
-            const expected = baseBenefit * (1 - reductionPercent / 100);
-
-            expect(displayed).toBeCloseTo(expected, 6);
-            expect(income.calculateBenefit()).toBeCloseTo(expected, 6);
+            // The displayed/simulated benefit equals the hardcoded reduced figure.
+            expect(displayed).toBeCloseTo(expectedReduced, 6);
+            expect(income.calculateBenefit()).toBeCloseTo(expectedReduced, 6);
             expect(income.calculateBenefit()).toBeCloseTo(displayed, 6);
+
+            // The basic-benefit primitive equals the hardcoded unreduced figure, and
+            // the displayed estimate never exceeds it (reduction only ever cuts).
+            expect(calculateCSRSBasicBenefit(yearsOfService, high3)).toBeCloseTo(
+                expectedBasic,
+                6
+            );
+            expect(displayed).toBeLessThanOrEqual(expectedBasic + 1e-6);
         }
     );
 });
