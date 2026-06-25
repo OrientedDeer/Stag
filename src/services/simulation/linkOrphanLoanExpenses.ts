@@ -39,13 +39,16 @@ import { AnyExpense, MortgageExpense, LoanExpense } from '../../components/Objec
  * sim, not persisted), and on localStorage BOOT hydration (OrphanLoanReconciler,
  * #136 — persisted, self-healing).
  *
- * Array identity: when `changed`, BOTH returned arrays are NEW references (so
- * consumers keying off referential equality — React context dispatch, memoized
- * selectors — see the update even for an in-place back-link/stale-claim repair that
- * created no account). When nothing changed, the inputs pass through by reference.
- * Link assignment mutates the passed expense/account instances' public
- * `linkedAccountId` field in place (a field write, not a model change), which is
- * acceptable since these are freshly reconstituted instances owned by the caller.
+ * Array identity is PER-SIDE [#124 review-4 #8]: the returned `accounts` is a NEW
+ * reference only when an account changed (one was created, or a wrong-typed account's
+ * stale claim was cleared); the returned `expenses` is a NEW reference only when an
+ * expense changed (a back-link was reassigned). The untouched side passes through by
+ * reference. So consumers keying off referential equality (React context dispatch,
+ * memoized selectors) re-render exactly when THEIR side changed — an account-only
+ * stale-claim clear doesn't churn expense consumers, and a back-link-only repair
+ * doesn't churn account consumers. Link assignment mutates the passed instances'
+ * public `linkedAccountId` field in place (a field write, not a model change), which
+ * is acceptable since these are freshly reconstituted instances owned by the caller.
  * Returns the (possibly extended) accounts, the expenses, a `changed` flag, and
  * human-readable notices.
  *
@@ -99,7 +102,7 @@ export function linkOrphanLoanExpenses(
     // wrong-typed claimant (a DebtAccount claiming a MortgageExpense, or vice-versa)
     // can be detected and its stale claim cleared [#124 review-3 #7]; coverage still
     // requires a correctly-typed claimant via isCarrier below.
-    const claimantsByExpenseId = new Map<string, AnyAccount[]>();
+    const claimantsByExpenseId = new Map<string, (PropertyAccount | DebtAccount)[]>();
     for (const acc of accounts) {
         if ((acc instanceof PropertyAccount || acc instanceof DebtAccount) && acc.linkedAccountId) {
             const list = claimantsByExpenseId.get(acc.linkedAccountId);
@@ -126,16 +129,21 @@ export function linkOrphanLoanExpenses(
         return null;
     };
 
-    // Clear any WRONG-typed account still claiming this expense (account.linkedAccountId
-    // === expense.id but the account is not the carrier we settled on). Otherwise two
-    // accounts reference the same expense — a stale dangling claim [#124 review-3 #7].
+    // Clear any WRONG-TYPED account still claiming this expense (account.linkedAccountId
+    // === expense.id but the account cannot carry this expense's loan — a DebtAccount
+    // claiming a mortgage, or a PropertyAccount claiming a loan). Such a claim is stale:
+    // the wrong-typed account never carried the loan and now dangles. A CORRECTLY-TYPED
+    // account that also claims the expense is NOT cleared — two legitimate carriers of
+    // one expense (or a genuine second financed property) must each keep their link so
+    // AccountGrowth keeps syncing the loan onto them [#124 review-4 #2]. The chosen
+    // carrier is correctly-typed, so it is never touched here either.
     // Returns true if it cleared anything.
-    const clearStaleClaims = (expense: MortgageExpense | LoanExpense, carrierId: string): boolean => {
+    const clearStaleClaims = (expense: MortgageExpense | LoanExpense): boolean => {
         const claimants = claimantsByExpenseId.get(expense.id);
         if (!claimants) return false;
         let cleared = false;
         for (const acc of claimants) {
-            if (acc.id !== carrierId && (acc instanceof PropertyAccount || acc instanceof DebtAccount)) {
+            if (!isCarrier(acc, expense) && acc.linkedAccountId === expense.id) {
                 acc.linkedAccountId = '';
                 cleared = true;
             }
@@ -145,7 +153,12 @@ export function linkOrphanLoanExpenses(
 
     const createdAccounts: AnyAccount[] = [];
     const notices: string[] = [];
-    let changed = false;
+    // Track which SIDE changed so we hand back a new array reference only for the side
+    // that actually changed [#124 review-4 #8]: an expense back-link reassignment is an
+    // expense change; clearing a wrong-typed account's stale claim is an account change;
+    // minting a paired account is both.
+    let accountsChanged = false;
+    let expensesChanged = false;
 
     // Derive a paired-account id from the expense id the same way AddExpenseModal
     // does ('ACC' + id-suffix). Guard against collisions with ANY id we know about
@@ -172,10 +185,10 @@ export function linkOrphanLoanExpenses(
             // expense's back-link if it's broken; do NOT mint a second account.
             if (expense.linkedAccountId !== existing.id) {
                 expense.linkedAccountId = existing.id;
-                changed = true;
+                expensesChanged = true;
             }
             // Clear any wrong-typed account still claiming this expense [#7].
-            if (clearStaleClaims(expense, existing.id)) changed = true;
+            if (clearStaleClaims(expense)) accountsChanged = true;
             continue;
         }
 
@@ -183,8 +196,7 @@ export function linkOrphanLoanExpenses(
         accountIds.add(accountId);
         // A new carrier is being minted; clear any wrong-typed account that was
         // claiming this expense so it doesn't keep a stale reference [#7].
-        if (clearStaleClaims(expense, accountId)) changed = true;
-        changed = true;
+        if (clearStaleClaims(expense)) accountsChanged = true;
 
         if (isMortgage) {
             createdAccounts.push(new PropertyAccount(
@@ -214,21 +226,21 @@ export function linkOrphanLoanExpenses(
                 `Relinked imported loan "${expense.name}": created debt account to carry its $${Math.round(expense.amount).toLocaleString()} balance.`,
             );
         }
+        // A paired account was created AND the expense's back-link was set: both sides changed.
+        accountsChanged = true;
+        expensesChanged = true;
     }
 
-    if (!changed) {
-        // Nothing touched — pass the inputs through by reference.
-        return { accounts, expenses, changed, notices };
-    }
+    const changed = accountsChanged || expensesChanged;
 
-    // Return NEW array references whenever anything changed, so consumers that key
-    // off referential equality (React context dispatch + memoized selectors) see the
-    // update — even for an in-place back-link/stale-claim repair that created no
-    // account. The element instances are the (possibly mutated) originals plus any
-    // newly-created accounts.
+    // Return a NEW array reference ONLY for the side that actually changed [#8], so
+    // consumers keying off referential equality (React context dispatch / memoized
+    // selectors) re-render exactly when their side changed, and pass the untouched
+    // side through by reference. `changed` is the overall signal (account created,
+    // back-link reassigned, or wrong-typed stale claim cleared).
     return {
-        accounts: [...accounts, ...createdAccounts],
-        expenses: [...expenses],
+        accounts: accountsChanged ? [...accounts, ...createdAccounts] : accounts,
+        expenses: expensesChanged ? [...expenses] : expenses,
         changed,
         notices,
     };

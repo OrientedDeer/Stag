@@ -93,11 +93,16 @@ export const useFileManager = () => {
             // empty or dangling would have its balance silently dropped. Re-link each
             // orphan to a freshly created paired account so the liability lands on the
             // account side (mirrors the invariant AddExpenseModal enforces at creation).
-            const { accounts: newAccounts, notices: relinkNotices } = linkOrphanLoanExpenses(reconstitutedAccounts, newExpenses);
+            const {
+                accounts: newAccounts,
+                expenses: repairedExpenses,
+                changed: orphansRepaired,
+                notices: relinkNotices,
+            } = linkOrphanLoanExpenses(reconstitutedAccounts, newExpenses);
 
             accountDispatch({ type: 'SET_BULK_DATA', payload: { accounts: newAccounts, amountHistory: data.amountHistory || {} } });
             incomeDispatch({ type: 'SET_BULK_DATA', payload: { incomes: newIncomes } });
-            expenseDispatch({ type: 'SET_BULK_DATA', payload: { expenses: newExpenses } });
+            expenseDispatch({ type: 'SET_BULK_DATA', payload: { expenses: repairedExpenses } });
             // Merge taxSettings with defaults to ensure all fields are present
             const mergedTaxSettings = {
                 ...defaultTaxState,
@@ -131,14 +136,23 @@ export const useFileManager = () => {
             incrementImportKey();
 
             // Surface any orphan-loan repairs the guard made (#124): the imported
-            // backup had mortgage/loan expenses missing their paired account, so we
-            // created accounts to carry those balances. Tell the user rather than
-            // mutating their data silently.
+            // backup had mortgage/loan expenses with broken account links. Tell the
+            // user rather than mutating their data silently. Two flavors:
+            //  - Account(s) created (notices non-empty): a loan had no paired account.
+            //  - Link-only repair (changed but no notice): a back-link was reassigned
+            //    or a stale wrong-typed claim cleared — no account created, but the
+            //    imported data WAS modified, so still surface it [#124 review-4 #3].
             if (relinkNotices.length > 0) {
                 receiptToast.show({
                     message: relinkNotices.length === 1
                         ? 'Re-linked 1 orphaned loan to a new account so its balance is tracked.'
                         : `Re-linked ${relinkNotices.length} orphaned loans to new accounts so their balances are tracked.`,
+                    linkTo: '/current/accounts',
+                    linkLabel: 'View accounts',
+                });
+            } else if (orphansRepaired) {
+                receiptToast.show({
+                    message: 'Repaired loan links in your imported data so balances are tracked correctly.',
                     linkTo: '/current/accounts',
                     linkLabel: 'View accounts',
                 });

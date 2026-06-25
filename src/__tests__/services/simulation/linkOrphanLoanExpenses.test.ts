@@ -238,6 +238,63 @@ describe('linkOrphanLoanExpenses (#124 orphan guard)', () => {
         expect(calculateNetWorth(result.accounts)).toBe(195000);
     });
 
+    it('does NOT clear a SECOND correctly-typed carrier of the same expense (#124 review-4 [2])', () => {
+        // Two PropertyAccounts both legitimately link the same mortgage (e.g. a
+        // genuine second financed property whose expense id collided, or duplicate
+        // carriers). clearStaleClaims must NOT wipe the non-chosen one — it's a valid
+        // carrier and AccountGrowth must keep syncing the loan onto it. Only WRONG-typed
+        // claimants get cleared. A wrong-typed DebtAccount in the mix IS cleared.
+        const carrierA = new PropertyAccount('acc-prop-a', 'Home A', 500000, 'Financed', 300000, 400000, 'exs-house');
+        const carrierB = new PropertyAccount('acc-prop-b', 'Home B', 400000, 'Financed', 200000, 300000, 'exs-house');
+        const wrongTyped = new DebtAccount('acc-debt', 'Unrelated Debt', 5000, 'exs-house', 5);
+        const mortgage = makeMortgage('exs-house', '', 300000); // back-link empty
+        const accounts: AnyAccount[] = [carrierA, carrierB, wrongTyped];
+
+        const result = linkOrphanLoanExpenses(accounts, [mortgage]);
+
+        // No new account; the chosen carrier (first correctly-typed) gets the back-link.
+        expect(result.accounts).toHaveLength(3);
+        // BOTH correctly-typed carriers KEEP their claim — neither is wiped.
+        expect(carrierA.linkedAccountId).toBe('exs-house');
+        expect(carrierB.linkedAccountId).toBe('exs-house');
+        // The wrong-typed DebtAccount IS cleared.
+        expect(wrongTyped.linkedAccountId).toBe('');
+        expect(result.changed).toBe(true);
+    });
+
+    it('back-link-only repair returns a NEW expenses ref but the SAME accounts ref (#124 review-4 [8])', () => {
+        // Carrier exists and claims the expense; only the expense back-link is repaired.
+        // Expenses changed => new expenses array; no account changed => same accounts ref.
+        const carrier = new PropertyAccount('acc-prop', 'Home', 500000, 'Financed', 300000, 400000, 'exs-house');
+        const mortgage = makeMortgage('exs-house', '', 300000); // back-link empty
+        const accounts: AnyAccount[] = [carrier];
+        const expenses: AnyExpense[] = [mortgage];
+
+        const result = linkOrphanLoanExpenses(accounts, expenses);
+
+        expect(result.changed).toBe(true);
+        expect(result.expenses).not.toBe(expenses); // expense changed => new ref
+        expect(result.accounts).toBe(accounts);     // no account changed => same ref
+    });
+
+    it('stale-claim-only repair returns a NEW accounts ref but the SAME expenses ref (#124 review-4 [8])', () => {
+        // Carrier exists AND the expense back-link already points at it (no expense
+        // change), but a wrong-typed account also claims the expense (account change).
+        // Accounts changed => new accounts array; expenses untouched => same ref.
+        const carrier = new PropertyAccount('acc-prop', 'Home', 500000, 'Financed', 300000, 400000, 'exs-house');
+        const wrongTyped = new DebtAccount('acc-debt', 'Unrelated Debt', 5000, 'exs-house', 5);
+        const mortgage = makeMortgage('exs-house', 'acc-prop', 300000); // back-link already correct
+        const accounts: AnyAccount[] = [carrier, wrongTyped];
+        const expenses: AnyExpense[] = [mortgage];
+
+        const result = linkOrphanLoanExpenses(accounts, expenses);
+
+        expect(result.changed).toBe(true);
+        expect(wrongTyped.linkedAccountId).toBe(''); // stale claim cleared
+        expect(result.accounts).not.toBe(accounts); // account changed => new ref
+        expect(result.expenses).toBe(expenses);     // expense untouched => same ref
+    });
+
     it('does NOT double-claim a loan when a DebtAccount already links the expense (#124 [3])', () => {
         const existing = new DebtAccount('acc-loan', 'Personal Loan', 12000, 'exs-loan', 8);
         const loan = makeLoan('exs-loan', '', 12000); // back-link broken

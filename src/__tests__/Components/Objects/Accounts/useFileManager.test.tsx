@@ -50,6 +50,12 @@ const revokeObjectURLMock = vi.fn();
 URL.createObjectURL = createObjectURLMock;
 URL.revokeObjectURL = revokeObjectURLMock;
 
+// Spy on the receipt toast so we can assert the #124 orphan-repair notice.
+const toastShowMock = vi.fn();
+vi.mock('../../../../components/Layout/Overlays/ReceiptToast', () => ({
+  useReceiptToast: () => ({ show: toastShowMock }),
+}));
+
 // Wrapper component that provides all necessary contexts
 const AllProvidersWrapper = ({ children }: { children: ReactNode }) => {
   return (
@@ -73,6 +79,7 @@ describe('useFileManager', () => {
     alertMock.mockClear();
     createObjectURLMock.mockClear();
     revokeObjectURLMock.mockClear();
+    toastShowMock.mockClear();
     // Local noon (not 'YYYY-MM-DD', which parses as UTC midnight) so the local
     // calendar date is 2024-01-15 in any reasonable runner timezone.
     vi.setSystemTime(new Date(2024, 0, 15, 12, 0, 0));
@@ -294,6 +301,103 @@ describe('useFileManager', () => {
       expect(alertMock).not.toHaveBeenCalledWith(
         'Error importing backup. Please check file format.'
       );
+    });
+
+    it('surfaces a "created account" toast when an imported loan has no paired account (#124)', () => {
+      const { result } = renderHook(() => useFileManager(), { wrapper: AllProvidersWrapper });
+
+      // An orphan mortgage with no paired account: the guard creates one (notices non-empty).
+      const backupData = {
+        version: 1,
+        accounts: [],
+        amountHistory: {},
+        incomes: [],
+        expenses: [
+          {
+            className: 'MortgageExpense', id: 'exs-orphan', name: 'Old Home', frequency: 'Monthly',
+            valuation: 500000, loan_balance: 300000, starting_loan_balance: 400000, apr: 4,
+            term_length: 30, property_taxes: 1.2, valuation_deduction: 0, maintenance: 0.5,
+            utilities: 200, home_owners_insurance: 0.3, pmi: 0, hoa_fee: 0,
+            is_tax_deductible: 'Itemized', tax_deductible: 0, linkedAccountId: '', startDate: '2020-01-01',
+          },
+        ],
+        taxSettings: { filingStatus: 'Single', stateResidency: 'CA', deductionMethod: 'Itemized', fedOverride: null, ficaOverride: null, stateOverride: null, year: 2024 },
+        assumptions: defaultAssumptions,
+      };
+
+      act(() => { result.current.handleGlobalImport(JSON.stringify(backupData)); });
+
+      expect(toastShowMock).toHaveBeenCalledTimes(1);
+      expect(toastShowMock.mock.calls[0][0].message).toMatch(/Re-linked 1 orphaned loan to a new account/);
+    });
+
+    it('surfaces a "repaired loan links" toast for a notice-less back-link repair (#124 review-4 #3)', () => {
+      const { result } = renderHook(() => useFileManager(), { wrapper: AllProvidersWrapper });
+
+      // A correctly-typed PropertyAccount already carries the mortgage (claims it), but
+      // the mortgage's own linkedAccountId is empty. The guard repairs ONLY the
+      // back-link — no account created, EMPTY notices, but changed=true. The import must
+      // still tell the user it modified their data.
+      const backupData = {
+        version: 1,
+        accounts: [
+          {
+            className: 'PropertyAccount', id: 'acc-house', name: 'Home', amount: 500000,
+            ownershipType: 'Financed', loanAmount: 300000, startingLoanBalance: 400000,
+            linkedAccountId: 'exs-house', apr: 4,
+          },
+        ],
+        amountHistory: {},
+        incomes: [],
+        expenses: [
+          {
+            className: 'MortgageExpense', id: 'exs-house', name: 'Home', frequency: 'Monthly',
+            valuation: 500000, loan_balance: 300000, starting_loan_balance: 400000, apr: 4,
+            term_length: 30, property_taxes: 1.2, valuation_deduction: 0, maintenance: 0.5,
+            utilities: 200, home_owners_insurance: 0.3, pmi: 0, hoa_fee: 0,
+            is_tax_deductible: 'Itemized', tax_deductible: 0, linkedAccountId: '', startDate: '2020-01-01',
+          },
+        ],
+        taxSettings: { filingStatus: 'Single', stateResidency: 'CA', deductionMethod: 'Itemized', fedOverride: null, ficaOverride: null, stateOverride: null, year: 2024 },
+        assumptions: defaultAssumptions,
+      };
+
+      act(() => { result.current.handleGlobalImport(JSON.stringify(backupData)); });
+
+      expect(toastShowMock).toHaveBeenCalledTimes(1);
+      expect(toastShowMock.mock.calls[0][0].message).toMatch(/Repaired loan links/);
+    });
+
+    it('shows NO orphan toast when imported loans are already correctly linked (#124)', () => {
+      const { result } = renderHook(() => useFileManager(), { wrapper: AllProvidersWrapper });
+
+      const backupData = {
+        version: 1,
+        accounts: [
+          {
+            className: 'PropertyAccount', id: 'acc-house', name: 'Home', amount: 500000,
+            ownershipType: 'Financed', loanAmount: 300000, startingLoanBalance: 400000,
+            linkedAccountId: 'exs-house', apr: 4,
+          },
+        ],
+        amountHistory: {},
+        incomes: [],
+        expenses: [
+          {
+            className: 'MortgageExpense', id: 'exs-house', name: 'Home', frequency: 'Monthly',
+            valuation: 500000, loan_balance: 300000, starting_loan_balance: 400000, apr: 4,
+            term_length: 30, property_taxes: 1.2, valuation_deduction: 0, maintenance: 0.5,
+            utilities: 200, home_owners_insurance: 0.3, pmi: 0, hoa_fee: 0,
+            is_tax_deductible: 'Itemized', tax_deductible: 0, linkedAccountId: 'acc-house', startDate: '2020-01-01',
+          },
+        ],
+        taxSettings: { filingStatus: 'Single', stateResidency: 'CA', deductionMethod: 'Itemized', fedOverride: null, ficaOverride: null, stateOverride: null, year: 2024 },
+        assumptions: defaultAssumptions,
+      };
+
+      act(() => { result.current.handleGlobalImport(JSON.stringify(backupData)); });
+
+      expect(toastShowMock).not.toHaveBeenCalled();
     });
 
     it('should filter out invalid objects during reconstitution', () => {
