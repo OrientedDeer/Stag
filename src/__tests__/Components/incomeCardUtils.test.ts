@@ -6,7 +6,6 @@ import {
     getFrequencyDisplay,
     computeContributionWarnings,
     getRSUPriceValidationMessage,
-    getRSUMilestoneStartWarning,
     getDeferralDestinationValidationMessage,
     getDeferralDestinationMessageFor,
     hasConfiguredDeferral,
@@ -345,64 +344,6 @@ describe('getRSUPriceValidationMessage', () => {
     it('passes once a positive share price is set on the linked account', () => {
         const w = makeRSUWorkIncome();
         expect(getRSUPriceValidationMessage(w, [makeRSUAccount(150)])).toBeNull();
-    });
-});
-
-describe('getRSUMilestoneStartWarning', () => {
-    function makeMilestoneRSUWorkIncome(overrides: Partial<{
-        rsuVestingSchedule: 'NONE' | 'cliff-1yr' | 'graded-3yr' | 'graded-4yr';
-        rsuGrantShares: number;
-        startDate: Date | undefined;
-        startMilestoneId: string | undefined;
-    }> = {}): WorkIncome {
-        const w = makeWorkIncome();
-        w.rsuVestingSchedule = overrides.rsuVestingSchedule ?? 'cliff-1yr';
-        w.rsuGrantShares = overrides.rsuGrantShares ?? 1000;
-        w.rsuAccountId = 'rsu-acct-1';
-        // Milestone-started: no fixed startDate, a startMilestoneId instead.
-        w.startDate = 'startDate' in overrides ? overrides.startDate : undefined;
-        w.startMilestoneId = 'startMilestoneId' in overrides
-            ? overrides.startMilestoneId
-            : 'milestone-retire';
-        return w;
-    }
-
-    it('returns null for non-WorkIncome', () => {
-        expect(getRSUMilestoneStartWarning(makeFERSPension())).toBeNull();
-        expect(getRSUMilestoneStartWarning(makeFutureSS())).toBeNull();
-    });
-
-    it('returns null when no RSU grant is configured (no schedule)', () => {
-        const w = makeMilestoneRSUWorkIncome({ rsuVestingSchedule: 'NONE' });
-        expect(getRSUMilestoneStartWarning(w)).toBeNull();
-    });
-
-    it('returns null when the grant has zero shares', () => {
-        const w = makeMilestoneRSUWorkIncome({ rsuGrantShares: 0 });
-        expect(getRSUMilestoneStartWarning(w)).toBeNull();
-    });
-
-    it('returns null when the income has a fixed start date (vesting works normally)', () => {
-        // A fixed startDate is the grant anchor — vesting projects fine, so no notice.
-        const w = makeMilestoneRSUWorkIncome({ startDate: new Date(2024, 0, 1) });
-        expect(getRSUMilestoneStartWarning(w)).toBeNull();
-    });
-
-    it('returns null when there is neither a start date nor a start milestone (half-built grant)', () => {
-        const w = makeMilestoneRSUWorkIncome({ startMilestoneId: undefined });
-        expect(w.startDate).toBeUndefined();
-        expect(getRSUMilestoneStartWarning(w)).toBeNull();
-    });
-
-    it('fires for a milestone-started grant with no fixed start date', () => {
-        const w = makeMilestoneRSUWorkIncome();
-        expect(w.startDate).toBeUndefined();
-        expect(w.startMilestoneId).toBe('milestone-retire');
-        expect(w.rsuGrantShares).toBeGreaterThan(0);
-        const msg = getRSUMilestoneStartWarning(w);
-        expect(msg).not.toBeNull();
-        expect(msg).toContain('milestone');
-        expect(msg).toContain('fixed start date');
     });
 });
 

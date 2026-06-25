@@ -421,11 +421,12 @@ export class WorkIncome extends BaseIncome {
 
   /**
    * Get the number of shares vesting in a given calendar year, based on the
-   * grant date (startDate) and vesting schedule. Returns 0 when RSUs aren't
-   * configured or the income has no start date.
+   * grant date (startDate, or the milestone-resolved `anchorDate`) and the
+   * vesting schedule. Returns 0 when RSUs aren't configured or there is no
+   * anchor (no startDate and no anchorDate).
    */
-  getAnnualRSUVestShares(year: number): number {
-    return this.getRSUVestEventsForYear(year).reduce((sum, ev) => sum + ev.shares, 0);
+  getAnnualRSUVestShares(year: number, anchorDate?: Date): number {
+    return this.getRSUVestEventsForYear(year, anchorDate).reduce((sum, ev) => sum + ev.shares, 0);
   }
 
   /**
@@ -436,16 +437,25 @@ export class WorkIncome extends BaseIncome {
    * their real vest month — used to stamp the lot's vestDate (long-term /
    * minimum-holding eligibility depend on the actual date, not Jan 1).
    *
+   * The grant date (anchor) is normally the income's fixed `startDate`. For a
+   * MILESTONE-started grant (`startDate` undefined, `startMilestoneId` set) the
+   * caller passes `anchorDate` — Jan 1 of the milestone-resolved start year (see
+   * RSUVesting.processRSUVesting / issue #131). With NEITHER a startDate nor an
+   * anchor there is nothing to schedule against, so no events vest.
+   *
    * Dates are constructed LOCAL (new Date(y, m, d)) — never via ISO strings —
    * to avoid the recurring date-only UTC off-by-one.
    */
-  getRSUVestEventsForYear(year: number): { vestDate: Date; shares: number }[] {
+  getRSUVestEventsForYear(year: number, anchorDate?: Date): { vestDate: Date; shares: number }[] {
     if (!isActiveRSUGrant(this)) {
       return [];
     }
-    if (!this.startDate) return [];
+    // Anchor on the explicit anchorDate (milestone-resolved start) when given,
+    // else the fixed startDate. No anchor at all → nothing to vest against.
+    const anchor = anchorDate ?? this.startDate;
+    if (!anchor) return [];
 
-    const grant = new Date(this.startDate);
+    const grant = new Date(anchor);
     const grantYear = grant.getFullYear();
     const grantMonth = grant.getMonth();
     const grantDay = grant.getDate();

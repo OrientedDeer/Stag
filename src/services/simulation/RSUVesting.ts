@@ -52,6 +52,28 @@ function projectFMVAtVest(
 }
 
 /**
+ * Resolve the grant-date anchor a WorkIncome's RSU schedule vests against.
+ *
+ * - Fixed start: the income's own `startDate` (unchanged behavior).
+ * - Milestone start (`startDate` undefined, `startMilestoneId` set): Jan 1 of the
+ *   year that milestone fired in this path, via `resolveMilestoneYear` (#131).
+ *   Built LOCAL (new Date(y, 0, 1)) per the repo's date-only convention.
+ * - Neither resolvable → undefined → the caller skips vesting (no anchor to
+ *   schedule against; matches the salary, which also doesn't pay pre-milestone).
+ */
+function resolveRSUAnchorDate(
+    inc: WorkIncome,
+    resolveMilestoneYear?: (milestoneId: string) => number | undefined,
+): Date | undefined {
+    if (inc.startDate) return inc.startDate;
+    if (inc.startMilestoneId && resolveMilestoneYear) {
+        const resolvedYear = resolveMilestoneYear(inc.startMilestoneId);
+        if (resolvedYear !== undefined) return new Date(resolvedYear, 0, 1);
+    }
+    return undefined;
+}
+
+/**
  * Process RSU vesting for a single simulation year.
  *
  * For each WorkIncome with an RSU schedule linked to an RSUAccount:
@@ -72,6 +94,13 @@ export function processRSUVesting(
     year: number,
     currentSimYear: number,
     logs: string[],
+    // Resolve a startMilestoneId to the calendar year that milestone fired in
+    // this path (undefined if it hasn't fired yet / in-horizon). Supplied by the
+    // engine, which already tracks milestone reach-years. Lets a MILESTONE-started
+    // grant (no fixed startDate) vest anchored to the resolved start year — see
+    // issue #131. Optional so direct callers that only use fixed-startDate grants
+    // need not pass it.
+    resolveMilestoneYear?: (milestoneId: string) => number | undefined,
 ): RSUVestingResult {
     const vestIncomes: PassiveIncome[] = [];
     const rsuLots: Record<string, RSULot[]> = {};
@@ -81,12 +110,19 @@ export function processRSUVesting(
         if (!(inc instanceof WorkIncome)) return;
         if (!isActiveRSUGrant(inc)) return;
         if (!inc.rsuAccountId) return;
-        if (!inc.startDate) return;
+
+        // Anchor the vest schedule. Fixed-startDate grants anchor on startDate.
+        // A milestone-started grant (no startDate) anchors on Jan 1 of the year
+        // its startMilestoneId fired in this path (#131). With neither, there is
+        // nothing to schedule against — skip (matches the salary, which also
+        // doesn't pay until the milestone fires).
+        const anchorDate = resolveRSUAnchorDate(inc, resolveMilestoneYear);
+        if (!anchorDate) return;
 
         // Per-event vest dates so each lot is stamped with its REAL vest date
         // (grant month + tranche offset), not a flat Jan-1 bucket — long-term /
         // minimum-holding eligibility depend on the actual date.
-        const vestEvents = inc.getRSUVestEventsForYear(year);
+        const vestEvents = inc.getRSUVestEventsForYear(year, anchorDate);
         const grossShares = vestEvents.reduce((sum, ev) => sum + ev.shares, 0);
         if (grossShares <= 0) return;
 
@@ -161,7 +197,7 @@ export function processRSUVesting(
             if (netShares <= 0) return;
             rsuLots[rsuAccount.id].push({
                 id: `RSU-LOT-${year}-${inc.id}-${idx}`,
-                grantDate: new Date(inc.startDate as Date),
+                grantDate: new Date(anchorDate),
                 vestDate: ev.vestDate,
                 fmvAtVest,
                 shares: netShares,

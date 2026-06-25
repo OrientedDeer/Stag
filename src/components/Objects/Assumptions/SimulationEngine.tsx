@@ -297,8 +297,20 @@ function simulateOneYearWithNewEngine(
     // grant year. Mirrors the startYear computation in useSimulation.
     const currentSimYear =
         new Date().getFullYear() - (assumptions.demographics.priorYearMode ? 1 : 0);
+    // Resolve a startMilestoneId to the year it fired in THIS path, so a
+    // milestone-started RSU grant (no fixed startDate) can anchor its vest
+    // schedule to that year (#131). Prior-year fires live in
+    // previousMilestoneReachYears; a fire THIS year is in milestoneResult.newlyReached.
+    const resolveMilestoneYear = (milestoneId: string): number | undefined => {
+        const prior = previousMilestoneReachYears.get(milestoneId);
+        if (prior !== undefined) return prior;
+        const reachedThisYear = milestoneResult.newlyReached.find(
+            ev => ev.milestoneId === milestoneId
+        );
+        return reachedThisYear?.yearReached;
+    };
     const rsuVestingResult = processRSUVesting(
-        incomesWithEarningsTest, accounts, year, currentSimYear, logs
+        incomesWithEarningsTest, accounts, year, currentSimYear, logs, resolveMilestoneYear
     );
     // Add vest income to allIncomes only — that array drives tax/FICA (via the
     // solver) and the income breakdown. It is NOT added to incomesWithEarningsTest
