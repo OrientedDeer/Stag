@@ -215,13 +215,98 @@ describe('linkOrphanLoanExpenses (#124 orphan guard)', () => {
         expect(calculateNetWorth(result.accounts)).toBe(200000);
     });
 
-    it('repairs an orphan that arrives through the localStorage boot-hydration path (#124 [0])', () => {
-        // Reproduce the boot path: accounts and expenses are persisted under SEPARATE
-        // localStorage keys and rehydrated independently (hydrateAccountState /
-        // hydrateExpenseState). A pre-existing orphan mortgage (no paired account in
-        // the persisted accounts blob) survives reconstitution. Running the guard over
-        // the two independently-hydrated sets repairs it — exactly what a boot-time
-        // reconciler reading both contexts would do.
+    it('STILL repairs a mortgage whose forward link points at a non-loan account (#124 [1])', () => {
+        // Legacy/hand-edited backup: the mortgage's linkedAccountId resolves to a
+        // present account, but it's a SavedAccount — which carries NO loan
+        // (SavedAccount has no loanAmount, and AccountGrowth only syncs linked loan
+        // state onto Property/Debt). The forward link "resolves" but does NOT carry
+        // the liability, so the loan would be silently dropped from account-only net
+        // worth. The guard must treat this as still-orphaned and create the proper
+        // paired PropertyAccount.
+        const saved = new SavedAccount('acc-saved', 'Savings', 50000, 1.5);
+        const mortgage = makeMortgage('exs-house', 'acc-saved', 300000); // points at the wrong type
+        const accounts: AnyAccount[] = [saved];
+        const expenses: AnyExpense[] = [mortgage];
+
+        const result = linkOrphanLoanExpenses(accounts, expenses);
+
+        // A PropertyAccount was created to carry the loan (saved + new property = 2).
+        expect(result.accounts).toHaveLength(2);
+        const created = result.accounts.find(a => a instanceof PropertyAccount) as PropertyAccount;
+        expect(created).toBeDefined();
+        expect(created.loanAmount).toBe(300000);
+        // Back-link repointed to the real carrier.
+        expect(mortgage.linkedAccountId).toBe(created.id);
+        // Net worth: 50k saved + (500k − 300k) property = 250k. NOT 50k (silent drop).
+        expect(calculateNetWorth(result.accounts)).toBe(250000);
+    });
+
+    it('STILL repairs a loan whose forward link points at a non-debt account (#124 [1])', () => {
+        const saved = new SavedAccount('acc-saved', 'Savings', 50000, 1.5);
+        const loan = makeLoan('exs-loan', 'acc-saved', 12000); // points at the wrong type
+        const accounts: AnyAccount[] = [saved];
+        const expenses: AnyExpense[] = [loan];
+
+        const result = linkOrphanLoanExpenses(accounts, expenses);
+
+        expect(result.accounts).toHaveLength(2);
+        const created = result.accounts.find(a => a instanceof DebtAccount) as DebtAccount;
+        expect(created).toBeDefined();
+        expect(created.amount).toBe(12000);
+        expect(loan.linkedAccountId).toBe(created.id);
+        // 50k saved − 12k debt = 38k. NOT 50k.
+        expect(calculateNetWorth(result.accounts)).toBe(38000);
+    });
+
+    it('STILL repairs a mortgage that only a wrong-typed DebtAccount claims (#124 [2])', () => {
+        // Reverse-link type mismatch: a DebtAccount claims the MortgageExpense's id,
+        // but a mortgage's balance must live on a PropertyAccount.loanAmount, not a
+        // DebtAccount. The DebtAccount does not carry the mortgage, so the guard must
+        // still create the paired PropertyAccount rather than treating it as covered.
+        const wrongType = new DebtAccount('acc-debt', 'Some Debt', 9999, 'exs-house', 5);
+        const mortgage = makeMortgage('exs-house', '', 300000);
+        const accounts: AnyAccount[] = [wrongType];
+        const expenses: AnyExpense[] = [mortgage];
+
+        const result = linkOrphanLoanExpenses(accounts, expenses);
+
+        // The pre-existing DebtAccount stays; a PropertyAccount is added for the loan.
+        expect(result.accounts).toHaveLength(2);
+        const created = result.accounts.find(a => a instanceof PropertyAccount) as PropertyAccount;
+        expect(created).toBeDefined();
+        expect(created.loanAmount).toBe(300000);
+        expect(mortgage.linkedAccountId).toBe(created.id);
+        // (500k − 300k) property − 9999 unrelated debt = 190001.
+        expect(calculateNetWorth(result.accounts)).toBe(190001);
+    });
+
+    it('STILL repairs a loan that only a wrong-typed PropertyAccount claims (#124 [2])', () => {
+        const wrongType = new PropertyAccount('acc-prop', 'Home', 400000, 'Owned', 0, 0, 'exs-loan');
+        const loan = makeLoan('exs-loan', '', 12000);
+        const accounts: AnyAccount[] = [wrongType];
+        const expenses: AnyExpense[] = [loan];
+
+        const result = linkOrphanLoanExpenses(accounts, expenses);
+
+        expect(result.accounts).toHaveLength(2);
+        const created = result.accounts.find(a => a instanceof DebtAccount) as DebtAccount;
+        expect(created).toBeDefined();
+        expect(created.amount).toBe(12000);
+        expect(loan.linkedAccountId).toBe(created.id);
+        // 400k property + 0 loan − 12k new debt = 388000.
+        expect(calculateNetWorth(result.accounts)).toBe(388000);
+    });
+
+    it('would repair an orphan reconstituted from the localStorage boot-hydration blobs (#124 [0]; boot wiring tracked in #136)', () => {
+        // NOTE: the guard is NOT wired into localStorage boot-hydration today — that
+        // path has no shared chokepoint (AccountProvider/ExpenseProvider hydrate from
+        // SEPARATE keys) and is tracked as #136. This test only proves the HELPER is
+        // correct on boot-shaped input: accounts and expenses are persisted under
+        // separate localStorage blobs and rehydrated independently (hydrateAccountState
+        // / hydrateExpenseState); a pre-existing orphan mortgage (no paired account in
+        // the persisted accounts blob) survives reconstitution. Run over the two
+        // independently-hydrated sets, the helper repairs it — i.e. wiring it into a
+        // boot-time reconciler (#136) would fix the path; the helper itself is ready.
         const persistedAccounts = { accounts: [], amountHistory: {} };
         const persistedExpenses = {
             expenses: [

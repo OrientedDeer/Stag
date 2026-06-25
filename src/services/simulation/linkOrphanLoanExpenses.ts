@@ -12,12 +12,13 @@ import { AnyExpense, MortgageExpense, LoanExpense } from '../../components/Objec
  * LoanExpense has a paired PropertyAccount / DebtAccount carrying its balance.
  *
  * Imported, QR-restored, legacy, or hand-edited backups can violate that invariant:
- * a MortgageExpense / LoanExpense whose linkedAccountId is empty, or points at an
- * account that isn't present. Such an "orphan" loan would otherwise be silently
- * dropped from net worth (its balance lives only on the expense side, which the
- * account-only reconciler never reads). To prevent that silent liability loss, this
- * pass auto-creates and bidirectionally links a paired account for each orphan,
- * mirroring AddExpenseModal.tsx:312-347:
+ * a MortgageExpense / LoanExpense whose linkedAccountId is empty, points at an
+ * account that isn't present, or points at an account of the wrong type (one that
+ * carries no loan). Such an "orphan" loan would otherwise be silently dropped from
+ * net worth (its balance lives only on the expense side, which the account-only
+ * reconciler never reads). To prevent that silent liability loss, this pass
+ * auto-creates and bidirectionally links a correctly-typed paired account for each
+ * orphan, mirroring the paired-account creation in AddExpenseModal.tsx:312-333:
  *   - MortgageExpense -> PropertyAccount('Financed', value=valuation, loan=loan_balance)
  *   - LoanExpense     -> DebtAccount(amount=expense.amount)
  *
@@ -25,10 +26,16 @@ import { AnyExpense, MortgageExpense, LoanExpense } from '../../components/Objec
  * account.linkedAccountId == expense.id) and the per-year balance sync in
  * AccountGrowth (keyed off expense.linkedAccountId == account.id) both resolve.
  *
+ * Call sites: this guard runs on the IMPORT path (useFileManager.handleGlobalImport
+ * — JSON/QR/cloud restore) and on SCENARIO LOAD (ScenarioContext, ephemeral — feeds
+ * the sim, not persisted). It is NOT yet wired into localStorage boot-hydration
+ * (AccountProvider/ExpenseProvider hydrate from separate keys with no shared
+ * chokepoint); covering that path is tracked as issue #136 (a pending user decision).
+ *
  * Pure: returns new arrays; expense link assignment mutates the passed expense
  * instances' public `linkedAccountId` field in place (a field write, not a model
  * change), which is acceptable since these are freshly reconstituted instances
- * owned by the import. Returns the (possibly extended) accounts, the expenses, and
+ * owned by the caller. Returns the (possibly extended) accounts, the expenses, and
  * a list of human-readable notices describing each repair (so a trace is surfaced
  * rather than mutating silently). When nothing is orphaned the inputs pass through
  * unchanged and `notices` is empty.
@@ -44,35 +51,56 @@ export function linkOrphanLoanExpenses(
     expenses: AnyExpense[],
 ): OrphanLinkResult {
     const accountIds = new Set(accounts.map(a => a.id));
+    const accountById = new Map<string, AnyAccount>(accounts.map(a => [a.id, a]));
 
-    // Index accounts that already claim a given expense id (account.linkedAccountId
-    // === expense.id). The expense->account and account->expense links are set
-    // INDEPENDENTLY at creation, so a backup can carry one direction without the
-    // other: an account legitimately points at the loan while the expense's own
-    // linkedAccountId is empty or dangling. Such a loan is NOT an orphan — its
-    // balance already lives on that account. Creating a second paired account would
-    // double-claim the loan (double-counted liability in net worth / total debt).
-    // We repair the expense's back-link to the existing account instead.
-    const accountByClaimedExpenseId = new Map<string, AnyAccount>();
+    // The loan-carrying account for a given expense must be the RIGHT type: a
+    // MortgageExpense's balance lives on a PropertyAccount.loanAmount, a
+    // LoanExpense's on a DebtAccount.amount. SavedAccount/InvestedAccount/etc.
+    // carry no loan, and AccountGrowth only syncs linkedState onto Property/Debt,
+    // so a link to the wrong type does NOT carry the liability — the loan would
+    // still be silently dropped from account-only net worth. Treat such a link as
+    // uncovered so the proper paired account is still created.
+    const isCarrier = (acc: AnyAccount | undefined, expense: MortgageExpense | LoanExpense): boolean => {
+        if (!acc) return false;
+        return expense instanceof MortgageExpense
+            ? acc instanceof PropertyAccount
+            : acc instanceof DebtAccount;
+    };
+
+    // Index correctly-typed loan-carrying accounts that already claim a given
+    // expense id (account.linkedAccountId === expense.id). The expense->account and
+    // account->expense links are set INDEPENDENTLY at creation, so a backup can
+    // carry one direction without the other: a PropertyAccount/DebtAccount
+    // legitimately points at the loan while the expense's own linkedAccountId is
+    // empty or dangling. Such a loan is NOT an orphan — its balance already lives
+    // on that account; creating a second paired account would double-claim it.
+    // Only correctly-typed carriers are indexed: a DebtAccount claiming a
+    // MortgageExpense (or vice-versa) does NOT cover it.
+    const carrierByClaimedExpenseId = new Map<string, AnyAccount>();
     for (const acc of accounts) {
         if ((acc instanceof PropertyAccount || acc instanceof DebtAccount) && acc.linkedAccountId) {
             // First writer wins; a well-formed backup never has two accounts
             // claiming the same expense, and reusing one is strictly safer than
             // minting a duplicate.
-            if (!accountByClaimedExpenseId.has(acc.linkedAccountId)) {
-                accountByClaimedExpenseId.set(acc.linkedAccountId, acc);
+            if (!carrierByClaimedExpenseId.has(acc.linkedAccountId)) {
+                carrierByClaimedExpenseId.set(acc.linkedAccountId, acc);
             }
         }
     }
 
-    // An expense is already covered if EITHER direction resolves to a present
-    // account: its own linkedAccountId names an existing account, OR some account
-    // claims this expense. Empty/dangling in BOTH directions => true orphan.
+    // An expense is already covered only when a correctly-TYPED, loan-carrying
+    // account links it in EITHER direction: its own linkedAccountId names a present
+    // carrier of the right type, OR such a carrier claims this expense. Anything
+    // else (no link, link to a non-carrier type, wrong-typed claim) => still an
+    // orphan, so the proper paired account gets created.
     const coveringAccount = (expense: MortgageExpense | LoanExpense): AnyAccount | null => {
-        if (expense.linkedAccountId && accountIds.has(expense.linkedAccountId)) {
-            return accounts.find(a => a.id === expense.linkedAccountId) ?? null;
+        if (expense.linkedAccountId) {
+            const forward = accountById.get(expense.linkedAccountId);
+            if (isCarrier(forward, expense)) return forward!;
         }
-        return accountByClaimedExpenseId.get(expense.id) ?? null;
+        const reverse = carrierByClaimedExpenseId.get(expense.id);
+        if (isCarrier(reverse, expense)) return reverse!;
+        return null;
     };
 
     const createdAccounts: AnyAccount[] = [];

@@ -48,7 +48,8 @@ describe('MilestoneEvaluator', () => {
             // net worth through the paired PropertyAccount (value − loanAmount), counted
             // exactly once; the MortgageExpense is never read. (A truly unlinked
             // expense-side loan is re-linked to a paired account by linkOrphanLoanExpenses
-            // before it ever reaches the simulation — covered in that helper's tests.)
+            // on the import + scenario-load paths — covered in that helper's tests;
+            // localStorage boot-hydration is not yet wired, tracked in #136.)
             const accounts: AnyAccount[] = [
                 new PropertyAccount('acc-mort', 'Home', 500000, 'Financed', 300000, 400000, 'mort'),
             ];

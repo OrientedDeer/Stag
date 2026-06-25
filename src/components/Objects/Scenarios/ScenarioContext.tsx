@@ -404,7 +404,10 @@ export const ScenarioProvider = ({ children }: { children: ReactNode }) => {
         // saved scenario carrying a MortgageExpense/LoanExpense with an empty or
         // dangling linkedAccountId would have its balance silently dropped (and shift
         // when NET_WORTH/TOTAL_DEBT milestones fire). Re-link each orphan to a paired
-        // account before simulating, exactly as the import path does.
+        // account before simulating, as the import path does. This repair is EPHEMERAL
+        // — it feeds the locally-reconstituted accounts into the sim below; the saved
+        // scenario blob is not rewritten. (localStorage boot-hydration is a separate,
+        // not-yet-wired path tracked in #136.)
         const { accounts } = linkOrphanLoanExpenses(reconstitutedAccounts, expenses);
 
         // Merge assumptions with defaults

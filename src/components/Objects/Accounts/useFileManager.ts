@@ -14,6 +14,7 @@ import { ImportKeyContext } from './ImportKeyContext';
 import { BudgetContext, BudgetState, reconstituteBudgetState } from '../Budget/BudgetContext';
 import { loadAccountMap, saveAccountMap } from '../../../services/simplefinBalances';
 import { formatDateForInput, jsonDateReplacer } from '../../../utils/formatters';
+import { useReceiptToast } from '../../Layout/Overlays/ReceiptToast';
 
 export interface FullBackup {
     version: number;
@@ -44,6 +45,7 @@ export const useFileManager = () => {
     const { importKey, incrementImportKey } = useContext(ImportKeyContext);
     const budgetContext = useContext(BudgetContext);
     const { dispatch: budgetDispatch } = budgetContext;
+    const receiptToast = useReceiptToast();
 
     const getBackupData = (): FullBackup => {
         // Extract budget data (excluding dispatch/helpers). selectedMonth/selectedYear
@@ -91,9 +93,7 @@ export const useFileManager = () => {
             // empty or dangling would have its balance silently dropped. Re-link each
             // orphan to a freshly created paired account so the liability lands on the
             // account side (mirrors the invariant AddExpenseModal enforces at creation).
-            // Repair is silent; the helper's `notices` are available for a future
-            // user-visible trace if one is wanted.
-            const { accounts: newAccounts } = linkOrphanLoanExpenses(reconstitutedAccounts, newExpenses);
+            const { accounts: newAccounts, notices: relinkNotices } = linkOrphanLoanExpenses(reconstitutedAccounts, newExpenses);
 
             accountDispatch({ type: 'SET_BULK_DATA', payload: { accounts: newAccounts, amountHistory: data.amountHistory || {} } });
             incomeDispatch({ type: 'SET_BULK_DATA', payload: { incomes: newIncomes } });
@@ -129,6 +129,20 @@ export const useFileManager = () => {
             }
             // Increment shared importKey to force chart remounts after import
             incrementImportKey();
+
+            // Surface any orphan-loan repairs the guard made (#124): the imported
+            // backup had mortgage/loan expenses missing their paired account, so we
+            // created accounts to carry those balances. Tell the user rather than
+            // mutating their data silently.
+            if (relinkNotices.length > 0) {
+                receiptToast.show({
+                    message: relinkNotices.length === 1
+                        ? 'Re-linked 1 orphaned loan to a new account so its balance is tracked.'
+                        : `Re-linked ${relinkNotices.length} orphaned loans to new accounts so their balances are tracked.`,
+                    linkTo: '/current/accounts',
+                    linkLabel: 'View accounts',
+                });
+            }
             // Force page reload to ensure all components update
             //window.location.reload();
         } catch (e) {
