@@ -23,23 +23,32 @@ import { CapType } from "../../components/Objects/Assumptions/AssumptionsContext
 // =============================================================================
 
 /**
- * Is this account an UNLINKED user debt that surplus may pay down when placed in
- * the priority list? This is THE shared predicate (review [9]): the engine
- * (allocateSurplus) and the PriorityTab waterfall preview BOTH call it so their
- * notion of "is this a paydown bucket" can never drift.
+ * Is this account a standalone user debt the user may ADD as a paydown priority?
+ * This is the OFFERING predicate (review [4]) — it does NOT check the balance, so
+ * a debt the user keeps stays addable/listable even at a $0 balance (the balance
+ * fluctuates over the projection; the engine just won't pay a $0 debt at sim
+ * time, which is correct).
  *
  * - DeficitDebtAccount (extends DebtAccount) is the system overdraft, paid in
- *   step 1 — excluded here.
+ *   step 1 — excluded.
  * - A linked debt (linkedAccountId set) is driven by its LoanExpense and
  *   accelerated via the loan's extra_payment (feature B) — excluded so surplus
  *   never double-drives it.
- * - A zero/negative balance has nothing to pay down.
  */
-export function isSurplusPaydownDebt(account: AnyAccount | undefined | null): account is DebtAccount {
+export function isOfferableDebt(account: AnyAccount | undefined | null): account is DebtAccount {
     return account instanceof DebtAccount
         && !(account instanceof DeficitDebtAccount)
-        && !account.linkedAccountId
-        && account.amount > 0;
+        && !account.linkedAccountId;
+}
+
+/**
+ * Is this an offerable debt that ALSO has a positive balance to pay down RIGHT
+ * NOW? This is THE engine predicate (review [9]): allocateSurplus and the
+ * PriorityTab waterfall preview both call it so their notion of "is this a
+ * fundable paydown" can't drift. A $0 debt is offerable ([4]) but not paid.
+ */
+export function isSurplusPaydownDebt(account: AnyAccount | undefined | null): account is DebtAccount {
+    return isOfferableDebt(account) && account.amount > 0;
 }
 
 /**

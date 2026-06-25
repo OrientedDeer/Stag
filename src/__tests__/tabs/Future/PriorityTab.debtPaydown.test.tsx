@@ -78,10 +78,10 @@ describe('PriorityTab debt-paydown waterfall preview', () => {
         );
     }
 
-    it('[2] a debt bucket does not starve a lower monthly bucket', () => {
+    it('[0]/[1] a debt bucket is a one-time line that does not starve a lower monthly bucket', () => {
         // $5000 @ 22% card ranked ABOVE a $500/mo fixed savings bucket. The card
-        // is a ONE-TIME annual payoff spread over 12 months in the preview, so it
-        // must NOT zero out the recurring $500/mo savings below it.
+        // is a ONE-TIME payoff from the year's surplus — it must NOT consume the
+        // recurring monthly waterfall, so the $500/mo savings below keeps funding.
         const accounts = [
             new DebtAccount('cc', 'Credit Card', 5000, '', 22),
             new SavedAccount('sav', 'Savings', 0),
@@ -91,26 +91,65 @@ describe('PriorityTab debt-paydown waterfall preview', () => {
             { id: 'p-sav', name: 'Monthly savings', type: 'SAVINGS', accountId: 'sav', capType: 'FIXED', capValue: 500 },
         ]);
 
-        // The debt line is labeled as a paydown (not "Everything remaining").
+        // The debt renders as a distinct one-time payoff line ([0]/[1]).
         expect(screen.getByText('Pay down Credit Card')).toBeInTheDocument();
+        expect(screen.getByText(/one-time/)).toBeInTheDocument();
 
-        // The lower savings bucket is NOT flagged "Never funded" (it would be if
-        // the debt bucket consumed the whole monthly surplus as a lump).
+        // The lower savings bucket is reachable (not starved by the one-time debt).
         expect(screen.queryByText(/Never funded/)).not.toBeInTheDocument();
     });
 
-    it('[5] a LINKED debt placed in priorities is NOT rendered as a paydown', () => {
+    it('[1] a HUGE debt (payoff > monthly surplus) still does not starve the recurring bucket below', () => {
+        // The classic monthly < payoff/12 case the old /12 spread broke: a $50k
+        // @ 22% card ($61k payoff) dwarfs a single month's surplus, but as a
+        // one-time line it must not clamp/zero the $300/mo savings below it.
         const accounts = [
-            new DebtAccount('loan-debt', 'Auto Loan', 8000, 'exp-auto', 6), // linked
+            new DebtAccount('cc', 'Big Card', 50000, '', 22),
+            new SavedAccount('sav', 'Savings', 0),
+        ];
+        renderWithState(accounts, [
+            { id: 'p-cc', name: 'Pay down: Big Card', type: 'DEBT', accountId: 'cc', capType: 'REMAINDER' },
+            { id: 'p-sav', name: 'Monthly savings', type: 'SAVINGS', accountId: 'sav', capType: 'FIXED', capValue: 300 },
+        ]);
+
+        expect(screen.getByText('Pay down Big Card')).toBeInTheDocument();
+        expect(screen.getByText(/one-time/)).toBeInTheDocument();
+        // Lower recurring bucket is NOT flagged unreachable despite the huge debt.
+        expect(screen.queryByText(/Never funded/)).not.toBeInTheDocument();
+    });
+
+    it('[4] a $0-balance unlinked debt is still OFFERED in the destination dropdown', () => {
+        // A paid-off card the user keeps: offerable (balance varies over the
+        // projection) even though the engine won't pay a $0 debt at sim time.
+        const accounts = [new DebtAccount('cc', 'Paid Card', 0, '', 22)];
+        render(
+            <AccountContext.Provider value={{ accounts, amountHistory: {} }}>
+                <PriorityTab />
+            </AccountContext.Provider>
+        );
+        fireEvent.click(screen.getByText('Add Priority'));
+        fireEvent.click(screen.getByLabelText('Destination Account'));
+
+        expect(screen.getAllByText('Pay down: Paid Card').length).toBeGreaterThan(0);
+    });
+
+    it('[5]/[0] a LINKED debt persisted as REMAINDER is dead, not a paydown or a real remainder', () => {
+        const accounts = [
+            new DebtAccount('loan-debt', 'Auto Loan', 8000, 'exp-auto', 6), // linked → ineligible
+            new SavedAccount('sav', 'Savings', 0),
         ];
         renderWithState(accounts, [
             { id: 'p-loan', name: 'Linked loan bucket', type: 'DEBT', accountId: 'loan-debt', capType: 'REMAINDER' },
+            { id: 'p-sav', name: 'Monthly savings', type: 'SAVINGS', accountId: 'sav', capType: 'FIXED', capValue: 500 },
         ]);
 
-        // It must NOT show a "Pay down" line — the engine skips linked debts, so
-        // the preview falls through to the normal REMAINDER label instead.
+        // The engine skips a linked debt, so the bucket is DEAD ([0]): NOT a
+        // "Pay down" line, and NOT a real "Everything remaining" that would
+        // starve the savings bucket below it.
         expect(screen.queryByText('Pay down Auto Loan')).not.toBeInTheDocument();
-        expect(screen.getByText('Everything remaining')).toBeInTheDocument();
+        expect(screen.getByText('Not funded')).toBeInTheDocument();
+        // The lower savings bucket is reachable (not starved by a false remainder).
+        expect(screen.queryByText(/Never funded/)).not.toBeInTheDocument();
     });
 
     it('[3] a REMAINDER bucket whose account was deleted does not starve lower buckets', () => {
@@ -151,6 +190,37 @@ describe('PriorityTab debt-paydown waterfall preview', () => {
             expect.objectContaining({
                 type: 'ADD_PRIORITY',
                 payload: expect.objectContaining({ type: 'DEBT', accountId: 'cc', capType: 'REMAINDER' }),
+            })
+        );
+    });
+
+    it('[5] the bucket type is DERIVED from the account kind (SavedAccount → SAVINGS, not INVESTMENT)', () => {
+        // The add and edit handlers both derive PriorityBucket.type from the
+        // resolved account via the same helper, so adding a SavedAccount bucket
+        // proves the SAVINGS derivation (the [5] bug was a hardcoded INVESTMENT).
+        const dispatch = vi.fn();
+        const accounts = [new SavedAccount('sav', 'Savings', 0)];
+        render(
+            <ReceiptToastProvider>
+                <AssumptionsContext.Provider value={{ state: { ...defaultAssumptions }, dispatch }}>
+                    <AccountContext.Provider value={{ accounts, amountHistory: {} }}>
+                        <IncomeContext.Provider value={{ incomes: income }}>
+                            <ExpenseContext.Provider value={{ expenses }}>
+                                <PriorityTab />
+                            </ExpenseContext.Provider>
+                        </IncomeContext.Provider>
+                    </AccountContext.Provider>
+                </AssumptionsContext.Provider>
+            </ReceiptToastProvider>
+        );
+
+        fireEvent.click(screen.getByText('Add Priority'));
+        fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+
+        expect(dispatch).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: 'ADD_PRIORITY',
+                payload: expect.objectContaining({ accountId: 'sav', type: 'SAVINGS' }),
             })
         );
     });

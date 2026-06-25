@@ -11,6 +11,7 @@ import { describe, it, expect } from 'vitest';
 import {
     allocateSurplus,
     SurplusAllocationSettings,
+    isOfferableDebt,
     isSurplusPaydownDebt,
     postInterestDebtBalance,
 } from '../../../services/simulation/SurplusAllocator';
@@ -323,6 +324,38 @@ describe('SurplusAllocator', () => {
             // preview displays (postInterestDebtBalance). Same source of truth.
             expect(result.allocations.find(a => a.accountId === 'cc')?.amount)
                 .toBeCloseTo(postInterestDebtBalance(debt), 6);
+        });
+
+        // [4]: isOfferableDebt (offering) drops the amount>0 check that
+        // isSurplusPaydownDebt (engine) keeps — so a $0 debt is still ADDABLE but
+        // not PAID.
+        it('isOfferableDebt offers a $0 unlinked debt that isSurplusPaydownDebt would not pay', () => {
+            const zeroCard = new DebtAccount('z', 'Paid Card', 0, '', 22);
+            expect(isOfferableDebt(zeroCard)).toBe(true);    // still offerable
+            expect(isSurplusPaydownDebt(zeroCard)).toBe(false); // but not paid
+
+            // linked/deficit/non-debt are NOT offerable either.
+            expect(isOfferableDebt(new DebtAccount('l', 'Loan', 5000, 'exp-x', 6))).toBe(false);
+            expect(isOfferableDebt(new DeficitDebtAccount('d', 'Deficit', 5000))).toBe(false);
+            expect(isOfferableDebt(new SavedAccount('s', 'Savings', 100))).toBe(false);
+            expect(isOfferableDebt(undefined)).toBe(false);
+        });
+
+        it('the engine does not pay a $0-balance debt bucket (surplus flows past it)', () => {
+            const zeroCard = new DebtAccount('z', 'Paid Card', 0, '', 22);
+            const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
+
+            const result = allocateSurplus(
+                10000,
+                [zeroCard, brokerage],
+                [{ accountId: 'z', priority: 1 }, { accountId: 'brok', priority: 2, capType: 'REMAINDER' }],
+                0,
+                defaultSettings()
+            );
+
+            // No paydown for the $0 debt; full surplus reaches brokerage.
+            expect(result.allocations.find(a => a.accountId === 'z')).toBeUndefined();
+            expect(result.allocations.find(a => a.accountId === 'brok')?.amount).toBe(10000);
         });
     });
 

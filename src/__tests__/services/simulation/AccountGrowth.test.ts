@@ -9,6 +9,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { processInflows, growAccounts } from '../../../services/simulation/AccountGrowth';
+import { postInterestDebtBalance } from '../../../services/simulation/SurplusAllocator';
 import {
     InvestedAccount,
     SavedAccount,
@@ -523,6 +524,10 @@ describe('AccountGrowth', () => {
                 const updatedDebt = result.find(a => a.id === 'debt1') as DebtAccount;
                 // $10000 * 1.06 = $10600
                 expect(updatedDebt.amount).toBeCloseTo(10600, 0);
+                // [6]: the grown balance is exactly postInterestDebtBalance — the
+                // shared helper the SurplusAllocator/preview also use, so the
+                // engine paydown sizing and the growth formula can't drift.
+                expect(updatedDebt.amount).toBeCloseTo(postInterestDebtBalance(debt), 6);
             });
 
             it('should reduce balance by inflows', () => {

@@ -1,4 +1,5 @@
 import { AnyAccount, InvestedAccount, SavedAccount, ESPPAccount, RSUAccount, PropertyAccount, DebtAccount, DeficitDebtAccount, ESPPLot, RSULot } from "../../components/Objects/Accounts/models";
+import { postInterestDebtBalance } from "./SurplusAllocator";
 import { AnyExpense, MortgageExpense, LoanExpense } from "../../components/Objects/Expense/models";
 import { AnyIncome, WorkIncome, getIncomeActiveMultiplier } from "../../components/Objects/Income/models";
 import { AssumptionsState } from "../../components/Objects/Assumptions/AssumptionsContext";
@@ -332,7 +333,10 @@ export function growAccounts(
         }
 
         if (acc instanceof DebtAccount) {
-            let finalBalance = linkedState?.balance ?? (acc.amount * (1 + acc.apr / 100));
+            // Linked debts take their balance from the loan; an unlinked debt
+            // grows by APR — postInterestDebtBalance (review [6]) single-sources
+            // that formula so the engine paydown and the preview can't drift.
+            let finalBalance = linkedState?.balance ?? postInterestDebtBalance(acc);
             if (totalIn > 0) finalBalance = Math.max(0, finalBalance - totalIn);
             return acc.increment(assumptions, finalBalance);
         }
