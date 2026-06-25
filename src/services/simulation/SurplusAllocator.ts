@@ -23,33 +23,40 @@ import { CapType } from "../../components/Objects/Assumptions/AssumptionsContext
 // =============================================================================
 
 /**
+ * Sub-cent balances are treated as paid off ([5]): a loan amortized to a float
+ * residual (e.g. $0.0001) must NOT be a fundable paydown — that would emit a $0
+ * paydown line and a spurious Sankey edge.
+ */
+export const DEBT_PAYOFF_EPSILON = 0.005;
+
+/**
  * Is this account a user debt the user may ADD as a surplus-paydown priority?
  * This is the OFFERING predicate — it does NOT check the balance, so a debt the
  * user keeps stays addable/listable even at a $0 balance (the balance fluctuates
  * over the projection; the engine just won't pay a $0 debt at sim time).
  *
- * #60 (linked-debt rework): EVERY user debt in this app is a LoanExpense↔
- * DebtAccount linked pair (AddAccount "Debt" and AddExpense "Loan" both create
- * the pair), so the old `!linkedAccountId` exclusion made the feature dead.
- * Surplus now pays a debt by reducing its linked LoanExpense's balance (the
- * authoritative figure) — see the engine apply in SimulationEngine — so LINKED
- * debts are exactly what we offer. Only the system DeficitDebtAccount (the
- * overdraft paid in step 1) is excluded.
+ * #60 (linked-debt rework): a surplus paydown works by reducing the linked
+ * LoanExpense's balance (the authoritative figure — see the engine apply in
+ * SimulationEngine). So eligibility REQUIRES a backing loan ([1]:
+ * `linkedAccountId` set). Every REAL debt is a LoanExpense↔DebtAccount pair, so
+ * this offers exactly the payable debts and excludes a legacy/imported UNLINKED
+ * DebtAccount (which the solver builds no cap for → would be offered but never
+ * paid). The system DeficitDebtAccount (overdraft, paid in step 1) is excluded.
  */
 export function isOfferableDebt(account: AnyAccount | undefined | null): account is DebtAccount {
     return account instanceof DebtAccount
-        && !(account instanceof DeficitDebtAccount);
+        && !(account instanceof DeficitDebtAccount)
+        && !!account.linkedAccountId;
 }
 
 /**
- * Is this an offerable debt that ALSO has a positive balance to pay down RIGHT
- * NOW? A $0 debt is offerable but not paid. (The real per-year cap is the linked
- * LoanExpense's post-amortization balance, supplied by the solver via
- * settings.debtPaydownCaps — NOT postInterestDebtBalance, which was an
- * unlinked-DebtAccount APR-grossup artifact.)
+ * Is this an offerable debt that ALSO has a real (above sub-cent, [5]) balance to
+ * pay down RIGHT NOW? A $0/near-$0 debt is offerable but not paid. (The real
+ * per-year cap is the linked LoanExpense's post-amortization balance, supplied by
+ * the solver via settings.debtPaydownCaps.)
  */
 export function isSurplusPaydownDebt(account: AnyAccount | undefined | null): account is DebtAccount {
-    return isOfferableDebt(account) && account.amount > 0;
+    return isOfferableDebt(account) && account.amount > DEBT_PAYOFF_EPSILON;
 }
 
 /**

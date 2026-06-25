@@ -15,10 +15,10 @@
  * - Pure functions - no mutations during planning
  */
 
-import { AnyAccount, InvestedAccount, DebtAccount } from "../../components/Objects/Accounts/models";
+import { AnyAccount, InvestedAccount } from "../../components/Objects/Accounts/models";
 import { AnyIncome, FERSPensionIncome, PassiveIncome } from "../../components/Objects/Income/models";
 import { AnyExpense, LoanExpense } from "../../components/Objects/Expense/models";
-import { isSurplusPaydownDebt } from "./SurplusAllocator";
+import { isOfferableDebt, DEBT_PAYOFF_EPSILON } from "./SurplusAllocator";
 import { TaxParameters } from "../../data/TaxData";
 import { TaxState } from "../../components/Objects/Taxes/TaxContext";
 import { AssumptionsState } from "../../components/Objects/Assumptions/AssumptionsContext";
@@ -65,17 +65,22 @@ const DEFAULT_EMERGENCY_FUND_TARGET = 30000;
  * LoanExpense's current (post-amortization) balance, so allocateSurplus pays at
  * most what's left on the loan and the engine reduces the authoritative expense.
  * The link is bidirectional — the LoanExpense's linkedAccountId is the
- * DebtAccount's id — so we key by `loan.linkedAccountId`. Eligibility uses the
- * SAME predicate the allocator does. Returns {} when no debt is paydown-eligible
- * (the common case) so default-off is a no-op.
+ * DebtAccount's id — so we key by `loan.linkedAccountId`. Returns {} when no debt
+ * is payable (the common case) so default-off is a no-op.
+ *
+ * [6] The cap gates on the LOAN's balance (`exp.amount`, authoritative), NOT the
+ * DebtAccount mirror — the mirror can be stale/0 while the loan still owes (or
+ * vice versa). [5] Sub-cent residuals are treated as paid off so a near-zero
+ * loan isn't a fundable paydown.
  */
 function buildDebtPaydownCaps(accounts: AnyAccount[], expenses: AnyExpense[]): Record<string, number> {
     const caps: Record<string, number> = {};
     for (const exp of expenses) {
         if (!(exp instanceof LoanExpense) || !exp.linkedAccountId) continue;
+        if (exp.amount <= DEBT_PAYOFF_EPSILON) continue; // [5]/[6]: gate on the LOAN balance
         const debt = accounts.find(a => a.id === exp.linkedAccountId);
-        if (debt instanceof DebtAccount && isSurplusPaydownDebt(debt) && exp.amount > 0) {
-            // exp.amount is the loan's current post-amortization balance.
+        // The debt must be a paydown-eligible account type (linked, non-deficit).
+        if (isOfferableDebt(debt)) {
             caps[debt.id] = exp.amount;
         }
     }

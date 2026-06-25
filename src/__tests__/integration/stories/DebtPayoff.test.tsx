@@ -642,8 +642,107 @@ describe('Story 7: Debt Payoff', () => {
 
         expect(extraOnly).not.toBeNull();
         expect(extraPlusSurplus).not.toBeNull();
-        // Both levers stack — adding surplus on top of extra_payment clears it sooner.
-        expect(extraPlusSurplus!).toBeLessThanOrEqual(extraOnly!);
+        // [9] Both levers stack and surplus GENUINELY accelerates beyond B alone —
+        // strictly sooner (the large annual surplus shaves multiple years off).
+        expect(extraPlusSurplus!).toBeLessThan(extraOnly!);
+    });
+
+    it('[0] the SAME debt in two priority buckets pays it down once, not twice', () => {
+        // SMALL $2000 loan so ONE year's surplus clears it AND leaves room — that's
+        // the case where a 2nd duplicate bucket would (buggy) produce a phantom
+        // no-op allocation that double-counts in bucketDetail/investedUser. The fix
+        // re-resolves the already-reduced loan ($0) so the 2nd allocation is empty.
+        const makeSmallLoan = () => new LoanExpense(
+            'exp-smallcard', 'Small Card', 2000, 'Monthly', 18.0, 'Compounding',
+            200, 'No', 0, 'acc-smallcard',
+            new Date('2025-01-01'), new Date('2030-01-01')
+        );
+        const makeSmallDebt = () => new DebtAccount('acc-smallcard', 'Small Card Debt', 2000, 'exp-smallcard', 18.0);
+        const brokerage = () => new InvestedAccount('acc-brokerage', 'Brokerage', 0, 0, 10, 0.05, 'Brokerage', true, 1.0, 0);
+
+        const dup: AssumptionsState = {
+            ...assumptions,
+            priorities: [
+                { id: 'p-card-1', name: 'Pay down: Small Card', type: 'DEBT', accountId: 'acc-smallcard', capType: 'REMAINDER' },
+                { id: 'p-card-2', name: 'Pay down: Small Card (dup)', type: 'DEBT', accountId: 'acc-smallcard', capType: 'REMAINDER' },
+                { id: 'p-brok', name: 'Brokerage', type: 'INVESTMENT', accountId: 'acc-brokerage', capType: 'REMAINDER' },
+            ],
+        };
+        const single: AssumptionsState = {
+            ...assumptions,
+            priorities: [
+                { id: 'p-card', name: 'Pay down: Small Card', type: 'DEBT', accountId: 'acc-smallcard', capType: 'REMAINDER' },
+                { id: 'p-brok', name: 'Brokerage', type: 'INVESTMENT', accountId: 'acc-brokerage', capType: 'REMAINDER' },
+            ],
+        };
+
+        const run = (a: AssumptionsState) => runSimulation(
+            yearsToSimulate,
+            [propertyAccount, makeSmallDebt(), savingsAccount, brokerage()],
+            [workIncome],
+            [mortgageExpense, makeSmallLoan(), livingExpenses],
+            a, taxState
+        );
+
+        const dupSim = run(dup);
+        const singleSim = run(single);
+
+        for (let i = 0; i < singleSim.length; i++) {
+            const d = dupSim[i]?.expenses.find(e => e.id === 'exp-smallcard') as LoanExpense;
+            const s = singleSim[i]?.expenses.find(e => e.id === 'exp-smallcard') as LoanExpense;
+            if (d && s) {
+                // Loan balance path identical (2nd allocation pays the reduced balance).
+                expect(d.amount).toBeGreaterThanOrEqual(0);
+                expect(Math.abs(d.amount - s.amount), `dup loan must match single in ${singleSim[i].year}`).toBeLessThan(0.01);
+            }
+            // [0] CRUX: the Sankey/saved breakdown must NOT double-count the
+            // paydown. bucketDetail for the debt and investedUser must match the
+            // single-bucket run exactly (the bug inflated bucketDetail + deflated
+            // investedUser on the 2nd, no-op allocation).
+            const dDetail = dupSim[i]?.cashflow.bucketDetail['acc-smallcard'] ?? 0;
+            const sDetail = singleSim[i]?.cashflow.bucketDetail['acc-smallcard'] ?? 0;
+            expect(Math.abs(dDetail - sDetail), `bucketDetail must not double-count in ${singleSim[i].year}`).toBeLessThan(0.01);
+            expect(
+                Math.abs(dupSim[i].cashflow.investedUser - singleSim[i].cashflow.investedUser),
+                `investedUser must not be deflated by a phantom paydown in ${singleSim[i].year}`
+            ).toBeLessThan(0.01);
+        }
+        assertAllYearsInvariants(dupSim);
+    });
+
+    it('[5] a loan amortized to a sub-cent residual is not a fundable paydown', () => {
+        // A nearly-paid-off loan ($0.001) flagged for paydown must be treated as
+        // paid off (epsilon) — its balance path is IDENTICAL whether or not it's
+        // in the priority list, i.e. surplus does NOT touch it.
+        const makeTinyLoan = () => new LoanExpense(
+            'exp-studentloan', 'Student Loan', 0.001, 'Monthly', 5.0, 'Compounding',
+            530, 'No', 0, 'acc-studentloan',
+            new Date('2025-01-01'), new Date('2035-01-01')
+        );
+        const makeTinyAccount = () => new DebtAccount('acc-studentloan', 'Student Loan Debt', 0.001, 'exp-studentloan', 5.0);
+
+        const run = (priorities: AssumptionsState['priorities']) => runSimulation(
+            yearsToSimulate,
+            [propertyAccount, makeTinyAccount(), savingsAccount],
+            [workIncome],
+            [mortgageExpense, makeTinyLoan(), livingExpenses],
+            { ...assumptions, priorities }, taxState
+        );
+
+        const flagged = run([
+            { id: 'p-loan', name: 'Pay down: Student Loan', type: 'DEBT', accountId: 'acc-studentloan', capType: 'REMAINDER' },
+        ]);
+        const notFlagged = run([]);
+
+        // Sub-cent loan is treated as paid off — flagging it changes nothing.
+        for (let i = 0; i < notFlagged.length; i++) {
+            const a = flagged[i]?.expenses.find(e => e.id === 'exp-studentloan') as LoanExpense;
+            const b = notFlagged[i]?.expenses.find(e => e.id === 'exp-studentloan') as LoanExpense;
+            if (a && b) {
+                expect(a.amount, `sub-cent loan must be untouched by the flag in ${notFlagged[i].year}`).toBe(b.amount);
+            }
+        }
+        assertAllYearsInvariants(flagged);
     });
 
     it('C default-off: with no debt in priorities, a debt account tracks only its loan', () => {

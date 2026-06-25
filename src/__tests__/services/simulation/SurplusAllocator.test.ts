@@ -108,7 +108,7 @@ describe('SurplusAllocator', () => {
     // priorities (or no cap), behavior is byte-identical to before.
     describe('debt paydown as a priority bucket', () => {
         it('pays down a debt placed in the priority list, before lower buckets', () => {
-            const debt = new DebtAccount('cc', 'Credit Card', 5000, '', 22);
+            const debt = new DebtAccount('cc', 'Credit Card', 5000, 'exp-cc', 22);
             const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
 
             const result = allocateSurplus(
@@ -128,7 +128,7 @@ describe('SurplusAllocator', () => {
         });
 
         it('respects user order: a debt ranked BELOW a remainder bucket gets nothing', () => {
-            const debt = new DebtAccount('cc', 'Credit Card', 5000, '', 22);
+            const debt = new DebtAccount('cc', 'Credit Card', 5000, 'exp-cc', 22);
             const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
 
             const result = allocateSurplus(
@@ -147,7 +147,7 @@ describe('SurplusAllocator', () => {
         });
 
         it('caps the paydown at the loan balance (excess flows to the next bucket)', () => {
-            const debt = new DebtAccount('cc', 'Credit Card', 1500, '', 22);
+            const debt = new DebtAccount('cc', 'Credit Card', 1500, 'exp-cc', 22);
             const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
 
             const result = allocateSurplus(
@@ -183,9 +183,37 @@ describe('SurplusAllocator', () => {
             expect(result.allocations.find(a => a.accountId === 'brok')?.amount).toBe(5000);
         });
 
+        it('[0] a DUPLICATE debt bucket over-allocates here (the engine must clamp)', () => {
+            // The allocator has no cross-bucket dedup: the same debt in two buckets
+            // emits TWO allocations of up-to-cap each. That is why the engine apply
+            // RE-RESOLVES the loan by id and pays against its CURRENT balance — the
+            // 2nd allocation then pays $0. This test documents the allocator output
+            // the engine fix relies on.
+            const debt = new DebtAccount('cc', 'Card', 2000, 'exp-cc', 18);
+            const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
+
+            const result = allocateSurplus(
+                10000,
+                [debt, brokerage],
+                [
+                    { accountId: 'cc', priority: 1 },
+                    { accountId: 'cc', priority: 2 },
+                    { accountId: 'brok', priority: 3, capType: 'REMAINDER' },
+                ],
+                0,
+                defaultSettings({ debtPaydownCaps: { cc: 2000 } })
+            );
+
+            // TWO $2000 debt allocations (total $4000 > the $2000 balance) — the
+            // engine clamps the 2nd to $0 by re-resolving the reduced loan.
+            const ccAllocs = result.allocations.filter(a => a.accountId === 'cc');
+            expect(ccAllocs).toHaveLength(2);
+            expect(ccAllocs.every(a => a.amount === 2000)).toBe(true);
+        });
+
         it('honors avalanche ordering ONLY when the user sets it (high-APR debt ranked first)', () => {
-            const card = new DebtAccount('cc', 'Credit Card', 5000, '', 22);
-            const auto = new DebtAccount('auto', 'Auto Loan', 5000, '', 6);
+            const card = new DebtAccount('cc', 'Credit Card', 5000, 'exp-cc', 22);
+            const auto = new DebtAccount('auto', 'Auto Loan', 5000, 'exp-auto', 6);
 
             // User ranks the 22% card first; $5000 surplus clears it; auto gets $0.
             const result = allocateSurplus(
@@ -204,7 +232,7 @@ describe('SurplusAllocator', () => {
         });
 
         it('default-off: NO debt in priorities → debt untouched, surplus to brokerage', () => {
-            const debt = new DebtAccount('cc', 'Credit Card', 5000, '', 22);
+            const debt = new DebtAccount('cc', 'Credit Card', 5000, 'exp-cc', 22);
             const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
 
             const result = allocateSurplus(
@@ -220,7 +248,7 @@ describe('SurplusAllocator', () => {
         });
 
         it('no cap supplied → debt bucket pays nothing (surplus flows past it)', () => {
-            const debt = new DebtAccount('cc', 'Credit Card', 5000, '', 22);
+            const debt = new DebtAccount('cc', 'Credit Card', 5000, 'exp-cc', 22);
             const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
 
             const result = allocateSurplus(
@@ -237,7 +265,7 @@ describe('SurplusAllocator', () => {
 
         it('paydown strings show the actual payment in whole dollars (no fractional cents)', () => {
             // Partial paydown: $2000 surplus against a $5000 loan cap.
-            const debt = new DebtAccount('cc', 'Credit Card', 5000, '', 22);
+            const debt = new DebtAccount('cc', 'Credit Card', 5000, 'exp-cc', 22);
 
             const result = allocateSurplus(
                 2000,
@@ -261,7 +289,7 @@ describe('SurplusAllocator', () => {
 
         it('the system DeficitDebt is still paid first (step 1), not via a debt bucket', () => {
             const deficit = new DeficitDebtAccount('deficit', 'Deficit', 2000);
-            const debt = new DebtAccount('cc', 'Credit Card', 5000, '', 22);
+            const debt = new DebtAccount('cc', 'Credit Card', 5000, 'exp-cc', 22);
             const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
 
             const result = allocateSurplus(
@@ -283,32 +311,38 @@ describe('SurplusAllocator', () => {
     });
 
     describe('debt-paydown predicates (#60 linked-debt rework)', () => {
-        it('isSurplusPaydownDebt: linked debts ARE now eligible; deficit/$0/non-debt are not', () => {
-            // The rework makes LINKED debts the normal eligible case.
-            expect(isSurplusPaydownDebt(new DebtAccount('cc', 'Card', 5000, '', 22))).toBe(true);
-            expect(isSurplusPaydownDebt(new DebtAccount('l', 'Loan', 5000, 'exp-x', 6))).toBe(true); // linked now eligible
+        it('isSurplusPaydownDebt: LINKED debts eligible; UNLINKED/deficit/sub-cent/non-debt are not', () => {
+            // Eligible: a linked debt with a real balance.
+            expect(isSurplusPaydownDebt(new DebtAccount('cc', 'Card', 5000, 'exp-cc', 22))).toBe(true);
+            expect(isSurplusPaydownDebt(new DebtAccount('l', 'Loan', 5000, 'exp-x', 6))).toBe(true);
+            // [1] UNLINKED debt (no backing loan) → false (would be offered but never paid).
+            expect(isSurplusPaydownDebt(new DebtAccount('u', 'Unlinked', 5000, '', 22))).toBe(false);
             // deficit → false
             expect(isSurplusPaydownDebt(new DeficitDebtAccount('d', 'Deficit', 5000))).toBe(false);
             // zero balance → false
-            expect(isSurplusPaydownDebt(new DebtAccount('z', 'Paid', 0, '', 22))).toBe(false);
+            expect(isSurplusPaydownDebt(new DebtAccount('z', 'Paid', 0, 'exp-z', 22))).toBe(false);
+            // [5] sub-cent residual → false (treated as paid off).
+            expect(isSurplusPaydownDebt(new DebtAccount('r', 'Residual', 0.0001, 'exp-r', 22))).toBe(false);
             // non-debt → false
             expect(isSurplusPaydownDebt(new InvestedAccount('b', 'Brok', 1000, 0, 0, 0.1, 'Brokerage'))).toBe(false);
             expect(isSurplusPaydownDebt(undefined)).toBe(false);
         });
 
-        it('isOfferableDebt offers any non-deficit debt (incl. linked + $0), engine pays only amount>0', () => {
-            const zeroCard = new DebtAccount('z', 'Paid Card', 0, '', 22);
-            expect(isOfferableDebt(zeroCard)).toBe(true);       // offerable at $0
-            expect(isSurplusPaydownDebt(zeroCard)).toBe(false); // but not paid
+        it('[1] isOfferableDebt requires a backing loan: linked offered, UNLINKED/deficit not', () => {
+            const zeroLinkedCard = new DebtAccount('z', 'Paid Card', 0, 'exp-z', 22);
+            expect(isOfferableDebt(zeroLinkedCard)).toBe(true);    // linked, offerable even at $0
+            expect(isSurplusPaydownDebt(zeroLinkedCard)).toBe(false); // but not paid
 
             expect(isOfferableDebt(new DebtAccount('l', 'Loan', 5000, 'exp-x', 6))).toBe(true); // linked offerable
+            // [1] an UNLINKED debt (no backing LoanExpense) is NOT offered.
+            expect(isOfferableDebt(new DebtAccount('u', 'Unlinked', 5000, '', 22))).toBe(false);
             expect(isOfferableDebt(new DeficitDebtAccount('d', 'Deficit', 5000))).toBe(false);
             expect(isOfferableDebt(new SavedAccount('s', 'Savings', 100))).toBe(false);
             expect(isOfferableDebt(undefined)).toBe(false);
         });
 
         it('the engine does not pay a $0-balance debt bucket (surplus flows past it)', () => {
-            const zeroCard = new DebtAccount('z', 'Paid Card', 0, '', 22);
+            const zeroCard = new DebtAccount('z', 'Paid Card', 0, 'exp-z', 22);
             const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
 
             const result = allocateSurplus(

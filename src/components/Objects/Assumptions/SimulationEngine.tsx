@@ -44,6 +44,11 @@ import { buildCashflowDetail } from "../../../services/simulation/CashflowDetail
  * the same clone idiom AccountCard uses for mortgage field edits. The result is
  * a real LoanExpense instance (methods + className intact for growAccounts and
  * reconstitution).
+ *
+ * [8] NOTE: this is a SHALLOW clone — the startDate/endDate Date objects are
+ * shared with the original. That is safe here because only `amount` is mutated
+ * and the engine treats those dates as immutable date-only values (never mutated
+ * in place). If a future change mutates a Date field, copy the dates first.
  */
 function reduceLoanBalance(loan: LoanExpense, paydown: number): LoanExpense {
     const clone = Object.assign(Object.create(Object.getPrototypeOf(loan)), loan) as LoanExpense;
@@ -666,37 +671,50 @@ function simulateOneYearWithNewEngine(
         // instead would be a no-op double-drive (growAccounts re-derives the
         // linked balance from the loan and overwrites it next year).
         //
-        // Resolve each linked-debt-account id → its expense. The link is
-        // bidirectional: the loan's linkedAccountId IS the DebtAccount id.
-        // Structured generically (any account→expense with a `linkedAccountId`)
-        // so a PropertyAccount→MortgageExpense paydown is a trivial future add.
-        const expenseByLinkedAccountId = new Map<string, LoanExpense>();
-        nextExpenses.forEach(exp => {
-            if (exp instanceof LoanExpense && exp.linkedAccountId) {
-                expenseByLinkedAccountId.set(exp.linkedAccountId, exp);
-            }
-        });
+        // [14] This resolution is specific to LoanExpense ↔ DebtAccount (the loan's
+        // linkedAccountId IS the DebtAccount id). MortgageExpense ↔ PropertyAccount
+        // is a future add, not handled here.
+        //
+        // [10] Build the lookup ONLY when at least one allocation targets a debt
+        // account, so the common (no debt flagged) path does no extra work.
+        const anyDebtAllocation = yearPlan.surplusAllocations.some(alloc =>
+            accounts.find(a => a.id === alloc.accountId) instanceof DebtAccount
+        );
+        // [14] Maps a DebtAccount id → its linked LoanExpense's id, so we can
+        // RE-RESOLVE the current loan instance from nextExpenses by id on each
+        // allocation ([0]) — a captured instance goes stale once we replace it.
+        const loanIdByDebtAccountId = new Map<string, string>();
+        if (anyDebtAllocation) {
+            nextExpenses.forEach(exp => {
+                if (exp instanceof LoanExpense && exp.linkedAccountId) {
+                    loanIdByDebtAccountId.set(exp.linkedAccountId, exp.id);
+                }
+            });
+        }
 
         // Apply surplus allocations to withdrawal state (for account growth) and bucket detail (for Sankey)
         yearPlan.surplusAllocations.forEach(alloc => {
             logs.push(`[V2] Surplus allocated: $${alloc.amount.toLocaleString()} to ${alloc.reason}`);
 
             const targetAccount = accounts.find(a => a.id === alloc.accountId);
-            const linkedLoan = expenseByLinkedAccountId.get(alloc.accountId);
+            const linkedLoanId = loanIdByDebtAccountId.get(alloc.accountId);
 
-            if (targetAccount instanceof DebtAccount && isSurplusPaydownDebt(targetAccount) && linkedLoan) {
-                // Pay extra principal on the loan, clamped at its balance (the
-                // solver already capped the allocation at the loan balance, but
-                // clamp defensively so we never drive it negative).
-                const paydown = Math.min(alloc.amount, linkedLoan.amount);
-                if (paydown > 0) {
-                    const idx = nextExpenses.indexOf(linkedLoan);
-                    if (idx !== -1) {
-                        nextExpenses[idx] = reduceLoanBalance(linkedLoan, paydown);
+            if (targetAccount instanceof DebtAccount && linkedLoanId) {
+                // [0] Re-resolve the CURRENT loan from nextExpenses by id (a prior
+                // allocation to the same debt may have already replaced it), and
+                // pay against its CURRENT balance. A duplicate debt bucket then
+                // pays against the already-reduced (likely $0) balance — no phantom
+                // double-paydown, and surplusBucketDetail is incremented ONLY by
+                // what was actually applied.
+                const idx = nextExpenses.findIndex(e => e.id === linkedLoanId);
+                const currentLoan = idx !== -1 ? nextExpenses[idx] : undefined;
+                if (currentLoan instanceof LoanExpense && isSurplusPaydownDebt(targetAccount)) {
+                    const paydown = Math.min(alloc.amount, currentLoan.amount);
+                    if (paydown > 0) {
+                        nextExpenses[idx] = reduceLoanBalance(currentLoan, paydown);
+                        surplusBucketDetail[alloc.accountId] =
+                            (surplusBucketDetail[alloc.accountId] || 0) + paydown;
                     }
-                    // Track for the Sankey (money left the cash pool toward debt).
-                    surplusBucketDetail[alloc.accountId] =
-                        (surplusBucketDetail[alloc.accountId] || 0) + paydown;
                 }
                 return; // do NOT write userInflows for a linked debt (double-drive)
             }

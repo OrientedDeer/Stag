@@ -80,7 +80,7 @@ describe('PriorityTab debt-paydown waterfall preview', () => {
         // #60 rework: a debt bucket is a normal capped bucket (cap = balance), not
         // a one-time callout. It shows a "Pay down <name>" line.
         const accounts = [
-            new DebtAccount('cc', 'Credit Card', 5000, '', 22),
+            new DebtAccount('cc', 'Credit Card', 5000, 'exp-cc', 22),
             new SavedAccount('sav', 'Savings', 0),
         ];
         renderWithState(accounts, [
@@ -139,7 +139,7 @@ describe('PriorityTab debt-paydown waterfall preview', () => {
 
     it('persists type:DEBT when adding a debt-paydown bucket ([8])', () => {
         const dispatch = vi.fn();
-        const accounts = [new DebtAccount('cc', 'Credit Card', 5000, '', 22)];
+        const accounts = [new DebtAccount('cc', 'Credit Card', 5000, 'exp-cc', 22)];
         render(
             <ReceiptToastProvider>
                 <AssumptionsContext.Provider value={{ state: { ...defaultAssumptions }, dispatch }}>

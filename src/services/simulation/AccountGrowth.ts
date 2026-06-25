@@ -335,12 +335,17 @@ export function growAccounts(
         if (acc instanceof DebtAccount) {
             if (linkedState) {
                 // LINKED debt (#60): the balance is the linked LoanExpense's
-                // balance ONLY. Any surplus paydown was already applied to the
-                // loan in the engine (reduceLoanBalance), so the mirror just
-                // follows it. Do NOT subtract userInflows here — that would
-                // double-count the paydown (and the engine no longer writes a
-                // userInflow for a linked debt anyway).
-                return acc.increment(assumptions, linkedState.balance);
+                // balance. Any surplus paydown was already applied to the loan in
+                // the engine (reduceLoanBalance), so the mirror just follows it —
+                // the engine deliberately writes NO userInflow for a linked debt
+                // (that would double-count). [7] Defensive invariant: if some
+                // future path DID write a linked-debt userInflow, apply it on top
+                // of the loan-derived balance rather than silently dropping it.
+                // Today totalIn is always 0 for a linked debt, so this is inert.
+                const finalBalance = totalIn > 0
+                    ? Math.max(0, linkedState.balance - totalIn)
+                    : linkedState.balance;
+                return acc.increment(assumptions, finalBalance);
             }
             // UNLINKED debt (legacy/imported, no backing loan): self-grows by APR,
             // and a direct inflow pays it down. postInterestDebtBalance

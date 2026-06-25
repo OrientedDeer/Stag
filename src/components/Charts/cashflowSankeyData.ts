@@ -7,7 +7,7 @@
  */
 import { WorkIncome, AnyIncome, PassiveIncome } from '../Objects/Income/models';
 import { MortgageExpense, AnyExpense, CLASS_TO_CATEGORY } from '../Objects/Expense/models';
-import { AnyAccount, InvestedAccount } from '../Objects/Accounts/models';
+import { AnyAccount, InvestedAccount, DebtAccount } from '../Objects/Accounts/models';
 import { CashflowDetail } from '../../services/simulation/types';
 
 // Minimum threshold for including a value in the chart (avoids $0 nodes)
@@ -428,17 +428,30 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
         if (totalPrincipal >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Principal Payments', color: 'var(--color-chart-money)', label: 'Principal Payments' });
         if (mortgageInterestAndEscrow >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Mortgage Payments', color: 'var(--c-negative-soft)', label: 'Mortgage Payments' });
 
-        // Priority bucket savings (sorted for stability)
+        // Priority bucket allocations (sorted for stability). #60: a bucket whose
+        // account is a DebtAccount is a surplus DEBT PAYDOWN, not savings — label
+        // it "Pay Down: <name>" in the debt/negative color so the user doesn't
+        // misread it as money saved. (Node id ↔ link target stay in sync via
+        // `nodeId`.) The aggregate trueUserSaved number is unaffected.
         const bucketItems = Object.entries(bucketAllocations)
             .filter(([, amount]) => amount >= MIN_DISPLAY_THRESHOLD)
             .map(([accountId, amount]) => {
                 const account = accounts.find(a => a.id === accountId);
-                return { id: accountId, name: account ? account.name : 'Savings', amount };
+                const isDebt = account instanceof DebtAccount;
+                const name = account ? account.name : 'Savings';
+                return {
+                    id: accountId,
+                    name,
+                    amount,
+                    isDebt,
+                    nodeId: isDebt ? `Pay Down: ${name}` : `Save: ${name}`,
+                    color: isDebt ? 'var(--c-negative-soft)' : 'var(--color-chart-money)',
+                };
             })
             .sort((a, b) => a.name.localeCompare(b.name));
 
         bucketItems.forEach(item => {
-            nodes.push({ id: `Save: ${item.name}`, color: 'var(--color-chart-money)', label: item.name });
+            nodes.push({ id: item.nodeId, color: item.color, label: item.name });
         });
 
         // Expenses (sorted by category for stability - added AFTER savings)
@@ -543,7 +556,7 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
             if (mortgageInterestAndEscrow >= MIN_DISPLAY_THRESHOLD) links.push({ source: 'Net Pay', target: 'Mortgage Payments', value: mortgageInterestAndEscrow });
 
             bucketItems.forEach(item => {
-                links.push({ source: 'Net Pay', target: `Save: ${item.name}`, value: item.amount });
+                links.push({ source: 'Net Pay', target: item.nodeId, value: item.amount });
             });
 
             sortedExpenseCategories.forEach(cat => {

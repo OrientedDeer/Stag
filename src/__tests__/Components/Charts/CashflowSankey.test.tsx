@@ -3,7 +3,7 @@ import { render } from '@testing-library/react';
 import { CashflowSankey } from '../../../components/Charts/CashflowSankey';
 import { PassiveIncome, CurrentSocialSecurityIncome } from '../../../components/Objects/Income/models';
 import { FoodExpense } from '../../../components/Objects/Expense/models';
-import { SavedAccount, InvestedAccount } from '../../../components/Objects/Accounts/models';
+import { SavedAccount, InvestedAccount, DebtAccount } from '../../../components/Objects/Accounts/models';
 import { AssumptionsContext, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
 
 // Mock ResizeObserver
@@ -175,6 +175,54 @@ describe('CashflowSankey', () => {
                 'Traditional withdrawal should flow to Gross Pay'
             ).toBeDefined();
             expect(withdrawToGrossLink.value).toBe(85031);
+        });
+    });
+
+    // #60 [4]: a surplus DEBT PAYDOWN bucket must render as "Pay Down: <name>" in
+    // the debt/negative color — NOT "Save: <name>" in the savings/green color —
+    // so the user doesn't misread debt reduction as money saved.
+    describe('debt-paydown bucket labeling', () => {
+        it('labels a DebtAccount bucket "Pay Down: <name>" in the negative color, not "Save:"/green', () => {
+            const ssIncome = new CurrentSocialSecurityIncome('ss', 'Social Security', 40000, 'Annually', new Date('2076-01-01'), undefined);
+            const expense = new FoodExpense('exp', 'Food', 10000, 'Annually', new Date(2076, 0, 1));
+            const debt = new DebtAccount('acc-card', 'Credit Card', 5000, 'exp-card', 18);
+            const brokerage = new InvestedAccount('acc-brok', 'Brokerage', 100000, 0, 10, 0.05, 'Brokerage');
+
+            render(
+                <CashflowSankey
+                    incomes={[ssIncome]}
+                    expenses={[expense]}
+                    year={2076}
+                    taxes={{ fed: 0, state: 0, fica: 0, capitalGains: 0 }}
+                    withdrawals={{}}
+                    bucketAllocations={{ 'acc-card': 4000, 'acc-brok': 6000 }}
+                    accounts={[debt, brokerage]}
+                    height={400}
+                />,
+                { wrapper }
+            );
+
+            expect(capturedSankeyData).not.toBeNull();
+            const nodes = capturedSankeyData!.nodes;
+
+            // Debt paydown → "Pay Down: Credit Card" in the negative color.
+            const payDown = nodes.find((n: any) => n.id === 'Pay Down: Credit Card');
+            expect(payDown, `nodes: ${nodes.map((n: any) => n.id).join(', ')}`).toBeDefined();
+            expect(payDown.color).toBe('var(--c-negative-soft)');
+            // It must NOT be mislabeled as a "Save:" node.
+            expect(nodes.find((n: any) => n.id === 'Save: Credit Card')).toBeUndefined();
+
+            // A real investment bucket still renders as "Save:" in the money color.
+            const save = nodes.find((n: any) => n.id === 'Save: Brokerage');
+            expect(save).toBeDefined();
+            expect(save.color).toBe('var(--color-chart-money)');
+
+            // The link target matches the (renamed) node id, so the edge resolves.
+            const payDownLink = capturedSankeyData!.links.find(
+                (l: any) => l.target === 'Pay Down: Credit Card'
+            );
+            expect(payDownLink, 'a link must target the renamed debt node').toBeDefined();
+            expect(payDownLink.value).toBe(4000);
         });
     });
 });
