@@ -15,9 +15,10 @@
  * - Pure functions - no mutations during planning
  */
 
-import { AnyAccount, InvestedAccount } from "../../components/Objects/Accounts/models";
+import { AnyAccount, InvestedAccount, DebtAccount } from "../../components/Objects/Accounts/models";
 import { AnyIncome, FERSPensionIncome, PassiveIncome } from "../../components/Objects/Income/models";
-import { AnyExpense } from "../../components/Objects/Expense/models";
+import { AnyExpense, LoanExpense } from "../../components/Objects/Expense/models";
+import { isSurplusPaydownDebt } from "./SurplusAllocator";
 import { TaxParameters } from "../../data/TaxData";
 import { TaxState } from "../../components/Objects/Taxes/TaxContext";
 import { AssumptionsState } from "../../components/Objects/Assumptions/AssumptionsContext";
@@ -58,6 +59,28 @@ import { getIRALimit } from "../../data/ContributionLimits";
 
 const DEFAULT_GROWTH_RATE = 0.07;
 const DEFAULT_EMERGENCY_FUND_TARGET = 30000;
+
+/**
+ * #60 (linked-debt surplus paydown): per-DebtAccount cap = the linked
+ * LoanExpense's current (post-amortization) balance, so allocateSurplus pays at
+ * most what's left on the loan and the engine reduces the authoritative expense.
+ * The link is bidirectional — the LoanExpense's linkedAccountId is the
+ * DebtAccount's id — so we key by `loan.linkedAccountId`. Eligibility uses the
+ * SAME predicate the allocator does. Returns {} when no debt is paydown-eligible
+ * (the common case) so default-off is a no-op.
+ */
+function buildDebtPaydownCaps(accounts: AnyAccount[], expenses: AnyExpense[]): Record<string, number> {
+    const caps: Record<string, number> = {};
+    for (const exp of expenses) {
+        if (!(exp instanceof LoanExpense) || !exp.linkedAccountId) continue;
+        const debt = accounts.find(a => a.id === exp.linkedAccountId);
+        if (debt instanceof DebtAccount && isSurplusPaydownDebt(debt) && exp.amount > 0) {
+            // exp.amount is the loan's current post-amortization balance.
+            caps[debt.id] = exp.amount;
+        }
+    }
+    return caps;
+}
 
 // =============================================================================
 // TYPES
@@ -2035,6 +2058,8 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
             rothIRAContributedThisYear: 0,
             monthlyExpenses: effectiveLivingExpenses / 12,
             reservedAccountIds: input.reservedAccountIds ? new Set(input.reservedAccountIds) : undefined,
+            // #60: cap each debt bucket at its linked loan's current balance.
+            debtPaydownCaps: buildDebtPaydownCaps(input.accounts, input.expenses),
         };
 
         const surplusResult = allocateSurplus(
@@ -2306,6 +2331,8 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
             rothIRAContributedThisYear: 0,
             monthlyExpenses: input.totalLivingExpenses / 12,
             reservedAccountIds: input.reservedAccountIds ? new Set(input.reservedAccountIds) : undefined,
+            // #60: cap each debt bucket at its linked loan's current balance.
+            debtPaydownCaps: buildDebtPaydownCaps(input.accounts, input.expenses),
         };
 
         const surplusResult = allocateSurplus(

@@ -516,95 +516,134 @@ describe('Story 7: Debt Payoff', () => {
         assertAllYearsInvariants(acceleratedSim);
     });
 
-    it('C: a standalone debt placed in the priority list is paid down by surplus', () => {
-        // A standalone (unlinked) high-APR credit card — paid down only when the
-        // user puts it in their Allocation priority list.
-        const card = () => new DebtAccount('acc-card', 'Credit Card', 15000, '', 18);
+    // #60 (linked-debt rework): surplus pays a LINKED debt by applying extra
+    // principal to its LoanExpense; the DebtAccount mirror follows. The
+    // student-loan pair (exp-studentloan ↔ acc-studentloan) is the fixture.
+    const withStudentLoanPriority: AssumptionsState = {
+        ...assumptions,
+        priorities: [
+            { id: 'p-loan', name: 'Pay down: Student Loan', type: 'DEBT', accountId: 'acc-studentloan', capType: 'REMAINDER' },
+        ],
+    };
 
-        // With the card as a priority bucket, surplus retires it. Without it in
-        // priorities, surplus ignores the card (it compounds at 18%).
-        const withCardPriority: AssumptionsState = {
-            ...assumptions,
-            priorities: [
-                { id: 'p-card', name: 'Pay down: Credit Card', type: 'DEBT', accountId: 'acc-card', capType: 'REMAINDER' },
-            ],
-        };
-
-        const cardBalanceAt = (a: AssumptionsState, idx: number): number => {
+    it('C: a flagged LINKED debt clears faster than the schedule-only baseline', () => {
+        const payoffYear = (a: AssumptionsState): number | null => {
             const sim = runSimulation(
                 yearsToSimulate,
-                [propertyAccount, studentLoanAccount, savingsAccount, card()],
+                [propertyAccount, studentLoanAccount, savingsAccount],
                 [workIncome],
                 [mortgageExpense, studentLoanExpense, livingExpenses],
-                a,
-                taxState
+                a, taxState
             );
-            const c = sim[idx]?.accounts.find(acc => acc.id === 'acc-card') as DebtAccount | undefined;
-            return c ? c.amount : 0;
+            for (const y of sim) {
+                const loan = y.expenses.find(e => e.id === 'exp-studentloan') as LoanExpense;
+                if (loan && loan.amount <= 1) return y.year;
+            }
+            return null;
         };
 
-        const notInPriorities = cardBalanceAt(assumptions, 5);
-        const inPriorities = cardBalanceAt(withCardPriority, 5);
+        const basePayoff = payoffYear(assumptions);          // schedule only
+        const flaggedPayoff = payoffYear(withStudentLoanPriority); // + surplus principal
 
-        // Prioritized card has been retired; the ignored one compounded upward.
-        expect(inPriorities).toBeLessThan(notInPriorities);
-
-        // The prioritized card actually clears to $0 (post-interest sizing).
-        const prioritizedSim = runSimulation(
-            yearsToSimulate,
-            [propertyAccount, studentLoanAccount, savingsAccount, card()],
-            [workIncome],
-            [mortgageExpense, studentLoanExpense, livingExpenses],
-            withCardPriority,
-            taxState
-        );
-        const everCleared = prioritizedSim.some(y => {
-            const c = y.accounts.find(acc => acc.id === 'acc-card') as DebtAccount | undefined;
-            return c !== undefined && c.amount < 0.01;
-        });
-        expect(everCleared, 'a prioritized standalone debt should reach $0').toBe(true);
-        assertAllYearsInvariants(prioritizedSim);
+        expect(basePayoff).not.toBeNull();
+        expect(flaggedPayoff).not.toBeNull();
+        // Surplus extra-principal retires the loan strictly sooner.
+        expect(flaggedPayoff!).toBeLessThan(basePayoff!);
     });
 
-    it('C: a LINKED (loan-backed) debt is NOT paid down even if placed in priorities', () => {
-        // Even with the linked student-loan DebtAccount in the priority list, its
-        // balance must still track the LoanExpense amortization (surplus skips
-        // linked debts) — identical to the baseline with no such priority.
-        const withLinkedPriority: AssumptionsState = {
-            ...assumptions,
-            priorities: [
-                { id: 'p-loan', name: 'Pay down: Student Loan', type: 'DEBT', accountId: 'acc-studentloan', capType: 'REMAINDER' },
-            ],
-        };
-
-        const linkedSim = runSimulation(
+    it('C: the linked DebtAccount mirror equals the reduced LoanExpense each year (no double-drive)', () => {
+        const sim = runSimulation(
             yearsToSimulate,
             [propertyAccount, studentLoanAccount, savingsAccount],
             [workIncome],
             [mortgageExpense, studentLoanExpense, livingExpenses],
-            withLinkedPriority,
-            taxState
-        );
-        const baselineSim = runSimulation(
-            yearsToSimulate,
-            [propertyAccount, studentLoanAccount, savingsAccount],
-            [workIncome],
-            [mortgageExpense, studentLoanExpense, livingExpenses],
-            assumptions,
-            taxState
+            withStudentLoanPriority, taxState
         );
 
-        for (let i = 0; i < baselineSim.length; i++) {
-            const linked = linkedSim[i]?.accounts.find(a => a.id === 'acc-studentloan') as DebtAccount;
-            const base = baselineSim[i]?.accounts.find(a => a.id === 'acc-studentloan') as DebtAccount;
-            if (linked && base) {
+        // The account is a pure mirror of the (surplus-reduced) loan balance —
+        // the paydown is NOT double-applied or overwritten.
+        for (const year of sim) {
+            const loan = year.expenses.find(e => e.id === 'exp-studentloan') as LoanExpense;
+            const acct = year.accounts.find(a => a.id === 'acc-studentloan') as DebtAccount;
+            if (loan && acct) {
                 expect(
-                    Math.abs(linked.amount - base.amount),
-                    `Linked debt should ignore the priority paydown in year ${baselineSim[i].year}`
+                    Math.abs(loan.amount - acct.amount),
+                    `mirror should equal the reduced loan in ${year.year}`
                 ).toBeLessThan(0.01);
             }
         }
-        assertAllYearsInvariants(linkedSim);
+        assertAllYearsInvariants(sim);
+    });
+
+    it('C: surplus beyond the loan balance flows to a lower bucket; the loan stops at $0', () => {
+        // Debt ranked first, a brokerage REMAINDER second. Once the loan hits $0,
+        // surplus must stop going to it and the brokerage keeps receiving it.
+        const brokerage = new InvestedAccount('acc-brokerage', 'Brokerage', 0, 0, 10, 0.05, 'Brokerage', true, 1.0, 0);
+        const withDebtThenBrokerage: AssumptionsState = {
+            ...assumptions,
+            priorities: [
+                { id: 'p-loan', name: 'Pay down: Student Loan', type: 'DEBT', accountId: 'acc-studentloan', capType: 'REMAINDER' },
+                { id: 'p-brok', name: 'Brokerage', type: 'INVESTMENT', accountId: 'acc-brokerage', capType: 'REMAINDER' },
+            ],
+        };
+
+        const sim = runSimulation(
+            yearsToSimulate,
+            [propertyAccount, studentLoanAccount, savingsAccount, brokerage],
+            [workIncome],
+            [mortgageExpense, studentLoanExpense, livingExpenses],
+            withDebtThenBrokerage, taxState
+        );
+
+        // Loan never goes negative and reaches $0; once cleared it stays cleared.
+        let cleared = false;
+        for (const year of sim) {
+            const loan = year.expenses.find(e => e.id === 'exp-studentloan') as LoanExpense;
+            if (!loan) continue;
+            expect(loan.amount).toBeGreaterThanOrEqual(0);
+            if (loan.amount <= 1) cleared = true;
+            if (cleared) expect(loan.amount).toBeLessThanOrEqual(1);
+        }
+        expect(cleared, 'loan should reach $0').toBe(true);
+
+        // After payoff, the brokerage is still accumulating surplus (excess flowed on).
+        const lastBrok = sim[sim.length - 1]?.accounts.find(a => a.id === 'acc-brokerage');
+        expect(lastBrok && lastBrok.amount).toBeGreaterThan(0);
+        assertAllYearsInvariants(sim);
+    });
+
+    it('C: surplus paydown coexists with a fixed extra_payment (both apply)', () => {
+        // Same student loan but with a $100/mo fixed extra_payment (feature B) AND
+        // flagged for surplus paydown. It should clear even sooner than B alone.
+        const loanWithExtra = new LoanExpense(
+            'exp-studentloan', 'Student Loan', 50000, 'Monthly', 5.0, 'Compounding',
+            530, 'No', 0, 'acc-studentloan',
+            new Date('2025-01-01'), new Date('2035-01-01'),
+            undefined, undefined, 100 // fixed extra_payment
+        );
+
+        const payoffYear = (priorities: AssumptionsState['priorities']): number | null => {
+            const sim = runSimulation(
+                yearsToSimulate,
+                [propertyAccount, studentLoanAccount, savingsAccount],
+                [workIncome],
+                [mortgageExpense, loanWithExtra, livingExpenses],
+                { ...assumptions, priorities }, taxState
+            );
+            for (const y of sim) {
+                const loan = y.expenses.find(e => e.id === 'exp-studentloan') as LoanExpense;
+                if (loan && loan.amount <= 1) return y.year;
+            }
+            return null;
+        };
+
+        const extraOnly = payoffYear([]); // feature B only
+        const extraPlusSurplus = payoffYear(withStudentLoanPriority.priorities); // B + surplus
+
+        expect(extraOnly).not.toBeNull();
+        expect(extraPlusSurplus).not.toBeNull();
+        // Both levers stack — adding surplus on top of extra_payment clears it sooner.
+        expect(extraPlusSurplus!).toBeLessThanOrEqual(extraOnly!);
     });
 
     it('C default-off: with no debt in priorities, a debt account tracks only its loan', () => {
@@ -627,6 +666,37 @@ describe('Story 7: Debt Payoff', () => {
                     Math.abs(loanExpense.amount - loanAccount.amount),
                     `Debt should track its loan exactly in ${year.year}`
                 ).toBeLessThan(10);
+            }
+        }
+    });
+
+    it('C default-off is BYTE-IDENTICAL: an unflagged debt is unchanged vs. no priorities', () => {
+        // The hard safety net: with no debt in any priority list, the linked-debt
+        // surplus paydown must not mutate anything. A run with empty priorities and
+        // a run with an UNRELATED priority (savings) must both leave the loan
+        // balance on its pure scheduled-amortization path, every year.
+        const run = (priorities: AssumptionsState['priorities']) => runSimulation(
+            yearsToSimulate,
+            [propertyAccount, studentLoanAccount, savingsAccount],
+            [workIncome],
+            [mortgageExpense, studentLoanExpense, livingExpenses],
+            { ...assumptions, priorities },
+            taxState
+        );
+
+        const empty = run([]);
+        const unrelated = run([
+            { id: 'p-sav', name: 'Savings', type: 'SAVINGS', accountId: 'acc-savings', capType: 'REMAINDER' },
+        ]);
+
+        // The student-loan balance path is identical to the bit (no debt bucket →
+        // no extra principal → pure amortization in both runs).
+        for (let i = 0; i < empty.length; i++) {
+            const a = empty[i].expenses.find(e => e.id === 'exp-studentloan') as LoanExpense;
+            const b = unrelated[i].expenses.find(e => e.id === 'exp-studentloan') as LoanExpense;
+            if (a && b) {
+                expect(a.amount, `loan balance must be unchanged by an unrelated priority in ${empty[i].year}`)
+                    .toBe(b.amount);
             }
         }
     });

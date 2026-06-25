@@ -5,7 +5,7 @@ import { AccountContext } from '../../components/Objects/Accounts/AccountContext
 import { IncomeContext } from '../../components/Objects/Income/IncomeContext';
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
 import { AnyAccount, InvestedAccount, DebtAccount, SavedAccount } from '../../components/Objects/Accounts/models';
-import { isOfferableDebt, isSurplusPaydownDebt, postInterestDebtBalance } from '../../services/simulation/SurplusAllocator';
+import { isOfferableDebt, isSurplusPaydownDebt } from '../../services/simulation/SurplusAllocator';
 import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
 import { calculateFederalTaxFromIncomes, calculateStateTax, calculateFicaTax } from '../../components/Objects/Taxes/TaxService';
 import { WorkIncome } from '../../components/Objects/Income/models';
@@ -469,34 +469,32 @@ export default function PriorityTab() {
             // the recurring buckets below show their TRUE steady-state funding (no
             // /12 spread, no false clamp, no starving). Resolved via the SHARED
             // predicate so the preview agrees with the engine.
+            // #60 (linked-debt rework): a debt bucket is now a NORMAL CAPPED
+            // bucket — its cap is the debt's current balance, and it consumes its
+            // share of surplus like any other bucket (the engine reduces the
+            // linked loan by the same amount). This supersedes the round-4
+            // one-time-line workaround (#137). Resolved via the shared predicate
+            // so the preview matches the engine.
             const debtAccount = paydownDebtFor(item.accountId);
             if (debtAccount) {
-                // [4]: the one-time amount is the POST-interest balance — exactly
-                // what the engine spends to clear it.
-                const oneTimePayoff = postInterestDebtBalance(debtAccount);
+                cost = Math.max(0, debtAccount.amount); // cap = current balance
                 label = `Pay down ${debtAccount.name}`;
-                const provenance = `One-time payoff of ${formatMoney(oneTimePayoff)} (${debtAccount.apr}% APR) from this year's surplus — does not affect the recurring monthly buckets`;
-                // currentRemaining is intentionally UNCHANGED. `oneTime` flags the
-                // row so the view renders it as a separate callout, not a monthly
-                // deduction; `actualDed` (the monthly draw) is 0.
-                return {
-                    ...item,
-                    actualDed: 0,
-                    remainingAfter: currentRemaining,
-                    label,
-                    provenance,
-                    oneTimeAmount: oneTimePayoff,
-                };
+                wantedNote = `Pay down ${formatMoney(debtAccount.amount)} (${debtAccount.apr}% APR)`;
+                const actualDed = Math.min(cost, Math.max(0, currentRemaining));
+                currentRemaining -= actualDed;
+                const clamped = actualDed < cost - 0.005;
+                const provenance = clamped
+                    ? `${wantedNote} · ${formatMoney(surplusBefore)} surplus left · funded ${formatMoney(actualDed)}`
+                    : wantedNote;
+                return { ...item, actualDed, remainingAfter: currentRemaining, label, provenance };
             }
 
-            // [0]/[3]: a DEAD bucket persisted as REMAINDER (deleted account, or
-            // an ineligible debt) must NOT be treated as a real "Everything
-            // Remaining" that consumes the surplus and starves lower buckets.
-            // Render it inert without touching the running remainder, mirroring
-            // the engine which skips it. (Non-REMAINDER cap types already show $0
-            // via their own no-account handling, so only REMAINDER is guarded
-            // here — preserving the existing labels for account-less FIXED/MAX/
-            // MULTIPLE_OF_EXPENSES buckets.)
+            // [0]/[3]: a DEAD bucket persisted as REMAINDER (deleted account) must
+            // NOT be treated as a real "Everything Remaining" that consumes the
+            // surplus and starves lower buckets. Render it inert without touching
+            // the running remainder, mirroring the engine which skips it.
+            // (Non-REMAINDER cap types already show $0 via their own no-account
+            // handling, so only REMAINDER is guarded here.)
             if (item.capType === 'REMAINDER' && isDeadBucket(item.accountId)) {
                 return {
                     ...item,
@@ -894,21 +892,12 @@ export default function PriorityTab() {
 
                                                                     <div className="flex flex-col items-end shrink-0 mx-3">
                                                                         <div className="flex items-center gap-1">
-                                                                            {/* #60 C [0]/[1]: a debt paydown is a ONE-TIME payoff from
-                                                                                the year's surplus, shown distinctly — not a monthly draw
-                                                                                that reduces the recurring waterfall. */}
-                                                                            {'oneTimeAmount' in item && item.oneTimeAmount !== undefined ? (
-                                                                                <span className="text-warning-bright font-mono text-sm">-{formatMoney(item.oneTimeAmount)} one-time</span>
-                                                                            ) : (
-                                                                                <span className="text-info-bright font-mono text-sm">-{formatMoney(item.actualDed)}</span>
-                                                                            )}
+                                                                            <span className="text-info-bright font-mono text-sm">-{formatMoney(item.actualDed)}</span>
                                                                             <Tooltip text={item.provenance} />
                                                                         </div>
-                                                                        {!('oneTimeAmount' in item && item.oneTimeAmount !== undefined) && (
-                                                                            <span className={`text-xs ${item.remainingAfter < 0 ? 'text-negative' : 'text-content-subtle'}`}>
-                                                                                {formatMoney(item.remainingAfter)} left
-                                                                            </span>
-                                                                        )}
+                                                                        <span className={`text-xs ${item.remainingAfter < 0 ? 'text-negative' : 'text-content-subtle'}`}>
+                                                                            {formatMoney(item.remainingAfter)} left
+                                                                        </span>
                                                                     </div>
 
                                                                     <div className="flex gap-1 shrink-0">

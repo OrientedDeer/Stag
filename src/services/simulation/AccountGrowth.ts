@@ -333,10 +333,19 @@ export function growAccounts(
         }
 
         if (acc instanceof DebtAccount) {
-            // Linked debts take their balance from the loan; an unlinked debt
-            // grows by APR — postInterestDebtBalance (review [6]) single-sources
-            // that formula so the engine paydown and the preview can't drift.
-            let finalBalance = linkedState?.balance ?? postInterestDebtBalance(acc);
+            if (linkedState) {
+                // LINKED debt (#60): the balance is the linked LoanExpense's
+                // balance ONLY. Any surplus paydown was already applied to the
+                // loan in the engine (reduceLoanBalance), so the mirror just
+                // follows it. Do NOT subtract userInflows here — that would
+                // double-count the paydown (and the engine no longer writes a
+                // userInflow for a linked debt anyway).
+                return acc.increment(assumptions, linkedState.balance);
+            }
+            // UNLINKED debt (legacy/imported, no backing loan): self-grows by APR,
+            // and a direct inflow pays it down. postInterestDebtBalance
+            // single-sources the APR-grossup formula.
+            let finalBalance = postInterestDebtBalance(acc);
             if (totalIn > 0) finalBalance = Math.max(0, finalBalance - totalIn);
             return acc.increment(assumptions, finalBalance);
         }

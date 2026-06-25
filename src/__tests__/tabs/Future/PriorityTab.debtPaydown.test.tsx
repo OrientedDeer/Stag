@@ -12,16 +12,16 @@ import { ReceiptToastProvider } from '../../../components/Layout/Overlays/Receip
 
 /**
  * #60 C (redesign): unlinked DebtAccounts are offered in the Allocation priority
- * list as a "Pay down: <name>" destination; linked debts (accelerated via the
- * loan's extra_payment) and the system DeficitDebt are NOT offered.
+ * list as a "Pay down: <name>" destination. #60 (linked-debt rework): EVERY user
+ * debt is a LoanExpense↔DebtAccount pair, so LINKED debts are offered too; only
+ * the system DeficitDebt is excluded.
  *
  * The destination picker is a CustomDropdown (button + portal'd option buttons),
  * so we open it and assert on the rendered option labels.
  */
 describe('PriorityTab debt-paydown offering', () => {
     const accounts = [
-        new DebtAccount('cc', 'Credit Card', 5000, '', 22),             // unlinked — offered
-        new DebtAccount('loan-debt', 'Auto Loan', 8000, 'exp-auto', 6), // linked — NOT offered
+        new DebtAccount('loan-debt', 'Auto Loan', 8000, 'exp-auto', 6), // linked — OFFERED now
         new DeficitDebtAccount('system-deficit-debt', 'Uncovered Deficit', 0), // system — NOT offered
         new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage'),
     ];
@@ -34,19 +34,17 @@ describe('PriorityTab debt-paydown offering', () => {
         );
     }
 
-    it('offers an unlinked debt as a "Pay down" destination but hides linked + deficit debts', () => {
+    it('offers a LINKED debt as a "Pay down" destination; hides the system deficit debt', () => {
         renderTab();
 
         // Open the inline add form, then open the destination dropdown.
         fireEvent.click(screen.getByText('Add Priority'));
         fireEvent.click(screen.getByLabelText('Destination Account'));
 
-        // The unlinked credit card is offered as a "Pay down: …" destination.
-        expect(screen.getAllByText('Pay down: Credit Card').length).toBeGreaterThan(0);
+        // The linked auto loan is offered as a "Pay down: …" destination.
+        expect(screen.getAllByText('Pay down: Auto Loan').length).toBeGreaterThan(0);
 
-        // The linked auto loan and the system deficit debt are NEVER offered —
-        // not as a plain name and not as a "Pay down:" entry.
-        expect(screen.queryByText(/Auto Loan/)).not.toBeInTheDocument();
+        // The system deficit debt is NEVER offered.
         expect(screen.queryByText(/Uncovered Deficit/)).not.toBeInTheDocument();
     });
 });
@@ -78,10 +76,9 @@ describe('PriorityTab debt-paydown waterfall preview', () => {
         );
     }
 
-    it('[0]/[1] a debt bucket is a one-time line that does not starve a lower monthly bucket', () => {
-        // $5000 @ 22% card ranked ABOVE a $500/mo fixed savings bucket. The card
-        // is a ONE-TIME payoff from the year's surplus — it must NOT consume the
-        // recurring monthly waterfall, so the $500/mo savings below keeps funding.
+    it('a debt bucket renders as a normal "Pay down" capped bucket', () => {
+        // #60 rework: a debt bucket is a normal capped bucket (cap = balance), not
+        // a one-time callout. It shows a "Pay down <name>" line.
         const accounts = [
             new DebtAccount('cc', 'Credit Card', 5000, '', 22),
             new SavedAccount('sav', 'Savings', 0),
@@ -91,37 +88,15 @@ describe('PriorityTab debt-paydown waterfall preview', () => {
             { id: 'p-sav', name: 'Monthly savings', type: 'SAVINGS', accountId: 'sav', capType: 'FIXED', capValue: 500 },
         ]);
 
-        // The debt renders as a distinct one-time payoff line ([0]/[1]).
         expect(screen.getByText('Pay down Credit Card')).toBeInTheDocument();
-        expect(screen.getByText(/one-time/)).toBeInTheDocument();
-
-        // The lower savings bucket is reachable (not starved by the one-time debt).
-        expect(screen.queryByText(/Never funded/)).not.toBeInTheDocument();
+        // No leftover one-time-line wording from the superseded #137 workaround.
+        expect(screen.queryByText(/one-time/)).not.toBeInTheDocument();
     });
 
-    it('[1] a HUGE debt (payoff > monthly surplus) still does not starve the recurring bucket below', () => {
-        // The classic monthly < payoff/12 case the old /12 spread broke: a $50k
-        // @ 22% card ($61k payoff) dwarfs a single month's surplus, but as a
-        // one-time line it must not clamp/zero the $300/mo savings below it.
-        const accounts = [
-            new DebtAccount('cc', 'Big Card', 50000, '', 22),
-            new SavedAccount('sav', 'Savings', 0),
-        ];
-        renderWithState(accounts, [
-            { id: 'p-cc', name: 'Pay down: Big Card', type: 'DEBT', accountId: 'cc', capType: 'REMAINDER' },
-            { id: 'p-sav', name: 'Monthly savings', type: 'SAVINGS', accountId: 'sav', capType: 'FIXED', capValue: 300 },
-        ]);
-
-        expect(screen.getByText('Pay down Big Card')).toBeInTheDocument();
-        expect(screen.getByText(/one-time/)).toBeInTheDocument();
-        // Lower recurring bucket is NOT flagged unreachable despite the huge debt.
-        expect(screen.queryByText(/Never funded/)).not.toBeInTheDocument();
-    });
-
-    it('[4] a $0-balance unlinked debt is still OFFERED in the destination dropdown', () => {
-        // A paid-off card the user keeps: offerable (balance varies over the
+    it('[4] a $0-balance debt is still OFFERED in the destination dropdown', () => {
+        // A paid-off loan the user keeps: offerable (balance varies over the
         // projection) even though the engine won't pay a $0 debt at sim time.
-        const accounts = [new DebtAccount('cc', 'Paid Card', 0, '', 22)];
+        const accounts = [new DebtAccount('cc', 'Paid Card', 0, 'exp-x', 22)];
         render(
             <AccountContext.Provider value={{ accounts, amountHistory: {} }}>
                 <PriorityTab />
@@ -133,23 +108,20 @@ describe('PriorityTab debt-paydown waterfall preview', () => {
         expect(screen.getAllByText('Pay down: Paid Card').length).toBeGreaterThan(0);
     });
 
-    it('[5]/[0] a LINKED debt persisted as REMAINDER is dead, not a paydown or a real remainder', () => {
+    it('[#60] a LINKED debt is now offered and rendered as a paydown (the rework)', () => {
+        // Every debt is a LoanExpense↔DebtAccount pair, so a LINKED debt is the
+        // normal eligible case now — it must render as a "Pay down" bucket.
         const accounts = [
-            new DebtAccount('loan-debt', 'Auto Loan', 8000, 'exp-auto', 6), // linked → ineligible
+            new DebtAccount('loan-debt', 'Auto Loan', 8000, 'exp-auto', 6), // linked
             new SavedAccount('sav', 'Savings', 0),
         ];
         renderWithState(accounts, [
-            { id: 'p-loan', name: 'Linked loan bucket', type: 'DEBT', accountId: 'loan-debt', capType: 'REMAINDER' },
+            { id: 'p-loan', name: 'Pay down: Auto Loan', type: 'DEBT', accountId: 'loan-debt', capType: 'REMAINDER' },
             { id: 'p-sav', name: 'Monthly savings', type: 'SAVINGS', accountId: 'sav', capType: 'FIXED', capValue: 500 },
         ]);
 
-        // The engine skips a linked debt, so the bucket is DEAD ([0]): NOT a
-        // "Pay down" line, and NOT a real "Everything remaining" that would
-        // starve the savings bucket below it.
-        expect(screen.queryByText('Pay down Auto Loan')).not.toBeInTheDocument();
-        expect(screen.getByText('Not funded')).toBeInTheDocument();
-        // The lower savings bucket is reachable (not starved by a false remainder).
-        expect(screen.queryByText(/Never funded/)).not.toBeInTheDocument();
+        expect(screen.getByText('Pay down Auto Loan')).toBeInTheDocument();
+        expect(screen.queryByText('Not funded')).not.toBeInTheDocument();
     });
 
     it('[3] a REMAINDER bucket whose account was deleted does not starve lower buckets', () => {

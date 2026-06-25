@@ -23,29 +23,30 @@ import { CapType } from "../../components/Objects/Assumptions/AssumptionsContext
 // =============================================================================
 
 /**
- * Is this account a standalone user debt the user may ADD as a paydown priority?
- * This is the OFFERING predicate (review [4]) — it does NOT check the balance, so
- * a debt the user keeps stays addable/listable even at a $0 balance (the balance
- * fluctuates over the projection; the engine just won't pay a $0 debt at sim
- * time, which is correct).
+ * Is this account a user debt the user may ADD as a surplus-paydown priority?
+ * This is the OFFERING predicate — it does NOT check the balance, so a debt the
+ * user keeps stays addable/listable even at a $0 balance (the balance fluctuates
+ * over the projection; the engine just won't pay a $0 debt at sim time).
  *
- * - DeficitDebtAccount (extends DebtAccount) is the system overdraft, paid in
- *   step 1 — excluded.
- * - A linked debt (linkedAccountId set) is driven by its LoanExpense and
- *   accelerated via the loan's extra_payment (feature B) — excluded so surplus
- *   never double-drives it.
+ * #60 (linked-debt rework): EVERY user debt in this app is a LoanExpense↔
+ * DebtAccount linked pair (AddAccount "Debt" and AddExpense "Loan" both create
+ * the pair), so the old `!linkedAccountId` exclusion made the feature dead.
+ * Surplus now pays a debt by reducing its linked LoanExpense's balance (the
+ * authoritative figure) — see the engine apply in SimulationEngine — so LINKED
+ * debts are exactly what we offer. Only the system DeficitDebtAccount (the
+ * overdraft paid in step 1) is excluded.
  */
 export function isOfferableDebt(account: AnyAccount | undefined | null): account is DebtAccount {
     return account instanceof DebtAccount
-        && !(account instanceof DeficitDebtAccount)
-        && !account.linkedAccountId;
+        && !(account instanceof DeficitDebtAccount);
 }
 
 /**
  * Is this an offerable debt that ALSO has a positive balance to pay down RIGHT
- * NOW? This is THE engine predicate (review [9]): allocateSurplus and the
- * PriorityTab waterfall preview both call it so their notion of "is this a
- * fundable paydown" can't drift. A $0 debt is offerable ([4]) but not paid.
+ * NOW? A $0 debt is offerable but not paid. (The real per-year cap is the linked
+ * LoanExpense's post-amortization balance, supplied by the solver via
+ * settings.debtPaydownCaps — NOT postInterestDebtBalance, which was an
+ * unlinked-DebtAccount APR-grossup artifact.)
  */
 export function isSurplusPaydownDebt(account: AnyAccount | undefined | null): account is DebtAccount {
     return isOfferableDebt(account) && account.amount > 0;
@@ -90,6 +91,16 @@ export interface SurplusAllocationSettings {
      * smart-default path must never pick as a general savings target.
      */
     reservedAccountIds?: Set<string>;
+    /**
+     * #60 (linked-debt rework): per-debt-account paydown cap = the linked
+     * LoanExpense's POST-amortization balance this year (the authoritative figure
+     * the engine will actually reduce). Keyed by DebtAccount id. A debt bucket is
+     * paid min(remaining, cap); any excess flows to lower buckets via the normal
+     * capped-bucket waterfall. Absent/0 ⇒ nothing to pay (no linked loan or
+     * already $0), so surplus passes the bucket by. Supplied by the solver, which
+     * is the only place the post-amortization expense balance is visible.
+     */
+    debtPaydownCaps?: Record<string, number>;
 }
 
 // =============================================================================
@@ -230,31 +241,29 @@ export function allocateSurplus(
         const account = accounts.find(a => a.id === bucket.accountId);
         if (!account) continue;
 
-        // (#60 C) Debt-paydown bucket. An UNLINKED DebtAccount placed in the
-        // priority list is paid down when the waterfall reaches its rank. Its
-        // natural cap is its own balance — there is no FIXED/MAX/etc. cap (a debt
-        // bucket pays to $0), so it's handled here before the cap machinery.
+        // (#60 linked-debt rework) Debt-paydown bucket. A DebtAccount placed in
+        // the priority list is paid down when the waterfall reaches its rank. Its
+        // cap is the linked LoanExpense's POST-amortization balance for the year,
+        // supplied by the solver in settings.debtPaydownCaps (the only place that
+        // figure is visible). The engine applies the paydown by reducing that
+        // LoanExpense's balance (NOT the account mirror — see SimulationEngine),
+        // so this allocation just records WHO and HOW MUCH; the allocation's
+        // accountId is the DebtAccount id.
         //
-        // Eligibility mirrors the old rule: linked debts (backed by a LoanExpense)
-        // are driven/accelerated via the loan's own extra_payment — feature B —
-        // and must NOT be double-driven here; DeficitDebtAccount is the system
-        // overdraft handled in step 1. Both are skipped.
-        //
-        // Sizing (review [2]): pay the POST-interest balance amount*(1+apr/100).
-        // AccountGrowth grows an unlinked debt by APR and THEN subtracts this
-        // inflow, so funding the grown figure is what actually clears it to $0.
-        // grownBalance is INTERNAL — user-facing strings show the ACTUAL payment
-        // and the user's whole-dollar displayed balance (reviews [5]/[6]).
+        // Excess (surplus beyond the cap) is left in `remaining` and flows to the
+        // lower priority buckets via the normal capped-bucket waterfall — no
+        // post-hoc refund needed. Deficit is handled in step 1.
         if (account instanceof DebtAccount) {
-            // Shared eligibility (review [9]): skip linked/deficit/zero-balance.
-            if (!isSurplusPaydownDebt(account)) continue;
+            if (!isSurplusPaydownDebt(account)) continue; // skip deficit / $0
 
-            const grownBalance = postInterestDebtBalance(account);
-            const payment = Math.min(remaining, grownBalance);
+            // Cap = linked loan's post-amortization balance (solver-supplied).
+            // Absent/0 ⇒ no linked loan or already paid off ⇒ pay nothing.
+            const debtCap = settings.debtPaydownCaps?.[account.id] ?? 0;
+            const payment = Math.min(remaining, debtCap);
             if (payment <= 0) continue;
 
             const paidDisplay = Math.round(payment).toLocaleString();
-            const balanceDisplay = Math.round(account.amount).toLocaleString();
+            const balanceDisplay = Math.round(debtCap).toLocaleString();
 
             allocations.push({
                 accountId: account.id,

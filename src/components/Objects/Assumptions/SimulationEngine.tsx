@@ -22,7 +22,8 @@ import { applyLifestyleCreep, calculateStrategyTarget, calculateTotalDiscretiona
 import { processDeficitDebt } from "../../../services/simulation/WithdrawalService";
 import { processInflows, growAccounts } from "../../../services/simulation/AccountGrowth";
 import { evaluateAllMilestones, isActiveByMilestone, MilestoneContext } from "../../../services/simulation/MilestoneEvaluator";
-import { InvestedAccount, SavedAccount, ESPPAccount, RSUAccount } from "../Accounts/models";
+import { InvestedAccount, SavedAccount, ESPPAccount, RSUAccount, DebtAccount } from "../Accounts/models";
+import { isSurplusPaydownDebt } from "../../../services/simulation/SurplusAllocator";
 import { processRSUVesting } from "../../../services/simulation/RSUVesting";
 import { solveYear, YearSolverInput } from "../../../services/simulation/YearSolver";
 import { evaluateGuytonKlingerGuardrail, computeGKDiscretionaryAdjustment, WithdrawalResult } from "../../../services/WithdrawalStrategies";
@@ -34,6 +35,21 @@ import { buildCashflowDetail } from "../../../services/simulation/CashflowDetail
 // =============================================================================
 // YearSolver-based simulation engine
 // =============================================================================
+
+/**
+ * #60 (linked-debt surplus paydown): return a copy of a LoanExpense with its
+ * balance (`amount`) reduced by `paydown` (clamped at 0). Uses a
+ * prototype-preserving shallow clone so EVERY field (apr, payment, extra_payment,
+ * dates, meta) is carried without depending on the constructor's arg order —
+ * the same clone idiom AccountCard uses for mortgage field edits. The result is
+ * a real LoanExpense instance (methods + className intact for growAccounts and
+ * reconstitution).
+ */
+function reduceLoanBalance(loan: LoanExpense, paydown: number): LoanExpense {
+    const clone = Object.assign(Object.create(Object.getPrototypeOf(loan)), loan) as LoanExpense;
+    clone.amount = Math.max(0, loan.amount - paydown);
+    return clone;
+}
 
 /**
  * Execute a YearPlan by applying withdrawals and conversions to accounts.
@@ -641,11 +657,52 @@ function simulateOneYearWithNewEngine(
     const surplusBucketDetail: Record<string, number> = {};
 
     if (yearPlan.surplusAllocations.length > 0) {
+        // #60 (linked-debt surplus paydown): a surplus allocation aimed at a
+        // DebtAccount pays EXTRA PRINCIPAL on its linked LoanExpense — the
+        // authoritative balance — NOT the account mirror. We reduce the loan's
+        // balance in `nextExpenses` here; growAccounts then mirrors the reduced
+        // balance onto the DebtAccount (linkedData), and `nextExpenses` is the
+        // persisted result, so the paydown sticks. Writing userInflows[debtId]
+        // instead would be a no-op double-drive (growAccounts re-derives the
+        // linked balance from the loan and overwrites it next year).
+        //
+        // Resolve each linked-debt-account id → its expense. The link is
+        // bidirectional: the loan's linkedAccountId IS the DebtAccount id.
+        // Structured generically (any account→expense with a `linkedAccountId`)
+        // so a PropertyAccount→MortgageExpense paydown is a trivial future add.
+        const expenseByLinkedAccountId = new Map<string, LoanExpense>();
+        nextExpenses.forEach(exp => {
+            if (exp instanceof LoanExpense && exp.linkedAccountId) {
+                expenseByLinkedAccountId.set(exp.linkedAccountId, exp);
+            }
+        });
+
         // Apply surplus allocations to withdrawal state (for account growth) and bucket detail (for Sankey)
         yearPlan.surplusAllocations.forEach(alloc => {
             logs.push(`[V2] Surplus allocated: $${alloc.amount.toLocaleString()} to ${alloc.reason}`);
 
-            // Add to userInflows so growAccounts() will deposit the surplus
+            const targetAccount = accounts.find(a => a.id === alloc.accountId);
+            const linkedLoan = expenseByLinkedAccountId.get(alloc.accountId);
+
+            if (targetAccount instanceof DebtAccount && isSurplusPaydownDebt(targetAccount) && linkedLoan) {
+                // Pay extra principal on the loan, clamped at its balance (the
+                // solver already capped the allocation at the loan balance, but
+                // clamp defensively so we never drive it negative).
+                const paydown = Math.min(alloc.amount, linkedLoan.amount);
+                if (paydown > 0) {
+                    const idx = nextExpenses.indexOf(linkedLoan);
+                    if (idx !== -1) {
+                        nextExpenses[idx] = reduceLoanBalance(linkedLoan, paydown);
+                    }
+                    // Track for the Sankey (money left the cash pool toward debt).
+                    surplusBucketDetail[alloc.accountId] =
+                        (surplusBucketDetail[alloc.accountId] || 0) + paydown;
+                }
+                return; // do NOT write userInflows for a linked debt (double-drive)
+            }
+
+            // Non-debt (or a debt with no resolvable loan): the normal path —
+            // deposit into the account via userInflows.
             withdrawalState.userInflows[alloc.accountId] =
                 (withdrawalState.userInflows[alloc.accountId] || 0) + alloc.amount;
 
