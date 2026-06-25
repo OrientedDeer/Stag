@@ -563,20 +563,19 @@ function DebtAccountFields({ account, onFieldUpdate, linkedAccountName }: DebtAc
                     value={linkedAccountName}
                 />
             ) : (
-                <div className="col-span-full bg-warning-tint/30 border border-warning-strong/50 rounded-lg p-3 text-xs text-warning-bright">
-                    <span className="font-semibold">Warning: Missing loan expense</span>
-                    <p className="text-warning/80 mt-1">Loan payments won't be tracked. Try deleting and re-adding this debt.</p>
-                </div>
+                <>
+                    <div className="col-span-full bg-warning-tint/30 border border-warning-strong/50 rounded-lg p-3 text-xs text-warning-bright">
+                        <span className="font-semibold">Warning: Missing loan expense</span>
+                        <p className="text-warning/80 mt-1">Loan payments won't be tracked. Try deleting and re-adding this debt.</p>
+                    </div>
+                    {/* #60 C: a standalone (unlinked) debt can be paid down with
+                        surplus cash by adding it to the Allocation priority list,
+                        where the user controls its payoff rank. */}
+                    <p className="col-span-full text-xs text-content-subtle">
+                        To pay this off with surplus cash, add it to your Allocation priorities.
+                    </p>
+                </>
             )}
-            <div className="col-span-full">
-                <ToggleInput
-                    id={`${account.id}-accepts-surplus-paydown`}
-                    label="Pay down with surplus cash"
-                    enabled={account.acceptsSurplusPaydown}
-                    setEnabled={(val) => onFieldUpdate("acceptsSurplusPaydown", val)}
-                    tooltip="When on, leftover cash each year goes toward paying off this debt early (highest-APR flagged debts first) before being invested."
-                />
-            </div>
         </>
     );
 }

@@ -4,7 +4,7 @@ import { AssumptionsContext, PriorityBucket, CapType, getBirthYear } from '../..
 import { AccountContext } from '../../components/Objects/Accounts/AccountContext';
 import { IncomeContext } from '../../components/Objects/Income/IncomeContext';
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
-import { AnyAccount, InvestedAccount } from '../../components/Objects/Accounts/models';
+import { AnyAccount, InvestedAccount, DebtAccount, DeficitDebtAccount } from '../../components/Objects/Accounts/models';
 import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
 import { calculateFederalTaxFromIncomes, calculateStateTax, calculateFicaTax } from '../../components/Objects/Taxes/TaxService';
 import { WorkIncome } from '../../components/Objects/Income/models';
@@ -44,8 +44,22 @@ export default function PriorityTab() {
             if (acc instanceof InvestedAccount) {
                 return acc.taxType !== 'Traditional 401k' && acc.taxType !== 'Roth 401k';
             }
+            // #60 C: only UNLINKED debts are offered as a paydown priority. A
+            // linked debt (backed by a LoanExpense) accelerates via the loan's
+            // own extra_payment, and the system DeficitDebt is engine-managed —
+            // both are excluded so surplus never double-drives them.
+            if (acc instanceof DebtAccount) {
+                return !(acc instanceof DeficitDebtAccount) && !acc.linkedAccountId;
+            }
             return true; // Include non-invested accounts (savings, etc.)
         });
+    }, [accounts]);
+
+    // Helper: is this priority bucket targeting a (paydown-eligible) debt?
+    const isDebtAccount = useCallback((accountId: string | undefined): boolean => {
+        if (!accountId) return false;
+        const acc = accounts.find(a => a.id === accountId);
+        return acc instanceof DebtAccount && !(acc instanceof DeficitDebtAccount);
     }, [accounts]);
 
     // ========== CALCULATIONS ==========
@@ -154,12 +168,17 @@ export default function PriorityTab() {
     // REMAINDER is dead — flag it so the user drags it above.
     const unreachableIds = useMemo(() => {
         const ids = new Set<string>();
-        const remainderIdx = state.priorities.findIndex(p => p.capType === 'REMAINDER');
+        // A debt bucket is stored as REMAINDER but only consumes its own balance
+        // (the engine caps it and continues), so it does NOT make lower buckets
+        // unreachable. Only a real "Everything Remaining" bucket does that.
+        const remainderIdx = state.priorities.findIndex(
+            p => p.capType === 'REMAINDER' && !isDebtAccount(p.accountId)
+        );
         if (remainderIdx !== -1) {
             state.priorities.slice(remainderIdx + 1).forEach(p => ids.add(p.id));
         }
         return ids;
-    }, [state.priorities]);
+    }, [state.priorities, isDebtAccount]);
 
     // Priority warnings for exceeding IRS limits
     const priorityWarnings = useMemo(() => {
@@ -222,6 +241,21 @@ export default function PriorityTab() {
     const editAccountLimit = editAccount ? getAccountContributionLimit(editAccount) : null;
     const editAccountHasLimit = editAccountLimit !== null;
 
+    // #60 C: when the selected destination is a debt, the cap-type/value inputs
+    // are hidden — a debt bucket simply pays its balance to $0.
+    const newIsDebtSelected = newAccount instanceof DebtAccount && !(newAccount instanceof DeficitDebtAccount);
+    const editIsDebtSelected = isDebtAccount(editAccountId);
+
+    // Destination dropdown options, labeling debts as a paydown.
+    const accountOptions = useMemo(() =>
+        allocatableAccounts.map(acc => ({
+            value: acc.id,
+            label: (acc instanceof DebtAccount && !(acc instanceof DeficitDebtAccount))
+                ? `Pay down: ${acc.name}`
+                : acc.name,
+        })),
+    [allocatableAccounts]);
+
     // ========== HANDLERS ==========
 
     const handleAccountChange = useCallback((accountId: string) => {
@@ -252,16 +286,25 @@ export default function PriorityTab() {
     const handleAdd = () => {
         if (!newAccount) return;
 
+        // #60 C: a debt-paydown bucket has no cap type — it pays the balance to
+        // $0. Persist a stable REMAINDER capType (the engine ignores capType for
+        // debts) and a clear "Pay down: <name>" default label.
+        const newIsDebt = newAccount instanceof DebtAccount && !(newAccount instanceof DeficitDebtAccount);
+
         let finalName = newName;
         if (!finalName) {
-            // Use friendly labels for cap types in default name
-            const capTypeLabels: Record<CapType, string> = {
-                'MAX': 'Max Out',
-                'FIXED': 'Fixed',
-                'REMAINDER': 'Remainder',
-                'MULTIPLE_OF_EXPENSES': 'Emergency Fund'
-            };
-            finalName = `${newAccount.name} (${capTypeLabels[newCapType]})`;
+            if (newIsDebt) {
+                finalName = `Pay down: ${newAccount.name}`;
+            } else {
+                // Use friendly labels for cap types in default name
+                const capTypeLabels: Record<CapType, string> = {
+                    'MAX': 'Max Out',
+                    'FIXED': 'Fixed',
+                    'REMAINDER': 'Remainder',
+                    'MULTIPLE_OF_EXPENSES': 'Emergency Fund'
+                };
+                finalName = `${newAccount.name} (${capTypeLabels[newCapType]})`;
+            }
         }
 
         let finalCapValue = newCapValue;
@@ -274,8 +317,8 @@ export default function PriorityTab() {
             name: finalName,
             type: 'INVESTMENT',
             accountId: newAccount.id,
-            capType: newCapType,
-            capValue: finalCapValue
+            capType: newIsDebt ? 'REMAINDER' : newCapType,
+            capValue: newIsDebt ? 0 : finalCapValue
         };
 
         dispatch({ type: 'ADD_PRIORITY', payload: newBucket });
@@ -326,6 +369,8 @@ export default function PriorityTab() {
         const updatedPriority = state.priorities.find(p => p.id === editingId);
         if (!updatedPriority) return;
 
+        const editIsDebt = isDebtAccount(editAccountId);
+
         let finalCapValue = editCapValue;
         if (editCapType === 'MAX' && editAccountHasLimit && editAccountLimit !== null) {
             finalCapValue = editAccountLimit;
@@ -335,8 +380,9 @@ export default function PriorityTab() {
             ...updatedPriority,
             name: editName,
             accountId: editAccountId,
-            capType: editCapType,
-            capValue: finalCapValue
+            // #60 C: a debt bucket pays to $0 — store a stable REMAINDER capType.
+            capType: editIsDebt ? 'REMAINDER' : editCapType,
+            capValue: editIsDebt ? 0 : finalCapValue
         };
 
         dispatch({ type: 'UPDATE_PRIORITY', payload: updated });
@@ -370,6 +416,26 @@ export default function PriorityTab() {
             let wantedNote = "";
 
             const surplusBefore = Math.max(0, currentRemaining);
+
+            // #60 C: a debt-paydown bucket ignores cap types — its cost is its
+            // current balance (pay to $0). Shown here as the displayed balance;
+            // the engine sizes the actual payment against the post-interest
+            // balance so it truly clears.
+            const debtAccount = isDebtAccount(item.accountId)
+                ? (accounts.find(a => a.id === item.accountId) as DebtAccount | undefined)
+                : undefined;
+            if (debtAccount) {
+                cost = Math.max(0, debtAccount.amount);
+                label = `Pay down ${debtAccount.name}`;
+                wantedNote = `Pay down ${formatMoney(debtAccount.amount)} balance (${debtAccount.apr}% APR)`;
+                const actualDed = Math.min(cost, Math.max(0, currentRemaining));
+                currentRemaining -= actualDed;
+                const clamped = actualDed < cost - 0.005;
+                const provenance = clamped
+                    ? `${wantedNote} · ${formatMoney(surplusBefore)} surplus left · funded ${formatMoney(actualDed)}`
+                    : wantedNote;
+                return { ...item, actualDed, remainingAfter: currentRemaining, label, provenance };
+            }
 
             switch (item.capType) {
                 case 'FIXED':
@@ -436,7 +502,7 @@ export default function PriorityTab() {
                 provenance,
             };
         });
-    }, [state.priorities, disposableAfterExpenses, totalMonthlyFixedExpenses, accounts, getAccountContributionLimit, formatMoney]);
+    }, [state.priorities, disposableAfterExpenses, totalMonthlyFixedExpenses, accounts, getAccountContributionLimit, formatMoney, isDebtAccount]);
 
     const finalRemaining = waterfallItems.length > 0
         ? waterfallItems[waterfallItems.length - 1].remainingAfter
@@ -652,8 +718,13 @@ export default function PriorityTab() {
                                                                         label="Destination Account"
                                                                         value={editAccountId}
                                                                         onChange={handleEditAccountChange}
-                                                                        options={allocatableAccounts.map(acc => ({ value: acc.id, label: acc.name }))}
+                                                                        options={accountOptions}
                                                                     />
+                                                                    {editIsDebtSelected ? (
+                                                                        <p className="text-xs text-content-muted">
+                                                                            Paid down to $0 at this rank — drag to reorder.
+                                                                        </p>
+                                                                    ) : (
                                                                     <div className="grid grid-cols-2 gap-3">
                                                                         <DropdownInput
                                                                             id={`edit-type-${item.id}`}
@@ -693,6 +764,7 @@ export default function PriorityTab() {
                                                                             />
                                                                         )}
                                                                     </div>
+                                                                    )}
                                                                     <div className="flex gap-2 justify-end pt-2">
                                                                         <Button
                                                                             onClick={handleCancelEdit}
@@ -831,8 +903,14 @@ export default function PriorityTab() {
                                     label="Destination Account"
                                     value={newAccount?.id ?? ''}
                                     onChange={handleAccountChange}
-                                    options={allocatableAccounts.map(acc => ({ value: acc.id, label: acc.name }))}
+                                    options={accountOptions}
                                 />
+                                {newIsDebtSelected ? (
+                                    <p className="text-xs text-content-muted">
+                                        This debt is paid down to $0 when the waterfall reaches its
+                                        rank — drag it where you want the payoff to happen.
+                                    </p>
+                                ) : (
                                 <div className="grid grid-cols-2 gap-3">
                                     <DropdownInput
                                         id="new-cap-type"
@@ -879,6 +957,7 @@ export default function PriorityTab() {
                                         />
                                     )}
                                 </div>
+                                )}
                                 <div className="flex gap-2 justify-end pt-2">
                                     <Button
                                         onClick={() => setShowAddForm(false)}

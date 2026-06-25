@@ -93,116 +93,80 @@ describe('SurplusAllocator', () => {
         });
     });
 
-    // Phase-1 (#60 C): surplus pays down user DebtAccounts that opt in via the
-    // acceptsSurplusPaydown flag (default OFF). Routed after deficit debt and
-    // before investing the remainder. Default-off keeps existing scenarios
-    // byte-identical (surplus still flows to brokerage as before).
-    //
-    // Review fixes:
-    //  [1] only UNLINKED debts (no linkedAccountId) are eligible — a debt backed
-    //      by a LoanExpense accelerates via the loan's own extra_payment (feature
-    //      B), so surplus paydown never double-drives a linked balance.
-    //  [2] paydown is sized against the POST-interest balance amount*(1+apr/100),
-    //      mirroring AccountGrowth (grow by APR, then subtract the inflow), so a
-    //      debt the allocator reports as cleared actually reaches $0 at year-end.
-    describe('flagged user-debt paydown', () => {
-        it('DebtAccount defaults acceptsSurplusPaydown to false', () => {
-            const debt = new DebtAccount('cc', 'Credit Card', 5000, '', 22);
-            expect(debt.acceptsSurplusPaydown).toBe(false);
-        });
-
-        it('does NOT touch an unflagged debt — surplus still goes to brokerage (default-off)', () => {
+    // #60 C (redesign): an UNLINKED DebtAccount is paid down when it appears as
+    // an item in the user's PRIORITY LIST — the order is 100% user-decided (no
+    // hardcoded avalanche). A debt bucket pays its POST-interest balance
+    // (amount*(1+apr/100), mirroring AccountGrowth) so it clears to $0, capped at
+    // remaining surplus. Linked debts (accelerate via feature B) and the system
+    // DeficitDebt are never paid down here. With NO debt in priorities, behavior
+    // is byte-identical to before.
+    describe('debt paydown as a priority bucket', () => {
+        it('pays down a debt placed in the priority list, before lower buckets', () => {
+            // $5000 @ 22% → post-interest $6100. Debt ranked above brokerage.
             const debt = new DebtAccount('cc', 'Credit Card', 5000, '', 22);
             const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
 
             const result = allocateSurplus(
                 10000,
                 [debt, brokerage],
-                [],
+                [
+                    { accountId: 'cc', priority: 1 },
+                    { accountId: 'brok', priority: 2, capType: 'REMAINDER' },
+                ],
                 0,
                 defaultSettings()
             );
 
-            // No allocation aimed at the debt; full surplus reaches brokerage.
-            expect(result.allocations.find(a => a.accountId === 'cc')).toBeUndefined();
-            expect(result.allocations.find(a => a.accountId === 'brok')?.amount).toBe(10000);
+            // $6100 clears the card; $3900 remainder to brokerage.
+            expect(result.allocations.find(a => a.accountId === 'cc')?.amount).toBeCloseTo(6100, 6);
+            expect(result.allocations.find(a => a.accountId === 'brok')?.amount).toBeCloseTo(3900, 6);
         });
 
-        it('routes surplus to a flagged debt after deficit, before brokerage', () => {
-            const deficit = new DeficitDebtAccount('deficit', 'Deficit', 2000);
-            // Unlinked card ([1]); $5000 @ 22% → post-interest balance $6100 ([2]).
+        it('respects user order: a debt ranked BELOW a remainder bucket gets nothing', () => {
             const debt = new DebtAccount('cc', 'Credit Card', 5000, '', 22);
-            debt.acceptsSurplusPaydown = true;
             const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
 
+            // Brokerage REMAINDER ranked first — takes everything; debt below gets $0.
             const result = allocateSurplus(
                 10000,
-                [deficit, debt, brokerage],
-                [],
+                [debt, brokerage],
+                [
+                    { accountId: 'brok', priority: 1, capType: 'REMAINDER' },
+                    { accountId: 'cc', priority: 2 },
+                ],
                 0,
                 defaultSettings()
             );
 
-            // $2000 deficit, $6100 to fully clear the flagged card (post-interest),
-            // $1900 leftover to brokerage.
-            expect(result.deficitDebtPayment).toBe(2000);
-            expect(result.allocations.find(a => a.accountId === 'cc')?.amount).toBeCloseTo(6100, 6);
-            expect(result.allocations.find(a => a.accountId === 'brok')?.amount).toBeCloseTo(1900, 6);
+            expect(result.allocations.find(a => a.accountId === 'brok')?.amount).toBe(10000);
+            expect(result.allocations.find(a => a.accountId === 'cc')).toBeUndefined();
         });
 
-        it('[2] sizes paydown at the post-interest balance so the debt clears to $0', () => {
-            // $5000 @ 22% grows to $6100 before the inflow is applied. Funding it
-            // with exactly $6100 must clear it (the old code emitted $5000 and left
-            // ~$1100 owed after AccountGrowth grew the balance).
+        it('sizes the paydown at the post-interest balance so the debt clears to $0', () => {
             const debt = new DebtAccount('cc', 'Credit Card', 5000, '', 22);
-            debt.acceptsSurplusPaydown = true;
             const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
 
             const result = allocateSurplus(
                 20000,
                 [debt, brokerage],
-                [],
+                [{ accountId: 'cc', priority: 1 }, { accountId: 'brok', priority: 2, capType: 'REMAINDER' }],
                 0,
                 defaultSettings()
             );
 
-            const grown = 5000 * 1.22; // 6100
+            const grown = 5000 * 1.22; // 6100 — exactly what AccountGrowth needs to reach $0
             expect(result.allocations.find(a => a.accountId === 'cc')?.amount).toBeCloseTo(grown, 6);
-            // AccountGrowth: 6100 grown − 6100 inflow = $0 owed at year-end.
-            expect(grown - (result.allocations.find(a => a.accountId === 'cc')?.amount ?? 0)).toBeCloseTo(0, 6);
         });
 
-        it('[1] does NOT surplus-pay-down a LINKED (loan-backed) debt', () => {
-            // A debt with a linkedAccountId is driven by its LoanExpense amortization
-            // (and accelerated via the loan's extra_payment), so surplus must skip it
-            // to avoid double-driving a stale account balance.
-            const linkedDebt = new DebtAccount('loan-debt', 'Auto Loan', 5000, 'exp-auto', 6);
-            linkedDebt.acceptsSurplusPaydown = true;
-            const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
-
-            const result = allocateSurplus(
-                10000,
-                [linkedDebt, brokerage],
-                [],
-                0,
-                defaultSettings()
-            );
-
-            // Linked debt is skipped; full surplus reaches brokerage.
-            expect(result.allocations.find(a => a.accountId === 'loan-debt')).toBeUndefined();
-            expect(result.allocations.find(a => a.accountId === 'brok')?.amount).toBe(10000);
-        });
-
-        it('caps the paydown at the post-interest debt balance (no overpay)', () => {
-            // $1500 @ 22% → post-interest $1830; surplus beyond that goes to brokerage.
+        it('caps the paydown at the post-interest balance (no overpay)', () => {
+            // $1500 @ 22% → post-interest $1830; remainder to brokerage.
             const debt = new DebtAccount('cc', 'Credit Card', 1500, '', 22);
-            debt.acceptsSurplusPaydown = true;
             const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
 
             const result = allocateSurplus(
                 10000,
                 [debt, brokerage],
-                [],
+                [{ accountId: 'cc', priority: 1 }, { accountId: 'brok', priority: 2, capType: 'REMAINDER' }],
                 0,
                 defaultSettings()
             );
@@ -211,19 +175,20 @@ describe('SurplusAllocator', () => {
             expect(result.allocations.find(a => a.accountId === 'brok')?.amount).toBeCloseTo(8170, 6);
         });
 
-        it('pays the highest-APR flagged debt first (avalanche within flagged set)', () => {
+        it('honors avalanche ordering ONLY when the user sets it (high-APR debt ranked first)', () => {
             const card = new DebtAccount('cc', 'Credit Card', 5000, '', 22);
-            card.acceptsSurplusPaydown = true;
             const auto = new DebtAccount('auto', 'Auto Loan', 5000, '', 6);
-            auto.acceptsSurplusPaydown = true;
 
-            // Only $5000 surplus — entirely consumed by the highest-APR card
-            // (whose post-interest balance is $6100, so it isn't even fully cleared);
-            // the 6% debt gets nothing.
+            // User ranks the 22% card first, the 6% auto second. $5000 surplus is
+            // consumed by the card (post-interest $6100, not even fully cleared);
+            // the auto gets nothing — because the USER ordered it that way.
             const result = allocateSurplus(
                 5000,
                 [auto, card],
-                [],
+                [
+                    { accountId: 'cc', priority: 1 },
+                    { accountId: 'auto', priority: 2 },
+                ],
                 0,
                 defaultSettings()
             );
@@ -232,62 +197,91 @@ describe('SurplusAllocator', () => {
             expect(result.allocations.find(a => a.accountId === 'auto')).toBeUndefined();
         });
 
-        // Review-2 [5]: on a PARTIAL paydown the reason must reflect what actually
-        // happened — the actual payment + the user-displayed balance — not the
-        // internal grown figure or the full balance.
-        it('[5] partial-paydown reason shows the actual payment, not an overstated balance', () => {
-            const debt = new DebtAccount('cc', 'Credit Card', 5000, '', 22); // grows to $6100
-            debt.acceptsSurplusPaydown = true;
+        it('never pays down a LINKED (loan-backed) debt, even if placed in priorities', () => {
+            const linkedDebt = new DebtAccount('loan-debt', 'Auto Loan', 5000, 'exp-auto', 6);
+            const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
 
-            // Only $2000 surplus — a partial paydown.
-            const result = allocateSurplus(2000, [debt], [], 0, defaultSettings());
+            const result = allocateSurplus(
+                10000,
+                [linkedDebt, brokerage],
+                [
+                    { accountId: 'loan-debt', priority: 1 },
+                    { accountId: 'brok', priority: 2, capType: 'REMAINDER' },
+                ],
+                0,
+                defaultSettings()
+            );
+
+            // Linked debt bucket is skipped; surplus falls through to brokerage.
+            expect(result.allocations.find(a => a.accountId === 'loan-debt')).toBeUndefined();
+            expect(result.allocations.find(a => a.accountId === 'brok')?.amount).toBe(10000);
+        });
+
+        it('default-off: NO debt in priorities → debt untouched, surplus to brokerage', () => {
+            const debt = new DebtAccount('cc', 'Credit Card', 5000, '', 22);
+            const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
+
+            // Debt account exists but is NOT in the priority list.
+            const result = allocateSurplus(
+                10000,
+                [debt, brokerage],
+                [{ accountId: 'brok', priority: 1, capType: 'REMAINDER' }],
+                0,
+                defaultSettings()
+            );
+
+            expect(result.allocations.find(a => a.accountId === 'cc')).toBeUndefined();
+            expect(result.allocations.find(a => a.accountId === 'brok')?.amount).toBe(10000);
+        });
+
+        it('paydown strings show the actual payment in whole dollars (no fractional cents, no overstatement)', () => {
+            // Partial paydown: $5000 @ 22% (grows to $6100) but only $2000 surplus.
+            const debt = new DebtAccount('cc', 'Credit Card', 5000, '', 22);
+
+            const result = allocateSurplus(
+                2000,
+                [debt],
+                [{ accountId: 'cc', priority: 1 }],
+                0,
+                defaultSettings()
+            );
 
             const alloc = result.allocations.find(a => a.accountId === 'cc');
             const decision = result.decisions.find(d => d.account === 'Credit Card');
             expect(alloc?.amount).toBe(2000);
 
-            // The reason must NOT advertise the full grown balance ($6,100) as if paid.
-            expect(alloc?.reason).not.toContain('6,100');
-            // It should reference the actual amount paid and the displayed balance.
+            // Shows the ACTUAL $2,000 paid, never the overstated $6,100 grown balance.
             expect(alloc?.reason).toContain('2,000');
+            expect(alloc?.reason).not.toContain('6,100');
             expect(decision?.description).toContain('2,000');
-            // The user-displayed balance ($5,000 — the whole-dollar input) may appear,
-            // but never the internal grown float.
-            expect(alloc?.reason).not.toMatch(/6,100\.\d|6100\.\d/);
-        });
 
-        // Review-2 [6]: no dollar figure in the user-facing strings may carry
-        // fractional cents. A 17% APR debt grows to a fractional value; the logs
-        // must still show whole dollars.
-        it('[6] paydown strings have no fractional cents', () => {
-            const debt = new DebtAccount('cc', 'Credit Card', 8923, '', 17); // grows to $10,439.91
-            debt.acceptsSurplusPaydown = true;
-
-            const result = allocateSurplus(20000, [debt], [], 0, defaultSettings());
-            const alloc = result.allocations.find(a => a.accountId === 'cc');
-            const decision = result.decisions.find(d => d.account === 'Credit Card');
-
-            // No "$X.YZ" or "$X.YZW" anywhere in the user-facing text — a decimal
-            // point immediately followed by a digit signals a non-whole dollar amount.
+            // No fractional cents in any dollar figure.
             const hasFractionalDollars = (s: string | undefined) =>
                 s !== undefined && /\$[\d,]+\.\d/.test(s);
             expect(hasFractionalDollars(alloc?.reason)).toBe(false);
             expect(hasFractionalDollars(decision?.description)).toBe(false);
         });
 
-        // Review-2 [9]: the early-out predicate must match the real filter, so a
-        // flagged-but-LINKED debt (with no eligible unlinked debt) short-circuits
-        // correctly — surplus flows straight to brokerage, no debt allocation.
-        it('[9] short-circuits when the only flagged debt is linked', () => {
-            const linkedDebt = new DebtAccount('loan-debt', 'Auto Loan', 5000, 'exp-auto', 6);
-            linkedDebt.acceptsSurplusPaydown = true;
+        it('the system DeficitDebt is still paid first (step 1), not via a debt bucket', () => {
+            const deficit = new DeficitDebtAccount('deficit', 'Deficit', 2000);
+            const debt = new DebtAccount('cc', 'Credit Card', 5000, '', 22);
             const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
 
-            const result = allocateSurplus(10000, [linkedDebt, brokerage], [], 0, defaultSettings());
+            const result = allocateSurplus(
+                10000,
+                [deficit, debt, brokerage],
+                [
+                    { accountId: 'cc', priority: 1 },
+                    { accountId: 'brok', priority: 2, capType: 'REMAINDER' },
+                ],
+                0,
+                defaultSettings()
+            );
 
-            // No debt allocation; full surplus reaches brokerage.
-            expect(result.allocations.find(a => a.accountId === 'loan-debt')).toBeUndefined();
-            expect(result.allocations.find(a => a.accountId === 'brok')?.amount).toBe(10000);
+            // $2000 deficit (step 1), then $6100 to the card bucket, $1900 to brokerage.
+            expect(result.deficitDebtPayment).toBe(2000);
+            expect(result.allocations.find(a => a.accountId === 'cc')?.amount).toBeCloseTo(6100, 6);
+            expect(result.allocations.find(a => a.accountId === 'brok')?.amount).toBeCloseTo(1900, 6);
         });
     });
 

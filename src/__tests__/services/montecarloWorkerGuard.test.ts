@@ -45,7 +45,7 @@ describe('MC worker reconstitution guard — className survives structured clone
     it('accounts: a cloned live SavedAccount/DebtAccount round-trips (className stamped on construction)', () => {
         const accounts = [
             new SavedAccount('a1', 'Cash', 10_000, 4),
-            new DebtAccount('a2', 'Card', 5_000, '', 19.99, false),
+            new DebtAccount('a2', 'Card', 5_000, '', 19.99),
         ];
         // The constructor stamps className via `this.constructor.name`; assert it's
         // present BEFORE the clone (the fix) and that it equals the discriminator.

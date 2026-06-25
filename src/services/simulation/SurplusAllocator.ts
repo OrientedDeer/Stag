@@ -104,78 +104,11 @@ export function allocateSurplus(
         }
     }
 
-    // 1.5 (#60 C). Pay down user DebtAccounts that opted in via
-    // acceptsSurplusPaydown, BEFORE investing the remainder — retiring real
-    // (often high-APR) debt generally beats a brokerage deposit. Highest-APR
-    // first (a mini-avalanche within the flagged set). Default-off: a debt with
-    // the flag unset is skipped, so existing scenarios are byte-identical.
-    //
-    // Eligibility is restricted to UNLINKED debts (review [1]): a debt backed by
-    // a LoanExpense (linkedAccountId set) is driven by that loan's amortization
-    // and accelerated via the loan's own extra_payment (feature B). Surplus must
-    // not also drive it — that would double-count against a possibly-stale
-    // account.amount (AccountGrowth re-derives a linked debt's balance from the
-    // expense each year). DeficitDebtAccount extends DebtAccount but is handled
-    // above, so it is excluded too.
-    //
-    // The emitted allocations point at the debt account ids; the engine's
-    // generic surplus→userInflows apply (SimulationEngine) and AccountGrowth's
-    // DebtAccount paydown branch reduce the balance — no extra wiring needed.
-    //
-    // Cheap early-out (review [8]): skip the filter/sort entirely in the common
-    // default-off case where nothing ELIGIBLE is flagged. The predicate mirrors
-    // the flaggedDebts filter below exactly — including the !linkedAccountId
-    // clause (review [9]) — so a flagged-but-linked debt with no eligible
-    // unlinked debt short-circuits correctly instead of entering the block.
-    const hasFlaggedDebt = accounts.some(
-        a => a instanceof DebtAccount && !(a instanceof DeficitDebtAccount)
-            && a.acceptsSurplusPaydown && !a.linkedAccountId
-    );
-    if (remaining > 0 && hasFlaggedDebt) {
-        const flaggedDebts = accounts.filter(
-            (a): a is DebtAccount =>
-                a instanceof DebtAccount &&
-                !(a instanceof DeficitDebtAccount) &&
-                a.acceptsSurplusPaydown &&
-                !a.linkedAccountId && // [1]: unlinked (standalone) debts only
-                a.amount > 0
-        ).sort((a, b) => b.apr - a.apr);
-
-        for (const debt of flaggedDebts) {
-            if (remaining <= 0) break;
-            // [2]: size against the POST-interest balance. AccountGrowth grows an
-            // unlinked debt to amount*(1+apr/100) and THEN subtracts this inflow,
-            // so funding that grown figure is what actually clears the debt to $0.
-            // grownBalance is INTERNAL (sizing only) — it must not appear in any
-            // user-facing string (reviews [5]/[6]): the logs show the ACTUAL
-            // payment and the user's whole-dollar displayed balance instead.
-            const grownBalance = debt.amount * (1 + debt.apr / 100);
-            const payment = Math.min(remaining, grownBalance);
-            if (payment <= 0) continue;
-
-            const paidDisplay = Math.round(payment).toLocaleString();
-            const balanceDisplay = Math.round(debt.amount).toLocaleString();
-
-            allocations.push({
-                accountId: debt.id,
-                amount: payment,
-                reason: `Paying down $${paidDisplay} of ${debt.name} ($${balanceDisplay} balance, ${debt.apr}% APR)`,
-            });
-
-            decisions.push({
-                category: 'surplus',
-                account: debt.name,
-                amount: payment,
-                description: `Paid down $${paidDisplay} of ${debt.name} (${debt.apr}% APR).`,
-            });
-
-            remaining -= payment;
-        }
-
-        if (remaining <= 0) {
-            return { allocations, decisions, deficitDebtPayment, unallocated: 0 };
-        }
-    }
+    // (#60 C). User-orderable debt paydown is handled INSIDE the priority-bucket
+    // loop below: an unlinked DebtAccount placed in the priority list is paid
+    // down when the waterfall reaches its rank (see the DebtAccount branch in
+    // the bucket loop). There is no separate hardcoded debt step — the order is
+    // 100% user-decided. The system DeficitDebt paydown (step 1) stays first.
 
     // 2. Follow priority bucket order (or use smart defaults if no priorities configured)
     const sortedBuckets = [...priorityBuckets].sort((a, b) => a.priority - b.priority);
@@ -253,6 +186,48 @@ export function allocateSurplus(
 
         const account = accounts.find(a => a.id === bucket.accountId);
         if (!account) continue;
+
+        // (#60 C) Debt-paydown bucket. An UNLINKED DebtAccount placed in the
+        // priority list is paid down when the waterfall reaches its rank. Its
+        // natural cap is its own balance — there is no FIXED/MAX/etc. cap (a debt
+        // bucket pays to $0), so it's handled here before the cap machinery.
+        //
+        // Eligibility mirrors the old rule: linked debts (backed by a LoanExpense)
+        // are driven/accelerated via the loan's own extra_payment — feature B —
+        // and must NOT be double-driven here; DeficitDebtAccount is the system
+        // overdraft handled in step 1. Both are skipped.
+        //
+        // Sizing (review [2]): pay the POST-interest balance amount*(1+apr/100).
+        // AccountGrowth grows an unlinked debt by APR and THEN subtracts this
+        // inflow, so funding the grown figure is what actually clears it to $0.
+        // grownBalance is INTERNAL — user-facing strings show the ACTUAL payment
+        // and the user's whole-dollar displayed balance (reviews [5]/[6]).
+        if (account instanceof DebtAccount) {
+            if (account instanceof DeficitDebtAccount || account.linkedAccountId || account.amount <= 0) {
+                continue;
+            }
+            const grownBalance = account.amount * (1 + account.apr / 100);
+            const payment = Math.min(remaining, grownBalance);
+            if (payment <= 0) continue;
+
+            const paidDisplay = Math.round(payment).toLocaleString();
+            const balanceDisplay = Math.round(account.amount).toLocaleString();
+
+            allocations.push({
+                accountId: account.id,
+                amount: payment,
+                reason: `Paying down $${paidDisplay} of ${account.name} ($${balanceDisplay} balance, ${account.apr}% APR)`,
+            });
+            decisions.push({
+                category: 'surplus',
+                account: account.name,
+                amount: payment,
+                description: `Paid down $${paidDisplay} of ${account.name} (${account.apr}% APR).`,
+            });
+
+            remaining -= payment;
+            continue;
+        }
 
         // Determine cap for this bucket
         const capType = bucket.capType ?? 'REMAINDER';
