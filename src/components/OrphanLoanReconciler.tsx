@@ -24,9 +24,10 @@ import { linkOrphanLoanExpenses } from '../services/simulation/linkOrphanLoanExp
  *
  * Loop/re-run safety:
  *   - A one-shot ref ensures the reconciliation body runs at most once per mount.
- *   - It only dispatches when the guard actually produced repairs (notices non-empty).
- *     The repaired state has no orphans, so even without the ref a re-render would be
- *     a no-op — the ref just avoids re-scanning on every render.
+ *   - It only dispatches when the guard actually changed something (result.changed —
+ *     an account created OR a link repaired; notices alone would miss a back-link-only
+ *     fix). The repaired state has no orphans, so even without the ref a re-render
+ *     would be a no-op — the ref just avoids re-scanning on every render.
  *   - usePersistedReducer hydrates synchronously in the reducer initializer, so the
  *     account/expense state read on mount is the hydrated localStorage data, not the
  *     empty initial state.
@@ -45,15 +46,18 @@ export function OrphanLoanReconciler(): null {
         if (hasRun.current) return;
         hasRun.current = true;
 
-        const { accounts: repairedAccounts, expenses: repairedExpenses, notices } =
+        const { accounts: repairedAccounts, expenses: repairedExpenses, changed } =
             linkOrphanLoanExpenses(accounts, expenses);
 
-        // No orphans => nothing to persist; leave saved state untouched.
-        if (notices.length === 0) return;
+        // Nothing repaired => nothing to persist; leave saved state untouched. Key off
+        // `changed` (not notices): a pure back-link or stale-claim repair creates no
+        // account and pushes no notice, but still must be persisted, or it's re-derived
+        // every boot and never self-heals [#124 review-3 #1].
+        if (!changed) return;
 
-        // linkOrphanLoanExpenses appended the newly-created paired accounts and
-        // mutated the orphan expenses' linkedAccountId in place. Persist both halves
-        // so the repair survives the next reload.
+        // linkOrphanLoanExpenses appended any newly-created paired accounts and mutated
+        // the orphan expenses' (and stale claimants') linkedAccountId in place. Persist
+        // both halves so the repair survives the next reload.
         accountDispatch({
             type: 'SET_BULK_DATA',
             payload: { accounts: repairedAccounts, amountHistory },

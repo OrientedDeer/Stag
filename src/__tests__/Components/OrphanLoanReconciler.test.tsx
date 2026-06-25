@@ -156,4 +156,52 @@ describe('OrphanLoanReconciler (#136 boot-hydration orphan repair)', () => {
         const persisted = JSON.parse(localStorage.getItem(ACCOUNTS_KEY) as string);
         expect(persisted.accounts).toHaveLength(1);
     });
+
+    it('DISPATCHES a back-link-only repair (no account created, no notice) so it self-heals (#124 review-3 #1)', () => {
+        // The carrier PropertyAccount already exists and claims the expense
+        // (account.linkedAccountId === 'exs-house'), but the expense's OWN
+        // linkedAccountId is empty. The guard repairs only the expense back-link —
+        // it creates NO account and pushes NO notice (empty `notices`), but reports
+        // `changed: true`. The reconciler must STILL dispatch SET_BULK_DATA (keying
+        // off `changed`, not notices); otherwise the reducer state object is never
+        // replaced and the repair isn't durably committed.
+        //
+        // Observable signal: a dispatch replaces the expense array with a NEW
+        // reference (SET_BULK_DATA). We capture the array identity before vs after.
+        const accountsBlob = {
+            accounts: [
+                { className: 'PropertyAccount', id: 'acc-house', name: 'Home', amount: 500000,
+                  ownershipType: 'Financed', loanAmount: 300000, startingLoanBalance: 400000,
+                  linkedAccountId: 'exs-house', apr: 4 },
+            ],
+            amountHistory: {},
+        };
+        const expensesBlob = {
+            // expense id 'exs-house' but its own linkedAccountId is empty (back-link broken).
+            expenses: [{ ...orphanMortgageJson.expenses[0], id: 'exs-house', linkedAccountId: '' }],
+        };
+        localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accountsBlob));
+        localStorage.setItem(EXPENSES_KEY, JSON.stringify(expensesBlob));
+
+        const dispatchedExpenseArrays: AnyExpense[][] = [];
+        const Probe = () => {
+            const expenses = useContext(ExpenseContext).expenses;
+            useEffect(() => {
+                dispatchedExpenseArrays.push(expenses);
+            }, [expenses]);
+            return null;
+        };
+        act(() => { renderWithProviders(Probe); });
+        act(() => { vi.advanceTimersByTime(600); });
+
+        // The expense array changed identity at least once => a SET_BULK_DATA was
+        // dispatched by the reconciler (without the changed-gate fix it would not be,
+        // since notices is empty for a back-link-only repair).
+        expect(dispatchedExpenseArrays.length).toBeGreaterThanOrEqual(2);
+
+        // And the back-link is repaired on the committed instance.
+        const latest = dispatchedExpenseArrays[dispatchedExpenseArrays.length - 1];
+        const mortgage = latest.find((e): e is MortgageExpense => e instanceof MortgageExpense);
+        expect(mortgage!.linkedAccountId).toBe('acc-house');
+    });
 });

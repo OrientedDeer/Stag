@@ -179,9 +179,63 @@ describe('linkOrphanLoanExpenses (#124 orphan guard)', () => {
         expect(result.accounts[0]).toBe(existing);
         // Back-link repaired to the existing account.
         expect(mortgage.linkedAccountId).toBe('acc-house');
+        // A back-link-only repair still counts as a change (must be persisted) [#1].
+        expect(result.changed).toBe(true);
+        // ...but no account was created, so there is no creation notice.
+        expect(result.notices).toEqual([]);
         // Loan counted exactly once: 500k − 300k = 200k (NOT -100k double-counted).
         expect(calculateNetWorth(result.accounts)).toBe(200000);
         expect(calculateTotalDebt(result.accounts)).toBe(300000);
+    });
+
+    it('reports changed=false and empty notices when there is nothing to repair (#124 [1])', () => {
+        // Fully-linked property + mortgage: no creation, no back-link repair.
+        const existing = new PropertyAccount('acc-house', 'Home', 500000, 'Financed', 300000, 400000, 'exs-house');
+        const mortgage = makeMortgage('exs-house', 'acc-house', 300000);
+        const result = linkOrphanLoanExpenses([existing], [mortgage]);
+
+        expect(result.changed).toBe(false);
+        expect(result.notices).toEqual([]);
+        expect(result.accounts).toHaveLength(1);
+    });
+
+    it('clears a wrong-typed account stale claim when the expense is relinked to a correct carrier (#124 [7])', () => {
+        // A correctly-typed PropertyAccount carries the mortgage (claims it AND the
+        // expense back-link is empty), while a WRONG-typed DebtAccount ALSO claims the
+        // same expense id (stale). The guard reuses the PropertyAccount and must clear
+        // the DebtAccount's stale linkedAccountId so two accounts don't both reference
+        // the expense.
+        const carrier = new PropertyAccount('acc-prop', 'Home', 500000, 'Financed', 300000, 400000, 'exs-house');
+        const staleClaimant = new DebtAccount('acc-debt', 'Unrelated Debt', 5000, 'exs-house', 5);
+        const mortgage = makeMortgage('exs-house', '', 300000); // back-link empty
+        const accounts: AnyAccount[] = [carrier, staleClaimant];
+
+        const result = linkOrphanLoanExpenses(accounts, [mortgage]);
+
+        // Reused the correct carrier (no new account).
+        expect(result.accounts).toHaveLength(2);
+        expect(mortgage.linkedAccountId).toBe('acc-prop');
+        // The wrong-typed DebtAccount no longer claims the expense.
+        expect(staleClaimant.linkedAccountId).toBe('');
+        expect(result.changed).toBe(true);
+    });
+
+    it('clears a wrong-typed stale claim when a NEW carrier is minted (#124 [7])', () => {
+        // A wrong-typed DebtAccount claims the mortgage's expense id, and there is NO
+        // correctly-typed carrier — so a PropertyAccount is minted. The DebtAccount's
+        // stale claim on the expense must be cleared so it doesn't dangle.
+        const wrongClaimant = new DebtAccount('acc-debt', 'Unrelated Debt', 5000, 'exs-house', 5);
+        const mortgage = makeMortgage('exs-house', '', 300000);
+
+        const result = linkOrphanLoanExpenses([wrongClaimant], [mortgage]);
+
+        const created = result.accounts.find(a => a instanceof PropertyAccount) as PropertyAccount;
+        expect(created).toBeDefined();
+        expect(mortgage.linkedAccountId).toBe(created.id);
+        expect(wrongClaimant.linkedAccountId).toBe(''); // stale claim cleared
+        expect(result.changed).toBe(true);
+        // 5000 unrelated debt + (500k − 300k) = 195000.
+        expect(calculateNetWorth(result.accounts)).toBe(195000);
     });
 
     it('does NOT double-claim a loan when a DebtAccount already links the expense (#124 [3])', () => {
