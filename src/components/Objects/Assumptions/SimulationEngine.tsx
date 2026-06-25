@@ -514,6 +514,11 @@ function simulateOneYearWithNewEngine(
         // RMD shortfall excise (25% of unmet required distribution) — solver folds
         // it into the year's tax/penalties so it reduces cash (Bug #4).
         rmdPenalty: rmdDetails?.penalty ?? 0,
+        // RSU sell-to-cover withholding (a tax prepayment) so solveWorkingYear nets
+        // it into the deficit math — an over-withheld vest no longer fabricates a
+        // phantom deficit-debt (#114). Retirement years apply the same netting via
+        // rsuWithholdingRefund below, so this only affects the working-year path.
+        rsuWithholding: rsuVestingResult.totalWithholding,
         accounts,
         withdrawalOrder: assumptions.withdrawalStrategy.map(w => ({ accountId: w.accountId })),
         // Goal funds are reserved: funded directly via goalFundCredits, so the

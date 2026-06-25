@@ -81,6 +81,18 @@ export interface YearSolverInput {
      */
     rmdPenalty?: number;
 
+    /**
+     * RSU sell-to-cover withholding the employer already remitted this year (by
+     * selling the withholding slice of shares at vest). It's an estimated-tax
+     * PREPAYMENT, so in the working-year cash-flow it offsets the tax due: the
+     * deficit math nets it out (and treats any excess over the actual tax as a
+     * refund inflow) so an over-withheld vest doesn't fabricate a phantom
+     * deficit-debt (#114). Defaults to 0; non-RSU years are unaffected
+     * (`max(0, tax − 0) == tax`). Only `solveWorkingYear` consumes it — the
+     * retirement path applies the same netting in SimulationEngine instead.
+     */
+    rsuWithholding?: number;
+
     // Accounts
     accounts: AnyAccount[];
     withdrawalOrder: { accountId: string }[];
@@ -2140,13 +2152,28 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
     const incomeSideMAGI = (taxableOrdinaryBase - socialSecurityBenefits) + taxResult.taxableSS;
     const irmaaSurcharge = computeIrmaaForYear(input, incomeSideMAGI, decisions);
 
+    // RSU sell-to-cover withholding is an estimated-tax PREPAYMENT the employer
+    // already remitted (by selling the withholding slice of shares at vest), so in
+    // the cash-flow it offsets the tax due — exactly as SimulationEngine nets it at
+    // the Sankey stage. Netting it into the DEFICIT math here (gated on > 0, so
+    // non-RSU years are byte-identical) stops an over-withheld vest from fabricating
+    // a phantom deficit-debt for a tax the withholding already covered (#114). The
+    // excess over the actual tax is a genuine refund and returns as a cash inflow.
+    const rsuWithholding = Math.max(0, input.rsuWithholding ?? 0);
+
     // Calculate initial surplus/deficit
     // IMPORTANT: Must subtract pre-tax deductions (401k, HSA) and post-tax deductions
     // (Roth 401k, after-tax contributions) from cashIn because they reduce spendable
     // cash even though they may reduce taxes or be after-tax.
     // Note: spendable already excludes reinvested income (handled by classifyIncome).
-    const incomeCashIn = incomeClassification.classified.spendable - preTaxDeductions - postTaxDeductions;
-    const incomeCashOut = input.totalLivingExpenses + totalTax + irmaaSurcharge;
+    // The withholding nets against the cash tax (floored at 0); any excess over the
+    // income tax is a refund and returns as a cash inflow so this year's position
+    // isn't understated by the prepayment. (Refund is re-derived against the FINAL
+    // tax below — at this initial stage deficit withdrawals haven't added tax yet.)
+    const initialCashTax = Math.max(0, totalTax - rsuWithholding);
+    const initialRsuRefund = Math.max(0, rsuWithholding - totalTax);
+    const incomeCashIn = incomeClassification.classified.spendable - preTaxDeductions - postTaxDeductions + initialRsuRefund;
+    const incomeCashOut = input.totalLivingExpenses + initialCashTax + irmaaSurcharge;
     const initialDeficit = Math.max(0, incomeCashOut - incomeCashIn);
 
     // Plan withdrawals if income doesn't cover expenses
@@ -2226,8 +2253,16 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
         (taxableOrdinaryBase - socialSecurityBenefits) + taxResult.taxableSS
         + withdrawalOrdinaryIncome + realizedLTCG + realizedSTCG);
 
-    const finalCashIn = incomeCashIn + totalGrossWithdrawals;
-    const finalCashOut = input.totalLivingExpenses + finalTotalTax;
+    // Re-derive the withholding netting against the FINAL tax (deficit withdrawals
+    // may have added LTCG/ordinary/penalty tax). The prepayment offsets the cash
+    // tax; any excess is the refund. `incomeCashIn` already carries the initial-stage
+    // refund (computed against the income-only tax) — back it out and re-add the
+    // final-stage refund so it's counted exactly once. Net cash effect: withholding
+    // reduces the cash tax paid, with the over-withholding returned as a refund.
+    const finalCashTax = Math.max(0, finalTotalTax - rsuWithholding);
+    const finalRsuRefund = Math.max(0, rsuWithholding - finalTotalTax);
+    const finalCashIn = incomeCashIn - initialRsuRefund + finalRsuRefund + totalGrossWithdrawals;
+    const finalCashOut = input.totalLivingExpenses + finalCashTax;
     const surplus = Math.max(0, finalCashIn - finalCashOut);
     const unfundedDeficit = Math.max(0, finalCashOut - finalCashIn);
 

@@ -14,7 +14,7 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import { RSUAccount, RSULot, AnyAccount, SavedAccount, InvestedAccount } from '../../../components/Objects/Accounts/models';
+import { RSUAccount, RSULot, AnyAccount, SavedAccount, InvestedAccount, DeficitDebtAccount } from '../../../components/Objects/Accounts/models';
 import { AnyIncome, WorkIncome, SocialSecurityIncome } from '../../../components/Objects/Income/models';
 import { OtherExpense } from '../../../components/Objects/Expense/models';
 import {
@@ -324,7 +324,7 @@ describe('RSU sell-to-cover over-withholding refund (engine path)', () => {
     // filer (after the 2026 standard deduction) is far below the 37% sell-to-cover
     // ($3,700) → a genuine refund. Fix #3: that over-withholding returns as
     // spendable cash instead of being clamped to zero.
-    function runVestYear(withholdingRate: number): number {
+    function runVestYear(withholdingRate: number): { investedUser: number; cashBalance: number; netWorth: number; accounts: AnyAccount[] } {
         const assume = {
             ...defaultAssumptions,
             // Born 1976 → age 50 in 2026 (still working: an inactive WorkIncome
@@ -349,27 +349,77 @@ describe('RSU sell-to-cover over-withholding refund (engine path)', () => {
         const expense = new OtherExpense('e1', 'none', 0, 'Annually', new Date(2020, 0, 1));
 
         const out = simulateOneYear(2026, [work], [expense], [rsu, sav], assume, taxState(), []);
-        // The Sankey "invested by user" figure is the year's net spendable cash;
-        // the RSU withholding refund flows into it via totalCashAvailable.
-        return (out as unknown as { cashflow: { investedUser: number } }).cashflow.investedUser;
+        const cashBalance = out.accounts.find(a => a.id === 'sav-1')?.amount ?? 0;
+        // Net worth nets out where the cash lands (refund routed to savings vs.
+        // a phantom deficit-debt), so it's the dollar-invariant check across rates.
+        const netWorth = out.accounts.reduce(
+            (sum, a) => sum + (a instanceof DeficitDebtAccount ? -a.amount : a.amount),
+            0,
+        );
+        return {
+            // The Sankey "invested by user" figure is the year's net spendable cash
+            // NOT otherwise allocated; a working-year surplus (e.g. an over-withholding
+            // refund) is routed to savings by the surplus allocator, so it shows up in
+            // the cash balance rather than here.
+            investedUser: (out as unknown as { cashflow: { investedUser: number } }).cashflow.investedUser,
+            cashBalance,
+            netWorth,
+            accounts: out.accounts,
+        };
+    }
+
+    // The MC failure rule (MonteCarloAggregator) flags any year that holds a
+    // DeficitDebtAccount as a "year of depletion". Match its className check.
+    function hasDeficitDebt(accounts: AnyAccount[]): boolean {
+        return accounts.some(
+            acc => acc instanceof DeficitDebtAccount ||
+                (acc as unknown as { className?: string }).className === 'DeficitDebtAccount'
+        );
     }
 
     it('returns the over-withholding as spendable cash (not clamped to zero)', () => {
-        const saved37 = runVestYear(37);
-        const saved0 = runVestYear(0);
+        const r37 = runVestYear(37);
+        const r0 = runVestYear(0);
 
-        expect(Number.isFinite(saved37)).toBe(true);
-        expect(Number.isFinite(saved0)).toBe(true);
+        expect(Number.isFinite(r37.investedUser)).toBe(true);
+        expect(Number.isFinite(r0.investedUser)).toBe(true);
 
         // $10,000 vest, reinvested (no cash). Actual tax ≈ $765 (FICA only; ordinary
-        // income is below the standard deduction). At 0% withholding that $765 is a
-        // cash shortfall → investedUser ≈ −765. At 37% the company remits $3,700; the
-        // EXCESS over the $765 actual tax (≈ $2,935) returns as a refund (spendable
-        // cash). PINNED:
-        expect(Math.round(saved0)).toBe(-765);   // no withholding: tax owed from cash
-        expect(Math.round(saved37)).toBe(2935);  // refund: $3,700 withheld − $765 tax
-        // The full over-withholding ($3,700) is preserved — not clamped away.
-        expect(Math.round(saved37 - saved0)).toBe(3700);
+        // income is below the standard deduction).
+        //
+        // At 0% withholding the $765 tax is owed but the $100k cash isn't in the
+        // withdrawal order, so it's a genuine shortfall → investedUser ≈ −765 and a
+        // legitimate deficit-debt (the order can't reach the cash to pay the tax).
+        expect(Math.round(r0.investedUser)).toBe(-765);
+        expect(Math.round(r0.cashBalance)).toBe(100000); // untouched
+
+        // At 37% the company remits $3,700; the EXCESS over the $765 actual tax
+        // (≈ $2,935) is a genuine refund. #114: the working-year solver now nets the
+        // withholding into the deficit (no phantom debt), so the year runs a surplus
+        // and the refund is DEPOSITED into savings by the surplus allocator — it shows
+        // up in the cash balance, not in `investedUser` (which nets to ~0 once the
+        // surplus is allocated). PINNED:
+        expect(Math.round(r37.investedUser)).toBe(0);
+        expect(Math.round(r37.cashBalance)).toBe(102935); // $100k + $2,935 refund deposited
+
+        // Dollar-invariant: the withholding RATE doesn't change net worth — it only
+        // moves cash between the refund-to-savings path and the (no-withholding)
+        // owed-tax path. Both land at the same net worth.
+        expect(Math.round(r37.netWorth)).toBe(Math.round(r0.netWorth));
+    });
+
+    // #114: a working-year RSU vest whose sell-to-cover withholding ≥ the actual
+    // tax must NOT fabricate a phantom DeficitDebtAccount. The deficit was decided
+    // before the withholding netted in, so an over-withheld vest charged a debt ≈
+    // the year's tax even though the withholding already covered it — and any
+    // deficit-debt year reads as an MC failure. No idle cash is in the order here
+    // (sav-1 is unreachable), so the only thing that could create the debt is the
+    // tax the withholding already paid.
+    it('does not fabricate a deficit-debt when withholding covers the tax (#114)', () => {
+        // 37% over-withholds the $765 tax → there is a refund, never a shortfall.
+        expect(hasDeficitDebt(runVestYear(37).accounts)).toBe(false);
+        // At the company default (e.g. 22%) withholding $2,200 still exceeds $765.
+        expect(hasDeficitDebt(runVestYear(22).accounts)).toBe(false);
     });
 });
 
