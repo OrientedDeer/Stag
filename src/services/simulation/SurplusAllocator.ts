@@ -109,29 +109,47 @@ export function allocateSurplus(
     // (often high-APR) debt generally beats a brokerage deposit. Highest-APR
     // first (a mini-avalanche within the flagged set). Default-off: a debt with
     // the flag unset is skipped, so existing scenarios are byte-identical.
-    // NOTE: DeficitDebtAccount extends DebtAccount but is handled above, so it
-    // is explicitly excluded here. The emitted allocations point at the debt
-    // account ids; the engine's generic surplus→userInflows apply
-    // (SimulationEngine) and AccountGrowth's DebtAccount paydown branch reduce
-    // the balance — no extra wiring needed.
-    if (remaining > 0) {
+    //
+    // Eligibility is restricted to UNLINKED debts (review [1]): a debt backed by
+    // a LoanExpense (linkedAccountId set) is driven by that loan's amortization
+    // and accelerated via the loan's own extra_payment (feature B). Surplus must
+    // not also drive it — that would double-count against a possibly-stale
+    // account.amount (AccountGrowth re-derives a linked debt's balance from the
+    // expense each year). DeficitDebtAccount extends DebtAccount but is handled
+    // above, so it is excluded too.
+    //
+    // The emitted allocations point at the debt account ids; the engine's
+    // generic surplus→userInflows apply (SimulationEngine) and AccountGrowth's
+    // DebtAccount paydown branch reduce the balance — no extra wiring needed.
+    //
+    // Cheap early-out (review [8]): skip the filter/sort entirely in the common
+    // default-off case where nothing is flagged.
+    const hasFlaggedDebt = accounts.some(
+        a => a instanceof DebtAccount && !(a instanceof DeficitDebtAccount) && a.acceptsSurplusPaydown
+    );
+    if (remaining > 0 && hasFlaggedDebt) {
         const flaggedDebts = accounts.filter(
             (a): a is DebtAccount =>
                 a instanceof DebtAccount &&
                 !(a instanceof DeficitDebtAccount) &&
                 a.acceptsSurplusPaydown &&
+                !a.linkedAccountId && // [1]: unlinked (standalone) debts only
                 a.amount > 0
         ).sort((a, b) => b.apr - a.apr);
 
         for (const debt of flaggedDebts) {
             if (remaining <= 0) break;
-            const payment = Math.min(remaining, debt.amount);
+            // [2]: size against the POST-interest balance. AccountGrowth grows an
+            // unlinked debt to amount*(1+apr/100) and THEN subtracts this inflow,
+            // so funding that grown figure is what actually clears the debt to $0.
+            const grownBalance = debt.amount * (1 + debt.apr / 100);
+            const payment = Math.min(remaining, grownBalance);
             if (payment <= 0) continue;
 
             allocations.push({
                 accountId: debt.id,
                 amount: payment,
-                reason: `Paying down ${debt.name} balance of $${debt.amount.toLocaleString()} (${debt.apr}% APR)`,
+                reason: `Paying down ${debt.name} balance of $${grownBalance.toLocaleString()} (${debt.apr}% APR)`,
             });
 
             decisions.push({

@@ -543,6 +543,62 @@ describe('Story 7: Debt Payoff', () => {
         // (no scheduled payment on a standalone DebtAccount), so it's well above
         // the flagged card, which surplus has been retiring.
         expect(flaggedBal).toBeLessThan(unflaggedBal);
+
+        // Review [2]: the flagged card must actually clear to $0 (the sizing is
+        // against the post-interest balance), not linger at ~one year's interest.
+        // With ample surplus the $15k card is retired within the first few years.
+        const flaggedSim = runSimulation(
+            yearsToSimulate,
+            [propertyAccount, studentLoanAccount, savingsAccount, makeCard(true)],
+            [workIncome],
+            [mortgageExpense, studentLoanExpense, livingExpenses],
+            assumptions,
+            taxState
+        );
+        const everCleared = flaggedSim.some(y => {
+            const card = y.accounts.find(a => a.id === 'acc-card') as DebtAccount | undefined;
+            return card !== undefined && card.amount < 0.01;
+        });
+        expect(everCleared, 'flagged standalone debt should reach $0 (post-interest sizing)').toBe(true);
+    });
+
+    it('C [1]: a LINKED (loan-backed) debt is NOT surplus-accelerated even if flagged', () => {
+        // Flag the linked student-loan DebtAccount. Its balance must still track
+        // the LoanExpense amortization (surplus must skip linked debts to avoid
+        // double-driving) — i.e. identical to the unflagged baseline.
+        const flaggedLinked = new DebtAccount(
+            'acc-studentloan', 'Student Loan Debt', 50000, 'exp-studentloan', 5.0, true
+        );
+
+        const flaggedSim = runSimulation(
+            yearsToSimulate,
+            [propertyAccount, flaggedLinked, savingsAccount],
+            [workIncome],
+            [mortgageExpense, studentLoanExpense, livingExpenses],
+            assumptions,
+            taxState
+        );
+        const baselineSim = runSimulation(
+            yearsToSimulate,
+            [propertyAccount, studentLoanAccount, savingsAccount],
+            [workIncome],
+            [mortgageExpense, studentLoanExpense, livingExpenses],
+            assumptions,
+            taxState
+        );
+
+        // Linked debt balance is identical whether flagged or not.
+        for (let i = 0; i < baselineSim.length; i++) {
+            const flagged = flaggedSim[i]?.accounts.find(a => a.id === 'acc-studentloan') as DebtAccount;
+            const base = baselineSim[i]?.accounts.find(a => a.id === 'acc-studentloan') as DebtAccount;
+            if (flagged && base) {
+                expect(
+                    Math.abs(flagged.amount - base.amount),
+                    `Linked debt should ignore the surplus-paydown flag in year ${baselineSim[i].year}`
+                ).toBeLessThan(0.01);
+            }
+        }
+        assertAllYearsInvariants(flaggedSim);
     });
 
     it('C default-off: an unflagged debt is byte-identical to having no flag field', () => {

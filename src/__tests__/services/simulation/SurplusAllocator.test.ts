@@ -97,6 +97,14 @@ describe('SurplusAllocator', () => {
     // acceptsSurplusPaydown flag (default OFF). Routed after deficit debt and
     // before investing the remainder. Default-off keeps existing scenarios
     // byte-identical (surplus still flows to brokerage as before).
+    //
+    // Review fixes:
+    //  [1] only UNLINKED debts (no linkedAccountId) are eligible — a debt backed
+    //      by a LoanExpense accelerates via the loan's own extra_payment (feature
+    //      B), so surplus paydown never double-drives a linked balance.
+    //  [2] paydown is sized against the POST-interest balance amount*(1+apr/100),
+    //      mirroring AccountGrowth (grow by APR, then subtract the inflow), so a
+    //      debt the allocator reports as cleared actually reaches $0 at year-end.
     describe('flagged user-debt paydown', () => {
         it('DebtAccount defaults acceptsSurplusPaydown to false', () => {
             const debt = new DebtAccount('cc', 'Credit Card', 5000, '', 22);
@@ -122,6 +130,7 @@ describe('SurplusAllocator', () => {
 
         it('routes surplus to a flagged debt after deficit, before brokerage', () => {
             const deficit = new DeficitDebtAccount('deficit', 'Deficit', 2000);
+            // Unlinked card ([1]); $5000 @ 22% → post-interest balance $6100 ([2]).
             const debt = new DebtAccount('cc', 'Credit Card', 5000, '', 22);
             debt.acceptsSurplusPaydown = true;
             const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
@@ -134,14 +143,58 @@ describe('SurplusAllocator', () => {
                 defaultSettings()
             );
 
-            // $2000 deficit, $5000 to the flagged card (its full balance),
-            // $3000 leftover to brokerage.
+            // $2000 deficit, $6100 to fully clear the flagged card (post-interest),
+            // $1900 leftover to brokerage.
             expect(result.deficitDebtPayment).toBe(2000);
-            expect(result.allocations.find(a => a.accountId === 'cc')?.amount).toBe(5000);
-            expect(result.allocations.find(a => a.accountId === 'brok')?.amount).toBe(3000);
+            expect(result.allocations.find(a => a.accountId === 'cc')?.amount).toBeCloseTo(6100, 6);
+            expect(result.allocations.find(a => a.accountId === 'brok')?.amount).toBeCloseTo(1900, 6);
         });
 
-        it('caps the paydown at the debt balance (no overpay)', () => {
+        it('[2] sizes paydown at the post-interest balance so the debt clears to $0', () => {
+            // $5000 @ 22% grows to $6100 before the inflow is applied. Funding it
+            // with exactly $6100 must clear it (the old code emitted $5000 and left
+            // ~$1100 owed after AccountGrowth grew the balance).
+            const debt = new DebtAccount('cc', 'Credit Card', 5000, '', 22);
+            debt.acceptsSurplusPaydown = true;
+            const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
+
+            const result = allocateSurplus(
+                20000,
+                [debt, brokerage],
+                [],
+                0,
+                defaultSettings()
+            );
+
+            const grown = 5000 * 1.22; // 6100
+            expect(result.allocations.find(a => a.accountId === 'cc')?.amount).toBeCloseTo(grown, 6);
+            // AccountGrowth: 6100 grown − 6100 inflow = $0 owed at year-end.
+            expect(grown - (result.allocations.find(a => a.accountId === 'cc')?.amount ?? 0)).toBeCloseTo(0, 6);
+        });
+
+        it('[1] does NOT surplus-pay-down a LINKED (loan-backed) debt', () => {
+            // A debt with a linkedAccountId is driven by its LoanExpense amortization
+            // (and accelerated via the loan's extra_payment), so surplus must skip it
+            // to avoid double-driving a stale account balance.
+            const linkedDebt = new DebtAccount('loan-debt', 'Auto Loan', 5000, 'exp-auto', 6);
+            linkedDebt.acceptsSurplusPaydown = true;
+            const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
+
+            const result = allocateSurplus(
+                10000,
+                [linkedDebt, brokerage],
+                [],
+                0,
+                defaultSettings()
+            );
+
+            // Linked debt is skipped; full surplus reaches brokerage.
+            expect(result.allocations.find(a => a.accountId === 'loan-debt')).toBeUndefined();
+            expect(result.allocations.find(a => a.accountId === 'brok')?.amount).toBe(10000);
+        });
+
+        it('caps the paydown at the post-interest debt balance (no overpay)', () => {
+            // $1500 @ 22% → post-interest $1830; surplus beyond that goes to brokerage.
             const debt = new DebtAccount('cc', 'Credit Card', 1500, '', 22);
             debt.acceptsSurplusPaydown = true;
             const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
@@ -154,8 +207,8 @@ describe('SurplusAllocator', () => {
                 defaultSettings()
             );
 
-            expect(result.allocations.find(a => a.accountId === 'cc')?.amount).toBe(1500);
-            expect(result.allocations.find(a => a.accountId === 'brok')?.amount).toBe(8500);
+            expect(result.allocations.find(a => a.accountId === 'cc')?.amount).toBeCloseTo(1830, 6);
+            expect(result.allocations.find(a => a.accountId === 'brok')?.amount).toBeCloseTo(8170, 6);
         });
 
         it('pays the highest-APR flagged debt first (avalanche within flagged set)', () => {
@@ -164,7 +217,9 @@ describe('SurplusAllocator', () => {
             const auto = new DebtAccount('auto', 'Auto Loan', 5000, '', 6);
             auto.acceptsSurplusPaydown = true;
 
-            // Only enough to clear ONE debt — must be the 22% card.
+            // Only $5000 surplus — entirely consumed by the highest-APR card
+            // (whose post-interest balance is $6100, so it isn't even fully cleared);
+            // the 6% debt gets nothing.
             const result = allocateSurplus(
                 5000,
                 [auto, card],
