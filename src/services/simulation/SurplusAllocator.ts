@@ -19,6 +19,40 @@ import { PlannedSurplusAllocation, DecisionLogEntry } from "./types";
 import { CapType } from "../../components/Objects/Assumptions/AssumptionsContext";
 
 // =============================================================================
+// DEBT-PAYDOWN ELIGIBILITY (#60 C) — single source of truth
+// =============================================================================
+
+/**
+ * Is this account an UNLINKED user debt that surplus may pay down when placed in
+ * the priority list? This is THE shared predicate (review [9]): the engine
+ * (allocateSurplus) and the PriorityTab waterfall preview BOTH call it so their
+ * notion of "is this a paydown bucket" can never drift.
+ *
+ * - DeficitDebtAccount (extends DebtAccount) is the system overdraft, paid in
+ *   step 1 — excluded here.
+ * - A linked debt (linkedAccountId set) is driven by its LoanExpense and
+ *   accelerated via the loan's extra_payment (feature B) — excluded so surplus
+ *   never double-drives it.
+ * - A zero/negative balance has nothing to pay down.
+ */
+export function isSurplusPaydownDebt(account: AnyAccount | undefined | null): account is DebtAccount {
+    return account instanceof DebtAccount
+        && !(account instanceof DeficitDebtAccount)
+        && !account.linkedAccountId
+        && account.amount > 0;
+}
+
+/**
+ * The POST-interest balance the engine must fund to clear a debt to $0 this
+ * year. AccountGrowth grows an unlinked debt by APR and THEN subtracts the
+ * paydown inflow, so the amount that actually zeroes it is amount*(1+apr/100).
+ * Shared so the waterfall preview ([4]) sizes the same figure the engine spends.
+ */
+export function postInterestDebtBalance(debt: DebtAccount): number {
+    return debt.amount * (1 + debt.apr / 100);
+}
+
+// =============================================================================
 // TYPES
 // =============================================================================
 
@@ -203,10 +237,10 @@ export function allocateSurplus(
         // grownBalance is INTERNAL — user-facing strings show the ACTUAL payment
         // and the user's whole-dollar displayed balance (reviews [5]/[6]).
         if (account instanceof DebtAccount) {
-            if (account instanceof DeficitDebtAccount || account.linkedAccountId || account.amount <= 0) {
-                continue;
-            }
-            const grownBalance = account.amount * (1 + account.apr / 100);
+            // Shared eligibility (review [9]): skip linked/deficit/zero-balance.
+            if (!isSurplusPaydownDebt(account)) continue;
+
+            const grownBalance = postInterestDebtBalance(account);
             const payment = Math.min(remaining, grownBalance);
             if (payment <= 0) continue;
 

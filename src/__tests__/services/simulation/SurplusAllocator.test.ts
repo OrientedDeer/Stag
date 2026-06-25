@@ -8,7 +8,12 @@
  * - Catch-all brokerage/savings allocation
  */
 import { describe, it, expect } from 'vitest';
-import { allocateSurplus, SurplusAllocationSettings } from '../../../services/simulation/SurplusAllocator';
+import {
+    allocateSurplus,
+    SurplusAllocationSettings,
+    isSurplusPaydownDebt,
+    postInterestDebtBalance,
+} from '../../../services/simulation/SurplusAllocator';
 import {
     SavedAccount,
     InvestedAccount,
@@ -282,6 +287,42 @@ describe('SurplusAllocator', () => {
             expect(result.deficitDebtPayment).toBe(2000);
             expect(result.allocations.find(a => a.accountId === 'cc')?.amount).toBeCloseTo(6100, 6);
             expect(result.allocations.find(a => a.accountId === 'brok')?.amount).toBeCloseTo(1900, 6);
+        });
+    });
+
+    // Review-3 [9]: the engine and the PriorityTab preview share ONE eligibility
+    // predicate + post-interest sizing, so they can't drift. These pin the shared
+    // exports the UI imports.
+    describe('shared debt-paydown predicate (engine ↔ preview)', () => {
+        it('isSurplusPaydownDebt classifies unlinked/linked/deficit/zero correctly', () => {
+            expect(isSurplusPaydownDebt(new DebtAccount('cc', 'Card', 5000, '', 22))).toBe(true);
+            // linked → false
+            expect(isSurplusPaydownDebt(new DebtAccount('l', 'Loan', 5000, 'exp-x', 6))).toBe(false);
+            // deficit → false
+            expect(isSurplusPaydownDebt(new DeficitDebtAccount('d', 'Deficit', 5000))).toBe(false);
+            // zero balance → false
+            expect(isSurplusPaydownDebt(new DebtAccount('z', 'Paid', 0, '', 22))).toBe(false);
+            // non-debt → false
+            expect(isSurplusPaydownDebt(new InvestedAccount('b', 'Brok', 1000, 0, 0, 0.1, 'Brokerage'))).toBe(false);
+            expect(isSurplusPaydownDebt(undefined)).toBe(false);
+        });
+
+        it('the engine spends exactly postInterestDebtBalance (what the preview sizes)', () => {
+            const debt = new DebtAccount('cc', 'Credit Card', 5000, '', 22);
+            const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
+
+            const result = allocateSurplus(
+                20000,
+                [debt, brokerage],
+                [{ accountId: 'cc', priority: 1 }, { accountId: 'brok', priority: 2, capType: 'REMAINDER' }],
+                0,
+                defaultSettings()
+            );
+
+            // The amount the engine allocates to clear the debt == the figure the
+            // preview displays (postInterestDebtBalance). Same source of truth.
+            expect(result.allocations.find(a => a.accountId === 'cc')?.amount)
+                .toBeCloseTo(postInterestDebtBalance(debt), 6);
         });
     });
 

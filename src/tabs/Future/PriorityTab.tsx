@@ -4,7 +4,8 @@ import { AssumptionsContext, PriorityBucket, CapType, getBirthYear } from '../..
 import { AccountContext } from '../../components/Objects/Accounts/AccountContext';
 import { IncomeContext } from '../../components/Objects/Income/IncomeContext';
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
-import { AnyAccount, InvestedAccount, DebtAccount, DeficitDebtAccount } from '../../components/Objects/Accounts/models';
+import { AnyAccount, InvestedAccount, DebtAccount } from '../../components/Objects/Accounts/models';
+import { isSurplusPaydownDebt, postInterestDebtBalance } from '../../services/simulation/SurplusAllocator';
 import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
 import { calculateFederalTaxFromIncomes, calculateStateTax, calculateFicaTax } from '../../components/Objects/Taxes/TaxService';
 import { WorkIncome } from '../../components/Objects/Income/models';
@@ -38,29 +39,40 @@ export default function PriorityTab() {
     const formatMoney = useCallback((amount: number) =>
         formatCompactCurrency(amount, { forceExact }), [forceExact]);
 
+    // [10]: resolve each accountId at most once per render via a map, instead of
+    // an accounts.find() scan per bucket (twice — eligibility + fetch).
+    const accountById = useMemo(() => {
+        const m = new Map<string, AnyAccount>();
+        accounts.forEach(a => m.set(a.id, a));
+        return m;
+    }, [accounts]);
+
     // Filter accounts for allocation - exclude 401k (those are managed via payroll deductions on Income card)
     const allocatableAccounts = useMemo(() => {
         return accounts.filter(acc => {
             if (acc instanceof InvestedAccount) {
                 return acc.taxType !== 'Traditional 401k' && acc.taxType !== 'Roth 401k';
             }
-            // #60 C: only UNLINKED debts are offered as a paydown priority. A
-            // linked debt (backed by a LoanExpense) accelerates via the loan's
-            // own extra_payment, and the system DeficitDebt is engine-managed —
-            // both are excluded so surplus never double-drives them.
+            // #60 C: only surplus-paydown-eligible debts (unlinked, non-deficit,
+            // positive balance) are offered — SAME predicate the engine uses
+            // (review [9]), so the UI offering can't diverge from what surplus
+            // will actually pay down.
             if (acc instanceof DebtAccount) {
-                return !(acc instanceof DeficitDebtAccount) && !acc.linkedAccountId;
+                return isSurplusPaydownDebt(acc);
             }
             return true; // Include non-invested accounts (savings, etc.)
         });
     }, [accounts]);
 
-    // Helper: is this priority bucket targeting a (paydown-eligible) debt?
-    const isDebtAccount = useCallback((accountId: string | undefined): boolean => {
-        if (!accountId) return false;
-        const acc = accounts.find(a => a.id === accountId);
-        return acc instanceof DebtAccount && !(acc instanceof DeficitDebtAccount);
-    }, [accounts]);
+    // Resolve a bucket's accountId to a paydown-eligible debt (or undefined).
+    // Uses the SHARED predicate so the preview treats a bucket as a paydown
+    // exactly when the engine would (reviews [5]/[9]). A bucket whose account no
+    // longer resolves (deleted, review [3]) returns undefined → not a debt.
+    const paydownDebtFor = useCallback((accountId: string | undefined): DebtAccount | undefined => {
+        if (!accountId) return undefined;
+        const acc = accountById.get(accountId);
+        return isSurplusPaydownDebt(acc) ? acc : undefined;
+    }, [accountById]);
 
     // ========== CALCULATIONS ==========
 
@@ -168,17 +180,21 @@ export default function PriorityTab() {
     // REMAINDER is dead — flag it so the user drags it above.
     const unreachableIds = useMemo(() => {
         const ids = new Set<string>();
-        // A debt bucket is stored as REMAINDER but only consumes its own balance
-        // (the engine caps it and continues), so it does NOT make lower buckets
-        // unreachable. Only a real "Everything Remaining" bucket does that.
+        // Only a TRUE "Everything Remaining" bucket starves lower ones:
+        //  - a debt bucket is stored as REMAINDER but only consumes its balance
+        //    (the engine caps it and continues), so it doesn't make others dead;
+        //  - a bucket whose account no longer resolves (deleted, review [3]) is
+        //    DEAD — the engine ignores it — so it must NOT count as a remainder.
         const remainderIdx = state.priorities.findIndex(
-            p => p.capType === 'REMAINDER' && !isDebtAccount(p.accountId)
+            p => p.capType === 'REMAINDER'
+                && !!p.accountId && accountById.has(p.accountId)
+                && !paydownDebtFor(p.accountId)
         );
         if (remainderIdx !== -1) {
             state.priorities.slice(remainderIdx + 1).forEach(p => ids.add(p.id));
         }
         return ids;
-    }, [state.priorities, isDebtAccount]);
+    }, [state.priorities, accountById, paydownDebtFor]);
 
     // Priority warnings for exceeding IRS limits
     const priorityWarnings = useMemo(() => {
@@ -241,18 +257,17 @@ export default function PriorityTab() {
     const editAccountLimit = editAccount ? getAccountContributionLimit(editAccount) : null;
     const editAccountHasLimit = editAccountLimit !== null;
 
-    // #60 C: when the selected destination is a debt, the cap-type/value inputs
-    // are hidden — a debt bucket simply pays its balance to $0.
-    const newIsDebtSelected = newAccount instanceof DebtAccount && !(newAccount instanceof DeficitDebtAccount);
-    const editIsDebtSelected = isDebtAccount(editAccountId);
+    // #60 C: when the selected destination is a paydown-eligible debt, the
+    // cap-type/value inputs are hidden — a debt bucket simply pays to $0. Uses
+    // the SHARED predicate so the UI agrees with the engine ([5]/[9]).
+    const newIsDebtSelected = isSurplusPaydownDebt(newAccount);
+    const editIsDebtSelected = !!paydownDebtFor(editAccountId);
 
     // Destination dropdown options, labeling debts as a paydown.
     const accountOptions = useMemo(() =>
         allocatableAccounts.map(acc => ({
             value: acc.id,
-            label: (acc instanceof DebtAccount && !(acc instanceof DeficitDebtAccount))
-                ? `Pay down: ${acc.name}`
-                : acc.name,
+            label: isSurplusPaydownDebt(acc) ? `Pay down: ${acc.name}` : acc.name,
         })),
     [allocatableAccounts]);
 
@@ -288,8 +303,9 @@ export default function PriorityTab() {
 
         // #60 C: a debt-paydown bucket has no cap type — it pays the balance to
         // $0. Persist a stable REMAINDER capType (the engine ignores capType for
-        // debts) and a clear "Pay down: <name>" default label.
-        const newIsDebt = newAccount instanceof DebtAccount && !(newAccount instanceof DeficitDebtAccount);
+        // debts) and a clear "Pay down: <name>" default label. Shared predicate
+        // ([9]) decides eligibility.
+        const newIsDebt = isSurplusPaydownDebt(newAccount);
 
         let finalName = newName;
         if (!finalName) {
@@ -315,7 +331,9 @@ export default function PriorityTab() {
         const newBucket: PriorityBucket = {
             id: `bucket-${Date.now()}-${Math.random().toString(36).slice(2)}`,
             name: finalName,
-            type: 'INVESTMENT',
+            // [8]: persist the dedicated 'DEBT' discriminator for debt buckets so
+            // the stored shape matches PriorityBucket.type (was hardcoded INVESTMENT).
+            type: newIsDebt ? 'DEBT' : 'INVESTMENT',
             accountId: newAccount.id,
             capType: newIsDebt ? 'REMAINDER' : newCapType,
             capValue: newIsDebt ? 0 : finalCapValue
@@ -369,7 +387,7 @@ export default function PriorityTab() {
         const updatedPriority = state.priorities.find(p => p.id === editingId);
         if (!updatedPriority) return;
 
-        const editIsDebt = isDebtAccount(editAccountId);
+        const editIsDebt = !!paydownDebtFor(editAccountId);
 
         let finalCapValue = editCapValue;
         if (editCapType === 'MAX' && editAccountHasLimit && editAccountLimit !== null) {
@@ -379,6 +397,8 @@ export default function PriorityTab() {
         const updated: PriorityBucket = {
             ...updatedPriority,
             name: editName,
+            // [8]: keep the discriminator in sync with the selected account.
+            type: editIsDebt ? 'DEBT' : (updatedPriority.type === 'DEBT' ? 'INVESTMENT' : updatedPriority.type),
             accountId: editAccountId,
             // #60 C: a debt bucket pays to $0 — store a stable REMAINDER capType.
             capType: editIsDebt ? 'REMAINDER' : editCapType,
@@ -417,17 +437,24 @@ export default function PriorityTab() {
 
             const surplusBefore = Math.max(0, currentRemaining);
 
-            // #60 C: a debt-paydown bucket ignores cap types — its cost is its
-            // current balance (pay to $0). Shown here as the displayed balance;
-            // the engine sizes the actual payment against the post-interest
-            // balance so it truly clears.
-            const debtAccount = isDebtAccount(item.accountId)
-                ? (accounts.find(a => a.id === item.accountId) as DebtAccount | undefined)
-                : undefined;
+            // #60 C: a debt-paydown bucket ignores cap types — it pays the debt
+            // to $0. Resolved via the SHARED predicate (reviews [5]/[9]/[10]), so
+            // the preview treats it as a paydown exactly when the engine does
+            // (linked/deficit/deleted accounts are NOT paydowns and fall through).
+            const debtAccount = paydownDebtFor(item.accountId);
             if (debtAccount) {
-                cost = Math.max(0, debtAccount.amount);
+                // [4]: size at the POST-interest balance — what the engine spends
+                // to clear it — not the raw balance (which under-reports by a
+                // year's interest).
+                const annualPayoff = postInterestDebtBalance(debtAccount);
+                // [2] units: the waterfall is MONTHLY. The engine pays this debt
+                // ONCE from the YEAR'S surplus, so spread the one-time payoff
+                // across 12 months here (annualPayoff / 12). This keeps the
+                // monthly flow honest — it does NOT subtract a full lump from a
+                // single month and starve the recurring buckets below.
+                cost = annualPayoff / 12;
                 label = `Pay down ${debtAccount.name}`;
-                wantedNote = `Pay down ${formatMoney(debtAccount.amount)} balance (${debtAccount.apr}% APR)`;
+                wantedNote = `Pay off ${formatMoney(annualPayoff)} (${debtAccount.apr}% APR) — shown as ${formatMoney(cost)}/mo over a year`;
                 const actualDed = Math.min(cost, Math.max(0, currentRemaining));
                 currentRemaining -= actualDed;
                 const clamped = actualDed < cost - 0.005;
@@ -502,7 +529,7 @@ export default function PriorityTab() {
                 provenance,
             };
         });
-    }, [state.priorities, disposableAfterExpenses, totalMonthlyFixedExpenses, accounts, getAccountContributionLimit, formatMoney, isDebtAccount]);
+    }, [state.priorities, disposableAfterExpenses, totalMonthlyFixedExpenses, accounts, getAccountContributionLimit, formatMoney, paydownDebtFor]);
 
     const finalRemaining = waterfallItems.length > 0
         ? waterfallItems[waterfallItems.length - 1].remainingAfter
