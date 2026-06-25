@@ -55,6 +55,13 @@ function calculateMonthlyPayment(principal: number, apr: number, numPayments: nu
 
 // 2. Base Abstract Class
 export abstract class BaseExpense implements Expense {
+  /**
+   * Discriminator for reconstituteExpense(). Set on construction — not only at
+   * serialization — so it survives the structured clone when a live instance is
+   * posted to the Monte Carlo worker (otherwise the worker drops every expense
+   * and MC models no spending). Mirrors how BaseIncome carries className.
+   */
+  public className: string;
   constructor(
     public id: string,
     public name: string,
@@ -65,7 +72,9 @@ export abstract class BaseExpense implements Expense {
     public isDiscretionary: boolean = false, // Can be cut during Guyton-Klinger guardrail triggers
     public startMilestoneId?: string,  // Start expense when this milestone is reached
     public endMilestoneId?: string,    // End expense when this milestone is reached
-  ) { }
+  ) {
+    this.className = this.constructor.name;
+  }
 
   // Cross-cutting cadence metadata for `Annually` expenses. Declared as plain
   // fields (not constructor params) so they don't have to thread through every

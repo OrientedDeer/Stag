@@ -29,6 +29,17 @@ self.onmessage = async (e: MessageEvent): Promise<void> => {
         const incomes = req.incomes.map(reconstituteIncome).filter(notNull);
         const expenses = req.expenses.map(reconstituteExpense).filter(notNull);
 
+        // Guard against a silent reconstitution failure: if we were handed
+        // accounts but rebuilt none (e.g. a missing `className` discriminator
+        // after structured clone), the run would produce a meaningless
+        // $0-net-worth / 100%-success result. Throw so the main-thread fallback
+        // — which uses the live instances directly — takes over instead.
+        if (req.accounts.length > 0 && accounts.length === 0) {
+            throw new Error(
+                `reconstituted 0 of ${req.accounts.length} accounts (lost class discriminators in transfer)`,
+            );
+        }
+
         // Cache key: everything the policy depends on, EXCLUDING seed and
         // numScenarios (they don't change the policy), so re-running with only
         // those changed is an instant cache hit. Hashed off the raw cloned request:

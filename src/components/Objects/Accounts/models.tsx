@@ -11,11 +11,21 @@ export interface Account {
 
 // 2. Base Abstract Class
 abstract class BaseAccount implements Account {
+  /**
+   * Discriminator for reconstituteAccount(). Set on construction — not only at
+   * serialization — so it survives the structured clone when a live instance is
+   * posted to the Monte Carlo worker. Without it the worker can't identify the
+   * account type, drops every account, and runs MC on an empty portfolio
+   * ($0 net worth → 100% "success"). Mirrors how BaseIncome carries className.
+   */
+  public className: string;
   constructor(
     public id: string,
     public name: string,
     public amount: number
-  ) {}
+  ) {
+    this.className = this.constructor.name;
+  }
 }
 
 // 3. Concrete Classes
