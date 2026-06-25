@@ -16,7 +16,14 @@ abstract class BaseAccount implements Account {
    * serialization — so it survives the structured clone when a live instance is
    * posted to the Monte Carlo worker. Without it the worker can't identify the
    * account type, drops every account, and runs MC on an empty portfolio
-   * ($0 net worth → 100% "success"). Mirrors how BaseIncome carries className.
+   * ($0 net worth → 100% "success").
+   *
+   * `constructor.name` is safe in the production bundle because vite.config.ts
+   * sets `esbuild.keepNames: true` — class names are NOT minified, so e.g.
+   * `SavedAccount` stays `'SavedAccount'` and matches reconstituteAccount()'s
+   * literal `case` labels. (BaseIncome reaches the same end differently: it
+   * hardcodes a per-subclass className literal; here every concrete subclass
+   * name already equals its discriminator, so constructor.name suffices.)
    */
   public className: string;
   constructor(

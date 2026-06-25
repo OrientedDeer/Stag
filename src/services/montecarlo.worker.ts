@@ -30,13 +30,26 @@ self.onmessage = async (e: MessageEvent): Promise<void> => {
         const expenses = req.expenses.map(reconstituteExpense).filter(notNull);
 
         // Guard against a silent reconstitution failure: if we were handed
-        // accounts but rebuilt none (e.g. a missing `className` discriminator
-        // after structured clone), the run would produce a meaningless
-        // $0-net-worth / 100%-success result. Throw so the main-thread fallback
-        // — which uses the live instances directly — takes over instead.
+        // instances but rebuilt none (e.g. a missing `className` discriminator
+        // after structured clone), the run would produce a meaningless result.
+        // Dropping every account → $0 net worth → 100% "success"; dropping every
+        // expense → zero spending → an equally impossible ~100% success. The
+        // same className-clone bug wipes any of the three lists, so guard all of
+        // them symmetrically. Throw so the main-thread fallback — which uses the
+        // live instances directly — takes over instead.
         if (req.accounts.length > 0 && accounts.length === 0) {
             throw new Error(
                 `reconstituted 0 of ${req.accounts.length} accounts (lost class discriminators in transfer)`,
+            );
+        }
+        if (req.expenses.length > 0 && expenses.length === 0) {
+            throw new Error(
+                `reconstituted 0 of ${req.expenses.length} expenses (lost class discriminators in transfer)`,
+            );
+        }
+        if (req.incomes.length > 0 && incomes.length === 0) {
+            throw new Error(
+                `reconstituted 0 of ${req.incomes.length} incomes (lost class discriminators in transfer)`,
             );
         }
 

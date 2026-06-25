@@ -59,7 +59,14 @@ export abstract class BaseExpense implements Expense {
    * Discriminator for reconstituteExpense(). Set on construction — not only at
    * serialization — so it survives the structured clone when a live instance is
    * posted to the Monte Carlo worker (otherwise the worker drops every expense
-   * and MC models no spending). Mirrors how BaseIncome carries className.
+   * and MC models no spending).
+   *
+   * `constructor.name` is safe in the production bundle because vite.config.ts
+   * sets `esbuild.keepNames: true` — class names are NOT minified, so e.g.
+   * `MortgageExpense` stays `'MortgageExpense'` and matches reconstituteExpense()'s
+   * literal `case` labels. (BaseIncome reaches the same end differently: it
+   * hardcodes a per-subclass className literal; here every concrete subclass
+   * name already equals its discriminator, so constructor.name suffices.)
    */
   public className: string;
   constructor(
