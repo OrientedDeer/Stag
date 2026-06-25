@@ -5,7 +5,7 @@ import { NumberInput } from '../../../Layout/InputFields/NumberInput';
 import { ToggleInput } from '../../../Layout/InputFields/ToggleInput';
 import {
     checkCSRSEligibility,
-    calculateCSRSBasicBenefit,
+    getDisplayedCSRSBenefit,
 } from '../../../../data/PensionData';
 import type { CSRSPensionIncome, WorkIncome } from '../models';
 import type { AllIncomeKeys } from '../IncomeContext';
@@ -87,9 +87,10 @@ export function CSRSPensionFields({
                         <span className="font-bold text-positive-bright">
                             {income.autoCalculateHigh3
                                 ? 'Auto Calculated'
-                                : `$${calculateCSRSBasicBenefit(
+                                : `$${getDisplayedCSRSBenefit(
                                       income.yearsOfService,
-                                      income.high3Salary
+                                      income.high3Salary,
+                                      income.retirementAge
                                   ).toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr`}
                         </span>
                     </div>

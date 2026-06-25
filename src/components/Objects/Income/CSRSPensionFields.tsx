@@ -4,7 +4,7 @@ import { DropdownInput } from "../../Layout/InputFields/DropdownInput";
 import { NumberInput } from "../../Layout/InputFields/NumberInput";
 import { ToggleInput } from "../../Layout/InputFields/ToggleInput";
 import { WorkIncome } from './models';
-import { checkCSRSEligibility, calculateCSRSBasicBenefit } from "../../../data/PensionData";
+import { checkCSRSEligibility, getDisplayedCSRSBenefit } from "../../../data/PensionData";
 import { IncomeFormState, UpdateForm } from './incomeFormTypes';
 
 interface CSRSPensionFieldsProps {
@@ -75,7 +75,7 @@ export const CSRSPensionFields: React.FC<CSRSPensionFieldsProps> = ({
                     <span className="font-bold text-positive-bright">
                         {form.autoCalculateHigh3
                             ? "Auto Calculated"
-                            : `$${calculateCSRSBasicBenefit(form.pensionYearsOfService, form.pensionHigh3Salary).toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr`
+                            : `$${getDisplayedCSRSBenefit(form.pensionYearsOfService, form.pensionHigh3Salary, form.pensionRetirementAge).toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr`
                         }
                     </span>
                 </div>
