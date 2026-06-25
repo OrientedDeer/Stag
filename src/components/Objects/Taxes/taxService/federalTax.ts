@@ -12,7 +12,7 @@ import { getItemizedDeductions, getYesDeductions } from "./deductions";
 import { calculateTotalFederalTax } from "./bracketTax";
 import { calculateStateTax, calculateUnifiedStateTax } from "./stateTax";
 import { getTaxableSocialSecurityFromComponents } from "./socialSecurity";
-import { isSeniorEligible, seniorAdditionalDeduction } from "./seniorDeduction";
+import { isSeniorEligible, seniorAdditionalDeduction, seniorPerPersonMultiplier } from "./seniorDeduction";
 import { FilingStatus, TaxParameters } from "../../../../data/TaxData";
 
 /**
@@ -59,13 +59,14 @@ function getFederalSeniorDeduction(
 ): { regular: number; bonus: number } {
     if (!isSeniorEligible(fedParams, age)) return { regular: 0, bonus: 0 };
 
-    const isMFJ = filingStatus === 'Married Filing Jointly';
-    const perPersonMultiplier = fedParams.seniorDeductionPerPerson && isMFJ ? 2 : 1;
-
     // Regular (permanent) 65+ additional STANDARD deduction — standard path only.
     // Shared with stateTax.ts via seniorAdditionalDeduction so the per-person
     // doubling and eligibility rule stay in one place.
     const regular = seniorAdditionalDeduction(fedParams, filingStatus, age);
+
+    // Same per-person doubling rule the regular add-on uses (seniorDeduction.ts),
+    // applied to the bonus base so the two can't disagree.
+    const perPersonMultiplier = seniorPerPersonMultiplier(fedParams, filingStatus);
 
     // OBBBA senior bonus: $6,000/person, tax years 2025–2028, phasing out at
     // `seniorBonusPhaseoutRate` of (MAGI − threshold), floored at $0. Available
@@ -150,11 +151,12 @@ export function calculateFederalTaxFromIncomes(
     let regularSeniorDeduction = 0;
     let bonusSeniorDeduction = 0;
     if (seniorEligible) {
-        // Reuse the SAME provisional-income / taxable-SS build that
-        // calculateTotalFederalTax performs on the standard path, instead of
-        // recomputing it (which previously called getTaxableSocialSecurityBenefits
-        // a second time and risked drift near the $75k/$150k phaseout thresholds).
-        const { taxableSS: taxableSSForMagi } = getTaxableSocialSecurityFromComponents(
+        // Use the SAME SS-taxability FORMULA that calculateTotalFederalTax uses on
+        // the standard path (single-sourced in getTaxableSocialSecurityFromComponents)
+        // instead of open-coding it here a second time — eliminating the drift hazard
+        // near the $75k/$150k phaseout thresholds. (The VALUE is still recomputed: this
+        // call and the later calculateTotalFederalTax call each run the formula once.)
+        const taxableSSForMagi = getTaxableSocialSecurityFromComponents(
             ordinaryIncome,
             stcg,
             ltcg,

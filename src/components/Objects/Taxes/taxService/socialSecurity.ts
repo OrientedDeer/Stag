@@ -98,20 +98,55 @@ export function getTaxableSocialSecurityBenefits(
 }
 
 /**
+ * Taxable portion of SS from a precomputed AGI-excluding-SS base.
+ *
+ * Thin wrapper that pins the app-wide convention for the two fixed arguments to
+ * getTaxableSocialSecurityBenefits — tax-exempt interest = 0 (not tracked) — so
+ * every SS-taxability site routes the `base → taxableSS` step through ONE call.
+ *
+ * IMPORTANT: this does NOT floor `agiExcludingSS` at 0. Callers decide the floor:
+ *  - getTaxableSocialSecurityFromComponents floors (max(0, …)) — federal convention.
+ *  - stateTax's 'taxable' path passes its raw `nonSSGross − preTax` UN-floored, so a
+ *    negative base lowers combined income (its long-standing behavior). Keeping the
+ *    floor decision at the call site preserves that exact behavior on both paths.
+ *
+ * @param agiExcludingSS - The `otherIncome` term (AGI excluding SS), pre-floored
+ *                         by the caller if/as desired.
+ */
+export function getTaxableSocialSecurityFromBase(
+    agiExcludingSS: number,
+    socialSecurityBenefits: number,
+    filingStatus: FilingStatus,
+): number {
+    return getTaxableSocialSecurityBenefits(
+        socialSecurityBenefits,
+        agiExcludingSS,
+        0, // tax-exempt interest — not currently tracked
+        filingStatus,
+    );
+}
+
+/**
  * Taxable portion of SS from raw income COMPONENTS — the single source of the
- * provisional-income (AGI-excluding-SS) build that drives SS taxability.
+ * provisional-income (AGI-excluding-SS) FORMULA that drives SS taxability.
  *
  * The provisional base (the `otherIncome` fed to getTaxableSocialSecurityBenefits)
  * is `max(0, ordinaryIncome + stcg + ltcg − preTaxDeductions)`, with tax-exempt
  * interest = 0 (the app does not track it). Both bracketTax.ts's standard-path
  * calculation and federalTax.ts's OBBBA-bonus MAGI proxy need exactly this same
- * taxable-SS value, so they share this helper rather than each recomputing it
- * (which previously ran getTaxableSocialSecurityBenefits twice and risked drift
+ * taxable-SS value, so they share this helper rather than each open-coding the
+ * SS-taxability formula (which previously lived in two files and risked drift
  * near the SS-taxability thresholds).
  *
- * @returns `{ provisionalBase, taxableSS }` — provisionalBase is the
- *          AGI-excluding-SS amount (reusable by the caller's MAGI proxy);
- *          taxableSS is the taxable portion of the benefits.
+ * Returns a bare number (the taxable SS). The provisional base is intentionally
+ * NOT returned: federalTax's MAGI proxy reconstructs its own AGI term from the
+ * un-clamped components — `max(0, ordinary+stcg+ltcg+taxableSS−preTax)` — which
+ * is NOT the same as `clampedBase + taxableSS` when the AGI term is negative but
+ * SS is large enough to be partly taxable. Exposing the clamped base would invite
+ * a caller to assemble a different (off-by-the-clamp) MAGI. The clamp lives here
+ * only as the `otherIncome` floor that getTaxableSocialSecurityBenefits expects.
+ *
+ * @returns the taxable portion of the SS benefits.
  */
 export function getTaxableSocialSecurityFromComponents(
     ordinaryIncome: number,
@@ -120,16 +155,10 @@ export function getTaxableSocialSecurityFromComponents(
     preTaxDeductions: number,
     socialSecurityBenefits: number,
     filingStatus: FilingStatus,
-): { provisionalBase: number; taxableSS: number } {
+): number {
     const provisionalBase = Math.max(
         0,
         ordinaryIncome + shortTermCapitalGains + longTermCapitalGains - preTaxDeductions,
     );
-    const taxableSS = getTaxableSocialSecurityBenefits(
-        socialSecurityBenefits,
-        provisionalBase,
-        0, // tax-exempt interest — not currently tracked
-        filingStatus,
-    );
-    return { provisionalBase, taxableSS };
+    return getTaxableSocialSecurityFromBase(provisionalBase, socialSecurityBenefits, filingStatus);
 }

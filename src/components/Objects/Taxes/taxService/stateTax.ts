@@ -8,7 +8,7 @@ import {
     getPreTaxExemptions,
     getSocialSecurityBenefits,
 } from "./incomeAggregation";
-import { getTaxableSocialSecurityBenefits } from "./socialSecurity";
+import { getTaxableSocialSecurityFromBase } from "./socialSecurity";
 import { getItemizedDeductions, getYesDeductions } from "./deductions";
 import { calculateTax } from "./bracketTax";
 import { seniorAdditionalDeduction } from "./seniorDeduction";
@@ -46,14 +46,18 @@ function computeStateTaxFromGross(
     let adjustedGross = annualGross;
 
     if (ssTreatment === 'taxable') {
-        // States that tax SS: use only the taxable portion (like federal)
+        // States that tax SS: use only the taxable portion (like federal). NOTE: the
+        // state base is `nonSSGross − preTax` (no separate STCG/LTCG add) and is passed
+        // UN-floored — distinct from the federal components helper, which adds STCG/LTCG
+        // and floors at 0. We share only the final base→taxableSS step (the
+        // taxExemptInterest=0 convention) via getTaxableSocialSecurityFromBase; the base
+        // itself is deliberately NOT the same expression as the federal path.
+        // TODO: Verify all income types are included (LTCG, STCG, dividends, etc.)
         const nonSSGross = annualGross - totalSSBenefits;
         const agiExcludingSS = nonSSGross - totalPreTaxDeductions;
-        // TODO: Verify all income types are included (LTCG, STCG, dividends, etc.)
-        const taxableSSBenefits = getTaxableSocialSecurityBenefits(
-            totalSSBenefits,
+        const taxableSSBenefits = getTaxableSocialSecurityFromBase(
             agiExcludingSS,
-            0,
+            totalSSBenefits,
             state.filingStatus,
         );
         adjustedGross = annualGross - totalSSBenefits + taxableSSBenefits;

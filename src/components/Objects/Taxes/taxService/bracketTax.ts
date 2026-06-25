@@ -64,11 +64,15 @@ export function calculateTotalFederalTax(
     // STEP 1 + 2: Provisional income and the taxable portion of Social Security.
     // IRS formula: Provisional Income = AGI (excluding SS) + tax-exempt interest + 50% of SS.
     // Both STCG and LTCG count toward the AGI-excluding-SS portion; pre-tax deductions
-    // (401k, HSA, etc.) reduce it. Shared with federalTax.ts's OBBBA-bonus MAGI proxy
-    // via getTaxableSocialSecurityFromComponents so the SS-taxability math lives in one
-    // place and isn't computed twice for a senior standard-path call.
+    // (401k, HSA, etc.) reduce it. The SS-taxability FORMULA is single-sourced in
+    // getTaxableSocialSecurityFromComponents (shared with federalTax.ts's OBBBA-bonus
+    // MAGI proxy) so it can't drift across files. NOTE: the formula is single-sourced,
+    // but the VALUE is still recomputed per call — for a senior standard-path filer
+    // federalTax runs it once for the MAGI proxy and this runs it again (and the Auto
+    // path lands here twice). Consolidating to a precomputed-value handoff is a possible
+    // future optimization; it is not done here.
     // TODO: Verify all income types are included (LTCG, STCG, dividends, etc.)
-    const { taxableSS } = getTaxableSocialSecurityFromComponents(
+    const taxableSS = getTaxableSocialSecurityFromComponents(
         ordinaryIncome,
         shortTermCapitalGains,
         longTermCapitalGains,

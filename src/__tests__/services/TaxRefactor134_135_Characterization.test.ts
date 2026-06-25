@@ -130,13 +130,15 @@ describe('#134 characterization: regular 65+ additional standard deduction', () 
 
     it('state Virginia senior deduction with additional ordinary income (unified path)', () => {
         const s = createTaxState({ stateResidency: 'Virginia' });
-        // VA 2024 Single with $30k additional ordinary income: standard $8,500 + senior $12,000.
-        const tax = calculateUnifiedStateTax(s, [work(100000)], [], 30000, 2024, assumptionsForBirthYear(1959));
-        expect(tax).toBeGreaterThan(0);
-        // Pin the exact value so the shared helper can't shift it.
+        // VA 2024 Single, $100k gross + $30k additional ordinary income ($130k):
+        // standard $8,500 + senior $12,000. Pin the EXACT unified-path value so the
+        // shared senior helper can't shift it.
         const senior = calculateUnifiedStateTax(s, [work(100000)], [], 30000, 2024, assumptionsForBirthYear(1959));
         const underAge = calculateUnifiedStateTax(s, [work(100000)], [], 30000, 2024, assumptionsForBirthYear(1985));
-        expect(underAge).toBeGreaterThan(senior);
+        expect(senior).toBeCloseTo(6038.75, 2);
+        expect(underAge).toBeCloseTo(6728.75, 2);
+        // Gap is the $12,000 senior deduction at VA's 5.75% top rate.
+        expect(underAge - senior).toBeCloseTo(12000 * 0.0575, 2);
     });
 });
 

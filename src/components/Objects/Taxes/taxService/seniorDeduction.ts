@@ -43,8 +43,20 @@ export function seniorAdditionalDeduction(
 ): number {
     if (!isSeniorEligible(params, age)) return 0;
 
-    const isMFJ = filingStatus === 'Married Filing Jointly';
-    const perPersonMultiplier = params.seniorDeductionPerPerson && isMFJ ? 2 : 1;
+    return (params.seniorDeduction ?? 0) * seniorPerPersonMultiplier(params, filingStatus);
+}
 
-    return (params.seniorDeduction ?? 0) * perPersonMultiplier;
+/**
+ * Per-person multiplier for senior add-ons: 2 for an MFJ filer when the parameters
+ * mark the deduction per-person (`seniorDeductionPerPerson`), else 1. The single-age
+ * model assumes both spouses meet the threshold. Shared by the regular state/federal
+ * add-on (above) AND the federal OBBBA-bonus path in federalTax.ts so the doubling
+ * rule lives in one place and can't disagree.
+ */
+export function seniorPerPersonMultiplier(
+    params: TaxParameters,
+    filingStatus: FilingStatus,
+): number {
+    const isMFJ = filingStatus === 'Married Filing Jointly';
+    return params.seniorDeductionPerPerson && isMFJ ? 2 : 1;
 }
