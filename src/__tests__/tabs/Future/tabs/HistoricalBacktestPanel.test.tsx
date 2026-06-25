@@ -1,8 +1,14 @@
 import { describe, it, expect } from 'vitest';
+import { render, screen } from '@testing-library/react';
 import {
+  HistoricalBacktestPanel,
   resolveBacktestStrategySettings,
   formatGuardrailAdjustmentLabel,
 } from '../../../../tabs/Future/tabs/HistoricalBacktestPanel';
+import {
+  AssumptionsContext,
+  defaultAssumptions,
+} from '../../../../components/Objects/Assumptions/AssumptionsContext';
 
 // -----------------------------------------------------------------------------
 // ISSUE 1: asymmetric guardrails in the GK label
@@ -106,5 +112,45 @@ describe('resolveBacktestStrategySettings — explicit 0 is preserved', () => {
     expect(resolved.gkUpperGuardrail).toBe(1.3);
     expect(resolved.gkLowerGuardrail).toBe(0.8);
     expect(resolved.gkAdjustmentPercent).toBe(10);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// ISSUE #117: surface that the backtest models GK differently from the projection
+//
+// The backtest runs a single-track, fixed-rate (rate × balance) GK, while the
+// main projection runs a budget-anchored GK. Nothing told the user. A note must
+// appear when (and only when) the GK strategy is selected.
+// -----------------------------------------------------------------------------
+function renderPanelWithStrategy(
+  withdrawalStrategy: 'Fixed Real' | 'Guyton Klinger',
+) {
+  const state = {
+    ...defaultAssumptions,
+    investments: {
+      ...defaultAssumptions.investments,
+      withdrawalStrategy,
+    },
+  };
+  return render(
+    <AssumptionsContext.Provider value={{ state, dispatch: () => null }}>
+      <HistoricalBacktestPanel simulationData={[]} />
+    </AssumptionsContext.Provider>,
+  );
+}
+
+describe('HistoricalBacktestPanel — GK modeling-difference note (#117)', () => {
+  it('shows the fixed-rate / single-track note when Guyton-Klinger is selected', () => {
+    renderPanelWithStrategy('Guyton Klinger');
+    expect(screen.getByText(/single-track/i)).toBeInTheDocument();
+    expect(screen.getByText(/fixed-rate/i)).toBeInTheDocument();
+    // It must contrast with the budget-anchored projection.
+    expect(screen.getByText(/budget-anchored/i)).toBeInTheDocument();
+  });
+
+  it('does NOT show the note for a non-GK strategy', () => {
+    renderPanelWithStrategy('Fixed Real');
+    expect(screen.queryByText(/single-track/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/budget-anchored/i)).not.toBeInTheDocument();
   });
 });

@@ -11,6 +11,7 @@ import { SimulationYear } from '../../../components/Objects/Assumptions/Simulati
 import { CurrencyInput } from '../../../components/Layout/InputFields/CurrencyInput';
 import { DropdownInput } from '../../../components/Layout/InputFields/DropdownInput';
 import { PercentageInput } from '../../../components/Layout/InputFields/PercentageInput';
+import { AlertBanner } from '../../../components/Layout/AlertBanner';
 
 interface HistoricalBacktestPanelProps {
   simulationData: SimulationYear[];
@@ -221,6 +222,18 @@ export const HistoricalBacktestPanel = React.memo(({ simulationData }: Historica
           <span className="text-content-muted"> {formatGuardrailAdjustmentLabel({ gkAdjustmentPercent, gkUpperGuardrail, gkLowerGuardrail })}</span>
         )}
       </p>
+
+      {config.withdrawalStrategy === 'Guyton Klinger' && (
+        <div className="mb-4">
+          <AlertBanner severity="info" size="sm" title="How Guyton-Klinger is modeled here">
+            The backtest models GK as a fixed-rate (single-track) withdrawal — rate × balance,
+            inflation-adjusted, with ±{gkAdjustmentPercent}% guardrail moves applied directly to the
+            withdrawal — replayed across historical return/inflation sequences. This differs from the
+            projection, where GK is budget-anchored: you spend your itemized plan, with a ±10%
+            discretionary adjustment only at the ±20% guardrails.
+          </AlertBanner>
+        </div>
+      )}
 
       {/* Configuration */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
