@@ -74,7 +74,12 @@ describe('MilestoneEvaluator', () => {
             expect(calculateNetWorth(accounts, expenses)).toBe(200000);
         });
 
-        it('still counts a standalone mortgage (no linked property account) once', () => {
+        it('does NOT read a standalone (unlinked) mortgage off the expense side (#124)', () => {
+            // Net worth is sourced from accounts only. A standalone MortgageExpense
+            // whose linkedAccountId is empty has no account carrying its loan, so the
+            // account-only reconciler reports 0 — NOT -300000. (The import/reconstitution
+            // layer is responsible for re-linking such an orphan to a paired account
+            // before it ever reaches the simulation; see linkOrphanLoanExpenses.)
             const accounts: AnyAccount[] = [];
             const expenses = [
                 new MortgageExpense(
@@ -86,25 +91,28 @@ describe('MilestoneEvaluator', () => {
                 ),
             ];
 
-            // No asset, just the single mortgage liability.
-            expect(calculateNetWorth(accounts, expenses)).toBe(-300000);
+            expect(calculateNetWorth(accounts, expenses)).toBe(0);
         });
 
-        it('includes mortgage from expense when no property account', () => {
-            const accounts: any[] = [];
+        it('reflects an unlinked mortgage only via its paired PropertyAccount (#124)', () => {
+            // The canonical way a mortgage liability lands in net worth: on the account
+            // side. With the paired PropertyAccount present, value − loan is counted
+            // exactly once and the expense side is ignored entirely.
+            const accounts: AnyAccount[] = [
+                new PropertyAccount('acc-mort', 'Home', 500000, 'Financed', 300000, 400000, 'mort'),
+            ];
             const expenses = [
                 new MortgageExpense(
                     'mort', 'Mortgage', 'Monthly',
                     500000, 300000, 400000, 4, 30,
                     1.2, 0, 0.5, 200, 0.3, 0, 0,
-                    'Itemized', 0, '',
+                    'Itemized', 0, 'acc-mort',
                     new Date()
                 ),
             ];
 
-            // Just the mortgage liability, no property account asset
-            const netWorth = calculateNetWorth(accounts, expenses);
-            expect(netWorth).toBe(-300000);
+            // 500k value − 300k loan = 200k, counted once on the account.
+            expect(calculateNetWorth(accounts, expenses)).toBe(200000);
         });
 
         it('includes ESPP accounts as assets', () => {
@@ -166,8 +174,27 @@ describe('MilestoneEvaluator', () => {
             expect(calculateTotalDebt(accounts, [])).toBe(40000);
         });
 
-        it('includes mortgage from expenses', () => {
+        it('does NOT read an unlinked mortgage off the expense side (#124)', () => {
+            // Total debt is account-only, mirroring net worth. A MortgageExpense with
+            // no paired account contributes nothing; the orphan is re-linked at import.
             const accounts: any[] = [];
+            const expenses = [
+                new MortgageExpense(
+                    'mort', 'Mortgage', 'Monthly',
+                    400000, 250000, 300000, 4, 30,
+                    1.2, 0, 0.5, 200, 0.3, 0, 0,
+                    'Itemized', 0, '',
+                    new Date()
+                ),
+            ];
+
+            expect(calculateTotalDebt(accounts, expenses)).toBe(0);
+        });
+
+        it('counts a mortgage liability via its linked PropertyAccount, not the expense (#124)', () => {
+            const accounts = [
+                new PropertyAccount('house', 'Home', 400000, 'Financed', 250000, 300000, 'mort'),
+            ];
             const expenses = [
                 new MortgageExpense(
                     'mort', 'Mortgage', 'Monthly',
@@ -178,10 +205,11 @@ describe('MilestoneEvaluator', () => {
                 ),
             ];
 
+            // 250k loan counted once on the account; expense side ignored.
             expect(calculateTotalDebt(accounts, expenses)).toBe(250000);
         });
 
-        it('includes loan expenses', () => {
+        it('does NOT read an unlinked loan expense off the expense side (#124)', () => {
             const accounts: any[] = [];
             const expenses = [
                 new LoanExpense(
@@ -190,7 +218,7 @@ describe('MilestoneEvaluator', () => {
                 ),
             ];
 
-            expect(calculateTotalDebt(accounts, expenses)).toBe(10000);
+            expect(calculateTotalDebt(accounts, expenses)).toBe(0);
         });
     });
 

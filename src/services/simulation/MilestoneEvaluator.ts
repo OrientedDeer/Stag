@@ -17,9 +17,26 @@ export interface MilestoneContext {
 }
 
 /**
- * Calculate total net worth: all assets minus all liabilities
+ * Calculate total net worth: all assets minus all liabilities.
+ *
+ * Net worth is sourced from ACCOUNTS only — every non-debt account's balance as
+ * an asset, and DebtAccount/DeficitDebtAccount balances plus PropertyAccount.loanAmount
+ * as liabilities. This is the same liability set as FutureUtils.getAccountTotals, the
+ * single canonical net-worth definition every display, chart, Monte Carlo, scenario,
+ * and PDF surface already uses (#124).
+ *
+ * Mortgage/loan balances are NOT read off the expense side. For a linked loan the
+ * engine keeps PropertyAccount.loanAmount in sync with MortgageExpense.loan_balance
+ * (AccountGrowth.ts), so the account side already carries it. An UNLINKED expense-side
+ * loan is a broken record (its paired account is missing); the import/reconstitution
+ * layer repairs that by auto-creating + linking a paired account (linkOrphanLoanExpenses
+ * in useFileManager), so the liability still lands on the account side and net worth
+ * stays single-sourced rather than reading two divergent sources.
+ *
+ * `expenses` is retained on the signature because it's still consumed by the
+ * EXPENSES_GROSSED_UP milestone target math; it is no longer read for net worth.
  */
-export function calculateNetWorth(accounts: AnyAccount[], expenses: AnyExpense[]): number {
+export function calculateNetWorth(accounts: AnyAccount[], _expenses?: AnyExpense[]): number {
     let assets = 0;
     let liabilities = 0;
 
@@ -34,25 +51,6 @@ export function calculateNetWorth(accounts: AnyAccount[], expenses: AnyExpense[]
             liabilities += account.loanAmount || 0;
         } else if (account instanceof InvestedAccount || account instanceof SavedAccount || account instanceof ESPPAccount || account instanceof RSUAccount) {
             assets += account.amount;
-        }
-    });
-
-    // Build set of expense ids that are linked to an account (so the loan is
-    // already counted on the account side) to avoid double-counting.
-    const linkedExpenseIds = new Set<string>();
-    accounts.forEach(a => {
-        if ((a instanceof PropertyAccount || a instanceof DebtAccount) && a.linkedAccountId) {
-            linkedExpenseIds.add(a.linkedAccountId);
-        }
-    });
-
-    // Also include mortgage and loan balances from standalone expenses
-    // (skip those linked to an account, already counted above).
-    expenses.forEach(expense => {
-        if (expense instanceof MortgageExpense) {
-            if (!linkedExpenseIds.has(expense.id)) liabilities += expense.loan_balance;
-        } else if (expense instanceof LoanExpense) {
-            if (!linkedExpenseIds.has(expense.id)) liabilities += expense.amount;
         }
     });
 
@@ -81,9 +79,17 @@ export function calculateLiquidNetWorth(accounts: AnyAccount[]): number {
 }
 
 /**
- * Calculate total debt: all debt accounts + mortgage/loan balances
+ * Calculate total debt: account-carried liabilities only — DebtAccount and
+ * DeficitDebtAccount balances plus PropertyAccount.loanAmount. Mirrors the
+ * canonical account-only liability set in calculateNetWorth / getAccountTotals
+ * (#124): the engine keeps linked loans synced onto the account side, and the
+ * import layer re-links orphaned expense-side loans, so debt is single-sourced
+ * from accounts rather than summing two divergent sources.
+ *
+ * `expenses` is retained on the signature for call-site stability; it is no
+ * longer read.
  */
-export function calculateTotalDebt(accounts: AnyAccount[], expenses: AnyExpense[]): number {
+export function calculateTotalDebt(accounts: AnyAccount[], _expenses?: AnyExpense[]): number {
     let debt = 0;
 
     accounts.forEach(account => {
@@ -93,25 +99,6 @@ export function calculateTotalDebt(accounts: AnyAccount[], expenses: AnyExpense[
             debt += account.amount;
         } else if (account instanceof PropertyAccount) {
             debt += account.loanAmount || 0;
-        }
-    });
-
-    // Build set of expense ids that are linked to an account (so the loan is
-    // already counted on the account side) to avoid double-counting.
-    const linkedExpenseIds = new Set<string>();
-    accounts.forEach(a => {
-        if ((a instanceof PropertyAccount || a instanceof DebtAccount) && a.linkedAccountId) {
-            linkedExpenseIds.add(a.linkedAccountId);
-        }
-    });
-
-    // Also include mortgage and loan balances from standalone expenses
-    // (skip those linked to an account, already counted above).
-    expenses.forEach(expense => {
-        if (expense instanceof MortgageExpense) {
-            if (!linkedExpenseIds.has(expense.id)) debt += expense.loan_balance;
-        } else if (expense instanceof LoanExpense) {
-            if (!linkedExpenseIds.has(expense.id)) debt += expense.amount;
         }
     });
 

@@ -8,6 +8,7 @@ import { AnyAccount, reconstituteAccount } from './models';
 import { AmountHistoryEntry } from './AccountContext';
 import { AnyIncome, reconstituteIncome } from '../Income/models';
 import { AnyExpense, reconstituteExpense } from '../Expense/models';
+import { linkOrphanLoanExpenses } from '../../../services/simulation/linkOrphanLoanExpenses';
 import { TaxState, defaultTaxState } from '../../Objects/Taxes/TaxContext';
 import { ImportKeyContext } from './ImportKeyContext';
 import { BudgetContext, BudgetState, reconstituteBudgetState } from '../Budget/BudgetContext';
@@ -81,9 +82,19 @@ export const useFileManager = () => {
         try {
             const data = JSON.parse(json);
 
-            const newAccounts = data.accounts.map(reconstituteAccount).filter((value: AnyAccount | null): value is AnyAccount => value !== null);
+            const reconstitutedAccounts = data.accounts.map(reconstituteAccount).filter((value: AnyAccount | null): value is AnyAccount => value !== null);
             const newIncomes = data.incomes.map(reconstituteIncome).filter((value: AnyIncome | null): value is AnyIncome => value !== null);
             const newExpenses = data.expenses.map(reconstituteExpense).filter((value: AnyExpense | null): value is AnyExpense => value !== null);
+
+            // Orphan-loan guard (#124): net worth/total debt are sourced from accounts
+            // only, so an imported MortgageExpense/LoanExpense whose linkedAccountId is
+            // empty or dangling would have its balance silently dropped. Re-link each
+            // orphan to a freshly created paired account so the liability lands on the
+            // account side (mirrors the invariant AddExpenseModal enforces at creation).
+            const { accounts: newAccounts, notices: relinkNotices } = linkOrphanLoanExpenses(reconstitutedAccounts, newExpenses);
+            if (relinkNotices.length > 0) {
+                console.warn(`[import] Re-linked ${relinkNotices.length} orphaned loan expense(s):\n${relinkNotices.join('\n')}`);
+            }
 
             accountDispatch({ type: 'SET_BULK_DATA', payload: { accounts: newAccounts, amountHistory: data.amountHistory || {} } });
             incomeDispatch({ type: 'SET_BULK_DATA', payload: { incomes: newIncomes } });
