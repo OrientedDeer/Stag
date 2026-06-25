@@ -19,6 +19,7 @@ import AssumptionTab from "./tabs/Future/AssumptionTab";
 import { AssumptionsProvider } from "./components/Objects/Assumptions/AssumptionsContext";
 import { SimulationProvider } from "./components/Objects/Assumptions/SimulationContext";
 import { ProjectionHistoryCapture } from "./components/Objects/Assumptions/ProjectionHistoryCapture";
+import { OrphanLoanReconciler } from "./components/OrphanLoanReconciler";
 import { MonteCarloProvider } from "./components/Objects/Assumptions/MonteCarloContext";
 import { ScenarioProvider } from "./components/Objects/Scenarios/ScenarioContext";
 import PriorityTab from "./tabs/Future/PriorityTab";
@@ -50,6 +51,7 @@ export default function App() {
               <ReceiptToastProvider>
               <GlobalKeyboardShortcuts />
               <ProjectionHistoryCapture />
+              <OrphanLoanReconciler />
               <div className="flex h-screen">
                 <Sidebar isOpen={isOpen} onClose={() => setIsOpen(true)}/>
                 <div className="flex flex-col flex-1 overflow-hidden">
