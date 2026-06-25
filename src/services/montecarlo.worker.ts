@@ -34,9 +34,13 @@ self.onmessage = async (e: MessageEvent): Promise<void> => {
         // after structured clone), the run would produce a meaningless result.
         // Dropping every account → $0 net worth → 100% "success"; dropping every
         // expense → zero spending → an equally impossible ~100% success. The
-        // same className-clone bug wipes any of the three lists, so guard all of
-        // them symmetrically. Throw so the main-thread fallback — which uses the
-        // live instances directly — takes over instead.
+        // className-clone failure is all-or-nothing per list (className is stamped
+        // in the base constructor on every instance, so the clone either preserves
+        // it for all or none) — so a TOTAL wipe of any of the three lists is the
+        // realistic failure mode. We check all three; a partial drop from
+        // heterogeneous/malformed input is NOT caught here (out of scope). Throw so
+        // the main-thread fallback — which uses the live instances directly — takes
+        // over instead.
         if (req.accounts.length > 0 && accounts.length === 0) {
             throw new Error(
                 `reconstituted 0 of ${req.accounts.length} accounts (lost class discriminators in transfer)`,
