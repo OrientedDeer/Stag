@@ -23,6 +23,7 @@ import { runSimulationWithOptimization } from '../Assumptions/useSimulation';
 import { AnyAccount, reconstituteAccount } from '../Accounts/models';
 import { AnyIncome, reconstituteIncome } from '../Income/models';
 import { AnyExpense, reconstituteExpense } from '../Expense/models';
+import { linkOrphanLoanExpenses } from '../../../services/simulation/linkOrphanLoanExpenses';
 import { AssumptionsState, defaultAssumptions } from '../Assumptions/AssumptionsContext';
 import { TaxState } from '../Taxes/TaxContext';
 import { AmountHistoryEntry } from '../Accounts/AccountContext';
@@ -389,7 +390,7 @@ export const ScenarioProvider = ({ children }: { children: ReactNode }) => {
         const inputs = scenario.inputs;
 
         // Reconstitute objects from JSON
-        const accounts = inputs.accounts
+        const reconstitutedAccounts = inputs.accounts
             .map(reconstituteAccount)
             .filter(Boolean) as AnyAccount[];
         const incomes = inputs.incomes
@@ -398,6 +399,13 @@ export const ScenarioProvider = ({ children }: { children: ReactNode }) => {
         const expenses = inputs.expenses
             .map(reconstituteExpense)
             .filter(Boolean) as AnyExpense[];
+
+        // Orphan-loan guard (#124): net worth / total debt are account-only, so a
+        // saved scenario carrying a MortgageExpense/LoanExpense with an empty or
+        // dangling linkedAccountId would have its balance silently dropped (and shift
+        // when NET_WORTH/TOTAL_DEBT milestones fire). Re-link each orphan to a paired
+        // account before simulating, exactly as the import path does.
+        const { accounts } = linkOrphanLoanExpenses(reconstitutedAccounts, expenses);
 
         // Merge assumptions with defaults
         const assumptions: AssumptionsState = {

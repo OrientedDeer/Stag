@@ -13,6 +13,8 @@ import {
     LoanExpense,
     OtherExpense,
 } from '../../../components/Objects/Expense/models';
+import { hydrateAccountState } from '../../../components/Objects/Accounts/AccountContext';
+import { hydrateExpenseState } from '../../../components/Objects/Expense/ExpenseContext';
 
 function makeMortgage(id: string, linkedAccountId: string, loanBalance = 300000): MortgageExpense {
     return new MortgageExpense(
@@ -136,25 +138,120 @@ describe('linkOrphanLoanExpenses (#124 orphan guard)', () => {
         const expenses: AnyExpense[] = [makeMortgage('exs-orphan', '', 300000)];
 
         // Before the guard: account-only net worth silently ignores the orphan.
-        expect(calculateNetWorth(accounts, expenses)).toBe(0);
+        expect(calculateNetWorth(accounts)).toBe(0);
 
         const result = linkOrphanLoanExpenses(accounts, expenses);
 
         // After the guard: 500k value − 300k loan on the paired account = 200k.
-        expect(calculateNetWorth(result.accounts, result.expenses)).toBe(200000);
+        expect(calculateNetWorth(result.accounts)).toBe(200000);
         // And total debt now reflects the loan.
-        expect(calculateTotalDebt(result.accounts, result.expenses)).toBe(300000);
+        expect(calculateTotalDebt(result.accounts)).toBe(300000);
     });
 
     it('after re-linking, an orphaned loan adds its balance to account-only total debt', () => {
         const accounts: AnyAccount[] = [];
         const expenses: AnyExpense[] = [makeLoan('exs-loan', '', 12000)];
 
-        expect(calculateTotalDebt(accounts, expenses)).toBe(0); // dropped before guard
+        expect(calculateTotalDebt(accounts)).toBe(0); // dropped before guard
 
         const result = linkOrphanLoanExpenses(accounts, expenses);
 
-        expect(calculateTotalDebt(result.accounts, result.expenses)).toBe(12000);
-        expect(calculateNetWorth(result.accounts, result.expenses)).toBe(-12000);
+        expect(calculateTotalDebt(result.accounts)).toBe(12000);
+        expect(calculateNetWorth(result.accounts)).toBe(-12000);
+    });
+
+    it('does NOT double-claim when an account already links the expense but the back-link is broken (#124 [3])', () => {
+        // Half-broken link: the PropertyAccount points at the mortgage
+        // (account.linkedAccountId === mortgage.id), but the mortgage's own
+        // linkedAccountId is empty. The loan is ALREADY carried by that account, so
+        // the guard must NOT mint a second PropertyAccount (which would double-count
+        // the 300k loan in net worth / total debt). It should reuse the existing one
+        // and repair the back-link.
+        const existing = new PropertyAccount('acc-house', 'Home', 500000, 'Financed', 300000, 400000, 'exs-house');
+        const mortgage = makeMortgage('exs-house', '', 300000); // back-link broken
+        const accounts: AnyAccount[] = [existing];
+        const expenses: AnyExpense[] = [mortgage];
+
+        const result = linkOrphanLoanExpenses(accounts, expenses);
+
+        // No new account created.
+        expect(result.accounts).toHaveLength(1);
+        expect(result.accounts[0]).toBe(existing);
+        // Back-link repaired to the existing account.
+        expect(mortgage.linkedAccountId).toBe('acc-house');
+        // Loan counted exactly once: 500k − 300k = 200k (NOT -100k double-counted).
+        expect(calculateNetWorth(result.accounts)).toBe(200000);
+        expect(calculateTotalDebt(result.accounts)).toBe(300000);
+    });
+
+    it('does NOT double-claim a loan when a DebtAccount already links the expense (#124 [3])', () => {
+        const existing = new DebtAccount('acc-loan', 'Personal Loan', 12000, 'exs-loan', 8);
+        const loan = makeLoan('exs-loan', '', 12000); // back-link broken
+        const accounts: AnyAccount[] = [existing];
+        const expenses: AnyExpense[] = [loan];
+
+        const result = linkOrphanLoanExpenses(accounts, expenses);
+
+        expect(result.accounts).toHaveLength(1);
+        expect(result.accounts[0]).toBe(existing);
+        expect(loan.linkedAccountId).toBe('acc-loan');
+        // 12k counted once, not 24k.
+        expect(calculateTotalDebt(result.accounts)).toBe(12000);
+    });
+
+    it('reuses the existing account even when its id is NOT the derived ACC-id (#124 [3])', () => {
+        // The account claiming the expense has an arbitrary id (e.g. an imported one
+        // that does not follow the 'ACC'+suffix convention). The guard must still
+        // recognize the claim via account.linkedAccountId and reuse it.
+        const existing = new PropertyAccount('imported-xyz', 'Home', 500000, 'Financed', 300000, 400000, 'exs-house');
+        const mortgage = makeMortgage('exs-house', '', 300000);
+        const accounts: AnyAccount[] = [existing];
+        const expenses: AnyExpense[] = [mortgage];
+
+        const result = linkOrphanLoanExpenses(accounts, expenses);
+
+        expect(result.accounts).toHaveLength(1);
+        expect(mortgage.linkedAccountId).toBe('imported-xyz');
+        expect(calculateNetWorth(result.accounts)).toBe(200000);
+    });
+
+    it('repairs an orphan that arrives through the localStorage boot-hydration path (#124 [0])', () => {
+        // Reproduce the boot path: accounts and expenses are persisted under SEPARATE
+        // localStorage keys and rehydrated independently (hydrateAccountState /
+        // hydrateExpenseState). A pre-existing orphan mortgage (no paired account in
+        // the persisted accounts blob) survives reconstitution. Running the guard over
+        // the two independently-hydrated sets repairs it — exactly what a boot-time
+        // reconciler reading both contexts would do.
+        const persistedAccounts = { accounts: [], amountHistory: {} };
+        const persistedExpenses = {
+            expenses: [
+                {
+                    className: 'MortgageExpense',
+                    id: 'exs-boot-orphan', name: 'Old Home', frequency: 'Monthly',
+                    valuation: 500000, loan_balance: 300000, starting_loan_balance: 400000,
+                    apr: 4, term_length: 30, property_taxes: 1.2, valuation_deduction: 0,
+                    maintenance: 0.5, utilities: 200, home_owners_insurance: 0.3, pmi: 0,
+                    hoa_fee: 0, is_tax_deductible: 'Itemized', tax_deductible: 0,
+                    linkedAccountId: '', // orphan: no paired account persisted
+                    startDate: '2020-01-01',
+                },
+            ],
+        };
+
+        const accountState = hydrateAccountState(persistedAccounts, { accounts: [], amountHistory: {} });
+        const expenseState = hydrateExpenseState(persistedExpenses, { expenses: [] });
+
+        // The orphan reconstituted into a real MortgageExpense.
+        expect(expenseState.expenses[0]).toBeInstanceOf(MortgageExpense);
+        // Account-only net worth would silently drop it before repair.
+        expect(calculateNetWorth(accountState.accounts)).toBe(0);
+
+        const result = linkOrphanLoanExpenses(accountState.accounts, expenseState.expenses);
+
+        // After the boot-time guard, the liability lands on a paired account.
+        expect(result.accounts).toHaveLength(1);
+        expect(result.accounts[0]).toBeInstanceOf(PropertyAccount);
+        expect(calculateNetWorth(result.accounts)).toBe(200000);
+        expect((expenseState.expenses[0] as MortgageExpense).linkedAccountId).toBe(result.accounts[0].id);
     });
 });

@@ -91,10 +91,9 @@ export const useFileManager = () => {
             // empty or dangling would have its balance silently dropped. Re-link each
             // orphan to a freshly created paired account so the liability lands on the
             // account side (mirrors the invariant AddExpenseModal enforces at creation).
-            const { accounts: newAccounts, notices: relinkNotices } = linkOrphanLoanExpenses(reconstitutedAccounts, newExpenses);
-            if (relinkNotices.length > 0) {
-                console.warn(`[import] Re-linked ${relinkNotices.length} orphaned loan expense(s):\n${relinkNotices.join('\n')}`);
-            }
+            // Repair is silent; the helper's `notices` are available for a future
+            // user-visible trace if one is wanted.
+            const { accounts: newAccounts } = linkOrphanLoanExpenses(reconstitutedAccounts, newExpenses);
 
             accountDispatch({ type: 'SET_BULK_DATA', payload: { accounts: newAccounts, amountHistory: data.amountHistory || {} } });
             incomeDispatch({ type: 'SET_BULK_DATA', payload: { incomes: newIncomes } });

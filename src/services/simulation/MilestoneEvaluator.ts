@@ -28,15 +28,12 @@ export interface MilestoneContext {
  * Mortgage/loan balances are NOT read off the expense side. For a linked loan the
  * engine keeps PropertyAccount.loanAmount in sync with MortgageExpense.loan_balance
  * (AccountGrowth.ts), so the account side already carries it. An UNLINKED expense-side
- * loan is a broken record (its paired account is missing); the import/reconstitution
- * layer repairs that by auto-creating + linking a paired account (linkOrphanLoanExpenses
- * in useFileManager), so the liability still lands on the account side and net worth
- * stays single-sourced rather than reading two divergent sources.
- *
- * `expenses` is retained on the signature because it's still consumed by the
- * EXPENSES_GROSSED_UP milestone target math; it is no longer read for net worth.
+ * loan is a broken record (its paired account is missing); the state-entry layer
+ * repairs that by auto-creating + linking a paired account (linkOrphanLoanExpenses),
+ * so the liability still lands on the account side and net worth stays single-sourced
+ * rather than reading two divergent sources.
  */
-export function calculateNetWorth(accounts: AnyAccount[], _expenses?: AnyExpense[]): number {
+export function calculateNetWorth(accounts: AnyAccount[]): number {
     let assets = 0;
     let liabilities = 0;
 
@@ -83,13 +80,10 @@ export function calculateLiquidNetWorth(accounts: AnyAccount[]): number {
  * DeficitDebtAccount balances plus PropertyAccount.loanAmount. Mirrors the
  * canonical account-only liability set in calculateNetWorth / getAccountTotals
  * (#124): the engine keeps linked loans synced onto the account side, and the
- * import layer re-links orphaned expense-side loans, so debt is single-sourced
+ * state-entry layer re-links orphaned expense-side loans, so debt is single-sourced
  * from accounts rather than summing two divergent sources.
- *
- * `expenses` is retained on the signature for call-site stability; it is no
- * longer read.
  */
-export function calculateTotalDebt(accounts: AnyAccount[], _expenses?: AnyExpense[]): number {
+export function calculateTotalDebt(accounts: AnyAccount[]): number {
     let debt = 0;
 
     accounts.forEach(account => {
@@ -269,13 +263,13 @@ function evaluateCondition(condition: MilestoneCondition, context: MilestoneCont
 
     switch (condition.type) {
         case 'NET_WORTH':
-            measuredValue = calculateNetWorth(context.accounts, context.expenses);
+            measuredValue = calculateNetWorth(context.accounts);
             break;
         case 'LIQUID_NET_WORTH':
             measuredValue = calculateLiquidNetWorth(context.accounts);
             break;
         case 'TOTAL_DEBT':
-            measuredValue = calculateTotalDebt(context.accounts, context.expenses);
+            measuredValue = calculateTotalDebt(context.accounts);
             break;
         case 'YEAR':
             measuredValue = context.year;
