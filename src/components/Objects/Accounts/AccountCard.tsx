@@ -568,6 +568,15 @@ function DebtAccountFields({ account, onFieldUpdate, linkedAccountName }: DebtAc
                     <p className="text-warning/80 mt-1">Loan payments won't be tracked. Try deleting and re-adding this debt.</p>
                 </div>
             )}
+            <div className="col-span-full">
+                <ToggleInput
+                    id={`${account.id}-accepts-surplus-paydown`}
+                    label="Pay down with surplus cash"
+                    enabled={account.acceptsSurplusPaydown}
+                    setEnabled={(val) => onFieldUpdate("acceptsSurplusPaydown", val)}
+                    tooltip="When on, leftover cash each year goes toward paying off this debt early (highest-APR flagged debts first) before being invested."
+                />
+            </div>
         </>
     );
 }

@@ -466,4 +466,109 @@ describe('Story 7: Debt Payoff', () => {
         // Should run without errors with zero-balance debt
         assertAllYearsInvariants(simulation);
     });
+
+    // ---------------------------------------------------------------------
+    // Phase-1 (#60): more complex debt repayment options
+    // ---------------------------------------------------------------------
+
+    it('B: LoanExpense extra_payment accelerates payoff vs. the baseline', () => {
+        const findPayoffYear = (sim: typeof baselineSim): number | null => {
+            for (const year of sim) {
+                const loan = year.expenses.find(e => e.id === 'exp-studentloan') as LoanExpense;
+                if (loan && loan.amount <= 1) return year.year;
+            }
+            return null;
+        };
+
+        // Baseline 10-year student loan (no extra payment).
+        const baselineSim = runSimulation(
+            yearsToSimulate,
+            [propertyAccount, studentLoanAccount, savingsAccount],
+            [workIncome],
+            [mortgageExpense, studentLoanExpense, livingExpenses],
+            assumptions,
+            taxState
+        );
+
+        // Same loan, but $300/mo extra principal (trailing constructor arg).
+        const acceleratedLoan = new LoanExpense(
+            'exp-studentloan', 'Student Loan', 50000, 'Monthly', 5.0, 'Compounding',
+            530, 'No', 0, 'acc-studentloan',
+            new Date('2025-01-01'), new Date('2035-01-01'),
+            undefined, undefined, 300
+        );
+        const acceleratedSim = runSimulation(
+            yearsToSimulate,
+            [propertyAccount, studentLoanAccount, savingsAccount],
+            [workIncome],
+            [mortgageExpense, acceleratedLoan, livingExpenses],
+            assumptions,
+            taxState
+        );
+
+        const basePayoff = findPayoffYear(baselineSim);
+        const accelPayoff = findPayoffYear(acceleratedSim);
+
+        expect(basePayoff).not.toBeNull();
+        expect(accelPayoff).not.toBeNull();
+        // Extra principal pays it off strictly sooner.
+        expect(accelPayoff!).toBeLessThan(basePayoff!);
+        assertAllYearsInvariants(acceleratedSim);
+    });
+
+    it('C: surplus pays down a flagged standalone debt faster than an unflagged one', () => {
+        // A standalone (unlinked) high-APR credit card — the classic case the
+        // engine previously ignored (surplus only ever fed investments).
+        const makeCard = (flagged: boolean) => new DebtAccount(
+            'acc-card', 'Credit Card', 15000, '', 18, flagged
+        );
+
+        const balanceAtYearIndex = (accepts: boolean, idx: number): number => {
+            const sim = runSimulation(
+                yearsToSimulate,
+                [propertyAccount, studentLoanAccount, savingsAccount, makeCard(accepts)],
+                [workIncome],
+                [mortgageExpense, studentLoanExpense, livingExpenses],
+                assumptions,
+                taxState
+            );
+            const card = sim[idx]?.accounts.find(a => a.id === 'acc-card') as DebtAccount | undefined;
+            return card ? card.amount : 0;
+        };
+
+        const unflaggedBal = balanceAtYearIndex(false, 5);
+        const flaggedBal = balanceAtYearIndex(true, 5);
+
+        // Default-off card: with no extra paydown and 18% APR it compounds upward
+        // (no scheduled payment on a standalone DebtAccount), so it's well above
+        // the flagged card, which surplus has been retiring.
+        expect(flaggedBal).toBeLessThan(unflaggedBal);
+    });
+
+    it('C default-off: an unflagged debt is byte-identical to having no flag field', () => {
+        // Re-run the existing student-loan scenario; its DebtAccount is unflagged
+        // (acceptsSurplusPaydown defaults false), so surplus must NOT touch it —
+        // its balance path is driven solely by the linked loan's amortization.
+        const sim = runSimulation(
+            yearsToSimulate,
+            [propertyAccount, studentLoanAccount, savingsAccount],
+            [workIncome],
+            [mortgageExpense, studentLoanExpense, livingExpenses],
+            assumptions,
+            taxState
+        );
+
+        for (const year of sim) {
+            const loanExpense = year.expenses.find(e => e.id === 'exp-studentloan') as LoanExpense;
+            const loanAccount = year.accounts.find(a => a.id === 'acc-studentloan') as DebtAccount;
+            if (loanExpense && loanAccount) {
+                // Account still mirrors the loan's own amortized balance — surplus
+                // did not accelerate it (would have made the account lower).
+                expect(
+                    Math.abs(loanExpense.amount - loanAccount.amount),
+                    `Unflagged debt should track its loan exactly in ${year.year}`
+                ).toBeLessThan(10);
+            }
+        }
+    });
 });

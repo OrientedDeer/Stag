@@ -343,7 +343,8 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 				form.interestType, form.payment, form.isTaxDeductible,
 				form.isTaxDeductible !== 'No' ? form.taxDeductibleAmount : 0,
 				'ACC' + id.substring(3), finalStartDate, finalEndDate,
-				finalStartMilestoneId, finalEndMilestoneId
+				finalStartMilestoneId, finalEndMilestoneId,
+				form.extraPayment // #60 B
 			);
 		} else if (selectedType === DependentExpense) {
 			newExpense = new DependentExpense(
@@ -723,6 +724,7 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 										tooltip="Compounding: interest accrues on principal + unpaid interest. Simple: interest only on original principal."
 									/>
 									<CurrencyInput id={`${id}-payment`} label="Payment" value={form.payment} onChange={(val) => updateForm('payment', val)} tooltip="Your regular payment amount (per frequency)." />
+									<CurrencyInput id={`${id}-extra-payment`} label="Extra Payment" value={form.extraPayment} onChange={(val) => updateForm('extraPayment', val)} tooltip="Additional monthly payment toward principal to pay off the loan faster." />
 									<DropdownInput
 										id={`${id}-tax-deductible`}
 										label="Tax Deductible"

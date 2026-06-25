@@ -427,7 +427,11 @@ function getMortgageExtrasSummary(expense: MortgageExpense): string {
 }
 
 function getLoanDetailsSummary(expense: LoanExpense): string {
-    return `${expense.apr}% APR · ${fmt(expense.payment)}/${getFrequencyAbbrev(expense.frequency)}`;
+    let summary = `${expense.apr}% APR · ${fmt(expense.payment)}/${getFrequencyAbbrev(expense.frequency)}`;
+    if (expense.extra_payment > 0) {
+        summary += ` · +${fmt(expense.extra_payment)} extra`;
+    }
+    return summary;
 }
 
 interface MortgageFieldsProps {
@@ -626,6 +630,13 @@ function LoanFields({ expense, onFieldUpdate, linkedAccountName }: LoanFieldsPro
                     label="Payment"
                     value={expense.payment}
                     onChange={(val) => onFieldUpdate("payment", val)}
+                />
+                <CurrencyInput
+                    id={`${expense.id}-extra-payment`}
+                    label="Extra Payment"
+                    value={expense.extra_payment}
+                    onChange={(val) => onFieldUpdate("extra_payment", val)}
+                    tooltip="Additional monthly payment toward principal to pay off the loan faster."
                 />
                 <StyledSelect
                     id={`${expense.id}-tax-deductible`}

@@ -560,6 +560,11 @@ export class LoanExpense extends BaseExpense {
     endDate?: Date,
     startMilestoneId?: string,
     endMilestoneId?: string,
+    // Phase-1 (#60 B): optional extra monthly principal, mirroring
+    // MortgageExpense.extra_payment. Trailing + default 0 so every existing
+    // positional `new LoanExpense(...)` call is unchanged and default-off loans
+    // amortize byte-identically.
+    public extra_payment: number = 0,
   ) {
     const effectiveStartDate = startDate || new Date();
     const effectiveEndDate = endDate || (() => {
@@ -591,9 +596,10 @@ export class LoanExpense extends BaseExpense {
         interest = balance * monthlyRate;
       }
 
-      // Logic: Payment covers interest first, then principal
-      // this.payment is the total monthly payment
-      const principal = Math.min(balance, this.payment - interest);
+      // Logic: Payment covers interest first, then principal. Any extra_payment
+      // (#60 B) goes straight to principal on top, capped at the remaining
+      // balance so we never overpay (drive the balance negative).
+      const principal = Math.min(balance, (this.payment + this.extra_payment) - interest);
 
       // If payment is too low to cover interest, balance grows (negative amortization)
       // Otherwise balance shrinks
@@ -615,7 +621,8 @@ export class LoanExpense extends BaseExpense {
       this.startDate,
       this.endDate,
       this.startMilestoneId,
-      this.endMilestoneId
+      this.endMilestoneId,
+      this.extra_payment // #60 B: carry the extra payment to next year
     );
     return this.copyMetaTo(result);
   }
@@ -647,11 +654,12 @@ export class LoanExpense extends BaseExpense {
         }
 
         const interest = this.apr > 0 ? balance * monthlyRate : 0;
-        
-        // Determine the payment for this month
-        // It's either the full payment, or just enough to clear the balance
-        const paymentThisMonth = Math.min(this.payment, balance + interest);
-        
+
+        // Determine the payment for this month. It's the scheduled payment plus
+        // any extra_payment (#60 B), or just enough to clear the balance —
+        // whichever is smaller (so the extra principal is capped at the payoff).
+        const paymentThisMonth = Math.min(this.payment + this.extra_payment, balance + interest);
+
         let principalPaid = paymentThisMonth - interest;
         
         // Ensure we don't overpay principal
@@ -1196,7 +1204,8 @@ export function reconstituteExpense(data: unknown): AnyExpense | null {
                 Number(data.payment) || 0,
                 (data.is_tax_deductible as 'Yes' | 'No' | 'Itemized') || 'No',
                 Number(data.tax_deductible) || 0, String(data.linkedAccountId ?? ''),
-                startDate, endDate, startMilestoneId, endMilestoneId
+                startDate, endDate, startMilestoneId, endMilestoneId,
+                Number(data.extra_payment) || 0 // #60 B
             );
             break;
         case 'DependentExpense':

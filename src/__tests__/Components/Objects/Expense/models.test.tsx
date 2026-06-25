@@ -673,6 +673,80 @@ describe('Expense Models', () => {
       });
     });
 
+    // Phase-1 (#60 B): extra_payment is an OPTIONAL trailing constructor arg
+    // (default 0) that adds extra monthly principal, mirroring
+    // MortgageExpense.extra_payment. Default-off keeps existing loans identical.
+    describe('extra_payment (accelerated payoff)', () => {
+      it('defaults to 0 when not provided (existing loans unchanged)', () => {
+        const baseLoan = new LoanExpense(
+          'l-base', 'Car', 20000, 'Monthly', 8, 'Compounding', 405.53, 'No', 0, 'a1',
+          new Date(2024, 0, 1), new Date(2029, 0, 1)
+        );
+        expect(baseLoan.extra_payment).toBe(0);
+
+        // With default 0, the amortization is byte-identical to the prior behavior.
+        const { totalPrincipal } = baseLoan.calculateAnnualAmortization(2024);
+        expect(totalPrincipal).toBeCloseTo(3389, 0);
+      });
+
+      it('adds extra principal each month in calculateAnnualAmortization', () => {
+        const extra = 100;
+        const accelLoan = new LoanExpense(
+          'l-accel', 'Car', 20000, 'Monthly', 8, 'Compounding', 405.53, 'No', 0, 'a1',
+          new Date(2024, 0, 1), new Date(2029, 0, 1),
+          undefined, undefined, extra
+        );
+        expect(accelLoan.extra_payment).toBe(extra);
+
+        const base = new LoanExpense(
+          'l-accel', 'Car', 20000, 'Monthly', 8, 'Compounding', 405.53, 'No', 0, 'a1',
+          new Date(2024, 0, 1), new Date(2029, 0, 1)
+        );
+
+        const baseAmort = base.calculateAnnualAmortization(2024);
+        const accelAmort = accelLoan.calculateAnnualAmortization(2024);
+
+        // Extra $100/mo for 12 months ≈ $1,200 more principal in year 1
+        // (slightly more once the lower balance saves interest).
+        expect(accelAmort.totalPrincipal).toBeGreaterThan(baseAmort.totalPrincipal + 1190);
+        expect(accelAmort.totalPayment).toBeGreaterThan(baseAmort.totalPayment);
+      });
+
+      it('pays the loan down faster via increment() and survives the year', () => {
+        const extra = 200;
+        const accelLoan = new LoanExpense(
+          'l-accel2', 'Car', 25000, 'Monthly', 5, 'Compounding', 471.78, 'No', 0, 'a1',
+          new Date(2025, 0, 1), new Date(2030, 0, 1),
+          undefined, undefined, extra
+        );
+        const base = new LoanExpense(
+          'l-accel2', 'Car', 25000, 'Monthly', 5, 'Compounding', 471.78, 'No', 0, 'a1',
+          new Date(2025, 0, 1), new Date(2030, 0, 1)
+        );
+
+        const nextAccel = accelLoan.increment(mockAssumptions);
+        const nextBase = base.increment(mockAssumptions);
+
+        // Accelerated balance is lower, and extra_payment carries to next year.
+        expect(nextAccel.amount).toBeLessThan(nextBase.amount);
+        expect(nextAccel.extra_payment).toBe(extra);
+      });
+
+      it('caps extra principal at the remaining balance (no overpay)', () => {
+        // Tiny balance, huge extra payment — must not drive balance negative.
+        const tinyLoan = new LoanExpense(
+          'l-tiny', 'Almost paid', 300, 'Monthly', 5, 'Compounding', 100, 'No', 0, 'a1',
+          new Date(2025, 0, 1), new Date(2030, 0, 1),
+          undefined, undefined, 5000
+        );
+        const next = tinyLoan.increment(mockAssumptions);
+        expect(next.amount).toBeGreaterThanOrEqual(0);
+
+        const { totalPrincipal } = tinyLoan.calculateAnnualAmortization(2025);
+        expect(totalPrincipal).toBeLessThanOrEqual(300 + 0.01);
+      });
+    });
+
     describe('calculatePaymentFromEndDate', () => {
       it('should calculate $405.53/month for $20k at 8% over 60 months', () => {
         const loan60mo = new LoanExpense(

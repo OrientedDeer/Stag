@@ -13,6 +13,7 @@ import {
     SavedAccount,
     InvestedAccount,
     DeficitDebtAccount,
+    DebtAccount,
 } from '../../../components/Objects/Accounts/models';
 
 function defaultSettings(overrides: Partial<SurplusAllocationSettings> = {}): SurplusAllocationSettings {
@@ -89,6 +90,91 @@ describe('SurplusAllocator', () => {
             );
 
             expect(result.decisions.some(d => d.description.includes('deficit debt'))).toBe(true);
+        });
+    });
+
+    // Phase-1 (#60 C): surplus pays down user DebtAccounts that opt in via the
+    // acceptsSurplusPaydown flag (default OFF). Routed after deficit debt and
+    // before investing the remainder. Default-off keeps existing scenarios
+    // byte-identical (surplus still flows to brokerage as before).
+    describe('flagged user-debt paydown', () => {
+        it('DebtAccount defaults acceptsSurplusPaydown to false', () => {
+            const debt = new DebtAccount('cc', 'Credit Card', 5000, '', 22);
+            expect(debt.acceptsSurplusPaydown).toBe(false);
+        });
+
+        it('does NOT touch an unflagged debt — surplus still goes to brokerage (default-off)', () => {
+            const debt = new DebtAccount('cc', 'Credit Card', 5000, '', 22);
+            const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
+
+            const result = allocateSurplus(
+                10000,
+                [debt, brokerage],
+                [],
+                0,
+                defaultSettings()
+            );
+
+            // No allocation aimed at the debt; full surplus reaches brokerage.
+            expect(result.allocations.find(a => a.accountId === 'cc')).toBeUndefined();
+            expect(result.allocations.find(a => a.accountId === 'brok')?.amount).toBe(10000);
+        });
+
+        it('routes surplus to a flagged debt after deficit, before brokerage', () => {
+            const deficit = new DeficitDebtAccount('deficit', 'Deficit', 2000);
+            const debt = new DebtAccount('cc', 'Credit Card', 5000, '', 22);
+            debt.acceptsSurplusPaydown = true;
+            const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
+
+            const result = allocateSurplus(
+                10000,
+                [deficit, debt, brokerage],
+                [],
+                0,
+                defaultSettings()
+            );
+
+            // $2000 deficit, $5000 to the flagged card (its full balance),
+            // $3000 leftover to brokerage.
+            expect(result.deficitDebtPayment).toBe(2000);
+            expect(result.allocations.find(a => a.accountId === 'cc')?.amount).toBe(5000);
+            expect(result.allocations.find(a => a.accountId === 'brok')?.amount).toBe(3000);
+        });
+
+        it('caps the paydown at the debt balance (no overpay)', () => {
+            const debt = new DebtAccount('cc', 'Credit Card', 1500, '', 22);
+            debt.acceptsSurplusPaydown = true;
+            const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
+
+            const result = allocateSurplus(
+                10000,
+                [debt, brokerage],
+                [],
+                0,
+                defaultSettings()
+            );
+
+            expect(result.allocations.find(a => a.accountId === 'cc')?.amount).toBe(1500);
+            expect(result.allocations.find(a => a.accountId === 'brok')?.amount).toBe(8500);
+        });
+
+        it('pays the highest-APR flagged debt first (avalanche within flagged set)', () => {
+            const card = new DebtAccount('cc', 'Credit Card', 5000, '', 22);
+            card.acceptsSurplusPaydown = true;
+            const auto = new DebtAccount('auto', 'Auto Loan', 5000, '', 6);
+            auto.acceptsSurplusPaydown = true;
+
+            // Only enough to clear ONE debt — must be the 22% card.
+            const result = allocateSurplus(
+                5000,
+                [auto, card],
+                [],
+                0,
+                defaultSettings()
+            );
+
+            expect(result.allocations.find(a => a.accountId === 'cc')?.amount).toBe(5000);
+            expect(result.allocations.find(a => a.accountId === 'auto')).toBeUndefined();
         });
     });
 

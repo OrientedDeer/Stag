@@ -14,7 +14,7 @@
  * 3. Any remaining: Brokerage (default catch-all)
  */
 
-import { AnyAccount, SavedAccount, InvestedAccount, DeficitDebtAccount } from "../../components/Objects/Accounts/models";
+import { AnyAccount, SavedAccount, InvestedAccount, DeficitDebtAccount, DebtAccount } from "../../components/Objects/Accounts/models";
 import { PlannedSurplusAllocation, DecisionLogEntry } from "./types";
 import { CapType } from "../../components/Objects/Assumptions/AssumptionsContext";
 
@@ -98,6 +98,51 @@ export function allocateSurplus(
             amount: payment,
             description: `Paid down $${payment.toLocaleString()} of deficit debt.`,
         });
+
+        if (remaining <= 0) {
+            return { allocations, decisions, deficitDebtPayment, unallocated: 0 };
+        }
+    }
+
+    // 1.5 (#60 C). Pay down user DebtAccounts that opted in via
+    // acceptsSurplusPaydown, BEFORE investing the remainder — retiring real
+    // (often high-APR) debt generally beats a brokerage deposit. Highest-APR
+    // first (a mini-avalanche within the flagged set). Default-off: a debt with
+    // the flag unset is skipped, so existing scenarios are byte-identical.
+    // NOTE: DeficitDebtAccount extends DebtAccount but is handled above, so it
+    // is explicitly excluded here. The emitted allocations point at the debt
+    // account ids; the engine's generic surplus→userInflows apply
+    // (SimulationEngine) and AccountGrowth's DebtAccount paydown branch reduce
+    // the balance — no extra wiring needed.
+    if (remaining > 0) {
+        const flaggedDebts = accounts.filter(
+            (a): a is DebtAccount =>
+                a instanceof DebtAccount &&
+                !(a instanceof DeficitDebtAccount) &&
+                a.acceptsSurplusPaydown &&
+                a.amount > 0
+        ).sort((a, b) => b.apr - a.apr);
+
+        for (const debt of flaggedDebts) {
+            if (remaining <= 0) break;
+            const payment = Math.min(remaining, debt.amount);
+            if (payment <= 0) continue;
+
+            allocations.push({
+                accountId: debt.id,
+                amount: payment,
+                reason: `Paying down ${debt.name} balance of $${debt.amount.toLocaleString()} (${debt.apr}% APR)`,
+            });
+
+            decisions.push({
+                category: 'surplus',
+                account: debt.name,
+                amount: payment,
+                description: `Paid down $${payment.toLocaleString()} of ${debt.name} (${debt.apr}% APR).`,
+            });
+
+            remaining -= payment;
+        }
 
         if (remaining <= 0) {
             return { allocations, decisions, deficitDebtPayment, unallocated: 0 };

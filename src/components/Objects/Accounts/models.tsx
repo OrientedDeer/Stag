@@ -1248,7 +1248,12 @@ export class DebtAccount extends BaseAccount {
     name: string,
     amount: number,
     public linkedAccountId: string,
-    public apr: number = 0
+    public apr: number = 0,
+    // Phase-1 (#60 C): opt this debt in to surplus-funded extra paydown.
+    // Trailing + default false so every existing positional `new DebtAccount(...)`
+    // call is unchanged and existing scenarios stay byte-identical (surplus only
+    // touches debts the user explicitly flags).
+    public acceptsSurplusPaydown: boolean = false
   ) {
     super(id, name, amount);
   }
@@ -1265,7 +1270,8 @@ export class DebtAccount extends BaseAccount {
           this.name,
           nextAmount,
           this.linkedAccountId,
-          this.apr
+          this.apr,
+          this.acceptsSurplusPaydown // carry the flag forward each year
       );
   }
 }
@@ -1449,7 +1455,8 @@ export function reconstituteAccount(data: unknown): AnyAccount | null {
             return new DebtAccount(
                 id, name, amount,
                 String(data.linkedAccountId ?? ''),
-                Number(data.apr) || 0
+                Number(data.apr) || 0,
+                Boolean(data.acceptsSurplusPaydown) // #60 C; default false when absent
             );
 
         case 'DeficitDebtAccount':
