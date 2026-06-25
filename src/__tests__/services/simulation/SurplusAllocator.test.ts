@@ -231,6 +231,64 @@ describe('SurplusAllocator', () => {
             expect(result.allocations.find(a => a.accountId === 'cc')?.amount).toBe(5000);
             expect(result.allocations.find(a => a.accountId === 'auto')).toBeUndefined();
         });
+
+        // Review-2 [5]: on a PARTIAL paydown the reason must reflect what actually
+        // happened — the actual payment + the user-displayed balance — not the
+        // internal grown figure or the full balance.
+        it('[5] partial-paydown reason shows the actual payment, not an overstated balance', () => {
+            const debt = new DebtAccount('cc', 'Credit Card', 5000, '', 22); // grows to $6100
+            debt.acceptsSurplusPaydown = true;
+
+            // Only $2000 surplus — a partial paydown.
+            const result = allocateSurplus(2000, [debt], [], 0, defaultSettings());
+
+            const alloc = result.allocations.find(a => a.accountId === 'cc');
+            const decision = result.decisions.find(d => d.account === 'Credit Card');
+            expect(alloc?.amount).toBe(2000);
+
+            // The reason must NOT advertise the full grown balance ($6,100) as if paid.
+            expect(alloc?.reason).not.toContain('6,100');
+            // It should reference the actual amount paid and the displayed balance.
+            expect(alloc?.reason).toContain('2,000');
+            expect(decision?.description).toContain('2,000');
+            // The user-displayed balance ($5,000 — the whole-dollar input) may appear,
+            // but never the internal grown float.
+            expect(alloc?.reason).not.toMatch(/6,100\.\d|6100\.\d/);
+        });
+
+        // Review-2 [6]: no dollar figure in the user-facing strings may carry
+        // fractional cents. A 17% APR debt grows to a fractional value; the logs
+        // must still show whole dollars.
+        it('[6] paydown strings have no fractional cents', () => {
+            const debt = new DebtAccount('cc', 'Credit Card', 8923, '', 17); // grows to $10,439.91
+            debt.acceptsSurplusPaydown = true;
+
+            const result = allocateSurplus(20000, [debt], [], 0, defaultSettings());
+            const alloc = result.allocations.find(a => a.accountId === 'cc');
+            const decision = result.decisions.find(d => d.account === 'Credit Card');
+
+            // No "$X.YZ" or "$X.YZW" anywhere in the user-facing text — a decimal
+            // point immediately followed by a digit signals a non-whole dollar amount.
+            const hasFractionalDollars = (s: string | undefined) =>
+                s !== undefined && /\$[\d,]+\.\d/.test(s);
+            expect(hasFractionalDollars(alloc?.reason)).toBe(false);
+            expect(hasFractionalDollars(decision?.description)).toBe(false);
+        });
+
+        // Review-2 [9]: the early-out predicate must match the real filter, so a
+        // flagged-but-LINKED debt (with no eligible unlinked debt) short-circuits
+        // correctly — surplus flows straight to brokerage, no debt allocation.
+        it('[9] short-circuits when the only flagged debt is linked', () => {
+            const linkedDebt = new DebtAccount('loan-debt', 'Auto Loan', 5000, 'exp-auto', 6);
+            linkedDebt.acceptsSurplusPaydown = true;
+            const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
+
+            const result = allocateSurplus(10000, [linkedDebt, brokerage], [], 0, defaultSettings());
+
+            // No debt allocation; full surplus reaches brokerage.
+            expect(result.allocations.find(a => a.accountId === 'loan-debt')).toBeUndefined();
+            expect(result.allocations.find(a => a.accountId === 'brok')?.amount).toBe(10000);
+        });
     });
 
     describe('priority bucket caps', () => {

@@ -123,9 +123,13 @@ export function allocateSurplus(
     // DebtAccount paydown branch reduce the balance — no extra wiring needed.
     //
     // Cheap early-out (review [8]): skip the filter/sort entirely in the common
-    // default-off case where nothing is flagged.
+    // default-off case where nothing ELIGIBLE is flagged. The predicate mirrors
+    // the flaggedDebts filter below exactly — including the !linkedAccountId
+    // clause (review [9]) — so a flagged-but-linked debt with no eligible
+    // unlinked debt short-circuits correctly instead of entering the block.
     const hasFlaggedDebt = accounts.some(
-        a => a instanceof DebtAccount && !(a instanceof DeficitDebtAccount) && a.acceptsSurplusPaydown
+        a => a instanceof DebtAccount && !(a instanceof DeficitDebtAccount)
+            && a.acceptsSurplusPaydown && !a.linkedAccountId
     );
     if (remaining > 0 && hasFlaggedDebt) {
         const flaggedDebts = accounts.filter(
@@ -142,21 +146,27 @@ export function allocateSurplus(
             // [2]: size against the POST-interest balance. AccountGrowth grows an
             // unlinked debt to amount*(1+apr/100) and THEN subtracts this inflow,
             // so funding that grown figure is what actually clears the debt to $0.
+            // grownBalance is INTERNAL (sizing only) — it must not appear in any
+            // user-facing string (reviews [5]/[6]): the logs show the ACTUAL
+            // payment and the user's whole-dollar displayed balance instead.
             const grownBalance = debt.amount * (1 + debt.apr / 100);
             const payment = Math.min(remaining, grownBalance);
             if (payment <= 0) continue;
 
+            const paidDisplay = Math.round(payment).toLocaleString();
+            const balanceDisplay = Math.round(debt.amount).toLocaleString();
+
             allocations.push({
                 accountId: debt.id,
                 amount: payment,
-                reason: `Paying down ${debt.name} balance of $${grownBalance.toLocaleString()} (${debt.apr}% APR)`,
+                reason: `Paying down $${paidDisplay} of ${debt.name} ($${balanceDisplay} balance, ${debt.apr}% APR)`,
             });
 
             decisions.push({
                 category: 'surplus',
                 account: debt.name,
                 amount: payment,
-                description: `Paid down $${payment.toLocaleString()} of ${debt.name} (${debt.apr}% APR).`,
+                description: `Paid down $${paidDisplay} of ${debt.name} (${debt.apr}% APR).`,
             });
 
             remaining -= payment;
