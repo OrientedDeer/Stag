@@ -25,6 +25,10 @@ interface WorkIncomeFieldsProps {
     rsuAccounts: RSUAccount[];
     contributionWarnings: ContributionWarning[] | null;
     onMatchAccountChange: (accountId: string | null) => void;
+    /** #139A: false when this job is flagged CSRS/FERS but the user hasn't added a
+     *  matching pension income — drives the "add a pension income" hint. Optional;
+     *  defaults to true (no hint) for the Add-Income modal, which doesn't pass it. */
+    hasMatchingPensionIncome?: boolean;
 }
 
 const fmt = (n: number) => formatCompactCurrency(n, { forceExact: true });
@@ -82,6 +86,7 @@ export function WorkIncomeFields({
     rsuAccounts,
     contributionWarnings,
     onMatchAccountChange,
+    hasMatchingPensionIncome = true,
 }: WorkIncomeFieldsProps): ReactElement {
     // A configured deferral (auto-max or a positive custom amount) needs a
     // destination account, independent of any employer match. Shared with the modal
@@ -274,6 +279,18 @@ export function WorkIncomeFields({
                     value={income.pensionSystem}
                     tooltip="If this job is covered by a federal pension system, select it here. This helps track your High-3 salary for pension calculations."
                 />
+                {income.pensionSystem !== 'NONE' && !hasMatchingPensionIncome && (
+                    <AlertBanner severity="warning" size="sm" className="col-span-full mt-3">
+                        <span className="font-medium">
+                            No {income.pensionSystem} Pension income added.
+                        </span>{' '}
+                        Marking this job {income.pensionSystem} tracks your High-3
+                        {income.pensionSystem === 'CSRS'
+                            ? ' and exempts these wages from Social Security tax'
+                            : ''}, but it does not model the pension benefit itself — add a{' '}
+                        {income.pensionSystem} Pension income to project the payout.
+                    </AlertBanner>
+                )}
             </CardSection>
 
             {contributionWarnings && contributionWarnings.length > 0 && (

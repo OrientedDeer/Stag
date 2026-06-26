@@ -115,6 +115,19 @@ export function getFicaExemptions(incomes: AnyIncome[], year: number): number {
         }, 0);
 }
 
+/**
+ * Social Security coverage predicate for FICA. A WorkIncome flagged CSRS pays NO
+ * Social Security tax — CSRS employees are outside Social Security (they pay a
+ * higher pension contribution + Medicare instead). Every other income is
+ * SS-covered (FERS DOES have SS coverage, so it is unaffected). Reads the
+ * `pensionSystem` DATA field rather than `instanceof`, so reconstituted /
+ * className-only objects (cached/worker-marshalled sim years) are handled — a
+ * non-WorkIncome simply has no `pensionSystem` and stays SS-covered.
+ */
+export function isSSCoveredForFica(inc: AnyIncome): boolean {
+    return (inc as Partial<WorkIncome>).pensionSystem !== "CSRS";
+}
+
 export function getEarnedIncome(incomes: AnyIncome[], year: number): number {
     return incomes
         // Filtered by a DATA field (earned_income), not instanceof, so a method-less

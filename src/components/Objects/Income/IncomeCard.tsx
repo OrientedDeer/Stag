@@ -89,6 +89,16 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
         [income, birthYear]
     );
 
+    // #139A: a job flagged CSRS/FERS only tracks High-3 (and, for CSRS, the SS-FICA
+    // exemption) — the pension benefit is a SEPARATE income. Warn when the matching
+    // pension income hasn't been added, so the dropdown isn't silently half-wired.
+    const hasMatchingPensionIncome = useMemo(() => {
+        if (!(income instanceof WorkIncome) || income.pensionSystem === 'NONE') return true;
+        if (income.pensionSystem === 'CSRS') return incomes.some(i => i instanceof CSRSPensionIncome);
+        if (income.pensionSystem === 'FERS') return incomes.some(i => i instanceof FERSPensionIncome);
+        return true;
+    }, [income, incomes]);
+
     const handleMatchAccountChange = useCallback(
         (newAccountId: string | null) => {
             const account = accounts.find((acc) => acc.id === newAccountId) as
@@ -219,6 +229,7 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
                         rsuAccounts={rsuAccounts}
                         contributionWarnings={contributionWarnings}
                         onMatchAccountChange={handleMatchAccountChange}
+                        hasMatchingPensionIncome={hasMatchingPensionIncome}
                     />
                 )}
 

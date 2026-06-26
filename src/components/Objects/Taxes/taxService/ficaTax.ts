@@ -2,7 +2,7 @@ import { AnyIncome } from "../../Income/models";
 import { TaxState } from "../TaxContext";
 import { AssumptionsState } from "../../Assumptions/AssumptionsContext";
 import { getTaxParameters } from "./parameters";
-import { getEarnedIncome, getFicaExemptions } from "./incomeAggregation";
+import { getEarnedIncome, getFicaExemptions, isSSCoveredForFica } from "./incomeAggregation";
 
 /**
  * Income threshold above which the 0.9% Additional Medicare surtax applies,
@@ -41,8 +41,16 @@ export function calculateFicaTax(
     if (!fedParams) return 0;
 
     const taxableBase = getFicaTaxableBase(incomes, year);
+
+    // CSRS-flagged wages are OUTSIDE Social Security (CSRS employees pay no SS tax),
+    // so Social Security is charged only on the SS-covered base — the same
+    // earned-minus-exemptions computation over the income list with CSRS work
+    // income filtered out. Medicare and the 0.9% Additional Medicare surtax stay on
+    // the FULL base (CSRS still pays Medicare). With no CSRS job the filter is a
+    // no-op → ssTaxableBase === taxableBase → byte-identical FICA (#139 Part B).
+    const ssTaxableBase = getFicaTaxableBase(incomes.filter(isSSCoveredForFica), year);
     const ssTax =
-        Math.min(taxableBase, fedParams.socialSecurityWageBase) *
+        Math.min(ssTaxableBase, fedParams.socialSecurityWageBase) *
         fedParams.socialSecurityTaxRate;
     const medicareTax = taxableBase * fedParams.medicareTaxRate;
 
