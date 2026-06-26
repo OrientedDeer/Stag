@@ -91,6 +91,36 @@ describe('CSRS pension display estimate (Issue #133: early-retirement reduction)
         );
 
         expect(getByText('$41,625/yr')).toBeTruthy();
+        // The High-3 row now shows the resolved figure (high3Salary, set by the sim
+        // alongside calculatedBenefit) instead of a half-resolved "Auto Calculated"
+        // next to the computed benefit.
+        expect(getByText('$100,000/yr')).toBeTruthy();
+    });
+
+    it('keeps "Auto Calculated" on both the benefit and High-3 rows before the sim resolves them', () => {
+        // Auto High-3 on but calculatedBenefit still 0 (no simulation has run yet):
+        // neither the benefit nor the High-3 is known, so both rows read the
+        // placeholder — they stay consistent (no half-resolved display).
+        const income = new CSRSPensionIncome(
+            'csrs-pending',
+            'CSRS',
+            EARLY_RETIREMENT.yearsOfService,
+            EARLY_RETIREMENT.high3Salary,
+            EARLY_RETIREMENT.retirementAge
+        );
+        income.autoCalculateHigh3 = true;
+
+        const { getAllByText, queryByText } = render(
+            <CardCSRSPensionFields
+                income={income}
+                onFieldUpdate={() => {}}
+                workIncomes={[]}
+                birthYear={1975}
+            />
+        );
+
+        expect(getAllByText('Auto Calculated').length).toBe(2);
+        expect(queryByText('$100,000/yr')).toBeNull();
     });
 
     it('form variant renders the reduced benefit, not the unreduced one', () => {

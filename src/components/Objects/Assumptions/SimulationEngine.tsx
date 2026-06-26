@@ -661,14 +661,16 @@ function simulateOneYearWithNewEngine(
     // Note: YearSolver already computed the allocations - we just apply them here
     const surplusBucketDetail: Record<string, number> = {};
 
-    // #147: capture each linked loan's balance BEFORE the surplus paydown reduces
-    // it (keyed by loan id), so the cashflow-detail categorization can amortize the
-    // loan's REGULAR payment off its pre-paydown balance. Otherwise the categorized
-    // expense is computed off the reduced balance and undershoots `livingExpenses`
-    // (the solver's pre-paydown total), unbalancing the Net Pay Sankey node — the
-    // extra principal would cannibalize the regular payment instead of appearing
-    // only as the separate "Pay Down" bucket.
-    const prePaydownLoanBalances = new Map<string, number>();
+    // #147: stash each linked loan's ORIGINAL (pre-paydown) instance, keyed by id,
+    // so the cashflow-detail categorization can amortize the loan's REGULAR payment
+    // off its pre-paydown balance. Otherwise the categorized expense is computed off
+    // the reduced balance and undershoots `livingExpenses` (the solver's pre-paydown
+    // total), unbalancing the Net Pay Sankey node — the extra principal would
+    // cannibalize the regular payment instead of appearing only as the separate
+    // "Pay Down" bucket. We keep the original object (reduceLoanBalance returns a new
+    // clone and never mutates it) so the cashflow list can reuse it directly — no
+    // second clone, and no shared mutable state with the persisted reduced version.
+    const prePaydownLoans = new Map<string, LoanExpense>();
 
     if (yearPlan.surplusAllocations.length > 0) {
         // #60 (linked-debt surplus paydown): a surplus allocation aimed at a
@@ -725,12 +727,13 @@ function simulateOneYearWithNewEngine(
                 if (currentLoan instanceof LoanExpense && currentLoan.amount > DEBT_PAYOFF_EPSILON) {
                     const paydown = Math.min(alloc.amount, currentLoan.amount);
                     if (paydown > 0) {
-                        // #147: remember the pre-paydown balance for cashflow
+                        // #147: stash the original (pre-paydown) loan for cashflow
                         // categorization. The has()-guard records only the FIRST
                         // paydown of a given loan this year, so even if the cap ever
-                        // allowed a second non-zero paydown the earliest balance wins.
-                        if (!prePaydownLoanBalances.has(currentLoan.id)) {
-                            prePaydownLoanBalances.set(currentLoan.id, currentLoan.amount);
+                        // allowed a second non-zero paydown the earliest instance wins.
+                        // Capture BEFORE reduceLoanBalance swaps in the reduced clone.
+                        if (!prePaydownLoans.has(currentLoan.id)) {
+                            prePaydownLoans.set(currentLoan.id, currentLoan);
                         }
                         nextExpenses[idx] = reduceLoanBalance(currentLoan, paydown);
                         surplusBucketDetail[alloc.accountId] =
@@ -937,17 +940,9 @@ function simulateOneYearWithNewEngine(
     // the extra principal appears only in the separate "Pay Down" bucket. Only loans
     // actually paid down differ — every other expense (and the PERSISTED `nextExpenses`)
     // is reused untouched, so the reduced balance still sticks where it matters.
-    const cashflowExpenses = prePaydownLoanBalances.size === 0
+    const cashflowExpenses = prePaydownLoans.size === 0
         ? nextExpenses
-        : nextExpenses.map(exp => {
-            const preBalance = exp instanceof LoanExpense
-                ? prePaydownLoanBalances.get(exp.id)
-                : undefined;
-            if (preBalance === undefined) return exp;
-            const clone = Object.assign(Object.create(Object.getPrototypeOf(exp)), exp) as LoanExpense;
-            clone.amount = preBalance;
-            return clone;
-        });
+        : nextExpenses.map(exp => prePaydownLoans.get(exp.id) ?? exp);
     // Use allIncomes so reinvested interest (created in projectIncomes) is
     // included, and so RMD-sourced PassiveIncomes are surfaced as income (they
     // drain the Traditional account via userInflows but are not in

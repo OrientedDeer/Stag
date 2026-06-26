@@ -256,6 +256,12 @@ function runSimulationLoop(args: {
             previousSimYear, yearsToRun, conversionMode, baselineProvider, dpConversionPlan, dpDebugByYear,
             mcConversionPolicy } = args;
 
+    // #146 [4]: true while any milestone-started income may still be dormant. Latches
+    // off once they have all fired (the dormant list empties) — milestones are
+    // cumulative so it can never refill — so the per-year Set bookkeeping below stops
+    // running for the rest of the horizon (matters on the Monte Carlo hot path).
+    let dormantCarryActive = currentIncomes.some(inc => inc.startMilestoneId);
+
     for (let i = 1; i <= yearsToRun; i++) {
         const simulationYear = previousSimYear + i;
         const returnOverride = yearlyReturns ? yearlyReturns[i - 1] : undefined;
@@ -301,10 +307,10 @@ function runSimulationLoop(args: {
         // until their milestone hits. Only incomes with an UNREACHED start milestone
         // are re-added: ended/retired drops (their start milestone is already
         // reached) and regenerated RMD incomes (no start milestone) stay out.
-        // Skip the bookkeeping entirely when no income is milestone-gated (the
-        // common case — avoids per-year Set/array allocations on the Monte Carlo
-        // hot path where runSimulation runs once per scenario × year).
-        if (currentIncomes.some(inc => inc.startMilestoneId)) {
+        // Skip the bookkeeping entirely when nothing is (or remains) milestone-gated
+        // — avoids per-year Set/array allocations on the Monte Carlo hot path
+        // (runSimulation runs once per scenario × year).
+        if (dormantCarryActive) {
             const reachedMilestoneSet = new Set(result.activeMilestones || []);
             const survivingIncomeIds = new Set(result.incomes.map(inc => inc.id));
             const dormantMilestoneIncomes = currentIncomes.filter(inc =>
@@ -315,9 +321,13 @@ function runSimulationLoop(args: {
                 // rest of the horizon).
                 !(inc.endMilestoneId && reachedMilestoneSet.has(inc.endMilestoneId)) &&
                 !survivingIncomeIds.has(inc.id));
-            currentIncomes = dormantMilestoneIncomes.length > 0
-                ? [...result.incomes, ...dormantMilestoneIncomes]
-                : result.incomes;
+            if (dormantMilestoneIncomes.length > 0) {
+                currentIncomes = [...result.incomes, ...dormantMilestoneIncomes];
+            } else {
+                // All milestone incomes have started; none can become dormant again.
+                currentIncomes = result.incomes;
+                dormantCarryActive = false;
+            }
         } else {
             currentIncomes = result.incomes;
         }

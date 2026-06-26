@@ -99,8 +99,18 @@ export function CSRSPensionFields({
                     <div className="flex justify-between">
                         <span>High-3:</span>
                         <span className="text-positive-bright">
+                            {/* With Auto High-3 on, the sim resolves the High-3 from
+                                salary history and stores it in high3Salary alongside
+                                calculatedBenefit, so once the benefit is computed show
+                                the resolved figure instead of the "Auto Calculated"
+                                placeholder (which would look half-resolved next to the
+                                computed benefit above). */}
                             {income.autoCalculateHigh3
-                                ? 'Auto Calculated'
+                                ? (income.calculatedBenefit > 0
+                                      ? `$${income.high3Salary.toLocaleString(undefined, {
+                                            maximumFractionDigits: 0,
+                                        })}/yr`
+                                      : 'Auto Calculated')
                                 : `$${income.high3Salary.toLocaleString(undefined, {
                                       maximumFractionDigits: 0,
                                   })}/yr`}
