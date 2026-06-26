@@ -661,6 +661,15 @@ function simulateOneYearWithNewEngine(
     // Note: YearSolver already computed the allocations - we just apply them here
     const surplusBucketDetail: Record<string, number> = {};
 
+    // #147: capture each linked loan's balance BEFORE the surplus paydown reduces
+    // it (keyed by loan id), so the cashflow-detail categorization can amortize the
+    // loan's REGULAR payment off its pre-paydown balance. Otherwise the categorized
+    // expense is computed off the reduced balance and undershoots `livingExpenses`
+    // (the solver's pre-paydown total), unbalancing the Net Pay Sankey node — the
+    // extra principal would cannibalize the regular payment instead of appearing
+    // only as the separate "Pay Down" bucket.
+    const prePaydownLoanBalances = new Map<string, number>();
+
     if (yearPlan.surplusAllocations.length > 0) {
         // #60 (linked-debt surplus paydown): a surplus allocation aimed at a
         // DebtAccount pays EXTRA PRINCIPAL on its linked LoanExpense — the
@@ -716,6 +725,13 @@ function simulateOneYearWithNewEngine(
                 if (currentLoan instanceof LoanExpense && currentLoan.amount > DEBT_PAYOFF_EPSILON) {
                     const paydown = Math.min(alloc.amount, currentLoan.amount);
                     if (paydown > 0) {
+                        // #147: remember the pre-paydown balance (only the FIRST
+                        // paydown of a given loan this year; the cap prevents a
+                        // second non-zero one, but `??` keeps the earliest balance
+                        // even if that ever changes) for cashflow categorization.
+                        if (!prePaydownLoanBalances.has(currentLoan.id)) {
+                            prePaydownLoanBalances.set(currentLoan.id, currentLoan.amount);
+                        }
                         nextExpenses[idx] = reduceLoanBalance(currentLoan, paydown);
                         surplusBucketDetail[alloc.accountId] =
                             (surplusBucketDetail[alloc.accountId] || 0) + paydown;
@@ -911,13 +927,34 @@ function simulateOneYearWithNewEngine(
     // per-source income, contribution splits, mortgage breakdown, and
     // expense categories from scratch in the chart layer)
     // ------------------------------------------------------------------
+    // #147: the surplus paydown above reduced each linked loan's balance in
+    // `nextExpenses`, so a LoanExpense now amortizes a SMALLER regular payment
+    // than the solver counted in `livingExpenses` (yearPlan.totalExpenses, computed
+    // pre-paydown). Categorizing off the reduced balance would unbalance the Net Pay
+    // Sankey node by ~the loan's regular+extra payment (the whole payment if the
+    // paydown cleared the loan). Build the cashflow-detail EXPENSE list off the
+    // PRE-paydown balances so the loan's regular payment shows at its true amount;
+    // the extra principal appears only in the separate "Pay Down" bucket. Only loans
+    // actually paid down differ — every other expense (and the PERSISTED `nextExpenses`)
+    // is reused untouched, so the reduced balance still sticks where it matters.
+    const cashflowExpenses = prePaydownLoanBalances.size === 0
+        ? nextExpenses
+        : nextExpenses.map(exp => {
+            const preBalance = exp instanceof LoanExpense
+                ? prePaydownLoanBalances.get(exp.id)
+                : undefined;
+            if (preBalance === undefined) return exp;
+            const clone = Object.assign(Object.create(Object.getPrototypeOf(exp)), exp) as LoanExpense;
+            clone.amount = preBalance;
+            return clone;
+        });
     // Use allIncomes so reinvested interest (created in projectIncomes) is
     // included, and so RMD-sourced PassiveIncomes are surfaced as income (they
     // drain the Traditional account via userInflows but are not in
     // withdrawalDetail, so income is their single Sankey representation).
     const cashflowDetail = buildCashflowDetail({
         incomes: allIncomes,
-        expenses: nextExpenses,
+        expenses: cashflowExpenses,
         accounts: nextAccounts,
         insurance: totalInsuranceCost,
         year,
