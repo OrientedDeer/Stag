@@ -198,7 +198,14 @@ function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
 
     // Display amount calculation
     const getDisplayAmount = (): string => {
-        if (expense instanceof RentExpense || expense instanceof MortgageExpense || expense instanceof LoanExpense) {
+        // Loans/mortgages pay payment + extra_payment each month (#144) — the
+        // collapsed header should reflect the full monthly outflow, matching the
+        // amortization and the expanded "· +$Y extra" summary. Rent has no
+        // extra_payment, so it stays the bare payment.
+        if (expense instanceof MortgageExpense || expense instanceof LoanExpense) {
+            return formatCompactCurrency(expense.payment + expense.extra_payment, { forceExact });
+        }
+        if (expense instanceof RentExpense) {
             return formatCompactCurrency(expense.payment, { forceExact });
         }
         // A goal's `amount` is the TOTAL cost with frequency 'Monthly' — showing
