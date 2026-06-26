@@ -18,7 +18,7 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 
 import { DataTab } from '../../../tabs/Future/tabs/DataTab';
 import { LoanExpense, FoodExpense, MortgageExpense } from '../../../components/Objects/Expense/models';
-import { InvestedAccount } from '../../../components/Objects/Accounts/models';
+import { InvestedAccount, PropertyAccount, DebtAccount } from '../../../components/Objects/Accounts/models';
 import { SimulationYear } from '../../../services/simulation/types';
 
 // The hidden PDF-capture chart is irrelevant here and nivo needs ResizeObserver
@@ -281,6 +281,79 @@ describe('DataTab vested net worth + unvested column (#143)', () => {
         // Arithmetic stays visible: Assets - Debt - Unvested = Net Worth.
         expect(Number(values[assetsCol]) - Number(values[debtCol]) - Number(values[unvestedCol]))
             .toBe(Number(values[nwCol]));
+
+        delete urlAny.createObjectURL;
+    });
+});
+
+/**
+ * #143 review: the CSV's Total Debt column must use the SAME account-side liability
+ * basis as the Net Worth (vested) column — DebtAccount balances + PropertyAccount
+ * loanAmount — NOT the expense-side LoanExpense.amount / MortgageExpense.loan_balance.
+ * Otherwise, for any user with a mortgage/loan, the reconciliation identity
+ *   Total Assets − Total Debt − Unvested = Net Worth
+ * breaks (the expense-side debt diverges from the account-side liabilities that drive
+ * the gross net worth the Net Worth column nets the unvested match out of).
+ */
+describe('DataTab CSV reconciles with a mortgage + loan + unvested match (#143 review)', () => {
+    // Account side (drives Net Worth):
+    //   assets      = 400k property + 100k 401k                      = 500,000
+    //   liabilities = 250k property loanAmount + 15k DebtAccount     = 265,000
+    //   gross       = 500k − 265k                                    = 235,000
+    //   unvested    = 40k employer * (1 − 0.2 vested)                =  32,000
+    //   vested (NW) = 235k − 32k                                     = 203,000
+    // Expense side is DELIBERATELY different (mortgage 240k, loan 14k) to prove the
+    // CSV does NOT source Total Debt from the expenses.
+    function makeReconcileSimYear(): SimulationYear {
+        return {
+            ...makeSimYear(),
+            accounts: [
+                new PropertyAccount('prop1', 'House', 400000, 'Financed', 250000, 250000, 'mort1'),
+                new DebtAccount('debt1', 'Car Debt', 15000, 'loan1', 5),
+                new InvestedAccount('inv1', '401k', 100000, 40000, 1, 0.1, 'Traditional 401k', true, 0.2),
+            ],
+            expenses: [
+                // loan_balance 240k ≠ PropertyAccount.loanAmount 250k.
+                new MortgageExpense('mort1', 'Home', 'Monthly', 400000, 240000, 250000, 3, 30, 1, 0, 0, 0, 0.3, 0, 0, 'No', 0, 'prop1', new Date(PAYOFF_YEAR - 5, 0, 1)),
+                // LoanExpense.amount 14k ≠ DebtAccount.amount 15k.
+                new LoanExpense('loan1', 'Car Loan', 14000, 'Monthly', 5, 'Compounding', 0, 'No', 0, 'debt1', new Date(PAYOFF_YEAR - 2, 0, 1)),
+            ],
+        };
+    }
+
+    it('Total Debt uses the account-side basis so Assets − Debt − Unvested = Net Worth holds', async () => {
+        let capturedBlob: Blob | null = null;
+        const urlAny = URL as unknown as { createObjectURL?: (b: Blob) => string };
+        urlAny.createObjectURL = (b: Blob) => { capturedBlob = b; return 'blob:mock'; };
+        vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+        render(<DataTab simulationData={[makeReconcileSimYear()]} birthYear={1990} />);
+        fireEvent.click(screen.getByText('CSV'));
+
+        expect(capturedBlob).not.toBeNull();
+        const csv: string = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = () => reject(reader.error);
+            reader.readAsText(capturedBlob!);
+        });
+        const [headerLine, dataLine] = csv.split('\n');
+        const headers = headerLine.split(',');
+        const values = dataLine.split(',');
+
+        const assets = Number(values[headers.indexOf('Total Assets')]);
+        const debt = Number(values[headers.indexOf('Total Debt')]);
+        const unvested = Number(values[headers.indexOf('Unvested')]);
+        const netWorth = Number(values[headers.indexOf('Net Worth')]);
+
+        // Account-side basis — NOT the expense-side 240k mortgage / 14k loan.
+        expect(assets).toBe(500000);
+        expect(debt).toBe(265000);     // 250k property loanAmount + 15k DebtAccount
+        expect(unvested).toBe(32000);
+        expect(netWorth).toBe(203000); // vested = gross 235k − unvested 32k
+
+        // The headline identity the CSV claims actually holds for a mortgage/loan user.
+        expect(assets - debt - unvested).toBe(netWorth);
 
         delete urlAny.createObjectURL;
     });

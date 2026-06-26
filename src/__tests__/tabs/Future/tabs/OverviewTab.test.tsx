@@ -129,31 +129,32 @@ describe('OverviewTab', () => {
         render(<OverviewTab simulationData={[year2025]} />);
 
         const chartDataStr = screen.getByTestId('mock-chart').textContent;
-        const chartData = JSON.parse(chartDataStr || '[]');
+        const chartData: ChartSeries[] = JSON.parse(chartDataStr || '[]');
 
         // Check Invested Series
-        const investedSeries = chartData.find((s: any) => s.id === 'Invested');
+        const investedSeries = chartData.find(s => s.id === 'Invested')!;
         expect(investedSeries.data[0].y).toBe(100000);
 
         // Check Saved Series
-        const savedSeries = chartData.find((s: any) => s.id === 'Saved');
+        const savedSeries = chartData.find(s => s.id === 'Saved')!;
         expect(savedSeries.data[0].y).toBe(20000);
 
         // Check Property Series
-        const propertySeries = chartData.find((s: any) => s.id === 'Property');
+        const propertySeries = chartData.find(s => s.id === 'Property')!;
         expect(propertySeries.data[0].y).toBe(300000);
 
         // Check Debt Series (Should be negative)
         // Debt includes: DebtAccount (15000) + MortgageExpense (250000) = 265000
         // Note: LoanExpense is NOT double-counted — DebtAccount already tracks the linked balance
-        const debtSeries = chartData.find((s: any) => s.id === 'Debt');
+        const debtSeries = chartData.find(s => s.id === 'Debt')!;
         expect(debtSeries.data[0].y).toBe(-265000);
     });
 
     // #143: the Net Worth tooltip leads with VESTED net worth. The plotted asset/debt
     // bands stay GROSS, but each point embeds the year's Unvested employer match so the
-    // tooltip can net it out and also surface the gross figure.
-    it('embeds Unvested employer match and keeps the asset bands gross', () => {
+    // tooltip can net it out and also surface the gross figure. A separate "Net Worth"
+    // (Vested) line is plotted so the headline has a visible anchor on the chart.
+    it('embeds Unvested, keeps the asset bands gross, and plots a Vested Net Worth line', () => {
         const year2025 = createMockYear(2025);
         // InvestedAccount args: (id, name, amount, employerBalance, tenureYears,
         //   expenseRatio, taxType, isContributionEligible, vestedPerYear, ...)
@@ -164,9 +165,10 @@ describe('OverviewTab', () => {
         render(<OverviewTab simulationData={[year2025]} />);
         const chartData: ChartSeries[] = JSON.parse(screen.getByTestId('mock-chart').textContent || '[]');
 
-        // Only the four gross bands are plotted — Unvested is NOT its own series.
+        // The four gross bands plus the Vested "Net Worth" emphasis line — Unvested is
+        // NOT its own series.
         const seriesIds = chartData.map(s => s.id).sort();
-        expect(seriesIds).toEqual(['Debt', 'Invested', 'Property', 'Saved']);
+        expect(seriesIds).toEqual(['Debt', 'Invested', 'Net Worth', 'Property', 'Saved']);
 
         // Bands remain GROSS: the full 100k 401k balance is in Invested.
         const investedSeries = chartData.find(s => s.id === 'Invested')!;
@@ -182,6 +184,11 @@ describe('OverviewTab', () => {
         const gross = num(point.Invested) + num(point.Saved) + num(point.Property) + num(point.Debt);
         expect(gross).toBe(120000);
         expect(gross - num(point.Unvested)).toBe(88000);
+
+        // The "Net Worth" line plots the Vested figure (88k), so the tooltip headline
+        // lands on a visible mark — matching the Dashboard's lead-with-Vested pattern.
+        const netWorthSeries = chartData.find(s => s.id === 'Net Worth')!;
+        expect(netWorthSeries.data[0].y).toBe(88000);
     });
 
     // #143: render the slice tooltip itself and assert it leads with VESTED net worth
@@ -241,7 +248,7 @@ describe('OverviewTab', () => {
         
         // Should just render empty chart data
         const chartData = JSON.parse(screen.getByTestId('mock-chart').textContent || '[]');
-        expect(chartData).toHaveLength(4); // 4 keys (Invested, Saved, etc)
+        expect(chartData).toHaveLength(5); // 4 gross bands + the Vested "Net Worth" line
         expect(chartData[0].data).toHaveLength(0); // No data points
     });
 

@@ -102,7 +102,13 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, bir
             // match what the charts and the simulation itself report.
             const livingExpenses = year.expenses.reduce((sum, exp) => sum + exp.getAnnualAmount(year.year), 0);
             
-            // Calculate Total Debt for the year
+            // "Debt Load" column: the outstanding loan/mortgage balances the user is
+            // paying down (expense side — DebtAccount + LoanExpense.amount +
+            // MortgageExpense.loan_balance). This is deliberately a "what am I still paying
+            // off" view, NOT the balance-sheet liability that nets into Net Worth — for a
+            // linked mortgage the engine keeps the two in sync, but they are distinct
+            // concepts. The reconciling Total Assets − Total Debt − Unvested = Net Worth
+            // identity lives in the CSV, where Total Debt uses the account-side basis below.
             let totalDebt = 0;
             year.accounts.forEach(acc => {
                 if (acc instanceof DebtAccount) totalDebt += acc.amount;
@@ -114,7 +120,7 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, bir
 
             // Net Worth column is VESTED (gross − unvested employer match), matching
             // the Dashboard card and the Overview tooltip (#143). The Unvested column
-            // keeps the arithmetic visible: Total Assets − Total Debt − Unvested = Net Worth.
+            // keeps the arithmetic visible against the CSV's gross Total Assets/Total Debt.
             const { unvested, vested } = getNetWorthBreakdown(year.accounts);
 
             // Include Roth conversion amount in taxable income for effective rate calculation
@@ -179,23 +185,17 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, bir
             row.push(year.year);
             row.push(startAge + index);
 
-            // Net Worth is VESTED (#143); Total Assets / Total Debt stay gross, and the
-            // Unvested column keeps the arithmetic visible (Assets − Debt − Unvested = Net Worth).
-            const { unvested, vested } = getNetWorthBreakdown(year.accounts);
+            // Net Worth is VESTED (#143); Total Assets / Total Debt stay gross. All four
+            // columns share the SAME account-side basis as getNetWorthBreakdown, so the
+            // identity holds for any user: Total Assets − Total Debt − Unvested = Net Worth.
+            // (Total Debt is the balance-sheet liability — DebtAccount balances +
+            // PropertyAccount.loanAmount — NOT the expense-side loan/mortgage payment
+            // balances; sourcing debt from the expenses diverged from the gross net worth
+            // that drives the Net Worth column, breaking the identity for mortgage/loan users.)
+            const { assets, liabilities, unvested, vested } = getNetWorthBreakdown(year.accounts);
             row.push(vested);
-
-            let assets = 0;
-            let debt = 0;
-            year.accounts.forEach(acc => {
-                if (acc instanceof DebtAccount) debt += acc.amount;
-                else assets += acc.amount;
-            });
-            year.expenses.forEach(exp => {
-                if (exp instanceof LoanExpense) debt += exp.amount;
-                if (exp instanceof MortgageExpense) debt += exp.loan_balance;
-            });
             row.push(assets);
-            row.push(debt);
+            row.push(liabilities);
             row.push(unvested);
 
             row.push(year.cashflow.totalIncome);

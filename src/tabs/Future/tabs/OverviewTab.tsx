@@ -8,7 +8,7 @@ import { ChartFrame } from "../../../components/Charts/ChartFrame";
 import { ProjectionMemoryChart } from "../../../components/Charts/ProjectionMemoryChart";
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { SavedAccount, PropertyAccount, DebtAccount, DeficitDebtAccount, AnyAccount } from '../../../components/Objects/Accounts/models';
-import { formatCompactCurrency, getAccountTotals, getNetWorthBreakdown } from './FutureUtils';
+import { formatCompactCurrency, getNetWorthBreakdown } from './FutureUtils';
 import { AnyExpense } from '../../../components/Objects/Expense/models';
 import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider';
 import { AlertBanner } from '../../../components/Layout/AlertBanner';
@@ -68,10 +68,15 @@ interface OverviewPoint {
     /** Unvested employer-match portion (#143) — subtracted from gross to get the
      *  Vested net worth the tooltip leads with. Not plotted as its own band. */
     Unvested: number;
+    /** Vested net worth (gross − Unvested). Plotted as the emphasis "Net Worth" line
+     *  (#143) so the tooltip's Vested headline matches a visible mark — mirroring the
+     *  Dashboard, whose net-worth line converges on its Vested big number. */
+    'Net Worth': number;
 }
 
-/** The four net-worth buckets the Overview chart plots (Debt is negative) plus the
- *  unvested employer-match figure used to derive the Vested net worth (#143). */
+/** The four gross net-worth bands the Overview chart plots (Debt is negative), the
+ *  unvested employer-match figure used to derive Vested net worth, and the Vested
+ *  net-worth value plotted as the emphasis "Net Worth" line (#143). */
 export interface OverviewBuckets {
     Invested: number;
     Saved: number;
@@ -79,8 +84,11 @@ export interface OverviewBuckets {
     Debt: number;
     /** Σ InvestedAccount.nonVestedAmount — the part of the gross asset bands you
      *  don't own yet. The plotted bands stay GROSS (like the Dashboard's gross-asset
-     *  display); only the Net Worth tooltip figure nets this out. */
+     *  display); only the Net Worth line/tooltip figure nets this out. */
     Unvested: number;
+    /** Vested net worth (gross − Unvested) — the figure the tooltip headlines and the
+     *  emphasis "Net Worth" line traces, so the headline has a visible anchor (#143). */
+    'Net Worth': number;
 }
 
 /**
@@ -100,7 +108,11 @@ export interface OverviewBuckets {
  * the Dashboard net-worth card and the DataTab Net Worth column (#143). `Unvested`
  * (Σ InvestedAccount.nonVestedAmount) is carried alongside the bands so the tooltip
  * can net it out and also surface the gross figure. The plotted bands themselves stay
- * gross — they ARE the Dashboard's gross-asset display.
+ * gross — they ARE the Dashboard's gross-asset display. The Vested figure is ALSO
+ * returned as `'Net Worth'` and plotted as an emphasis line so the tooltip headline
+ * has a visible anchor on the chart (the gross bands are not stacked, so their tops
+ * never trace a single net-worth line) — mirroring the Dashboard, whose net-worth
+ * line converges on its Vested big number.
  *
  * Note the deliberate split: the projection-history snapshots (services/projectionHistory)
  * stay GROSS — they freeze a net-worth curve via getAccountTotals and overlay it against a
@@ -144,12 +156,12 @@ export function computeOverviewBuckets(
 
     // Debt mirrors getAccountTotals exactly: DebtAccount balances + PropertyAccount
     // loanAmount, ignoring expenses. Stored negative for the stacked chart.
-    const { liabilities } = getAccountTotals(accounts);
-
     // Unvested employer match (#143): netted out of the plotted gross net worth to
     // get the Vested figure the tooltip leads with — matching the Dashboard card.
     // The asset bands above stay gross (they ARE the Dashboard's gross-asset display).
-    const { unvested } = getNetWorthBreakdown(accounts);
+    // Both come from a single getNetWorthBreakdown pass — it already runs
+    // getAccountTotals internally, so calling that separately would double the walk.
+    const { liabilities, unvested, vested } = getNetWorthBreakdown(accounts);
 
     return {
         Invested: invested,
@@ -157,6 +169,10 @@ export function computeOverviewBuckets(
         Property: property,
         Debt: -Math.abs(liabilities),
         Unvested: unvested,
+        // Vested net worth, plotted as the emphasis "Net Worth" line so the tooltip's
+        // Vested headline lines up with a visible mark (the gross bands alone never
+        // sum to a single plotted line under the non-stacked layout).
+        'Net Worth': vested,
     };
 }
 
@@ -207,7 +223,9 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
     }, [filteredData, hasEOYPoint, baselineYear]);
 
     const lineData = useMemo(() => {
-        const keys = ['Invested', 'Saved', 'Property', 'Debt'] as const;
+        // 'Net Worth' (Vested) is plotted last so it draws on top of the gross bands as
+        // the emphasis line the tooltip headline points at (#143).
+        const keys = ['Invested', 'Saved', 'Property', 'Debt', 'Net Worth'] as const;
         return keys.map(id => ({
             id,
             data: rawData.map(d => ({
@@ -583,6 +601,7 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                         format: " >-$,.0f",
                     }}
                     colors={({ id }) => {
+                        if (id === 'Net Worth') return resolve('var(--c-content-bright)');
                         if (id === 'Debt') return resolve('var(--c-negative-soft)');
                         if (id === 'Invested') return resolve('var(--color-chart-money)');
                         if (id === 'Saved') return resolve('var(--c-accent-soft)');
