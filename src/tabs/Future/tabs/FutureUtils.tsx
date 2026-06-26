@@ -30,6 +30,43 @@ export function calculateNetWorth(accounts: AnyAccount[]): number {
 }
 
 /**
+ * Net worth split into its Gross / Unvested / Vested parts (#143).
+ *
+ * The display surfaces (Dashboard net-worth card, Overview + Data tabs) lead with
+ * the VESTED net worth — what you actually own today — and surface the gross and
+ * unvested figures alongside it. This is the single source for that math:
+ *   - `gross`      = getAccountTotals(accounts).netWorth — assets − liabilities,
+ *                    counting the FULL InvestedAccount balance (the engine /
+ *                    optimizer / Monte Carlo definition; UNCHANGED).
+ *   - `unvested`   = Σ InvestedAccount.nonVestedAmount — the employer-match portion
+ *                    you don't own until it vests.
+ *   - `vested`     = gross − unvested — net worth excluding the unvested match.
+ *
+ * NOTE: intentionally does NOT change `getAccountTotals` / `calculateNetWorth`.
+ * Those stay gross because they feed the Roth optimizer's after-tax-wealth ruler,
+ * Monte Carlo, Scenarios, and the projection-history snapshots, none of which
+ * should shift. This helper is additive — a display-only breakdown layered on top.
+ */
+export function getNetWorthBreakdown(accounts: AnyAccount[]): {
+    assets: number;
+    liabilities: number;
+    gross: number;
+    unvested: number;
+    vested: number;
+} {
+    const { assets, liabilities, netWorth: gross } = getAccountTotals(accounts);
+
+    let unvested = 0;
+    for (const acc of accounts) {
+        if (acc instanceof InvestedAccount) {
+            unvested += acc.nonVestedAmount;
+        }
+    }
+
+    return { assets, liabilities, gross, unvested, vested: gross - unvested };
+}
+
+/**
  * Capital-gains rate applied to unrealized gains in taxable accounts when
  * estimating after-tax net worth. A representative long-term rate — most
  * retirees realizing gains land in the 15% LTCG bracket.

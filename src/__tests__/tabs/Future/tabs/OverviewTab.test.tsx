@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { SimulationYear } from '../../../../components/Objects/Assumptions/SimulationEngine';
@@ -10,14 +11,35 @@ import { CurrentSocialSecurityIncome, FutureSocialSecurityIncome } from '../../.
 // 1. Mocks
 // -----------------------------------------------------------------------------
 
+// Minimal shape of the chart point data the slice tooltip reads back.
+type TooltipPointData = Record<string, number | string | boolean>;
+type SliceTooltipArg = { slice?: { points?: Array<{ data: TooltipPointData }> } };
+type SliceTooltipFn = (arg: SliceTooltipArg) => ReactNode;
+
+// Shape of the serialized nivo `data` prop the mock chart re-emits as JSON.
+type ChartSeries = { id: string; data: Array<TooltipPointData & { y: number }> };
+
+// Captured so tooltip tests can render the slice tooltip directly (#143).
+let capturedSliceTooltip: SliceTooltipFn | undefined;
+
 // Mock the Nivo Chart. We just want to know what 'data' it received.
 vi.mock('@nivo/line', () => ({
-  ResponsiveLine: ({ data }: any) => (
-    <div data-testid="mock-chart">
-      {/* We serialize the data to JSON so we can read it in our assertions */}
-      {JSON.stringify(data)}
-    </div>
-  ),
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- nivo's data prop is loosely typed in tests
+  ResponsiveLine: ({ data, sliceTooltip }: any) => {
+    capturedSliceTooltip = sliceTooltip;
+    return (
+      <div data-testid="mock-chart">
+        {/* We serialize the data to JSON so we can read it in our assertions */}
+        {JSON.stringify(data)}
+      </div>
+    );
+  },
+}));
+
+// ChartTooltipPortal renders into a portal/document.body — stub it to inline so the
+// tooltip's rendered text is queryable within the test container.
+vi.mock('../../../../components/Charts/ChartTooltipPortal', () => ({
+  ChartTooltipPortal: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 
 // Mock the RangeSlider. We replace the complex slider with simple inputs
@@ -126,6 +148,68 @@ describe('OverviewTab', () => {
         // Note: LoanExpense is NOT double-counted — DebtAccount already tracks the linked balance
         const debtSeries = chartData.find((s: any) => s.id === 'Debt');
         expect(debtSeries.data[0].y).toBe(-265000);
+    });
+
+    // #143: the Net Worth tooltip leads with VESTED net worth. The plotted asset/debt
+    // bands stay GROSS, but each point embeds the year's Unvested employer match so the
+    // tooltip can net it out and also surface the gross figure.
+    it('embeds Unvested employer match and keeps the asset bands gross', () => {
+        const year2025 = createMockYear(2025);
+        // InvestedAccount args: (id, name, amount, employerBalance, tenureYears,
+        //   expenseRatio, taxType, isContributionEligible, vestedPerYear, ...)
+        // 40k employer, 1yr at 20%/yr graded => 20% vested => 32k unvested.
+        year2025.accounts.push(new InvestedAccount('inv1', '401k', 100000, 40000, 1, 0.1, 'Traditional 401k', true, 0.2));
+        year2025.accounts.push(new SavedAccount('sav1', 'Cash', 20000));
+
+        render(<OverviewTab simulationData={[year2025]} />);
+        const chartData: ChartSeries[] = JSON.parse(screen.getByTestId('mock-chart').textContent || '[]');
+
+        // Only the four gross bands are plotted — Unvested is NOT its own series.
+        const seriesIds = chartData.map(s => s.id).sort();
+        expect(seriesIds).toEqual(['Debt', 'Invested', 'Property', 'Saved']);
+
+        // Bands remain GROSS: the full 100k 401k balance is in Invested.
+        const investedSeries = chartData.find(s => s.id === 'Invested')!;
+        expect(investedSeries.data[0].y).toBe(100000);
+
+        // Every point carries the year's Unvested figure for the tooltip.
+        const point = investedSeries.data[0];
+        expect(point.Unvested).toBe(32000);
+
+        // Gross net worth = sum of bands = 100k + 20k + 0 - 0 = 120k.
+        // Vested = gross - unvested = 120k - 32k = 88k (what the tooltip headlines).
+        const num = (v: number | string | boolean | undefined) => (typeof v === 'number' ? v : 0);
+        const gross = num(point.Invested) + num(point.Saved) + num(point.Property) + num(point.Debt);
+        expect(gross).toBe(120000);
+        expect(gross - num(point.Unvested)).toBe(88000);
+    });
+
+    // #143: render the slice tooltip itself and assert it leads with VESTED net worth
+    // and surfaces the Unvested + Gross Net Worth lines (mirroring the Dashboard card).
+    it('tooltip leads with Vested net worth and shows Unvested + Gross', () => {
+        const year2025 = createMockYear(2025);
+        year2025.accounts.push(new InvestedAccount('inv1', '401k', 100000, 40000, 1, 0.1, 'Traditional 401k', true, 0.2));
+        year2025.accounts.push(new SavedAccount('sav1', 'Cash', 20000));
+
+        render(<OverviewTab simulationData={[year2025]} />);
+        expect(capturedSliceTooltip).toBeTypeOf('function');
+
+        const chartData: ChartSeries[] = JSON.parse(screen.getByTestId('mock-chart').textContent || '[]');
+        const investedSeries = chartData.find(s => s.id === 'Invested')!;
+        // CustomTooltip destructures { slice } from its argument.
+        const arg: SliceTooltipArg = { slice: { points: [{ data: investedSeries.data[0] }] } };
+
+        render(<>{capturedSliceTooltip!(arg)}</>);
+
+        // Unvested line is present (32k), Net Worth headline is VESTED (88k = 120k - 32k),
+        // and the Gross Net Worth (120k) is surfaced.
+        expect(screen.getByText('Unvested:')).toBeInTheDocument();
+        expect(screen.getByText('Net Worth:')).toBeInTheDocument();
+        expect(screen.getByText('Gross Net Worth:')).toBeInTheDocument();
+        // formatCompactCurrency: < $100K renders exact, >= $100K uses the K suffix.
+        expect(screen.getByText('$32,000')).toBeInTheDocument();  // unvested
+        expect(screen.getByText('$88,000')).toBeInTheDocument();  // vested net worth
+        expect(screen.getByText('$120.0K')).toBeInTheDocument();  // gross net worth
     });
 
     it('filters data based on the range slider', async () => {

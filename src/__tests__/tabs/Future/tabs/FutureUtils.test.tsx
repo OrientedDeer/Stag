@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   getAccountTotals,
   calculateNetWorth,
+  getNetWorthBreakdown,
   computeAfterTaxNetWorth,
   formatCurrency,
   formatCompactCurrency,
@@ -57,6 +58,62 @@ describe('FutureUtils', () => {
         expect(assets).toBe(0);
         expect(liabilities).toBe(20000);
         expect(netWorth).toBe(-20000);
+    });
+  });
+
+  describe('getNetWorthBreakdown (#143)', () => {
+    // InvestedAccount positional args:
+    // (id, name, amount, employerBalance, tenureYears, expenseRatio, taxType,
+    //  isContributionEligible, vestedPerYear, costBasis, ...)
+    // employerBalance 40k, tenure 1yr, 20%/yr graded => 20% vested => 80% unvested = 32k.
+    it('splits net worth into gross / unvested / vested with an unvested employer match', () => {
+      const accounts: AnyAccount[] = [
+        new SavedAccount('s1', 'Cash', 10000),
+        // amount 100k; of which 40k is employer balance, 20% vested at 1yr => 32k unvested.
+        new InvestedAccount('i1', '401k', 100000, 40000, 1, 0.1, 'Traditional 401k', true, 0.2),
+        new DebtAccount('d1', 'Student Loan', 20000, 'l1', 5),
+      ];
+
+      const { assets, liabilities, gross, unvested, vested } = getNetWorthBreakdown(accounts);
+
+      // Gross is exactly getAccountTotals().netWorth (the engine/optimizer definition).
+      const totals = getAccountTotals(accounts);
+      expect(gross).toBe(totals.netWorth);
+      expect(assets).toBe(110000);          // 10k cash + 100k 401k (full balance)
+      expect(liabilities).toBe(20000);      // student loan
+      expect(gross).toBe(90000);            // 110k - 20k
+
+      // Unvested = Σ InvestedAccount.nonVestedAmount = 40k * (1 - 0.2) = 32k.
+      expect(unvested).toBe(32000);
+
+      // Vested = gross - unvested (the core invariant the display surfaces lead with).
+      expect(vested).toBe(gross - unvested);
+      expect(vested).toBe(58000);           // 90k - 32k
+    });
+
+    it('vested equals gross when there is no unvested match (unvested = 0)', () => {
+      const accounts: AnyAccount[] = [
+        new SavedAccount('s1', 'Savings', 10000),
+        new InvestedAccount('i1', 'Brokerage', 50000, 0, 0, 0, 'Brokerage', true, 0),
+        new DebtAccount('d1', 'Credit Card', 5000, 'l2', 18),
+      ];
+
+      const { gross, unvested, vested } = getNetWorthBreakdown(accounts);
+      expect(gross).toBe(getAccountTotals(accounts).netWorth); // 55k
+      expect(unvested).toBe(0);
+      expect(vested).toBe(gross);
+      expect(vested).toBe(55000);
+    });
+
+    it('fully-vested employer balance contributes zero unvested', () => {
+      const accounts: AnyAccount[] = [
+        // 5 years at 20%/yr => 100% vested => nonVested 0 even though employerBalance is 30k.
+        new InvestedAccount('i1', '401k', 100000, 30000, 5, 0.1, 'Traditional 401k', true, 0.2),
+      ];
+      const { gross, unvested, vested } = getNetWorthBreakdown(accounts);
+      expect(unvested).toBe(0);
+      expect(vested).toBe(gross);
+      expect(vested).toBe(100000);
     });
   });
 

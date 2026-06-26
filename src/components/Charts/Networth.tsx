@@ -9,7 +9,7 @@ import { DebtAccount, InvestedAccount, PropertyAccount } from '../Objects/Accoun
 import { ExpenseContext } from '../Objects/Expense/ExpenseContext';
 import { MortgageExpense } from '../Objects/Expense/models';
 import { AssumptionsContext } from '../Objects/Assumptions/AssumptionsContext';
-import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
+import { formatCompactCurrency, getNetWorthBreakdown } from '../../tabs/Future/tabs/FutureUtils';
 
 export const NetWorthCard = () => {
     const { accounts, amountHistory } = useContext(AccountContext);
@@ -17,37 +17,21 @@ export const NetWorthCard = () => {
     const { state: assumptions } = useContext(AssumptionsContext);
     const { resolve } = useChartTheme();
     const forceExact = assumptions.display?.useCompactCurrency === false;
-    // 1. Calculate Current Stats
+    // 1. Calculate Current Stats — single-sourced from getNetWorthBreakdown (#143)
+    //    so the Dashboard card cannot drift from the Overview/Data tabs:
+    //      headline       = VESTED net worth (gross − unvested match)
+    //      "Gross Assets" = breakdown.assets (assets − debt is the gross net worth)
+    //      tooltip        = Unvested + Gross Net Worth (gross)
+    //    This is a pure refactor — the visible output is byte-identical to the
+    //    prior inline `totalAssets / totalDebt − totalNonVested` math.
     const stats = useMemo(() => {
-        let totalAssets = 0;
-        let totalDebt = 0;
-        let totalNonVested = 0;
-
-        accounts.forEach(acc => {
-            // Property logic: amount is asset, loanAmount is debt
-            if (acc instanceof PropertyAccount && acc.loanAmount) {
-                totalDebt += acc.loanAmount;
-            }
-            
-            // Debt logic: amount is the debt itself
-            if (acc instanceof DebtAccount && acc.amount) {
-                totalDebt += acc.amount;
-            } else {
-                // Everything else (Saved, Invested, Property Value) is an asset
-                totalAssets += acc.amount;
-            }
-
-            // FIX: Subtract ONLY the unvested portion. 
-            // Previously this was subtracting 'acc.employerBalance' (All Match).
-            if (acc instanceof InvestedAccount){
-                totalNonVested += acc.nonVestedAmount;
-            }
-        });
-
-        // Net Worth = (User + Total Match) - Debt - Unvested Match
-        //           = User + Vested Match - Debt
-        const netWorth = totalAssets - totalDebt - totalNonVested;
-        return { totalAssets, totalDebt, netWorth, totalNonVested };
+        const { assets, liabilities, vested, unvested } = getNetWorthBreakdown(accounts);
+        return {
+            totalAssets: assets,
+            totalDebt: liabilities,
+            netWorth: vested,
+            totalNonVested: unvested,
+        };
     }, [accounts]);
 
     // 2. Generate Historical Chart Data

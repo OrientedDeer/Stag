@@ -8,7 +8,7 @@ import { ChartFrame } from "../../../components/Charts/ChartFrame";
 import { ProjectionMemoryChart } from "../../../components/Charts/ProjectionMemoryChart";
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { SavedAccount, PropertyAccount, DebtAccount, DeficitDebtAccount, AnyAccount } from '../../../components/Objects/Accounts/models';
-import { formatCompactCurrency, getAccountTotals } from './FutureUtils';
+import { formatCompactCurrency, getAccountTotals, getNetWorthBreakdown } from './FutureUtils';
 import { AnyExpense } from '../../../components/Objects/Expense/models';
 import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider';
 import { AlertBanner } from '../../../components/Layout/AlertBanner';
@@ -65,27 +65,48 @@ interface OverviewPoint {
     Saved: number;
     Property: number;
     Debt: number;
+    /** Unvested employer-match portion (#143) — subtracted from gross to get the
+     *  Vested net worth the tooltip leads with. Not plotted as its own band. */
+    Unvested: number;
 }
 
-/** The four net-worth buckets the Overview chart plots (Debt is negative). */
+/** The four net-worth buckets the Overview chart plots (Debt is negative) plus the
+ *  unvested employer-match figure used to derive the Vested net worth (#143). */
 export interface OverviewBuckets {
     Invested: number;
     Saved: number;
     Property: number;
     Debt: number;
+    /** Σ InvestedAccount.nonVestedAmount — the part of the gross asset bands you
+     *  don't own yet. The plotted bands stay GROSS (like the Dashboard's gross-asset
+     *  display); only the Net Worth tooltip figure nets this out. */
+    Unvested: number;
 }
 
 /**
  * Split a year's accounts into the chart's net-worth buckets.
  *
- * The bucket total is derived the SAME way as getAccountTotals / calculateNetWorth
- * (the Assets sub-tab, DataTab Net Worth column, and projection-history snapshots),
- * so the Overview chart's Net Worth tooltip CANNOT disagree with those views:
+ * The GROSS bucket bands (Invested / Saved / Property / Debt) are derived the SAME
+ * way as getAccountTotals / calculateNetWorth (the Assets sub-tab, the DataTab Total
+ * Assets/Debt columns, and projection-history snapshots), so the plotted asset/debt
+ * bands cannot disagree with those views:
  *   - assets  = every non-debt account's balance (split into Invested / Saved /
  *     Property for display). ESPP and RSU extend BaseAccount directly (not
  *     InvestedAccount), so they're folded into Invested explicitly — otherwise
  *     they'd be silently dropped and understate net worth.
  *   - liabilities = DebtAccount/DeficitDebtAccount balances + PropertyAccount.loanAmount.
+ *
+ * The headline Net Worth figure in the tooltip is VESTED (gross − Unvested), matching
+ * the Dashboard net-worth card and the DataTab Net Worth column (#143). `Unvested`
+ * (Σ InvestedAccount.nonVestedAmount) is carried alongside the bands so the tooltip
+ * can net it out and also surface the gross figure. The plotted bands themselves stay
+ * gross — they ARE the Dashboard's gross-asset display.
+ *
+ * Note the deliberate split: the projection-history snapshots (services/projectionHistory)
+ * stay GROSS — they freeze a net-worth curve via getAccountTotals and overlay it against a
+ * gross reconstruction of actual balances, and that internal trend overlay must keep using
+ * the same gross definition on both lines (it is NOT a display that should track this tab's
+ * vested headline).
  *
  * Mortgage debt is taken from PropertyAccount.loanAmount (the account side),
  * NOT from MortgageExpense.loan_balance. For a linked mortgage the engine keeps
@@ -125,11 +146,17 @@ export function computeOverviewBuckets(
     // loanAmount, ignoring expenses. Stored negative for the stacked chart.
     const { liabilities } = getAccountTotals(accounts);
 
+    // Unvested employer match (#143): netted out of the plotted gross net worth to
+    // get the Vested figure the tooltip leads with — matching the Dashboard card.
+    // The asset bands above stay gross (they ARE the Dashboard's gross-asset display).
+    const { unvested } = getNetWorthBreakdown(accounts);
+
     return {
         Invested: invested,
         Saved: saved,
         Property: property,
         Debt: -Math.abs(liabilities),
+        Unvested: unvested,
     };
 }
 
@@ -238,7 +265,12 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
         const point = slice.points[0];
         const data = point.data;
 
-        const totalNetWorth = (data.Invested || 0) + (data.Saved || 0) + (data.Property || 0) + (data.Debt || 0);
+        // Gross net worth = the plotted asset bands minus the debt band (Debt is
+        // stored negative). Vested nets out the unvested employer match (#143) so
+        // the headline matches the Dashboard net-worth card.
+        const grossNetWorth = (data.Invested || 0) + (data.Saved || 0) + (data.Property || 0) + (data.Debt || 0);
+        const unvested = data.Unvested || 0;
+        const vestedNetWorth = grossNetWorth - unvested;
 
         return (
             <ChartTooltipPortal>
@@ -263,15 +295,29 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                         <span className="text-content-muted">Debt:</span>
                         <span className="text-negative font-mono">{formatCompactCurrency(data.Debt, { forceExact })}</span>
                     </div>
-                    
+
+                    {unvested > 0 && (
+                        <div className="flex justify-between gap-4">
+                            <span className="text-content-muted">Unvested:</span>
+                            <span className="text-warning font-mono">{formatCompactCurrency(unvested, { forceExact })}</span>
+                        </div>
+                    )}
+
                     <div className="border-t border-border-strong my-1"></div>
-                    
+
                     <div className="flex justify-between gap-4">
                         <span className="text-white font-bold">Net Worth:</span>
-                        <span className={`font-mono font-bold ${totalNetWorth >= 0 ? 'text-positive' : 'text-negative'}`}>
-                            {formatCompactCurrency(totalNetWorth, { forceExact })}
+                        <span className={`font-mono font-bold ${vestedNetWorth >= 0 ? 'text-positive' : 'text-negative'}`}>
+                            {formatCompactCurrency(vestedNetWorth, { forceExact })}
                         </span>
                     </div>
+
+                    {unvested > 0 && (
+                        <div className="flex justify-between gap-4">
+                            <span className="text-content-muted">Gross Net Worth:</span>
+                            <span className="text-content-muted font-mono">{formatCompactCurrency(grossNetWorth, { forceExact })}</span>
+                        </div>
+                    )}
                 </div>
             </div>
             </ChartTooltipPortal>

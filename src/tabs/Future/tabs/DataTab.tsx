@@ -12,7 +12,7 @@ import { TaxContext } from '../../../components/Objects/Taxes/TaxContext';
 import { MonteCarloContext } from '../../../components/Objects/Assumptions/MonteCarloContext';
 import { exportToExcel, ExportData } from '../../../services/ExcelExportService';
 import { captureChart, collectReportData, generatePDFReport } from '../../../services/PDFReportService';
-import { calculateNetWorth, formatCompactCurrency, formatCurrency } from './FutureUtils';
+import { formatCompactCurrency, formatCurrency, getNetWorthBreakdown } from './FutureUtils';
 
 import { Button } from "../../../components/Layout/Primitives";
 interface DataTabProps {
@@ -34,13 +34,14 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, bir
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [_pdfLoading, _setPdfLoading] = useState(false);
 
-    // Chart data for PDF capture (simple net worth line)
+    // Chart data for PDF capture (simple net worth line). Vested net worth (#143)
+    // to match the table's Net Worth column and the Dashboard card.
     const pdfChartData = useMemo(() => {
         return [{
             id: 'Net Worth',
             data: simulationData.map((year, index) => ({
                 x: year.year,
-                y: calculateNetWorth(year.accounts),
+                y: getNetWorthBreakdown(year.accounts).vested,
                 age: startAge + index,
             }))
         }];
@@ -111,7 +112,10 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, bir
                 if (exp instanceof MortgageExpense) totalDebt += exp.loan_balance;
             });
 
-            const netWorth = calculateNetWorth(year.accounts);
+            // Net Worth column is VESTED (gross − unvested employer match), matching
+            // the Dashboard card and the Overview tooltip (#143). The Unvested column
+            // keeps the arithmetic visible: Total Assets − Total Debt − Unvested = Net Worth.
+            const { unvested, vested } = getNetWorthBreakdown(year.accounts);
 
             // Include Roth conversion amount in taxable income for effective rate calculation
             // Conversions are taxed but aren't included in cashflow.totalIncome (they're account transfers)
@@ -130,7 +134,8 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, bir
                 livingExpenses,
                 totalDebt,
                 totalSaved: year.cashflow.totalInvested,
-                netWorth,
+                unvested,
+                netWorth: vested,
             };
         });
     }, [simulationData, startAge]);
@@ -156,8 +161,8 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, bir
 
         // Step B: Build Header Row
         const headers = [
-            "Year", "Age", 
-            "Net Worth", "Total Assets", "Total Debt",
+            "Year", "Age",
+            "Net Worth", "Total Assets", "Total Debt", "Unvested",
             "Gross Income", "Total Taxes", "Total Expenses",
             ...sortedIncKeys.map(k => `INC: ${k}`),
             ...sortedExpKeys.map(k => `EXP: ${k}`),
@@ -174,10 +179,12 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, bir
             row.push(year.year);
             row.push(startAge + index);
 
-            const nw = calculateNetWorth(year.accounts);
-            row.push(nw);
-            
-            let assets = 0; 
+            // Net Worth is VESTED (#143); Total Assets / Total Debt stay gross, and the
+            // Unvested column keeps the arithmetic visible (Assets − Debt − Unvested = Net Worth).
+            const { unvested, vested } = getNetWorthBreakdown(year.accounts);
+            row.push(vested);
+
+            let assets = 0;
             let debt = 0;
             year.accounts.forEach(acc => {
                 if (acc instanceof DebtAccount) debt += acc.amount;
@@ -189,6 +196,7 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, bir
             });
             row.push(assets);
             row.push(debt);
+            row.push(unvested);
 
             row.push(year.cashflow.totalIncome);
             const tax = year.taxDetails.fed + year.taxDetails.state + year.taxDetails.fica;
@@ -277,6 +285,7 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, bir
                             <th className="p-3 border-b border-border-default text-content-muted font-semibold text-sm text-right">Expenses</th>
                             <th className="p-3 border-b border-border-default text-content-muted font-semibold text-sm text-right">Debt Load</th>
                             <th className="p-3 border-b border-border-default text-content-muted font-semibold text-sm text-right">Invested</th>
+                            <th className="p-3 border-b border-border-default text-content-muted font-semibold text-sm text-right">Unvested</th>
                             <th className="p-3 border-b border-border-default text-content-emphasis font-bold text-sm text-right bg-surface-overlay">Net Worth</th>
                         </tr>
                     </thead>
@@ -291,6 +300,7 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, bir
                                 <td className="p-3 text-sm text-right font-mono text-cat-orange-bright">{formatCompactCurrency(row.livingExpenses, { forceExact })}</td>
                                 <td className="p-3 text-sm text-right font-mono text-negative-soft">{row.totalDebt > 0 ? formatCompactCurrency(row.totalDebt, { forceExact }) : '-'}</td>
                                 <td className="p-3 text-sm text-right font-mono text-info">{formatCompactCurrency(row.totalSaved, { forceExact })}</td>
+                                <td className="p-3 text-sm text-right font-mono text-warning">{row.unvested > 0 ? formatCompactCurrency(row.unvested, { forceExact }) : '-'}</td>
                                 <td className="p-3 text-sm text-right font-mono font-bold text-white bg-surface-overlay/30">{formatCompactCurrency(row.netWorth, { forceExact })}</td>
                             </tr>
                         ))}

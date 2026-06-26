@@ -18,6 +18,7 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 
 import { DataTab } from '../../../tabs/Future/tabs/DataTab';
 import { LoanExpense, FoodExpense, MortgageExpense } from '../../../components/Objects/Expense/models';
+import { InvestedAccount } from '../../../components/Objects/Accounts/models';
 import { SimulationYear } from '../../../services/simulation/types';
 
 // The hidden PDF-capture chart is irrelevant here and nivo needs ResizeObserver
@@ -207,6 +208,79 @@ describe('DataTab mortgage payoff year matches the amortization (engine/Sankey) 
         const mortgageCol = headers.indexOf('EXP: Home');
         expect(mortgageCol).toBeGreaterThan(-1);
         expect(Number(values[mortgageCol])).toBeCloseTo(5000, 2); // amortized, not 12000
+
+        delete urlAny.createObjectURL;
+    });
+});
+
+/**
+ * #143: the Net Worth column (and chart series) lead with VESTED net worth — gross
+ * minus the unvested employer match — matching the Dashboard card and the Overview
+ * tooltip. A new Unvested column keeps the arithmetic visible:
+ *   Total Assets − Total Debt − Unvested = Net Worth.
+ */
+describe('DataTab vested net worth + unvested column (#143)', () => {
+    // InvestedAccount args: (id, name, amount, employerBalance, tenureYears,
+    //   expenseRatio, taxType, isContributionEligible, vestedPerYear, ...)
+    // amount 100k; employer 40k; 1yr @ 20%/yr graded => 20% vested => 32k unvested.
+    function makeVestingSimYear(): SimulationYear {
+        return {
+            ...makeSimYear(),
+            expenses: [],
+            accounts: [
+                new InvestedAccount('inv-1', '401k', 100000, 40000, 1, 0.1, 'Traditional 401k', true, 0.2),
+            ],
+        };
+    }
+
+    it('table shows the Unvested column and a VESTED Net Worth value', () => {
+        render(<DataTab simulationData={[makeVestingSimYear()]} birthYear={1990} />);
+
+        // Header carries the new Unvested column.
+        expect(screen.getByText('Unvested')).toBeInTheDocument();
+
+        // Unvested = 40k * (1 - 0.2) = 32k; rendered exact (< $100K).
+        expect(screen.getByText('$32,000')).toBeInTheDocument();
+
+        // Net Worth column is VESTED = gross 100k - unvested 32k = 68k (NOT the gross 100k).
+        expect(screen.getByText('$68,000')).toBeInTheDocument();
+        expect(screen.queryByText('$100.0K')).toBeNull();
+    });
+
+    it('CSV export writes a Vested Net Worth and a gross Unvested column', async () => {
+        let capturedBlob: Blob | null = null;
+        const urlAny = URL as unknown as { createObjectURL?: (b: Blob) => string };
+        urlAny.createObjectURL = (b: Blob) => { capturedBlob = b; return 'blob:mock'; };
+        vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+        render(<DataTab simulationData={[makeVestingSimYear()]} birthYear={1990} />);
+        fireEvent.click(screen.getByText('CSV'));
+
+        expect(capturedBlob).not.toBeNull();
+        const csv: string = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = () => reject(reader.error);
+            reader.readAsText(capturedBlob!);
+        });
+        const [headerLine, dataLine] = csv.split('\n');
+        const headers = headerLine.split(',');
+        const values = dataLine.split(',');
+
+        const nwCol = headers.indexOf('Net Worth');
+        const assetsCol = headers.indexOf('Total Assets');
+        const debtCol = headers.indexOf('Total Debt');
+        const unvestedCol = headers.indexOf('Unvested');
+
+        expect(unvestedCol).toBeGreaterThan(-1);
+        expect(Number(values[assetsCol])).toBe(100000);  // gross assets unchanged
+        expect(Number(values[debtCol])).toBe(0);
+        expect(Number(values[unvestedCol])).toBe(32000);  // unvested employer match
+        expect(Number(values[nwCol])).toBe(68000);         // VESTED = 100k - 32k
+
+        // Arithmetic stays visible: Assets - Debt - Unvested = Net Worth.
+        expect(Number(values[assetsCol]) - Number(values[debtCol]) - Number(values[unvestedCol]))
+            .toBe(Number(values[nwCol]));
 
         delete urlAny.createObjectURL;
     });
