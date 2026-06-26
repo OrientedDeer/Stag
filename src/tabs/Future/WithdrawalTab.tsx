@@ -19,6 +19,7 @@ import { HelpSection } from './withdrawal/HelpSection';
 import { TaxOptimizationControls } from './withdrawal/TaxOptimizationControls';
 import { OptimizationSummaryCard, OptimizationSummary, ComparisonResult } from './withdrawal/OptimizationSummaryCard';
 import { WithdrawalBucketList, BucketDetail } from './withdrawal/WithdrawalBucketList';
+import { buildAccountTimeline } from './withdrawal/accountTimeline';
 
 // Helper to get tax treatment badge for an account
 const getTaxBadge = (account: AnyAccount | undefined): { label: string; color: string } => {
@@ -263,68 +264,12 @@ export default function WithdrawalTab() {
 
     // Derive, per account, the year it is first tapped and the year it depletes,
     // directly from the cached simulation — this is what makes the burn-order
-    // drag have a visible consequence.
-    //
-    // Assumptions (documented honestly, since the sim doesn't store an explicit
-    // "depleted" flag):
-    //  - "Tapped" = first projected year with a positive withdrawal from this
-    //    account (`cashflow.withdrawalDetail[accountId] > 0`).
-    //  - "Depleted" = first year AT OR AFTER the first tap whose end-of-year
-    //    balance snapshot falls to ~$0 (≤ $1, to absorb float dust) while a
-    //    withdrawal occurred that year — i.e. the account was actively drained
-    //    to empty. An account that's tapped but never hits ~$0 within the plan
-    //    is reported as "tapped" only. Growth can lift a near-zero balance back
-    //    up, so we take the FIRST year it bottoms out after being tapped.
-    //  - Synthetic end-of-year projection rows (`isEndOfYearProjection`) are
-    //    skipped so the reported year/age line up with real plan years.
-    const accountTimeline = useMemo(() => {
-        const birthYear = getBirthYear(state.milestones);
-        const rows = simulation
-            .filter(y => !y.isEndOfYearProjection)
-            .sort((a, b) => a.year - b.year);
-
-        const timeline = new Map<string, {
-            tappedYear?: number; tappedAge?: number;
-            depletedYear?: number; depletedAge?: number;
-            depletedDrawAmount?: number; depletedBalanceBefore?: number;
-        }>();
-
-        for (const acc of accounts) {
-            let tappedYear: number | undefined;
-            let depletedYear: number | undefined;
-            let prevBalance: number | undefined;
-            let depletedDrawAmount: number | undefined;
-            let depletedBalanceBefore: number | undefined;
-
-            for (const y of rows) {
-                const draw = y.cashflow.withdrawalDetail?.[acc.id] ?? 0;
-                const snapshot = y.accounts.find(a => a.id === acc.id);
-                const balance = snapshot?.amount ?? 0;
-
-                if (draw > 0 && tappedYear === undefined) {
-                    tappedYear = y.year;
-                }
-                if (tappedYear !== undefined && depletedYear === undefined && draw > 0 && balance <= 1) {
-                    depletedYear = y.year;
-                    depletedDrawAmount = draw;
-                    // Balance heading into the year that emptied it (the draw
-                    // plus what's left). Falls back to this year's draw.
-                    depletedBalanceBefore = prevBalance ?? draw;
-                }
-                prevBalance = balance;
-            }
-
-            timeline.set(acc.id, {
-                tappedYear,
-                tappedAge: tappedYear !== undefined ? tappedYear - birthYear : undefined,
-                depletedYear,
-                depletedAge: depletedYear !== undefined ? depletedYear - birthYear : undefined,
-                depletedDrawAmount,
-                depletedBalanceBefore,
-            });
-        }
-        return timeline;
-    }, [simulation, accounts, state.milestones]);
+    // drag have a visible consequence. The derivation lives in a pure helper so
+    // it's unit-testable (the key-mismatch bug behind #142 was invisible inline).
+    const accountTimeline = useMemo(
+        () => buildAccountTimeline(simulation, accounts, state.milestones),
+        [simulation, accounts, state.milestones],
+    );
 
     // Build a Map once so the lookup is O(1) per bucket instead of accounts.find() per bucket.
     const bucketsWithDetails = useMemo<BucketDetail[]>(() => {
