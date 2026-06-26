@@ -830,7 +830,7 @@ describe('getOrdinaryAGI', () => {
     it('counts non-RMD Traditional withdrawals as ordinary income', () => {
         const simYear = baseYear(2040);
         simYear.accounts = [new InvestedAccount('t1', 'My Trad', 500000, 0, 0, 0.1, 'Traditional 401k')];
-        simYear.cashflow.withdrawalDetail = { 'My Trad': 20000 };
+        simYear.cashflow.withdrawalDetail = { 't1': 20000 }; // keyed by account id (#142)
         expect(getOrdinaryAGI(simYear, 70, filingStatus)).toBe(20000);
     });
 
@@ -840,7 +840,7 @@ describe('getOrdinaryAGI', () => {
             new InvestedAccount('r1', 'My Roth', 300000, 0, 0, 0.1, 'Roth IRA'),
             new InvestedAccount('b1', 'My Brokerage', 300000, 0, 0, 0.1, 'Brokerage'),
         ];
-        simYear.cashflow.withdrawalDetail = { 'My Roth': 30000, 'My Brokerage': 15000 };
+        simYear.cashflow.withdrawalDetail = { 'r1': 30000, 'b1': 15000 }; // keyed by account id (#142)
         expect(getOrdinaryAGI(simYear, 70, filingStatus)).toBe(0);
     });
 
@@ -876,7 +876,7 @@ describe('getOrdinaryAGI', () => {
     it('excludes the modeled conversion by default, includes it when asked', () => {
         const simYear = baseYear(2040);
         simYear.accounts = [new InvestedAccount('t1', 'My Trad', 500000, 0, 0, 0.1, 'Traditional 401k')];
-        simYear.cashflow.withdrawalDetail = { 'My Trad': 20000 };
+        simYear.cashflow.withdrawalDetail = { 't1': 20000 }; // keyed by account id (#142)
         simYear.rothConversion = {
             amount: 10000, taxCost: 1200, federalTaxCost: 1200, stateTaxCost: 0, taxAfter: 0,
             fromAccounts: {}, toAccounts: {}, fromAccountIds: {}, toAccountIds: {},

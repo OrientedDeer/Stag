@@ -10,8 +10,8 @@ import { AccountTimeline } from './WithdrawalBucketList';
  *
  *  - "Tapped" = first projected year with a positive withdrawal from this
  *    account. Withdrawals are recorded in `cashflow.withdrawalDetail`, which the
- *    simulation engine keys by account NAME (SimulationEngine populates it via
- *    `withdrawalDetail[account.name]`), so we look the draw up by `acc.name`.
+ *    simulation engine keys by account ID (SimulationEngine populates it via
+ *    `withdrawalDetail[account.id]`), so we look the draw up by `acc.id`.
  *  - "Depleted" = first year AT OR AFTER the first tap whose end-of-year balance
  *    snapshot falls to ~$0 (≤ $1, to absorb float dust) while a withdrawal
  *    occurred that year — i.e. the account was actively drained to empty. An
@@ -41,8 +41,8 @@ export function buildAccountTimeline(
         let depletedBalanceBefore: number | undefined;
 
         for (const y of rows) {
-            // withdrawalDetail is keyed by account NAME (see jsdoc above), not id.
-            const draw = y.cashflow.withdrawalDetail?.[acc.name] ?? 0;
+            // withdrawalDetail is keyed by account ID (see jsdoc above).
+            const draw = y.cashflow.withdrawalDetail?.[acc.id] ?? 0;
             const snapshot = y.accounts.find(a => a.id === acc.id);
             const balance = snapshot?.amount ?? 0;
 

@@ -288,23 +288,28 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
         // they actually received. (The LTCG tax outflow in the Taxes node still
         // shows the auth LTCG separately for visibility.) When the planner uses
         // a 0% LTCG rate, brokerageLTCGFromGross is 0 and this is a no-op.
-        const brokerageLTCGFromGross = cashflowDetail?.brokerageLTCGFromGross ?? 0;
-        const brokerageNames = new Set(
+        // `withdrawals` is keyed by account id (#142). Resolve id -> display name
+        // (so Sankey node labels read as account names) and flag which ids are
+        // brokerage accounts for the LTCG-net adjustment.
+        const idToName = new Map(accounts.map(acc => [acc.id, acc.name] as const));
+        const brokerageIds = new Set(
             accounts
                 .filter(acc => acc instanceof InvestedAccount && acc.taxType === 'Brokerage')
-                .map(acc => acc.name)
+                .map(acc => acc.id)
         );
+        const brokerageLTCGFromGross = cashflowDetail?.brokerageLTCGFromGross ?? 0;
         const brokerageGrossTotal = Object.entries(withdrawals)
-            .filter(([name]) => brokerageNames.has(name))
+            .filter(([id]) => brokerageIds.has(id))
             .reduce((sum, [, amt]) => sum + amt, 0);
         const withdrawalsNet: Record<string, number> = {};
-        for (const [name, gross] of Object.entries(withdrawals)) {
-            if (brokerageNames.has(name) && brokerageGrossTotal > 0) {
-                const share = gross / brokerageGrossTotal;
-                withdrawalsNet[name] = gross - brokerageLTCGFromGross * share;
-            } else {
-                withdrawalsNet[name] = gross;
-            }
+        for (const [id, gross] of Object.entries(withdrawals)) {
+            const displayName = idToName.get(id) ?? id;
+            const net = brokerageIds.has(id) && brokerageGrossTotal > 0
+                ? gross - brokerageLTCGFromGross * (gross / brokerageGrossTotal)
+                : gross;
+            // Keyed by display name for the node label; same-named accounts merge
+            // into one node (unchanged from the prior name-keyed behavior).
+            withdrawalsNet[displayName] = (withdrawalsNet[displayName] ?? 0) + net;
         }
         const netWithdrawals = Object.values(withdrawalsNet).reduce((a, b) => a + b, 0);
 

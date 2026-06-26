@@ -414,17 +414,18 @@ function sumTradBalanceDiag(simYear: SimulationYear): number {
  * withdrawalDetail (they're surfaced as income), so this is already RMD-free.
  */
 function sumTraditionalWithdrawals(simYear: SimulationYear): number {
-    const traditionalNames = new Set(
+    // withdrawalDetail is keyed by account id (#142); match trad accounts by id.
+    const traditionalIds = new Set(
         simYear.accounts
             .filter((acc): acc is InvestedAccount =>
                 acc instanceof InvestedAccount &&
                 (acc.taxType === 'Traditional 401k' || acc.taxType === 'Traditional IRA')
             )
-            .map(acc => acc.name)
+            .map(acc => acc.id)
     );
     let total = 0;
-    for (const [name, amount] of Object.entries(simYear.cashflow.withdrawalDetail || {})) {
-        if (traditionalNames.has(name)) total += amount;
+    for (const [id, amount] of Object.entries(simYear.cashflow.withdrawalDetail || {})) {
+        if (traditionalIds.has(id)) total += amount;
     }
     return total;
 }

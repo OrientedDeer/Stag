@@ -87,8 +87,11 @@ function executeYearPlan(
             (withdrawalState.userInflows[account.id] || 0) - withdrawal.gross;
 
         withdrawalState.totalWithdrawals += withdrawal.gross;
-        withdrawalState.withdrawalDetail[account.name] =
-            (withdrawalState.withdrawalDetail[account.name] || 0) + withdrawal.gross;
+        // Key by account.id, not account.name: names are user-editable and not
+        // uniqueness-constrained, so two same-named accounts would collide into one
+        // summed entry (#142). Consumers resolve id -> display name as needed.
+        withdrawalState.withdrawalDetail[account.id] =
+            (withdrawalState.withdrawalDetail[account.id] || 0) + withdrawal.gross;
 
         // Track capital gains from brokerage withdrawals
         if (withdrawal.capitalGains) {

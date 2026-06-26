@@ -147,13 +147,14 @@ function generateYearSummaryText(simYear: SimulationYear, age: number, accountsC
     const withdrawalEntries = Object.entries(simYear.cashflow.withdrawalDetail);
     if (withdrawalEntries.length > 0) {
         lines.push('WITHDRAWALS');
-        for (const [name, amount] of withdrawalEntries) {
-            const account = simYear.accounts.find(a => a.name === name);
+        // withdrawalDetail is keyed by account id (#142); resolve id -> account.
+        for (const [id, amount] of withdrawalEntries) {
+            const account = simYear.accounts.find(a => a.id === id);
             const isTraditional = account instanceof InvestedAccount &&
                 ((account as InvestedAccount).taxType === 'Traditional 401k' || (account as InvestedAccount).taxType === 'Traditional IRA');
             const isBrokerage = account instanceof InvestedAccount && (account as InvestedAccount).taxType === 'Brokerage';
             const taxable = isTraditional || isBrokerage || account instanceof ESPPAccount || account instanceof RSUAccount;
-            lines.push(`  ${name}: ${fmt(amount)}${taxable ? ' (taxable)' : ''}`);
+            lines.push(`  ${account?.name ?? id}: ${fmt(amount)}${taxable ? ' (taxable)' : ''}`);
         }
         lines.push(`  Total: ${fmt(simYear.cashflow.withdrawals)}`);
         lines.push('');
@@ -351,10 +352,11 @@ function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYear
         return acc;
     }, {} as Record<string, typeof incomeDetails>);
 
-    // Calculate withdrawal breakdown with capital gains info
-    const withdrawalBreakdown = Object.entries(simYear.cashflow.withdrawalDetail).map(([name, amount]) => {
+    // Calculate withdrawal breakdown with capital gains info.
+    // withdrawalDetail is keyed by account id (#142); resolve id -> account.
+    const withdrawalBreakdown = Object.entries(simYear.cashflow.withdrawalDetail).map(([id, amount]) => {
         // Find the account to get its type
-        const account = simYear.accounts.find(a => a.name === name);
+        const account = simYear.accounts.find(a => a.id === id);
         const isBrokerage = account instanceof InvestedAccount &&
             ((account as InvestedAccount).taxType === 'Brokerage');
         const isESPP = account instanceof ESPPAccount;
@@ -365,7 +367,7 @@ function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYear
             ((account as InvestedAccount).taxType === 'Roth 401k' || (account as InvestedAccount).taxType === 'Roth IRA');
 
         return {
-            name,
+            name: account?.name ?? id,
             amount,
             type: isBrokerage ? 'Brokerage' : isESPP ? 'ESPP' : isRSU ? 'RSU' : isTraditional ? 'Traditional' : isRoth ? 'Roth' : 'Other',
             isTaxable: isTraditional || isBrokerage || isESPP || isRSU
@@ -1348,12 +1350,16 @@ function SimulationDebugTab() {
                                 <span className="text-content-subtle text-sm">No withdrawals</span>
                             ) : (
                                 <div className="space-y-1 text-sm">
-                                    {Object.entries(selectedYearData.withdrawalDetail).map(([name, amt]) => (
-                                        <div key={name} className="flex justify-between">
-                                            <span className="text-content-muted">{name}</span>
-                                            <span className="font-mono text-cat-purple">{toCurrencyShort(amt)}</span>
-                                        </div>
-                                    ))}
+                                    {/* withdrawalDetail is keyed by account id (#142); resolve id -> name. */}
+                                    {Object.entries(selectedYearData.withdrawalDetail).map(([id, amt]) => {
+                                        const acc = accounts.find(a => a.id === id);
+                                        return (
+                                            <div key={id} className="flex justify-between">
+                                                <span className="text-content-muted">{acc?.name || id}</span>
+                                                <span className="font-mono text-cat-purple">{toCurrencyShort(amt)}</span>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>
@@ -4957,43 +4963,44 @@ function WithdrawalDebugTab() {
 
     if (simulation.length === 0) return <div className="text-content-muted p-4">No simulation data available. Run the simulation first.</div>;
 
-    // Compute lifetime withdrawal totals by account
-    // Note: withdrawalDetail is keyed by account NAME, not ID
+    // Compute lifetime withdrawal totals by account.
+    // withdrawalDetail is keyed by account ID (#142), so the accumulator is keyed
+    // by id too — two accounts that share a display name stay tracked separately.
     const lifetimeWithdrawals: Record<string, { name: string; total: number; drainedYear: number | null }> = {};
     simulation.forEach((simYear, idx) => {
         const age = startAge + idx;
         const detail = simYear.cashflow.withdrawalDetail || {};
-        for (const [accName, amount] of Object.entries(detail)) {
-            if (!lifetimeWithdrawals[accName]) {
-                lifetimeWithdrawals[accName] = { name: accName, total: 0, drainedYear: null };
+        for (const [accId, amount] of Object.entries(detail)) {
+            const acc = simYear.accounts.find(a => a.id === accId);
+            if (!lifetimeWithdrawals[accId]) {
+                lifetimeWithdrawals[accId] = { name: acc?.name ?? accId, total: 0, drainedYear: null };
             }
-            lifetimeWithdrawals[accName].total += amount;
+            lifetimeWithdrawals[accId].total += amount;
             // Check if account hit zero
-            const acc = simYear.accounts.find(a => a.name === accName);
-            if (acc && acc.amount <= 0 && amount > 0 && lifetimeWithdrawals[accName].drainedYear === null) {
-                lifetimeWithdrawals[accName].drainedYear = simYear.year;
+            if (acc && acc.amount <= 0 && amount > 0 && lifetimeWithdrawals[accId].drainedYear === null) {
+                lifetimeWithdrawals[accId].drainedYear = simYear.year;
             }
         }
         // Also detect zero balances even without withdrawal in that year
         if (age >= retirementAge) {
             simYear.accounts.forEach(acc => {
-                if (lifetimeWithdrawals[acc.name] && acc.amount <= 0 && lifetimeWithdrawals[acc.name].drainedYear === null && lifetimeWithdrawals[acc.name].total > 0) {
-                    lifetimeWithdrawals[acc.name].drainedYear = simYear.year;
+                if (lifetimeWithdrawals[acc.id] && acc.amount <= 0 && lifetimeWithdrawals[acc.id].drainedYear === null && lifetimeWithdrawals[acc.id].total > 0) {
+                    lifetimeWithdrawals[acc.id].drainedYear = simYear.year;
                 }
             });
         }
     });
 
     // Detect early withdrawal penalties (withdrawals from tax-advantaged before 59.5)
-    // Note: withdrawalDetail is keyed by account NAME
+    // withdrawalDetail is keyed by account ID (#142); resolve id -> account.
     const penaltyYears: Array<{ year: number; age: number; accountName: string; amount: number; penalty: number }> = [];
     simulation.forEach((simYear, idx) => {
         const age = startAge + idx;
         if (age >= 60) return; // 59.5 check - use 60 as conservative boundary
         const detail = simYear.cashflow.withdrawalDetail || {};
-        for (const [accName, amount] of Object.entries(detail)) {
+        for (const [accId, amount] of Object.entries(detail)) {
             if (amount <= 0) continue;
-            const acc = simYear.accounts.find(a => a.name === accName);
+            const acc = simYear.accounts.find(a => a.id === accId);
             if (acc && acc instanceof InvestedAccount) {
                 const taxAdvantaged = ['Traditional 401k', 'Traditional IRA', 'Roth 401k', 'Roth IRA'];
                 if (taxAdvantaged.includes(acc.taxType)) {
@@ -5057,8 +5064,8 @@ function WithdrawalDebugTab() {
                                         <td className="p-2 text-right text-white font-medium">{toCurrencyShort(total)}</td>
                                         {assumptions.withdrawalStrategy.map(b => {
                                             const acc = simYear.accounts.find(a => a.id === b.accountId);
-                                            const accName = acc?.name || b.name;
-                                            const amt = detail[accName] || 0;
+                                            // withdrawalDetail is keyed by account id (#142).
+                                            const amt = detail[b.accountId] || 0;
                                             const drained = acc && acc.amount <= 0;
                                             return (
                                                 <td key={b.id} className={`p-2 text-right ${drained ? 'text-negative' : amt > 0 ? 'text-positive' : 'text-content-faint'}`}>
@@ -5206,7 +5213,7 @@ function AccountsDebugTab() {
                 const startBal = prevAcc?.amount || 0;
                 const endBal = acc.amount;
                 const contrib = contributions[acc.id] || 0;
-                const withdrawal = withdrawals[acc.name] || 0;
+                const withdrawal = withdrawals[acc.id] || 0; // withdrawalDetail keyed by id (#142)
                 const netContrib = contrib - withdrawal;
                 const growth = endBal - startBal - netContrib;
                 const returnPct = startBal > 0 ? (growth / startBal) * 100 : 0;

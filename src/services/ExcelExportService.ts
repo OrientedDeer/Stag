@@ -365,16 +365,28 @@ function buildCashflowSheet(data: ExportData): SheetContent {
 function buildWithdrawalSheet(data: ExportData): SheetContent {
     const { simulation, assumptions } = data;
 
-    // Collect unique account names from withdrawal details
-    const accountNames = new Set<string>();
+    // withdrawalDetail is keyed by account ID (#142). Collect the unique account
+    // ids that appear in any year's withdrawals, and resolve each id -> display
+    // name from the per-year account snapshots (last name seen wins, so renamed
+    // accounts show their latest label). Accounts that drop out of the snapshots
+    // fall back to the raw id.
+    const accountIds = new Set<string>();
+    const idToName = new Map<string, string>();
     for (const year of simulation) {
+        for (const acc of year.accounts) {
+            idToName.set(acc.id, acc.name);
+        }
         if (year.cashflow.withdrawalDetail) {
-            for (const name of Object.keys(year.cashflow.withdrawalDetail)) {
-                accountNames.add(name);
+            for (const id of Object.keys(year.cashflow.withdrawalDetail)) {
+                accountIds.add(id);
             }
         }
     }
-    const sortedAccountNames = Array.from(accountNames).sort();
+    // Sort columns by display name for a stable, human-readable header order.
+    const sortedAccountIds = Array.from(accountIds).sort((a, b) =>
+        (idToName.get(a) ?? a).localeCompare(idToName.get(b) ?? b)
+    );
+    const sortedAccountNames = sortedAccountIds.map(id => idToName.get(id) ?? id);
 
     const rows: unknown[][] = [];
     addMetadataRow(rows, simulation);
@@ -395,8 +407,8 @@ function buildWithdrawalSheet(data: ExportData): SheetContent {
         }
 
         const withdrawal = year.strategyWithdrawal;
-        const accountWithdrawals = sortedAccountNames.map(name => {
-            const amount = year.cashflow.withdrawalDetail?.[name] || 0;
+        const accountWithdrawals = sortedAccountIds.map(id => {
+            const amount = year.cashflow.withdrawalDetail?.[id] || 0;
             return formatCurrency(amount);
         });
 

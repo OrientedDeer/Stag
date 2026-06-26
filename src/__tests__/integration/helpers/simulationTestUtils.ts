@@ -132,6 +132,18 @@ export function getTotalWithdrawals(year: SimulationYear): number {
 }
 
 /**
+ * Get the withdrawal drawn from a named account in a year. `withdrawalDetail`
+ * is keyed by account id (#142), so resolve the display name -> id from the
+ * year's account snapshots, then read the draw. Returns 0 if the account isn't
+ * present or had no draw.
+ */
+export function getWithdrawalByName(year: SimulationYear, accountName: string): number {
+    const acc = year.accounts.find(a => a.name === accountName);
+    if (!acc) return 0;
+    return year.cashflow.withdrawalDetail?.[acc.id] ?? 0;
+}
+
+/**
  * Get total invested account balance
  */
 export function getTotalInvestedBalance(accounts: AnyAccount[]): number {

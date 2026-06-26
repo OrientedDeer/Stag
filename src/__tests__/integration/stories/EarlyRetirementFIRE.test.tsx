@@ -24,6 +24,7 @@ import {
     getYearByAge,
     getAccountById,
     getSocialSecurityIncome,
+    getWithdrawalByName,
 } from '../helpers/simulationTestUtils';
 import {
     assertUniversalInvariants,
@@ -175,9 +176,9 @@ describe('Story 2: Early Retirement FIRE', () => {
 
         if (firstWithdrawalYear) {
             // Check that Brokerage is tapped first
-            const brokerageWithdrawal = firstWithdrawalYear.cashflow.withdrawalDetail['Brokerage'] || 0;
-            const rothWithdrawal = firstWithdrawalYear.cashflow.withdrawalDetail['Roth IRA'] || 0;
-            const tradWithdrawal = firstWithdrawalYear.cashflow.withdrawalDetail['Traditional IRA'] || 0;
+            const brokerageWithdrawal = getWithdrawalByName(firstWithdrawalYear, 'Brokerage');
+            const rothWithdrawal = getWithdrawalByName(firstWithdrawalYear, 'Roth IRA');
+            const tradWithdrawal = getWithdrawalByName(firstWithdrawalYear, 'Traditional IRA');
 
             // If we need to withdraw, Brokerage should be used first
             if (firstWithdrawalYear.cashflow.withdrawals > 0) {
@@ -219,7 +220,7 @@ describe('Story 2: Early Retirement FIRE', () => {
             const age = getAge(year.year, birthYear);
             if (age < retirementAge) continue;
 
-            const brokerageWithdrawal = year.cashflow.withdrawalDetail['Brokerage'] || 0;
+            const brokerageWithdrawal = getWithdrawalByName(year, 'Brokerage');
 
             if (brokerageWithdrawal > 0) {
                 // Check if capital gains tax was applied
@@ -256,7 +257,7 @@ describe('Story 2: Early Retirement FIRE', () => {
             const age = getAge(year.year, birthYear);
             if (age < retirementAge || age >= 60) continue; // Focus on early withdrawal period
 
-            const tradWithdrawal = year.cashflow.withdrawalDetail['Traditional IRA'] || 0;
+            const tradWithdrawal = getWithdrawalByName(year, 'Traditional IRA');
 
             if (tradWithdrawal > 0) {
                 // Should have early withdrawal penalty (10% on Traditional withdrawals before 59.5)
@@ -349,8 +350,8 @@ describe('Story 2: Early Retirement FIRE', () => {
                 // (assuming we only need to tap one account)
                 if (brokerage.amount > 10000) {
                     // Still have Brokerage funds, check order is respected
-                    const rothWithdrawal = year.cashflow.withdrawalDetail['Roth IRA'] || 0;
-                    const tradWithdrawal = year.cashflow.withdrawalDetail['Traditional IRA'] || 0;
+                    const rothWithdrawal = getWithdrawalByName(year, 'Roth IRA');
+                    const tradWithdrawal = getWithdrawalByName(year, 'Traditional IRA');
 
                     // Should not tap Roth/Traditional while Brokerage has funds
                     expect(
@@ -468,7 +469,7 @@ describe('Story 2: Early Retirement FIRE', () => {
             const age = getAge(year.year, birthYear);
             if (age < retirementAge || age >= 59) continue;
 
-            const tradWithdrawal = year.cashflow.withdrawalDetail['Traditional IRA'] || 0;
+            const tradWithdrawal = getWithdrawalByName(year, 'Traditional IRA');
 
             if (tradWithdrawal < 10000) continue;
 
@@ -522,8 +523,8 @@ describe('Story 2: Early Retirement FIRE', () => {
             const age = getAge(year.year, birthYear);
             if (age < retirementAge) continue;
 
-            cumulativeBrokerage += year.cashflow.withdrawalDetail['Brokerage'] || 0;
-            cumulativeRoth += year.cashflow.withdrawalDetail['Roth IRA'] || 0;
+            cumulativeBrokerage += getWithdrawalByName(year, 'Brokerage');
+            cumulativeRoth += getWithdrawalByName(year, 'Roth IRA');
 
             // Check: Before Roth is touched significantly, Brokerage should be mostly depleted
             if (cumulativeRoth > 10000) {

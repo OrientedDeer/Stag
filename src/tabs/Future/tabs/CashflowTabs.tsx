@@ -142,8 +142,15 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: Sim
             {/* ACA Cliff Warning */}
             {yearData.taxOptimizationTarget?.limitingFactor === 'ACA_CLIFF' && (() => {
                 const details = yearData.taxOptimizationTarget?.constraintDetails;
+                // withdrawalDetail is keyed by account id (#142); resolve the id to the
+                // account so we can test its display name (preserves the prior
+                // name-based 'brokerage' heuristic now that the key is an id).
                 const hasBrokerageWithdrawal = Object.entries(yearData.cashflow.withdrawalDetail || {}).some(
-                    ([name, amt]) => (amt as number) >= 0.005 && name.toLowerCase().includes('brokerage')
+                    ([id, amt]) => {
+                        if ((amt as number) < 0.005) return false;
+                        const accName = yearData.accounts.find(a => a.id === id)?.name ?? id;
+                        return accName.toLowerCase().includes('brokerage');
+                    }
                 );
                 const gainPct = hasBrokerageWithdrawal && details?.brokerageGainRatio != null && details.brokerageGainRatio >= 0.005
                     ? Math.round(details.brokerageGainRatio * 100) : null;

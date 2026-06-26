@@ -32,6 +32,7 @@ import { runSimulation } from '../../../components/Objects/Assumptions/useSimula
 import {
     getAge,
     getAccountById,
+    getWithdrawalByName,
     hasLogMessage,
 } from '../helpers/simulationTestUtils';
 import {
@@ -627,7 +628,7 @@ describe('Strategy Boundary Tests', () => {
 
                 // After Brokerage is depleted, Traditional should be used
                 if (brokerageBalance <= 1) {
-                    const tradWithdrawal = year.cashflow.withdrawalDetail['Traditional IRA'] || 0;
+                    const tradWithdrawal = getWithdrawalByName(year, 'Traditional IRA');
 
                     if (tradWithdrawal > 0) {
                         foundTransition = true;

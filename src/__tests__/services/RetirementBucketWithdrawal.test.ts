@@ -115,7 +115,7 @@ describe('Retirement Bucket Withdrawal Bug', () => {
         const withdrawalDetail = result.cashflow.withdrawalDetail || {};
         const bucketDetail = result.cashflow.bucketDetail || {};
 
-        const brokerageWithdrawal = withdrawalDetail['Brokerage'] || 0;
+        const brokerageWithdrawal = withdrawalDetail['acc-brokerage'] || 0; // keyed by account id (#142)
         const brokerageBucketAllocation = bucketDetail['acc-brokerage'] || 0;
 
         // The new behavior: reinvestment IS allowed up to withdrawal amount
@@ -232,7 +232,7 @@ describe('Retirement Bucket Withdrawal Bug', () => {
         const withdrawalDetail = result.cashflow.withdrawalDetail || {};
         const bucketDetail = result.cashflow.bucketDetail || {};
 
-        const brokerageWithdrawal = withdrawalDetail['Brokerage'] || 0;
+        const brokerageWithdrawal = withdrawalDetail['acc-brokerage'] || 0; // keyed by account id (#142)
         const brokerageBucketAllocation = bucketDetail['acc-brokerage'] || 0;
         // Savings bucket allocation tracked in bucketDetail['acc-savings']
 

@@ -462,18 +462,18 @@ export function getOrdinaryAGI(
     const conversion = includeConversion ? (simYear.rothConversion?.amount ?? 0) : 0;
 
     // Non-RMD Traditional withdrawals: cross-reference withdrawalDetail (keyed by
-    // account name) against this year's Traditional 401(k)/IRA accounts. RMDs are
+    // account id) against this year's Traditional 401(k)/IRA accounts. RMDs are
     // not in withdrawalDetail, so this sum is already RMD-free.
-    const traditionalAccountNames = new Set(
+    const traditionalAccountIds = new Set(
         simYear.accounts
             .filter((acc): acc is InvestedAccount =>
                 acc instanceof InvestedAccount &&
                 (acc.taxType === 'Traditional 401k' || acc.taxType === 'Traditional IRA'))
-            .map(acc => acc.name)
+            .map(acc => acc.id)
     );
     let traditionalNonRMDWithdrawals = 0;
-    for (const [name, amount] of Object.entries(simYear.cashflow.withdrawalDetail || {})) {
-        if (traditionalAccountNames.has(name)) traditionalNonRMDWithdrawals += amount;
+    for (const [id, amount] of Object.entries(simYear.cashflow.withdrawalDetail || {})) {
+        if (traditionalAccountIds.has(id)) traditionalNonRMDWithdrawals += amount;
     }
 
     // AGI excluding SS is the provisional-income base for the SS-taxability calc.
@@ -609,19 +609,19 @@ export function generateTaxProjections(
         const rmd = simYear.rmdDetails?.totalWithdrawn ?? 0;
 
         // Traditional non-RMD withdrawals: cross-reference withdrawalDetail (keyed by
-        // account name) against the year's accounts to find Traditional 401(k)/IRA.
+        // account id) against the year's accounts to find Traditional 401(k)/IRA.
         // RMDs are not in withdrawalDetail, so this sum is already RMD-free.
-        const traditionalAccountNames = new Set(
+        const traditionalAccountIds = new Set(
             simYear.accounts
                 .filter((acc): acc is InvestedAccount =>
                     acc instanceof InvestedAccount &&
                     (acc.taxType === 'Traditional 401k' || acc.taxType === 'Traditional IRA')
                 )
-                .map(acc => acc.name)
+                .map(acc => acc.id)
         );
         let traditionalNonRMDWithdrawals = 0;
-        for (const [name, amount] of Object.entries(simYear.cashflow.withdrawalDetail || {})) {
-            if (traditionalAccountNames.has(name)) {
+        for (const [id, amount] of Object.entries(simYear.cashflow.withdrawalDetail || {})) {
+            if (traditionalAccountIds.has(id)) {
                 traditionalNonRMDWithdrawals += amount;
             }
         }

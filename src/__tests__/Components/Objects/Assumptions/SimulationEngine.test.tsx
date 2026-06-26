@@ -411,7 +411,7 @@ describe('Simulation Engine', () => {
 
             // Withdrawal should be recorded
             expect(result.cashflow.withdrawals).toBeGreaterThan(0);
-            expect(result.cashflow.withdrawalDetail['Brokerage']).toBeGreaterThan(0);
+            expect(result.cashflow.withdrawalDetail['brok-1']).toBeGreaterThan(0); // keyed by account id (#142)
         });
 
         it('should handle brokerage withdrawal at 0% cap gains rate when low income', () => {
@@ -1917,7 +1917,7 @@ describe('Simulation Engine', () => {
             ).toBe(0);
 
             // Verify Traditional withdrawal happened and penalty was applied
-            const tradWithdrawal = result.cashflow.withdrawalDetail['Traditional 401k'] || 0;
+            const tradWithdrawal = result.cashflow.withdrawalDetail['acc-trad'] || 0; // keyed by account id (#142)
             expect(tradWithdrawal).toBeGreaterThan(0);
 
             // Fed tax should include the 10% early withdrawal penalty

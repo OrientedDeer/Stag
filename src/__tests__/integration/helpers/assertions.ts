@@ -116,8 +116,11 @@ export function assertWithdrawalOrderRespected(
         // If no withdrawals this year, continue
         if (!withdrawalDetail || Object.keys(withdrawalDetail).length === 0) continue;
 
-        // For each withdrawal, check if it's from a valid account
-        for (const [accountName, _amount] of Object.entries(withdrawalDetail)) {
+        // For each withdrawal, check if it's from a valid account.
+        // withdrawalDetail is keyed by account id (#142); resolve id -> name to
+        // match against the (name-based) withdrawal order.
+        for (const [accountId, _amount] of Object.entries(withdrawalDetail)) {
+            const accountName = year.accounts.find(a => a.id === accountId)?.name ?? accountId;
             // Find the account in withdrawal order
             const accountIndex = withdrawalOrder.findIndex(name =>
                 name.toLowerCase() === accountName.toLowerCase()
@@ -662,8 +665,9 @@ export function assertLifetimeCashFlowReconciliation(
                 const currBalance = account.amount;
 
                 // Get this account's specific contribution and withdrawal
+                // (both bucketDetail and withdrawalDetail are keyed by account id, #142)
                 const contribution = currYear.cashflow.bucketDetail?.[account.id] || 0;
-                const withdrawal = currYear.cashflow.withdrawalDetail?.[account.name] || 0;
+                const withdrawal = currYear.cashflow.withdrawalDetail?.[account.id] || 0;
 
                 // Investment return = ending balance - starting balance - contributions + withdrawals
                 const impliedReturn = currBalance - prevBalance - contribution + withdrawal;

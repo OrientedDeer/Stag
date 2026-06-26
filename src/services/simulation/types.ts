@@ -76,7 +76,7 @@ export interface SimulationYear {
         bucketAllocations: number; // Priority Bucket contributions
         bucketDetail: Record<string, number>; // Breakdown
         withdrawals: number; // Total withdrawn from accounts
-        withdrawalDetail: Record<string, number>; // Per-account breakdown
+        withdrawalDetail: Record<string, number>; // Per-account breakdown, keyed by account id (#142)
     };
     /** Detailed breakdown for the cashflow Sankey chart. */
     cashflowDetail?: CashflowDetail;
@@ -253,7 +253,7 @@ export interface WithdrawalState {
     withdrawalOrdinaryTaxTotal: number; // Tax from Roth earnings (5-year rule), Traditional, HSA non-medical
     strategyWithdrawalExecuted: number;
     totalWithdrawals: number;
-    withdrawalDetail: Record<string, number>;
+    withdrawalDetail: Record<string, number>; // Keyed by account id (#142)
     withdrawalPenalties: number;
     totalGrossIncome: number;
     // Capital gains tracking
