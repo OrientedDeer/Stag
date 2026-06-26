@@ -136,8 +136,8 @@ describe('#148 Cashflow Sankey — Net Pay balances on the EOY-adjustment row', 
     ];
 
     type Factories = {
-        accounts: () => ReturnType<typeof makeAccounts>;
-        expenses: () => ReturnType<typeof makeExpenses>;
+        accounts: () => ReturnType<typeof makeAccounts> | ReturnType<typeof makeGoalAccounts>;
+        expenses: () => ReturnType<typeof makeExpenses> | ReturnType<typeof makeGoalExpenses>;
     };
     const baseFactories: Factories = { accounts: makeAccounts, expenses: makeExpenses };
     const goalFactories: Factories = { accounts: makeGoalAccounts, expenses: makeGoalExpenses };
