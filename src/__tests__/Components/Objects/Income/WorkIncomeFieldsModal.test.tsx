@@ -13,7 +13,7 @@ import {
     getESPPSummary,
     getPensionSummary
 } from '../../../../components/Objects/Income/workIncomeSummaries';
-import { ESPPAccount, InvestedAccount } from '../../../../components/Objects/Accounts/models';
+import { ESPPAccount, InvestedAccount, RSUAccount } from '../../../../components/Objects/Accounts/models';
 
 describe('workIncomeSummaries', () => {
     const base = getInitialFormState();
@@ -82,10 +82,11 @@ interface HarnessProps {
     initial?: Partial<IncomeFormState>;
     contributionAccounts?: InvestedAccount[];
     esppAccounts?: ESPPAccount[];
+    rsuAccounts?: RSUAccount[];
 }
 
 /** Stateful harness mirroring AddIncomeModal's form/updateForm wiring. */
-function Harness({ initial, contributionAccounts = [], esppAccounts = [] }: HarnessProps) {
+function Harness({ initial, contributionAccounts = [], esppAccounts = [], rsuAccounts = [] }: HarnessProps) {
     const [form, setForm] = useState<IncomeFormState>({ ...getInitialFormState(), ...initial });
     function updateForm<K extends keyof IncomeFormState>(field: K, value: IncomeFormState[K]): void {
         setForm(prev => ({ ...prev, [field]: value }));
@@ -96,15 +97,16 @@ function Harness({ initial, contributionAccounts = [], esppAccounts = [] }: Harn
             updateForm={updateForm}
             contributionAccounts={contributionAccounts}
             esppAccounts={esppAccounts}
+            rsuAccounts={rsuAccounts}
         />
     );
 }
 
 describe('Modal WorkIncomeFields sections', () => {
-    it('renders all four optional clusters collapsed by default', () => {
+    it('renders all five optional clusters collapsed by default', () => {
         render(<Harness />);
 
-        for (const title of ['401k & Match', 'Benefits', 'ESPP', 'Pension']) {
+        for (const title of ['401k & Match', 'Benefits', 'ESPP', 'RSU', 'Pension']) {
             const header = screen.getByRole('button', { name: new RegExp(title) });
             expect(header).toHaveAttribute('aria-expanded', 'false');
         }
@@ -174,6 +176,36 @@ describe('Modal WorkIncomeFields sections', () => {
         expect(screen.queryByText('No ESPP Account')).not.toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: /ESPP/ }));
         expect(screen.getByText('No ESPP Account')).toBeInTheDocument();
+    });
+
+    it('renders the RSU section with its fields and missing-account warning (#140)', () => {
+        render(<Harness initial={{ rsuVestingSchedule: 'cliff-1yr', rsuGrantShares: 100 }} />);
+
+        // Collapsed by default; the inner RSU fields aren't mounted yet.
+        expect(screen.queryByText('Vesting Schedule')).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: /RSU/ }));
+
+        expect(screen.getByText('Vesting Schedule')).toBeInTheDocument();
+        expect(screen.getByText('Grant Shares')).toBeInTheDocument();
+        // No RSU account exists → the same warning the card shows.
+        expect(screen.getByText('No RSU Account')).toBeInTheDocument();
+    });
+
+    it('shows the RSU account dropdown (not the warning) when an RSU account exists (#140)', () => {
+        const rsu = new RSUAccount('rsu-1', 'My RSU', 0, [], '', undefined, 'TICK', 100);
+        render(
+            <Harness
+                initial={{ rsuVestingSchedule: 'graded-3yr', rsuGrantShares: 300 }}
+                rsuAccounts={[rsu]}
+            />
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: /RSU/ }));
+        expect(screen.getByText('RSU Account')).toBeInTheDocument();
+        expect(screen.queryByText('No RSU Account')).not.toBeInTheDocument();
+        // graded schedule reveals the vest-frequency selector (a cliff would not).
+        expect(screen.getByText('Vest Frequency')).toBeInTheDocument();
     });
 });
 

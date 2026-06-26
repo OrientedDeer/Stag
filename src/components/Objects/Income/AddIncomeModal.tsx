@@ -17,7 +17,7 @@ import { NameInput } from "../../Layout/InputFields/NameInput";
 import { DropdownInput } from "../../Layout/InputFields/DropdownInput";
 import { NumberInput } from "../../Layout/InputFields/NumberInput";
 import { AccountContext } from "../Accounts/AccountContext";
-import { InvestedAccount, ESPPAccount } from "../../Objects/Accounts/models";
+import { InvestedAccount, ESPPAccount, RSUAccount } from "../../Objects/Accounts/models";
 import { TriggerSelector } from "../../Layout/InputFields/TriggerSelector";
 import { AssumptionsContext, BUILTIN_MILESTONE_IDS, getLifeExpectancy, getBirthYear } from "../Assumptions/AssumptionsContext";
 import { getClaimingAdjustment } from "../../../data/SocialSecurityData";
@@ -95,6 +95,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
     ) as InvestedAccount[];
 
     const esppAccounts = accounts.filter(acc => acc instanceof ESPPAccount) as ESPPAccount[];
+    const rsuAccounts = accounts.filter(acc => acc instanceof RSUAccount) as RSUAccount[];
 
     const workIncomes = incomes.filter(inc => inc instanceof WorkIncome) as WorkIncome[];
 
@@ -163,6 +164,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
             const matchedAccount = accounts.find(acc => acc.id === form.matchAccountId) as InvestedAccount | undefined;
             const taxType = matchedAccount ? matchedAccount.taxType : null;
             const finalEsppAccountId = form.esppContributionType !== 'NONE' && form.esppAccountId ? form.esppAccountId : null;
+            const finalRsuAccountId = form.rsuVestingSchedule !== 'NONE' && form.rsuAccountId ? form.rsuAccountId : null;
             newIncome = new WorkIncome(
                 id, form.name.trim(), form.amount, form.frequency, "Yes",
                 form.preTax401k, form.insurance, form.roth401k, form.employerMatch,
@@ -170,8 +172,8 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                 finalStartDate, finalEndDate, form.hsaContribution, form.autoMax401k,
                 form.esppContributionType, form.esppContributionAmount, form.esppDiscountPercent,
                 form.esppHasLookback, 6, finalEsppAccountId, 7,
-                // RSU defaults (configured later via the Work Income RSU section).
-                'NONE', 0, 'quarterly', 7, null, 37,
+                form.rsuVestingSchedule, form.rsuGrantShares, form.rsuVestFrequency,
+                form.rsuExpectedStockGrowth, finalRsuAccountId, form.rsuWithholdingRate,
                 form.pensionSystem,
                 finalStartMilestoneId, getDefaultEndMilestone(BUILTIN_MILESTONE_IDS.RETIRE),
                 form.employerMatchType, form.employerMatchPercent, form.employerMatchMax
@@ -449,6 +451,7 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
                                     updateForm={updateForm}
                                     contributionAccounts={contributionAccounts}
                                     esppAccounts={esppAccounts}
+                                    rsuAccounts={rsuAccounts}
                                 />
                             )}
 

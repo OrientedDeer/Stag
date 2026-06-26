@@ -10,9 +10,11 @@ import {
     ContributionGrowthStrategy,
     AutoMax401kOption,
     ESPPContributionType,
-    PensionSystem
+    PensionSystem,
+    RSUVestingSchedule,
+    RSUVestFrequency
 } from './models';
-import { InvestedAccount, ESPPAccount } from "../Accounts/models";
+import { InvestedAccount, ESPPAccount, RSUAccount } from "../Accounts/models";
 import { IncomeFormState, UpdateForm } from './incomeFormTypes';
 import {
     get401kSummary,
@@ -27,6 +29,7 @@ interface WorkIncomeFieldsProps {
     updateForm: UpdateForm;
     contributionAccounts: InvestedAccount[];
     esppAccounts: ESPPAccount[];
+    rsuAccounts: RSUAccount[];
 }
 
 // Matches the Add Income modal's field grid so expanded sections lay out
@@ -43,7 +46,8 @@ export const WorkIncomeFields: React.FC<WorkIncomeFieldsProps> = ({
     form,
     updateForm,
     contributionAccounts,
-    esppAccounts
+    esppAccounts,
+    rsuAccounts
 }) => {
     // A configured deferral (auto-max or a positive custom amount) needs a
     // destination account, independent of any employer match — without one the
@@ -219,6 +223,82 @@ export const WorkIncomeFields: React.FC<WorkIncomeFieldsProps> = ({
                             <span className="font-semibold">No ESPP Account</span>
                             <p className="text-warning/80 mt-1">Create an ESPP account in the Accounts tab to track your ESPP purchases.</p>
                         </div>
+                    )}
+                </>
+            )}
+        </CardSection>
+
+        <CardSection
+            id="add-income-section-rsu"
+            title="RSU"
+            summary={form.rsuVestingSchedule === 'NONE' ? 'None' : `${form.rsuGrantShares} sh · ${form.rsuVestingSchedule}`}
+            gridClassName={MODAL_SECTION_GRID}
+        >
+            <DropdownInput
+                label="Vesting Schedule"
+                onChange={(val) => updateForm('rsuVestingSchedule', val as RSUVestingSchedule)}
+                options={[
+                    { value: 'NONE', label: 'None' },
+                    { value: 'cliff-1yr', label: '1-Year Cliff' },
+                    { value: 'graded-3yr', label: 'Graded (3 Years)' },
+                    { value: 'graded-4yr', label: 'Graded (4 Years)' }
+                ]}
+                value={form.rsuVestingSchedule}
+                tooltip="Restricted Stock Units. A cliff vests all at once at the 1-year mark; graded schedules vest evenly over the period."
+            />
+            {form.rsuVestingSchedule !== 'NONE' && (
+                <>
+                    <NumberInput
+                        label="Grant Shares"
+                        value={form.rsuGrantShares}
+                        onChange={(val) => updateForm('rsuGrantShares', val)}
+                        min={0}
+                        tooltip="Total number of shares in this grant. They vest over the schedule above."
+                    />
+                    {form.rsuVestingSchedule !== 'cliff-1yr' && (
+                        <DropdownInput
+                            label="Vest Frequency"
+                            onChange={(val) => updateForm('rsuVestFrequency', val as RSUVestFrequency)}
+                            options={[
+                                { value: 'quarterly', label: 'Quarterly' },
+                                { value: 'semi-annual', label: 'Semi-Annual' },
+                                { value: 'annual', label: 'Annual' }
+                            ]}
+                            value={form.rsuVestFrequency}
+                            tooltip="How often tranches vest within the graded period (a 1-year cliff vests all at once)."
+                        />
+                    )}
+                    <PercentageInput
+                        label="Expected Stock Growth"
+                        value={form.rsuExpectedStockGrowth}
+                        onChange={(val) => updateForm('rsuExpectedStockGrowth', val)}
+                        max={30}
+                        tooltip="Expected annual stock appreciation. Projects the fair-market value (ordinary income per share) at each vest."
+                    />
+                    <PercentageInput
+                        label="Withholding Rate"
+                        value={form.rsuWithholdingRate}
+                        onChange={(val) => updateForm('rsuWithholdingRate', val)}
+                        max={100}
+                        tooltip="Tax withheld at vest (supplemental wages). Default 37%. Shares are sold to cover; you net the remainder."
+                    />
+                    {rsuAccounts.length > 0 ? (
+                        <DropdownInput
+                            label="RSU Account"
+                            onChange={(val) => updateForm('rsuAccountId', val)}
+                            options={rsuAccounts.map(acc => ({ value: acc.id, label: acc.name }))}
+                            value={form.rsuAccountId}
+                            tooltip="Account where vested RSU shares will be deposited."
+                        />
+                    ) : (
+                        <AlertBanner severity="warning" size="sm" title="No RSU Account" className="col-span-full">
+                            Create an RSU account in the Accounts tab to track your vested shares.
+                        </AlertBanner>
+                    )}
+                    {rsuAccounts.length > 0 && !form.rsuAccountId && (
+                        <AlertBanner severity="warning" size="sm" title="RSU Account Not Linked" className="col-span-full">
+                            Select an RSU account above to track your vesting tranches.
+                        </AlertBanner>
                     )}
                 </>
             )}

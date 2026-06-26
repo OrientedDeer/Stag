@@ -3,7 +3,9 @@ import {
     AutoMax401kOption,
     ESPPContributionType,
     PensionSystem,
-    IncomeFrequency
+    IncomeFrequency,
+    RSUVestingSchedule,
+    RSUVestFrequency
 } from './models';
 
 export type PassiveSourceType = 'Dividend' | 'Rental' | 'Royalty' | 'Other';
@@ -37,6 +39,14 @@ export interface IncomeFormState {
     esppDiscountPercent: number;
     esppHasLookback: boolean;
     esppAccountId: string;
+    // RSU fields (#140) — mirror WorkIncome's 6 RSU fields. rsuAccountId is '' when
+    // unlinked (constructor takes string | null; '' maps to null at construction).
+    rsuVestingSchedule: RSUVestingSchedule;
+    rsuGrantShares: number;
+    rsuVestFrequency: RSUVestFrequency;
+    rsuExpectedStockGrowth: number;
+    rsuWithholdingRate: number;
+    rsuAccountId: string;
     // Social Security fields
     claimingAge: number;
     // Passive income fields
@@ -78,6 +88,12 @@ export function getInitialFormState(): IncomeFormState {
         esppDiscountPercent: 15,
         esppHasLookback: true,
         esppAccountId: '',
+        rsuVestingSchedule: 'NONE',
+        rsuGrantShares: 0,
+        rsuVestFrequency: 'quarterly',
+        rsuExpectedStockGrowth: 7,
+        rsuWithholdingRate: 37,
+        rsuAccountId: '',
         claimingAge: 67,
         sourceType: 'Dividend',
         pensionYearsOfService: 20,
