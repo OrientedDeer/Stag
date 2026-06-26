@@ -25,6 +25,11 @@ import { Tooltip } from '../../components/Layout/InputFields/Tooltip';
 import { Panel, Button } from "../../components/Layout/Primitives";
 import { useReceiptToast } from '../../components/Layout/Overlays/ReceiptToast';
 
+// Stable empty set so the no-milestone-income path keeps a referentially constant
+// todayMilestoneSet (avoids invalidating the tax/deduction memos on account edits).
+// Never mutated; shared only to preserve reference identity.
+const EMPTY_MILESTONE_SET: Set<string> = new Set<string>();
+
 export default function PriorityTab() {
     const { state, dispatch } = useContext(AssumptionsContext);
     const { accounts } = useContext(AccountContext);
@@ -109,9 +114,17 @@ export default function PriorityTab() {
     // milestones are already reached given the current year, age, accounts, and
     // expenses. An unreached start milestone excludes the income; an already-reached
     // one keeps it. Non-milestone incomes pass through unchanged (byte-identical).
+    // Only milestone-gated incomes need the (relatively expensive) milestone
+    // evaluation. When none reference a milestone — the common case — short-circuit
+    // so activeIncomes stays the SAME reference as incomes and the tax/deduction
+    // memos don't recompute on unrelated account/expense edits.
+    const hasMilestoneIncome = useMemo(
+        () => incomes.some(inc => inc.startMilestoneId || inc.endMilestoneId),
+    [incomes]);
+
     const todayMilestoneSet = useMemo(() => {
         const milestones = state.milestones;
-        if (!milestones || milestones.length === 0) return new Set<string>();
+        if (!hasMilestoneIncome || !milestones || milestones.length === 0) return EMPTY_MILESTONE_SET;
         const ctx: MilestoneContext = {
             accounts,
             expenses,
@@ -120,12 +133,14 @@ export default function PriorityTab() {
             filingStatus: taxState.filingStatus,
         };
         return new Set(evaluateAllMilestones(milestones, new Set<string>(), ctx).activeMilestones);
-    }, [state.milestones, accounts, expenses, taxState.filingStatus, year]);
+    }, [hasMilestoneIncome, state.milestones, accounts, expenses, taxState.filingStatus, year]);
 
     const activeIncomes = useMemo(
-        () => incomes.filter(inc =>
-            isActiveByMilestone(inc.startMilestoneId, inc.endMilestoneId, todayMilestoneSet)),
-    [incomes, todayMilestoneSet]);
+        () => hasMilestoneIncome
+            ? incomes.filter(inc =>
+                isActiveByMilestone(inc.startMilestoneId, inc.endMilestoneId, todayMilestoneSet))
+            : incomes,
+    [hasMilestoneIncome, incomes, todayMilestoneSet]);
 
     const totalMonthlyIncome = useMemo(() =>
         activeIncomes.reduce((sum, inc) => sum + (inc.getMonthlyAmount(year)), 0),
