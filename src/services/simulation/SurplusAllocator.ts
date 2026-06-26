@@ -269,7 +269,13 @@ export function allocateSurplus(
         // lower priority buckets via the normal capped-bucket waterfall — no
         // post-hoc refund needed. Deficit is handled in step 1.
         if (account instanceof DebtAccount) {
-            if (!isSurplusPaydownDebt(account)) continue; // skip deficit / $0
+            // [0]/[1] Gate on the LOAN-derived cap, NOT the DebtAccount MIRROR.
+            // isOfferableDebt excludes the system deficit + requires a backing loan
+            // but does NOT read account.amount — so a stale/$0 mirror with an owing
+            // loan still pays down (the cap, built from the loan balance, decides
+            // how much). The previous isSurplusPaydownDebt(account) gate read the
+            // mirror and dropped the paydown in that case.
+            if (!isOfferableDebt(account)) continue;
 
             // Cap = linked loan's post-amortization balance (solver-supplied),
             // LESS anything already allocated to this same debt earlier in the
@@ -277,8 +283,11 @@ export function allocateSurplus(
             // and leaks surplus). Absent/0 ⇒ no linked loan or already paid ⇒ skip.
             const debtCap = settings.debtPaydownCaps?.[account.id] ?? 0;
             const remainingCap = Math.max(0, debtCap - (debtPaidSoFar[account.id] ?? 0));
+            // [5] Treat a sub-cent remaining cap as paid off so a float residue
+            // (debtCap − debtPaidSoFar ≈ 1e-9) doesn't emit a microscopic "$0 paid"
+            // allocation + Sankey artifact.
             const payment = Math.min(remaining, remainingCap);
-            if (payment <= 0) continue;
+            if (payment <= DEBT_PAYOFF_EPSILON) continue;
 
             const paidDisplay = Math.round(payment).toLocaleString();
             const balanceDisplay = Math.round(debtCap).toLocaleString();

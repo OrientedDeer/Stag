@@ -498,21 +498,26 @@ export default function PriorityTab() {
             // (Non-REMAINDER cap types already show $0 via their own no-account
             // handling, so only REMAINDER is guarded here.)
             if (item.capType === 'REMAINDER' && isDeadBucket(item.accountId)) {
-                // [1] Distinguish the two dead cases so an unpayable debt doesn't
-                // look like the app lost the user's config:
-                //  - a debt that resolves but isn't payable (unlinked / no backing
-                //    loan) → a calm explanation, no "broken/no destination" wording;
-                //  - a truly-deleted account → the "no destination" message.
+                // [1]/[2] Distinguish the dead cases so the message is accurate and
+                // never looks like the app lost the user's config:
+                //  - a LINKED debt at $0 → "paid off, nothing left to pay down";
+                //  - an UNLINKED debt (no backing loan) → "no backing loan";
+                //  - a truly-deleted account → "no valid destination".
                 const acc = item.accountId ? accountById.get(item.accountId) : undefined;
-                const isUnpayableDebt = acc instanceof DebtAccount;
+                let provenance: string;
+                if (acc instanceof DebtAccount) {
+                    provenance = acc.linkedAccountId
+                        ? 'This debt is paid off — nothing left to pay down. Your other priorities are unaffected.'
+                        : 'This debt has no backing loan to pay down, so surplus skips it (your other priorities are unaffected).';
+                } else {
+                    provenance = 'This allocation has no valid destination account and is skipped.';
+                }
                 return {
                     ...item,
                     actualDed: 0,
                     remainingAfter: currentRemaining,
                     label: 'Not funded',
-                    provenance: isUnpayableDebt
-                        ? 'This debt has no backing loan to pay down, so surplus skips it (your other priorities are unaffected).'
-                        : 'This allocation has no valid destination account and is skipped.',
+                    provenance,
                 };
             }
 

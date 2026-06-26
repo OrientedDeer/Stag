@@ -183,6 +183,54 @@ describe('SurplusAllocator', () => {
             expect(result.allocations.find(a => a.accountId === 'brok')?.amount).toBe(5000);
         });
 
+        it('[0]/[1] gates on the loan CAP, not the mirror: a $0-mirror/owing-loan debt is still paid', () => {
+            // The DebtAccount MIRROR is $0 (stale/imported) but the linked LOAN
+            // still owes $5000 (the solver-supplied cap). The allocator must emit
+            // the paydown based on the CAP, not the mirror balance. Pre-fix the
+            // gate read the mirror (isSurplusPaydownDebt → account.amount > eps) and
+            // dropped the allocation entirely.
+            const staleMirror = new DebtAccount('loan-debt', 'Auto Loan', 0, 'exp-auto', 6); // mirror $0
+            const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
+
+            const result = allocateSurplus(
+                10000,
+                [staleMirror, brokerage],
+                [
+                    { accountId: 'loan-debt', priority: 1 },
+                    { accountId: 'brok', priority: 2, capType: 'REMAINDER' },
+                ],
+                0,
+                defaultSettings({ debtPaydownCaps: { 'loan-debt': 5000 } }) // loan owes $5000
+            );
+
+            // The paydown IS emitted (sized by the cap), despite the $0 mirror.
+            expect(result.allocations.find(a => a.accountId === 'loan-debt')?.amount).toBe(5000);
+            expect(result.allocations.find(a => a.accountId === 'brok')?.amount).toBe(5000);
+        });
+
+        it('[5] a sub-cent residual cap emits NO microscopic paydown', () => {
+            // After an earlier bucket fully paid the debt, debtCap − debtPaidSoFar
+            // can be ~1e-9 > 0. The 2nd bucket must NOT emit a "$0 paid" allocation.
+            const debt = new DebtAccount('cc', 'Card', 2000, 'exp-cc', 18);
+            const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
+
+            const result = allocateSurplus(
+                10000,
+                [debt, brokerage],
+                [
+                    { accountId: 'cc', priority: 1 },
+                    { accountId: 'cc', priority: 2 }, // duplicate — would see ~0 cap
+                    { accountId: 'brok', priority: 3, capType: 'REMAINDER' },
+                ],
+                0,
+                defaultSettings({ debtPaydownCaps: { cc: 2000 } })
+            );
+
+            // Exactly ONE debt allocation (the 2nd sees a sub-epsilon cap → skipped).
+            expect(result.allocations.filter(a => a.accountId === 'cc')).toHaveLength(1);
+            expect(result.allocations.find(a => a.accountId === 'cc')?.amount).toBe(2000);
+        });
+
         it('[0] a DUPLICATE debt bucket does NOT over-consume surplus (no leak to lower buckets)', () => {
             // A debt in TWO buckets must total at most its cap ($2000), and the
             // leftover surplus must reach the lower brokerage bucket IN FULL — no

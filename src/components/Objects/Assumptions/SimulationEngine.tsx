@@ -22,7 +22,7 @@ import { applyLifestyleCreep, calculateStrategyTarget, calculateTotalDiscretiona
 import { processDeficitDebt } from "../../../services/simulation/WithdrawalService";
 import { processInflows, growAccounts } from "../../../services/simulation/AccountGrowth";
 import { evaluateAllMilestones, isActiveByMilestone, MilestoneContext } from "../../../services/simulation/MilestoneEvaluator";
-import { InvestedAccount, SavedAccount, ESPPAccount, RSUAccount, DebtAccount } from "../Accounts/models";
+import { InvestedAccount, SavedAccount, ESPPAccount, RSUAccount, DebtAccount, DeficitDebtAccount } from "../Accounts/models";
 import { DEBT_PAYOFF_EPSILON } from "../../../services/simulation/SurplusAllocator";
 import { processRSUVesting } from "../../../services/simulation/RSUVesting";
 import { solveYear, YearSolverInput } from "../../../services/simulation/YearSolver";
@@ -696,13 +696,17 @@ function simulateOneYearWithNewEngine(
             const targetAccount = accounts.find(a => a.id === alloc.accountId);
             const linkedLoanId = loanIdByDebtAccountId.get(alloc.accountId);
 
-            if (targetAccount instanceof DebtAccount && linkedLoanId) {
-                // [0] Re-resolve the CURRENT loan from nextExpenses by id (a prior
-                // allocation to the same debt may have already replaced it), and
-                // pay against its CURRENT balance. A duplicate debt bucket then
-                // pays against the already-reduced (likely $0) balance — no phantom
-                // double-paydown, and surplusBucketDetail is incremented ONLY by
-                // what was actually applied.
+            // [4] Defensive: never treat the system DeficitDebtAccount as a
+            // user-debt paydown (it has no linked loan anyway, but guard it).
+            if (targetAccount instanceof DebtAccount
+                && !(targetAccount instanceof DeficitDebtAccount)
+                && linkedLoanId) {
+                // [7] Re-resolve the CURRENT loan from nextExpenses by id and pay
+                // against its CURRENT balance. This is DEFENSE-IN-DEPTH: the
+                // allocator (debtPaidSoFar cap decrement) already prevents a second
+                // non-zero allocation to the same debt, so re-resolution normally
+                // sees the same instance — but a future allocator change can't
+                // silently double-pay through this path.
                 const idx = nextExpenses.findIndex(e => e.id === linkedLoanId);
                 const currentLoan = idx !== -1 ? nextExpenses[idx] : undefined;
                 // [3] Gate on the LINKED LOAN's balance (the authoritative figure

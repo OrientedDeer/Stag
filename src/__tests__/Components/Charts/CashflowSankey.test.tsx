@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from '@testing-library/react';
 import { CashflowSankey } from '../../../components/Charts/CashflowSankey';
+import { buildCashflowSankeyData } from '../../../components/Charts/cashflowSankeyData';
 import { PassiveIncome, CurrentSocialSecurityIncome } from '../../../components/Objects/Income/models';
 import { FoodExpense } from '../../../components/Objects/Expense/models';
 import { SavedAccount, InvestedAccount, DebtAccount } from '../../../components/Objects/Accounts/models';
@@ -227,7 +228,7 @@ describe('CashflowSankey', () => {
             expect(payDownLink.value).toBe(4000);
         });
 
-        it('[2] two buckets sharing a display name produce DISTINCT node ids (no Nivo collision)', () => {
+        it('[2] two buckets sharing a display name produce DISTINCT node ids (not silently merged)', () => {
             const ssIncome = new CurrentSocialSecurityIncome('ss', 'Social Security', 60000, 'Annually', new Date('2076-01-01'), undefined);
             const expense = new FoodExpense('exp', 'Food', 10000, 'Annually', new Date(2076, 0, 1));
             // Two DISTINCT debt accounts that happen to share the display name "Loan".
@@ -249,6 +250,7 @@ describe('CashflowSankey', () => {
                 { wrapper }
             )).not.toThrow();
 
+            expect(capturedSankeyData).not.toBeNull(); // [6] guard before deref
             const nodes = capturedSankeyData!.nodes;
             // Distinct ids (keyed on account id), both labeled "Pay Down: Loan".
             expect(nodes.find((n: any) => n.id === 'Pay Down: acc-a')).toBeDefined();
@@ -258,6 +260,25 @@ describe('CashflowSankey', () => {
             // No duplicate node ids in the whole graph.
             const ids = nodes.map((n: any) => n.id);
             expect(new Set(ids).size).toBe(ids.length);
+        });
+
+        it('[3] the Net Pay drill-down provenance uses the "Pay Down:" label for a debt bucket', () => {
+            const result = buildCashflowSankeyData({
+                incomes: [new CurrentSocialSecurityIncome('ss', 'Social Security', 40000, 'Annually', new Date('2076-01-01'), undefined)],
+                expenses: [new FoodExpense('exp', 'Food', 10000, 'Annually', new Date(2076, 0, 1))],
+                year: 2076,
+                taxes: { fed: 0, state: 0, fica: 0, capitalGains: 0 },
+                bucketAllocations: { 'acc-card': 4000 },
+                accounts: [new DebtAccount('acc-card', 'Credit Card', 5000, 'exp-card', 18)],
+                withdrawals: {},
+            });
+
+            const netPay = result.provenance['Net Pay'];
+            expect(netPay).toBeDefined();
+            // The drill-down row carries the "Pay Down:" label, consistent with the
+            // node — not the bare account name.
+            expect(netPay!.items.some(i => i.label === 'Pay Down: Credit Card')).toBe(true);
+            expect(netPay!.items.some(i => i.label === 'Credit Card')).toBe(false);
         });
     });
 });

@@ -434,9 +434,15 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
         // misread it as money saved. The system DeficitDebtAccount is excluded ([4]).
         // [2] The node id is keyed on the UNIQUE account id (not the display name)
         // so two buckets sharing a name — or two deleted→"Savings" fallbacks — can't
-        // collide into a duplicate node id (which Nivo rejects, breaking the chart).
+        // collide into a duplicate node id. [8] Pre-fix the nodes were deduped by id
+        // downstream, so a name collision SILENTLY MERGED two buckets into one node
+        // (their flows summed under one label) — not a crash, but wrong.
         // [5] The LABEL (what the user sees) carries the "Pay Down:" prefix too, not
         // just the id.
+        // [9] The user-debt-vs-DeficitDebt check is inlined (not isOfferableDebt):
+        // this is a DISPLAY decision, and isOfferableDebt additionally requires a
+        // backing loan — which would wrongly stop an unlinked debt's flow from
+        // rendering as a paydown. Display ≠ payability, so the predicates don't fit.
         const bucketItems = Object.entries(bucketAllocations)
             .filter(([, amount]) => amount >= MIN_DISPLAY_THRESHOLD)
             .map(([accountId, amount]) => {
@@ -677,7 +683,7 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
             { label: 'Roth Savings', value: totalRothSavings },
             { label: 'Principal Payments', value: totalPrincipal },
             { label: 'Mortgage Payments', value: mortgageInterestAndEscrow },
-            ...bucketItems.map(item => ({ label: item.name, value: item.amount })),
+            ...bucketItems.map(item => ({ label: item.label, value: item.amount })), // [3] use the "Pay Down:" label, not the bare name
             ...sortedExpenseCategories.map(cat => ({ label: cat, value: expenseCatTotals.get(cat) || 0 })),
             ...(remaining > 1 ? [{ label: 'Remaining', value: remaining }] : []),
             ...conversionDestItems.map(([name, amount]) => ({ label: `To ${name}`, value: amount * conversionScale })),
