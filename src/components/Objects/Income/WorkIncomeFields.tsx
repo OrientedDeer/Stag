@@ -219,10 +219,14 @@ export const WorkIncomeFields: React.FC<WorkIncomeFieldsProps> = ({
                             tooltip="Account where ESPP shares will be deposited."
                         />
                     ) : (
-                        <div className="col-span-full bg-warning-tint/30 border border-warning-strong/50 rounded-lg p-3 text-xs text-warning-bright">
-                            <span className="font-semibold">No ESPP Account</span>
-                            <p className="text-warning/80 mt-1">Create an ESPP account in the Accounts tab to track your ESPP purchases.</p>
-                        </div>
+                        // Text-only (no deep link) inside the Add-Income modal: a <Link>
+                        // would navigate away and abandon the in-progress income. This
+                        // matches the AddExpenseModal precedent — its in-modal warnings
+                        // never link out; the cross-tab link only appears in a post-submit
+                        // receipt toast. The card-context warning carries the link (#141).
+                        <AlertBanner severity="warning" size="sm" title="No ESPP Account" className="col-span-full">
+                            Create an ESPP account in the Accounts tab to track your ESPP purchases.
+                        </AlertBanner>
                     )}
                 </>
             )}

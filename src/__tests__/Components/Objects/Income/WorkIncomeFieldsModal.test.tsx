@@ -178,6 +178,26 @@ describe('Modal WorkIncomeFields sections', () => {
         expect(screen.getByText('No ESPP Account')).toBeInTheDocument();
     });
 
+    it('keeps the modal missing-account warnings text-only — no "Add Account" deep link (#141)', () => {
+        // The card-context warnings carry the deep link, but inside the Add-Income
+        // modal a <Link> would navigate away and abandon the in-progress income, so
+        // the modal stays text-only (matches the AddExpenseModal precedent). The
+        // harness renders WITHOUT a router; an in-modal <Link> would throw here.
+        render(<Harness initial={{
+            esppContributionType: 'PERCENTAGE',
+            esppContributionAmount: 10,
+            rsuVestingSchedule: 'cliff-1yr',
+            rsuGrantShares: 100,
+        }} />);
+
+        fireEvent.click(screen.getByRole('button', { name: /ESPP/ }));
+        expect(screen.getByText('No ESPP Account')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: /RSU/ }));
+        expect(screen.getByText('No RSU Account')).toBeInTheDocument();
+
+        expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    });
+
     it('renders the RSU section with its fields and missing-account warning (#140)', () => {
         render(<Harness initial={{ rsuVestingSchedule: 'cliff-1yr', rsuGrantShares: 100 }} />);
 

@@ -3,6 +3,7 @@ import { NumberInput } from '../../../Layout/InputFields/NumberInput';
 import { DropdownInput } from '../../../Layout/InputFields/DropdownInput';
 import { PercentageInput } from '../../../Layout/InputFields/PercentageInput';
 import { AlertBanner } from '../../../Layout/AlertBanner';
+import { AddStockAccountLink } from './AddStockAccountLink';
 import type { WorkIncome, RSUVestingSchedule, RSUVestFrequency } from '../models';
 import type { AllIncomeKeys } from '../IncomeContext';
 import type { RSUAccount } from '../../Accounts/models';
@@ -82,7 +83,8 @@ export function RSUFields({ income, onFieldUpdate, rsuAccounts }: RSUFieldsProps
                         />
                     ) : (
                         <AlertBanner severity="warning" size="sm" title="No RSU Account" className="col-span-full">
-                            Create an RSU account in the Accounts tab to track your vested shares.
+                            Create an RSU account to track your vested shares.{' '}
+                            <AddStockAccountLink kind="RSU" />
                         </AlertBanner>
                     )}
                     {rsuAccounts.length > 0 && !income.rsuAccountId && (

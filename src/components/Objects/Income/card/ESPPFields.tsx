@@ -3,6 +3,8 @@ import { CurrencyInput } from '../../../Layout/InputFields/CurrencyInput';
 import { DropdownInput } from '../../../Layout/InputFields/DropdownInput';
 import { PercentageInput } from '../../../Layout/InputFields/PercentageInput';
 import { ToggleInput } from '../../../Layout/InputFields/ToggleInput';
+import { AlertBanner } from '../../../Layout/AlertBanner';
+import { AddStockAccountLink } from './AddStockAccountLink';
 import type { WorkIncome, ESPPContributionType } from '../models';
 import type { AllIncomeKeys } from '../IncomeContext';
 import type { ESPPAccount } from '../../Accounts/models';
@@ -73,21 +75,15 @@ export function ESPPFields({ income, onFieldUpdate, esppAccounts }: ESPPFieldsPr
                             tooltip="Account where ESPP shares will be deposited."
                         />
                     ) : (
-                        <div className="col-span-full bg-warning-tint/30 border border-warning-strong/50 rounded-lg p-3 text-xs text-warning-bright">
-                            <span className="font-semibold">No ESPP Account</span>
-                            <p className="text-warning/80 mt-1">
-                                Create an ESPP account in the Accounts tab to track your ESPP
-                                purchases.
-                            </p>
-                        </div>
+                        <AlertBanner severity="warning" size="sm" title="No ESPP Account" className="col-span-full">
+                            Create an ESPP account to track your ESPP purchases.{' '}
+                            <AddStockAccountLink kind="ESPP" />
+                        </AlertBanner>
                     )}
                     {esppAccounts.length > 0 && !income.esppAccountId && (
-                        <div className="col-span-full bg-warning-tint/30 border border-warning-strong/50 rounded-lg p-3 text-xs text-warning-bright">
-                            <span className="font-semibold">ESPP Account Not Linked</span>
-                            <p className="text-warning/80 mt-1">
-                                Select an ESPP account above to track your purchases.
-                            </p>
-                        </div>
+                        <AlertBanner severity="warning" size="sm" title="ESPP Account Not Linked" className="col-span-full">
+                            Select an ESPP account above to track your purchases.
+                        </AlertBanner>
                     )}
                 </>
             )}
