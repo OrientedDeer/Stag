@@ -371,15 +371,20 @@ function buildWithdrawalSheet(data: ExportData): SheetContent {
     // accounts show their latest label). Accounts that drop out of the snapshots
     // fall back to the raw id.
     const accountIds = new Set<string>();
-    const idToName = new Map<string, string>();
     for (const year of simulation) {
-        for (const acc of year.accounts) {
-            idToName.set(acc.id, acc.name);
-        }
         if (year.cashflow.withdrawalDetail) {
             for (const id of Object.keys(year.cashflow.withdrawalDetail)) {
                 accountIds.add(id);
             }
+        }
+    }
+    // Resolve id -> display name ONLY for the withdrawal-bearing ids (last name seen
+    // wins, so a renamed account shows its latest label) instead of naming every
+    // account in every year. Ids absent from all snapshots fall back to the raw id.
+    const idToName = new Map<string, string>();
+    for (const year of simulation) {
+        for (const acc of year.accounts) {
+            if (accountIds.has(acc.id)) idToName.set(acc.id, acc.name);
         }
     }
     // Sort columns by display name for a stable, human-readable header order.

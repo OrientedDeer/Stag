@@ -39,8 +39,11 @@ export function CSRSPensionFields({
     // projected instance), falling back to the live field, then "Auto Calculated".
     const autoBenefit = simResolved?.benefit ?? (income.calculatedBenefit > 0 ? income.calculatedBenefit : 0);
     const autoHigh3 = simResolved?.high3 ?? (income.calculatedBenefit > 0 ? income.high3Salary : 0);
+    // Auto High-3 figures come from the sim's retirement-year projection, so they
+    // are FUTURE-NOMINAL (inflation/raise-grown) — tag them "(at retirement)" so they
+    // don't read as today's dollars like the manual estimate does (#133).
     const benefitText = income.autoCalculateHigh3
-        ? (autoBenefit > 0 ? fmt(autoBenefit) : 'Auto Calculated')
+        ? (autoBenefit > 0 ? `${fmt(autoBenefit)} (at retirement)` : 'Auto Calculated')
         : fmt(
               getDisplayedCSRSBenefit(
                   income.yearsOfService,
@@ -49,7 +52,7 @@ export function CSRSPensionFields({
               )
           );
     const high3Text = income.autoCalculateHigh3
-        ? (autoBenefit > 0 ? fmt(autoHigh3) : 'Auto Calculated')
+        ? (autoBenefit > 0 ? `${fmt(autoHigh3)} (at retirement)` : 'Auto Calculated')
         : fmt(income.high3Salary);
     return (
         <>

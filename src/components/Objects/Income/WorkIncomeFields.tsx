@@ -187,12 +187,15 @@ export const WorkIncomeFields: React.FC<WorkIncomeFieldsProps> = ({
         >
             {/* Shared, value-based cluster — identical to the income card's RSU
                 section. The collapsed summary uses getRSUSummary (friendly label,
-                not the raw enum). showAccountLink OFF for the same #141 reason. */}
+                not the raw enum). showAccountLink OFF for the same #141 reason;
+                showPriceValidation OFF so the modal doesn't surface the card-only
+                "Current Share Price Required" error mid-add (#140 review). */}
             <RSUFields
                 values={form}
                 onUpdate={(field, value) => updateForm(field, value as IncomeFormState[typeof field])}
                 rsuAccounts={rsuAccounts}
                 idPrefix="add-income"
+                showPriceValidation={false}
             />
         </CardSection>
 

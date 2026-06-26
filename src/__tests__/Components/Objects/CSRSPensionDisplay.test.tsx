@@ -147,10 +147,12 @@ describe('CSRS pension display estimate (Issue #133: early-retirement reduction)
                 simResolved={simResolved}
             />
         );
-        expect(getByText('$41,625/yr')).toBeTruthy();
+        // Auto-High-3 figures are sim-projected (retirement-year nominal), so the card
+        // tags them "(at retirement)" to distinguish from today's-dollars manual (#133).
+        expect(getByText('$41,625/yr (at retirement)')).toBeTruthy();
         // The High-3 row shows the resolved figure (from the sim), not a half-resolved
         // "Auto Calculated" next to the computed benefit.
-        expect(getByText('$100,000/yr')).toBeTruthy();
+        expect(getByText('$100,000/yr (at retirement)')).toBeTruthy();
     });
 
     it('keeps "Auto Calculated" on both rows when there is no sim data (simResolved null)', () => {

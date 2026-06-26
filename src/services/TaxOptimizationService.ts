@@ -193,8 +193,11 @@ export function analyzeTaxSituation(
     // stay below it doesn't wrongly lose the SS marginal component.
     const earnedBase = getFicaTaxableBase(incomes, year);
     // SS-covered earned base for the marginal SS test — excludes CSRS wages, which
-    // are outside Social Security (#139). Equals earnedBase when there's no CSRS job.
-    const ssCoveredEarnedBase = getFicaTaxableBase(incomes.filter(isSSCoveredForFica), year);
+    // are outside Social Security (#139). Skip the second pass when no CSRS job: the
+    // SS-covered base then equals earnedBase (mirrors the ficaTax guard).
+    const ssCoveredEarnedBase = incomes.some(inc => !isSSCoveredForFica(inc))
+        ? getFicaTaxableBase(incomes.filter(isSSCoveredForFica), year)
+        : earnedBase;
 
     // FICA is gated on whether there are FICA-eligible earned WAGES, NOT on age.
     // calculateFicaTax charges Social Security / Medicare payroll tax on the earned
@@ -636,7 +639,9 @@ export function generateTaxProjections(
         // calculateFicaTax. Pass it explicitly so the 6.2% SS / 0.9% surtax
         // thresholds key off wages, not total gross — see analyzeTaxSituation.
         const earnedBase = getFicaTaxableBase(simYear.incomes, simYear.year);
-        const ssCoveredEarnedBase = getFicaTaxableBase(simYear.incomes.filter(isSSCoveredForFica), simYear.year);
+        const ssCoveredEarnedBase = simYear.incomes.some(inc => !isSSCoveredForFica(inc))
+            ? getFicaTaxableBase(simYear.incomes.filter(isSSCoveredForFica), simYear.year)
+            : earnedBase;
 
         // FICA is gated on FICA-eligible earned WAGES, NOT age — Social Security /
         // Medicare payroll tax has no age cap, so wages earned past retirement age

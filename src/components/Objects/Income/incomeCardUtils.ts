@@ -70,11 +70,9 @@ export function getDisplayAmount(
             : 'Auto-calculated';
     }
     if (income instanceof FERSPensionIncome || income instanceof CSRSPensionIncome) {
-        // Prefer the live field (manual-High-3 sets it); else the sim-resolved
-        // benefit (auto-High-3 case, never on the live object).
-        const benefit = income.calculatedBenefit > 0
-            ? income.calculatedBenefit
-            : (simResolvedPensionBenefit ?? 0);
+        // Match the expanded card's preference order (sim-resolved first, then the
+        // live field) so the collapsed header and the card never disagree (#133).
+        const benefit = simResolvedPensionBenefit ?? (income.calculatedBenefit > 0 ? income.calculatedBenefit : 0);
         return benefit > 0
             ? formatCompactCurrency(benefit, { forceExact })
             : 'Auto-calculated';

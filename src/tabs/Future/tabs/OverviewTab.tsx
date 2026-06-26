@@ -570,7 +570,7 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                 ) : (
                 <ChartFrame><ResponsiveLine
                     data={lineData}
-                    margin={{ top: 20, right: 30, bottom: 50, left: 90 }}
+                    margin={{ top: 40, right: 30, bottom: 50, left: 90 }}
                     xScale={{ type: 'point' }}
                     yScale={{
                         type: 'linear',
@@ -617,6 +617,17 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
                     enableSlices="x"
                     sliceTooltip={CustomTooltip}
                     markers={gkMarkers}
+                    legends={[{
+                        anchor: 'top',
+                        direction: 'row',
+                        translateY: -34,
+                        itemsSpacing: 6,
+                        itemWidth: 78,
+                        itemHeight: 14,
+                        symbolSize: 9,
+                        symbolShape: 'circle',
+                        itemTextColor: 'var(--c-content-muted)',
+                    }]}
                     layers={['grid', 'axes', 'areas', 'lines', 'crosshair', 'markers', 'slices', 'points', 'mesh', 'legends']}
                     theme={{
                         "background": "transparent",

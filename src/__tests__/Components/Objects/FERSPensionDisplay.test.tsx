@@ -174,8 +174,10 @@ describe('FERS Auto High-3 display (#133-a: read the sim-resolved benefit)', () 
                 simResolved={simResolved}
             />
         );
-        expect(getByText('$15,000/yr')).toBeTruthy();
-        expect(getByText('$100,000/yr')).toBeTruthy();
+        // Auto-High-3 figures are sim-projected (retirement-year nominal), so the
+        // card tags them "(at retirement)" to distinguish from today's-dollars manual (#133).
+        expect(getByText('$15,000/yr (at retirement)')).toBeTruthy();
+        expect(getByText('$100,000/yr (at retirement)')).toBeTruthy();
     });
 
     it('keeps "Auto Calculated" on both rows when there is no sim data (simResolved null)', () => {

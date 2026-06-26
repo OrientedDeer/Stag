@@ -42,6 +42,10 @@ interface RSUFieldsProps {
     rsuAccounts: RSUAccount[];
     idPrefix: string;
     showAccountLink?: boolean;
+    // The card surfaces the "Current Share Price Required" banner; the Add-Income
+    // modal does not (the price is account-side and the pre-#140 modal never showed
+    // it — don't alarm/block the user mid-add). Defaults on for the card. #140.
+    showPriceValidation?: boolean;
 }
 
 export function RSUFields({
@@ -50,8 +54,11 @@ export function RSUFields({
     rsuAccounts,
     idPrefix,
     showAccountLink = false,
+    showPriceValidation = true,
 }: RSUFieldsProps): ReactElement {
-    const priceValidationMessage = getRSUPriceValidationMessageFor(values, rsuAccounts);
+    const priceValidationMessage = showPriceValidation
+        ? getRSUPriceValidationMessageFor(values, rsuAccounts)
+        : null;
     return (
         <>
             <DropdownInput
