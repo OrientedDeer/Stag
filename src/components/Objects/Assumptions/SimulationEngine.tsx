@@ -725,10 +725,10 @@ function simulateOneYearWithNewEngine(
                 if (currentLoan instanceof LoanExpense && currentLoan.amount > DEBT_PAYOFF_EPSILON) {
                     const paydown = Math.min(alloc.amount, currentLoan.amount);
                     if (paydown > 0) {
-                        // #147: remember the pre-paydown balance (only the FIRST
-                        // paydown of a given loan this year; the cap prevents a
-                        // second non-zero one, but `??` keeps the earliest balance
-                        // even if that ever changes) for cashflow categorization.
+                        // #147: remember the pre-paydown balance for cashflow
+                        // categorization. The has()-guard records only the FIRST
+                        // paydown of a given loan this year, so even if the cap ever
+                        // allowed a second non-zero paydown the earliest balance wins.
                         if (!prePaydownLoanBalances.has(currentLoan.id)) {
                             prePaydownLoanBalances.set(currentLoan.id, currentLoan.amount);
                         }

@@ -198,14 +198,16 @@ function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
 
     // Display amount calculation
     const getDisplayAmount = (): string => {
-        // Loans/mortgages pay payment + extra_payment each month (#144) — the
-        // collapsed header should reflect the full monthly outflow, matching the
-        // amortization and the expanded "· +$Y extra" summary. Rent has no
-        // extra_payment, so it stays the bare payment.
-        if (expense instanceof MortgageExpense || expense instanceof LoanExpense) {
+        // A LoanExpense's `payment` is the scheduled principal+interest only, so the
+        // collapsed header must add extra_payment to show the true monthly outflow
+        // (#144) — matching the amortization and the expanded "· +$Y extra" summary.
+        if (expense instanceof LoanExpense) {
             return formatCompactCurrency(expense.payment + expense.extra_payment, { forceExact });
         }
-        if (expense instanceof RentExpense) {
+        // MortgageExpense.payment ALREADY rolls in extra_payment (added in the
+        // constructor, models.tsx), and RentExpense has none — both show the bare
+        // payment; adding extra again would double-count the mortgage outflow.
+        if (expense instanceof MortgageExpense || expense instanceof RentExpense) {
             return formatCompactCurrency(expense.payment, { forceExact });
         }
         // A goal's `amount` is the TOTAL cost with frequency 'Monthly' — showing

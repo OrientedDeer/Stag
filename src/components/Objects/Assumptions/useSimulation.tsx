@@ -301,13 +301,26 @@ function runSimulationLoop(args: {
         // until their milestone hits. Only incomes with an UNREACHED start milestone
         // are re-added: ended/retired drops (their start milestone is already
         // reached) and regenerated RMD incomes (no start milestone) stay out.
-        const reachedMilestoneSet = new Set(result.activeMilestones || []);
-        const survivingIncomeIds = new Set(result.incomes.map(inc => inc.id));
-        const dormantMilestoneIncomes = currentIncomes.filter(inc =>
-            inc.startMilestoneId &&
-            !reachedMilestoneSet.has(inc.startMilestoneId) &&
-            !survivingIncomeIds.has(inc.id));
-        currentIncomes = [...result.incomes, ...dormantMilestoneIncomes];
+        // Skip the bookkeeping entirely when no income is milestone-gated (the
+        // common case — avoids per-year Set/array allocations on the Monte Carlo
+        // hot path where runSimulation runs once per scenario × year).
+        if (currentIncomes.some(inc => inc.startMilestoneId)) {
+            const reachedMilestoneSet = new Set(result.activeMilestones || []);
+            const survivingIncomeIds = new Set(result.incomes.map(inc => inc.id));
+            const dormantMilestoneIncomes = currentIncomes.filter(inc =>
+                inc.startMilestoneId &&
+                !reachedMilestoneSet.has(inc.startMilestoneId) &&
+                // An income whose END milestone has already fired is DONE, not
+                // dormant — don't re-add it (else the list grows every year for the
+                // rest of the horizon).
+                !(inc.endMilestoneId && reachedMilestoneSet.has(inc.endMilestoneId)) &&
+                !survivingIncomeIds.has(inc.id));
+            currentIncomes = dormantMilestoneIncomes.length > 0
+                ? [...result.incomes, ...dormantMilestoneIncomes]
+                : result.incomes;
+        } else {
+            currentIncomes = result.incomes;
+        }
         currentExpenses = result.expenses;
         currentAccounts = result.accounts;
         previousActiveMilestones = result.activeMilestones || [];

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import ExpenseCard from '../../../../components/Objects/Expense/ExpenseCard';
-import { LoanExpense } from '../../../../components/Objects/Expense/models';
+import { LoanExpense, MortgageExpense } from '../../../../components/Objects/Expense/models';
 
 // ExpenseCard's contexts (Expense/Account/Assumptions) all have safe defaults,
 // so these render-only tests need no providers — the collapsed header is purely
@@ -51,5 +51,43 @@ describe('ExpenseCard collapsed header — loan extra payment (#144)', () => {
         render(<ExpenseCard expense={makeLoan(0)} />);
 
         expect(screen.getByText(headerAmountMatcher('$500/mo'))).toBeInTheDocument();
+    });
+});
+
+// MortgageExpense.payment ALREADY includes extra_payment (the constructor rolls it
+// into `payment`), unlike LoanExpense.payment which is principal+interest only.
+// So the collapsed mortgage header must show the bare `payment` — adding extra
+// again double-counts (#144 review fix).
+function makeMortgage(extra_payment = 0): MortgageExpense {
+    // apr 0 over 36,000 / 360 months ⇒ exactly $100/mo principal, no taxes/PMI/etc.,
+    // so payment === 100 + extra_payment (the constructor folds extra in).
+    return new MortgageExpense(
+        'm1', 'Home', 'Monthly',
+        100_000, // valuation
+        36_000,  // loan_balance
+        36_000,  // starting_loan_balance
+        0,       // apr
+        30,      // term_length (years)
+        0, 0, 0, 0, 0, 0, 0, // property_taxes, valuation_deduction, maintenance, utilities, insurance, pmi, hoa
+        'No', 0, // is_tax_deductible, tax_deductible
+        'm-acct', // linkedAccountId
+        undefined, // startDate
+        0,        // payment (recomputed by the constructor)
+        extra_payment,
+    );
+}
+
+describe('ExpenseCard collapsed header — mortgage extra payment NOT double-counted (#144)', () => {
+    it('shows the bare payment (which already includes extra), not payment + extra', () => {
+        const mortgage = makeMortgage(50);
+        // Sanity: the constructor folded the $50 extra into payment ⇒ $150 total.
+        expect(mortgage.payment).toBeCloseTo(150, 6);
+        expect(mortgage.extra_payment).toBe(50);
+
+        render(<ExpenseCard expense={mortgage} />);
+
+        // Header shows the true $150 outflow — NOT $200 (the double-counted value).
+        expect(screen.getByText(headerAmountMatcher('$150/mo'))).toBeInTheDocument();
+        expect(screen.queryByText(headerAmountMatcher('$200/mo'))).not.toBeInTheDocument();
     });
 });

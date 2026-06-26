@@ -8,13 +8,12 @@ import { AnyAccount, InvestedAccount, DebtAccount, SavedAccount } from '../../co
 import { isOfferableDebt, isSurplusPaydownDebt } from '../../services/simulation/SurplusAllocator';
 import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
 import { calculateFederalTaxFromIncomes, calculateStateTax, calculateFicaTax } from '../../components/Objects/Taxes/TaxService';
-import { WorkIncome, isIncomeActiveInCurrentMonth } from '../../components/Objects/Income/models';
+import { WorkIncome } from '../../components/Objects/Income/models';
 import { formatCompactCurrency } from './tabs/FutureUtils';
 import { get401kLimit, getIRALimit, getHSALimit } from '../../data/ContributionLimits';
 import { getActiveExpenses } from '../../components/Objects/Budget/budgetUtils';
 import { isLongTermGoal, getGoalFundMonthlyCap } from '../../components/Objects/Expense/models';
-import { SimulationContext } from '../../components/Objects/Assumptions/SimulationContext';
-import { isActiveByMilestone } from '../../services/simulation/MilestoneEvaluator';
+import { isActiveByMilestone, evaluateAllMilestones, MilestoneContext } from '../../services/simulation/MilestoneEvaluator';
 
 // UI Components
 import { CurrencyInput } from '../../components/Layout/InputFields/CurrencyInput';
@@ -32,7 +31,6 @@ export default function PriorityTab() {
     const { incomes } = useContext(IncomeContext);
     const { expenses } = useContext(ExpenseContext);
     const { state: taxState } = useContext(TaxContext);
-    const { simulation } = useContext(SimulationContext);
     const { show: showReceipt } = useReceiptToast();
 
     const year = new Date().getFullYear();
@@ -102,20 +100,30 @@ export default function PriorityTab() {
 
     // ========== CALCULATIONS ==========
 
-    // #145: only income active as of TODAY counts toward take-home. A milestone-
-    // started income (no fixed start date, or whose start milestone fires in a
-    // future year) must not inflate today's allocation. isIncomeActiveInCurrentMonth
-    // gates fixed start/end dates; the milestone gate reuses the simulation's
-    // first-year reached-milestone set — the same set the engine resolves — so an
-    // unreached start milestone excludes its income (and an already-reached one
-    // keeps it). Until the simulation has run, the empty set conservatively treats
-    // a milestone-started income as not-yet-active rather than counting it early.
-    const todayMilestoneSet = useMemo(
-        () => new Set(simulation[0]?.activeMilestones ?? []),
-    [simulation]);
+    // #145: only income whose START milestone has fired counts toward today's
+    // take-home. getMonthlyAmount(year) already prorates fixed start/end dates to
+    // $0 when out of window, but it is milestone-BLIND — a milestone-started income
+    // (no fixed start date) reports its full amount even when its milestone fires
+    // years out, inflating take-home/taxes/deductions. Gate on the same predicate
+    // the engine uses (isActiveByMilestone), evaluated against TODAY: which
+    // milestones are already reached given the current year, age, accounts, and
+    // expenses. An unreached start milestone excludes the income; an already-reached
+    // one keeps it. Non-milestone incomes pass through unchanged (byte-identical).
+    const todayMilestoneSet = useMemo(() => {
+        const milestones = state.milestones;
+        if (!milestones || milestones.length === 0) return new Set<string>();
+        const ctx: MilestoneContext = {
+            accounts,
+            expenses,
+            year,
+            age: year - getBirthYear(milestones),
+            filingStatus: taxState.filingStatus,
+        };
+        return new Set(evaluateAllMilestones(milestones, new Set<string>(), ctx).activeMilestones);
+    }, [state.milestones, accounts, expenses, taxState.filingStatus, year]);
+
     const activeIncomes = useMemo(
         () => incomes.filter(inc =>
-            isIncomeActiveInCurrentMonth(inc) &&
             isActiveByMilestone(inc.startMilestoneId, inc.endMilestoneId, todayMilestoneSet)),
     [incomes, todayMilestoneSet]);
 
