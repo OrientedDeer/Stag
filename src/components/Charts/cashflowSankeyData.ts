@@ -7,7 +7,7 @@
  */
 import { WorkIncome, AnyIncome, PassiveIncome } from '../Objects/Income/models';
 import { MortgageExpense, AnyExpense, CLASS_TO_CATEGORY } from '../Objects/Expense/models';
-import { AnyAccount, InvestedAccount, DebtAccount } from '../Objects/Accounts/models';
+import { AnyAccount, InvestedAccount, DebtAccount, DeficitDebtAccount } from '../Objects/Accounts/models';
 import { CashflowDetail } from '../../services/simulation/types';
 
 // Minimum threshold for including a value in the chart (avoids $0 nodes)
@@ -429,29 +429,32 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
         if (mortgageInterestAndEscrow >= MIN_DISPLAY_THRESHOLD) nodes.push({ id: 'Mortgage Payments', color: 'var(--c-negative-soft)', label: 'Mortgage Payments' });
 
         // Priority bucket allocations (sorted for stability). #60: a bucket whose
-        // account is a DebtAccount is a surplus DEBT PAYDOWN, not savings — label
-        // it "Pay Down: <name>" in the debt/negative color so the user doesn't
-        // misread it as money saved. (Node id ↔ link target stay in sync via
-        // `nodeId`.) The aggregate trueUserSaved number is unaffected.
+        // account is a user DebtAccount is a surplus DEBT PAYDOWN, not savings —
+        // labeled "Pay Down: <name>" in the debt/negative color so the user doesn't
+        // misread it as money saved. The system DeficitDebtAccount is excluded ([4]).
+        // [2] The node id is keyed on the UNIQUE account id (not the display name)
+        // so two buckets sharing a name — or two deleted→"Savings" fallbacks — can't
+        // collide into a duplicate node id (which Nivo rejects, breaking the chart).
+        // [5] The LABEL (what the user sees) carries the "Pay Down:" prefix too, not
+        // just the id.
         const bucketItems = Object.entries(bucketAllocations)
             .filter(([, amount]) => amount >= MIN_DISPLAY_THRESHOLD)
             .map(([accountId, amount]) => {
                 const account = accounts.find(a => a.id === accountId);
-                const isDebt = account instanceof DebtAccount;
+                const isDebt = account instanceof DebtAccount && !(account instanceof DeficitDebtAccount);
                 const name = account ? account.name : 'Savings';
                 return {
-                    id: accountId,
                     name,
                     amount,
-                    isDebt,
-                    nodeId: isDebt ? `Pay Down: ${name}` : `Save: ${name}`,
+                    nodeId: isDebt ? `Pay Down: ${accountId}` : `Save: ${accountId}`, // [2] unique
+                    label: isDebt ? `Pay Down: ${name}` : name,                       // [5] visible
                     color: isDebt ? 'var(--c-negative-soft)' : 'var(--color-chart-money)',
                 };
             })
             .sort((a, b) => a.name.localeCompare(b.name));
 
         bucketItems.forEach(item => {
-            nodes.push({ id: item.nodeId, color: item.color, label: item.name });
+            nodes.push({ id: item.nodeId, color: item.color, label: item.label });
         });
 
         // Expenses (sorted by category for stability - added AFTER savings)

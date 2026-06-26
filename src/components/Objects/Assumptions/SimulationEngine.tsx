@@ -23,7 +23,7 @@ import { processDeficitDebt } from "../../../services/simulation/WithdrawalServi
 import { processInflows, growAccounts } from "../../../services/simulation/AccountGrowth";
 import { evaluateAllMilestones, isActiveByMilestone, MilestoneContext } from "../../../services/simulation/MilestoneEvaluator";
 import { InvestedAccount, SavedAccount, ESPPAccount, RSUAccount, DebtAccount } from "../Accounts/models";
-import { isSurplusPaydownDebt } from "../../../services/simulation/SurplusAllocator";
+import { DEBT_PAYOFF_EPSILON } from "../../../services/simulation/SurplusAllocator";
 import { processRSUVesting } from "../../../services/simulation/RSUVesting";
 import { solveYear, YearSolverInput } from "../../../services/simulation/YearSolver";
 import { evaluateGuytonKlingerGuardrail, computeGKDiscretionaryAdjustment, WithdrawalResult } from "../../../services/WithdrawalStrategies";
@@ -675,22 +675,19 @@ function simulateOneYearWithNewEngine(
         // linkedAccountId IS the DebtAccount id). MortgageExpense ↔ PropertyAccount
         // is a future add, not handled here.
         //
-        // [10] Build the lookup ONLY when at least one allocation targets a debt
-        // account, so the common (no debt flagged) path does no extra work.
-        const anyDebtAllocation = yearPlan.surplusAllocations.some(alloc =>
-            accounts.find(a => a.id === alloc.accountId) instanceof DebtAccount
-        );
         // [14] Maps a DebtAccount id → its linked LoanExpense's id, so we can
         // RE-RESOLVE the current loan instance from nextExpenses by id on each
         // allocation ([0]) — a captured instance goes stale once we replace it.
+        // [9] Built unconditionally: it's a single O(expenses) pass over the loan
+        // expenses (cheaper than the old O(allocations×accounts) "any debt?"
+        // pre-check it replaced), and the per-allocation lookup below is a no-op
+        // Map.get for non-debt allocations.
         const loanIdByDebtAccountId = new Map<string, string>();
-        if (anyDebtAllocation) {
-            nextExpenses.forEach(exp => {
-                if (exp instanceof LoanExpense && exp.linkedAccountId) {
-                    loanIdByDebtAccountId.set(exp.linkedAccountId, exp.id);
-                }
-            });
-        }
+        nextExpenses.forEach(exp => {
+            if (exp instanceof LoanExpense && exp.linkedAccountId) {
+                loanIdByDebtAccountId.set(exp.linkedAccountId, exp.id);
+            }
+        });
 
         // Apply surplus allocations to withdrawal state (for account growth) and bucket detail (for Sankey)
         yearPlan.surplusAllocations.forEach(alloc => {
@@ -708,7 +705,11 @@ function simulateOneYearWithNewEngine(
                 // what was actually applied.
                 const idx = nextExpenses.findIndex(e => e.id === linkedLoanId);
                 const currentLoan = idx !== -1 ? nextExpenses[idx] : undefined;
-                if (currentLoan instanceof LoanExpense && isSurplusPaydownDebt(targetAccount)) {
+                // [3] Gate on the LINKED LOAN's balance (the authoritative figure
+                // the cap/amount also use), NOT the DebtAccount mirror — the mirror
+                // can be ≤ epsilon while the loan still owes, which would silently
+                // drop the paydown.
+                if (currentLoan instanceof LoanExpense && currentLoan.amount > DEBT_PAYOFF_EPSILON) {
                     const paydown = Math.min(alloc.amount, currentLoan.amount);
                     if (paydown > 0) {
                         nextExpenses[idx] = reduceLoanBalance(currentLoan, paydown);

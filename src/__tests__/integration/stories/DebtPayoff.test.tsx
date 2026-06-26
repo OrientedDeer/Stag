@@ -494,7 +494,7 @@ describe('Story 7: Debt Payoff', () => {
         const acceleratedLoan = new LoanExpense(
             'exp-studentloan', 'Student Loan', 50000, 'Monthly', 5.0, 'Compounding',
             530, 'No', 0, 'acc-studentloan',
-            new Date('2025-01-01'), new Date('2035-01-01'),
+            new Date(2025, 0, 1), new Date(2035, 0, 1),
             undefined, undefined, 300
         );
         const acceleratedSim = runSimulation(
@@ -618,7 +618,7 @@ describe('Story 7: Debt Payoff', () => {
         const loanWithExtra = new LoanExpense(
             'exp-studentloan', 'Student Loan', 50000, 'Monthly', 5.0, 'Compounding',
             530, 'No', 0, 'acc-studentloan',
-            new Date('2025-01-01'), new Date('2035-01-01'),
+            new Date(2025, 0, 1), new Date(2035, 0, 1),
             undefined, undefined, 100 // fixed extra_payment
         );
 
@@ -655,7 +655,7 @@ describe('Story 7: Debt Payoff', () => {
         const makeSmallLoan = () => new LoanExpense(
             'exp-smallcard', 'Small Card', 2000, 'Monthly', 18.0, 'Compounding',
             200, 'No', 0, 'acc-smallcard',
-            new Date('2025-01-01'), new Date('2030-01-01')
+            new Date(2025, 0, 1), new Date(2030, 0, 1)
         );
         const makeSmallDebt = () => new DebtAccount('acc-smallcard', 'Small Card Debt', 2000, 'exp-smallcard', 18.0);
         const brokerage = () => new InvestedAccount('acc-brokerage', 'Brokerage', 0, 0, 10, 0.05, 'Brokerage', true, 1.0, 0);
@@ -717,7 +717,7 @@ describe('Story 7: Debt Payoff', () => {
         const makeTinyLoan = () => new LoanExpense(
             'exp-studentloan', 'Student Loan', 0.001, 'Monthly', 5.0, 'Compounding',
             530, 'No', 0, 'acc-studentloan',
-            new Date('2025-01-01'), new Date('2035-01-01')
+            new Date(2025, 0, 1), new Date(2035, 0, 1)
         );
         const makeTinyAccount = () => new DebtAccount('acc-studentloan', 'Student Loan Debt', 0.001, 'exp-studentloan', 5.0);
 
@@ -798,5 +798,52 @@ describe('Story 7: Debt Payoff', () => {
                     .toBe(b.amount);
             }
         }
+    });
+
+    it('[3] gates on the LOAN balance: a $0 mirror with an owing loan is still paid down', () => {
+        // The DebtAccount MIRROR is $0 but its linked LoanExpense still owes $5000.
+        // The engine must gate the paydown on the LOAN balance (authoritative), not
+        // the mirror — otherwise the paydown is silently dropped. (Local dates per
+        // the project's date-only rule.)
+        const owingLoan = new LoanExpense(
+            'exp-owing', 'Personal Loan', 5000, 'Monthly', 12.0, 'Compounding',
+            120, 'No', 0, 'acc-owing',
+            new Date(2025, 0, 1), new Date(2035, 0, 1)
+        );
+        const staleMirror = new DebtAccount('acc-owing', 'Personal Loan Debt', 0, 'exp-owing', 12.0); // mirror $0
+
+        const flagged: AssumptionsState = {
+            ...assumptions,
+            priorities: [
+                { id: 'p-owing', name: 'Pay down: Personal Loan', type: 'DEBT', accountId: 'acc-owing', capType: 'REMAINDER' },
+            ],
+        };
+
+        const run = (a: AssumptionsState) => runSimulation(
+            yearsToSimulate,
+            [propertyAccount, staleMirror, savingsAccount],
+            [workIncome],
+            [mortgageExpense, owingLoan, livingExpenses],
+            a, taxState
+        );
+
+        const flaggedSim = run(flagged);
+        const baselineSim = run({ ...assumptions, priorities: [] });
+
+        // The flagged loan clears strictly sooner than the schedule-only baseline —
+        // proving the paydown WAS applied despite the $0 mirror.
+        const payoffYear = (sim: typeof flaggedSim): number | null => {
+            for (const y of sim) {
+                const loan = y.expenses.find(e => e.id === 'exp-owing') as LoanExpense;
+                if (loan && loan.amount <= 1) return y.year;
+            }
+            return null;
+        };
+        const flaggedPayoff = payoffYear(flaggedSim);
+        const basePayoff = payoffYear(baselineSim);
+        expect(flaggedPayoff).not.toBeNull();
+        expect(basePayoff).not.toBeNull();
+        expect(flaggedPayoff!).toBeLessThan(basePayoff!);
+        assertAllYearsInvariants(flaggedSim);
     });
 });

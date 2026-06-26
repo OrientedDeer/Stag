@@ -53,10 +53,12 @@ export default function PriorityTab() {
             if (acc instanceof InvestedAccount) {
                 return acc.taxType !== 'Traditional 401k' && acc.taxType !== 'Roth 401k';
             }
-            // #60 C [4]: OFFER any standalone (unlinked, non-deficit) debt — even
-            // at a $0 balance, since the balance varies over the projection and a
-            // debt the user keeps should stay addable. The ENGINE just won't pay a
-            // $0 debt at sim time (isSurplusPaydownDebt's amount>0 check).
+            // #60 [6]: OFFER a PAYABLE debt — one with a backing LoanExpense
+            // (isOfferableDebt now REQUIRES linkedAccountId, [1]). Offered even at
+            // a $0 balance (the balance varies over the projection; the engine just
+            // won't pay a $0 debt at sim time). A legacy/imported UNLINKED debt is
+            // NOT offered and, if already saved as a bucket, is treated as dead
+            // (see isDeadBucket) — silently skipped, not shown as "broken".
             if (acc instanceof DebtAccount) {
                 return isOfferableDebt(acc);
             }
@@ -496,12 +498,21 @@ export default function PriorityTab() {
             // (Non-REMAINDER cap types already show $0 via their own no-account
             // handling, so only REMAINDER is guarded here.)
             if (item.capType === 'REMAINDER' && isDeadBucket(item.accountId)) {
+                // [1] Distinguish the two dead cases so an unpayable debt doesn't
+                // look like the app lost the user's config:
+                //  - a debt that resolves but isn't payable (unlinked / no backing
+                //    loan) → a calm explanation, no "broken/no destination" wording;
+                //  - a truly-deleted account → the "no destination" message.
+                const acc = item.accountId ? accountById.get(item.accountId) : undefined;
+                const isUnpayableDebt = acc instanceof DebtAccount;
                 return {
                     ...item,
                     actualDed: 0,
                     remainingAfter: currentRemaining,
                     label: 'Not funded',
-                    provenance: 'This allocation has no valid destination account and is skipped.',
+                    provenance: isUnpayableDebt
+                        ? 'This debt has no backing loan to pay down, so surplus skips it (your other priorities are unaffected).'
+                        : 'This allocation has no valid destination account and is skipped.',
                 };
             }
 

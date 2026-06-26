@@ -183,12 +183,12 @@ describe('SurplusAllocator', () => {
             expect(result.allocations.find(a => a.accountId === 'brok')?.amount).toBe(5000);
         });
 
-        it('[0] a DUPLICATE debt bucket over-allocates here (the engine must clamp)', () => {
-            // The allocator has no cross-bucket dedup: the same debt in two buckets
-            // emits TWO allocations of up-to-cap each. That is why the engine apply
-            // RE-RESOLVES the loan by id and pays against its CURRENT balance — the
-            // 2nd allocation then pays $0. This test documents the allocator output
-            // the engine fix relies on.
+        it('[0] a DUPLICATE debt bucket does NOT over-consume surplus (no leak to lower buckets)', () => {
+            // A debt in TWO buckets must total at most its cap ($2000), and the
+            // leftover surplus must reach the lower brokerage bucket IN FULL — no
+            // surplus vanishes. (Pre-fix the allocator emitted $2000 twice and
+            // deducted $4000 from `remaining`, so $2000 leaked: brokerage got only
+            // $6000 of the $8000 it should have.)
             const debt = new DebtAccount('cc', 'Card', 2000, 'exp-cc', 18);
             const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
 
@@ -204,11 +204,18 @@ describe('SurplusAllocator', () => {
                 defaultSettings({ debtPaydownCaps: { cc: 2000 } })
             );
 
-            // TWO $2000 debt allocations (total $4000 > the $2000 balance) — the
-            // engine clamps the 2nd to $0 by re-resolving the reduced loan.
-            const ccAllocs = result.allocations.filter(a => a.accountId === 'cc');
-            expect(ccAllocs).toHaveLength(2);
-            expect(ccAllocs.every(a => a.amount === 2000)).toBe(true);
+            // The debt is paid AT MOST its cap across all its buckets.
+            const ccTotal = result.allocations
+                .filter(a => a.accountId === 'cc')
+                .reduce((s, a) => s + a.amount, 0);
+            expect(ccTotal).toBe(2000);
+
+            // CRUX: the leftover $8000 reaches the brokerage IN FULL — nothing leaked.
+            expect(result.allocations.find(a => a.accountId === 'brok')?.amount).toBe(8000);
+
+            // And the whole $10k surplus is accounted for (debt + brokerage).
+            const totalAllocated = result.allocations.reduce((s, a) => s + a.amount, 0);
+            expect(totalAllocated).toBe(10000);
         });
 
         it('honors avalanche ordering ONLY when the user sets it (high-APR debt ranked first)', () => {

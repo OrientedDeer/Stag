@@ -205,24 +205,59 @@ describe('CashflowSankey', () => {
             expect(capturedSankeyData).not.toBeNull();
             const nodes = capturedSankeyData!.nodes;
 
-            // Debt paydown → "Pay Down: Credit Card" in the negative color.
-            const payDown = nodes.find((n: any) => n.id === 'Pay Down: Credit Card');
+            // [2] Node id is keyed on the unique account id; [5] the visible LABEL
+            // carries "Pay Down:"; the color is the debt/negative color.
+            const payDown = nodes.find((n: any) => n.id === 'Pay Down: acc-card');
             expect(payDown, `nodes: ${nodes.map((n: any) => n.id).join(', ')}`).toBeDefined();
+            expect(payDown.label).toBe('Pay Down: Credit Card'); // [5] user sees this
             expect(payDown.color).toBe('var(--c-negative-soft)');
-            // It must NOT be mislabeled as a "Save:" node.
-            expect(nodes.find((n: any) => n.id === 'Save: Credit Card')).toBeUndefined();
 
-            // A real investment bucket still renders as "Save:" in the money color.
-            const save = nodes.find((n: any) => n.id === 'Save: Brokerage');
+            // A real investment bucket still renders as "Save:" in the money color,
+            // and its visible label is the plain account name.
+            const save = nodes.find((n: any) => n.id === 'Save: acc-brok');
             expect(save).toBeDefined();
+            expect(save.label).toBe('Brokerage');
             expect(save.color).toBe('var(--color-chart-money)');
 
-            // The link target matches the (renamed) node id, so the edge resolves.
+            // The link target matches the node id, so the edge resolves.
             const payDownLink = capturedSankeyData!.links.find(
-                (l: any) => l.target === 'Pay Down: Credit Card'
+                (l: any) => l.target === 'Pay Down: acc-card'
             );
-            expect(payDownLink, 'a link must target the renamed debt node').toBeDefined();
+            expect(payDownLink, 'a link must target the debt node').toBeDefined();
             expect(payDownLink.value).toBe(4000);
+        });
+
+        it('[2] two buckets sharing a display name produce DISTINCT node ids (no Nivo collision)', () => {
+            const ssIncome = new CurrentSocialSecurityIncome('ss', 'Social Security', 60000, 'Annually', new Date('2076-01-01'), undefined);
+            const expense = new FoodExpense('exp', 'Food', 10000, 'Annually', new Date(2076, 0, 1));
+            // Two DISTINCT debt accounts that happen to share the display name "Loan".
+            const loanA = new DebtAccount('acc-a', 'Loan', 3000, 'exp-a', 6);
+            const loanB = new DebtAccount('acc-b', 'Loan', 4000, 'exp-b', 8);
+
+            // Render must NOT throw (a duplicate node id would make Nivo reject).
+            expect(() => render(
+                <CashflowSankey
+                    incomes={[ssIncome]}
+                    expenses={[expense]}
+                    year={2076}
+                    taxes={{ fed: 0, state: 0, fica: 0, capitalGains: 0 }}
+                    withdrawals={{}}
+                    bucketAllocations={{ 'acc-a': 3000, 'acc-b': 4000 }}
+                    accounts={[loanA, loanB]}
+                    height={400}
+                />,
+                { wrapper }
+            )).not.toThrow();
+
+            const nodes = capturedSankeyData!.nodes;
+            // Distinct ids (keyed on account id), both labeled "Pay Down: Loan".
+            expect(nodes.find((n: any) => n.id === 'Pay Down: acc-a')).toBeDefined();
+            expect(nodes.find((n: any) => n.id === 'Pay Down: acc-b')).toBeDefined();
+            const payDownLabels = nodes.filter((n: any) => n.label === 'Pay Down: Loan');
+            expect(payDownLabels).toHaveLength(2);
+            // No duplicate node ids in the whole graph.
+            const ids = nodes.map((n: any) => n.id);
+            expect(new Set(ids).size).toBe(ids.length);
         });
     });
 });

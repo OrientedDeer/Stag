@@ -242,6 +242,14 @@ export function allocateSurplus(
     // would independently see the full annual limit as available room.
     let rothIRAContributedSoFar = settings.rothIRAContributedThisYear ?? 0;
 
+    // [0] Running total paid to each debt across ALL buckets in this pass. The cap
+    // (the loan balance) is fixed for the year, so a debt appearing in TWO buckets
+    // would otherwise allocate up-to-cap TWICE and over-consume `remaining` (the
+    // engine clamps the 2nd paydown to $0, so that surplus would silently VANISH
+    // instead of flowing to lower buckets). Decrementing the cap by what's already
+    // been allocated makes the 2nd occurrence see ~0 cap and allocate nothing.
+    const debtPaidSoFar: Record<string, number> = {};
+
     for (const bucket of sortedBuckets) {
         if (remaining <= 0) break;
 
@@ -263,10 +271,13 @@ export function allocateSurplus(
         if (account instanceof DebtAccount) {
             if (!isSurplusPaydownDebt(account)) continue; // skip deficit / $0
 
-            // Cap = linked loan's post-amortization balance (solver-supplied).
-            // Absent/0 ⇒ no linked loan or already paid off ⇒ pay nothing.
+            // Cap = linked loan's post-amortization balance (solver-supplied),
+            // LESS anything already allocated to this same debt earlier in the
+            // pass ([0] — so a debt in two buckets never over-consumes `remaining`
+            // and leaks surplus). Absent/0 ⇒ no linked loan or already paid ⇒ skip.
             const debtCap = settings.debtPaydownCaps?.[account.id] ?? 0;
-            const payment = Math.min(remaining, debtCap);
+            const remainingCap = Math.max(0, debtCap - (debtPaidSoFar[account.id] ?? 0));
+            const payment = Math.min(remaining, remainingCap);
             if (payment <= 0) continue;
 
             const paidDisplay = Math.round(payment).toLocaleString();
@@ -284,6 +295,7 @@ export function allocateSurplus(
                 description: `Paid down $${paidDisplay} of ${account.name} (${account.apr}% APR).`,
             });
 
+            debtPaidSoFar[account.id] = (debtPaidSoFar[account.id] ?? 0) + payment;
             remaining -= payment;
             continue;
         }
