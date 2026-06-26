@@ -8,9 +8,11 @@
  */
 import { describe, it, expect } from 'vitest';
 import { calculateFicaTax } from '../../../../components/Objects/Taxes/taxService/ficaTax';
+import { getCombinedMarginalRate } from '../../../../components/Objects/Taxes/taxService/marginalRates';
 import { getTaxParameters } from '../../../../components/Objects/Taxes/taxService/parameters';
 import { WorkIncome } from '../../../../components/Objects/Income/models';
 import { TaxState } from '../../../../components/Objects/Taxes/TaxContext';
+import { defaultAssumptions } from '../../../../components/Objects/Assumptions/AssumptionsContext';
 
 const YEAR = 2025;
 const start = new Date(2025, 0, 1);
@@ -61,5 +63,32 @@ describe('CSRS Social Security FICA exemption (#139 Part B)', () => {
         // The two lists differ only by the second job's pension system, so the FICA
         // gap is exactly that one job's skipped Social Security.
         expect(ficaBothNone - ficaMixed).toBeCloseTo(ssOn50k, 2);
+    });
+});
+
+describe('CSRS marginal FICA rate (#139)', () => {
+    const params = getTaxParameters(YEAR, 'Single', 'federal')!;
+    const GROSS = 50000; // under both the SS wage base and the Additional Medicare threshold
+
+    // getCombinedMarginalRate(gross, preTaxDed, taxState, year, assumptions,
+    //   includesFICA, earnedIncome, ssCoveredEarnedIncome) -> { fica, ... }
+    function ficaMarginal(ssCoveredEarned: number): number {
+        return getCombinedMarginalRate(
+            GROSS, 0, state, YEAR, defaultAssumptions, true, GROSS, ssCoveredEarned,
+        ).fica;
+    }
+
+    it('drops the 6.2% SS component for a CSRS earner (ssCovered = 0), keeping Medicare', () => {
+        const csrs = ficaMarginal(0);          // CSRS-only: no SS-covered wages
+        const nonCsrs = ficaMarginal(GROSS);   // fully SS-covered wages under the cap
+        expect(nonCsrs - csrs).toBeCloseTo(params.socialSecurityTaxRate, 6); // exactly the 6.2pp
+        expect(csrs).toBeCloseTo(params.medicareTaxRate, 6);                 // Medicare only
+        expect(params.socialSecurityTaxRate).toBeGreaterThan(0);            // guard: not vacuous
+    });
+
+    it('defaults to the SS-inclusive rate when ssCovered is omitted (non-CSRS unchanged)', () => {
+        const explicit = ficaMarginal(GROSS);
+        const defaulted = getCombinedMarginalRate(GROSS, 0, state, YEAR, defaultAssumptions, true, GROSS).fica;
+        expect(defaulted).toBeCloseTo(explicit, 6);
     });
 });

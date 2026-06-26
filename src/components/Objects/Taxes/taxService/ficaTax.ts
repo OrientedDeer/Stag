@@ -48,7 +48,9 @@ export function calculateFicaTax(
     // income filtered out. Medicare and the 0.9% Additional Medicare surtax stay on
     // the FULL base (CSRS still pays Medicare). With no CSRS job the filter is a
     // no-op → ssTaxableBase === taxableBase → byte-identical FICA (#139 Part B).
-    const ssTaxableBase = getFicaTaxableBase(incomes.filter(isSSCoveredForFica), year);
+    const ssTaxableBase = incomes.some(inc => !isSSCoveredForFica(inc))
+        ? getFicaTaxableBase(incomes.filter(isSSCoveredForFica), year)
+        : taxableBase; // no CSRS income → SS-covered base equals the full base (skip the second pass)
     const ssTax =
         Math.min(ssTaxableBase, fedParams.socialSecurityWageBase) *
         fedParams.socialSecurityTaxRate;

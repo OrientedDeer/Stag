@@ -89,6 +89,10 @@ export function getCombinedMarginalRate(
     assumptions: AssumptionsState,
     includesFICA: boolean = true,
     earnedIncome: number = grossIncome,
+    // SS-covered earned income = earnedIncome minus any CSRS wages (CSRS workers
+    // are outside Social Security). Only the 6.2% SS component keys off this.
+    // Defaults to earnedIncome so non-CSRS callers are byte-identical (#139).
+    ssCoveredEarnedIncome: number = earnedIncome,
 ): {
     federal: number;
     state: number;
@@ -116,13 +120,14 @@ export function getCombinedMarginalRate(
     let ficaRate = 0;
     if (includesFICA && fedParams) {
         const ssWageBase = fedParams.socialSecurityWageBase ?? 168600;
-        // The 6.2% SS portion drops off only once EARNED income (net of FICA
-        // exemptions) clears the wage base — mirroring calculateFicaTax, which
-        // tests its taxableBase, not total gross. Comparing the full grossIncome
-        // here would wrongly drop SS for a still-working person whose non-earned
-        // income (SS/pension/passive) pushes gross above the base while wages stay
-        // below it.
-        if (earnedIncome < ssWageBase) {
+        // The 6.2% SS portion applies only to SS-COVERED earned income below the
+        // wage base — mirroring calculateFicaTax, which tests its SS-covered base,
+        // not total gross. ssCoveredEarnedIncome excludes CSRS wages (#139), so for
+        // a CSRS-only earner it is 0 and the next wage dollar carries Medicare but
+        // no SS (the > 0 guard) — the engine charges $0 SS there. Comparing full
+        // grossIncome would also wrongly keep SS for a non-working person whose
+        // SS/pension/passive income pushes gross past the base while wages are below.
+        if (ssCoveredEarnedIncome > 0 && ssCoveredEarnedIncome < ssWageBase) {
             ficaRate = fedParams.socialSecurityTaxRate + fedParams.medicareTaxRate;
         } else {
             ficaRate = fedParams.medicareTaxRate;

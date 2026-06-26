@@ -73,6 +73,7 @@ import {
     PENSION_SYSTEM_COMPARISON
 } from '../../data/PensionData';
 import { getFicaTaxableBase } from '../../components/Objects/Taxes/taxService/ficaTax';
+import { isSSCoveredForFica } from '../../components/Objects/Taxes/taxService/incomeAggregation';
 import { SavedAccount, InvestedAccount, DebtAccount, DeficitDebtAccount, PropertyAccount, ESPPAccount, RSUAccount, AnyAccount } from '../../components/Objects/Accounts/models';
 import { formatCompactCurrency } from '../Future/tabs/FutureUtils';
 import { SimulationYear } from '../../services/simulation/types';
@@ -1731,8 +1732,12 @@ function TaxDebugTab() {
             // getFicaTaxableBase so this readout cannot drift from the FICA the
             // engine actually charges.
             const ficaTaxableBase = getFicaTaxableBase(incomes, year);
+            // SS is charged only on the SS-covered base — CSRS wages are outside
+            // Social Security (#139); Medicare stays on the full base. Mirrors
+            // calculateFicaTax so this readout cannot drift from the engine.
+            const ssCoveredBase = getFicaTaxableBase(incomes.filter(isSSCoveredForFica), year);
             const ssWageBase = fedParams.socialSecurityWageBase;
-            const ssTax = Math.min(ficaTaxableBase, ssWageBase) * fedParams.socialSecurityTaxRate;
+            const ssTax = Math.min(ssCoveredBase, ssWageBase) * fedParams.socialSecurityTaxRate;
             const medicareTax = ficaTaxableBase * fedParams.medicareTaxRate;
 
             // Use sim engine values for final tax totals (includes withdrawal taxes, NIIT, etc.)

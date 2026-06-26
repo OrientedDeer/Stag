@@ -13,6 +13,7 @@ import { AnyIncome, WorkIncome } from '../components/Objects/Income/models';
 import { InvestedAccount } from '../components/Objects/Accounts/models';
 import * as TaxService from '../components/Objects/Taxes/TaxService';
 import { getFicaTaxableBase } from '../components/Objects/Taxes/taxService/ficaTax';
+import { isSSCoveredForFica } from '../components/Objects/Taxes/taxService/incomeAggregation';
 import {
     get401kLimit,
     getHSALimit,
@@ -191,6 +192,9 @@ export function analyzeTaxSituation(
     // whose SS/pension/passive income pushes gross past a threshold while wages
     // stay below it doesn't wrongly lose the SS marginal component.
     const earnedBase = getFicaTaxableBase(incomes, year);
+    // SS-covered earned base for the marginal SS test — excludes CSRS wages, which
+    // are outside Social Security (#139). Equals earnedBase when there's no CSRS job.
+    const ssCoveredEarnedBase = getFicaTaxableBase(incomes.filter(isSSCoveredForFica), year);
 
     // FICA is gated on whether there are FICA-eligible earned WAGES, NOT on age.
     // calculateFicaTax charges Social Security / Medicare payroll tax on the earned
@@ -217,7 +221,8 @@ export function analyzeTaxSituation(
         year,
         assumptions,
         includesFICA,
-        earnedBase
+        earnedBase,
+        ssCoveredEarnedBase
     );
 
     // Get contribution info
@@ -631,6 +636,7 @@ export function generateTaxProjections(
         // calculateFicaTax. Pass it explicitly so the 6.2% SS / 0.9% surtax
         // thresholds key off wages, not total gross — see analyzeTaxSituation.
         const earnedBase = getFicaTaxableBase(simYear.incomes, simYear.year);
+        const ssCoveredEarnedBase = getFicaTaxableBase(simYear.incomes.filter(isSSCoveredForFica), simYear.year);
 
         // FICA is gated on FICA-eligible earned WAGES, NOT age — Social Security /
         // Medicare payroll tax has no age cap, so wages earned past retirement age
@@ -645,7 +651,8 @@ export function generateTaxProjections(
             simYear.year,
             assumptions,
             includesFICA,
-            earnedBase
+            earnedBase,
+            ssCoveredEarnedBase
         );
 
         const isRetired = age >= retirementAge;
