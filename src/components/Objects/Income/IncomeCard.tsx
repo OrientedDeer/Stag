@@ -27,7 +27,9 @@ import {
     getDisplayAmount,
     getFrequencyDisplay,
     computeContributionWarnings,
+    getSimResolvedPension,
 } from './incomeCardUtils';
+import { SimulationContext } from '../Assumptions/SimulationContext';
 import { useSSAEarningsImport } from './useSSAEarningsImport';
 import { WorkIncomeFields } from './card/WorkIncomeFields';
 import { FutureSocialSecurityFields } from './card/FutureSocialSecurityFields';
@@ -40,6 +42,7 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
     const { incomes } = useContext(IncomeContext);
     const dispatch = useContext(IncomeDispatchContext);
     const { accounts } = useContext(AccountContext);
+    const { simulation } = useContext(SimulationContext);
     const { state: assumptions, dispatch: assumptionsDispatch } = useContext(AssumptionsContext);
     const forceExact = assumptions.display?.useCompactCurrency === false;
     const [dateError, setDateError] = useState<string | undefined>();
@@ -144,6 +147,16 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
     }, [isWorkIncome, matchAccountId, employerMatch, contributionAccounts, handleMatchAccountChange]);
 
     const isPension = income instanceof FERSPensionIncome || income instanceof CSRSPensionIncome;
+    // For an Auto High-3 FERS/CSRS pension the engine resolves the benefit + High-3
+    // on a separate projected instance and never writes them back to this editable
+    // income (calculatedBenefit stays 0 here). Read the resolved figures out of the
+    // cached simulation timeline so both the expanded card and the collapsed header
+    // can show the real $/yr instead of "Auto Calculated". Null until a sim runs or
+    // when the pension never activates in-horizon.
+    const simResolvedPension = useMemo(
+        () => (isPension ? getSimResolvedPension(income.id, simulation) : null),
+        [isPension, income.id, simulation]
+    );
     const isFutureSS = income instanceof FutureSocialSecurityIncome;
     const isAnySS =
         income instanceof SocialSecurityIncome ||
@@ -180,8 +193,8 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
             name={income.name}
             iconBg={iconBg}
             iconLabel={descriptor.slice(0, 1)}
-            displayValue={getDisplayAmount(income, forceExact)}
-            frequencySuffix={getFrequencyDisplay(income)}
+            displayValue={getDisplayAmount(income, forceExact, simResolvedPension?.benefit)}
+            frequencySuffix={getFrequencyDisplay(income, simResolvedPension?.benefit)}
             headerContent={headerContent}
             headerActions={headerActions}
             ariaLabelType="income"
@@ -289,6 +302,7 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
                         onFieldUpdate={handleFieldUpdate}
                         workIncomes={workIncomes}
                         birthYear={birthYear}
+                        simResolved={simResolvedPension}
                     />
                 )}
 
@@ -298,6 +312,7 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
                         onFieldUpdate={handleFieldUpdate}
                         workIncomes={workIncomes}
                         birthYear={birthYear}
+                        simResolved={simResolvedPension}
                     />
                 )}
 

@@ -15,6 +15,14 @@ interface CSRSPensionFieldsProps {
     onFieldUpdate: (field: AllIncomeKeys, value: unknown) => void;
     workIncomes: WorkIncome[];
     birthYear: number;
+    /**
+     * Simulation-resolved benefit + High-3 for the Auto High-3 case, read from the
+     * SimulationContext timeline (the engine never writes these onto the live
+     * income, so its calculatedBenefit stays 0). When present, the estimate rows
+     * show the resolved $/yr instead of "Auto Calculated". Null when there's no sim
+     * yet or the pension never activates in-horizon — the rows keep the fallback.
+     */
+    simResolved?: { benefit: number; high3: number } | null;
 }
 
 export function CSRSPensionFields({
@@ -22,7 +30,27 @@ export function CSRSPensionFields({
     onFieldUpdate,
     workIncomes,
     birthYear,
+    simResolved,
 }: CSRSPensionFieldsProps): ReactElement {
+    const fmt = (n: number) =>
+        `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr`;
+    // Auto High-3: show the sim-resolved figure when we have it (the live income's
+    // calculatedBenefit is never set for auto — the engine resolves it on a separate
+    // projected instance), falling back to the live field, then "Auto Calculated".
+    const autoBenefit = simResolved?.benefit ?? (income.calculatedBenefit > 0 ? income.calculatedBenefit : 0);
+    const autoHigh3 = simResolved?.high3 ?? (income.calculatedBenefit > 0 ? income.high3Salary : 0);
+    const benefitText = income.autoCalculateHigh3
+        ? (autoBenefit > 0 ? fmt(autoBenefit) : 'Auto Calculated')
+        : fmt(
+              getDisplayedCSRSBenefit(
+                  income.yearsOfService,
+                  income.high3Salary,
+                  income.retirementAge
+              )
+          );
+    const high3Text = income.autoCalculateHigh3
+        ? (autoBenefit > 0 ? fmt(autoHigh3) : 'Auto Calculated')
+        : fmt(income.high3Salary);
     return (
         <>
             <NumberInput
@@ -84,37 +112,16 @@ export function CSRSPensionFields({
                 <div className="text-content-default space-y-1">
                     <div className="flex justify-between">
                         <span>Estimated Annual Benefit:</span>
-                        <span className="font-bold text-positive-bright">
-                            {income.autoCalculateHigh3
-                                ? (income.calculatedBenefit > 0
-                                      ? `$${income.calculatedBenefit.toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr`
-                                      : 'Auto Calculated')
-                                : `$${getDisplayedCSRSBenefit(
-                                      income.yearsOfService,
-                                      income.high3Salary,
-                                      income.retirementAge
-                                  ).toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr`}
-                        </span>
+                        <span className="font-bold text-positive-bright">{benefitText}</span>
                     </div>
                     <div className="flex justify-between">
                         <span>High-3:</span>
-                        <span className="text-positive-bright">
-                            {/* With Auto High-3 on, the sim resolves the High-3 from
-                                salary history and stores it in high3Salary alongside
-                                calculatedBenefit, so once the benefit is computed show
-                                the resolved figure instead of the "Auto Calculated"
-                                placeholder (which would look half-resolved next to the
-                                computed benefit above). */}
-                            {income.autoCalculateHigh3
-                                ? (income.calculatedBenefit > 0
-                                      ? `$${income.high3Salary.toLocaleString(undefined, {
-                                            maximumFractionDigits: 0,
-                                        })}/yr`
-                                      : 'Auto Calculated')
-                                : `$${income.high3Salary.toLocaleString(undefined, {
-                                      maximumFractionDigits: 0,
-                                  })}/yr`}
-                        </span>
+                        {/* With Auto High-3 on, the sim resolves the High-3 from salary
+                            history and stores it alongside calculatedBenefit (read here
+                            via the simResolved prop), so once the benefit is computed show
+                            the resolved figure instead of the "Auto Calculated" placeholder
+                            (which would look half-resolved next to the computed benefit). */}
+                        <span className="text-positive-bright">{high3Text}</span>
                     </div>
                     <div className="flex justify-between">
                         <span>Benefits Start:</span>

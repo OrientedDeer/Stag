@@ -12,6 +12,8 @@ import {
 } from '../../../data/PensionData';
 import { getInitialFormState } from '../../../components/Objects/Income/incomeFormTypes';
 import { FERSPensionIncome } from '../../../components/Objects/Income/models';
+import { getSimResolvedPension, getDisplayAmount } from '../../../components/Objects/Income/incomeCardUtils';
+import type { SimulationYear } from '../../../services/simulation/types';
 
 // An MRA+10 retiree: born 1970 (MRA 57), retiring at 57 with 20 years of service
 // and a $100k High-3. The simulation applies a 5%/yr-under-62 reduction, so the
@@ -91,6 +93,109 @@ describe('FERS pension display estimate (Issue 1: MRA+10 reduction)', () => {
 
         expect(getByText('$15,000/yr')).toBeTruthy();
         expect(queryByText('$20,000/yr')).toBeNull();
+    });
+});
+
+describe('FERS Auto High-3 display (#133-a: read the sim-resolved benefit)', () => {
+    // See the CSRS counterpart for the full rationale: with Auto High-3 the engine
+    // resolves the benefit/High-3 on a SEPARATE projected FERS instance in
+    // IncomeProjection, never on the live editable income — so the card reads the
+    // resolved figures back out of the SimulationContext timeline (the simResolved
+    // prop), NOT a hand-set calculatedBenefit.
+    const RESOLVED_BENEFIT = 15_000;
+    const RESOLVED_HIGH3 = 100_000;
+
+    const liveAutoIncome = () =>
+        new FERSPensionIncome(
+            'fers-auto',
+            'FERS',
+            MRA_PLUS_10.yearsOfService,
+            0, // high3 unset (auto)
+            MRA_PLUS_10.retirementAge,
+            MRA_PLUS_10.birthYear,
+            0, // calculatedBenefit NEVER set on the live object for auto
+            0,
+            0,
+            undefined,
+            undefined,
+            true, // autoCalculateHigh3
+            'work-1'
+        );
+
+    const timelineWithActivation = (): SimulationYear[] => [
+        {
+            year: MRA_PLUS_10.birthYear + MRA_PLUS_10.retirementAge - 1,
+            incomes: [liveAutoIncome()],
+        } as unknown as SimulationYear,
+        {
+            year: MRA_PLUS_10.birthYear + MRA_PLUS_10.retirementAge,
+            incomes: [
+                new FERSPensionIncome(
+                    'fers-auto',
+                    'FERS',
+                    MRA_PLUS_10.yearsOfService,
+                    RESOLVED_HIGH3,
+                    MRA_PLUS_10.retirementAge,
+                    MRA_PLUS_10.birthYear,
+                    RESOLVED_BENEFIT,
+                    0,
+                    0,
+                    undefined,
+                    undefined,
+                    true,
+                    'work-1'
+                ),
+            ],
+        } as unknown as SimulationYear,
+    ];
+
+    it('getSimResolvedPension finds the first activation year benefit + High-3', () => {
+        expect(getSimResolvedPension('fers-auto', timelineWithActivation()))
+            .toEqual({ benefit: RESOLVED_BENEFIT, high3: RESOLVED_HIGH3 });
+    });
+
+    it('returns null with no simulation or a never-activating pension', () => {
+        expect(getSimResolvedPension('fers-auto', [])).toBeNull();
+        expect(getSimResolvedPension('fers-auto', undefined)).toBeNull();
+        const neverActivates = [
+            { year: 2030, incomes: [liveAutoIncome()] } as unknown as SimulationYear,
+        ];
+        expect(getSimResolvedPension('fers-auto', neverActivates)).toBeNull();
+    });
+
+    it('card shows the sim-resolved $/yr for Auto High-3 once the sim has run', () => {
+        const simResolved = getSimResolvedPension('fers-auto', timelineWithActivation());
+        const { getByText } = render(
+            <CardFERSPensionFields
+                income={liveAutoIncome()}
+                onFieldUpdate={() => {}}
+                workIncomes={[]}
+                birthYear={MRA_PLUS_10.birthYear}
+                simResolved={simResolved}
+            />
+        );
+        expect(getByText('$15,000/yr')).toBeTruthy();
+        expect(getByText('$100,000/yr')).toBeTruthy();
+    });
+
+    it('keeps "Auto Calculated" on both rows when there is no sim data (simResolved null)', () => {
+        const { getAllByText, queryByText } = render(
+            <CardFERSPensionFields
+                income={liveAutoIncome()}
+                onFieldUpdate={() => {}}
+                workIncomes={[]}
+                birthYear={MRA_PLUS_10.birthYear}
+                simResolved={null}
+            />
+        );
+        expect(getAllByText('Auto Calculated').length).toBe(2);
+        expect(queryByText('$15,000/yr')).toBeNull();
+    });
+
+    it('collapsed header agrees: getDisplayAmount uses the sim-resolved benefit', () => {
+        const simResolved = getSimResolvedPension('fers-auto', timelineWithActivation());
+        expect(getDisplayAmount(liveAutoIncome(), true)).toBe('Auto-calculated');
+        expect(getDisplayAmount(liveAutoIncome(), true, simResolved?.benefit)).toBe('$15,000');
     });
 });
 

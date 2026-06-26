@@ -11,6 +11,8 @@ import {
 } from '../../../data/PensionData';
 import { getInitialFormState } from '../../../components/Objects/Income/incomeFormTypes';
 import { CSRSPensionIncome } from '../../../components/Objects/Income/models';
+import { getSimResolvedPension, getDisplayAmount } from '../../../components/Objects/Income/incomeCardUtils';
+import type { SimulationYear } from '../../../services/simulation/types';
 
 // An early-retirement CSRS retiree: 25 years of service, $100k High-3, retiring at
 // age 50. The basic benefit is $46,250 but CSRS applies a 2%/yr-under-55 reduction
@@ -67,60 +69,110 @@ describe('CSRS pension display estimate (Issue #133: early-retirement reduction)
         expect(queryByText('$46,250/yr')).toBeNull();
     });
 
-    it('card shows the sim-calculated benefit (not "Auto Calculated") when Auto High-3 is on', () => {
-        // With Auto High-3 on, the High-3 is resolved at sim time and the result lands
-        // in calculatedBenefit. The expanded card now shows that $/yr (matching the
-        // collapsed header) instead of the static "Auto Calculated" placeholder.
+    // ---- Auto High-3: read-from-sim path (#133-a) ----
+    // With Auto High-3 on, the engine NEVER writes the resolved benefit/High-3 back
+    // onto the editable IncomeContext object — it computes them on a SEPARATE
+    // projected CSRS instance in IncomeProjection (the activation year sets
+    // `calculatedBenefit` + the resolved `high3Salary`). So the live income's
+    // `calculatedBenefit` stays 0; the card reads the resolved figures back out of
+    // the SimulationContext timeline via getSimResolvedPension, passed in as the
+    // `simResolved` prop. These tests drive that real data path with a timeline
+    // fixture mirroring the engine output — NOT a hand-set calculatedBenefit.
+
+    // The live (editable) auto pension — calculatedBenefit 0, as it always is for auto.
+    const liveAutoIncome = () => {
         const income = new CSRSPensionIncome(
             'csrs-auto',
             'CSRS',
             EARLY_RETIREMENT.yearsOfService,
-            EARLY_RETIREMENT.high3Salary,
-            EARLY_RETIREMENT.retirementAge
+            0, // high3 unset on the editable income (auto)
+            EARLY_RETIREMENT.retirementAge,
+            0, // calculatedBenefit NEVER set on the live object for auto
+            undefined,
+            undefined,
+            true, // autoCalculateHigh3
+            'work-1'
         );
-        income.autoCalculateHigh3 = true;
-        income.calculatedBenefit = 41_625; // sim-populated (resolved High-3 + reduction)
+        return income;
+    };
 
+    // A timeline fixture mirroring the engine output: an early pre-activation year
+    // (calculatedBenefit 0) then the FIRST activation year carrying a projected CSRS
+    // instance (same id) with calculatedBenefit + the resolved high3Salary set.
+    const RESOLVED_BENEFIT = 41_625;
+    const RESOLVED_HIGH3 = 100_000;
+    const timelineWithActivation = (): SimulationYear[] => [
+        { year: 2030, incomes: [liveAutoIncome()] } as unknown as SimulationYear,
+        {
+            year: 2031,
+            incomes: [
+                new CSRSPensionIncome(
+                    'csrs-auto',
+                    'CSRS',
+                    EARLY_RETIREMENT.yearsOfService,
+                    RESOLVED_HIGH3,
+                    EARLY_RETIREMENT.retirementAge,
+                    RESOLVED_BENEFIT,
+                    undefined,
+                    undefined,
+                    true,
+                    'work-1'
+                ),
+            ],
+        } as unknown as SimulationYear,
+    ];
+
+    it('getSimResolvedPension finds the first activation year benefit + High-3', () => {
+        expect(getSimResolvedPension('csrs-auto', timelineWithActivation()))
+            .toEqual({ benefit: RESOLVED_BENEFIT, high3: RESOLVED_HIGH3 });
+    });
+
+    it('returns null with no simulation (empty timeline) or a never-activating pension', () => {
+        expect(getSimResolvedPension('csrs-auto', [])).toBeNull();
+        expect(getSimResolvedPension('csrs-auto', undefined)).toBeNull();
+        const neverActivates = [
+            { year: 2030, incomes: [liveAutoIncome()] } as unknown as SimulationYear,
+        ];
+        expect(getSimResolvedPension('csrs-auto', neverActivates)).toBeNull();
+    });
+
+    it('card shows the sim-resolved $/yr for Auto High-3 once the sim has run', () => {
+        const simResolved = getSimResolvedPension('csrs-auto', timelineWithActivation());
         const { getByText } = render(
             <CardCSRSPensionFields
-                income={income}
+                income={liveAutoIncome()}
                 onFieldUpdate={() => {}}
                 workIncomes={[]}
-                birthYear={1975}
+                birthYear={1981}
+                simResolved={simResolved}
             />
         );
-
         expect(getByText('$41,625/yr')).toBeTruthy();
-        // The High-3 row now shows the resolved figure (high3Salary, set by the sim
-        // alongside calculatedBenefit) instead of a half-resolved "Auto Calculated"
-        // next to the computed benefit.
+        // The High-3 row shows the resolved figure (from the sim), not a half-resolved
+        // "Auto Calculated" next to the computed benefit.
         expect(getByText('$100,000/yr')).toBeTruthy();
     });
 
-    it('keeps "Auto Calculated" on both the benefit and High-3 rows before the sim resolves them', () => {
-        // Auto High-3 on but calculatedBenefit still 0 (no simulation has run yet):
-        // neither the benefit nor the High-3 is known, so both rows read the
-        // placeholder — they stay consistent (no half-resolved display).
-        const income = new CSRSPensionIncome(
-            'csrs-pending',
-            'CSRS',
-            EARLY_RETIREMENT.yearsOfService,
-            EARLY_RETIREMENT.high3Salary,
-            EARLY_RETIREMENT.retirementAge
-        );
-        income.autoCalculateHigh3 = true;
-
+    it('keeps "Auto Calculated" on both rows when there is no sim data (simResolved null)', () => {
         const { getAllByText, queryByText } = render(
             <CardCSRSPensionFields
-                income={income}
+                income={liveAutoIncome()}
                 onFieldUpdate={() => {}}
                 workIncomes={[]}
-                birthYear={1975}
+                birthYear={1981}
+                simResolved={null}
             />
         );
-
         expect(getAllByText('Auto Calculated').length).toBe(2);
-        expect(queryByText('$100,000/yr')).toBeNull();
+        expect(queryByText('$41,625/yr')).toBeNull();
+    });
+
+    it('collapsed header agrees: getDisplayAmount uses the sim-resolved benefit', () => {
+        const simResolved = getSimResolvedPension('csrs-auto', timelineWithActivation());
+        // Without the override the header reads "Auto-calculated" (live field is 0);
+        // with the sim-resolved benefit it shows the figure — same source as the card.
+        expect(getDisplayAmount(liveAutoIncome(), true)).toBe('Auto-calculated');
+        expect(getDisplayAmount(liveAutoIncome(), true, simResolved?.benefit)).toBe('$41,625');
     });
 
     it('form variant renders the reduced benefit, not the unreduced one', () => {

@@ -16,6 +16,7 @@ import { formatCompactCurrency } from '../../../tabs/Future/tabs/FutureUtils';
 import { get401kLimit, getHSALimit } from '../../../data/ContributionLimits';
 import { getFrequencyAbbrev } from '../../../utils/formatters';
 import type { RSUAccount, InvestedAccount } from '../Accounts/models';
+import type { SimulationYear } from '../../../services/simulation/types';
 
 export interface ContributionWarning {
     type: string;
@@ -51,29 +52,80 @@ export function getIncomeIconBg(income: AnyIncome): string {
 /**
  * Header value shown on the collapsed card. Pension types show the
  * simulation-computed annual benefit; FutureSS shows the PIA once known.
+ *
+ * `simResolvedPensionBenefit` lets the collapsed header agree with the expanded
+ * FERS/CSRS card for the Auto High-3 case: the engine resolves that benefit on a
+ * separate projected instance and never writes it onto the editable income, so
+ * the live `calculatedBenefit` stays 0. Pass the sim-resolved annual benefit (see
+ * `getSimResolvedPension`) or `undefined`/`0` to keep the live-field behavior.
  */
-export function getDisplayAmount(income: AnyIncome, forceExact: boolean): string {
+export function getDisplayAmount(
+    income: AnyIncome,
+    forceExact: boolean,
+    simResolvedPensionBenefit?: number
+): string {
     if (income instanceof FutureSocialSecurityIncome) {
         return income.calculatedPIA > 0
             ? formatCompactCurrency(income.calculatedPIA, { forceExact })
             : 'Auto-calculated';
     }
     if (income instanceof FERSPensionIncome || income instanceof CSRSPensionIncome) {
-        return income.calculatedBenefit > 0
-            ? formatCompactCurrency(income.calculatedBenefit, { forceExact })
+        // Prefer the live field (manual-High-3 sets it); else the sim-resolved
+        // benefit (auto-High-3 case, never on the live object).
+        const benefit = income.calculatedBenefit > 0
+            ? income.calculatedBenefit
+            : (simResolvedPensionBenefit ?? 0);
+        return benefit > 0
+            ? formatCompactCurrency(benefit, { forceExact })
             : 'Auto-calculated';
     }
     return formatCompactCurrency(income.amount, { forceExact });
 }
 
-export function getFrequencyDisplay(income: AnyIncome): string {
+export function getFrequencyDisplay(income: AnyIncome, simResolvedPensionBenefit?: number): string {
     if (income instanceof FutureSocialSecurityIncome) {
         return income.calculatedPIA > 0 ? '/mo' : '';
     }
     if (income instanceof FERSPensionIncome || income instanceof CSRSPensionIncome) {
-        return income.calculatedBenefit > 0 ? '/yr' : '';
+        const hasBenefit = income.calculatedBenefit > 0 || (simResolvedPensionBenefit ?? 0) > 0;
+        return hasBenefit ? '/yr' : '';
     }
     return `/${getFrequencyAbbrev(income.frequency)}`;
+}
+
+/**
+ * The simulation-resolved annual benefit + High-3 for a FERS/CSRS pension whose
+ * High-3 is auto-calculated. The engine never writes these back onto the editable
+ * IncomeContext object — it computes them on a fresh projected pension instance in
+ * IncomeProjection (the activation year sets `calculatedBenefit` and the resolved
+ * `high3Salary`). So the live card can't show the figure on its own; this reads it
+ * back out of the cached SimulationContext timeline instead of persisting derived
+ * data onto the editable income.
+ *
+ * Scans the timeline for the FIRST year whose income with `incomeId` carries a
+ * positive `calculatedBenefit`, and returns that benefit plus its resolved High-3.
+ * Reads the fields structurally (not via instanceof) so it's robust to reconstituted
+ * className-only sim objects. Returns null when there's no simulation yet (empty
+ * timeline) or the pension never activates within the horizon — the caller then
+ * falls back to "Auto Calculated".
+ */
+export function getSimResolvedPension(
+    incomeId: string,
+    simulation: SimulationYear[] | undefined | null
+): { benefit: number; high3: number } | null {
+    if (!simulation || simulation.length === 0) return null;
+    for (const simYear of simulation) {
+        const match = simYear.incomes?.find((inc) => inc.id === incomeId) as
+            | { calculatedBenefit?: number; high3Salary?: number }
+            | undefined;
+        if (match && typeof match.calculatedBenefit === 'number' && match.calculatedBenefit > 0) {
+            return {
+                benefit: match.calculatedBenefit,
+                high3: typeof match.high3Salary === 'number' ? match.high3Salary : 0,
+            };
+        }
+    }
+    return null;
 }
 
 const FREQ_TO_ANNUAL: Record<IncomeFrequency, number> = {
