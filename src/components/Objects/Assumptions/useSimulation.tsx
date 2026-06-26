@@ -3,7 +3,9 @@ import * as TaxService from '../../Objects/Taxes/TaxService';
 import { WorkIncome, getIncomeActiveMultiplier } from '../Income/models';
 import { AnyAccount, InvestedAccount, SavedAccount, DebtAccount, DeficitDebtAccount } from '../Accounts/models';
 import { AnyIncome } from '../Income/models';
-import { AnyExpense, MortgageExpense } from '../Expense/models';
+import { AnyExpense, MortgageExpense, CLASS_TO_CATEGORY } from '../Expense/models';
+import { buildCashflowDetail } from '../../../services/simulation/CashflowDetailBuilder';
+import { CashflowDetail } from '../../../services/simulation/types';
 import { AssumptionsState, getLifeExpectancy, getBirthYear, getRetirementAge } from './AssumptionsContext';
 import { resolveRothConversionStrategy } from './rothConversionStrategy';
 import { TaxState, resolveTaxEventsForYear } from '../Taxes/TaxContext';
@@ -28,6 +30,76 @@ export function scopeFutureTaxState(taxState: TaxState): TaxState {
         fedOverride: null,
         ficaOverride: null,
         stateOverride: null,
+    };
+}
+
+/**
+ * Build the per-source `cashflowDetail` for the synthetic END-OF-YEAR adjustment
+ * row (#148). Without it that row takes the Sankey's raw-expenses FALLBACK path,
+ * which mixes units: the row's income/taxes/`livingExpenses` are PRORATED by
+ * `remainingFraction`, but the fallback's per-category expense links are FULL-YEAR
+ * (`getAnnualAmount`). Net Pay's in ≠ out by exactly the un-prorated expense slice
+ * `fullYearLivingNonMortgage × (1 − remainingFraction)`.
+ *
+ * Giving the row a real `cashflowDetail` moves it onto the Sankey's PREFERRED
+ * path (the same path every engine-projected year uses post-#147), so it never
+ * re-derives anything from raw inputs. We reuse `buildCashflowDetail` for the
+ * income / deferral / employer-match / mortgage classification (one source of
+ * truth) and scale every dollar field by `remainingFraction` so the detail is
+ * uniformly prorated and lines up with the row's already-prorated income, taxes,
+ * and `livingExpenses`.
+ *
+ * `expensesByCategory` is rebuilt here from `getAnnualAmount` (long-term goals →
+ * $0, mortgage excluded) rather than taken from `buildCashflowDetail`, because
+ * the row's `livingExpenses` (= Σ `getAnnualAmount` over yearZero's expenses) also
+ * excludes goal set-asides. Matching that basis keeps the Sankey's close term
+ * (`livingExpenses − mortgage`) and the emitted per-category links consistent, so
+ * Net Pay balances even for users funding a long-term goal.
+ *
+ * Built from `yearZero`'s ORIGINAL expenses (the same set `livingExpenses` is
+ * derived from), not the EOY row's amortization-adjusted expenses, so the mortgage
+ * split here matches the mortgage payment baked into `livingExpenses`.
+ */
+function buildEoyCashflowDetail(
+    incomes: AnyIncome[],
+    expenses: AnyExpense[],
+    accounts: AnyAccount[],
+    insurance: number,
+    year: number,
+    remainingFraction: number,
+): CashflowDetail {
+    const fullYear = buildCashflowDetail({
+        incomes,
+        expenses,
+        accounts,
+        insurance,
+        year,
+        brokerageLTCGFromGross: 0,
+    });
+
+    // Rebuild expense categories from the same getAnnualAmount basis as the row's
+    // livingExpenses (goals → 0, mortgage split out), so close term == link sum.
+    const expensesByCategory: Record<string, number> = {};
+    for (const exp of expenses) {
+        if (exp instanceof MortgageExpense) continue;
+        const amount = exp.getAnnualAmount(year);
+        if (amount <= 0) continue; // long-term goals report 0 here
+        const category = CLASS_TO_CATEGORY[exp.constructor.name] || 'Other';
+        expensesByCategory[category] = (expensesByCategory[category] || 0) + amount * remainingFraction;
+    }
+
+    const f = remainingFraction;
+    return {
+        incomeBySource: fullYear.incomeBySource.map(s => ({ ...s, amount: s.amount * f })),
+        userPreTax401k: fullYear.userPreTax401k * f,
+        userRoth401k: fullYear.userRoth401k * f,
+        employerMatchPreTax: fullYear.employerMatchPreTax * f,
+        employerMatchRoth: fullYear.employerMatchRoth * f,
+        insurance: fullYear.insurance * f,
+        mortgagePrincipal: fullYear.mortgagePrincipal * f,
+        mortgageInterestEscrow: fullYear.mortgageInterestEscrow * f,
+        expensesByCategory,
+        brokerageLTCGFromGross: 0,
     };
 }
 
@@ -645,6 +717,16 @@ export const runSimulation = (
                 earlyWithdrawalPenalty: (yearZero.taxDetails.earlyWithdrawalPenalty ?? 0) * remainingFraction,
                 longTermCapitalGains: (yearZero.taxDetails.longTermCapitalGains ?? 0) * remainingFraction,
             },
+            // #148: attach a prorated per-source cashflow detail so the Sankey takes
+            // its PREFERRED path for this row instead of the fallback, whose
+            // full-year expense links disagreed with the row's prorated livingExpenses
+            // and left Net Pay's inflow ≠ outflow. Derived from yearZero's ORIGINAL
+            // full-year expenses (the basis of livingExpenses) and scaled by
+            // remainingFraction, matching the row's already-prorated income/taxes.
+            cashflowDetail: buildEoyCashflowDetail(
+                yearZero.incomes, yearZero.expenses, adjustedAccounts,
+                currentInsurance, startYear, remainingFraction,
+            ),
             isEndOfYearProjection: true,
             logs: [],
         };
