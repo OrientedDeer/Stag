@@ -8,11 +8,13 @@ import { AnyAccount, InvestedAccount, DebtAccount, SavedAccount } from '../../co
 import { isOfferableDebt, isSurplusPaydownDebt } from '../../services/simulation/SurplusAllocator';
 import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
 import { calculateFederalTaxFromIncomes, calculateStateTax, calculateFicaTax } from '../../components/Objects/Taxes/TaxService';
-import { WorkIncome } from '../../components/Objects/Income/models';
+import { WorkIncome, isIncomeActiveInCurrentMonth } from '../../components/Objects/Income/models';
 import { formatCompactCurrency } from './tabs/FutureUtils';
 import { get401kLimit, getIRALimit, getHSALimit } from '../../data/ContributionLimits';
 import { getActiveExpenses } from '../../components/Objects/Budget/budgetUtils';
 import { isLongTermGoal, getGoalFundMonthlyCap } from '../../components/Objects/Expense/models';
+import { SimulationContext } from '../../components/Objects/Assumptions/SimulationContext';
+import { isActiveByMilestone } from '../../services/simulation/MilestoneEvaluator';
 
 // UI Components
 import { CurrencyInput } from '../../components/Layout/InputFields/CurrencyInput';
@@ -30,6 +32,7 @@ export default function PriorityTab() {
     const { incomes } = useContext(IncomeContext);
     const { expenses } = useContext(ExpenseContext);
     const { state: taxState } = useContext(TaxContext);
+    const { simulation } = useContext(SimulationContext);
     const { show: showReceipt } = useReceiptToast();
 
     const year = new Date().getFullYear();
@@ -99,9 +102,26 @@ export default function PriorityTab() {
 
     // ========== CALCULATIONS ==========
 
+    // #145: only income active as of TODAY counts toward take-home. A milestone-
+    // started income (no fixed start date, or whose start milestone fires in a
+    // future year) must not inflate today's allocation. isIncomeActiveInCurrentMonth
+    // gates fixed start/end dates; the milestone gate reuses the simulation's
+    // first-year reached-milestone set — the same set the engine resolves — so an
+    // unreached start milestone excludes its income (and an already-reached one
+    // keeps it). Until the simulation has run, the empty set conservatively treats
+    // a milestone-started income as not-yet-active rather than counting it early.
+    const todayMilestoneSet = useMemo(
+        () => new Set(simulation[0]?.activeMilestones ?? []),
+    [simulation]);
+    const activeIncomes = useMemo(
+        () => incomes.filter(inc =>
+            isIncomeActiveInCurrentMonth(inc) &&
+            isActiveByMilestone(inc.startMilestoneId, inc.endMilestoneId, todayMilestoneSet)),
+    [incomes, todayMilestoneSet]);
+
     const totalMonthlyIncome = useMemo(() =>
-        incomes.reduce((sum, inc) => sum + (inc.getMonthlyAmount(year)), 0),
-    [incomes, year]);
+        activeIncomes.reduce((sum, inc) => sum + (inc.getMonthlyAmount(year)), 0),
+    [activeIncomes, year]);
 
     // Use today's active expenses (raw monthly), not the year's prorated average.
     // Otherwise a mid-year expense end/start would skew both the disposable-income
@@ -116,9 +136,9 @@ export default function PriorityTab() {
     // and `state.milestones` (age). Narrowing the deps avoids recomputing on
     // unrelated assumption updates like priority reorders.
     /* eslint-disable react-hooks/exhaustive-deps */
-    const federalTax = useMemo(() => calculateFederalTaxFromIncomes(taxState, incomes, expenses, 0, year, state) / 12, [taxState, incomes, expenses, year, state.macro, state.milestones]);
-    const stateTax = useMemo(() => calculateStateTax(taxState, incomes, expenses, year, state) / 12, [taxState, incomes, expenses, year, state.macro, state.milestones]);
-    const ficaTax = useMemo(() => calculateFicaTax(taxState, incomes, year, state) / 12, [taxState, incomes, year, state.macro, state.milestones]);
+    const federalTax = useMemo(() => calculateFederalTaxFromIncomes(taxState, activeIncomes, expenses, 0, year, state) / 12, [taxState, activeIncomes, expenses, year, state.macro, state.milestones]);
+    const stateTax = useMemo(() => calculateStateTax(taxState, activeIncomes, expenses, year, state) / 12, [taxState, activeIncomes, expenses, year, state.macro, state.milestones]);
+    const ficaTax = useMemo(() => calculateFicaTax(taxState, activeIncomes, year, state) / 12, [taxState, activeIncomes, year, state.macro, state.milestones]);
     /* eslint-enable react-hooks/exhaustive-deps */
     const monthlyTaxes = federalTax + stateTax + ficaTax;
 
@@ -130,7 +150,7 @@ export default function PriorityTab() {
         let insurance = 0;
         let hsa = 0;
 
-        incomes.forEach(inc => {
+        activeIncomes.forEach(inc => {
             if (inc instanceof WorkIncome) {
                 const effective401k = age !== undefined
                     ? inc.getEffective401k(year, age)
@@ -143,7 +163,7 @@ export default function PriorityTab() {
         });
 
         return { pretax401k, roth401k, insurance, hsa, total: pretax401k + roth401k + insurance + hsa };
-    }, [incomes, year, age]);
+    }, [activeIncomes, year, age]);
 
     const monthlyPaycheckDeductions = deductionBreakdown.total;
 
