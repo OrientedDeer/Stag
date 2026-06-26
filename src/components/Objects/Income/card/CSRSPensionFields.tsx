@@ -86,7 +86,9 @@ export function CSRSPensionFields({
                         <span>Estimated Annual Benefit:</span>
                         <span className="font-bold text-positive-bright">
                             {income.autoCalculateHigh3
-                                ? 'Auto Calculated'
+                                ? (income.calculatedBenefit > 0
+                                      ? `$${income.calculatedBenefit.toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr`
+                                      : 'Auto Calculated')
                                 : `$${getDisplayedCSRSBenefit(
                                       income.yearsOfService,
                                       income.high3Salary,

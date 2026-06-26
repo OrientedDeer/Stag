@@ -87,7 +87,9 @@ export function FERSPensionFields({
                         <span>Estimated Annual Benefit:</span>
                         <span className="font-bold text-positive-bright">
                             {income.autoCalculateHigh3
-                                ? 'Auto Calculated'
+                                ? (income.calculatedBenefit > 0
+                                      ? `$${income.calculatedBenefit.toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr`
+                                      : 'Auto Calculated')
                                 : `$${getDisplayedFERSBenefit(
                                       income.yearsOfService,
                                       income.high3Salary,

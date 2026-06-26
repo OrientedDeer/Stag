@@ -67,6 +67,32 @@ describe('CSRS pension display estimate (Issue #133: early-retirement reduction)
         expect(queryByText('$46,250/yr')).toBeNull();
     });
 
+    it('card shows the sim-calculated benefit (not "Auto Calculated") when Auto High-3 is on', () => {
+        // With Auto High-3 on, the High-3 is resolved at sim time and the result lands
+        // in calculatedBenefit. The expanded card now shows that $/yr (matching the
+        // collapsed header) instead of the static "Auto Calculated" placeholder.
+        const income = new CSRSPensionIncome(
+            'csrs-auto',
+            'CSRS',
+            EARLY_RETIREMENT.yearsOfService,
+            EARLY_RETIREMENT.high3Salary,
+            EARLY_RETIREMENT.retirementAge
+        );
+        income.autoCalculateHigh3 = true;
+        income.calculatedBenefit = 41_625; // sim-populated (resolved High-3 + reduction)
+
+        const { getByText } = render(
+            <CardCSRSPensionFields
+                income={income}
+                onFieldUpdate={() => {}}
+                workIncomes={[]}
+                birthYear={1975}
+            />
+        );
+
+        expect(getByText('$41,625/yr')).toBeTruthy();
+    });
+
     it('form variant renders the reduced benefit, not the unreduced one', () => {
         const form = {
             ...getInitialFormState(),
