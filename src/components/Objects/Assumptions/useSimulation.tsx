@@ -292,7 +292,22 @@ function runSimulationLoop(args: {
 
         timeline.push(result);
 
-        currentIncomes = result.incomes;
+        // #146: result.incomes is milestone-FILTERED, so an income whose START
+        // milestone hasn't fired yet is absent from it. Feeding only result.incomes
+        // forward would permanently DROP that income before its milestone can ever
+        // fire — its salary, and any RSU vesting, would never appear for the whole
+        // horizon. Carry forward the mutated active incomes AND re-include the
+        // dormant, not-yet-started milestone incomes (unmutated) so they survive
+        // until their milestone hits. Only incomes with an UNREACHED start milestone
+        // are re-added: ended/retired drops (their start milestone is already
+        // reached) and regenerated RMD incomes (no start milestone) stay out.
+        const reachedMilestoneSet = new Set(result.activeMilestones || []);
+        const survivingIncomeIds = new Set(result.incomes.map(inc => inc.id));
+        const dormantMilestoneIncomes = currentIncomes.filter(inc =>
+            inc.startMilestoneId &&
+            !reachedMilestoneSet.has(inc.startMilestoneId) &&
+            !survivingIncomeIds.has(inc.id));
+        currentIncomes = [...result.incomes, ...dormantMilestoneIncomes];
         currentExpenses = result.expenses;
         currentAccounts = result.accounts;
         previousActiveMilestones = result.activeMilestones || [];
