@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
-import { InvestedAccount, DebtAccount } from '../../../components/Objects/Accounts/models';
+import { InvestedAccount, DebtAccount, SavedAccount } from '../../../components/Objects/Accounts/models';
 import { WorkIncome } from '../../../components/Objects/Income/models';
-import { LoanExpense, FoodExpense } from '../../../components/Objects/Expense/models';
+import { LoanExpense, FoodExpense, OtherExpense } from '../../../components/Objects/Expense/models';
 import { runSimulation } from '../../../components/Objects/Assumptions/useSimulation';
 import { buildCashflowSankeyData } from '../../../components/Charts/cashflowSankeyData';
 
@@ -86,6 +86,31 @@ describe('#148 Cashflow Sankey — Net Pay balances on the EOY-adjustment row', 
         new FoodExpense('exp-living', 'Living Expenses', 36000, 'Annually', new Date(2025, 0, 1)),
     ];
 
+    // Same baseline plus a long-term GOAL funded by a monthly set-aside into a
+    // reserved sinking-fund SavedAccount. A goal reports $0 from getAnnualAmount,
+    // so the EOY row's `livingExpenses` (= Σ getAnnualAmount × remainingFraction)
+    // legitimately EXCLUDES the set-aside — this scenario locks in that the EOY
+    // row's rebuilt expense links stay on that SAME goal-excluding basis (so Net
+    // Pay still balances) and guards against a refactor that reuses
+    // buildCashflowDetail's goal-INCLUSIVE categories (which would unbalance the
+    // row by exactly the prorated set-aside). This is the case the original #148
+    // coverage missed.
+    const goalAssumptions: AssumptionsState = { ...baseAssumptions, priorities: [] };
+    const makeGoalAccounts = () => [
+        new SavedAccount('acc-roof-fund', 'Roof (fund)', 0, 0),
+        new InvestedAccount('acc-savings', 'Savings', 30000, 0, 10, 0.05, 'Brokerage', true, 1.0, 30000),
+    ];
+    const makeGoalExpenses = () => {
+        const roofGoal = new OtherExpense('exp-roof', 'Roof', 36000, 'Monthly', new Date(2024, 0, 1));
+        roofGoal.goalType = 'recurring';
+        roofGoal.intervalYears = 3;
+        roofGoal.goalAccountId = 'acc-roof-fund';
+        return [
+            new FoodExpense('exp-living', 'Living Expenses', 36000, 'Annually', new Date(2025, 0, 1)),
+            roofGoal,
+        ];
+    };
+
     /** Map a SimulationYear into buildCashflowSankeyData exactly as CashflowTabs does. */
     function sankeyForYear(y: ReturnType<typeof runSimulation>[number]) {
         return buildCashflowSankeyData({
@@ -110,16 +135,25 @@ describe('#148 Cashflow Sankey — Net Pay balances on the EOY-adjustment row', 
         { label: 'October (small remaining fraction)', date: new Date(2025, 9, 15) },
     ];
 
-    const scenarios: Array<{ label: string; assumptions: AssumptionsState }> = [
-        { label: 'no debt on priority list', assumptions: noDebtAssumptions },
-        { label: 'debt on priority list', assumptions: withDebtAssumptions },
+    type Factories = {
+        accounts: () => ReturnType<typeof makeAccounts>;
+        expenses: () => ReturnType<typeof makeExpenses>;
+    };
+    const baseFactories: Factories = { accounts: makeAccounts, expenses: makeExpenses };
+    const goalFactories: Factories = { accounts: makeGoalAccounts, expenses: makeGoalExpenses };
+
+    const scenarios: Array<{ label: string; assumptions: AssumptionsState; factories: Factories }> = [
+        { label: 'no debt on priority list', assumptions: noDebtAssumptions, factories: baseFactories },
+        { label: 'debt on priority list', assumptions: withDebtAssumptions, factories: baseFactories },
+        // The case the original #148 coverage missed: a user funding a long-term goal.
+        { label: 'funding a long-term goal', assumptions: goalAssumptions, factories: goalFactories },
     ];
 
-    for (const { label: scenarioLabel, assumptions } of scenarios) {
+    for (const { label: scenarioLabel, assumptions, factories } of scenarios) {
         for (const { label: monthLabel, date } of refDates) {
             it(`Net Pay balances on the EOY row (${scenarioLabel}, ${monthLabel})`, () => {
                 const sim = runSimulation(
-                    yearsToSimulate, makeAccounts(), makeIncomes(), makeExpenses(),
+                    yearsToSimulate, factories.accounts(), makeIncomes(), factories.expenses(),
                     assumptions, taxState, undefined, { referenceDate: date },
                 );
 
@@ -173,5 +207,54 @@ describe('#148 Cashflow Sankey — Net Pay balances on the EOY-adjustment row', 
         // close term (livingExpenses − mortgage payment), within $1 — exactly the
         // consistency the fix establishes.
         expect(Math.abs(livingCat - eoy!.cashflow.livingExpenses)).toBeLessThan(1);
+    });
+
+    it('keeps the long-term-goal set-aside OFF the EOY row (close term and links agree)', () => {
+        // Invariant that keeps Net Pay balanced on the EOY row when a goal is funded.
+        //
+        // A long-term goal reports $0 from getAnnualAmount, so the EOY row's
+        // `livingExpenses` (Σ getAnnualAmount × remainingFraction, derived in the
+        // year-0 baseline — NOT through SimulationEngine, which DOES add goal funding
+        // to projected years) legitimately EXCLUDES the set-aside. The Sankey closes
+        // the residual against that `livingExpenses`, so the row's emitted expense
+        // links must stay on the SAME goal-excluding basis. If a refactor ever reused
+        // buildCashflowDetail's goal-INCLUSIVE `expensesByCategory` (which emits a
+        // "<name> (goal)" category) for this row, the links would carry the prorated
+        // set-aside the close term does not, unbalancing Net Pay by exactly that slice
+        // — the #148 bug class. This test pins the basis so that can't regress.
+        const sim = runSimulation(
+            yearsToSimulate, makeGoalAccounts(), makeIncomes(), makeGoalExpenses(),
+            goalAssumptions, taxState, undefined, { referenceDate: new Date(2025, 5, 15) },
+        );
+        const eoy = sim.find(y => y.isEndOfYearProjection);
+        expect(eoy, 'a synthetic end-of-year adjustment row should exist mid-year').toBeDefined();
+
+        // Sanity-check the scenario actually funds a goal: at least one projected
+        // engine year (a real, non-baseline, non-EOY row) DOES carry a "(goal)"
+        // category, so the fund is genuinely live in this run.
+        const startYear = eoy!.year; // EOY row shares year-0's (current) year
+        const projectedHasGoal = sim
+            .filter(y => !y.isEndOfYearProjection && y.year > startYear)
+            .some(y => Object.keys(y.cashflowDetail?.expensesByCategory ?? {})
+                .some(cat => cat.includes('(goal)')));
+        expect(projectedHasGoal, 'a projected engine year should fund the goal').toBe(true);
+
+        // The EOY row must NOT carry any "(goal)" category — the set-aside is excluded
+        // from its livingExpenses, so it must be excluded from its links too.
+        const eoyCats = eoy!.cashflowDetail!.expensesByCategory;
+        const eoyHasGoal = Object.keys(eoyCats).some(cat => cat.includes('(goal)'));
+        expect(eoyHasGoal, 'the goal set-aside must NOT leak onto the EOY row').toBe(false);
+
+        // Close term == link sum (the balance condition), within $1.
+        const linkSum = Object.values(eoyCats).reduce((sum, v) => sum + v, 0);
+        expect(Math.abs(linkSum - eoy!.cashflow.livingExpenses)).toBeLessThan(1);
+
+        // And Net Pay is balanced end-to-end.
+        const { imbalances, error } = sankeyForYear(eoy!);
+        expect(error).toBeNull();
+        expect(
+            imbalances,
+            `unexpected Sankey imbalances on goal-funded EOY row: ${JSON.stringify(imbalances)}`,
+        ).toHaveLength(0);
     });
 });
