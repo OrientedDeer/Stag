@@ -198,19 +198,46 @@ export function getRSUPriceValidationMessage(
     rsuAccounts: RSUAccount[]
 ): string | null {
     if (!(income instanceof WorkIncome)) return null;
+    return getRSUPriceValidationMessageFor(income, rsuAccounts);
+}
+
+/**
+ * Structural shape of the RSU config the price validation reads. Both the
+ * `WorkIncome` model (card side) and the `IncomeFormState` (Add Income modal)
+ * satisfy it, so the shared value-based RSUFields component runs the same
+ * validation regardless of which editor drives it.
+ */
+export interface RSUValidationConfig {
+    rsuVestingSchedule: 'NONE' | 'cliff-1yr' | 'graded-3yr' | 'graded-4yr';
+    rsuGrantShares: number;
+    startDate?: Date;
+    rsuAccountId: string | null;
+}
+
+/**
+ * Shared, shape-agnostic core of the RSU price validation. Operates on the
+ * structural `RSUValidationConfig` so the card's `WorkIncome` instance and the
+ * modal's `IncomeFormState` form object converge on ONE implementation. See
+ * `getRSUPriceValidationMessage` for the full rationale; this carries the logic.
+ * Pure so it's testable.
+ */
+export function getRSUPriceValidationMessageFor(
+    config: RSUValidationConfig,
+    rsuAccounts: RSUAccount[]
+): string | null {
     // Only validate once vesting is actually configured.
-    if (!isActiveRSUGrant(income)) return null;
+    if (!isActiveRSUGrant(config)) return null;
 
     // A milestone-started grant has no fixed startDate, and the engine recognizes
     // NO vest without one (RSUVesting: `if (!inc.startDate) return`), so a $0
     // projection there is the missing start date, not the missing price — adding a
     // price wouldn't help. Don't misdiagnose it with a "price required" banner.
-    if (!income.startDate) return null;
+    if (!config.startDate) return null;
 
     // No linked account is a separate condition the RSU section already flags.
-    if (!income.rsuAccountId) return null;
+    if (!config.rsuAccountId) return null;
 
-    const linked = rsuAccounts.find((acc) => acc.id === income.rsuAccountId);
+    const linked = rsuAccounts.find((acc) => acc.id === config.rsuAccountId);
     if (!linked) return null;
 
     if (!linked.currentSharePrice || linked.currentSharePrice <= 0) {

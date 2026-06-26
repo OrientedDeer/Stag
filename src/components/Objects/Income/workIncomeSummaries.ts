@@ -1,13 +1,18 @@
 import { formatCompactCurrency } from '../../../tabs/Future/tabs/FutureUtils';
-import type { AutoMax401kOption, ESPPContributionType, PensionSystem } from './models';
+import type {
+    AutoMax401kOption,
+    ESPPContributionType,
+    PensionSystem,
+    RSUVestingSchedule,
+} from './models';
 
 /**
  * Paystub-style one-line summaries for collapsed work-income sections.
  *
  * Inputs are structural so both the `WorkIncome` model (card side) and the
- * `IncomeFormState` (Add Income modal) satisfy them. The card-side
- * `card/WorkIncomeFields.tsx` currently carries its own private copies of
- * these helpers; if it's ever revisited it can import from here instead.
+ * `IncomeFormState` (Add Income modal) satisfy them. Both the card-side
+ * `card/WorkIncomeFields.tsx` and the modal `WorkIncomeFields.tsx` import these
+ * so the collapsed-header summaries are guaranteed identical across surfaces.
  */
 
 const fmt = (n: number) => formatCompactCurrency(n, { forceExact: true });
@@ -63,6 +68,22 @@ export function getESPPSummary(income: ESPPSummaryInput): string {
     return income.esppContributionType === 'PERCENTAGE'
         ? `${income.esppContributionAmount}% of salary`
         : `${fmt(income.esppContributionAmount)}/yr`;
+}
+
+export interface RSUSummaryInput {
+    rsuVestingSchedule: RSUVestingSchedule;
+    rsuGrantShares: number;
+}
+
+export function getRSUSummary(income: RSUSummaryInput): string {
+    if (income.rsuVestingSchedule === 'NONE') return 'None';
+    const scheduleLabel: Record<string, string> = {
+        'cliff-1yr': '1-yr cliff',
+        'graded-3yr': '3-yr graded',
+        'graded-4yr': '4-yr graded',
+    };
+    const label = scheduleLabel[income.rsuVestingSchedule] ?? income.rsuVestingSchedule;
+    return `${income.rsuGrantShares} sh · ${label}`;
 }
 
 export function getPensionSummary(pensionSystem: PensionSystem): string {

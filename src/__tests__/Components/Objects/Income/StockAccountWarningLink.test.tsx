@@ -11,6 +11,11 @@ import { WorkIncome } from '../../../../components/Objects/Income/models';
  * the Accounts › Invested sub-tab (where the +Add RSU / +Add ESPP buttons live).
  * The shared AddStockAccountLink renders a react-router <Link>, so each test
  * wraps the field component in a MemoryRouter.
+ *
+ * RSUFields/ESPPFields are now value-based shared components (#140), so these
+ * pass the field values + showAccountLink (the card-side behavior) directly.
+ * The card sets showAccountLink; the modal omits it (text-only — covered in
+ * WorkIncomeFieldsModal.test.tsx's "no deep link" case).
  */
 
 function makeIncome(): WorkIncome {
@@ -28,7 +33,7 @@ describe('#141 RSU card warning — Add Account deep link', () => {
 
         render(
             <MemoryRouter>
-                <RSUFields income={income} onFieldUpdate={() => {}} rsuAccounts={[]} />
+                <RSUFields values={income} onUpdate={() => {}} rsuAccounts={[]} idPrefix={income.id} showAccountLink />
             </MemoryRouter>
         );
 
@@ -46,7 +51,7 @@ describe('#141 ESPP card warning — Add Account deep link', () => {
 
         render(
             <MemoryRouter>
-                <ESPPFields income={income} onFieldUpdate={() => {}} esppAccounts={[]} />
+                <ESPPFields values={income} onUpdate={() => {}} esppAccounts={[]} idPrefix={income.id} showAccountLink />
             </MemoryRouter>
         );
 
@@ -62,7 +67,7 @@ describe('#141 ESPP card warning — Add Account deep link', () => {
 
         const { container } = render(
             <MemoryRouter>
-                <ESPPFields income={income} onFieldUpdate={() => {}} esppAccounts={[]} />
+                <ESPPFields values={income} onUpdate={() => {}} esppAccounts={[]} idPrefix={income.id} showAccountLink />
             </MemoryRouter>
         );
 

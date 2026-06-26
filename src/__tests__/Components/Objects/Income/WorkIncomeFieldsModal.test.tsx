@@ -11,6 +11,7 @@ import {
     get401kSummary,
     getBenefitsSummary,
     getESPPSummary,
+    getRSUSummary,
     getPensionSummary
 } from '../../../../components/Objects/Income/workIncomeSummaries';
 import { ESPPAccount, InvestedAccount, RSUAccount } from '../../../../components/Objects/Accounts/models';
@@ -66,6 +67,23 @@ describe('workIncomeSummaries', () => {
                 .toBe('10% of salary');
             expect(getESPPSummary({ esppContributionType: 'FIXED', esppContributionAmount: 6000 }))
                 .toBe('$6,000/yr');
+        });
+    });
+
+    describe('getRSUSummary', () => {
+        it('returns None when there is no vesting schedule', () => {
+            expect(getRSUSummary({ rsuVestingSchedule: 'NONE', rsuGrantShares: 0 })).toBe('None');
+        });
+
+        it('formats schedules with friendly labels, not raw enums', () => {
+            // The modal used to print the raw enum ("graded-3yr"); it now shares this
+            // helper, so the collapsed RSU summary reads the friendly label instead.
+            expect(getRSUSummary({ rsuVestingSchedule: 'cliff-1yr', rsuGrantShares: 100 }))
+                .toBe('100 sh · 1-yr cliff');
+            expect(getRSUSummary({ rsuVestingSchedule: 'graded-3yr', rsuGrantShares: 300 }))
+                .toBe('300 sh · 3-yr graded');
+            expect(getRSUSummary({ rsuVestingSchedule: 'graded-4yr', rsuGrantShares: 400 }))
+                .toBe('400 sh · 4-yr graded');
         });
     });
 
@@ -210,6 +228,14 @@ describe('Modal WorkIncomeFields sections', () => {
         expect(screen.getByText('Grant Shares')).toBeInTheDocument();
         // No RSU account exists → the same warning the card shows.
         expect(screen.getByText('No RSU Account')).toBeInTheDocument();
+    });
+
+    it('shows the shared friendly RSU summary on the collapsed header, not the raw enum (#140)', () => {
+        // The modal RSU section now shares getRSUSummary, so the collapsed header reads
+        // "3-yr graded" rather than the raw "graded-3yr" enum the old hand-copy printed.
+        render(<Harness initial={{ rsuVestingSchedule: 'graded-3yr', rsuGrantShares: 300 }} />);
+        expect(screen.getByText('300 sh · 3-yr graded')).toBeInTheDocument();
+        expect(screen.queryByText('300 sh · graded-3yr')).not.toBeInTheDocument();
     });
 
     it('shows the RSU account dropdown (not the warning) when an RSU account exists (#140)', () => {

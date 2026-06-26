@@ -4,90 +4,125 @@ import { DropdownInput } from '../../../Layout/InputFields/DropdownInput';
 import { PercentageInput } from '../../../Layout/InputFields/PercentageInput';
 import { AlertBanner } from '../../../Layout/AlertBanner';
 import { AddStockAccountLink } from './AddStockAccountLink';
-import type { WorkIncome, RSUVestingSchedule, RSUVestFrequency } from '../models';
-import type { AllIncomeKeys } from '../IncomeContext';
+import type { RSUVestingSchedule, RSUVestFrequency } from '../models';
 import type { RSUAccount } from '../../Accounts/models';
-import { getRSUPriceValidationMessage } from '../incomeCardUtils';
+import { getRSUPriceValidationMessageFor } from '../incomeCardUtils';
 
-interface RSUFieldsProps {
-    income: WorkIncome;
-    onFieldUpdate: (field: AllIncomeKeys, value: unknown) => void;
-    rsuAccounts: RSUAccount[];
+/**
+ * Value-based RSU field cluster shared by BOTH the income card and the Add
+ * Income modal. Both surfaces drive it through the same value/onChange props
+ * (the card from `income.rsuX` / onFieldUpdate, the modal from `form.rsuX` /
+ * updateForm), so the two editors are guaranteed identical — same fields,
+ * tooltips, labels, min/max, and the price-validation banner. Neither
+ * hand-copies this block.
+ *
+ * `idPrefix` namespaces the input ids; `onUpdate` takes the model/form field key
+ * as a plain string and each surface adapts it to its typed dispatcher.
+ * `startDate` + `rsuAccountId` feed the shared price validation. `showAccountLink`
+ * renders the cross-tab "Add RSU account" deep link in the missing-account warning
+ * (card only — the modal stays text-only; a <Link> would abandon the in-progress
+ * income; see #141).
+ */
+export interface RSUFieldValues {
+    rsuVestingSchedule: RSUVestingSchedule;
+    rsuGrantShares: number;
+    rsuVestFrequency: RSUVestFrequency;
+    rsuExpectedStockGrowth: number;
+    rsuWithholdingRate: number;
+    // string | null so the card's WorkIncome (string | null) and the modal's form
+    // (string) both satisfy it; the dropdown coerces null → '' below.
+    rsuAccountId: string | null;
+    // Optional so the card's WorkIncome (startDate?: Date) satisfies it directly.
+    startDate?: Date;
 }
 
-export function RSUFields({ income, onFieldUpdate, rsuAccounts }: RSUFieldsProps): ReactElement {
-    const priceValidationMessage = getRSUPriceValidationMessage(income, rsuAccounts);
+interface RSUFieldsProps {
+    values: RSUFieldValues;
+    onUpdate: (field: keyof RSUFieldValues, value: unknown) => void;
+    rsuAccounts: RSUAccount[];
+    idPrefix: string;
+    showAccountLink?: boolean;
+}
+
+export function RSUFields({
+    values,
+    onUpdate,
+    rsuAccounts,
+    idPrefix,
+    showAccountLink = false,
+}: RSUFieldsProps): ReactElement {
+    const priceValidationMessage = getRSUPriceValidationMessageFor(values, rsuAccounts);
     return (
         <>
             <DropdownInput
-                id={`${income.id}-rsu-schedule`}
+                id={`${idPrefix}-rsu-schedule`}
                 label="Vesting Schedule"
-                onChange={(val) => onFieldUpdate('rsuVestingSchedule', val as RSUVestingSchedule)}
+                onChange={(val) => onUpdate('rsuVestingSchedule', val as RSUVestingSchedule)}
                 options={[
                     { value: 'NONE', label: 'None' },
                     { value: 'cliff-1yr', label: '1-Year Cliff' },
                     { value: 'graded-3yr', label: 'Graded (3 Years)' },
                     { value: 'graded-4yr', label: 'Graded (4 Years)' },
                 ]}
-                value={income.rsuVestingSchedule}
+                value={values.rsuVestingSchedule}
                 tooltip="Restricted Stock Units. A cliff vests all at once at the 1-year mark; graded schedules vest evenly over the period."
             />
-            {income.rsuVestingSchedule !== 'NONE' && (
+            {values.rsuVestingSchedule !== 'NONE' && (
                 <>
                     <NumberInput
-                        id={`${income.id}-rsu-grant-shares`}
+                        id={`${idPrefix}-rsu-grant-shares`}
                         label="Grant Shares"
-                        value={income.rsuGrantShares}
-                        onChange={(val) => onFieldUpdate('rsuGrantShares', val)}
+                        value={values.rsuGrantShares}
+                        onChange={(val) => onUpdate('rsuGrantShares', val)}
                         min={0}
                         tooltip="Total number of shares in this grant. They vest over the schedule above."
                     />
-                    {income.rsuVestingSchedule !== 'cliff-1yr' && (
+                    {values.rsuVestingSchedule !== 'cliff-1yr' && (
                         <DropdownInput
-                            id={`${income.id}-rsu-frequency`}
+                            id={`${idPrefix}-rsu-frequency`}
                             label="Vest Frequency"
-                            onChange={(val) => onFieldUpdate('rsuVestFrequency', val as RSUVestFrequency)}
+                            onChange={(val) => onUpdate('rsuVestFrequency', val as RSUVestFrequency)}
                             options={[
                                 { value: 'quarterly', label: 'Quarterly' },
                                 { value: 'semi-annual', label: 'Semi-Annual' },
                                 { value: 'annual', label: 'Annual' },
                             ]}
-                            value={income.rsuVestFrequency}
+                            value={values.rsuVestFrequency}
                             tooltip="How often tranches vest within the graded period (a 1-year cliff vests all at once)."
                         />
                     )}
                     <PercentageInput
-                        id={`${income.id}-rsu-growth`}
+                        id={`${idPrefix}-rsu-growth`}
                         label="Expected Stock Growth"
-                        value={income.rsuExpectedStockGrowth}
-                        onChange={(val) => onFieldUpdate('rsuExpectedStockGrowth', val)}
+                        value={values.rsuExpectedStockGrowth}
+                        onChange={(val) => onUpdate('rsuExpectedStockGrowth', val)}
                         max={30}
                         tooltip="Expected annual stock appreciation. Projects the fair-market value (ordinary income per share) at each vest."
                     />
                     <PercentageInput
-                        id={`${income.id}-rsu-withholding`}
+                        id={`${idPrefix}-rsu-withholding`}
                         label="Withholding Rate"
-                        value={income.rsuWithholdingRate}
-                        onChange={(val) => onFieldUpdate('rsuWithholdingRate', val)}
+                        value={values.rsuWithholdingRate}
+                        onChange={(val) => onUpdate('rsuWithholdingRate', val)}
                         max={100}
                         tooltip="Tax withheld at vest (supplemental wages). Default 37%. Shares are sold to cover; you net the remainder. Lowering this may produce a tax shortfall."
                     />
                     {rsuAccounts.length > 0 ? (
                         <DropdownInput
-                            id={`${income.id}-rsu-account`}
+                            id={`${idPrefix}-rsu-account`}
                             label="RSU Account"
-                            onChange={(val) => onFieldUpdate('rsuAccountId', val)}
+                            onChange={(val) => onUpdate('rsuAccountId', val)}
                             options={rsuAccounts.map((acc) => ({ value: acc.id, label: acc.name }))}
-                            value={income.rsuAccountId || ''}
+                            value={values.rsuAccountId || ''}
                             tooltip="Account where vested RSU shares will be deposited."
                         />
                     ) : (
                         <AlertBanner severity="warning" size="sm" title="No RSU Account" className="col-span-full">
-                            Create an RSU account to track your vested shares.{' '}
-                            <AddStockAccountLink kind="RSU" />
+                            Create an RSU account to track your vested shares.
+                            {showAccountLink ? <> <AddStockAccountLink kind="RSU" /></> : ' (Accounts tab.)'}
                         </AlertBanner>
                     )}
-                    {rsuAccounts.length > 0 && !income.rsuAccountId && (
+                    {rsuAccounts.length > 0 && !values.rsuAccountId && (
                         <AlertBanner severity="warning" size="sm" title="RSU Account Not Linked" className="col-span-full">
                             Select an RSU account above to track your vesting tranches.
                         </AlertBanner>

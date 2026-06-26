@@ -5,82 +5,113 @@ import { PercentageInput } from '../../../Layout/InputFields/PercentageInput';
 import { ToggleInput } from '../../../Layout/InputFields/ToggleInput';
 import { AlertBanner } from '../../../Layout/AlertBanner';
 import { AddStockAccountLink } from './AddStockAccountLink';
-import type { WorkIncome, ESPPContributionType } from '../models';
-import type { AllIncomeKeys } from '../IncomeContext';
+import type { ESPPContributionType } from '../models';
 import type { ESPPAccount } from '../../Accounts/models';
 
-interface ESPPFieldsProps {
-    income: WorkIncome;
-    onFieldUpdate: (field: AllIncomeKeys, value: unknown) => void;
-    esppAccounts: ESPPAccount[];
+/**
+ * Value-based ESPP field cluster shared by BOTH the income card and the Add
+ * Income modal. Both surfaces drive it through the same value/onChange props
+ * (the card from `income.esppX` / onFieldUpdate, the modal from `form.esppX` /
+ * updateForm), so the two editors are guaranteed identical — same fields,
+ * tooltips, labels, min/max, and warnings. Neither hand-copies this block.
+ *
+ * `idPrefix` namespaces the input ids so multiple instances on a page don't
+ * collide. `onUpdate` takes the model/form field key as a plain string; each
+ * surface adapts it to its typed dispatcher. `showAccountLink` renders the
+ * cross-tab "Add ESPP account" deep link in the missing-account warning (card
+ * only — inside the modal a <Link> would navigate away and abandon the
+ * in-progress income, so the modal stays text-only; see #141).
+ */
+export interface ESPPFieldValues {
+    esppContributionType: ESPPContributionType;
+    esppContributionAmount: number;
+    esppDiscountPercent: number;
+    esppHasLookback: boolean;
+    // string | null so the card's WorkIncome (esppAccountId: string | null) and the
+    // modal's form (string) both satisfy it; the dropdown coerces null → '' below.
+    esppAccountId: string | null;
 }
 
-export function ESPPFields({ income, onFieldUpdate, esppAccounts }: ESPPFieldsProps): ReactElement {
+interface ESPPFieldsProps {
+    values: ESPPFieldValues;
+    onUpdate: (field: keyof ESPPFieldValues, value: unknown) => void;
+    esppAccounts: ESPPAccount[];
+    idPrefix: string;
+    showAccountLink?: boolean;
+}
+
+export function ESPPFields({
+    values,
+    onUpdate,
+    esppAccounts,
+    idPrefix,
+    showAccountLink = false,
+}: ESPPFieldsProps): ReactElement {
     return (
         <>
             <DropdownInput
-                id={`${income.id}-espp-contribution-type`}
+                id={`${idPrefix}-espp-contribution-type`}
                 label="ESPP Contribution"
-                onChange={(val) => onFieldUpdate('esppContributionType', val as ESPPContributionType)}
+                onChange={(val) => onUpdate('esppContributionType', val as ESPPContributionType)}
                 options={[
                     { value: 'NONE', label: 'None' },
                     { value: 'PERCENTAGE', label: '% of Salary' },
                     { value: 'FIXED', label: 'Fixed Amount' },
                 ]}
-                value={income.esppContributionType}
+                value={values.esppContributionType}
                 tooltip="Employee Stock Purchase Plan. Contribute up to 15% of salary to buy company stock at a discount."
             />
-            {income.esppContributionType !== 'NONE' && (
+            {values.esppContributionType !== 'NONE' && (
                 <>
-                    {income.esppContributionType === 'PERCENTAGE' ? (
+                    {values.esppContributionType === 'PERCENTAGE' ? (
                         <PercentageInput
-                            id={`${income.id}-espp-contribution-amount`}
+                            id={`${idPrefix}-espp-contribution-amount`}
                             label="Contribution"
-                            value={income.esppContributionAmount}
-                            onChange={(val) => onFieldUpdate('esppContributionAmount', val)}
+                            value={values.esppContributionAmount}
+                            onChange={(val) => onUpdate('esppContributionAmount', val)}
                             max={15}
                             tooltip="Percentage of salary to contribute to ESPP. Most plans cap at 10-15%."
                         />
                     ) : (
                         <CurrencyInput
-                            id={`${income.id}-espp-contribution-amount`}
+                            id={`${idPrefix}-espp-contribution-amount`}
                             label="Contribution Amount"
-                            value={income.esppContributionAmount}
-                            onChange={(val) => onFieldUpdate('esppContributionAmount', val)}
+                            value={values.esppContributionAmount}
+                            onChange={(val) => onUpdate('esppContributionAmount', val)}
                             tooltip="Fixed amount per pay period to contribute to ESPP."
                         />
                     )}
                     <PercentageInput
-                        id={`${income.id}-espp-discount`}
+                        id={`${idPrefix}-espp-discount`}
                         label="Discount"
-                        value={income.esppDiscountPercent}
-                        onChange={(val) => onFieldUpdate('esppDiscountPercent', val)}
+                        value={values.esppDiscountPercent}
+                        onChange={(val) => onUpdate('esppDiscountPercent', val)}
                         max={15}
                         tooltip="ESPP discount off stock price. Typical is 15%."
                     />
                     <ToggleInput
-                        id={`${income.id}-espp-lookback`}
+                        id={`${idPrefix}-espp-lookback`}
                         label="Lookback"
-                        enabled={income.esppHasLookback}
-                        setEnabled={(val) => onFieldUpdate('esppHasLookback', val)}
+                        enabled={values.esppHasLookback}
+                        setEnabled={(val) => onUpdate('esppHasLookback', val)}
                         tooltip="If enabled, discount applies to lower of grant or purchase date price, increasing effective discount."
                     />
                     {esppAccounts.length > 0 ? (
                         <DropdownInput
-                            id={`${income.id}-espp-account`}
+                            id={`${idPrefix}-espp-account`}
                             label="ESPP Account"
-                            onChange={(val) => onFieldUpdate('esppAccountId', val)}
+                            onChange={(val) => onUpdate('esppAccountId', val)}
                             options={esppAccounts.map((acc) => ({ value: acc.id, label: acc.name }))}
-                            value={income.esppAccountId || ''}
+                            value={values.esppAccountId || ''}
                             tooltip="Account where ESPP shares will be deposited."
                         />
                     ) : (
                         <AlertBanner severity="warning" size="sm" title="No ESPP Account" className="col-span-full">
-                            Create an ESPP account to track your ESPP purchases.{' '}
-                            <AddStockAccountLink kind="ESPP" />
+                            Create an ESPP account to track your ESPP purchases.
+                            {showAccountLink ? <> <AddStockAccountLink kind="ESPP" /></> : ' (Accounts tab.)'}
                         </AlertBanner>
                     )}
-                    {esppAccounts.length > 0 && !income.esppAccountId && (
+                    {esppAccounts.length > 0 && !values.esppAccountId && (
                         <AlertBanner severity="warning" size="sm" title="ESPP Account Not Linked" className="col-span-full">
                             Select an ESPP account above to track your purchases.
                         </AlertBanner>

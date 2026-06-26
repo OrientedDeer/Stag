@@ -2,17 +2,12 @@ import React from "react";
 import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput";
 import { DropdownInput } from "../../Layout/InputFields/DropdownInput";
 import { NumberInput } from "../../Layout/InputFields/NumberInput";
-import { ToggleInput } from "../../Layout/InputFields/ToggleInput";
-import { PercentageInput } from "../../Layout/InputFields/PercentageInput";
 import { CardSection } from "../../Layout/CardSection";
 import { AlertBanner } from "../../Layout/AlertBanner";
 import {
     ContributionGrowthStrategy,
     AutoMax401kOption,
-    ESPPContributionType,
-    PensionSystem,
-    RSUVestingSchedule,
-    RSUVestFrequency
+    PensionSystem
 } from './models';
 import { InvestedAccount, ESPPAccount, RSUAccount } from "../Accounts/models";
 import { IncomeFormState, UpdateForm } from './incomeFormTypes';
@@ -20,9 +15,12 @@ import {
     get401kSummary,
     getBenefitsSummary,
     getESPPSummary,
+    getRSUSummary,
     getPensionSummary
 } from './workIncomeSummaries';
 import { hasConfiguredDeferral, getDeferralDestinationMessageFor } from './incomeCardUtils';
+import { ESPPFields } from './card/ESPPFields';
+import { RSUFields } from './card/RSUFields';
 
 interface WorkIncomeFieldsProps {
     form: IncomeFormState;
@@ -168,144 +166,34 @@ export const WorkIncomeFields: React.FC<WorkIncomeFieldsProps> = ({
             summary={getESPPSummary(form)}
             gridClassName={MODAL_SECTION_GRID}
         >
-            <DropdownInput
-                label="ESPP Contribution"
-                onChange={(val) => updateForm('esppContributionType', val as ESPPContributionType)}
-                options={[
-                    { value: 'NONE', label: 'None' },
-                    { value: 'PERCENTAGE', label: '% of Salary' },
-                    { value: 'FIXED', label: 'Fixed Amount' }
-                ]}
-                value={form.esppContributionType}
-                tooltip="Employee Stock Purchase Plan. Contribute up to 15% of salary to buy company stock at a discount."
+            {/* Shared, value-based cluster — identical to the income card's ESPP
+                section (fields, tooltips, warnings). No modal-only hand-copy.
+                showAccountLink is OFF: inside the Add-Income modal a <Link> would
+                navigate away and abandon the in-progress income, so the modal
+                warnings stay text-only (matches AddExpenseModal; see #141). */}
+            <ESPPFields
+                values={form}
+                onUpdate={(field, value) => updateForm(field, value as IncomeFormState[typeof field])}
+                esppAccounts={esppAccounts}
+                idPrefix="add-income"
             />
-            {form.esppContributionType !== 'NONE' && (
-                <>
-                    {form.esppContributionType === 'PERCENTAGE' ? (
-                        <PercentageInput
-                            label="Contribution"
-                            value={form.esppContributionAmount}
-                            onChange={(val) => updateForm('esppContributionAmount', val)}
-                            max={15}
-                            tooltip="Percentage of salary to contribute to ESPP. Most plans cap at 10-15%."
-                        />
-                    ) : (
-                        <CurrencyInput
-                            label="Contribution Amount"
-                            value={form.esppContributionAmount}
-                            onChange={(val) => updateForm('esppContributionAmount', val)}
-                            tooltip="Fixed amount per pay period to contribute to ESPP."
-                        />
-                    )}
-                    <PercentageInput
-                        label="Discount"
-                        value={form.esppDiscountPercent}
-                        onChange={(val) => updateForm('esppDiscountPercent', val)}
-                        max={15}
-                        tooltip="ESPP discount off stock price. Typical is 15%."
-                    />
-                    <ToggleInput
-                        label="Lookback"
-                        enabled={form.esppHasLookback}
-                        setEnabled={(val) => updateForm('esppHasLookback', val)}
-                        tooltip="If enabled, discount applies to lower of grant or purchase date price, increasing effective discount."
-                    />
-                    {esppAccounts.length > 0 ? (
-                        <DropdownInput
-                            label="ESPP Account"
-                            onChange={(val) => updateForm('esppAccountId', val)}
-                            options={esppAccounts.map(acc => ({ value: acc.id, label: acc.name }))}
-                            value={form.esppAccountId}
-                            tooltip="Account where ESPP shares will be deposited."
-                        />
-                    ) : (
-                        // Text-only (no deep link) inside the Add-Income modal: a <Link>
-                        // would navigate away and abandon the in-progress income. This
-                        // matches the AddExpenseModal precedent — its in-modal warnings
-                        // never link out; the cross-tab link only appears in a post-submit
-                        // receipt toast. The card-context warning carries the link (#141).
-                        <AlertBanner severity="warning" size="sm" title="No ESPP Account" className="col-span-full">
-                            Create an ESPP account in the Accounts tab to track your ESPP purchases.
-                        </AlertBanner>
-                    )}
-                </>
-            )}
         </CardSection>
 
         <CardSection
             id="add-income-section-rsu"
             title="RSU"
-            summary={form.rsuVestingSchedule === 'NONE' ? 'None' : `${form.rsuGrantShares} sh · ${form.rsuVestingSchedule}`}
+            summary={getRSUSummary(form)}
             gridClassName={MODAL_SECTION_GRID}
         >
-            <DropdownInput
-                label="Vesting Schedule"
-                onChange={(val) => updateForm('rsuVestingSchedule', val as RSUVestingSchedule)}
-                options={[
-                    { value: 'NONE', label: 'None' },
-                    { value: 'cliff-1yr', label: '1-Year Cliff' },
-                    { value: 'graded-3yr', label: 'Graded (3 Years)' },
-                    { value: 'graded-4yr', label: 'Graded (4 Years)' }
-                ]}
-                value={form.rsuVestingSchedule}
-                tooltip="Restricted Stock Units. A cliff vests all at once at the 1-year mark; graded schedules vest evenly over the period."
+            {/* Shared, value-based cluster — identical to the income card's RSU
+                section. The collapsed summary uses getRSUSummary (friendly label,
+                not the raw enum). showAccountLink OFF for the same #141 reason. */}
+            <RSUFields
+                values={form}
+                onUpdate={(field, value) => updateForm(field, value as IncomeFormState[typeof field])}
+                rsuAccounts={rsuAccounts}
+                idPrefix="add-income"
             />
-            {form.rsuVestingSchedule !== 'NONE' && (
-                <>
-                    <NumberInput
-                        label="Grant Shares"
-                        value={form.rsuGrantShares}
-                        onChange={(val) => updateForm('rsuGrantShares', val)}
-                        min={0}
-                        tooltip="Total number of shares in this grant. They vest over the schedule above."
-                    />
-                    {form.rsuVestingSchedule !== 'cliff-1yr' && (
-                        <DropdownInput
-                            label="Vest Frequency"
-                            onChange={(val) => updateForm('rsuVestFrequency', val as RSUVestFrequency)}
-                            options={[
-                                { value: 'quarterly', label: 'Quarterly' },
-                                { value: 'semi-annual', label: 'Semi-Annual' },
-                                { value: 'annual', label: 'Annual' }
-                            ]}
-                            value={form.rsuVestFrequency}
-                            tooltip="How often tranches vest within the graded period (a 1-year cliff vests all at once)."
-                        />
-                    )}
-                    <PercentageInput
-                        label="Expected Stock Growth"
-                        value={form.rsuExpectedStockGrowth}
-                        onChange={(val) => updateForm('rsuExpectedStockGrowth', val)}
-                        max={30}
-                        tooltip="Expected annual stock appreciation. Projects the fair-market value (ordinary income per share) at each vest."
-                    />
-                    <PercentageInput
-                        label="Withholding Rate"
-                        value={form.rsuWithholdingRate}
-                        onChange={(val) => updateForm('rsuWithholdingRate', val)}
-                        max={100}
-                        tooltip="Tax withheld at vest (supplemental wages). Default 37%. Shares are sold to cover; you net the remainder."
-                    />
-                    {rsuAccounts.length > 0 ? (
-                        <DropdownInput
-                            label="RSU Account"
-                            onChange={(val) => updateForm('rsuAccountId', val)}
-                            options={rsuAccounts.map(acc => ({ value: acc.id, label: acc.name }))}
-                            value={form.rsuAccountId}
-                            tooltip="Account where vested RSU shares will be deposited."
-                        />
-                    ) : (
-                        <AlertBanner severity="warning" size="sm" title="No RSU Account" className="col-span-full">
-                            Create an RSU account in the Accounts tab to track your vested shares.
-                        </AlertBanner>
-                    )}
-                    {rsuAccounts.length > 0 && !form.rsuAccountId && (
-                        <AlertBanner severity="warning" size="sm" title="RSU Account Not Linked" className="col-span-full">
-                            Select an RSU account above to track your vesting tranches.
-                        </AlertBanner>
-                    )}
-                </>
-            )}
         </CardSection>
 
         <CardSection

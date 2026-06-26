@@ -14,6 +14,13 @@ import type { AllIncomeKeys } from '../IncomeContext';
 import type { InvestedAccount, ESPPAccount, RSUAccount } from '../../Accounts/models';
 import type { ContributionWarning } from '../incomeCardUtils';
 import { getDeferralDestinationValidationMessage, hasConfiguredDeferral } from '../incomeCardUtils';
+import {
+    get401kSummary,
+    getBenefitsSummary,
+    getESPPSummary,
+    getRSUSummary,
+    getPensionSummary,
+} from '../workIncomeSummaries';
 import { ESPPFields } from './ESPPFields';
 import { RSUFields } from './RSUFields';
 
@@ -29,53 +36,6 @@ interface WorkIncomeFieldsProps {
      *  matching pension income — drives the "add a pension income" hint. Optional;
      *  defaults to true (no hint) for the Add-Income modal, which doesn't pass it. */
     hasMatchingPensionIncome?: boolean;
-}
-
-const fmt = (n: number) => formatCompactCurrency(n, { forceExact: true });
-
-/** Paystub-style one-liner for the collapsed 401k & Match section. */
-function get401kSummary(income: WorkIncome): string {
-    let contrib: string;
-    switch (income.autoMax401k) {
-        case 'disabled': return 'None';
-        case 'traditional': contrib = 'Max Pre-Tax'; break;
-        case 'roth': contrib = 'Max Roth'; break;
-        default: {
-            const parts: string[] = [];
-            if (income.preTax401k > 0) parts.push(`${fmt(income.preTax401k)} pre-tax`);
-            if (income.roth401k > 0) parts.push(`${fmt(income.roth401k)} Roth`);
-            contrib = parts.length > 0 ? parts.join(' + ') : 'Custom ($0)';
-        }
-    }
-    const match = income.employerMatchType === 'percent'
-        ? ((income.employerMatchPercent ?? 0) > 0 ? `${income.employerMatchPercent}% match` : null)
-        : (income.employerMatch > 0 ? `${fmt(income.employerMatch)} match` : null);
-    return match ? `${contrib} · ${match}` : contrib;
-}
-
-function getBenefitsSummary(income: WorkIncome): string {
-    const parts: string[] = [];
-    if (income.insurance > 0) parts.push(`${fmt(income.insurance)} insurance`);
-    if (income.hsaContribution > 0) parts.push(`${fmt(income.hsaContribution)} HSA`);
-    return parts.length > 0 ? parts.join(' · ') : 'None';
-}
-
-function getESPPSummary(income: WorkIncome): string {
-    if (income.esppContributionType === 'NONE') return 'None';
-    return income.esppContributionType === 'PERCENTAGE'
-        ? `${income.esppContributionAmount}% of salary`
-        : `${fmt(income.esppContributionAmount)}/yr`;
-}
-
-function getRSUSummary(income: WorkIncome): string {
-    if (income.rsuVestingSchedule === 'NONE') return 'None';
-    const scheduleLabel: Record<string, string> = {
-        'cliff-1yr': '1-yr cliff',
-        'graded-3yr': '3-yr graded',
-        'graded-4yr': '4-yr graded',
-    };
-    const label = scheduleLabel[income.rsuVestingSchedule] ?? income.rsuVestingSchedule;
-    return `${income.rsuGrantShares} sh · ${label}`;
 }
 
 export function WorkIncomeFields({
@@ -251,7 +211,13 @@ export function WorkIncomeFields({
                 title="ESPP"
                 summary={getESPPSummary(income)}
             >
-                <ESPPFields income={income} onFieldUpdate={onFieldUpdate} esppAccounts={esppAccounts} />
+                <ESPPFields
+                    values={income}
+                    onUpdate={onFieldUpdate}
+                    esppAccounts={esppAccounts}
+                    idPrefix={income.id}
+                    showAccountLink
+                />
             </CardSection>
 
             <CardSection
@@ -259,13 +225,19 @@ export function WorkIncomeFields({
                 title="RSU"
                 summary={getRSUSummary(income)}
             >
-                <RSUFields income={income} onFieldUpdate={onFieldUpdate} rsuAccounts={rsuAccounts} />
+                <RSUFields
+                    values={income}
+                    onUpdate={onFieldUpdate}
+                    rsuAccounts={rsuAccounts}
+                    idPrefix={income.id}
+                    showAccountLink
+                />
             </CardSection>
 
             <CardSection
                 id={`${income.id}-section-pension`}
                 title="Pension"
-                summary={income.pensionSystem === 'NONE' ? 'None' : income.pensionSystem}
+                summary={getPensionSummary(income.pensionSystem)}
             >
                 <DropdownInput
                     id={`${income.id}-pension-system`}
