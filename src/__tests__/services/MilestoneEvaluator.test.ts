@@ -7,10 +7,12 @@ import {
     evaluateMilestone,
     evaluateAllMilestones,
     isActiveByMilestone,
+    isIncomeActiveToday,
     MilestoneContext,
 } from '../../services/simulation/MilestoneEvaluator';
 import { InvestedAccount, SavedAccount, DebtAccount, PropertyAccount, ESPPAccount, DeficitDebtAccount, AnyAccount } from '../../components/Objects/Accounts/models';
 import { OtherExpense } from '../../components/Objects/Expense/models';
+import { WorkIncome } from '../../components/Objects/Income/models';
 import { CustomMilestone } from '../../services/simulation/types';
 
 describe('MilestoneEvaluator', () => {
@@ -496,6 +498,43 @@ describe('MilestoneEvaluator', () => {
 
             // Start not reached = not active (regardless of end)
             expect(isActiveByMilestone('coast', 'fi', new Set(['fi']))).toBe(false);
+        });
+    });
+
+    describe('isIncomeActiveToday (#152: fixed-date window AND milestone gate)', () => {
+        const EMPTY = new Set<string>();
+        const makeIncome = () => new WorkIncome(
+            'inc', 'Job', 100_000, 'Annually', 'Yes', 0, 0, 0, 0, '', null, 'FIXED',
+        );
+
+        it('non-milestone income with no start date is active today', () => {
+            expect(isIncomeActiveToday(makeIncome(), EMPTY)).toBe(true);
+        });
+
+        it('milestone-started income is INACTIVE until its start milestone has fired', () => {
+            const inc = makeIncome();
+            inc.startMilestoneId = 'M'; // no fixed start date → date-gate passes
+            // Milestone NOT in today's set → inactive even though the date-gate passes.
+            expect(isIncomeActiveToday(inc, EMPTY)).toBe(false);
+            // Milestone reached → active.
+            expect(isIncomeActiveToday(inc, new Set(['M']))).toBe(true);
+        });
+
+        it('a FUTURE fixed start date is inactive regardless of the milestone set', () => {
+            const future = new Date(new Date().getFullYear() + 5, 0, 1);
+            const inc = new WorkIncome(
+                'inc-future', 'Future Job', 100_000, 'Annually', 'Yes',
+                0, 0, 0, 0, '', null, 'FIXED', future,
+            );
+            expect(isIncomeActiveToday(inc, EMPTY)).toBe(false);
+            expect(isIncomeActiveToday(inc, new Set(['anything']))).toBe(false);
+        });
+
+        it('an income whose END milestone has fired is inactive', () => {
+            const inc = makeIncome();
+            inc.endMilestoneId = 'retire';
+            expect(isIncomeActiveToday(inc, new Set(['retire']))).toBe(false);
+            expect(isIncomeActiveToday(inc, EMPTY)).toBe(true);
         });
     });
 });

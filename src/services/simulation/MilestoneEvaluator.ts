@@ -1,5 +1,6 @@
 import { AnyAccount, InvestedAccount, SavedAccount, DebtAccount, PropertyAccount, ESPPAccount, RSUAccount, DeficitDebtAccount } from "../../components/Objects/Accounts/models";
 import { MortgageExpense, LoanExpense, AnyExpense } from "../../components/Objects/Expense/models";
+import { AnyIncome, isIncomeActiveInCurrentMonth } from "../../components/Objects/Income/models";
 import { CustomMilestone, MilestoneCondition, MilestoneReachEvent } from "./types";
 import { getTaxParameters, calculateTotalFederalTax } from "../../components/Objects/Taxes/TaxService";
 import { FilingStatus } from "../../data/TaxData";
@@ -379,4 +380,23 @@ export function isActiveByMilestone(
     }
 
     return true;
+}
+
+/**
+ * Whether an income is active RIGHT NOW, combining BOTH gates:
+ *   1. the fixed start/end-date window (isIncomeActiveInCurrentMonth), and
+ *   2. the start/end MILESTONE gate (isActiveByMilestone) — a milestone-started
+ *      income is inactive until its start milestone has fired, even with no fixed
+ *      start date.
+ *
+ * `todayMilestoneSet` is the set of milestones already reached as of today
+ * (build it once per render via evaluateAllMilestones against a today-context).
+ * Shared by the Income tab and the Priority/Allocation tab so the two surfaces
+ * agree on what counts as active now — the un-gated `isIncomeActiveInCurrentMonth`
+ * alone is milestone-BLIND and counts a future milestone-started income today
+ * (#145 fixed this on the Priority tab; #152 brought the Income tab in line).
+ */
+export function isIncomeActiveToday(inc: AnyIncome, todayMilestoneSet: Set<string>): boolean {
+    return isIncomeActiveInCurrentMonth(inc) &&
+        isActiveByMilestone(inc.startMilestoneId, inc.endMilestoneId, todayMilestoneSet);
 }
