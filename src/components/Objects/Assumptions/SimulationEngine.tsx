@@ -960,6 +960,7 @@ function simulateOneYearWithNewEngine(
         employerInflows: withdrawalState.employerInflows,
         userContributions: inflowResult.userContributions,
         userContributionsByIncome: inflowResult.userContributionsByIncome,
+        rsuVestWithholding: rsuVestingResult.vestWithholdingByIncomeId,
     });
 
     // ------------------------------------------------------------------

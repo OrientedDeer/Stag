@@ -75,6 +75,16 @@ interface BuildCashflowDetailInput {
      * userContributions redistribution (then to raw fields) when omitted.
      */
     userContributionsByIncome?: Record<string, { preTax: number; roth: number }>;
+    /**
+     * Sell-to-cover withholding per synthetic RSU vest income, keyed by income id
+     * (RSUVestingResult.vestWithholdingByIncomeId). An RSU vest is recognized at
+     * GROSS as reinvested income, but only the NET shares (gross − withheld) land
+     * in the account — the withheld slice was sold to pay tax. Used to set
+     * `reinvestedNet` on the vest's income source so the Sankey routes gross
+     * through Gross Pay (giving the withholding a tax source) but only the net out
+     * to savings. Omitted when no RSU vested this year.
+     */
+    rsuVestWithholding?: Record<string, number>;
 }
 
 /**
@@ -85,7 +95,7 @@ interface BuildCashflowDetailInput {
  * to re-derive it (and drift from the sim's actual values).
  */
 export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDetail {
-    const { incomes, expenses, accounts, insurance, year, brokerageLTCGFromGross, employerInflows, userContributions, userContributionsByIncome } = input;
+    const { incomes, expenses, accounts, insurance, year, brokerageLTCGFromGross, employerInflows, userContributions, userContributionsByIncome, rsuVestWithholding } = input;
 
     const incomeBySource: CashflowIncomeSource[] = [];
     let userPreTax401k = 0;
@@ -189,6 +199,21 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
                     : null;
                 const account = accountId ? accounts.find(a => a.id === accountId) : null;
                 source.accountName = account?.name ?? inc.name.replace(' Interest', '');
+
+                // RSU vests are recognized at gross but only the net shares land in
+                // the account (sell-to-cover paid the tax). Carry the net so the
+                // Sankey doesn't double-count the withholding (which is already in
+                // Taxes) as a reinvested outflow. Prorated by the same active
+                // multiplier already applied to `amount`. No withholding entry →
+                // ordinary reinvested income, leave reinvestedNet unset (== gross).
+                const withheld = rsuVestWithholding?.[inc.id];
+                if (withheld !== undefined && amount > 0 && inc.amount > 0) {
+                    // `amount` is `inc.amount` (gross) after the year's active
+                    // multiplier; prorate the full-year withholding by the same
+                    // factor so net tracks a partial-year vest.
+                    const proratedWithheld = withheld * (amount / inc.amount);
+                    source.reinvestedNet = Math.max(0, amount - proratedWithheld);
+                }
             }
 
             incomeBySource.push(source);

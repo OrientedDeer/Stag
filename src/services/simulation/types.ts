@@ -16,6 +16,15 @@ export interface CashflowIncomeSource {
     kind: CashflowIncomeKind;
     /** For reinvested passive income: the account that holds the reinvested cash. */
     accountName?: string;
+    /**
+     * For reinvested income recognized at gross but reinvested only net of a
+     * sell-at-source withholding (RSU vests): the NET amount that actually lands
+     * in the account (= `amount` − withheld). The Sankey routes `amount` through
+     * Gross Pay (so the withheld slice has a tax source) but only `reinvestedNet`
+     * out to savings, keeping Net Pay balanced. Undefined/equal to `amount` for
+     * ordinary reinvested income (e.g. savings interest) with no source withholding.
+     */
+    reinvestedNet?: number;
 }
 
 /**

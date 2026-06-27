@@ -176,7 +176,11 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
         // Per-source income lines for chart nodes.
         const workIncomeItems: Array<{ name: string; amount: number }> = [];
         const otherIncomeItems: Array<{ name: string; amount: number }> = [];
-        const reinvestedIncomeItems: Array<{ name: string; amount: number; accountName: string }> = [];
+        // `amount` is the GROSS recognized income (flows through Gross Pay so any
+        // sell-at-source withholding has a tax source); `net` is what actually
+        // reinvests into the account (gross − withheld). They differ only for RSU
+        // vests; for ordinary reinvested income (interest) net === amount.
+        const reinvestedIncomeItems: Array<{ name: string; amount: number; net: number; accountName: string }> = [];
 
         let employee401k = 0;
         let employeeRoth = 0;
@@ -203,6 +207,7 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
                     reinvestedIncomeItems.push({
                         name: src.name,
                         amount: src.amount,
+                        net: src.reinvestedNet ?? src.amount,
                         accountName: src.accountName ?? src.name,
                     });
                 } else {
@@ -247,9 +252,14 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
                         }
                     }
                 } else if (inc instanceof PassiveIncome && inc.isReinvested) {
+                    // Fallback path (no cashflowDetail, e.g. Dashboard pre-sim): the
+                    // RSU vest withholding isn't available here, so net === gross.
+                    // In practice the sim-projected years that carry RSU vests always
+                    // provide cashflowDetail (the preferred path above).
                     reinvestedIncomeItems.push({
                         name: inc.name,
                         amount,
+                        net: amount,
                         accountName: inc.name.replace(' Interest', ''),
                     });
                 } else {
@@ -276,7 +286,10 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
             workIncomeItems.reduce((s, i) => s + i.amount, 0) +
             otherIncomeItems.reduce((s, i) => s + i.amount, 0) +
             reinvestedIncomeItems.reduce((s, i) => s + i.amount, 0);
-        const totalReinvested = reinvestedIncomeItems.reduce((s, i) => s + i.amount, 0);
+        // Gross flows into Gross Pay (above); only the NET reinvests out of Net Pay.
+        // The gross−net gap (RSU sell-to-cover withholding) is already in totalTaxes,
+        // so closing `remaining` against net avoids double-counting it as an outflow.
+        const totalReinvested = reinvestedIncomeItems.reduce((s, i) => s + i.net, 0);
 
         const mortgageInterestAndEscrow = totalMortgagePayment - totalPrincipal;
         const totalTaxes = taxes.fed + taxes.state + taxes.fica + (taxes.capitalGains || 0) + (taxes.withdrawalOrdinaryTax || 0) + (taxes.niit || 0) + (taxes.irmaa || 0);
@@ -590,10 +603,13 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
                 links.push({ source: 'Net Pay', target: `To Roth: ${accountName}`, value: amount * conversionScale });
             });
 
-            // Reinvested income flows from Net Pay back to the savings account
-            // This shows interest being reinvested rather than appearing as "Remaining"
+            // Reinvested income flows from Net Pay back to the savings account.
+            // Use NET (gross − sell-at-source withholding): the gross entered via
+            // Gross Pay and the withheld slice already left through Taxes, so only
+            // the net lands in the account. Routing gross here would make Net Pay's
+            // outflow exceed its inflow by the withholding (the RSU vest imbalance).
             reinvestedIncomeItems.forEach(item => {
-                links.push({ source: 'Net Pay', target: `Reinvested: ${item.accountName}`, value: item.amount });
+                links.push({ source: 'Net Pay', target: `Reinvested: ${item.accountName}`, value: item.net });
             });
         }
 
@@ -692,7 +708,7 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
             ...sortedExpenseCategories.map(cat => ({ label: cat, value: expenseCatTotals.get(cat) || 0 })),
             ...(remaining > 1 ? [{ label: 'Remaining', value: remaining }] : []),
             ...conversionDestItems.map(([name, amount]) => ({ label: `To ${name}`, value: amount * conversionScale })),
-            ...reinvestedIncomeItems.map(item => ({ label: `→ ${item.accountName}`, value: item.amount })),
+            ...reinvestedIncomeItems.map(item => ({ label: `→ ${item.accountName}`, value: item.net })),
         ];
         addProvenance('Net Pay', 'destinations', netPayItems);
 

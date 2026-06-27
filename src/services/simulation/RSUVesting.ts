@@ -20,6 +20,14 @@ export interface RSUVestingResult {
      * estimated-tax prepayment that offsets the year's tax owed.
      */
     totalWithholding: number;
+    /**
+     * Sell-to-cover withholding per synthetic vest income, keyed by the vest
+     * income's id. The vest is recognized at GROSS but only the NET shares land
+     * in the account; the Cashflow Sankey uses this to net the reinvested outflow
+     * (the withheld slice flows to Taxes, not to savings) so Net Pay stays
+     * balanced on a vest year (gross in = net-reinvested + withheld-as-tax).
+     */
+    vestWithholdingByIncomeId: Record<string, number>;
     logs: string[];
 }
 
@@ -104,6 +112,7 @@ export function processRSUVesting(
 ): RSUVestingResult {
     const vestIncomes: PassiveIncome[] = [];
     const rsuLots: Record<string, RSULot[]> = {};
+    const vestWithholdingByIncomeId: Record<string, number> = {};
     let totalWithholding = 0;
 
     incomes.forEach(inc => {
@@ -169,8 +178,10 @@ export function processRSUVesting(
         // Recognize the FULL gross vest value as ordinary (earned) income. A
         // separate PassiveIncome per account keeps the income breakdown legible.
         // Local Jan-1..Dec-31 window → clean full-year multiplier in any timezone.
+        const vestIncomeId = `rsu-vest-${rsuAccount.id}-${inc.id}-${year}`;
+        vestWithholdingByIncomeId[vestIncomeId] = withholding;
         vestIncomes.push(new PassiveIncome(
-            `rsu-vest-${rsuAccount.id}-${inc.id}-${year}`,
+            vestIncomeId,
             `${inc.name} RSU Vest`,
             grossIncome,
             'Annually',
@@ -212,7 +223,7 @@ export function processRSUVesting(
         );
     });
 
-    return { vestIncomes, rsuLots, totalWithholding, logs };
+    return { vestIncomes, rsuLots, totalWithholding, vestWithholdingByIncomeId, logs };
 }
 
 /** Sum the active-prorated vest income for the year (used for sanity/tests). */
