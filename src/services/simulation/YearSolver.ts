@@ -1642,8 +1642,11 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     // The working-year path (solveWorkingYear) is deliberately NOT changed — its initialDeficit
     // conflates tax with spending and would mishandle RSU withholding. No-op when the order
     // already lists every account (the golden masters and all scenarios).
+    // honorLiteralOrder only when the USER owns the order (Tax Opt off). When Tax Opt
+    // is on the optimizer owns it and keeps its penalty-aware execution — the order it
+    // SCORES must match how it RUNS, so its picks stay stable (#154).
     let accountSnapshots = createOrderedSnapshots(
-        input.accounts, input.withdrawalOrder, input.currentAge, input.year, true,
+        input.accounts, input.withdrawalOrder, input.currentAge, input.year, true, !input.taxOptimizationEnabled,
     );
 
     // Keep reserved goal sinking-fund accounts out of the includeUnorderedSellable
@@ -2218,7 +2221,7 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
 
     if (initialDeficit > 0) {
         const accountSnapshots = createOrderedSnapshots(
-            input.accounts, input.withdrawalOrder, input.currentAge, input.year
+            input.accounts, input.withdrawalOrder, input.currentAge, input.year, false, !input.taxOptimizationEnabled,
         );
 
         const withdrawalResult = planWithdrawals(

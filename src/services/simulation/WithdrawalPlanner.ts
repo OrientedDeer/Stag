@@ -341,6 +341,15 @@ export function createOrderedSnapshots(
      * is therefore the safety net specifically for the NON-tax-opt manual-order path.
      */
     includeUnorderedSellable: boolean = false,
+    /**
+     * #154: tap the ORDERED tier in the user's EXACT listed sequence — no penalty /
+     * savings re-bucketing — so the withdrawal order shown in the UI (whether set by
+     * hand or by "Auto sort") is precisely what the engine runs. When false (the
+     * legacy default for non-retirement-drawdown callers) the ordered tier is
+     * re-sorted non-penalized → savings → penalized. The fallback tier (#111) and
+     * RMD/goal reservations are unaffected either way.
+     */
+    honorLiteralOrder: boolean = false,
 ): AccountBalanceSnapshot[] {
     // Use mid-year date for ESPP disposition calculations
     const snapshotDate = year ? new Date(year, 5, 15) : undefined;
@@ -356,9 +365,14 @@ export function createOrderedSnapshots(
         orderedAccounts.push(account);
     }
 
-    const { nonPenalized, savings, penalized } = categorizeSnapshots(orderedAccounts, snapshotDate, currentAge);
-    // Final order: non-penalized → savings → penalized
-    const orderedResult = [...nonPenalized, ...savings, ...penalized];
+    // honorLiteralOrder: keep the user's exact sequence; else penalty-aware buckets.
+    const orderedResult = honorLiteralOrder
+        ? orderedAccounts.map(a => createAccountSnapshot(a, snapshotDate))
+        : (() => {
+              const { nonPenalized, savings, penalized } = categorizeSnapshots(orderedAccounts, snapshotDate, currentAge);
+              // Final order: non-penalized → savings → penalized
+              return [...nonPenalized, ...savings, ...penalized];
+          })();
     if (!includeUnorderedSellable) return orderedResult;
 
     // #111 fallback tier: any sellable account the order didn't list, categorized

@@ -89,7 +89,12 @@ describe('PR #54 fix #1 — ESPP bargain-element ordinary tax routing', () => {
             totalLivingExpenses: 35000,
             rmdAmount: 0,
             accounts: esppAccounts(),
-            withdrawalOrder: [{ accountId: 'espp-1' }, { accountId: 'trad-1' }, { accountId: 'savings-1' }],
+            // #154: Tax Opt off → the order is now honored LITERALLY (no penalty-aware
+            // re-bucketing). Order savings ahead of the penalized Traditional so the small
+            // post-ESPP remainder draws from savings, keeping any ordinary withdrawal tax
+            // attributable solely to the ESPP bargain element (the old bucketing moved the
+            // pre-59½ Traditional last implicitly; this makes that intent explicit).
+            withdrawalOrder: [{ accountId: 'espp-1' }, { accountId: 'savings-1' }, { accountId: 'trad-1' }],
             taxState: singleTexas(),
             assumptions: esppAssumptions(),
             taxOptimizationEnabled: false,
@@ -98,8 +103,8 @@ describe('PR #54 fix #1 — ESPP bargain-element ordinary tax routing', () => {
 
         const plan = solveRetirementYear(input);
 
-        // ESPP ($40k) covers the $35k deficit on its own — no Traditional draw —
-        // so any ordinary withdrawal tax must be the ESPP bargain element.
+        // ESPP ($40k) + savings cover the $35k deficit — no Traditional draw — so any
+        // ordinary withdrawal tax must be the ESPP bargain element.
         expect(plan.withdrawals.some(w => w.source === 'espp')).toBe(true);
         expect(plan.withdrawals.some(w => w.source.startsWith('traditional'))).toBe(false);
 
