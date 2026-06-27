@@ -29,6 +29,10 @@ interface WithdrawalBucketListProps {
     taxOptimizationEnabled: boolean;
     buckets: BucketDetail[];
     onDragEnd: (result: DropResult) => void;
+    /** #154: apply the tax-optimal order to the list (manual mode). Runs the optimizer. */
+    onAutoSort: () => void;
+    /** True while a simulation/auto-sort is in flight — disables the Auto sort button. */
+    isBusy: boolean;
     formatMoney: (amount: number) => string;
     /**
      * The withdrawal order the joint optimizer CHOSE (year 0's `chosenWithdrawalOrder`),
@@ -83,6 +87,8 @@ function WithdrawalBucketListInner({
     taxOptimizationEnabled,
     buckets,
     onDragEnd,
+    onAutoSort,
+    isBusy,
     formatMoney,
     chosenWithdrawalOrder,
 }: WithdrawalBucketListProps) {
@@ -114,9 +120,24 @@ function WithdrawalBucketListInner({
 
     return (
         <>
-            <p className="text-content-muted mb-6 text-sm">
-                Drag to reorder. When expenses exceed income, accounts are drained in the order shown below.
-            </p>
+            <div className="flex items-start justify-between gap-3 mb-6">
+                <p className="text-content-muted text-sm">
+                    Drag to reorder. When expenses exceed income, accounts are drained in the order shown below.
+                </p>
+                {buckets.length > 1 && (
+                    <button
+                        onClick={onAutoSort}
+                        disabled={isBusy}
+                        title="Reorder this list to the tax-optimal withdrawal sequence (what Tax Optimization would pick). You can hand-tweak afterward."
+                        className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-border-strong bg-surface-raised px-3 py-1.5 text-sm font-medium text-white hover:border-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m5 0v12m0 0l-4-4m4 4l4-4" />
+                        </svg>
+                        {isBusy ? 'Sorting…' : 'Auto sort'}
+                    </button>
+                )}
+            </div>
 
             <Panel className="mb-6 bg-surface-raised/50 flex flex-wrap gap-4">
                 <div className="flex items-center gap-2">

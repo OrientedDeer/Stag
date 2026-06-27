@@ -12,6 +12,8 @@ import { AnyAccount, ESPPAccount, RSUAccount, SavedAccount, InvestedAccount } fr
 import { formatCompactCurrency } from './tabs/FutureUtils';
 import { getRMDStartAge } from '../../data/RMDData';
 import { runSimulationWithOptimization } from '../../components/Objects/Assumptions/useSimulation';
+import { applyChosenWithdrawalOrder } from '../../services/simulation/EngineDirectConversionSearch';
+import { SimulationYear } from '../../services/simulation/types';
 import { Phase } from '../../services/simulation/TaxOptimizedWithdrawal';
 import { getSimulationInputHash } from '../../services/simulationHash';
 import { useReceiptToast } from '../../components/Layout/Overlays/ReceiptToast';
@@ -72,6 +74,28 @@ export default function WithdrawalTab() {
     const { months: budgetMonths } = useContext(BudgetContext);
     const [isRecalculating, setIsRecalculating] = useState(false);
 
+    // Pure builder: run the full sim for a given assumptions object and return the
+    // timeline + its input hash. Shared by the recalc path and the Auto-sort button.
+    const buildSimulation = useCallback((assumptionsOverride: AssumptionsState): { sim: SimulationYear[]; hash: string } => {
+        const birthYear = getBirthYear(assumptionsOverride.milestones);
+        const lifeExpectancy = getLifeExpectancy(assumptionsOverride.milestones);
+        const today = new Date();
+        const currentYear = today.getFullYear();
+        const currentAge = currentYear - birthYear;
+        const yearsToRun = Math.max(1, lifeExpectancy - currentAge);
+        const startYear = assumptionsOverride.demographics.priorYearMode ? currentYear - 1 : currentYear;
+        const remainderGoals = (simulation.find(s => s.year === startYear + 1)?.cashflow.bucketDetail
+            ?? simulation.find(s => s.year === startYear)?.cashflow.bucketDetail
+            ?? {});
+        const { additions, debtReductions, mortgageReductions } = computeEOYBudgetContributions(
+            assumptionsOverride.priorities, accounts, incomes, expenses, budgetMonths,
+            assumptionsOverride, taxState, startYear, today, remainderGoals,
+        );
+        const sim = runSimulationWithOptimization(yearsToRun, accounts, incomes, expenses, assumptionsOverride, taxState, undefined, undefined, additions, debtReductions, mortgageReductions);
+        const hash = getSimulationInputHash(accounts, incomes, expenses, assumptionsOverride, taxState);
+        return { sim, hash };
+    }, [accounts, incomes, expenses, taxState, budgetMonths, simulation]);
+
     // Re-run simulation and update SimulationContext so summary fields refresh.
     // Always called with an explicit override (the caller already built the
     // updated assumptions), so we don't need `state` in the dep array.
@@ -82,30 +106,41 @@ export default function WithdrawalTab() {
         // thread. Without this, React batches setIsRecalculating(true) with
         // the dispatch below and the spinner never appears.
         setTimeout(() => {
-            const birthYear = getBirthYear(assumptionsOverride.milestones);
-            const lifeExpectancy = getLifeExpectancy(assumptionsOverride.milestones);
-            const today = new Date();
-            const currentYear = today.getFullYear();
-            const currentAge = currentYear - birthYear;
-            const yearsToRun = Math.max(1, lifeExpectancy - currentAge);
-            const startYear = assumptionsOverride.demographics.priorYearMode ? currentYear - 1 : currentYear;
-            const remainderGoals = (simulation.find(s => s.year === startYear + 1)?.cashflow.bucketDetail
-                ?? simulation.find(s => s.year === startYear)?.cashflow.bucketDetail
-                ?? {});
-            const { additions, debtReductions, mortgageReductions } = computeEOYBudgetContributions(
-                assumptionsOverride.priorities, accounts, incomes, expenses, budgetMonths,
-                assumptionsOverride, taxState, startYear, today, remainderGoals,
-            );
-
-            const newSimulation = runSimulationWithOptimization(yearsToRun, accounts, incomes, expenses, assumptionsOverride, taxState, undefined, undefined, additions, debtReductions, mortgageReductions);
-            const inputHash = getSimulationInputHash(accounts, incomes, expenses, assumptionsOverride, taxState);
+            const { sim, hash } = buildSimulation(assumptionsOverride);
             dispatchSimulation({
                 type: 'SET_SIMULATION_WITH_HASH',
-                payload: { simulation: newSimulation, inputHash }
+                payload: { simulation: sim, inputHash: hash }
             });
             setIsRecalculating(false);
         }, 50);
-    }, [accounts, incomes, expenses, taxState, dispatchSimulation, budgetMonths, simulation]);
+    }, [buildSimulation, dispatchSimulation]);
+
+    // #154 "Auto sort": apply the order Tax Optimization would choose, by RUNNING the
+    // optimizer (it owns the order only under Tax Opt + dp-precomputed), reading its
+    // `chosenWithdrawalOrder`, and writing it into the visible list — then refreshing
+    // the displayed projection under the user's REAL settings + the new order. The
+    // user can still hand-tweak afterward.
+    const onAutoSort = useCallback(() => {
+        setIsRecalculating(true);
+        setTimeout(() => {
+            const current = state;
+            const optimizeOverride: AssumptionsState = {
+                ...current,
+                investments: { ...current.investments, taxOptimizationEnabled: true, rothConversionStrategy: 'dp-precomputed' },
+            };
+            const { sim: optSim } = buildSimulation(optimizeOverride);
+            const validIds = new Set(accounts.map(a => a.id));
+            const reordered = applyChosenWithdrawalOrder(current, optSim[0]?.chosenWithdrawalOrder, validIds).withdrawalStrategy;
+            const changed = reordered.length !== current.withdrawalStrategy.length
+                || reordered.some((w, i) => w.accountId !== current.withdrawalStrategy[i]?.accountId);
+
+            dispatch({ type: 'SET_WITHDRAWAL_STRATEGY', payload: reordered });
+            const { sim: displaySim, hash } = buildSimulation({ ...current, withdrawalStrategy: reordered });
+            dispatchSimulation({ type: 'SET_SIMULATION_WITH_HASH', payload: { simulation: displaySim, inputHash: hash } });
+            setIsRecalculating(false);
+            showReceipt({ message: changed ? 'Auto-sorted to the tax-optimal withdrawal order' : 'Already in the tax-optimal order' });
+        }, 50);
+    }, [state, accounts, dispatch, dispatchSimulation, buildSimulation, showReceipt]);
 
     // Track current state in a ref so onUpdateInvestments doesn't need
     // `state` in its dep array. Without this, the callback identity flips on
@@ -326,6 +361,8 @@ export default function WithdrawalTab() {
                     taxOptimizationEnabled={taxOptimizationEnabled}
                     buckets={bucketsWithDetails}
                     onDragEnd={onDragEnd}
+                    onAutoSort={onAutoSort}
+                    isBusy={isRecalculating}
                     formatMoney={formatMoney}
                     chosenWithdrawalOrder={simulation[0]?.chosenWithdrawalOrder}
                 />
