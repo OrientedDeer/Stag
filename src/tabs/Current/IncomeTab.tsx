@@ -1,10 +1,7 @@
 import { useState, useContext, useMemo } from "react";
 import { IncomeContext, IncomeDispatchContext } from "../../components/Objects/Income/IncomeContext";
-import { AssumptionsContext, getBirthYear } from "../../components/Objects/Assumptions/AssumptionsContext";
-import { AccountContext } from "../../components/Objects/Accounts/AccountContext";
-import { ExpenseContext } from "../../components/Objects/Expense/ExpenseContext";
-import { TaxContext } from "../../components/Objects/Taxes/TaxContext";
-import { isIncomeActiveToday, evaluateAllMilestones, MilestoneContext } from "../../services/simulation/MilestoneEvaluator";
+import { useTodayMilestoneSet } from "../../components/Objects/Assumptions/useTodayMilestoneSet";
+import { isIncomeActiveToday } from "../../services/simulation/MilestoneEvaluator";
 import {
 	AnyIncome,
 	CLASS_TO_CATEGORY,
@@ -94,40 +91,17 @@ const IncomeList = () => {
 	);
 };
 
-const EMPTY_MILESTONE_SET: Set<string> = new Set<string>();
-
 const TabsContent = () => {
 	const { incomes } = useContext(IncomeContext);
-	const { state } = useContext(AssumptionsContext);
-	const { accounts } = useContext(AccountContext);
-	const { expenses } = useContext(ExpenseContext);
-	const { state: taxState } = useContext(TaxContext);
 	const [isModalOpen, setIsModalOpen] = useState(false);
 
-	// #152: which start milestones have already fired as of TODAY. The icicle
-	// chart below shows only income active right now; the fixed start/end-date
-	// gate alone is milestone-BLIND and would count a milestone-started income
-	// (no fixed start date) before its milestone fires — the same gap #145 fixed
-	// on the Allocation tab. Evaluate the same predicate the engine uses against a
-	// today-context (year/age/accounts/expenses/filing status). Short-circuit when
-	// no income references a milestone (the common case) so this stays free.
-	const hasMilestoneIncome = useMemo(
-		() => incomes.some(inc => inc.startMilestoneId || inc.endMilestoneId),
-	[incomes]);
-
-	const todayMilestoneSet = useMemo(() => {
-		const milestones = state.milestones;
-		if (!hasMilestoneIncome || !milestones || milestones.length === 0) return EMPTY_MILESTONE_SET;
-		const year = new Date().getFullYear();
-		const ctx: MilestoneContext = {
-			accounts,
-			expenses,
-			year,
-			age: year - getBirthYear(milestones),
-			filingStatus: taxState.filingStatus,
-		};
-		return new Set(evaluateAllMilestones(milestones, new Set<string>(), ctx).activeMilestones);
-	}, [hasMilestoneIncome, state.milestones, accounts, expenses, taxState.filingStatus]);
+	// #152: the icicle below shows only income active right now. The fixed
+	// start/end-date gate alone is milestone-BLIND and would count a
+	// milestone-started income (no fixed start date) before its milestone fires —
+	// the same gap #145 fixed on the Allocation tab. todayMilestoneSet (shared with
+	// PriorityTab) is the set of milestones reached as of today; isIncomeActiveToday
+	// AND-s it with the fixed-date window.
+	const todayMilestoneSet = useTodayMilestoneSet();
 
 	// Data wrangling for icicle chart
 	const hierarchicalData = useMemo(() => {

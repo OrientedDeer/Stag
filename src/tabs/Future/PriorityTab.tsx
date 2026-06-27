@@ -13,7 +13,8 @@ import { formatCompactCurrency } from './tabs/FutureUtils';
 import { get401kLimit, getIRALimit, getHSALimit } from '../../data/ContributionLimits';
 import { getActiveExpenses } from '../../components/Objects/Budget/budgetUtils';
 import { isLongTermGoal, getGoalFundMonthlyCap } from '../../components/Objects/Expense/models';
-import { isActiveByMilestone, evaluateAllMilestones, MilestoneContext } from '../../services/simulation/MilestoneEvaluator';
+import { isActiveByMilestone } from '../../services/simulation/MilestoneEvaluator';
+import { useTodayMilestoneSet } from '../../components/Objects/Assumptions/useTodayMilestoneSet';
 
 // UI Components
 import { CurrencyInput } from '../../components/Layout/InputFields/CurrencyInput';
@@ -24,11 +25,6 @@ import { ChevronIcon } from '../../components/Layout/Icons/ChevronIcon';
 import { Tooltip } from '../../components/Layout/InputFields/Tooltip';
 import { Panel, Button } from "../../components/Layout/Primitives";
 import { useReceiptToast } from '../../components/Layout/Overlays/ReceiptToast';
-
-// Stable empty set so the no-milestone-income path keeps a referentially constant
-// todayMilestoneSet (avoids invalidating the tax/deduction memos on account edits).
-// Never mutated; shared only to preserve reference identity.
-const EMPTY_MILESTONE_SET: Set<string> = new Set<string>();
 
 export default function PriorityTab() {
     const { state, dispatch } = useContext(AssumptionsContext);
@@ -109,31 +105,20 @@ export default function PriorityTab() {
     // take-home. getMonthlyAmount(year) already prorates fixed start/end dates to
     // $0 when out of window, but it is milestone-BLIND — a milestone-started income
     // (no fixed start date) reports its full amount even when its milestone fires
-    // years out, inflating take-home/taxes/deductions. Gate on the same predicate
-    // the engine uses (isActiveByMilestone), evaluated against TODAY: which
-    // milestones are already reached given the current year, age, accounts, and
-    // expenses. An unreached start milestone excludes the income; an already-reached
-    // one keeps it. Non-milestone incomes pass through unchanged (byte-identical).
-    // Only milestone-gated incomes need the (relatively expensive) milestone
-    // evaluation. When none reference a milestone — the common case — short-circuit
-    // so activeIncomes stays the SAME reference as incomes and the tax/deduction
-    // memos don't recompute on unrelated account/expense edits.
+    // years out, inflating take-home/taxes/deductions. Gate on isActiveByMilestone
+    // against todayMilestoneSet — the SHARED set of milestones reached as of today
+    // (useTodayMilestoneSet, also used by the Income tab; resolves relative
+    // MILESTONE_PLUS conditions via the engine's reach years). Note this tab applies
+    // only the MILESTONE gate here (not isIncomeActiveToday's added fixed-date AND):
+    // getMonthlyAmount already zeroes out-of-window fixed dates, and a $0 income must
+    // stay IN activeIncomes for the tax base. hasMilestoneIncome short-circuits so
+    // activeIncomes stays the SAME reference as incomes when nothing is milestone-
+    // gated, keeping the tax/deduction memos from recomputing on unrelated edits.
     const hasMilestoneIncome = useMemo(
         () => incomes.some(inc => inc.startMilestoneId || inc.endMilestoneId),
     [incomes]);
 
-    const todayMilestoneSet = useMemo(() => {
-        const milestones = state.milestones;
-        if (!hasMilestoneIncome || !milestones || milestones.length === 0) return EMPTY_MILESTONE_SET;
-        const ctx: MilestoneContext = {
-            accounts,
-            expenses,
-            year,
-            age: year - getBirthYear(milestones),
-            filingStatus: taxState.filingStatus,
-        };
-        return new Set(evaluateAllMilestones(milestones, new Set<string>(), ctx).activeMilestones);
-    }, [hasMilestoneIncome, state.milestones, accounts, expenses, taxState.filingStatus, year]);
+    const todayMilestoneSet = useTodayMilestoneSet();
 
     const activeIncomes = useMemo(
         () => hasMilestoneIncome

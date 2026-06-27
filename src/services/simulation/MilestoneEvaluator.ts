@@ -389,12 +389,18 @@ export function isActiveByMilestone(
  *      income is inactive until its start milestone has fired, even with no fixed
  *      start date.
  *
- * `todayMilestoneSet` is the set of milestones already reached as of today
- * (build it once per render via evaluateAllMilestones against a today-context).
- * Shared by the Income tab and the Priority/Allocation tab so the two surfaces
- * agree on what counts as active now — the un-gated `isIncomeActiveInCurrentMonth`
- * alone is milestone-BLIND and counts a future milestone-started income today
- * (#145 fixed this on the Priority tab; #152 brought the Income tab in line).
+ * `todayMilestoneSet` is the set of milestones already reached as of today; both
+ * the Income tab and the Priority/Allocation tab build it from the SHARED
+ * `useTodayMilestoneSet` hook, so the two surfaces can't diverge on "what milestone
+ * has fired now". The un-gated `isIncomeActiveInCurrentMonth` alone is
+ * milestone-BLIND and counts a future milestone-started income today (#145 fixed
+ * the Priority tab; #152 brought the Income tab in line).
+ *
+ * NOTE the two surfaces apply the shared set with DIFFERENT predicates, by design:
+ * the Income tab uses THIS function (fixed-date window AND milestone) because its
+ * breakdown wants a hard active/inactive boolean; the Priority tab applies only the
+ * milestone gate (`isActiveByMilestone`) and lets `getMonthlyAmount` zero out-of-
+ * window fixed dates, because a $0 income must stay in its tax base.
  */
 export function isIncomeActiveToday(inc: AnyIncome, todayMilestoneSet: Set<string>): boolean {
     return isIncomeActiveInCurrentMonth(inc) &&
