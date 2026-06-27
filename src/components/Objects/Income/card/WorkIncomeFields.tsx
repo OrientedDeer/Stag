@@ -1,13 +1,10 @@
 import { ReactElement } from 'react';
-import { CurrencyInput } from '../../../Layout/InputFields/CurrencyInput';
 import { DropdownInput } from '../../../Layout/InputFields/DropdownInput';
-import { NumberInput } from '../../../Layout/InputFields/NumberInput';
 import { AlertBanner } from '../../../Layout/AlertBanner';
 import { CardSection } from '../../../Layout/CardSection';
 import { formatCompactCurrency } from '../../../../tabs/Future/tabs/FutureUtils';
 import type {
     WorkIncome,
-    AutoMax401kOption,
     PensionSystem,
 } from '../models';
 import type { AllIncomeKeys } from '../IncomeContext';
@@ -23,6 +20,8 @@ import {
 } from '../workIncomeSummaries';
 import { ESPPFields } from './ESPPFields';
 import { RSUFields } from './RSUFields';
+import { Income401kFields } from './Income401kFields';
+import { BenefitsFields } from './BenefitsFields';
 import { AddStockAccountLink } from './AddStockAccountLink';
 
 interface WorkIncomeFieldsProps {
@@ -100,109 +99,14 @@ export function WorkIncomeFields({
                 title="401k & Match"
                 summary={get401kSummary(income)}
             >
-                <DropdownInput
-                    id={`${income.id}-401k-mode`}
-                    label="401k Contributions"
-                    onChange={(val) => onFieldUpdate('autoMax401k', val as AutoMax401kOption)}
-                    options={[
-                        { value: 'disabled', label: 'None' },
-                        { value: 'custom', label: 'Custom Amount' },
-                        { value: 'traditional', label: 'Max Pre-Tax' },
-                        { value: 'roth', label: 'Max Roth' },
-                    ]}
-                    value={income.autoMax401k}
+                <Income401kFields
+                    values={income}
+                    onUpdate={onFieldUpdate}
+                    idPrefix={income.id}
+                    contributionAccounts={contributionAccounts}
+                    hasDeferral={hasDeferral}
+                    onMatchAccountChange={onMatchAccountChange}
                 />
-                {income.autoMax401k === 'custom' && (
-                    <>
-                        <CurrencyInput
-                            id={`${income.id}-pre-tax-contributions`}
-                            label="Pre-Tax 401k"
-                            value={income.preTax401k}
-                            onChange={(val) => onFieldUpdate('preTax401k', val)}
-                        />
-                        <CurrencyInput
-                            id={`${income.id}-roth-contributions`}
-                            label="Roth 401k"
-                            value={income.roth401k}
-                            onChange={(val) => onFieldUpdate('roth401k', val)}
-                        />
-                        {(income.preTax401k > 0 || income.roth401k > 0) && (
-                            <DropdownInput
-                                id={`${income.id}-contribution-growth`}
-                                label="Contribution Growth"
-                                onChange={(val) => onFieldUpdate('contributionGrowthStrategy', val)}
-                                options={[
-                                    { value: 'FIXED', label: 'Remain Fixed' },
-                                    { value: 'GROW_WITH_SALARY', label: 'Grow with Salary' },
-                                    { value: 'TRACK_ANNUAL_MAX', label: 'Track Annual Maximum' },
-                                ]}
-                                value={income.contributionGrowthStrategy}
-                            />
-                        )}
-                    </>
-                )}
-                {income.autoMax401k !== 'disabled' && (
-                    <>
-                        <DropdownInput
-                            id={`${income.id}-employer-match-type`}
-                            label="Employer Match"
-                            options={[
-                                { value: 'fixed', label: 'Fixed Amount' },
-                                { value: 'percent', label: '% of Earnings' },
-                            ]}
-                            value={income.employerMatchType ?? 'fixed'}
-                            onChange={(val) => onFieldUpdate('employerMatchType', val as 'fixed' | 'percent')}
-                            tooltip="Fixed: a set dollar amount per year. % of Earnings: a percentage of salary up to an optional annual cap."
-                        />
-                        {(income.employerMatchType ?? 'fixed') === 'fixed' && (
-                            <CurrencyInput
-                                id={`${income.id}-employer-match`}
-                                label="Match Amount"
-                                value={income.employerMatch}
-                                onChange={(val) => onFieldUpdate('employerMatch', val)}
-                            />
-                        )}
-                        {income.employerMatchType === 'percent' && (
-                            <>
-                                <NumberInput
-                                    id={`${income.id}-employer-match-percent`}
-                                    label="Match %"
-                                    value={income.employerMatchPercent ?? 0}
-                                    onChange={(val) => onFieldUpdate('employerMatchPercent', val)}
-                                    min={0}
-                                    max={100}
-                                    tooltip="Percentage of your salary your employer matches (e.g., 4 for 4%)."
-                                />
-                                <CurrencyInput
-                                    id={`${income.id}-employer-match-max`}
-                                    label="Annual Cap"
-                                    value={income.employerMatchMax ?? 0}
-                                    onChange={(val) => onFieldUpdate('employerMatchMax', val)}
-                                    tooltip="Maximum annual employer match in dollars. This cap is fixed and does not adjust for inflation. Leave at 0 for no cap."
-                                />
-                            </>
-                        )}
-                        {/* The destination account receives both the user's 401k deferral
-                            AND the employer match. Render it whenever EITHER is configured —
-                            a deferral with no destination gets the tax break but is never
-                            deposited, silently leaking out of net worth (issue #123). */}
-                        {(hasDeferral
-                            || ((income.employerMatchType ?? 'fixed') === 'fixed'
-                                ? income.employerMatch > 0
-                                : (income.employerMatchPercent ?? 0) > 0)) && (
-                            <DropdownInput
-                                label="Destination Account"
-                                onChange={(val) => onMatchAccountChange(val)}
-                                options={contributionAccounts.map((acc) => ({
-                                    value: acc.id || '',
-                                    label: acc.name,
-                                }))}
-                                value={income.matchAccountId}
-                                tooltip="Your 401k contributions and the employer match deposit into this account; the Budget tab tracks them as payroll-routed."
-                            />
-                        )}
-                    </>
-                )}
             </CardSection>
 
             {/* The deferral-destination warning lives OUTSIDE the collapsed 401k
@@ -226,18 +130,7 @@ export function WorkIncomeFields({
                 title="Benefits"
                 summary={getBenefitsSummary(income)}
             >
-                <CurrencyInput
-                    id={`${income.id}-insurance`}
-                    label="Insurance"
-                    value={income.insurance}
-                    onChange={(val) => onFieldUpdate('insurance', val)}
-                />
-                <CurrencyInput
-                    id={`${income.id}-hsa-contribution`}
-                    label="HSA Contribution"
-                    value={income.hsaContribution}
-                    onChange={(val) => onFieldUpdate('hsaContribution', val)}
-                />
+                <BenefitsFields values={income} onUpdate={onFieldUpdate} idPrefix={income.id} />
             </CardSection>
 
             <CardSection
