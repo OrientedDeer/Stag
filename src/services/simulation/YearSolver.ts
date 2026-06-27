@@ -2220,8 +2220,13 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
     let withdrawalOrdinaryIncome = 0;
 
     if (initialDeficit > 0) {
+        // #154: the working-year deficit path keeps the legacy penalty-aware bucketing
+        // (NOT honorLiteralOrder) — literal ordering here would tap a pre-59½ penalized
+        // account first if the user listed it high, incurring an early-withdrawal penalty
+        // the bucketing avoids. The literal order is honored on the RETIREMENT drawdown,
+        // which is what the withdrawal-order UI is about.
         const accountSnapshots = createOrderedSnapshots(
-            input.accounts, input.withdrawalOrder, input.currentAge, input.year, false, !input.taxOptimizationEnabled,
+            input.accounts, input.withdrawalOrder, input.currentAge, input.year,
         );
 
         const withdrawalResult = planWithdrawals(

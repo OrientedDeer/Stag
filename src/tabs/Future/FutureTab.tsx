@@ -1,7 +1,6 @@
 import React, { useState, useContext, useMemo, useEffect, useCallback } from 'react';
 import { useSubTabKeyboardNav } from '../../hooks/useKeyboardShortcuts';
-import { runSimulationWithOptimization } from '../../components/Objects/Assumptions/useSimulation';
-import { AssumptionsContext, getLifeExpectancy, getBirthYear } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsContext, getBirthYear } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { getSimulationInputHash } from '../../services/simulationHash';
 import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 import { ESPPAccount, RSUAccount, InvestedAccount, PropertyAccount, SavedAccount } from '../../components/Objects/Accounts/models';
@@ -11,7 +10,6 @@ import { IncomeContext } from '../../components/Objects/Income/IncomeContext';
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
 import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
 import { BudgetContext } from '../../components/Objects/Budget/BudgetContext';
-import { computeEOYBudgetContributions } from '../../services/eoyContributionProjection';
 import { calculateMilestones, formatAge, MilestonesSummary } from '../../services/MilestoneCalculator';
 import { LoadingSpinner, LoadingOverlay } from '../../components/Layout/LoadingSpinner';
 import { AlertBanner } from '../../components/Layout/AlertBanner';
@@ -22,6 +20,7 @@ import { colorMapForKeys } from '../../components/Charts/chartColors';
 
 // --- Tabs ---
 import { OverviewTab } from './tabs/OverviewTab';
+import { buildProjection } from './buildProjection';
 import { AfterTaxNetWorthChart } from './tabs/AfterTaxNetWorthChart';
 import { CashflowTab } from './tabs/CashflowTabs';
 import { DebtTab } from './tabs/DebtTab';
@@ -217,32 +216,10 @@ export default function FutureTab() {
         return assumptions.priorities.some(p => p.capType === 'REMAINDER');
     }, [assumptions.priorities]);
 
-    const executeSimulation = useCallback(() => {
-        const today = new Date();
-        const currentYear = today.getFullYear();
-        const startYear = assumptions.demographics.priorYearMode ? currentYear - 1 : currentYear;
-        const startAge = currentYear - getBirthYear(assumptions.milestones);
-        const remainderGoals = (simulation.find(s => s.year === startYear + 1)?.cashflow.bucketDetail
-            ?? simulation.find(s => s.year === startYear)?.cashflow.bucketDetail
-            ?? {});
-        const { additions, debtReductions, mortgageReductions } = computeEOYBudgetContributions(
-            assumptions.priorities, accounts, incomes, expenses, budgetMonths,
-            assumptions, taxState, startYear, today, remainderGoals,
-        );
-        return runSimulationWithOptimization(
-            getLifeExpectancy(assumptions.milestones) - startAge,
-            accounts,
-            incomes,
-            expenses,
-            assumptions,
-            taxState,
-            undefined,
-            undefined,
-            additions,
-            debtReductions,
-            mortgageReductions,
-        );
-    }, [assumptions, accounts, incomes, expenses, taxState, budgetMonths, simulation]);
+    const executeSimulation = useCallback(
+        () => buildProjection(assumptions, accounts, incomes, expenses, taxState, budgetMonths, simulation),
+        [assumptions, accounts, incomes, expenses, taxState, budgetMonths, simulation],
+    );
 
     const handleRecalculate = useCallback(() => {
         setIsLoading(true);

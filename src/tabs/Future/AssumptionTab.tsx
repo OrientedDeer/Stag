@@ -9,6 +9,7 @@ import MilestoneModal from "../../components/Objects/Assumptions/MilestoneModal"
 import { Panel } from "../../components/Layout/Primitives";
 import { AlertBanner } from "../../components/Layout/AlertBanner";
 import { computeGKRateSuggestion, suggestedInitialRate } from "../../services/gkRateSuggestion";
+import { buildMilestoneReachYears } from "../../services/simulation/MilestoneEvaluator";
 
 export default function AssumptionTab() {
   const { state, dispatch } = useContext(AssumptionsContext);
@@ -64,20 +65,9 @@ export default function AssumptionTab() {
     dispatch({ type: 'UPDATE_INVESTMENTS', payload: { withdrawalStrategy: val } });
   };
 
-  // Derive milestoneId → year-reached from the cached simulation. Each
-  // SimulationYear carries the milestone events that fired that year; the
-  // first occurrence wins (matches useSimulation's reach-year tracking).
-  const milestoneReachYears = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const year of simulation) {
-      year.milestoneEvents?.forEach(event => {
-        if (!map.has(event.milestoneId)) {
-          map.set(event.milestoneId, event.yearReached);
-        }
-      });
-    }
-    return map;
-  }, [simulation]);
+  // Derive milestoneId → year-reached from the cached simulation (shared extractor
+  // so it can't drift from the other reach-year scans).
+  const milestoneReachYears = useMemo(() => buildMilestoneReachYears(simulation), [simulation]);
 
   return (
     <div className="w-full min-h-full flex bg-surface-base justify-center pt-6 pb-24">

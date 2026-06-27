@@ -56,7 +56,7 @@ export function useTodayMilestoneSet(): Set<string> {
     // Only relative (MILESTONE_PLUS) milestones consume reach years; gate the sim
     // read on one existing so the common case never depends on `simulation`.
     const hasRelativeMilestone = useMemo(
-        () => (state.milestones ?? []).some(m => m.conditions.some(c => c.valueType === 'MILESTONE_PLUS')),
+        () => (state.milestones ?? []).some(m => (m.conditions ?? []).some(c => c.valueType === 'MILESTONE_PLUS')),
         [state.milestones],
     );
 
