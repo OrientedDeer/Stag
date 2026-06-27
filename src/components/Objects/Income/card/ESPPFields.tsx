@@ -5,6 +5,7 @@ import { PercentageInput } from '../../../Layout/InputFields/PercentageInput';
 import { ToggleInput } from '../../../Layout/InputFields/ToggleInput';
 import { AlertBanner } from '../../../Layout/AlertBanner';
 import { AddStockAccountLink } from './AddStockAccountLink';
+import { esppGrantNeedsAccount } from '../incomeCardUtils';
 import type { ESPPContributionType } from '../models';
 import type { ESPPAccount } from '../../Accounts/models';
 
@@ -38,6 +39,10 @@ interface ESPPFieldsProps {
     esppAccounts: ESPPAccount[];
     idPrefix: string;
     showAccountLink?: boolean;
+    // The income card suppresses these in-section banners (false) because it renders
+    // a card-level copy outside the collapsible ESPP section (#141); the modal keeps
+    // them (default true). The account DROPDOWN itself is unaffected.
+    showMissingAccountWarning?: boolean;
 }
 
 export function ESPPFields({
@@ -46,6 +51,7 @@ export function ESPPFields({
     esppAccounts,
     idPrefix,
     showAccountLink = false,
+    showMissingAccountWarning = true,
 }: ESPPFieldsProps): ReactElement {
     return (
         <>
@@ -105,13 +111,15 @@ export function ESPPFields({
                             value={values.esppAccountId || ''}
                             tooltip="Account where ESPP shares will be deposited."
                         />
-                    ) : (
+                    ) : (showMissingAccountWarning && esppGrantNeedsAccount(values, esppAccounts) && (
                         <AlertBanner severity="warning" size="sm" title="No ESPP Account" className="col-span-full">
                             Create an ESPP account to track your ESPP purchases.
                             {showAccountLink ? <> <AddStockAccountLink kind="ESPP" /></> : ' (Accounts tab.)'}
                         </AlertBanner>
-                    )}
-                    {esppAccounts.length > 0 && !values.esppAccountId && (
+                    ))}
+                    {/* `esppGrantNeedsAccount` also catches a DANGLING id (linked account
+                        deleted) — `!values.esppAccountId` alone missed it (#141 review). */}
+                    {showMissingAccountWarning && esppAccounts.length > 0 && esppGrantNeedsAccount(values, esppAccounts) && (
                         <AlertBanner severity="warning" size="sm" title="ESPP Account Not Linked" className="col-span-full">
                             Select an ESPP account above to track your purchases.
                         </AlertBanner>

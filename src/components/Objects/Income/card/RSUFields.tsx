@@ -6,7 +6,7 @@ import { AlertBanner } from '../../../Layout/AlertBanner';
 import { AddStockAccountLink } from './AddStockAccountLink';
 import type { RSUVestingSchedule, RSUVestFrequency } from '../models';
 import type { RSUAccount } from '../../Accounts/models';
-import { getRSUPriceValidationMessageFor } from '../incomeCardUtils';
+import { getRSUPriceValidationMessageFor, rsuGrantNeedsAccount } from '../incomeCardUtils';
 
 /**
  * Value-based RSU field cluster shared by BOTH the income card and the Add
@@ -129,13 +129,15 @@ export function RSUFields({
                             value={values.rsuAccountId || ''}
                             tooltip="Account where vested RSU shares will be deposited."
                         />
-                    ) : (showMissingAccountWarning && (
+                    ) : (showMissingAccountWarning && rsuGrantNeedsAccount(values, rsuAccounts) && (
                         <AlertBanner severity="warning" size="sm" title="No RSU Account" className="col-span-full">
                             Create an RSU account to track your vested shares.
                             {showAccountLink ? <> <AddStockAccountLink kind="RSU" /></> : ' (Accounts tab.)'}
                         </AlertBanner>
                     ))}
-                    {showMissingAccountWarning && rsuAccounts.length > 0 && !values.rsuAccountId && (
+                    {/* `rsuGrantNeedsAccount` also catches a DANGLING id (linked account
+                        deleted) — `!values.rsuAccountId` alone missed it (#141 review). */}
+                    {showMissingAccountWarning && rsuAccounts.length > 0 && rsuGrantNeedsAccount(values, rsuAccounts) && (
                         <AlertBanner severity="warning" size="sm" title="RSU Account Not Linked" className="col-span-full">
                             Select an RSU account above to track your vesting tranches.
                         </AlertBanner>

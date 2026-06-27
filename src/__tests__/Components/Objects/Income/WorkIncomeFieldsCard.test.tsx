@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
+import { MemoryRouter } from 'react-router-dom';
 import { WorkIncomeFields } from '../../../../components/Objects/Income/card/WorkIncomeFields';
 import { WorkIncome } from '../../../../components/Objects/Income/models';
-import type { InvestedAccount, RSUAccount } from '../../../../components/Objects/Accounts/models';
+import type { InvestedAccount, RSUAccount, ESPPAccount } from '../../../../components/Objects/Accounts/models';
 
 /**
  * Regression coverage for the #123 deferral-destination warning on the CARD
@@ -66,13 +67,13 @@ describe('Card WorkIncomeFields — deferral-destination warning visibility', ()
  * but never links an account sees it on card open, without also expanding the
  * RSU section. The in-section copy is suppressed in the card to avoid a duplicate.
  */
-function makeRsuIncome(rsuAccountId: string | null): WorkIncome {
+function makeRsuIncome(rsuAccountId: string | null, rsuGrantShares = 100): WorkIncome {
     const income = new WorkIncome(
         'inc-rsu', 'Engineer', 120_000, 'Annually', 'Yes',
         0, 0, 0, 0, '', null, 'FIXED', undefined, undefined, 0
     );
     income.rsuVestingSchedule = 'cliff-1yr';
-    income.rsuGrantShares = 100;
+    income.rsuGrantShares = rsuGrantShares;
     income.rsuAccountId = rsuAccountId;
     return income;
 }
@@ -112,5 +113,95 @@ describe('Card WorkIncomeFields — card-level missing-RSU-account warning (#141
         noGrant.rsuVestingSchedule = 'NONE';
         renderRsuCard(noGrant, [rsuAcct('rsu-1', 'My RSU')]);
         expect(screen.queryByText('RSU grant has no linked account')).not.toBeInTheDocument();
+    });
+
+    it('SHOWS the warning for a DANGLING account id (linked account was deleted) (#1)', () => {
+        // The grant points at an id that is NOT among the existing accounts — the old
+        // `!rsuAccountId` check treated the truthy id as "linked" and stayed silent.
+        renderRsuCard(makeRsuIncome('deleted-acct'), [rsuAcct('rsu-1', 'My RSU')]);
+        expect(screen.getByText('RSU grant has no linked account')).toBeInTheDocument();
+    });
+
+    it('does NOT show the warning for a 0-share grant (not an active grant) (#3)', () => {
+        // A schedule with zero shares never vests — isActiveRSUGrant is false, so the
+        // warning must not fire and send the user on a pointless account-linking errand.
+        renderRsuCard(makeRsuIncome(null, 0), [rsuAcct('rsu-1', 'My RSU')]);
+        expect(screen.queryByText('RSU grant has no linked account')).not.toBeInTheDocument();
+    });
+
+    it('renders the Add-RSU-account deep link at the card level when NO RSU accounts exist (#7)', () => {
+        // The no-accounts branch renders <AddStockAccountLink> (a react-router Link), so
+        // it needs a Router — this is the in-app no-accounts case the suite hadn't covered.
+        render(
+            <MemoryRouter>
+                <WorkIncomeFields
+                    income={makeRsuIncome(null)}
+                    onFieldUpdate={() => {}}
+                    contributionAccounts={[]}
+                    esppAccounts={[]}
+                    rsuAccounts={[]}
+                    contributionWarnings={null}
+                    onMatchAccountChange={() => {}}
+                />
+            </MemoryRouter>
+        );
+        expect(screen.getByText('RSU grant has no linked account')).toBeInTheDocument();
+        const link = screen.getByRole('link', { name: 'Add RSU account' });
+        expect(link).toHaveAttribute('href', '/current/accounts?tab=Invested');
+    });
+});
+
+/**
+ * #8 (review of #141) — the symmetric ESPP case: a configured ESPP contribution
+ * with no linked account must surface the same card-level warning, not stay buried
+ * in the collapsible ESPP section.
+ */
+function makeEsppIncome(esppAccountId: string | null): WorkIncome {
+    const income = new WorkIncome(
+        'inc-espp', 'Engineer', 120_000, 'Annually', 'Yes',
+        0, 0, 0, 0, '', null, 'FIXED', undefined, undefined, 0
+    );
+    income.esppContributionType = 'PERCENTAGE';
+    income.esppContributionAmount = 10;
+    income.esppAccountId = esppAccountId;
+    return income;
+}
+
+const esppAcct = (id: string, name: string) =>
+    ({ id, name } as unknown as ESPPAccount);
+
+function renderEsppCard(income: WorkIncome, esppAccounts: ESPPAccount[]) {
+    return render(
+        <WorkIncomeFields
+            income={income}
+            onFieldUpdate={() => {}}
+            contributionAccounts={[]}
+            esppAccounts={esppAccounts}
+            rsuAccounts={[]}
+            contributionWarnings={null}
+            onMatchAccountChange={() => {}}
+        />
+    );
+}
+
+describe('Card WorkIncomeFields — card-level missing-ESPP-account warning (#8)', () => {
+    it('shows the card-level ESPP warning while the section is collapsed (account exists, none selected)', () => {
+        renderEsppCard(makeEsppIncome(null), [esppAcct('espp-1', 'My ESPP')]);
+        expect(screen.getByText('ESPP contribution has no linked account')).toBeInTheDocument();
+    });
+
+    it('SHOWS the ESPP warning for a dangling account id', () => {
+        renderEsppCard(makeEsppIncome('deleted-acct'), [esppAcct('espp-1', 'My ESPP')]);
+        expect(screen.getByText('ESPP contribution has no linked account')).toBeInTheDocument();
+    });
+
+    it('does NOT show the ESPP warning once an account is linked or when contribution is NONE', () => {
+        renderEsppCard(makeEsppIncome('espp-1'), [esppAcct('espp-1', 'My ESPP')]);
+        expect(screen.queryByText('ESPP contribution has no linked account')).not.toBeInTheDocument();
+
+        const none = makeEsppIncome(null);
+        none.esppContributionType = 'NONE';
+        renderEsppCard(none, [esppAcct('espp-1', 'My ESPP')]);
+        expect(screen.queryByText('ESPP contribution has no linked account')).not.toBeInTheDocument();
     });
 });

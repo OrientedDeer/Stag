@@ -15,7 +15,7 @@ import { isActiveRSUGrant } from './rsuGrant';
 import { formatCompactCurrency } from '../../../tabs/Future/tabs/FutureUtils';
 import { get401kLimit, getHSALimit } from '../../../data/ContributionLimits';
 import { getFrequencyAbbrev } from '../../../utils/formatters';
-import type { RSUAccount, InvestedAccount } from '../Accounts/models';
+import type { RSUAccount, ESPPAccount, InvestedAccount } from '../Accounts/models';
 import type { SimulationYear } from '../../../services/simulation/types';
 
 export interface ContributionWarning {
@@ -245,6 +245,35 @@ export function getRSUPriceValidationMessageFor(
     }
 
     return null;
+}
+
+/**
+ * Whether an RSU grant is configured (ACTIVE — a vesting schedule AND shares > 0,
+ * per the engine's single-source-of-truth `isActiveRSUGrant`) but has no EXISTING
+ * linked account. Catches both an unset id AND a DANGLING id (the linked RSU
+ * account was deleted, leaving a truthy-but-orphaned id) — in either case
+ * processRSUVesting can't resolve an account and the grant silently never vests.
+ *
+ * One gate for the card-level warning and the in-section RSUFields banners so they
+ * can't diverge (#141 review): a 0-share grant won't vest regardless, so it must
+ * NOT alarm; a dangling id MUST.
+ */
+export function rsuGrantNeedsAccount(
+    config: { rsuVestingSchedule: RSUValidationConfig['rsuVestingSchedule']; rsuGrantShares: number; rsuAccountId: string | null },
+    rsuAccounts: RSUAccount[],
+): boolean {
+    return isActiveRSUGrant(config) && !rsuAccounts.some(acc => acc.id === config.rsuAccountId);
+}
+
+/**
+ * ESPP analogue of {@link rsuGrantNeedsAccount}: an ESPP contribution is configured
+ * (type !== 'NONE') but no EXISTING ESPP account is linked (unset OR dangling id).
+ */
+export function esppGrantNeedsAccount(
+    config: { esppContributionType: 'NONE' | 'PERCENTAGE' | 'FIXED'; esppAccountId: string | null },
+    esppAccounts: ESPPAccount[],
+): boolean {
+    return config.esppContributionType !== 'NONE' && !esppAccounts.some(acc => acc.id === config.esppAccountId);
 }
 
 /**

@@ -13,7 +13,7 @@ import type {
 import type { AllIncomeKeys } from '../IncomeContext';
 import type { InvestedAccount, ESPPAccount, RSUAccount } from '../../Accounts/models';
 import type { ContributionWarning } from '../incomeCardUtils';
-import { getDeferralDestinationValidationMessage, hasConfiguredDeferral } from '../incomeCardUtils';
+import { getDeferralDestinationValidationMessage, hasConfiguredDeferral, rsuGrantNeedsAccount, esppGrantNeedsAccount } from '../incomeCardUtils';
 import {
     get401kSummary,
     getBenefitsSummary,
@@ -59,14 +59,14 @@ export function WorkIncomeFields({
     );
     return (
         <>
-            {/* #141: surface the missing-RSU-account warning at the CARD level —
-                above the collapsible RSU section — so a user who configures an RSU
-                grant but never links an account sees it the moment the card opens,
-                without also having to expand the RSU section. The in-section copies
-                are suppressed in the card (showMissingAccountWarning={false}) to
-                avoid a duplicate; the modal keeps them (it has no collapse). Covers
-                both "no RSU account exists" and "exists but none selected". */}
-            {income.rsuVestingSchedule !== 'NONE' && !income.rsuAccountId && (
+            {/* #141: surface the missing-account warnings at the CARD level — above
+                the collapsible RSU/ESPP sections — so a user who configures a grant
+                but never links an account sees it the moment the card opens, without
+                having to expand the section. The in-section copies are suppressed in
+                the card (showMissingAccountWarning={false}); the modal keeps them (no
+                collapse). `*GrantNeedsAccount` gates on an ACTIVE grant AND no EXISTING
+                account, so it skips a 0-share grant and catches a dangling id (#141 review). */}
+            {rsuGrantNeedsAccount(income, rsuAccounts) && (
                 <AlertBanner
                     severity="warning"
                     size="sm"
@@ -77,6 +77,19 @@ export function WorkIncomeFields({
                     {rsuAccounts.length > 0
                         ? ' Open the RSU section below to select one.'
                         : <> <AddStockAccountLink kind="RSU" /></>}
+                </AlertBanner>
+            )}
+            {esppGrantNeedsAccount(income, esppAccounts) && (
+                <AlertBanner
+                    severity="warning"
+                    size="sm"
+                    title="ESPP contribution has no linked account"
+                    className="col-span-full mb-2"
+                >
+                    ESPP purchases won&apos;t be tracked until you link an ESPP account.
+                    {esppAccounts.length > 0
+                        ? ' Open the ESPP section below to select one.'
+                        : <> <AddStockAccountLink kind="ESPP" /></>}
                 </AlertBanner>
             )}
             {/* Heavy field clusters live in collapsed sections with paystub-style
@@ -238,6 +251,7 @@ export function WorkIncomeFields({
                     esppAccounts={esppAccounts}
                     idPrefix={income.id}
                     showAccountLink
+                    showMissingAccountWarning={false}
                 />
             </CardSection>
 
