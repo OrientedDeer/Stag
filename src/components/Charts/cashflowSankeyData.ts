@@ -287,8 +287,12 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
             otherIncomeItems.reduce((s, i) => s + i.amount, 0) +
             reinvestedIncomeItems.reduce((s, i) => s + i.amount, 0);
         // Gross flows into Gross Pay (above); only the NET reinvests out of Net Pay.
-        // The gross−net gap (RSU sell-to-cover withholding) is already in totalTaxes,
-        // so closing `remaining` against net avoids double-counting it as an outflow.
+        // The gross−net gap (the RSU sell-to-cover withholding) was sold off at vest,
+        // so it does NOT land in the account — counting gross here would make Net Pay's
+        // outflow exceed its inflow by that gap. (Where the withheld dollars go: toward
+        // the year's tax, with any over-withholding returned as spendable cash; that
+        // split nets out in the residual `remaining` below, which is why Net Pay still
+        // balances even when the withholding rate ≠ the vest's effective marginal rate.)
         const totalReinvested = reinvestedIncomeItems.reduce((s, i) => s + i.net, 0);
 
         const mortgageInterestAndEscrow = totalMortgagePayment - totalPrincipal;
@@ -605,9 +609,10 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
 
             // Reinvested income flows from Net Pay back to the savings account.
             // Use NET (gross − sell-at-source withholding): the gross entered via
-            // Gross Pay and the withheld slice already left through Taxes, so only
-            // the net lands in the account. Routing gross here would make Net Pay's
-            // outflow exceed its inflow by the withholding (the RSU vest imbalance).
+            // Gross Pay and the withheld slice was sold off at vest (it does not land
+            // in the account), so only the net reinvests. Routing gross here would make
+            // Net Pay's outflow exceed its inflow by the withholding (the RSU vest
+            // imbalance). See the `totalReinvested` note above for where the gap goes.
             reinvestedIncomeItems.forEach(item => {
                 links.push({ source: 'Net Pay', target: `Reinvested: ${item.accountName}`, value: item.net });
             });
