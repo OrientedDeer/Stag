@@ -364,7 +364,6 @@ export default function WithdrawalTab() {
                     onAutoSort={onAutoSort}
                     isBusy={isRecalculating}
                     formatMoney={formatMoney}
-                    chosenWithdrawalOrder={simulation[0]?.chosenWithdrawalOrder}
                 />
             </div>
         </div>
