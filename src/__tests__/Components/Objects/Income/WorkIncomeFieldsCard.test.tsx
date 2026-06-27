@@ -156,13 +156,13 @@ describe('Card WorkIncomeFields — card-level missing-RSU-account warning (#141
  * with no linked account must surface the same card-level warning, not stay buried
  * in the collapsible ESPP section.
  */
-function makeEsppIncome(esppAccountId: string | null): WorkIncome {
+function makeEsppIncome(esppAccountId: string | null, esppContributionAmount = 10): WorkIncome {
     const income = new WorkIncome(
         'inc-espp', 'Engineer', 120_000, 'Annually', 'Yes',
         0, 0, 0, 0, '', null, 'FIXED', undefined, undefined, 0
     );
     income.esppContributionType = 'PERCENTAGE';
-    income.esppContributionAmount = 10;
+    income.esppContributionAmount = esppContributionAmount;
     income.esppAccountId = esppAccountId;
     return income;
 }
@@ -203,5 +203,31 @@ describe('Card WorkIncomeFields — card-level missing-ESPP-account warning (#8)
         none.esppContributionType = 'NONE';
         renderEsppCard(none, [esppAcct('espp-1', 'My ESPP')]);
         expect(screen.queryByText('ESPP contribution has no linked account')).not.toBeInTheDocument();
+    });
+
+    it('does NOT show the ESPP warning for a 0-amount contribution (mirrors RSU 0-share)', () => {
+        // PERCENTAGE type but 0% — nothing is purchased, so no account is needed yet.
+        renderEsppCard(makeEsppIncome(null, 0), [esppAcct('espp-1', 'My ESPP')]);
+        expect(screen.queryByText('ESPP contribution has no linked account')).not.toBeInTheDocument();
+    });
+
+    it('renders the Add-ESPP-account deep link at the card level when NO ESPP accounts exist', () => {
+        // No-accounts branch renders <AddStockAccountLink> (a react-router Link) → Router.
+        render(
+            <MemoryRouter>
+                <WorkIncomeFields
+                    income={makeEsppIncome(null)}
+                    onFieldUpdate={() => {}}
+                    contributionAccounts={[]}
+                    esppAccounts={[]}
+                    rsuAccounts={[]}
+                    contributionWarnings={null}
+                    onMatchAccountChange={() => {}}
+                />
+            </MemoryRouter>
+        );
+        expect(screen.getByText('ESPP contribution has no linked account')).toBeInTheDocument();
+        const link = screen.getByRole('link', { name: 'Add ESPP account' });
+        expect(link).toHaveAttribute('href', '/current/accounts?tab=Invested');
     });
 });

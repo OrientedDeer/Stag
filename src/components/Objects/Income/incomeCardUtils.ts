@@ -267,13 +267,17 @@ export function rsuGrantNeedsAccount(
 
 /**
  * ESPP analogue of {@link rsuGrantNeedsAccount}: an ESPP contribution is configured
- * (type !== 'NONE') but no EXISTING ESPP account is linked (unset OR dangling id).
+ * AND non-zero (a PERCENTAGE/FIXED type with amount > 0 — mirroring the RSU side's
+ * shares > 0 gate so a half-configured 0% contribution doesn't false-alarm) but no
+ * EXISTING ESPP account is linked (unset OR dangling id).
  */
 export function esppGrantNeedsAccount(
-    config: { esppContributionType: 'NONE' | 'PERCENTAGE' | 'FIXED'; esppAccountId: string | null },
+    config: { esppContributionType: 'NONE' | 'PERCENTAGE' | 'FIXED'; esppContributionAmount: number; esppAccountId: string | null },
     esppAccounts: ESPPAccount[],
 ): boolean {
-    return config.esppContributionType !== 'NONE' && !esppAccounts.some(acc => acc.id === config.esppAccountId);
+    return config.esppContributionType !== 'NONE'
+        && config.esppContributionAmount > 0
+        && !esppAccounts.some(acc => acc.id === config.esppAccountId);
 }
 
 /**
