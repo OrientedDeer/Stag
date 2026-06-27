@@ -13,7 +13,7 @@ import { formatCompactCurrency } from './tabs/FutureUtils';
 import { get401kLimit, getIRALimit, getHSALimit } from '../../data/ContributionLimits';
 import { getActiveExpenses } from '../../components/Objects/Budget/budgetUtils';
 import { isLongTermGoal, getGoalFundMonthlyCap } from '../../components/Objects/Expense/models';
-import { isActiveByMilestone } from '../../services/simulation/MilestoneEvaluator';
+import { isActiveByMilestone, incomeHasMilestoneGate } from '../../services/simulation/MilestoneEvaluator';
 import { useTodayMilestoneSet } from '../../components/Objects/Assumptions/useTodayMilestoneSet';
 
 // UI Components
@@ -114,9 +114,7 @@ export default function PriorityTab() {
     // stay IN activeIncomes for the tax base. hasMilestoneIncome short-circuits so
     // activeIncomes stays the SAME reference as incomes when nothing is milestone-
     // gated, keeping the tax/deduction memos from recomputing on unrelated edits.
-    const hasMilestoneIncome = useMemo(
-        () => incomes.some(inc => inc.startMilestoneId || inc.endMilestoneId),
-    [incomes]);
+    const hasMilestoneIncome = useMemo(() => incomeHasMilestoneGate(incomes), [incomes]);
 
     const todayMilestoneSet = useTodayMilestoneSet();
 

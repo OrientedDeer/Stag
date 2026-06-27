@@ -1,7 +1,7 @@
 import { AnyAccount, InvestedAccount, SavedAccount, DebtAccount, PropertyAccount, ESPPAccount, RSUAccount, DeficitDebtAccount } from "../../components/Objects/Accounts/models";
 import { MortgageExpense, LoanExpense, AnyExpense } from "../../components/Objects/Expense/models";
 import { AnyIncome, isIncomeActiveInCurrentMonth } from "../../components/Objects/Income/models";
-import { CustomMilestone, MilestoneCondition, MilestoneReachEvent } from "./types";
+import { CustomMilestone, MilestoneCondition, MilestoneReachEvent, SimulationYear } from "./types";
 import { getTaxParameters, calculateTotalFederalTax } from "../../components/Objects/Taxes/TaxService";
 import { FilingStatus } from "../../data/TaxData";
 
@@ -405,4 +405,30 @@ export function isActiveByMilestone(
 export function isIncomeActiveToday(inc: AnyIncome, todayMilestoneSet: Set<string>): boolean {
     return isIncomeActiveInCurrentMonth(inc) &&
         isActiveByMilestone(inc.startMilestoneId, inc.endMilestoneId, todayMilestoneSet);
+}
+
+/** True when any income references a start/end milestone — i.e. milestone gating
+ *  is in play at all. The shared predicate behind both the simulation tabs' and the
+ *  useTodayMilestoneSet short-circuit, so "is anything milestone-gated" can't drift. */
+export function incomeHasMilestoneGate(incomes: AnyIncome[]): boolean {
+    return incomes.some(inc => inc.startMilestoneId || inc.endMilestoneId);
+}
+
+/**
+ * Canonical extractor for per-milestone reach years from a projected timeline:
+ * milestoneId → the FIRST simulation year that recorded it firing (its
+ * `milestoneEvents[].yearReached`). This is the map MILESTONE_PLUS ("N years after
+ * X") conditions resolve against. One implementation so the several surfaces that
+ * need it (the today-milestone hook, etc.) can't drift on the scan semantics.
+ */
+export function buildMilestoneReachYears(simulation: SimulationYear[]): Map<string, number> {
+    const reachYears = new Map<string, number>();
+    for (const simYear of simulation) {
+        for (const ev of simYear.milestoneEvents ?? []) {
+            if (!reachYears.has(ev.milestoneId)) {
+                reachYears.set(ev.milestoneId, ev.yearReached);
+            }
+        }
+    }
+    return reachYears;
 }
