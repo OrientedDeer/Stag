@@ -18,6 +18,10 @@ interface ExpandableCardProps {
     headerContent: ReactNode;
     /** Optional additional actions in expanded header (e.g., history button) */
     headerActions?: ReactNode;
+    /** Optional status badge shown in BOTH the collapsed and expanded header, so a
+     *  condition that needs attention (e.g. a misconfigured grant) is visible without
+     *  expanding the card. */
+    badge?: ReactNode;
     /** Aria label prefix for accessibility */
     ariaLabelType?: string;
 }
@@ -31,6 +35,7 @@ export function ExpandableCard({
     children,
     headerContent,
     headerActions,
+    badge,
     ariaLabelType = "item"
 }: ExpandableCardProps): ReactElement {
     const [isExpanded, setIsExpanded] = useState(false);
@@ -71,6 +76,7 @@ export function ExpandableCard({
                     <div className="font-semibold text-white truncate flex-1">
                         {name}
                     </div>
+                    {badge && <div className="shrink-0">{badge}</div>}
                     <div className="text-content-default text-sm whitespace-nowrap">
                         {displayValue}{frequencySuffix}
                     </div>
@@ -91,6 +97,7 @@ export function ExpandableCard({
                     {headerContent}
                 </div>
                 <div className="flex items-center gap-2 ml-auto">
+                    {badge}
                     {headerActions}
                     <button
                         ref={collapseButtonRef}

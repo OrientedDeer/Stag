@@ -28,6 +28,8 @@ import {
     getFrequencyDisplay,
     computeContributionWarnings,
     getSimResolvedPension,
+    rsuGrantNeedsAccount,
+    esppGrantNeedsAccount,
 } from './incomeCardUtils';
 import { SimulationContext } from '../Assumptions/SimulationContext';
 import { useSSAEarningsImport } from './useSSAEarningsImport';
@@ -188,6 +190,23 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
         </div>
     );
 
+    // #141: a stock grant configured with no linked account is effectively a broken
+    // income (it never vests/purchases). Surface a badge on the card HEADER — visible
+    // while collapsed — so the user doesn't have to expand the card to discover it.
+    const needsRsuAccount = isWorkIncome && rsuGrantNeedsAccount(income, rsuAccounts);
+    const needsEsppAccount = isWorkIncome && esppGrantNeedsAccount(income, esppAccounts);
+    const missingAccountBadge = (needsRsuAccount || needsEsppAccount) ? (
+        <span
+            className="inline-flex items-center gap-1 rounded-full border border-warning-strong bg-warning-tint/30 px-2 py-0.5 text-xs font-semibold text-warning-bright whitespace-nowrap"
+            title={`This income's ${needsRsuAccount ? 'RSU grant' : 'ESPP contribution'} has no linked account, so it won't be tracked. Expand the card to link one.`}
+        >
+            <svg className="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            No account
+        </span>
+    ) : undefined;
+
     return (
         <ExpandableCard
             name={income.name}
@@ -197,6 +216,7 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
             frequencySuffix={getFrequencyDisplay(income, simResolvedPension?.benefit)}
             headerContent={headerContent}
             headerActions={headerActions}
+            badge={missingAccountBadge}
             ariaLabelType="income"
         >
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 bg-[var(--c-surface-raised)] p-6 rounded-xl border border-border-subtle">
