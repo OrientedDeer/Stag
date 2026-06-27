@@ -11,7 +11,7 @@ import { AnyAccount, ESPPAccount, RSUAccount, SavedAccount, InvestedAccount } fr
 import { formatCompactCurrency } from './tabs/FutureUtils';
 import { buildProjection } from './buildProjection';
 import { getRMDStartAge } from '../../data/RMDData';
-import { applyChosenWithdrawalOrder } from '../../services/simulation/EngineDirectConversionSearch';
+import { taxOptimalWithdrawalOrder } from '../../services/simulation/WithdrawalPlanner';
 import { SimulationYear } from '../../services/simulation/types';
 import { Phase } from '../../services/simulation/TaxOptimizedWithdrawal';
 import { getSimulationInputHash } from '../../services/simulationHash';
@@ -108,46 +108,42 @@ export default function WithdrawalTab() {
         }, 50);
     }, [buildSimulation, dispatchSimulation]);
 
-    // #154 "Auto sort": apply the order Tax Optimization would choose, by RUNNING the
-    // optimizer (it owns the order only under Tax Opt + dp-precomputed), reading its
-    // `chosenWithdrawalOrder`, and writing it into the visible list — then refreshing
-    // the displayed projection under the user's REAL settings + the new order. The
-    // user can still hand-tweak afterward.
+    // #154 "Auto sort": apply the engine's tax-efficient withdrawal ORDER for the user's
+    // current age — penalty-free accounts before early-withdrawal-penalized ones, and
+    // within each group by tax type (cash → taxable → tax-deferred → tax-free). So an
+    // early-retirement "Traditional first" gets Traditional deferred (penalty) AND a
+    // "Roth before brokerage" gets the taxable brokerage pulled ahead of the tax-free
+    // Roth. Then the literal-order execution (Tax Opt off) runs exactly what's now shown.
     const onAutoSort = useCallback(() => {
         setIsRecalculating(true);
         setTimeout(() => {
             try {
                 const current = stateRef.current;
-                const optimizeOverride: AssumptionsState = {
-                    ...current,
-                    investments: { ...current.investments, taxOptimizationEnabled: true, rothConversionStrategy: 'dp-precomputed' },
-                };
-                const chosen = buildSimulation(optimizeOverride).sim[0]?.chosenWithdrawalOrder;
-                if (!chosen || chosen.length === 0) {
-                    // The optimizer produced no order for this scenario (e.g. not yet
-                    // retired, or the order doesn't bind) — don't claim the current one is optimal.
-                    showReceipt({ message: 'No tax-optimized reorder available for this scenario yet.' });
-                    return;
-                }
-                // Reorder ONLY accounts already in the user's list — NEVER re-add an account
-                // they deliberately excluded (omit validAccountIds so omitted-but-real ids
-                // aren't synthesized back into the persisted order).
-                const reordered = applyChosenWithdrawalOrder(current, chosen).withdrawalStrategy;
-                const changed = reordered.length !== current.withdrawalStrategy.length
-                    || reordered.some((w, i) => w.accountId !== current.withdrawalStrategy[i]?.accountId);
+                const currentAge = new Date().getFullYear() - getBirthYear(current.milestones);
+                const byId = new Map(current.withdrawalStrategy.map(w => [w.accountId, w]));
+                const eligible = accounts.filter(a => byId.has(a.id));
+                const reordered = taxOptimalWithdrawalOrder(eligible, currentAge)
+                    .map(a => byId.get(a.id))
+                    .filter((w): w is WithdrawalBucket => w !== undefined);
+                // Defensive: keep any bucket whose account isn't resolvable (e.g. a stale id)
+                // in its original spot — never silently drop one.
+                const seen = new Set(reordered.map(w => w.accountId));
+                for (const w of current.withdrawalStrategy) if (!seen.has(w.accountId)) reordered.push(w);
+
+                const changed = reordered.some((w, i) => w.accountId !== current.withdrawalStrategy[i]?.accountId);
                 if (!changed) {
                     showReceipt({ message: 'Already in the tax-optimized withdrawal order.' });
-                    return; // no change → skip the redundant display re-sim
+                    return;
                 }
                 dispatch({ type: 'SET_WITHDRAWAL_STRATEGY', payload: reordered });
-                const { sim: displaySim, hash } = buildSimulation({ ...current, withdrawalStrategy: reordered });
-                dispatchSimulation({ type: 'SET_SIMULATION_WITH_HASH', payload: { simulation: displaySim, inputHash: hash } });
+                const { sim, hash } = buildSimulation({ ...current, withdrawalStrategy: reordered });
+                dispatchSimulation({ type: 'SET_SIMULATION_WITH_HASH', payload: { simulation: sim, inputHash: hash } });
                 showReceipt({ message: 'Reordered to the tax-optimized withdrawal order.' });
             } finally {
                 setIsRecalculating(false);
             }
         }, 50);
-    }, [dispatch, dispatchSimulation, buildSimulation, showReceipt]);
+    }, [accounts, dispatch, dispatchSimulation, buildSimulation, showReceipt]);
 
     const onUpdateInvestments = useCallback((payload: Partial<AssumptionsState['investments']>) => {
         const current = stateRef.current;

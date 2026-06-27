@@ -385,6 +385,47 @@ export function createOrderedSnapshots(
     return [...orderedResult, ...fbNonPenalized, ...fbSavings, ...fbPenalized];
 }
 
+// Tax-efficiency rank for withdrawal ordering (lower = tap first): spend cash first
+// (no growth/tax to forfeit), then taxable cap-gains, then tax-deferred ordinary
+// income, then tax-free — preserving Roth/HSA tax-free growth the longest.
+const WITHDRAWAL_TAX_RANK: Record<WithdrawalAccountType, number> = {
+    savings: 0,
+    brokerage: 1, espp: 1, rsu: 1,
+    traditional_401k: 2, traditional_ira: 2,
+    roth_401k: 3, roth_ira: 3,
+    hsa: 4,
+};
+
+/**
+ * The tax-efficient withdrawal ORDER for a given age, used by the Withdrawal tab's
+ * "Auto sort". Two keys, in priority order:
+ *   1. Penalty: penalty-free accounts before early-withdrawal-PENALIZED ones AT
+ *      `currentAge` (same `hasEarlyWithdrawalPenalty` the simulation uses — Traditional
+ *      before 59½, HSA before 65; Roth counts penalty-free since contributions come out
+ *      free). Avoiding the 10% penalty dominates.
+ *   2. Tax type: within each penalty group, cash → taxable → tax-deferred → tax-free.
+ * Ties keep the input order (stable). Evaluated at the CURRENT age — the optimal order
+ * shifts as penalties lapse (Traditional at 59½), so it's a "right now" snapshot.
+ */
+export function taxOptimalWithdrawalOrder(
+    accounts: AnyAccount[],
+    currentAge: number,
+    year?: number,
+): AnyAccount[] {
+    const rank = (a: AnyAccount) => {
+        const type = classifyAccount(a);
+        return {
+            penalty: hasEarlyWithdrawalPenalty(type, currentAge) ? 1 : 0,
+            tax: WITHDRAWAL_TAX_RANK[type] ?? 1,
+        };
+    };
+    void year; // age drives penalties; year reserved for parity with createOrderedSnapshots
+    return accounts
+        .map((a, i) => ({ a, i, r: rank(a) }))
+        .sort((x, y) => (x.r.penalty - y.r.penalty) || (x.r.tax - y.r.tax) || (x.i - y.i))
+        .map(x => x.a);
+}
+
 // =============================================================================
 // GROSS-UP FORMULAS
 // =============================================================================
