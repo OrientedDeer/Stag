@@ -23,6 +23,7 @@ import {
 } from '../workIncomeSummaries';
 import { ESPPFields } from './ESPPFields';
 import { RSUFields } from './RSUFields';
+import { AddStockAccountLink } from './AddStockAccountLink';
 
 interface WorkIncomeFieldsProps {
     income: WorkIncome;
@@ -58,6 +59,26 @@ export function WorkIncomeFields({
     );
     return (
         <>
+            {/* #141: surface the missing-RSU-account warning at the CARD level —
+                above the collapsible RSU section — so a user who configures an RSU
+                grant but never links an account sees it the moment the card opens,
+                without also having to expand the RSU section. The in-section copies
+                are suppressed in the card (showMissingAccountWarning={false}) to
+                avoid a duplicate; the modal keeps them (it has no collapse). Covers
+                both "no RSU account exists" and "exists but none selected". */}
+            {income.rsuVestingSchedule !== 'NONE' && !income.rsuAccountId && (
+                <AlertBanner
+                    severity="warning"
+                    size="sm"
+                    title="RSU grant has no linked account"
+                    className="col-span-full mb-2"
+                >
+                    Vested shares won&apos;t be tracked until you link an RSU account.
+                    {rsuAccounts.length > 0
+                        ? ' Open the RSU section below to select one.'
+                        : <> <AddStockAccountLink kind="RSU" /></>}
+                </AlertBanner>
+            )}
             {/* Heavy field clusters live in collapsed sections with paystub-style
                 summaries so the card stays scannable. Warnings render outside
                 the sections — they must never be hidden by a collapse. */}
@@ -231,6 +252,7 @@ export function WorkIncomeFields({
                     rsuAccounts={rsuAccounts}
                     idPrefix={income.id}
                     showAccountLink
+                    showMissingAccountWarning={false}
                 />
             </CardSection>
 

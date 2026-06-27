@@ -41,6 +41,32 @@ describe('#141 RSU card warning — Add Account deep link', () => {
         const link = screen.getByRole('link', { name: 'Add RSU account' });
         expect(link).toHaveAttribute('href', '/current/accounts?tab=Invested');
     });
+
+    it('suppresses the in-section missing-account banners when showMissingAccountWarning=false (#141)', () => {
+        // The CARD renders a more prominent card-level copy outside the collapsible
+        // RSU section, so it passes showMissingAccountWarning={false} to avoid a
+        // duplicate. The grant fields still render; only the in-section banners go.
+        const income = makeIncome();
+        income.rsuVestingSchedule = 'cliff-1yr';
+        income.rsuGrantShares = 100;
+
+        // No router needed: suppressing the banner also removes the <Link> inside it.
+        render(
+            <RSUFields
+                values={income}
+                onUpdate={() => {}}
+                rsuAccounts={[]}
+                idPrefix={income.id}
+                showAccountLink
+                showMissingAccountWarning={false}
+            />
+        );
+
+        expect(screen.queryByText('No RSU Account')).not.toBeInTheDocument();
+        expect(screen.queryByText('RSU Account Not Linked')).not.toBeInTheDocument();
+        // The cluster itself still renders (the schedule field label is present).
+        expect(screen.getByText('Vesting Schedule')).toBeInTheDocument();
+    });
 });
 
 describe('#141 ESPP card warning — Add Account deep link', () => {

@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { WorkIncomeFields } from '../../../../components/Objects/Income/card/WorkIncomeFields';
 import { WorkIncome } from '../../../../components/Objects/Income/models';
-import type { InvestedAccount } from '../../../../components/Objects/Accounts/models';
+import type { InvestedAccount, RSUAccount } from '../../../../components/Objects/Accounts/models';
 
 /**
  * Regression coverage for the #123 deferral-destination warning on the CARD
@@ -57,5 +57,60 @@ describe('Card WorkIncomeFields — deferral-destination warning visibility', ()
     it('shows no warning when the deferral has a valid destination', () => {
         renderCard(makeDeferralIncome('acc-1'), [acct('acc-1', 'My 401k')]);
         expect(screen.queryByText('Destination Account Required')).not.toBeInTheDocument();
+    });
+});
+
+/**
+ * #141 — the "no linked RSU account" warning must surface at the CARD level
+ * (outside the collapsible RSU section) so a user who configures an RSU grant
+ * but never links an account sees it on card open, without also expanding the
+ * RSU section. The in-section copy is suppressed in the card to avoid a duplicate.
+ */
+function makeRsuIncome(rsuAccountId: string | null): WorkIncome {
+    const income = new WorkIncome(
+        'inc-rsu', 'Engineer', 120_000, 'Annually', 'Yes',
+        0, 0, 0, 0, '', null, 'FIXED', undefined, undefined, 0
+    );
+    income.rsuVestingSchedule = 'cliff-1yr';
+    income.rsuGrantShares = 100;
+    income.rsuAccountId = rsuAccountId;
+    return income;
+}
+
+const rsuAcct = (id: string, name: string) =>
+    ({ id, name } as unknown as RSUAccount);
+
+function renderRsuCard(income: WorkIncome, rsuAccounts: RSUAccount[]) {
+    return render(
+        <WorkIncomeFields
+            income={income}
+            onFieldUpdate={() => {}}
+            contributionAccounts={[]}
+            esppAccounts={[]}
+            rsuAccounts={rsuAccounts}
+            contributionWarnings={null}
+            onMatchAccountChange={() => {}}
+        />
+    );
+}
+
+describe('Card WorkIncomeFields — card-level missing-RSU-account warning (#141)', () => {
+    it('shows the card-level warning while the RSU section is collapsed (account exists, none selected)', () => {
+        // An RSU account exists but the grant links to none → the no-Link text branch
+        // (no router needed). The RSU section is collapsed; the warning must still show.
+        renderRsuCard(makeRsuIncome(null), [rsuAcct('rsu-1', 'My RSU')]);
+        expect(screen.getByText('RSU grant has no linked account')).toBeInTheDocument();
+    });
+
+    it('does NOT show the card-level warning once an RSU account is linked', () => {
+        renderRsuCard(makeRsuIncome('rsu-1'), [rsuAcct('rsu-1', 'My RSU')]);
+        expect(screen.queryByText('RSU grant has no linked account')).not.toBeInTheDocument();
+    });
+
+    it('does NOT show the warning when the income has no RSU grant configured', () => {
+        const noGrant = makeRsuIncome(null);
+        noGrant.rsuVestingSchedule = 'NONE';
+        renderRsuCard(noGrant, [rsuAcct('rsu-1', 'My RSU')]);
+        expect(screen.queryByText('RSU grant has no linked account')).not.toBeInTheDocument();
     });
 });

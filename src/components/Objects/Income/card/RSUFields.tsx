@@ -46,6 +46,11 @@ interface RSUFieldsProps {
     // modal does not (the price is account-side and the pre-#140 modal never showed
     // it — don't alarm/block the user mid-add). Defaults on for the card. #140.
     showPriceValidation?: boolean;
+    // The "no linked RSU account" warnings. The income CARD suppresses them here
+    // (false) because it renders a more prominent CARD-LEVEL copy outside the
+    // collapsible RSU section (#141). The modal keeps them (default true) — it has
+    // no collapse to hide them. The account DROPDOWN itself is unaffected.
+    showMissingAccountWarning?: boolean;
 }
 
 export function RSUFields({
@@ -55,6 +60,7 @@ export function RSUFields({
     idPrefix,
     showAccountLink = false,
     showPriceValidation = true,
+    showMissingAccountWarning = true,
 }: RSUFieldsProps): ReactElement {
     const priceValidationMessage = showPriceValidation
         ? getRSUPriceValidationMessageFor(values, rsuAccounts)
@@ -123,13 +129,13 @@ export function RSUFields({
                             value={values.rsuAccountId || ''}
                             tooltip="Account where vested RSU shares will be deposited."
                         />
-                    ) : (
+                    ) : (showMissingAccountWarning && (
                         <AlertBanner severity="warning" size="sm" title="No RSU Account" className="col-span-full">
                             Create an RSU account to track your vested shares.
                             {showAccountLink ? <> <AddStockAccountLink kind="RSU" /></> : ' (Accounts tab.)'}
                         </AlertBanner>
-                    )}
-                    {rsuAccounts.length > 0 && !values.rsuAccountId && (
+                    ))}
+                    {showMissingAccountWarning && rsuAccounts.length > 0 && !values.rsuAccountId && (
                         <AlertBanner severity="warning" size="sm" title="RSU Account Not Linked" className="col-span-full">
                             Select an RSU account above to track your vesting tranches.
                         </AlertBanner>
