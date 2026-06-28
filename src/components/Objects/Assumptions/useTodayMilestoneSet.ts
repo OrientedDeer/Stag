@@ -44,6 +44,39 @@ const EMPTY_REACH_YEARS: Map<string, number> = new Map<string, number>();
  * Short-circuits to a stable empty set when no income references any milestone.
  */
 export function useTodayMilestoneSet(): Set<string> {
+    return useTodayMilestoneState().todayMilestoneSet;
+}
+
+/**
+ * Whether the today-milestone set's RELATIVE (MILESTONE_PLUS) gate is currently
+ * UNRESOLVABLE — true when a relative milestone exists but the cached `simulation`
+ * timeline is empty, so `buildMilestoneReachYears` yields no reach years and every
+ * MILESTONE_PLUS condition resolves to "not reached" (#152/#154).
+ *
+ * On the Current/Income tab a projection may not have run yet (`simulation === []`),
+ * so a genuinely-active relative-milestone income would be silently dropped from the
+ * breakdown — the milestone can't be confirmed reached, not because it isn't, but
+ * because there's no timeline to read it from. Callers use this to fall back to the
+ * pre-#152 date-window-only gate for that case (see `isIncomeActiveToday`), rather
+ * than treating the unresolvable milestone as unreached. When the timeline IS
+ * available this is false and the milestone gate works normally.
+ *
+ * Returns a stable `false` whenever no relative milestone is in play, so it never
+ * adds a dependency on `simulation` in the common case.
+ */
+export function useRelativeMilestoneGateUnresolved(): boolean {
+    return useTodayMilestoneState().relativeMilestoneGateUnresolved;
+}
+
+/**
+ * Shared derivation backing both `useTodayMilestoneSet` and
+ * `useRelativeMilestoneGateUnresolved` so the (re)evaluation runs once and the two
+ * surfaces can't drift. Each public hook reads a single field off the result.
+ */
+function useTodayMilestoneState(): {
+    todayMilestoneSet: Set<string>;
+    relativeMilestoneGateUnresolved: boolean;
+} {
     const { state } = useContext(AssumptionsContext);
     const { accounts } = useContext(AccountContext);
     const { expenses } = useContext(ExpenseContext);
@@ -65,11 +98,18 @@ export function useTodayMilestoneSet(): Set<string> {
         [hasRelativeMilestone, simulation],
     );
 
+    // The relative gate is unresolvable only when a MILESTONE_PLUS condition is in
+    // play AND there's nothing to resolve it against — no reach years were extracted
+    // because no projection has been cached yet. Gated on a milestone-income existing
+    // so this stays false (and stable) for everyone who isn't milestone-gated.
+    const relativeMilestoneGateUnresolved =
+        hasMilestoneIncome && hasRelativeMilestone && milestoneReachYears.size === 0;
+
     // Computed at render (cheap primitive) and kept in the deps so the memo
     // re-evaluates across a calendar-year boundary rather than holding a stale year.
     const year = new Date().getFullYear();
 
-    return useMemo(() => {
+    const todayMilestoneSet = useMemo(() => {
         const milestones = state.milestones;
         if (!hasMilestoneIncome || !milestones || milestones.length === 0) return EMPTY_MILESTONE_SET;
 
@@ -85,4 +125,6 @@ export function useTodayMilestoneSet(): Set<string> {
         // `milestoneReachYears` (not `simulation`) is the dep: a stable empty map when
         // no relative milestone exists, so this doesn't churn on re-sims in that case.
     }, [hasMilestoneIncome, state.milestones, accounts, expenses, taxState.filingStatus, milestoneReachYears, year]);
+
+    return { todayMilestoneSet, relativeMilestoneGateUnresolved };
 }

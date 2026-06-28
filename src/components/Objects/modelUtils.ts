@@ -157,6 +157,23 @@ export function isWindowActiveInCurrentMonth(window: ActiveDateWindow): boolean 
 }
 
 /**
+ * True when this window has definitively ENDED — it carries a fixed `endDate` whose
+ * month is strictly before the current month. A missing `endDate` (open-ended, or
+ * ended only by a milestone we can't resolve here) is treated as NOT ended, so this
+ * stays conservative. Mirrors the local-midnight, month-boundary convention of
+ * {@link isWindowActiveInCurrentMonth}.
+ */
+export function hasWindowEnded(window: ActiveDateWindow): boolean {
+  if (window.endDate == null) return false;
+  const today = new Date();
+  const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const endDate = new Date(window.endDate);
+  // Last day of the end month — the window is active through month end.
+  const effectiveEnd = new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0);
+  return effectiveEnd < currentMonthStart;
+}
+
+/**
  * Type guard to check if a value is a non-null object with a className property.
  * Used to validate data before reconstitution.
  */

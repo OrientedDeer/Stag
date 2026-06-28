@@ -1639,9 +1639,10 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     //     order-omitted account would otherwise never be tapped; this flag is the SAFETY NET
     //     (#111) that lets a genuine shortfall reach it rather than borrowing.
     //
-    // The working-year path (solveWorkingYear) is deliberately NOT changed — its initialDeficit
-    // conflates tax with spending and would mishandle RSU withholding. No-op when the order
-    // already lists every account (the golden masters and all scenarios).
+    // The working-year path (solveWorkingYear) honors the literal order the same way (Tax Opt
+    // off) but keeps includeUnorderedSellable OFF — its initialDeficit conflates tax with
+    // spending and the #111 safety-net tier would mishandle RSU withholding (#114). No-op when
+    // the order already lists every account (the golden masters and all scenarios).
     // honorLiteralOrder only when the USER owns the order (Tax Opt off). When Tax Opt
     // is on the optimizer owns it and keeps its penalty-aware execution — the order it
     // SCORES must match how it RUNS, so its picks stay stable (#154).
@@ -2220,13 +2221,16 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
     let withdrawalOrdinaryIncome = 0;
 
     if (initialDeficit > 0) {
-        // #154: the working-year deficit path keeps the legacy penalty-aware bucketing
-        // (NOT honorLiteralOrder) — literal ordering here would tap a pre-59½ penalized
-        // account first if the user listed it high, incurring an early-withdrawal penalty
-        // the bucketing avoids. The literal order is honored on the RETIREMENT drawdown,
-        // which is what the withdrawal-order UI is about.
+        // #154: honor the user's literal withdrawal order on the working-year deficit
+        // too — same as the retirement drawdown — so a pre-retirement shortfall taps
+        // accounts in the exact sequence the UI shows. Gated on Tax Opt OFF: when Tax
+        // Optimization is ON the optimizer owns the order and keeps its penalty-aware
+        // bucketing (the order it scores must match how it runs). includeUnorderedSellable
+        // stays false here — the #111 safety-net tier is deliberately retirement-only
+        // because the working-year initialDeficit conflates tax with spending and would
+        // mishandle RSU withholding (#114).
         const accountSnapshots = createOrderedSnapshots(
-            input.accounts, input.withdrawalOrder, input.currentAge, input.year,
+            input.accounts, input.withdrawalOrder, input.currentAge, input.year, false, !input.taxOptimizationEnabled,
         );
 
         const withdrawalResult = planWithdrawals(

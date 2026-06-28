@@ -125,8 +125,9 @@ export default function WithdrawalTab() {
                 const reordered = taxOptimalWithdrawalOrder(eligible, currentAge)
                     .map(a => byId.get(a.id))
                     .filter((w): w is WithdrawalBucket => w !== undefined);
-                // Defensive: keep any bucket whose account isn't resolvable (e.g. a stale id)
-                // in its original spot — never silently drop one.
+                // Defensive: a bucket whose account isn't resolvable (e.g. a stale id the
+                // useEffect auto-sync hasn't dropped yet) was never a sort candidate, so
+                // append it AFTER the sorted accounts rather than silently dropping it.
                 const seen = new Set(reordered.map(w => w.accountId));
                 for (const w of current.withdrawalStrategy) if (!seen.has(w.accountId)) reordered.push(w);
 
@@ -135,10 +136,15 @@ export default function WithdrawalTab() {
                     showReceipt({ message: 'Already in the tax-optimized withdrawal order.' });
                     return;
                 }
-                dispatch({ type: 'SET_WITHDRAWAL_STRATEGY', payload: reordered });
+                // Build the projection BEFORE committing the order: if buildSimulation throws,
+                // the existing order + simulation stay intact rather than leaving the new order
+                // showing against stale numbers.
                 const { sim, hash } = buildSimulation({ ...current, withdrawalStrategy: reordered });
+                dispatch({ type: 'SET_WITHDRAWAL_STRATEGY', payload: reordered });
                 dispatchSimulation({ type: 'SET_SIMULATION_WITH_HASH', payload: { simulation: sim, inputHash: hash } });
                 showReceipt({ message: 'Reordered to the tax-optimized withdrawal order.' });
+            } catch {
+                showReceipt({ message: 'Could not reorder the withdrawal order — please try again.' });
             } finally {
                 setIsRecalculating(false);
             }

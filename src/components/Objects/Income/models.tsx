@@ -9,7 +9,7 @@ import {
   getDisplayedFERSBenefit,
   getDisplayedCSRSBenefit,
 } from '../../../data/PensionData';
-import { parseDate, parseDateRequired, hasClassName, extractBaseFields, getActiveWindowMultiplier, isWindowActiveInCurrentMonth } from "../modelUtils";
+import { parseDate, parseDateRequired, hasClassName, extractBaseFields, getActiveWindowMultiplier, isWindowActiveInCurrentMonth, hasWindowEnded } from "../modelUtils";
 // isActiveRSUGrant lives in a leaf .ts module so importing the pure predicate
 // elsewhere doesn't pull in the model graph or trip react-refresh on this .tsx.
 // Imported here only for this file's own internal use (NOT re-exported — a
@@ -981,6 +981,14 @@ export function getIncomeActiveMultiplier(income: AnyIncome, year: number): numb
 
 export function isIncomeActiveInCurrentMonth(income: AnyIncome): boolean {
     return isWindowActiveInCurrentMonth({ startDate: income.startDate, endDate: income.end_date });
+}
+
+// True when an income has definitively ENDED (fixed end date in a past month). Used
+// to suppress the #141 missing-account warning on a finished job — its grant/ESPP can
+// no longer vest, so the warning is pure noise. Conservative: a milestone-ended income
+// (no fixed end_date) reads as not-ended and still warns.
+export function hasIncomeEnded(income: AnyIncome): boolean {
+    return hasWindowEnded({ startDate: income.startDate, endDate: income.end_date });
 }
 
 // True for any Social Security income: the base SocialSecurityIncome plus the two

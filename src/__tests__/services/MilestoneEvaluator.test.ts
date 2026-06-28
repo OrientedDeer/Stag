@@ -536,5 +536,50 @@ describe('MilestoneEvaluator', () => {
             expect(isIncomeActiveToday(inc, new Set(['retire']))).toBe(false);
             expect(isIncomeActiveToday(inc, EMPTY)).toBe(true);
         });
+
+        // #152/#154: a relative (MILESTONE_PLUS) start milestone resolves out of the
+        // cached projection timeline. On a fresh session (simulation === []) the today-
+        // set can't confirm it as reached even when it fired years ago, so without the
+        // fallback a genuinely-active income is silently dropped. The
+        // `relativeMilestoneGateUnresolved` flag falls back to the fixed-date window.
+        describe('relative-milestone gate unresolved (empty sim timeline)', () => {
+            it('INCLUDES a time-active relative-milestone income when the reach-year map is empty', () => {
+                // Past fixed start date → the date window passes; the MILESTONE 'fi+2'
+                // is the gate, and it is absent from the today-set because no projection
+                // has resolved its reach year yet.
+                const past = new Date(new Date().getFullYear() - 1, 0, 1);
+                const inc = new WorkIncome(
+                    'inc-rel', 'Post-FI Job', 100_000, 'Annually', 'Yes',
+                    0, 0, 0, 0, '', null, 'FIXED', past,
+                );
+                inc.startMilestoneId = 'fi+2';
+
+                // Without the flag (normal path), the unreached milestone hides it.
+                expect(isIncomeActiveToday(inc, EMPTY)).toBe(false);
+                // With the gate flagged unresolvable, the date window alone keeps it active.
+                expect(isIncomeActiveToday(inc, EMPTY, true)).toBe(true);
+            });
+
+            it('still respects the fixed-date window even when the gate is unresolved', () => {
+                // A FUTURE fixed start date must stay inactive — the fallback is the
+                // date window ALONE, not "always active".
+                const future = new Date(new Date().getFullYear() + 5, 0, 1);
+                const inc = new WorkIncome(
+                    'inc-rel-future', 'Future Post-FI Job', 100_000, 'Annually', 'Yes',
+                    0, 0, 0, 0, '', null, 'FIXED', future,
+                );
+                inc.startMilestoneId = 'fi+2';
+                expect(isIncomeActiveToday(inc, EMPTY, true)).toBe(false);
+            });
+
+            it('does not relax the gate when it is resolvable (flag false → milestone still gates)', () => {
+                const inc = makeIncome();
+                inc.startMilestoneId = 'fi+2';
+                // Timeline available, milestone legitimately unreached → still hidden.
+                expect(isIncomeActiveToday(inc, EMPTY, false)).toBe(false);
+                // And reached → active, exactly as before.
+                expect(isIncomeActiveToday(inc, new Set(['fi+2']), false)).toBe(true);
+            });
+        });
     });
 });

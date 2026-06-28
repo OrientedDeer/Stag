@@ -1,6 +1,6 @@
 import { useState, useContext, useMemo } from "react";
 import { IncomeContext, IncomeDispatchContext } from "../../components/Objects/Income/IncomeContext";
-import { useTodayMilestoneSet } from "../../components/Objects/Assumptions/useTodayMilestoneSet";
+import { useTodayMilestoneSet, useRelativeMilestoneGateUnresolved } from "../../components/Objects/Assumptions/useTodayMilestoneSet";
 import { isIncomeActiveToday } from "../../services/simulation/MilestoneEvaluator";
 import {
 	AnyIncome,
@@ -103,13 +103,21 @@ const TabsContent = () => {
 	// AND-s it with the fixed-date window.
 	const todayMilestoneSet = useTodayMilestoneSet();
 
+	// #152/#154: that today-set resolves RELATIVE (MILESTONE_PLUS) milestones out of
+	// the cached projection timeline. On a fresh session this tab can render before any
+	// projection exists (simulation === []), leaving the relative gate unresolvable —
+	// an already-fired relative-milestone income would be wrongly dropped. When that's
+	// the case, isIncomeActiveToday falls back to the fixed-date window alone so a
+	// genuinely-active income still shows; with a real timeline the gate works normally.
+	const relativeMilestoneGateUnresolved = useRelativeMilestoneGateUnresolved();
+
 	// Data wrangling for icicle chart
 	const hierarchicalData = useMemo(() => {
 		const grouped: Record<string, AnyIncome[]> = {};
 
 		// 1. Group incomes (only those active TODAY — fixed-date window AND milestone)
 		incomes
-			.filter(inc => isIncomeActiveToday(inc, todayMilestoneSet))
+			.filter(inc => isIncomeActiveToday(inc, todayMilestoneSet, relativeMilestoneGateUnresolved))
 			.forEach((inc) => {
 				const category = CLASS_TO_CATEGORY[inc.constructor.name] || 'Other';
 				if (!grouped[category]) grouped[category] = [];
@@ -146,7 +154,7 @@ const TabsContent = () => {
 			color: "var(--color-chart-money)", // Root node color
 			children: categoryChildren
 		};
-	}, [incomes, todayMilestoneSet]);
+	}, [incomes, todayMilestoneSet, relativeMilestoneGateUnresolved]);
 
 	return (
 		<div className="w-full min-h-full flex bg-surface-base justify-center pt-6 pb-24">

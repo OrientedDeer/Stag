@@ -4,6 +4,7 @@ import {
   parseDateRequired,
   extractBaseFields,
   hasClassName,
+  hasWindowEnded,
 } from '../../../components/Objects/modelUtils';
 
 describe('modelUtils', () => {
@@ -227,6 +228,31 @@ describe('modelUtils', () => {
 
     it('should return false for array', () => {
       expect(hasClassName(['WorkIncome'])).toBe(false);
+    });
+  });
+
+  // #154/#141 — gate the missing-account warning on a finished income.
+  describe('hasWindowEnded', () => {
+    const now = new Date();
+
+    it('is true for a fixed end date a year in the past (ended)', () => {
+      const endDate = new Date(now.getFullYear() - 1, now.getMonth(), 1);
+      expect(hasWindowEnded({ startDate: new Date(now.getFullYear() - 5, 0, 1), endDate })).toBe(true);
+    });
+
+    it('is false when there is no end date (open-ended / milestone-ended)', () => {
+      expect(hasWindowEnded({ startDate: new Date(now.getFullYear() - 5, 0, 1) })).toBe(false);
+      expect(hasWindowEnded({ startDate: new Date(now.getFullYear() - 5, 0, 1), endDate: null })).toBe(false);
+    });
+
+    it('is false for an end date in the future (still active)', () => {
+      const endDate = new Date(now.getFullYear() + 1, now.getMonth(), 1);
+      expect(hasWindowEnded({ startDate: new Date(now.getFullYear() - 5, 0, 1), endDate })).toBe(false);
+    });
+
+    it('is false through the end month itself (active until month end)', () => {
+      const endDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      expect(hasWindowEnded({ startDate: new Date(now.getFullYear() - 5, 0, 1), endDate })).toBe(false);
     });
   });
 });

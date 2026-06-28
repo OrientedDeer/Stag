@@ -1,7 +1,9 @@
 /**
- * The warning-triangle (exclamation-in-triangle) icon, extracted so the several
- * call sites that inlined this SVG path can share one definition. `currentColor`
- * stroke so callers theme it via text color.
+ * The warning-triangle (exclamation-in-triangle) icon as a shared component so call
+ * sites don't have to inline the SVG path. `currentColor` stroke so callers theme it
+ * via text color. (IncomeCard uses it today; a few other spots — ConfirmDialog,
+ * AlertBanner, QRGenerateModal, PriorityTab — still inline the same path and can migrate
+ * here over time.)
  */
 export const WarningTriangleIcon = ({ className }: { className?: string }) => (
     <svg className={className} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">

@@ -225,3 +225,85 @@ describe('solveWorkingYear: NIIT MAGI includes the deficit-funding Traditional w
         expect(plan.tax.niit).not.toBeCloseTo(buggyNIIT, 2);
     });
 });
+
+// =============================================================================
+// #154 — the working-year deficit honors the LITERAL withdrawal order (Tax Opt
+// off), exactly like the retirement drawdown. With Tax Opt ON the optimizer owns
+// the order and keeps its penalty-aware bucketing.
+// =============================================================================
+describe('solveWorkingYear: literal withdrawal order on the deficit path (#154)', () => {
+    // Age 50 — a pre-59½ working year with a spending deficit, and a manual order
+    // that lists the early-withdrawal-PENALIZED Traditional FIRST, ahead of the
+    // non-penalized brokerage. Fabricated figures.
+    function buildInput(taxOptimizationEnabled: boolean): YearSolverInput {
+        const birthYear = YEAR - 50;
+        const wages = new WorkIncome(
+            'inc-1', 'Salary', 30_000, 'Annually', 'Yes',
+            0, 0, 0, 0, '', null, 'FIXED',
+            new Date(YEAR - 5, 0, 1), new Date(YEAR + 9, 11, 31),
+        );
+        // Traditional ($50k) drains fully under literal order; pre-59½ so it carries
+        // the 10% early-withdrawal penalty when tapped.
+        const traditional = new InvestedAccount(
+            'trad-1', 'Traditional IRA', 50_000, 0, 10, 0.0, 'Traditional IRA');
+        // Large brokerage (non-penalized) — covers the whole deficit on its own when
+        // the bucketing taps it first.
+        const brokerage = new InvestedAccount(
+            'brokerage-1', 'Brokerage', 500_000, 0, 10, 0.0, 'Brokerage', true, 0.2, 50_000);
+
+        const taxState: TaxState = {
+            filingStatus: 'Single',
+            stateResidency: 'Texas',
+            deductionMethod: 'Standard',
+            fedOverride: null,
+            ficaOverride: null,
+            stateOverride: null,
+            year: YEAR,
+        };
+
+        const assumptions = baseAssumptions(birthYear);
+        return {
+            year: YEAR,
+            currentAge: 50,
+            isRetired: false,
+            incomes: [wages],
+            expenses: [new OtherExpense('living-1', 'Living', 130_000, 'Annually', new Date(YEAR - 5, 0, 1))],
+            totalLivingExpenses: 130_000,
+            rmdAmount: 0,
+            accounts: [traditional, brokerage],
+            // Penalized Traditional listed FIRST, non-penalized brokerage second.
+            withdrawalOrder: [{ accountId: 'trad-1' }, { accountId: 'brokerage-1' }],
+            taxState,
+            assumptions: { ...assumptions, investments: { ...assumptions.investments, taxOptimizationEnabled } },
+            taxOptimizationEnabled,
+            acaAware: false,
+        };
+    }
+
+    const isTraditional = (s: string) => s === 'traditional_ira' || s === 'traditional_401k';
+
+    it('Tax Opt OFF taps the listed Traditional FIRST (literal order) and incurs the early-withdrawal penalty', () => {
+        const plan = solveWorkingYear(buildInput(false));
+
+        expect(plan.withdrawals.length).toBeGreaterThan(0);
+        // Literal order: the user's first-listed (penalized) Traditional is tapped first.
+        expect(isTraditional(plan.withdrawals[0].source)).toBe(true);
+        // The brokerage funds the remainder, so it appears AFTER the Traditional.
+        const tradIdx = plan.withdrawals.findIndex(w => isTraditional(w.source));
+        const brokIdx = plan.withdrawals.findIndex(w => w.source === 'brokerage');
+        expect(brokIdx).toBeGreaterThan(tradIdx);
+        // Tapping the pre-59½ Traditional incurs the 10% penalty the bucketing avoids.
+        expect(plan.tax.penalties).toBeGreaterThan(0);
+    });
+
+    it('Tax Opt ON keeps penalty-aware bucketing: non-penalized brokerage first, Traditional deferred, no penalty', () => {
+        const plan = solveWorkingYear(buildInput(true));
+
+        expect(plan.withdrawals.length).toBeGreaterThan(0);
+        // Bucketing taps the non-penalized brokerage first; it covers the whole deficit,
+        // so the penalized Traditional is never touched.
+        expect(plan.withdrawals[0].source).toBe('brokerage');
+        expect(plan.withdrawals.some(w => isTraditional(w.source))).toBe(false);
+        expect(plan.tax.penalties).toBe(0);
+    });
+});

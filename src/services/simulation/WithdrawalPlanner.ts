@@ -410,7 +410,6 @@ const WITHDRAWAL_TAX_RANK: Record<WithdrawalAccountType, number> = {
 export function taxOptimalWithdrawalOrder(
     accounts: AnyAccount[],
     currentAge: number,
-    year?: number,
 ): AnyAccount[] {
     const rank = (a: AnyAccount) => {
         const type = classifyAccount(a);
@@ -419,7 +418,6 @@ export function taxOptimalWithdrawalOrder(
             tax: WITHDRAWAL_TAX_RANK[type] ?? 1,
         };
     };
-    void year; // age drives penalties; year reserved for parity with createOrderedSnapshots
     return accounts
         .map((a, i) => ({ a, i, r: rank(a) }))
         .sort((x, y) => (x.r.penalty - y.r.penalty) || (x.r.tax - y.r.tax) || (x.i - y.i))

@@ -401,8 +401,26 @@ export function isActiveByMilestone(
  * breakdown wants a hard active/inactive boolean; the Priority tab applies only the
  * milestone gate (`isActiveByMilestone`) and lets `getMonthlyAmount` zero out-of-
  * window fixed dates, because a $0 income must stay in its tax base.
+ *
+ * `relativeMilestoneGateUnresolved` (#152/#154): the today-milestone set resolves
+ * RELATIVE (MILESTONE_PLUS, "N years after X") conditions out of the cached
+ * simulation timeline. On the Current/Income tab no projection may have run yet
+ * (`simulation === []`), so that set can't confirm a relative milestone as reached
+ * even when it fired years ago — `buildMilestoneReachYears([])` is empty. Treating
+ * that as "unreached" would silently drop a genuinely-active relative-milestone
+ * income from the breakdown. When the caller flags the relative gate as unresolvable,
+ * we fall back to the pre-#152 behavior — the fixed-date window ALONE — rather than
+ * gating on a milestone set we know is incomplete. With a real timeline the flag is
+ * false and the milestone gate still works (legitimate "not yet reached" still hides).
  */
-export function isIncomeActiveToday(inc: AnyIncome, todayMilestoneSet: Set<string>): boolean {
+export function isIncomeActiveToday(
+    inc: AnyIncome,
+    todayMilestoneSet: Set<string>,
+    relativeMilestoneGateUnresolved = false,
+): boolean {
+    if (relativeMilestoneGateUnresolved) {
+        return isIncomeActiveInCurrentMonth(inc);
+    }
     return isIncomeActiveInCurrentMonth(inc) &&
         isActiveByMilestone(inc.startMilestoneId, inc.endMilestoneId, todayMilestoneSet);
 }

@@ -9,6 +9,7 @@ import {
     CSRSPensionIncome,
     PassiveIncome,
     IncomeFrequency,
+    hasIncomeEnded,
 } from './models';
 import { IncomeContext, IncomeDispatchContext, AllIncomeKeys } from './IncomeContext';
 import { StyledSelect } from '../../Layout/InputFields/StyleUI';
@@ -116,15 +117,28 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
         [accounts, handleFieldUpdate]
     );
 
-    const contributionAccounts = accounts.filter(
-        (acc): acc is InvestedAccount =>
-            acc instanceof InvestedAccount &&
-            acc.isContributionEligible === true &&
-            (acc.taxType === 'Roth 401k' || acc.taxType === 'Traditional 401k')
+    // Memoized on `accounts` so each is a stable reference per render — the membership
+    // useEffect below (and the #141 missing-account badge) depend on these, and fresh
+    // arrays every render would re-fire the effect and re-scan needlessly.
+    const contributionAccounts = useMemo(
+        () =>
+            accounts.filter(
+                (acc): acc is InvestedAccount =>
+                    acc instanceof InvestedAccount &&
+                    acc.isContributionEligible === true &&
+                    (acc.taxType === 'Roth 401k' || acc.taxType === 'Traditional 401k')
+            ),
+        [accounts]
     );
 
-    const esppAccounts = accounts.filter((acc): acc is ESPPAccount => acc instanceof ESPPAccount);
-    const rsuAccounts = accounts.filter((acc): acc is RSUAccount => acc instanceof RSUAccount);
+    const esppAccounts = useMemo(
+        () => accounts.filter((acc): acc is ESPPAccount => acc instanceof ESPPAccount),
+        [accounts]
+    );
+    const rsuAccounts = useMemo(
+        () => accounts.filter((acc): acc is RSUAccount => acc instanceof RSUAccount),
+        [accounts]
+    );
 
     const workIncomes = useMemo(
         () => incomes.filter((inc): inc is WorkIncome => inc instanceof WorkIncome),
@@ -194,8 +208,11 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
     // #141: a stock grant configured with no linked account is effectively a broken
     // income (it never vests/purchases). Surface a badge on the card HEADER — visible
     // while collapsed — so the user doesn't have to expand the card to discover it.
-    const needsRsuAccount = isWorkIncome && rsuGrantNeedsAccount(income, rsuAccounts);
-    const needsEsppAccount = isWorkIncome && esppGrantNeedsAccount(income, esppAccounts);
+    // …but NOT for a job that has already ENDED: its grant/ESPP can no longer vest, so
+    // the warning would be pure noise on a finished income (active + future still warn).
+    const incomeEnded = hasIncomeEnded(income);
+    const needsRsuAccount = isWorkIncome && !incomeEnded && rsuGrantNeedsAccount(income, rsuAccounts);
+    const needsEsppAccount = isWorkIncome && !incomeEnded && esppGrantNeedsAccount(income, esppAccounts);
     const missingAccountBadge = (needsRsuAccount || needsEsppAccount) ? (
         <span
             className="inline-flex items-center gap-1 rounded-full border border-warning-strong bg-warning-tint/30 px-2 py-0.5 text-xs font-semibold text-warning-bright whitespace-nowrap"
